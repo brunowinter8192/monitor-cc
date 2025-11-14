@@ -1,0 +1,126 @@
+# INFRASTRUCTURE
+from datetime import datetime
+
+GREEN = '\033[38;5;35m'
+YELLOW = '\033[38;5;220m'
+RESET = '\033[0m'
+INDENT = '  '
+
+# ORCHESTRATOR
+def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int) -> str:
+    request = format_request(tool_name, input_data, tool_use_id, timestamp, call_number)
+    response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number)
+    return f"{request}\n\n{response}"
+
+# FUNCTIONS
+
+# Format REQUEST header with green color and timestamp
+def format_request(tool_name: str, input_data: dict, tool_use_id: str, timestamp: str, call_number: int) -> str:
+    time_str = format_timestamp(timestamp)
+    header = f"{GREEN}[{time_str}] REQUEST #{call_number} → {tool_name}{RESET}"
+
+    if tool_name == 'TodoWrite' and 'todos' in input_data:
+        params = format_todo_list(input_data['todos'])
+    else:
+        params = format_parameters(input_data)
+
+    return f"{header}\n{params}"
+
+# Format RESPONSE header with green color and timestamp
+def format_response(tool_name: str, output_data: str, tool_use_id: str, timestamp: str, call_number: int) -> str:
+    time_str = format_timestamp(timestamp)
+    header = f"{GREEN}[{time_str}] RESPONSE #{call_number} ← {tool_name}{RESET}"
+    content = format_output(output_data)
+    return f"{header}\n{content}"
+
+# Format WARNING header with yellow color for malformed lines
+def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:
+    now = datetime.now().strftime('%H:%M:%S')
+    header = f"{YELLOW}[{now}] ⚠ WARNING - Malformed JSON{RESET}"
+
+    truncated_line = truncate_line(raw_line, 200)
+
+    details = [
+        f"{INDENT}File: {file_path}",
+        f"{INDENT}Line: {line_number}",
+        f"{INDENT}Error: {error_message}",
+        f"{INDENT}Content: {truncated_line}"
+    ]
+
+    return f"{header}\n" + '\n'.join(details)
+
+# Format todo list with colored status and icons
+def format_todo_list(todos: list) -> str:
+    if not todos:
+        return f"{INDENT}(no todos)"
+
+    lines = []
+    for idx, todo in enumerate(todos, 1):
+        status = todo.get('status', 'pending')
+        content = todo.get('content', '(no content)')
+
+        icon = get_status_icon(status)
+        color = get_status_color(status)
+        status_label = status.upper().replace('_', ' ')
+
+        lines.append(f"\n{INDENT}TODO #{idx} - {status_label} {icon}")
+        lines.append(f"{INDENT}{INDENT}{color}{content}{RESET}")
+
+    return '\n'.join(lines)
+
+# Convert ISO timestamp to HH:MM:SS format
+def format_timestamp(iso_timestamp: str) -> str:
+    dt = datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
+    return dt.strftime('%H:%M:%S')
+
+# Format input parameters with 2-space indentation
+def format_parameters(params: dict) -> str:
+    lines = []
+    for key, value in params.items():
+        formatted_value = format_value(value)
+        lines.append(f"{INDENT}{key}: {formatted_value}")
+    return '\n'.join(lines)
+
+# Format output content with 2-space indentation
+def format_output(content: str) -> str:
+    if not content:
+        return f"{INDENT}(empty)"
+
+    lines = content.split('\n')
+    return '\n'.join(f"{INDENT}{line}" for line in lines)
+
+# Format parameter value preserving newlines for multiline strings
+def format_value(value) -> str:
+    if isinstance(value, str) and '\n' in value:
+        lines = value.split('\n')
+        return '\n' + '\n'.join(f"{INDENT}{line}" for line in lines)
+    elif isinstance(value, dict):
+        return str(value)
+    elif isinstance(value, list):
+        return str(value)
+    else:
+        return str(value)
+
+# Truncate line to max length for display
+def truncate_line(line: str, max_length: int) -> str:
+    if len(line) <= max_length:
+        return line
+    return line[:max_length] + '...'
+
+# Get status icon for todo item
+def get_status_icon(status: str) -> str:
+    icons = {
+        'completed': '✓',
+        'in_progress': '⟳',
+        'pending': '○'
+    }
+    return icons.get(status, '○')
+
+# Get status color for todo item
+def get_status_color(status: str) -> str:
+    colors = {
+        'completed': GREEN,
+        'in_progress': YELLOW,
+        'pending': RESET
+    }
+    return colors.get(status, RESET)
