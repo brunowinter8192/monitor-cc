@@ -35,10 +35,15 @@ Monitor_CC/
 ├── session_finder.py    # Session discovery
 ├── jsonl_parser.py      # JSONL parsing and extraction
 ├── formatter.py         # Output formatting
-└── .gitignore           # Git exclusions
+├── .gitignore           # Git exclusions
+├── todo/                # Implementation TODOs (required)
+└── debug/               # Debug scripts and tests (required)
+    ├── test_malformed.py
+    ├── test_todowrite.py
+    └── test_edit_filter.py
 ```
 
-**Note:** Development files (`test_*.py`, `demo_*.py`) are excluded via .gitignore.
+**Note:** Complies with CLAUDE.MD Level 1: PROJECT architecture (mandatory todo/ and debug/ folders).
 
 ## workflow.py
 **Purpose:** Main entry point. Sets up signal handlers and starts monitoring loop.
@@ -173,6 +178,43 @@ Formats output content with 2-space indentation, preserving line breaks.
 ### format_value()
 Handles different value types (strings, dicts, lists), preserving newlines for multiline strings.
 
+
+## Debug Scripts
+
+The `debug/` folder contains test scripts for development and verification:
+
+### test_malformed.py
+Tests malformed JSON line detection and warning display. Creates temporary JSONL file with invalid entries and verifies parser correctly identifies and formats warnings.
+
+**Tests:**
+- JSON syntax errors
+- Unterminated strings
+- Invalid characters
+- Yellow warning output
+
+**Run:** `python3 debug/test_malformed.py`
+
+### test_todowrite.py
+Tests TodoWrite special formatting with colored status icons. Validates green/yellow/white color coding and structured output.
+
+**Tests:**
+- Status icon mapping (✓/⟳/○)
+- Color application (GREEN/YELLOW/RESET)
+- Multi-todo formatting
+- Request/response pairing
+
+**Run:** `python3 debug/test_todowrite.py`
+
+### test_edit_filter.py
+Verifies Edit tool filtering. Confirms Edit tools are excluded from monitor output while other tools remain visible.
+
+**Tests:**
+- Edit tool exclusion count
+- Other tools preserved
+- Filter function behavior
+- Tool breakdown statistics
+
+**Run:** `python3 debug/test_edit_filter.py`
 
 ## Usage
 
