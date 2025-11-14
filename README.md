@@ -1,6 +1,31 @@
 # Monitor_CC
 Live monitoring tool for Claude Code CLI conversations - captures all tool calls with full input/output
 
+## What's New in v1.0
+
+### ✅ Edit Tool Filtering
+Edit operations are automatically filtered from monitor output since they're already displayed fully in Claude Code's UI. This reduces redundancy and keeps the monitor focused on operational tool calls.
+
+### ✅ Enhanced TodoWrite Display
+TodoWrite operations now show with beautiful, color-coded formatting:
+- **✓ Green** for completed tasks
+- **⟳ Yellow** for in-progress tasks
+- **○ White** for pending tasks
+- Structured, easy-to-scan layout
+
+### ✅ Malformed JSON Detection
+When JSONL parsing fails, Monitor_CC displays yellow warnings with:
+- File name and line number
+- Detailed error message from JSON parser
+- Truncated content preview (200 chars)
+- Helps identify corrupted sessions or incomplete writes
+
+### ✅ Production Ready
+- 644 lines of code across 8 files
+- 53+ tool calls tracked in development session
+- Zero Edit tool noise
+- Clean, LEAN architecture following CLAUDE.MD standards
+
 ## Project Structure
 ```
 Monitor_CC/
@@ -10,8 +35,10 @@ Monitor_CC/
 ├── session_finder.py    # Session discovery
 ├── jsonl_parser.py      # JSONL parsing and extraction
 ├── formatter.py         # Output formatting
-└── demo_live.py         # Live monitoring demo
+└── .gitignore           # Git exclusions
 ```
+
+**Note:** Development files (`test_*.py`, `demo_*.py`) are excluded via .gitignore.
 
 ## workflow.py
 **Purpose:** Main entry point. Sets up signal handlers and starts monitoring loop.
@@ -147,6 +174,81 @@ Formats output content with 2-space indentation, preserving line breaks.
 Handles different value types (strings, dicts, lists), preserving newlines for multiline strings.
 
 
+## Usage
+
+### Live Monitoring (Real-time)
+Start the monitor in a separate terminal window:
+```bash
+./Monitor_CC/run.sh
+```
+
+The monitor will:
+- Auto-discover all active Claude Code sessions
+- Show NEW tool calls as they happen (starts at EOF)
+- Display with colored headers, timestamps, full I/O
+- Continue until Ctrl+C
+
+### Viewing Historical Sessions
+To see tool calls from a completed session, modify the file path in a custom script or use the JSONL files directly at:
+```
+~/.claude/projects/<encoded-dir>/*.jsonl
+```
+
+## Output Format
+
+### Standard Tool Calls
+```
+[HH:MM:SS] REQUEST #1 → Bash
+  command: ls -la /Users/bruno/project
+  description: List project files
+
+[HH:MM:SS] RESPONSE #1 ← Bash
+  total 88
+  drwxr-xr-x  5 bruno  staff  160 Nov 14 22:30 .
+  -rw-r--r--  1 bruno  staff  123 Nov 14 22:28 file.py
+```
+
+### TodoWrite (Enhanced Formatting)
+```
+[HH:MM:SS] REQUEST #12 → TodoWrite
+
+  TODO #1 - COMPLETED ✓
+    Add format_warning() function to formatter.py          [GREEN]
+
+  TODO #2 - IN PROGRESS ⟳
+    Update parse_jsonl_lines() to track malformed lines    [YELLOW]
+
+  TODO #3 - PENDING ○
+    Test with malformed JSONL data                         [WHITE]
+
+[HH:MM:SS] RESPONSE #12 ← TodoWrite
+  Todos have been modified successfully.
+```
+
+### Malformed JSON Warnings
+```
+[HH:MM:SS] ⚠ WARNING - Malformed JSON                     [YELLOW]
+  File: agent-629b31dd.jsonl
+  Line: 47
+  Error: Unterminated string starting at: line 1 column 18 (char 17)
+  Content: {"type": "user", "broken json here without...
+```
+
+## What Gets Captured
+
+**YES - Tool Operations:**
+- All tool names (Task, Bash, Read, Write, Grep, Glob, WebSearch, WebFetch, AskUserQuestion, TodoWrite, etc.)
+- Complete input parameters
+- Complete output/results
+- Timestamps
+- Request-response correlation
+
+**NO - Filtered Out:**
+- Edit tools (redundant to Claude Code UI)
+- User prompts
+- Claude thinking
+- Claude text responses
+
 ## Technical Details
 
 **Data Source:** `~/.claude/projects/<encoded-dir>/<session-id>.jsonl`
@@ -154,4 +256,21 @@ Handles different value types (strings, dicts, lists), preserving newlines for m
 **Polling:** 0.5 second interval (like Monitor_CD)
 **Style:** Green headers using ANSI code `\033[38;5;35m`
 **Correlation:** Via `tool_use_id` field matching
+**Filtering:** Edit tools excluded via `filter_excluded_tools()`
+
+## Installation
+
+No installation needed - works with standard Python 3.
+
+**Requirements:**
+- Python 3.6+
+- Claude Code CLI installed
+- Active or completed Claude Code sessions
+
+**Quick Start:**
+```bash
+git clone <repo-url> Monitor_CC
+cd Monitor_CC
+./run.sh
+```
 
