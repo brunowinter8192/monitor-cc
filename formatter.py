@@ -2,34 +2,40 @@
 from datetime import datetime
 
 GREEN = '\033[38;5;35m'
+BLUE = '\033[38;5;33m'
 YELLOW = '\033[38;5;220m'
+CYAN = '\033[38;5;51m'
 RESET = '\033[0m'
 INDENT = '  '
 
 # ORCHESTRATOR
-def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int) -> str:
-    request = format_request(tool_name, input_data, tool_use_id, timestamp, call_number)
-    response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number)
+def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False) -> str:
+    request = format_request(tool_name, input_data, tool_use_id, timestamp, call_number, is_subagent)
+    response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number, is_subagent)
     return f"{request}\n\n{response}"
 
 # FUNCTIONS
 
-# Format REQUEST header with green color and timestamp
-def format_request(tool_name: str, input_data: dict, tool_use_id: str, timestamp: str, call_number: int) -> str:
+# Format REQUEST header with color based on agent type
+def format_request(tool_name: str, input_data: dict, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False) -> str:
     time_str = format_timestamp(timestamp)
-    header = f"{GREEN}[{time_str}] REQUEST #{call_number} → {tool_name}{RESET}"
+    color = BLUE if is_subagent else GREEN
+    header = f"{color}[{time_str}] REQUEST #{call_number} → {tool_name}{RESET}"
 
     if tool_name == 'TodoWrite' and 'todos' in input_data:
         params = format_todo_list(input_data['todos'])
+    elif tool_name == 'Task' and 'subagent_type' in input_data:
+        params = format_task_parameters(input_data)
     else:
         params = format_parameters(input_data)
 
     return f"{header}\n{params}"
 
-# Format RESPONSE header with green color and timestamp
-def format_response(tool_name: str, output_data: str, tool_use_id: str, timestamp: str, call_number: int) -> str:
+# Format RESPONSE header with color based on agent type
+def format_response(tool_name: str, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False) -> str:
     time_str = format_timestamp(timestamp)
-    header = f"{GREEN}[{time_str}] RESPONSE #{call_number} ← {tool_name}{RESET}"
+    color = BLUE if is_subagent else GREEN
+    header = f"{color}[{time_str}] RESPONSE #{call_number} ← {tool_name}{RESET}"
     content = format_output(output_data)
     return f"{header}\n{content}"
 
@@ -79,6 +85,17 @@ def format_parameters(params: dict) -> str:
     for key, value in params.items():
         formatted_value = format_value(value)
         lines.append(f"{INDENT}{key}: {formatted_value}")
+    return '\n'.join(lines)
+
+# Format Task parameters with highlighted subagent_type
+def format_task_parameters(params: dict) -> str:
+    lines = []
+    for key, value in params.items():
+        if key == 'subagent_type':
+            lines.append(f"{INDENT}{key}: {CYAN}{value}{RESET}")
+        else:
+            formatted_value = format_value(value)
+            lines.append(f"{INDENT}{key}: {formatted_value}")
     return '\n'.join(lines)
 
 # Format output content with 2-space indentation

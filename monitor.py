@@ -9,6 +9,7 @@ from formatter import format_tool_call, format_warning
 
 POLL_INTERVAL = 0.5
 file_positions: Dict[Path, int] = {}
+tool_use_caches: Dict[Path, dict] = {}
 call_counter = 0
 
 # ORCHESTRATOR
@@ -39,7 +40,7 @@ def monitor_sessions() -> None:
 
 # Update tracking for new or removed sessions
 def update_session_tracking(sessions: list) -> None:
-    global file_positions
+    global file_positions, tool_use_caches
 
     current_files = set(sessions)
     tracked_files = set(file_positions.keys())
@@ -47,6 +48,7 @@ def update_session_tracking(sessions: list) -> None:
     new_files = current_files - tracked_files
     for new_file in new_files:
         file_positions[new_file] = get_file_end_position(new_file)
+        tool_use_caches[new_file] = {}
 
 # Process all tracked session files
 def process_all_sessions(sessions: list) -> None:
@@ -58,10 +60,14 @@ def process_all_sessions(sessions: list) -> None:
 
 # Process single session file for new tool calls and warnings
 def process_session_file(filepath: Path) -> None:
-    global file_positions, call_counter
+    global file_positions, tool_use_caches, call_counter
+
+    if filepath not in tool_use_caches:
+        tool_use_caches[filepath] = {}
 
     last_position = file_positions[filepath]
-    tool_calls, new_position, malformed_warnings = parse_new_tool_calls(filepath, last_position)
+    cache = tool_use_caches[filepath]
+    tool_calls, new_position, malformed_warnings = parse_new_tool_calls(filepath, last_position, cache)
 
     for warning in malformed_warnings:
         display_warning(warning)
@@ -80,7 +86,8 @@ def display_tool_call(tool_call: dict, call_number: int) -> None:
         output_data=tool_call['output'] or '',
         tool_use_id=tool_call['tool_use_id'],
         timestamp=tool_call['timestamp'],
-        call_number=call_number
+        call_number=call_number,
+        is_subagent=tool_call.get('is_subagent', False)
     )
 
     print(formatted)

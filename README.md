@@ -1,30 +1,11 @@
 # Monitor_CC
 Live monitoring tool for Claude Code CLI conversations - captures all tool calls with full input/output
 
-## What's New in v1.0
-
-### ✅ Edit Tool Filtering
-Edit operations are automatically filtered from monitor output since they're already displayed fully in Claude Code's UI. This reduces redundancy and keeps the monitor focused on operational tool calls.
-
-### ✅ Enhanced TodoWrite Display
-TodoWrite operations now show with beautiful, color-coded formatting:
-- **✓ Green** for completed tasks
-- **⟳ Yellow** for in-progress tasks
-- **○ White** for pending tasks
-- Structured, easy-to-scan layout
-
-### ✅ Malformed JSON Detection
-When JSONL parsing fails, Monitor_CC displays yellow warnings with:
-- File name and line number
-- Detailed error message from JSON parser
-- Truncated content preview (200 chars)
-- Helps identify corrupted sessions or incomplete writes
-
-### ✅ Production Ready
-- 644 lines of code across 8 files
-- 53+ tool calls tracked in development session
-- Zero Edit tool noise
-- Clean, LEAN architecture following CLAUDE.MD standards
+## What's New in v1.1
+- **Subagent tool call tracking**: Main agent tools display in GREEN, subagent tools in BLUE
+- **Task tool highlighting**: `subagent_type` parameter highlighted in CYAN
+- **Agent metadata capture**: Tracks `isSidechain` and `agentId` fields from JSONL
+- **Complete visibility**: All subagent operations (Read, Grep, Bash, etc.) now visually distinguished
 
 ## Project Structure
 ```
@@ -147,30 +128,33 @@ Checks if a content block represents a tool invocation by examining its type fie
 Checks if a content block represents a tool result by examining its type field.
 
 ### create_tool_use_entry()
-Builds a tool call dictionary from a tool_use content block, extracting name, input parameters, ID, and timestamp.
+Builds a tool call dictionary from a tool_use content block, extracting name, input parameters, ID, timestamp, and agent metadata (isSidechain, agentId).
 
 ### extract_result_content()
 Extracts the actual output text from a tool_result content block, handling both simple strings and complex structured responses.
 
 ## formatter.py
-**Purpose:** Formats tool calls in Monitor_CD style with green headers and proper indentation.
-**Input:** Tool call data (name, input, output, timestamp, ID)
+**Purpose:** Formats tool calls with color-coded headers (green for main agent, blue for subagents) and proper indentation.
+**Input:** Tool call data (name, input, output, timestamp, ID, agent metadata)
 **Output:** Formatted string with ANSI color codes
 
 ### format_tool_call()
-Orchestrates formatting by creating both REQUEST and RESPONSE sections and combining them with spacing.
+Orchestrates formatting by creating both REQUEST and RESPONSE sections with agent-specific coloring and combining them with spacing.
 
 ### format_request()
-Creates the REQUEST header with green color, timestamp, tool name, and formatted input parameters.
+Creates the REQUEST header with color based on agent type (green for main, blue for subagent), timestamp, tool name, and formatted input parameters. Applies special formatting for Task and TodoWrite tools.
 
 ### format_response()
-Creates the RESPONSE header with green color, timestamp, tool name, and formatted output content.
+Creates the RESPONSE header with color based on agent type (green for main, blue for subagent), timestamp, tool name, and formatted output content.
 
 ### format_timestamp()
 Converts ISO 8601 timestamp to HH:MM:SS format for compact display.
 
 ### format_parameters()
 Formats input parameters dictionary with 2-space indentation, one parameter per line.
+
+### format_task_parameters()
+Formats Task tool parameters with special highlighting for subagent_type field in cyan color.
 
 ### format_output()
 Formats output content with 2-space indentation, preserving line breaks.
@@ -238,16 +222,39 @@ To see tool calls from a completed session, modify the file path in a custom scr
 
 ## Output Format
 
-### Standard Tool Calls
+### Main Agent Tool Calls (GREEN)
 ```
-[HH:MM:SS] REQUEST #1 → Bash
+[HH:MM:SS] REQUEST #1 → Bash                                  [GREEN]
   command: ls -la /Users/bruno/project
   description: List project files
 
-[HH:MM:SS] RESPONSE #1 ← Bash
+[HH:MM:SS] RESPONSE #1 ← Bash                                 [GREEN]
   total 88
   drwxr-xr-x  5 bruno  staff  160 Nov 14 22:30 .
   -rw-r--r--  1 bruno  staff  123 Nov 14 22:28 file.py
+```
+
+### Subagent Tool Calls (BLUE)
+```
+[HH:MM:SS] REQUEST #15 → Read                                 [BLUE]
+  file_path: /Users/bruno/project/monitor.py
+
+[HH:MM:SS] RESPONSE #15 ← Read                                [BLUE]
+  # INFRASTRUCTURE
+  import time
+  from pathlib import Path
+  ...
+```
+
+### Task Tool with Highlighted subagent_type
+```
+[HH:MM:SS] REQUEST #10 → Task                                 [GREEN]
+  subagent_type: Plan                                          [CYAN]
+  description: Investigate subagent tracking
+  prompt: Analyze the Monitor_CC codebase...
+
+[HH:MM:SS] RESPONSE #10 ← Task                                [GREEN]
+  Perfect! Now I have a comprehensive understanding...
 ```
 
 ### TodoWrite (Enhanced Formatting)
@@ -284,6 +291,8 @@ To see tool calls from a completed session, modify the file path in a custom scr
 - Complete output/results
 - Timestamps
 - Request-response correlation
+- **Agent metadata** (isSidechain, agentId from JSONL)
+- **Subagent tool calls** from agent-*.jsonl files (displayed in BLUE)
 
 **NO - Filtered Out:**
 - Edit tools (redundant to Claude Code UI)
@@ -293,12 +302,22 @@ To see tool calls from a completed session, modify the file path in a custom scr
 
 ## Technical Details
 
-**Data Source:** `~/.claude/projects/<encoded-dir>/<session-id>.jsonl`
+**Data Source:** `~/.claude/projects/<encoded-dir>/<session-id>.jsonl` and `agent-*.jsonl`
 **Format:** JSONL (JSON Lines) - one message per line
 **Polling:** 0.5 second interval (like Monitor_CD)
-**Style:** Green headers using ANSI code `\033[38;5;35m`
 **Correlation:** Via `tool_use_id` field matching
 **Filtering:** Edit tools excluded via `filter_excluded_tools()`
+
+**Color Scheme:**
+- Main agent tools: GREEN (`\033[38;5;35m`)
+- Subagent tools: BLUE (`\033[38;5;33m`)
+- subagent_type highlight: CYAN (`\033[38;5;51m`)
+- Warnings: YELLOW (`\033[38;5;220m`)
+
+**Agent Tracking:**
+- Detects `isSidechain: true` for subagent tools
+- Captures `agentId` from agent thread messages
+- Processes both main session and agent-*.jsonl files
 
 ## Installation
 

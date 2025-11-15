@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 # ORCHESTRATOR
-def parse_new_tool_calls(filepath: Path, last_position: int) -> Tuple[List[dict], int, List[dict]]:
+def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
     new_position = get_current_position(filepath)
     messages, malformed_lines = parse_jsonl_lines(new_lines)
-    tool_calls = extract_tool_calls(messages)
+    tool_calls = extract_tool_calls(messages, tool_use_cache)
 
     malformed_warnings = []
     for malformed in malformed_lines:
@@ -62,8 +62,7 @@ def parse_jsonl_lines(lines: List[str], start_line_number: int = 0) -> Tuple[Lis
     return messages, malformed_lines
 
 # Extract tool_use and tool_result pairs from messages
-def extract_tool_calls(messages: List[dict]) -> List[dict]:
-    tool_use_cache = {}
+def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]:
     tool_calls = []
 
     for msg in messages:
@@ -112,7 +111,9 @@ def create_tool_use_entry(content_block: dict, msg: dict) -> dict:
         'tool_use_id': content_block.get('id'),
         'timestamp': msg.get('timestamp'),
         'output': None,
-        'response_timestamp': None
+        'response_timestamp': None,
+        'is_subagent': msg.get('isSidechain', False),
+        'agent_id': msg.get('agentId')
     }
 
 # Extract content from tool_result block
