@@ -1,10 +1,20 @@
 # INFRASTRUCTURE
+import logging
 import time
 from pathlib import Path
 from typing import Dict, Set, List
 
+logging.basicConfig(
+    filename='logs/monitor.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# From session_finder.py: Discover active Claude Code sessions
 from session_finder import find_active_sessions
+# From jsonl_parser.py: Parse JSONL and extract tool calls
 from jsonl_parser import parse_new_tool_calls
+# From formatter.py: Format tool calls and warnings for display
 from formatter import format_tool_call, format_warning
 
 POLL_INTERVAL = 0.5
@@ -30,6 +40,7 @@ def initialize_file_positions() -> None:
     global file_positions
 
     sessions = find_active_sessions()
+    logging.info(f"Initialized monitoring for {len(sessions)} existing sessions")
 
     for session_file in sessions:
         if session_file not in file_positions:
@@ -50,6 +61,7 @@ def update_session_tracking(sessions: list) -> None:
 
     new_files = current_files - tracked_files
     for new_file in new_files:
+        logging.info(f"New session discovered: {new_file}")
         file_positions[new_file] = get_file_end_position(new_file)
         tool_use_caches[new_file] = {}
 
@@ -112,6 +124,20 @@ def process_session_file(filepath: Path) -> None:
 
     file_positions[filepath] = new_position
 
+# Display formatted warning to console
+def display_warning(warning: dict) -> None:
+    logging.warning(f"Malformed JSONL at {warning['file_path']}:{warning['line_number']} - {warning['error_message']}")
+
+    formatted = format_warning(
+        file_path=warning['file_path'],
+        line_number=warning['line_number'],
+        error_message=warning['error_message'],
+        raw_line=warning['raw_line']
+    )
+
+    print(formatted)
+    print()
+
 # Display formatted tool call to console
 def display_tool_call(tool_call: dict, call_number: int) -> None:
     formatted = format_tool_call(
@@ -122,18 +148,6 @@ def display_tool_call(tool_call: dict, call_number: int) -> None:
         timestamp=tool_call['timestamp'],
         call_number=call_number,
         is_subagent=tool_call.get('is_subagent', False)
-    )
-
-    print(formatted)
-    print()
-
-# Display formatted warning to console
-def display_warning(warning: dict) -> None:
-    formatted = format_warning(
-        file_path=warning['file_path'],
-        line_number=warning['line_number'],
-        error_message=warning['error_message'],
-        raw_line=warning['raw_line']
     )
 
     print(formatted)

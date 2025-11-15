@@ -1,5 +1,6 @@
 # Test TodoWrite special formatting
 
+# From formatter.py: Format tool calls for display
 from formatter import format_tool_call
 
 sample_input = {

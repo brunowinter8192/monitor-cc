@@ -1,7 +1,10 @@
 # Test malformed line detection and warning display
 
 from pathlib import Path
+
+# From jsonl_parser.py: Parse JSONL and extract tool calls
 from jsonl_parser import parse_new_tool_calls
+# From formatter.py: Format warnings for display
 from formatter import format_warning
 
 test_jsonl = """{"type": "user", "message": {"role": "user", "content": "test"}, "timestamp": "2025-11-14T22:00:00.000Z"}

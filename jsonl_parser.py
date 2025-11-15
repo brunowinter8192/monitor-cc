@@ -1,7 +1,14 @@
 # INFRASTRUCTURE
 import json
+import logging
 from pathlib import Path
 from typing import List, Tuple, Optional
+
+logging.basicConfig(
+    filename='logs/jsonl_parser.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # ORCHESTRATOR
 def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict]]:
@@ -52,6 +59,7 @@ def parse_jsonl_lines(lines: List[str], start_line_number: int = 0) -> Tuple[Lis
             msg = json.loads(line)
             messages.append(msg)
         except json.JSONDecodeError as e:
+            logging.error(f"JSON decode error at line {line_number}: {str(e)}")
             malformed_entry = {
                 'line_number': line_number,
                 'error_message': str(e),

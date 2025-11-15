@@ -1,6 +1,8 @@
 # Test Edit tool filtering
 
 from pathlib import Path
+
+# From jsonl_parser.py: Parse JSONL and extract tool calls
 from jsonl_parser import parse_new_tool_calls
 
 session_file = Path.home() / '.claude/projects/-Users-user-Documents-ai-Monitor-CC/72df0293-b47e-4d6d-b98c-6e79e556c658.jsonl'

@@ -1,7 +1,14 @@
 # INFRASTRUCTURE
+import logging
 import os
 from pathlib import Path
 from typing import List
+
+logging.basicConfig(
+    filename='logs/session_finder.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 CLAUDE_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 
@@ -16,9 +23,12 @@ def find_active_sessions() -> List[Path]:
 # Get all project directories in ~/.claude/projects
 def get_project_directories() -> List[Path]:
     if not CLAUDE_PROJECTS_DIR.exists():
+        logging.warning(f"Claude projects directory not found: {CLAUDE_PROJECTS_DIR}")
         return []
 
-    return [d for d in CLAUDE_PROJECTS_DIR.iterdir() if d.is_dir()]
+    project_dirs = [d for d in CLAUDE_PROJECTS_DIR.iterdir() if d.is_dir()]
+    logging.debug(f"Found {len(project_dirs)} project directories")
+    return project_dirs
 
 # Collect all JSONL files from project directories
 def collect_jsonl_files(project_dirs: List[Path]) -> List[Path]:
