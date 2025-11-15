@@ -84,7 +84,8 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
                     del tool_use_cache[tool_use_id]
 
     filtered_calls = filter_excluded_tools(tool_calls)
-    return filtered_calls
+    sorted_calls = sort_by_timestamp(filtered_calls)
+    return sorted_calls
 
 # Get message content array from message object
 def get_message_content(msg: dict) -> List[dict]:
@@ -137,3 +138,7 @@ def extract_result_content(content_block: dict) -> str:
 def filter_excluded_tools(tool_calls: List[dict]) -> List[dict]:
     excluded_tools = {'Edit'}
     return [tc for tc in tool_calls if tc['tool_name'] not in excluded_tools]
+
+# Sort tool calls by timestamp for chronological output
+def sort_by_timestamp(tool_calls: List[dict]) -> List[dict]:
+    return sorted(tool_calls, key=lambda tc: tc.get('timestamp') or '')
