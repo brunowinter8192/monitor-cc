@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import time
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Set, List
 
 from session_finder import find_active_sessions
 from jsonl_parser import parse_new_tool_calls
@@ -11,6 +11,9 @@ POLL_INTERVAL = 0.5
 file_positions: Dict[Path, int] = {}
 tool_use_caches: Dict[Path, dict] = {}
 call_counter = 0
+agent_to_task: Dict[str, str] = {}
+buffered_subagent_calls: Dict[str, List[dict]] = {}
+task_requests_seen: Set[str] = set()
 
 # ORCHESTRATOR
 def run_monitor() -> None:
@@ -60,7 +63,7 @@ def process_all_sessions(sessions: list) -> None:
 
 # Process single session file for new tool calls and warnings
 def process_session_file(filepath: Path) -> None:
-    global file_positions, tool_use_caches, call_counter
+    global file_positions, tool_use_caches, call_counter, agent_to_task, buffered_subagent_calls, task_requests_seen
 
     if filepath not in tool_use_caches:
         tool_use_caches[filepath] = {}
@@ -73,8 +76,39 @@ def process_session_file(filepath: Path) -> None:
         display_warning(warning)
 
     for tool_call in tool_calls:
-        call_counter += 1
-        display_tool_call(tool_call, call_counter)
+        if is_task_request(tool_call):
+            call_counter += 1
+            task_requests_seen.add(tool_call['tool_use_id'])
+            display_tool_call(tool_call, call_counter)
+
+        elif is_task_response(tool_call):
+            spawned_agent_id = tool_call.get('spawned_agent_id')
+            if spawned_agent_id:
+                agent_to_task[spawned_agent_id] = tool_call['tool_use_id']
+
+                if spawned_agent_id in buffered_subagent_calls:
+                    for buffered_call in buffered_subagent_calls[spawned_agent_id]:
+                        call_counter += 1
+                        display_tool_call(buffered_call, call_counter)
+                    del buffered_subagent_calls[spawned_agent_id]
+
+            call_counter += 1
+            display_tool_call(tool_call, call_counter)
+
+        elif is_subagent_call(tool_call):
+            agent_id = tool_call.get('agent_id')
+            if agent_id and agent_id in agent_to_task:
+                call_counter += 1
+                display_tool_call(tool_call, call_counter)
+            else:
+                if agent_id:
+                    if agent_id not in buffered_subagent_calls:
+                        buffered_subagent_calls[agent_id] = []
+                    buffered_subagent_calls[agent_id].append(tool_call)
+
+        else:
+            call_counter += 1
+            display_tool_call(tool_call, call_counter)
 
     file_positions[filepath] = new_position
 
@@ -110,3 +144,15 @@ def get_file_end_position(filepath: Path) -> int:
     if not filepath.exists():
         return 0
     return filepath.stat().st_size
+
+# Check if tool call is a Task REQUEST
+def is_task_request(tool_call: dict) -> bool:
+    return tool_call.get('tool_name') == 'Task' and tool_call.get('output') is None
+
+# Check if tool call is a Task RESPONSE
+def is_task_response(tool_call: dict) -> bool:
+    return tool_call.get('tool_name') == 'Task' and tool_call.get('output') is not None
+
+# Check if tool call is from a Subagent
+def is_subagent_call(tool_call: dict) -> bool:
+    return tool_call.get('is_subagent', False)

@@ -80,6 +80,13 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
                     tool_data = tool_use_cache[tool_use_id]
                     tool_data['output'] = extract_result_content(content_block)
                     tool_data['response_timestamp'] = msg.get('timestamp')
+
+                    if tool_data['tool_name'] == 'Task':
+                        tool_result_data = msg.get('toolUseResult', {})
+                        spawned_agent_id = tool_result_data.get('agentId')
+                        if spawned_agent_id:
+                            tool_data['spawned_agent_id'] = spawned_agent_id
+
                     tool_calls.append(tool_data)
                     del tool_use_cache[tool_use_id]
 
