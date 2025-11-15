@@ -10,13 +10,14 @@ __pycache__/
 dist/
 build/
 
-# Development/Test files (only in root, not in debug/)
+# Development/Test files
 /test_*.py
 /demo_*.py
 
-# Allow mandatory folders
-!debug/
-!todo/
+# Debug and logs folders (runtime/development only)
+debug/
+logs/
+
 
 # OS
 .DS_Store
