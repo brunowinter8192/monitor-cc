@@ -21,12 +21,12 @@ Monitor_CC/
 **Note:** Complies with CLAUDE.MD Level 1: PROJECT architecture (mandatory todo/ and debug/ folders).
 
 ## workflow.py
-**Purpose:** Main entry point. Sets up signal handlers and starts monitoring loop.
-**Input:** None
+**Purpose:** Main entry point. Sets up signal handlers, parses CLI arguments, and starts monitoring loop.
+**Input:** Optional project path from command line
 **Output:** Console output stream
 
 ### main()
-Orchestrates the entire monitoring workflow. Sets up signal handlers for graceful shutdown, prints startup message, and launches the monitor loop.
+Orchestrates the entire monitoring workflow. Sets up signal handlers for graceful shutdown, parses optional project filter from CLI arguments, prints startup message showing filter status, and launches the monitor loop with the filter.
 
 ### setup_signal_handlers()
 Registers SIGINT and SIGTERM handlers to enable clean shutdown with Ctrl+C.
@@ -34,25 +34,28 @@ Registers SIGINT and SIGTERM handlers to enable clean shutdown with Ctrl+C.
 ### handle_shutdown()
 Handles shutdown signals by printing a shutdown message and exiting cleanly.
 
+### parse_project_filter()
+Parses command line arguments to extract optional project path filter. Returns the first argument if provided, otherwise returns None for all-projects mode.
+
 ### print_startup_message()
-Displays the green-colored startup banner and monitoring status information.
+Displays the green-colored startup banner and monitoring status information. Shows which project is being monitored if a filter is active, otherwise shows general monitoring status.
 
 ### print_shutdown_message()
 Displays the green-colored shutdown message when monitoring stops.
 
 ## monitor.py
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls.
-**Input:** None (reads from ~/.claude/projects)
+**Input:** Optional project path filter (reads from ~/.claude/projects)
 **Output:** Formatted tool calls to console
 
 ### run_monitor()
-Main monitoring loop that runs continuously. Initializes file positions at EOF and polls for changes every 0.5 seconds.
+Main monitoring loop that runs continuously. Accepts optional project filter parameter, stores it globally, initializes file positions at EOF, and polls for changes every 0.5 seconds. The filter is passed through to session discovery on each poll.
 
 ### initialize_file_positions()
-Discovers all active session files and sets their initial read positions to EOF to avoid showing historical data.
+Discovers all active session files (filtered by project if specified) and sets their initial read positions to EOF to avoid showing historical data.
 
 ### monitor_sessions()
-Checks for new or removed sessions, updates tracking, and processes all active session files.
+Checks for new or removed sessions (filtered by project if specified), updates tracking, and processes all active session files.
 
 ### update_session_tracking()
 Compares current sessions with tracked sessions and adds new files to the tracking dictionary.
@@ -88,18 +91,24 @@ Checks if a tool call is a Task RESPONSE by verifying the tool name is 'Task' an
 Checks if a tool call originated from a subagent by examining the is_subagent flag.
 
 ## session_finder.py
-**Purpose:** Discovers active Claude Code session files in ~/.claude/projects.
-**Input:** ~/.claude/projects directory
+**Purpose:** Discovers active Claude Code session files in ~/.claude/projects with optional project filtering.
+**Input:** ~/.claude/projects directory, optional project path filter
 **Output:** List of JSONL file paths
 
 ### find_active_sessions()
-Orchestrates session discovery by getting project directories, collecting JSONL files, and sorting by modification time.
+Orchestrates session discovery by getting project directories, collecting JSONL files (optionally filtered by project path), and sorting by modification time.
 
 ### get_project_directories()
 Returns all subdirectories in ~/.claude/projects where session files are stored.
 
 ### collect_jsonl_files()
-Searches all project directories and collects paths to all JSONL files (main sessions and agent threads).
+Searches project directories and collects paths to JSONL files. Accepts optional project filter parameter and skips directories that do not match the filter.
+
+### matches_project_filter()
+Checks if a project directory matches the filter path by encoding the filter path to match Claude's directory naming convention and comparing it to the directory name.
+
+### encode_project_path()
+Encodes a file system path to match Claude's directory naming convention by converting slashes and underscores to hyphens. For example, `/Users/bruno/project_name` becomes `-Users-bruno-project-name`.
 
 ### sort_by_modification_time()
 Sorts file paths by modification time in descending order to prioritize recently active sessions.
@@ -172,7 +181,7 @@ Formats malformed JSONL warnings with yellow header and indented details showing
 Applies special formatting to TodoWrite tool calls with colored status labels and icons for each todo item. Uses green for completed, yellow for in-progress, and white for pending items.
 
 ### format_timestamp()
-Converts ISO 8601 timestamp to HH:MM:SS format for compact display.
+Converts ISO 8601 timestamp (UTC) to local timezone HH:MM:SS format for compact display.
 
 ### format_parameters()
 Formats input parameters dictionary with 2-space indentation, one parameter per line.

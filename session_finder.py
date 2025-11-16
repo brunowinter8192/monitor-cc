@@ -2,7 +2,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 logging.basicConfig(
     filename='logs/session_finder.log',
@@ -13,9 +13,9 @@ logging.basicConfig(
 CLAUDE_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 
 # ORCHESTRATOR
-def find_active_sessions() -> List[Path]:
+def find_active_sessions(project_filter: Optional[str] = None) -> List[Path]:
     project_dirs = get_project_directories()
-    jsonl_files = collect_jsonl_files(project_dirs)
+    jsonl_files = collect_jsonl_files(project_dirs, project_filter)
     return sort_by_modification_time(jsonl_files)
 
 # FUNCTIONS
@@ -31,14 +31,25 @@ def get_project_directories() -> List[Path]:
     return project_dirs
 
 # Collect all JSONL files from project directories
-def collect_jsonl_files(project_dirs: List[Path]) -> List[Path]:
+def collect_jsonl_files(project_dirs: List[Path], project_filter: Optional[str] = None) -> List[Path]:
     jsonl_files = []
 
     for project_dir in project_dirs:
+        if project_filter and not matches_project_filter(project_dir, project_filter):
+            continue
         files = list(project_dir.glob('*.jsonl'))
         jsonl_files.extend(files)
 
     return jsonl_files
+
+# Check if project directory matches the filter path
+def matches_project_filter(project_dir: Path, project_filter: str) -> bool:
+    encoded_filter = encode_project_path(project_filter)
+    return project_dir.name == encoded_filter
+
+# Encode project path to match Claude's directory naming convention
+def encode_project_path(path: str) -> str:
+    return path.replace('/', '-').replace('_', '-')
 
 # Sort files by modification time (newest first)
 def sort_by_modification_time(files: List[Path]) -> List[Path]:

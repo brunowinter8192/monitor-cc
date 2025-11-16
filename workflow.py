@@ -2,6 +2,7 @@
 import logging
 import signal
 import sys
+from typing import Optional
 
 logging.basicConfig(
     filename='logs/workflow.log',
@@ -15,8 +16,9 @@ from monitor import run_monitor
 # ORCHESTRATOR
 def main() -> None:
     setup_signal_handlers()
-    print_startup_message()
-    run_monitor()
+    project_filter = parse_project_filter()
+    print_startup_message(project_filter)
+    run_monitor(project_filter)
 
 # FUNCTIONS
 
@@ -30,12 +32,23 @@ def handle_shutdown(signum, frame) -> None:
     print_shutdown_message()
     sys.exit(0)
 
+# Parse project filter from command line arguments
+def parse_project_filter() -> Optional[str]:
+    if len(sys.argv) > 1:
+        return sys.argv[1]
+    return None
+
 # Print startup message
-def print_startup_message() -> None:
+def print_startup_message(project_filter: Optional[str] = None) -> None:
     logging.info("Monitor_CC started - Claude Code Tool Monitor")
-    logging.info("Monitoring ~/.claude/projects for tool calls")
-    print("\033[38;5;35mMonitor_CC - Claude Code Tool Monitor\033[0m")
-    print("Monitoring ~/.claude/projects for tool calls...")
+    if project_filter:
+        logging.info(f"Monitoring project: {project_filter}")
+        print("\033[38;5;35mMonitor_CC - Claude Code Tool Monitor\033[0m")
+        print(f"Monitoring project: {project_filter}")
+    else:
+        logging.info("Monitoring ~/.claude/projects for tool calls")
+        print("\033[38;5;35mMonitor_CC - Claude Code Tool Monitor\033[0m")
+        print("Monitoring ~/.claude/projects for tool calls...")
     print("Press Ctrl+C to stop\n")
 
 # Print shutdown message

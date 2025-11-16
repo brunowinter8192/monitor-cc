@@ -84,7 +84,7 @@ def format_todo_list(todos: list) -> str:
 # Convert ISO timestamp to HH:MM:SS format
 def format_timestamp(iso_timestamp: str) -> str:
     dt = datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
-    return dt.strftime('%H:%M:%S')
+    return dt.astimezone().strftime('%H:%M:%S')
 
 # Format input parameters with 2-space indentation
 def format_parameters(params: dict) -> str:

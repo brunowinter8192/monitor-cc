@@ -2,7 +2,7 @@
 import logging
 import time
 from pathlib import Path
-from typing import Dict, Set, List
+from typing import Dict, Set, List, Optional
 
 logging.basicConfig(
     filename='logs/monitor.log',
@@ -24,9 +24,12 @@ call_counter = 0
 agent_to_task: Dict[str, str] = {}
 buffered_subagent_calls: Dict[str, List[dict]] = {}
 task_requests_seen: Set[str] = set()
+active_project_filter: Optional[str] = None
 
 # ORCHESTRATOR
-def run_monitor() -> None:
+def run_monitor(project_filter: Optional[str] = None) -> None:
+    global active_project_filter
+    active_project_filter = project_filter
     initialize_file_positions()
 
     while True:
@@ -37,9 +40,9 @@ def run_monitor() -> None:
 
 # Initialize file positions for all existing sessions
 def initialize_file_positions() -> None:
-    global file_positions
+    global file_positions, active_project_filter
 
-    sessions = find_active_sessions()
+    sessions = find_active_sessions(active_project_filter)
     logging.info(f"Initialized monitoring for {len(sessions)} existing sessions")
 
     for session_file in sessions:
@@ -48,7 +51,8 @@ def initialize_file_positions() -> None:
 
 # Monitor all active sessions for new tool calls
 def monitor_sessions() -> None:
-    sessions = find_active_sessions()
+    global active_project_filter
+    sessions = find_active_sessions(active_project_filter)
     update_session_tracking(sessions)
     process_all_sessions(sessions)
 

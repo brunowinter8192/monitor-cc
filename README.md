@@ -21,11 +21,20 @@ The monitor tracks both main session files and subagent thread files (agent-*.js
 
 Start the monitor in a separate terminal window:
 ```bash
+# Monitor ALL active Claude Code sessions
 ./Monitor_CC/run.sh
+
+# Monitor specific project only
+./Monitor_CC/run.sh /path/to/your/project
+```
+
+**Example:** Monitor only the Meta/blank project:
+```bash
+./run.sh /path/to/project
 ```
 
 The monitor will:
-- Auto-discover all active Claude Code sessions
+- Auto-discover active Claude Code sessions (all or filtered by project)
 - Show NEW tool calls as they happen (starts at EOF)
 - Display with colored headers, timestamps, full I/O
 - Continue until Ctrl+C
@@ -136,6 +145,7 @@ The filtering ensures the monitor focuses exclusively on tool operations and the
 - **Position tracking:** Maintains file offset per session to read only new content
 - **Position initialization:** Main session files start at EOF (new activity only), subagent files start at beginning (complete history)
 - **Session discovery:** Scans project directories on each poll to detect new sessions
+- **Project filtering:** Optional CLI argument filters sessions by project path (decodes directory names like `-Users-bruno-project` → `/Users/bruno/project`)
 
 ### Correlation Mechanism
 Tool calls are correlated by matching tool_use_id fields:
