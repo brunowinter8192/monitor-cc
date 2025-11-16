@@ -4,21 +4,19 @@ Live monitoring tool for Claude Code CLI conversations - captures all tool calls
 ## Project Structure
 ```
 Monitor_CC/
-├── run.sh               # Entry point (*)
-├── workflow.py          # Main orchestrator (*)
+├── workflow.py          # Main entry point (*)
 ├── monitor.py           # Polling orchestrator
 ├── session_finder.py    # Session discovery
 ├── jsonl_parser.py      # JSONL parsing and extraction
 ├── formatter.py         # Output formatting
 ├── .gitignore           # Git exclusions
-├── todo/                # Implementation TODOs (required)
-└── debug/               # Debug scripts and tests (required)
+└── debug/               # Debug scripts and tests
     ├── test_malformed.py
     ├── test_todowrite.py
     └── test_edit_filter.py
 ```
 
-**Note:** Complies with CLAUDE.MD Level 1: PROJECT architecture (mandatory todo/ and debug/ folders).
+**Note:** Complies with CLAUDE.MD Level 1: PROJECT architecture (debug/ folder for tests).
 
 ## workflow.py
 **Purpose:** Main entry point. Launches tmux split-screen by default or runs single monitor mode.
@@ -145,8 +143,11 @@ Seeks to the last read position and reads all new content, splitting into indivi
 ### get_current_position()
 Returns the current file size to track where the next read should start.
 
+### build_malformed_warnings()
+Builds warning dictionaries from malformed line data by mapping file path, line number, error message, and raw line content into structured warning objects.
+
 ### parse_jsonl_lines()
-Attempts to parse each line as JSON, skipping malformed lines and returning list of message objects.
+Attempts to parse each line as JSON, tracking malformed lines with their error details and returning both the list of successfully parsed message objects and the list of malformed line information.
 
 ### extract_tool_calls()
 Processes messages to find tool_use and tool_result pairs. Maintains a cache to correlate requests with responses via tool_use_id.
@@ -179,6 +180,9 @@ Sorts tool calls chronologically by their request timestamp to ensure display or
 
 ### format_tool_call()
 Orchestrates formatting by creating both REQUEST and RESPONSE sections with agent-specific coloring and combining them with spacing.
+
+### combine_request_response()
+Combines the formatted request and response sections into a single output string with proper line spacing between them.
 
 ### format_request()
 Creates the REQUEST header with color based on agent type (green for main, blue for subagent), timestamp, tool name, and formatted input parameters. Applies special formatting for Task and TodoWrite tools.

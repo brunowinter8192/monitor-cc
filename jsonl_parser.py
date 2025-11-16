@@ -16,8 +16,14 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     new_position = get_current_position(filepath)
     messages, malformed_lines = parse_jsonl_lines(new_lines)
     tool_calls = extract_tool_calls(messages, tool_use_cache)
+    malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
+    return tool_calls, new_position, malformed_warnings
 
-    malformed_warnings = []
+# FUNCTIONS
+
+# Build warning dictionaries from malformed line data
+def build_malformed_warnings(filepath: Path, malformed_lines: List[dict]) -> List[dict]:
+    warnings = []
     for malformed in malformed_lines:
         warning = {
             'file_path': filepath.name,
@@ -25,11 +31,8 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
             'error_message': malformed['error_message'],
             'raw_line': malformed['raw_line']
         }
-        malformed_warnings.append(warning)
-
-    return tool_calls, new_position, malformed_warnings
-
-# FUNCTIONS
+        warnings.append(warning)
+    return warnings
 
 # Read new lines from file since last position
 def read_new_lines(filepath: Path, last_position: int) -> List[str]:

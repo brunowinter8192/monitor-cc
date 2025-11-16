@@ -19,9 +19,13 @@ INDENT = '  '
 def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False) -> str:
     request = format_request(tool_name, input_data, tool_use_id, timestamp, call_number, is_subagent)
     response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number, is_subagent)
-    return f"{request}\n\n{response}"
+    return combine_request_response(request, response)
 
 # FUNCTIONS
+
+# Combine request and response sections with spacing
+def combine_request_response(request: str, response: str) -> str:
+    return f"{request}\n\n{response}"
 
 # Format REQUEST header with color based on agent type
 def format_request(tool_name: str, input_data: dict, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False) -> str:
@@ -49,7 +53,7 @@ def format_response(tool_name: str, output_data: str, tool_use_id: str, timestam
 # Format WARNING header with yellow color for malformed lines
 def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:
     now = datetime.now().strftime('%H:%M:%S')
-    header = f"{YELLOW}[{now}] ⚠ WARNING - Malformed JSON{RESET}"
+    header = f"{YELLOW}[{now}] [!] WARNING - Malformed JSON{RESET}"
 
     truncated_line = truncate_line(raw_line, 200)
 
@@ -134,11 +138,11 @@ def truncate_line(line: str, max_length: int) -> str:
 # Get status icon for todo item
 def get_status_icon(status: str) -> str:
     icons = {
-        'completed': '✓',
-        'in_progress': '⟳',
-        'pending': '○'
+        'completed': '[X]',
+        'in_progress': '[>]',
+        'pending': '[-]'
     }
-    return icons.get(status, '○')
+    return icons.get(status, '[-]')
 
 # Get status color for todo item
 def get_status_color(status: str) -> str:
