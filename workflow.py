@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import argparse
+import hashlib
 import logging
 import os
 import signal
@@ -38,8 +39,13 @@ def launch_split_screen(project_filter: Optional[str] = None) -> None:
         print("Error: Already inside tmux session. Use --mode main or --mode subagent")
         sys.exit(1)
 
-    session_name = "monitor_cc"
+    session_name = generate_session_name(project_filter)
     script_path = os.path.abspath(__file__)
+
+    if check_session_exists(session_name):
+        print(f"Warning: Session '{session_name}' already exists for this project.")
+        print("This might be a stale session. Killing it and creating fresh one...")
+        kill_session(session_name)
 
     project_arg = f"--project {project_filter}" if project_filter else ""
 
@@ -58,6 +64,23 @@ def is_tmux_installed() -> bool:
 # Check if already running inside tmux
 def is_inside_tmux() -> bool:
     return "TMUX" in os.environ
+
+# Generate unique session name from project path
+def generate_session_name(project_path: Optional[str] = None) -> str:
+    if project_path is None:
+        return "monitor_cc_global"
+    normalized_path = os.path.normpath(os.path.expanduser(project_path))
+    path_hash = hashlib.md5(normalized_path.encode()).hexdigest()[:8]
+    return f"monitor_cc_{path_hash}"
+
+# Check if tmux session exists
+def check_session_exists(session_name: str) -> bool:
+    result = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
+    return result.returncode == 0
+
+# Kill tmux session
+def kill_session(session_name: str) -> None:
+    subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
 
 # Setup signal handlers for graceful shutdown
 def setup_signal_handlers() -> None:

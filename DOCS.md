@@ -27,13 +27,22 @@ Monitor_CC/
 Orchestrates the entire monitoring workflow. Parses CLI arguments to determine mode and project filter. If mode is 'all' (default), launches tmux split-screen with main and subagent monitors side-by-side. Otherwise, sets up signal handlers and runs single monitor mode.
 
 ### launch_split_screen()
-Launches a tmux session with two panes: main agent monitor on left and subagent monitor on right. Checks for tmux installation and whether already running inside tmux. Creates new tmux session named 'monitor_cc' and spawns both monitor processes with appropriate --mode flags.
+Launches a tmux session with two panes: main agent monitor on left and subagent monitor on right. Checks for tmux installation and whether already running inside tmux. Generates a unique session name based on project path hash to allow multiple monitor instances for different projects. If a stale session exists with the same name, it is automatically killed before creating a new one.
 
 ### is_tmux_installed()
 Checks if tmux is available on the system by running 'which tmux'.
 
 ### is_inside_tmux()
 Checks if the process is already running inside a tmux session by examining the TMUX environment variable.
+
+### generate_session_name()
+Generates a unique tmux session name from the project path by computing an MD5 hash of the normalized path. Returns 'monitor_cc_global' for global monitoring (no project filter) or 'monitor_cc_<8-char-hash>' for project-specific monitoring.
+
+### check_session_exists()
+Checks if a tmux session with the given name already exists by running 'tmux has-session'.
+
+### kill_session()
+Kills an existing tmux session by name. Used to clean up stale sessions before creating new ones.
 
 ### setup_signal_handlers()
 Registers SIGINT and SIGTERM handlers to enable clean shutdown with Ctrl+C.
