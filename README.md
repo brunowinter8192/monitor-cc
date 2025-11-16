@@ -19,25 +19,46 @@ The monitor tracks both main session files and subagent thread files (agent-*.js
 
 ## Quick Start
 
-Start the monitor in a separate terminal window:
+Start the monitor (opens tmux split-screen automatically):
 ```bash
-# Monitor ALL active Claude Code sessions
-./Monitor_CC/run.sh
+# Monitor ALL active Claude Code sessions (tmux split-screen)
+python3 workflow.py
 
 # Monitor specific project only
-./Monitor_CC/run.sh /path/to/your/project
+python3 workflow.py --project /path/to/your/project
 ```
 
 **Example:** Monitor only the Meta/blank project:
 ```bash
-./run.sh /path/to/project
+python3 workflow.py --project /path/to/project
 ```
 
 The monitor will:
+- Open tmux with split-screen (Main Agent left, Subagent right)
 - Auto-discover active Claude Code sessions (all or filtered by project)
 - Show NEW tool calls as they happen (starts at EOF)
 - Display with colored headers, timestamps, full I/O
 - Continue until Ctrl+C
+
+### Monitor Modes
+
+By default, the monitor opens a tmux split-screen. You can also run single modes:
+```bash
+# Default: Split-screen (requires tmux)
+python3 workflow.py
+
+# Main agent only (no tmux)
+python3 workflow.py --mode main
+
+# Subagent only (no tmux)
+python3 workflow.py --mode subagent
+```
+
+### tmux Controls
+
+- `Ctrl+C` - Stop the monitor
+- `Ctrl+B` then `D` - Detach from tmux (monitor continues running)
+- `tmux attach -t monitor_cc` - Reattach to running monitor
 
 ### Viewing Historical Sessions
 To see tool calls from a completed session, the JSONL files are located at:
@@ -145,7 +166,8 @@ The filtering ensures the monitor focuses exclusively on tool operations and the
 - **Position tracking:** Maintains file offset per session to read only new content
 - **Position initialization:** Main session files start at EOF (new activity only), subagent files start at beginning (complete history)
 - **Session discovery:** Scans project directories on each poll to detect new sessions
-- **Project filtering:** Optional CLI argument filters sessions by project path (decodes directory names like `-Users-bruno-project` → `/Users/bruno/project`)
+- **Project filtering:** Optional `--project` argument filters sessions by project path (encodes paths like `/Users/bruno/project` → `-Users-bruno-project`)
+- **Mode filtering:** Optional `--mode` argument filters by agent type (main, subagent, or all)
 
 ### Correlation Mechanism
 Tool calls are correlated by matching tool_use_id fields:
@@ -183,6 +205,7 @@ No installation needed - works with standard Python 3.
 
 ### Requirements
 - Python 3.6+
+- tmux (for split-screen mode)
 - Claude Code CLI installed
 - Active or completed Claude Code sessions
 
@@ -190,7 +213,12 @@ No installation needed - works with standard Python 3.
 ```bash
 git clone <repo-url> Monitor_CC
 cd Monitor_CC
-./run.sh
+
+# Install tmux if not present
+brew install tmux
+
+# Start monitor
+python3 workflow.py
 ```
 
 ## Debug & Testing

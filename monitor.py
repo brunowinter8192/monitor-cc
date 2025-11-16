@@ -25,11 +25,13 @@ agent_to_task: Dict[str, str] = {}
 buffered_subagent_calls: Dict[str, List[dict]] = {}
 task_requests_seen: Set[str] = set()
 active_project_filter: Optional[str] = None
+active_mode: str = 'all'
 
 # ORCHESTRATOR
-def run_monitor(project_filter: Optional[str] = None) -> None:
-    global active_project_filter
+def run_monitor(project_filter: Optional[str] = None, mode: str = 'all') -> None:
+    global active_project_filter, active_mode
     active_project_filter = project_filter
+    active_mode = mode
     initialize_file_positions()
 
     while True:
@@ -51,10 +53,11 @@ def initialize_file_positions() -> None:
 
 # Monitor all active sessions for new tool calls
 def monitor_sessions() -> None:
-    global active_project_filter
+    global active_project_filter, active_mode
     sessions = find_active_sessions(active_project_filter)
-    update_session_tracking(sessions)
-    process_all_sessions(sessions)
+    filtered_sessions = filter_sessions_by_mode(sessions, active_mode)
+    update_session_tracking(filtered_sessions)
+    process_all_sessions(filtered_sessions)
 
 # Update tracking for new or removed sessions
 def update_session_tracking(sessions: list) -> None:
@@ -172,6 +175,16 @@ def get_initial_position(filepath: Path) -> int:
 # Check if file is a subagent file
 def is_agent_file(filepath: Path) -> bool:
     return filepath.name.startswith('agent-')
+
+# Filter sessions based on mode (all, main, subagent)
+def filter_sessions_by_mode(sessions: list, mode: str) -> list:
+    if mode == 'all':
+        return sessions
+    elif mode == 'main':
+        return [s for s in sessions if not is_agent_file(s)]
+    elif mode == 'subagent':
+        return [s for s in sessions if is_agent_file(s)]
+    return sessions
 
 # Check if tool call is a Task REQUEST
 def is_task_request(tool_call: dict) -> bool:

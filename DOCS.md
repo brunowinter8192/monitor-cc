@@ -21,12 +21,21 @@ Monitor_CC/
 **Note:** Complies with CLAUDE.MD Level 1: PROJECT architecture (mandatory todo/ and debug/ folders).
 
 ## workflow.py
-**Purpose:** Main entry point. Sets up signal handlers, parses CLI arguments, and starts monitoring loop.
-**Input:** Optional project path from command line
-**Output:** Console output stream
+**Purpose:** Main entry point. Launches tmux split-screen by default or runs single monitor mode.
+**Input:** Optional --project and --mode arguments from command line
+**Output:** Console output stream (or tmux session with split panes)
 
 ### main()
-Orchestrates the entire monitoring workflow. Sets up signal handlers for graceful shutdown, parses optional project filter from CLI arguments, prints startup message showing filter status, and launches the monitor loop with the filter.
+Orchestrates the entire monitoring workflow. Parses CLI arguments to determine mode and project filter. If mode is 'all' (default), launches tmux split-screen with main and subagent monitors side-by-side. Otherwise, sets up signal handlers and runs single monitor mode.
+
+### launch_split_screen()
+Launches a tmux session with two panes: main agent monitor on left and subagent monitor on right. Checks for tmux installation and whether already running inside tmux. Creates new tmux session named 'monitor_cc' and spawns both monitor processes with appropriate --mode flags.
+
+### is_tmux_installed()
+Checks if tmux is available on the system by running 'which tmux'.
+
+### is_inside_tmux()
+Checks if the process is already running inside a tmux session by examining the TMUX environment variable.
 
 ### setup_signal_handlers()
 Registers SIGINT and SIGTERM handlers to enable clean shutdown with Ctrl+C.
@@ -34,28 +43,28 @@ Registers SIGINT and SIGTERM handlers to enable clean shutdown with Ctrl+C.
 ### handle_shutdown()
 Handles shutdown signals by printing a shutdown message and exiting cleanly.
 
-### parse_project_filter()
-Parses command line arguments to extract optional project path filter. Returns the first argument if provided, otherwise returns None for all-projects mode.
+### parse_arguments()
+Parses command line arguments using argparse. Accepts --project for project path filtering and --mode for agent type filtering (all, main, or subagent). Returns a Namespace object with parsed values.
 
 ### print_startup_message()
-Displays the green-colored startup banner and monitoring status information. Shows which project is being monitored if a filter is active, otherwise shows general monitoring status.
+Displays the green-colored startup banner and monitoring status information. Shows which project is being monitored if a filter is active, and displays the current mode if not running in 'all' mode.
 
 ### print_shutdown_message()
 Displays the green-colored shutdown message when monitoring stops.
 
 ## monitor.py
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls.
-**Input:** Optional project path filter (reads from ~/.claude/projects)
+**Input:** Optional project path filter and mode filter (reads from ~/.claude/projects)
 **Output:** Formatted tool calls to console
 
 ### run_monitor()
-Main monitoring loop that runs continuously. Accepts optional project filter parameter, stores it globally, initializes file positions at EOF, and polls for changes every 0.5 seconds. The filter is passed through to session discovery on each poll.
+Main monitoring loop that runs continuously. Accepts optional project filter and mode parameters, stores them globally, initializes file positions at EOF, and polls for changes every 0.5 seconds. The filters are passed through to session discovery and filtering on each poll.
 
 ### initialize_file_positions()
 Discovers all active session files (filtered by project if specified) and sets their initial read positions to EOF to avoid showing historical data.
 
 ### monitor_sessions()
-Checks for new or removed sessions (filtered by project if specified), updates tracking, and processes all active session files.
+Checks for new or removed sessions (filtered by project if specified), applies mode filtering to select main or subagent files, updates tracking, and processes filtered session files.
 
 ### update_session_tracking()
 Compares current sessions with tracked sessions and adds new files to the tracking dictionary.
@@ -80,6 +89,9 @@ Determines the initial read position for a new session file. Returns 0 for subag
 
 ### is_agent_file()
 Checks if a file is a subagent file by examining whether the filename starts with 'agent-'.
+
+### filter_sessions_by_mode()
+Filters the list of session files based on the mode parameter. Returns all files for 'all' mode, only main session files (non-agent) for 'main' mode, and only agent files for 'subagent' mode.
 
 ### is_task_request()
 Checks if a tool call is a Task REQUEST by verifying the tool name is 'Task' and output is None.
