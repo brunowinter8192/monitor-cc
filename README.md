@@ -134,7 +134,7 @@ The filtering ensures the monitor focuses exclusively on tool operations and the
 ### Polling Mechanism
 - **Interval:** 0.5 seconds (similar to Monitor_CD)
 - **Position tracking:** Maintains file offset per session to read only new content
-- **EOF initialization:** Starts at end of file to avoid historical data
+- **Position initialization:** Main session files start at EOF (new activity only), subagent files start at beginning (complete history)
 - **Session discovery:** Scans project directories on each poll to detect new sessions
 
 ### Correlation Mechanism

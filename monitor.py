@@ -62,7 +62,7 @@ def update_session_tracking(sessions: list) -> None:
     new_files = current_files - tracked_files
     for new_file in new_files:
         logging.info(f"New session discovered: {new_file}")
-        file_positions[new_file] = get_file_end_position(new_file)
+        file_positions[new_file] = get_initial_position(new_file)
         tool_use_caches[new_file] = {}
 
 # Process all tracked session files
@@ -158,6 +158,16 @@ def get_file_end_position(filepath: Path) -> int:
     if not filepath.exists():
         return 0
     return filepath.stat().st_size
+
+# Get initial position for new session file
+def get_initial_position(filepath: Path) -> int:
+    if is_agent_file(filepath):
+        return 0
+    return get_file_end_position(filepath)
+
+# Check if file is a subagent file
+def is_agent_file(filepath: Path) -> bool:
+    return filepath.name.startswith('agent-')
 
 # Check if tool call is a Task REQUEST
 def is_task_request(tool_call: dict) -> bool:

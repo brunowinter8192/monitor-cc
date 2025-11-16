@@ -72,6 +72,12 @@ Formats a tool call using the formatter module and prints it to console with pro
 ### get_file_end_position()
 Returns the file size in bytes for initializing the read position at end of file.
 
+### get_initial_position()
+Determines the initial read position for a new session file. Returns 0 for subagent files to capture complete history, or EOF for main session files to show only new activity.
+
+### is_agent_file()
+Checks if a file is a subagent file by examining whether the filename starts with 'agent-'.
+
 ### is_task_request()
 Checks if a tool call is a Task REQUEST by verifying the tool name is 'Task' and output is None.
 
