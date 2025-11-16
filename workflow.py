@@ -86,7 +86,6 @@ def kill_session(session_name: str) -> None:
 # Configure tmux session appearance and behavior
 def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-border-style", "fg=colour240"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-active-border-style", "fg=colour245"])
 
