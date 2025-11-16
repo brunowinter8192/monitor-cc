@@ -54,6 +54,7 @@ def launch_split_screen(project_filter: Optional[str] = None) -> None:
 
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, main_cmd])
     subprocess.run(["tmux", "split-window", "-h", "-t", session_name, subagent_cmd])
+    configure_tmux_session(session_name)
     subprocess.run(["tmux", "attach-session", "-t", session_name])
 
 # Check if tmux is installed
@@ -81,6 +82,13 @@ def check_session_exists(session_name: str) -> bool:
 # Kill tmux session
 def kill_session(session_name: str) -> None:
     subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
+
+# Configure tmux session appearance and behavior
+def configure_tmux_session(session_name: str) -> None:
+    subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
+    subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-border-style", "fg=colour240"])
+    subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-active-border-style", "fg=colour245"])
 
 # Setup signal handlers for graceful shutdown
 def setup_signal_handlers() -> None:

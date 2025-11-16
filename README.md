@@ -60,6 +60,7 @@ python3 workflow.py --mode subagent
 - `Ctrl+B` then `D` - Detach from tmux (monitor continues running)
 - `tmux ls` - List running monitor sessions (names are `monitor_cc_<hash>`)
 - `tmux attach -t <session-name>` - Reattach to running monitor
+- Drag the middle divider with mouse to resize panes
 
 ### Viewing Historical Sessions
 To see tool calls from a completed session, the JSONL files are located at:

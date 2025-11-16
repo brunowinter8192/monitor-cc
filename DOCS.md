@@ -44,6 +44,9 @@ Checks if a tmux session with the given name already exists by running 'tmux has
 ### kill_session()
 Kills an existing tmux session by name. Used to clean up stale sessions before creating new ones.
 
+### configure_tmux_session()
+Configures tmux session appearance and behavior after session creation. Disables the status bar for a cleaner interface, enables mouse support for dynamic pane resizing, and sets pane border colors to subtle grey tones instead of the default green.
+
 ### setup_signal_handlers()
 Registers SIGINT and SIGTERM handlers to enable clean shutdown with Ctrl+C.
 
