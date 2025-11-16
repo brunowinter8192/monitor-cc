@@ -17,6 +17,7 @@ build/
 # Debug and logs folders (runtime/development only)
 debug/
 logs/
+bug_fixes/
 
 
 # OS
