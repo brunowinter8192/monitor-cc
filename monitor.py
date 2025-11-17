@@ -116,7 +116,10 @@ def process_session_file(filepath: Path) -> None:
 
         elif is_subagent_call(tool_call):
             agent_id = tool_call.get('agent_id')
-            if agent_id and agent_id in agent_to_task:
+            if active_mode == 'subagent':
+                call_counter += 1
+                display_tool_call(tool_call, call_counter)
+            elif agent_id and agent_id in agent_to_task:
                 call_counter += 1
                 display_tool_call(tool_call, call_counter)
             else:
