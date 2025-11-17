@@ -88,8 +88,7 @@ def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "history-limit", "0"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
-    subprocess.run(["tmux", "bind", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy"])
-    subprocess.run(["tmux", "bind", "-T", "copy-mode-vi", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy"])
+    subprocess.run(["tmux", "set-option", "-s", "copy-command", "pbcopy"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-border-style", "fg=colour240"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-active-border-style", "fg=colour245"])
 
