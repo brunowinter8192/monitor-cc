@@ -15,8 +15,8 @@ build/
 /demo_*.py
 
 # Debug and logs folders (runtime/development only)
-debug/
-logs/
+src/debug/
+src/logs/
 bug_fixes/
 
 

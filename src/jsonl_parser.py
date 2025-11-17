@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 logging.basicConfig(
-    filename='logs/jsonl_parser.log',
+    filename='src/logs/jsonl_parser.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )

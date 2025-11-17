@@ -1,66 +1,20 @@
-# Monitor_CC
+# Monitor_CC Source Modules
 Live monitoring tool for Claude Code CLI conversations - captures all tool calls with full input/output
 
-## Project Structure
+## Module Structure
 ```
-Monitor_CC/
-├── workflow.py          # Main entry point (*)
+src/
+├── __init__.py          # Package marker
 ├── monitor.py           # Polling orchestrator
 ├── session_finder.py    # Session discovery
 ├── jsonl_parser.py      # JSONL parsing and extraction
 ├── formatter.py         # Output formatting
-├── .gitignore           # Git exclusions
-└── debug/               # Debug scripts and tests
-    ├── test_malformed.py
-    ├── test_todowrite.py
-    └── test_edit_filter.py
+├── DOCS.md              # This file
+├── debug/               # Debug scripts and tests
+└── logs/                # Module log files
 ```
 
-**Note:** Complies with CLAUDE.MD Level 1: PROJECT architecture (debug/ folder for tests).
-
-## workflow.py
-**Purpose:** Main entry point. Launches tmux split-screen by default or runs single monitor mode.
-**Input:** Optional --project and --mode arguments from command line
-**Output:** Console output stream (or tmux session with split panes)
-
-### main()
-Orchestrates the entire monitoring workflow. Parses CLI arguments to determine mode and project filter. If mode is 'all' (default), launches tmux split-screen with main and subagent monitors side-by-side. Otherwise, sets up signal handlers and runs single monitor mode.
-
-### launch_split_screen()
-Launches a tmux session with two panes: main agent monitor on left and subagent monitor on right. Checks for tmux installation and whether already running inside tmux. Generates a unique session name based on project path hash to allow multiple monitor instances for different projects. If a stale session exists with the same name, it is automatically killed before creating a new one.
-
-### is_tmux_installed()
-Checks if tmux is available on the system by running 'which tmux'.
-
-### is_inside_tmux()
-Checks if the process is already running inside a tmux session by examining the TMUX environment variable.
-
-### generate_session_name()
-Generates a unique tmux session name from the project path by computing an MD5 hash of the normalized path. Returns 'monitor_cc_global' for global monitoring (no project filter) or 'monitor_cc_<8-char-hash>' for project-specific monitoring.
-
-### check_session_exists()
-Checks if a tmux session with the given name already exists by running 'tmux has-session'.
-
-### kill_session()
-Kills an existing tmux session by name. Used to clean up stale sessions before creating new ones.
-
-### configure_tmux_session()
-Configures tmux session appearance and behavior after session creation. Disables the status bar for a cleaner interface, sets scrollback buffer to unlimited (0) to preserve complete session history regardless of length, enables mouse mode for pane-specific selection, binds MouseDragEnd to copy-pipe-and-cancel for direct macOS clipboard integration via pbcopy, configures smooth mouse wheel scrolling (5 lines per tick instead of default jump), and sets pane border colors to subtle grey tones instead of the default green.
-
-### setup_signal_handlers()
-Registers SIGINT and SIGTERM handlers to enable clean shutdown with Ctrl+C.
-
-### handle_shutdown()
-Handles shutdown signals by printing a shutdown message and exiting cleanly.
-
-### parse_arguments()
-Parses command line arguments using argparse. Accepts --project for project path filtering and --mode for agent type filtering (all, main, or subagent). Returns a Namespace object with parsed values.
-
-### print_startup_message()
-Displays the green-colored startup banner and monitoring status information. Shows which project is being monitored if a filter is active, and displays the current mode if not running in 'all' mode.
-
-### print_shutdown_message()
-Displays the green-colored shutdown message when monitoring stops.
+**Note:** Entry point workflow.py resides at project root and imports from this src/ package.
 
 ## monitor.py
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls.

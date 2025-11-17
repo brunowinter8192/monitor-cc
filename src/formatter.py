@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 
 logging.basicConfig(
-    filename='logs/formatter.log',
+    filename='src/logs/formatter.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )

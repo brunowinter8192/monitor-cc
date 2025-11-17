@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 
 logging.basicConfig(
-    filename='logs/session_finder.log',
+    filename='src/logs/session_finder.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )

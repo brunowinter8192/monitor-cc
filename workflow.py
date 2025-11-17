@@ -14,8 +14,8 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# From monitor.py: Run continuous monitoring loop
-from monitor import run_monitor
+# From src/monitor.py: Run continuous monitoring loop
+from src.monitor import run_monitor
 
 # ORCHESTRATOR
 def main() -> None:

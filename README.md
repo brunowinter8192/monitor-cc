@@ -199,7 +199,7 @@ The monitor detects subagent operations through JSONL metadata:
 - **Color coding:** Automatically applies BLUE formatting to subagent tools
 
 ### Logging
-Internal events and errors are logged to logs/ directory with timestamp, level, and message format.
+Internal events and errors are logged to src/logs/ directory with timestamp, level, and message format.
 
 ## Installation
 
@@ -225,7 +225,7 @@ python3 workflow.py
 
 ## Debug & Testing
 
-The `debug/` folder contains verification scripts:
+The `src/debug/` folder contains verification scripts:
 
 - **test_malformed.py** - Tests malformed JSON detection and warning display
 - **test_todowrite.py** - Validates TodoWrite formatting with colored status icons
@@ -233,11 +233,11 @@ The `debug/` folder contains verification scripts:
 
 Run tests individually:
 ```bash
-python3 debug/test_malformed.py
-python3 debug/test_todowrite.py
-python3 debug/test_edit_filter.py
+python3 src/debug/test_malformed.py
+python3 src/debug/test_todowrite.py
+python3 src/debug/test_edit_filter.py
 ```
 
 ## Architecture Documentation
 
-For complete module architecture, function descriptions, and implementation details, see [DOCS.md](DOCS.md).
+For complete module architecture, function descriptions, and implementation details, see [src/DOCS.md](src/DOCS.md).

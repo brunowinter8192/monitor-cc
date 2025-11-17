@@ -5,17 +5,17 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 logging.basicConfig(
-    filename='logs/monitor.log',
+    filename='src/logs/monitor.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
 # From session_finder.py: Discover active Claude Code sessions
-from session_finder import find_active_sessions
+from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
-from jsonl_parser import parse_new_tool_calls
+from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls and warnings for display
-from formatter import format_tool_call, format_warning
+from .formatter import format_tool_call, format_warning
 
 POLL_INTERVAL = 0.5
 file_positions: Dict[Path, int] = {}
