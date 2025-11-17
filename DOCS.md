@@ -45,7 +45,7 @@ Checks if a tmux session with the given name already exists by running 'tmux has
 Kills an existing tmux session by name. Used to clean up stale sessions before creating new ones.
 
 ### configure_tmux_session()
-Configures tmux session appearance and behavior after session creation. Disables the status bar for a cleaner interface, sets scrollback buffer to unlimited (0) to preserve complete session history regardless of length, enables mouse mode for pane-specific selection, configures copy-command to pipe selections directly to macOS clipboard via pbcopy, and sets pane border colors to subtle grey tones instead of the default green.
+Configures tmux session appearance and behavior after session creation. Disables the status bar for a cleaner interface, sets scrollback buffer to unlimited (0) to preserve complete session history regardless of length, enables mouse mode for pane-specific selection, binds MouseDragEnd to copy-pipe-and-cancel for direct macOS clipboard integration via pbcopy, configures smooth mouse wheel scrolling (5 lines per tick instead of default jump), and sets pane border colors to subtle grey tones instead of the default green.
 
 ### setup_signal_handlers()
 Registers SIGINT and SIGTERM handlers to enable clean shutdown with Ctrl+C.
