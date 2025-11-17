@@ -52,9 +52,12 @@ def launch_split_screen(project_filter: Optional[str] = None) -> None:
     main_cmd = f"python3 {script_path} --mode main {project_arg}"
     subagent_cmd = f"python3 {script_path} --mode subagent {project_arg}"
 
+    original_history_limit = get_global_history_limit()
+    subprocess.run(["tmux", "set-option", "-g", "history-limit", "50000"])
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, main_cmd])
-    configure_tmux_session(session_name)
     subprocess.run(["tmux", "split-window", "-h", "-t", session_name, subagent_cmd])
+    restore_global_history_limit(original_history_limit)
+    configure_tmux_session(session_name)
     subprocess.run(["tmux", "attach-session", "-t", session_name])
 
 # Check if tmux is installed
@@ -83,10 +86,18 @@ def check_session_exists(session_name: str) -> bool:
 def kill_session(session_name: str) -> None:
     subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
 
+# Get current global history-limit setting
+def get_global_history_limit() -> str:
+    result = subprocess.run(["tmux", "show-options", "-gv", "history-limit"], capture_output=True, text=True)
+    return result.stdout.strip() or "2000"
+
+# Restore global history-limit to original value
+def restore_global_history_limit(original_value: str) -> None:
+    subprocess.run(["tmux", "set-option", "-g", "history-limit", original_value])
+
 # Configure tmux session appearance and behavior
 def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "history-limit", "0"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy"])
