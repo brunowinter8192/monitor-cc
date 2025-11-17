@@ -1,6 +1,13 @@
 # Monitor_CC
 Live monitoring tool for Claude Code CLI conversations - captures all tool calls with full input/output
 
+**Remote:** https://github.com/brunowinter8192/ClaudeCode-Monitor
+
+After major changes, push to remote:
+```bash
+git add -A && git commit -m "Your message" && git push
+```
+
 ## What It Does
 
 Monitor_CC is a real-time monitoring system for Claude Code CLI sessions. It provides complete visibility into all tool operations by continuously polling Claude Code's internal JSONL conversation files.
