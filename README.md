@@ -54,12 +54,21 @@ By default, the monitor opens a tmux split-screen. You can also run single modes
 # Default: Split-screen (requires tmux)
 python3 workflow.py
 
+# Split-screen with collapsible UI for subagents
+python3 workflow.py --ui
+
 # Main agent only (no tmux)
 python3 workflow.py --mode main
 
-# Subagent only (no tmux)
+# Subagent only with streaming display (no tmux)
 python3 workflow.py --mode subagent
+
+# Subagent only with collapsible UI (no tmux)
+python3 workflow.py --mode subagent --ui
 ```
+
+**Collapsible UI Mode:**
+When enabled with `--ui` flag, the right pane displays a collapsible list of active subagents instead of streaming their tool calls. Each subagent appears as a numbered entry showing its name, filename, call count, and timestamp. Entries can be expanded to view detailed tool calls or kept collapsed for a compact overview.
 
 ### tmux Controls
 
@@ -78,6 +87,36 @@ To see tool calls from a completed session, the JSONL files are located at:
 ## Output Format
 
 The monitor displays all tool calls with color-coded formatting to distinguish main agent operations from subagent operations.
+
+### Collapsible UI Mode (--ui flag)
+When UI mode is enabled, the subagent pane shows a collapsible list instead of streaming output:
+
+**Collapsed View:**
+```
+Active Subagents (2)                                      [CYAN]
+
+[1] [+] Explore Specialist (629b31dd) - 14:30:45  [BLUE]
+
+[2] [+] Debug Specialist (7a8c2bf4) - 14:31:20    [BLUE]
+
+Press 1-9 to toggle subagent | 0 to collapse all          [CYAN]
+```
+
+**Expanded View (future enhancement):**
+```
+Active Subagents (2)                                      [CYAN]
+
+[1] [-] Explore Specialist (629b31dd) - 14:30:45  [BLUE]
+  [14:30:45] ↔ #47 Bash: ls -la /Users/test             [GREEN]
+  [14:30:50] ↔ #48 Read: /Users/test/file.py            [GREEN]
+  [14:30:55] ↔ #49 Grep: pattern: def.*test             [GREEN]
+
+[2] [+] Debug Specialist (7a8c2bf4) - 14:31:20    [BLUE]
+
+Press 1-9 to toggle subagent | 0 to collapse all          [CYAN]
+```
+
+The collapsible UI provides a compact overview of all active subagents with their call counts and timestamps, making it easy to track multiple parallel subagent executions.
 
 ### Main Agent Tool Calls (GREEN)
 ```
@@ -237,12 +276,14 @@ The `src/debug/` folder contains verification scripts:
 - **test_malformed.py** - Tests malformed JSON detection and warning display
 - **test_todowrite.py** - Validates TodoWrite formatting with colored status icons
 - **test_edit_filter.py** - Verifies Edit tool filtering logic
+- **test_subagent_ui.py** - Tests collapsible UI rendering and state management
 
 Run tests individually:
 ```bash
 python3 src/debug/test_malformed.py
 python3 src/debug/test_todowrite.py
 python3 src/debug/test_edit_filter.py
+python3 src/debug/test_subagent_ui.py
 ```
 
 ## Architecture Documentation

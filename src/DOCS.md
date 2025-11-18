@@ -9,6 +9,7 @@ src/
 ├── session_finder.py    # Session discovery
 ├── jsonl_parser.py      # JSONL parsing and extraction
 ├── formatter.py         # Output formatting
+├── subagent_ui.py       # Collapsible subagent list UI
 ├── DOCS.md              # This file
 ├── debug/               # Debug scripts and tests
 └── logs/                # Module log files
@@ -18,11 +19,11 @@ src/
 
 ## monitor.py
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls.
-**Input:** Optional project path filter and mode filter (reads from ~/.claude/projects)
-**Output:** Formatted tool calls to console
+**Input:** Optional project path filter, mode filter, and UI mode flag (reads from ~/.claude/projects)
+**Output:** Formatted tool calls to console or collapsible UI list
 
 ### run_monitor()
-Main monitoring loop that runs continuously. Accepts optional project filter and mode parameters, stores them globally, initializes file positions at EOF, and polls for changes every 0.5 seconds. The filters are passed through to session discovery and filtering on each poll.
+Main monitoring loop that runs continuously. Accepts optional project filter, mode, and UI flag parameters, stores them globally, initializes file positions at EOF, and chooses between streaming display or UI mode. In UI mode with subagent filter, renders collapsible subagent list instead of streaming output.
 
 ### initialize_file_positions()
 Discovers all active session files (filtered by project if specified) and sets their initial read positions to EOF to avoid showing historical data.
@@ -65,6 +66,24 @@ Checks if a tool call is a Task RESPONSE by verifying the tool name is 'Task' an
 
 ### is_subagent_call()
 Checks if a tool call originated from a subagent by examining the is_subagent flag.
+
+### run_streaming_loop()
+Executes the traditional continuous polling and streaming display loop. Monitors sessions every 0.5 seconds and displays tool calls as they arrive. Used when UI mode is disabled.
+
+### run_ui_loop()
+Executes the UI mode polling loop with collapsible subagent list rendering. Monitors sessions every 0.5 seconds, updates subagent metadata, and syncs the formatted UI to screen with clear-and-redraw.
+
+### track_subagent_metadata()
+Builds and maintains metadata for each subagent from parsed tool calls. Creates new metadata entries when agents are first discovered, tracking agent name, timestamp, file, parent task ID, and call count. Updates call count as new calls arrive.
+
+### update_tool_calls_by_agent()
+Groups tool calls by agent ID for UI rendering. Initializes empty list for new agents and appends calls to existing agent lists.
+
+### sync_ui_to_screen()
+Renders the collapsible subagent list and displays it to terminal. Clears the screen with ANSI escape codes and prints the formatted UI output from the subagent_ui module.
+
+### extract_subagent_type()
+Retrieves the subagent_type parameter from the parent Task tool call. Searches through tool use caches to find the Task request that spawned this agent and extracts the subagent_type from its input parameters.
 
 ## session_finder.py
 **Purpose:** Discovers active Claude Code session files in ~/.claude/projects with optional project filtering.
@@ -185,4 +204,57 @@ Returns the appropriate icon character for a todo status (checkmark, refresh, or
 
 ### get_status_color()
 Returns the appropriate ANSI color code for a todo status (green, yellow, or default).
+
+## subagent_ui.py
+**Purpose:** Renders collapsible subagent list UI for interactive monitoring of subagent activity.
+**Input:** Subagent metadata dictionaries and grouped tool calls by agent ID
+**Output:** Formatted terminal UI string with collapsible entries
+
+### render_subagent_list()
+Orchestrates UI rendering by building header, entries, and footer sections. Combines all sections with proper spacing to create the complete collapsible list display.
+
+### build_list_header()
+Creates the UI header showing total count of active subagents. Uses cyan color for visual distinction from content.
+
+### build_all_entries()
+Iterates through all subagents and builds either collapsed or expanded entries based on current state. Returns yellow message if no subagents are active yet. Sorts entries chronologically by timestamp.
+
+### build_collapsed_entry()
+Formats a collapsed subagent entry showing index number, plus icon, agent name, agent ID, and timestamp. Uses blue color for subagent identification consistent with main monitor coloring.
+
+### build_expanded_entry()
+Formats an expanded entry with collapsed header modified to minus icon plus indented list of all tool calls for that agent. Shows yellow message if agent has no tool calls yet.
+
+### format_subagent_name()
+Generates unique display names for subagents. Uses subagent_type if available, otherwise falls back to agent_id. Appends timestamp suffix if name already exists to handle multiple instances of same agent type.
+
+### format_tool_call_summary()
+Creates a single-line summary of a tool call showing timestamp, bidirectional arrow if response received, call number, tool name, and input preview. Uses green color consistent with main agent formatting.
+
+### build_keybinding_footer()
+Renders help text showing available keyboard commands for toggling expansion states. Displays in cyan color to match header.
+
+### combine_sections()
+Joins header, entry list, and footer with proper newline spacing to create final formatted output string.
+
+### toggle_subagent()
+Flips the expanded state for a specific subagent by agent ID. Logs the state change for debugging purposes.
+
+### collapse_all()
+Sets all subagent expanded states to False, collapsing the entire list. Used when user wants to reset view to compact mode.
+
+### get_agent_display_name()
+Extracts readable name from subagent_type parameter or falls back to agent_id. Converts hyphenated names to title case for better readability.
+
+### extract_timestamp_from_agent()
+Retrieves the creation timestamp for a subagent by examining the first tool call in its list. Returns current time if no calls exist yet.
+
+### count_calls_for_agent()
+Returns the total number of tool calls executed by a specific agent. Simple length check on the tool calls list.
+
+### format_timestamp()
+Converts ISO 8601 timestamp from UTC to local timezone in HH:MM:SS format. Handles invalid timestamps gracefully by returning zeros.
+
+### get_input_preview()
+Extracts a preview snippet from tool call input parameters. Handles common parameter types like command, file_path, and pattern with special formatting. Truncates long values to 40-50 characters with ellipsis.
 
