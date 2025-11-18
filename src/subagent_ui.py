@@ -94,7 +94,7 @@ def format_tool_call_summary(tool_call: dict) -> str:
 
 # Shows keybinding help footer
 def build_keybinding_footer() -> str:
-    return f"\n{CYAN}Press 1-9 to toggle subagent | 0 to collapse all{RESET}"
+    return f"\n{CYAN}Click on agent to expand/collapse{RESET}"
 
 # Joins header entries and footer with proper spacing
 def combine_sections(header: str, entries: str, footer: str) -> str:
