@@ -171,7 +171,7 @@ def cleanup_fifo(session_name: str) -> None:
 
 # Configure tmux mouse click binding to write to FIFO
 def configure_mouse_click_binding(session_name: str, fifo_path: str) -> None:
-    mouse_cmd = f"run-shell \"echo toggle:#{{mouse_line}} > {fifo_path}\""
+    mouse_cmd = f"run-shell \"echo toggle:#{{mouse_y}}:#{{scroll_position}} > {fifo_path}\""
     subprocess.run([
         "tmux", "bind-key", "-T", "root",
         "MouseDown1Pane", mouse_cmd

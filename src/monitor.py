@@ -338,24 +338,26 @@ def handle_fifo_commands() -> None:
 def process_fifo_command(command: str) -> None:
     global subagent_metadata
 
-    parts = command.split(':', 1)
-    if len(parts) != 2:
+    parts = command.split(':', 2)
+    if len(parts) != 3:
         logging.warning(f"Invalid FIFO command: {command}")
         return
 
-    action, value = parts
+    action, mouse_y, scroll_pos = parts
 
     if action == 'toggle':
         try:
-            line_num = int(value)
+            y = int(mouse_y)
+            scroll = int(scroll_pos)
+            line_num = y + scroll + 1
             agent_id = get_agent_id_at_line(line_num)
             if agent_id:
                 toggle_subagent(agent_id)
-                logging.info(f"Toggled agent {agent_id} from line {line_num}")
+                logging.info(f"Toggled agent {agent_id} from line {line_num} (y={y}, scroll={scroll})")
             else:
                 logging.warning(f"No agent found at line {line_num}")
         except ValueError:
-            logging.error(f"Invalid line number: {value}")
+            logging.error(f"Invalid mouse position: y={mouse_y}, scroll={scroll_pos}")
 
 # Maps display line number to agent_id
 def get_agent_id_at_line(line_num: int) -> Optional[str]:
