@@ -16,6 +16,9 @@ subagent_states: Dict[str, bool] = {}
 
 # ORCHESTRATOR
 def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
+    expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
+    logging.debug(f"render_subagent_list: rendering {len(subagent_metadata)} agents ({expanded_count} expanded)")
+
     header = build_list_header(len(subagent_metadata))
     entries = build_all_entries(subagent_metadata, tool_calls_by_agent)
     footer = build_keybinding_footer()
@@ -104,7 +107,9 @@ def combine_sections(header: str, entries: str, footer: str) -> str:
 def toggle_subagent(agent_id: str) -> None:
     current_state = subagent_states.get(agent_id, False)
     subagent_states[agent_id] = not current_state
-    logging.info(f"Toggled {agent_id} to {'expanded' if not current_state else 'collapsed'}")
+    new_state = 'expanded' if not current_state else 'collapsed'
+    expanded_total = sum(1 for aid in subagent_states if subagent_states.get(aid, False))
+    logging.info(f"Toggled {agent_id} to {new_state} (total expanded: {expanded_total}/{len(subagent_states)})")
 
 # Collapses all subagents
 def collapse_all() -> None:

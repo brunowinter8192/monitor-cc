@@ -5,11 +5,31 @@ import time
 from pathlib import Path
 from typing import Dict, Set, List, Optional
 
-logging.basicConfig(
-    filename='src/logs/monitor.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+logger_startup = logging.getLogger('monitor.startup')
+logger_startup.setLevel(logging.INFO)
+startup_handler = logging.FileHandler('src/logs/monitor_startup.log')
+startup_handler.setFormatter(log_format)
+logger_startup.addHandler(startup_handler)
+
+logger_clicks = logging.getLogger('monitor.clicks')
+logger_clicks.setLevel(logging.INFO)
+clicks_handler = logging.FileHandler('src/logs/monitor_clicks.log')
+clicks_handler.setFormatter(log_format)
+logger_clicks.addHandler(clicks_handler)
+
+logger_ui = logging.getLogger('monitor.ui')
+logger_ui.setLevel(logging.INFO)
+ui_handler = logging.FileHandler('src/logs/monitor_ui.log')
+ui_handler.setFormatter(log_format)
+logger_ui.addHandler(ui_handler)
+
+logger_sessions = logging.getLogger('monitor.sessions')
+logger_sessions.setLevel(logging.INFO)
+sessions_handler = logging.FileHandler('src/logs/monitor_sessions.log')
+sessions_handler.setFormatter(log_format)
+logger_sessions.addHandler(sessions_handler)
 
 # From session_finder.py: Discover active Claude Code sessions
 from .session_finder import find_active_sessions
@@ -35,6 +55,7 @@ tool_calls_by_agent: Dict[str, List[dict]] = {}
 last_rendered_output: str = ""
 fifo_fd: Optional[int] = None
 fifo_path: Optional[str] = None
+ui_loop_iteration: int = 0
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: bool = False) -> None:
@@ -42,15 +63,20 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: boo
     active_project_filter = project_filter
     active_mode = mode
     ui_mode_active = ui
+
+    logger_startup.info(f"run_monitor: project={project_filter}, mode={mode}, ui={ui}")
+
     initialize_file_positions()
 
     if ui and mode == 'subagent':
+        logger_startup.info("Starting UI mode with FIFO")
         open_fifo_non_blocking()
         try:
             run_ui_loop()
         finally:
             close_fifo()
     else:
+        logger_startup.info("Starting streaming mode")
         run_streaming_loop()
 
 # FUNCTIONS
@@ -60,7 +86,7 @@ def initialize_file_positions() -> None:
     global file_positions, active_project_filter
 
     sessions = find_active_sessions(active_project_filter)
-    logging.info(f"Initialized monitoring for {len(sessions)} existing sessions")
+    logger_startup.info(f"Initialized monitoring for {len(sessions)} existing sessions")
 
     for session_file in sessions:
         if session_file not in file_positions:
@@ -83,7 +109,7 @@ def update_session_tracking(sessions: list) -> None:
 
     new_files = current_files - tracked_files
     for new_file in new_files:
-        logging.info(f"New session discovered: {new_file}")
+        logger_sessions.info(f"New session discovered: {new_file}")
         file_positions[new_file] = get_initial_position(new_file)
         tool_use_caches[new_file] = {}
 
@@ -156,7 +182,7 @@ def process_session_file(filepath: Path) -> None:
 
 # Display formatted warning to console
 def display_warning(warning: dict) -> None:
-    logging.warning(f"Malformed JSONL at {warning['file_path']}:{warning['line_number']} - {warning['error_message']}")
+    logger_sessions.warning(f"Malformed JSONL at {warning['file_path']}:{warning['line_number']} - {warning['error_message']}")
 
     formatted = format_warning(
         file_path=warning['file_path'],
@@ -229,7 +255,11 @@ def run_streaming_loop() -> None:
 
 # Runs UI mode loop with collapsible subagent list
 def run_ui_loop() -> None:
+    global ui_loop_iteration
     while True:
+        ui_loop_iteration += 1
+        if ui_loop_iteration % 10 == 0:
+            logger_ui.debug(f"UI loop iteration #{ui_loop_iteration}")
         monitor_sessions()
         handle_fifo_commands()
         sync_ui_to_screen()
@@ -256,6 +286,7 @@ def track_subagent_metadata(tool_call: dict, filepath: Path) -> None:
             'call_count': 0
         }
         tool_calls_by_agent[agent_id] = []
+        logger_ui.info(f"Discovered new agent: {agent_id}, type={subagent_type}, file={filepath.name}")
 
     tool_calls_by_agent[agent_id].append(tool_call)
     subagent_metadata[agent_id]['call_count'] = count_calls_for_agent(tool_calls_by_agent[agent_id])
@@ -273,12 +304,18 @@ def update_tool_calls_by_agent(agent_id: str, tool_call: dict) -> None:
 def sync_ui_to_screen() -> None:
     global subagent_metadata, tool_calls_by_agent, last_rendered_output
 
+    expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
+    logger_ui.debug(f"sync_ui_to_screen: agents={len(subagent_metadata)}, expanded={expanded_count}")
+
     formatted_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
 
     if formatted_output != last_rendered_output:
+        logger_ui.info(f"Re-rendering UI: {len(formatted_output)} chars, agents={len(subagent_metadata)}, expanded={expanded_count}")
         print("\033[2J\033[H", end='')
         print(formatted_output)
         last_rendered_output = formatted_output
+    else:
+        logger_ui.debug("sync_ui_to_screen: no change, skipping re-render")
 
 # Extracts subagent type from tool call input
 def extract_subagent_type(tool_call: dict) -> str:
@@ -298,14 +335,14 @@ def open_fifo_non_blocking() -> None:
     fifo_path = os.environ.get('MONITOR_CC_FIFO')
 
     if not fifo_path:
-        logging.warning("MONITOR_CC_FIFO not set, mouse clicks disabled")
+        logger_startup.warning("MONITOR_CC_FIFO not set, mouse clicks disabled")
         return
 
     try:
         fifo_fd = os.open(fifo_path, os.O_RDONLY | os.O_NONBLOCK)
-        logging.info(f"Opened FIFO at {fifo_path}")
+        logger_startup.info(f"Opened FIFO at {fifo_path}")
     except Exception as e:
-        logging.error(f"Failed to open FIFO: {e}")
+        logger_startup.error(f"Failed to open FIFO: {e}")
         fifo_fd = None
 
 # Closes FIFO file descriptor
@@ -314,7 +351,7 @@ def close_fifo() -> None:
     if fifo_fd is not None:
         os.close(fifo_fd)
         fifo_fd = None
-        logging.info("Closed FIFO")
+        logger_startup.info("Closed FIFO")
 
 # Reads and processes commands from FIFO
 def handle_fifo_commands() -> None:
@@ -326,21 +363,26 @@ def handle_fifo_commands() -> None:
     try:
         data = os.read(fifo_fd, 1024).decode('utf-8').strip()
         if data:
+            logger_clicks.info(f"Read from FIFO: '{data}'")
             for line in data.split('\n'):
                 if line:
                     process_fifo_command(line)
+        else:
+            logger_clicks.debug("FIFO read: no data (BlockingIOError expected)")
     except BlockingIOError:
         pass
     except Exception as e:
-        logging.error(f"Error reading FIFO: {e}")
+        logger_clicks.error(f"Error reading FIFO: {e}")
 
 # Processes single FIFO command
 def process_fifo_command(command: str) -> None:
     global subagent_metadata
 
+    logger_clicks.info(f"Processing command: '{command}'")
+
     parts = command.split(':', 2)
     if len(parts) != 3:
-        logging.warning(f"Invalid FIFO command: {command}")
+        logger_clicks.warning(f"Invalid FIFO command format: {command}")
         return
 
     action, mouse_y, scroll_pos = parts
@@ -350,18 +392,21 @@ def process_fifo_command(command: str) -> None:
             y = int(mouse_y)
             scroll = int(scroll_pos)
             line_num = y + scroll + 1
+            logger_clicks.info(f"Calculated line_num={line_num} (y={y}, scroll={scroll})")
             agent_id = get_agent_id_at_line(line_num)
             if agent_id:
                 toggle_subagent(agent_id)
-                logging.info(f"Toggled agent {agent_id} from line {line_num} (y={y}, scroll={scroll})")
+                logger_clicks.info(f"Toggled agent {agent_id} at line {line_num}")
             else:
-                logging.warning(f"No agent found at line {line_num}")
+                logger_clicks.warning(f"No agent found at line {line_num}")
         except ValueError:
-            logging.error(f"Invalid mouse position: y={mouse_y}, scroll={scroll_pos}")
+            logger_clicks.error(f"Invalid mouse position: y={mouse_y}, scroll={scroll_pos}")
 
 # Maps display line number to agent_id
 def get_agent_id_at_line(line_num: int) -> Optional[str]:
     global subagent_metadata, tool_calls_by_agent
+
+    logger_clicks.info(f"get_agent_id_at_line: line_num={line_num}, agents={len(subagent_metadata)}")
 
     current_line = 1
     current_line += 2
@@ -380,9 +425,13 @@ def get_agent_id_at_line(line_num: int) -> Optional[str]:
 
         range_end += 1
 
+        logger_clicks.debug(f"Agent {agent_id}: range [{range_start}-{range_end}], expanded={is_expanded}")
+
         if range_start <= line_num <= range_end:
+            logger_clicks.info(f"Line {line_num} matched agent {agent_id}")
             return agent_id
 
         current_line = range_end + 1
 
+    logger_clicks.warning(f"No agent found at line {line_num}")
     return None
