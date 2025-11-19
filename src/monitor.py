@@ -371,15 +371,18 @@ def get_agent_id_at_line(line_num: int) -> Optional[str]:
     for agent_id, metadata in sorted_agents:
         is_expanded = subagent_states.get(agent_id, False)
 
-        if current_line == line_num:
-            return agent_id
-
-        current_line += 1
+        range_start = current_line
+        range_end = current_line
 
         if is_expanded:
             tool_calls = tool_calls_by_agent.get(agent_id, [])
-            current_line += len(tool_calls)
+            range_end += len(tool_calls)
 
-        current_line += 1
+        range_end += 1
+
+        if range_start <= line_num <= range_end:
+            return agent_id
+
+        current_line = range_end + 1
 
     return None

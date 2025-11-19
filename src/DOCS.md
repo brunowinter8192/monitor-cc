@@ -85,6 +85,9 @@ Renders the collapsible subagent list and displays it to terminal. Clears the sc
 ### extract_subagent_type()
 Retrieves the subagent_type parameter from the parent Task tool call. Searches through tool use caches to find the Task request that spawned this agent and extracts the subagent_type from its input parameters.
 
+### get_agent_id_at_line()
+Maps display line number to agent_id by calculating line ranges for each agent. Each agent occupies multiple lines (entry line, tool call lines if expanded, and separator line), and any click within that range returns the corresponding agent_id. Returns None for lines outside all agent ranges.
+
 ## session_finder.py
 **Purpose:** Discovers active Claude Code session files in ~/.claude/projects with optional project filtering.
 **Input:** ~/.claude/projects directory, optional project path filter
