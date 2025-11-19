@@ -245,7 +245,35 @@ The monitor detects subagent operations through JSONL metadata:
 - **Color coding:** Automatically applies BLUE formatting to subagent tools
 
 ### Logging
-Internal events and errors are logged to src/logs/ directory with timestamp, level, and message format.
+
+Monitor_CC uses multi-file logging for focused debugging:
+
+**Log Files:**
+```
+src/logs/
+├── monitor_startup.log   # Initialization, FIFO setup, session discovery
+├── monitor_clicks.log    # Mouse clicks, FIFO reads, toggle execution
+├── monitor_ui.log        # UI rendering, agent discovery, state changes
+├── monitor_sessions.log  # Session tracking, JSONL parsing
+├── subagent_ui.log       # Toggle state management
+└── workflow.log          # Workflow orchestration
+```
+
+**Usage:**
+```bash
+# Monitor specific component
+tail -f src/logs/monitor_clicks.log
+
+# Monitor multiple logs (tmux split)
+tmux split-window -v "tail -f src/logs/monitor_clicks.log"
+tmux split-window -h "tail -f src/logs/monitor_ui.log"
+```
+
+**Debugging Guide:**
+- Mouse click issues → `monitor_clicks.log`
+- UI rendering issues → `monitor_ui.log`
+- Session discovery issues → `monitor_startup.log`
+- JSONL parsing issues → `monitor_sessions.log`
 
 ## Installation
 
