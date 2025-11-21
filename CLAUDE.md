@@ -388,9 +388,25 @@ def process_data(df):
 
 1. **NO console prints** during normal execution (use logging instead)
 2. **src/logs/ folder** - one or more log files per module
-3. **ALL logs on INFO level** (agents need to see everything - no DEBUG)
-4. **Every non-trivial function MUST log** entry/exit with parameters and results
-5. **Log: state changes, control flow decisions, error paths, cache operations, statistics**
+3. **Workflow-oriented log files** - Follow LOGS_MAP.md structure (workflow phases 01-09)
+4. **ALL logs on INFO level** (agents need to see everything - no DEBUG)
+5. **Every non-trivial function MUST log** entry/exit with parameters and results
+6. **Log: state changes, control flow decisions, error paths, cache operations, statistics**
+
+### LOGS_MAP.md Integration
+
+**CRITICAL:** This project uses structured workflow-oriented logging documented in LOGS_MAP.md.
+
+**When adding new logging:**
+1. **Check LOGS_MAP.md** to identify which workflow phase your module belongs to
+2. **Use existing log file** if module fits into existing workflow phase (01-09)
+3. **If new workflow phase needed:**
+   - Add new numbered log file (e.g., 10_new_phase.log)
+   - Document in LOGS_MAP.md with: Events, Module, Function, Tag, Color
+   - Follow existing event mapping structure
+4. **Log with tags** matching LOGS_MAP.md conventions for consistency
+
+**Why this matters:** Structured logging enables systematic debugging and monitoring across the entire workflow.
 
 ### What MUST Be Logged
 
