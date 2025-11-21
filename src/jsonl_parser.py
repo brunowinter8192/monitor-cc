@@ -4,19 +4,49 @@ import logging
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-logging.basicConfig(
-    filename='src/logs/jsonl_parser.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# ANSI Colors
+RESET = '\033[0m'
+RED = '\033[91m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+BLUE = '\033[94m'
+WHITE = '\033[97m'
+
+# Setup 3 loggers for different workflow phases
+log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+logger_file = logging.getLogger('jsonl_parser.file')
+file_handler = logging.FileHandler('src/logs/04_file_reading.log')
+file_handler.setFormatter(log_format)
+logger_file.addHandler(file_handler)
+logger_file.setLevel(logging.INFO)
+
+logger_parse = logging.getLogger('jsonl_parser.parse')
+parse_handler = logging.FileHandler('src/logs/05_jsonl_parsing.log')
+parse_handler.setFormatter(log_format)
+logger_parse.addHandler(parse_handler)
+logger_parse.setLevel(logging.INFO)
+
+logger_extract = logging.getLogger('jsonl_parser.extract')
+extract_handler = logging.FileHandler('src/logs/06_tool_extraction.log')
+extract_handler.setFormatter(log_format)
+logger_extract.addHandler(extract_handler)
+logger_extract.setLevel(logging.INFO)
+
+# Tagged logging helper
+def log_tagged(logger, tag: str, color: str, message: str) -> None:
+    colored_tag = f"{color}[{tag}]{RESET}"
+    logger.info(f"{colored_tag} {message}")
 
 # ORCHESTRATOR
 def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
+    log_tagged(logger_parse, "LINES_READ", BLUE, f"Read {len(new_lines)} new lines from {filepath.name}")
     new_position = get_current_position(filepath)
     messages, malformed_lines = parse_jsonl_lines(new_lines)
     tool_calls = extract_tool_calls(messages, tool_use_cache)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
+    log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(malformed_warnings)} malformed lines, new_pos={new_position}")
     return tool_calls, new_position, malformed_warnings
 
 # FUNCTIONS
@@ -37,126 +67,136 @@ def build_malformed_warnings(filepath: Path, malformed_lines: List[dict]) -> Lis
 # Read new lines from file since last position
 def read_new_lines(filepath: Path, last_position: int) -> List[str]:
     if not filepath.exists():
+        log_tagged(logger_file, "FILE_404", RED, f"File not found: {filepath}")
         return []
 
     with open(filepath, 'r', encoding='utf-8') as f:
         f.seek(last_position)
         content = f.read()
+        bytes_read = len(content)
 
-    return [line for line in content.split('\n') if line.strip()]
+        if not content:
+            return []
 
-# Get current file size (position for next read)
+        lines = content.split('\n')
+        if lines and not lines[-1]:
+            lines = lines[:-1]
+
+        log_tagged(logger_file, "FILE_READ", BLUE, f"read_new_lines: {filepath.name}, bytes={bytes_read}, lines={len(lines)}")
+        return lines
+
+# Get current file position for next read
 def get_current_position(filepath: Path) -> int:
-    if not filepath.exists():
-        return 0
     return filepath.stat().st_size
 
-# Parse JSONL lines into message objects and track malformed lines
-def parse_jsonl_lines(lines: List[str], start_line_number: int = 0) -> Tuple[List[dict], List[dict]]:
+# Parse JSONL lines into message objects
+def parse_jsonl_lines(lines: List[str]) -> Tuple[List[dict], List[dict]]:
     messages = []
     malformed_lines = []
 
-    for idx, line in enumerate(lines):
-        line_number = start_line_number + idx + 1
+    for line_number, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+
         try:
-            msg = json.loads(line)
-            messages.append(msg)
+            message = json.loads(line)
+            messages.append(message)
         except json.JSONDecodeError as e:
-            logging.error(f"JSON decode error at line {line_number}: {str(e)}")
-            malformed_entry = {
+            log_tagged(logger_parse, "JSON_ERROR", RED, f"JSON decode error at line {line_number}: {str(e)}")
+            malformed_lines.append({
                 'line_number': line_number,
                 'error_message': str(e),
                 'raw_line': line
-            }
-            malformed_lines.append(malformed_entry)
+            })
 
+    malformed_pct = (len(malformed_lines) / (len(lines) or 1)) * 100
+    log_tagged(logger_parse, "PARSE_STATS", WHITE, f"parse_jsonl_lines: valid={len(messages)}, malformed={len(malformed_lines)} ({malformed_pct:.1f}%)")
     return messages, malformed_lines
 
 # Extract tool_use and tool_result pairs from messages
 def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]:
+    log_tagged(logger_extract, "EXTRACT_START", GREEN, f"extract_tool_calls: messages={len(messages)}, cache_size={len(tool_use_cache)}")
     tool_calls = []
+    tool_use_count = 0
+    tool_result_count = 0
+    orphaned_results = 0
 
-    for msg in messages:
-        message_content = get_message_content(msg)
+    for message in messages:
+        content_blocks = get_message_content(message)
+        if not content_blocks:
+            continue
 
-        for content_block in message_content:
-            if is_tool_use(content_block):
-                tool_data = create_tool_use_entry(content_block, msg)
+        for block in content_blocks:
+            if is_tool_use(block):
+                tool_use_count += 1
+                tool_data = create_tool_use_entry(block, message)
                 tool_use_cache[tool_data['tool_use_id']] = tool_data
+                log_tagged(logger_extract, "TOOL_CACHED", WHITE, f"Cached tool_use: id={tool_data['tool_use_id']}, tool={tool_data['tool_name']}")
 
-            elif is_tool_result(content_block):
-                tool_use_id = content_block.get('tool_use_id')
+            elif is_tool_result(block):
+                tool_result_count += 1
+                tool_use_id = block.get('tool_use_id')
 
                 if tool_use_id in tool_use_cache:
                     tool_data = tool_use_cache[tool_use_id]
-                    tool_data['output'] = extract_result_content(content_block)
-                    tool_data['response_timestamp'] = msg.get('timestamp')
-
-                    if tool_data['tool_name'] == 'Task':
-                        tool_result_data = msg.get('toolUseResult', {})
-                        spawned_agent_id = tool_result_data.get('agentId')
-                        if spawned_agent_id:
-                            tool_data['spawned_agent_id'] = spawned_agent_id
-
+                    tool_data['output'] = extract_result_content(block)
                     tool_calls.append(tool_data)
+                    log_tagged(logger_extract, "TOOL_MATCH", GREEN, f"Matched tool_result: id={tool_use_id}, tool={tool_data['tool_name']}")
                     del tool_use_cache[tool_use_id]
+                else:
+                    orphaned_results += 1
+                    log_tagged(logger_extract, "TOOL_ORPHAN", YELLOW, f"Orphaned tool_result: id={tool_use_id} (no matching tool_use in cache)")
+
+    log_tagged(logger_extract, "EXTRACT_STATS", WHITE, f"extract_tool_calls: tool_use={tool_use_count}, tool_result={tool_result_count}, orphaned={orphaned_results}, extracted={len(tool_calls)}")
 
     filtered_calls = filter_excluded_tools(tool_calls)
+    log_tagged(logger_extract, "FILTER_COUNT", WHITE, f"After filtering: {len(filtered_calls)} tool calls")
+
     sorted_calls = sort_by_timestamp(filtered_calls)
     return sorted_calls
 
-# Get message content array from message object
-def get_message_content(msg: dict) -> List[dict]:
-    message = msg.get('message', {})
+# Get message content blocks
+def get_message_content(message: dict) -> List[dict]:
     content = message.get('content', [])
-
     if isinstance(content, list):
         return content
     return []
 
-# Check if content block is a tool_use
-def is_tool_use(content_block: dict) -> bool:
-    return content_block.get('type') == 'tool_use'
+# Check if content block is tool_use
+def is_tool_use(block: dict) -> bool:
+    return block.get('type') == 'tool_use'
 
-# Check if content block is a tool_result
-def is_tool_result(content_block: dict) -> bool:
-    return content_block.get('type') == 'tool_result'
+# Check if content block is tool_result
+def is_tool_result(block: dict) -> bool:
+    return block.get('type') == 'tool_result'
 
-# Create tool use entry from content block
-def create_tool_use_entry(content_block: dict, msg: dict) -> dict:
+# Create tool call entry from tool_use block
+def create_tool_use_entry(block: dict, message: dict) -> dict:
     return {
-        'tool_name': content_block.get('name'),
-        'input': content_block.get('input', {}),
-        'tool_use_id': content_block.get('id'),
-        'timestamp': msg.get('timestamp'),
+        'tool_name': block.get('name', 'Unknown'),
+        'input': block.get('input', {}),
         'output': None,
-        'response_timestamp': None,
-        'is_subagent': msg.get('isSidechain', False),
-        'agent_id': msg.get('agentId')
+        'tool_use_id': block.get('id', ''),
+        'timestamp': message.get('timestamp', ''),
+        'call_number': message.get('call_number', 0),
+        'is_subagent': message.get('isSidechain', False),
+        'agent_id': message.get('agentId', None)
     }
 
-# Extract content from tool_result block
-def extract_result_content(content_block: dict) -> str:
-    content = content_block.get('content', '')
+# Extract result content from tool_result block
+def extract_result_content(block: dict) -> str:
+    content = block.get('content', '')
+    if isinstance(content, list) and len(content) > 0:
+        if isinstance(content[0], dict):
+            return content[0].get('text', '')
+        return str(content[0])
+    return str(content)
 
-    if isinstance(content, str):
-        return content
-    elif isinstance(content, list):
-        text_parts = []
-        for item in content:
-            if isinstance(item, dict) and item.get('type') == 'text':
-                text_parts.append(item.get('text', ''))
-            else:
-                text_parts.append(str(item))
-        return '\n'.join(text_parts)
-    else:
-        return str(content)
-
-# Filter excluded tools from tool calls list
+# Filter out excluded tools
 def filter_excluded_tools(tool_calls: List[dict]) -> List[dict]:
     excluded_tools = {'Edit'}
-    return [tc for tc in tool_calls if tc['tool_name'] not in excluded_tools]
+    return [call for call in tool_calls if call['tool_name'] not in excluded_tools]
 
-# Sort tool calls by timestamp for chronological output
+# Sort tool calls by timestamp
 def sort_by_timestamp(tool_calls: List[dict]) -> List[dict]:
-    return sorted(tool_calls, key=lambda tc: tc.get('timestamp') or '')
+    return sorted(tool_calls, key=lambda x: x.get('timestamp', ''))

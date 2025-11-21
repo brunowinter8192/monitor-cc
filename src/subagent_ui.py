@@ -3,11 +3,22 @@ import logging
 from datetime import datetime
 from typing import Dict, List
 
+# ANSI Colors for logging
+RESET_LOG = '\033[0m'
+YELLOW_LOG = '\033[93m'
+PURPLE_LOG = '\033[38;5;135m'
+WHITE_LOG = '\033[97m'
+
 logging.basicConfig(
-    filename='src/logs/subagent_ui.log',
+    filename='src/logs/08_ui_rendering.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+# Tagged logging helper
+def log_tagged(tag: str, color: str, message: str) -> None:
+    colored_tag = f"{color}[{tag}]{RESET_LOG}"
+    logging.info(f"{colored_tag} {message}")
 
 # From formatter.py: Color constants for terminal output
 from .formatter import GREEN, BLUE, CYAN, YELLOW, RESET
@@ -17,12 +28,16 @@ subagent_states: Dict[str, bool] = {}
 # ORCHESTRATOR
 def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
-    logging.debug(f"render_subagent_list: rendering {len(subagent_metadata)} agents ({expanded_count} expanded)")
+    log_tagged("RENDER_LIST", PURPLE_LOG, f"render_subagent_list: {len(subagent_metadata)} agents, {expanded_count} expanded")
 
     header = build_list_header(len(subagent_metadata))
     entries = build_all_entries(subagent_metadata, tool_calls_by_agent)
     footer = build_keybinding_footer()
-    return combine_sections(header, entries, footer)
+    combined = combine_sections(header, entries, footer)
+
+    output_lines = combined.count('\n')
+    log_tagged("RENDER_STATS", WHITE_LOG, f"Rendered output: {len(combined)} chars, {output_lines} lines")
+    return combined
 
 # FUNCTIONS
 
@@ -33,20 +48,24 @@ def build_list_header(count: int) -> str:
 # Builds all subagent entries based on expanded state
 def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
     if not subagent_metadata:
+        log_tagged("NO_AGENTS", YELLOW_LOG, "No subagents to render")
         return f"{YELLOW}No subagents active yet{RESET}"
 
     entries = []
+    expanded_entries = 0
     for idx, (agent_id, metadata) in enumerate(sorted(subagent_metadata.items(), key=lambda x: x[1]['timestamp']), 1):
         is_expanded = subagent_states.get(agent_id, False)
         tool_calls = tool_calls_by_agent.get(agent_id, [])
 
         if is_expanded:
+            expanded_entries += 1
             entry = build_expanded_entry(idx, metadata, tool_calls)
         else:
             entry = build_collapsed_entry(idx, metadata)
 
         entries.append(entry)
 
+    log_tagged("ENTRIES_BUILT", PURPLE_LOG, f"Built {len(entries)} entries ({expanded_entries} expanded)")
     return '\n\n'.join(entries)
 
 # Shows collapsed subagent entry with summary
@@ -63,8 +82,10 @@ def build_expanded_entry(index: int, metadata: dict, tool_calls: List[dict]) -> 
     collapsed_header = collapsed_header.replace('[+]', '[-]')
 
     if not tool_calls:
+        log_tagged("NO_CALLS", YELLOW_LOG, f"Agent {metadata['agent_id']} has no tool calls yet")
         return f"{collapsed_header}\n  {YELLOW}(no tool calls yet){RESET}"
 
+    log_tagged("EXPAND_BUILD", PURPLE_LOG, f"Building expanded entry for {metadata['agent_id']}: {len(tool_calls)} tool calls")
     call_summaries = []
     for call in tool_calls:
         summary = format_tool_call_summary(call)
@@ -109,13 +130,13 @@ def toggle_subagent(agent_id: str) -> None:
     subagent_states[agent_id] = not current_state
     new_state = 'expanded' if not current_state else 'collapsed'
     expanded_total = sum(1 for aid in subagent_states if subagent_states.get(aid, False))
-    logging.info(f"Toggled {agent_id} to {new_state} (total expanded: {expanded_total}/{len(subagent_states)})")
+    # Note: This logging is handled by monitor.py under TOGGLE_OK tag
 
 # Collapses all subagents
 def collapse_all() -> None:
     for agent_id in subagent_states:
         subagent_states[agent_id] = False
-    logging.info("Collapsed all subagents")
+    # Note: This logging is handled by monitor.py if needed
 
 # Extracts readable name from subagent type or agent ID
 def get_agent_display_name(subagent_type: str, agent_id: str) -> str:

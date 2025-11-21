@@ -8,11 +8,26 @@ import subprocess
 import sys
 from typing import Optional
 
+# ANSI Colors
+RESET = '\033[0m'
+RED = '\033[91m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+BLUE = '\033[94m'
+MAGENTA = '\033[95m'
+CYAN = '\033[96m'
+WHITE = '\033[97m'
+
 logging.basicConfig(
-    filename='src/logs/workflow.log',
+    filename='src/logs/01_startup.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+# Tagged logging helper
+def log_tagged(tag: str, color: str, message: str) -> None:
+    colored_tag = f"{color}[{tag}]{RESET}"
+    logging.info(f"{colored_tag} {message}")
 
 # From src/monitor.py: Run continuous monitoring loop
 from src.monitor import run_monitor
@@ -20,6 +35,7 @@ from src.monitor import run_monitor
 # ORCHESTRATOR
 def main() -> None:
     args = parse_arguments()
+    log_tagged("MAIN_ENTRY", MAGENTA, f"main() called with args: mode={args.mode}, project={args.project}, ui={args.ui}")
     if args.mode == 'all':
         launch_split_screen(args.project, args.ui)
     else:
@@ -31,6 +47,8 @@ def main() -> None:
 
 # Launch tmux split-screen with main and subagent monitors
 def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False) -> None:
+    log_tagged("SPLIT_LAUNCH", CYAN, f"launch_split_screen: project={project_filter}, ui={ui}")
+
     if not is_tmux_installed():
         print("Error: tmux is not installed. Install with: brew install tmux")
         sys.exit(1)
@@ -41,6 +59,8 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False) 
 
     session_name = generate_session_name(project_filter)
     script_path = os.path.abspath(__file__)
+    log_tagged("SESS_NAME", CYAN, f"Generated session name: {session_name}")
+    log_tagged("SCRIPT_PATH", CYAN, f"Script path: {script_path}")
 
     if check_session_exists(session_name):
         print(f"Warning: Session '{session_name}' already exists for this project.")
@@ -57,20 +77,30 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False) 
 
     original_history_limit = get_global_history_limit()
     subprocess.run(["tmux", "set-option", "-g", "history-limit", "50000"])
+
+    log_tagged("TMUX_CREATE", GREEN, f"Creating tmux session '{session_name}'")
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, main_cmd])
+
+    log_tagged("TMUX_SPLIT", GREEN, f"Splitting window for subagent pane")
     subprocess.run(["tmux", "split-window", "-h", "-t", session_name, subagent_cmd])
+
     restore_global_history_limit(original_history_limit)
     configure_tmux_session(session_name, fifo_path)
+
     subprocess.run(["tmux", "attach-session", "-t", session_name])
 
 # Check if tmux is installed
 def is_tmux_installed() -> bool:
     result = subprocess.run(["which", "tmux"], capture_output=True)
-    return result.returncode == 0
+    installed = result.returncode == 0
+    log_tagged("TMUX_CHECK", CYAN, f"tmux installation check: {installed}")
+    return installed
 
 # Check if already running inside tmux
 def is_inside_tmux() -> bool:
-    return "TMUX" in os.environ
+    in_tmux = "TMUX" in os.environ
+    log_tagged("TMUX_INSIDE", CYAN, f"Inside tmux check: {in_tmux}, TMUX={os.environ.get('TMUX', 'not set')}")
+    return in_tmux
 
 # Generate unique session name from project path
 def generate_session_name(project_path: Optional[str] = None) -> str:
@@ -78,22 +108,27 @@ def generate_session_name(project_path: Optional[str] = None) -> str:
         return "monitor_cc_global"
     normalized_path = os.path.normpath(os.path.expanduser(project_path))
     path_hash = hashlib.md5(normalized_path.encode()).hexdigest()[:8]
-    return f"monitor_cc_{path_hash}"
+    session_name = f"monitor_cc_{path_hash}"
+    return session_name
 
 # Check if tmux session exists
 def check_session_exists(session_name: str) -> bool:
     result = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-    return result.returncode == 0
+    exists = result.returncode == 0
+    log_tagged("SESS_EXISTS", CYAN, f"Session existence check: session={session_name}, exists={exists}")
+    return exists
 
 # Kill tmux session
 def kill_session(session_name: str) -> None:
+    log_tagged("SESS_KILL", YELLOW, f"Killing session: {session_name}")
     cleanup_fifo(session_name)
     subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
 
 # Get current global history-limit setting
 def get_global_history_limit() -> str:
     result = subprocess.run(["tmux", "show-options", "-gv", "history-limit"], capture_output=True, text=True)
-    return result.stdout.strip() or "2000"
+    limit = result.stdout.strip() or "2000"
+    return limit
 
 # Restore global history-limit to original value
 def restore_global_history_limit(original_value: str) -> None:
@@ -101,6 +136,7 @@ def restore_global_history_limit(original_value: str) -> None:
 
 # Configure tmux session appearance and behavior
 def configure_tmux_session(session_name: str, fifo_path: str) -> None:
+    log_tagged("TMUX_CONFIG", GREEN, f"Configuring tmux session: {session_name}")
     subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy"])
@@ -115,9 +151,11 @@ def configure_tmux_session(session_name: str, fifo_path: str) -> None:
 def setup_signal_handlers() -> None:
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
+    log_tagged("SIGNAL_REG", MAGENTA, "Signal handlers registered for SIGINT and SIGTERM")
 
 # Handle shutdown signals
 def handle_shutdown(signum, frame) -> None:
+    log_tagged("SHUTDOWN", RED, f"Shutdown signal received: {signum}")
     print_shutdown_message()
     sys.exit(0)
 
@@ -127,30 +165,28 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--project', type=str, default=None, help='Filter by project path')
     parser.add_argument('--mode', type=str, choices=['all', 'main', 'subagent'], default='all', help='Monitor mode: all, main, or subagent')
     parser.add_argument('--ui', action='store_true', help='Enable collapsible UI mode (subagent only)')
-    return parser.parse_args()
+    args = parser.parse_args()
+    log_tagged("ARGPARSE", MAGENTA, f"Arguments parsed: mode={args.mode}, project={args.project}, ui={args.ui}")
+    return args
 
 # Print startup message
 def print_startup_message(project_filter: Optional[str] = None, mode: str = 'all') -> None:
-    logging.info("Monitor_CC started - Claude Code Tool Monitor")
+    log_tagged("MONITOR_START", GREEN, "Monitor_CC started - Claude Code Tool Monitor")
     print("\033[38;5;35mMonitor_CC - Claude Code Tool Monitor\033[0m")
 
     if project_filter:
-        logging.info(f"Monitoring project: {project_filter}")
         print(f"Monitoring project: {project_filter}")
     else:
-        logging.info("Monitoring ~/.claude/projects for tool calls")
         print("Monitoring ~/.claude/projects for tool calls...")
 
     if mode != 'all':
         mode_label = 'MAIN AGENT' if mode == 'main' else 'SUBAGENT'
-        logging.info(f"Mode: {mode}")
         print(f"Mode: {mode_label} only")
 
     print("Press Ctrl+C to stop\n")
 
 # Print shutdown message
 def print_shutdown_message() -> None:
-    logging.info("Monitor stopped - shutdown signal received")
     print("\n\033[38;5;35mMonitor stopped\033[0m")
 
 # Create FIFO pipe for mouse click communication
@@ -159,7 +195,7 @@ def create_fifo(session_name: str) -> str:
     if os.path.exists(fifo_path):
         os.remove(fifo_path)
     os.mkfifo(fifo_path)
-    logging.info(f"Created FIFO at {fifo_path}")
+    log_tagged("FIFO_CREATE", GREEN, f"Created FIFO at {fifo_path}")
     return fifo_path
 
 # Remove FIFO pipe on cleanup
@@ -167,7 +203,7 @@ def cleanup_fifo(session_name: str) -> None:
     fifo_path = f"/tmp/monitor_cc_control_{session_name}.fifo"
     if os.path.exists(fifo_path):
         os.remove(fifo_path)
-        logging.info(f"Cleaned up FIFO at {fifo_path}")
+        log_tagged("FIFO_CLEANUP", YELLOW, f"Cleaned up FIFO at {fifo_path}")
 
 # Configure tmux mouse click binding to write to FIFO
 def configure_mouse_click_binding(session_name: str, fifo_path: str) -> None:
@@ -175,8 +211,7 @@ def configure_mouse_click_binding(session_name: str, fifo_path: str) -> None:
         f"if-shell -F '#{{!pane_in_mode}}' "
         f"\"run-shell 'echo toggle:#{{mouse_y}}:#{{scroll_position}} > {fifo_path}'\""
     )
-    logging.info(f"Configuring mouse binding: session={session_name}, fifo={fifo_path}")
-    logging.info(f"Binding command: {mouse_cmd}")
+    log_tagged("MOUSE_BIND", CYAN, f"Configuring mouse binding: session={session_name}, fifo={fifo_path}")
     subprocess.run([
         "tmux", "bind-key", "-T", "root",
         "MouseDown1Pane", mouse_cmd

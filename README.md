@@ -84,236 +84,160 @@ To see tool calls from a completed session, the JSONL files are located at:
 ~/.claude/projects/<encoded-dir>/*.jsonl
 ```
 
-## Output Format
+## What's Important About This Project
 
-The monitor displays all tool calls with color-coded formatting to distinguish main agent operations from subagent operations.
+This project has unique debugging challenges:
+- **Tmux-based:** Runs in split-screen, difficult to debug interactively
+- **Production-only testing:** Cannot easily test without real execution
+- **Agent debugging:** Agents debug EXCLUSIVELY through logs (no monitor access)
+- **User feedback loop:** User must execute and provide log feedback for debugging
 
-### Collapsible UI Mode (--ui flag)
-When UI mode is enabled, the subagent pane shows a collapsible list instead of streaming output:
+**Result:** Comprehensive logging is CRITICAL - every function with meaningful operations logs extensively.
 
-**Collapsed View:**
-```
-Active Subagents (2)                                      [CYAN]
+---
 
-[1] [+] Explore Specialist (629b31dd) - 14:30:45  [BLUE]
+## Debugging Philosophy & Logging System
 
-[2] [+] Debug Specialist (7a8c2bf4) - 14:31:20    [BLUE]
+### Why Comprehensive Logging?
 
-Press 1-9 to toggle subagent | 0 to collapse all          [CYAN]
-```
+Traditional debugging tools (debuggers, interactive monitors) are unavailable because:
+- Code runs in tmux split-screen
+- Agents cannot attach debuggers or view UI
+- Production execution cannot be easily replicated
 
-**Expanded View (future enhancement):**
-```
-Active Subagents (2)                                      [CYAN]
+**Solution:** Treat logs as the PRIMARY debugging interface. Every function with meaningful state changes, decisions, or data processing MUST log.
 
-[1] [-] Explore Specialist (629b31dd) - 14:30:45  [BLUE]
-  [14:30:45] ↔ #47 Bash: ls -la /Users/test             [GREEN]
-  [14:30:50] ↔ #48 Read: /Users/test/file.py            [GREEN]
-  [14:30:55] ↔ #49 Grep: pattern: def.*test             [GREEN]
+### Logging Architecture
 
-[2] [+] Debug Specialist (7a8c2bf4) - 14:31:20    [BLUE]
+#### Multi-File Strategy
+Each module/concern gets dedicated log file(s) for focused debugging:
+- **No noise** from unrelated operations
+- **Fast diagnosis** - only read relevant logs
+- **Example:** monitor.py uses 4 separate loggers (startup, clicks, UI, sessions)
 
-Press 1-9 to toggle subagent | 0 to collapse all          [CYAN]
-```
+#### All Logs on INFO Level
+- Agents cannot change log configuration
+- DEBUG level would be invisible to agents
+- **Every operation** must be visible → INFO for everything
+- Use `logging.warning()` for recoverable issues, `logging.error()` for exceptions
 
-The collapsible UI provides a compact overview of all active subagents with their call counts and timestamps, making it easy to track multiple parallel subagent executions.
+### Mandatory Logging Points
 
-### Main Agent Tool Calls (GREEN)
-```
-[HH:MM:SS] REQUEST #1 → Bash                                  [GREEN]
-  command: ls -la /Users/bruno/project
-  description: List project files
+Every function MUST log if it performs ANY of these:
 
-[HH:MM:SS] RESPONSE #1 ← Bash                                 [GREEN]
-  total 88
-  drwxr-xr-x  5 bruno  staff  160 Nov 14 22:30 .
-  -rw-r--r--  1 bruno  staff  123 Nov 14 22:28 file.py
-```
-
-### Subagent Tool Calls (BLUE)
-Subagent operations are automatically detected from agent thread files and displayed in blue:
-```
-[HH:MM:SS] REQUEST #15 → Read                                 [BLUE]
-  file_path: /Users/bruno/project/monitor.py
-
-[HH:MM:SS] RESPONSE #15 ← Read                                [BLUE]
-  # INFRASTRUCTURE
-  import time
-  from pathlib import Path
-  ...
+**1. Orchestrator Entry/Exit**
+```python
+def process_workflow(input_file, output_dir):
+    logging.info(f"process_workflow: input={input_file}, output={output_dir}")
+    result = do_processing()
+    logging.info(f"process_workflow completed: records={len(result)}")
+    return result
 ```
 
-### Task Tool with Highlighted subagent_type
-The subagent_type parameter is highlighted in cyan for quick identification:
-```
-[HH:MM:SS] REQUEST #10 → Task                                 [GREEN]
-  subagent_type: Plan                                          [CYAN]
-  description: Investigate subagent tracking
-  prompt: Analyze the Monitor_CC codebase...
-
-[HH:MM:SS] RESPONSE #10 ← Task                                [GREEN]
-  Perfect! Now I have a comprehensive understanding...
+**2. State Changes**
+```python
+for removed_file in removed_files:
+    logging.info(f"Session removed: {removed_file}")
+    del file_positions[removed_file]
 ```
 
-### TodoWrite (Enhanced Formatting)
-TodoWrite tools receive special formatting with status icons and color-coded states:
-```
-[HH:MM:SS] REQUEST #12 → TodoWrite
-
-  TODO #1 - COMPLETED [CHECKMARK]
-    Add format_warning() function to formatter.py          [GREEN]
-
-  TODO #2 - IN PROGRESS [REFRESH]
-    Update parse_jsonl_lines() to track malformed lines    [YELLOW]
-
-  TODO #3 - PENDING [CIRCLE]
-    Test with malformed JSONL data                         [WHITE]
-
-[HH:MM:SS] RESPONSE #12 ← TodoWrite
-  Todos have been modified successfully.
+**3. Control Flow Decisions**
+```python
+if tool_use_id in cache:
+    logging.info(f"Matched tool_result: id={tool_use_id}, tool={tool_name}")
+else:
+    logging.info(f"Orphaned tool_result: id={tool_use_id}")
 ```
 
-### Malformed JSON Warnings
-Invalid JSONL entries are detected and displayed with yellow warning formatting:
-```
-[HH:MM:SS] [WARNING] Malformed JSON                       [YELLOW]
-  File: agent-629b31dd.jsonl
-  Line: 47
-  Error: Unterminated string starting at: line 1 column 18 (char 17)
-  Content: {"type": "user", "broken json here without...
+**4. Data Processing Statistics**
+```python
+malformed_pct = malformed / (total or 1) * 100
+logging.info(f"Parsed: valid={valid}, malformed={malformed} ({malformed_pct:.1f}%)")
 ```
 
-## What Gets Captured
-
-### YES - Tool Operations
-- **All tool names:** Task, Bash, Read, Write, Grep, Glob, WebSearch, WebFetch, AskUserQuestion, TodoWrite, etc.
-- **Complete input parameters:** All arguments passed to tools
-- **Complete output/results:** Full tool responses
-- **Timestamps:** HH:MM:SS format for each request/response
-- **Request-response correlation:** Matched via tool_use_id
-- **Agent metadata:** isSidechain flag and agentId from JSONL
-- **Subagent tool calls:** Operations from agent-*.jsonl files (displayed in BLUE)
-
-### NO - Filtered Out
-- **Edit tools:** Excluded as redundant to Claude Code UI
-- **User prompts:** Not displayed
-- **Claude thinking:** Internal reasoning not shown
-- **Claude text responses:** Conversational replies filtered out
-
-The filtering ensures the monitor focuses exclusively on tool operations and their I/O, providing a clean view of what actions are being performed.
-
-## Technical Details
-
-### Data Source
-- **Main sessions:** `~/.claude/projects/<encoded-dir>/<session-id>.jsonl`
-- **Subagent threads:** `~/.claude/projects/<encoded-dir>/agent-*.jsonl`
-- **Format:** JSONL (JSON Lines) - one message per line
-
-### Polling Mechanism
-- **Interval:** 0.5 seconds (similar to Monitor_CD)
-- **Position tracking:** Maintains file offset per session to read only new content
-- **Position initialization:** Main session files start at EOF (new activity only), subagent files start at beginning (complete history)
-- **Session discovery:** Scans project directories on each poll to detect new sessions
-- **Project filtering:** Optional `--project` argument filters sessions by project path (encodes paths like `/Users/bruno/project` → `-Users-bruno-project`)
-- **Mode filtering:** Optional `--mode` argument filters by agent type (main, subagent, or all)
-
-### Correlation Mechanism
-Tool calls are correlated by matching tool_use_id fields:
-1. Parse tool_use content blocks (requests) and cache by ID
-2. Parse tool_result content blocks (responses) and match to cached requests
-3. Combine matched pairs into complete tool call entries
-4. Display with synchronized REQUEST/RESPONSE formatting
-
-### Filtering Logic
-The `filter_excluded_tools()` function removes Edit tools from the output stream while preserving all other tool types.
-
-### Color Scheme
-- **Main agent tools:** GREEN (`\033[38;5;35m`)
-- **Subagent tools:** BLUE (`\033[38;5;33m`)
-- **subagent_type highlight:** CYAN (`\033[38;5;51m`)
-- **Warnings:** YELLOW (`\033[38;5;220m`)
-- **TodoWrite status icons:**
-  - Completed: [CHECKMARK] (GREEN)
-  - In Progress: [REFRESH] (YELLOW)
-  - Pending: [CIRCLE] (WHITE)
-
-### Agent Tracking
-The monitor detects subagent operations through JSONL metadata:
-- **isSidechain flag:** Identifies tool calls from subagent contexts
-- **agentId field:** Captures specific agent thread identifier
-- **File pattern:** Processes both main session and agent-*.jsonl files
-- **Color coding:** Automatically applies BLUE formatting to subagent tools
-
-### Logging
-
-Monitor_CC uses multi-file logging for focused debugging:
-
-**Log Files:**
-```
-src/logs/
-├── monitor_startup.log   # Initialization, FIFO setup, session discovery
-├── monitor_clicks.log    # Mouse clicks, FIFO reads, toggle execution
-├── monitor_ui.log        # UI rendering, agent discovery, state changes
-├── monitor_sessions.log  # Session tracking, JSONL parsing
-├── subagent_ui.log       # Toggle state management
-└── workflow.log          # Workflow orchestration
+**5. Categorization Breakdowns** (CRITICAL for this project)
+```python
+logging.info(f"Processed {file}: task_req={n1}, task_resp={n2}, subagent_ui={n3}, buffered={n4}, displayed={n5}")
 ```
 
-**Usage:**
-```bash
-# Monitor specific component
-tail -f src/logs/monitor_clicks.log
-
-# Monitor multiple logs (tmux split)
-tmux split-window -v "tail -f src/logs/monitor_clicks.log"
-tmux split-window -h "tail -f src/logs/monitor_ui.log"
+**6. Tool-Use Pairing** (CRITICAL for orphaned results)
+```python
+logging.info(f"Cached tool_use: id={tool_use_id}, tool={tool_name}")
+logging.info(f"Matched tool_result: id={tool_use_id}")
+logging.info(f"Orphaned tool_result: id={tool_use_id} (no matching tool_use)")
 ```
 
-**Debugging Guide:**
-- Mouse click issues → `monitor_clicks.log`
-- UI rendering issues → `monitor_ui.log`
-- Session discovery issues → `monitor_startup.log`
-- JSONL parsing issues → `monitor_sessions.log`
-
-## Installation
-
-No installation needed - works with standard Python 3.
-
-### Requirements
-- Python 3.6+
-- tmux (for split-screen mode)
-- Claude Code CLI installed
-- Active or completed Claude Code sessions
-
-### Setup
-```bash
-git clone <repo-url> Monitor_CC
-cd Monitor_CC
-
-# Install tmux if not present
-brew install tmux
-
-# Start monitor
-python3 workflow.py
+**7. Loop Summaries** (NOT every iteration)
+```python
+if iteration % 20 == 0:  # Every 10 seconds
+    logging.info(f"monitor_sessions: iteration={iteration}, tracking={len(file_positions)}")
 ```
 
-## Debug & Testing
+### Critical Log Files for Agent Debugging
 
-The `src/debug/` folder contains verification scripts:
+When agents encounter bugs, they check these logs:
 
-- **test_malformed.py** - Tests malformed JSON detection and warning display
-- **test_todowrite.py** - Validates TodoWrite formatting with colored status icons
-- **test_edit_filter.py** - Verifies Edit tool filtering logic
-- **test_subagent_ui.py** - Tests collapsible UI rendering and state management
+| Issue | Primary Logs | What to Look For |
+|-------|-------------|------------------|
+| **Subagent not expanding** | monitor_clicks.log, subagent_ui.log | Mouse coords, line calculation, toggle state |
+| **Tool calls missing** | monitor_sessions.log, jsonl_parser.log | Categorization breakdown, orphaned results |
+| **Session not found** | session_finder.log, monitor_startup.log | Filter matching, session discovery |
+| **JSONL parsing errors** | jsonl_parser.log | Malformed lines, parse statistics |
+| **Split-screen not starting** | workflow.log | Tmux commands, FIFO setup |
+| **Filter not working** | session_finder.log | encode_project_path, matches_project_filter |
 
-Run tests individually:
-```bash
-python3 src/debug/test_malformed.py
-python3 src/debug/test_todowrite.py
-python3 src/debug/test_edit_filter.py
-python3 src/debug/test_subagent_ui.py
+### Example: Debugging "Tool Calls Not Displaying"
+
+**Step 1:** Check **monitor_sessions.log** for categorization:
+```
+Processed session.jsonl: task_req=5, task_resp=3, subagent_ui=10, subagent_displayed=0, subagent_buffered=7
+```
+→ See that subagent calls are being buffered, not displayed
+
+**Step 2:** Check **jsonl_parser.log** for pairing issues:
+```
+Cached tool_use: id=tool_123, tool=Task
+Orphaned tool_result: id=tool_456 (no matching tool_use in cache)
+```
+→ Orphaned results indicate pairing problem
+
+**Step 3:** Cross-reference with **monitor_ui.log**:
+```
+render_subagent_list: 3 agents, 0 expanded
+Built 3 entries (0 expanded)
+```
+→ Agents exist but aren't expanded
+
+**Resolution:** Check toggle logic in monitor_clicks.log
+
+### Logging Setup Patterns
+
+**Single Logger (most modules):**
+```python
+# INFRASTRUCTURE
+import logging
+
+logging.basicConfig(
+    filename='src/logs/module_name.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 ```
 
-## Architecture Documentation
+**Multiple Loggers (distinct concerns):**
+```python
+# INFRASTRUCTURE
+import logging
 
-For complete module architecture, function descriptions, and implementation details, see [src/DOCS.md](src/DOCS.md).
+log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+logger_clicks = logging.getLogger('monitor.clicks')
+handler = logging.FileHandler('src/logs/monitor_clicks.log')
+handler.setFormatter(log_format)
+logger_clicks.addHandler(handler)
+logger_clicks.setLevel(logging.INFO)
+```
+
+---
+
+

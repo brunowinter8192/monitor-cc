@@ -1,33 +1,5 @@
 # CLAUDE.MD - Master Engineering Reference
 
-## WHO WE ARE
-
-### You: The Storm
-Critical software engineer. Relentless, precise, brutally intelligent.
-Think 5 times before acting. Question everything. Ask when unclear.
-Root causes, not symptoms. No assumptions.
-
-### Me: The Observer
-Extremely observant. Critical. I **will** notice everything.
-Better to clarify now than rebuild later.
-
----
-
-## CODE PRINCIPLES
-
-**LEAN** | **SOLID** | **DRY** | **KISS** | **YAGNI**
-Long-term thinking. Brutal honesty. No overengineering.
-
----
-
-## PRIORITY LEVELS
-
-**CRITICAL:** Must follow - violations break the system
-**IMPORTANT:** Should follow - violations reduce quality
-**RECOMMENDED:** Good practice - improves maintainability
-
----
-
 ## CRITICAL STANDARDS
 
 - NO comments inside function bodies (only function header comments + section markers)
@@ -51,6 +23,7 @@ project/
 ├── workflow.py          # Project-level orchestrator (root entry point)
 ├── README.md            # Quick start, installation, basic usage
 ├── CLAUDE.md            # Engineering standards (this file)
+├── LOGS_MAP.md          # Logging architecture and workflow phases
 ├── src/                 # CRITICAL: All source modules
 │   ├── __init__.py      # Package marker
 │   ├── module_step1.py  # Self-contained workflow step
@@ -60,9 +33,16 @@ project/
 │   │   ├── test_feature1.py
 │   │   ├── test_feature2.py
 │   │   └── debug_helper.py
-│   └── logs/            # CRITICAL: One log file per module
-│       ├── module_step1.log
-│       └── module_step2.log
+│   └── logs/            # CRITICAL: Workflow-oriented log files
+│       ├── 01_startup.log
+│       ├── 02_initialization.log
+│       ├── 03_session_discovery.log
+│       ├── 04_file_reading.log
+│       ├── 05_jsonl_parsing.log
+│       ├── 06_tool_extraction.log
+│       ├── 07_display_routing.log
+│       ├── 08_ui_rendering.log
+│       └── 09_click_handling.log
 └── bug_fixes/           # CRITICAL: Bug-fix documentation (timestamped)
     └── issue_name_YYYYMMDD_HHMMSS_.md
 ```
@@ -148,23 +128,6 @@ project/
     ├── __init__.py
     ├── DOCS.md
     └── modules...
-
-# Multi-workflow project (independent workflows)
-project/
-├── data_pipeline/
-│   ├── README.md       # For data_pipeline workflow
-│   ├── workflow.py
-│   └── src/
-│       ├── __init__.py
-│       ├── DOCS.md
-│       └── modules...
-└── analytics/
-    ├── README.md       # For analytics workflow
-    ├── workflow.py
-    └── src/
-        ├── __init__.py
-        ├── DOCS.md
-        └── modules...
 ```
 
 **Sections:**
@@ -415,66 +378,65 @@ def process_data(df):
 
 ---
 
-## ORCHESTRATOR COMMENT RULES
-
-**CRITICAL:** Orchestrator section has ONLY section marker, NO descriptive comment.
-
-**CORRECT:**
-```python
-# ORCHESTRATOR
-def process_workflow(input_file, output_dir):
-    raw = load_data(input_file)
-    cleaned = clean_data(raw)
-    export_results(analyze_data(cleaned), output_dir)
-```
-
-**INCORRECT:**
-```python
-# ORCHESTRATOR
-# Main workflow for data processing  <-- REMOVE THIS
-def process_workflow(input_file, output_dir):
-    raw = load_data(input_file)
-    cleaned = clean_data(raw)
-    export_results(analyze_data(cleaned), output_dir)
-```
-
-**Rationale:** Orchestrator function name and calls are self-documenting. Additional comments violate YAGNI and clutter structural separation.
-
----
-
 ## LOGGING STANDARDS
 
-**CRITICAL:** Scripts should NOT be verbose during normal operation.
+**CRITICAL:** This project requires COMPREHENSIVE logging for agent-based debugging.
 
-**Rules:**
-1. NO console prints during normal execution
-2. src/logs/ folder for module logs
-3. One log file per module: `src/logs/module_name.log`
-4. Log errors and anything that would be console output
-5. Log format: Timestamp, Level, Message
+**Why:** Agents debug EXCLUSIVELY through logs (no monitor/debugger available). Every function that can produce meaningful logs MUST do so.
 
-**Example logging setup:**
+### Fundamental Rules
+
+1. **NO console prints** during normal execution (use logging instead)
+2. **src/logs/ folder** - one or more log files per module
+3. **ALL logs on INFO level** (agents need to see everything - no DEBUG)
+4. **Every non-trivial function MUST log** entry/exit with parameters and results
+5. **Log: state changes, control flow decisions, error paths, cache operations, statistics**
+
+### What MUST Be Logged
+
+**CRITICAL:**
+- Orchestrator entry/exit with parameters and result counts
+- State changes (cache ops, data transforms, mode switches)
+- Control flow decisions (which branch taken, filter matches)
+- Error paths (expected + unexpected with full context)
+- Data processing statistics (success/failure counts, ratios)
+
+**IMPORTANT:**
+- Function entry/exit for non-trivial operations
+- Loop summaries (periodic heartbeats, NOT every iteration)
+- Tool call categorization breakdowns
+- JSONL parsing results (valid, malformed, orphaned)
+- Session discovery (filter applied, matches/misses)
+
+### Setup Patterns
+
+**Single logger (most modules):**
 ```python
 # INFRASTRUCTURE
 import logging
 
 logging.basicConfig(
-    filename='src/logs/data_processor.log',
+    filename='src/logs/module_name.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 ```
 
-**What to log:**
-- Errors and exceptions
-- Processing start/end
-- Important state changes
-- Data validation failures
+**Multiple loggers (distinct concerns):**
+```python
+# INFRASTRUCTURE
+import logging
 
-**What NOT to log:**
-- Every function call
-- Successful trivial operations
-- Redundant information
+log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+logger_concern1 = logging.getLogger('module.concern1')
+handler = logging.FileHandler('src/logs/module_concern1.log')
+handler.setFormatter(log_format)
+logger_concern1.addHandler(handler)
+logger_concern1.setLevel(logging.INFO)
+```
+
+**See README.md for detailed logging patterns, examples, and debugging guide.**
 
 ---
 
