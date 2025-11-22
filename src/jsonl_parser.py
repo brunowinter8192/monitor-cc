@@ -41,12 +41,18 @@ def log_tagged(logger, tag: str, color: str, message: str) -> None:
 # ORCHESTRATOR
 def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
-    log_tagged(logger_parse, "LINES_READ", BLUE, f"Read {len(new_lines)} new lines from {filepath.name}")
+
+    if len(new_lines) > 0:
+        log_tagged(logger_parse, "LINES_READ", BLUE, f"Read {len(new_lines)} new lines from {filepath.name}")
+
     new_position = get_current_position(filepath)
     messages, malformed_lines = parse_jsonl_lines(new_lines)
     tool_calls = extract_tool_calls(messages, tool_use_cache)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
-    log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(malformed_warnings)} malformed lines, new_pos={new_position}")
+
+    if len(tool_calls) > 0 or len(malformed_warnings) > 0:
+        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(malformed_warnings)} malformed lines")
+
     return tool_calls, new_position, malformed_warnings
 
 # FUNCTIONS
@@ -82,7 +88,9 @@ def read_new_lines(filepath: Path, last_position: int) -> List[str]:
         if lines and not lines[-1]:
             lines = lines[:-1]
 
-        log_tagged(logger_file, "FILE_READ", BLUE, f"read_new_lines: {filepath.name}, bytes={bytes_read}, lines={len(lines)}")
+        if len(lines) > 0:
+            log_tagged(logger_file, "FILE_READ", BLUE, f"{filepath.name}: read {bytes_read} bytes, {len(lines)} lines")
+
         return lines
 
 # Get current file position for next read
@@ -109,20 +117,26 @@ def parse_jsonl_lines(lines: List[str]) -> Tuple[List[dict], List[dict]]:
                 'raw_line': line
             })
 
-    malformed_pct = (len(malformed_lines) / (len(lines) or 1)) * 100
-    log_tagged(logger_parse, "PARSE_STATS", WHITE, f"parse_jsonl_lines: valid={len(messages)}, malformed={len(malformed_lines)} ({malformed_pct:.1f}%)")
+    if len(lines) > 0:
+        malformed_pct = (len(malformed_lines) / len(lines)) * 100
+        log_tagged(logger_parse, "PARSE_STATS", WHITE, f"parse_jsonl_lines: valid={len(messages)}, malformed={len(malformed_lines)} ({malformed_pct:.1f}%)")
+
     return messages, malformed_lines
 
 # Extract tool_use and tool_result pairs from messages
 def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]:
-    log_tagged(logger_extract, "EXTRACT_START", GREEN, f"extract_tool_calls: messages={len(messages)}, cache_size={len(tool_use_cache)}")
+    if len(messages) > 0:
+        log_tagged(logger_extract, "EXTRACT_START", BLUE, f"extract_tool_calls: messages={len(messages)}, cache={len(tool_use_cache)}")
+
     tool_calls = []
     tool_use_count = 0
     tool_result_count = 0
     orphaned_results = 0
+    total_blocks = 0
 
     for message in messages:
         content_blocks = get_message_content(message)
+        total_blocks += len(content_blocks)
         if not content_blocks:
             continue
 
@@ -147,17 +161,20 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
                     orphaned_results += 1
                     log_tagged(logger_extract, "TOOL_ORPHAN", YELLOW, f"Orphaned tool_result: id={tool_use_id} (no matching tool_use in cache)")
 
-    log_tagged(logger_extract, "EXTRACT_STATS", WHITE, f"extract_tool_calls: tool_use={tool_use_count}, tool_result={tool_result_count}, orphaned={orphaned_results}, extracted={len(tool_calls)}")
+    if len(tool_calls) > 0 or orphaned_results > 0:
+        log_tagged(logger_extract, "EXTRACT_STATS", WHITE, f"extract_tool_calls: blocks={total_blocks}, tool_use={tool_use_count}, tool_result={tool_result_count}, orphaned={orphaned_results}, extracted={len(tool_calls)}")
 
     filtered_calls = filter_excluded_tools(tool_calls)
-    log_tagged(logger_extract, "FILTER_COUNT", WHITE, f"After filtering: {len(filtered_calls)} tool calls")
-
     sorted_calls = sort_by_timestamp(filtered_calls)
     return sorted_calls
 
 # Get message content blocks
 def get_message_content(message: dict) -> List[dict]:
-    content = message.get('content', [])
+    if 'message' in message and isinstance(message['message'], dict):
+        content = message['message'].get('content', [])
+    else:
+        content = message.get('content', [])
+
     if isinstance(content, list):
         return content
     return []

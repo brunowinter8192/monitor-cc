@@ -92,6 +92,7 @@ last_rendered_output: str = ""
 fifo_fd: Optional[int] = None
 fifo_path: Optional[str] = None
 ui_loop_iteration: int = 0
+_last_monitored_count: Optional[int] = None
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: bool = False) -> None:
@@ -102,7 +103,8 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: boo
 
     log_tagged(logger_init, "RUN_MONITOR", MAGENTA, f"run_monitor: project={project_filter}, mode={mode}, ui={ui}")
 
-    initialize_file_positions()
+    session_count = initialize_file_positions()
+    print_session_status(session_count, project_filter, mode)
 
     if ui and mode == 'subagent':
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode with FIFO")
@@ -118,7 +120,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: boo
 # FUNCTIONS
 
 # Initialize file positions for all existing sessions
-def initialize_file_positions() -> None:
+def initialize_file_positions() -> int:
     global file_positions, active_project_filter
 
     sessions = find_active_sessions(active_project_filter)
@@ -130,13 +132,18 @@ def initialize_file_positions() -> None:
             file_positions[session_file] = pos
             log_tagged(logger_init, "FILE_POS_INIT", BLUE, f"Initialized {session_file.name} at position {pos}")
 
+    return len(sessions)
+
 # Monitor all active sessions for new tool calls
 def monitor_sessions() -> None:
-    global active_project_filter, active_mode
+    global active_project_filter, active_mode, _last_monitored_count
     sessions = find_active_sessions(active_project_filter)
-    log_tagged(logger_routing, "MON_SESS", BLUE, f"monitor_sessions: found={len(sessions)}, mode={active_mode}, tracking={len(file_positions)}")
+
+    if _last_monitored_count != len(sessions):
+        log_tagged(logger_routing, "MON_SESS", BLUE, f"Sessions changed: {len(sessions)} (was {_last_monitored_count})")
+        _last_monitored_count = len(sessions)
+
     filtered_sessions = filter_sessions_by_mode(sessions, active_mode)
-    log_tagged(logger_routing, "MODE_FILTER", BLUE, f"monitor_sessions: after_filter={len(filtered_sessions)}")
     update_session_tracking(filtered_sessions)
     process_all_sessions(filtered_sessions)
 
@@ -178,7 +185,6 @@ def process_session_file(filepath: Path) -> None:
 
     last_position = file_positions[filepath]
     cache = tool_use_caches[filepath]
-    log_tagged(logger_file, "PROCESS_FILE", BLUE, f"Processing {filepath.name}: last_pos={last_position}, cache_size={len(cache)}")
 
     tool_calls, new_position, malformed_warnings = parse_new_tool_calls(filepath, last_position, cache)
 
@@ -243,7 +249,9 @@ def process_session_file(filepath: Path) -> None:
             display_tool_call(tool_call, call_counter)
 
     file_positions[filepath] = new_position
-    log_tagged(logger_routing, "PROC_STATS", WHITE, f"Processed {filepath.name}: task_req={task_requests}, task_resp={task_responses}, subagent_ui={subagent_ui_tracked}, subagent_displayed={subagent_displayed}, subagent_buffered={subagent_buffered}, other={other_displayed}")
+
+    if task_requests > 0 or task_responses > 0 or subagent_ui_tracked > 0 or subagent_displayed > 0 or subagent_buffered > 0 or other_displayed > 0:
+        log_tagged(logger_routing, "PROC_STATS", WHITE, f"Processed {filepath.name}: task_req={task_requests}, task_resp={task_responses}, subagent_ui={subagent_ui_tracked}, subagent_displayed={subagent_displayed}, subagent_buffered={subagent_buffered}, other={other_displayed}")
 
 # Display formatted warning to console
 def display_warning(warning: dict) -> None:
@@ -272,6 +280,26 @@ def display_tool_call(tool_call: dict, call_number: int) -> None:
     print(formatted)
     print()
 
+# Print session status after initialization
+def print_session_status(session_count: int, project_filter: Optional[str] = None, mode: str = 'all') -> None:
+    if session_count == 0:
+        print(f"{YELLOW}No sessions found.{RESET}")
+        if project_filter:
+            print(f"{YELLOW}Project {project_filter} has no active Claude Code sessions.{RESET}\n")
+        else:
+            print(f"{YELLOW}No sessions in ~/.claude/projects{RESET}\n")
+    else:
+        mode_label = ''
+        if mode == 'main':
+            mode_label = ' (main agent only)'
+        elif mode == 'subagent':
+            mode_label = ' (subagent only)'
+
+        print(f"{GREEN}Monitoring {session_count} sessions{mode_label}{RESET}")
+        if project_filter:
+            print(f"{CYAN}Project: {project_filter}{RESET}")
+        print(f"{CYAN}Waiting for new tool calls...{RESET}\n")
+
 # Get end position of file (for initializing at EOF)
 def get_file_end_position(filepath: Path) -> int:
     if not filepath.exists():
@@ -299,7 +327,6 @@ def filter_sessions_by_mode(sessions: list, mode: str) -> list:
     else:
         filtered = sessions
 
-    log_tagged(logger_routing, "FILTER_MODE", BLUE, f"filter_sessions_by_mode: mode={mode}, in={len(sessions)}, out={len(filtered)}")
     return filtered
 
 # Check if tool call is a Task REQUEST
@@ -353,6 +380,7 @@ def track_subagent_metadata(tool_call: dict, filepath: Path) -> None:
             'call_count': 0
         }
         tool_calls_by_agent[agent_id] = []
+        subagent_states[agent_id] = True  # Auto-expand all subagents
         log_tagged(logger_ui, "AGENT_DISC", CYAN, f"Discovered new agent: {agent_id}, type={subagent_type}, file={filepath.name}")
 
     tool_calls_by_agent[agent_id].append(tool_call)
@@ -372,7 +400,9 @@ def sync_ui_to_screen() -> None:
     global subagent_metadata, tool_calls_by_agent, last_rendered_output
 
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
-    log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={len(subagent_metadata)}, expanded={expanded_count}")
+
+    if len(subagent_metadata) > 0:
+        log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={len(subagent_metadata)}, expanded={expanded_count}")
 
     formatted_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
 
@@ -381,7 +411,7 @@ def sync_ui_to_screen() -> None:
         print("\033[2J\033[H", end='')
         print(formatted_output)
         last_rendered_output = formatted_output
-    else:
+    elif len(subagent_metadata) > 0:
         log_tagged(logger_ui, "UI_SKIP", WHITE, "sync_ui_to_screen: no change, skipping re-render")
 
 # Extracts subagent type from tool call input

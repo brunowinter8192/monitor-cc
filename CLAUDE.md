@@ -43,8 +43,10 @@ project/
 │       ├── 07_display_routing.log
 │       ├── 08_ui_rendering.log
 │       └── 09_click_handling.log
-└── bug_fixes/           # CRITICAL: Bug-fix documentation (timestamped)
-    └── issue_name_YYYYMMDD_HHMMSS_.md
+├── bug_fixes/           # CRITICAL: Successful bug-fix documentation (timestamped)
+│   └── issue_name_YYYYMMDD_HHMMSS.md
+└── not_working/         # CRITICAL: Failed fix attempts documentation (timestamped)
+    └── issue_name_YYYYMMDD_HHMMSS_failed.md
 ```
 
 **Workflow-oriented approach:**

@@ -157,12 +157,12 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 |----------|--------|----------------|-----------|----------|
 | 01_startup.log | 12 | workflow.py | Startup-only | MAIN_ENTRY, TMUX_CREATE, SESS_NAME |
 | 02_initialization.log | 8 | monitor.py | Startup-only | RUN_MONITOR, INIT_SESS, FIFO_OPEN |
-| 03_session_discovery.log | 11 | session_finder.py | Every 0.5s + changes | FIND_SESS, ACTIVE_SESS, FILTER_SKIP |
-| 04_file_reading.log | 5 | jsonl_parser.py, monitor.py | Every 0.5s per session | FILE_READ, PROCESS_FILE, NEW_SESS |
-| 05_jsonl_parsing.log | 6 | jsonl_parser.py, monitor.py | Every 0.5s per session | PARSE_START, JSON_ERROR, PARSE_DONE |
-| 06_tool_extraction.log | 8 | jsonl_parser.py, monitor.py | Every 0.5s per session | TOOL_CACHED, TOOL_MATCH, TOOL_ORPHAN |
-| 07_display_routing.log | 9 | monitor.py | Every 0.5s | MON_SESS, TASK_REQ, SUB_DISPLAY |
-| 08_ui_rendering.log | 11 | monitor.py, subagent_ui.py | Every 0.5s (UI mode) | UI_RENDER, RENDER_LIST, ENTRIES_BUILT |
+| 03_session_discovery.log | 11 | session_finder.py | On changes only | PROJ_DIRS, ACTIVE_SESS, TOTAL_JSONL |
+| 04_file_reading.log | 5 | jsonl_parser.py, monitor.py | On new data only | FILE_READ, NEW_SESS, SESS_REMOVED |
+| 05_jsonl_parsing.log | 6 | jsonl_parser.py, monitor.py | On new data only | LINES_READ, JSON_ERROR, PARSE_DONE |
+| 06_tool_extraction.log | 8 | jsonl_parser.py, monitor.py | On tool calls only | TOOL_CACHED, TOOL_MATCH, TOOL_ORPHAN |
+| 07_display_routing.log | 9 | monitor.py | On changes only | MON_SESS, TASK_REQ, SUB_DISPLAY |
+| 08_ui_rendering.log | 11 | monitor.py, subagent_ui.py | On changes only (UI mode) | UI_RENDER, RENDER_LIST, ENTRIES_BUILT |
 | 09_click_handling.log | 13 | workflow.py, monitor.py | On user click + setup | FIFO_CREATE, FIFO_READ, TOGGLE_OK |
 
 **Total: 83 events across 9 workflow phases**

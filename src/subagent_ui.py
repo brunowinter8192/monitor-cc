@@ -9,16 +9,18 @@ YELLOW_LOG = '\033[93m'
 PURPLE_LOG = '\033[38;5;135m'
 WHITE_LOG = '\033[97m'
 
-logging.basicConfig(
-    filename='src/logs/08_ui_rendering.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+logger_ui = logging.getLogger('subagent_ui.rendering')
+ui_handler = logging.FileHandler('src/logs/08_ui_rendering.log')
+ui_handler.setFormatter(log_format)
+logger_ui.addHandler(ui_handler)
+logger_ui.setLevel(logging.INFO)
 
 # Tagged logging helper
 def log_tagged(tag: str, color: str, message: str) -> None:
     colored_tag = f"{color}[{tag}]{RESET_LOG}"
-    logging.info(f"{colored_tag} {message}")
+    logger_ui.info(f"{colored_tag} {message}")
 
 # From formatter.py: Color constants for terminal output
 from .formatter import GREEN, BLUE, CYAN, YELLOW, RESET
@@ -28,15 +30,19 @@ subagent_states: Dict[str, bool] = {}
 # ORCHESTRATOR
 def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
-    log_tagged("RENDER_LIST", PURPLE_LOG, f"render_subagent_list: {len(subagent_metadata)} agents, {expanded_count} expanded")
+
+    if len(subagent_metadata) > 0 or expanded_count > 0:
+        log_tagged("RENDER_LIST", PURPLE_LOG, f"render_subagent_list: {len(subagent_metadata)} agents, {expanded_count} expanded")
 
     header = build_list_header(len(subagent_metadata))
     entries = build_all_entries(subagent_metadata, tool_calls_by_agent)
     footer = build_keybinding_footer()
     combined = combine_sections(header, entries, footer)
 
-    output_lines = combined.count('\n')
-    log_tagged("RENDER_STATS", WHITE_LOG, f"Rendered output: {len(combined)} chars, {output_lines} lines")
+    if len(subagent_metadata) > 0:
+        output_lines = combined.count('\n')
+        log_tagged("RENDER_STATS", WHITE_LOG, f"Rendered output: {len(combined)} chars, {output_lines} lines")
+
     return combined
 
 # FUNCTIONS
@@ -48,7 +54,6 @@ def build_list_header(count: int) -> str:
 # Builds all subagent entries based on expanded state
 def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
     if not subagent_metadata:
-        log_tagged("NO_AGENTS", YELLOW_LOG, "No subagents to render")
         return f"{YELLOW}No subagents active yet{RESET}"
 
     entries = []
@@ -65,7 +70,9 @@ def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
 
         entries.append(entry)
 
-    log_tagged("ENTRIES_BUILT", PURPLE_LOG, f"Built {len(entries)} entries ({expanded_entries} expanded)")
+    if expanded_entries > 0:
+        log_tagged("ENTRIES_BUILT", PURPLE_LOG, f"Built {len(entries)} entries ({expanded_entries} expanded)")
+
     return '\n\n'.join(entries)
 
 # Shows collapsed subagent entry with summary
@@ -103,7 +110,7 @@ def format_subagent_name(agent_id: str, subagent_type: str, timestamp: str, exis
     time_suffix = format_timestamp(timestamp).replace(':', '')
     return f"{base_name}-{time_suffix}"
 
-# Formats single tool call as summary line
+# Formats single tool call as summary line with output
 def format_tool_call_summary(tool_call: dict) -> str:
     tool_name = tool_call.get('tool_name', 'Unknown')
     call_number = tool_call.get('call_number', '?')
@@ -114,7 +121,27 @@ def format_tool_call_summary(tool_call: dict) -> str:
     has_output = tool_call.get('output') is not None
     direction = '↔' if has_output else '→'
 
-    return f"{GREEN}[{timestamp}] {direction} #{call_number} {tool_name}{RESET}: {input_preview}"
+    summary_line = f"{GREEN}[{timestamp}] {direction} #{call_number} {tool_name}{RESET}: {input_preview}"
+
+    # Add output if present (FULL output, no truncating)
+    if has_output:
+        output = tool_call.get('output', '') or "(empty)"
+        output_lines = f"\n    {CYAN}OUTPUT:{RESET} {output}"
+        return summary_line + output_lines
+
+    return summary_line
+
+# Truncate output to first N lines
+def truncate_output(output: str, max_lines: int = 5) -> str:
+    if not output:
+        return "(empty)"
+
+    lines = output.split('\n')
+    if len(lines) <= max_lines:
+        return output
+
+    truncated = '\n    '.join(lines[:max_lines])
+    return f"{truncated}\n    ... ({len(lines) - max_lines} more lines)"
 
 # Shows keybinding help footer
 def build_keybinding_footer() -> str:
