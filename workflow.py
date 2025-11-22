@@ -26,12 +26,6 @@ startup_handler.setFormatter(log_format)
 logger_startup.addHandler(startup_handler)
 logger_startup.setLevel(logging.INFO)
 
-logger_clicks = logging.getLogger('workflow.clicks')
-clicks_handler = logging.FileHandler('src/logs/09_click_handling.log')
-clicks_handler.setFormatter(log_format)
-logger_clicks.addHandler(clicks_handler)
-logger_clicks.setLevel(logging.INFO)
-
 # Tagged logging helper
 def log_tagged(logger, tag: str, color: str, message: str) -> None:
     colored_tag = f"{color}[{tag}]{RESET}"
@@ -75,26 +69,24 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False) 
         print("This might be a stale session. Killing it and creating fresh one...")
         kill_session(session_name)
 
-    fifo_path = create_fifo(session_name)
-
     project_arg = f"--project {project_filter}" if project_filter else ""
     ui_flag = "--ui" if ui else ""
 
     main_cmd = f"python3 {script_path} --mode main {project_arg}"
-    subagent_cmd = f"MONITOR_CC_FIFO={fifo_path} python3 {script_path} --mode subagent {project_arg} {ui_flag}"
+    subagent_cmd = f"python3 {script_path} --mode subagent {project_arg} {ui_flag}"
 
     original_history_limit = get_global_history_limit()
-    log_tagged(logger_clicks, "HIST_SET", BLUE, f"Setting history limit to 50000")
+    log_tagged(logger_startup, "HIST_SET", BLUE, f"Setting history limit to 50000")
     subprocess.run(["tmux", "set-option", "-g", "history-limit", "50000"])
 
-    log_tagged(logger_clicks, "TMUX_CREATE", GREEN, f"Creating tmux session '{session_name}'")
+    log_tagged(logger_startup, "TMUX_CREATE", GREEN, f"Creating tmux session '{session_name}'")
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, main_cmd])
 
-    log_tagged(logger_clicks, "TMUX_SPLIT", GREEN, f"Splitting window for subagent pane")
+    log_tagged(logger_startup, "TMUX_SPLIT", GREEN, f"Splitting window for subagent pane")
     subprocess.run(["tmux", "split-window", "-h", "-t", session_name, subagent_cmd])
 
     restore_global_history_limit(original_history_limit)
-    configure_tmux_session(session_name, fifo_path)
+    configure_tmux_session(session_name)
 
     subprocess.run(["tmux", "attach-session", "-t", session_name])
 
@@ -130,24 +122,23 @@ def check_session_exists(session_name: str) -> bool:
 # Kill tmux session
 def kill_session(session_name: str) -> None:
     log_tagged(logger_startup, "SESS_KILL", YELLOW, f"Killing session: {session_name}")
-    cleanup_fifo(session_name)
     subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
 
 # Get current global history-limit setting
 def get_global_history_limit() -> str:
     result = subprocess.run(["tmux", "show-options", "-gv", "history-limit"], capture_output=True, text=True)
     limit = result.stdout.strip() or "2000"
-    log_tagged(logger_clicks, "HIST_ORIG", BLUE, f"Original history limit: {limit}")
+    log_tagged(logger_startup, "HIST_ORIG", BLUE, f"Original history limit: {limit}")
     return limit
 
 # Restore global history-limit to original value
 def restore_global_history_limit(original_value: str) -> None:
-    log_tagged(logger_clicks, "HIST_RESTORE", BLUE, f"Restoring history limit to {original_value}")
+    log_tagged(logger_startup, "HIST_RESTORE", BLUE, f"Restoring history limit to {original_value}")
     subprocess.run(["tmux", "set-option", "-g", "history-limit", original_value])
 
 # Configure tmux session appearance and behavior
-def configure_tmux_session(session_name: str, fifo_path: str) -> None:
-    log_tagged(logger_clicks, "TMUX_CONFIG", GREEN, f"Configuring tmux session: {session_name}")
+def configure_tmux_session(session_name: str) -> None:
+    log_tagged(logger_startup, "TMUX_CONFIG", GREEN, f"Configuring tmux session: {session_name}")
     subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe-and-cancel", "pbcopy"])
@@ -156,7 +147,6 @@ def configure_tmux_session(session_name: str, fifo_path: str) -> None:
     subprocess.run(["tmux", "bind-key", "-T", "root", "WheelDownPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode -e; send-keys -X -N 5 scroll-down"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-border-style", "fg=colour240"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-active-border-style", "fg=colour245"])
-    configure_mouse_click_binding(session_name, fifo_path)
 
 # Setup signal handlers for graceful shutdown
 def setup_signal_handlers() -> None:
@@ -199,49 +189,6 @@ def print_startup_message(project_filter: Optional[str] = None, mode: str = 'all
 # Print shutdown message
 def print_shutdown_message() -> None:
     print("\n\033[38;5;35mMonitor stopped\033[0m")
-
-# Create FIFO pipe for mouse click communication
-def create_fifo(session_name: str) -> str:
-    fifo_path = f"/tmp/monitor_cc_control_{session_name}.fifo"
-    if os.path.exists(fifo_path):
-        os.remove(fifo_path)
-    os.mkfifo(fifo_path)
-    log_tagged(logger_clicks, "FIFO_CREATE", GREEN, f"Created FIFO at {fifo_path}")
-    return fifo_path
-
-# Remove FIFO pipe on cleanup
-def cleanup_fifo(session_name: str) -> None:
-    fifo_path = f"/tmp/monitor_cc_control_{session_name}.fifo"
-    if os.path.exists(fifo_path):
-        os.remove(fifo_path)
-        log_tagged(logger_clicks, "FIFO_CLEANUP", YELLOW, f"Cleaned up FIFO at {fifo_path}")
-
-# Configure tmux mouse click binding to write to FIFO
-def configure_mouse_click_binding(session_name: str, fifo_path: str) -> None:
-    fifo_cmd = f"run-shell 'echo toggle:#{{mouse_y}}:#{{scroll_position}} > {fifo_path}'"
-
-    log_tagged(logger_clicks, "MOUSE_BIND", CYAN, f"Configuring mouse binding: session={session_name}, fifo={fifo_path}")
-
-    # UNBIND old MouseDown1Pane bindings first (they persist globally across sessions!)
-    subprocess.run(["tmux", "unbind-key", "-T", "root", "MouseDown1Pane"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(["tmux", "unbind-key", "-T", "copy-mode", "MouseDown1Pane"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(["tmux", "unbind-key", "-T", "copy-mode-vi", "MouseDown1Pane"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    # Root mode: Direct FIFO write
-    subprocess.run([
-        "tmux", "bind-key", "-T", "root",
-        "MouseDown1Pane", fifo_cmd
-    ])
-
-    # Copy-mode: EXIT copy-mode FIRST (send -X cancel), THEN FIFO write
-    # The \; chains commands: exit copy-mode, then run FIFO write
-    copy_mode_cmd = f"send -X cancel \\; {fifo_cmd}"
-
-    for key_table in ["copy-mode", "copy-mode-vi"]:
-        subprocess.run([
-            "tmux", "bind-key", "-T", key_table,
-            "MouseDown1Pane", copy_mode_cmd
-        ])
 
 if __name__ == "__main__":
     main()

@@ -1,7 +1,7 @@
 # Logging Architecture - Workflow-Oriented
 
 ## Overview
-Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence from startup through continuous monitoring. Each log file tracks ~10 events for a specific workflow phase.
+Monitor_CC uses 8 workflow-oriented log files that follow the execution sequence from startup through continuous monitoring. Each log file tracks ~10 events for a specific workflow phase.
 
 ## Log Files by Workflow Phase
 
@@ -24,18 +24,15 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 
 ---
 
-### 02_initialization.log (8 events)
+### 02_initialization.log (5 events)
 
 | # | Event | Module | Function | Tag | Color |
 |---|-------|--------|----------|-----|-------|
 | 1 | run_monitor entry | monitor.py | run_monitor() | RUN_MONITOR | Magenta |
-| 2 | Starting UI mode with FIFO | monitor.py | run_monitor() | UI_MODE | Cyan |
+| 2 | Starting UI mode | monitor.py | run_monitor() | UI_MODE | Cyan |
 | 3 | Starting streaming mode | monitor.py | run_monitor() | STREAM_MODE | Cyan |
 | 4 | Initializing N sessions | monitor.py | initialize_file_positions() | INIT_SESS | Blue |
 | 5 | File position initialized | monitor.py | initialize_file_positions() | FILE_POS_INIT | Blue |
-| 6 | FIFO opened at path | monitor.py | open_fifo_non_blocking() | FIFO_OPEN | Green |
-| 7 | FIFO not set warning | monitor.py | open_fifo_non_blocking() | FIFO_WARN | Yellow |
-| 8 | FIFO failed to open | monitor.py | open_fifo_non_blocking() | FIFO_ERROR | Red |
 
 ---
 
@@ -113,7 +110,7 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 
 ---
 
-### 08_ui_rendering.log (11 events)
+### 08_ui_rendering.log (10 events)
 
 | # | Event | Module | Function | Tag | Color |
 |---|-------|--------|----------|-----|-------|
@@ -127,27 +124,6 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 | 8 | Agent has no tool calls | subagent_ui.py | build_expanded_entry() | NO_CALLS | Yellow |
 | 9 | Building expanded entry | subagent_ui.py | build_expanded_entry() | EXPAND_BUILD | Purple |
 | 10 | Rendered output stats | subagent_ui.py | render_subagent_list() | RENDER_STATS | White |
-| 11 | FIFO closed | monitor.py | close_fifo() | FIFO_CLOSE | Cyan |
-
----
-
-### 09_click_handling.log (13 events)
-
-| # | Event | Module | Function | Tag | Color |
-|---|-------|--------|----------|-----|-------|
-| 1 | FIFO created | workflow.py | create_fifo() | FIFO_CREATE | Green |
-| 2 | FIFO cleaned up | workflow.py | cleanup_fifo() | FIFO_CLEANUP | Yellow |
-| 3 | Original history limit | workflow.py | get_global_history_limit() | HIST_ORIG | Blue |
-| 4 | Setting history limit | workflow.py | launch_split_screen() | HIST_SET | Blue |
-| 5 | Restore history limit | workflow.py | restore_global_history_limit() | HIST_RESTORE | Blue |
-| 6 | Creating tmux session | workflow.py | launch_split_screen() | TMUX_CREATE | Green |
-| 7 | Splitting window | workflow.py | launch_split_screen() | TMUX_SPLIT | Green |
-| 8 | Configuring tmux session | workflow.py | configure_tmux_session() | TMUX_CONFIG | Green |
-| 9 | Mouse binding configured | workflow.py | configure_mouse_click_binding() | MOUSE_BIND | Cyan |
-| 10 | Read from FIFO | monitor.py | handle_fifo_commands() | FIFO_READ | Cyan |
-| 11 | Processing FIFO command | monitor.py | process_fifo_command() | FIFO_CMD | Cyan |
-| 12 | Toggled agent at line | monitor.py | process_fifo_command() | TOGGLE_OK | Green |
-| 13 | Invalid FIFO command | monitor.py | process_fifo_command() | FIFO_INVALID | Red |
 
 ---
 
@@ -156,13 +132,12 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 | Log File | Events | Primary Module | Frequency | Key Tags |
 |----------|--------|----------------|-----------|----------|
 | 01_startup.log | 12 | workflow.py | Startup-only | MAIN_ENTRY, TMUX_CREATE, SESS_NAME |
-| 02_initialization.log | 8 | monitor.py | Startup-only | RUN_MONITOR, INIT_SESS, FIFO_OPEN |
+| 02_initialization.log | 5 | monitor.py | Startup-only | RUN_MONITOR, INIT_SESS, UI_MODE |
 | 03_session_discovery.log | 11 | session_finder.py | On changes only | PROJ_DIRS, ACTIVE_SESS, TOTAL_JSONL |
 | 04_file_reading.log | 5 | jsonl_parser.py, monitor.py | On new data only | FILE_READ, NEW_SESS, SESS_REMOVED |
 | 05_jsonl_parsing.log | 6 | jsonl_parser.py, monitor.py | On new data only | LINES_READ, JSON_ERROR, PARSE_DONE |
 | 06_tool_extraction.log | 8 | jsonl_parser.py, monitor.py | On tool calls only | TOOL_CACHED, TOOL_MATCH, TOOL_ORPHAN |
 | 07_display_routing.log | 9 | monitor.py | On changes only | MON_SESS, TASK_REQ, SUB_DISPLAY |
-| 08_ui_rendering.log | 11 | monitor.py, subagent_ui.py | On changes only (UI mode) | UI_RENDER, RENDER_LIST, ENTRIES_BUILT |
-| 09_click_handling.log | 13 | workflow.py, monitor.py | On user click + setup | FIFO_CREATE, FIFO_READ, TOGGLE_OK |
+| 08_ui_rendering.log | 10 | monitor.py, subagent_ui.py | On changes only (UI mode) | UI_RENDER, RENDER_LIST, ENTRIES_BUILT |
 
-**Total: 83 events across 9 workflow phases**
+**Total: 66 events across 8 workflow phases**

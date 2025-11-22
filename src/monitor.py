@@ -55,13 +55,6 @@ ui_handler.setFormatter(log_format)
 logger_ui.addHandler(ui_handler)
 logger_ui.setLevel(logging.INFO)
 
-# 09_click_handling.log
-logger_clicks = logging.getLogger('monitor.clicks')
-clicks_handler = logging.FileHandler('src/logs/09_click_handling.log')
-clicks_handler.setFormatter(log_format)
-logger_clicks.addHandler(clicks_handler)
-logger_clicks.setLevel(logging.INFO)
-
 # Tagged logging helper
 def log_tagged(logger, tag: str, color: str, message: str) -> None:
     colored_tag = f"{color}[{tag}]{RESET}"
@@ -73,8 +66,8 @@ from .session_finder import find_active_sessions
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls and warnings for display
 from .formatter import format_tool_call, format_warning
-# From subagent_ui.py: Render collapsible subagent list
-from .subagent_ui import render_subagent_list, toggle_subagent, collapse_all, get_agent_display_name, extract_timestamp_from_agent, count_calls_for_agent, subagent_states
+# From subagent_ui.py: Render auto-expanded subagent list
+from .subagent_ui import render_subagent_list, get_agent_display_name, extract_timestamp_from_agent, count_calls_for_agent, subagent_states
 
 POLL_INTERVAL = 0.5
 file_positions: Dict[Path, int] = {}
@@ -89,10 +82,10 @@ ui_mode_active: bool = False
 subagent_metadata: Dict[str, dict] = {}
 tool_calls_by_agent: Dict[str, List[dict]] = {}
 last_rendered_output: str = ""
-fifo_fd: Optional[int] = None
-fifo_path: Optional[str] = None
 ui_loop_iteration: int = 0
 _last_monitored_count: Optional[int] = None
+_last_agent_count: int = 0
+_last_expanded_count: int = 0
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: bool = False) -> None:
@@ -107,12 +100,8 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: boo
     print_session_status(session_count, project_filter, mode)
 
     if ui and mode == 'subagent':
-        log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode with FIFO")
-        open_fifo_non_blocking()
-        try:
-            run_ui_loop()
-        finally:
-            close_fifo()
+        log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
+        run_ui_loop()
     else:
         log_tagged(logger_init, "STREAM_MODE", CYAN, "Starting streaming mode")
         run_streaming_loop()
@@ -347,7 +336,7 @@ def run_streaming_loop() -> None:
         monitor_sessions()
         time.sleep(POLL_INTERVAL)
 
-# Runs UI mode loop with collapsible subagent list
+# Runs UI mode loop with auto-expanded subagent list
 def run_ui_loop() -> None:
     global ui_loop_iteration
     while True:
@@ -355,7 +344,6 @@ def run_ui_loop() -> None:
         if ui_loop_iteration % 10 == 0:
             log_tagged(logger_ui, "UI_ITER", WHITE, f"UI loop iteration #{ui_loop_iteration}")
         monitor_sessions()
-        handle_fifo_commands()
         sync_ui_to_screen()
         time.sleep(POLL_INTERVAL)
 
@@ -397,22 +385,21 @@ def update_tool_calls_by_agent(agent_id: str, tool_call: dict) -> None:
 
 # Syncs UI output to terminal screen
 def sync_ui_to_screen() -> None:
-    global subagent_metadata, tool_calls_by_agent, last_rendered_output
+    global subagent_metadata, tool_calls_by_agent, last_rendered_output, _last_agent_count, _last_expanded_count
 
+    agent_count = len(subagent_metadata)
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
-
-    if len(subagent_metadata) > 0:
-        log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={len(subagent_metadata)}, expanded={expanded_count}")
 
     formatted_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
 
     if formatted_output != last_rendered_output:
-        log_tagged(logger_ui, "UI_RENDER", PURPLE, f"Re-rendering UI: {len(formatted_output)} chars, agents={len(subagent_metadata)}, expanded={expanded_count}")
+        log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={agent_count}, expanded={expanded_count}")
+        log_tagged(logger_ui, "UI_RENDER", PURPLE, f"Re-rendering UI: {len(formatted_output)} chars, agents={agent_count}, expanded={expanded_count}")
         print("\033[2J\033[H", end='')
         print(formatted_output)
         last_rendered_output = formatted_output
-    elif len(subagent_metadata) > 0:
-        log_tagged(logger_ui, "UI_SKIP", WHITE, "sync_ui_to_screen: no change, skipping re-render")
+        _last_agent_count = agent_count
+        _last_expanded_count = expanded_count
 
 # Extracts subagent type from tool call input
 def extract_subagent_type(tool_call: dict) -> str:
@@ -425,101 +412,3 @@ def extract_subagent_type(tool_call: dict) -> str:
                 return parent_tool.get('input', {}).get('subagent_type', '')
 
     return ''
-
-# Opens FIFO in non-blocking mode for reading mouse commands
-def open_fifo_non_blocking() -> None:
-    global fifo_fd, fifo_path
-    fifo_path = os.environ.get('MONITOR_CC_FIFO')
-
-    if not fifo_path:
-        log_tagged(logger_init, "FIFO_WARN", YELLOW, "MONITOR_CC_FIFO not set, mouse clicks disabled")
-        return
-
-    try:
-        fifo_fd = os.open(fifo_path, os.O_RDONLY | os.O_NONBLOCK)
-        log_tagged(logger_init, "FIFO_OPEN", GREEN, f"Opened FIFO at {fifo_path}")
-    except Exception as e:
-        log_tagged(logger_init, "FIFO_ERROR", RED, f"Failed to open FIFO: {e}")
-        fifo_fd = None
-
-# Closes FIFO file descriptor
-def close_fifo() -> None:
-    global fifo_fd
-    if fifo_fd is not None:
-        os.close(fifo_fd)
-        fifo_fd = None
-        log_tagged(logger_ui, "FIFO_CLOSE", CYAN, "Closed FIFO")
-
-# Reads and processes commands from FIFO
-def handle_fifo_commands() -> None:
-    global fifo_fd
-
-    if fifo_fd is None:
-        return
-
-    try:
-        data = os.read(fifo_fd, 1024).decode('utf-8').strip()
-        if data:
-            log_tagged(logger_clicks, "FIFO_READ", CYAN, f"Read from FIFO: '{data}'")
-            for line in data.split('\n'):
-                if line:
-                    process_fifo_command(line)
-    except BlockingIOError:
-        pass
-    except Exception as e:
-        log_tagged(logger_clicks, "FIFO_ERROR", RED, f"Error reading FIFO: {e}")
-
-# Processes single FIFO command
-def process_fifo_command(command: str) -> None:
-    global subagent_metadata
-
-    log_tagged(logger_clicks, "FIFO_CMD", CYAN, f"Processing command: '{command}'")
-
-    parts = command.split(':', 2)
-    if len(parts) != 3:
-        log_tagged(logger_clicks, "FIFO_INVALID", RED, f"Invalid FIFO command format: {command}")
-        return
-
-    action, mouse_y, scroll_pos = parts
-
-    if action == 'toggle':
-        try:
-            y = int(mouse_y)
-            scroll = int(scroll_pos)
-            line_num = y + scroll + 1
-            agent_id = get_agent_id_at_line(line_num)
-            if agent_id:
-                toggle_subagent(agent_id)
-                log_tagged(logger_clicks, "TOGGLE_OK", GREEN, f"Toggled agent {agent_id} at line {line_num}")
-            else:
-                log_tagged(logger_clicks, "NO_AGENT", RED, f"No agent found at line {line_num}")
-        except ValueError:
-            log_tagged(logger_clicks, "INVALID_POS", RED, f"Invalid mouse position: y={mouse_y}, scroll={scroll_pos}")
-
-# Maps display line number to agent_id
-def get_agent_id_at_line(line_num: int) -> Optional[str]:
-    global subagent_metadata, tool_calls_by_agent
-
-    current_line = 1
-    current_line += 2
-
-    sorted_agents = sorted(subagent_metadata.items(), key=lambda x: x[1]['timestamp'])
-
-    for agent_id, metadata in sorted_agents:
-        is_expanded = subagent_states.get(agent_id, False)
-
-        range_start = current_line
-        range_end = current_line
-
-        if is_expanded:
-            tool_calls = tool_calls_by_agent.get(agent_id, [])
-            range_end += len(tool_calls)
-
-        range_end += 1
-
-        if range_start <= line_num <= range_end:
-            return agent_id
-
-        current_line = range_end + 1
-
-    return None

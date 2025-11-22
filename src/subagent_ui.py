@@ -26,22 +26,26 @@ def log_tagged(tag: str, color: str, message: str) -> None:
 from .formatter import GREEN, BLUE, CYAN, YELLOW, RESET
 
 subagent_states: Dict[str, bool] = {}
+_last_agent_count: int = 0
+_last_expanded_count: int = 0
+_last_entry_count: int = 0
+_last_expanded_entries: int = 0
 
 # ORCHESTRATOR
 def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
+    global _last_agent_count, _last_expanded_count
+
+    agent_count = len(subagent_metadata)
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
 
-    if len(subagent_metadata) > 0 or expanded_count > 0:
-        log_tagged("RENDER_LIST", PURPLE_LOG, f"render_subagent_list: {len(subagent_metadata)} agents, {expanded_count} expanded")
+    if agent_count != _last_agent_count or expanded_count != _last_expanded_count:
+        log_tagged("RENDER_LIST", PURPLE_LOG, f"render_subagent_list: {agent_count} agents, {expanded_count} expanded")
+        _last_agent_count = agent_count
+        _last_expanded_count = expanded_count
 
-    header = build_list_header(len(subagent_metadata))
+    header = build_list_header(agent_count)
     entries = build_all_entries(subagent_metadata, tool_calls_by_agent)
-    footer = build_keybinding_footer()
-    combined = combine_sections(header, entries, footer)
-
-    if len(subagent_metadata) > 0:
-        output_lines = combined.count('\n')
-        log_tagged("RENDER_STATS", WHITE_LOG, f"Rendered output: {len(combined)} chars, {output_lines} lines")
+    combined = combine_sections(header, entries)
 
     return combined
 
@@ -53,6 +57,8 @@ def build_list_header(count: int) -> str:
 
 # Builds all subagent entries based on expanded state
 def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
+    global _last_entry_count, _last_expanded_entries
+
     if not subagent_metadata:
         return f"{YELLOW}No subagents active yet{RESET}"
 
@@ -70,8 +76,10 @@ def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
 
         entries.append(entry)
 
-    if expanded_entries > 0:
+    if len(entries) != _last_entry_count or expanded_entries != _last_expanded_entries:
         log_tagged("ENTRIES_BUILT", PURPLE_LOG, f"Built {len(entries)} entries ({expanded_entries} expanded)")
+        _last_entry_count = len(entries)
+        _last_expanded_entries = expanded_entries
 
     return '\n\n'.join(entries)
 
@@ -143,27 +151,9 @@ def truncate_output(output: str, max_lines: int = 5) -> str:
     truncated = '\n    '.join(lines[:max_lines])
     return f"{truncated}\n    ... ({len(lines) - max_lines} more lines)"
 
-# Shows keybinding help footer
-def build_keybinding_footer() -> str:
-    return f"\n{CYAN}Click on agent to expand/collapse{RESET}"
-
-# Joins header entries and footer with proper spacing
-def combine_sections(header: str, entries: str, footer: str) -> str:
-    return f"{header}\n{entries}{footer}"
-
-# Toggles expanded state for specific subagent
-def toggle_subagent(agent_id: str) -> None:
-    current_state = subagent_states.get(agent_id, False)
-    subagent_states[agent_id] = not current_state
-    new_state = 'expanded' if not current_state else 'collapsed'
-    expanded_total = sum(1 for aid in subagent_states if subagent_states.get(aid, False))
-    # Note: This logging is handled by monitor.py under TOGGLE_OK tag
-
-# Collapses all subagents
-def collapse_all() -> None:
-    for agent_id in subagent_states:
-        subagent_states[agent_id] = False
-    # Note: This logging is handled by monitor.py if needed
+# Joins header and entries with proper spacing
+def combine_sections(header: str, entries: str) -> str:
+    return f"{header}\n{entries}"
 
 # Extracts readable name from subagent type or agent ID
 def get_agent_display_name(subagent_type: str, agent_id: str) -> str:

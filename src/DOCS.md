@@ -85,9 +85,6 @@ Renders the collapsible subagent list and displays it to terminal. Clears the sc
 ### extract_subagent_type()
 Retrieves the subagent_type parameter from the parent Task tool call. Searches through tool use caches to find the Task request that spawned this agent and extracts the subagent_type from its input parameters.
 
-### get_agent_id_at_line()
-Maps display line number to agent_id by calculating line ranges for each agent. Each agent occupies multiple lines (entry line, tool call lines if expanded, and separator line), and any click within that range returns the corresponding agent_id. Returns None for lines outside all agent ranges.
-
 ## session_finder.py
 **Purpose:** Discovers active Claude Code session files in ~/.claude/projects with optional project filtering.
 **Input:** ~/.claude/projects directory, optional project path filter
@@ -234,17 +231,8 @@ Generates unique display names for subagents. Uses subagent_type if available, o
 ### format_tool_call_summary()
 Creates a single-line summary of a tool call showing timestamp, bidirectional arrow if response received, call number, tool name, and input preview. Uses green color consistent with main agent formatting.
 
-### build_keybinding_footer()
-Renders help text showing available keyboard commands for toggling expansion states. Displays in cyan color to match header.
-
 ### combine_sections()
-Joins header, entry list, and footer with proper newline spacing to create final formatted output string.
-
-### toggle_subagent()
-Flips the expanded state for a specific subagent by agent ID. Logs the state change for debugging purposes.
-
-### collapse_all()
-Sets all subagent expanded states to False, collapsing the entire list. Used when user wants to reset view to compact mode.
+Joins header and entry list with proper newline spacing to create final formatted output string.
 
 ### get_agent_display_name()
 Extracts readable name from subagent_type parameter or falls back to agent_id. Converts hyphenated names to title case for better readability.
