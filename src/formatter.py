@@ -1,12 +1,22 @@
 # INFRASTRUCTURE
 from datetime import datetime
+import logging
 
 GREEN = '\033[38;5;35m'
 BLUE = '\033[38;5;33m'
 YELLOW = '\033[38;5;220m'
 CYAN = '\033[38;5;51m'
+LIGHT_RED_BG = '\033[48;5;203m'
 RESET = '\033[0m'
 INDENT = '  '
+LONG_OUTPUT_THRESHOLD = 10000
+
+log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+long_output_logger = logging.getLogger('formatter.long_outputs')
+long_output_handler = logging.FileHandler('src/logs/10_long_outputs.log')
+long_output_handler.setFormatter(log_format)
+long_output_logger.addHandler(long_output_handler)
+long_output_logger.setLevel(logging.INFO)
 
 # ORCHESTRATOR
 def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False) -> str:
@@ -42,22 +52,6 @@ def format_response(tool_name: str, output_data: str, tool_use_id: str, timestam
     header = f"{color}[{time_str}] RESPONSE #{call_number} ← {tool_name}{RESET}"
     content = format_output(output_data)
     return f"{header}\n{content}"
-
-# Format WARNING header with yellow color for malformed lines
-def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:
-    now = datetime.now().strftime('%H:%M:%S')
-    header = f"{YELLOW}[{now}] [!] WARNING - Malformed JSON{RESET}"
-
-    truncated_line = truncate_line(raw_line, 200)
-
-    details = [
-        f"{INDENT}File: {file_path}",
-        f"{INDENT}Line: {line_number}",
-        f"{INDENT}Error: {error_message}",
-        f"{INDENT}Content: {truncated_line}"
-    ]
-
-    return f"{header}\n" + '\n'.join(details)
 
 # Format todo list with colored status and icons
 def format_todo_list(todos: list) -> str:
@@ -102,13 +96,21 @@ def format_task_parameters(params: dict) -> str:
             lines.append(f"{INDENT}{key}: {formatted_value}")
     return '\n'.join(lines)
 
-# Format output content with 2-space indentation
+# Format output content with 2-space indentation and red background for long outputs
 def format_output(content: str) -> str:
     if not content:
         return f"{INDENT}(empty)"
 
+    is_long = len(content) >= LONG_OUTPUT_THRESHOLD
+    if is_long:
+        log_long_output(content)
+
     lines = content.split('\n')
-    return '\n'.join(f"{INDENT}{line}" for line in lines)
+    formatted_lines = '\n'.join(f"{INDENT}{line}" for line in lines)
+
+    if is_long:
+        return f"{LIGHT_RED_BG}{formatted_lines}{RESET}"
+    return formatted_lines
 
 # Format parameter value preserving newlines for multiline strings
 def format_value(value) -> str:
@@ -121,12 +123,6 @@ def format_value(value) -> str:
         return str(value)
     else:
         return str(value)
-
-# Truncate line to max length for display
-def truncate_line(line: str, max_length: int) -> str:
-    if len(line) <= max_length:
-        return line
-    return line[:max_length] + '...'
 
 # Get status icon for todo item
 def get_status_icon(status: str) -> str:
@@ -145,3 +141,12 @@ def get_status_color(status: str) -> str:
         'pending': RESET
     }
     return colors.get(status, RESET)
+
+# Log long tool output to separate log file
+def log_long_output(content: str) -> None:
+    char_count = len(content)
+    line_count = len(content.split('\n'))
+    long_output_logger.info(f"LONG_OUTPUT detected: {char_count} chars, {line_count} lines")
+    long_output_logger.info(f"Content preview (first 500 chars): {content[:500]}")
+    long_output_logger.info(f"Full content:\n{content}")
+    long_output_logger.info("=" * 80)

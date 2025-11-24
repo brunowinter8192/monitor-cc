@@ -19,7 +19,7 @@ The workflow operates as follows:
 3. **Polls** session files every 0.5 seconds for new content
 4. **Parses** JSONL message format and extracts tool_use/tool_result pairs
 5. **Correlates** requests with responses via tool_use_id matching
-6. **Formats** output with color-coded headers distinguishing main agent vs subagent tools
+6. **Formats** output with color-coded headers distinguishing main agent vs subagent tools. Long outputs (>=10k chars) are highlighted with light red background and logged to src/logs/10_long_outputs.log
 7. **Displays** complete tool I/O to console with timestamps and proper indentation
 
 The monitor tracks both main session files and subagent thread files (agent-*.jsonl), automatically detecting and color-coding subagent operations based on isSidechain metadata.

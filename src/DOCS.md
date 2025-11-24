@@ -85,6 +85,12 @@ Renders the collapsible subagent list and displays it to terminal. Clears the sc
 ### extract_subagent_type()
 Retrieves the subagent_type parameter from the parent Task tool call. Searches through tool use caches to find the Task request that spawned this agent and extracts the subagent_type from its input parameters.
 
+### format_warning()
+Formats malformed JSONL warnings with yellow header and indented details showing file path, line number, error message, and truncated raw content for display to console.
+
+### truncate_line()
+Truncates a line to a maximum length and appends ellipsis if truncation occurs, used for displaying long malformed JSON lines in warnings.
+
 ## session_finder.py
 **Purpose:** Discovers active Claude Code session files in ~/.claude/projects with optional project filtering.
 **Input:** ~/.claude/projects directory, optional project path filter
@@ -175,9 +181,6 @@ Creates the REQUEST header with color based on agent type (green for main, blue 
 ### format_response()
 Creates the RESPONSE header with color based on agent type (green for main, blue for subagent), timestamp, tool name, and formatted output content.
 
-### format_warning()
-Formats malformed JSONL warnings with yellow header and indented details showing file path, line number, error message, and truncated raw content.
-
 ### format_todo_list()
 Applies special formatting to TodoWrite tool calls with colored status labels and icons for each todo item. Uses green for completed, yellow for in-progress, and white for pending items.
 
@@ -191,19 +194,19 @@ Formats input parameters dictionary with 2-space indentation, one parameter per 
 Formats Task tool parameters with special highlighting for subagent_type field in cyan color.
 
 ### format_output()
-Formats output content with 2-space indentation, preserving line breaks.
+Formats output content with 2-space indentation, preserving line breaks. Detects long outputs (>=10k chars), logs them to src/logs/10_long_outputs.log via log_long_output(), and applies light red background color for visual distinction.
 
 ### format_value()
 Handles different value types (strings, dicts, lists), preserving newlines for multiline strings.
-
-### truncate_line()
-Truncates a line to a maximum length and appends ellipsis if truncation occurs, used for displaying long malformed JSON lines.
 
 ### get_status_icon()
 Returns the appropriate icon character for a todo status (checkmark, refresh, or circle).
 
 ### get_status_color()
 Returns the appropriate ANSI color code for a todo status (green, yellow, or default).
+
+### log_long_output()
+Logs long tool outputs (>=10k chars) to src/logs/10_long_outputs.log with character count, line count, preview of first 500 chars, full content, and separator line for debugging purposes.
 
 ## subagent_ui.py
 **Purpose:** Renders collapsible subagent list UI for interactive monitoring of subagent activity.

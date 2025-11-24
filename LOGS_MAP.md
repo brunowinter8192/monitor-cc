@@ -1,7 +1,7 @@
 # Logging Architecture - Workflow-Oriented
 
 ## Overview
-Monitor_CC uses 8 workflow-oriented log files that follow the execution sequence from startup through continuous monitoring. Each log file tracks ~10 events for a specific workflow phase.
+Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence from startup through continuous monitoring. Each log file tracks events for a specific workflow phase.
 
 ## Log Files by Workflow Phase
 
@@ -127,6 +127,17 @@ Monitor_CC uses 8 workflow-oriented log files that follow the execution sequence
 
 ---
 
+### 10_long_outputs.log (4 events)
+
+| # | Event | Module | Function | Tag | Color |
+|---|-------|--------|----------|-----|-------|
+| 1 | Long output detected | formatter.py | log_long_output() | LONG_OUTPUT | Red |
+| 2 | Content preview logged | formatter.py | log_long_output() | PREVIEW | White |
+| 3 | Full content logged | formatter.py | log_long_output() | FULL_CONTENT | White |
+| 4 | Separator logged | formatter.py | log_long_output() | SEPARATOR | White |
+
+---
+
 ## Quick Reference Table
 
 | Log File | Events | Primary Module | Frequency | Key Tags |
@@ -139,5 +150,6 @@ Monitor_CC uses 8 workflow-oriented log files that follow the execution sequence
 | 06_tool_extraction.log | 8 | jsonl_parser.py, monitor.py | On tool calls only | TOOL_CACHED, TOOL_MATCH, TOOL_ORPHAN |
 | 07_display_routing.log | 9 | monitor.py | On changes only | MON_SESS, TASK_REQ, SUB_DISPLAY |
 | 08_ui_rendering.log | 10 | monitor.py, subagent_ui.py | On changes only (UI mode) | UI_RENDER, RENDER_LIST, ENTRIES_BUILT |
+| 10_long_outputs.log | 4 | formatter.py | On long outputs only | LONG_OUTPUT, PREVIEW, FULL_CONTENT |
 
-**Total: 66 events across 8 workflow phases**
+**Total: 70 events across 9 workflow phases**

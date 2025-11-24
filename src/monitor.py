@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+from datetime import datetime
 import logging
 import os
 import time
@@ -16,6 +17,7 @@ CYAN = '\033[96m'
 WHITE = '\033[97m'
 PURPLE = '\033[38;5;135m'
 ORANGE = '\033[38;5;208m'
+INDENT = '  '
 
 # Setup 7 loggers for different workflow phases
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -64,8 +66,8 @@ def log_tagged(logger, tag: str, color: str, message: str) -> None:
 from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
-# From formatter.py: Format tool calls and warnings for display
-from .formatter import format_tool_call, format_warning
+# From formatter.py: Format tool calls for display
+from .formatter import format_tool_call
 # From subagent_ui.py: Render auto-expanded subagent list
 from .subagent_ui import render_subagent_list, get_agent_display_name, extract_timestamp_from_agent, count_calls_for_agent, subagent_states
 
@@ -412,3 +414,25 @@ def extract_subagent_type(tool_call: dict) -> str:
                 return parent_tool.get('input', {}).get('subagent_type', '')
 
     return ''
+
+# Format WARNING header with yellow color for malformed lines
+def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:
+    now = datetime.now().strftime('%H:%M:%S')
+    header = f"{YELLOW}[{now}] [!] WARNING - Malformed JSON{RESET}"
+
+    truncated_line = truncate_line(raw_line, 200)
+
+    details = [
+        f"{INDENT}File: {file_path}",
+        f"{INDENT}Line: {line_number}",
+        f"{INDENT}Error: {error_message}",
+        f"{INDENT}Content: {truncated_line}"
+    ]
+
+    return f"{header}\n" + '\n'.join(details)
+
+# Truncate line to max length for display
+def truncate_line(line: str, max_length: int) -> str:
+    if len(line) <= max_length:
+        return line
+    return line[:max_length] + '...'
