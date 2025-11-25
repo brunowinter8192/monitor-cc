@@ -76,6 +76,7 @@ file_positions: Dict[Path, int] = {}
 tool_use_caches: Dict[Path, dict] = {}
 call_counter = 0
 agent_to_task: Dict[str, str] = {}
+agent_to_type: Dict[str, str] = {}
 buffered_subagent_calls: Dict[str, List[dict]] = {}
 task_requests_seen: Set[str] = set()
 active_project_filter: Optional[str] = None
@@ -169,7 +170,7 @@ def process_all_sessions(sessions: list) -> None:
 
 # Process single session file for new tool calls and warnings
 def process_session_file(filepath: Path) -> None:
-    global file_positions, tool_use_caches, call_counter, agent_to_task, buffered_subagent_calls, task_requests_seen
+    global file_positions, tool_use_caches, call_counter, agent_to_task, agent_to_type, buffered_subagent_calls, task_requests_seen
 
     if filepath not in tool_use_caches:
         tool_use_caches[filepath] = {}
@@ -201,6 +202,8 @@ def process_session_file(filepath: Path) -> None:
             spawned_agent_id = tool_call.get('spawned_agent_id')
             if spawned_agent_id:
                 agent_to_task[spawned_agent_id] = tool_call['tool_use_id']
+                subagent_type = tool_call.get('input', {}).get('subagent_type', '')
+                agent_to_type[spawned_agent_id] = subagent_type
 
                 if spawned_agent_id in buffered_subagent_calls:
                     for buffered_call in buffered_subagent_calls[spawned_agent_id]:
@@ -403,17 +406,10 @@ def sync_ui_to_screen() -> None:
         _last_agent_count = agent_count
         _last_expanded_count = expanded_count
 
-# Extracts subagent type from tool call input
+# Extracts subagent type from agent_to_type mapping
 def extract_subagent_type(tool_call: dict) -> str:
-    parent_task_id = agent_to_task.get(tool_call.get('agent_id', ''), '')
-
-    for cached_calls in tool_use_caches.values():
-        if parent_task_id in cached_calls:
-            parent_tool = cached_calls[parent_task_id]
-            if parent_tool.get('tool_name') == 'Task':
-                return parent_tool.get('input', {}).get('subagent_type', '')
-
-    return ''
+    agent_id = tool_call.get('agent_id', '')
+    return agent_to_type.get(agent_id, '')
 
 # Format WARNING header with yellow color for malformed lines
 def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:

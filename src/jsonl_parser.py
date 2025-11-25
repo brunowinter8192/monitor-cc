@@ -154,6 +154,7 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
                 if tool_use_id in tool_use_cache:
                     tool_data = tool_use_cache[tool_use_id]
                     tool_data['output'] = extract_result_content(block)
+                    tool_data['spawned_agent_id'] = extract_spawned_agent_id(message)
                     tool_calls.append(tool_data)
                     log_tagged(logger_extract, "TOOL_MATCH", GREEN, f"Matched tool_result: id={tool_use_id}, tool={tool_data['tool_name']}")
                     del tool_use_cache[tool_use_id]
@@ -199,6 +200,13 @@ def create_tool_use_entry(block: dict, message: dict) -> dict:
         'is_subagent': message.get('isSidechain', False),
         'agent_id': message.get('agentId', None)
     }
+
+# Extract spawned agent ID from toolUseResult in message
+def extract_spawned_agent_id(message: dict) -> Optional[str]:
+    tool_use_result = message.get('toolUseResult', {})
+    if isinstance(tool_use_result, dict):
+        return tool_use_result.get('agentId')
+    return None
 
 # Extract result content from tool_result block
 def extract_result_content(block: dict) -> str:

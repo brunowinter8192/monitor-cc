@@ -89,16 +89,15 @@ def build_collapsed_entry(index: int, metadata: dict) -> str:
     agent_id = metadata['agent_id']
     timestamp = format_timestamp(metadata['timestamp'])
 
-    return f"{BLUE}[{index}] [+] {name} ({agent_id}){RESET} - {timestamp}"
+    return f"{BLUE}[{index}] {name} ({agent_id}){RESET} - {timestamp}"
 
 # Shows expanded entry with header and tool call list
 def build_expanded_entry(index: int, metadata: dict, tool_calls: List[dict]) -> str:
-    collapsed_header = build_collapsed_entry(index, metadata)
-    collapsed_header = collapsed_header.replace('[+]', '[-]')
+    header = build_collapsed_entry(index, metadata)
 
     if not tool_calls:
         log_tagged("NO_CALLS", YELLOW_LOG, f"Agent {metadata['agent_id']} has no tool calls yet")
-        return f"{collapsed_header}\n  {YELLOW}(no tool calls yet){RESET}"
+        return f"{header}\n  {YELLOW}(no tool calls yet){RESET}"
 
     log_tagged("EXPAND_BUILD", PURPLE_LOG, f"Building expanded entry for {metadata['agent_id']}: {len(tool_calls)} tool calls")
     call_summaries = []
@@ -106,7 +105,7 @@ def build_expanded_entry(index: int, metadata: dict, tool_calls: List[dict]) -> 
         summary = format_tool_call_summary(call)
         call_summaries.append(f"  {summary}")
 
-    return collapsed_header + '\n' + '\n'.join(call_summaries)
+    return header + '\n' + '\n'.join(call_summaries)
 
 # Generates unique display name for subagent
 def format_subagent_name(agent_id: str, subagent_type: str, timestamp: str, existing_names: List[str]) -> str:
