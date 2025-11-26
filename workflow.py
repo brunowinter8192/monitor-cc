@@ -147,6 +147,8 @@ def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "bind-key", "-T", "root", "WheelDownPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode -e; send-keys -X -N 5 scroll-down"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-border-style", "fg=colour240"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-active-border-style", "fg=colour245"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-m", "run-shell", "tmux capture-pane -t 0 -pS - | pbcopy && tmux display 'Main pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-s", "run-shell", "tmux capture-pane -t 1 -pS - | pbcopy && tmux display 'Subagent pane copied'"])
 
 # Setup signal handlers for graceful shutdown
 def setup_signal_handlers() -> None:
