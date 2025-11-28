@@ -80,7 +80,8 @@ The status bar at the bottom shows the current mode: **SCROLL** (green) for norm
 - `tmux attach -t <session-name>` - Reattach to running monitor
 - `Ctrl+B` then arrow keys - Resize panes
 - `Ctrl+q` - Toggle between SCROLL and COPY mode (exit copy mode or enter it)
-- `Ctrl+F` - Search in current pane (Enter to find next match, wraps around)
+- `Ctrl+F` - Search in current pane (works in both SCROLL and COPY mode)
+- `Enter` - Find next match (wraps around to top when reaching bottom)
 - `Option+m` - Copy entire Main pane (left) to clipboard
 - `Option+s` - Copy entire Subagent pane (right) to clipboard
 
