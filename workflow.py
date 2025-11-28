@@ -144,6 +144,8 @@ def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-left", "#{?pane_in_mode,#[fg=yellow bold] COPY #[default],#[fg=green] SCROLL #[default]}"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-right", ""])
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-left-length", "20"])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "window-status-format", ""])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "window-status-current-format", ""])
     subprocess.run(["tmux", "bind-key", "-n", "C-q", "if-shell", "-F", "#{pane_in_mode}", "send-keys -X cancel", "copy-mode"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe", "pbcopy"])
