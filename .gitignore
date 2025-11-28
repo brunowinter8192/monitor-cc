@@ -37,3 +37,6 @@ bug_fixes/
 # Temp
 /tmp/
 *.tmp
+
+# External repos (for research)
+repo/
