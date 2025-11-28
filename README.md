@@ -77,11 +77,9 @@ When enabled with `--ui` flag, the right pane displays a collapsible list of act
 - `tmux ls` - List running monitor sessions (names are `monitor_cc_<hash>`)
 - `tmux attach -t <session-name>` - Reattach to running monitor
 - `Ctrl+B` then arrow keys - Resize panes
-- `Ctrl+q` - Toggle Copy-Mode on/off (for text selection and scrolling)
+- `Ctrl+F` - Search in current pane (Enter to find next match, wraps around)
 - `Option+m` - Copy entire Main pane (left) to clipboard
 - `Option+s` - Copy entire Subagent pane (right) to clipboard
-
-**Status Bar:** Shows current mode at bottom - COPY (yellow) when in copy-mode, SCROLL (green) when in normal mode.
 
 ### Viewing Historical Sessions
 To see tool calls from a completed session, the JSONL files are located at:

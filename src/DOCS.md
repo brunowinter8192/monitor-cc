@@ -250,5 +250,5 @@ Returns the total number of tool calls executed by a specific agent. Simple leng
 Converts ISO 8601 timestamp from UTC to local timezone in HH:MM:SS format. Handles invalid timestamps gracefully by returning zeros.
 
 ### get_input_preview()
-Extracts a preview snippet from tool call input parameters. Handles common parameter types like command, file_path, and pattern with special formatting. Truncates long values to 40-50 characters with ellipsis.
+Extracts a preview showing ALL parameters from tool call input. Returns key=value pairs for each parameter, truncating individual values over 50 chars and total output over 120 chars. Includes defensive checks for None or non-dict inputs, returning appropriate fallback strings.
 

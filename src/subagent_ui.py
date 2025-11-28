@@ -185,16 +185,20 @@ def get_input_preview(input_data: dict) -> str:
     if not input_data:
         return '(no input)'
 
-    if 'command' in input_data:
-        cmd = input_data['command']
-        return cmd[:50] + '...' if len(cmd) > 50 else cmd
+    if not isinstance(input_data, dict):
+        return str(input_data)[:40] + '...' if len(str(input_data)) > 40 else str(input_data)
 
-    if 'file_path' in input_data:
-        return input_data['file_path']
+    try:
+        parts = []
+        for key, value in input_data.items():
+            value_str = str(value)
+            if len(value_str) > 50:
+                value_str = value_str[:50] + '...'
+            parts.append(f"{key}={value_str}")
 
-    if 'pattern' in input_data:
-        return f"pattern: {input_data['pattern']}"
-
-    first_key = next(iter(input_data))
-    first_value = str(input_data[first_key])
-    return first_value[:40] + '...' if len(first_value) > 40 else first_value
+        result = ', '.join(parts)
+        if len(result) > 120:
+            return result[:120] + '...'
+        return result
+    except Exception:
+        return '(parse error)'

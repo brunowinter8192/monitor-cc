@@ -139,23 +139,13 @@ def restore_global_history_limit(original_value: str) -> None:
 # Configure tmux session appearance and behavior
 def configure_tmux_session(session_name: str) -> None:
     log_tagged(logger_startup, "TMUX_CONFIG", GREEN, f"Configuring tmux session: {session_name}")
-    subprocess.run(["tmux", "set-option", "-t", session_name, "status", "on"])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "status-style", "bg=default"])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "status-left", "#{?pane_in_mode,#[fg=yellow bold] COPY #[default],#[fg=green] SCROLL #[default]}"])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "status-right", ""])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "status-left-length", "20"])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "window-status-format", ""])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "window-status-current-format", ""])
-    subprocess.run(["tmux", "bind-key", "-n", "C-q", "if-shell", "-F", "#{pane_in_mode}", "send-keys -X cancel", "copy-mode"])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
-    subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe", "pbcopy"])
-    subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe", "pbcopy"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "WheelUpPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode -e; send-keys -X -N 5 scroll-up"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "WheelDownPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode -e; send-keys -X -N 5 scroll-down"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-border-style", "fg=colour240"])
     subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-active-border-style", "fg=colour245"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-m", "run-shell", "tmux capture-pane -t 0 -pS - | pbcopy && tmux display 'Main pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-s", "run-shell", "tmux capture-pane -t 1 -pS - | pbcopy && tmux display 'Subagent pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "C-f", "copy-mode", ";", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
 
 # Setup signal handlers for graceful shutdown
 def setup_signal_handlers() -> None:
