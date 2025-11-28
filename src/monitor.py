@@ -302,6 +302,8 @@ def get_file_end_position(filepath: Path) -> int:
 
 # Get initial position for new session file
 def get_initial_position(filepath: Path) -> int:
+    if is_agent_file(filepath):
+        return 0
     return get_file_end_position(filepath)
 
 # Check if file is a subagent file
