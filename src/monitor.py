@@ -120,7 +120,7 @@ def initialize_file_positions() -> int:
 
     for session_file in sessions:
         if session_file not in file_positions:
-            pos = get_file_end_position(session_file)
+            pos = get_initial_position(session_file)
             file_positions[session_file] = pos
             log_tagged(logger_init, "FILE_POS_INIT", BLUE, f"Initialized {session_file.name} at position {pos}")
 
