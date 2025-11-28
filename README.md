@@ -72,11 +72,14 @@ When enabled with `--ui` flag, the right pane displays a collapsible list of act
 
 ### tmux Controls
 
+The status bar at the bottom shows the current mode: **SCROLL** (green) for normal scrolling or **COPY** (yellow) when in copy mode for text selection.
+
 - `Ctrl+C` - Stop the monitor
 - `Ctrl+B` then `D` - Detach from tmux (monitor continues running)
 - `tmux ls` - List running monitor sessions (names are `monitor_cc_<hash>`)
 - `tmux attach -t <session-name>` - Reattach to running monitor
 - `Ctrl+B` then arrow keys - Resize panes
+- `Ctrl+q` - Toggle between SCROLL and COPY mode (exit copy mode or enter it)
 - `Ctrl+F` - Search in current pane (Enter to find next match, wraps around)
 - `Option+m` - Copy entire Main pane (left) to clipboard
 - `Option+s` - Copy entire Subagent pane (right) to clipboard
