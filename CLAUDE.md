@@ -3,13 +3,11 @@
 ## CRITICAL STANDARDS
 
 - NO comments inside function bodies (only function header comments + section markers)
-- NO test files in root (ONLY in src/debug/ folder)
 - NO src/debug/ or src/logs/ folders in version control (MUST be in .gitignore)
 - NO emojis in production code, READMEs, DOCS.md, logs
-- Emojis ALLOWED in: chat, debug scripts (src/debug/ folder), subagent reports, bug-fix docs
 - NO verbose console output (use logging instead)
 
-**Type hints:** RECOMMENDED but optional
+**Type hints:** REQUIRED for orchestrators (clear contracts), RECOMMENDED for functions
 
 **Fail-Fast:** Let exceptions fly. No try-catch that silently swallows errors affecting business logic. Script must fail if it cannot fulfill its purpose.
 
@@ -29,10 +27,6 @@ project/
 │   ├── module_step1.py  # Self-contained workflow step
 │   ├── module_step2.py  # Self-contained workflow step
 │   ├── DOCS.md          # Complete module documentation
-│   ├── debug/           # CRITICAL: ALL tests and debug scripts
-│   │   ├── test_feature1.py
-│   │   ├── test_feature2.py
-│   │   └── debug_helper.py
 │   └── logs/            # CRITICAL: Workflow-oriented log files
 │       ├── 01_startup.log
 │       ├── 02_initialization.log
@@ -52,12 +46,30 @@ project/
 **Workflow-oriented approach:**
 - workflow.py stays at root as entry point, imports from src/ package
 - All modules reside in src/ folder with relative imports
-- New additions: Extend existing module OR create new module if step is substantial
+- New additions: Extend existing module OR create new module if step is substantial (see thresholds below)
 - Utilities and helpers: Part of the module where they're used
+
+**Module Complexity Thresholds ("substantial"):**
+
+A new module is warranted when ANY of these thresholds are exceeded:
+
+1. **Lines of Code:** > 400 LOC with distinct functional groups
+2. **Function Count:** > 15 functions (likely multiple responsibilities)
+3. **Single Responsibility:** Module handles multiple unrelated concerns
+
+**Example Decision:**
+- Module is 320 LOC but has two distinct concerns (scraping + formatting) → Split into 2 modules
+- Module is 450 LOC but single cohesive concern → Keep together, extract helper functions instead
+
+**Additional Indicators:**
+- Function > 50 LOC → Extract helper functions (not new module)
+- > 5 cross-module imports → Review dependencies, may indicate over-coupling
 
 ### Level 2: MODULE
 Self-contained step: Fixed Input → Processing → Fixed Output.
 Not strict pipelines (loops/branches/spirals OK) but clear contracts.
+
+**Clear contracts:** Orchestrator with type hints (input/output) + DOCS.md documentation.
 
 **Each module has its own orchestrator** that calls internal functions in sequence.
 
@@ -120,23 +132,10 @@ def main():
 
 **Example structures:**
 
-```
-# Simple project (one workflow)
-project/
-├── README.md
-├── workflow.py
-├── CLAUDE.md
-└── src/
-    ├── __init__.py
-    ├── DOCS.md
-    └── modules...
-```
-
 **Sections:**
 1. Workflow Name + One-liner
 2. Basic Usage (how to execute this workflow)
-3. Link to src/DOCS.md for module documentation
-
+3. Link to DOCS.md files for module documentation 
 **Keep it short:** 100-200 lines maximum
 
 ---
@@ -150,7 +149,7 @@ Documents **ALL project files** except documentation markdown files (README.md, 
 - Python modules (.py)
 - Configuration files (.yml, .json, .toml)
 - Docker files (docker-compose.yml, Dockerfile)
-- Any other functional files
+- Any other file which is necessary for carrying out the workflow
 
 **NOT documented:**
 - README.md (entry point documentation)
@@ -159,7 +158,7 @@ Documents **ALL project files** except documentation markdown files (README.md, 
 - .gitignore (trivial)
 
 **Placement Rules:**
-- **Location:** Always in src/ folder alongside the modules it documents
+- **Location:** Always in src/ or sub src/ folder alongside the modules it documents
 - **Not tied to README:** README.md stays at root, DOCS.md stays in src/
 - **Multiple allowed:** One DOCS.md per src/ folder containing modules
 
@@ -300,6 +299,11 @@ def export_results(results: pd.DataFrame, output_dir: str) -> None:
 - ZERO functional logic (no calculations, transformations, business rules)
 - Meta-logic allowed: conditional workflow execution, parameter routing
 
+**Orchestrator Naming:**
+- Name is freely chosen, semantically matching module purpose
+- Examples: main(), run_monitor(), find_active_sessions(), format_tool_call()
+- Role is defined by placement in ORCHESTRATOR section, not by naming pattern
+
 **Example of allowed meta-logic:**
 ```python
 # ORCHESTRATOR
@@ -316,6 +320,9 @@ def process_workflow(input_file: str, output_dir: str, mode: str) -> None:
 - Ordered by call sequence
 - One responsibility each
 - Can call other functions internally
+
+**CRITICAL:** All functions must be called by the module's orchestrator (directly or indirectly).
+If a function is only used by another module, it belongs in THAT module, not here.
 
 ---
 
@@ -382,18 +389,16 @@ def process_data(df):
 
 ## LOGGING STANDARDS
 
-**CRITICAL:** This project requires COMPREHENSIVE logging for agent-based debugging.
-
-**Why:** Agents debug EXCLUSIVELY through logs (no monitor/debugger available). Every function that can produce meaningful logs MUST do so.
+**CRITICAL:** This project requires COMPREHENSIVE logging for debugging.
 
 ### Fundamental Rules
 
 1. **NO console prints** during normal execution (use logging instead)
 2. **src/logs/ folder** - one or more log files per module
 3. **Workflow-oriented log files** - Follow LOGS_MAP.md structure (workflow phases 01-09)
-4. **ALL logs on INFO level** (agents need to see everything - no DEBUG)
-5. **Every non-trivial function MUST log** entry/exit with parameters and results
-6. **Log: state changes, control flow decisions, error paths, cache operations, statistics**
+4. **Every non-trivial function MUST log** 
+5. **Avoid redundant logging of static states or loops.**
+6. **Log only actionable events: Status changes, branches, errors, and operation results.**
 
 ### LOGS_MAP.md Integration
 
@@ -532,50 +537,5 @@ if __name__ == "__main__":
 - Only INFRASTRUCTURE + ORCHESTRATOR sections
 - No FUNCTIONS section needed (if __name__ entrypoint doesn't require it)
 - Same 3-section structure principles apply
-
----
-
-## EDGE CASES & FLEXIBILITY
-
-### Utilities and Helpers
-Utilities belong to the module where they're used:
-```python
-# FUNCTIONS
-
-# Main processing function
-def process_data(df):
-    normalized = _normalize_values(df)
-    return _apply_transformations(normalized)
-
-# Normalize column values to 0-1 range
-def _normalize_values(df):
-    return (df - df.min()) / (df.max() - df.min())
-
-# Apply business transformations
-def _apply_transformations(df):
-    return df * 100
-```
-
-Use underscore prefix for internal helpers (RECOMMENDED).
-
-### When to Create New Module
-Create new module when:
-- Step is conceptually distinct
-- Would benefit from isolated testing
-- Has clear input/output contract
-- File would exceed ~300-400 lines
-
-Extend existing module when:
-- Functionality is tightly coupled
-- Shares same conceptual domain
-- Would create artificial separation
-
----
-
-## COMPLIANCE
-
-Use `code-compliance-reviewer` subagent to validate adherence to this standard.
-
-**EXCEPTION:** Scripts in the `src/debug/` folder are exempt from CLAUDE.md compliance requirements. Debug and test scripts serve temporary testing purposes and do not need to follow these standards.
 
 ---
