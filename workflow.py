@@ -139,7 +139,12 @@ def restore_global_history_limit(original_value: str) -> None:
 # Configure tmux session appearance and behavior
 def configure_tmux_session(session_name: str) -> None:
     log_tagged(logger_startup, "TMUX_CONFIG", GREEN, f"Configuring tmux session: {session_name}")
-    subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "status", "on"])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "status-style", "bg=default"])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "status-left", "#{?pane_in_mode,#[fg=yellow bold] COPY #[default],#[fg=green] SCROLL #[default]}"])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "status-right", ""])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "status-left-length", "20"])
+    subprocess.run(["tmux", "bind-key", "-n", "C-q", "if-shell", "-F", "#{pane_in_mode}", "send-keys -X cancel", "copy-mode"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe", "pbcopy"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe", "pbcopy"])
