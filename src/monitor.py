@@ -120,7 +120,7 @@ def initialize_file_positions() -> int:
 
     for session_file in sessions:
         if session_file not in file_positions:
-            pos = get_initial_position(session_file)
+            pos = get_file_end_position(session_file)
             file_positions[session_file] = pos
             log_tagged(logger_init, "FILE_POS_INIT", BLUE, f"Initialized {session_file.name} at position {pos}")
 
@@ -302,8 +302,6 @@ def get_file_end_position(filepath: Path) -> int:
 
 # Get initial position for new session file
 def get_initial_position(filepath: Path) -> int:
-    if is_agent_file(filepath):
-        return 0
     return get_file_end_position(filepath)
 
 # Check if file is a subagent file
