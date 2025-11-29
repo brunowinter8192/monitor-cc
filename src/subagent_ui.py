@@ -26,6 +26,7 @@ def log_tagged(tag: str, color: str, message: str) -> None:
 from .formatter import GREEN, BLUE, CYAN, YELLOW, RESET
 
 subagent_states: Dict[str, bool] = {}
+line_to_agent_map: Dict[int, str] = {}
 _last_agent_count: int = 0
 _last_expanded_count: int = 0
 _last_entry_count: int = 0
@@ -57,24 +58,32 @@ def build_list_header(count: int) -> str:
 
 # Builds all subagent entries based on expanded state
 def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
-    global _last_entry_count, _last_expanded_entries
+    global _last_entry_count, _last_expanded_entries, line_to_agent_map
 
     if not subagent_metadata:
         return f"{YELLOW}No subagents active yet{RESET}"
 
     entries = []
     expanded_entries = 0
+    line_to_agent_map.clear()
+    current_line = 3
+
     for idx, (agent_id, metadata) in enumerate(sorted(subagent_metadata.items(), key=lambda x: x[1]['timestamp']), 1):
         is_expanded = subagent_states.get(agent_id, False)
         tool_calls = tool_calls_by_agent.get(agent_id, [])
 
+        line_to_agent_map[current_line] = agent_id
+
         if is_expanded:
             expanded_entries += 1
             entry = build_expanded_entry(idx, metadata, tool_calls)
+            entry_lines = entry.count('\n') + 1
         else:
-            entry = build_collapsed_entry(idx, metadata)
+            entry = build_collapsed_entry(idx, metadata, is_expanded=False)
+            entry_lines = 1
 
         entries.append(entry)
+        current_line += entry_lines + 1
 
     if len(entries) != _last_entry_count or expanded_entries != _last_expanded_entries:
         log_tagged("ENTRIES_BUILT", PURPLE_LOG, f"Built {len(entries)} entries ({expanded_entries} expanded)")
@@ -84,16 +93,17 @@ def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
     return '\n\n'.join(entries)
 
 # Shows collapsed subagent entry with summary
-def build_collapsed_entry(index: int, metadata: dict) -> str:
+def build_collapsed_entry(index: int, metadata: dict, is_expanded: bool) -> str:
     name = metadata['name']
     agent_id = metadata['agent_id']
     timestamp = format_timestamp(metadata['timestamp'])
+    toggle_symbol = "[-]" if is_expanded else "[+]"
 
-    return f"{BLUE}[{index}] {name} ({agent_id}){RESET} - {timestamp}"
+    return f"{toggle_symbol} {BLUE}[{index}] {name} ({agent_id}){RESET} - {timestamp}"
 
 # Shows expanded entry with header and tool call list
 def build_expanded_entry(index: int, metadata: dict, tool_calls: List[dict]) -> str:
-    header = build_collapsed_entry(index, metadata)
+    header = build_collapsed_entry(index, metadata, is_expanded=True)
 
     if not tool_calls:
         log_tagged("NO_CALLS", YELLOW_LOG, f"Agent {metadata['agent_id']} has no tool calls yet")
@@ -202,3 +212,13 @@ def get_input_preview(input_data: dict) -> str:
         return result
     except Exception:
         return '(parse error)'
+
+# Toggles expanded/collapsed state for agent
+def toggle_subagent_state(agent_id: str) -> bool:
+    global subagent_states
+    if agent_id in subagent_states:
+        subagent_states[agent_id] = not subagent_states[agent_id]
+        new_state = "expanded" if subagent_states[agent_id] else "collapsed"
+        log_tagged("STATE_CHANGE", PURPLE_LOG, f"Toggled {agent_id}: {new_state}")
+        return True
+    return False

@@ -69,7 +69,9 @@ from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
 from .formatter import format_tool_call
 # From subagent_ui.py: Render auto-expanded subagent list
-from .subagent_ui import render_subagent_list, get_agent_display_name, extract_timestamp_from_agent, count_calls_for_agent, subagent_states
+from .subagent_ui import render_subagent_list, get_agent_display_name, extract_timestamp_from_agent, count_calls_for_agent, subagent_states, line_to_agent_map, toggle_subagent_state
+# From click_handler.py: Mouse event handling
+from .click_handler import setup_mouse_tracking, restore_terminal, read_mouse_event, parse_sgr_mouse, process_click
 
 POLL_INTERVAL = 0.5
 file_positions: Dict[Path, int] = {}
@@ -344,13 +346,31 @@ def run_streaming_loop() -> None:
 # Runs UI mode loop with auto-expanded subagent list
 def run_ui_loop() -> None:
     global ui_loop_iteration
-    while True:
-        ui_loop_iteration += 1
-        if ui_loop_iteration % 10 == 0:
-            log_tagged(logger_ui, "UI_ITER", WHITE, f"UI loop iteration #{ui_loop_iteration}")
-        monitor_sessions()
-        sync_ui_to_screen()
-        time.sleep(POLL_INTERVAL)
+
+    setup_mouse_tracking()
+
+    try:
+        while True:
+            ui_loop_iteration += 1
+            if ui_loop_iteration % 10 == 0:
+                log_tagged(logger_ui, "UI_ITER", WHITE, f"UI loop iteration #{ui_loop_iteration}")
+
+            handle_pending_clicks()
+            monitor_sessions()
+            sync_ui_to_screen()
+            time.sleep(POLL_INTERVAL)
+    finally:
+        restore_terminal()
+
+# Processes any pending mouse click events
+def handle_pending_clicks() -> None:
+    mouse_data = read_mouse_event()
+    if mouse_data:
+        click = parse_sgr_mouse(mouse_data)
+        if click:
+            agent_id = process_click(click, line_to_agent_map)
+            if agent_id:
+                toggle_subagent_state(agent_id)
 
 # Tracks subagent metadata from tool calls
 def track_subagent_metadata(tool_call: dict, filepath: Path) -> None:
@@ -373,7 +393,7 @@ def track_subagent_metadata(tool_call: dict, filepath: Path) -> None:
             'call_count': 0
         }
         tool_calls_by_agent[agent_id] = []
-        subagent_states[agent_id] = True  # Auto-expand all subagents
+        subagent_states[agent_id] = False
         log_tagged(logger_ui, "AGENT_DISC", CYAN, f"Discovered new agent: {agent_id}, type={subagent_type}, file={filepath.name}")
 
     tool_calls_by_agent[agent_id].append(tool_call)

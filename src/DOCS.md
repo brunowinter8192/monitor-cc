@@ -10,6 +10,7 @@ src/
 ├── jsonl_parser.py      # JSONL parsing and extraction
 ├── formatter.py         # Output formatting
 ├── subagent_ui.py       # Collapsible subagent list UI
+├── click_handler.py     # Mouse click handling for UI
 ├── DOCS.md              # This file
 ├── debug/               # Debug scripts and tests
 └── logs/                # Module log files
@@ -71,7 +72,10 @@ Checks if a tool call originated from a subagent by examining the is_subagent fl
 Executes the traditional continuous polling and streaming display loop. Monitors sessions every 0.5 seconds and displays tool calls as they arrive. Used when UI mode is disabled.
 
 ### run_ui_loop()
-Executes the UI mode polling loop with collapsible subagent list rendering. Monitors sessions every 0.5 seconds, updates subagent metadata, and syncs the formatted UI to screen with clear-and-redraw.
+Executes the UI mode polling loop with collapsible subagent list rendering. Sets up mouse tracking at start, then monitors sessions every 0.5 seconds, handles pending mouse clicks, updates subagent metadata, and syncs the formatted UI to screen with clear-and-redraw. Restores terminal settings on exit via finally block.
+
+### handle_pending_clicks()
+Checks for and processes any pending mouse click events. Reads mouse data from stdin, parses the SGR escape sequence, determines if click is on a toggle area, and calls toggle_subagent_state if valid agent found at clicked line.
 
 ### track_subagent_metadata()
 Builds and maintains metadata for each subagent from parsed tool calls. Creates new metadata entries when agents are first discovered, tracking agent name, timestamp, file, parent task ID, and call count. Updates call count as new calls arrive.
@@ -251,4 +255,39 @@ Converts ISO 8601 timestamp from UTC to local timezone in HH:MM:SS format. Handl
 
 ### get_input_preview()
 Extracts a preview showing ALL parameters from tool call input. Returns key=value pairs for each parameter, truncating individual values over 50 chars and total output over 120 chars. Includes defensive checks for None or non-dict inputs, returning appropriate fallback strings.
+
+### toggle_subagent_state()
+Toggles the expanded/collapsed state for a given agent ID. Flips the boolean value in subagent_states dictionary and logs the state change. Returns True if agent exists and was toggled, False otherwise.
+
+## click_handler.py
+**Purpose:** Handles mouse click events for the collapsible subagent UI. Enables SGR mouse tracking, parses mouse escape sequences, and processes clicks on toggle symbols.
+**Input:** Raw bytes from stdin containing mouse escape sequences
+**Output:** Agent ID to toggle when valid click detected on toggle area
+
+### setup_mouse_tracking()
+Orchestrates mouse tracking initialization by enabling mouse mode and setting stdin to raw mode. Returns True on success, False on failure. Called once when UI loop starts.
+
+### enable_mouse_mode()
+Outputs escape sequences to enable SGR extended mouse tracking. Sends ESC[?1000h for basic tracking and ESC[?1006h for SGR format which provides easier-to-parse decimal coordinates.
+
+### disable_mouse_mode()
+Outputs escape sequences to disable mouse tracking. Sends ESC[?1006l and ESC[?1000l to restore normal terminal behavior.
+
+### set_raw_stdin()
+Configures stdin to cbreak mode using termios to receive individual characters without line buffering. Stores original terminal settings for later restoration.
+
+### restore_terminal()
+Restores original terminal settings saved during setup and disables mouse mode. Called in finally block when UI loop exits to ensure terminal is always restored.
+
+### read_mouse_event()
+Checks stdin for available data without blocking using select. Returns raw bytes if mouse event data is available, None otherwise. Called each UI loop iteration.
+
+### parse_sgr_mouse()
+Parses SGR mouse escape sequence format (ESC[<button;col;rowM/m). Extracts button number, column, row, and whether event is press or release. Returns dictionary with parsed values or None if format does not match.
+
+### is_toggle_click()
+Checks if a click column is within the toggle area (first 4 columns where +/- symbols appear). Returns True if click should trigger a toggle action.
+
+### process_click()
+Combines click parsing and line mapping to determine which agent should be toggled. Verifies click is a left button press in toggle area, looks up agent ID from line mapping, and returns agent ID or None.
 

@@ -68,7 +68,19 @@ python3 workflow.py --mode subagent --ui
 ```
 
 **Collapsible UI Mode:**
-When enabled with `--ui` flag, the right pane displays a collapsible list of active subagents instead of streaming their tool calls. Each subagent appears as a numbered entry showing its name, filename, call count, and timestamp. Entries can be expanded to view detailed tool calls or kept collapsed for a compact overview.
+When enabled with `--ui` flag, the right pane displays a collapsible list of active subagents instead of streaming their tool calls. Each subagent appears as a numbered entry with a toggle symbol:
+
+```
+[+] [1] Explore (abc123) - 14:32:15    <- Collapsed (click [+] to expand)
+[-] [2] Plan (def456) - 14:33:20      <- Expanded (click [-] to collapse)
+  [14:33:21] -> #1 Glob: pattern=**/*.py
+  [14:33:22] <-> #2 Read: file_path=/src/main.py
+    OUTPUT: (file contents...)
+```
+
+- **Start state:** All subagents start collapsed
+- **Toggle:** Click on `[+]` or `[-]` symbol to expand/collapse
+- **Expanded view:** Shows all tool calls with timestamps, direction arrows, and output
 
 ### tmux Controls
 
@@ -186,7 +198,7 @@ When agents encounter bugs, they check these logs:
 
 | Issue | Primary Logs | What to Look For |
 |-------|-------------|------------------|
-| **Subagent not expanding** | monitor_clicks.log, subagent_ui.log | Mouse coords, line calculation, toggle state |
+| **Subagent not expanding** | 09_click_handling.log, 08_ui_rendering.log | Mouse coords, line mapping, toggle state |
 | **Tool calls missing** | monitor_sessions.log, jsonl_parser.log | Categorization breakdown, orphaned results |
 | **Session not found** | session_finder.log, monitor_startup.log | Filter matching, session discovery |
 | **JSONL parsing errors** | jsonl_parser.log | Malformed lines, parse statistics |
@@ -208,14 +220,14 @@ Orphaned tool_result: id=tool_456 (no matching tool_use in cache)
 ```
 → Orphaned results indicate pairing problem
 
-**Step 3:** Cross-reference with **monitor_ui.log**:
+**Step 3:** Cross-reference with **08_ui_rendering.log**:
 ```
 render_subagent_list: 3 agents, 0 expanded
 Built 3 entries (0 expanded)
 ```
 → Agents exist but aren't expanded
 
-**Resolution:** Check toggle logic in monitor_clicks.log
+**Resolution:** Check toggle logic in 09_click_handling.log
 
 ### Logging Setup Patterns
 
