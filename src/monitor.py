@@ -421,7 +421,7 @@ def sync_ui_to_screen() -> None:
     if formatted_output != last_rendered_output:
         log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={agent_count}, expanded={expanded_count}")
         log_tagged(logger_ui, "UI_RENDER", PURPLE, f"Re-rendering UI: {len(formatted_output)} chars, agents={agent_count}, expanded={expanded_count}")
-        print("\033[2J\033[H", end='')
+        print("\033[2J\033[H", end='', flush=True)
         print(formatted_output)
         last_rendered_output = formatted_output
         _last_agent_count = agent_count
