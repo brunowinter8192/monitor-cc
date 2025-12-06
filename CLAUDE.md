@@ -11,6 +11,8 @@
 
 **Fail-Fast:** Let exceptions fly. No try-catch that silently swallows errors affecting business logic. Script must fail if it cannot fulfill its purpose.
 
+**Keyboard-First:** UI-Steuerung immer per Tastatur, nicht per Maus. Mausinteraktionen nur für Textauswahl/Kopieren. Grund: Terminals haben inkonsistentes Mouse-Handling (SGR mode conflicts, scroll issues).
+
 ---
 
 ## ARCHITECTURE - 3 LEVELS
@@ -29,14 +31,7 @@ project/
 │   ├── DOCS.md          # Complete module documentation
 │   └── logs/            # CRITICAL: Workflow-oriented log files
 │       ├── 01_startup.log
-│       ├── 02_initialization.log
-│       ├── 03_session_discovery.log
-│       ├── 04_file_reading.log
-│       ├── 05_jsonl_parsing.log
-│       ├── 06_tool_extraction.log
-│       ├── 07_display_routing.log
-│       ├── 08_ui_rendering.log
-│       └── 09_click_handling.log
+│       ├──...
 ├── bug_fixes/           # CRITICAL: Successful bug-fix documentation (timestamped)
 │   └── issue_name_YYYYMMDD_HHMMSS.md
 └── not_working/         # CRITICAL: Failed fix attempts documentation (timestamped)
