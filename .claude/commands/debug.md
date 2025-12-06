@@ -12,55 +12,13 @@ User observes: $ARGUMENTS
 ## Step Indicator Rule
 
 **MANDATORY:** Every response in this workflow MUST start with:
-`Super. Step X/5: [Step-Name]`
-
-Steps:
-- Step 0/5: Bug vs Feature Detection
-- Step 1/5: Mandatory Clarification
-- Step 2/5: Context Gathering
-- Step 3/5: Root Cause Analysis
-- Step 4/5: Validate Hypotheses
-- Step 5/5: Implementation
-
----
-
-## Phase 0: Bug vs Feature Detection (Step 0/5 - MANDATORY FIRST STEP)
-
-**CRITICAL:** Before ANY analysis, determine if this is a BUG or a FEATURE REQUEST.
-
-**Definition:**
-- **BUG:** Something that WORKED BEFORE and is now BROKEN, or something that SHOULD work but DOESN'T (error, crash, wrong output, unexpected behavior)
-- **FEATURE REQUEST:** Something that NEVER EXISTED, a NEW capability, an ENHANCEMENT, or a CONFIGURATION change
-
-**Detection Questions:**
-1. Does user describe something that is BROKEN or MISSING?
-2. Is there an ERROR message, CRASH, or WRONG OUTPUT?
-3. Did this WORK BEFORE and stopped working?
-
-**MANDATORY:** Use AskUserQuestion to confirm:
-
-```
-Question: "Is this a bug (something broken) or a feature request (something new)?"
-Options:
-- Bug: Something is broken/not working as expected
-- Feature: I want new functionality that doesn't exist yet
-- Enhancement: Existing feature needs improvement
-- Not sure: Need help determining
-```
-
-**IF FEATURE/ENHANCEMENT:**
-STOP this workflow immediately. Respond:
-"This appears to be a feature request, not a bug. The /debug workflow is for fixing broken code.
-For new features, please use: /feature [description]
-For enhancements, describe what you want to improve and I'll help implement it directly."
-
-**IF BUG:** Proceed to Phase 1.
+`Phase X, Step X/6: [Step-Name]`
 
 ---
 
 ## Phase 1: Mandatory Clarification + Context Gathering (5 Steps)
 
-### Step 1/5: Mandatory Clarification (FIRST)
+### Step 1/6: Mandatory Clarification (FIRST)
 
 **CRITICAL:** BEFORE you analyze anything, make sure the problem itself is 100% clear. (what does the user see and what is bothering him)
 
@@ -70,15 +28,15 @@ For enhancements, describe what you want to improve and I'll help implement it d
 - Is it clear WHEN it occurs? (Always, sometimes, during which tool calls?)
 
 **For EVERY ambiguity: IMMEDIATELY `AskUserQuestion` Multiple Choice:**
-- Ask 1-4 questions simultaneously
+- Ask 1 one question at a time
 - Examples:
   - "Where exactly do you see the problem?" - Options: Left Pane / Right Pane / Both / UI Mode
   - "What type of content is affected?" - Options: Tool Input / Tool Output / Both / Warnings
   - "Does this always occur?" - Options: Yes, always / Only with specific tools / Only with large outputs
 
-**Only when 100% crystal clear, proceed to Step 2/5: Context Gathering**
+**Only when 100% crystal clear, proceed to Step 2/6: Context Gathering**
 
-### Step 2/5: Context Gathering - Sequential Workflow
+### Step 2/6: Context Gathering - Sequential Workflow
 
 **CRITICAL:** Follow this workflow step-by-step. Each step builds on the previous.
 
@@ -157,64 +115,58 @@ THEN
 **Step 2.7: Gather All Evidence**
 Collect: Error messages, stack traces, File:Line references
 Include: Raw data inspection findings from Step 2.6
-Prepare: Complete context for Phase 2 Root Cause Analysis
+Prepare: Complete context for Phase 2/3 analysis
 
-**OUTPUT:** Complete context package ready for Phase 2 analysis
+**OUTPUT:** Complete context package ready for Phase 2 (Source Research) or Phase 3 (Root Cause)
 
 ---
 
-## External Tool/Library Source Code Lookup
+## Phase 2: Source Code Research (Step 3/6)
 
-**CRITICAL RULE: NEVER guess syntax or behavior of external tools/libraries.**
+**MANDATORY for this project.** tmux source is cloned in `repo/`.
 
-**WHEN to use:**
-- Unknown syntax for external tools (tmux, git, docker, etc.)
-- Unclear API behavior of libraries
-- Documentation is ambiguous or incomplete
-- Multiple syntax options and unsure which is correct
+**RULE: NEVER guess tmux syntax. Always verify in source.**
 
-**HOW to do it:**
-1. Clone the official repository to `repo/` folder:
-   ```bash
-   git clone https://github.com/[org]/[repo] /path/to/project/repo
-   ```
+### 3.1 Check tmux Source
 
-2. Add `repo/` to `.gitignore`:
-   ```
-   # External repos (for research)
-   repo/
-   ```
+Bug involves tmux/keybindings/escape sequences? Search `repo/`:
 
-3. Search the source code for correct syntax:
-   - Use Grep to find usage patterns
-   - Read test files, examples, default configurations
-   - Check `regress/`, `test/`, `examples/` folders
-
-**Example (tmux command syntax):**
 ```bash
-# Clone tmux source
-git clone https://github.com/tmux/tmux repo/
+# Key bindings syntax
+grep -r "pattern" repo/key-bindings.c repo/key-string.c
 
-# Search for bind-key examples
-grep -r "bind.*command-prompt" repo/regress/conf/
+# Config examples
+grep -r "pattern" repo/regress/conf/
 
-# Read key-bindings.c for default bindings
-cat repo/key-bindings.c | grep -A5 "bind"
+# Test cases
+grep -r "pattern" repo/regress/*.sh
 ```
 
-**WHY this matters:**
-- Source code is the authoritative truth
-- Documentation can be outdated or incomplete
-- Guessing leads to subtle bugs that are hard to debug
-- One source code lookup saves hours of trial-and-error
+**Key files:**
+- `key-string.c` - Valid key names (C-, M-, F1-F12, etc.)
+- `key-bindings.c` - Default bindings and syntax
+- `regress/conf/*.conf` - Real-world usage examples
+
+### 3.2 Document Findings (concise)
+
+```
+TMUX SOURCE CHECK
+- Verified: [what works]
+- Invalid: [what doesn't work + why]
+- Source: [file:line]
+```
+
+### 3.3 Skip Only If
+
+Pure Python logic bug with no tmux/terminal interaction.
 
 ---
 
-## Phase 2: Root Cause Analysis (Step 3/5)
+## Phase 3: Root Cause Analysis (Step 4/6)
 
-Based on context from Phase 1, perform direct analysis:
+Based on context from Phase 1 (and Phase 2 if applicable), perform direct analysis:
 
-### Step 3/5: Code Analysis
+### Step 4/6: Code Analysis
 
 1. **Examine affected modules** identified in Phase 1
 2. **Read relevant functions** with focus on File:Line references from logs/errors
@@ -261,11 +213,11 @@ ASSUMPTIONS TO VALIDATE:
 [List key assumptions that should be confirmed with user]
 ```
 
-**NEXT: Proceed to Phase 3 to validate assumptions before implementing.**
+**NEXT: Proceed to Phase 4 to validate assumptions before implementing.**
 
 ---
 
-## Phase 3: Validate Hypotheses & Get User Decision (Step 4/5)
+## Phase 4: Validate Hypotheses & Get User Decision (Step 5/6)
 
 **CRITICAL VALIDATION STEP**
 
@@ -293,9 +245,9 @@ ASSUMPTIONS TO VALIDATE:
 
 **MANDATORY:** Use AskUserQuestion tool to validate assumptions BEFORE implementation.
 
-### Step 4/5: Identify Key Assumptions
+### Step 5/6: Identify Key Assumptions
 
-From Phase 2 analysis, extract assumptions that need validation:
+From Phase 3 analysis, extract assumptions that need validation:
 - Environmental facts (how many sessions running, what mode active)
 - Timing/frequency (when does issue occur, always vs sometimes)
 - Data characteristics (format, size, source)
@@ -412,13 +364,13 @@ Proceed with recommended solution?
 
 ---
 
-## Phase 4: Implementation (Step 5/5)
+## Phase 5: Implementation (Step 6/6)
 
 **Only after user confirms to proceed with the recommended solution.**
 
-### Step 5/5: Implement Fix
+### Step 6/6: Implement Fix
 
-Based on validated root cause analysis from Phase 2-3:
+Based on validated root cause analysis from Phase 3-4:
 - Apply the proposed fix to production code
 - Follow the solution approach from validated recommendation
 - Make changes to identified files (File:Line references from analysis)

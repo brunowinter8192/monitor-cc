@@ -127,18 +127,16 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 
 ---
 
-### 09_click_handling.log (8 events)
+### 09_input_handling.log (6 events)
 
 | # | Event | Module | Function | Tag | Color |
 |---|-------|--------|----------|-----|-------|
-| 1 | Mouse tracking setup | click_handler.py | setup_mouse_tracking() | SETUP | Green |
-| 2 | Mouse mode enabled | click_handler.py | enable_mouse_mode() | MOUSE_ON | Cyan |
-| 3 | Mouse mode disabled | click_handler.py | disable_mouse_mode() | MOUSE_OFF | Cyan |
-| 4 | Raw stdin mode set | click_handler.py | set_raw_stdin() | RAW_STDIN | Blue |
-| 5 | Terminal restored | click_handler.py | restore_terminal() | RESTORE | Blue |
-| 6 | Mouse event received | click_handler.py | read_mouse_event() | MOUSE_EVENT | Cyan |
-| 7 | Click parsed | click_handler.py | parse_sgr_mouse() | CLICK_PARSE | Blue |
-| 8 | Toggle triggered | click_handler.py | process_click() | TOGGLE_CLICK | Green |
+| 1 | Keyboard input setup | click_handler.py | setup_keyboard_input() | SETUP | Green |
+| 2 | Raw stdin mode set | click_handler.py | set_raw_stdin() | RAW_STDIN | Blue |
+| 3 | Terminal restored | click_handler.py | restore_terminal() | RESTORE | Blue |
+| 4 | Keypress received | click_handler.py | read_keypress() | KEYPRESS | Cyan |
+| 5 | Digit key parsed | click_handler.py | parse_digit_key() | DIGIT_KEY | Green |
+| 6 | Agent lookup by index | click_handler.py | get_agent_by_index() | AGENT_LOOKUP | Blue |
 
 ---
 
@@ -165,7 +163,7 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 | 06_tool_extraction.log | 8 | jsonl_parser.py, monitor.py | On tool calls only | TOOL_CACHED, TOOL_MATCH, TOOL_ORPHAN |
 | 07_display_routing.log | 9 | monitor.py | On changes only | MON_SESS, TASK_REQ, SUB_DISPLAY |
 | 08_ui_rendering.log | 10 | monitor.py, subagent_ui.py | On changes only (UI mode) | UI_RENDER, RENDER_LIST, ENTRIES_BUILT |
-| 09_click_handling.log | 8 | click_handler.py | On mouse clicks (UI mode) | MOUSE_EVENT, CLICK_PARSE, TOGGLE_CLICK |
+| 09_input_handling.log | 6 | click_handler.py | On keypresses (UI mode) | KEYPRESS, DIGIT_KEY, AGENT_LOOKUP |
 | 10_long_outputs.log | 4 | formatter.py | On long outputs only | LONG_OUTPUT, PREVIEW, FULL_CONTENT |
 
-**Total: 78 events across 10 workflow phases**
+**Total: 76 events across 10 workflow phases**

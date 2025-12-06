@@ -154,11 +154,77 @@ User might want to:
 
 ---
 
-## Phase 3: Implementation Planning
+## Phase 3: Source Code Research
 
-**Only after Phase 2 approval.**
+**Only after Phase 2 approval AND when external tools/libraries are involved.**
 
-### 3.1 Create Detailed Implementation Plan
+**CRITICAL RULE: NEVER guess syntax or behavior of external tools/libraries.**
+
+### 3.1 Identify External Dependencies
+
+From the architecture proposal, identify:
+- External CLI tools (tmux, git, docker, etc.)
+- Third-party libraries with unclear APIs
+- System calls or escape sequences
+- Anything where documentation might be incomplete
+
+### 3.2 Clone and Research
+
+For each unknown external dependency:
+
+1. **Clone official repository:**
+   ```bash
+   git clone https://github.com/[org]/[repo] /path/to/project/repo
+   ```
+
+2. **Ensure repo/ is in .gitignore:**
+   ```
+   # External repos (for research)
+   repo/
+   ```
+
+3. **Search source code for correct syntax:**
+   - Use Grep to find usage patterns
+   - Read test files in `regress/`, `test/`, `examples/`
+   - Check default configurations
+   - Find the authoritative implementation
+
+### 3.3 Document Findings
+
+Present verified syntax to user:
+```
+SOURCE CODE RESEARCH
+====================
+
+Tool/Library: [name]
+Repository: [github URL]
+
+Verified Syntax:
+- [specific syntax found in source]
+- [format/protocol details]
+
+Source References:
+- [file.c:line] - [what it shows]
+- [file.c:line] - [what it shows]
+```
+
+### 3.4 Skip Conditions
+
+This phase can be SKIPPED if:
+- Feature uses only Python standard library
+- All APIs are well-known and documented
+- No external CLI tools involved
+- No escape sequences or protocols involved
+
+**If skipping, state: "Phase 3 skipped - no external dependencies requiring source lookup"**
+
+---
+
+## Phase 4: Implementation Planning
+
+**Only after Phase 3 approval (or skip).**
+
+### 4.1 Create Detailed Implementation Plan
 
 Break down the feature into specific tasks following CLAUDE.md structure:
 
@@ -229,7 +295,7 @@ CLAUDE.md Compliance Checklist:
 [x] Cross-module imports with comments: "# From [module].py: [purpose]"
 ```
 
-### 3.2 Wait for User Approval
+### 4.2 Wait for User Approval
 
 **CRITICAL:** WAIT for explicit user confirmation before implementing.
 
@@ -243,11 +309,11 @@ User might want to:
 
 ---
 
-## Phase 4: Implementation
+## Phase 5: Implementation
 
-**Only after Phase 3 approval.**
+**Only after Phase 4 approval.**
 
-### 4.1 Execute Implementation
+### 5.1 Execute Implementation
 
 Follow the approved plan step-by-step:
 
@@ -273,7 +339,7 @@ Follow the approved plan step-by-step:
    - Check that feature works as expected
    - Fix any issues found
 
-### 4.2 Report Implementation Status
+### 5.2 Report Implementation Status
 
 After implementation:
 
@@ -288,10 +354,11 @@ Files Created/Modified:
 
 **IMPORTANT NOTES:**
 
-1. **Approval Gates:** This command has 3 explicit approval gates:
-   - After Phase 2 (location/approach)
-   - After Phase 3 (implementation plan)
-   - After Phase 5.3 (documentation)
+1. **Approval Gates:** This command has up to 4 approval gates:
+   - After Phase 2 (location/architecture)
+   - After Phase 3 (source code research) - if applicable
+   - After Phase 4 (implementation plan)
+   - After Phase 5 (implementation complete)
 
 2. **Iterative Process:** User can request changes at any approval gate. Be flexible.
 
@@ -300,36 +367,3 @@ Files Created/Modified:
 4. **Cross-Module Awareness:** Always consider how new feature integrates with existing modules.
 
 5. **Documentation Sync:** Keep DOCS.md in sync with code changes immediately.
-
-6. **External Tool/Library Source Code Lookup:**
-
-   **CRITICAL RULE: NEVER guess syntax or behavior of external tools/libraries.**
-
-   **WHEN to use:**
-   - Unknown syntax for external tools (tmux, git, docker, etc.)
-   - Unclear API behavior of libraries
-   - Documentation is ambiguous or incomplete
-   - Multiple syntax options and unsure which is correct
-
-   **HOW to do it:**
-   1. Clone the official repository to `repo/` folder:
-      ```bash
-      git clone https://github.com/[org]/[repo] /path/to/project/repo
-      ```
-
-   2. Add `repo/` to `.gitignore`:
-      ```
-      # External repos (for research)
-      repo/
-      ```
-
-   3. Search the source code for correct syntax:
-      - Use Grep to find usage patterns
-      - Read test files, examples, default configurations
-      - Check `regress/`, `test/`, `examples/` folders
-
-   **WHY this matters:**
-   - Source code is the authoritative truth
-   - Documentation can be outdated or incomplete
-   - Guessing leads to subtle bugs that are hard to debug
-   - One source code lookup saves hours of trial-and-error

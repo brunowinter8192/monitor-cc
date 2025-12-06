@@ -68,10 +68,10 @@ from .session_finder import find_active_sessions
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
 from .formatter import format_tool_call
-# From subagent_ui.py: Render auto-expanded subagent list
-from .subagent_ui import render_subagent_list, get_agent_display_name, extract_timestamp_from_agent, count_calls_for_agent, subagent_states, line_to_agent_map, toggle_subagent_state
-# From click_handler.py: Mouse event handling
-from .click_handler import setup_mouse_tracking, restore_terminal, read_mouse_event, parse_sgr_mouse, process_click
+# From subagent_ui.py: Render subagent list and manage state
+from .subagent_ui import render_subagent_list, get_agent_display_name, extract_timestamp_from_agent, count_calls_for_agent, subagent_states, toggle_subagent_state
+# From click_handler.py: Keyboard input handling
+from .click_handler import setup_keyboard_input, restore_terminal, read_keypress, parse_digit_key, get_agent_by_index
 
 POLL_INTERVAL = 0.5
 file_positions: Dict[Path, int] = {}
@@ -347,7 +347,7 @@ def run_streaming_loop() -> None:
 def run_ui_loop() -> None:
     global ui_loop_iteration
 
-    setup_mouse_tracking()
+    setup_keyboard_input()
 
     try:
         while True:
@@ -355,20 +355,21 @@ def run_ui_loop() -> None:
             if ui_loop_iteration % 10 == 0:
                 log_tagged(logger_ui, "UI_ITER", WHITE, f"UI loop iteration #{ui_loop_iteration}")
 
-            handle_pending_clicks()
+            handle_pending_keypresses()
             monitor_sessions()
             sync_ui_to_screen()
             time.sleep(POLL_INTERVAL)
     finally:
         restore_terminal()
 
-# Processes any pending mouse click events
-def handle_pending_clicks() -> None:
-    mouse_data = read_mouse_event()
-    if mouse_data:
-        click = parse_sgr_mouse(mouse_data)
-        if click:
-            agent_id = process_click(click, line_to_agent_map)
+# Processes any pending keyboard input (digits 1-9 toggle subagents)
+def handle_pending_keypresses() -> None:
+    global subagent_metadata
+    char = read_keypress()
+    if char:
+        index = parse_digit_key(char)
+        if index:
+            agent_id = get_agent_by_index(index, subagent_metadata)
             if agent_id:
                 toggle_subagent_state(agent_id)
 

@@ -71,15 +71,15 @@ python3 workflow.py --mode subagent --ui
 When enabled with `--ui` flag, the right pane displays a collapsible list of active subagents instead of streaming their tool calls. Each subagent appears as a numbered entry with a toggle symbol:
 
 ```
-[+] [1] Explore (abc123) - 14:32:15    <- Collapsed (click [+] to expand)
-[-] [2] Plan (def456) - 14:33:20      <- Expanded (click [-] to collapse)
+[+] [1] Explore (abc123) - 14:32:15    <- Collapsed (press 1 to expand)
+[-] [2] Plan (def456) - 14:33:20      <- Expanded (press 2 to collapse)
   [14:33:21] -> #1 Glob: pattern=**/*.py
   [14:33:22] <-> #2 Read: file_path=/src/main.py
     OUTPUT: (file contents...)
 ```
 
 - **Start state:** All subagents start collapsed
-- **Toggle:** Click on `[+]` or `[-]` symbol to expand/collapse
+- **Toggle:** Press digit key `1`-`9` to expand/collapse corresponding subagent
 - **Expanded view:** Shows all tool calls with timestamps, direction arrows, and output
 
 ### tmux Controls
@@ -198,7 +198,7 @@ When agents encounter bugs, they check these logs:
 
 | Issue | Primary Logs | What to Look For |
 |-------|-------------|------------------|
-| **Subagent not expanding** | 09_click_handling.log, 08_ui_rendering.log | Mouse coords, line mapping, toggle state |
+| **Subagent not expanding** | 09_input_handling.log, 08_ui_rendering.log | Keypress, digit parsing, toggle state |
 | **Tool calls missing** | monitor_sessions.log, jsonl_parser.log | Categorization breakdown, orphaned results |
 | **Session not found** | session_finder.log, monitor_startup.log | Filter matching, session discovery |
 | **JSONL parsing errors** | jsonl_parser.log | Malformed lines, parse statistics |
@@ -227,7 +227,7 @@ Built 3 entries (0 expanded)
 ```
 → Agents exist but aren't expanded
 
-**Resolution:** Check toggle logic in 09_click_handling.log
+**Resolution:** Check toggle logic in 09_input_handling.log
 
 ### Logging Setup Patterns
 

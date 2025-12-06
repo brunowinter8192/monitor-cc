@@ -10,7 +10,7 @@ src/
 ├── jsonl_parser.py      # JSONL parsing and extraction
 ├── formatter.py         # Output formatting
 ├── subagent_ui.py       # Collapsible subagent list UI
-├── click_handler.py     # Mouse click handling for UI
+├── click_handler.py     # Keyboard input handling for UI toggle
 ├── DOCS.md              # This file
 ├── debug/               # Debug scripts and tests
 └── logs/                # Module log files
@@ -260,34 +260,25 @@ Extracts a preview showing ALL parameters from tool call input. Returns key=valu
 Toggles the expanded/collapsed state for a given agent ID. Flips the boolean value in subagent_states dictionary and logs the state change. Returns True if agent exists and was toggled, False otherwise.
 
 ## click_handler.py
-**Purpose:** Handles mouse click events for the collapsible subagent UI. Enables SGR mouse tracking, parses mouse escape sequences, and processes clicks on toggle symbols.
-**Input:** Raw bytes from stdin containing mouse escape sequences
-**Output:** Agent ID to toggle when valid click detected on toggle area
+**Purpose:** Handles keyboard input for the collapsible subagent UI. Reads digit keypresses (1-9) to toggle subagent expanded/collapsed state.
+**Input:** Single character keypresses from stdin in raw mode
+**Output:** Agent ID to toggle when digit key pressed
 
-### setup_mouse_tracking()
-Orchestrates mouse tracking initialization by enabling mouse mode and setting stdin to raw mode. Returns True on success, False on failure. Called once when UI loop starts.
-
-### enable_mouse_mode()
-Outputs escape sequences to enable SGR extended mouse tracking. Sends ESC[?1000h for basic tracking and ESC[?1006h for SGR format which provides easier-to-parse decimal coordinates.
-
-### disable_mouse_mode()
-Outputs escape sequences to disable mouse tracking. Sends ESC[?1006l and ESC[?1000l to restore normal terminal behavior.
+### setup_keyboard_input()
+Orchestrates keyboard input initialization by setting stdin to raw mode. Returns True on success, False on failure. Called once when UI loop starts.
 
 ### set_raw_stdin()
-Configures stdin to cbreak mode using termios to receive individual characters without line buffering. Stores original terminal settings for later restoration.
+Configures stdin to cbreak mode using termios to receive individual characters without line buffering. Stores original terminal settings for later restoration. Returns True on success, False on failure.
 
 ### restore_terminal()
-Restores original terminal settings saved during setup and disables mouse mode. Called in finally block when UI loop exits to ensure terminal is always restored.
+Restores original terminal settings saved during setup. Called in finally block when UI loop exits to ensure terminal is always restored.
 
-### read_mouse_event()
-Checks stdin for available data without blocking using select. Returns raw bytes if mouse event data is available, None otherwise. Called each UI loop iteration.
+### read_keypress()
+Checks stdin for available data without blocking using select. Returns single character if available, None otherwise. Called each UI loop iteration.
 
-### parse_sgr_mouse()
-Parses SGR mouse escape sequence format (ESC[<button;col;rowM/m). Extracts button number, column, row, and whether event is press or release. Returns dictionary with parsed values or None if format does not match.
+### parse_digit_key()
+Checks if character is a digit 1-9. Returns integer index if valid digit, None otherwise.
 
-### is_toggle_click()
-Checks if a click column is within the toggle area (first 4 columns where +/- symbols appear). Returns True if click should trigger a toggle action.
-
-### process_click()
-Combines click parsing and line mapping to determine which agent should be toggled. Verifies click is a left button press in toggle area, looks up agent ID from line mapping, and returns agent ID or None.
+### get_agent_by_index()
+Looks up agent ID by numeric index (1-based) from sorted subagent metadata. Agents are sorted by timestamp so index 1 is the oldest agent. Returns agent ID or None if index out of bounds.
 
