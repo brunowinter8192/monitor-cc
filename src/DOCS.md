@@ -8,6 +8,7 @@ src/
 ├── monitor.py           # Polling orchestrator
 ├── session_finder.py    # Session discovery
 ├── jsonl_parser.py      # JSONL parsing and extraction
+├── hook_parser.py       # Hook log parsing
 ├── formatter.py         # Output formatting
 ├── subagent_ui.py       # Collapsible subagent list UI
 ├── click_handler.py     # Keyboard input handling for UI toggle
@@ -45,7 +46,7 @@ Reads new content from a single session file, parses tool calls, updates the fil
 Logs and displays malformed JSONL warnings to the console. Formats the warning with file path, line number, error message, and truncated raw line content using yellow color coding.
 
 ### display_tool_call()
-Formats a tool call using the formatter module and prints it to console with proper spacing. Applies color coding based on whether the call is from main agent or subagent.
+Formats a tool call using the formatter module and prints it to console with proper spacing. Applies color coding based on whether the call is from main agent or subagent. Checks for pending PreToolUse hook entries and attaches them as hook annotations below the REQUEST header if found.
 
 ### get_file_end_position()
 Returns the file size in bytes for initializing the read position at end of file.
@@ -69,7 +70,13 @@ Checks if a tool call is a Task RESPONSE by verifying the tool name is 'Task' an
 Checks if a tool call originated from a subagent by examining the is_subagent flag.
 
 ### run_streaming_loop()
-Executes the traditional continuous polling and streaming display loop. Monitors sessions every 0.5 seconds and displays tool calls as they arrive. Used when UI mode is disabled.
+Executes the traditional continuous polling and streaming display loop. Processes hook log first, then monitors sessions every 0.5 seconds and displays tool calls as they arrive. Used when UI mode is disabled.
+
+### process_hook_log()
+Reads new entries from the hook log file, filters by project if a filter is active, and processes each entry. UserPromptSubmit entries are displayed immediately as USER PROMPT stamps. PreToolUse entries are cached for later attachment to their corresponding tool calls.
+
+### display_user_prompt_entry()
+Displays a USER PROMPT stamp in pastel purple color. Includes any hook output below the stamp if present. Called when a UserPromptSubmit hook entry is processed.
 
 ### run_ui_loop()
 Executes the UI mode polling loop with collapsible subagent list rendering. Sets up mouse tracking at start, then monitors sessions every 0.5 seconds, handles pending mouse clicks, updates subagent metadata, and syncs the formatted UI to screen with clear-and-redraw. Restores terminal settings on exit via finally block.
@@ -174,6 +181,26 @@ Filters out excluded tools from the tool calls list. Currently removes Edit tool
 ### sort_by_timestamp()
 Sorts tool calls chronologically by their request timestamp to ensure display order matches actual execution sequence rather than response arrival order.
 
+## hook_parser.py
+**Purpose:** Parses hook log file (hook_outputs.jsonl) written by Claude Code hooks for display in monitor.
+**Input:** Hook log file path and last read position
+**Output:** List of hook entry dictionaries with timestamp, cwd, hook_event, hook_script, output, and tool_name
+
+### parse_new_hook_entries()
+Orchestrates parsing by reading new lines from hook log file, parsing them as JSON, and returning entries with new position. Similar pattern to jsonl_parser.
+
+### read_new_lines()
+Seeks to the last read position in hook log file and reads all new content, splitting into individual lines.
+
+### get_current_position()
+Returns the current file size to track where the next read should start.
+
+### parse_lines()
+Attempts to parse each line as JSON, logging errors for malformed lines. Returns list of parsed entry dictionaries.
+
+### filter_by_project()
+Filters hook entries by comparing their cwd field to the project filter path. Returns only entries matching the current project filter.
+
 ## formatter.py
 **Purpose:** Formats tool calls with color-coded headers (green for main agent, blue for subagents) and proper indentation.
 **Input:** Tool call data (name, input, output, timestamp, ID, agent metadata)
@@ -220,6 +247,12 @@ Returns the appropriate ANSI color code for a todo status (green, yellow, or def
 
 ### log_long_output()
 Logs long tool outputs (>=10k chars) to src/logs/10_long_outputs.log with character count, line count, preview of first 500 chars, full content, and separator line for debugging purposes.
+
+### format_user_prompt()
+Formats USER PROMPT stamp in pastel purple color. Accepts optional list of hook outputs to display below the stamp. Used when UserPromptSubmit hooks are processed.
+
+### format_hook_annotation()
+Formats a PreToolUse hook annotation line in pastel purple. Shows hook script name and output message. Used to attach hook information to tool call display.
 
 ## subagent_ui.py
 **Purpose:** Renders collapsible subagent list UI for interactive monitoring of subagent activity.

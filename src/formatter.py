@@ -7,6 +7,7 @@ BLUE = '\033[38;5;33m'
 YELLOW = '\033[38;5;220m'
 CYAN = '\033[38;5;51m'
 PASTEL_BLUE = '\033[38;5;117m'
+PASTEL_PURPLE = '\033[38;5;183m'
 LIGHT_RED_BG = '\033[48;5;203m'
 RESET = '\033[0m'
 INDENT = '  '
@@ -165,3 +166,20 @@ def log_long_output(content: str) -> None:
     long_output_logger.info(f"Content preview (first 500 chars): {content[:500]}")
     long_output_logger.info(f"Full content:\n{content}")
     long_output_logger.info("=" * 80)
+
+# Format USER PROMPT stamp with optional hook outputs
+def format_user_prompt(timestamp: str, hook_outputs: list = None) -> str:
+    time_str = format_timestamp(timestamp)
+    header = f"{PASTEL_PURPLE}[{time_str}] USER PROMPT{RESET}"
+
+    if hook_outputs:
+        lines = [header]
+        for output in hook_outputs:
+            if output:
+                lines.append(f"{INDENT}{PASTEL_PURPLE}Hook: {output}{RESET}")
+        return '\n'.join(lines)
+    return header
+
+# Format hook annotation for PreToolUse hooks
+def format_hook_annotation(hook_output: str, hook_script: str) -> str:
+    return f"{INDENT}{PASTEL_PURPLE}Hook [{hook_script}]: {hook_output}{RESET}"

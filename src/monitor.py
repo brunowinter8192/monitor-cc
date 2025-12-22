@@ -67,7 +67,9 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call
+from .formatter import format_tool_call, format_user_prompt, format_hook_annotation
+# From hook_parser.py: Parse hook log entries
+from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Render subagent list and manage state
 from .subagent_ui import render_subagent_list, get_agent_display_name, extract_timestamp_from_agent, count_calls_for_agent, subagent_states, toggle_subagent_state
 # From click_handler.py: Keyboard input handling
@@ -91,6 +93,8 @@ ui_loop_iteration: int = 0
 _last_monitored_count: Optional[int] = None
 _last_agent_count: int = 0
 _last_expanded_count: int = 0
+hook_log_position: int = 0
+pending_pretooluse_hooks: Dict[str, dict] = {}
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: bool = False) -> None:
@@ -115,7 +119,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: boo
 
 # Initialize file positions for all existing sessions
 def initialize_file_positions() -> int:
-    global file_positions, active_project_filter
+    global file_positions, active_project_filter, hook_log_position
 
     sessions = find_active_sessions(active_project_filter)
     log_tagged(logger_init, "INIT_SESS", BLUE, f"Initializing {len(sessions)} sessions: {[s.name for s in sessions]}")
@@ -126,7 +130,15 @@ def initialize_file_positions() -> int:
             file_positions[session_file] = pos
             log_tagged(logger_init, "FILE_POS_INIT", BLUE, f"Initialized {session_file.name} at position {pos}")
 
+    hook_log_position = initialize_hook_log_position()
+
     return len(sessions)
+
+# Initialize hook log position at EOF to skip historical entries
+def initialize_hook_log_position() -> int:
+    pos = get_hook_log_position()
+    log_tagged(logger_init, "HOOK_POS_INIT", BLUE, f"Hook log initialized at position {pos}")
+    return pos
 
 # Monitor all active sessions for new tool calls
 def monitor_sessions() -> None:
@@ -263,8 +275,13 @@ def display_warning(warning: dict) -> None:
 
 # Display formatted tool call to console
 def display_tool_call(tool_call: dict, call_number: int) -> None:
+    global pending_pretooluse_hooks
+
+    tool_name = tool_call['tool_name']
+    hook_entry = pending_pretooluse_hooks.pop(tool_name, None)
+
     formatted = format_tool_call(
-        tool_name=tool_call['tool_name'],
+        tool_name=tool_name,
         input_data=tool_call['input'],
         output_data=tool_call['output'] or '',
         tool_use_id=tool_call['tool_use_id'],
@@ -273,6 +290,13 @@ def display_tool_call(tool_call: dict, call_number: int) -> None:
         is_subagent=tool_call.get('is_subagent', False),
         system_reminders=tool_call.get('system_reminders', [])
     )
+
+    if hook_entry and hook_entry.get('output'):
+        hook_line = format_hook_annotation(hook_entry['output'], hook_entry['hook_script'])
+        lines = formatted.split('\n')
+        lines.insert(1, hook_line)
+        formatted = '\n'.join(lines)
+        log_tagged(logger_routing, "HOOK_ATTACHED", PURPLE, f"Attached PreToolUse hook to {tool_name}")
 
     print(formatted)
     print()
@@ -341,8 +365,34 @@ def is_subagent_call(tool_call: dict) -> bool:
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
     while True:
+        process_hook_log()
         monitor_sessions()
         time.sleep(POLL_INTERVAL)
+
+# Process hook log for new entries
+def process_hook_log() -> None:
+    global hook_log_position, pending_pretooluse_hooks, active_project_filter
+
+    entries, hook_log_position = parse_new_hook_entries(hook_log_position)
+    filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
+
+    for entry in filtered:
+        if entry.get('hook_event') == 'UserPromptSubmit':
+            display_user_prompt_entry(entry)
+        elif entry.get('hook_event') == 'PreToolUse':
+            tool_name = entry.get('tool_name')
+            if tool_name:
+                pending_pretooluse_hooks[tool_name] = entry
+                log_tagged(logger_routing, "HOOK_PENDING", PURPLE, f"PreToolUse hook pending for {tool_name}")
+
+# Display USER PROMPT entry from hook log
+def display_user_prompt_entry(entry: dict) -> None:
+    output = entry.get('output', '')
+    hook_outputs = [output] if output else None
+    formatted = format_user_prompt(entry.get('timestamp', ''), hook_outputs)
+    print(formatted)
+    print()
+    log_tagged(logger_routing, "USER_PROMPT", PURPLE, f"Displayed USER PROMPT, hook_output={bool(output)}")
 
 # Runs UI mode loop with auto-expanded subagent list
 def run_ui_loop() -> None:
