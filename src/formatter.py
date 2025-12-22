@@ -6,6 +6,7 @@ GREEN = '\033[38;5;35m'
 BLUE = '\033[38;5;33m'
 YELLOW = '\033[38;5;220m'
 CYAN = '\033[38;5;51m'
+PASTEL_BLUE = '\033[38;5;117m'
 LIGHT_RED_BG = '\033[48;5;203m'
 RESET = '\033[0m'
 INDENT = '  '
@@ -19,9 +20,9 @@ long_output_logger.addHandler(long_output_handler)
 long_output_logger.setLevel(logging.INFO)
 
 # ORCHESTRATOR
-def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False) -> str:
+def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None) -> str:
     request = format_request(tool_name, input_data, tool_use_id, timestamp, call_number, is_subagent)
-    response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number, is_subagent)
+    response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number, is_subagent, system_reminders)
     return combine_request_response(request, response)
 
 # FUNCTIONS
@@ -46,11 +47,14 @@ def format_request(tool_name: str, input_data: dict, tool_use_id: str, timestamp
     return f"{header}\n{params}"
 
 # Format RESPONSE header with color based on agent type
-def format_response(tool_name: str, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False) -> str:
+def format_response(tool_name: str, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None) -> str:
     time_str = format_timestamp(timestamp)
     color = BLUE if is_subagent else GREEN
     header = f"{color}[{time_str}] RESPONSE #{call_number} ← {tool_name}{RESET}"
     content = format_output(output_data)
+    reminders = format_system_reminders(system_reminders)
+    if reminders:
+        return f"{header}\n{content}\n{reminders}"
     return f"{header}\n{content}"
 
 # Format todo list with colored status and icons
@@ -111,6 +115,17 @@ def format_output(content: str) -> str:
     if is_long:
         return f"{LIGHT_RED_BG}{formatted_lines}{RESET}"
     return formatted_lines
+
+# Format system reminders with pastel blue color
+def format_system_reminders(reminders: list) -> str:
+    if not reminders:
+        return ''
+    lines = []
+    for reminder in reminders:
+        for line in reminder.split('\n'):
+            if line.strip():
+                lines.append(f"{INDENT}{PASTEL_BLUE}{line}{RESET}")
+    return '\n'.join(lines)
 
 # Format parameter value preserving newlines for multiline strings
 def format_value(value) -> str:

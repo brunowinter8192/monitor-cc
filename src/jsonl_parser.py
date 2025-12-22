@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, Tuple, Optional
 
@@ -153,7 +154,9 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
 
                 if tool_use_id in tool_use_cache:
                     tool_data = tool_use_cache[tool_use_id]
-                    tool_data['output'] = extract_result_content(block)
+                    raw_content = extract_result_content(block)
+                    tool_data['output'] = strip_system_reminders(raw_content)
+                    tool_data['system_reminders'] = extract_system_reminders(raw_content)
                     tool_data['spawned_agent_id'] = extract_spawned_agent_id(message)
                     tool_calls.append(tool_data)
                     log_tagged(logger_extract, "TOOL_MATCH", GREEN, f"Matched tool_result: id={tool_use_id}, tool={tool_data['tool_name']}")
@@ -216,6 +219,17 @@ def extract_result_content(block: dict) -> str:
             return content[0].get('text', '')
         return str(content[0])
     return str(content)
+
+# Extract system-reminder tags from content string
+def extract_system_reminders(content: str) -> List[str]:
+    pattern = r'<system-reminder>(.*?)</system-reminder>'
+    matches = re.findall(pattern, content, re.DOTALL)
+    return [m.strip() for m in matches]
+
+# Remove system-reminder tags from content string
+def strip_system_reminders(content: str) -> str:
+    pattern = r'<system-reminder>.*?</system-reminder>'
+    return re.sub(pattern, '', content, flags=re.DOTALL).strip()
 
 # Filter out excluded tools
 def filter_excluded_tools(tool_calls: List[dict]) -> List[dict]:

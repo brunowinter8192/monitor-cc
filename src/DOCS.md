@@ -162,6 +162,12 @@ Builds a tool call dictionary from a tool_use content block, extracting name, in
 ### extract_result_content()
 Extracts the actual output text from a tool_result content block, handling both simple strings and complex structured responses.
 
+### extract_system_reminders()
+Extracts all system-reminder tags from a content string using regex pattern matching. Returns a list of reminder contents with tags stripped and whitespace trimmed.
+
+### strip_system_reminders()
+Removes all system-reminder tags from a content string. Returns the cleaned content for display without embedded reminders.
+
 ### filter_excluded_tools()
 Filters out excluded tools from the tool calls list. Currently removes Edit tools to prevent redundant output since Edit operations are already visible in the Claude Code UI.
 
@@ -199,6 +205,9 @@ Formats Task tool parameters with special highlighting for subagent_type field i
 
 ### format_output()
 Formats output content with 2-space indentation, preserving line breaks. Detects long outputs (>=10k chars), logs them to src/logs/10_long_outputs.log via log_long_output(), and applies light red background color for visual distinction.
+
+### format_system_reminders()
+Formats system reminder messages with pastel blue color. Processes each reminder, splits by newlines, and applies indentation and color to non-empty lines.
 
 ### format_value()
 Handles different value types (strings, dicts, lists), preserving newlines for multiline strings.

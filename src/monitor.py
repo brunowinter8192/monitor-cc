@@ -270,7 +270,8 @@ def display_tool_call(tool_call: dict, call_number: int) -> None:
         tool_use_id=tool_call['tool_use_id'],
         timestamp=tool_call['timestamp'],
         call_number=call_number,
-        is_subagent=tool_call.get('is_subagent', False)
+        is_subagent=tool_call.get('is_subagent', False),
+        system_reminders=tool_call.get('system_reminders', [])
     )
 
     print(formatted)
