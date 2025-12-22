@@ -117,125 +117,144 @@ def main():
 
 ## DOCUMENTATION STRUCTURE
 
-### README.md (Workflow Entry Point Documentation)
-**Purpose:** Quick orientation for executing a workflow
+### Terminology
 
-**Placement Rules:**
-- **1:1 relationship:** Exactly one README.md per workflow.py
-- **Location:** Always at root level of the workflow (same directory as workflow.py)
-- **When to create:** Only when the workflow is designed to run independently without any dependencies from other parts of the project
+| Term | Definition | Example |
+|------|------------|---------|
+| **Workflow** | README.md level directory containing a complete INDEPENDENT pipeline | `Monitor_CC/` |
+| **Directory** | Subdirectory within a workflow (a phase) | `src/` |
+| **Module** | Python script (`.py` file) | `monitor.py` |
+| **Function** | Python function within a module | `run_monitor()` |
 
-**Example structures:**
+### Hierarchy
 
-**Sections:**
-1. Workflow Name + One-liner
-2. Basic Usage (how to execute this workflow)
-3. Link to DOCS.md files for module documentation 
-**Keep it short:** 100-200 lines maximum
+```
+Workflow/          -> README.md (tree to directories)
+├── Directory_A/   -> DOCS.md (tree to modules)
+└── Directory_B/   -> DOCS.md
+```
+
+**Principle:** No redundancy - README stops where DOCS begins.
 
 ---
 
-### DOCS.md (Module Documentation)
-**Purpose:** Complete architectural documentation of modules
+### README.md (Workflow-Level)
 
-Documents **ALL project files** except documentation markdown files (README.md, DOCS.md, CLAUDE.md).
+**Purpose:** High-level overview linking to DOCS.md for details
 
-**Files to document:**
-- Python modules (.py)
-- Configuration files (.yml, .json, .toml)
-- Docker files (docker-compose.yml, Dockerfile)
-- Any other file which is necessary for carrying out the workflow
+**Placement:**
+- **Location:** Workflow root (same directory as workflow.py)
+- **Relationship:** One README per workflow
+- **Scope:** Tree to directories, links to DOCS.md
 
-**NOT documented:**
-- README.md (entry point documentation)
-- DOCS.md (self)
-- CLAUDE.md (engineering standards)
-- .gitignore (trivial)
+**Required Sections:**
 
-**Placement Rules:**
-- **Location:** Always in src/ or sub src/ folder alongside the modules it documents
-- **Not tied to README:** README.md stays at root, DOCS.md stays in src/
-- **Multiple allowed:** One DOCS.md per src/ folder containing modules
+#### 1. Title + Description
 
-**File naming as headings:**
-- Each file gets ## header with exact filename
-- Use relative path if in subdirectory: `## config/settings.yml`
-- NO generic sections like "Configuration" or "Error Handling"
+Workflow name as H1, followed by 1-2 sentence description.
 
-**Example:**
+#### 2. Directory Structure
+
+Tree showing root-level files AND directories with `[See DOCS.md]` links:
 
 ```
-project/
-├── README.md           # Workflow entry (root)
-├── workflow.py         # Entry point (root)
-├── CLAUDE.md           # Standards (root)
-└── src/
-    ├── __init__.py
-    ├── DOCS.md         # Documents module_a.py, module_b.py
-    ├── module_a.py
-    ├── module_b.py
-    └── processors/
-        ├── DOCS.md     # Documents processor modules
-        ├── clean.py
-        └── transform.py
+Monitor_CC/
+    workflow.py
+    README.md
+    CLAUDE.md
+    LOGS_MAP.md
+    src/                                 [See DOCS.md](src/DOCS.md)
 ```
 
-**Mirrors 3-level architecture: PROJECT → MODULES → FUNCTIONS**
+**Rule:** Only root-level files. Scripts inside directories belong in their DOCS.md.
 
-**Structure:**
+#### 3. Workflow
+
+Per phase: Purpose, Input, Output, Details link:
 
 ```markdown
-# Section/Project Name
-One-liner description
+## Workflow
 
-## Project Structure
-<Complete tree with entry points marked>
+### Phase 1: Session Discovery
 
-## module_one.py
-**Purpose:** WHY it exists (1-2 sentences)
-**Input:** What it receives
-**Output:** What it produces
+**Purpose:** Find active Claude Code sessions
 
-### function_name()
-Prose text description of WHAT it does. Explains inputs/outputs,
-responsibility, and side effects in flowing text.
+**Input:** ~/.claude/projects directory
 
-### next_function()
-Prose text description of WHAT it does.
+**Output:** List of JSONL file paths
 
-## module_two.py
-...
-
-## docker-compose.yml
-**Purpose:** Container configuration for service dependencies.
-
-Defines service with port mappings and volume mounts. Sets environment variables and restart policy.
-
-## config/settings.yml
-**Purpose:** Application configuration.
-
-Configures runtime settings. Enables specific features. Sets default values for parameters.
+**Details:** [src/DOCS.md](src/DOCS.md)
 ```
 
-**CRITICAL Rules:**
-1. Every file gets ## header with exact filename (including path if nested)
-2. Python modules: functions get ### headers
-3. Config files: prose description of purpose and settings
-4. Prose text only (no bullet lists for function/config descriptions)
-5. Order by logical grouping (Python first, then configs)
-6. Describe WHAT not HOW (purpose, not implementation)
-7. No code snippets in architecture sections (only in README.md usage examples)
+---
 
-**Function Description Pattern:**
-- Start with verb phrase describing action
-- Explain inputs/outputs in prose
-- Describe responsibility and side effects
-- Example: "Polls the log file continuously in a loop. Initializes file position at EOF and maintains a request cache. Reads new lines, parses each line, formats output, and prints to stdout."
+### DOCS.md (Directory-Level)
 
-**Function header comments vs DOCS.md:**
-- Header comment: 1 line describing WHAT (in code)
-- DOCS.md entry: Detailed prose text (in documentation)
-- No duplication - different levels of detail
+**Purpose:** Detailed documentation of all modules within one directory
+
+**Placement:**
+- **Location:** Directory root (e.g., `src/`)
+- **Relationship:** Multiple DOCS can exist under one README
+- **Scope:** Tree to modules, module-level documentation
+
+**Required Sections:**
+
+#### 1. Working Directory (CRITICAL)
+
+All commands assume CWD = this directory.
+
+```markdown
+## Working Directory
+
+**CRITICAL:** All commands assume CWD = `src/`
+
+cd /path/to/Monitor_CC/src
+```
+
+#### 2. Directory Structure
+
+Tree showing modules (no functions in tree):
+
+```
+src/
+├── DOCS.md
+├── monitor.py
+├── session_finder.py
+├── jsonl_parser.py
+└── formatter.py
+```
+
+#### 3. Module Documentation
+
+Per module with Purpose, Inputs, Outputs, Usage, Variables (NO function-level headers):
+
+```markdown
+## monitor.py
+
+**Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls.
+
+**Inputs:**
+- `project_filter`: Optional project path to filter sessions
+- `mode`: Filter for main/subagent/all files
+- `ui_mode`: Enable collapsible UI (boolean)
+
+**Outputs:**
+- Formatted tool calls to console
+- Collapsible UI list (if ui_mode enabled)
+
+**Usage:**
+Called by workflow.py: run_monitor(project_filter, mode, ui_mode)
+
+**Variables:**
+- `POLL_INTERVAL`: Seconds between polls (default: 0.5)
+```
+
+**Inputs vs Variables:**
+
+| Type | Without it | Example |
+|------|------------|---------|
+| Input | workflow FAILS | `project_filter`, `mode` |
+| Variable | workflow uses defaults | `POLL_INTERVAL` |
 
 ---
 
