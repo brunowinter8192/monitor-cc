@@ -553,3 +553,28 @@ if __name__ == "__main__":
 - Same 3-section structure principles apply
 
 ---
+
+## AUTOMATION SUITE
+
+### Skills (Session-wide)
+
+| Skill | Purpose |
+|-------|---------|
+| `iterative-dev` | PLAN→IMPLEMENT→RECAP→IMPROVE→CLOSING cycle with beads tracking |
+| `agent-dispatch` | Guidelines for effective agent usage (when, how to prompt, verification) |
+
+### Agents (Task-scoped)
+
+| Agent | Model | Purpose |
+|-------|-------|---------|
+| `code-investigate-specialist` | Haiku | Codebase exploration, file search, pattern finding |
+| `compliance-reviewer-global` | Sonnet | CLAUDE.md compliance audits across directories |
+
+### Slash Commands (Single invocation)
+
+| Command | Purpose |
+|---------|---------|
+| `/debug [observation]` | Systematic debugging: Context→Root Cause→Fix→Documentation |
+| `/refactor-ask [path]` | Analyze module complexity, create refactoring plan |
+
+---

@@ -191,8 +191,84 @@ Call ExitPlanMode
 
 ---
 
-## After Implementation
+## Phase 5: Documentation
 
-User should:
-1. Test the fix
-2. Document with `/document-fix`
+**After user confirms fix works:**
+
+### Step 1: Failure Analysis (ONLY for failed fixes)
+
+Use AskUserQuestion with 4 multiple choice questions:
+
+1. **What happened when you tested?**
+   - Same problem persists
+   - Problem got worse
+   - Partially fixed
+   - Different problem now
+
+2. **Specific symptoms:**
+   - Nothing displays/renders
+   - Error messages or crashes
+   - Works but with side effects
+   - Same symptoms as before
+
+3. **Compared to BEFORE fix:**
+   - Exactly the same
+   - Worse (regression)
+   - Slightly better but broken
+   - Different symptoms
+
+4. **Side effects observed?**
+   - Critical (blocks other functionality)
+   - Minor (cosmetic/performance)
+   - None observed
+   - Not tested yet
+
+### Step 2: Generate Documentation
+
+**For SUCCESS:** `bug_fixes/[name]_YYYYMMDD_HHMMSS.md`
+
+```markdown
+# [Short Bug Title]
+
+**Date:** YYYY-MM-DD HH:MM
+
+## Problem
+[How it manifested - 2-3 sentences]
+
+## Root Cause
+[What caused it - 2-3 sentences]
+
+## Fix
+[How it was fixed - File:Line references]
+```
+
+**For FAILED:** `not_working/[name]_YYYYMMDD_HHMMSS_failed.md`
+
+```markdown
+# [Short Bug Title] - FAILED FIX ATTEMPT
+
+**Date:** YYYY-MM-DD HH:MM
+
+## Problem
+[How it manifested]
+
+## Attempted Fix
+[What was tried - File:Line references]
+
+**Theory:** [Why this approach was expected to work]
+
+## Why It Failed
+
+**Observed:** [From Step 1 answers]
+**Symptoms:** [Specific symptoms]
+**Hypothesis:** [Technical explanation]
+**Confidence:** [X%] - [High/Medium/Low]
+**Uncertain about:** [What needs investigation]
+
+## Next Steps
+[Other approaches to try]
+```
+
+### Step 3: Write File
+
+Generate timestamp, create descriptive filename, write to appropriate folder.
