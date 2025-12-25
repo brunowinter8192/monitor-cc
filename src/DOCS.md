@@ -162,13 +162,20 @@ sessions = find_active_sessions(project_filter="/path/to/project")
 
 **Outputs:**
 - List of tool call dictionaries with name, input, output, timestamp, agent metadata
-- List of malformed line warnings
 - New file position for next read
+- List of malformed line warnings
+- List of user media items (images, documents)
+
+**Key Functions:**
+- `parse_new_tool_calls()` - orchestrator
+- `parse_jsonl_lines()` - Parse raw lines into message objects
+- `extract_tool_calls()` - Extract tool_use/tool_result pairs
+- `extract_user_media()` - Extract non-text content from user messages (images, documents)
 
 **Usage:**
 ```python
 from src.jsonl_parser import parse_new_tool_calls
-tool_calls, warnings, new_position = parse_new_tool_calls(file_path, last_position)
+tool_calls, new_position, warnings, user_media = parse_new_tool_calls(file_path, last_position, cache)
 ```
 
 ---
@@ -203,10 +210,17 @@ entries, new_position = parse_new_hook_entries(file_path, last_position)
 **Outputs:**
 - Formatted string with ANSI color codes for terminal display
 
+**Key Functions:**
+- `format_tool_call()` - orchestrator for tool call formatting
+- `format_user_prompt()` - Format USER PROMPT stamp with optional hook outputs
+- `format_user_media()` - Format user media item as `[IMAGE: mime/type]` or `[DOC: mime/type]`
+- `format_hook_annotation()` - Format hook annotation for PreToolUse hooks
+
 **Usage:**
 ```python
-from src.formatter import format_tool_call
+from src.formatter import format_tool_call, format_user_media
 output = format_tool_call(name, input_params, output, timestamp, tool_id, is_subagent)
+media_output = format_user_media({'type': 'image', 'media_type': 'image/png', 'timestamp': '...'})
 ```
 
 ---

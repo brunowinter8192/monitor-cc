@@ -48,7 +48,7 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_hook_annotation
+from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
@@ -169,10 +169,13 @@ def process_session_file(filepath: Path) -> None:
     last_position = file_positions[filepath]
     cache = tool_use_caches[filepath]
 
-    tool_calls, new_position, malformed_warnings = parse_new_tool_calls(filepath, last_position, cache)
+    tool_calls, new_position, malformed_warnings, user_media = parse_new_tool_calls(filepath, last_position, cache)
 
     for warning in malformed_warnings:
         display_warning(warning)
+
+    for media_item in user_media:
+        display_user_media(media_item)
 
     task_requests = 0
     task_responses = 0
@@ -210,6 +213,12 @@ def display_warning(warning: dict) -> None:
         raw_line=warning['raw_line']
     )
 
+    print(formatted)
+    print()
+
+# Display formatted user media to console
+def display_user_media(media_item: dict) -> None:
+    formatted = format_user_media(media_item)
     print(formatted)
     print()
 

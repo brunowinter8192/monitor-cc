@@ -32,7 +32,7 @@ logger_extract.addHandler(extract_handler)
 logger_extract.setLevel(logging.INFO)
 
 # ORCHESTRATOR
-def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict]]:
+def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
 
     if len(new_lines) > 0:
@@ -41,12 +41,13 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     new_position = get_current_position(filepath)
     messages, malformed_lines = parse_jsonl_lines(new_lines)
     tool_calls = extract_tool_calls(messages, tool_use_cache)
+    user_media = extract_user_media(messages)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
 
-    if len(tool_calls) > 0 or len(malformed_warnings) > 0:
-        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(malformed_warnings)} malformed lines")
+    if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0:
+        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_media)} user media, {len(malformed_warnings)} malformed lines")
 
-    return tool_calls, new_position, malformed_warnings
+    return tool_calls, new_position, malformed_warnings, user_media
 
 # FUNCTIONS
 
@@ -229,3 +230,33 @@ def filter_excluded_tools(tool_calls: List[dict]) -> List[dict]:
 # Sort tool calls by timestamp
 def sort_by_timestamp(tool_calls: List[dict]) -> List[dict]:
     return sorted(tool_calls, key=lambda x: x.get('timestamp', ''))
+
+# Extract non-text media from user messages (images, documents)
+def extract_user_media(messages: List[dict]) -> List[dict]:
+    media_items = []
+
+    for message in messages:
+        if message.get('type') != 'human':
+            continue
+
+        timestamp = message.get('timestamp', '')
+        content = message.get('message', {}).get('content', [])
+
+        if not isinstance(content, list):
+            continue
+
+        for block in content:
+            block_type = block.get('type')
+            if block_type in ('image', 'document'):
+                source = block.get('source', {})
+                media_type = source.get('media_type', 'unknown')
+                media_items.append({
+                    'type': block_type,
+                    'media_type': media_type,
+                    'timestamp': timestamp
+                })
+
+    if len(media_items) > 0:
+        log_tagged(logger_extract, "USER_MEDIA", GREEN, f"Extracted {len(media_items)} media items from user messages")
+
+    return media_items

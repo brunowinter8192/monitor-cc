@@ -180,3 +180,18 @@ def format_user_prompt(timestamp: str, hook_outputs: list = None) -> str:
 # Format hook annotation for PreToolUse hooks
 def format_hook_annotation(hook_output: str, hook_script: str) -> str:
     return f"{INDENT}{PASTEL_PURPLE}Hook [{hook_script}]: {hook_output}{RESET}"
+
+# Format user media item (image or document)
+def format_user_media(media_item: dict) -> str:
+    time_str = format_timestamp(media_item.get('timestamp', ''))
+    media_type = media_item.get('type', 'unknown')
+    mime_type = media_item.get('media_type', 'unknown')
+
+    if media_type == 'image':
+        label = f"[IMAGE: {mime_type}]"
+    elif media_type == 'document':
+        label = f"[DOC: {mime_type}]"
+    else:
+        label = f"[MEDIA: {mime_type}]"
+
+    return f"{PASTEL_PURPLE}[{time_str}] USER PROMPT {label}{RESET}"

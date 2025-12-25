@@ -7,6 +7,8 @@
 - NO emojis in production code, READMEs, DOCS.md, logs
 - NO verbose console output (use logging instead)
 
+**Hook Compliance:** When a hook outputs "CRITICAL: Activate Skill('X') now!" - IMMEDIATELY invoke that skill via the Skill tool. No exceptions, no delays.
+
 **Type hints:** REQUIRED for orchestrators (clear contracts), RECOMMENDED for functions
 
 **Fail-Fast:** Let exceptions fly. No try-catch that silently swallows errors affecting business logic. Script must fail if it cannot fulfill its purpose.
