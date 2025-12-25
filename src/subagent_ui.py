@@ -1,13 +1,12 @@
 # INFRASTRUCTURE
 import logging
-from datetime import datetime
 from typing import Dict, List
 
-# ANSI Colors for logging
-RESET_LOG = '\033[0m'
-YELLOW_LOG = '\033[93m'
-PURPLE_LOG = '\033[38;5;135m'
-WHITE_LOG = '\033[97m'
+# From utils.py: ANSI colors and logging utility
+from .utils import RESET, YELLOW, PURPLE, WHITE, log_tagged, format_timestamp
+YELLOW_LOG = YELLOW
+PURPLE_LOG = PURPLE
+WHITE_LOG = WHITE
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -16,11 +15,6 @@ ui_handler = logging.FileHandler('src/logs/08_ui_rendering.log')
 ui_handler.setFormatter(log_format)
 logger_ui.addHandler(ui_handler)
 logger_ui.setLevel(logging.INFO)
-
-# Tagged logging helper
-def log_tagged(tag: str, color: str, message: str) -> None:
-    colored_tag = f"{color}[{tag}]{RESET_LOG}"
-    logger_ui.info(f"{colored_tag} {message}")
 
 # From formatter.py: Color constants for terminal output
 from .formatter import GREEN, BLUE, CYAN, YELLOW, RESET
@@ -40,7 +34,7 @@ def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
 
     if agent_count != _last_agent_count or expanded_count != _last_expanded_count:
-        log_tagged("RENDER_LIST", PURPLE_LOG, f"render_subagent_list: {agent_count} agents, {expanded_count} expanded")
+        log_tagged(logger_ui, "RENDER_LIST", PURPLE_LOG, f"render_subagent_list: {agent_count} agents, {expanded_count} expanded")
         _last_agent_count = agent_count
         _last_expanded_count = expanded_count
 
@@ -86,7 +80,7 @@ def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
         current_line += entry_lines + 1
 
     if len(entries) != _last_entry_count or expanded_entries != _last_expanded_entries:
-        log_tagged("ENTRIES_BUILT", PURPLE_LOG, f"Built {len(entries)} entries ({expanded_entries} expanded)")
+        log_tagged(logger_ui, "ENTRIES_BUILT", PURPLE_LOG, f"Built {len(entries)} entries ({expanded_entries} expanded)")
         _last_entry_count = len(entries)
         _last_expanded_entries = expanded_entries
 
@@ -106,10 +100,10 @@ def build_expanded_entry(index: int, metadata: dict, tool_calls: List[dict]) -> 
     header = build_collapsed_entry(index, metadata, is_expanded=True)
 
     if not tool_calls:
-        log_tagged("NO_CALLS", YELLOW_LOG, f"Agent {metadata['agent_id']} has no tool calls yet")
+        log_tagged(logger_ui, "NO_CALLS", YELLOW_LOG, f"Agent {metadata['agent_id']} has no tool calls yet")
         return f"{header}\n  {YELLOW}(no tool calls yet){RESET}"
 
-    log_tagged("EXPAND_BUILD", PURPLE_LOG, f"Building expanded entry for {metadata['agent_id']}: {len(tool_calls)} tool calls")
+    log_tagged(logger_ui, "EXPAND_BUILD", PURPLE_LOG, f"Building expanded entry for {metadata['agent_id']}: {len(tool_calls)} tool calls")
     call_summaries = []
     for call in tool_calls:
         summary = format_tool_call_summary(call)
@@ -148,18 +142,6 @@ def format_tool_call_summary(tool_call: dict) -> str:
 
     return summary_line
 
-# Truncate output to first N lines
-def truncate_output(output: str, max_lines: int = 5) -> str:
-    if not output:
-        return "(empty)"
-
-    lines = output.split('\n')
-    if len(lines) <= max_lines:
-        return output
-
-    truncated = '\n    '.join(lines[:max_lines])
-    return f"{truncated}\n    ... ({len(lines) - max_lines} more lines)"
-
 # Joins header and entries with proper spacing
 def combine_sections(header: str, entries: str) -> str:
     return f"{header}\n{entries}"
@@ -170,25 +152,9 @@ def get_agent_display_name(subagent_type: str, agent_id: str) -> str:
         return subagent_type.replace('-', ' ').title()
     return agent_id
 
-# Extracts creation timestamp from agent metadata
-def extract_timestamp_from_agent(tool_calls: List[dict]) -> str:
-    if not tool_calls:
-        return datetime.now().isoformat()
-    return tool_calls[0].get('timestamp', datetime.now().isoformat())
-
 # Returns number of tool calls for given agent
 def count_calls_for_agent(tool_calls: List[dict]) -> int:
     return len(tool_calls)
-
-# Converts ISO timestamp to HH:MM:SS format
-def format_timestamp(iso_timestamp: str) -> str:
-    if not iso_timestamp:
-        return '00:00:00'
-    try:
-        dt = datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
-        return dt.astimezone().strftime('%H:%M:%S')
-    except ValueError:
-        return '00:00:00'
 
 # Gets preview of tool input for summary line
 def get_input_preview(input_data: dict) -> str:
@@ -219,6 +185,6 @@ def toggle_subagent_state(agent_id: str) -> bool:
     if agent_id in subagent_states:
         subagent_states[agent_id] = not subagent_states[agent_id]
         new_state = "expanded" if subagent_states[agent_id] else "collapsed"
-        log_tagged("STATE_CHANGE", PURPLE_LOG, f"Toggled {agent_id}: {new_state}")
+        log_tagged(logger_ui, "STATE_CHANGE", PURPLE_LOG, f"Toggled {agent_id}: {new_state}")
         return True
     return False

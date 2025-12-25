@@ -3,10 +3,8 @@ import logging
 import time
 from typing import Dict, List
 
-RESET = '\033[0m'
-WHITE = '\033[97m'
-CYAN = '\033[96m'
-PURPLE = '\033[38;5;135m'
+# From utils.py: ANSI colors and logging utility
+from .utils import RESET, WHITE, CYAN, PURPLE, log_tagged
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -15,11 +13,6 @@ ui_handler = logging.FileHandler('src/logs/08_ui_rendering.log')
 ui_handler.setFormatter(log_format)
 logger_ui.addHandler(ui_handler)
 logger_ui.setLevel(logging.INFO)
-
-# Tagged logging helper
-def log_tagged(tag: str, color: str, message: str) -> None:
-    colored_tag = f"{color}[{tag}]{RESET}"
-    logger_ui.info(f"{colored_tag} {message}")
 
 # From click_handler.py: Keyboard input handling
 from .click_handler import setup_keyboard_input, restore_terminal, read_keypress, parse_digit_key, get_agent_by_index
@@ -42,7 +35,7 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
         while True:
             ui_loop_iteration += 1
             if ui_loop_iteration % 10 == 0:
-                log_tagged("UI_ITER", WHITE, f"UI loop iteration #{ui_loop_iteration}")
+                log_tagged(logger_ui, "UI_ITER", WHITE, f"UI loop iteration #{ui_loop_iteration}")
 
             handle_pending_keypresses(subagent_metadata)
             monitor_sessions_fn()
@@ -73,8 +66,8 @@ def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
     formatted_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
 
     if formatted_output != last_rendered_output:
-        log_tagged("UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={agent_count}, expanded={expanded_count}")
-        log_tagged("UI_RENDER", PURPLE, f"Re-rendering UI: {len(formatted_output)} chars, agents={agent_count}, expanded={expanded_count}")
+        log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={agent_count}, expanded={expanded_count}")
+        log_tagged(logger_ui, "UI_RENDER", PURPLE, f"Re-rendering UI: {len(formatted_output)} chars, agents={agent_count}, expanded={expanded_count}")
         print("\033[2J\033[H", end='', flush=True)
         print(formatted_output)
         last_rendered_output = formatted_output
@@ -101,7 +94,7 @@ def track_subagent_metadata(tool_call: dict, filepath, subagent_metadata: Dict[s
         }
         tool_calls_by_agent[agent_id] = []
         subagent_states[agent_id] = False
-        log_tagged("AGENT_DISC", CYAN, f"Discovered new agent: {agent_id}, type={subagent_type}, file={filepath.name}")
+        log_tagged(logger_ui, "AGENT_DISC", CYAN, f"Discovered new agent: {agent_id}, type={subagent_type}, file={filepath.name}")
 
     tool_calls_by_agent[agent_id].append(tool_call)
     subagent_metadata[agent_id]['call_count'] = count_calls_for_agent(tool_calls_by_agent[agent_id])

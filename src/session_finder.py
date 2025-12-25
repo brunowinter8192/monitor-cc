@@ -4,12 +4,8 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-# ANSI Colors
-RESET = '\033[0m'
-RED = '\033[91m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
+# From utils.py: ANSI colors and logging utility
+from .utils import RESET, RED, GREEN, YELLOW, BLUE, log_tagged
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -18,11 +14,6 @@ discovery_handler = logging.FileHandler('src/logs/03_session_discovery.log')
 discovery_handler.setFormatter(log_format)
 logger_discovery.addHandler(discovery_handler)
 logger_discovery.setLevel(logging.INFO)
-
-# Tagged logging helper
-def log_tagged(logger, tag: str, color: str, message: str) -> None:
-    colored_tag = f"{color}[{tag}]{RESET}"
-    logger.info(f"{colored_tag} {message}")
 
 CLAUDE_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 

@@ -6,17 +6,10 @@ import time
 from pathlib import Path
 from typing import Dict, Set, List, Optional
 
-# ANSI Colors
-RESET = '\033[0m'
-RED = '\033[91m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-MAGENTA = '\033[95m'
-CYAN = '\033[96m'
-WHITE = '\033[97m'
-PURPLE = '\033[38;5;135m'
-ORANGE = '\033[38;5;208m'
+# From utils.py: ANSI colors and logging utility
+from .utils import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, log_tagged
+# From constants.py: Shared constants
+from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, HOOK_USER_PROMPT, HOOK_PRE_TOOL
 INDENT = '  '
 
 # Setup 7 loggers for different workflow phases
@@ -50,11 +43,6 @@ routing_handler.setFormatter(log_format)
 logger_routing.addHandler(routing_handler)
 logger_routing.setLevel(logging.INFO)
 
-# Tagged logging helper
-def log_tagged(logger, tag: str, color: str, message: str) -> None:
-    colored_tag = f"{color}[{tag}]{RESET}"
-    logger.info(f"{colored_tag} {message}")
-
 # From session_finder.py: Discover active Claude Code sessions
 from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
@@ -77,7 +65,7 @@ agent_to_type: Dict[str, str] = {}
 buffered_subagent_calls: Dict[str, List[dict]] = {}
 task_requests_seen: Set[str] = set()
 active_project_filter: Optional[str] = None
-active_mode: str = 'all'
+active_mode: str = MODE_ALL
 ui_mode_active: bool = False
 subagent_metadata: Dict[str, dict] = {}
 tool_calls_by_agent: Dict[str, List[dict]] = {}
@@ -86,7 +74,7 @@ hook_log_position: int = 0
 pending_pretooluse_hooks: Dict[str, dict] = {}
 
 # ORCHESTRATOR
-def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: bool = False) -> None:
+def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
     global active_project_filter, active_mode, ui_mode_active
     active_project_filter = project_filter
     active_mode = mode
@@ -97,7 +85,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: boo
     session_count = initialize_file_positions()
     print_session_status(session_count, project_filter, mode)
 
-    if ui and mode == 'subagent':
+    if ui and mode == MODE_SUBAGENT:
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
         run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions)
     else:
@@ -173,7 +161,7 @@ def process_all_sessions(sessions: list) -> None:
 
 # Process single session file for new tool calls and warnings
 def process_session_file(filepath: Path) -> None:
-    global file_positions, tool_use_caches, call_counter, agent_to_task, agent_to_type, buffered_subagent_calls, task_requests_seen
+    global file_positions, tool_use_caches, call_counter
 
     if filepath not in tool_use_caches:
         tool_use_caches[filepath] = {}
@@ -195,51 +183,14 @@ def process_session_file(filepath: Path) -> None:
 
     for tool_call in tool_calls:
         if is_task_request(tool_call):
-            task_requests += 1
-            call_counter += 1
-            task_requests_seen.add(tool_call['tool_use_id'])
-            display_tool_call(tool_call, call_counter)
-
+            task_requests += handle_task_request(tool_call)
         elif is_task_response(tool_call):
-            task_responses += 1
-            spawned_agent_id = tool_call.get('spawned_agent_id')
-            if spawned_agent_id:
-                agent_to_task[spawned_agent_id] = tool_call['tool_use_id']
-                subagent_type = tool_call.get('input', {}).get('subagent_type', '')
-                agent_to_type[spawned_agent_id] = subagent_type
-
-                if spawned_agent_id in buffered_subagent_calls:
-                    for buffered_call in buffered_subagent_calls[spawned_agent_id]:
-                        call_counter += 1
-                        display_tool_call(buffered_call, call_counter)
-                    del buffered_subagent_calls[spawned_agent_id]
-
-            call_counter += 1
-            display_tool_call(tool_call, call_counter)
-
+            task_responses += handle_task_response(tool_call)
         elif is_subagent_call(tool_call):
-            agent_id = tool_call.get('agent_id')
-
-            if ui_mode_active:
-                subagent_ui_tracked += 1
-                call_counter += 1
-                tool_call['call_number'] = call_counter
-                track_subagent_metadata(tool_call, filepath, subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type)
-            elif active_mode == 'subagent':
-                subagent_displayed += 1
-                call_counter += 1
-                display_tool_call(tool_call, call_counter)
-            elif agent_id and agent_id in agent_to_task:
-                subagent_displayed += 1
-                call_counter += 1
-                display_tool_call(tool_call, call_counter)
-            else:
-                if agent_id:
-                    subagent_buffered += 1
-                    if agent_id not in buffered_subagent_calls:
-                        buffered_subagent_calls[agent_id] = []
-                    buffered_subagent_calls[agent_id].append(tool_call)
-
+            ui, disp, buff = handle_subagent_call(tool_call, filepath)
+            subagent_ui_tracked += ui
+            subagent_displayed += disp
+            subagent_buffered += buff
         else:
             other_displayed += 1
             call_counter += 1
@@ -291,7 +242,7 @@ def display_tool_call(tool_call: dict, call_number: int) -> None:
     print()
 
 # Print session status after initialization
-def print_session_status(session_count: int, project_filter: Optional[str] = None, mode: str = 'all') -> None:
+def print_session_status(session_count: int, project_filter: Optional[str] = None, mode: str = MODE_ALL) -> None:
     if session_count == 0:
         print(f"{YELLOW}No sessions found.{RESET}")
         if project_filter:
@@ -300,9 +251,9 @@ def print_session_status(session_count: int, project_filter: Optional[str] = Non
             print(f"{YELLOW}No sessions in ~/.claude/projects{RESET}\n")
     else:
         mode_label = ''
-        if mode == 'main':
+        if mode == MODE_MAIN:
             mode_label = ' (main agent only)'
-        elif mode == 'subagent':
+        elif mode == MODE_SUBAGENT:
             mode_label = ' (subagent only)'
 
         print(f"{GREEN}Monitoring {session_count} sessions{mode_label}{RESET}")
@@ -328,11 +279,11 @@ def is_agent_file(filepath: Path) -> bool:
 
 # Filter sessions based on mode (all, main, subagent)
 def filter_sessions_by_mode(sessions: list, mode: str) -> list:
-    if mode == 'all':
+    if mode == MODE_ALL:
         filtered = sessions
-    elif mode == 'main':
+    elif mode == MODE_MAIN:
         filtered = [s for s in sessions if not is_agent_file(s)]
-    elif mode == 'subagent':
+    elif mode == MODE_SUBAGENT:
         filtered = [s for s in sessions if is_agent_file(s)]
     else:
         filtered = sessions
@@ -341,15 +292,73 @@ def filter_sessions_by_mode(sessions: list, mode: str) -> list:
 
 # Check if tool call is a Task REQUEST
 def is_task_request(tool_call: dict) -> bool:
-    return tool_call.get('tool_name') == 'Task' and tool_call.get('output') is None
+    return tool_call.get('tool_name') == TOOL_TASK and tool_call.get('output') is None
 
 # Check if tool call is a Task RESPONSE
 def is_task_response(tool_call: dict) -> bool:
-    return tool_call.get('tool_name') == 'Task' and tool_call.get('output') is not None
+    return tool_call.get('tool_name') == TOOL_TASK and tool_call.get('output') is not None
 
 # Check if tool call is from a Subagent
 def is_subagent_call(tool_call: dict) -> bool:
     return tool_call.get('is_subagent', False)
+
+# Handle Task tool REQUEST (no output yet)
+def handle_task_request(tool_call: dict) -> int:
+    global call_counter, task_requests_seen
+    call_counter += 1
+    task_requests_seen.add(tool_call['tool_use_id'])
+    display_tool_call(tool_call, call_counter)
+    return 1
+
+# Handle Task tool RESPONSE (has output, may spawn agent)
+def handle_task_response(tool_call: dict) -> int:
+    global call_counter, agent_to_task, agent_to_type, buffered_subagent_calls
+
+    spawned_agent_id = tool_call.get('spawned_agent_id')
+    if spawned_agent_id:
+        agent_to_task[spawned_agent_id] = tool_call['tool_use_id']
+        subagent_type = tool_call.get('input', {}).get('subagent_type', '')
+        agent_to_type[spawned_agent_id] = subagent_type
+
+        if spawned_agent_id in buffered_subagent_calls:
+            for buffered_call in buffered_subagent_calls[spawned_agent_id]:
+                call_counter += 1
+                display_tool_call(buffered_call, call_counter)
+            del buffered_subagent_calls[spawned_agent_id]
+
+    call_counter += 1
+    display_tool_call(tool_call, call_counter)
+    return 1
+
+# Handle tool call from subagent
+def handle_subagent_call(tool_call: dict, filepath: Path) -> tuple:
+    global call_counter, buffered_subagent_calls
+
+    agent_id = tool_call.get('agent_id')
+    ui_tracked = 0
+    displayed = 0
+    buffered = 0
+
+    if ui_mode_active:
+        ui_tracked = 1
+        call_counter += 1
+        tool_call['call_number'] = call_counter
+        track_subagent_metadata(tool_call, filepath, subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type)
+    elif active_mode == MODE_SUBAGENT:
+        displayed = 1
+        call_counter += 1
+        display_tool_call(tool_call, call_counter)
+    elif agent_id and agent_id in agent_to_task:
+        displayed = 1
+        call_counter += 1
+        display_tool_call(tool_call, call_counter)
+    elif agent_id:
+        buffered = 1
+        if agent_id not in buffered_subagent_calls:
+            buffered_subagent_calls[agent_id] = []
+        buffered_subagent_calls[agent_id].append(tool_call)
+
+    return ui_tracked, displayed, buffered
 
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
@@ -366,9 +375,9 @@ def process_hook_log() -> None:
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
 
     for entry in filtered:
-        if entry.get('hook_event') == 'UserPromptSubmit':
+        if entry.get('hook_event') == HOOK_USER_PROMPT:
             display_user_prompt_entry(entry)
-        elif entry.get('hook_event') == 'PreToolUse':
+        elif entry.get('hook_event') == HOOK_PRE_TOOL:
             tool_name = entry.get('tool_name')
             if tool_name:
                 pending_pretooluse_hooks[tool_name] = entry

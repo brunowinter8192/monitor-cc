@@ -1,6 +1,8 @@
 # INFRASTRUCTURE
-from datetime import datetime
 import logging
+
+# From utils.py: Timestamp formatting
+from .utils import format_timestamp
 
 GREEN = '\033[38;5;35m'
 BLUE = '\033[38;5;33m'
@@ -76,11 +78,6 @@ def format_todo_list(todos: list) -> str:
         lines.append(f"{INDENT}{INDENT}{color}{content}{RESET}")
 
     return '\n'.join(lines)
-
-# Convert ISO timestamp to HH:MM:SS format
-def format_timestamp(iso_timestamp: str) -> str:
-    dt = datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
-    return dt.astimezone().strftime('%H:%M:%S')
 
 # Format input parameters with 2-space indentation
 def format_parameters(params: dict) -> str:

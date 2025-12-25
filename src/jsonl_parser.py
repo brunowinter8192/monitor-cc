@@ -5,13 +5,10 @@ import re
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-# ANSI Colors
-RESET = '\033[0m'
-RED = '\033[91m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-WHITE = '\033[97m'
+# From utils.py: ANSI colors and logging utility
+from .utils import RESET, RED, GREEN, YELLOW, BLUE, WHITE, log_tagged
+# From constants.py: Shared constants
+from .constants import EXCLUDED_TOOLS, SYSTEM_REMINDER_PATTERN
 
 # Setup 3 loggers for different workflow phases
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -33,11 +30,6 @@ extract_handler = logging.FileHandler('src/logs/06_tool_extraction.log')
 extract_handler.setFormatter(log_format)
 logger_extract.addHandler(extract_handler)
 logger_extract.setLevel(logging.INFO)
-
-# Tagged logging helper
-def log_tagged(logger, tag: str, color: str, message: str) -> None:
-    colored_tag = f"{color}[{tag}]{RESET}"
-    logger.info(f"{colored_tag} {message}")
 
 # ORCHESTRATOR
 def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict]]:
@@ -228,13 +220,11 @@ def extract_system_reminders(content: str) -> List[str]:
 
 # Remove system-reminder tags from content string
 def strip_system_reminders(content: str) -> str:
-    pattern = r'<system-reminder>.*?</system-reminder>'
-    return re.sub(pattern, '', content, flags=re.DOTALL).strip()
+    return re.sub(SYSTEM_REMINDER_PATTERN, '', content, flags=re.DOTALL).strip()
 
 # Filter out excluded tools
 def filter_excluded_tools(tool_calls: List[dict]) -> List[dict]:
-    excluded_tools = {'Edit'}
-    return [call for call in tool_calls if call['tool_name'] not in excluded_tools]
+    return [call for call in tool_calls if call['tool_name'] not in EXCLUDED_TOOLS]
 
 # Sort tool calls by timestamp
 def sort_by_timestamp(tool_calls: List[dict]) -> List[dict]:

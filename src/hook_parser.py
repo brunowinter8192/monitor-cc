@@ -4,10 +4,8 @@ import logging
 from pathlib import Path
 from typing import List, Tuple
 
-RESET = '\033[0m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
+# From utils.py: ANSI colors and logging utility
+from .utils import RESET, GREEN, YELLOW, BLUE, log_tagged
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -18,11 +16,6 @@ logger_hook.addHandler(hook_handler)
 logger_hook.setLevel(logging.INFO)
 
 HOOK_LOG_FILE = Path("src/logs/hook_outputs.jsonl")
-
-# Tagged logging helper
-def log_tagged(logger, tag: str, color: str, message: str) -> None:
-    colored_tag = f"{color}[{tag}]{RESET}"
-    logger.info(f"{colored_tag} {message}")
 
 # ORCHESTRATOR
 def parse_new_hook_entries(last_position: int) -> Tuple[List[dict], int]:

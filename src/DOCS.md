@@ -15,6 +15,8 @@ cd ./Monitor_CC
 ```
 src/
 ├── __init__.py
+├── utils.py          # Shared utilities (logging, timestamps, colors)
+├── constants.py      # Shared constants (tool names, modes, patterns)
 ├── monitor.py
 ├── ui_mode.py
 ├── session_finder.py
@@ -31,6 +33,46 @@ src/
 **Note:** Entry point workflow.py resides at project root and imports from this src/ package.
 
 ## Module Documentation
+
+## utils.py
+
+**Purpose:** Shared utilities for logging and timestamp formatting used across all modules.
+
+**Functions:**
+- `log_tagged(logger, tag, color, message)` - Tagged logging with colored prefix
+- `format_timestamp(iso_timestamp)` - Convert ISO timestamp to HH:MM:SS local time
+
+**Constants:**
+- ANSI color codes: `RESET`, `RED`, `GREEN`, `YELLOW`, `BLUE`, `MAGENTA`, `CYAN`, `WHITE`, `PURPLE`, `ORANGE`
+
+**Usage:**
+```python
+from src.utils import log_tagged, format_timestamp, GREEN
+log_tagged(logger, "TAG", GREEN, "Message")
+time_str = format_timestamp("2025-01-01T12:00:00Z")
+```
+
+---
+
+## constants.py
+
+**Purpose:** Shared constants for tool names, modes, hook events, and patterns.
+
+**Constants:**
+- `TOOL_TASK` - Task tool name
+- `MODE_ALL`, `MODE_MAIN`, `MODE_SUBAGENT` - Monitoring modes
+- `HOOK_USER_PROMPT`, `HOOK_PRE_TOOL` - Hook event names
+- `EXCLUDED_TOOLS` - Set of tools excluded from display
+- `SYSTEM_REMINDER_PATTERN` - Regex for system-reminder tags
+
+**Usage:**
+```python
+from src.constants import TOOL_TASK, MODE_ALL, EXCLUDED_TOOLS
+if mode == MODE_ALL:
+    ...
+```
+
+---
 
 ## monitor.py
 
@@ -53,6 +95,13 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 
 **Variables:**
 - `POLL_INTERVAL`: Seconds between session polls (default: 0.5)
+
+**Key Functions:**
+- `run_monitor()` - orchestrator
+- `process_session_file()` - Process single JSONL file
+- `handle_task_request()` - Handle Task tool REQUEST
+- `handle_task_response()` - Handle Task tool RESPONSE (spawns agents)
+- `handle_subagent_call()` - Handle tool calls from subagents
 
 ---
 
