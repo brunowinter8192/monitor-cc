@@ -8,11 +8,13 @@ Live monitoring tool for Claude Code CLI conversations - captures all tool calls
 
 ```
 Monitor_CC/
-    workflow.py
-    README.md
-    CLAUDE.md
-    LOGS_MAP.md
-    src/                                 [See DOCS.md](src/DOCS.md)
+├── workflow.py
+├── README.md
+├── CLAUDE.md
+├── LOGS_MAP.md
+├── src/                    [See DOCS.md](src/DOCS.md)
+├── bug_fixes/
+└── not_working/
 ```
 
 ## Workflow
@@ -40,13 +42,23 @@ Monitor_CC/
 ## Quick Start
 
 ```bash
-# Monitor ALL active Claude Code sessions (tmux split-screen)
+cd /path/to/Monitor_CC
+
+# Default: tmux split-screen (main + subagent panes)
 python3 workflow.py
 
-# Monitor specific project only
+# Filter by project
 python3 workflow.py --project /path/to/your/project
 
-# Single mode (no tmux)
+# Single mode (no tmux split)
 python3 workflow.py --mode main
 python3 workflow.py --mode subagent
+
+# Collapsible UI for subagent monitoring
+python3 workflow.py --project /path/to/project --ui
 ```
+
+**Flags:**
+- `--project PATH` - Filter sessions by project path
+- `--mode {all,main,subagent}` - Monitor mode (default: all = tmux split)
+- `--ui` - Enable collapsible subagent UI (keyboard 1-9 to toggle)

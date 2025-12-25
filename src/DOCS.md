@@ -14,17 +14,17 @@ cd ./Monitor_CC
 
 ```
 src/
-    __init__.py
-    monitor.py
-    session_finder.py
-    jsonl_parser.py
-    hook_parser.py
-    formatter.py
-    subagent_ui.py
-    click_handler.py
-    DOCS.md
-    debug/
-    logs/
+├── __init__.py
+├── monitor.py
+├── session_finder.py
+├── jsonl_parser.py
+├── hook_parser.py
+├── formatter.py
+├── subagent_ui.py
+├── click_handler.py
+├── DOCS.md
+├── debug/
+└── logs/
 ```
 
 **Note:** Entry point workflow.py resides at project root and imports from this src/ package.
