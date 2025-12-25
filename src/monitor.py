@@ -50,13 +50,6 @@ routing_handler.setFormatter(log_format)
 logger_routing.addHandler(routing_handler)
 logger_routing.setLevel(logging.INFO)
 
-# 08_ui_rendering.log (shares with subagent_ui.py)
-logger_ui = logging.getLogger('monitor.ui')
-ui_handler = logging.FileHandler('src/logs/08_ui_rendering.log')
-ui_handler.setFormatter(log_format)
-logger_ui.addHandler(ui_handler)
-logger_ui.setLevel(logging.INFO)
-
 # Tagged logging helper
 def log_tagged(logger, tag: str, color: str, message: str) -> None:
     colored_tag = f"{color}[{tag}]{RESET}"
@@ -70,10 +63,10 @@ from .jsonl_parser import parse_new_tool_calls
 from .formatter import format_tool_call, format_user_prompt, format_hook_annotation
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
-# From subagent_ui.py: Render subagent list and manage state
-from .subagent_ui import render_subagent_list, get_agent_display_name, extract_timestamp_from_agent, count_calls_for_agent, subagent_states, toggle_subagent_state
-# From click_handler.py: Keyboard input handling
-from .click_handler import setup_keyboard_input, restore_terminal, read_keypress, parse_digit_key, get_agent_by_index
+# From subagent_ui.py: Subagent state management
+from .subagent_ui import subagent_states
+# From ui_mode.py: UI mode loop and subagent tracking
+from .ui_mode import run_ui_loop, track_subagent_metadata
 
 POLL_INTERVAL = 0.5
 file_positions: Dict[Path, int] = {}
@@ -88,11 +81,7 @@ active_mode: str = 'all'
 ui_mode_active: bool = False
 subagent_metadata: Dict[str, dict] = {}
 tool_calls_by_agent: Dict[str, List[dict]] = {}
-last_rendered_output: str = ""
-ui_loop_iteration: int = 0
 _last_monitored_count: Optional[int] = None
-_last_agent_count: int = 0
-_last_expanded_count: int = 0
 hook_log_position: int = 0
 pending_pretooluse_hooks: Dict[str, dict] = {}
 
@@ -110,7 +99,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = 'all', ui: boo
 
     if ui and mode == 'subagent':
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
-        run_ui_loop()
+        run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions)
     else:
         log_tagged(logger_init, "STREAM_MODE", CYAN, "Starting streaming mode")
         run_streaming_loop()
@@ -235,7 +224,7 @@ def process_session_file(filepath: Path) -> None:
                 subagent_ui_tracked += 1
                 call_counter += 1
                 tool_call['call_number'] = call_counter
-                track_subagent_metadata(tool_call, filepath)
+                track_subagent_metadata(tool_call, filepath, subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type)
             elif active_mode == 'subagent':
                 subagent_displayed += 1
                 call_counter += 1
@@ -393,95 +382,6 @@ def display_user_prompt_entry(entry: dict) -> None:
     print(formatted)
     print()
     log_tagged(logger_routing, "USER_PROMPT", PURPLE, f"Displayed USER PROMPT, hook_output={bool(output)}")
-
-# Runs UI mode loop with auto-expanded subagent list
-def run_ui_loop() -> None:
-    global ui_loop_iteration
-
-    setup_keyboard_input()
-
-    try:
-        while True:
-            ui_loop_iteration += 1
-            if ui_loop_iteration % 10 == 0:
-                log_tagged(logger_ui, "UI_ITER", WHITE, f"UI loop iteration #{ui_loop_iteration}")
-
-            handle_pending_keypresses()
-            monitor_sessions()
-            sync_ui_to_screen()
-            time.sleep(POLL_INTERVAL)
-    finally:
-        restore_terminal()
-
-# Processes any pending keyboard input (digits 1-9 toggle subagents)
-def handle_pending_keypresses() -> None:
-    global subagent_metadata
-    char = read_keypress()
-    if char:
-        index = parse_digit_key(char)
-        if index:
-            agent_id = get_agent_by_index(index, subagent_metadata)
-            if agent_id:
-                toggle_subagent_state(agent_id)
-
-# Tracks subagent metadata from tool calls
-def track_subagent_metadata(tool_call: dict, filepath: Path) -> None:
-    global subagent_metadata, tool_calls_by_agent
-
-    agent_id = tool_call.get('agent_id')
-    if not agent_id:
-        return
-
-    if agent_id not in subagent_metadata:
-        subagent_type = extract_subagent_type(tool_call)
-        timestamp = tool_call.get('timestamp', '')
-
-        subagent_metadata[agent_id] = {
-            'name': get_agent_display_name(subagent_type, agent_id),
-            'agent_id': agent_id,
-            'timestamp': timestamp,
-            'file': filepath.name,
-            'parent_task_id': agent_to_task.get(agent_id, ''),
-            'call_count': 0
-        }
-        tool_calls_by_agent[agent_id] = []
-        subagent_states[agent_id] = False
-        log_tagged(logger_ui, "AGENT_DISC", CYAN, f"Discovered new agent: {agent_id}, type={subagent_type}, file={filepath.name}")
-
-    tool_calls_by_agent[agent_id].append(tool_call)
-    subagent_metadata[agent_id]['call_count'] = count_calls_for_agent(tool_calls_by_agent[agent_id])
-
-# Updates tool calls grouped by agent ID
-def update_tool_calls_by_agent(agent_id: str, tool_call: dict) -> None:
-    global tool_calls_by_agent
-
-    if agent_id not in tool_calls_by_agent:
-        tool_calls_by_agent[agent_id] = []
-
-    tool_calls_by_agent[agent_id].append(tool_call)
-
-# Syncs UI output to terminal screen
-def sync_ui_to_screen() -> None:
-    global subagent_metadata, tool_calls_by_agent, last_rendered_output, _last_agent_count, _last_expanded_count
-
-    agent_count = len(subagent_metadata)
-    expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
-
-    formatted_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
-
-    if formatted_output != last_rendered_output:
-        log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={agent_count}, expanded={expanded_count}")
-        log_tagged(logger_ui, "UI_RENDER", PURPLE, f"Re-rendering UI: {len(formatted_output)} chars, agents={agent_count}, expanded={expanded_count}")
-        print("\033[2J\033[H", end='', flush=True)
-        print(formatted_output)
-        last_rendered_output = formatted_output
-        _last_agent_count = agent_count
-        _last_expanded_count = expanded_count
-
-# Extracts subagent type from agent_to_type mapping
-def extract_subagent_type(tool_call: dict) -> str:
-    agent_id = tool_call.get('agent_id', '')
-    return agent_to_type.get(agent_id, '')
 
 # Format WARNING header with yellow color for malformed lines
 def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:

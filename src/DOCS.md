@@ -16,6 +16,7 @@ cd ./Monitor_CC
 src/
 ├── __init__.py
 ├── monitor.py
+├── ui_mode.py
 ├── session_finder.py
 ├── jsonl_parser.py
 ├── hook_parser.py
@@ -52,6 +53,35 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 
 **Variables:**
 - `POLL_INTERVAL`: Seconds between session polls (default: 0.5)
+
+---
+
+## ui_mode.py
+
+**Purpose:** UI mode loop with keyboard input and subagent tracking for interactive monitoring.
+
+**Inputs:**
+- `subagent_metadata`: Dict tracking discovered agents
+- `tool_calls_by_agent`: Dict of agent tool calls
+- `agent_to_task`: Dict mapping agent IDs to parent task IDs
+- `agent_to_type`: Dict mapping agent IDs to subagent types
+- `monitor_sessions_fn`: Callback to monitor.monitor_sessions
+
+**Outputs:**
+- Renders collapsible UI to terminal (clears screen on each update)
+
+**Functions:**
+- `run_ui_loop()` - orchestrator
+- `handle_pending_keypresses()`
+- `sync_ui_to_screen()`
+- `track_subagent_metadata()`
+- `update_tool_calls_by_agent()`
+
+**Usage:**
+```python
+from src.ui_mode import run_ui_loop
+run_ui_loop(metadata, calls, agent_to_task, agent_to_type, monitor_fn)
+```
 
 ---
 
