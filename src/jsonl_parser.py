@@ -32,7 +32,7 @@ logger_extract.addHandler(extract_handler)
 logger_extract.setLevel(logging.INFO)
 
 # ORCHESTRATOR
-def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict]]:
+def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
 
     if len(new_lines) > 0:
@@ -42,12 +42,13 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     messages, malformed_lines = parse_jsonl_lines(new_lines)
     tool_calls = extract_tool_calls(messages, tool_use_cache)
     user_media = extract_user_media(messages)
+    thinking_blocks = extract_thinking_blocks(messages)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
 
-    if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0:
-        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_media)} user media, {len(malformed_warnings)} malformed lines")
+    if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0 or len(thinking_blocks) > 0:
+        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_media)} user media, {len(thinking_blocks)} thinking, {len(malformed_warnings)} malformed lines")
 
-    return tool_calls, new_position, malformed_warnings, user_media
+    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks
 
 # FUNCTIONS
 
@@ -151,8 +152,9 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
                     tool_data['output'] = strip_system_reminders(raw_content)
                     tool_data['system_reminders'] = extract_system_reminders(raw_content)
                     tool_data['spawned_agent_id'] = extract_spawned_agent_id(message)
+                    tool_data['is_error'] = block.get('is_error', False)
                     tool_calls.append(tool_data)
-                    log_tagged(logger_extract, "TOOL_MATCH", GREEN, f"Matched tool_result: id={tool_use_id}, tool={tool_data['tool_name']}")
+                    log_tagged(logger_extract, "TOOL_MATCH", GREEN, f"Matched tool_result: id={tool_use_id}, tool={tool_data['tool_name']}, is_error={tool_data['is_error']}")
                     del tool_use_cache[tool_use_id]
                 else:
                     orphaned_results += 1
@@ -194,7 +196,8 @@ def create_tool_use_entry(block: dict, message: dict) -> dict:
         'timestamp': message.get('timestamp', ''),
         'call_number': message.get('call_number', 0),
         'is_subagent': message.get('isSidechain', False),
-        'agent_id': message.get('agentId', None)
+        'agent_id': message.get('agentId', None),
+        'usage': message.get('message', {}).get('usage')
     }
 
 # Extract spawned agent ID from toolUseResult in message
@@ -260,3 +263,33 @@ def extract_user_media(messages: List[dict]) -> List[dict]:
         log_tagged(logger_extract, "USER_MEDIA", GREEN, f"Extracted {len(media_items)} media items from user messages")
 
     return media_items
+
+# Extract thinking blocks from assistant messages
+def extract_thinking_blocks(messages: List[dict]) -> List[dict]:
+    thinking_items = []
+
+    for message in messages:
+        if message.get('type') != 'assistant':
+            continue
+
+        timestamp = message.get('timestamp', '')
+        content = message.get('message', {}).get('content', [])
+
+        if not isinstance(content, list):
+            continue
+
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get('type') == 'thinking':
+                thinking_text = block.get('thinking', '')
+                if thinking_text:
+                    thinking_items.append({
+                        'thinking': thinking_text,
+                        'timestamp': timestamp
+                    })
+
+    if len(thinking_items) > 0:
+        log_tagged(logger_extract, "THINKING", GREEN, f"Extracted {len(thinking_items)} thinking blocks")
+
+    return thinking_items

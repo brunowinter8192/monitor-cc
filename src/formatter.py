@@ -11,6 +11,8 @@ CYAN = '\033[38;5;51m'
 PASTEL_BLUE = '\033[38;5;117m'
 PASTEL_PURPLE = '\033[38;5;183m'
 LIGHT_RED_BG = '\033[48;5;203m'
+PASTEL_YELLOW = '\033[38;5;229m'
+PASTEL_ORANGE = '\033[38;5;216m'
 RESET = '\033[0m'
 INDENT = '  '
 LONG_OUTPUT_THRESHOLD = 10000
@@ -23,9 +25,9 @@ long_output_logger.addHandler(long_output_handler)
 long_output_logger.setLevel(logging.INFO)
 
 # ORCHESTRATOR
-def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None) -> str:
+def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None, usage: dict = None, is_error: bool = False) -> str:
     request = format_request(tool_name, input_data, tool_use_id, timestamp, call_number, is_subagent)
-    response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number, is_subagent, system_reminders)
+    response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number, is_subagent, system_reminders, usage, is_error)
     return combine_request_response(request, response)
 
 # FUNCTIONS
@@ -50,15 +52,27 @@ def format_request(tool_name: str, input_data: dict, tool_use_id: str, timestamp
     return f"{header}\n{params}"
 
 # Format RESPONSE header with color based on agent type
-def format_response(tool_name: str, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None) -> str:
+def format_response(tool_name: str, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None, usage: dict = None, is_error: bool = False) -> str:
     time_str = format_timestamp(timestamp)
-    color = BLUE if is_subagent else GREEN
-    header = f"{color}[{time_str}] RESPONSE #{call_number} ← {tool_name}{RESET}"
-    content = format_output(output_data)
+
+    if is_error:
+        from .utils import RED
+        header = f"{RED}[{time_str}] RESPONSE #{call_number} ← {tool_name} [ERROR]{RESET}"
+        content = format_error_output(output_data)
+    else:
+        color = BLUE if is_subagent else GREEN
+        header = f"{color}[{time_str}] RESPONSE #{call_number} ← {tool_name}{RESET}"
+        content = format_output(output_data)
+
     reminders = format_system_reminders(system_reminders)
+    usage_line = format_usage(usage)
+
+    parts = [header, content]
     if reminders:
-        return f"{header}\n{content}\n{reminders}"
-    return f"{header}\n{content}"
+        parts.append(reminders)
+    if usage_line:
+        parts.append(usage_line)
+    return '\n'.join(parts)
 
 # Format todo list with colored status and icons
 def format_todo_list(todos: list) -> str:
@@ -114,6 +128,16 @@ def format_output(content: str) -> str:
         return f"{LIGHT_RED_BG}{formatted_lines}{RESET}"
     return formatted_lines
 
+# Format error output content in red
+def format_error_output(content: str) -> str:
+    from .utils import RED
+    if not content:
+        return f"{INDENT}{RED}(empty){RESET}"
+
+    lines = content.split('\n')
+    formatted_lines = '\n'.join(f"{INDENT}{RED}{line}{RESET}" for line in lines)
+    return formatted_lines
+
 # Format system reminders with pastel blue color
 def format_system_reminders(reminders: list) -> str:
     if not reminders:
@@ -124,6 +148,15 @@ def format_system_reminders(reminders: list) -> str:
             if line.strip():
                 lines.append(f"{INDENT}{PASTEL_BLUE}{line}{RESET}")
     return '\n'.join(lines)
+
+# Format token usage stats
+def format_usage(usage: dict) -> str:
+    if not usage:
+        return ''
+    input_tokens = usage.get('input_tokens', 0)
+    cache_read = usage.get('cache_read_input_tokens', 0)
+    output_tokens = usage.get('output_tokens', 0)
+    return f"{INDENT}{PASTEL_YELLOW}[in:{input_tokens} cache:{cache_read} out:{output_tokens}]{RESET}"
 
 # Format parameter value preserving newlines for multiline strings
 def format_value(value) -> str:
@@ -195,3 +228,9 @@ def format_user_media(media_item: dict) -> str:
         label = f"[MEDIA: {mime_type}]"
 
     return f"{PASTEL_PURPLE}[{time_str}] USER PROMPT {label}{RESET}"
+
+# Format thinking block from assistant
+def format_thinking(thinking_item: dict) -> str:
+    time_str = format_timestamp(thinking_item.get('timestamp', ''))
+    thinking_text = thinking_item.get('thinking', '')
+    return f"{PASTEL_ORANGE}[{time_str}] THINKING: {thinking_text}{RESET}"

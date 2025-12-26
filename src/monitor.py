@@ -48,7 +48,7 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media
+from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media, format_thinking
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
@@ -169,13 +169,16 @@ def process_session_file(filepath: Path) -> None:
     last_position = file_positions[filepath]
     cache = tool_use_caches[filepath]
 
-    tool_calls, new_position, malformed_warnings, user_media = parse_new_tool_calls(filepath, last_position, cache)
+    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks = parse_new_tool_calls(filepath, last_position, cache)
 
     for warning in malformed_warnings:
         display_warning(warning)
 
     for media_item in user_media:
         display_user_media(media_item)
+
+    for thinking_item in thinking_blocks:
+        display_thinking(thinking_item)
 
     task_requests = 0
     task_responses = 0
@@ -222,6 +225,12 @@ def display_user_media(media_item: dict) -> None:
     print(formatted)
     print()
 
+# Display formatted thinking block to console
+def display_thinking(thinking_item: dict) -> None:
+    formatted = format_thinking(thinking_item)
+    print(formatted)
+    print()
+
 # Display formatted tool call to console
 def display_tool_call(tool_call: dict, call_number: int) -> None:
     global pending_pretooluse_hooks
@@ -237,7 +246,9 @@ def display_tool_call(tool_call: dict, call_number: int) -> None:
         timestamp=tool_call['timestamp'],
         call_number=call_number,
         is_subagent=tool_call.get('is_subagent', False),
-        system_reminders=tool_call.get('system_reminders', [])
+        system_reminders=tool_call.get('system_reminders', []),
+        usage=tool_call.get('usage'),
+        is_error=tool_call.get('is_error', False)
     )
 
     if hook_entry and hook_entry.get('output'):
