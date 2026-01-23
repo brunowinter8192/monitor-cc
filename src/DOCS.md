@@ -136,7 +136,7 @@ run_ui_loop(metadata, calls, agent_to_task, agent_to_type, monitor_fn)
 
 ## session_finder.py
 
-**Purpose:** Discovers active Claude Code session files in ~/.claude/projects with optional project filtering.
+**Purpose:** Discovers active Claude Code session files in ~/.claude/projects with optional project filtering. Includes subagent files from `*/subagents/agent-*.jsonl` subdirectories.
 
 **Inputs:**
 - `project_filter`: Optional project path to match against encoded directory names

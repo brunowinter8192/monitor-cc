@@ -63,6 +63,7 @@ def collect_jsonl_files(project_dirs: List[Path], project_filter: Optional[str] 
         if project_filter and not matches_project_filter(project_dir, project_filter):
             continue
         files = list(project_dir.glob('*.jsonl'))
+        files.extend(project_dir.glob('*/subagents/agent-*.jsonl'))
         jsonl_files.extend(files)
 
     if _last_jsonl_count != len(jsonl_files):
