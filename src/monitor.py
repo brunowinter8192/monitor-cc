@@ -48,7 +48,7 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media, format_thinking
+from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media, format_thinking, format_turn_total
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
@@ -72,6 +72,7 @@ tool_calls_by_agent: Dict[str, List[dict]] = {}
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
 pending_pretooluse_hooks: Dict[str, dict] = {}
+turn_usage_accumulator: Dict[str, int] = {'input_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0, 'output_tokens': 0}
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -231,9 +232,21 @@ def display_thinking(thinking_item: dict) -> None:
     print(formatted)
     print()
 
+# Accumulate usage stats for turn total
+def accumulate_usage(usage: dict) -> None:
+    global turn_usage_accumulator
+    if not usage:
+        return
+    turn_usage_accumulator['input_tokens'] += usage.get('input_tokens', 0)
+    turn_usage_accumulator['cache_read_input_tokens'] += usage.get('cache_read_input_tokens', 0)
+    turn_usage_accumulator['cache_creation_input_tokens'] += usage.get('cache_creation_input_tokens', 0)
+    turn_usage_accumulator['output_tokens'] += usage.get('output_tokens', 0)
+
 # Display formatted tool call to console
 def display_tool_call(tool_call: dict, call_number: int) -> None:
     global pending_pretooluse_hooks
+
+    accumulate_usage(tool_call.get('usage'))
 
     tool_name = tool_call['tool_name']
     hook_entry = pending_pretooluse_hooks.pop(tool_name, None)
@@ -405,6 +418,16 @@ def process_hook_log() -> None:
 
 # Display USER PROMPT entry from hook log
 def display_user_prompt_entry(entry: dict) -> None:
+    global turn_usage_accumulator
+
+    if any(turn_usage_accumulator.values()):
+        turn_total = format_turn_total(turn_usage_accumulator)
+        if turn_total:
+            print(turn_total)
+            print()
+
+    turn_usage_accumulator = {'input_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0, 'output_tokens': 0}
+
     output = entry.get('output', '')
     hook_outputs = [output] if output else None
     formatted = format_user_prompt(entry.get('timestamp', ''), hook_outputs)

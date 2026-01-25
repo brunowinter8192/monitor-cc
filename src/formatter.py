@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import logging
+import re
 
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
@@ -13,8 +14,10 @@ PASTEL_PURPLE = '\033[38;5;183m'
 LIGHT_RED_BG = '\033[48;5;203m'
 PASTEL_YELLOW = '\033[38;5;229m'
 PASTEL_ORANGE = '\033[38;5;216m'
+SIGNAL_PINK = '\033[38;5;213m'
 RESET = '\033[0m'
 INDENT = '  '
+SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
 LONG_OUTPUT_THRESHOLD = 10000
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -122,11 +125,17 @@ def format_output(content: str) -> str:
         log_long_output(content)
 
     lines = content.split('\n')
-    formatted_lines = '\n'.join(f"{INDENT}{line}" for line in lines)
+    formatted_lines = []
+    for line in lines:
+        if SCORE_PATTERN.match(line.strip()):
+            formatted_lines.append(f"{INDENT}{GREEN}{line}{RESET}")
+        else:
+            formatted_lines.append(f"{INDENT}{line}")
+    result = '\n'.join(formatted_lines)
 
     if is_long:
-        return f"{LIGHT_RED_BG}{formatted_lines}{RESET}"
-    return formatted_lines
+        return f"{LIGHT_RED_BG}{result}{RESET}"
+    return result
 
 # Format error output content in red
 def format_error_output(content: str) -> str:
@@ -155,8 +164,20 @@ def format_usage(usage: dict) -> str:
         return ''
     input_tokens = usage.get('input_tokens', 0)
     cache_read = usage.get('cache_read_input_tokens', 0)
+    cache_write = usage.get('cache_creation_input_tokens', 0)
     output_tokens = usage.get('output_tokens', 0)
-    return f"{INDENT}{PASTEL_YELLOW}[in:{input_tokens} cache:{cache_read} out:{output_tokens}]{RESET}"
+    return f"{INDENT}{PASTEL_YELLOW}[in:{input_tokens} cache_r:{cache_read} cache_w:{cache_write} out:{output_tokens}]{RESET}"
+
+# Format turn total usage with signal color
+def format_turn_total(total_usage: dict) -> str:
+    if not total_usage or not any(total_usage.values()):
+        return ''
+    input_tokens = total_usage.get('input_tokens', 0)
+    cache_read = total_usage.get('cache_read_input_tokens', 0)
+    cache_write = total_usage.get('cache_creation_input_tokens', 0)
+    output_tokens = total_usage.get('output_tokens', 0)
+    line = '─' * 45
+    return f"{SIGNAL_PINK}{line}\nTURN TOTAL: [in:{input_tokens} cache_r:{cache_read} cache_w:{cache_write} out:{output_tokens}]{RESET}"
 
 # Format parameter value preserving newlines for multiline strings
 def format_value(value) -> str:

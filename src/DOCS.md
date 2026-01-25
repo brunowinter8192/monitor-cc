@@ -102,6 +102,8 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 - `handle_task_request()` - Handle Task tool REQUEST
 - `handle_task_response()` - Handle Task tool RESPONSE (spawns agents)
 - `handle_subagent_call()` - Handle tool calls from subagents
+- `accumulate_usage()` - Accumulate token usage for turn total
+- `display_user_prompt_entry()` - Display USER PROMPT with turn total
 
 ---
 
@@ -217,7 +219,8 @@ entries, new_position = parse_new_hook_entries(file_path, last_position)
 - `format_user_prompt()` - Format USER PROMPT stamp with optional hook outputs
 - `format_user_media()` - Format user media item as `[IMAGE: mime/type]` or `[DOC: mime/type]`
 - `format_hook_annotation()` - Format hook annotation for PreToolUse hooks
-- `format_usage()` - Format token usage stats as `[in:X cache:Y out:Z]` (pastel yellow)
+- `format_usage()` - Format token usage stats as `[in:X cache_r:Y cache_w:Z out:W]` (pastel yellow)
+- `format_turn_total()` - Format turn total usage with separator line (signal pink)
 - `format_thinking()` - Format thinking block with timestamp (pastel orange)
 - `format_error_output()` - Format error output in red
 
