@@ -365,6 +365,12 @@ def handle_task_response(tool_call: dict) -> int:
     if ui_mode_active:
         tool_call['call_number'] = call_counter
         main_agent_task_calls.append(tool_call)
+    elif active_mode == MODE_MAIN:
+        truncated = dict(tool_call)
+        output_len = len(tool_call.get('output', '') or '')
+        subagent_type = tool_call.get('input', {}).get('subagent_type', 'unknown')
+        truncated['output'] = f"(Subagent [{subagent_type}] completed - {output_len} chars, see subagent pane)"
+        display_tool_call(truncated, call_counter)
     else:
         display_tool_call(tool_call, call_counter)
     return 1
@@ -377,6 +383,9 @@ def handle_subagent_call(tool_call: dict, filepath: Path) -> tuple:
     ui_tracked = 0
     displayed = 0
     buffered = 0
+
+    if active_mode == MODE_MAIN:
+        return ui_tracked, displayed, buffered
 
     if ui_mode_active:
         ui_tracked = 1

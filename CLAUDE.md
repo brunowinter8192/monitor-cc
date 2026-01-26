@@ -324,6 +324,7 @@ Workflow/          -> README.md (tree to directories)
 | Skill | Purpose |
 |-------|---------|
 | `iterative-dev` | PLAN->IMPLEMENT->RECAP->IMPROVE->CLOSING cycle with beads tracking |
+| `debug` | INVESTIGATE->HYPOTHESIZE->FIX->TEST->CLOSE cycle with GH Issue tracking |
 | `agent-dispatch` | Guidelines for effective agent usage (when, how to prompt, verification) |
 
 ### Agents (Task-scoped)
@@ -337,5 +338,4 @@ Workflow/          -> README.md (tree to directories)
 
 | Command | Purpose |
 |---------|---------|
-| `/debug [observation]` | Systematic debugging: Context->Root Cause->Fix->Documentation |
 | `/refactor-ask [path]` | Analyze module complexity, create refactoring plan |

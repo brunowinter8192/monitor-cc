@@ -128,9 +128,27 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
     tool_result_count = 0
     orphaned_results = 0
     total_blocks = 0
+    progress_count = 0
 
     for message in messages:
-        content_blocks = get_message_content(message)
+        msg_type = message.get('type')
+
+        if msg_type == 'progress':
+            data = message.get('data', {})
+            if data.get('type') != 'agent_progress':
+                continue
+            progress_count += 1
+            agent_id = data.get('agentId')
+            if not agent_id:
+                continue
+            inner_message = data.get('message', {})
+            content_blocks = get_progress_content(inner_message)
+            is_subagent = True
+        else:
+            content_blocks = get_message_content(message)
+            is_subagent = False
+            agent_id = None
+
         total_blocks += len(content_blocks)
         if not content_blocks:
             continue
@@ -138,9 +156,9 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
         for block in content_blocks:
             if is_tool_use(block):
                 tool_use_count += 1
-                tool_data = create_tool_use_entry(block, message)
+                tool_data = create_tool_use_entry(block, message, is_subagent, agent_id)
                 tool_use_cache[tool_data['tool_use_id']] = tool_data
-                log_tagged(logger_extract, "TOOL_CACHED", WHITE, f"Cached tool_use: id={tool_data['tool_use_id']}, tool={tool_data['tool_name']}")
+                log_tagged(logger_extract, "TOOL_CACHED", WHITE, f"Cached tool_use: id={tool_data['tool_use_id']}, tool={tool_data['tool_name']}, subagent={is_subagent}")
 
             elif is_tool_result(block):
                 tool_result_count += 1
@@ -160,8 +178,8 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
                     orphaned_results += 1
                     log_tagged(logger_extract, "TOOL_ORPHAN", YELLOW, f"Orphaned tool_result: id={tool_use_id} (no matching tool_use in cache)")
 
-    if len(tool_calls) > 0 or orphaned_results > 0:
-        log_tagged(logger_extract, "EXTRACT_STATS", WHITE, f"extract_tool_calls: blocks={total_blocks}, tool_use={tool_use_count}, tool_result={tool_result_count}, orphaned={orphaned_results}, extracted={len(tool_calls)}")
+    if len(tool_calls) > 0 or orphaned_results > 0 or progress_count > 0:
+        log_tagged(logger_extract, "EXTRACT_STATS", WHITE, f"extract_tool_calls: blocks={total_blocks}, tool_use={tool_use_count}, tool_result={tool_result_count}, orphaned={orphaned_results}, progress={progress_count}, extracted={len(tool_calls)}")
 
     filtered_calls = filter_excluded_tools(tool_calls)
     sorted_calls = sort_by_timestamp(filtered_calls)
@@ -178,6 +196,14 @@ def get_message_content(message: dict) -> List[dict]:
         return content
     return []
 
+# Get content blocks from progress message (nested structure: data.message.message.content)
+def get_progress_content(inner_message: dict) -> List[dict]:
+    inner_inner = inner_message.get('message', {})
+    content = inner_inner.get('content', [])
+    if isinstance(content, list):
+        return content
+    return []
+
 # Check if content block is tool_use
 def is_tool_use(block: dict) -> bool:
     return block.get('type') == 'tool_use'
@@ -187,7 +213,7 @@ def is_tool_result(block: dict) -> bool:
     return block.get('type') == 'tool_result'
 
 # Create tool call entry from tool_use block
-def create_tool_use_entry(block: dict, message: dict) -> dict:
+def create_tool_use_entry(block: dict, message: dict, is_subagent: bool = False, agent_id: str = None) -> dict:
     return {
         'tool_name': block.get('name', 'Unknown'),
         'input': block.get('input', {}),
@@ -195,8 +221,8 @@ def create_tool_use_entry(block: dict, message: dict) -> dict:
         'tool_use_id': block.get('id', ''),
         'timestamp': message.get('timestamp', ''),
         'call_number': message.get('call_number', 0),
-        'is_subagent': message.get('isSidechain', False),
-        'agent_id': message.get('agentId', None),
+        'is_subagent': is_subagent or message.get('isSidechain', False),
+        'agent_id': agent_id or message.get('agentId', None),
         'usage': message.get('message', {}).get('usage')
     }
 
