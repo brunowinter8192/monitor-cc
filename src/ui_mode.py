@@ -17,7 +17,7 @@ logger_ui.setLevel(logging.INFO)
 # From click_handler.py: Keyboard input handling
 from .click_handler import setup_keyboard_input, restore_terminal, read_keypress, parse_digit_key, get_agent_by_index
 # From subagent_ui.py: Render subagent list and manage state
-from .subagent_ui import render_subagent_list, get_agent_display_name, count_calls_for_agent, subagent_states, toggle_subagent_state
+from .subagent_ui import render_subagent_list, render_main_agent_tasks, get_agent_display_name, count_calls_for_agent, subagent_states, toggle_subagent_state
 
 POLL_INTERVAL = 0.5
 ui_loop_iteration: int = 0
@@ -26,7 +26,7 @@ _last_agent_count: int = 0
 _last_expanded_count: int = 0
 
 # ORCHESTRATOR
-def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], agent_to_task: Dict[str, str], agent_to_type: Dict[str, str], monitor_sessions_fn) -> None:
+def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], agent_to_task: Dict[str, str], agent_to_type: Dict[str, str], main_agent_task_calls: List[dict], monitor_sessions_fn) -> None:
     global ui_loop_iteration
 
     setup_keyboard_input()
@@ -39,7 +39,7 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
 
             handle_pending_keypresses(subagent_metadata)
             monitor_sessions_fn()
-            sync_ui_to_screen(subagent_metadata, tool_calls_by_agent)
+            sync_ui_to_screen(subagent_metadata, tool_calls_by_agent, main_agent_task_calls)
             time.sleep(POLL_INTERVAL)
     finally:
         restore_terminal()
@@ -57,16 +57,22 @@ def handle_pending_keypresses(subagent_metadata: Dict[str, dict]) -> None:
                 toggle_subagent_state(agent_id)
 
 # Syncs UI output to terminal screen
-def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> None:
+def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], main_agent_task_calls: List[dict]) -> None:
     global last_rendered_output, _last_agent_count, _last_expanded_count
 
     agent_count = len(subagent_metadata)
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
 
-    formatted_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
+    tasks_output = render_main_agent_tasks(main_agent_task_calls)
+    subagent_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
+
+    if tasks_output:
+        formatted_output = f"{tasks_output}\n\n{subagent_output}"
+    else:
+        formatted_output = subagent_output
 
     if formatted_output != last_rendered_output:
-        log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={agent_count}, expanded={expanded_count}")
+        log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={agent_count}, expanded={expanded_count}, tasks={len(main_agent_task_calls)}")
         log_tagged(logger_ui, "UI_RENDER", PURPLE, f"Re-rendering UI: {len(formatted_output)} chars, agents={agent_count}, expanded={expanded_count}")
         print("\033[2J\033[3J\033[H", end='', flush=True)
         print(formatted_output)
