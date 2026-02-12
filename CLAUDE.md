@@ -74,6 +74,8 @@ def export_results(results: pd.DataFrame, output_dir: str) -> None:
 **CRITICAL:** All functions must be called by the module's orchestrator (directly or indirectly).
 If a function is only used by another module, it belongs in THAT module, not here.
 
+**Exception:** Utility modules (constants-only or helper-only) may omit ORCHESTRATOR and/or FUNCTIONS sections.
+
 ### Orchestrator Naming
 
 - Name is freely chosen, semantically matching module purpose
@@ -91,12 +93,12 @@ from src.monitor import run_monitor
 from src.session_finder import find_active_sessions
 
 # ORCHESTRATOR
-def main(project_filter: str, mode: str) -> None:
-    sessions = find_active_sessions(project_filter)
-    run_monitor(sessions, mode)
+def main() -> None:
+    sessions = find_active_sessions()
+    run_monitor(sessions)
 
 if __name__ == "__main__":
-    main(args.project, args.mode)
+    main()
 ```
 
 **Rules:**
@@ -115,12 +117,13 @@ When module A needs functionality from module B:
 ```python
 # In src/monitor.py
 # INFRASTRUCTURE
-from .formatter import format_tool_call  # From other module
+# From formatter.py: Format tool calls for display
+from .formatter import format_tool_call
 
 # ORCHESTRATOR
 def run_monitor(sessions, mode):
     for call in parse_sessions(sessions):
-        output = format_tool_call(call)  # Cross-module call
+        output = format_tool_call(call)
         display(output)
 ```
 
@@ -201,7 +204,7 @@ def process_data(df):
 
 1. **NO console prints** during normal execution (use logging instead)
 2. **src/logs/ folder** - one or more log files per module
-3. **Workflow-oriented log files** - Follow LOGS_MAP.md structure (workflow phases 01-09)
+3. **Workflow-oriented log files** - Follow LOGS_MAP.md structure (see LOGS_MAP.md for current phases)
 4. **Every non-trivial function MUST log**
 5. **Avoid redundant logging of static states or loops.**
 6. **Log only actionable events: Status changes, branches, errors, and operation results.**
@@ -221,18 +224,22 @@ def process_data(df):
 # INFRASTRUCTURE
 import logging
 
-logging.basicConfig(
-    filename='src/logs/module_name.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+logger_name = logging.getLogger('module.phase')
+handler = logging.FileHandler('src/logs/XX_phase.log')
+handler.setFormatter(log_format)
+logger_name.addHandler(handler)
+logger_name.setLevel(logging.INFO)
 ```
+
+Multiple loggers per module are supported (e.g. jsonl_parser.py uses 3 loggers for 3 workflow phases).
 
 ### LOGS_MAP.md Integration
 
 **When adding new logging:**
 1. **Check LOGS_MAP.md** to identify which workflow phase your module belongs to
-2. **Use existing log file** if module fits into existing workflow phase (01-09)
+2. **Use existing log file** if module fits into existing workflow phase
 3. **If new workflow phase needed:** Add new numbered log file and document in LOGS_MAP.md
 
 ---
@@ -325,14 +332,12 @@ Workflow/          -> README.md (tree to directories)
 |-------|---------|
 | `iterative-dev` | PLAN->IMPLEMENT->RECAP->IMPROVE->CLOSING cycle with beads tracking |
 | `debug` | INVESTIGATE->HYPOTHESIZE->FIX->TEST->CLOSE cycle with GH Issue tracking |
-| `agent-dispatch` | Guidelines for effective agent usage (when, how to prompt, verification) |
 
 ### Agents (Task-scoped)
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
 | `code-investigate-specialist` | Haiku | Codebase exploration, file search, pattern finding |
-| `compliance-reviewer-global` | Sonnet | CLAUDE.md compliance audits across directories |
 
 ### Slash Commands (Single invocation)
 

@@ -134,7 +134,6 @@ def format_tool_call_summary(tool_call: dict) -> str:
 
     summary_line = f"{GREEN}[{timestamp}] {direction} #{call_number} {tool_name}{RESET}: {input_preview}"
 
-    # Add output if present (FULL output, no truncating)
     if has_output:
         output = tool_call.get('output', '') or "(empty)"
         output_lines = f"\n    {CYAN}OUTPUT:{RESET} {output}"
@@ -188,21 +187,3 @@ def toggle_subagent_state(agent_id: str) -> bool:
         log_tagged(logger_ui, "STATE_CHANGE", PURPLE_LOG, f"Toggled {agent_id}: {new_state}")
         return True
     return False
-
-# Renders main agent Task calls section
-def render_main_agent_tasks(task_calls: List[dict]) -> str:
-    if not task_calls:
-        return ""
-
-    header = f"{CYAN}Main Agent Tasks ({len(task_calls)}){RESET}\n"
-    entries = []
-
-    for call in task_calls:
-        subagent_type = call.get('input', {}).get('subagent_type', 'Unknown')
-        description = call.get('input', {}).get('description', '')[:50]
-        call_number = call.get('call_number', '?')
-        timestamp = format_timestamp(call.get('timestamp', ''))
-
-        entries.append(f"{GREEN}[{timestamp}] #{call_number} Task → {subagent_type}{RESET}: {description}")
-
-    return header + '\n'.join(entries)

@@ -17,6 +17,8 @@ src/
 ├── __init__.py
 ├── utils.py          # Shared utilities (logging, timestamps, colors)
 ├── constants.py      # Shared constants (tool names, modes, patterns)
+├── startup.py        # CLI argument parsing, signal handlers, startup messages
+├── tmux_launcher.py  # tmux split-screen session launch and configuration
 ├── monitor.py
 ├── ui_mode.py
 ├── session_finder.py
@@ -74,6 +76,63 @@ if mode == MODE_ALL:
 
 ---
 
+## startup.py
+
+**Purpose:** CLI argument parsing, signal handling, and startup/shutdown messages for the monitor entry point.
+
+**Outputs:**
+- Parsed command-line arguments (argparse.Namespace)
+- Signal handler registration for graceful shutdown
+- Formatted startup/shutdown console messages
+
+**Functions:**
+- `parse_arguments()` - orchestrator, parses --project, --mode, --ui flags
+- `setup_signal_handlers()` - Register SIGINT/SIGTERM handlers
+- `handle_shutdown()` - Handle shutdown signals gracefully
+- `print_startup_message()` - Print colored startup banner
+- `print_shutdown_message()` - Print colored shutdown banner
+
+**Usage:**
+```python
+from src.startup import parse_arguments, setup_signal_handlers, print_startup_message
+args = parse_arguments()
+setup_signal_handlers()
+print_startup_message(args.project, args.mode)
+```
+
+---
+
+## tmux_launcher.py
+
+**Purpose:** Launches tmux split-screen session with separate panes for main agent and subagent monitoring.
+
+**Inputs:**
+- `project_filter`: Optional project path to filter sessions
+- `ui`: Enable collapsible UI mode for subagent pane
+- `script_path`: Absolute path to workflow.py for subprocess commands
+
+**Outputs:**
+- Creates and attaches to tmux session with configured panes
+
+**Functions:**
+- `launch_split_screen()` - orchestrator
+- `is_tmux_installed()` - Check tmux availability
+- `is_inside_tmux()` - Detect nested tmux
+- `generate_session_name()` - Hash-based unique session name
+- `check_session_exists()` - Check for existing session
+- `kill_session()` - Kill stale session
+- `get_global_history_limit()` - Save current history limit
+- `restore_global_history_limit()` - Restore saved limit
+- `configure_tmux_session()` - Set keybindings, mouse, status bar
+
+**Usage:**
+```python
+from src.tmux_launcher import launch_split_screen
+launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/path/to/workflow.py")
+```
+
+---
+
 ## monitor.py
 
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls with color-coded output.
@@ -100,7 +159,7 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 - `run_monitor()` - orchestrator
 - `process_session_file()` - Process single JSONL file
 - `handle_task_request()` - Handle Task tool REQUEST
-- `handle_task_response()` - Handle Task tool RESPONSE (spawns agents)
+- `handle_task_response()` - Handle Task tool RESPONSE (maps agent IDs, displays full result)
 - `handle_subagent_call()` - Handle tool calls from subagents
 - `accumulate_usage()` - Accumulate token usage for turn total
 - `display_user_prompt_entry()` - Display USER PROMPT with turn total
@@ -124,9 +183,8 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 **Functions:**
 - `run_ui_loop()` - orchestrator
 - `handle_pending_keypresses()`
-- `sync_ui_to_screen()`
+- `sync_ui_to_screen()` - Renders only subagent list (no main agent tasks)
 - `track_subagent_metadata()`
-- `update_tool_calls_by_agent()`
 
 **Usage:**
 ```python
@@ -244,12 +302,12 @@ thinking_output = format_thinking({'thinking': 'Der User...', 'timestamp': '...'
 - `subagent_states`: Dict of agent_id -> expanded (boolean)
 
 **Outputs:**
-- Formatted terminal UI string with collapsible entries
+- Formatted terminal UI string with collapsible entries (subagent tool calls only)
 
 **Usage:**
 ```python
 from src.subagent_ui import render_subagent_list
-ui_output = render_subagent_list(metadata, calls, states)
+ui_output = render_subagent_list(metadata, calls)
 ```
 
 ---

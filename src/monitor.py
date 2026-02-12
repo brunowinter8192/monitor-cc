@@ -64,7 +64,6 @@ agent_to_task: Dict[str, str] = {}
 agent_to_type: Dict[str, str] = {}
 buffered_subagent_calls: Dict[str, List[dict]] = {}
 task_requests_seen: Set[str] = set()
-main_agent_task_calls: List[dict] = []
 active_project_filter: Optional[str] = None
 active_mode: str = MODE_ALL
 ui_mode_active: bool = False
@@ -89,7 +88,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
 
     if ui and mode == MODE_SUBAGENT:
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
-        run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, main_agent_task_calls, monitor_sessions)
+        run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions)
     else:
         log_tagged(logger_init, "STREAM_MODE", CYAN, "Starting streaming mode")
         run_streaming_loop()
@@ -346,7 +345,7 @@ def handle_task_request(tool_call: dict) -> int:
 
 # Handle Task tool RESPONSE (has output, may spawn agent)
 def handle_task_response(tool_call: dict) -> int:
-    global call_counter, agent_to_task, agent_to_type, buffered_subagent_calls, main_agent_task_calls
+    global call_counter, agent_to_task, agent_to_type, buffered_subagent_calls
 
     spawned_agent_id = tool_call.get('spawned_agent_id')
     if spawned_agent_id:
@@ -362,17 +361,7 @@ def handle_task_response(tool_call: dict) -> int:
             del buffered_subagent_calls[spawned_agent_id]
 
     call_counter += 1
-    if ui_mode_active:
-        tool_call['call_number'] = call_counter
-        main_agent_task_calls.append(tool_call)
-    elif active_mode == MODE_MAIN:
-        truncated = dict(tool_call)
-        output_len = len(tool_call.get('output', '') or '')
-        subagent_type = tool_call.get('input', {}).get('subagent_type', 'unknown')
-        truncated['output'] = f"(Subagent [{subagent_type}] completed - {output_len} chars, see subagent pane)"
-        display_tool_call(truncated, call_counter)
-    else:
-        display_tool_call(tool_call, call_counter)
+    display_tool_call(tool_call, call_counter)
     return 1
 
 # Handle tool call from subagent
