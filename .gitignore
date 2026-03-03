@@ -40,3 +40,7 @@ bug_fixes/
 
 # External repos (for research)
 repo/
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
