@@ -32,7 +32,7 @@ logger_extract.addHandler(extract_handler)
 logger_extract.setLevel(logging.INFO)
 
 # ORCHESTRATOR
-def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict]]:
+def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
 
     if len(new_lines) > 0:
@@ -41,14 +41,15 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     new_position = get_current_position(filepath)
     messages, malformed_lines = parse_jsonl_lines(new_lines)
     tool_calls = extract_tool_calls(messages, tool_use_cache)
+    user_prompts = extract_user_prompts(messages)
     user_media = extract_user_media(messages)
     thinking_blocks = extract_thinking_blocks(messages)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
 
-    if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0 or len(thinking_blocks) > 0:
-        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_media)} user media, {len(thinking_blocks)} thinking, {len(malformed_warnings)} malformed lines")
+    if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0 or len(thinking_blocks) > 0 or len(user_prompts) > 0:
+        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_prompts)} user prompts, {len(user_media)} user media, {len(thinking_blocks)} thinking, {len(malformed_warnings)} malformed lines")
 
-    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks
+    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts
 
 # FUNCTIONS
 
@@ -265,7 +266,7 @@ def extract_user_media(messages: List[dict]) -> List[dict]:
     media_items = []
 
     for message in messages:
-        if message.get('type') != 'human':
+        if message.get('type') != 'user':
             continue
 
         timestamp = message.get('timestamp', '')
@@ -289,6 +290,54 @@ def extract_user_media(messages: List[dict]) -> List[dict]:
         log_tagged(logger_extract, "USER_MEDIA", GREEN, f"Extracted {len(media_items)} media items from user messages")
 
     return media_items
+
+# Extract user prompts from external user messages
+def extract_user_prompts(messages: List[dict]) -> List[dict]:
+    prompts = []
+
+    for message in messages:
+        if message.get('type') != 'user':
+            continue
+        if message.get('userType') != 'external':
+            continue
+
+        timestamp = message.get('timestamp', '')
+        content = message.get('message', {}).get('content', '')
+
+        if isinstance(content, list):
+            has_tool_result = any(
+                isinstance(b, dict) and b.get('type') == 'tool_result'
+                for b in content
+            )
+            if has_tool_result:
+                continue
+            text_parts = [
+                b.get('text', '') for b in content
+                if isinstance(b, dict) and b.get('type') == 'text'
+            ]
+            text = '\n'.join(text_parts)
+        elif isinstance(content, str):
+            text = content
+        else:
+            continue
+
+        stripped = text.strip()
+        if not stripped:
+            continue
+        if stripped.startswith('<command-message>') or stripped.startswith('<command-name>'):
+            continue
+        if stripped.startswith('Base directory for this skill:'):
+            continue
+
+        prompts.append({
+            'timestamp': timestamp,
+            'text': text
+        })
+
+    if len(prompts) > 0:
+        log_tagged(logger_extract, "USER_PROMPTS", GREEN, f"Extracted {len(prompts)} user prompts")
+
+    return prompts
 
 # Extract thinking blocks from assistant messages
 def extract_thinking_blocks(messages: List[dict]) -> List[dict]:

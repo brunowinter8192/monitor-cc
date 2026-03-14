@@ -151,6 +151,15 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 
 ---
 
+### 11_hook_parsing.log (2 events)
+
+| # | Event | Module | Function | Tag | Color |
+|---|-------|--------|----------|-----|-------|
+| 1 | Parsed N hook entries | hook_parser.py | parse_new_hook_entries() | HOOK_PARSED | Green |
+| 2 | JSON decode error | hook_parser.py | parse_lines() | HOOK_JSON_ERR | Yellow |
+
+---
+
 ## Quick Reference Table
 
 | Log File | Events | Primary Module | Frequency | Key Tags |
@@ -165,5 +174,6 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 | 08_ui_rendering.log | 10 | monitor.py, subagent_ui.py | On changes only (UI mode) | UI_RENDER, RENDER_LIST, ENTRIES_BUILT |
 | 09_input_handling.log | 6 | click_handler.py | On keypresses (UI mode) | KEYPRESS, DIGIT_KEY, AGENT_LOOKUP |
 | 10_long_outputs.log | 4 | formatter.py | On long outputs only | LONG_OUTPUT, PREVIEW, FULL_CONTENT |
+| 11_hook_parsing.log | 2 | hook_parser.py | On hook entries only | HOOK_PARSED, HOOK_JSON_ERR |
 
-**Total: 76 events across 10 workflow phases**
+**Total: 78 events across 11 workflow phases**

@@ -2,8 +2,6 @@
 
 Live monitoring tool for Claude Code CLI conversations - captures all tool calls with full input/output.
 
-**Remote:** https://github.com/brunowinter8192/ClaudeCode-Monitor
-
 ## Directory Structure
 
 ```

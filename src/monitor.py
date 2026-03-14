@@ -72,6 +72,7 @@ tool_calls_by_agent: Dict[str, List[dict]] = {}
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
 pending_pretooluse_hooks: Dict[str, dict] = {}
+pending_user_prompt_hook: Optional[dict] = None
 turn_usage_accumulator: Dict[str, int] = {'input_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0, 'output_tokens': 0}
 
 # ORCHESTRATOR
@@ -170,10 +171,13 @@ def process_session_file(filepath: Path) -> None:
     last_position = file_positions[filepath]
     cache = tool_use_caches[filepath]
 
-    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks = parse_new_tool_calls(filepath, last_position, cache)
+    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts = parse_new_tool_calls(filepath, last_position, cache)
 
     for warning in malformed_warnings:
         display_warning(warning)
+
+    for prompt_item in user_prompts:
+        display_user_prompt_from_jsonl(prompt_item)
 
     for media_item in user_media:
         display_user_media(media_item)
@@ -406,23 +410,26 @@ def run_streaming_loop() -> None:
 
 # Process hook log for new entries
 def process_hook_log() -> None:
-    global hook_log_position, pending_pretooluse_hooks, active_project_filter
+    global hook_log_position, pending_pretooluse_hooks, pending_user_prompt_hook, active_project_filter
 
     entries, hook_log_position = parse_new_hook_entries(hook_log_position)
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
 
     for entry in filtered:
         if entry.get('hook_event') == HOOK_USER_PROMPT:
-            display_user_prompt_entry(entry)
+            output = entry.get('output', '')
+            if output:
+                pending_user_prompt_hook = entry
+                log_tagged(logger_routing, "HOOK_PENDING_UP", PURPLE, f"UserPromptSubmit hook output pending: {output[:80]}")
         elif entry.get('hook_event') == HOOK_PRE_TOOL:
             tool_name = entry.get('tool_name')
             if tool_name:
                 pending_pretooluse_hooks[tool_name] = entry
                 log_tagged(logger_routing, "HOOK_PENDING", PURPLE, f"PreToolUse hook pending for {tool_name}")
 
-# Display USER PROMPT entry from hook log
-def display_user_prompt_entry(entry: dict) -> None:
-    global turn_usage_accumulator
+# Display USER PROMPT detected from session JSONL
+def display_user_prompt_from_jsonl(prompt_item: dict) -> None:
+    global turn_usage_accumulator, pending_user_prompt_hook
 
     if any(turn_usage_accumulator.values()):
         turn_total = format_turn_total(turn_usage_accumulator)
@@ -432,12 +439,17 @@ def display_user_prompt_entry(entry: dict) -> None:
 
     turn_usage_accumulator = {'input_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0, 'output_tokens': 0}
 
-    output = entry.get('output', '')
-    hook_outputs = [output] if output else None
-    formatted = format_user_prompt(entry.get('timestamp', ''), hook_outputs)
+    hook_outputs = None
+    if pending_user_prompt_hook:
+        output = pending_user_prompt_hook.get('output', '')
+        if output:
+            hook_outputs = [output]
+        pending_user_prompt_hook = None
+
+    formatted = format_user_prompt(prompt_item.get('timestamp', ''), hook_outputs)
     print(formatted)
     print()
-    log_tagged(logger_routing, "USER_PROMPT", PURPLE, f"Displayed USER PROMPT, hook_output={bool(output)}")
+    log_tagged(logger_routing, "USER_PROMPT", PURPLE, f"Displayed USER PROMPT from JSONL, hook_output={bool(hook_outputs)}")
 
 # Format WARNING header with yellow color for malformed lines
 def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:

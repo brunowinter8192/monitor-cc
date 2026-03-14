@@ -41,6 +41,13 @@ bug_fixes/
 # External repos (for research)
 repo/
 
+# Sensitive / local-only files
+.env
+.mcp.json
+
+# Beads issue tracking (private/local)
+.beads/
+
 # Dolt database files (added by bd init)
 .dolt/
 *.db

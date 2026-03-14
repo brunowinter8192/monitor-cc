@@ -7,7 +7,7 @@ Live monitoring tool for Claude Code CLI conversations - captures all tool calls
 **CRITICAL:** All commands assume CWD = `Monitor_CC/` (project root, not src/)
 
 ```bash
-cd ./Monitor_CC
+cd Monitor_CC/
 ```
 
 ## Directory Structure
