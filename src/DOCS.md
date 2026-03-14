@@ -162,7 +162,7 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 - `handle_task_response()` - Handle Task tool RESPONSE (maps agent IDs, displays full result)
 - `handle_subagent_call()` - Handle tool calls from subagents
 - `accumulate_usage()` - Accumulate token usage for turn total
-- `display_user_prompt_entry()` - Display USER PROMPT with turn total
+- `display_user_prompt_from_jsonl()` - Display USER PROMPT detected from session JSONL, with pending hook output
 
 ---
 
@@ -232,12 +232,13 @@ sessions = find_active_sessions(project_filter="/path/to/project")
 - `parse_jsonl_lines()` - Parse raw lines into message objects
 - `extract_tool_calls()` - Extract tool_use/tool_result pairs (includes usage stats, is_error flag)
 - `extract_user_media()` - Extract non-text content from user messages (images, documents)
+- `extract_user_prompts()` - Extract user prompts from external user messages (filters command-messages and skill injections)
 - `extract_thinking_blocks()` - Extract extended thinking from assistant messages
 
 **Usage:**
 ```python
 from src.jsonl_parser import parse_new_tool_calls
-tool_calls, new_position, warnings, user_media, thinking = parse_new_tool_calls(file_path, last_position, cache)
+tool_calls, new_position, warnings, user_media, thinking, user_prompts = parse_new_tool_calls(file_path, last_position, cache)
 ```
 
 ---
