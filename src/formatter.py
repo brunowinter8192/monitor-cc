@@ -250,6 +250,16 @@ def format_user_media(media_item: dict) -> str:
 
     return f"{PASTEL_PURPLE}[{time_str}] USER PROMPT {label}{RESET}"
 
+# Format skill/command activation with full content
+def format_skill_activation(skill_item: dict) -> str:
+    time_str = format_timestamp(skill_item.get('timestamp', ''))
+    skill_name = skill_item.get('skill_name', 'unknown')
+    content = skill_item.get('content', '')
+    header = f"{CYAN}[{time_str}] SKILL LOADED: {skill_name}{RESET}"
+    body_lines = content.split('\n')
+    formatted_body = '\n'.join(f"{INDENT}{line}" for line in body_lines)
+    return f"{header}\n{formatted_body}"
+
 # Format thinking block from assistant
 def format_thinking(thinking_item: dict) -> str:
     time_str = format_timestamp(thinking_item.get('timestamp', ''))

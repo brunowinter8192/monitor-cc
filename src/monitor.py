@@ -48,7 +48,7 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media, format_thinking, format_turn_total
+from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media, format_thinking, format_turn_total, format_skill_activation
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
@@ -171,13 +171,16 @@ def process_session_file(filepath: Path) -> None:
     last_position = file_positions[filepath]
     cache = tool_use_caches[filepath]
 
-    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts = parse_new_tool_calls(filepath, last_position, cache)
+    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations = parse_new_tool_calls(filepath, last_position, cache)
 
     for warning in malformed_warnings:
         display_warning(warning)
 
     for prompt_item in user_prompts:
         display_user_prompt_from_jsonl(prompt_item)
+
+    for skill_item in skill_activations:
+        display_skill_activation(skill_item)
 
     for media_item in user_media:
         display_user_media(media_item)
@@ -227,6 +230,12 @@ def display_warning(warning: dict) -> None:
 # Display formatted user media to console
 def display_user_media(media_item: dict) -> None:
     formatted = format_user_media(media_item)
+    print(formatted)
+    print()
+
+# Display formatted skill/command activation to console
+def display_skill_activation(skill_item: dict) -> None:
+    formatted = format_skill_activation(skill_item)
     print(formatted)
     print()
 

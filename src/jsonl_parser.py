@@ -32,7 +32,7 @@ logger_extract.addHandler(extract_handler)
 logger_extract.setLevel(logging.INFO)
 
 # ORCHESTRATOR
-def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict]]:
+def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
 
     if len(new_lines) > 0:
@@ -44,12 +44,13 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     user_prompts = extract_user_prompts(messages)
     user_media = extract_user_media(messages)
     thinking_blocks = extract_thinking_blocks(messages)
+    skill_activations = extract_skill_activations(messages)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
 
-    if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0 or len(thinking_blocks) > 0 or len(user_prompts) > 0:
-        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_prompts)} user prompts, {len(user_media)} user media, {len(thinking_blocks)} thinking, {len(malformed_warnings)} malformed lines")
+    if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0 or len(thinking_blocks) > 0 or len(user_prompts) > 0 or len(skill_activations) > 0:
+        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_prompts)} user prompts, {len(user_media)} user media, {len(thinking_blocks)} thinking, {len(skill_activations)} skills, {len(malformed_warnings)} malformed lines")
 
-    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts
+    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations
 
 # FUNCTIONS
 
@@ -368,3 +369,49 @@ def extract_thinking_blocks(messages: List[dict]) -> List[dict]:
         log_tagged(logger_extract, "THINKING", GREEN, f"Extracted {len(thinking_items)} thinking blocks")
 
     return thinking_items
+
+# Extract skill/command activations from user messages containing command tags
+def extract_skill_activations(messages: List[dict]) -> List[dict]:
+    activations = []
+
+    for message in messages:
+        if message.get('type') != 'user':
+            continue
+
+        timestamp = message.get('timestamp', '')
+        content = message.get('message', {}).get('content', '')
+
+        if isinstance(content, list):
+            text_parts = [
+                b.get('text', '') for b in content
+                if isinstance(b, dict) and b.get('type') == 'text'
+            ]
+            text = '\n'.join(text_parts)
+        elif isinstance(content, str):
+            text = content
+        else:
+            continue
+
+        stripped = text.strip()
+        if not stripped.startswith('<command-message>') and not stripped.startswith('<command-name>'):
+            continue
+
+        skill_name = ''
+        name_match = re.search(r'<command-name>/?(.*?)</command-name>', text)
+        if name_match:
+            skill_name = name_match.group(1)
+
+        body = re.sub(r'<command-message>.*?</command-message>', '', text, flags=re.DOTALL)
+        body = re.sub(r'<command-name>.*?</command-name>', '', body, flags=re.DOTALL)
+        body = body.strip()
+
+        activations.append({
+            'skill_name': skill_name,
+            'content': body,
+            'timestamp': timestamp
+        })
+
+    if len(activations) > 0:
+        log_tagged(logger_extract, "SKILL_ACTIVATIONS", GREEN, f"Extracted {len(activations)} skill activations")
+
+    return activations

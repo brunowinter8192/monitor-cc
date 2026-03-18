@@ -79,7 +79,7 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 
 ---
 
-### 06_tool_extraction.log (8 events)
+### 06_tool_extraction.log (9 events)
 
 | # | Event | Module | Function | Tag | Color |
 |---|-------|--------|----------|-----|-------|
@@ -91,6 +91,7 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 | 6 | After filtering count | jsonl_parser.py | extract_tool_calls() | FILTER_COUNT | White |
 | 7 | Agent metadata discovered | monitor.py | track_subagent_metadata() | AGENT_DISC | Cyan |
 | 8 | Updated agent call count | monitor.py | track_subagent_metadata() | AGENT_COUNT | White |
+| 9 | Skill activations extracted | jsonl_parser.py | extract_skill_activations() | SKILL_ACTIVATIONS | Green |
 
 ---
 
@@ -169,11 +170,11 @@ Monitor_CC uses 9 workflow-oriented log files that follow the execution sequence
 | 03_session_discovery.log | 11 | session_finder.py | On changes only | PROJ_DIRS, ACTIVE_SESS, TOTAL_JSONL |
 | 04_file_reading.log | 5 | jsonl_parser.py, monitor.py | On new data only | FILE_READ, NEW_SESS, SESS_REMOVED |
 | 05_jsonl_parsing.log | 6 | jsonl_parser.py, monitor.py | On new data only | LINES_READ, JSON_ERROR, PARSE_DONE |
-| 06_tool_extraction.log | 8 | jsonl_parser.py, monitor.py | On tool calls only | TOOL_CACHED, TOOL_MATCH, TOOL_ORPHAN |
+| 06_tool_extraction.log | 9 | jsonl_parser.py, monitor.py | On tool calls only | TOOL_CACHED, TOOL_MATCH, TOOL_ORPHAN |
 | 07_display_routing.log | 9 | monitor.py | On changes only | MON_SESS, TASK_REQ, SUB_DISPLAY |
 | 08_ui_rendering.log | 10 | monitor.py, subagent_ui.py | On changes only (UI mode) | UI_RENDER, RENDER_LIST, ENTRIES_BUILT |
 | 09_input_handling.log | 6 | click_handler.py | On keypresses (UI mode) | KEYPRESS, DIGIT_KEY, AGENT_LOOKUP |
 | 10_long_outputs.log | 4 | formatter.py | On long outputs only | LONG_OUTPUT, PREVIEW, FULL_CONTENT |
 | 11_hook_parsing.log | 2 | hook_parser.py | On hook entries only | HOOK_PARSED, HOOK_JSON_ERR |
 
-**Total: 78 events across 11 workflow phases**
+**Total: 79 events across 11 workflow phases**
