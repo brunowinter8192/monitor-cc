@@ -63,7 +63,7 @@ time_str = format_timestamp("2025-01-01T12:00:00Z")
 **Constants:**
 - `TOOL_TASK` - Task tool name
 - `MODE_ALL`, `MODE_MAIN`, `MODE_SUBAGENT` - Monitoring modes
-- `HOOK_USER_PROMPT`, `HOOK_PRE_TOOL` - Hook event names
+- `HOOK_USER_PROMPT`, `HOOK_PRE_TOOL`, `HOOK_INSTRUCTIONS_LOADED` - Hook event names
 - `EXCLUDED_TOOLS` - Set of tools excluded from display
 - `SYSTEM_REMINDER_PATTERN` - Regex for system-reminder tags
 
@@ -164,12 +164,16 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 - `accumulate_usage()` - Accumulate token usage for turn total
 - `display_user_prompt_from_jsonl()` - Display USER PROMPT detected from session JSONL, with pending hook output
 - `display_skill_activation()` - Display formatted skill/command activation to console
+- `process_hook_log()` - Routes hook entries including InstructionsLoaded to active_rules state
+
+**Variables:**
+- `active_rules`: Dict tracking loaded rules by type (project/global)
 
 ---
 
 ## ui_mode.py
 
-**Purpose:** UI mode loop with keyboard input and subagent tracking for interactive monitoring.
+**Purpose:** UI mode loop with keyboard input, subagent tracking, and active rules display for interactive monitoring.
 
 **Inputs:**
 - `subagent_metadata`: Dict tracking discovered agents
@@ -182,15 +186,16 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 - Renders collapsible UI to terminal (clears screen on each update)
 
 **Functions:**
-- `run_ui_loop()` - orchestrator
+- `run_ui_loop()` - orchestrator (accepts active_rules for rules display)
 - `handle_pending_keypresses()`
-- `sync_ui_to_screen()` - Renders only subagent list (no main agent tasks)
+- `sync_ui_to_screen()` - Renders rules block + subagent list
 - `track_subagent_metadata()`
+- `format_rules_block()` - Format active rules as compact [P]/[G] display
 
 **Usage:**
 ```python
 from src.ui_mode import run_ui_loop
-run_ui_loop(metadata, calls, agent_to_task, agent_to_type, monitor_fn)
+run_ui_loop(metadata, calls, agent_to_task, agent_to_type, monitor_fn, active_rules)
 ```
 
 ---
