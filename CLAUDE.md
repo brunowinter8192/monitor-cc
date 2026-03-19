@@ -4,13 +4,7 @@ Real-time Claude Code session monitor with TUI dashboard.
 
 ## Sources
 
-| Source | URL | Relevance |
-|--------|-----|-----------|
-| tmux man page | github.com/tmux/tmux | split-window, pane targeting, layout |
-| Claude Code #30973 | github.com/anthropics/claude-code/issues/30973 | InstructionsLoaded hook behavior |
-| Claude Code #33275 | github.com/anthropics/claude-code/issues/33275 | InstructionsLoaded session_start bug |
-| Claude Code #31017 | github.com/anthropics/claude-code/issues/31017 | InstructionsLoaded /clear behavior |
-| Claude Code #12151 | github.com/anthropics/claude-code/issues/12151 | Plugin hook output bug (not affecting us) |
+See [sources/sources.md](sources/sources.md)
 
 ## Pipeline Components
 
@@ -73,15 +67,17 @@ Monitor_CC/
 ├── workflow.py                     → Pipeline entry point
 ├── requirements.txt
 ├── README.md
-├── DOCS.md                         → [Root Module Docs](DOCS.md)
+├── AGENTS.md                       → Bead-based agent instructions
+├── LOGS_MAP.md                     → Logging architecture reference
 ├── decisions/                      → Pipeline decision records (rationale per implementation choice)
 │   ├── pipe01_entry_startup.md
 │   ├── pipe02_data_sources.md
 │   ├── pipe03_core_loop.md
 │   └── pipe04_display.md
-├── sources/
-├── src/
-│   ├── DOCS.md                     → [Module Docs](src/DOCS.md)
+├── sources/                        → [sources.md](sources/sources.md)
+├── not_working/                    → Failed approaches (markdown records)
+├── repo/                           → tmux source code (external reference, own .git)
+├── src/                            → [DOCS.md](src/DOCS.md)
 │   ├── monitor.py
 │   ├── session_finder.py
 │   ├── jsonl_parser.py
@@ -93,7 +89,8 @@ Monitor_CC/
 │   ├── tmux_launcher.py
 │   ├── startup.py
 │   ├── constants.py
-│   └── utils.py
+│   ├── utils.py
+│   └── logs/                       → Runtime log files (gitignored)
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
 │   └── display/                    → [DOCS.md](dev/display/DOCS.md)
 │       ├── test_tmux_layout.sh

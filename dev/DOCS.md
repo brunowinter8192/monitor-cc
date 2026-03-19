@@ -10,6 +10,6 @@ Development and testing scripts for Monitor_CC pipeline components.
 cd Monitor_CC/
 ```
 
-## Subdirectories
+## Documentation Tree
 
 - [display/DOCS.md](display/DOCS.md) — Display layer tests (tmux layout, rules rendering)

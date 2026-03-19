@@ -15,10 +15,10 @@ cd Monitor_CC/
 ```
 src/
 ├── __init__.py
-├── utils.py          # Shared utilities (logging, timestamps, colors)
-├── constants.py      # Shared constants (tool names, modes, patterns)
-├── startup.py        # CLI argument parsing, signal handlers, startup messages
-├── tmux_launcher.py  # tmux split-screen session launch and configuration
+├── utils.py
+├── constants.py
+├── startup.py
+├── tmux_launcher.py
 ├── monitor.py
 ├── ui_mode.py
 ├── session_finder.py
@@ -28,8 +28,7 @@ src/
 ├── subagent_ui.py
 ├── click_handler.py
 ├── DOCS.md
-├── debug/
-└── logs/
+└── logs/                 → Runtime log files (gitignored)
 ```
 
 **Note:** Entry point workflow.py resides at project root and imports from this src/ package.
@@ -40,19 +39,9 @@ src/
 
 **Purpose:** Shared utilities for logging and timestamp formatting used across all modules.
 
-**Functions:**
-- `log_tagged(logger, tag, color, message)` - Tagged logging with colored prefix
-- `format_timestamp(iso_timestamp)` - Convert ISO timestamp to HH:MM:SS local time
+**Input:** Logger instance, tag/color strings, ISO timestamp strings.
 
-**Constants:**
-- ANSI color codes: `RESET`, `RED`, `GREEN`, `YELLOW`, `BLUE`, `MAGENTA`, `CYAN`, `WHITE`, `PURPLE`, `ORANGE`
-
-**Usage:**
-```python
-from src.utils import log_tagged, format_timestamp, GREEN
-log_tagged(logger, "TAG", GREEN, "Message")
-time_str = format_timestamp("2025-01-01T12:00:00Z")
-```
+**Output:** Tagged colored log messages; HH:MM:SS formatted time strings; ANSI color constants.
 
 ---
 
@@ -60,19 +49,9 @@ time_str = format_timestamp("2025-01-01T12:00:00Z")
 
 **Purpose:** Shared constants for tool names, modes, hook events, and patterns.
 
-**Constants:**
-- `TOOL_TASK` - Task tool name
-- `MODE_ALL`, `MODE_MAIN`, `MODE_SUBAGENT`, `MODE_RULES` - Monitoring modes
-- `HOOK_USER_PROMPT`, `HOOK_PRE_TOOL`, `HOOK_INSTRUCTIONS_LOADED` - Hook event names
-- `EXCLUDED_TOOLS` - Set of tools excluded from display
-- `SYSTEM_REMINDER_PATTERN` - Regex for system-reminder tags
+**Input:** —
 
-**Usage:**
-```python
-from src.constants import TOOL_TASK, MODE_ALL, EXCLUDED_TOOLS
-if mode == MODE_ALL:
-    ...
-```
+**Output:** Constants imported by other modules (tool names, mode strings, hook event names, excluded tool set, regex patterns).
 
 ---
 
@@ -80,17 +59,9 @@ if mode == MODE_ALL:
 
 **Purpose:** CLI argument parsing, signal handling, and startup/shutdown messages for the monitor entry point.
 
-**Outputs:**
-- Parsed command-line arguments (argparse.Namespace)
-- Signal handler registration for graceful shutdown
-- Formatted startup/shutdown console messages
+**Input:** Command-line arguments (`--project`, `--mode`, `--ui`).
 
-**Functions:**
-- `parse_arguments()` - orchestrator, parses --project, --mode, --ui flags
-- `setup_signal_handlers()` - Register SIGINT/SIGTERM handlers
-- `handle_shutdown()` - Handle shutdown signals gracefully
-- `print_startup_message()` - Print colored startup banner
-- `print_shutdown_message()` - Print colored shutdown banner
+**Output:** Parsed argparse.Namespace; registered signal handlers; formatted startup/shutdown console messages.
 
 **Usage:**
 ```python
@@ -104,26 +75,11 @@ print_startup_message(args.project, args.mode)
 
 ## tmux_launcher.py
 
-**Purpose:** Launches tmux split-screen session with separate panes for main agent and subagent monitoring.
+**Purpose:** Launches tmux split-screen session with separate panes for main agent, rules display, and subagent monitoring.
 
-**Inputs:**
-- `project_filter`: Optional project path to filter sessions
-- `ui`: Enable collapsible UI mode for subagent pane
-- `script_path`: Absolute path to workflow.py for subprocess commands
+**Input:** `project_filter` (optional path), `ui` (bool for collapsible UI mode), `script_path` (absolute path to workflow.py).
 
-**Outputs:**
-- Creates and attaches to tmux session with configured panes
-
-**Functions:**
-- `launch_split_screen()` - orchestrator
-- `is_tmux_installed()` - Check tmux availability
-- `is_inside_tmux()` - Detect nested tmux
-- `generate_session_name()` - Hash-based unique session name
-- `check_session_exists()` - Check for existing session
-- `kill_session()` - Kill stale session
-- `get_global_history_limit()` - Save current history limit
-- `restore_global_history_limit()` - Restore saved limit
-- `configure_tmux_session()` - Set keybindings, mouse, status bar
+**Output:** Creates and attaches to a tmux session with 3-pane layout (main | rules + subagents).
 
 **Usage:**
 ```python
@@ -137,15 +93,9 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls with color-coded output.
 
-**Inputs:**
-- `project_filter`: Optional project path to filter sessions
-- `mode`: Filter for main/subagent/all/rules files (default: all)
-- `ui_mode`: Enable collapsible subagent UI (default: False)
+**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules), `ui_mode` (bool).
 
-**Outputs:**
-- Formatted tool calls to console (streaming mode)
-- Collapsible UI list (if ui_mode enabled)
-- Rules display with screen-clear refresh (if rules mode)
+**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh.
 
 **Usage:**
 ```python
@@ -153,46 +103,15 @@ from src.monitor import run_monitor
 run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 ```
 
-**Variables:**
-- `POLL_INTERVAL`: Seconds between session polls (default: 0.5)
-
-**Key Functions:**
-- `run_monitor()` - orchestrator
-- `process_session_file()` - Process single JSONL file
-- `handle_task_request()` - Handle Task tool REQUEST
-- `handle_task_response()` - Handle Task tool RESPONSE (maps agent IDs, displays full result)
-- `handle_subagent_call()` - Handle tool calls from subagents
-- `accumulate_usage()` - Accumulate token usage for turn total
-- `display_user_prompt_from_jsonl()` - Display USER PROMPT detected from session JSONL, with pending hook output
-- `display_skill_activation()` - Display formatted skill/command activation to console
-- `process_hook_log()` - Routes hook entries including InstructionsLoaded to active_rules state
-- `run_rules_loop()` - Dedicated rules display loop for rules tmux pane (polls process_hook_log, renders format_rules_block with screen-clear)
-
-**Variables:**
-- `active_rules`: Dict tracking loaded rules by type (project/global)
-
 ---
 
 ## ui_mode.py
 
 **Purpose:** UI mode loop with keyboard input, subagent tracking, and active rules display for interactive monitoring.
 
-**Inputs:**
-- `subagent_metadata`: Dict tracking discovered agents
-- `tool_calls_by_agent`: Dict of agent tool calls
-- `agent_to_task`: Dict mapping agent IDs to parent task IDs
-- `agent_to_type`: Dict mapping agent IDs to subagent types
-- `monitor_sessions_fn`: Callback to monitor.monitor_sessions
+**Input:** Subagent metadata dicts, tool calls by agent, agent-to-task/type mappings, monitor callback, active rules dict.
 
-**Outputs:**
-- Renders collapsible UI to terminal (clears screen on each update)
-
-**Functions:**
-- `run_ui_loop()` - orchestrator (accepts active_rules for rules display)
-- `handle_pending_keypresses()`
-- `sync_ui_to_screen()` - Renders rules block + subagent list
-- `track_subagent_metadata()`
-- `format_rules_block()` - Format active rules as compact [P]/[G] display
+**Output:** Collapsible UI rendered to terminal on each update; rules block with [P]/[G] prefixes.
 
 **Usage:**
 ```python
@@ -204,13 +123,11 @@ run_ui_loop(metadata, calls, agent_to_task, agent_to_type, monitor_fn, active_ru
 
 ## session_finder.py
 
-**Purpose:** Discovers active Claude Code session files in ~/.claude/projects with optional project filtering. Includes subagent files from `*/subagents/agent-*.jsonl` subdirectories.
+**Purpose:** Discovers active Claude Code session files in `~/.claude/projects` with optional project filtering. Includes subagent files from `*/subagents/agent-*.jsonl` subdirectories.
 
-**Inputs:**
-- `project_filter`: Optional project path to match against encoded directory names
+**Input:** `project_filter` (optional project path to match against encoded directory names).
 
-**Outputs:**
-- List of JSONL file paths sorted by modification time (most recent first)
+**Output:** List of JSONL file paths sorted by modification time (most recent first).
 
 **Usage:**
 ```python
@@ -222,28 +139,11 @@ sessions = find_active_sessions(project_filter="/path/to/project")
 
 ## jsonl_parser.py
 
-**Purpose:** Parses JSONL conversation files and extracts correlated tool_use/tool_result pairs with metadata.
+**Purpose:** Parses JSONL conversation files and extracts correlated tool_use/tool_result pairs with metadata (usage, errors, user prompts, media, thinking, skill activations).
 
-**Inputs:**
-- `file_path`: Path to JSONL session file
-- `last_position`: Byte offset to start reading from
+**Input:** `file_path` (JSONL session file), `last_position` (byte offset for incremental reads).
 
-**Outputs:**
-- List of tool call dictionaries with name, input, output, timestamp, agent metadata, usage, is_error
-- New file position for next read
-- List of malformed line warnings
-- List of user media items (images, documents)
-- List of thinking blocks
-- List of skill activation items (skill name, content, timestamp)
-
-**Key Functions:**
-- `parse_new_tool_calls()` - orchestrator
-- `parse_jsonl_lines()` - Parse raw lines into message objects
-- `extract_tool_calls()` - Extract tool_use/tool_result pairs (includes usage stats, is_error flag)
-- `extract_user_media()` - Extract non-text content from user messages (images, documents)
-- `extract_user_prompts()` - Extract user prompts from external user messages (filters command-messages and skill injections)
-- `extract_thinking_blocks()` - Extract extended thinking from assistant messages
-- `extract_skill_activations()` - Extract skill/command activations from user messages with command tags
+**Output:** Tool call dicts; new file position; malformed line warnings; user media items; thinking blocks; user prompts; skill activation items.
 
 **Usage:**
 ```python
@@ -255,15 +155,11 @@ tool_calls, new_position, warnings, user_media, thinking, user_prompts, skill_ac
 
 ## hook_parser.py
 
-**Purpose:** Parses hook log file (hook_outputs.jsonl) written by Claude Code hooks for display in monitor.
+**Purpose:** Parses hook log file (`src/logs/hook_outputs.jsonl`) written by Claude Code hooks for display in the monitor.
 
-**Inputs:**
-- `file_path`: Path to hook log file
-- `last_position`: Byte offset to start reading from
+**Input:** `file_path` (hook log file path), `last_position` (byte offset for incremental reads).
 
-**Outputs:**
-- List of hook entry dictionaries with timestamp, cwd, hook_event, hook_script, output, tool_name
-- New file position for next read
+**Output:** List of hook entry dicts (timestamp, cwd, hook_event, hook_script, output, tool_name); new file position.
 
 **Usage:**
 ```python
@@ -275,31 +171,16 @@ entries, new_position = parse_new_hook_entries(file_path, last_position)
 
 ## formatter.py
 
-**Purpose:** Formats tool calls with color-coded headers (green for main agent, blue for subagents) and proper indentation.
+**Purpose:** Formats tool calls, user prompts, hook annotations, usage stats, thinking blocks, and skill activations as color-coded terminal strings.
 
-**Inputs:**
-- Tool call data: name, input dict, output string, timestamp, tool_use_id, agent metadata
+**Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, usage, is_error flag).
 
-**Outputs:**
-- Formatted string with ANSI color codes for terminal display
-
-**Key Functions:**
-- `format_tool_call()` - orchestrator for tool call formatting
-- `format_user_prompt()` - Format USER PROMPT stamp with optional hook outputs
-- `format_user_media()` - Format user media item as `[IMAGE: mime/type]` or `[DOC: mime/type]`
-- `format_hook_annotation()` - Format hook annotation for PreToolUse hooks
-- `format_usage()` - Format token usage stats as `[in:X cache_r:Y cache_w:Z out:W]` (pastel yellow)
-- `format_turn_total()` - Format turn total usage with separator line (signal pink)
-- `format_skill_activation()` - Format skill/command activation with full content (cyan header)
-- `format_thinking()` - Format thinking block with timestamp (pastel orange)
-- `format_error_output()` - Format error output in red
+**Output:** Formatted ANSI-colored string for terminal display.
 
 **Usage:**
 ```python
 from src.formatter import format_tool_call, format_user_media, format_thinking
 output = format_tool_call(name, input_params, output, timestamp, tool_id, is_subagent, usage=usage, is_error=False)
-media_output = format_user_media({'type': 'image', 'media_type': 'image/png', 'timestamp': '...'})
-thinking_output = format_thinking({'thinking': 'Der User...', 'timestamp': '...'})
 ```
 
 ---
@@ -308,13 +189,9 @@ thinking_output = format_thinking({'thinking': 'Der User...', 'timestamp': '...'
 
 **Purpose:** Renders collapsible subagent list UI for interactive monitoring of subagent activity.
 
-**Inputs:**
-- `subagent_metadata`: Dict of agent_id -> metadata (name, timestamp, call_count)
-- `tool_calls_by_agent`: Dict of agent_id -> list of tool calls
-- `subagent_states`: Dict of agent_id -> expanded (boolean)
+**Input:** `subagent_metadata` (agent_id → metadata dict), `tool_calls_by_agent` (agent_id → tool call list), `subagent_states` (agent_id → expanded bool).
 
-**Outputs:**
-- Formatted terminal UI string with collapsible entries (subagent tool calls only)
+**Output:** Formatted terminal UI string with collapsible per-agent entries.
 
 **Usage:**
 ```python
@@ -328,11 +205,9 @@ ui_output = render_subagent_list(metadata, calls)
 
 **Purpose:** Handles keyboard input for the collapsible subagent UI. Reads digit keypresses (1-9) to toggle subagent expanded/collapsed state.
 
-**Inputs:**
-- Single character keypresses from stdin in raw mode
+**Input:** Single character keypresses from stdin in raw mode.
 
-**Outputs:**
-- Agent ID to toggle when digit key pressed
+**Output:** Agent ID to toggle when a digit key is pressed.
 
 **Usage:**
 ```python
