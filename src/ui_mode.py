@@ -19,6 +19,8 @@ from .click_handler import setup_keyboard_input, restore_terminal, read_keypress
 # From subagent_ui.py: Render subagent list and manage state
 from .subagent_ui import render_subagent_list, get_agent_display_name, count_calls_for_agent, subagent_states, toggle_subagent_state
 
+RULES_COLOR = '\033[38;5;117m'  # Pastel blue for rules display
+
 POLL_INTERVAL = 0.5
 ui_loop_iteration: int = 0
 last_rendered_output: str = ""
@@ -26,8 +28,11 @@ _last_agent_count: int = 0
 _last_expanded_count: int = 0
 
 # ORCHESTRATOR
-def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], agent_to_task: Dict[str, str], agent_to_type: Dict[str, str], monitor_sessions_fn) -> None:
+def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], agent_to_task: Dict[str, str], agent_to_type: Dict[str, str], monitor_sessions_fn, active_rules: Dict[str, set] = None) -> None:
     global ui_loop_iteration
+
+    if active_rules is None:
+        active_rules = {'project': set(), 'global': set()}
 
     setup_keyboard_input()
 
@@ -39,7 +44,7 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
 
             handle_pending_keypresses(subagent_metadata)
             monitor_sessions_fn()
-            sync_ui_to_screen(subagent_metadata, tool_calls_by_agent)
+            sync_ui_to_screen(subagent_metadata, tool_calls_by_agent, active_rules)
             time.sleep(POLL_INTERVAL)
     finally:
         restore_terminal()
@@ -57,13 +62,15 @@ def handle_pending_keypresses(subagent_metadata: Dict[str, dict]) -> None:
                 toggle_subagent_state(agent_id)
 
 # Syncs UI output to terminal screen
-def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> None:
+def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], active_rules: Dict[str, set] = None) -> None:
     global last_rendered_output, _last_agent_count, _last_expanded_count
 
     agent_count = len(subagent_metadata)
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
 
-    formatted_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
+    rules_block = format_rules_block(active_rules) if active_rules else ''
+    subagent_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
+    formatted_output = f"{rules_block}\n{subagent_output}" if rules_block else subagent_output
 
     if formatted_output != last_rendered_output:
         log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={agent_count}, expanded={expanded_count}")
@@ -98,4 +105,21 @@ def track_subagent_metadata(tool_call: dict, filepath, subagent_metadata: Dict[s
 
     tool_calls_by_agent[agent_id].append(tool_call)
     subagent_metadata[agent_id]['call_count'] = count_calls_for_agent(tool_calls_by_agent[agent_id])
+
+# Format active rules block for UI display
+def format_rules_block(active_rules: Dict[str, set]) -> str:
+    if not active_rules:
+        return ''
+    project_rules = sorted(active_rules.get('project', set()))
+    global_rules = sorted(active_rules.get('global', set()))
+    if not project_rules and not global_rules:
+        return ''
+
+    header = f"{RULES_COLOR}ACTIVE RULES ({len(project_rules)}P / {len(global_rules)}G){RESET}"
+    parts = []
+    if project_rules:
+        parts.append(f"  {RULES_COLOR}" + '  '.join(f'[P] {r}' for r in project_rules) + f"{RESET}")
+    if global_rules:
+        parts.append(f"  {RULES_COLOR}" + '  '.join(f'[G] {r}' for r in global_rules) + f"{RESET}")
+    return '\n'.join([header] + parts)
 

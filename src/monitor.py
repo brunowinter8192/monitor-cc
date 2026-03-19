@@ -9,7 +9,7 @@ from typing import Dict, Set, List, Optional
 # From utils.py: ANSI colors and logging utility
 from .utils import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, log_tagged
 # From constants.py: Shared constants
-from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, HOOK_USER_PROMPT, HOOK_PRE_TOOL
+from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, HOOK_USER_PROMPT, HOOK_PRE_TOOL, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
 
 # Setup 7 loggers for different workflow phases
@@ -73,6 +73,7 @@ _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
 pending_pretooluse_hooks: Dict[str, dict] = {}
 pending_user_prompt_hook: Optional[dict] = None
+active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 turn_usage_accumulator: Dict[str, int] = {'input_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0, 'output_tokens': 0}
 
 # ORCHESTRATOR
@@ -89,7 +90,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
 
     if ui and mode == MODE_SUBAGENT:
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
-        run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions)
+        run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions, active_rules)
     else:
         log_tagged(logger_init, "STREAM_MODE", CYAN, "Starting streaming mode")
         run_streaming_loop()
@@ -435,6 +436,12 @@ def process_hook_log() -> None:
             if tool_name:
                 pending_pretooluse_hooks[tool_name] = entry
                 log_tagged(logger_routing, "HOOK_PENDING", PURPLE, f"PreToolUse hook pending for {tool_name}")
+        elif entry.get('hook_event') == HOOK_INSTRUCTIONS_LOADED:
+            output = entry.get('output', '')
+            if output.startswith('[P]'):
+                active_rules['project'].add(output[4:])
+            elif output.startswith('[G]'):
+                active_rules['global'].add(output[4:])
 
 # Display USER PROMPT detected from session JSONL
 def display_user_prompt_from_jsonl(prompt_item: dict) -> None:

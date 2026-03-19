@@ -11,6 +11,7 @@ MODE_SUBAGENT = 'subagent'
 # Hook events
 HOOK_USER_PROMPT = 'UserPromptSubmit'
 HOOK_PRE_TOOL = 'PreToolUse'
+HOOK_INSTRUCTIONS_LOADED = 'InstructionsLoaded'
 
 # Excluded tools from display
 EXCLUDED_TOOLS = {'Edit'}

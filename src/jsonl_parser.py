@@ -370,9 +370,12 @@ def extract_thinking_blocks(messages: List[dict]) -> List[dict]:
 
     return thinking_items
 
-# Extract skill/command activations from user messages containing command tags
+# Extract skill/command activations from user messages
+# JSONL structure: Tags-Message (command-name) followed by Content-Message (isMeta=true)
+# Tags-Message has the name, Content-Message has the full skill/command body
 def extract_skill_activations(messages: List[dict]) -> List[dict]:
     activations = []
+    pending_skill_name = ''
 
     for message in messages:
         if message.get('type') != 'user':
@@ -393,23 +396,22 @@ def extract_skill_activations(messages: List[dict]) -> List[dict]:
             continue
 
         stripped = text.strip()
-        if not stripped.startswith('<command-message>') and not stripped.startswith('<command-name>'):
+
+        # Tags-Message: extract skill/command name, wait for Content-Message
+        if stripped.startswith('<command-message>') or stripped.startswith('<command-name>'):
+            name_match = re.search(r'<command-name>/?(.*?)</command-name>', text)
+            if name_match:
+                pending_skill_name = name_match.group(1)
             continue
 
-        skill_name = ''
-        name_match = re.search(r'<command-name>/?(.*?)</command-name>', text)
-        if name_match:
-            skill_name = name_match.group(1)
-
-        body = re.sub(r'<command-message>.*?</command-message>', '', text, flags=re.DOTALL)
-        body = re.sub(r'<command-name>.*?</command-name>', '', body, flags=re.DOTALL)
-        body = body.strip()
-
-        activations.append({
-            'skill_name': skill_name,
-            'content': body,
-            'timestamp': timestamp
-        })
+        # Content-Message: isMeta=true following a Tags-Message
+        if message.get('isMeta') and pending_skill_name:
+            activations.append({
+                'skill_name': pending_skill_name,
+                'content': text,
+                'timestamp': timestamp
+            })
+            pending_skill_name = ''
 
     if len(activations) > 0:
         log_tagged(logger_extract, "SKILL_ACTIVATIONS", GREEN, f"Extracted {len(activations)} skill activations")
