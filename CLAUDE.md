@@ -89,8 +89,7 @@ Monitor_CC/
 │   ├── tmux_launcher.py
 │   ├── startup.py
 │   ├── constants.py
-│   ├── utils.py
-│   └── logs/                       → Runtime log files (gitignored)
+│   └── utils.py
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
 │   └── display/                    → [DOCS.md](dev/display/DOCS.md)
 │       ├── test_tmux_layout.sh
