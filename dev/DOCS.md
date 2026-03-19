@@ -1,0 +1,15 @@
+# Dev Scripts
+
+Development and testing scripts for Monitor_CC pipeline components.
+
+## Working Directory
+
+**CRITICAL:** All commands assume CWD = `Monitor_CC/` (project root)
+
+```bash
+cd Monitor_CC/
+```
+
+## Subdirectories
+
+- [display/DOCS.md](display/DOCS.md) — Display layer tests (tmux layout, rules rendering)

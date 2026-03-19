@@ -9,7 +9,7 @@ from typing import Dict, Set, List, Optional
 # From utils.py: ANSI colors and logging utility
 from .utils import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, log_tagged
 # From constants.py: Shared constants
-from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, HOOK_USER_PROMPT, HOOK_PRE_TOOL, HOOK_INSTRUCTIONS_LOADED
+from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, HOOK_USER_PROMPT, HOOK_PRE_TOOL, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
 
 # Setup 7 loggers for different workflow phases
@@ -78,7 +78,7 @@ turn_usage_accumulator: Dict[str, int] = {'input_tokens': 0, 'cache_read_input_t
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
-    global active_project_filter, active_mode, ui_mode_active
+    global active_project_filter, active_mode, ui_mode_active, hook_log_position
     active_project_filter = project_filter
     active_mode = mode
     ui_mode_active = ui
@@ -88,7 +88,12 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
     session_count = initialize_file_positions()
     print_session_status(session_count, project_filter, mode)
 
-    if ui and mode == MODE_SUBAGENT:
+    if mode == MODE_RULES:
+        log_tagged(logger_init, "RULES_MODE", CYAN, "Starting rules mode")
+        # Read hook log from beginning to catch InstructionsLoaded events that fired before monitor start
+        hook_log_position = 0
+        run_rules_loop()
+    elif ui and mode == MODE_SUBAGENT:
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
         run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions, active_rules)
     else:
@@ -416,6 +421,19 @@ def run_streaming_loop() -> None:
     while True:
         process_hook_log()
         monitor_sessions()
+        time.sleep(POLL_INTERVAL)
+
+# Runs rules-only display loop (for dedicated rules tmux pane)
+def run_rules_loop() -> None:
+    from .ui_mode import format_rules_block
+    last_output = ''
+    while True:
+        process_hook_log()
+        output = format_rules_block(active_rules)
+        if output != last_output:
+            print("\033[2J\033[3J\033[H", end='', flush=True)
+            print(output if output else f"{CYAN}Waiting for rules...{RESET}")
+            last_output = output
         time.sleep(POLL_INTERVAL)
 
 # Process hook log for new entries

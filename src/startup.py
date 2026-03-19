@@ -20,7 +20,7 @@ logger_startup.setLevel(logging.INFO)
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Claude Code Tool Monitor')
     parser.add_argument('--project', type=str, default=None, help='Filter by project path')
-    parser.add_argument('--mode', type=str, choices=['all', 'main', 'subagent'], default='all', help='Monitor mode: all, main, or subagent')
+    parser.add_argument('--mode', type=str, choices=['all', 'main', 'subagent', 'rules'], default='all', help='Monitor mode: all, main, subagent, or rules')
     parser.add_argument('--ui', action='store_true', help='Enable collapsible UI mode (subagent only)')
     args = parser.parse_args()
     log_tagged(logger_startup, "ARGPARSE", MAGENTA, f"Arguments parsed: mode={args.mode}, project={args.project}, ui={args.ui}")

@@ -62,7 +62,7 @@ time_str = format_timestamp("2025-01-01T12:00:00Z")
 
 **Constants:**
 - `TOOL_TASK` - Task tool name
-- `MODE_ALL`, `MODE_MAIN`, `MODE_SUBAGENT` - Monitoring modes
+- `MODE_ALL`, `MODE_MAIN`, `MODE_SUBAGENT`, `MODE_RULES` - Monitoring modes
 - `HOOK_USER_PROMPT`, `HOOK_PRE_TOOL`, `HOOK_INSTRUCTIONS_LOADED` - Hook event names
 - `EXCLUDED_TOOLS` - Set of tools excluded from display
 - `SYSTEM_REMINDER_PATTERN` - Regex for system-reminder tags
@@ -139,12 +139,13 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Inputs:**
 - `project_filter`: Optional project path to filter sessions
-- `mode`: Filter for main/subagent/all files (default: all)
+- `mode`: Filter for main/subagent/all/rules files (default: all)
 - `ui_mode`: Enable collapsible subagent UI (default: False)
 
 **Outputs:**
 - Formatted tool calls to console (streaming mode)
 - Collapsible UI list (if ui_mode enabled)
+- Rules display with screen-clear refresh (if rules mode)
 
 **Usage:**
 ```python
@@ -165,6 +166,7 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 - `display_user_prompt_from_jsonl()` - Display USER PROMPT detected from session JSONL, with pending hook output
 - `display_skill_activation()` - Display formatted skill/command activation to console
 - `process_hook_log()` - Routes hook entries including InstructionsLoaded to active_rules state
+- `run_rules_loop()` - Dedicated rules display loop for rules tmux pane (polls process_hook_log, renders format_rules_block with screen-clear)
 
 **Variables:**
 - `active_rules`: Dict tracking loaded rules by type (project/global)

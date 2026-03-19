@@ -35,4 +35,5 @@ Pending — needs evaluation.
 
 ## Quellen
 
-- (keine)
+- tmux man page: github.com/tmux/tmux `tmux.1` L3591-3648 (split-window), L840-890 (pane targeting)
+- dev/display/test_tmux_layout.sh: Pane-Index Verifikation nach verschachtelten Splits

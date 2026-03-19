@@ -7,6 +7,7 @@ TOOL_TASK = 'Task'
 MODE_ALL = 'all'
 MODE_MAIN = 'main'
 MODE_SUBAGENT = 'subagent'
+MODE_RULES = 'rules'
 
 # Hook events
 HOOK_USER_PROMPT = 'UserPromptSubmit'

@@ -116,10 +116,10 @@ def format_rules_block(active_rules: Dict[str, set]) -> str:
         return ''
 
     header = f"{RULES_COLOR}ACTIVE RULES ({len(project_rules)}P / {len(global_rules)}G){RESET}"
-    parts = []
-    if project_rules:
-        parts.append(f"  {RULES_COLOR}" + '  '.join(f'[P] {r}' for r in project_rules) + f"{RESET}")
-    if global_rules:
-        parts.append(f"  {RULES_COLOR}" + '  '.join(f'[G] {r}' for r in global_rules) + f"{RESET}")
-    return '\n'.join([header] + parts)
+    lines = [header]
+    for r in project_rules:
+        lines.append(f"  {RULES_COLOR}[P] {r}{RESET}")
+    for r in global_rules:
+        lines.append(f"  {RULES_COLOR}[G] {r}{RESET}")
+    return '\n'.join(lines)
 
