@@ -67,7 +67,6 @@ Monitor_CC/
 ├── workflow.py                     → Pipeline entry point
 ├── requirements.txt
 ├── README.md
-├── AGENTS.md                       → Bead-based agent instructions
 ├── LOGS_MAP.md                     → Logging architecture reference
 ├── decisions/                      → Pipeline decision records (rationale per implementation choice)
 │   ├── pipe01_entry_startup.md
@@ -89,7 +88,8 @@ Monitor_CC/
 │   ├── tmux_launcher.py
 │   ├── startup.py
 │   ├── constants.py
-│   └── utils.py
+│   ├── utils.py
+│   └── logs/                       → Runtime log files (gitignored)
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
 │   └── display/                    → [DOCS.md](dev/display/DOCS.md)
 │       ├── test_tmux_layout.sh

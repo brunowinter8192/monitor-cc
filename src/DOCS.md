@@ -27,7 +27,8 @@ src/
 ├── formatter.py
 ├── subagent_ui.py
 ├── click_handler.py
-└── DOCS.md
+├── DOCS.md
+└── logs/                 → Runtime log files (gitignored)
 ```
 
 **Note:** Entry point workflow.py resides at project root and imports from this src/ package.
