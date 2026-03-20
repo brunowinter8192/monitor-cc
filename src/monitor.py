@@ -90,8 +90,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
 
     if mode == MODE_RULES:
         log_tagged(logger_init, "RULES_MODE", CYAN, "Starting rules mode")
-        # Read hook log from beginning to catch InstructionsLoaded events that fired before monitor start
-        hook_log_position = 0
+        # Start from EOF like all other modes — only show rules loaded after monitor start
         run_rules_loop()
     elif ui and mode == MODE_SUBAGENT:
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")

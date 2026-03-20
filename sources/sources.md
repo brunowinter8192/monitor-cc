@@ -9,3 +9,6 @@ External references used as evidence for pipeline decisions.
 | Claude Code #33275 | github.com/anthropics/claude-code/issues/33275 | InstructionsLoaded session_start bug | pipe03 |
 | Claude Code #31017 | github.com/anthropics/claude-code/issues/31017 | InstructionsLoaded /clear behavior | pipe03 |
 | Claude Code #12151 | github.com/anthropics/claude-code/issues/12151 | Plugin hook output bug (not affecting us) | pipe03 |
+| Claude Code #19377 | github.com/anthropics/claude-code/issues/19377 | paths: YAML array syntax broken (CSV parser bug) | pipe04 |
+| Claude Code #33581 | github.com/anthropics/claude-code/issues/33581 | Multiple paths: entries silently fail (same root cause as #19377) | pipe04 |
+| Claude Code #16299 | github.com/anthropics/claude-code/issues/16299 | Path-scoped rules load globally (version-dependent) | pipe04 |

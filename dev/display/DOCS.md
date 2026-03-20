@@ -36,4 +36,8 @@ python3 dev/display/scan_jsonl_rules.py
 
 **Output:** All unique "Contents of" entries found, with message type, line number, and parsed rule name/scope.
 
-**Status:** Exploratory — initial scan found 0 results because system prompt is NOT persisted to JSONL. Needs further investigation of alternative data sources within the JSONL.
+**Status:** Concluded — confirmed that Session-JSONL contains NO rules/instructions data (Contents of: 0, system-reminder: 0, claudeMd: 0). InstructionsLoaded hook is the only viable Claude-infrastructure source. Superseded by jsonl_exploration/ suite for detailed structure analysis.
+
+## Documentation Tree
+
+- [jsonl_exploration/DOCS.md](jsonl_exploration/DOCS.md) — JSONL structure exploration suite (3 scripts, MD reports)
