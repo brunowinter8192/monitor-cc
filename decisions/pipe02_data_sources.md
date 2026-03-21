@@ -12,6 +12,84 @@ Hook types routed by `process_hook_log()` in monitor.py:
 - `PreToolUse` → `pending_pretooluse_hooks`
 - `InstructionsLoaded` → `active_rules`
 
+## IST — Stellschrauben
+
+### Session Discovery — Filesystem-Scan pro Poll (Kategorie: Performance)
+
+`find_active_sessions()` in `src/session_finder.py:25-36` wird jeden Poll-Zyklus (alle 0.5s) aufgerufen. Ablauf pro Aufruf:
+1. `get_project_directories()` (session_finder.py:41-54): `CLAUDE_PROJECTS_DIR.iterdir()` — liest gesamtes `~/.claude/projects/` Directory
+2. `collect_jsonl_files()` (session_finder.py:57-73): Pro Projekt-Dir zwei Globs:
+   - `project_dir.glob('*.jsonl')` — Session-Dateien
+   - `project_dir.glob('*/subagents/agent-*.jsonl')` — Subagent-Dateien
+3. `sort_by_modification_time()` (session_finder.py:87-88): `sorted(..., key=lambda f: f.stat().st_mtime, reverse=True)` — `stat()` Syscall pro Datei
+
+Kein Caching zwischen Polls. Bei vielen Projekten/Sessions: O(N) Syscalls pro 0.5s.
+`CLAUDE_PROJECTS_DIR` ist hardcoded: `Path.home() / '.claude' / 'projects'` (session_finder.py:18).
+
+### JSONL Parsing — 5 separate Iterationen (Kategorie: Performance)
+
+`parse_new_tool_calls()` in `src/jsonl_parser.py:35-53` iteriert die `messages`-Liste 5x:
+1. `extract_tool_calls(messages, tool_use_cache)` — tool_use/tool_result Paare (jsonl_parser.py:43)
+2. `extract_user_prompts(messages)` — externe User-Prompts (jsonl_parser.py:44)
+3. `extract_user_media(messages)` — Bilder, Dokumente (jsonl_parser.py:45)
+4. `extract_thinking_blocks(messages)` — Thinking-Blöcke (jsonl_parser.py:46)
+5. `extract_skill_activations(messages)` — Skill/Command-Aktivierungen (jsonl_parser.py:47)
+
+Jede Funktion iteriert vollständig über alle Messages. Keine gemeinsame Iteration mit Switch-Dispatch.
+
+**7-Tuple-Rückgabe und Erweiterbarkeit:**
+`parse_new_tool_calls()` gibt zurück:
+`(tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations)`
+
+Jedes neue JSONL-Datenformat erfordert:
+1. Neue `extract_*()`-Funktion
+2. Neuer Rückgabewert im 7-Tuple
+3. Neues Entpacken in `process_session_file()` (monitor.py:179)
+4. Neue Display-Funktion in monitor.py
+
+Das Tuple wächst linear mit der Anzahl extrahierter Datentypen.
+
+### tool_use_cache — kein Orphan-Cleanup (Kategorie: Memory)
+
+`tool_use_caches: Dict[Path, dict]` in monitor.py:61 — pro Session-Datei ein Cache-Dict.
+Der Cache pro Datei (`cache` in `extract_tool_calls()`, jsonl_parser.py:124) ist ein `dict` keyed by `tool_use_id`:
+- Eintrag wird bei `tool_use`-Block hinzugefügt (jsonl_parser.py:162): `tool_use_cache[tool_data['tool_use_id']] = tool_data`
+- Eintrag wird bei passendem `tool_result` gelöscht (jsonl_parser.py:178): `del tool_use_cache[tool_use_id]`
+- Kein TTL, kein Cleanup für Orphaned Entries (tool_use ohne zugehöriges tool_result)
+
+Auswirkung: Wenn Claude Code crashed oder ein Tool-Call nie ein Result bekommt, wächst der Cache unbegrenzt. Wird bei Session-Removal via `del tool_use_caches[removed_file]` (monitor.py:159) vollständig geleert.
+
+### EXCLUDED_TOOLS — einziger Filterpunkt (Kategorie: Konfiguration)
+
+`EXCLUDED_TOOLS = {'Edit'}` in `src/constants.py:18`.
+Angewendet in `filter_excluded_tools()` (jsonl_parser.py:258-259), aufgerufen am Ende von `extract_tool_calls()` (jsonl_parser.py:186).
+Nur ein einziger Tool-Name ausgeschlossen. Kein Wildcard-Pattern, kein Category-Filter.
+
+### Byte-Offset Tracking — kein Truncation-Handling (Kategorie: Robustheit)
+
+`read_new_lines()` in `src/jsonl_parser.py:71-91`:
+- `f.seek(last_position)` (jsonl_parser.py:77) — springt direkt zum gespeicherten Byte-Offset
+- Neuer Position nach Lesen: `filepath.stat().st_size` (jsonl_parser.py:95)
+- Kein Handling wenn `file_size < last_position` (z.B. bei JSONL-Rotation oder File-Truncation durch Claude Code)
+
+Im Truncation-Fall würde `seek()` ans Dateiende springen und `f.read()` leeren String zurückgeben — kein Error, aber stille Datenverlust.
+
+### Content Polymorphism (Kategorie: Format-Stabilität)
+
+Zwei Stellen handhaben `content` als String oder Array:
+- `extract_user_prompts()` (jsonl_parser.py:308-320): `isinstance(content, list)` → text-Blöcke konkatenieren; `isinstance(content, str)` → direkt verwenden
+- `extract_result_content()` (jsonl_parser.py:239-245): `isinstance(content, list)` → erstes Element; `str(content)` als Fallback
+
+Kein explizites Format-Versioning. Unbekannte Message-Types werden still ignoriert (kein Warning).
+
+### Logging in Data Sources (Kategorie: Observability)
+
+`src/jsonl_parser.py`: ~14 `log_tagged()`-Aufrufe → `src/logs/04_file_reading.log` + `05_jsonl_parsing.log` + `06_tool_extraction.log`
+`src/session_finder.py`: 4 `log_tagged()`-Aufrufe → `src/logs/03_session_discovery.log`
+`src/hook_parser.py`: 2 `log_tagged()`-Aufrufe → `src/logs/11_hook_parsing.log`
+
+Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
+
 ## Evidenz
 
 Pending — needs evaluation.
@@ -34,3 +112,7 @@ Pending — needs evaluation.
 - Claude Code #31017: github.com/anthropics/claude-code/issues/31017 (InstructionsLoaded + /clear)
 - Claude Code #12151: github.com/anthropics/claude-code/issues/12151 (Plugin hook output bug — nicht betroffen, native Hook)
 - Claude Code CHANGELOG L340: InstructionsLoaded added v2.1.64
+- GitHub anthropics/claude-code #27724: JSONL format undocumented, changes without changelog
+- GitHub anthropics/claude-code #27361: Token counts ~2x too low in JSONL (betrifft `usage`-Felder in tool_use-Messages)
+- GitHub unified-cowork JSONL Spec: Community reverse-engineered spec für Cowork audit.jsonl (verwandtes Format, nicht identisch mit Monitor_CC JSONL)
+- GitHub anthropics/claude-code #33414: FireHose monitoring feature request (kein offizielles Monitoring-API)
