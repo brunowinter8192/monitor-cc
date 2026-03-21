@@ -13,3 +13,4 @@ cd Monitor_CC/
 ## Documentation Tree
 
 - [display/DOCS.md](display/DOCS.md) — Display layer tests (tmux layout, rules rendering)
+- [pipeline/DOCS.md](pipeline/DOCS.md) — Pipeline evaluation suite (memory, I/O, parsing, format stability)
