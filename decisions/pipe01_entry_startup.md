@@ -2,18 +2,18 @@
 
 ## Status Quo
 
-- `workflow.py`: `--mode all` → tmux 4-Pane (main | rules + subagent + warnings), `--mode main|subagent|rules|warnings` → einzelner Prozess
-- `startup.py`: argparse mit choices `['all', 'main', 'subagent', 'rules', 'warnings']`, `--project`, `--ui`
-- `tmux_launcher.py`: `split-window -h` dann `split-window -v -b` → 4 Panes, history 50000, keybindings (Ctrl-Q scroll, mouse, M-m/M-s copy, M-r rules-pane copy, M-w warnings-pane copy)
+- `workflow.py`: `--mode all` → tmux 5-Pane (main | rules + subagent + hooks + warnings), `--mode main|subagent|rules|warnings|hooks` → einzelner Prozess
+- `startup.py`: argparse mit choices `['all', 'main', 'subagent', 'rules', 'warnings', 'hooks']`, `--project`, `--ui`
+- `tmux_launcher.py`: 5 Panes, history 50000, keybindings (C-q scroll, C-r restart all panes, C-f search, mouse, M-m/M-s/M-r/M-h/M-w copy)
 
-tmux Layout (verifiziert via dev/display/test_tmux_layout.sh):
+tmux Layout:
 ```
 ┌─────────────────┬──────────────────┐
 │                 │ Pane 1 (rules)   │  25% Höhe
 │  Pane 0 (main)  │──────────────────│
 │                 │ Pane 2 (subs)    │  50% Höhe
 │    50% Breite   │──────────────────│
-│                 │ Pane 3 (warnings)│  25% Höhe
+│                 │ Pane 3 (hooks) │ Pane 4 (warnings) │  25% Höhe
 └─────────────────┴──────────────────┘
 ```
 
@@ -22,6 +22,7 @@ Split-Sequenz:
 2. `split-window -h -t $session:0.0 -l 50% $subagent_cmd` → Pane 1 (rechts, volle Höhe)
 3. `split-window -v -t $session:0.1 -b -l 25% $rules_cmd` → Pane 1 (rechts-oben 25%), Pane 2 = alter Pane 1 (rechts-unten 75%)
 4. `split-window -v -t $session:0.2 -l 25% $warnings_cmd` → Pane 3 (rechts-unten 25%), Pane 2 = subagents (75% des unteren Bereichs)
+5. `split-window -h -b -t $session:0.3 -l 50% $hooks_cmd` → Pane 3 (hooks links 50%), Pane 4 (warnings rechts 50%)
 
 ## IST — Stellschrauben
 
@@ -44,7 +45,7 @@ subprocess.run(["tmux", "set-option", "-g", "history-limit", "50000"])
 - Nach dem Session-Aufbau wird der Original-Wert wiederhergestellt (`restore_global_history_limit()`, tmux_launcher.py:112-114)
 - Das `50000` ist hardcoded, kein Config-Parameter
 
-### 4-Pane Layout Split-Ratios (Kategorie: Konfiguration)
+### 5-Pane Layout Split-Ratios (Kategorie: Konfiguration)
 
 Hardcoded Split-Befehle in `src/tmux_launcher.py`:
 - `tmux_launcher.py:58`: `-l 50%` — horizontaler Split (main | rechte Hälfte)
