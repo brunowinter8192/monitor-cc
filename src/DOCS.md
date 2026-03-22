@@ -57,6 +57,7 @@ src/
 - Tool names, mode strings, hook event names
 - Excluded tool set, regex patterns
 - JSONL message type sets (KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES)
+- Pane header labels (PANE_HEADERS)
 
 ---
 
@@ -176,7 +177,7 @@ entries, new_position = parse_new_hook_entries(file_path, last_position)
 
 ## formatter.py
 
-**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, and skill activations as color-coded terminal strings.
+**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, and pane headers as color-coded terminal strings.
 
 **Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, is_error flag).
 

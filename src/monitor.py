@@ -424,7 +424,7 @@ def track_unknown_type(unknown_entry: dict) -> None:
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
     header = format_pane_header('warnings')
-    last_output = ''
+    last_output = None
     while True:
         monitor_sessions()
         output = format_warnings_block()
@@ -478,7 +478,7 @@ def process_hook_log_for_display() -> None:
 def run_rules_loop() -> None:
     from .ui_mode import format_rules_block
     header = format_pane_header('rules')
-    last_output = ''
+    last_output = None
     while True:
         process_hook_log()
         output = format_rules_block(active_rules)

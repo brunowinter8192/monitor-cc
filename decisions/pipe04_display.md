@@ -43,13 +43,26 @@ Drei verschiedene Truncation-Schwellen (40, 50, 120), alle hardcoded.
 Verwendet in `format_output()` (formatter.py:130-131): Zeilen die matchen werden in `GREEN` coloriert.
 Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
+### Pane Headers (Kategorie: Display / UX)
+
+`format_pane_header(mode)` in `src/formatter.py` generates `━━━ LABEL ━━━` header bars using `PANE_HEADERS` dict from `src/constants.py`.
+
+- Streaming loops (main, hooks): Header printed once at loop start
+- Screen-clearing loops (rules, warnings): Header printed as first line on every refresh
+- UI loop (subagent): Header as first line in `sync_ui_to_screen()`
+- Initialization: `last_output = None` (not `''`) to force first render even when no data
+
+### Restart Hotkey (Kategorie: Display / UX)
+
+`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` for all 5 panes. Restarts all monitor processes with their original commands.
+
 ### Screen Clear Escape Sequence (Kategorie: Display / Robustheit)
 
-`\033[2J\033[3J\033[H` an zwei Stellen:
-- `src/ui_mode.py:78`: `print("\033[2J\033[3J\033[H", end='', flush=True)` — in `sync_ui_to_screen()`
-- `src/monitor.py:433`: `print("\033[2J\033[3J\033[H", end='', flush=True)` — in `run_rules_loop()`
+`\033[2J\033[3J\033[H` an drei Stellen:
+- `src/ui_mode.py`: in `sync_ui_to_screen()`
+- `src/monitor.py`: in `run_rules_loop()` and `run_warnings_loop()`
 
-Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H` setzt Cursor auf Position 0,0. Duplizierter Hardcode an zwei Stellen.
+Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H` setzt Cursor auf Position 0,0.
 
 ### Hooks-Pane (Kategorie: Hook-Monitoring)
 
@@ -89,7 +102,7 @@ Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ### Screenshot-Tool (Kategorie: Dev Tooling / Feedback)
 
-`dev/display/screenshot_panes.py`: Captures all 4 tmux panes via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
+`dev/display/screenshot_panes.py`: Captures all 5 tmux panes via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
 
 Dependencies: `termshot` (brew), `Pillow` (pip). Auto-detects running `monitor_cc_*` session.
 
