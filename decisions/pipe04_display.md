@@ -51,13 +51,27 @@ Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
 Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H` setzt Cursor auf Position 0,0. Duplizierter Hardcode an zwei Stellen.
 
+### Hooks-Pane (Kategorie: Hook-Monitoring)
+
+Eigenes tmux Pane (Pane 3, rechts-unten-links, 25% Breite, 25% Höhe) via `--mode hooks`:
+- `run_hooks_loop()` in monitor.py: pollt `process_hook_log_for_display()`
+- `format_hook_event()` in formatter.py: `[timestamp] hook_event | hook_script` + output
+- Scrolling stream (kein Screen-clear) — jeder Hook mit Output wird sofort angezeigt
+- Hooks ohne Output werden gefiltert (`if not output: continue`)
+- M-h Keybinding: Hooks-Pane Content → Clipboard via pbcopy
+- Hook-Routing geändert: `process_hook_log()` nur noch für InstructionsLoaded → Rules-Pane. Kein Buffering mehr (`pending_pretooluse_hooks`, `pending_user_prompt_hook` entfernt).
+
 ### Warnings-Pane (Kategorie: Format-Stabilität)
 
-Eigenes tmux Pane (Pane 3, rechts-unten, 25% Höhe) via `--mode warnings`:
+Eigenes tmux Pane (Pane 4, rechts-unten-rechts, 25% Breite, 25% Höhe) via `--mode warnings`:
 - `run_warnings_loop()` in monitor.py: pollt `monitor_sessions()`, rendert `format_warnings_block()`
 - `format_unknown_type_warning()` in formatter.py: `[!] Unknown JSONL type: <type> (seen Nx)`
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy
+
+### print_session_status Fix (Kategorie: Display / Startup)
+
+`print_session_status()` und `print_startup_message()` werden nur für streaming/UI modes aufgerufen, nicht für dedizierte Panes (rules, warnings, hooks). Fix in `workflow.py` und `monitor.py`.
 
 ### Farb-Duplikation — überlappende Namen (Kategorie: Architektur / Kopplung)
 

@@ -30,7 +30,8 @@ def main() -> None:
         launch_split_screen(args.project, args.ui, os.path.abspath(__file__))
     else:
         setup_signal_handlers()
-        print_startup_message(args.project, args.mode)
+        if args.mode not in ('rules', 'warnings', 'hooks'):
+            print_startup_message(args.project, args.mode)
         run_monitor(args.project, args.mode, args.ui)
 
 if __name__ == "__main__":

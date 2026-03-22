@@ -79,7 +79,7 @@ print_startup_message(args.project, args.mode)
 
 **Input:** `project_filter` (optional path), `ui` (bool for collapsible UI mode), `script_path` (absolute path to workflow.py).
 
-**Output:** Creates and attaches to a tmux session with 3-pane layout (main | rules + subagents).
+**Output:** Creates and attaches to a tmux session with 5-pane layout (main | rules + subagents + hooks + warnings).
 
 **Usage:**
 ```python
@@ -93,9 +93,9 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls with color-coded output.
 
-**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings), `ui_mode` (bool).
+**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks), `ui_mode` (bool).
 
-**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh.
+**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream.
 
 **Usage:**
 ```python

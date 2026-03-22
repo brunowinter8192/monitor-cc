@@ -84,8 +84,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
 
     log_tagged(logger_init, "RUN_MONITOR", MAGENTA, f"run_monitor: project={project_filter}, mode={mode}, ui={ui}")
 
-    session_count = initialize_file_positions()
-    print_session_status(session_count, project_filter, mode)
+    initialize_file_positions()
 
     if mode == MODE_RULES:
         log_tagged(logger_init, "RULES_MODE", CYAN, "Starting rules mode")
@@ -98,9 +97,13 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
         run_hooks_loop()
     elif ui and mode == MODE_SUBAGENT:
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
+        session_count = len(find_active_sessions(active_project_filter))
+        print_session_status(session_count, project_filter, mode)
         run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions, active_rules)
     else:
         log_tagged(logger_init, "STREAM_MODE", CYAN, "Starting streaming mode")
+        session_count = len(find_active_sessions(active_project_filter))
+        print_session_status(session_count, project_filter, mode)
         run_streaming_loop()
 
 # FUNCTIONS
