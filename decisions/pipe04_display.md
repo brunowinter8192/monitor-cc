@@ -21,12 +21,12 @@ Rules-Pane Layout:
 
 ### LONG_OUTPUT_THRESHOLD (Kategorie: Display / UX)
 
-`LONG_OUTPUT_THRESHOLD = 10000` in `src/formatter.py:21`.
+`LONG_OUTPUT_THRESHOLD = 10000` in `src/constants.py`.
 Verwendet in `format_output()` (formatter.py:119-138):
 - `len(content) >= LONG_OUTPUT_THRESHOLD` → `log_long_output(content)` aufgerufen + `LIGHT_RED_BG` Hintergrundfarbe für den gesamten Output-Block
 - `log_long_output()` (formatter.py:213-219) schreibt: char_count, line_count, 500-char Preview, und **den vollständigen Content** nach `src/logs/10_long_outputs.log`
 
-Wert ist hardcoded, kein Config-Parameter.
+Zentralisiert in constants.py.
 
 ### Input Preview Truncation (Kategorie: Display / UX)
 
@@ -73,40 +73,9 @@ Eigenes tmux Pane (Pane 4, rechts-unten-rechts, 25% Breite, 25% Höhe) via `--mo
 
 `print_session_status()` und `print_startup_message()` werden nur für streaming/UI modes aufgerufen, nicht für dedizierte Panes (rules, warnings, hooks). Fix in `workflow.py` und `monitor.py`.
 
-### Farb-Duplikation — überlappende Namen (Kategorie: Architektur / Kopplung)
+### Farb-Palette (Kategorie: Architektur — RESOLVED)
 
-Zwei separate Farb-Definitionen mit überlappenden Variablennamen:
-
-**`src/utils.py` (Standard ANSI — 16-Farben):**
-```
-GREEN  = '\033[92m'
-BLUE   = '\033[94m'
-YELLOW = '\033[93m'
-CYAN   = '\033[96m'
-```
-
-**`src/formatter.py` (256-Farben Palette):**
-```
-GREEN  = '\033[38;5;35m'
-BLUE   = '\033[38;5;33m'
-YELLOW = '\033[38;5;220m'
-CYAN   = '\033[38;5;51m'
-```
-
-Überlappende Namen mit unterschiedlichen ANSI-Codes:
-| Name | utils.py | formatter.py |
-|------|----------|--------------|
-| GREEN | `\033[92m` (Standard-Grün) | `\033[38;5;35m` (256c dunkleres Grün) |
-| BLUE | `\033[94m` (Standard-Blau) | `\033[38;5;33m` (256c Blau) |
-| YELLOW | `\033[93m` (Standard-Gelb) | `\033[38;5;220m` (256c Gelb-Gold) |
-| CYAN | `\033[96m` (Standard-Cyan) | `\033[38;5;51m` (256c helles Cyan) |
-| RESET | `\033[0m` | `\033[0m` (identisch) |
-
-Import-Abhängigkeit:
-- `src/monitor.py:10` importiert aus utils.py: `from .utils import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, log_tagged`
-- `src/subagent_ui.py:20` importiert aus formatter.py: `from .formatter import GREEN, BLUE, CYAN, YELLOW, RESET`
-
-Folge: monitor.py und subagent_ui.py nutzen dieselben Variablennamen (z.B. `GREEN`), aber unterschiedliche ANSI-Codes. Gleicher Name = unterschiedliche Farbe je nach Import-Kontext.
+Alle Farb-Konstanten zentral in `src/constants.py` definiert (256-color ANSI). Alle Module importieren von dort. Keine Duplikation, keine Konflikte. Siehe Rule: `.claude/rules/tui-standards.md`.
 
 ### Logging im Display (Kategorie: Observability)
 
