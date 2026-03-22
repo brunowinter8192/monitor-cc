@@ -12,8 +12,8 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings`, `--project`, `--ui` |
-| tmux Launch | tmux_launcher.py | 4-Pane (main \| rules + subagent + warnings), history 50000 |
+| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks`, `--project`, `--ui` |
+| tmux Launch | tmux_launcher.py | 5-Pane (main \| rules + subagent + hooks + warnings), history 50000 |
 | Signal Handling | startup.py | SIGINT/SIGTERM → graceful shutdown |
 
 ### Data Sources
@@ -29,8 +29,8 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| Polling | monitor.py `run_streaming_loop` / `run_rules_loop` | 0.5s interval |
-| Hook Routing | monitor.py `process_hook_log` | Routes 3 hook types to state dicts |
+| Polling | monitor.py `run_streaming_loop` / `run_rules_loop` / `run_hooks_loop` | 0.5s interval |
+| Hook Routing | monitor.py `process_hook_log` / `process_hook_log_for_display` | InstructionsLoaded → rules pane, hooks with output → hooks pane |
 | Agent Tracking | monitor.py | agent_to_task, agent_to_type, buffered calls |
 
 ### Display
@@ -41,6 +41,7 @@ See [sources/sources.md](sources/sources.md)
 | Subagent UI | subagent_ui.py + click_handler.py | Collapsible list, digits 1-9 toggle |
 | UI Mode Loop | ui_mode.py | Screen-clear refresh, raw stdin |
 | Rules Display | ui_mode.py `format_rules_block` | Pastel blue, [P]/[G] prefix, eigenes tmux Pane |
+| Hooks Display | monitor.py + formatter.py | Dedicated tmux pane, format_hook_event, scrolling stream |
 | Warnings Display | monitor.py + formatter.py | Dedicated tmux pane, format_unknown_type_warning |
 
 ### Key Files
@@ -49,7 +50,7 @@ See [sources/sources.md](sources/sources.md)
 |------|-----------|
 | `workflow.py` | Entry point, mode routing |
 | `src/startup.py` | CLI args, signal handlers |
-| `src/tmux_launcher.py` | tmux session, 3-pane layout |
+| `src/tmux_launcher.py` | tmux session, 5-pane layout |
 | `src/monitor.py` | Core polling orchestrator |
 | `src/session_finder.py` | Session discovery |
 | `src/jsonl_parser.py` | JSONL parsing, tool call extraction |
@@ -95,5 +96,5 @@ Monitor_CC/
 │   └── display/                    → [DOCS.md](dev/display/DOCS.md)
 │       ├── test_tmux_layout.sh
 │       ├── scan_jsonl_rules.py
-│       └── screenshot_panes.py     → tmux pane screenshot tool (4-pane → PNG)
+│       └── screenshot_panes.py     → tmux pane screenshot tool (5-pane → PNG)
 ```
