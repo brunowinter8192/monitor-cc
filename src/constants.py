@@ -9,6 +9,7 @@ MODE_MAIN = 'main'
 MODE_SUBAGENT = 'subagent'
 MODE_RULES = 'rules'
 MODE_WARNINGS = 'warnings'
+MODE_HOOKS = 'hooks'
 
 # Hook events
 HOOK_USER_PROMPT = 'UserPromptSubmit'

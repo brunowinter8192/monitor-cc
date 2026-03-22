@@ -9,7 +9,7 @@ from typing import Dict, Set, List, Optional
 # From utils.py: ANSI colors and logging utility
 from .utils import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, log_tagged
 # From constants.py: Shared constants
-from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, HOOK_USER_PROMPT, HOOK_PRE_TOOL, HOOK_INSTRUCTIONS_LOADED
+from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
 
 # Setup 7 loggers for different workflow phases
@@ -48,7 +48,7 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
@@ -71,8 +71,6 @@ subagent_metadata: Dict[str, dict] = {}
 tool_calls_by_agent: Dict[str, List[dict]] = {}
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
-pending_pretooluse_hooks: Dict[str, dict] = {}
-pending_user_prompt_hook: Optional[dict] = None
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
@@ -95,6 +93,9 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
     elif mode == MODE_WARNINGS:
         log_tagged(logger_init, "WARNINGS_MODE", CYAN, "Starting warnings mode")
         run_warnings_loop()
+    elif mode == MODE_HOOKS:
+        log_tagged(logger_init, "HOOKS_MODE", CYAN, "Starting hooks mode")
+        run_hooks_loop()
     elif ui and mode == MODE_SUBAGENT:
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
         run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions, active_rules)
@@ -261,10 +262,7 @@ def display_thinking(thinking_item: dict) -> None:
 
 # Display formatted tool call to console
 def display_tool_call(tool_call: dict, call_number: int) -> None:
-    global pending_pretooluse_hooks
-
     tool_name = tool_call['tool_name']
-    hook_entry = pending_pretooluse_hooks.pop(tool_name, None)
 
     formatted = format_tool_call(
         tool_name=tool_name,
@@ -277,13 +275,6 @@ def display_tool_call(tool_call: dict, call_number: int) -> None:
         system_reminders=tool_call.get('system_reminders', []),
         is_error=tool_call.get('is_error', False)
     )
-
-    if hook_entry and hook_entry.get('output'):
-        hook_line = format_hook_annotation(hook_entry['output'], hook_entry['hook_script'])
-        lines = formatted.split('\n')
-        lines.insert(1, hook_line)
-        formatted = '\n'.join(lines)
-        log_tagged(logger_routing, "HOOK_ATTACHED", PURPLE, f"Attached PreToolUse hook to {tool_name}")
 
     print(formatted)
     print()
@@ -450,6 +441,32 @@ def format_warnings_block() -> str:
         lines.append(warning)
     return '\n'.join(lines)
 
+# Runs hooks display loop (for dedicated hooks tmux pane)
+def run_hooks_loop() -> None:
+    while True:
+        process_hook_log_for_display()
+        time.sleep(POLL_INTERVAL)
+
+# Process hook log and display hooks with output immediately
+def process_hook_log_for_display() -> None:
+    global hook_log_position
+
+    entries, hook_log_position = parse_new_hook_entries(hook_log_position)
+    filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
+
+    for entry in filtered:
+        output = entry.get('output', '')
+        if not output:
+            continue
+        formatted = format_hook_event(
+            timestamp=entry.get('timestamp', ''),
+            hook_event=entry.get('hook_event', ''),
+            hook_script=entry.get('hook_script', ''),
+            output=output
+        )
+        print(formatted)
+        print()
+
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
     from .ui_mode import format_rules_block
@@ -463,25 +480,15 @@ def run_rules_loop() -> None:
             last_output = output
         time.sleep(POLL_INTERVAL)
 
-# Process hook log for new entries
+# Process hook log for InstructionsLoaded entries (rules pane routing)
 def process_hook_log() -> None:
-    global hook_log_position, pending_pretooluse_hooks, pending_user_prompt_hook, active_project_filter
+    global hook_log_position, active_project_filter
 
     entries, hook_log_position = parse_new_hook_entries(hook_log_position)
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
 
     for entry in filtered:
-        if entry.get('hook_event') == HOOK_USER_PROMPT:
-            output = entry.get('output', '')
-            if output:
-                pending_user_prompt_hook = entry
-                log_tagged(logger_routing, "HOOK_PENDING_UP", PURPLE, f"UserPromptSubmit hook output pending: {output[:80]}")
-        elif entry.get('hook_event') == HOOK_PRE_TOOL:
-            tool_name = entry.get('tool_name')
-            if tool_name:
-                pending_pretooluse_hooks[tool_name] = entry
-                log_tagged(logger_routing, "HOOK_PENDING", PURPLE, f"PreToolUse hook pending for {tool_name}")
-        elif entry.get('hook_event') == HOOK_INSTRUCTIONS_LOADED:
+        if entry.get('hook_event') == HOOK_INSTRUCTIONS_LOADED:
             output = entry.get('output', '')
             if output.startswith('[P]'):
                 active_rules['project'].add(output[4:])
@@ -490,19 +497,10 @@ def process_hook_log() -> None:
 
 # Display USER PROMPT detected from session JSONL
 def display_user_prompt_from_jsonl(prompt_item: dict) -> None:
-    global pending_user_prompt_hook
-
-    hook_outputs = None
-    if pending_user_prompt_hook:
-        output = pending_user_prompt_hook.get('output', '')
-        if output:
-            hook_outputs = [output]
-        pending_user_prompt_hook = None
-
-    formatted = format_user_prompt(prompt_item.get('timestamp', ''), hook_outputs)
+    formatted = format_user_prompt(prompt_item.get('timestamp', ''))
     print(formatted)
     print()
-    log_tagged(logger_routing, "USER_PROMPT", PURPLE, f"Displayed USER PROMPT from JSONL, hook_output={bool(hook_outputs)}")
+    log_tagged(logger_routing, "USER_PROMPT", PURPLE, f"Displayed USER PROMPT from JSONL")
 
 # Format WARNING header with yellow color for malformed lines
 def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:

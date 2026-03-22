@@ -45,13 +45,14 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     subagent_cmd = f"python3 {script_path} --mode subagent {project_arg} {ui_flag}"
     rules_cmd = f"python3 {script_path} --mode rules {project_arg}"
     warnings_cmd = f"python3 {script_path} --mode warnings {project_arg}"
+    hooks_cmd = f"python3 {script_path} --mode hooks {project_arg}"
 
     original_history_limit = get_global_history_limit()
     log_tagged(logger_startup, "HIST_SET", BLUE, f"Setting history limit to 50000")
     subprocess.run(["tmux", "set-option", "-g", "history-limit", "50000"])
 
-    # 4-Pane Layout:
-    # Pane 0 = left (main), Pane 1 = top-right (rules), Pane 2 = mid-right (subagents), Pane 3 = bottom-right (warnings)
+    # 5-Pane Layout:
+    # Pane 0 = left (main), Pane 1 = top-right (rules), Pane 2 = mid-right (subagents), Pane 3 = bottom-right-left (hooks), Pane 4 = bottom-right-right (warnings)
     log_tagged(logger_startup, "TMUX_CREATE", GREEN, f"Creating tmux session '{session_name}'")
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, main_cmd])
 
@@ -63,6 +64,9 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
 
     log_tagged(logger_startup, "TMUX_SPLIT_V2", GREEN, f"Splitting right pane for warnings pane")
     subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.2", "-l", "25%", warnings_cmd])
+
+    log_tagged(logger_startup, "TMUX_SPLIT_H2", GREEN, f"Splitting warnings pane for hooks pane")
+    subprocess.run(["tmux", "split-window", "-h", "-b", "-t", f"{session_name}:0.3", "-l", "50%", hooks_cmd])
 
     restore_global_history_limit(original_history_limit)
     configure_tmux_session(session_name)
@@ -139,7 +143,8 @@ def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-m", "run-shell", "tmux capture-pane -t 0 -pS - | pbcopy && tmux display 'Main pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-s", "run-shell", "tmux capture-pane -t 2 -pS - | pbcopy && tmux display 'Subagent pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-r", "run-shell", "tmux capture-pane -t 1 -pS - | pbcopy && tmux display 'Rules pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-w", "run-shell", "tmux capture-pane -t 3 -pS - | pbcopy && tmux display 'Warnings pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-h", "run-shell", "tmux capture-pane -t 3 -pS - | pbcopy && tmux display 'Hooks pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-w", "run-shell", "tmux capture-pane -t 4 -pS - | pbcopy && tmux display 'Warnings pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "C-f", "copy-mode", "\\;", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "C-f", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", "C-f", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])

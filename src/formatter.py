@@ -209,6 +209,14 @@ def format_user_prompt(timestamp: str, hook_outputs: list = None) -> str:
 def format_hook_annotation(hook_output: str, hook_script: str) -> str:
     return f"{INDENT}{PASTEL_PURPLE}Hook [{hook_script}]: {hook_output}{RESET}"
 
+# Format single hook event for hooks pane display
+def format_hook_event(timestamp: str, hook_event: str, hook_script: str, output: str) -> str:
+    time_str = format_timestamp(timestamp)
+    header = f"{PASTEL_PURPLE}[{time_str}] {hook_event} | {hook_script}{RESET}"
+    if output:
+        return f"{header}\n{INDENT}{PASTEL_PURPLE}{output}{RESET}"
+    return header
+
 # Format user media item (image or document)
 def format_user_media(media_item: dict) -> str:
     time_str = format_timestamp(media_item.get('timestamp', ''))
