@@ -5,8 +5,10 @@ import re
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-# From utils.py: ANSI colors and logging utility
-from .utils import RESET, RED, GREEN, YELLOW, BLUE, WHITE, log_tagged
+# From utils.py: Logging utility
+from .utils import log_tagged
+# From constants.py: Colors
+from .constants import RESET, RED, GREEN, YELLOW, BLUE, WHITE
 # From constants.py: Shared constants
 from .constants import EXCLUDED_TOOLS, SYSTEM_REMINDER_PATTERN, KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES
 

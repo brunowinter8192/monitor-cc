@@ -1,5 +1,26 @@
 # INFRASTRUCTURE
 
+# Colors — 256-color ANSI palette (single source of truth)
+RESET = '\033[0m'
+RED = '\033[91m'
+GREEN = '\033[38;5;35m'
+YELLOW = '\033[38;5;220m'
+BLUE = '\033[38;5;33m'
+CYAN = '\033[38;5;51m'
+MAGENTA = '\033[95m'
+WHITE = '\033[97m'
+PURPLE = '\033[38;5;135m'
+ORANGE = '\033[38;5;208m'
+PASTEL_BLUE = '\033[38;5;117m'
+PASTEL_PURPLE = '\033[38;5;183m'
+LIGHT_RED_BG = '\033[48;5;203m'
+PASTEL_ORANGE = '\033[38;5;216m'
+
+# Config values
+POLL_INTERVAL = 0.5
+LONG_OUTPUT_THRESHOLD = 10000
+TMUX_HISTORY_LIMIT = '50000'
+
 # Tool names
 TOOL_TASK = 'Task'
 

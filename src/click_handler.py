@@ -6,8 +6,10 @@ import termios
 import tty
 from typing import Dict, Optional
 
-# From utils.py: ANSI colors and logging utility
-from .utils import RESET, CYAN, BLUE, GREEN, PURPLE, log_tagged
+# From utils.py: Logging utility
+from .utils import log_tagged
+# From constants.py: Colors
+from .constants import RESET, CYAN, BLUE, GREEN, PURPLE
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 

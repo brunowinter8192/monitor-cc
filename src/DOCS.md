@@ -47,11 +47,16 @@ src/
 
 ## constants.py
 
-**Purpose:** Shared constants for tool names, modes, hook events, and patterns.
+**Purpose:** Single source of truth for colors, config values, tool names, modes, hook events, and patterns.
 
 **Input:** —
 
-**Output:** Constants imported by other modules (tool names, mode strings, hook event names, excluded tool set, regex patterns, JSONL message type sets (KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES)).
+**Output:** Constants imported by other modules:
+- 256-color ANSI palette (RESET, RED, GREEN, YELLOW, BLUE, CYAN, MAGENTA, WHITE, PURPLE, ORANGE, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE)
+- Config values (POLL_INTERVAL, LONG_OUTPUT_THRESHOLD, TMUX_HISTORY_LIMIT)
+- Tool names, mode strings, hook event names
+- Excluded tool set, regex patterns
+- JSONL message type sets (KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES)
 
 ---
 

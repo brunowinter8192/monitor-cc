@@ -6,8 +6,10 @@ import subprocess
 import sys
 from typing import Optional
 
-# From utils.py: ANSI colors and logging utility
-from .utils import RESET, GREEN, YELLOW, BLUE, CYAN, log_tagged
+# From utils.py: Logging utility
+from .utils import log_tagged
+# From constants.py: Colors and config values
+from .constants import GREEN, YELLOW, BLUE, CYAN, TMUX_HISTORY_LIMIT
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -48,8 +50,8 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     hooks_cmd = f"python3 {script_path} --mode hooks {project_arg}"
 
     original_history_limit = get_global_history_limit()
-    log_tagged(logger_startup, "HIST_SET", BLUE, f"Setting history limit to 50000")
-    subprocess.run(["tmux", "set-option", "-g", "history-limit", "50000"])
+    log_tagged(logger_startup, "HIST_SET", BLUE, f"Setting history limit to {TMUX_HISTORY_LIMIT}")
+    subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
 
     # 5-Pane Layout:
     # Pane 0 = left (main), Pane 1 = top-right (rules), Pane 2 = mid-right (subagents), Pane 3 = bottom-right-left (hooks), Pane 4 = bottom-right-right (warnings)

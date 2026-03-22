@@ -6,10 +6,10 @@ import time
 from pathlib import Path
 from typing import Dict, Set, List, Optional
 
-# From utils.py: ANSI colors and logging utility
-from .utils import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, log_tagged
-# From constants.py: Shared constants
-from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, HOOK_INSTRUCTIONS_LOADED
+# From utils.py: Logging utility
+from .utils import log_tagged
+# From constants.py: Colors, config, shared constants
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
 
 # Setup 7 loggers for different workflow phases
@@ -56,7 +56,6 @@ from .subagent_ui import subagent_states
 # From ui_mode.py: UI mode loop and subagent tracking
 from .ui_mode import run_ui_loop, track_subagent_metadata
 
-POLL_INTERVAL = 0.5
 file_positions: Dict[Path, int] = {}
 tool_use_caches: Dict[Path, dict] = {}
 call_counter = 0

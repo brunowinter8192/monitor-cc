@@ -5,8 +5,10 @@ import signal
 import sys
 from typing import Optional
 
-# From utils.py: ANSI colors and logging utility
-from .utils import RESET, RED, GREEN, MAGENTA, log_tagged
+# From utils.py: Logging utility
+from .utils import log_tagged
+# From constants.py: Colors
+from .constants import RESET, RED, GREEN, MAGENTA
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -43,7 +45,7 @@ def handle_shutdown(signum, frame) -> None:
 # Print startup message
 def print_startup_message(project_filter: Optional[str] = None, mode: str = 'all') -> None:
     log_tagged(logger_startup, "MONITOR_START", GREEN, "Monitor_CC started - Claude Code Tool Monitor")
-    print("\033[38;5;35mMonitor_CC - Claude Code Tool Monitor\033[0m")
+    print(f"{GREEN}Monitor_CC - Claude Code Tool Monitor{RESET}")
 
     if project_filter:
         print(f"Monitoring project: {project_filter}")
@@ -58,4 +60,4 @@ def print_startup_message(project_filter: Optional[str] = None, mode: str = 'all
 
 # Print shutdown message
 def print_shutdown_message() -> None:
-    print("\n\033[38;5;35mMonitor stopped\033[0m")
+    print(f"\n{GREEN}Monitor stopped{RESET}")

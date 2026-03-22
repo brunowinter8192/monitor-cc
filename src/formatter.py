@@ -4,19 +4,11 @@ import re
 
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
+# From constants.py: Colors and config values
+from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, RESET, LONG_OUTPUT_THRESHOLD
 
-GREEN = '\033[38;5;35m'
-BLUE = '\033[38;5;33m'
-YELLOW = '\033[38;5;220m'
-CYAN = '\033[38;5;51m'
-PASTEL_BLUE = '\033[38;5;117m'
-PASTEL_PURPLE = '\033[38;5;183m'
-LIGHT_RED_BG = '\033[48;5;203m'
-PASTEL_ORANGE = '\033[38;5;216m'
-RESET = '\033[0m'
 INDENT = '  '
 SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
-LONG_OUTPUT_THRESHOLD = 10000
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 long_output_logger = logging.getLogger('formatter.long_outputs')
@@ -57,7 +49,7 @@ def format_response(tool_name: str, output_data: str, tool_use_id: str, timestam
     time_str = format_timestamp(timestamp)
 
     if is_error:
-        from .utils import RED
+        # RED imported from constants via INFRASTRUCTURE
         header = f"{RED}[{time_str}] RESPONSE #{call_number} ← {tool_name} [ERROR]{RESET}"
         content = format_error_output(output_data)
     else:
@@ -134,7 +126,6 @@ def format_output(content: str) -> str:
 
 # Format error output content in red
 def format_error_output(content: str) -> str:
-    from .utils import RED
     if not content:
         return f"{INDENT}{RED}(empty){RESET}"
 

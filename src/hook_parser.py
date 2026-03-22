@@ -4,8 +4,10 @@ import logging
 from pathlib import Path
 from typing import List, Tuple
 
-# From utils.py: ANSI colors and logging utility
-from .utils import RESET, GREEN, YELLOW, BLUE, log_tagged
+# From utils.py: Logging utility
+from .utils import log_tagged
+# From constants.py: Colors
+from .constants import RESET, GREEN, YELLOW, BLUE
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 

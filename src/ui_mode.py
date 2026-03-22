@@ -3,8 +3,10 @@ import logging
 import time
 from typing import Dict, List
 
-# From utils.py: ANSI colors and logging utility
-from .utils import RESET, WHITE, CYAN, PURPLE, log_tagged
+# From utils.py: Logging utility
+from .utils import log_tagged
+# From constants.py: Colors and config values
+from .constants import RESET, WHITE, CYAN, PURPLE, PASTEL_BLUE, POLL_INTERVAL
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -19,9 +21,6 @@ from .click_handler import setup_keyboard_input, restore_terminal, read_keypress
 # From subagent_ui.py: Render subagent list and manage state
 from .subagent_ui import render_subagent_list, get_agent_display_name, count_calls_for_agent, subagent_states, toggle_subagent_state
 
-RULES_COLOR = '\033[38;5;117m'  # Pastel blue for rules display
-
-POLL_INTERVAL = 0.5
 ui_loop_iteration: int = 0
 last_rendered_output: str = ""
 _last_agent_count: int = 0
@@ -115,11 +114,11 @@ def format_rules_block(active_rules: Dict[str, set]) -> str:
     if not project_rules and not global_rules:
         return ''
 
-    header = f"{RULES_COLOR}ACTIVE RULES ({len(project_rules)}P / {len(global_rules)}G){RESET}"
+    header = f"{PASTEL_BLUE}ACTIVE RULES ({len(project_rules)}P / {len(global_rules)}G){RESET}"
     lines = [header]
     for r in project_rules:
-        lines.append(f"  {RULES_COLOR}[P] {r}{RESET}")
+        lines.append(f"  {PASTEL_BLUE}[P] {r}{RESET}")
     for r in global_rules:
-        lines.append(f"  {RULES_COLOR}[G] {r}{RESET}")
+        lines.append(f"  {PASTEL_BLUE}[G] {r}{RESET}")
     return '\n'.join(lines)
 

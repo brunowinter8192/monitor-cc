@@ -2,11 +2,10 @@
 import logging
 from typing import Dict, List
 
-# From utils.py: ANSI colors and logging utility
-from .utils import RESET, YELLOW, PURPLE, WHITE, log_tagged, format_timestamp
-YELLOW_LOG = YELLOW
-PURPLE_LOG = PURPLE
-WHITE_LOG = WHITE
+# From utils.py: Logging and formatting utilities
+from .utils import log_tagged, format_timestamp
+# From constants.py: Colors
+from .constants import RESET, GREEN, BLUE, CYAN, YELLOW, PURPLE, WHITE
 
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -16,8 +15,6 @@ ui_handler.setFormatter(log_format)
 logger_ui.addHandler(ui_handler)
 logger_ui.setLevel(logging.INFO)
 
-# From formatter.py: Color constants for terminal output
-from .formatter import GREEN, BLUE, CYAN, YELLOW, RESET
 
 subagent_states: Dict[str, bool] = {}
 line_to_agent_map: Dict[int, str] = {}
@@ -34,7 +31,7 @@ def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
 
     if agent_count != _last_agent_count or expanded_count != _last_expanded_count:
-        log_tagged(logger_ui, "RENDER_LIST", PURPLE_LOG, f"render_subagent_list: {agent_count} agents, {expanded_count} expanded")
+        log_tagged(logger_ui, "RENDER_LIST", PURPLE, f"render_subagent_list: {agent_count} agents, {expanded_count} expanded")
         _last_agent_count = agent_count
         _last_expanded_count = expanded_count
 
@@ -80,7 +77,7 @@ def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
         current_line += entry_lines + 1
 
     if len(entries) != _last_entry_count or expanded_entries != _last_expanded_entries:
-        log_tagged(logger_ui, "ENTRIES_BUILT", PURPLE_LOG, f"Built {len(entries)} entries ({expanded_entries} expanded)")
+        log_tagged(logger_ui, "ENTRIES_BUILT", PURPLE, f"Built {len(entries)} entries ({expanded_entries} expanded)")
         _last_entry_count = len(entries)
         _last_expanded_entries = expanded_entries
 
@@ -100,10 +97,10 @@ def build_expanded_entry(index: int, metadata: dict, tool_calls: List[dict]) -> 
     header = build_collapsed_entry(index, metadata, is_expanded=True)
 
     if not tool_calls:
-        log_tagged(logger_ui, "NO_CALLS", YELLOW_LOG, f"Agent {metadata['agent_id']} has no tool calls yet")
+        log_tagged(logger_ui, "NO_CALLS", YELLOW, f"Agent {metadata['agent_id']} has no tool calls yet")
         return f"{header}\n  {YELLOW}(no tool calls yet){RESET}"
 
-    log_tagged(logger_ui, "EXPAND_BUILD", PURPLE_LOG, f"Building expanded entry for {metadata['agent_id']}: {len(tool_calls)} tool calls")
+    log_tagged(logger_ui, "EXPAND_BUILD", PURPLE, f"Building expanded entry for {metadata['agent_id']}: {len(tool_calls)} tool calls")
     call_summaries = []
     for call in tool_calls:
         summary = format_tool_call_summary(call)
@@ -184,6 +181,6 @@ def toggle_subagent_state(agent_id: str) -> bool:
     if agent_id in subagent_states:
         subagent_states[agent_id] = not subagent_states[agent_id]
         new_state = "expanded" if subagent_states[agent_id] else "collapsed"
-        log_tagged(logger_ui, "STATE_CHANGE", PURPLE_LOG, f"Toggled {agent_id}: {new_state}")
+        log_tagged(logger_ui, "STATE_CHANGE", PURPLE, f"Toggled {agent_id}: {new_state}")
         return True
     return False
