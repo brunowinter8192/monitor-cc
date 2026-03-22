@@ -12,9 +12,7 @@ CYAN = '\033[38;5;51m'
 PASTEL_BLUE = '\033[38;5;117m'
 PASTEL_PURPLE = '\033[38;5;183m'
 LIGHT_RED_BG = '\033[48;5;203m'
-PASTEL_YELLOW = '\033[38;5;229m'
 PASTEL_ORANGE = '\033[38;5;216m'
-SIGNAL_PINK = '\033[38;5;213m'
 RESET = '\033[0m'
 INDENT = '  '
 SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
@@ -28,9 +26,9 @@ long_output_logger.addHandler(long_output_handler)
 long_output_logger.setLevel(logging.INFO)
 
 # ORCHESTRATOR
-def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None, usage: dict = None, is_error: bool = False) -> str:
+def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None, is_error: bool = False) -> str:
     request = format_request(tool_name, input_data, tool_use_id, timestamp, call_number, is_subagent)
-    response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number, is_subagent, system_reminders, usage, is_error)
+    response = format_response(tool_name, output_data, tool_use_id, timestamp, call_number, is_subagent, system_reminders, is_error)
     return combine_request_response(request, response)
 
 # FUNCTIONS
@@ -55,7 +53,7 @@ def format_request(tool_name: str, input_data: dict, tool_use_id: str, timestamp
     return f"{header}\n{params}"
 
 # Format RESPONSE header with color based on agent type
-def format_response(tool_name: str, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None, usage: dict = None, is_error: bool = False) -> str:
+def format_response(tool_name: str, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None, is_error: bool = False) -> str:
     time_str = format_timestamp(timestamp)
 
     if is_error:
@@ -68,13 +66,10 @@ def format_response(tool_name: str, output_data: str, tool_use_id: str, timestam
         content = format_output(output_data)
 
     reminders = format_system_reminders(system_reminders)
-    usage_line = format_usage(usage)
 
     parts = [header, content]
     if reminders:
         parts.append(reminders)
-    if usage_line:
-        parts.append(usage_line)
     return '\n'.join(parts)
 
 # Format todo list with colored status and icons
@@ -157,27 +152,6 @@ def format_system_reminders(reminders: list) -> str:
             if line.strip():
                 lines.append(f"{INDENT}{PASTEL_BLUE}{line}{RESET}")
     return '\n'.join(lines)
-
-# Format token usage stats
-def format_usage(usage: dict) -> str:
-    if not usage:
-        return ''
-    input_tokens = usage.get('input_tokens', 0)
-    cache_read = usage.get('cache_read_input_tokens', 0)
-    cache_write = usage.get('cache_creation_input_tokens', 0)
-    output_tokens = usage.get('output_tokens', 0)
-    return f"{INDENT}{PASTEL_YELLOW}[in:{input_tokens} cache_r:{cache_read} cache_w:{cache_write} out:{output_tokens}]{RESET}"
-
-# Format turn total usage with signal color
-def format_turn_total(total_usage: dict) -> str:
-    if not total_usage or not any(total_usage.values()):
-        return ''
-    input_tokens = total_usage.get('input_tokens', 0)
-    cache_read = total_usage.get('cache_read_input_tokens', 0)
-    cache_write = total_usage.get('cache_creation_input_tokens', 0)
-    output_tokens = total_usage.get('output_tokens', 0)
-    line = '─' * 45
-    return f"{SIGNAL_PINK}{line}\nTURN TOTAL: [in:{input_tokens} cache_r:{cache_read} cache_w:{cache_write} out:{output_tokens}]{RESET}"
 
 # Format parameter value preserving newlines for multiline strings
 def format_value(value) -> str:
@@ -265,3 +239,7 @@ def format_thinking(thinking_item: dict) -> str:
     time_str = format_timestamp(thinking_item.get('timestamp', ''))
     thinking_text = thinking_item.get('thinking', '')
     return f"{PASTEL_ORANGE}[{time_str}] THINKING: {thinking_text}{RESET}"
+
+# Format unknown JSONL type warning for warnings pane
+def format_unknown_type_warning(msg_type: str, count: int) -> str:
+    return f"{INDENT}{YELLOW}[!] Unknown JSONL type: {msg_type} (seen {count}x){RESET}"

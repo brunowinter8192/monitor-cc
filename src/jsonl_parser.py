@@ -8,7 +8,7 @@ from typing import List, Tuple, Optional
 # From utils.py: ANSI colors and logging utility
 from .utils import RESET, RED, GREEN, YELLOW, BLUE, WHITE, log_tagged
 # From constants.py: Shared constants
-from .constants import EXCLUDED_TOOLS, SYSTEM_REMINDER_PATTERN
+from .constants import EXCLUDED_TOOLS, SYSTEM_REMINDER_PATTERN, KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES
 
 # Setup 3 loggers for different workflow phases
 log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -32,7 +32,7 @@ logger_extract.addHandler(extract_handler)
 logger_extract.setLevel(logging.INFO)
 
 # ORCHESTRATOR
-def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict]]:
+def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
 
     if len(new_lines) > 0:
@@ -45,12 +45,13 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     user_media = extract_user_media(messages)
     thinking_blocks = extract_thinking_blocks(messages)
     skill_activations = extract_skill_activations(messages)
+    unknown_types = detect_unknown_types(messages)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
 
     if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0 or len(thinking_blocks) > 0 or len(user_prompts) > 0 or len(skill_activations) > 0:
         log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_prompts)} user prompts, {len(user_media)} user media, {len(thinking_blocks)} thinking, {len(skill_activations)} skills, {len(malformed_warnings)} malformed lines")
 
-    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations
+    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types
 
 # FUNCTIONS
 
@@ -224,8 +225,7 @@ def create_tool_use_entry(block: dict, message: dict, is_subagent: bool = False,
         'timestamp': message.get('timestamp', ''),
         'call_number': message.get('call_number', 0),
         'is_subagent': is_subagent or message.get('isSidechain', False),
-        'agent_id': agent_id or message.get('agentId', None),
-        'usage': message.get('message', {}).get('usage')
+        'agent_id': agent_id or message.get('agentId', None)
     }
 
 # Extract spawned agent ID from toolUseResult in message
@@ -417,3 +417,17 @@ def extract_skill_activations(messages: List[dict]) -> List[dict]:
         log_tagged(logger_extract, "SKILL_ACTIVATIONS", GREEN, f"Extracted {len(activations)} skill activations")
 
     return activations
+
+# Detect unknown message types not in KNOWN or KNOWN_IGNORED sets
+def detect_unknown_types(messages: List[dict]) -> List[dict]:
+    all_known = KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES
+    unknown = {}
+
+    for message in messages:
+        msg_type = message.get('type', '')
+        if msg_type and msg_type not in all_known:
+            if msg_type not in unknown:
+                unknown[msg_type] = {'type': msg_type, 'count': 0, 'example': str(message)[:200]}
+            unknown[msg_type]['count'] += 1
+
+    return list(unknown.values())

@@ -9,7 +9,7 @@ from typing import Dict, Set, List, Optional
 # From utils.py: ANSI colors and logging utility
 from .utils import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, log_tagged
 # From constants.py: Shared constants
-from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, HOOK_USER_PROMPT, HOOK_PRE_TOOL, HOOK_INSTRUCTIONS_LOADED
+from .constants import TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, HOOK_USER_PROMPT, HOOK_PRE_TOOL, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
 
 # Setup 7 loggers for different workflow phases
@@ -48,7 +48,7 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media, format_thinking, format_turn_total, format_skill_activation
+from .formatter import format_tool_call, format_user_prompt, format_hook_annotation, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
@@ -74,7 +74,8 @@ hook_log_position: int = 0
 pending_pretooluse_hooks: Dict[str, dict] = {}
 pending_user_prompt_hook: Optional[dict] = None
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
-turn_usage_accumulator: Dict[str, int] = {'input_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0, 'output_tokens': 0}
+warned_unknown_types: Set[str] = set()
+unknown_type_counts: Dict[str, int] = {}
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -90,8 +91,10 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
 
     if mode == MODE_RULES:
         log_tagged(logger_init, "RULES_MODE", CYAN, "Starting rules mode")
-        # Start from EOF like all other modes — only show rules loaded after monitor start
         run_rules_loop()
+    elif mode == MODE_WARNINGS:
+        log_tagged(logger_init, "WARNINGS_MODE", CYAN, "Starting warnings mode")
+        run_warnings_loop()
     elif ui and mode == MODE_SUBAGENT:
         log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
         run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions, active_rules)
@@ -176,7 +179,15 @@ def process_session_file(filepath: Path) -> None:
     last_position = file_positions[filepath]
     cache = tool_use_caches[filepath]
 
-    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations = parse_new_tool_calls(filepath, last_position, cache)
+    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types = parse_new_tool_calls(filepath, last_position, cache)
+
+    for ut in unknown_types:
+        track_unknown_type(ut)
+
+    file_positions[filepath] = new_position
+
+    if active_mode == MODE_WARNINGS:
+        return
 
     for warning in malformed_warnings:
         display_warning(warning)
@@ -215,8 +226,6 @@ def process_session_file(filepath: Path) -> None:
             call_counter += 1
             display_tool_call(tool_call, call_counter)
 
-    file_positions[filepath] = new_position
-
     if task_requests > 0 or task_responses > 0 or subagent_ui_tracked > 0 or subagent_displayed > 0 or subagent_buffered > 0 or other_displayed > 0:
         log_tagged(logger_routing, "PROC_STATS", WHITE, f"Processed {filepath.name}: task_req={task_requests}, task_resp={task_responses}, subagent_ui={subagent_ui_tracked}, subagent_displayed={subagent_displayed}, subagent_buffered={subagent_buffered}, other={other_displayed}")
 
@@ -250,21 +259,9 @@ def display_thinking(thinking_item: dict) -> None:
     print(formatted)
     print()
 
-# Accumulate usage stats for turn total
-def accumulate_usage(usage: dict) -> None:
-    global turn_usage_accumulator
-    if not usage:
-        return
-    turn_usage_accumulator['input_tokens'] += usage.get('input_tokens', 0)
-    turn_usage_accumulator['cache_read_input_tokens'] += usage.get('cache_read_input_tokens', 0)
-    turn_usage_accumulator['cache_creation_input_tokens'] += usage.get('cache_creation_input_tokens', 0)
-    turn_usage_accumulator['output_tokens'] += usage.get('output_tokens', 0)
-
 # Display formatted tool call to console
 def display_tool_call(tool_call: dict, call_number: int) -> None:
     global pending_pretooluse_hooks
-
-    accumulate_usage(tool_call.get('usage'))
 
     tool_name = tool_call['tool_name']
     hook_entry = pending_pretooluse_hooks.pop(tool_name, None)
@@ -278,7 +275,6 @@ def display_tool_call(tool_call: dict, call_number: int) -> None:
         call_number=call_number,
         is_subagent=tool_call.get('is_subagent', False),
         system_reminders=tool_call.get('system_reminders', []),
-        usage=tool_call.get('usage'),
         is_error=tool_call.get('is_error', False)
     )
 
@@ -330,7 +326,7 @@ def is_agent_file(filepath: Path) -> bool:
 
 # Filter sessions based on mode (all, main, subagent)
 def filter_sessions_by_mode(sessions: list, mode: str) -> list:
-    if mode == MODE_ALL:
+    if mode in (MODE_ALL, MODE_WARNINGS):
         filtered = sessions
     elif mode == MODE_MAIN:
         filtered = [s for s in sessions if not is_agent_file(s)]
@@ -422,6 +418,38 @@ def run_streaming_loop() -> None:
         monitor_sessions()
         time.sleep(POLL_INTERVAL)
 
+# Track unknown JSONL message type for warnings pane
+def track_unknown_type(unknown_entry: dict) -> None:
+    global warned_unknown_types, unknown_type_counts
+    msg_type = unknown_entry.get('type', '')
+    if not msg_type:
+        return
+    count = unknown_entry.get('count', 1)
+    unknown_type_counts[msg_type] = unknown_type_counts.get(msg_type, 0) + count
+
+# Runs warnings-only display loop (for dedicated warnings tmux pane)
+def run_warnings_loop() -> None:
+    last_output = ''
+    while True:
+        monitor_sessions()
+        output = format_warnings_block()
+        if output != last_output:
+            print("\033[2J\033[3J\033[H", end='', flush=True)
+            print(output if output else f"{CYAN}No warnings{RESET}")
+            last_output = output
+        time.sleep(POLL_INTERVAL)
+
+# Format warnings block for dedicated pane
+def format_warnings_block() -> str:
+    if not unknown_type_counts:
+        return ''
+    header = f"{YELLOW}FORMAT WARNINGS ({len(unknown_type_counts)} unknown types){RESET}"
+    lines = [header]
+    for msg_type, count in sorted(unknown_type_counts.items(), key=lambda x: x[1], reverse=True):
+        warning = format_unknown_type_warning(msg_type, count)
+        lines.append(warning)
+    return '\n'.join(lines)
+
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
     from .ui_mode import format_rules_block
@@ -462,15 +490,7 @@ def process_hook_log() -> None:
 
 # Display USER PROMPT detected from session JSONL
 def display_user_prompt_from_jsonl(prompt_item: dict) -> None:
-    global turn_usage_accumulator, pending_user_prompt_hook
-
-    if any(turn_usage_accumulator.values()):
-        turn_total = format_turn_total(turn_usage_accumulator)
-        if turn_total:
-            print(turn_total)
-            print()
-
-    turn_usage_accumulator = {'input_tokens': 0, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0, 'output_tokens': 0}
+    global pending_user_prompt_hook
 
     hook_outputs = None
     if pending_user_prompt_hook:
