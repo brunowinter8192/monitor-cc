@@ -48,7 +48,7 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_pane_header
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
@@ -406,6 +406,7 @@ def handle_subagent_call(tool_call: dict, filepath: Path) -> tuple:
 
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
+    print(format_pane_header('main'))
     while True:
         process_hook_log()
         monitor_sessions()
@@ -422,13 +423,16 @@ def track_unknown_type(unknown_entry: dict) -> None:
 
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
+    header = format_pane_header('warnings')
     last_output = ''
     while True:
         monitor_sessions()
         output = format_warnings_block()
         if output != last_output:
             print("\033[2J\033[3J\033[H", end='', flush=True)
-            print(output if output else f"{CYAN}No warnings{RESET}")
+            print(header)
+            if output:
+                print(output)
             last_output = output
         time.sleep(POLL_INTERVAL)
 
@@ -445,6 +449,7 @@ def format_warnings_block() -> str:
 
 # Runs hooks display loop (for dedicated hooks tmux pane)
 def run_hooks_loop() -> None:
+    print(format_pane_header('hooks'))
     while True:
         process_hook_log_for_display()
         time.sleep(POLL_INTERVAL)
@@ -472,13 +477,16 @@ def process_hook_log_for_display() -> None:
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
     from .ui_mode import format_rules_block
+    header = format_pane_header('rules')
     last_output = ''
     while True:
         process_hook_log()
         output = format_rules_block(active_rules)
         if output != last_output:
             print("\033[2J\033[3J\033[H", end='', flush=True)
-            print(output if output else f"{CYAN}Waiting for rules...{RESET}")
+            print(header)
+            if output:
+                print(output)
             last_output = output
         time.sleep(POLL_INTERVAL)
 
