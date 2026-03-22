@@ -94,5 +94,6 @@ Monitor_CC/
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
 │   └── display/                    → [DOCS.md](dev/display/DOCS.md)
 │       ├── test_tmux_layout.sh
-│       └── scan_jsonl_rules.py
+│       ├── scan_jsonl_rules.py
+│       └── screenshot_panes.py     → tmux pane screenshot tool (4-pane → PNG)
 ```

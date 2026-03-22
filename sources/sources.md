@@ -16,3 +16,4 @@ External references used as evidence for pipeline decisions.
 | Claude Code #27361 | github.com/anthropics/claude-code/issues/27361 | Token counts ~2x too low in JSONL | pipe03 |
 | Claude Code #33414 | github.com/anthropics/claude-code/issues/33414 | FireHose monitoring feature request | pipe02 |
 | unified-cowork JSONL Spec | github.com/yjjoeathome-byte/unified-cowork | Community reverse-engineered Cowork audit.jsonl spec (related format) | pipe02 |
+| termshot | github.com/homeport/termshot | ANSI text → PNG rendering (terminal screenshots) | pipe04 |

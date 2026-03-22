@@ -38,6 +38,22 @@ python3 dev/display/scan_jsonl_rules.py
 
 **Status:** Concluded — confirmed that Session-JSONL contains NO rules/instructions data (Contents of: 0, system-reminder: 0, claudeMd: 0). InstructionsLoaded hook is the only viable Claude-infrastructure source. Superseded by jsonl_exploration/ suite for detailed structure analysis.
 
+### screenshot_panes.py
+
+Captures all 4 tmux panes of a running Monitor_CC session and combines them into a single PNG screenshot.
+
+**Purpose:** Visual feedback for Claude during development — Claude reads the PNG to verify pane content and layout.
+
+**Usage:**
+```bash
+./venv/bin/python dev/display/screenshot_panes.py
+./venv/bin/python dev/display/screenshot_panes.py --session monitor_cc_global
+```
+
+**Output:** `/tmp/monitor_cc_screenshot.png` — combined 4-pane layout image.
+
+**Dependencies:** `termshot` (`brew install homeport/tap/termshot`), `Pillow` (`pip install Pillow`)
+
 ## Documentation Tree
 
 - [jsonl_exploration/DOCS.md](jsonl_exploration/DOCS.md) — JSONL structure exploration suite (3 scripts, MD reports)

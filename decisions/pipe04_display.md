@@ -104,6 +104,14 @@ Folge: monitor.py und subagent_ui.py nutzen dieselben Variablennamen (z.B. `GREE
 
 Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
+### Screenshot-Tool (Kategorie: Dev Tooling / Feedback)
+
+`dev/display/screenshot_panes.py`: Captures all 4 tmux panes via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
+
+Dependencies: `termshot` (brew), `Pillow` (pip). Auto-detects running `monitor_cc_*` session.
+
+Purpose: Claude reads the PNG per Read-Tool for visual layout verification during development.
+
 ## Evidenz
 
 Pending — needs evaluation.
