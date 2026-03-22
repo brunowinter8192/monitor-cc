@@ -51,6 +51,14 @@ Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
 Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H` setzt Cursor auf Position 0,0. Duplizierter Hardcode an zwei Stellen.
 
+### Warnings-Pane (Kategorie: Format-Stabilität)
+
+Eigenes tmux Pane (Pane 3, rechts-unten, 25% Höhe) via `--mode warnings`:
+- `run_warnings_loop()` in monitor.py: pollt `monitor_sessions()`, rendert `format_warnings_block()`
+- `format_unknown_type_warning()` in formatter.py: `[!] Unknown JSONL type: <type> (seen Nx)`
+- Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
+- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy
+
 ### Farb-Duplikation — überlappende Namen (Kategorie: Architektur / Kopplung)
 
 Zwei separate Farb-Definitionen mit überlappenden Variablennamen:
@@ -87,6 +95,8 @@ Import-Abhängigkeit:
 Folge: monitor.py und subagent_ui.py nutzen dieselben Variablennamen (z.B. `GREEN`), aber unterschiedliche ANSI-Codes. Gleicher Name = unterschiedliche Farbe je nach Import-Kontext.
 
 ### Logging im Display (Kategorie: Observability)
+
+`format_usage()` und `format_turn_total()` wurden entfernt. `PASTEL_YELLOW` und `SIGNAL_PINK` Farbkonstanten wurden ebenfalls entfernt.
 
 `src/formatter.py`: 0 `log_tagged()`-Aufrufe; nutzt `long_output_logger.info()` direkt (formatter.py:216-219) → `src/logs/10_long_outputs.log`
 `src/ui_mode.py`: 4 `log_tagged()`-Aufrufe → `src/logs/08_ui_rendering.log`

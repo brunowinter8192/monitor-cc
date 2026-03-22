@@ -42,7 +42,8 @@ Alle Module-Level Variablen in `src/monitor.py` mit Zugriffs-Mapping:
 | `pending_pretooluse_hooks` | `Dict[str, dict]` | monitor.py:74 | monitor.py | monitor.py | Wartende PreToolUse-Hook-Outputs |
 | `pending_user_prompt_hook` | `Optional[dict]` | monitor.py:75 | monitor.py | monitor.py | Wartender UserPromptSubmit-Output |
 | `active_rules` | `Dict[str, set]` | monitor.py:76 | monitor.py, ui_mode.py (via Argument) | monitor.py | Aktive Regeln nach Scope |
-| `turn_usage_accumulator` | `Dict[str, int]` | monitor.py:77 | monitor.py | monitor.py | Token-Totals pro Turn |
+| `warned_unknown_types` | `Set[str]` | monitor.py:77 | monitor.py | monitor.py | Bereits gewarnted unknown Types |
+| `unknown_type_counts` | `Dict[str, int]` | monitor.py:78 | monitor.py | monitor.py | Count pro unbekanntem Type |
 
 **Kopplungsanalyse:** `agent_to_task`, `agent_to_type`, `subagent_metadata`, `tool_calls_by_agent`, `active_rules` werden als Argumente an `run_ui_loop()` (ui_mode.py:31) übergeben und dort auch von `track_subagent_metadata()` (ui_mode.py:85) geschrieben. De-facto shared mutable state, nur formal als Argument übergeben.
 
@@ -54,15 +55,13 @@ Alle Module-Level Variablen in `src/monitor.py` mit Zugriffs-Mapping:
 - Kein TTL: Wenn keine Task-Response eintrifft (z.B. Claude Code crashed, Session endet), wachsen Einträge unbegrenzt
 - Kein Cleanup bei Session-Removal (anders als `tool_use_caches` die via `update_session_tracking()` bereinigt werden)
 
-### turn_usage_accumulator — Reset-Trigger (Kategorie: Korrektheit)
+### Unknown Type Tracking (Kategorie: Format-Stabilität)
 
-`turn_usage_accumulator` (monitor.py:77) wird akkumuliert über alle Tool-Calls eines Turns via `accumulate_usage()` (monitor.py:254-261).
-
-Reset **nur** in `display_user_prompt_from_jsonl()` (monitor.py:473): beim Erkennen eines neuen User-Prompts aus dem JSONL.
-
-Implikation:
-- Wenn keine User-Prompt-Message im JSONL erscheint (z.B. programmatische Nutzung ohne UserPrompt), akkumuliert der Counter unbegrenzt
-- Token-Total wird vor dem Reset ausgegeben (monitor.py:468-471), danach Accumulator auf 0 zurückgesetzt
+`unknown_type_counts: Dict[str, int]` (monitor.py:78) und `warned_unknown_types: Set[str]` (monitor.py:77):
+- `detect_unknown_types()` in jsonl_parser.py erkennt Message Types die nicht in KNOWN_MESSAGE_TYPES oder KNOWN_IGNORED_TYPES sind
+- `track_unknown_type()` in monitor.py akkumuliert Counts
+- `format_warnings_block()` rendert Warnings für dediziertes tmux Pane
+- `run_warnings_loop()` pollt und rendert wie run_rules_loop()
 
 ### Hook Routing — pending State (Kategorie: Korrektheit)
 

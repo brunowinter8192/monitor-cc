@@ -37,15 +37,16 @@ Kein Caching zwischen Polls. Bei vielen Projekten/Sessions: O(N) Syscalls pro 0.
 
 Jede Funktion iteriert vollständig über alle Messages. Keine gemeinsame Iteration mit Switch-Dispatch.
 
-**7-Tuple-Rückgabe und Erweiterbarkeit:**
+**8-Tuple-Rückgabe und Erweiterbarkeit:**
 `parse_new_tool_calls()` gibt zurück:
-`(tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations)`
+`(tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types)`
 
 Jedes neue JSONL-Datenformat erfordert:
 1. Neue `extract_*()`-Funktion
-2. Neuer Rückgabewert im 7-Tuple
+2. Neuer Rückgabewert im 8-Tuple
 3. Neues Entpacken in `process_session_file()` (monitor.py:179)
 4. Neue Display-Funktion in monitor.py
+5. Ggf. neuer Eintrag in KNOWN_IGNORED_TYPES (constants.py)
 
 Das Tuple wächst linear mit der Anzahl extrahierter Datentypen.
 
@@ -80,7 +81,7 @@ Zwei Stellen handhaben `content` als String oder Array:
 - `extract_user_prompts()` (jsonl_parser.py:308-320): `isinstance(content, list)` → text-Blöcke konkatenieren; `isinstance(content, str)` → direkt verwenden
 - `extract_result_content()` (jsonl_parser.py:239-245): `isinstance(content, list)` → erstes Element; `str(content)` als Fallback
 
-Kein explizites Format-Versioning. Unbekannte Message-Types werden still ignoriert (kein Warning).
+Kein explizites Format-Versioning. `detect_unknown_types(messages)` in jsonl_parser.py scannt Messages gegen KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES (constants.py) und meldet unbekannte Types.
 
 ### Logging in Data Sources (Kategorie: Observability)
 

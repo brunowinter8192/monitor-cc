@@ -12,8 +12,8 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules`, `--project`, `--ui` |
-| tmux Launch | tmux_launcher.py | 3-Pane (main \| rules + subagent), history 50000 |
+| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings`, `--project`, `--ui` |
+| tmux Launch | tmux_launcher.py | 4-Pane (main \| rules + subagent + warnings), history 50000 |
 | Signal Handling | startup.py | SIGINT/SIGTERM → graceful shutdown |
 
 ### Data Sources
@@ -22,6 +22,7 @@ See [sources/sources.md](sources/sources.md)
 |-----------|---------------|--------|
 | Session Discovery | session_finder.py | `~/.claude/projects/**/*.jsonl` + `*/subagents/agent-*.jsonl` |
 | JSONL Parsing | jsonl_parser.py | tool_use/tool_result pairs, user prompts, media, thinking, skills |
+| Unknown Type Detection | jsonl_parser.py | KNOWN_MESSAGE_TYPES + KNOWN_IGNORED_TYPES in constants.py |
 | Hook Parsing | hook_parser.py | `src/logs/hook_outputs.jsonl` → UserPrompt, PreTool, InstructionsLoaded |
 
 ### Core Loop
@@ -31,7 +32,6 @@ See [sources/sources.md](sources/sources.md)
 | Polling | monitor.py `run_streaming_loop` / `run_rules_loop` | 0.5s interval |
 | Hook Routing | monitor.py `process_hook_log` | Routes 3 hook types to state dicts |
 | Agent Tracking | monitor.py | agent_to_task, agent_to_type, buffered calls |
-| Usage Accumulation | monitor.py `accumulate_usage` | Per-turn token totals |
 
 ### Display
 
@@ -41,6 +41,7 @@ See [sources/sources.md](sources/sources.md)
 | Subagent UI | subagent_ui.py + click_handler.py | Collapsible list, digits 1-9 toggle |
 | UI Mode Loop | ui_mode.py | Screen-clear refresh, raw stdin |
 | Rules Display | ui_mode.py `format_rules_block` | Pastel blue, [P]/[G] prefix, eigenes tmux Pane |
+| Warnings Display | monitor.py + formatter.py | Dedicated tmux pane, format_unknown_type_warning |
 
 ### Key Files
 

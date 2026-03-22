@@ -51,7 +51,7 @@ src/
 
 **Input:** —
 
-**Output:** Constants imported by other modules (tool names, mode strings, hook event names, excluded tool set, regex patterns).
+**Output:** Constants imported by other modules (tool names, mode strings, hook event names, excluded tool set, regex patterns, JSONL message type sets (KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES)).
 
 ---
 
@@ -93,9 +93,9 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls with color-coded output.
 
-**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules), `ui_mode` (bool).
+**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings), `ui_mode` (bool).
 
-**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh.
+**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh.
 
 **Usage:**
 ```python
@@ -143,12 +143,12 @@ sessions = find_active_sessions(project_filter="/path/to/project")
 
 **Input:** `file_path` (JSONL session file), `last_position` (byte offset for incremental reads).
 
-**Output:** Tool call dicts; new file position; malformed line warnings; user media items; thinking blocks; user prompts; skill activation items.
+**Output:** Tool call dicts; new file position; malformed line warnings; user media items; thinking blocks; user prompts; skill activation items; unknown type detections.
 
 **Usage:**
 ```python
 from src.jsonl_parser import parse_new_tool_calls
-tool_calls, new_position, warnings, user_media, thinking, user_prompts, skill_activations = parse_new_tool_calls(file_path, last_position, cache)
+tool_calls, new_position, warnings, user_media, thinking, user_prompts, skill_activations, unknown_types = parse_new_tool_calls(file_path, last_position, cache)
 ```
 
 ---
@@ -171,16 +171,16 @@ entries, new_position = parse_new_hook_entries(file_path, last_position)
 
 ## formatter.py
 
-**Purpose:** Formats tool calls, user prompts, hook annotations, usage stats, thinking blocks, and skill activations as color-coded terminal strings.
+**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, and skill activations as color-coded terminal strings.
 
-**Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, usage, is_error flag).
+**Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, is_error flag).
 
 **Output:** Formatted ANSI-colored string for terminal display.
 
 **Usage:**
 ```python
 from src.formatter import format_tool_call, format_user_media, format_thinking
-output = format_tool_call(name, input_params, output, timestamp, tool_id, is_subagent, usage=usage, is_error=False)
+output = format_tool_call(name, input_params, output, timestamp, tool_id, is_subagent, is_error=False)
 ```
 
 ---
