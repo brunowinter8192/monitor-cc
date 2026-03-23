@@ -32,6 +32,7 @@ MODE_RULES = 'rules'
 MODE_WARNINGS = 'warnings'
 MODE_HOOKS = 'hooks'
 MODE_TOKENS = 'tokens'
+MODE_WORKERS = 'workers'
 
 # Hook events
 HOOK_USER_PROMPT = 'UserPromptSubmit'
@@ -58,4 +59,5 @@ PANE_HEADERS = {
     'hooks': 'HOOKS',
     'warnings': 'WARNINGS',
     'tokens': 'TOKENS',
+    'workers': 'WORKERS',
 }

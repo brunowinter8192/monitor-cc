@@ -34,6 +34,7 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     rules_cmd = f"python3 {script_path} --mode rules {project_arg}"
     warnings_cmd = f"python3 {script_path} --mode warnings {project_arg}"
     hooks_cmd = f"python3 {script_path} --mode hooks {project_arg}"
+    workers_cmd = f"python3 {script_path} --mode workers {project_arg}"
 
     original_history_limit = get_global_history_limit()
     subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
@@ -53,6 +54,8 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.3", "-l", "25%", warnings_cmd])
 
     subprocess.run(["tmux", "split-window", "-h", "-b", "-t", f"{session_name}:0.4", "-l", "50%", hooks_cmd])
+
+    subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.5", "-l", "50%", workers_cmd])
 
     restore_global_history_limit(original_history_limit)
     configure_tmux_session(session_name)
@@ -125,6 +128,7 @@ def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-s", "run-shell", "tmux capture-pane -t 3 -pS - | pbcopy && tmux display 'Subagent pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-h", "run-shell", "tmux capture-pane -t 4 -pS - | pbcopy && tmux display 'Hooks pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-w", "run-shell", "tmux capture-pane -t 5 -pS - | pbcopy && tmux display 'Warnings pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-k", "run-shell", "tmux capture-pane -t 6 -pS - | pbcopy && tmux display 'Workers pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "C-f", "copy-mode", "\\;", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "C-f", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", "C-f", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
@@ -140,4 +144,5 @@ def configure_tmux_session(session_name: str) -> None:
         "respawn-pane", "-k", "-t", f"{session_name}:0.3", "\\;",
         "respawn-pane", "-k", "-t", f"{session_name}:0.4", "\\;",
         "respawn-pane", "-k", "-t", f"{session_name}:0.5", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:0.6", "\\;",
         "display", "Monitor restarted"])

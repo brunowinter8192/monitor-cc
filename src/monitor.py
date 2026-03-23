@@ -1,12 +1,13 @@
 # INFRASTRUCTURE
 from datetime import datetime
 import os
+import subprocess
 import time
 from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, HOOK_INSTRUCTIONS_LOADED
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -14,7 +15,7 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_pane_header, format_token_profile, format_token_profile_cumulative
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_pane_header, format_token_profile, format_token_profile_cumulative, format_workers_block
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
@@ -56,7 +57,9 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
 
     initialize_file_positions()
 
-    if mode == MODE_TOKENS:
+    if mode == MODE_WORKERS:
+        run_workers_loop()
+    elif mode == MODE_TOKENS:
         run_tokens_loop()
     elif mode == MODE_RULES:
         run_rules_loop()
@@ -550,6 +553,90 @@ def format_tokens_block() -> str:
         parts.append('')
     parts.append(prompt_line)
     return '\n'.join(parts)
+
+# Derive worker project name from project path (worktree-aware, matches tmux_spawn.sh logic)
+def get_worker_project_name(project_path: str) -> str:
+    if '/.claude/worktrees/' in project_path:
+        base = project_path.split('/.claude/worktrees/')[0]
+        return os.path.basename(base)
+    return os.path.basename(os.path.normpath(project_path))
+
+# Read a single env var from a tmux session
+def get_tmux_env(session: str, var: str) -> str:
+    result = subprocess.run(
+        ["tmux", "show-environment", "-t", session, var],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0 and '=' in result.stdout:
+        return result.stdout.strip().split('=', 1)[1]
+    return ''
+
+# Detect worker status: working, idle, exited, or unknown
+def detect_worker_status(session: str) -> str:
+    dead = subprocess.run(
+        ["tmux", "display-message", "-t", f"{session}:^", "-p", "#{pane_dead}"],
+        capture_output=True, text=True
+    ).stdout.strip()
+
+    if dead == "1":
+        return "exited"
+    if dead != "0":
+        return "unknown"
+
+    pane_content = subprocess.run(
+        ["tmux", "capture-pane", "-p", "-t", f"{session}:^"],
+        capture_output=True, text=True
+    ).stdout
+
+    non_empty = [l for l in pane_content.split('\n') if l.strip()]
+    recent = '\n'.join(non_empty[-5:])
+
+    import re
+    if re.search(r'for [0-9]+[ms]|accept edits|^>', recent, re.MULTILINE):
+        return "idle"
+    return "working"
+
+# List all workers for the current project
+def list_workers(project_path: str) -> List[dict]:
+    project = get_worker_project_name(project_path)
+    prefix = f"worker-{project}-"
+
+    result = subprocess.run(
+        ["tmux", "list-sessions", "-F", "#{session_name}"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        return []
+
+    sessions = [s for s in result.stdout.strip().split('\n') if s.startswith(prefix)]
+    workers = []
+    for session in sessions:
+        if not session:
+            continue
+        name = session[len(prefix):]
+        workers.append({
+            'name': name,
+            'session': session,
+            'status': detect_worker_status(session),
+            'spawned': get_tmux_env(session, 'WORKER_SPAWNED'),
+            'purpose': get_tmux_env(session, 'WORKER_PURPOSE'),
+        })
+    return workers
+
+# Runs workers display loop (for dedicated workers tmux pane)
+def run_workers_loop() -> None:
+    header = format_pane_header('workers')
+    last_output = None
+    while True:
+        workers = list_workers(active_project_filter) if active_project_filter else []
+        output = format_workers_block(workers)
+        if output != last_output:
+            print("\033[2J\033[3J\033[H", end='', flush=True)
+            print(header)
+            if output:
+                print(output)
+            last_output = output
+        time.sleep(POLL_INTERVAL)
 
 # Runs hooks display loop (for dedicated hooks tmux pane)
 def run_hooks_loop() -> None:

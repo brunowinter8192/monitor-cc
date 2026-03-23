@@ -284,6 +284,37 @@ def format_token_bar(label: str, tokens: int, total: int, color: str, sub: bool 
         return f"{INDENT}{INDENT}{color}{label:<14}{RESET} {tokens:>8,}  {pct:4.0f}%  {color}{bar}{RESET}"
     return f"{INDENT}{color}{label:<16}{RESET} {tokens:>8,}  {pct:4.0f}%  {color}{bar}{RESET}"
 
+# Format workers pane: one entry per worker with name, status, spawned time, purpose
+def format_workers_block(workers: list) -> str:
+    if not workers:
+        return f"{YELLOW}No active workers{RESET}"
+
+    status_colors = {
+        'working': GREEN,
+        'idle': YELLOW,
+        'exited': RED,
+        'unknown': WHITE,
+    }
+
+    lines = []
+    for w in workers:
+        status = w.get('status', 'unknown')
+        sc = status_colors.get(status, WHITE)
+        name = w.get('name', '?')
+        spawned = w.get('spawned', '')
+        purpose = w.get('purpose', '')
+
+        spawned_str = f"  {WHITE}{spawned}{RESET}" if spawned else ''
+        lines.append(f"{CYAN}{name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}")
+        if purpose:
+            truncated = purpose[:60] + ('...' if len(purpose) > 60 else '')
+            lines.append(f"{INDENT}{WHITE}{truncated}{RESET}")
+        lines.append('')
+
+    if lines and lines[-1] == '':
+        lines.pop()
+    return '\n'.join(lines)
+
 # Shorten MCP tool names for display (mcp__plugin_xxx_yyy__tool_name → tool_name)
 def shorten_tool_name(name: str) -> str:
     if name.startswith('mcp__'):
