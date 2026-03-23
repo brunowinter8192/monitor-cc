@@ -68,11 +68,13 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
     elif mode == MODE_HOOKS:
         run_hooks_loop()
     elif ui and mode == MODE_SUBAGENT:
-        session_count = len(find_active_sessions(active_project_filter))
+        sessions = find_active_sessions(active_project_filter)
+        session_count = len(filter_sessions_by_mode(sessions, mode))
         print_session_status(session_count, project_filter, mode)
         run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions, active_rules)
     else:
-        session_count = len(find_active_sessions(active_project_filter))
+        sessions = find_active_sessions(active_project_filter)
+        session_count = len(filter_sessions_by_mode(sessions, mode))
         print_session_status(session_count, project_filter, mode)
         run_streaming_loop()
 
