@@ -1,28 +1,15 @@
 # INFRASTRUCTURE
 import hashlib
-import logging
 import os
 import subprocess
 import sys
 from typing import Optional
 
-# From utils.py: Logging utility
-from .utils import log_tagged
 # From constants.py: Colors and config values
 from .constants import GREEN, YELLOW, BLUE, CYAN, TMUX_HISTORY_LIMIT
 
-log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-logger_startup = logging.getLogger('tmux_launcher.startup')
-startup_handler = logging.FileHandler('src/logs/01_startup.log')
-startup_handler.setFormatter(log_format)
-logger_startup.addHandler(startup_handler)
-logger_startup.setLevel(logging.INFO)
-
 # ORCHESTRATOR
 def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, script_path: str = '') -> None:
-    log_tagged(logger_startup, "SPLIT_LAUNCH", CYAN, f"launch_split_screen: project={project_filter}, ui={ui}")
-
     if not is_tmux_installed():
         print("Error: tmux is not installed. Install with: brew install tmux")
         sys.exit(1)
@@ -32,8 +19,6 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
         sys.exit(1)
 
     session_name = generate_session_name(project_filter)
-    log_tagged(logger_startup, "SESS_NAME", CYAN, f"Generated session name: {session_name}")
-    log_tagged(logger_startup, "SCRIPT_PATH", CYAN, f"Script path: {script_path}")
 
     if check_session_exists(session_name):
         print(f"Warning: Session '{session_name}' already exists for this project.")
@@ -51,29 +36,22 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     hooks_cmd = f"python3 {script_path} --mode hooks {project_arg}"
 
     original_history_limit = get_global_history_limit()
-    log_tagged(logger_startup, "HIST_SET", BLUE, f"Setting history limit to {TMUX_HISTORY_LIMIT}")
     subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
 
     # 6-Pane Layout:
     # Pane 0 = top-left (main), Pane 1 = top-right (subagent), then:
     # Split Pane 0 vertically → Pane 0 (main top-left), Pane 1 (tokens bottom-left), Pane 2 (subagent top-right)
     # Split right side for rules, warnings, hooks
-    log_tagged(logger_startup, "TMUX_CREATE", GREEN, f"Creating tmux session '{session_name}'")
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, main_cmd])
 
-    log_tagged(logger_startup, "TMUX_SPLIT_H", GREEN, f"Splitting window for right column")
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:0.0", "-l", "50%", subagent_cmd])
 
-    log_tagged(logger_startup, "TMUX_SPLIT_V_TOKENS", GREEN, f"Splitting main pane for tokens pane")
     subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.0", "-l", "30%", tokens_cmd])
 
-    log_tagged(logger_startup, "TMUX_SPLIT_V_RULES", GREEN, f"Splitting right pane for rules pane")
     subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.2", "-b", "-l", "25%", rules_cmd])
 
-    log_tagged(logger_startup, "TMUX_SPLIT_V_WARN", GREEN, f"Splitting right pane for warnings pane")
     subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.3", "-l", "25%", warnings_cmd])
 
-    log_tagged(logger_startup, "TMUX_SPLIT_H_HOOKS", GREEN, f"Splitting warnings pane for hooks pane")
     subprocess.run(["tmux", "split-window", "-h", "-b", "-t", f"{session_name}:0.4", "-l", "50%", hooks_cmd])
 
     restore_global_history_limit(original_history_limit)
@@ -87,13 +65,11 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
 def is_tmux_installed() -> bool:
     result = subprocess.run(["which", "tmux"], capture_output=True)
     installed = result.returncode == 0
-    log_tagged(logger_startup, "TMUX_CHECK", CYAN, f"tmux installation check: {installed}")
     return installed
 
 # Check if already running inside tmux
 def is_inside_tmux() -> bool:
     in_tmux = "TMUX" in os.environ
-    log_tagged(logger_startup, "TMUX_INSIDE", CYAN, f"Inside tmux check: {in_tmux}, TMUX={os.environ.get('TMUX', 'not set')}")
     return in_tmux
 
 # Generate unique session name from project path
@@ -109,29 +85,24 @@ def generate_session_name(project_path: Optional[str] = None) -> str:
 def check_session_exists(session_name: str) -> bool:
     result = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
     exists = result.returncode == 0
-    log_tagged(logger_startup, "SESS_EXISTS", CYAN, f"Session existence check: session={session_name}, exists={exists}")
     return exists
 
 # Kill tmux session
 def kill_session(session_name: str) -> None:
-    log_tagged(logger_startup, "SESS_KILL", YELLOW, f"Killing session: {session_name}")
     subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
 
 # Get current global history-limit setting
 def get_global_history_limit() -> str:
     result = subprocess.run(["tmux", "show-options", "-gv", "history-limit"], capture_output=True, text=True)
     limit = result.stdout.strip() or "2000"
-    log_tagged(logger_startup, "HIST_ORIG", BLUE, f"Original history limit: {limit}")
     return limit
 
 # Restore global history-limit to original value
 def restore_global_history_limit(original_value: str) -> None:
-    log_tagged(logger_startup, "HIST_RESTORE", BLUE, f"Restoring history limit to {original_value}")
     subprocess.run(["tmux", "set-option", "-g", "history-limit", original_value])
 
 # Configure tmux session appearance and behavior
 def configure_tmux_session(session_name: str) -> None:
-    log_tagged(logger_startup, "TMUX_CONFIG", GREEN, f"Configuring tmux session: {session_name}")
     subprocess.run(["tmux", "set-option", "-t", session_name, "status", "on"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-style", "bg=default"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-left", "#{?pane_in_mode,#[fg=yellow bold] COPY #[default],#[fg=green] SCROLL #[default]}"])

@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-import logging
 import re
 
 # From utils.py: Timestamp formatting
@@ -9,13 +8,6 @@ from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPL
 
 INDENT = '  '
 SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
-
-log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-long_output_logger = logging.getLogger('formatter.long_outputs')
-long_output_handler = logging.FileHandler('src/logs/10_long_outputs.log')
-long_output_handler.setFormatter(log_format)
-long_output_logger.addHandler(long_output_handler)
-long_output_logger.setLevel(logging.INFO)
 
 # ORCHESTRATOR
 def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None, is_error: bool = False) -> str:
@@ -113,8 +105,6 @@ def format_output(content: str) -> str:
         return f"{INDENT}(empty)"
 
     is_long = len(content) >= LONG_OUTPUT_THRESHOLD
-    if is_long:
-        log_long_output(content)
 
     lines = content.split('\n')
     formatted_lines = []
@@ -178,15 +168,6 @@ def get_status_color(status: str) -> str:
         'pending': RESET
     }
     return colors.get(status, RESET)
-
-# Log long tool output to separate log file
-def log_long_output(content: str) -> None:
-    char_count = len(content)
-    line_count = len(content.split('\n'))
-    long_output_logger.info(f"LONG_OUTPUT detected: {char_count} chars, {line_count} lines")
-    long_output_logger.info(f"Content preview (first 500 chars): {content[:500]}")
-    long_output_logger.info(f"Full content:\n{content}")
-    long_output_logger.info("=" * 80)
 
 # Format USER PROMPT stamp with optional hook outputs
 def format_user_prompt(timestamp: str, hook_outputs: list = None) -> str:

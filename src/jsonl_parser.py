@@ -1,44 +1,17 @@
 # INFRASTRUCTURE
 import json
-import logging
 import re
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-# From utils.py: Logging utility
-from .utils import log_tagged
 # From constants.py: Colors
 from .constants import RESET, RED, GREEN, YELLOW, BLUE, WHITE
 # From constants.py: Shared constants
 from .constants import EXCLUDED_TOOLS, SYSTEM_REMINDER_PATTERN, KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES
 
-# Setup 3 loggers for different workflow phases
-log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-logger_file = logging.getLogger('jsonl_parser.file')
-file_handler = logging.FileHandler('src/logs/04_file_reading.log')
-file_handler.setFormatter(log_format)
-logger_file.addHandler(file_handler)
-logger_file.setLevel(logging.INFO)
-
-logger_parse = logging.getLogger('jsonl_parser.parse')
-parse_handler = logging.FileHandler('src/logs/05_jsonl_parsing.log')
-parse_handler.setFormatter(log_format)
-logger_parse.addHandler(parse_handler)
-logger_parse.setLevel(logging.INFO)
-
-logger_extract = logging.getLogger('jsonl_parser.extract')
-extract_handler = logging.FileHandler('src/logs/06_tool_extraction.log')
-extract_handler.setFormatter(log_format)
-logger_extract.addHandler(extract_handler)
-logger_extract.setLevel(logging.INFO)
-
 # ORCHESTRATOR
 def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
-
-    if len(new_lines) > 0:
-        log_tagged(logger_parse, "LINES_READ", BLUE, f"Read {len(new_lines)} new lines from {filepath.name}")
 
     new_position = get_current_position(filepath)
     messages, malformed_lines = parse_jsonl_lines(new_lines)
@@ -50,9 +23,6 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     unknown_types = detect_unknown_types(messages)
     usage_data = extract_usage_data(messages)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
-
-    if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0 or len(thinking_blocks) > 0 or len(user_prompts) > 0 or len(skill_activations) > 0:
-        log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_prompts)} user prompts, {len(user_media)} user media, {len(thinking_blocks)} thinking, {len(skill_activations)} skills, {len(malformed_warnings)} malformed lines")
 
     return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data
 
@@ -74,13 +44,11 @@ def build_malformed_warnings(filepath: Path, malformed_lines: List[dict]) -> Lis
 # Read new lines from file since last position
 def read_new_lines(filepath: Path, last_position: int) -> List[str]:
     if not filepath.exists():
-        log_tagged(logger_file, "FILE_404", RED, f"File not found: {filepath}")
         return []
 
     with open(filepath, 'r', encoding='utf-8') as f:
         f.seek(last_position)
         content = f.read()
-        bytes_read = len(content)
 
         if not content:
             return []
@@ -88,9 +56,6 @@ def read_new_lines(filepath: Path, last_position: int) -> List[str]:
         lines = content.split('\n')
         if lines and not lines[-1]:
             lines = lines[:-1]
-
-        if len(lines) > 0:
-            log_tagged(logger_file, "FILE_READ", BLUE, f"{filepath.name}: read {bytes_read} bytes, {len(lines)} lines")
 
         return lines
 
@@ -111,24 +76,16 @@ def parse_jsonl_lines(lines: List[str]) -> Tuple[List[dict], List[dict]]:
             message = json.loads(line)
             messages.append(message)
         except json.JSONDecodeError as e:
-            log_tagged(logger_parse, "JSON_ERROR", RED, f"JSON decode error at line {line_number}: {str(e)}")
             malformed_lines.append({
                 'line_number': line_number,
                 'error_message': str(e),
                 'raw_line': line
             })
 
-    if len(lines) > 0:
-        malformed_pct = (len(malformed_lines) / len(lines)) * 100
-        log_tagged(logger_parse, "PARSE_STATS", WHITE, f"parse_jsonl_lines: valid={len(messages)}, malformed={len(malformed_lines)} ({malformed_pct:.1f}%)")
-
     return messages, malformed_lines
 
 # Extract tool_use and tool_result pairs from messages
 def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]:
-    if len(messages) > 0:
-        log_tagged(logger_extract, "EXTRACT_START", BLUE, f"extract_tool_calls: messages={len(messages)}, cache={len(tool_use_cache)}")
-
     tool_calls = []
     tool_use_count = 0
     tool_result_count = 0
@@ -164,7 +121,6 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
                 tool_use_count += 1
                 tool_data = create_tool_use_entry(block, message, is_subagent, agent_id)
                 tool_use_cache[tool_data['tool_use_id']] = tool_data
-                log_tagged(logger_extract, "TOOL_CACHED", WHITE, f"Cached tool_use: id={tool_data['tool_use_id']}, tool={tool_data['tool_name']}, subagent={is_subagent}")
 
             elif is_tool_result(block):
                 tool_result_count += 1
@@ -178,14 +134,9 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
                     tool_data['spawned_agent_id'] = extract_spawned_agent_id(message)
                     tool_data['is_error'] = block.get('is_error', False)
                     tool_calls.append(tool_data)
-                    log_tagged(logger_extract, "TOOL_MATCH", GREEN, f"Matched tool_result: id={tool_use_id}, tool={tool_data['tool_name']}, is_error={tool_data['is_error']}")
                     del tool_use_cache[tool_use_id]
                 else:
                     orphaned_results += 1
-                    log_tagged(logger_extract, "TOOL_ORPHAN", YELLOW, f"Orphaned tool_result: id={tool_use_id} (no matching tool_use in cache)")
-
-    if len(tool_calls) > 0 or orphaned_results > 0 or progress_count > 0:
-        log_tagged(logger_extract, "EXTRACT_STATS", WHITE, f"extract_tool_calls: blocks={total_blocks}, tool_use={tool_use_count}, tool_result={tool_result_count}, orphaned={orphaned_results}, progress={progress_count}, extracted={len(tool_calls)}")
 
     filtered_calls = filter_excluded_tools(tool_calls)
     sorted_calls = sort_by_timestamp(filtered_calls)
@@ -290,9 +241,6 @@ def extract_user_media(messages: List[dict]) -> List[dict]:
                     'timestamp': timestamp
                 })
 
-    if len(media_items) > 0:
-        log_tagged(logger_extract, "USER_MEDIA", GREEN, f"Extracted {len(media_items)} media items from user messages")
-
     return media_items
 
 # Extract user prompts from external user messages
@@ -338,9 +286,6 @@ def extract_user_prompts(messages: List[dict]) -> List[dict]:
             'text': text
         })
 
-    if len(prompts) > 0:
-        log_tagged(logger_extract, "USER_PROMPTS", GREEN, f"Extracted {len(prompts)} user prompts")
-
     return prompts
 
 # Extract thinking blocks from assistant messages
@@ -367,9 +312,6 @@ def extract_thinking_blocks(messages: List[dict]) -> List[dict]:
                         'thinking': thinking_text,
                         'timestamp': timestamp
                     })
-
-    if len(thinking_items) > 0:
-        log_tagged(logger_extract, "THINKING", GREEN, f"Extracted {len(thinking_items)} thinking blocks")
 
     return thinking_items
 
@@ -415,9 +357,6 @@ def extract_skill_activations(messages: List[dict]) -> List[dict]:
                 'timestamp': timestamp
             })
             pending_skill_name = ''
-
-    if len(activations) > 0:
-        log_tagged(logger_extract, "SKILL_ACTIVATIONS", GREEN, f"Extracted {len(activations)} skill activations")
 
     return activations
 
@@ -466,9 +405,6 @@ def extract_usage_data(messages: List[dict]) -> List[dict]:
             'cache_read_input_tokens': cache_read_input_tokens,
             'request_id': request_id,
         })
-
-    if len(usage_items) > 0:
-        log_tagged(logger_extract, "USAGE_DATA", GREEN, f"Extracted {len(usage_items)} usage entries")
 
     return usage_items
 

@@ -1,20 +1,9 @@
 # INFRASTRUCTURE
-import logging
 import time
 from typing import Dict, List
 
-# From utils.py: Logging utility
-from .utils import log_tagged
 # From constants.py: Colors and config values
 from .constants import RESET, WHITE, CYAN, PURPLE, PASTEL_BLUE, POLL_INTERVAL, PANE_HEADERS
-
-log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-logger_ui = logging.getLogger('ui_mode.loop')
-ui_handler = logging.FileHandler('src/logs/08_ui_rendering.log')
-ui_handler.setFormatter(log_format)
-logger_ui.addHandler(ui_handler)
-logger_ui.setLevel(logging.INFO)
 
 # From click_handler.py: Keyboard input handling
 from .click_handler import setup_keyboard_input, restore_terminal, read_keypress, parse_digit_key, get_agent_by_index
@@ -38,8 +27,6 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
     try:
         while True:
             ui_loop_iteration += 1
-            if ui_loop_iteration % 10 == 0:
-                log_tagged(logger_ui, "UI_ITER", WHITE, f"UI loop iteration #{ui_loop_iteration}")
 
             handle_pending_keypresses(subagent_metadata)
             monitor_sessions_fn()
@@ -75,8 +62,6 @@ def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
     formatted_output = f"{header}\n{content}"
 
     if formatted_output != last_rendered_output:
-        log_tagged(logger_ui, "UI_SYNC", PURPLE, f"sync_ui_to_screen: agents={agent_count}, expanded={expanded_count}")
-        log_tagged(logger_ui, "UI_RENDER", PURPLE, f"Re-rendering UI: {len(formatted_output)} chars, agents={agent_count}, expanded={expanded_count}")
         print("\033[2J\033[3J\033[H", end='', flush=True)
         print(formatted_output)
         last_rendered_output = formatted_output
@@ -103,7 +88,6 @@ def track_subagent_metadata(tool_call: dict, filepath, subagent_metadata: Dict[s
         }
         tool_calls_by_agent[agent_id] = []
         subagent_states[agent_id] = False
-        log_tagged(logger_ui, "AGENT_DISC", CYAN, f"Discovered new agent: {agent_id}, type={subagent_type}, file={filepath.name}")
 
     tool_calls_by_agent[agent_id].append(tool_call)
     subagent_metadata[agent_id]['call_count'] = count_calls_for_agent(tool_calls_by_agent[agent_id])

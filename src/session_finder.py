@@ -1,21 +1,10 @@
 # INFRASTRUCTURE
-import logging
 import os
 from pathlib import Path
 from typing import List, Optional
 
-# From utils.py: Logging utility
-from .utils import log_tagged
 # From constants.py: Colors
 from .constants import RESET, RED, GREEN, YELLOW, BLUE
-
-log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-logger_discovery = logging.getLogger('session_finder.discovery')
-discovery_handler = logging.FileHandler('src/logs/03_session_discovery.log')
-discovery_handler.setFormatter(log_format)
-logger_discovery.addHandler(discovery_handler)
-logger_discovery.setLevel(logging.INFO)
 
 CLAUDE_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 
@@ -32,7 +21,6 @@ def find_active_sessions(project_filter: Optional[str] = None) -> List[Path]:
     sorted_files = sort_by_modification_time(jsonl_files)
 
     if _last_session_count != len(sorted_files):
-        log_tagged(logger_discovery, "ACTIVE_SESS", GREEN, f"Active sessions changed: {len(sorted_files)} (was {_last_session_count})")
         _last_session_count = len(sorted_files)
 
     return sorted_files
@@ -44,13 +32,11 @@ def get_project_directories() -> List[Path]:
     global _project_dirs_logged
 
     if not CLAUDE_PROJECTS_DIR.exists():
-        log_tagged(logger_discovery, "NO_PROJ_DIR", RED, f"Claude projects directory not found: {CLAUDE_PROJECTS_DIR}")
         return []
 
     project_dirs = [d for d in CLAUDE_PROJECTS_DIR.iterdir() if d.is_dir()]
 
     if not _project_dirs_logged:
-        log_tagged(logger_discovery, "PROJ_DIRS", BLUE, f"Found {len(project_dirs)} project directories")
         _project_dirs_logged = True
 
     return project_dirs
@@ -69,7 +55,6 @@ def collect_jsonl_files(project_dirs: List[Path], project_filter: Optional[str] 
         jsonl_files.extend(files)
 
     if _last_jsonl_count != len(jsonl_files):
-        log_tagged(logger_discovery, "TOTAL_JSONL", GREEN, f"Total JSONL files changed: {len(jsonl_files)} (was {_last_jsonl_count})")
         _last_jsonl_count = len(jsonl_files)
 
     return jsonl_files

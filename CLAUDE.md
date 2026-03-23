@@ -62,7 +62,7 @@ See [sources/sources.md](sources/sources.md)
 | `src/subagent_ui.py` | Subagent list rendering |
 | `src/click_handler.py` | Keyboard input handling |
 | `src/constants.py` | Shared constants |
-| `src/utils.py` | Colors, logging, timestamps |
+| `src/utils.py` | Colors, timestamps |
 
 ## Project Structure
 
@@ -71,7 +71,6 @@ Monitor_CC/
 ├── workflow.py                     → Pipeline entry point
 ├── requirements.txt
 ├── README.md
-├── LOGS_MAP.md                     → Logging architecture reference
 ├── decisions/                      → Pipeline decision records (rationale per implementation choice)
 │   ├── pipe01_entry_startup.md
 │   ├── pipe02_data_sources.md

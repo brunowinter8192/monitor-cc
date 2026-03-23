@@ -1,47 +1,13 @@
 # INFRASTRUCTURE
 from datetime import datetime
-import logging
 import os
 import time
 from pathlib import Path
 from typing import Dict, Set, List, Optional
 
-# From utils.py: Logging utility
-from .utils import log_tagged
 # From constants.py: Colors, config, shared constants
 from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
-
-# Setup 7 loggers for different workflow phases
-log_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-# 02_initialization.log
-logger_init = logging.getLogger('monitor.init')
-init_handler = logging.FileHandler('src/logs/02_initialization.log')
-init_handler.setFormatter(log_format)
-logger_init.addHandler(init_handler)
-logger_init.setLevel(logging.INFO)
-
-# 03_session_discovery.log (shares with session_finder.py)
-logger_discovery = logging.getLogger('monitor.discovery')
-discovery_handler = logging.FileHandler('src/logs/03_session_discovery.log')
-discovery_handler.setFormatter(log_format)
-logger_discovery.addHandler(discovery_handler)
-logger_discovery.setLevel(logging.INFO)
-
-# 04_file_reading.log (shares with jsonl_parser.py)
-logger_file = logging.getLogger('monitor.file')
-file_handler = logging.FileHandler('src/logs/04_file_reading.log')
-file_handler.setFormatter(log_format)
-logger_file.addHandler(file_handler)
-logger_file.setLevel(logging.INFO)
-
-# 07_display_routing.log
-logger_routing = logging.getLogger('monitor.routing')
-routing_handler = logging.FileHandler('src/logs/07_display_routing.log')
-routing_handler.setFormatter(log_format)
-logger_routing.addHandler(routing_handler)
-logger_routing.setLevel(logging.INFO)
 
 # From session_finder.py: Discover active Claude Code sessions
 from .session_finder import find_active_sessions
@@ -84,29 +50,21 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
     active_mode = mode
     ui_mode_active = ui
 
-    log_tagged(logger_init, "RUN_MONITOR", MAGENTA, f"run_monitor: project={project_filter}, mode={mode}, ui={ui}")
-
     initialize_file_positions()
 
     if mode == MODE_TOKENS:
-        log_tagged(logger_init, "TOKENS_MODE", CYAN, "Starting tokens mode")
         run_tokens_loop()
     elif mode == MODE_RULES:
-        log_tagged(logger_init, "RULES_MODE", CYAN, "Starting rules mode")
         run_rules_loop()
     elif mode == MODE_WARNINGS:
-        log_tagged(logger_init, "WARNINGS_MODE", CYAN, "Starting warnings mode")
         run_warnings_loop()
     elif mode == MODE_HOOKS:
-        log_tagged(logger_init, "HOOKS_MODE", CYAN, "Starting hooks mode")
         run_hooks_loop()
     elif ui and mode == MODE_SUBAGENT:
-        log_tagged(logger_init, "UI_MODE", CYAN, "Starting UI mode")
         session_count = len(find_active_sessions(active_project_filter))
         print_session_status(session_count, project_filter, mode)
         run_ui_loop(subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type, monitor_sessions, active_rules)
     else:
-        log_tagged(logger_init, "STREAM_MODE", CYAN, "Starting streaming mode")
         session_count = len(find_active_sessions(active_project_filter))
         print_session_status(session_count, project_filter, mode)
         run_streaming_loop()
@@ -118,13 +76,11 @@ def initialize_file_positions() -> int:
     global file_positions, active_project_filter, hook_log_position
 
     sessions = find_active_sessions(active_project_filter)
-    log_tagged(logger_init, "INIT_SESS", BLUE, f"Initializing {len(sessions)} sessions: {[s.name for s in sessions]}")
 
     for session_file in sessions:
         if session_file not in file_positions:
             pos = get_file_end_position(session_file)
             file_positions[session_file] = pos
-            log_tagged(logger_init, "FILE_POS_INIT", BLUE, f"Initialized {session_file.name} at position {pos}")
 
     hook_log_position = initialize_hook_log_position()
 
@@ -133,7 +89,6 @@ def initialize_file_positions() -> int:
 # Initialize hook log position at EOF to skip historical entries
 def initialize_hook_log_position() -> int:
     pos = get_hook_log_position()
-    log_tagged(logger_init, "HOOK_POS_INIT", BLUE, f"Hook log initialized at position {pos}")
     return pos
 
 # Monitor all active sessions for new tool calls
@@ -142,7 +97,6 @@ def monitor_sessions() -> None:
     sessions = find_active_sessions(active_project_filter)
 
     if _last_monitored_count != len(sessions):
-        log_tagged(logger_routing, "MON_SESS", BLUE, f"Sessions changed: {len(sessions)} (was {_last_monitored_count})")
         _last_monitored_count = len(sessions)
 
     filtered_sessions = filter_sessions_by_mode(sessions, active_mode)
@@ -160,12 +114,10 @@ def update_session_tracking(sessions: list) -> None:
     removed_files = tracked_files - current_files
 
     for new_file in new_files:
-        log_tagged(logger_file, "NEW_SESS", GREEN, f"New session discovered: {new_file}")
         file_positions[new_file] = get_initial_position(new_file)
         tool_use_caches[new_file] = {}
 
     for removed_file in removed_files:
-        log_tagged(logger_file, "SESS_REMOVED", YELLOW, f"Session removed: {removed_file}")
         del file_positions[removed_file]
         if removed_file in tool_use_caches:
             del tool_use_caches[removed_file]
@@ -237,9 +189,6 @@ def process_session_file(filepath: Path) -> None:
             other_displayed += 1
             call_counter += 1
             display_tool_call(tool_call, call_counter)
-
-    if task_requests > 0 or task_responses > 0 or subagent_ui_tracked > 0 or subagent_displayed > 0 or subagent_buffered > 0 or other_displayed > 0:
-        log_tagged(logger_routing, "PROC_STATS", WHITE, f"Processed {filepath.name}: task_req={task_requests}, task_resp={task_responses}, subagent_ui={subagent_ui_tracked}, subagent_displayed={subagent_displayed}, subagent_buffered={subagent_buffered}, other={other_displayed}")
 
 # Display formatted warning to console
 def display_warning(warning: dict) -> None:
@@ -583,7 +532,6 @@ def display_user_prompt_from_jsonl(prompt_item: dict) -> None:
     formatted = format_user_prompt(prompt_item.get('timestamp', ''))
     print(formatted)
     print()
-    log_tagged(logger_routing, "USER_PROMPT", PURPLE, f"Displayed USER PROMPT from JSONL")
 
 # Format WARNING header with yellow color for malformed lines
 def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:
