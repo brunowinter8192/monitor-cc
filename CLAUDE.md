@@ -30,7 +30,7 @@ See [sources/sources.md](sources/sources.md)
 | Component | Implementation | Config |
 |-----------|---------------|--------|
 | Polling | monitor.py `run_streaming_loop` / `run_rules_loop` / `run_hooks_loop` / `run_tokens_loop` | 0.5s interval |
-| Token Profiling | monitor.py `accumulate_tokens` / `format_tokens_block` | Cumulative output-token breakdown by block type + tool name |
+| Token Profiling | monitor.py `accumulate_tokens` / `format_tokens_block` | Input tokens (direct, cache create, cache read) + output tokens by block type + tool name |
 | Hook Routing | monitor.py `process_hook_log` / `process_hook_log_for_display` | InstructionsLoaded → rules pane, hooks with output → hooks pane |
 | Agent Tracking | monitor.py | agent_to_task, agent_to_type, buffered calls |
 
