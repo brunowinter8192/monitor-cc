@@ -265,7 +265,7 @@ def format_token_profile(profile: dict) -> str:
 
         for tool_name, tok in tools.items():
             display_name = shorten_tool_name(tool_name)
-            lines.append(format_token_bar(f'  {display_name}', tok, total, CYAN, sub=True))
+            lines.append(format_token_bar(display_name, tok, total, CYAN, sub=True))
 
         lines.append(format_token_bar('Text', text, total, PASTEL_BLUE))
 
@@ -281,8 +281,8 @@ def format_token_bar(label: str, tokens: int, total: int, color: str, sub: bool 
         bar += '\u258f'
 
     if sub:
-        return f"{INDENT}{INDENT}{color}{label:<14}{RESET} {tokens:>8,}  {pct:4.0f}%  {color}{bar}{RESET}"
-    return f"{INDENT}{color}{label:<16}{RESET} {tokens:>8,}  {pct:4.0f}%  {color}{bar}{RESET}"
+        return f"{INDENT}{INDENT}{color}{label:<14}{RESET} {tokens:>12,}  {pct:4.0f}%  {color}{bar}{RESET}"
+    return f"{INDENT}{color}{label:<16}{RESET} {tokens:>12,}  {pct:4.0f}%  {color}{bar}{RESET}"
 
 # Format workers pane: one entry per worker with name, status, spawned time, purpose
 def format_workers_block(workers: list) -> str:
