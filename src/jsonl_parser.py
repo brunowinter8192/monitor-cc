@@ -404,6 +404,7 @@ def extract_usage_data(messages: List[dict]) -> List[dict]:
             'cache_creation_input_tokens': cache_creation_input_tokens,
             'cache_read_input_tokens': cache_read_input_tokens,
             'request_id': request_id,
+            'timestamp': message.get('timestamp', ''),
         })
 
     return usage_items

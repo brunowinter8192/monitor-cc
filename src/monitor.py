@@ -1,12 +1,12 @@
 # INFRASTRUCTURE
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 import time
 from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, HOOK_INSTRUCTIONS_LOADED
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, HOOK_INSTRUCTIONS_LOADED, SESSION_DURATION_HOURS
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -408,6 +408,16 @@ def format_warnings_block() -> str:
 # Accumulate token usage from a single usage entry into session profile
 def accumulate_tokens(usage_entry: dict) -> None:
     global token_profile, token_profile_tools, token_profile_request_ids
+
+    timestamp_str = usage_entry.get('timestamp', '')
+    if timestamp_str:
+        try:
+            entry_time = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=SESSION_DURATION_HOURS)
+            if entry_time < cutoff:
+                return
+        except (ValueError, TypeError):
+            pass
 
     request_id = usage_entry.get('request_id', '')
     output_tokens = usage_entry.get('output_tokens', 0)
