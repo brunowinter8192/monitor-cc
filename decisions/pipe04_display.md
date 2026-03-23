@@ -2,10 +2,11 @@
 
 ## Status Quo
 
-- `formatter.py`: 21 Funktionen, color-coded output (green=main, blue=subagent, red=error, pastel=meta)
+- `formatter.py`: 21 Funktionen + Workers-Block + Session-Browser, color-coded output (green=main, blue=subagent, red=error, pastel=meta)
 - `ui_mode.py`: `format_rules_block()` rendert `ACTIVE RULES (XP / YG)` mit `[P]`/`[G]` Prefix pro Regel, pastel blue
 - `subagent_ui.py`: collapsible list, Digits 1-9 toggle via `click_handler.py`
 - `ui_mode.py`: `run_ui_mode()` Screen-clear refresh loop mit raw stdin
+- Workers-Pane (Pane 6, Session 3): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose
 
 **BUG (fixed):** `active_rules` was populated by `process_hook_log()` but never rendered in streaming mode.
 Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Pane 1, rechts-oben).
@@ -63,9 +64,16 @@ Eigenes tmux Pane (Pane 1, unten-links, 30% Höhe des linken Bereichs) via `--mo
 - JSONL-Datenquelle: `message.usage.output_tokens` pro Content-Block (assistant Messages)
 - Known limitation: output_tokens ~1.9x undercount (Claude Code Bug #27361), für Proportionen irrelevant
 
+**Session-Browser (Session 3):**
+- `token_cumulative_n: Optional[int]` (monitor.py:48): steuert Modus. `None` = current session, `N` = letzte N Main-Sessions kumuliert
+- Keyboard-Input in `run_tokens_loop()` (monitor.py:479-517): Ziffern → `token_input_buffer`, Enter → setzt `token_cumulative_n`, 'q' → setzt auf None, Backspace → löscht letzten Char
+- `compute_cumulative_tokens(n)` (monitor.py:423-450): liest letzte N Main-Session-Files von Position 0 (kein Byte-Offset, full rescan), aggregiert Input/Output/Cache/Turns
+- `format_token_profile_cumulative()` (formatter.py:327-363): rendert kumulative Ansicht mit Per-Session-Breakdown (Input/Output/Turns pro File)
+- Live-Prompt-Anzeige: `"Last N sessions › {buffer}_"` am Ende des Pane-Outputs
+
 ### Restart Hotkey (Kategorie: Display / UX)
 
-`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` for all 6 panes. Restarts all monitor processes with their original commands.
+`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py:140-148): `respawn-pane -k` für alle 7 Panes (0.0 bis 0.6). Restarts all monitor processes with their original commands.
 
 ### Screen Clear Escape Sequence (Kategorie: Display / Robustheit)
 
@@ -87,11 +95,24 @@ Eigenes tmux Pane (Pane 3, rechts-unten-links, 25% Breite, 25% Höhe) via `--mod
 
 ### Warnings-Pane (Kategorie: Format-Stabilität)
 
-Eigenes tmux Pane (Pane 4, rechts-unten-rechts, 25% Breite, 25% Höhe) via `--mode warnings`:
+Eigenes tmux Pane (Pane 5, rechts-unten-oben, 25% Breite) via `--mode warnings`:
 - `run_warnings_loop()` in monitor.py: pollt `monitor_sessions()`, rendert `format_warnings_block()`
-- `format_unknown_type_warning()` in formatter.py: `[!] Unknown JSONL type: <type> (seen Nx)`
+- `format_unknown_type_warning()` in formatter.py (formatter.py:229-230): `[!] Unknown JSONL type: <type> (seen Nx)`
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
-- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy
+- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py:130, Pane 5)
+
+### Workers-Pane (Kategorie: Worker-Monitoring, Session 3)
+
+Eigenes tmux Pane (Pane 6, rechts-unten-unten) via `--mode workers`:
+- `run_workers_loop()` in monitor.py (monitor.py:629-641): pollt `list_workers()`, rendert `format_workers_block()` bei Änderungen
+- `list_workers(project_path)` (monitor.py:602-626): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
+- `detect_worker_status(session)` (monitor.py:577-599): prüft `#{pane_dead}` für exited-Status; analysiert letzten 5 non-empty Zeilen auf idle-Indikatoren (`for Xm Xs`, `accept edits`, `^>`)
+- `get_tmux_env(session, var)` (monitor.py:567-574): liest WORKER_SPAWNED, WORKER_PURPOSE aus tmux show-environment
+- `get_worker_project_name(project_path)` (monitor.py:560-564): extrahiert Projektname worktree-aware (splittet bei `/.claude/worktrees/`)
+- `format_workers_block(workers)` (formatter.py:288-316): rendert Worker-Liste mit Name (cyan), Status (farbig), Spawn-Zeit, Purpose (truncated auf 60 Zeichen)
+- Status-Farben: working=GREEN, idle=YELLOW, exited=RED, unknown=WHITE
+- Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
+- M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py:131, Pane 6)
 
 ### print_session_status Fix (Kategorie: Display / Startup)
 
@@ -105,15 +126,19 @@ Alle Farb-Konstanten zentral in `src/constants.py` definiert (256-color ANSI). A
 
 `format_usage()` und `format_turn_total()` wurden entfernt. `PASTEL_YELLOW` und `SIGNAL_PINK` Farbkonstanten wurden ebenfalls entfernt.
 
-`src/formatter.py`: 0 `log_tagged()`-Aufrufe; nutzt `long_output_logger.info()` direkt (formatter.py:216-219) → `src/logs/10_long_outputs.log`
-`src/ui_mode.py`: 4 `log_tagged()`-Aufrufe → `src/logs/08_ui_rendering.log`
-`src/subagent_ui.py`: 5 `log_tagged()`-Aufrufe → `src/logs/08_ui_rendering.log`
+**Stand nach Session 3 (Logging-Entfernung):**
+
+`src/formatter.py`: **0** `log_tagged()`-Aufrufe. Kein `long_output_logger` mehr — `LONG_OUTPUT_THRESHOLD`-Check (formatter.py:107-119) nutzt nur noch `LIGHT_RED_BG` Farb-Highlight, kein File-Logging mehr.
+
+`src/ui_mode.py`: **0** `log_tagged()`-Aufrufe. Alle 4 ehemaligen Calls (`08_ui_rendering.log`) wurden entfernt. Kein `import logging` im Modul.
+
+`src/subagent_ui.py`: **0** `log_tagged()`-Aufrufe. Alle 5 ehemaligen Calls (`08_ui_rendering.log`) wurden entfernt.
 
 Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ### Screenshot-Tool (Kategorie: Dev Tooling / Feedback)
 
-`dev/display/screenshot_panes.py`: Captures all 5 tmux panes via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
+`dev/display/screenshot_panes.py`: Captures all tmux panes (7 nach Session 3) via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
 
 Dependencies: `termshot` (brew), `Pillow` (pip). Auto-detects running `monitor_cc_*` session.
 

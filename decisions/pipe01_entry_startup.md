@@ -2,18 +2,21 @@
 
 ## Status Quo
 
-- `workflow.py`: `--mode all` → tmux 6-Pane (main + tokens | rules + subagent + hooks + warnings), `--mode main|subagent|rules|warnings|hooks|tokens` → einzelner Prozess
-- `startup.py`: argparse mit choices `['all', 'main', 'subagent', 'rules', 'warnings', 'hooks', 'tokens']`, `--project`, `--ui`
-- `tmux_launcher.py`: 6 Panes, history 50000, keybindings (C-q scroll, C-r restart all 6 panes, C-f search, mouse, M-m/M-t/M-r/M-s/M-h/M-w copy)
+- `workflow.py`: `--mode all` → tmux 7-Pane (main + tokens | rules + subagent + hooks + warnings + workers), `--mode main|subagent|rules|warnings|hooks|tokens|workers` → einzelner Prozess
+- `startup.py`: argparse mit choices `['all', 'main', 'subagent', 'rules', 'warnings', 'hooks', 'tokens', 'workers']`, `--project`, `--ui`
+- `tmux_launcher.py`: 7 Panes, history 50000, keybindings (C-q scroll, C-r restart all 7 panes, C-f search, mouse, M-m/M-t/M-r/M-s/M-h/M-w/M-k copy)
 
-tmux Layout:
+tmux Layout (7 Panes, Stand Session 3):
 ```
 ┌─────────────────┬──────────────────┐
 │  Pane 0 (main)  │ Pane 2 (rules)   │  25% Höhe
 │─────────────────│──────────────────│
 │  Pane 1 (tokens)│ Pane 3 (subs)    │  50% Höhe
 │    50% Breite   │──────────────────│
-│                 │ Pane 4 (hooks) │ Pane 5 (warnings) │  25% Höhe
+│                 │ Pane 4  │ Pane 5 │  12.5% Höhe
+│                 │ (hooks) │(warns) │
+│                 │         │ Pane 6 │  12.5% Höhe
+│                 │         │(work.) │
 └─────────────────┴──────────────────┘
 ```
 
@@ -24,35 +27,42 @@ Split-Sequenz (Reihenfolge kritisch — erst horizontal, dann vertikal links):
 4. `split-window -v -t $session:0.2 -b -l 25% $rules_cmd` → Pane 2 (rules rechts-oben 25%), Pane 3 (subagents rechts 75%)
 5. `split-window -v -t $session:0.3 -l 25% $warnings_cmd` → Pane 4 (warnings rechts-unten 25%)
 6. `split-window -h -b -t $session:0.4 -l 50% $hooks_cmd` → Pane 4 (hooks links 50%), Pane 5 (warnings rechts 50%)
+7. `split-window -v -t $session:0.5 -l 50% $workers_cmd` → Pane 5 (warnings oben 50%), Pane 6 (workers unten 50%)
 
 ## IST — Stellschrauben
 
 ### POLL_INTERVAL (Kategorie: Performance)
 
-Hardcoded an zwei Stellen:
-- `src/monitor.py:59`: `POLL_INTERVAL = 0.5` — Modul-Level Konstante, genutzt in `run_streaming_loop()` (monitor.py:423) und `run_rules_loop()` (monitor.py:436)
-- `src/ui_mode.py:24`: `POLL_INTERVAL = 0.5` — separate Definition, genutzt in `run_ui_loop()` (ui_mode.py:48)
+Zentralisiert in `src/constants.py:20`: `POLL_INTERVAL = 0.5`
 
-Kein gemeinsames `constants.py`-Eintrag. Wert muss an zwei Stellen synchron gehalten werden.
+- `src/monitor.py:10`: `from .constants import ... POLL_INTERVAL ...` — kein eigener Wert mehr
+- `src/ui_mode.py:6`: `from .constants import ... POLL_INTERVAL ...` — kein eigener Wert mehr
+
+Keine Duplikation. Wert muss nur noch an einer Stelle geändert werden. (Umgesetzt in Session 3 via centralize-all-tunable-values in constants.py)
 
 ### tmux history-limit (Kategorie: Konfiguration)
 
-Hardcoded in `src/tmux_launcher.py:50`:
+Zentralisiert in `src/constants.py:22`: `TMUX_HISTORY_LIMIT = '50000'`
+
+`src/tmux_launcher.py:9`: `from .constants import ... TMUX_HISTORY_LIMIT`
+`src/tmux_launcher.py:40`:
 ```python
-subprocess.run(["tmux", "set-option", "-g", "history-limit", "50000"])
+subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
 ```
 - Setzt globale tmux Option (nicht session-scoped) — betrifft alle tmux Panes
-- Vor dem Setzen wird der Original-Wert gesichert (`get_global_history_limit()`, tmux_launcher.py:106-109)
-- Nach dem Session-Aufbau wird der Original-Wert wiederhergestellt (`restore_global_history_limit()`, tmux_launcher.py:112-114)
-- Das `50000` ist hardcoded, kein Config-Parameter
+- Vor dem Setzen wird der Original-Wert gesichert (`get_global_history_limit()`, tmux_launcher.py:98-101)
+- Nach dem Session-Aufbau wird der Original-Wert wiederhergestellt (`restore_global_history_limit()`, tmux_launcher.py:103-105)
+- Wert jetzt als Konstante in constants.py, kein hardcoded String in tmux_launcher.py mehr
 
-### 6-Pane Layout Split-Ratios (Kategorie: Konfiguration)
+### 7-Pane Layout Split-Ratios (Kategorie: Konfiguration)
 
-Hardcoded Split-Befehle in `src/tmux_launcher.py`:
-- `-l 30%` — vertikaler Split des Main-Panes (main oben 70% | tokens unten 30%)
+Hardcoded Split-Befehle in `src/tmux_launcher.py` (tmux_launcher.py:48-58):
 - `-l 50%` — horizontaler Split (left column | right column)
+- `-l 30%` — vertikaler Split des Main-Panes (main oben 70% | tokens unten 30%)
 - `-l 25%` — vertikaler Split des rechten Panes (rules-oben 25% | subagents-unten 75%)
-- `-l 25%` — vertikaler Split des Subagent-Panes (subagents 75% | warnings 25%)
+- `-l 25%` — vertikaler Split des Subagent-Panes (subagents 75% | hooks+warns 25%)
+- `-l 50%` — horizontaler Split (hooks links 50% | warns rechts 50%)
+- `-l 50%` — vertikaler Split (warnings oben 50% | workers unten 50%)
 
 Keine Config-Parameter. Ratios nicht als Konstanten benannt.
 
@@ -65,8 +75,11 @@ Keine Config-Parameter. Ratios nicht als Konstanten benannt.
 
 ### Logging in Entry/Startup (Kategorie: Observability)
 
-`src/tmux_launcher.py`: 14 `log_tagged()`-Aufrufe → `src/logs/01_startup.log`
-Tags: SPLIT_LAUNCH, SESS_NAME, SCRIPT_PATH, HIST_SET, TMUX_CREATE, TMUX_SPLIT_H, TMUX_SPLIT_V, TMUX_CHECK, TMUX_INSIDE, SESS_EXISTS, SESS_KILL, HIST_ORIG, HIST_RESTORE, TMUX_CONFIG
+**Stand nach Session 3 (Logging-Entfernung):**
+
+`src/tmux_launcher.py`: **0** `log_tagged()`-Aufrufe. Alle 14 ehemaligen Calls (SPLIT_LAUNCH, SESS_NAME, SCRIPT_PATH, HIST_SET, TMUX_CREATE, TMUX_SPLIT_H, TMUX_SPLIT_V, TMUX_CHECK, TMUX_INSIDE, SESS_EXISTS, SESS_KILL, HIST_ORIG, HIST_RESTORE, TMUX_CONFIG) wurden in Session 3 entfernt.
+
+`workflow.py`: **Stale Logging noch vorhanden** (Stand Worktree). workflow.py:1-14 enthält noch `import logging`, Logger-Setup für `src/logs/01_startup.log`, und `log_tagged()`-Aufruf in `main()` (workflow.py:28). Die Entfernung war als Session-4-Aufgabe geplant.
 
 Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
@@ -80,8 +93,10 @@ Pending — needs evaluation.
 
 ## Offene Fragen
 
-- tmux Keybinding für 3. Pane: M-r für Rules-Pane Copy implementiert, Verhalten bei unterschiedlichen Pane-Indices noch zu verifizieren
-- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy
+- ~~tmux Keybinding für 3. Pane: M-r für Rules-Pane Copy~~ — implementiert, Pane-Index 2 (verifiziert in tmux_launcher.py:127)
+- ~~M-w Keybinding: Warnings-Pane Content → Clipboard~~ — implementiert (tmux_launcher.py:130): `M-w` → Pane 5 (warnings)
+- M-k Keybinding für Workers-Pane implementiert (tmux_launcher.py:131): `M-k` → Pane 6 (workers)
+- workflow.py stale logging (import logging, log_tagged) noch nicht entfernt
 
 ## Quellen
 

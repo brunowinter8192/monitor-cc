@@ -3,9 +3,11 @@
 ## Status Quo
 
 - `session_finder.py`: `~/.claude/projects/` → glob `*.jsonl` + `*/subagents/agent-*.jsonl`, sorted by mtime
-- `jsonl_parser.py`: tool_use/tool_result correlation via cache, extracts 7 data types (tools, prompts, media, thinking, skills, warnings, usage)
+- `jsonl_parser.py`: tool_use/tool_result correlation via cache, extracts 9 data types (tools, prompts, media, thinking, skills, warnings, usage, unknown_types) via 9-Tuple-Rückgabe
 - `hook_parser.py`: reads `src/logs/hook_outputs.jsonl`, filters by project cwd
 - External pipeline: `instructions-loaded-hook.sh` (native hook in `~/.claude/settings.json`) → `hook_logger.py` → `hook_outputs.jsonl`
+- `constants.py`: `KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}`, `KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name'}`
+- `jsonl_parser.py`: `detect_unknown_types()` (jsonl_parser.py:412-423) scannt Messages gegen `KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES` und gibt unbekannte Types zurück → Warnings-Pane
 
 Hook types routed by `process_hook_log()` in monitor.py:
 - `UserPromptSubmit` → `pending_user_prompt_hook`
@@ -87,9 +89,13 @@ Kein explizites Format-Versioning. `detect_unknown_types(messages)` in jsonl_par
 
 ### Logging in Data Sources (Kategorie: Observability)
 
-`src/jsonl_parser.py`: ~14 `log_tagged()`-Aufrufe → `src/logs/04_file_reading.log` + `05_jsonl_parsing.log` + `06_tool_extraction.log`
-`src/session_finder.py`: 4 `log_tagged()`-Aufrufe → `src/logs/03_session_discovery.log`
-`src/hook_parser.py`: 2 `log_tagged()`-Aufrufe → `src/logs/11_hook_parsing.log`
+**Stand nach Session 3 (Logging-Entfernung):**
+
+`src/jsonl_parser.py`: **0** `log_tagged()`-Aufrufe. Alle ~14 ehemaligen Calls (`04_file_reading.log`, `05_jsonl_parsing.log`, `06_tool_extraction.log`) wurden entfernt. Kein `import logging` mehr im Modul.
+
+`src/session_finder.py`: **0** `log_tagged()`-Aufrufe. Alle 4 ehemaligen Calls (`03_session_discovery.log`) wurden entfernt.
+
+`src/hook_parser.py`: **0** `log_tagged()`-Aufrufe. Alle 2 ehemaligen Calls (`11_hook_parsing.log`) wurden entfernt.
 
 Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
