@@ -251,27 +251,42 @@ def format_unknown_type_warning(msg_type: str, count: int) -> str:
 # Format token profile for dedicated tokens pane
 def format_token_profile(profile: dict) -> str:
     total = profile.get('total', 0)
-    if total == 0:
+    input_total = profile.get('input_total', 0)
+
+    if total == 0 and input_total == 0:
         return ''
 
-    turns = profile.get('turns', 0)
-    thinking = profile.get('thinking', 0)
-    tool_use = profile.get('tool_use', 0)
-    text = profile.get('text', 0)
-    tools = profile.get('tools', {})
-
     lines = []
-    lines.append(f"{WHITE}SESSION OUTPUT: {total:,} tok ({turns} turns){RESET}")
-    lines.append(f"{WHITE}{'─' * 40}{RESET}")
 
-    lines.append(format_token_bar('Thinking', thinking, total, PASTEL_ORANGE))
-    lines.append(format_token_bar('Tool Calls', tool_use, total, GREEN))
+    if input_total > 0:
+        input_tokens = profile.get('input_tokens', 0)
+        cache_creation = profile.get('cache_creation', 0)
+        cache_read = profile.get('cache_read', 0)
 
-    for tool_name, tok in tools.items():
-        display_name = shorten_tool_name(tool_name)
-        lines.append(format_token_bar(f'  {display_name}', tok, total, CYAN, sub=True))
+        lines.append(f"{WHITE}SESSION INPUT: {input_total:,} tok{RESET}")
+        lines.append(f"{WHITE}{'─' * 40}{RESET}")
+        lines.append(format_token_bar('Direct', input_tokens, input_total, PASTEL_ORANGE))
+        lines.append(format_token_bar('Cache Create', cache_creation, input_total, GREEN))
+        lines.append(format_token_bar('Cache Read', cache_read, input_total, CYAN))
+        lines.append('')
 
-    lines.append(format_token_bar('Text', text, total, PASTEL_BLUE))
+    if total > 0:
+        turns = profile.get('turns', 0)
+        thinking = profile.get('thinking', 0)
+        tool_use = profile.get('tool_use', 0)
+        text = profile.get('text', 0)
+        tools = profile.get('tools', {})
+
+        lines.append(f"{WHITE}SESSION OUTPUT: {total:,} tok ({turns} turns){RESET}")
+        lines.append(f"{WHITE}{'─' * 40}{RESET}")
+        lines.append(format_token_bar('Thinking', thinking, total, PASTEL_ORANGE))
+        lines.append(format_token_bar('Tool Calls', tool_use, total, GREEN))
+
+        for tool_name, tok in tools.items():
+            display_name = shorten_tool_name(tool_name)
+            lines.append(format_token_bar(f'  {display_name}', tok, total, CYAN, sub=True))
+
+        lines.append(format_token_bar('Text', text, total, PASTEL_BLUE))
 
     return '\n'.join(lines)
 
@@ -285,7 +300,7 @@ def format_token_bar(label: str, tokens: int, total: int, color: str, sub: bool 
         bar += '\u258f'
 
     if sub:
-        return f"{INDENT}{INDENT}{color}{label:<16}{RESET} {tokens:>8,}  {pct:4.0f}%  {color}{bar}{RESET}"
+        return f"{INDENT}{INDENT}{color}{label:<14}{RESET} {tokens:>8,}  {pct:4.0f}%  {color}{bar}{RESET}"
     return f"{INDENT}{color}{label:<16}{RESET} {tokens:>8,}  {pct:4.0f}%  {color}{bar}{RESET}"
 
 # Shorten MCP tool names for display (mcp__plugin_xxx_yyy__tool_name → tool_name)

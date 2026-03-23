@@ -431,7 +431,11 @@ def extract_usage_data(messages: List[dict]) -> List[dict]:
 
         usage = message.get('message', {}).get('usage', {})
         output_tokens = usage.get('output_tokens', 0)
-        if output_tokens == 0:
+        input_tokens = usage.get('input_tokens', 0)
+        cache_creation_input_tokens = usage.get('cache_creation_input_tokens', 0)
+        cache_read_input_tokens = usage.get('cache_read_input_tokens', 0)
+
+        if output_tokens == 0 and input_tokens == 0:
             continue
 
         request_id = message.get('requestId', '')
@@ -457,6 +461,9 @@ def extract_usage_data(messages: List[dict]) -> List[dict]:
             'type': block_type,
             'tool_name': tool_name,
             'output_tokens': output_tokens,
+            'input_tokens': input_tokens,
+            'cache_creation_input_tokens': cache_creation_input_tokens,
+            'cache_read_input_tokens': cache_read_input_tokens,
             'request_id': request_id,
         })
 

@@ -73,7 +73,7 @@ hook_log_position: int = 0
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
-token_profile: Dict[str, int] = {'thinking': 0, 'tool_use': 0, 'text': 0, 'total': 0, 'turns': 0}
+token_profile: Dict[str, int] = {'thinking': 0, 'tool_use': 0, 'text': 0, 'total': 0, 'turns': 0, 'input_tokens': 0, 'cache_creation': 0, 'cache_read': 0, 'input_total': 0}
 token_profile_tools: Dict[str, int] = {}
 token_profile_request_ids: Set[str] = set()
 
@@ -464,9 +464,16 @@ def accumulate_tokens(usage_entry: dict) -> None:
     output_tokens = usage_entry.get('output_tokens', 0)
     block_type = usage_entry.get('type', 'text')
     tool_name = usage_entry.get('tool_name')
+    input_tokens = usage_entry.get('input_tokens', 0)
+    cache_creation = usage_entry.get('cache_creation_input_tokens', 0)
+    cache_read = usage_entry.get('cache_read_input_tokens', 0)
 
     token_profile[block_type] = token_profile.get(block_type, 0) + output_tokens
     token_profile['total'] = token_profile.get('total', 0) + output_tokens
+    token_profile['input_tokens'] += input_tokens
+    token_profile['cache_creation'] += cache_creation
+    token_profile['cache_read'] += cache_read
+    token_profile['input_total'] += input_tokens + cache_creation + cache_read
 
     if request_id and request_id not in token_profile_request_ids:
         token_profile_request_ids.add(request_id)
@@ -493,7 +500,8 @@ def run_tokens_loop() -> None:
 # Format token profile block for dedicated pane
 def format_tokens_block() -> str:
     total = token_profile.get('total', 0)
-    if total == 0:
+    input_total = token_profile.get('input_total', 0)
+    if total == 0 and input_total == 0:
         return ''
 
     turns = token_profile.get('turns', 0)
@@ -504,6 +512,10 @@ def format_tokens_block() -> str:
         'tool_use': token_profile.get('tool_use', 0),
         'text': token_profile.get('text', 0),
         'tools': dict(sorted(token_profile_tools.items(), key=lambda x: x[1], reverse=True)),
+        'input_total': input_total,
+        'input_tokens': token_profile.get('input_tokens', 0),
+        'cache_creation': token_profile.get('cache_creation', 0),
+        'cache_read': token_profile.get('cache_read', 0),
     }
 
     return format_token_profile(profile)

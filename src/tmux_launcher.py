@@ -162,5 +162,11 @@ def configure_tmux_session(session_name: str) -> None:
     for digit in "123456789":
         subprocess.run(["tmux", "bind-key", "-T", "copy-mode", digit, "send-keys", "-X", "cancel", "\\;", "send-keys", digit])
         subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", digit, "send-keys", "-X", "cancel", "\\;", "send-keys", digit])
-    restart_cmd = f"respawn-pane -k -t {session_name}:0.0 \\; respawn-pane -k -t {session_name}:0.1 \\; respawn-pane -k -t {session_name}:0.2 \\; respawn-pane -k -t {session_name}:0.3 \\; respawn-pane -k -t {session_name}:0.4 \\; respawn-pane -k -t {session_name}:0.5 \\; display 'Monitor restarted'"
-    subprocess.run(["tmux", "bind-key", "-T", "root", "C-r", restart_cmd])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "C-r",
+        "respawn-pane", "-k", "-t", f"{session_name}:0.0", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:0.1", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:0.2", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:0.3", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:0.4", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:0.5", "\\;",
+        "display", "Monitor restarted"])
