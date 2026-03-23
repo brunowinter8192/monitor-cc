@@ -4,12 +4,13 @@
 
 - `monitor.py`: `run_streaming_loop()` pollt alle 0.5s, ruft `process_hook_log()` + `monitor_sessions()` auf
 - `monitor.py`: `run_rules_loop()` pollt alle 0.5s, ruft `process_hook_log()` auf und rendert `format_rules_block(active_rules)` bei Änderungen
+- `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, akkumuliert Token-Usage via `accumulate_tokens()` und rendert `format_tokens_block()` bei Änderungen
 - Hook routing in `process_hook_log()`: 3 Events → 3 State Dicts
   - `UserPromptSubmit` → `pending_user_prompt_hook`
   - `PreToolUse` → `pending_pretooluse_hooks`
   - `InstructionsLoaded` → `active_rules`
 - Agent tracking: `agent_to_task`, `agent_to_type` maps, `buffered_subagent_calls` für Orphans (Calls ohne bekannten Agent)
-- Usage accumulation: `accumulate_usage()` aggregiert Token-Totals pro Turn
+- Token profiling: `accumulate_tokens()` aggregiert Output-Tokens nach Block-Type (thinking/tool_use/text) und Tool-Name in `token_profile` + `token_profile_tools` Globals. Turn-Count via `token_profile_request_ids` Set (dedupliziert `requestId`s).
 
 `run_rules_loop()` Ablauf:
 1. `process_hook_log()` → aktualisiert `active_rules`
@@ -44,6 +45,9 @@ Alle Module-Level Variablen in `src/monitor.py` mit Zugriffs-Mapping:
 | `active_rules` | `Dict[str, set]` | monitor.py:76 | monitor.py, ui_mode.py (via Argument) | monitor.py | Aktive Regeln nach Scope |
 | `warned_unknown_types` | `Set[str]` | monitor.py:77 | monitor.py | monitor.py | Bereits gewarnted unknown Types |
 | `unknown_type_counts` | `Dict[str, int]` | monitor.py:78 | monitor.py | monitor.py | Count pro unbekanntem Type |
+| `token_profile` | `Dict[str, int]` | monitor.py | monitor.py | monitor.py | Kumulative Output-Tokens nach Block-Type |
+| `token_profile_tools` | `Dict[str, int]` | monitor.py | monitor.py | monitor.py | Output-Tokens nach Tool-Name |
+| `token_profile_request_ids` | `Set[str]` | monitor.py | monitor.py | monitor.py | Gesehene requestIds (Turn-Dedup) |
 
 **Kopplungsanalyse:** `agent_to_task`, `agent_to_type`, `subagent_metadata`, `tool_calls_by_agent`, `active_rules` werden als Argumente an `run_ui_loop()` (ui_mode.py:31) übergeben und dort auch von `track_subagent_metadata()` (ui_mode.py:85) geschrieben. De-facto shared mutable state, nur formal als Argument übergeben.
 

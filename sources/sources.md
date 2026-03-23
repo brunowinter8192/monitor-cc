@@ -17,3 +17,7 @@ External references used as evidence for pipeline decisions.
 | Claude Code #33414 | github.com/anthropics/claude-code/issues/33414 | FireHose monitoring feature request | pipe02 |
 | unified-cowork JSONL Spec | github.com/yjjoeathome-byte/unified-cowork | Community reverse-engineered Cowork audit.jsonl spec (related format) | pipe02 |
 | termshot | github.com/homeport/termshot | ANSI text → PNG rendering (terminal screenshots) | pipe04 |
+| claudeoo | github.com/monk1337/claudeoo | SSE stream interceptor for accurate token counts (solves #27361 undercount) | pipe02, pipe03 |
+| better-ccusage | github.com/cobra91/better-ccusage | Post-hoc JSONL parser with session block aggregation, multi-provider | pipe02, pipe03 |
+| Claude-Code-Usage-Monitor | github.com/Maciek-roboblog/Claude-Code-Usage-Monitor | Real-time TUI token monitor (7k stars), Python, P90 session limits | pipe02, pipe03 |
+| tokscale | github.com/junhoyeo/tokscale | CLI token tracking with contributions graph, multi-agent support | pipe02, pipe03 |

@@ -6,14 +6,16 @@ Live monitoring tool for Claude Code CLI conversations - captures all tool calls
 
 ```
 Monitor_CC/
-├── workflow.py
+├── workflow.py                     → Pipeline entry point
 ├── README.md
 ├── CLAUDE.md
 ├── LOGS_MAP.md
-├── src/                    [See DOCS.md](src/DOCS.md)
-├── bug_fixes/
-├── not_working/
-└── repo/
+├── src/                            → [DOCS.md](src/DOCS.md)
+├── decisions/                      → Pipeline decision records
+├── sources/                        → External reference index
+├── dev/                            → [DOCS.md](dev/DOCS.md)
+├── not_working/                    → Failed approaches
+└── repo/                           → tmux source code (external reference)
 ```
 
 ## Workflow
@@ -59,5 +61,5 @@ python3 workflow.py --project /path/to/project --ui
 
 **Flags:**
 - `--project PATH` - Filter sessions by project path
-- `--mode {all,main,subagent}` - Monitor mode (default: all = tmux split)
+- `--mode {all,main,subagent,rules,warnings,hooks,tokens}` - Monitor mode (default: all = tmux 6-pane)
 - `--ui` - Enable collapsible subagent UI (keyboard 1-9 to toggle)

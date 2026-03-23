@@ -48,19 +48,30 @@ Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 `format_pane_header(mode)` in `src/formatter.py` generates `━━━ LABEL ━━━` header bars using `PANE_HEADERS` dict from `src/constants.py`.
 
 - Streaming loops (main, hooks): Header printed once at loop start
-- Screen-clearing loops (rules, warnings): Header printed as first line on every refresh
+- Screen-clearing loops (rules, warnings, tokens): Header printed as first line on every refresh
 - UI loop (subagent): Header as first line in `sync_ui_to_screen()`
 - Initialization: `last_output = None` (not `''`) to force first render even when no data
 
+### Token-Profiling Pane (Kategorie: Display / Token Visibility)
+
+Eigenes tmux Pane (Pane 1, unten-links, 30% Höhe des linken Bereichs) via `--mode tokens`:
+- `run_tokens_loop()` in monitor.py: pollt `monitor_sessions()`, akkumuliert via `accumulate_tokens()`, rendert `format_tokens_block()`
+- `format_token_profile()` in formatter.py: hierarchischer Breakdown (Thinking/Tool Calls/Text) mit Unicode Bar-Chart und Prozentwerten
+- `shorten_tool_name()` in formatter.py: MCP Tool-Namen kürzen (`mcp__plugin_xxx__tool` → `tool`)
+- Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
+- M-t Keybinding: Tokens-Pane Content → Clipboard via pbcopy
+- JSONL-Datenquelle: `message.usage.output_tokens` pro Content-Block (assistant Messages)
+- Known limitation: output_tokens ~1.9x undercount (Claude Code Bug #27361), für Proportionen irrelevant
+
 ### Restart Hotkey (Kategorie: Display / UX)
 
-`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` for all 5 panes. Restarts all monitor processes with their original commands.
+`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` for all 6 panes. Restarts all monitor processes with their original commands.
 
 ### Screen Clear Escape Sequence (Kategorie: Display / Robustheit)
 
-`\033[2J\033[3J\033[H` an drei Stellen:
+`\033[2J\033[3J\033[H` an vier Stellen:
 - `src/ui_mode.py`: in `sync_ui_to_screen()`
-- `src/monitor.py`: in `run_rules_loop()` and `run_warnings_loop()`
+- `src/monitor.py`: in `run_rules_loop()`, `run_warnings_loop()`, and `run_tokens_loop()`
 
 Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H` setzt Cursor auf Position 0,0.
 

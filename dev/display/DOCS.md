@@ -10,7 +10,7 @@ Scripts for testing and verifying the display layer (tmux layout, rules renderin
 
 ### test_tmux_layout.sh
 
-Tests tmux pane layout for the monitor. Originally 3-pane, now 5-pane (main | rules + subagents + hooks + warnings).
+Tests tmux pane layout for the monitor. Originally 3-pane, now 6-pane (main + tokens | rules + subagents + hooks + warnings).
 
 **Purpose:** Verify pane indices after nested splits, confirm `-l` percentage behavior, validate `-b` flag for top/bottom placement.
 
@@ -40,7 +40,7 @@ python3 dev/display/scan_jsonl_rules.py
 
 ### screenshot_panes.py
 
-Captures all 5 tmux panes of a running Monitor_CC session and combines them into a single PNG screenshot.
+Captures all 6 tmux panes of a running Monitor_CC session and combines them into a single PNG screenshot.
 
 **Purpose:** Visual feedback for Claude during development — Claude reads the PNG to verify pane content and layout.
 
@@ -50,7 +50,7 @@ Captures all 5 tmux panes of a running Monitor_CC session and combines them into
 ./venv/bin/python dev/display/screenshot_panes.py --session monitor_cc_global
 ```
 
-**Output:** `/tmp/monitor_cc_screenshot.png` — combined 4-pane layout image.
+**Output:** `/tmp/monitor_cc_screenshot.png` — combined 6-pane layout image.
 
 **Dependencies:** `termshot` (`brew install homeport/tap/termshot`), `Pillow` (`pip install Pillow`)
 

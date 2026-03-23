@@ -34,7 +34,7 @@ logger_extract.addHandler(extract_handler)
 logger_extract.setLevel(logging.INFO)
 
 # ORCHESTRATOR
-def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
+def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
 
     if len(new_lines) > 0:
@@ -48,12 +48,13 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     thinking_blocks = extract_thinking_blocks(messages)
     skill_activations = extract_skill_activations(messages)
     unknown_types = detect_unknown_types(messages)
+    usage_data = extract_usage_data(messages)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
 
     if len(tool_calls) > 0 or len(malformed_warnings) > 0 or len(user_media) > 0 or len(thinking_blocks) > 0 or len(user_prompts) > 0 or len(skill_activations) > 0:
         log_tagged(logger_parse, "PARSE_DONE", GREEN, f"Parsed {len(tool_calls)} tool calls, {len(user_prompts)} user prompts, {len(user_media)} user media, {len(thinking_blocks)} thinking, {len(skill_activations)} skills, {len(malformed_warnings)} malformed lines")
 
-    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types
+    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data
 
 # FUNCTIONS
 
@@ -419,6 +420,50 @@ def extract_skill_activations(messages: List[dict]) -> List[dict]:
         log_tagged(logger_extract, "SKILL_ACTIVATIONS", GREEN, f"Extracted {len(activations)} skill activations")
 
     return activations
+
+# Extract output token usage data from assistant messages with content block type breakdown
+def extract_usage_data(messages: List[dict]) -> List[dict]:
+    usage_items = []
+
+    for message in messages:
+        if message.get('type') != 'assistant':
+            continue
+
+        usage = message.get('message', {}).get('usage', {})
+        output_tokens = usage.get('output_tokens', 0)
+        if output_tokens == 0:
+            continue
+
+        request_id = message.get('requestId', '')
+        content_blocks = message.get('message', {}).get('content', [])
+
+        block_type = 'text'
+        tool_name = None
+
+        if isinstance(content_blocks, list):
+            for block in content_blocks:
+                if not isinstance(block, dict):
+                    continue
+                bt = block.get('type', '')
+                if bt == 'thinking':
+                    block_type = 'thinking'
+                    break
+                elif bt == 'tool_use':
+                    block_type = 'tool_use'
+                    tool_name = block.get('name', 'Unknown')
+                    break
+
+        usage_items.append({
+            'type': block_type,
+            'tool_name': tool_name,
+            'output_tokens': output_tokens,
+            'request_id': request_id,
+        })
+
+    if len(usage_items) > 0:
+        log_tagged(logger_extract, "USAGE_DATA", GREEN, f"Extracted {len(usage_items)} usage entries")
+
+    return usage_items
 
 # Detect unknown message types not in KNOWN or KNOWN_IGNORED sets
 def detect_unknown_types(messages: List[dict]) -> List[dict]:

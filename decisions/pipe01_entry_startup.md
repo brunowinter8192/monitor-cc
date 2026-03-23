@@ -2,27 +2,28 @@
 
 ## Status Quo
 
-- `workflow.py`: `--mode all` → tmux 5-Pane (main | rules + subagent + hooks + warnings), `--mode main|subagent|rules|warnings|hooks` → einzelner Prozess
-- `startup.py`: argparse mit choices `['all', 'main', 'subagent', 'rules', 'warnings', 'hooks']`, `--project`, `--ui`
-- `tmux_launcher.py`: 5 Panes, history 50000, keybindings (C-q scroll, C-r restart all panes, C-f search, mouse, M-m/M-s/M-r/M-h/M-w copy)
+- `workflow.py`: `--mode all` → tmux 6-Pane (main + tokens | rules + subagent + hooks + warnings), `--mode main|subagent|rules|warnings|hooks|tokens` → einzelner Prozess
+- `startup.py`: argparse mit choices `['all', 'main', 'subagent', 'rules', 'warnings', 'hooks', 'tokens']`, `--project`, `--ui`
+- `tmux_launcher.py`: 6 Panes, history 50000, keybindings (C-q scroll, C-r restart all 6 panes, C-f search, mouse, M-m/M-t/M-r/M-s/M-h/M-w copy)
 
 tmux Layout:
 ```
 ┌─────────────────┬──────────────────┐
-│                 │ Pane 1 (rules)   │  25% Höhe
-│  Pane 0 (main)  │──────────────────│
-│                 │ Pane 2 (subs)    │  50% Höhe
+│  Pane 0 (main)  │ Pane 2 (rules)   │  25% Höhe
+│─────────────────│──────────────────│
+│  Pane 1 (tokens)│ Pane 3 (subs)    │  50% Höhe
 │    50% Breite   │──────────────────│
-│                 │ Pane 3 (hooks) │ Pane 4 (warnings) │  25% Höhe
+│                 │ Pane 4 (hooks) │ Pane 5 (warnings) │  25% Höhe
 └─────────────────┴──────────────────┘
 ```
 
-Split-Sequenz:
-1. `new-session -d -s $session $main_cmd` → Pane 0 (links, volle Höhe)
-2. `split-window -h -t $session:0.0 -l 50% $subagent_cmd` → Pane 1 (rechts, volle Höhe)
-3. `split-window -v -t $session:0.1 -b -l 25% $rules_cmd` → Pane 1 (rechts-oben 25%), Pane 2 = alter Pane 1 (rechts-unten 75%)
-4. `split-window -v -t $session:0.2 -l 25% $warnings_cmd` → Pane 3 (rechts-unten 25%), Pane 2 = subagents (75% des unteren Bereichs)
-5. `split-window -h -b -t $session:0.3 -l 50% $hooks_cmd` → Pane 3 (hooks links 50%), Pane 4 (warnings rechts 50%)
+Split-Sequenz (Reihenfolge kritisch — erst horizontal, dann vertikal links):
+1. `new-session -d -s $session $main_cmd` → Pane 0 (volle Fläche)
+2. `split-window -h -t $session:0.0 -l 50% $subagent_cmd` → Pane 0 (links), Pane 1 (rechts)
+3. `split-window -v -t $session:0.0 -l 30% $tokens_cmd` → Pane 0 (main oben-links 70%), Pane 1 (tokens unten-links 30%), Pane 2 (rechts)
+4. `split-window -v -t $session:0.2 -b -l 25% $rules_cmd` → Pane 2 (rules rechts-oben 25%), Pane 3 (subagents rechts 75%)
+5. `split-window -v -t $session:0.3 -l 25% $warnings_cmd` → Pane 4 (warnings rechts-unten 25%)
+6. `split-window -h -b -t $session:0.4 -l 50% $hooks_cmd` → Pane 4 (hooks links 50%), Pane 5 (warnings rechts 50%)
 
 ## IST — Stellschrauben
 
@@ -45,12 +46,13 @@ subprocess.run(["tmux", "set-option", "-g", "history-limit", "50000"])
 - Nach dem Session-Aufbau wird der Original-Wert wiederhergestellt (`restore_global_history_limit()`, tmux_launcher.py:112-114)
 - Das `50000` ist hardcoded, kein Config-Parameter
 
-### 5-Pane Layout Split-Ratios (Kategorie: Konfiguration)
+### 6-Pane Layout Split-Ratios (Kategorie: Konfiguration)
 
 Hardcoded Split-Befehle in `src/tmux_launcher.py`:
-- `tmux_launcher.py:58`: `-l 50%` — horizontaler Split (main | rechte Hälfte)
-- `tmux_launcher.py:61`: `-l 25%` — vertikaler Split des rechten Panes (rules-oben 25% | subagents-unten 75%)
-- `tmux_launcher.py:65`: `-l 25%` — vertikaler Split des Subagent-Panes (subagents 75% | warnings 25%)
+- `-l 30%` — vertikaler Split des Main-Panes (main oben 70% | tokens unten 30%)
+- `-l 50%` — horizontaler Split (left column | right column)
+- `-l 25%` — vertikaler Split des rechten Panes (rules-oben 25% | subagents-unten 75%)
+- `-l 25%` — vertikaler Split des Subagent-Panes (subagents 75% | warnings 25%)
 
 Keine Config-Parameter. Ratios nicht als Konstanten benannt.
 

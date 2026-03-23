@@ -9,18 +9,19 @@ from PIL import Image
 
 # --- INFRASTRUCTURE ---
 
-PANE_COUNT = 5
+PANE_COUNT = 6
 OUTPUT_PATH = Path("/tmp/monitor_cc_screenshot.png")
 PANE_TXT_TEMPLATE = "/tmp/monitor_pane_{n}.txt"
 PANE_PNG_TEMPLATE = "/tmp/monitor_pane_{n}.png"
 
 # Layout ratios: (x_start, y_start, width, height) as fractions of combined image
 PANE_LAYOUT = [
-    (0.0,  0.0,  0.5, 1.0),    # Pane 0: left, full height (main)
-    (0.5,  0.0,  0.5, 0.25),   # Pane 1: top-right (rules)
-    (0.5,  0.25, 0.5, 0.5),    # Pane 2: mid-right (subagents)
-    (0.5,  0.75, 0.25, 0.25),  # Pane 3: bottom-right-left (hooks)
-    (0.75, 0.75, 0.25, 0.25),  # Pane 4: bottom-right-right (warnings)
+    (0.0,  0.0,  0.5, 0.7),    # Pane 0: top-left (main)
+    (0.0,  0.7,  0.5, 0.3),    # Pane 1: bottom-left (tokens)
+    (0.5,  0.0,  0.5, 0.25),   # Pane 2: top-right (rules)
+    (0.5,  0.25, 0.5, 0.5),    # Pane 3: mid-right (subagents)
+    (0.5,  0.75, 0.25, 0.25),  # Pane 4: bottom-right-left (hooks)
+    (0.75, 0.75, 0.25, 0.25),  # Pane 5: bottom-right-right (warnings)
 ]
 
 COMBINED_WIDTH = 3200

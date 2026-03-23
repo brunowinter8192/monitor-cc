@@ -31,6 +31,7 @@ MODE_SUBAGENT = 'subagent'
 MODE_RULES = 'rules'
 MODE_WARNINGS = 'warnings'
 MODE_HOOKS = 'hooks'
+MODE_TOKENS = 'tokens'
 
 # Hook events
 HOOK_USER_PROMPT = 'UserPromptSubmit'
@@ -56,4 +57,5 @@ PANE_HEADERS = {
     'subagent': 'SUBAGENTS',
     'hooks': 'HOOKS',
     'warnings': 'WARNINGS',
+    'tokens': 'TOKENS',
 }

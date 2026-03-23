@@ -9,7 +9,7 @@ from typing import Dict, Set, List, Optional
 # From utils.py: Logging utility
 from .utils import log_tagged
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, HOOK_INSTRUCTIONS_LOADED
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
 
 # Setup 7 loggers for different workflow phases
@@ -48,7 +48,7 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_pane_header
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_pane_header, format_token_profile
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
@@ -73,6 +73,9 @@ hook_log_position: int = 0
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
+token_profile: Dict[str, int] = {'thinking': 0, 'tool_use': 0, 'text': 0, 'total': 0, 'turns': 0}
+token_profile_tools: Dict[str, int] = {}
+token_profile_request_ids: Set[str] = set()
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -85,7 +88,10 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
 
     initialize_file_positions()
 
-    if mode == MODE_RULES:
+    if mode == MODE_TOKENS:
+        log_tagged(logger_init, "TOKENS_MODE", CYAN, "Starting tokens mode")
+        run_tokens_loop()
+    elif mode == MODE_RULES:
         log_tagged(logger_init, "RULES_MODE", CYAN, "Starting rules mode")
         run_rules_loop()
     elif mode == MODE_WARNINGS:
@@ -182,14 +188,17 @@ def process_session_file(filepath: Path) -> None:
     last_position = file_positions[filepath]
     cache = tool_use_caches[filepath]
 
-    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types = parse_new_tool_calls(filepath, last_position, cache)
+    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data = parse_new_tool_calls(filepath, last_position, cache)
 
     for ut in unknown_types:
         track_unknown_type(ut)
 
+    for ud in usage_data:
+        accumulate_tokens(ud)
+
     file_positions[filepath] = new_position
 
-    if active_mode == MODE_WARNINGS:
+    if active_mode in (MODE_WARNINGS, MODE_TOKENS):
         return
 
     for warning in malformed_warnings:
@@ -319,7 +328,7 @@ def is_agent_file(filepath: Path) -> bool:
 
 # Filter sessions based on mode (all, main, subagent)
 def filter_sessions_by_mode(sessions: list, mode: str) -> list:
-    if mode in (MODE_ALL, MODE_WARNINGS):
+    if mode in (MODE_ALL, MODE_WARNINGS, MODE_TOKENS):
         filtered = sessions
     elif mode == MODE_MAIN:
         filtered = [s for s in sessions if not is_agent_file(s)]
@@ -446,6 +455,58 @@ def format_warnings_block() -> str:
         warning = format_unknown_type_warning(msg_type, count)
         lines.append(warning)
     return '\n'.join(lines)
+
+# Accumulate token usage from a single usage entry into session profile
+def accumulate_tokens(usage_entry: dict) -> None:
+    global token_profile, token_profile_tools, token_profile_request_ids
+
+    request_id = usage_entry.get('request_id', '')
+    output_tokens = usage_entry.get('output_tokens', 0)
+    block_type = usage_entry.get('type', 'text')
+    tool_name = usage_entry.get('tool_name')
+
+    token_profile[block_type] = token_profile.get(block_type, 0) + output_tokens
+    token_profile['total'] = token_profile.get('total', 0) + output_tokens
+
+    if request_id and request_id not in token_profile_request_ids:
+        token_profile_request_ids.add(request_id)
+        token_profile['turns'] = len(token_profile_request_ids)
+
+    if block_type == 'tool_use' and tool_name:
+        token_profile_tools[tool_name] = token_profile_tools.get(tool_name, 0) + output_tokens
+
+# Runs token profiling display loop (for dedicated tokens tmux pane)
+def run_tokens_loop() -> None:
+    header = format_pane_header('tokens')
+    last_output = None
+    while True:
+        monitor_sessions()
+        output = format_tokens_block()
+        if output != last_output:
+            print("\033[2J\033[3J\033[H", end='', flush=True)
+            print(header)
+            if output:
+                print(output)
+            last_output = output
+        time.sleep(POLL_INTERVAL)
+
+# Format token profile block for dedicated pane
+def format_tokens_block() -> str:
+    total = token_profile.get('total', 0)
+    if total == 0:
+        return ''
+
+    turns = token_profile.get('turns', 0)
+    profile = {
+        'total': total,
+        'turns': turns,
+        'thinking': token_profile.get('thinking', 0),
+        'tool_use': token_profile.get('tool_use', 0),
+        'text': token_profile.get('text', 0),
+        'tools': dict(sorted(token_profile_tools.items(), key=lambda x: x[1], reverse=True)),
+    }
+
+    return format_token_profile(profile)
 
 # Runs hooks display loop (for dedicated hooks tmux pane)
 def run_hooks_loop() -> None:

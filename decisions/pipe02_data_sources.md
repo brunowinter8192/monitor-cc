@@ -3,7 +3,7 @@
 ## Status Quo
 
 - `session_finder.py`: `~/.claude/projects/` → glob `*.jsonl` + `*/subagents/agent-*.jsonl`, sorted by mtime
-- `jsonl_parser.py`: tool_use/tool_result correlation via cache, extracts 6 data types (tools, prompts, media, thinking, skills, warnings)
+- `jsonl_parser.py`: tool_use/tool_result correlation via cache, extracts 7 data types (tools, prompts, media, thinking, skills, warnings, usage)
 - `hook_parser.py`: reads `src/logs/hook_outputs.jsonl`, filters by project cwd
 - External pipeline: `instructions-loaded-hook.sh` (native hook in `~/.claude/settings.json`) → `hook_logger.py` → `hook_outputs.jsonl`
 
@@ -37,14 +37,16 @@ Kein Caching zwischen Polls. Bei vielen Projekten/Sessions: O(N) Syscalls pro 0.
 
 Jede Funktion iteriert vollständig über alle Messages. Keine gemeinsame Iteration mit Switch-Dispatch.
 
-**8-Tuple-Rückgabe und Erweiterbarkeit:**
+**9-Tuple-Rückgabe und Erweiterbarkeit:**
 `parse_new_tool_calls()` gibt zurück:
-`(tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types)`
+`(tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data)`
+
+`extract_usage_data()` extrahiert pro assistant-Message: `output_tokens`, Content-Block-Type (thinking/tool_use/text), Tool-Name (bei tool_use), `requestId`. Rückgabe: `[{type, tool_name, output_tokens, request_id}]`.
 
 Jedes neue JSONL-Datenformat erfordert:
 1. Neue `extract_*()`-Funktion
-2. Neuer Rückgabewert im 8-Tuple
-3. Neues Entpacken in `process_session_file()` (monitor.py:179)
+2. Neuer Rückgabewert im 9-Tuple
+3. Neues Entpacken in `process_session_file()` (monitor.py)
 4. Neue Display-Funktion in monitor.py
 5. Ggf. neuer Eintrag in KNOWN_IGNORED_TYPES (constants.py)
 

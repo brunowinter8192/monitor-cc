@@ -5,7 +5,7 @@ import re
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
 # From constants.py: Colors and config values
-from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, RESET, LONG_OUTPUT_THRESHOLD, PANE_HEADERS
+from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD, PANE_HEADERS
 
 INDENT = '  '
 SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
@@ -247,3 +247,51 @@ def format_thinking(thinking_item: dict) -> str:
 # Format unknown JSONL type warning for warnings pane
 def format_unknown_type_warning(msg_type: str, count: int) -> str:
     return f"{INDENT}{YELLOW}[!] Unknown JSONL type: {msg_type} (seen {count}x){RESET}"
+
+# Format token profile for dedicated tokens pane
+def format_token_profile(profile: dict) -> str:
+    total = profile.get('total', 0)
+    if total == 0:
+        return ''
+
+    turns = profile.get('turns', 0)
+    thinking = profile.get('thinking', 0)
+    tool_use = profile.get('tool_use', 0)
+    text = profile.get('text', 0)
+    tools = profile.get('tools', {})
+
+    lines = []
+    lines.append(f"{WHITE}SESSION OUTPUT: {total:,} tok ({turns} turns){RESET}")
+    lines.append(f"{WHITE}{'─' * 40}{RESET}")
+
+    lines.append(format_token_bar('Thinking', thinking, total, PASTEL_ORANGE))
+    lines.append(format_token_bar('Tool Calls', tool_use, total, GREEN))
+
+    for tool_name, tok in tools.items():
+        display_name = shorten_tool_name(tool_name)
+        lines.append(format_token_bar(f'  {display_name}', tok, total, CYAN, sub=True))
+
+    lines.append(format_token_bar('Text', text, total, PASTEL_BLUE))
+
+    return '\n'.join(lines)
+
+# Format a single bar line for token profile display
+def format_token_bar(label: str, tokens: int, total: int, color: str, sub: bool = False) -> str:
+    pct = (tokens / total * 100) if total > 0 else 0
+    bar_width = 20
+    filled = int(pct / 100 * bar_width)
+    bar = '\u2588' * filled
+    if filled < bar_width and pct > 0:
+        bar += '\u258f'
+
+    if sub:
+        return f"{INDENT}{INDENT}{color}{label:<16}{RESET} {tokens:>8,}  {pct:4.0f}%  {color}{bar}{RESET}"
+    return f"{INDENT}{color}{label:<16}{RESET} {tokens:>8,}  {pct:4.0f}%  {color}{bar}{RESET}"
+
+# Shorten MCP tool names for display (mcp__plugin_xxx_yyy__tool_name → tool_name)
+def shorten_tool_name(name: str) -> str:
+    if name.startswith('mcp__'):
+        parts = name.split('__')
+        if len(parts) >= 3:
+            return parts[-1]
+    return name
