@@ -9,7 +9,6 @@ Monitor_CC/
 ├── workflow.py                     → Pipeline entry point
 ├── README.md
 ├── CLAUDE.md
-├── LOGS_MAP.md
 ├── src/                            → [DOCS.md](src/DOCS.md)
 ├── decisions/                      → Pipeline decision records
 ├── sources/                        → External reference index
@@ -61,5 +60,5 @@ python3 workflow.py --project /path/to/project --ui
 
 **Flags:**
 - `--project PATH` - Filter sessions by project path
-- `--mode {all,main,subagent,rules,warnings,hooks,tokens}` - Monitor mode (default: all = tmux 6-pane)
+- `--mode {all,main,subagent,rules,warnings,hooks,tokens,workers}` - Monitor mode (default: all = tmux 7-pane)
 - `--ui` - Enable collapsible subagent UI (keyboard 1-9 to toggle)

@@ -79,7 +79,7 @@ Keine Config-Parameter. Ratios nicht als Konstanten benannt.
 
 `src/tmux_launcher.py`: **0** `log_tagged()`-Aufrufe. Alle 14 ehemaligen Calls (SPLIT_LAUNCH, SESS_NAME, SCRIPT_PATH, HIST_SET, TMUX_CREATE, TMUX_SPLIT_H, TMUX_SPLIT_V, TMUX_CHECK, TMUX_INSIDE, SESS_EXISTS, SESS_KILL, HIST_ORIG, HIST_RESTORE, TMUX_CONFIG) wurden in Session 3 entfernt.
 
-`workflow.py`: **Stale Logging noch vorhanden** (Stand Worktree). workflow.py:1-14 enthält noch `import logging`, Logger-Setup für `src/logs/01_startup.log`, und `log_tagged()`-Aufruf in `main()` (workflow.py:28). Die Entfernung war als Session-4-Aufgabe geplant.
+`workflow.py`: **0** `log_tagged()`-Aufrufe. `import logging`, Logger-Setup (`log_format`, `logger_startup`, `startup_handler`), `MAGENTA`-Import und `log_tagged()`-Aufruf in `main()` wurden in Session 4 entfernt.
 
 Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
@@ -96,7 +96,7 @@ Pending — needs evaluation.
 - ~~tmux Keybinding für 3. Pane: M-r für Rules-Pane Copy~~ — implementiert, Pane-Index 2 (verifiziert in tmux_launcher.py:127)
 - ~~M-w Keybinding: Warnings-Pane Content → Clipboard~~ — implementiert (tmux_launcher.py:130): `M-w` → Pane 5 (warnings)
 - M-k Keybinding für Workers-Pane implementiert (tmux_launcher.py:131): `M-k` → Pane 6 (workers)
-- workflow.py stale logging (import logging, log_tagged) noch nicht entfernt
+- ~~workflow.py stale logging (import logging, log_tagged)~~ — entfernt in Session 4
 
 ## Quellen
 
