@@ -14,11 +14,13 @@ from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_pane_header, format_token_profile
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_pane_header, format_token_profile, format_token_profile_cumulative
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
 from .subagent_ui import subagent_states
+# From click_handler.py: Keyboard input for token pane
+from .click_handler import read_keypress, setup_keyboard_input, restore_terminal
 # From ui_mode.py: UI mode loop and subagent tracking
 from .ui_mode import run_ui_loop, track_subagent_metadata
 
@@ -42,6 +44,8 @@ unknown_type_counts: Dict[str, int] = {}
 token_profile: Dict[str, int] = {'thinking': 0, 'tool_use': 0, 'text': 0, 'total': 0, 'turns': 0, 'input_tokens': 0, 'cache_creation': 0, 'cache_read': 0, 'input_total': 0}
 token_profile_tools: Dict[str, int] = {}
 token_profile_request_ids: Set[str] = set()
+token_cumulative_n: Optional[int] = None
+token_input_buffer: str = ''
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -405,6 +409,41 @@ def format_warnings_block() -> str:
         lines.append(warning)
     return '\n'.join(lines)
 
+# Return main session files (non-agent) sorted by recency
+def get_main_session_files() -> List[Path]:
+    sessions = find_active_sessions(active_project_filter)
+    return [s for s in sessions if not is_agent_file(s)]
+
+# Read all token usage from last N main session files (position 0)
+def compute_cumulative_tokens(n: int) -> List[dict]:
+    main_sessions = get_main_session_files()
+    selected = main_sessions[:n]
+    sessions_data = []
+    for filepath in selected:
+        _, _, _, _, _, _, _, _, usage_data = parse_new_tool_calls(filepath, 0, {})
+        stats: dict = {
+            'file': filepath.name,
+            'input_total': 0,
+            'output_total': 0,
+            'cache_creation': 0,
+            'cache_read': 0,
+            'turns': 0,
+        }
+        request_ids: Set[str] = set()
+        for ud in usage_data:
+            cache_c = ud.get('cache_creation_input_tokens', 0)
+            cache_r = ud.get('cache_read_input_tokens', 0)
+            stats['input_total'] += ud.get('input_tokens', 0) + cache_c + cache_r
+            stats['output_total'] += ud.get('output_tokens', 0)
+            stats['cache_creation'] += cache_c
+            stats['cache_read'] += cache_r
+            rid = ud.get('request_id', '')
+            if rid:
+                request_ids.add(rid)
+        stats['turns'] = len(request_ids)
+        sessions_data.append(stats)
+    return sessions_data
+
 # Accumulate token usage from a single usage entry into session profile
 def accumulate_tokens(usage_entry: dict) -> None:
     global token_profile, token_profile_tools, token_profile_request_ids
@@ -443,41 +482,84 @@ def accumulate_tokens(usage_entry: dict) -> None:
 
 # Runs token profiling display loop (for dedicated tokens tmux pane)
 def run_tokens_loop() -> None:
+    global token_cumulative_n, token_input_buffer
     header = format_pane_header('tokens')
     last_output = None
-    while True:
-        monitor_sessions()
-        output = format_tokens_block()
-        if output != last_output:
-            print("\033[2J\033[3J\033[H", end='', flush=True)
-            print(header)
-            if output:
-                print(output)
-            last_output = output
-        time.sleep(POLL_INTERVAL)
+    setup_keyboard_input()
+    try:
+        while True:
+            char = read_keypress()
+            if char is not None:
+                if char in '\r\n':
+                    stripped = token_input_buffer.strip()
+                    if stripped == '' or stripped == 'q':
+                        token_cumulative_n = None
+                    else:
+                        try:
+                            n = int(stripped)
+                            if n > 0:
+                                token_cumulative_n = n
+                        except ValueError:
+                            pass
+                    token_input_buffer = ''
+                elif char == 'q' and not token_input_buffer:
+                    token_cumulative_n = None
+                elif char in ('\x7f', '\x08'):
+                    token_input_buffer = token_input_buffer[:-1]
+                elif char.isdigit():
+                    token_input_buffer += char
+
+            monitor_sessions()
+            output = format_tokens_block()
+            if output != last_output:
+                print("\033[2J\033[3J\033[H", end='', flush=True)
+                print(header)
+                if output:
+                    print(output)
+                last_output = output
+            time.sleep(POLL_INTERVAL)
+    finally:
+        restore_terminal()
 
 # Format token profile block for dedicated pane
 def format_tokens_block() -> str:
-    total = token_profile.get('total', 0)
-    input_total = token_profile.get('input_total', 0)
-    if total == 0 and input_total == 0:
-        return ''
+    session_count = len(get_main_session_files())
+    header_line = f"{CYAN}Sessions: {session_count}{RESET}"
 
-    turns = token_profile.get('turns', 0)
-    profile = {
-        'total': total,
-        'turns': turns,
-        'thinking': token_profile.get('thinking', 0),
-        'tool_use': token_profile.get('tool_use', 0),
-        'text': token_profile.get('text', 0),
-        'tools': dict(sorted(token_profile_tools.items(), key=lambda x: x[1], reverse=True)),
-        'input_total': input_total,
-        'input_tokens': token_profile.get('input_tokens', 0),
-        'cache_creation': token_profile.get('cache_creation', 0),
-        'cache_read': token_profile.get('cache_read', 0),
-    }
+    if token_cumulative_n is not None:
+        sessions_data = compute_cumulative_tokens(token_cumulative_n)
+        profile_str = format_token_profile_cumulative(sessions_data, token_cumulative_n)
+    else:
+        total = token_profile.get('total', 0)
+        input_total = token_profile.get('input_total', 0)
+        if total == 0 and input_total == 0:
+            profile_str = ''
+        else:
+            profile = {
+                'total': total,
+                'turns': token_profile.get('turns', 0),
+                'thinking': token_profile.get('thinking', 0),
+                'tool_use': token_profile.get('tool_use', 0),
+                'text': token_profile.get('text', 0),
+                'tools': dict(sorted(token_profile_tools.items(), key=lambda x: x[1], reverse=True)),
+                'input_total': input_total,
+                'input_tokens': token_profile.get('input_tokens', 0),
+                'cache_creation': token_profile.get('cache_creation', 0),
+                'cache_read': token_profile.get('cache_read', 0),
+            }
+            profile_str = format_token_profile(profile)
 
-    return format_token_profile(profile)
+    if token_input_buffer:
+        prompt_line = f"{YELLOW}Last N sessions › {token_input_buffer}_{RESET}"
+    else:
+        prompt_line = f"{YELLOW}Last N sessions › {RESET}"
+
+    parts = [header_line, '']
+    if profile_str:
+        parts.append(profile_str)
+        parts.append('')
+    parts.append(prompt_line)
+    return '\n'.join(parts)
 
 # Runs hooks display loop (for dedicated hooks tmux pane)
 def run_hooks_loop() -> None:

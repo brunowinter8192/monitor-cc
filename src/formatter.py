@@ -291,3 +291,42 @@ def shorten_tool_name(name: str) -> str:
         if len(parts) >= 3:
             return parts[-1]
     return name
+
+# Format cumulative token profile across multiple sessions
+def format_token_profile_cumulative(sessions_data: list, n: int) -> str:
+    if not sessions_data:
+        return f"{YELLOW}No sessions found{RESET}"
+
+    grand_input = sum(s['input_total'] for s in sessions_data)
+    grand_output = sum(s['output_total'] for s in sessions_data)
+    grand_cache_creation = sum(s['cache_creation'] for s in sessions_data)
+    grand_cache_read = sum(s['cache_read'] for s in sessions_data)
+    grand_turns = sum(s['turns'] for s in sessions_data)
+    actual = len(sessions_data)
+
+    lines = []
+    lines.append(f"{WHITE}CUMULATIVE: {actual} sessions  ({grand_turns} turns){RESET}")
+    lines.append(f"{WHITE}{'─' * 40}{RESET}")
+
+    if grand_input > 0:
+        direct_input = grand_input - grand_cache_creation - grand_cache_read
+        lines.append(f"{WHITE}INPUT: {grand_input:,} tok{RESET}")
+        lines.append(format_token_bar('Direct', direct_input, grand_input, PASTEL_ORANGE))
+        lines.append(format_token_bar('Cache Create', grand_cache_creation, grand_input, GREEN))
+        lines.append(format_token_bar('Cache Read', grand_cache_read, grand_input, CYAN))
+        lines.append('')
+
+    if grand_output > 0:
+        lines.append(f"{WHITE}OUTPUT: {grand_output:,} tok{RESET}")
+        lines.append('')
+
+    lines.append(f"{WHITE}PER SESSION (newest first):{RESET}")
+    lines.append(f"{WHITE}{'─' * 40}{RESET}")
+    for s in sessions_data:
+        fname = s['file']
+        if len(fname) > 32:
+            fname = '...' + fname[-29:]
+        lines.append(f"{INDENT}{PASTEL_BLUE}{fname}{RESET}")
+        lines.append(f"{INDENT}{INDENT}in {s['input_total']:>10,}  out {s['output_total']:>8,}  {s['turns']} turns")
+
+    return '\n'.join(lines)
