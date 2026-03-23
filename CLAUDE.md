@@ -12,8 +12,8 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks`, `--project`, `--ui` |
-| tmux Launch | tmux_launcher.py | 5-Pane (main \| rules + subagent + hooks + warnings), history 50000 |
+| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks\|tokens`, `--project`, `--ui` |
+| tmux Launch | tmux_launcher.py | 6-Pane (main + tokens \| rules + subagent + hooks + warnings), history 50000 |
 | Signal Handling | startup.py | SIGINT/SIGTERM → graceful shutdown |
 
 ### Data Sources
@@ -21,7 +21,7 @@ See [sources/sources.md](sources/sources.md)
 | Component | Implementation | Config |
 |-----------|---------------|--------|
 | Session Discovery | session_finder.py | `~/.claude/projects/**/*.jsonl` + `*/subagents/agent-*.jsonl` |
-| JSONL Parsing | jsonl_parser.py | tool_use/tool_result pairs, user prompts, media, thinking, skills |
+| JSONL Parsing | jsonl_parser.py | tool_use/tool_result pairs, user prompts, media, thinking, skills, usage |
 | Unknown Type Detection | jsonl_parser.py | KNOWN_MESSAGE_TYPES + KNOWN_IGNORED_TYPES in constants.py |
 | Hook Parsing | hook_parser.py | `src/logs/hook_outputs.jsonl` → UserPrompt, PreTool, InstructionsLoaded |
 
@@ -29,7 +29,8 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| Polling | monitor.py `run_streaming_loop` / `run_rules_loop` / `run_hooks_loop` | 0.5s interval |
+| Polling | monitor.py `run_streaming_loop` / `run_rules_loop` / `run_hooks_loop` / `run_tokens_loop` | 0.5s interval |
+| Token Profiling | monitor.py `accumulate_tokens` / `format_tokens_block` | Cumulative output-token breakdown by block type + tool name |
 | Hook Routing | monitor.py `process_hook_log` / `process_hook_log_for_display` | InstructionsLoaded → rules pane, hooks with output → hooks pane |
 | Agent Tracking | monitor.py | agent_to_task, agent_to_type, buffered calls |
 
@@ -43,6 +44,7 @@ See [sources/sources.md](sources/sources.md)
 | Rules Display | ui_mode.py `format_rules_block` | Pastel blue, [P]/[G] prefix, eigenes tmux Pane |
 | Hooks Display | monitor.py + formatter.py | Dedicated tmux pane, format_hook_event, scrolling stream |
 | Warnings Display | monitor.py + formatter.py | Dedicated tmux pane, format_unknown_type_warning |
+| Token Display | monitor.py + formatter.py | Dedicated tmux pane, format_token_profile, bar chart |
 
 ### Key Files
 
