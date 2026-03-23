@@ -101,7 +101,7 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens), `ui_mode` (bool).
 
-**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display with screen-clear refresh.
+**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read + output tokens by block type and tool name) with screen-clear refresh.
 
 **Usage:**
 ```python
@@ -177,7 +177,7 @@ entries, new_position = parse_new_hook_entries(file_path, last_position)
 
 ## formatter.py
 
-**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, token profiles, and pane headers as color-coded terminal strings.
+**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, token profiles (input + output sections with bar charts), and pane headers as color-coded terminal strings.
 
 **Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, is_error flag).
 

@@ -41,7 +41,7 @@ Jede Funktion iteriert vollständig über alle Messages. Keine gemeinsame Iterat
 `parse_new_tool_calls()` gibt zurück:
 `(tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data)`
 
-`extract_usage_data()` extrahiert pro assistant-Message: `output_tokens`, Content-Block-Type (thinking/tool_use/text), Tool-Name (bei tool_use), `requestId`. Rückgabe: `[{type, tool_name, output_tokens, request_id}]`.
+`extract_usage_data()` extrahiert pro assistant-Message: `output_tokens`, `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, Content-Block-Type (thinking/tool_use/text), Tool-Name (bei tool_use), `requestId`. Rückgabe: `[{type, tool_name, output_tokens, input_tokens, cache_creation_input_tokens, cache_read_input_tokens, request_id}]`. Filter: Skip wenn BEIDE output_tokens UND input_tokens == 0.
 
 Jedes neue JSONL-Datenformat erfordert:
 1. Neue `extract_*()`-Funktion
