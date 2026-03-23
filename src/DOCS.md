@@ -37,11 +37,11 @@ src/
 
 ## utils.py
 
-**Purpose:** Shared utilities for logging and timestamp formatting used across all modules.
+**Purpose:** Shared utilities for timestamp formatting used across all modules.
 
-**Input:** Logger instance, tag/color strings, ISO timestamp strings.
+**Input:** ISO timestamp strings.
 
-**Output:** Tagged colored log messages; HH:MM:SS formatted time strings; ANSI color constants.
+**Output:** HH:MM:SS formatted time strings.
 
 ---
 
@@ -54,7 +54,7 @@ src/
 **Output:** Constants imported by other modules:
 - 256-color ANSI palette (RESET, RED, GREEN, YELLOW, BLUE, CYAN, MAGENTA, WHITE, PURPLE, ORANGE, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE)
 - Config values (POLL_INTERVAL, LONG_OUTPUT_THRESHOLD, TMUX_HISTORY_LIMIT)
-- Tool names, mode strings, hook event names
+- Tool names, mode strings (MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS), hook event names
 - Excluded tool set, regex patterns
 - JSONL message type sets (KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES)
 - Pane header labels (PANE_HEADERS)
@@ -85,7 +85,7 @@ print_startup_message(args.project, args.mode)
 
 **Input:** `project_filter` (optional path), `ui` (bool for collapsible UI mode), `script_path` (absolute path to workflow.py).
 
-**Output:** Creates and attaches to a tmux session with 6-pane layout (main + tokens | rules + subagents + hooks + warnings).
+**Output:** Creates and attaches to a tmux session with 7-pane layout (main + tokens | rules + subagents + hooks + warnings + workers).
 
 **Usage:**
 ```python
@@ -99,9 +99,9 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls with color-coded output.
 
-**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens), `ui_mode` (bool).
+**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens/workers), `ui_mode` (bool).
 
-**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read + output tokens by block type and tool name) with screen-clear refresh.
+**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read + output tokens by block type and tool name, session browser for cumulative N sessions) with screen-clear refresh; workers display (real-time worker status, purpose, spawn time).
 
 **Usage:**
 ```python
@@ -177,7 +177,7 @@ entries, new_position = parse_new_hook_entries(file_path, last_position)
 
 ## formatter.py
 
-**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, token profiles (input + output sections with bar charts), and pane headers as color-coded terminal strings.
+**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, token profiles (input + output sections with bar charts), cumulative token profiles, worker status blocks, and pane headers as color-coded terminal strings.
 
 **Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, is_error flag).
 

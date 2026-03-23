@@ -19,5 +19,8 @@ External references used as evidence for pipeline decisions.
 | termshot | github.com/homeport/termshot | ANSI text → PNG rendering (terminal screenshots) | pipe04 |
 | claudeoo | github.com/monk1337/claudeoo | SSE stream interceptor for accurate token counts (solves #27361 undercount) | pipe02, pipe03 |
 | better-ccusage | github.com/cobra91/better-ccusage | Post-hoc JSONL parser with session block aggregation, multi-provider | pipe02, pipe03 |
+| ccusage | github.com/ryoppippi/ccusage | 5h billing block ceiling, session boundary detection, hash-based dedup, dual token naming convention | pipe02, pipe03 |
+| hooks-observability | github.com/disler/claude-code-hooks-multi-agent-observability | 12 hook types, universal dispatcher pattern, HTTP+WebSocket real-time, SQLite storage | pipe03, pipe04 |
+| claude-hud | github.com/jarrodwatts/claude-hud | CC statusline plugin, native context_window/rate_limits stdin data, transcript caching | pipe02, pipe03, pipe04 |
 | Claude-Code-Usage-Monitor | github.com/Maciek-roboblog/Claude-Code-Usage-Monitor | Real-time TUI token monitor (7k stars), Python, P90 session limits | pipe02, pipe03 |
 | tokscale | github.com/junhoyeo/tokscale | CLI token tracking with contributions graph, multi-agent support | pipe02, pipe03 |
