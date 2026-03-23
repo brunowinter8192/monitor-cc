@@ -12,8 +12,8 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks\|tokens`, `--project`, `--ui` |
-| tmux Launch | tmux_launcher.py | 6-Pane (main + tokens \| rules + subagent + hooks + warnings), history 50000 |
+| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks\|tokens\|workers`, `--project`, `--ui` |
+| tmux Launch | tmux_launcher.py | 7-Pane (main + tokens \| rules + subagent + hooks + warnings + workers), history 50000 |
 | Signal Handling | startup.py | SIGINT/SIGTERM → graceful shutdown |
 
 ### Data Sources
@@ -29,7 +29,7 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| Polling | monitor.py `run_streaming_loop` / `run_rules_loop` / `run_hooks_loop` / `run_tokens_loop` | 0.5s interval |
+| Polling | monitor.py `run_streaming_loop` / `run_rules_loop` / `run_hooks_loop` / `run_tokens_loop` / `run_workers_loop` | 0.5s interval |
 | Token Profiling | monitor.py `accumulate_tokens` / `format_tokens_block` | Input tokens (direct, cache create, cache read) + output tokens by block type + tool name |
 | Hook Routing | monitor.py `process_hook_log` / `process_hook_log_for_display` | InstructionsLoaded → rules pane, hooks with output → hooks pane |
 | Agent Tracking | monitor.py | agent_to_task, agent_to_type, buffered calls |
@@ -44,7 +44,8 @@ See [sources/sources.md](sources/sources.md)
 | Rules Display | ui_mode.py `format_rules_block` | Pastel blue, [P]/[G] prefix, eigenes tmux Pane |
 | Hooks Display | monitor.py + formatter.py | Dedicated tmux pane, format_hook_event, scrolling stream |
 | Warnings Display | monitor.py + formatter.py | Dedicated tmux pane, format_unknown_type_warning |
-| Token Display | monitor.py + formatter.py | Dedicated tmux pane, format_token_profile, bar chart |
+| Token Display | monitor.py + formatter.py | Dedicated tmux pane, format_token_profile, bar chart, session browser (cumulative N sessions) |
+| Workers Display | monitor.py + formatter.py | Dedicated tmux pane, format_workers_block, real-time worker status |
 
 ### Key Files
 
@@ -52,7 +53,7 @@ See [sources/sources.md](sources/sources.md)
 |------|-----------|
 | `workflow.py` | Entry point, mode routing |
 | `src/startup.py` | CLI args, signal handlers |
-| `src/tmux_launcher.py` | tmux session, 5-pane layout |
+| `src/tmux_launcher.py` | tmux session, 7-pane layout |
 | `src/monitor.py` | Core polling orchestrator |
 | `src/session_finder.py` | Session discovery |
 | `src/jsonl_parser.py` | JSONL parsing, tool call extraction |
@@ -97,5 +98,5 @@ Monitor_CC/
 │   └── display/                    → [DOCS.md](dev/display/DOCS.md)
 │       ├── test_tmux_layout.sh
 │       ├── scan_jsonl_rules.py
-│       └── screenshot_panes.py     → tmux pane screenshot tool (5-pane → PNG)
+│       └── screenshot_panes.py     → tmux pane screenshot tool (7-pane → PNG)
 ```
