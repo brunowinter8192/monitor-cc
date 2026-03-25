@@ -39,23 +39,24 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     original_history_limit = get_global_history_limit()
     subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
 
-    # 6-Pane Layout:
-    # Pane 0 = top-left (main), Pane 1 = top-right (subagent), then:
-    # Split Pane 0 vertically → Pane 0 (main top-left), Pane 1 (tokens bottom-left), Pane 2 (subagent top-right)
-    # Split right side for rules, warnings, hooks
+    # 4-Window Layout:
+    # Window 0 "main":    Main (left, 70%) + Tokens (right, 30%)
+    # Window 1 "rules":   Rules (left, 50%) + Hooks (right, 50%)
+    # Window 2 "workers": Workers (fullscreen)
+    # Window 3 "debug":   Warnings (left, 50%) + Subagents (right, 50%)
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, main_cmd])
+    subprocess.run(["tmux", "rename-window", "-t", f"{session_name}:0", "main"])
+    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:0.0", "-l", "30%", tokens_cmd])
 
-    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:0.0", "-l", "50%", subagent_cmd])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:1", "-n", "rules", rules_cmd])
+    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:1.0", "-l", "50%", hooks_cmd])
 
-    subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.0", "-l", "30%", tokens_cmd])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:2", "-n", "workers", workers_cmd])
 
-    subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.2", "-b", "-l", "25%", rules_cmd])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:3", "-n", "debug", warnings_cmd])
+    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:3.0", "-l", "50%", subagent_cmd])
 
-    subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.3", "-l", "25%", warnings_cmd])
-
-    subprocess.run(["tmux", "split-window", "-h", "-b", "-t", f"{session_name}:0.4", "-l", "50%", hooks_cmd])
-
-    subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.5", "-l", "50%", workers_cmd])
+    subprocess.run(["tmux", "select-window", "-t", f"{session_name}:0"])
 
     restore_global_history_limit(original_history_limit)
     configure_tmux_session(session_name)
@@ -111,24 +112,25 @@ def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-left", "#{?pane_in_mode,#[fg=yellow bold] COPY #[default],#[fg=green] SCROLL #[default]}"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-right", ""])
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-left-length", "20"])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "window-status-format", ""])
-    subprocess.run(["tmux", "set-option", "-t", session_name, "window-status-current-format", ""])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "window-status-format", "#[fg=colour240]#I:#W"])
+    subprocess.run(["tmux", "set-option", "-t", session_name, "window-status-current-format", "#[fg=green,bold]#I:#W"])
     subprocess.run(["tmux", "bind-key", "-n", "C-q", "if-shell", "-F", "#{pane_in_mode}", "send-keys -X cancel", "copy-mode"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe", "pbcopy"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe", "pbcopy"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "WheelUpPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode; send-keys -X -N 5 scroll-up"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "WheelDownPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode; send-keys -X -N 5 scroll-down"])
-    subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-border-style", "fg=colour240"])
-    subprocess.run(["tmux", "set-window-option", "-t", session_name, "pane-active-border-style", "fg=colour245"])
-    subprocess.run(["tmux", "set-window-option", "-t", session_name, "wrap-search", "on"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-m", "run-shell", "tmux capture-pane -t 0 -pS - | pbcopy && tmux display 'Main pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-t", "run-shell", "tmux capture-pane -t 1 -pS - | pbcopy && tmux display 'Tokens pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-r", "run-shell", "tmux capture-pane -t 2 -pS - | pbcopy && tmux display 'Rules pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-s", "run-shell", "tmux capture-pane -t 3 -pS - | pbcopy && tmux display 'Subagent pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-h", "run-shell", "tmux capture-pane -t 4 -pS - | pbcopy && tmux display 'Hooks pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-w", "run-shell", "tmux capture-pane -t 5 -pS - | pbcopy && tmux display 'Warnings pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-k", "run-shell", "tmux capture-pane -t 6 -pS - | pbcopy && tmux display 'Workers pane copied'"])
+    for win in range(4):
+        subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-border-style", "fg=colour240"])
+        subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-active-border-style", "fg=colour245"])
+        subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "wrap-search", "on"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-m", "run-shell", f"tmux capture-pane -t {session_name}:0.0 -pS - | pbcopy && tmux display 'Main pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-t", "run-shell", f"tmux capture-pane -t {session_name}:0.1 -pS - | pbcopy && tmux display 'Tokens pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-r", "run-shell", f"tmux capture-pane -t {session_name}:1.0 -pS - | pbcopy && tmux display 'Rules pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-h", "run-shell", f"tmux capture-pane -t {session_name}:1.1 -pS - | pbcopy && tmux display 'Hooks pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-k", "run-shell", f"tmux capture-pane -t {session_name}:2.0 -pS - | pbcopy && tmux display 'Workers pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-w", "run-shell", f"tmux capture-pane -t {session_name}:3.0 -pS - | pbcopy && tmux display 'Warnings pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-s", "run-shell", f"tmux capture-pane -t {session_name}:3.1 -pS - | pbcopy && tmux display 'Subagent pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "C-f", "copy-mode", "\\;", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "C-f", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", "C-f", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
@@ -140,9 +142,9 @@ def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "bind-key", "-T", "root", "C-r",
         "respawn-pane", "-k", "-t", f"{session_name}:0.0", "\\;",
         "respawn-pane", "-k", "-t", f"{session_name}:0.1", "\\;",
-        "respawn-pane", "-k", "-t", f"{session_name}:0.2", "\\;",
-        "respawn-pane", "-k", "-t", f"{session_name}:0.3", "\\;",
-        "respawn-pane", "-k", "-t", f"{session_name}:0.4", "\\;",
-        "respawn-pane", "-k", "-t", f"{session_name}:0.5", "\\;",
-        "respawn-pane", "-k", "-t", f"{session_name}:0.6", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:1.0", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:1.1", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:2.0", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:3.0", "\\;",
+        "respawn-pane", "-k", "-t", f"{session_name}:3.1", "\\;",
         "display", "Monitor restarted"])
