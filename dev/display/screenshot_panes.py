@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture all 4 tmux panes of a running Monitor_CC session and combine into a single PNG."""
+"""Capture all 7 tmux panes of a running Monitor_CC session (4 windows) and combine into a single PNG."""
 
 import argparse
 import subprocess
@@ -9,19 +9,36 @@ from PIL import Image
 
 # --- INFRASTRUCTURE ---
 
-PANE_COUNT = 6
+# (window.pane, label) for each of the 7 panes across 4 windows:
+#   Window 0 "main":    0.0=main,     0.1=tokens
+#   Window 1 "rules":   1.0=rules,    1.1=hooks
+#   Window 2 "workers": 2.0=workers
+#   Window 3 "debug":   3.0=warnings, 3.1=subagents
+PANE_TARGETS = [
+    ("0.0", "main"),
+    ("0.1", "tokens"),
+    ("1.0", "rules"),
+    ("1.1", "hooks"),
+    ("2.0", "workers"),
+    ("3.0", "warnings"),
+    ("3.1", "subagents"),
+]
+
 OUTPUT_PATH = Path("/tmp/monitor_cc_screenshot.png")
 PANE_TXT_TEMPLATE = "/tmp/monitor_pane_{n}.txt"
 PANE_PNG_TEMPLATE = "/tmp/monitor_pane_{n}.png"
 
 # Layout ratios: (x_start, y_start, width, height) as fractions of combined image
 PANE_LAYOUT = [
-    (0.0,  0.0,  0.5, 0.7),    # Pane 0: top-left (main)
-    (0.0,  0.7,  0.5, 0.3),    # Pane 1: bottom-left (tokens)
-    (0.5,  0.0,  0.5, 0.25),   # Pane 2: top-right (rules)
-    (0.5,  0.25, 0.5, 0.5),    # Pane 3: mid-right (subagents)
-    (0.5,  0.75, 0.25, 0.25),  # Pane 4: bottom-right-left (hooks)
-    (0.75, 0.75, 0.25, 0.25),  # Pane 5: bottom-right-right (warnings)
+    # Row 1: Window 0 (main+tokens) | Window 1 (rules+hooks)
+    (0.0,  0.0,  0.25, 0.5),   # 0: main
+    (0.25, 0.0,  0.25, 0.5),   # 1: tokens
+    (0.5,  0.0,  0.25, 0.5),   # 2: rules
+    (0.75, 0.0,  0.25, 0.5),   # 3: hooks
+    # Row 2: Window 2 (workers) | Window 3 (warnings+subagents)
+    (0.0,  0.5,  0.333, 0.5),  # 4: workers
+    (0.333, 0.5, 0.333, 0.5),  # 5: warnings
+    (0.666, 0.5, 0.334, 0.5),  # 6: subagents
 ]
 
 COMBINED_WIDTH = 3200
@@ -48,22 +65,22 @@ def detect_session() -> str:
     raise RuntimeError("No monitor_cc_* session found. Is the monitor running?")
 
 
-def get_pane_width(session: str, pane: int) -> str:
-    """Return pane width as string for termshot --columns."""
-    return run(["tmux", "display", "-p", "-t", f"{session}:0.{pane}", "#{pane_width}"])
+def get_pane_width(session: str, pane: str) -> str:
+    """Return pane width as string for termshot --columns. pane is 'window.pane' e.g. '0.0'."""
+    return run(["tmux", "display", "-p", "-t", f"{session}:{pane}", "#{pane_width}"])
 
 
-def capture_pane_text(session: str, pane: int) -> str:
-    """Capture pane content including ANSI escapes to temp file, return path."""
-    txt_path = PANE_TXT_TEMPLATE.format(n=pane)
-    content = run(["tmux", "capture-pane", "-p", "-e", "-t", f"{session}:0.{pane}"])
+def capture_pane_text(session: str, pane: str, idx: int) -> str:
+    """Capture pane content including ANSI escapes to temp file, return path. pane is 'window.pane' e.g. '0.0'."""
+    txt_path = PANE_TXT_TEMPLATE.format(n=idx)
+    content = run(["tmux", "capture-pane", "-p", "-e", "-t", f"{session}:{pane}"])
     Path(txt_path).write_text(content, encoding="utf-8")
     return txt_path
 
 
-def render_pane_png(txt_path: str, pane: int, columns: str) -> str:
+def render_pane_png(txt_path: str, idx: int, columns: str) -> str:
     """Render ANSI text file to PNG via termshot, return output path."""
-    png_path = PANE_PNG_TEMPLATE.format(n=pane)
+    png_path = PANE_PNG_TEMPLATE.format(n=idx)
     run([
         "termshot",
         "--raw-read", txt_path,
@@ -74,7 +91,7 @@ def render_pane_png(txt_path: str, pane: int, columns: str) -> str:
 
 
 def compose_layout(png_paths: list[str]) -> Image.Image:
-    """Load 4 pane PNGs and compose into combined layout image."""
+    """Load 7 pane PNGs and compose into combined layout image."""
     combined = Image.new("RGB", (COMBINED_WIDTH, COMBINED_HEIGHT), color=(30, 30, 30))
     for idx, png_path in enumerate(png_paths):
         pane_img = Image.open(png_path)
@@ -91,17 +108,17 @@ def compose_layout(png_paths: list[str]) -> Image.Image:
 # --- ORCHESTRATOR ---
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Screenshot all 4 Monitor_CC tmux panes.")
+    parser = argparse.ArgumentParser(description="Screenshot all 7 Monitor_CC tmux panes.")
     parser.add_argument("--session", default=None, help="tmux session name (default: auto-detect monitor_cc_*)")
     args = parser.parse_args()
 
     session = args.session if args.session else detect_session()
 
     png_paths = []
-    for pane in range(PANE_COUNT):
-        txt_path = capture_pane_text(session, pane)
+    for idx, (pane, _label) in enumerate(PANE_TARGETS):
+        txt_path = capture_pane_text(session, pane, idx)
         columns = get_pane_width(session, pane)
-        png_path = render_pane_png(txt_path, pane, columns)
+        png_path = render_pane_png(txt_path, idx, columns)
         png_paths.append(png_path)
 
     combined = compose_layout(png_paths)
