@@ -73,7 +73,13 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 
 ### Restart Hotkey (Kategorie: Display / UX)
 
-`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py:142-150): `respawn-pane -k` für alle 7 Panes across 4 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 3.0, 3.1). Restarts all monitor processes with their original commands.
+`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py:142-150): `respawn-pane -k` für alle 7 Panes across 4 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 3.0, 3.1) via `\;`-Chain. Restarts all monitor processes with their original commands.
+
+**BUG (open, Session 5):** User reports "Monitor restarted" message appears but panes don't visibly restart. Investigation findings:
+- PIDs change after `respawn-pane -k` from external bash → respawn technically works
+- `display-message` at end of `\;`-Chain fires → Chain executes
+- User sees no visible change → UX problem (screen-clearing panes re-render same content immediately, streaming panes start from EOF with empty output)
+- Root cause NOT fully understood. Needs: tmux source analysis (cmd-respawn-pane.c), Web/GitHub research on "tmux respawn-pane keybinding context"
 
 ### Screen Clear Escape Sequence (Kategorie: Display / Robustheit)
 
