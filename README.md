@@ -60,5 +60,5 @@ python3 workflow.py --project /path/to/project --ui
 
 **Flags:**
 - `--project PATH` - Filter sessions by project path
-- `--mode {all,main,subagent,rules,warnings,hooks,tokens,workers}` - Monitor mode (default: all = tmux 7-pane)
+- `--mode {all,main,subagent,rules,warnings,hooks,tokens,workers}` - Monitor mode (default: all = tmux 4-window)
 - `--ui` - Enable collapsible subagent UI (keyboard 1-9 to toggle)

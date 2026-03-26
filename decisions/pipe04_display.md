@@ -6,15 +6,15 @@
 - `ui_mode.py`: `format_rules_block()` rendert `ACTIVE RULES (XP / YG)` mit `[P]`/`[G]` Prefix pro Regel, pastel blue
 - `subagent_ui.py`: collapsible list, Digits 1-9 toggle via `click_handler.py`
 - `ui_mode.py`: `run_ui_mode()` Screen-clear refresh loop mit raw stdin
-- Workers-Pane (Pane 6, Session 3): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose
+- Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose
 
 **BUG (fixed):** `active_rules` was populated by `process_hook_log()` but never rendered in streaming mode.
-Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Pane 1, rechts-oben).
+Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Window 1, Pane 1.0).
 **BUG (fixed):** Project `.claude/rules/*.md` did not appear — root cause was YAML array syntax in `paths:` frontmatter (Claude Code Bug #19377/#33581). CSV parser expects string, receives JS Array from `yaml.parse()`, producing broken globs. Fix: CSV string format (`paths: src/**, workflow.py`). All project rules now load correctly via InstructionsLoaded hook.
 **BUG (fixed):** Rules-Pane showed historical rules from previous sessions because `hook_log_position` was set to 0 (read from beginning of hook log). Fix: removed `hook_log_position = 0` override, now starts from EOF like all other modes.
 
 Rules-Pane Layout:
-- Pane 1 (rechts-oben, 25% Höhe): `python3 workflow.py --mode rules` → `run_rules_loop()`
+- Window 1 "rules", Pane 1.0 (links 50%): `python3 workflow.py --mode rules` → `run_rules_loop()`
 - Rendert `format_rules_block()` bei jeder Änderung von `active_rules`
 - M-r Keybinding: Rules-Pane Content → Clipboard via `pbcopy`
 
@@ -55,7 +55,7 @@ Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
 ### Token-Profiling Pane (Kategorie: Display / Token Visibility)
 
-Eigenes tmux Pane (Pane 1, unten-links, 30% Höhe des linken Bereichs) via `--mode tokens`:
+Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 - `run_tokens_loop()` in monitor.py: pollt `monitor_sessions()`, akkumuliert via `accumulate_tokens()`, rendert `format_tokens_block()`
 - `format_token_profile()` in formatter.py: hierarchischer Breakdown (Thinking/Tool Calls/Text) mit Unicode Bar-Chart und Prozentwerten
 - `shorten_tool_name()` in formatter.py: MCP Tool-Namen kürzen (`mcp__plugin_xxx__tool` → `tool`)
@@ -73,7 +73,7 @@ Eigenes tmux Pane (Pane 1, unten-links, 30% Höhe des linken Bereichs) via `--mo
 
 ### Restart Hotkey (Kategorie: Display / UX)
 
-`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py:140-148): `respawn-pane -k` für alle 7 Panes (0.0 bis 0.6). Restarts all monitor processes with their original commands.
+`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py:142-150): `respawn-pane -k` für alle 7 Panes across 4 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 3.0, 3.1). Restarts all monitor processes with their original commands.
 
 ### Screen Clear Escape Sequence (Kategorie: Display / Robustheit)
 
@@ -85,7 +85,7 @@ Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H
 
 ### Hooks-Pane (Kategorie: Hook-Monitoring)
 
-Eigenes tmux Pane (Pane 3, rechts-unten-links, 25% Breite, 25% Höhe) via `--mode hooks`:
+Eigenes tmux Pane (Window 1 "rules", Pane 1.1, rechts 50%) via `--mode hooks`:
 - `run_hooks_loop()` in monitor.py: pollt `process_hook_log_for_display()`
 - `format_hook_event()` in formatter.py: `[timestamp] hook_event | hook_script` + output
 - Scrolling stream (kein Screen-clear) — jeder Hook mit Output wird sofort angezeigt
@@ -95,15 +95,15 @@ Eigenes tmux Pane (Pane 3, rechts-unten-links, 25% Breite, 25% Höhe) via `--mod
 
 ### Warnings-Pane (Kategorie: Format-Stabilität)
 
-Eigenes tmux Pane (Pane 5, rechts-unten-oben, 25% Breite) via `--mode warnings`:
+Eigenes tmux Pane (Window 3 "debug", Pane 3.0, links 50%) via `--mode warnings`:
 - `run_warnings_loop()` in monitor.py: pollt `monitor_sessions()`, rendert `format_warnings_block()`
 - `format_unknown_type_warning()` in formatter.py (formatter.py:229-230): `[!] Unknown JSONL type: <type> (seen Nx)`
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
-- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py:130, Pane 5)
+- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py:132, Pane 3.0)
 
 ### Workers-Pane (Kategorie: Worker-Monitoring, Session 3)
 
-Eigenes tmux Pane (Pane 6, rechts-unten-unten) via `--mode workers`:
+Eigenes tmux Pane (Window 2 "workers", Pane 2.0, fullscreen) via `--mode workers`:
 - `run_workers_loop()` in monitor.py (monitor.py:629-641): pollt `list_workers()`, rendert `format_workers_block()` bei Änderungen
 - `list_workers(project_path)` (monitor.py:602-626): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
 - `detect_worker_status(session)` (monitor.py:577-599): prüft `#{pane_dead}` für exited-Status; analysiert letzten 5 non-empty Zeilen auf idle-Indikatoren (`for Xm Xs`, `accept edits`, `^>`)
@@ -112,7 +112,7 @@ Eigenes tmux Pane (Pane 6, rechts-unten-unten) via `--mode workers`:
 - `format_workers_block(workers)` (formatter.py:288-316): rendert Worker-Liste mit Name (cyan), Status (farbig), Spawn-Zeit, Purpose (truncated auf 60 Zeichen)
 - Status-Farben: working=GREEN, idle=YELLOW, exited=RED, unknown=WHITE
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
-- M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py:131, Pane 6)
+- M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py:131, Pane 2.0)
 
 ### print_session_status Fix (Kategorie: Display / Startup)
 
@@ -138,7 +138,7 @@ Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ### Screenshot-Tool (Kategorie: Dev Tooling / Feedback)
 
-`dev/display/screenshot_panes.py`: Captures all tmux panes (7 nach Session 3) via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
+`dev/display/screenshot_panes.py`: Captures all 7 tmux panes across 4 windows via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
 
 Dependencies: `termshot` (brew), `Pillow` (pip). Auto-detects running `monitor_cc_*` session.
 

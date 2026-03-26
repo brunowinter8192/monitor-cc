@@ -85,7 +85,7 @@ print_startup_message(args.project, args.mode)
 
 **Input:** `project_filter` (optional path), `ui` (bool for collapsible UI mode), `script_path` (absolute path to workflow.py).
 
-**Output:** Creates and attaches to a tmux session with 7-pane layout (main + tokens | rules + subagents + hooks + warnings + workers).
+**Output:** Creates and attaches to a tmux session with 4-window layout (main+tokens | rules+hooks | workers | warnings+subagents).
 
 **Usage:**
 ```python
