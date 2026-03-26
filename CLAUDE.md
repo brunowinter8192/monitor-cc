@@ -13,7 +13,7 @@ See [sources/sources.md](sources/sources.md)
 | Component | Implementation | Config |
 |-----------|---------------|--------|
 | CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks\|tokens\|workers`, `--project`, `--ui` |
-| tmux Launch | tmux_launcher.py | 7-Pane (main + tokens \| rules + subagent + hooks + warnings + workers), history 50000 |
+| tmux Launch | tmux_launcher.py | 4-Window (main+tokens \| rules+hooks \| workers \| warnings+subagents), history 50000 |
 | Signal Handling | startup.py | SIGINT/SIGTERM → graceful shutdown |
 
 ### Data Sources
@@ -53,7 +53,7 @@ See [sources/sources.md](sources/sources.md)
 |------|-----------|
 | `workflow.py` | Entry point, mode routing |
 | `src/startup.py` | CLI args, signal handlers |
-| `src/tmux_launcher.py` | tmux session, 7-pane layout |
+| `src/tmux_launcher.py` | tmux session, 4-window layout |
 | `src/monitor.py` | Core polling orchestrator |
 | `src/session_finder.py` | Session discovery |
 | `src/jsonl_parser.py` | JSONL parsing, tool call extraction |
@@ -98,5 +98,5 @@ Monitor_CC/
 │   └── display/                    → [DOCS.md](dev/display/DOCS.md)
 │       ├── test_tmux_layout.sh
 │       ├── scan_jsonl_rules.py
-│       └── screenshot_panes.py     → tmux pane screenshot tool (7-pane → PNG)
+│       └── screenshot_panes.py     → tmux pane screenshot tool (4-window, 7-pane → PNG)
 ```
