@@ -75,11 +75,10 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 
 `C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py:142-150): `respawn-pane -k` für alle 7 Panes across 4 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 3.0, 3.1) via `\;`-Chain. Restarts all monitor processes with their original commands.
 
-**BUG (open, Session 5):** User reports "Monitor restarted" message appears but panes don't visibly restart. Investigation findings:
-- PIDs change after `respawn-pane -k` from external bash → respawn technically works
-- `display-message` at end of `\;`-Chain fires → Chain executes
-- User sees no visible change → UX problem (screen-clearing panes re-render same content immediately, streaming panes start from EOF with empty output)
-- Root cause NOT fully understood. Needs: tmux source analysis (cmd-respawn-pane.c), Web/GitHub research on "tmux respawn-pane keybinding context"
+**BUG (fixed, Session 6):** User reports "Monitor restarted" message appears but panes don't visibly restart.
+- Root cause: `C-r` binding is global (`-T root`) with hardcoded session name via Python f-string (`f"{session_name}:0.0"`). When multiple monitor sessions exist simultaneously, the last `configure_tmux_session()` call wins → C-r respawns panes of the wrong session. User sees "Monitor restarted" display-message but no visual change because the respawn happens in a different (possibly hidden) session.
+- Diagnosis: `tmux list-keys | grep C-r` showed binding targeting `monitor_cc_79b52c8d` while active session was `monitor_cc_f93afc17`. After killing all stale sessions and restarting fresh, C-r worked correctly.
+- Fix: Replace `f"{session_name}"` with `"#{session_name}"` in bind-key call. tmux resolves `#{session_name}` at runtime to the session where the keypress occurs.
 
 ### Screen Clear Escape Sequence (Kategorie: Display / Robustheit)
 
