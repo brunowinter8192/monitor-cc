@@ -66,8 +66,7 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 - Keyboard-Input in `run_tokens_loop()` (monitor.py:479-517): Ziffern → `token_input_buffer`, Enter → setzt `token_cumulative_n`, 'q' → setzt auf None, Backspace → löscht letzten Char
 - `compute_cumulative_tokens(n)` (monitor.py:423-450): liest letzte N Main-Session-Files von Position 0 (kein Byte-Offset, full rescan), aggregiert Input/Output/Cache/Turns + per-tool output breakdown
 - Input `0` → returns to current session view (`token_cumulative_n = None`)
-- `format_token_profile_cumulative()` in formatter.py: shows granular output breakdown (per-tool + Text) same as current session view
-- `format_token_profile_cumulative()` (formatter.py:327-363): rendert kumulative Ansicht mit Per-Session-Breakdown (Input/Output/Turns pro File)
+- `format_token_profile_cumulative()` (formatter.py:324-371): rendert kumulative Ansicht mit granularem Output-Breakdown (per-tool + Text, same as current session view) + Per-Session-Breakdown (Input/Output/Turns pro File)
 - Live-Prompt-Anzeige: `"Last N sessions › {buffer}_"` am Ende des Pane-Outputs
 
 ### Restart Hotkey (Kategorie: Display / UX)
