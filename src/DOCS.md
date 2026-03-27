@@ -101,7 +101,7 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens/workers), `ui_mode` (bool).
 
-**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read + output tokens by block type and tool name, session browser for cumulative N sessions) with screen-clear refresh; workers display (real-time worker status, purpose, spawn time).
+**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read with color legend + output tokens per tool flat list, session browser for cumulative N sessions with granular output breakdown) with screen-clear refresh; workers display (real-time worker status via window_activity timestamp, purpose, spawn time). Headers rendered as sticky tmux pane-border labels (PASTEL_ORANGE).
 
 **Usage:**
 ```python

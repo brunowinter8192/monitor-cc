@@ -4,7 +4,7 @@ import re
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
 # From constants.py: Colors and config values
-from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD, PANE_HEADERS
+from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD
 
 INDENT = '  '
 SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
@@ -16,11 +16,6 @@ def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_us
     return combine_request_response(request, response)
 
 # FUNCTIONS
-
-# Format pane header bar
-def format_pane_header(mode: str) -> str:
-    label = PANE_HEADERS.get(mode, mode.upper())
-    return f"{PASTEL_ORANGE}━━━ {label} ━━━{RESET}"
 
 # Combine request and response sections with spacing
 def combine_request_response(request: str, response: str) -> str:

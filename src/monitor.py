@@ -539,7 +539,6 @@ def format_tokens_block() -> str:
             profile = {
                 'total': total,
                 'turns': token_profile.get('turns', 0),
-                'tool_use': token_profile.get('tool_use', 0),
                 'text': token_profile.get('text', 0),
                 'tools': dict(sorted(token_profile_tools.items(), key=lambda x: x[1], reverse=True)),
                 'input_total': input_total,
