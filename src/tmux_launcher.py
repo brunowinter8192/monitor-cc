@@ -120,10 +120,20 @@ def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", "MouseDragEnd1Pane", "send-keys", "-X", "copy-pipe", "pbcopy"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "WheelUpPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode; send-keys -X -N 5 scroll-up"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "WheelDownPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode; send-keys -X -N 5 scroll-down"])
+    pane_titles = {
+        '0.0': 'MAIN', '0.1': 'TOKENS',
+        '1.0': 'RULES', '1.1': 'HOOKS',
+        '2.0': 'WORKERS',
+        '3.0': 'WARNINGS', '3.1': 'SUBAGENTS',
+    }
+    for pane_ref, title in pane_titles.items():
+        subprocess.run(["tmux", "select-pane", "-t", f"{session_name}:{pane_ref}", "-T", title])
     for win in range(4):
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-border-style", "fg=colour240"])
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-active-border-style", "fg=colour245"])
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "wrap-search", "on"])
+        subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-border-status", "top"])
+        subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-border-format", "#[fg=colour216] ━━━ #{pane_title} ━━━"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-m", "run-shell", f"tmux capture-pane -t {session_name}:0.0 -pS - | pbcopy && tmux display 'Main pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-t", "run-shell", f"tmux capture-pane -t {session_name}:0.1 -pS - | pbcopy && tmux display 'Tokens pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-r", "run-shell", f"tmux capture-pane -t {session_name}:1.0 -pS - | pbcopy && tmux display 'Rules pane copied'"])

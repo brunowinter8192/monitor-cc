@@ -54,12 +54,9 @@ def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
     agent_count = len(subagent_metadata)
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
 
-    from .formatter import format_pane_header
-    header = format_pane_header('subagent')
     rules_block = format_rules_block(active_rules) if active_rules else ''
     subagent_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
-    content = f"{rules_block}\n{subagent_output}" if rules_block else subagent_output
-    formatted_output = f"{header}\n{content}"
+    formatted_output = f"{rules_block}\n{subagent_output}" if rules_block else subagent_output
 
     if formatted_output != last_rendered_output:
         print("\033[2J\033[3J\033[H", end='', flush=True)

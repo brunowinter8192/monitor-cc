@@ -20,7 +20,7 @@ def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_us
 # Format pane header bar
 def format_pane_header(mode: str) -> str:
     label = PANE_HEADERS.get(mode, mode.upper())
-    return f"{CYAN}━━━ {label} ━━━{RESET}"
+    return f"{PASTEL_ORANGE}━━━ {label} ━━━{RESET}"
 
 # Combine request and response sections with spacing
 def combine_request_response(request: str, response: str) -> str:
@@ -246,6 +246,7 @@ def format_token_profile(profile: dict) -> str:
 
         lines.append(f"{WHITE}SESSION INPUT: {input_total:,} tok{RESET}")
         lines.append(f"{WHITE}{'─' * 40}{RESET}")
+        lines.append(f"{INDENT}{PASTEL_ORANGE}█ Direct{RESET}  {GREEN}█ Cache Create{RESET}  {CYAN}█ Cache Read{RESET}")
         lines.append(format_token_bar('Direct', input_tokens, input_total, PASTEL_ORANGE))
         lines.append(format_token_bar('Cache Create', cache_creation, input_total, GREEN))
         lines.append(format_token_bar('Cache Read', cache_read, input_total, CYAN))
@@ -253,19 +254,15 @@ def format_token_profile(profile: dict) -> str:
 
     if total > 0:
         turns = profile.get('turns', 0)
-        thinking = profile.get('thinking', 0)
-        tool_use = profile.get('tool_use', 0)
         text = profile.get('text', 0)
         tools = profile.get('tools', {})
 
         lines.append(f"{WHITE}SESSION OUTPUT: {total:,} tok ({turns} turns){RESET}")
         lines.append(f"{WHITE}{'─' * 40}{RESET}")
-        lines.append(format_token_bar('Thinking', thinking, total, PASTEL_ORANGE))
-        lines.append(format_token_bar('Tool Calls', tool_use, total, GREEN))
 
         for tool_name, tok in tools.items():
             display_name = shorten_tool_name(tool_name)
-            lines.append(format_token_bar(display_name, tok, total, CYAN, sub=True))
+            lines.append(format_token_bar(display_name, tok, total, CYAN))
 
         lines.append(format_token_bar('Text', text, total, PASTEL_BLUE))
 
@@ -274,7 +271,7 @@ def format_token_profile(profile: dict) -> str:
 # Format a single bar line for token profile display
 def format_token_bar(label: str, tokens: int, total: int, color: str, sub: bool = False) -> str:
     pct = (tokens / total * 100) if total > 0 else 0
-    bar_width = 20
+    bar_width = 30
     filled = int(pct / 100 * bar_width)
     bar = '\u2588' * filled
     if filled < bar_width and pct > 0:
