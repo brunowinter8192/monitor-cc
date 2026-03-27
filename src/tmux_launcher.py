@@ -149,12 +149,14 @@ def configure_tmux_session(session_name: str) -> None:
     for digit in "123456789":
         subprocess.run(["tmux", "bind-key", "-T", "copy-mode", digit, "send-keys", "-X", "cancel", "\\;", "send-keys", digit])
         subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", digit, "send-keys", "-X", "cancel", "\\;", "send-keys", digit])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "C-r",
-        "respawn-pane", "-k", "-t", "#{session_name}:0.0", "\\;",
-        "respawn-pane", "-k", "-t", "#{session_name}:0.1", "\\;",
-        "respawn-pane", "-k", "-t", "#{session_name}:1.0", "\\;",
-        "respawn-pane", "-k", "-t", "#{session_name}:1.1", "\\;",
-        "respawn-pane", "-k", "-t", "#{session_name}:2.0", "\\;",
-        "respawn-pane", "-k", "-t", "#{session_name}:3.0", "\\;",
-        "respawn-pane", "-k", "-t", "#{session_name}:3.1", "\\;",
-        "display", "Monitor restarted"])
+    restart_cmd = (
+        "tmux respawn-pane -k -t '#{session_name}:0.0'; "
+        "tmux respawn-pane -k -t '#{session_name}:0.1'; "
+        "tmux respawn-pane -k -t '#{session_name}:1.0'; "
+        "tmux respawn-pane -k -t '#{session_name}:1.1'; "
+        "tmux respawn-pane -k -t '#{session_name}:2.0'; "
+        "tmux respawn-pane -k -t '#{session_name}:3.0'; "
+        "tmux respawn-pane -k -t '#{session_name}:3.1'; "
+        "tmux display-message -t '#{session_name}' 'Monitor restarted'"
+    )
+    subprocess.run(["tmux", "bind-key", "-T", "root", "C-r", "run-shell", restart_cmd])

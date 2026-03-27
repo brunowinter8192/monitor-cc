@@ -345,7 +345,20 @@ def format_token_profile_cumulative(sessions_data: list, n: int) -> str:
         lines.append('')
 
     if grand_output > 0:
+        grand_text = sum(s.get('text', 0) for s in sessions_data)
+        grand_tools: dict = {}
+        for s in sessions_data:
+            for tool_name, tok in s.get('tools', {}).items():
+                grand_tools[tool_name] = grand_tools.get(tool_name, 0) + tok
+
         lines.append(f"{WHITE}OUTPUT: {grand_output:,} tok{RESET}")
+        lines.append(f"{WHITE}{'─' * 40}{RESET}")
+
+        for tool_name, tok in sorted(grand_tools.items(), key=lambda x: x[1], reverse=True):
+            display_name = shorten_tool_name(tool_name)
+            lines.append(format_token_bar(display_name, tok, grand_output, CYAN))
+
+        lines.append(format_token_bar('Text', grand_text, grand_output, PASTEL_BLUE))
         lines.append('')
 
     lines.append(f"{WHITE}PER SESSION (newest first):{RESET}")

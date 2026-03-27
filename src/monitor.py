@@ -430,15 +430,24 @@ def compute_cumulative_tokens(n: int) -> List[dict]:
             'cache_creation': 0,
             'cache_read': 0,
             'turns': 0,
+            'tools': {},
+            'text': 0,
         }
         request_ids: Set[str] = set()
         for ud in usage_data:
             cache_c = ud.get('cache_creation_input_tokens', 0)
             cache_r = ud.get('cache_read_input_tokens', 0)
+            output_tok = ud.get('output_tokens', 0)
+            block_type = ud.get('type', 'text')
+            tool_name = ud.get('tool_name')
             stats['input_total'] += ud.get('input_tokens', 0) + cache_c + cache_r
-            stats['output_total'] += ud.get('output_tokens', 0)
+            stats['output_total'] += output_tok
             stats['cache_creation'] += cache_c
             stats['cache_read'] += cache_r
+            if block_type == 'tool_use' and tool_name:
+                stats['tools'][tool_name] = stats['tools'].get(tool_name, 0) + output_tok
+            elif block_type == 'text':
+                stats['text'] += output_tok
             rid = ud.get('request_id', '')
             if rid:
                 request_ids.add(rid)
@@ -488,7 +497,9 @@ def run_tokens_loop() -> None:
                     else:
                         try:
                             n = int(stripped)
-                            if n > 0:
+                            if n == 0:
+                                token_cumulative_n = None
+                            elif n > 0:
                                 token_cumulative_n = n
                         except ValueError:
                             pass
