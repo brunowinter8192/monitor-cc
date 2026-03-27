@@ -585,16 +585,14 @@ def detect_worker_status(session: str) -> str:
     if dead != "0":
         return "unknown"
 
-    pane_content = subprocess.run(
-        ["tmux", "capture-pane", "-p", "-t", f"{session}:^"],
+    now = int(time.time())
+    last_activity = subprocess.run(
+        ["tmux", "list-panes", "-t", session, "-F", "#{window_activity}"],
         capture_output=True, text=True
-    ).stdout
+    ).stdout.strip().split('\n')[0]
+    delta = now - int(last_activity or "0")
 
-    non_empty = [l for l in pane_content.split('\n') if l.strip()]
-    recent = '\n'.join(non_empty[-5:])
-
-    import re
-    if re.search(r'for [0-9]+[ms]|accept edits|^>', recent, re.MULTILINE):
+    if delta > 10:
         return "idle"
     return "working"
 
