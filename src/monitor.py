@@ -42,9 +42,6 @@ hook_log_position: int = 0
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
-token_profile: Dict[str, int] = {'thinking': 0, 'tool_use': 0, 'text': 0, 'total': 0, 'turns': 0, 'input_tokens': 0, 'cache_creation': 0, 'cache_read': 0, 'input_total': 0}
-token_profile_tools: Dict[str, int] = {}
-token_profile_request_ids: Set[str] = set()
 token_cumulative_n: Optional[int] = None
 token_input_buffer: str = ''
 
@@ -149,13 +146,10 @@ def process_session_file(filepath: Path) -> None:
     last_position = file_positions[filepath]
     cache = tool_use_caches[filepath]
 
-    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data = parse_new_tool_calls(filepath, last_position, cache)
+    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, _ = parse_new_tool_calls(filepath, last_position, cache)
 
     for ut in unknown_types:
         track_unknown_type(ut)
-
-    for ud in usage_data:
-        accumulate_tokens(ud)
 
     file_positions[filepath] = new_position
 
@@ -455,31 +449,6 @@ def compute_cumulative_tokens(n: int) -> List[dict]:
         sessions_data.append(stats)
     return sessions_data
 
-# Accumulate token usage from a single usage entry into session profile
-def accumulate_tokens(usage_entry: dict) -> None:
-    global token_profile, token_profile_tools, token_profile_request_ids
-
-    request_id = usage_entry.get('request_id', '')
-    output_tokens = usage_entry.get('output_tokens', 0)
-    block_type = usage_entry.get('type', 'text')
-    tool_name = usage_entry.get('tool_name')
-    input_tokens = usage_entry.get('input_tokens', 0)
-    cache_creation = usage_entry.get('cache_creation_input_tokens', 0)
-    cache_read = usage_entry.get('cache_read_input_tokens', 0)
-
-    token_profile[block_type] = token_profile.get(block_type, 0) + output_tokens
-    token_profile['total'] = token_profile.get('total', 0) + output_tokens
-    token_profile['input_tokens'] += input_tokens
-    token_profile['cache_creation'] += cache_creation
-    token_profile['cache_read'] += cache_read
-    token_profile['input_total'] += input_tokens + cache_creation + cache_read
-
-    if request_id and request_id not in token_profile_request_ids:
-        token_profile_request_ids.add(request_id)
-        token_profile['turns'] = len(token_profile_request_ids)
-
-    if block_type == 'tool_use' and tool_name:
-        token_profile_tools[tool_name] = token_profile_tools.get(tool_name, 0) + output_tokens
 
 # Runs token profiling display loop (for dedicated tokens tmux pane)
 def run_tokens_loop() -> None:
@@ -528,23 +497,23 @@ def format_tokens_block() -> str:
     header_line = f"{CYAN}Sessions: {session_count}{RESET}"
 
     if token_cumulative_n is not None:
-        sessions_data = compute_cumulative_tokens(token_cumulative_n)
+        sessions_data = compute_cumulative_tokens(token_cumulative_n + 1)
         profile_str = format_token_profile_cumulative(sessions_data, token_cumulative_n)
     else:
-        total = token_profile.get('total', 0)
-        input_total = token_profile.get('input_total', 0)
-        if total == 0 and input_total == 0:
+        sessions_data = compute_cumulative_tokens(1)
+        if not sessions_data:
             profile_str = ''
         else:
+            s = sessions_data[0]
             profile = {
-                'total': total,
-                'turns': token_profile.get('turns', 0),
-                'text': token_profile.get('text', 0),
-                'tools': dict(sorted(token_profile_tools.items(), key=lambda x: x[1], reverse=True)),
-                'input_total': input_total,
-                'input_tokens': token_profile.get('input_tokens', 0),
-                'cache_creation': token_profile.get('cache_creation', 0),
-                'cache_read': token_profile.get('cache_read', 0),
+                'total': s['output_total'],
+                'turns': s['turns'],
+                'text': s.get('text', 0),
+                'tools': s.get('tools', {}),
+                'input_total': s['input_total'],
+                'input_tokens': s['input_total'] - s['cache_creation'] - s['cache_read'],
+                'cache_creation': s['cache_creation'],
+                'cache_read': s['cache_read'],
             }
             profile_str = format_token_profile(profile)
 
