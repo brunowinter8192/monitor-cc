@@ -11,17 +11,17 @@ from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE,
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
-from .session_finder import find_active_sessions
+from .session_finder import find_active_sessions, encode_project_path
 # From jsonl_parser.py: Parse JSONL and extract tool calls
-from .jsonl_parser import parse_new_tool_calls
+from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines, get_message_content, is_tool_use
 # From formatter.py: Format tool calls for display
 from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_token_profile, format_token_profile_cumulative, format_workers_block
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management
 from .subagent_ui import subagent_states
-# From click_handler.py: Keyboard input for token pane
-from .click_handler import read_keypress, setup_keyboard_input, restore_terminal
+# From click_handler.py: Keyboard input for token and workers panes
+from .click_handler import read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal
 # From ui_mode.py: UI mode loop and subagent tracking
 from .ui_mode import run_ui_loop, track_subagent_metadata
 
@@ -44,6 +44,8 @@ warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
 token_cumulative_n: Optional[int] = None
 token_input_buffer: str = ''
+worker_expand_states: Dict[str, bool] = {}
+worker_line_map: Dict[int, str] = {}
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -596,18 +598,81 @@ def list_workers(project_path: str) -> List[dict]:
         })
     return workers
 
+# Find the most recent JSONL file for a worker's Claude Code session
+def find_worker_jsonl(session_name: str) -> Optional[Path]:
+    result = subprocess.run(
+        ["tmux", "display-message", "-t", f"{session_name}:^", "-p", "#{pane_current_path}"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    working_dir = result.stdout.strip()
+    encoded = encode_project_path(working_dir)
+    project_dir = Path.home() / '.claude' / 'projects' / encoded
+
+    if not project_dir.exists():
+        return None
+
+    jsonl_files = [f for f in project_dir.glob('*.jsonl') if not f.name.startswith('agent-')]
+    if not jsonl_files:
+        return None
+
+    return max(jsonl_files, key=lambda f: f.stat().st_mtime)
+
+# Extract all tool_use entries from a worker's JSONL file
+def extract_worker_tool_calls(jsonl_path: Path) -> List[dict]:
+    lines = read_new_lines(jsonl_path, 0)
+    messages, _ = parse_jsonl_lines(lines)
+    calls = []
+    call_number = 0
+    for message in messages:
+        content_blocks = get_message_content(message)
+        timestamp = message.get('timestamp', '')
+        for block in content_blocks:
+            if is_tool_use(block):
+                call_number += 1
+                calls.append({
+                    'tool_name': block.get('name', 'Unknown'),
+                    'input': block.get('input', {}),
+                    'timestamp': timestamp,
+                    'call_number': call_number,
+                })
+    return calls
+
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
+    global worker_expand_states, worker_line_map
     last_output = None
-    while True:
-        workers = list_workers(active_project_filter) if active_project_filter else []
-        output = format_workers_block(workers)
-        if output != last_output:
-            print("\033[2J\033[3J\033[H", end='', flush=True)
-            if output:
-                print(output)
-            last_output = output
-        time.sleep(POLL_INTERVAL)
+    setup_keyboard_input()
+    try:
+        while True:
+            workers = list_workers(active_project_filter) if active_project_filter else []
+
+            char = read_keypress()
+            if char is not None:
+                idx = parse_digit_key(char)
+                if idx is not None and 1 <= idx <= len(workers):
+                    name = workers[idx - 1]['name']
+                    worker_expand_states[name] = not worker_expand_states.get(name, False)
+
+            tool_calls_by_worker: Dict[str, List[dict]] = {}
+            for w in workers:
+                name = w.get('name', '')
+                if worker_expand_states.get(name, False):
+                    jsonl_path = find_worker_jsonl(w.get('session', ''))
+                    if jsonl_path:
+                        tool_calls_by_worker[name] = extract_worker_tool_calls(jsonl_path)
+
+            output = format_workers_block(workers, worker_expand_states, tool_calls_by_worker, worker_line_map)
+            if output != last_output:
+                print("\033[2J\033[3J\033[H", end='', flush=True)
+                if output:
+                    print(output)
+                last_output = output
+            time.sleep(POLL_INTERVAL)
+    finally:
+        restore_terminal()
 
 # Runs hooks display loop (for dedicated hooks tmux pane)
 def run_hooks_loop() -> None:
