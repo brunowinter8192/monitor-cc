@@ -5,6 +5,8 @@ import re
 from .utils import format_timestamp
 # From constants.py: Colors and config values
 from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD
+# From subagent_ui.py: Input preview for tool calls
+from .subagent_ui import get_input_preview
 
 INDENT = '  '
 SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
@@ -276,10 +278,15 @@ def format_token_bar(label: str, tokens: int, total: int, color: str, sub: bool 
         return f"{INDENT}{INDENT}{color}{label:<14}{RESET} {tokens:>12,}  {pct:4.0f}%  {color}{bar}{RESET}"
     return f"{INDENT}{color}{label:<16}{RESET} {tokens:>12,}  {pct:4.0f}%  {color}{bar}{RESET}"
 
-# Format workers pane: one entry per worker with name, status, spawned time, purpose
-def format_workers_block(workers: list) -> str:
+# Format workers pane with optional expand/collapse showing tool calls per worker
+def format_workers_block(workers: list, expand_states: dict = None, tool_calls_by_worker: dict = None, line_map: dict = None) -> str:
     if not workers:
         return f"{YELLOW}No active workers{RESET}"
+
+    if expand_states is None:
+        expand_states = {}
+    if tool_calls_by_worker is None:
+        tool_calls_by_worker = {}
 
     status_colors = {
         'working': GREEN,
@@ -289,19 +296,51 @@ def format_workers_block(workers: list) -> str:
     }
 
     lines = []
-    for w in workers:
+    current_line = 1
+
+    if line_map is not None:
+        line_map.clear()
+
+    for idx, w in enumerate(workers, 1):
         status = w.get('status', 'unknown')
         sc = status_colors.get(status, WHITE)
         name = w.get('name', '?')
         spawned = w.get('spawned', '')
         purpose = w.get('purpose', '')
+        is_expanded = expand_states.get(name, False)
+        toggle_symbol = "[-]" if is_expanded else "[+]"
+
+        if line_map is not None:
+            line_map[current_line] = name
 
         spawned_str = f"  {WHITE}{spawned}{RESET}" if spawned else ''
-        lines.append(f"{CYAN}{name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}")
+        lines.append(f"{toggle_symbol} {CYAN}[{idx}] {name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}")
+        current_line += 1
+
         if purpose:
-            truncated = purpose[:60] + ('...' if len(purpose) > 60 else '')
-            lines.append(f"{INDENT}{WHITE}{truncated}{RESET}")
+            if is_expanded:
+                lines.append(f"{INDENT}{WHITE}{purpose}{RESET}")
+            else:
+                truncated = purpose[:60] + ('...' if len(purpose) > 60 else '')
+                lines.append(f"{INDENT}{WHITE}{truncated}{RESET}")
+            current_line += 1
+
+        if is_expanded:
+            tool_calls = tool_calls_by_worker.get(name, [])
+            if not tool_calls:
+                lines.append(f"{INDENT}{YELLOW}(no tool calls yet){RESET}")
+                current_line += 1
+            else:
+                for call in tool_calls:
+                    tool_name = call.get('tool_name', 'Unknown')
+                    call_number = call.get('call_number', '?')
+                    timestamp = format_timestamp(call.get('timestamp', ''))
+                    input_preview = get_input_preview(call.get('input', {}))
+                    lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {tool_name}{RESET}: {input_preview}")
+                    current_line += 1
+
         lines.append('')
+        current_line += 1
 
     if lines and lines[-1] == '':
         lines.pop()
