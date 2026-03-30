@@ -6,9 +6,9 @@ from typing import Dict, List
 from .constants import RESET, WHITE, CYAN, PURPLE, PASTEL_BLUE, POLL_INTERVAL, PANE_HEADERS
 
 # From click_handler.py: Keyboard input handling
-from .click_handler import setup_keyboard_input, restore_terminal, read_keypress, parse_digit_key, get_agent_by_index
+from .click_handler import setup_keyboard_input, restore_terminal, read_keypress, parse_digit_key, get_agent_by_index, enable_mouse, disable_mouse, read_mouse_event
 # From subagent_ui.py: Render subagent list and manage state
-from .subagent_ui import render_subagent_list, get_agent_display_name, count_calls_for_agent, subagent_states, toggle_subagent_state
+from .subagent_ui import render_subagent_list, get_agent_display_name, count_calls_for_agent, subagent_states, toggle_subagent_state, line_to_agent_map
 
 ui_loop_iteration: int = 0
 last_rendered_output: str = ""
@@ -23,6 +23,7 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
         active_rules = {'project': set(), 'global': set()}
 
     setup_keyboard_input()
+    enable_mouse()
 
     try:
         while True:
@@ -33,19 +34,29 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
             sync_ui_to_screen(subagent_metadata, tool_calls_by_agent, active_rules)
             time.sleep(POLL_INTERVAL)
     finally:
+        disable_mouse()
         restore_terminal()
 
 # FUNCTIONS
 
-# Processes any pending keyboard input (digits 1-9 toggle subagents)
+# Processes any pending keyboard input (digits 1-9 and mouse clicks toggle subagents)
 def handle_pending_keypresses(subagent_metadata: Dict[str, dict]) -> None:
     char = read_keypress()
     if char:
-        index = parse_digit_key(char)
-        if index:
-            agent_id = get_agent_by_index(index, subagent_metadata)
-            if agent_id:
-                toggle_subagent_state(agent_id)
+        if char == '\033':
+            event = read_mouse_event(char)
+            if event is not None:
+                button, col, row = event
+                if button == 0:
+                    agent_id = line_to_agent_map.get(row)
+                    if agent_id:
+                        toggle_subagent_state(agent_id)
+        else:
+            index = parse_digit_key(char)
+            if index:
+                agent_id = get_agent_by_index(index, subagent_metadata)
+                if agent_id:
+                    toggle_subagent_state(agent_id)
 
 # Syncs UI output to terminal screen
 def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], active_rules: Dict[str, set] = None) -> None:
