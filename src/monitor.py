@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, HOOK_INSTRUCTIONS_LOADED
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, HOOK_INSTRUCTIONS_LOADED, EXPANDED_MAX_LINES
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -45,6 +45,7 @@ unknown_type_counts: Dict[str, int] = {}
 token_cumulative_n: Optional[int] = None
 token_input_buffer: str = ''
 worker_expand_states: Dict[str, bool] = {}
+worker_scroll_offsets: Dict[str, int] = {}
 worker_line_map: Dict[int, str] = {}
 hover_row: Optional[int] = None
 
@@ -643,7 +644,7 @@ def extract_worker_tool_calls(jsonl_path: Path) -> List[dict]:
 
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
-    global worker_expand_states, worker_line_map, hover_row
+    global worker_expand_states, worker_scroll_offsets, worker_line_map, hover_row
     last_output = None
     workers = []
     tool_calls_by_worker: Dict[str, List[dict]] = {}
@@ -664,7 +665,23 @@ def run_workers_loop() -> None:
                         if button == 0:
                             name = worker_line_map.get(row)
                             if name:
-                                worker_expand_states[name] = not worker_expand_states.get(name, False)
+                                is_now_expanded = not worker_expand_states.get(name, False)
+                                worker_expand_states[name] = is_now_expanded
+                                if is_now_expanded:
+                                    calls = tool_calls_by_worker.get(name, [])
+                                    worker_scroll_offsets[name] = max(0, len(calls) - EXPANDED_MAX_LINES)
+                                input_changed = True
+                        elif button == 64:
+                            name = worker_line_map.get(row)
+                            if name:
+                                worker_scroll_offsets[name] = max(0, worker_scroll_offsets.get(name, 0) - 1)
+                                input_changed = True
+                        elif button == 65:
+                            name = worker_line_map.get(row)
+                            if name:
+                                total = len(tool_calls_by_worker.get(name, []))
+                                max_off = max(0, total - EXPANDED_MAX_LINES)
+                                worker_scroll_offsets[name] = min(max_off, worker_scroll_offsets.get(name, 0) + 1)
                                 input_changed = True
                         elif button >= 32:
                             hover_row = row
@@ -673,7 +690,11 @@ def run_workers_loop() -> None:
                     idx = parse_digit_key(char)
                     if idx is not None and 1 <= idx <= len(workers):
                         name = workers[idx - 1]['name']
-                        worker_expand_states[name] = not worker_expand_states.get(name, False)
+                        is_now_expanded = not worker_expand_states.get(name, False)
+                        worker_expand_states[name] = is_now_expanded
+                        if is_now_expanded:
+                            calls = tool_calls_by_worker.get(name, [])
+                            worker_scroll_offsets[name] = max(0, len(calls) - EXPANDED_MAX_LINES)
                         input_changed = True
 
             now = time.time()
@@ -696,7 +717,7 @@ def run_workers_loop() -> None:
                         if jsonl_path:
                             tool_calls_by_worker[name] = extract_worker_tool_calls(jsonl_path)
 
-            output = format_workers_block(workers, worker_expand_states, tool_calls_by_worker, worker_line_map, hover_row)
+            output = format_workers_block(workers, worker_expand_states, tool_calls_by_worker, worker_line_map, hover_row, worker_scroll_offsets)
             if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:

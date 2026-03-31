@@ -5,9 +5,9 @@ from typing import Optional
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
 # From constants.py: Colors and config values
-from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG
-# From subagent_ui.py: Input preview for tool calls
-from .subagent_ui import get_input_preview
+from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG, EXPANDED_MAX_LINES
+# From subagent_ui.py: Input preview and char count for tool calls
+from .subagent_ui import get_input_preview, format_char_count
 
 INDENT = '  '
 SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
@@ -279,8 +279,8 @@ def format_token_bar(label: str, tokens: int, total: int, color: str, sub: bool 
         return f"{INDENT}{INDENT}{color}{label:<14}{RESET} {tokens:>12,}  {pct:4.0f}%  {color}{bar}{RESET}"
     return f"{INDENT}{color}{label:<16}{RESET} {tokens:>12,}  {pct:4.0f}%  {color}{bar}{RESET}"
 
-# Format workers pane with optional expand/collapse showing tool calls per worker
-def format_workers_block(workers: list, expand_states: dict = None, tool_calls_by_worker: dict = None, line_map: dict = None, hover_row: Optional[int] = None) -> str:
+# Format workers pane with optional expand/collapse showing tool calls per worker with viewport slicing
+def format_workers_block(workers: list, expand_states: dict = None, tool_calls_by_worker: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None, max_lines: int = EXPANDED_MAX_LINES) -> str:
     if not workers:
         return f"{YELLOW}No active workers{RESET}"
 
@@ -323,25 +323,68 @@ def format_workers_block(workers: list, expand_states: dict = None, tool_calls_b
 
         if purpose:
             if is_expanded:
-                lines.append(f"{INDENT}{WHITE}{purpose}{RESET}")
+                purpose_line = f"{INDENT}{WHITE}{purpose}{RESET}"
+                if line_map is not None:
+                    line_map[current_line] = name
             else:
                 truncated = purpose[:60] + ('...' if len(purpose) > 60 else '')
-                lines.append(f"{INDENT}{WHITE}{truncated}{RESET}")
+                purpose_line = f"{INDENT}{WHITE}{truncated}{RESET}"
+            lines.append(purpose_line)
             current_line += 1
 
         if is_expanded:
             tool_calls = tool_calls_by_worker.get(name, [])
             if not tool_calls:
+                if line_map is not None:
+                    line_map[current_line] = name
                 lines.append(f"{INDENT}{YELLOW}(no tool calls yet){RESET}")
                 current_line += 1
             else:
-                for call in tool_calls:
-                    tool_name = call.get('tool_name', 'Unknown')
-                    call_number = call.get('call_number', '?')
-                    timestamp = format_timestamp(call.get('timestamp', ''))
-                    input_preview = get_input_preview(call.get('input', {}))
-                    lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {tool_name}{RESET}: {input_preview}")
-                    current_line += 1
+                total = len(tool_calls)
+                offset = (scroll_offsets or {}).get(name, 0)
+
+                if total > max_lines:
+                    visible = tool_calls[offset:offset + max_lines]
+                    if offset > 0:
+                        if line_map is not None:
+                            line_map[current_line] = name
+                        lines.append(f"  {YELLOW}[↑ {offset} more]{RESET}")
+                        current_line += 1
+                    for call in visible:
+                        tool_name = call.get('tool_name', 'Unknown')
+                        call_number = call.get('call_number', '?')
+                        timestamp = format_timestamp(call.get('timestamp', ''))
+                        if tool_name.startswith('mcp__'):
+                            display = shorten_tool_name(tool_name)
+                            preview = get_input_preview(call.get('input', {}))
+                            lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {display}{RESET}: {preview}")
+                        else:
+                            char_count = format_char_count(call.get('input', {}))
+                            lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {tool_name} ({char_count}){RESET}")
+                        if line_map is not None:
+                            line_map[current_line] = name
+                        current_line += 1
+                    remaining = total - offset - len(visible)
+                    if remaining > 0:
+                        if line_map is not None:
+                            line_map[current_line] = name
+                        lines.append(f"  {YELLOW}[↓ {remaining} more]{RESET}")
+                        current_line += 1
+                else:
+                    for call in tool_calls:
+                        tool_name = call.get('tool_name', 'Unknown')
+                        call_number = call.get('call_number', '?')
+                        timestamp = format_timestamp(call.get('timestamp', ''))
+                        if tool_name.startswith('mcp__'):
+                            display = shorten_tool_name(tool_name)
+                            preview = get_input_preview(call.get('input', {}))
+                            lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {display}{RESET}: {preview}")
+                        else:
+                            char_count = format_char_count(call.get('input', {}))
+                            lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {tool_name} ({char_count}){RESET}")
+                        if line_map is not None:
+                            line_map[current_line] = name
+                        current_line += 1
 
         lines.append('')
         current_line += 1

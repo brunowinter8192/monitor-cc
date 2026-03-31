@@ -3,7 +3,7 @@ import time
 from typing import Dict, List, Optional
 
 # From constants.py: Colors and config values
-from .constants import RESET, WHITE, CYAN, PURPLE, PASTEL_BLUE, POLL_INTERVAL, INPUT_POLL_INTERVAL, PANE_HEADERS
+from .constants import RESET, WHITE, CYAN, PURPLE, PASTEL_BLUE, POLL_INTERVAL, INPUT_POLL_INTERVAL, PANE_HEADERS, EXPANDED_MAX_LINES
 
 # From click_handler.py: Keyboard input handling
 from .click_handler import setup_keyboard_input, restore_terminal, read_keypress, parse_digit_key, get_agent_by_index, enable_mouse, disable_mouse, read_mouse_event
@@ -15,6 +15,7 @@ last_rendered_output: str = ""
 _last_agent_count: int = 0
 _last_expanded_count: int = 0
 hover_row: Optional[int] = None
+subagent_scroll_offsets: Dict[str, int] = {}
 
 # ORCHESTRATOR
 def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], agent_to_task: Dict[str, str], agent_to_type: Dict[str, str], monitor_sessions_fn, active_rules: Dict[str, set] = None) -> None:
@@ -31,7 +32,7 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
         while True:
             ui_loop_iteration += 1
 
-            handle_pending_keypresses(subagent_metadata)
+            handle_pending_keypresses(subagent_metadata, tool_calls_by_agent)
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
@@ -46,9 +47,9 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
 
 # FUNCTIONS
 
-# Processes any pending keyboard input (digits 1-9 and mouse clicks toggle subagents)
-def handle_pending_keypresses(subagent_metadata: Dict[str, dict]) -> None:
-    global hover_row
+# Processes any pending keyboard input (digits 1-9 and mouse clicks toggle subagents, scroll wheel scrolls viewport)
+def handle_pending_keypresses(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> None:
+    global hover_row, subagent_scroll_offsets
     while True:
         char = read_keypress()
         if char is None:
@@ -61,6 +62,19 @@ def handle_pending_keypresses(subagent_metadata: Dict[str, dict]) -> None:
                     agent_id = line_to_agent_map.get(row)
                     if agent_id:
                         toggle_subagent_state(agent_id)
+                        if subagent_states.get(agent_id, False):
+                            calls = tool_calls_by_agent.get(agent_id, [])
+                            subagent_scroll_offsets[agent_id] = max(0, len(calls) - EXPANDED_MAX_LINES)
+                elif button == 64:
+                    agent_id = line_to_agent_map.get(row)
+                    if agent_id:
+                        subagent_scroll_offsets[agent_id] = max(0, subagent_scroll_offsets.get(agent_id, 0) - 1)
+                elif button == 65:
+                    agent_id = line_to_agent_map.get(row)
+                    if agent_id:
+                        total = len(tool_calls_by_agent.get(agent_id, []))
+                        max_off = max(0, total - EXPANDED_MAX_LINES)
+                        subagent_scroll_offsets[agent_id] = min(max_off, subagent_scroll_offsets.get(agent_id, 0) + 1)
                 elif button >= 32:
                     hover_row = row
         else:
@@ -69,6 +83,9 @@ def handle_pending_keypresses(subagent_metadata: Dict[str, dict]) -> None:
                 agent_id = get_agent_by_index(index, subagent_metadata)
                 if agent_id:
                     toggle_subagent_state(agent_id)
+                    if subagent_states.get(agent_id, False):
+                        calls = tool_calls_by_agent.get(agent_id, [])
+                        subagent_scroll_offsets[agent_id] = max(0, len(calls) - EXPANDED_MAX_LINES)
 
 # Syncs UI output to terminal screen
 def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], active_rules: Dict[str, set] = None) -> None:
@@ -78,7 +95,7 @@ def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
 
     rules_block = format_rules_block(active_rules) if active_rules else ''
-    subagent_output = render_subagent_list(subagent_metadata, tool_calls_by_agent, hover_row)
+    subagent_output = render_subagent_list(subagent_metadata, tool_calls_by_agent, hover_row, subagent_scroll_offsets)
     formatted_output = f"{rules_block}\n{subagent_output}" if rules_block else subagent_output
 
     if formatted_output != last_rendered_output:
