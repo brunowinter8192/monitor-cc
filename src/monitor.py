@@ -21,7 +21,7 @@ from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_
 # From subagent_ui.py: Subagent state management
 from .subagent_ui import subagent_states
 # From click_handler.py: Keyboard input for token and workers panes
-from .click_handler import read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal
+from .click_handler import read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal, enable_mouse, disable_mouse, read_mouse_event
 # From ui_mode.py: UI mode loop and subagent tracking
 from .ui_mode import run_ui_loop, track_subagent_metadata
 
@@ -645,16 +645,26 @@ def run_workers_loop() -> None:
     global worker_expand_states, worker_line_map
     last_output = None
     setup_keyboard_input()
+    enable_mouse()
     try:
         while True:
             workers = list_workers(active_project_filter) if active_project_filter else []
 
             char = read_keypress()
             if char is not None:
-                idx = parse_digit_key(char)
-                if idx is not None and 1 <= idx <= len(workers):
-                    name = workers[idx - 1]['name']
-                    worker_expand_states[name] = not worker_expand_states.get(name, False)
+                if char == '\033':
+                    event = read_mouse_event(char)
+                    if event is not None:
+                        button, col, row = event
+                        if button == 0:
+                            name = worker_line_map.get(row)
+                            if name:
+                                worker_expand_states[name] = not worker_expand_states.get(name, False)
+                else:
+                    idx = parse_digit_key(char)
+                    if idx is not None and 1 <= idx <= len(workers):
+                        name = workers[idx - 1]['name']
+                        worker_expand_states[name] = not worker_expand_states.get(name, False)
 
             tool_calls_by_worker: Dict[str, List[dict]] = {}
             for w in workers:
@@ -672,6 +682,7 @@ def run_workers_loop() -> None:
                 last_output = output
             time.sleep(POLL_INTERVAL)
     finally:
+        disable_mouse()
         restore_terminal()
 
 # Runs hooks display loop (for dedicated hooks tmux pane)

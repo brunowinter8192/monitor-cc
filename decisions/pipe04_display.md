@@ -104,18 +104,33 @@ Eigenes tmux Pane (Window 3 "debug", Pane 3.0, links 50%) via `--mode warnings`:
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py:132, Pane 3.0)
 
-### Workers-Pane (Kategorie: Worker-Monitoring, Session 3)
+### Workers-Pane (Kategorie: Worker-Monitoring, Session 3+7)
 
 Eigenes tmux Pane (Window 2 "workers", Pane 2.0, fullscreen) via `--mode workers`:
-- `run_workers_loop()` in monitor.py (monitor.py:629-641): pollt `list_workers()`, rendert `format_workers_block()` bei Änderungen
-- `list_workers(project_path)` (monitor.py:602-626): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
-- `detect_worker_status(session)` (monitor.py:577-599): prüft `#{pane_dead}` für exited-Status; analysiert letzten 5 non-empty Zeilen auf idle-Indikatoren (`for Xm Xs`, `accept edits`, `^>`)
-- `get_tmux_env(session, var)` (monitor.py:567-574): liest WORKER_SPAWNED, WORKER_PURPOSE aus tmux show-environment
-- `get_worker_project_name(project_path)` (monitor.py:560-564): extrahiert Projektname worktree-aware (splittet bei `/.claude/worktrees/`)
-- `format_workers_block(workers)` (formatter.py:288-316): rendert Worker-Liste mit Name (cyan), Status (farbig), Spawn-Zeit, Purpose (truncated auf 60 Zeichen)
+- `run_workers_loop()` in monitor.py: pollt `list_workers()`, rendert `format_workers_block()` bei Änderungen. Keyboard-Input (Digits 1-9 toggle) + SGR Mouse-Click toggle via `read_keypress()` + `read_mouse_event()`
+- `list_workers(project_path)` (monitor.py): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
+- `detect_worker_status(session)` (monitor.py): prüft `#{pane_dead}` für exited-Status; analysiert `#{window_activity}` Timestamp für idle-Detection (10s Threshold)
+- `get_tmux_env(session, var)` (monitor.py): liest WORKER_SPAWNED, WORKER_PURPOSE aus tmux show-environment
+- `get_worker_project_name(project_path)` (monitor.py): extrahiert Projektname worktree-aware (splittet bei `/.claude/worktrees/`)
+- `find_worker_jsonl(session_name)` (monitor.py): Worker JSONL Discovery via `pane_current_path` → `encode_project_path()` → `~/.claude/projects/<encoded>/`
+- `extract_worker_tool_calls(jsonl_path)` (monitor.py): Parsed Worker-JSONL für tool_use Entries (tool name, input, timestamp, call_number)
+- `format_workers_block(workers, expand_states, tool_calls_by_worker, line_map)` (formatter.py): Expand/Collapse per Worker. Collapsed: `[+] [idx] name STATUS spawn_time` + truncated purpose. Expanded: `[-] [idx] name STATUS spawn_time` + full purpose + tool call list (tool name + input preview, kein Output)
+- State: `worker_expand_states: Dict[str, bool]`, `worker_line_map: Dict[int, str]` (monitor.py)
 - Status-Farben: working=GREEN, idle=YELLOW, exited=RED, unknown=WHITE
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py:131, Pane 2.0)
+- **Known UX issue (Session 7):** Mouse-Click Response langsam und inkonsistent. Ursache: Mode 1000 (nur Clicks) + Single-Read pro 0.5s Poll-Iteration. Geplant: Mode 1003 (Motion Tracking), Hover-Highlight, Input-Buffer Draining.
+
+### Subagent-Pane Mouse Support (Kategorie: Display / UX, Session 7)
+
+SGR Mouse-Click Support in Subagent-Pane (Window 3, Pane 3.1):
+- `enable_mouse()` / `disable_mouse()` in click_handler.py: `\033[?1000h\033[?1006h` / `\033[?1000l\033[?1006l`
+- `read_mouse_event(first_char)` in click_handler.py: Parsed SGR sequence `\033[<b;col;rowM/m`, returns `(button, col, row)` für press, None für release/failure. Non-blocking via `select.select` mit 0.05s Timeout.
+- `handle_pending_keypresses()` in ui_mode.py: `\033` → Mouse-Branch (lookup row in `line_to_agent_map`), sonst → Digit-Branch (1-9 toggle)
+- `line_to_agent_map` (subagent_ui.py): bereits seit Session 3 vorhanden, mapped Display-Zeile → Agent-ID
+- Keyboard Digits 1-9 weiterhin funktional als Fallback
+- Verifiziert gegen tmux Source Code (`repo/input-keys.c:755-822`): tmux forwarded SGR Mouse Events an App wenn `MODE_MOUSE_STANDARD` + `MODE_MOUSE_SGR` gesetzt sind. Kein Konflikt mit tmux `mouse on`.
+- **Known UX issue:** Gleich wie Workers-Pane — langsame Response, kein Hover-Feedback.
 
 ### print_session_status Fix (Kategorie: Display / Startup)
 

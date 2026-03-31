@@ -101,7 +101,9 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens/workers), `ui_mode` (bool).
 
-**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read with color legend + output tokens per tool flat list, session browser for cumulative N sessions with granular output breakdown) with screen-clear refresh; workers display (real-time worker status via window_activity timestamp, purpose, spawn time). Headers rendered as sticky tmux pane-border labels (PASTEL_ORANGE).
+**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read with color legend + output tokens per tool flat list, session browser for cumulative N sessions with granular output breakdown) with screen-clear refresh; workers display (real-time worker status via window_activity timestamp, expand/collapse with tool call display, keyboard + SGR mouse input). Headers rendered as sticky tmux pane-border labels (PASTEL_ORANGE).
+
+**Workers-Pane functions:** `find_worker_jsonl(session)` discovers worker JSONL via tmux `pane_current_path` → `encode_project_path()`. `extract_worker_tool_calls(jsonl_path)` parses tool_use entries. State: `worker_expand_states`, `worker_line_map`.
 
 **Usage:**
 ```python
@@ -113,11 +115,11 @@ run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
 
 ## ui_mode.py
 
-**Purpose:** UI mode loop with keyboard input, subagent tracking, and active rules display for interactive monitoring.
+**Purpose:** UI mode loop with keyboard + mouse input, subagent tracking, and active rules display for interactive monitoring.
 
 **Input:** Subagent metadata dicts, tool calls by agent, agent-to-task/type mappings, monitor callback, active rules dict.
 
-**Output:** Collapsible UI rendered to terminal on each update; rules block with [P]/[G] prefixes.
+**Output:** Collapsible UI rendered to terminal on each update; rules block with [P]/[G] prefixes. SGR mouse clicks toggle subagent expand/collapse via `line_to_agent_map` lookup.
 
 **Usage:**
 ```python
@@ -209,16 +211,18 @@ ui_output = render_subagent_list(metadata, calls)
 
 ## click_handler.py
 
-**Purpose:** Handles keyboard input for the collapsible subagent UI. Reads digit keypresses (1-9) to toggle subagent expanded/collapsed state.
+**Purpose:** Handles keyboard and SGR mouse input for expand/collapse UI in subagent and workers panes. Reads digit keypresses (1-9) and SGR mouse click events.
 
-**Input:** Single character keypresses from stdin in raw mode.
+**Input:** Single character keypresses and multi-byte SGR mouse sequences from stdin in raw mode.
 
-**Output:** Agent ID to toggle when a digit key is pressed.
+**Output:** Agent/worker ID to toggle. Mouse functions: `enable_mouse()` / `disable_mouse()` activate SGR mode 1000+1006. `read_mouse_event(first_char)` parses `\033[<b;col;rowM` sequences, returns `(button, col, row)` tuple for press events.
 
 **Usage:**
 ```python
-from src.click_handler import setup_keyboard_input, read_keypress, get_agent_by_index
+from src.click_handler import setup_keyboard_input, read_keypress, get_agent_by_index, enable_mouse, disable_mouse, read_mouse_event
 setup_keyboard_input()
+enable_mouse()
 key = read_keypress()
-agent_id = get_agent_by_index(int(key), sorted_agents)
+if key == '\033':
+    event = read_mouse_event(key)  # (button, col, row) or None
 ```
