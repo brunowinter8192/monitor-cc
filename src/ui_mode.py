@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 # From constants.py: Colors and config values
 from .constants import RESET, WHITE, CYAN, PURPLE, PASTEL_BLUE, POLL_INTERVAL, PANE_HEADERS
@@ -14,6 +14,7 @@ ui_loop_iteration: int = 0
 last_rendered_output: str = ""
 _last_agent_count: int = 0
 _last_expanded_count: int = 0
+hover_row: Optional[int] = None
 
 # ORCHESTRATOR
 def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], agent_to_task: Dict[str, str], agent_to_type: Dict[str, str], monitor_sessions_fn, active_rules: Dict[str, set] = None) -> None:
@@ -41,8 +42,11 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
 
 # Processes any pending keyboard input (digits 1-9 and mouse clicks toggle subagents)
 def handle_pending_keypresses(subagent_metadata: Dict[str, dict]) -> None:
-    char = read_keypress()
-    if char:
+    global hover_row
+    while True:
+        char = read_keypress()
+        if char is None:
+            break
         if char == '\033':
             event = read_mouse_event(char)
             if event is not None:
@@ -51,6 +55,8 @@ def handle_pending_keypresses(subagent_metadata: Dict[str, dict]) -> None:
                     agent_id = line_to_agent_map.get(row)
                     if agent_id:
                         toggle_subagent_state(agent_id)
+                elif button >= 32:
+                    hover_row = row
         else:
             index = parse_digit_key(char)
             if index:
@@ -66,7 +72,7 @@ def sync_ui_to_screen(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
     expanded_count = sum(1 for agent_id in subagent_states if subagent_states.get(agent_id, False))
 
     rules_block = format_rules_block(active_rules) if active_rules else ''
-    subagent_output = render_subagent_list(subagent_metadata, tool_calls_by_agent)
+    subagent_output = render_subagent_list(subagent_metadata, tool_calls_by_agent, hover_row)
     formatted_output = f"{rules_block}\n{subagent_output}" if rules_block else subagent_output
 
     if formatted_output != last_rendered_output:

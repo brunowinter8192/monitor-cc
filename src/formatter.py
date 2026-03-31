@@ -1,10 +1,11 @@
 # INFRASTRUCTURE
 import re
+from typing import Optional
 
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
 # From constants.py: Colors and config values
-from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD
+from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG
 # From subagent_ui.py: Input preview for tool calls
 from .subagent_ui import get_input_preview
 
@@ -279,7 +280,7 @@ def format_token_bar(label: str, tokens: int, total: int, color: str, sub: bool 
     return f"{INDENT}{color}{label:<16}{RESET} {tokens:>12,}  {pct:4.0f}%  {color}{bar}{RESET}"
 
 # Format workers pane with optional expand/collapse showing tool calls per worker
-def format_workers_block(workers: list, expand_states: dict = None, tool_calls_by_worker: dict = None, line_map: dict = None) -> str:
+def format_workers_block(workers: list, expand_states: dict = None, tool_calls_by_worker: dict = None, line_map: dict = None, hover_row: Optional[int] = None) -> str:
     if not workers:
         return f"{YELLOW}No active workers{RESET}"
 
@@ -314,7 +315,10 @@ def format_workers_block(workers: list, expand_states: dict = None, tool_calls_b
             line_map[current_line] = name
 
         spawned_str = f"  {WHITE}{spawned}{RESET}" if spawned else ''
-        lines.append(f"{toggle_symbol} {CYAN}[{idx}] {name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}")
+        header_line = f"{toggle_symbol} {CYAN}[{idx}] {name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}"
+        if hover_row is not None and current_line == hover_row:
+            header_line = f"{HOVER_BG}{header_line}{RESET}"
+        lines.append(header_line)
         current_line += 1
 
         if purpose:

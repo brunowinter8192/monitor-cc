@@ -63,14 +63,14 @@ def get_agent_by_index(index: int, subagent_metadata: Dict[str, dict]) -> Option
         return agent_id
     return None
 
-# Enables SGR mouse reporting (button events)
+# Enables SGR mouse reporting (all-motion events)
 def enable_mouse() -> None:
-    sys.stdout.write('\033[?1000h\033[?1006h')
+    sys.stdout.write('\033[?1003h\033[?1006h')
     sys.stdout.flush()
 
 # Disables SGR mouse reporting
 def disable_mouse() -> None:
-    sys.stdout.write('\033[?1000l\033[?1006l')
+    sys.stdout.write('\033[?1003l\033[?1006l')
     sys.stdout.flush()
 
 # Reads SGR mouse event after escape char; returns (button, col, row) for press, None otherwise

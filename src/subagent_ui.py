@@ -1,10 +1,10 @@
 # INFRASTRUCTURE
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
 # From constants.py: Colors
-from .constants import RESET, GREEN, BLUE, CYAN, YELLOW, PURPLE, WHITE
+from .constants import RESET, GREEN, BLUE, CYAN, YELLOW, PURPLE, WHITE, HOVER_BG
 
 
 subagent_states: Dict[str, bool] = {}
@@ -15,7 +15,7 @@ _last_entry_count: int = 0
 _last_expanded_entries: int = 0
 
 # ORCHESTRATOR
-def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
+def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], hover_row: Optional[int] = None) -> str:
     global _last_agent_count, _last_expanded_count
 
     agent_count = len(subagent_metadata)
@@ -26,7 +26,7 @@ def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent
         _last_expanded_count = expanded_count
 
     header = build_list_header(agent_count)
-    entries = build_all_entries(subagent_metadata, tool_calls_by_agent)
+    entries = build_all_entries(subagent_metadata, tool_calls_by_agent, hover_row)
     combined = combine_sections(header, entries)
 
     return combined
@@ -38,7 +38,7 @@ def build_list_header(count: int) -> str:
     return f"{CYAN}Active Subagents ({count}){RESET}\n"
 
 # Builds all subagent entries based on expanded state
-def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]]) -> str:
+def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], hover_row: Optional[int] = None) -> str:
     global _last_entry_count, _last_expanded_entries, line_to_agent_map
 
     if not subagent_metadata:
@@ -54,13 +54,22 @@ def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
         tool_calls = tool_calls_by_agent.get(agent_id, [])
 
         line_to_agent_map[current_line] = agent_id
+        highlight = (hover_row is not None and current_line == hover_row)
 
         if is_expanded:
             expanded_entries += 1
             entry = build_expanded_entry(idx, metadata, tool_calls)
+            if highlight:
+                first_nl = entry.find('\n')
+                if first_nl >= 0:
+                    entry = f"{HOVER_BG}{entry[:first_nl]}{RESET}{entry[first_nl:]}"
+                else:
+                    entry = f"{HOVER_BG}{entry}{RESET}"
             entry_lines = entry.count('\n') + 1
         else:
             entry = build_collapsed_entry(idx, metadata, is_expanded=False)
+            if highlight:
+                entry = f"{HOVER_BG}{entry}{RESET}"
             entry_lines = 1
 
         entries.append(entry)
@@ -105,25 +114,13 @@ def format_subagent_name(agent_id: str, subagent_type: str, timestamp: str, exis
     time_suffix = format_timestamp(timestamp).replace(':', '')
     return f"{base_name}-{time_suffix}"
 
-# Formats single tool call as summary line with output
+# Formats single tool call as summary line
 def format_tool_call_summary(tool_call: dict) -> str:
     tool_name = tool_call.get('tool_name', 'Unknown')
     call_number = tool_call.get('call_number', '?')
     timestamp = format_timestamp(tool_call.get('timestamp', ''))
-
     input_preview = get_input_preview(tool_call.get('input', {}))
-
-    has_output = tool_call.get('output') is not None
-    direction = '↔' if has_output else '→'
-
-    summary_line = f"{GREEN}[{timestamp}] {direction} #{call_number} {tool_name}{RESET}: {input_preview}"
-
-    if has_output:
-        output = tool_call.get('output', '') or "(empty)"
-        output_lines = f"\n    {CYAN}OUTPUT:{RESET} {output}"
-        return summary_line + output_lines
-
-    return summary_line
+    return f"{GREEN}[{timestamp}] -> #{call_number} {tool_name}{RESET}: {input_preview}"
 
 # Joins header and entries with proper spacing
 def combine_sections(header: str, entries: str) -> str:

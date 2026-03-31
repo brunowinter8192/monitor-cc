@@ -46,6 +46,7 @@ token_cumulative_n: Optional[int] = None
 token_input_buffer: str = ''
 worker_expand_states: Dict[str, bool] = {}
 worker_line_map: Dict[int, str] = {}
+hover_row: Optional[int] = None
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -642,7 +643,7 @@ def extract_worker_tool_calls(jsonl_path: Path) -> List[dict]:
 
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
-    global worker_expand_states, worker_line_map
+    global worker_expand_states, worker_line_map, hover_row
     last_output = None
     setup_keyboard_input()
     enable_mouse()
@@ -650,8 +651,10 @@ def run_workers_loop() -> None:
         while True:
             workers = list_workers(active_project_filter) if active_project_filter else []
 
-            char = read_keypress()
-            if char is not None:
+            while True:
+                char = read_keypress()
+                if char is None:
+                    break
                 if char == '\033':
                     event = read_mouse_event(char)
                     if event is not None:
@@ -660,6 +663,8 @@ def run_workers_loop() -> None:
                             name = worker_line_map.get(row)
                             if name:
                                 worker_expand_states[name] = not worker_expand_states.get(name, False)
+                        elif button >= 32:
+                            hover_row = row
                 else:
                     idx = parse_digit_key(char)
                     if idx is not None and 1 <= idx <= len(workers):
@@ -674,7 +679,7 @@ def run_workers_loop() -> None:
                     if jsonl_path:
                         tool_calls_by_worker[name] = extract_worker_tool_calls(jsonl_path)
 
-            output = format_workers_block(workers, worker_expand_states, tool_calls_by_worker, worker_line_map)
+            output = format_workers_block(workers, worker_expand_states, tool_calls_by_worker, worker_line_map, hover_row)
             if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:
