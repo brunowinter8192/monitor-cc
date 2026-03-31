@@ -3,7 +3,7 @@ import time
 from typing import Dict, List, Optional
 
 # From constants.py: Colors and config values
-from .constants import RESET, WHITE, CYAN, PURPLE, PASTEL_BLUE, POLL_INTERVAL, PANE_HEADERS
+from .constants import RESET, WHITE, CYAN, PURPLE, PASTEL_BLUE, POLL_INTERVAL, INPUT_POLL_INTERVAL, PANE_HEADERS
 
 # From click_handler.py: Keyboard input handling
 from .click_handler import setup_keyboard_input, restore_terminal, read_keypress, parse_digit_key, get_agent_by_index, enable_mouse, disable_mouse, read_mouse_event
@@ -23,6 +23,7 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
     if active_rules is None:
         active_rules = {'project': set(), 'global': set()}
 
+    last_data_refresh = 0.0
     setup_keyboard_input()
     enable_mouse()
 
@@ -31,9 +32,14 @@ def run_ui_loop(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[st
             ui_loop_iteration += 1
 
             handle_pending_keypresses(subagent_metadata)
-            monitor_sessions_fn()
+
+            now = time.time()
+            if now - last_data_refresh >= POLL_INTERVAL:
+                monitor_sessions_fn()
+                last_data_refresh = now
+
             sync_ui_to_screen(subagent_metadata, tool_calls_by_agent, active_rules)
-            time.sleep(POLL_INTERVAL)
+            time.sleep(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()

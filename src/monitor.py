@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, HOOK_INSTRUCTIONS_LOADED
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -645,12 +645,14 @@ def extract_worker_tool_calls(jsonl_path: Path) -> List[dict]:
 def run_workers_loop() -> None:
     global worker_expand_states, worker_line_map, hover_row
     last_output = None
+    workers = []
+    tool_calls_by_worker: Dict[str, List[dict]] = {}
+    last_data_refresh = 0.0
     setup_keyboard_input()
     enable_mouse()
     try:
         while True:
-            workers = list_workers(active_project_filter) if active_project_filter else []
-
+            input_changed = False
             while True:
                 char = read_keypress()
                 if char is None:
@@ -663,21 +665,36 @@ def run_workers_loop() -> None:
                             name = worker_line_map.get(row)
                             if name:
                                 worker_expand_states[name] = not worker_expand_states.get(name, False)
+                                input_changed = True
                         elif button >= 32:
                             hover_row = row
+                            input_changed = True
                 else:
                     idx = parse_digit_key(char)
                     if idx is not None and 1 <= idx <= len(workers):
                         name = workers[idx - 1]['name']
                         worker_expand_states[name] = not worker_expand_states.get(name, False)
+                        input_changed = True
 
-            tool_calls_by_worker: Dict[str, List[dict]] = {}
-            for w in workers:
-                name = w.get('name', '')
-                if worker_expand_states.get(name, False):
-                    jsonl_path = find_worker_jsonl(w.get('session', ''))
-                    if jsonl_path:
-                        tool_calls_by_worker[name] = extract_worker_tool_calls(jsonl_path)
+            now = time.time()
+            if now - last_data_refresh >= POLL_INTERVAL:
+                workers = list_workers(active_project_filter) if active_project_filter else []
+                tool_calls_by_worker = {}
+                for w in workers:
+                    name = w.get('name', '')
+                    if worker_expand_states.get(name, False):
+                        jsonl_path = find_worker_jsonl(w.get('session', ''))
+                        if jsonl_path:
+                            tool_calls_by_worker[name] = extract_worker_tool_calls(jsonl_path)
+                last_data_refresh = now
+                input_changed = True
+            elif input_changed:
+                for w in workers:
+                    name = w.get('name', '')
+                    if worker_expand_states.get(name, False) and name not in tool_calls_by_worker:
+                        jsonl_path = find_worker_jsonl(w.get('session', ''))
+                        if jsonl_path:
+                            tool_calls_by_worker[name] = extract_worker_tool_calls(jsonl_path)
 
             output = format_workers_block(workers, worker_expand_states, tool_calls_by_worker, worker_line_map, hover_row)
             if output != last_output:
@@ -685,7 +702,7 @@ def run_workers_loop() -> None:
                 if output:
                     print(output)
                 last_output = output
-            time.sleep(POLL_INTERVAL)
+            time.sleep(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()

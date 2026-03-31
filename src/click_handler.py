@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import os
 import select
 import sys
 import termios
@@ -6,6 +7,7 @@ import tty
 from typing import Dict, Optional, Tuple
 
 _original_terminal_settings = None
+_stdin_fd: int = -1
 
 # ORCHESTRATOR
 def setup_keyboard_input() -> bool:
@@ -16,11 +18,11 @@ def setup_keyboard_input() -> bool:
 
 # Sets stdin to raw mode for reading keypresses
 def set_raw_stdin() -> bool:
-    global _original_terminal_settings
+    global _original_terminal_settings, _stdin_fd
     try:
-        fd = sys.stdin.fileno()
-        _original_terminal_settings = termios.tcgetattr(fd)
-        tty.setcbreak(fd)
+        _stdin_fd = sys.stdin.fileno()
+        _original_terminal_settings = termios.tcgetattr(_stdin_fd)
+        tty.setcbreak(_stdin_fd)
         return True
     except Exception:
         return False
@@ -35,13 +37,13 @@ def restore_terminal() -> None:
         except Exception:
             pass
 
-# Reads keypress from stdin without blocking
+# Reads single byte from stdin fd without blocking (bypasses Python buffering)
 def read_keypress() -> Optional[str]:
-    if select.select([sys.stdin], [], [], 0)[0]:
+    if select.select([_stdin_fd], [], [], 0)[0]:
         try:
-            char = sys.stdin.read(1)
-            if char:
-                return char
+            data = os.read(_stdin_fd, 1)
+            if data:
+                return data.decode('utf-8', errors='replace')
         except Exception:
             pass
     return None
@@ -73,7 +75,7 @@ def disable_mouse() -> None:
     sys.stdout.write('\033[?1003l\033[?1006l')
     sys.stdout.flush()
 
-# Reads SGR mouse event after escape char; returns (button, col, row) for press, None otherwise
+# Reads SGR mouse event after escape char; returns (button, col, row) for press/motion, None otherwise
 def read_mouse_event(first_char: str) -> Optional[Tuple[int, int, int]]:
     if first_char != '\033':
         return None
@@ -82,11 +84,14 @@ def read_mouse_event(first_char: str) -> Optional[Tuple[int, int, int]]:
     terminator = None
 
     for _ in range(32):
-        ready = select.select([sys.stdin], [], [], 0.05)[0]
+        ready = select.select([_stdin_fd], [], [], 0.05)[0]
         if not ready:
             return None
         try:
-            ch = sys.stdin.read(1)
+            data = os.read(_stdin_fd, 1)
+            if not data:
+                return None
+            ch = data.decode('utf-8', errors='replace')
         except Exception:
             return None
         if ch in ('M', 'm'):
