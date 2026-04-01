@@ -233,57 +233,117 @@ def format_thinking(thinking_item: dict) -> str:
 def format_unknown_type_warning(msg_type: str, count: int) -> str:
     return f"{INDENT}{YELLOW}[!] Unknown JSONL type: {msg_type} (seen {count}x){RESET}"
 
-# Format token profile for dedicated tokens pane
-def format_token_profile(profile: dict) -> str:
-    total = profile.get('total', 0)
-    input_total = profile.get('input_total', 0)
+# Format a single API call line for cache tracker (wide or compact based on pane width)
+def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, pct: float, wide: bool) -> str:
+    if wide:
+        return f"  {symbol} CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  {pct:.0f}%  ({_format_k(out)} out)"
+    return f" {symbol} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} {pct:.0f}%"
 
-    if total == 0 and input_total == 0:
-        return ''
+# Format cache tracker for dedicated tokens pane with per-turn, per-API-call detail
+def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80) -> str:
+    if not turns:
+        return f"{YELLOW}No turns yet{RESET}"
 
-    lines = []
+    if expand_states is None:
+        expand_states = {}
 
-    if input_total > 0:
-        input_tokens = profile.get('input_tokens', 0)
-        cache_creation = profile.get('cache_creation', 0)
-        cache_read = profile.get('cache_read', 0)
+    wide = pane_width >= 60
+    prompt_max = min(pane_width - 15, 60) if wide else min(pane_width - 8, 30)
 
-        lines.append(f"{WHITE}SESSION INPUT: {input_total:,} tok{RESET}")
-        lines.append(f"{WHITE}{'─' * 40}{RESET}")
-        lines.append(f"{INDENT}{PASTEL_ORANGE}█ Direct{RESET}  {GREEN}█ Cache Create{RESET}  {CYAN}█ Cache Read{RESET}")
-        lines.append(format_token_bar('Direct', input_tokens, input_total, PASTEL_ORANGE))
-        lines.append(format_token_bar('Cache Create', cache_creation, input_total, GREEN))
-        lines.append(format_token_bar('Cache Read', cache_read, input_total, CYAN))
-        lines.append('')
+    all_lines = []
+    line_keys = []
 
-    if total > 0:
-        turns = profile.get('turns', 0)
-        text = profile.get('text', 0)
-        tools = profile.get('tools', {})
+    if not wide:
+        all_lines.append(f"{WHITE}CR/CC/D = Read/Create/Direct{RESET}")
+        line_keys.append(None)
 
-        lines.append(f"{WHITE}SESSION OUTPUT: {total:,} tok ({turns} turns){RESET}")
-        lines.append(f"{WHITE}{'─' * 40}{RESET}")
+    for turn_idx, turn in enumerate(turns):
+        prompt = turn.get('prompt', '').replace('\n', ' ')
+        timestamp = format_timestamp(turn.get('timestamp', ''))
+        truncated = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
 
-        for tool_name, tok in tools.items():
-            display_name = shorten_tool_name(tool_name)
-            lines.append(format_token_bar(display_name, tok, total, CYAN))
+        all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{timestamp}]: \"{truncated}\"{RESET}")
+        line_keys.append(None)
 
-        lines.append(format_token_bar('Text', text, total, PASTEL_BLUE))
+        for call_idx, call in enumerate(turn.get('api_calls', [])):
+            cr = call.get('cache_read', 0)
+            cc = call.get('cache_creation', 0)
+            d = call.get('direct', 0)
+            out = call.get('output_tokens', 0)
+            total_in = cr + cc + d
+            pct = (cr / total_in * 100) if total_in > 0 else 0
 
-    return '\n'.join(lines)
+            key = (turn_idx, call_idx)
+            is_expanded = expand_states.get(key, False)
+            symbol = '\u25bc' if is_expanded else '\u25b6'
 
-# Format a single bar line for token profile display
-def format_token_bar(label: str, tokens: int, total: int, color: str, sub: bool = False) -> str:
-    pct = (tokens / total * 100) if total > 0 else 0
-    bar_width = 30
-    filled = int(pct / 100 * bar_width)
-    bar = '\u2588' * filled
-    if filled < bar_width and pct > 0:
-        bar += '\u258f'
+            call_line = _format_cache_call(symbol, cr, cc, d, out, pct, wide)
+            all_lines.append(call_line)
+            line_keys.append(key)
 
-    if sub:
-        return f"{INDENT}{INDENT}{color}{label:<14}{RESET} {tokens:>12,}  {pct:4.0f}%  {color}{bar}{RESET}"
-    return f"{INDENT}{color}{label:<16}{RESET} {tokens:>12,}  {pct:4.0f}%  {color}{bar}{RESET}"
+            if is_expanded:
+                for block in call.get('content_blocks', []):
+                    bt = block.get('type', '')
+                    if bt == 'tool_use':
+                        tool_name = block.get('tool_name', 'Unknown')
+                        if tool_name.startswith('mcp__'):
+                            tool_name = shorten_tool_name(tool_name)
+                        all_lines.append(f"    {GREEN}{tool_name}{RESET}")
+                    elif bt == 'thinking':
+                        all_lines.append(f"    {PASTEL_ORANGE}thinking{RESET}")
+                    elif bt == 'text':
+                        all_lines.append(f"    {WHITE}text{RESET}")
+                    line_keys.append(None)
+
+        all_lines.append('')
+        line_keys.append(None)
+
+    while all_lines and all_lines[-1] == '':
+        all_lines.pop()
+        line_keys.pop()
+
+    viewport_lines = pane_height - 1
+    start = max(0, len(all_lines) - viewport_lines)
+
+    sticky_header = None
+    if start > 0:
+        for i in range(start, -1, -1):
+            if line_keys[i] is None and 'Turn ' in all_lines[i]:
+                raw = all_lines[i]
+                if len(raw) > pane_width + 20:
+                    import re as _re
+                    m = _re.search(r'Turn \d+ \[[^\]]+\]', raw)
+                    if m:
+                        sticky_header = f"{PASTEL_PURPLE}{m.group(0)}...{RESET}"
+                    else:
+                        sticky_header = raw
+                else:
+                    sticky_header = raw
+                break
+
+    visible_lines = all_lines[start:]
+    visible_keys = line_keys[start:]
+
+    if line_map is not None:
+        line_map.clear()
+        offset = 2 if sticky_header else 1
+        for row_idx, key in enumerate(visible_keys):
+            if key is not None:
+                line_map[row_idx + offset] = key
+
+    result_lines = []
+    if sticky_header:
+        result_lines.append(sticky_header)
+
+    for row_offset, line in enumerate(visible_lines):
+        row = row_offset + (2 if sticky_header else 1)
+        key = visible_keys[row_offset]
+        if key is not None and hover_row is not None and row == hover_row:
+            result_lines.append(f"{HOVER_BG}{line}{RESET}")
+        else:
+            result_lines.append(line)
+
+    return '\n'.join(result_lines)
 
 # Format workers pane with optional expand/collapse showing tool calls per worker with viewport slicing
 def format_workers_block(workers: list, expand_states: dict = None, tool_calls_by_worker: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None, max_lines: int = EXPANDED_MAX_LINES) -> str:
@@ -413,54 +473,3 @@ def shorten_tool_name(name: str) -> str:
             return parts[-1]
     return name
 
-# Format cumulative token profile across multiple sessions
-def format_token_profile_cumulative(sessions_data: list, n: int) -> str:
-    if not sessions_data:
-        return f"{YELLOW}No sessions found{RESET}"
-
-    grand_input = sum(s['input_total'] for s in sessions_data)
-    grand_output = sum(s['output_total'] for s in sessions_data)
-    grand_cache_creation = sum(s['cache_creation'] for s in sessions_data)
-    grand_cache_read = sum(s['cache_read'] for s in sessions_data)
-    grand_turns = sum(s['turns'] for s in sessions_data)
-    actual = len(sessions_data)
-
-    lines = []
-    lines.append(f"{WHITE}CUMULATIVE: {actual} sessions  ({grand_turns} turns){RESET}")
-    lines.append(f"{WHITE}{'─' * 40}{RESET}")
-
-    if grand_input > 0:
-        direct_input = grand_input - grand_cache_creation - grand_cache_read
-        lines.append(f"{WHITE}INPUT: {grand_input:,} tok{RESET}")
-        lines.append(format_token_bar('Direct', direct_input, grand_input, PASTEL_ORANGE))
-        lines.append(format_token_bar('Cache Create', grand_cache_creation, grand_input, GREEN))
-        lines.append(format_token_bar('Cache Read', grand_cache_read, grand_input, CYAN))
-        lines.append('')
-
-    if grand_output > 0:
-        grand_text = sum(s.get('text', 0) for s in sessions_data)
-        grand_tools: dict = {}
-        for s in sessions_data:
-            for tool_name, tok in s.get('tools', {}).items():
-                grand_tools[tool_name] = grand_tools.get(tool_name, 0) + tok
-
-        lines.append(f"{WHITE}OUTPUT: {grand_output:,} tok{RESET}")
-        lines.append(f"{WHITE}{'─' * 40}{RESET}")
-
-        for tool_name, tok in sorted(grand_tools.items(), key=lambda x: x[1], reverse=True):
-            display_name = shorten_tool_name(tool_name)
-            lines.append(format_token_bar(display_name, tok, grand_output, CYAN))
-
-        lines.append(format_token_bar('Text', grand_text, grand_output, PASTEL_BLUE))
-        lines.append('')
-
-    lines.append(f"{WHITE}PER SESSION (newest first):{RESET}")
-    lines.append(f"{WHITE}{'─' * 40}{RESET}")
-    for s in sessions_data:
-        fname = s['file']
-        if len(fname) > 32:
-            fname = '...' + fname[-29:]
-        lines.append(f"{INDENT}{PASTEL_BLUE}{fname}{RESET}")
-        lines.append(f"{INDENT}{INDENT}in {s['input_total']:>10,}  out {s['output_total']:>8,}  {s['turns']} turns")
-
-    return '\n'.join(lines)
