@@ -10,6 +10,12 @@ from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPL
 from .subagent_ui import get_input_preview, format_char_count
 
 INDENT = '  '
+
+# Format token count as compact "Xk" or "X.Xk" string
+def _format_k(n: int) -> str:
+    if n >= 1000:
+        return f"{n / 1000:.0f}k" if n >= 10000 else f"{n / 1000:.1f}k"
+    return str(n)
 SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
 
 # ORCHESTRATOR
@@ -315,7 +321,13 @@ def format_workers_block(workers: list, expand_states: dict = None, tool_calls_b
             line_map[current_line] = name
 
         spawned_str = f"  {WHITE}{spawned}{RESET}" if spawned else ''
-        header_line = f"{toggle_symbol} {CYAN}[{idx}] {name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}"
+        model = w.get('model', '')
+        model_str = f"  {PASTEL_PURPLE}{model}{RESET}" if model else ''
+        tokens = w.get('tokens', {})
+        tok_in = tokens.get('input', 0)
+        tok_out = tokens.get('output', 0)
+        tokens_str = f"  {WHITE}{_format_k(tok_in)}in {_format_k(tok_out)}out{RESET}" if tok_in or tok_out else ''
+        header_line = f"{toggle_symbol} {CYAN}[{idx}] {name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}{model_str}{tokens_str}"
         if hover_row is not None and current_line == hover_row:
             header_line = f"{HOVER_BG}{header_line}{RESET}"
         lines.append(header_line)

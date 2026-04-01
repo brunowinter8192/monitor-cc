@@ -592,6 +592,7 @@ def list_workers(project_path: str) -> List[dict]:
             'status': detect_worker_status(session),
             'spawned': get_tmux_env(session, 'WORKER_SPAWNED'),
             'purpose': get_tmux_env(session, 'WORKER_PURPOSE'),
+            'model': get_tmux_env(session, 'WORKER_MODEL') or 'sonnet',
         })
     return workers
 
@@ -618,6 +619,19 @@ def find_worker_jsonl(session_name: str) -> Optional[Path]:
     return max(jsonl_files, key=lambda f: f.stat().st_mtime)
 
 # Extract all tool_use entries from a worker's JSONL file
+def extract_worker_tokens(jsonl_path: Path) -> dict:
+    lines = read_new_lines(jsonl_path, 0)
+    messages, _ = parse_jsonl_lines(lines)
+    total_input = 0
+    total_output = 0
+    for message in messages:
+        if message.get('type') != 'assistant':
+            continue
+        usage = message.get('message', {}).get('usage', {})
+        total_input += usage.get('input_tokens', 0) + usage.get('cache_creation_input_tokens', 0) + usage.get('cache_read_input_tokens', 0)
+        total_output += usage.get('output_tokens', 0)
+    return {'input': total_input, 'output': total_output}
+
 def extract_worker_tool_calls(jsonl_path: Path) -> List[dict]:
     lines = read_new_lines(jsonl_path, 0)
     messages, _ = parse_jsonl_lines(lines)
@@ -730,9 +744,10 @@ def run_workers_loop() -> None:
                 tool_calls_by_worker = {}
                 for w in workers:
                     name = w.get('name', '')
-                    if worker_expand_states.get(name, False):
-                        jsonl_path = find_worker_jsonl(w.get('session', ''))
-                        if jsonl_path:
+                    jsonl_path = find_worker_jsonl(w.get('session', ''))
+                    if jsonl_path:
+                        w['tokens'] = extract_worker_tokens(jsonl_path)
+                        if worker_expand_states.get(name, False):
                             tool_calls_by_worker[name] = extract_worker_tool_calls(jsonl_path)
                 last_data_refresh = now
                 input_changed = True
