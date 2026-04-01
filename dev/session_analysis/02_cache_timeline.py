@@ -223,8 +223,7 @@ def detect_anomalies(turns):
         cr_n2 = turns[i - 2]['cache_read']
         cr_n4 = turns[i - 4]['cache_read']
         cc_n = turns[i]['cache_creation']
-        cc_n2 = turns[i - 2]['cache_creation']
-        if cr_n == cr_n2 == cr_n4 and cc_n > cc_n2:
+        if cr_n == cr_n2 == cr_n4 and cc_n > cr_n:
             flags[i].append('STUCK_CACHE')
 
     stuck_indices = sorted(i for i, f in flags.items() if 'STUCK_CACHE' in f)
