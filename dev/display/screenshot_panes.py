@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture all 7 tmux panes of a running Monitor_CC session (4 windows) and combine into a single PNG."""
+"""Capture all 6 tmux panes of a running Monitor_CC session (4 windows) and combine into a single PNG."""
 
 import argparse
 import subprocess
@@ -9,11 +9,11 @@ from PIL import Image
 
 # --- INFRASTRUCTURE ---
 
-# (window.pane, label) for each of the 7 panes across 4 windows:
+# (window.pane, label) for each of the 6 panes across 4 windows:
 #   Window 0 "main":    0.0=main,     0.1=tokens
 #   Window 1 "rules":   1.0=rules,    1.1=hooks
-#   Window 2 "workers": 2.0=workers
-#   Window 3 "debug":   3.0=warnings, 3.1=subagents
+#   Window 2 "workers": 2.0=workers (incl. subagents below)
+#   Window 3 "debug":   3.0=warnings
 PANE_TARGETS = [
     ("0.0", "main"),
     ("0.1", "tokens"),
@@ -21,7 +21,6 @@ PANE_TARGETS = [
     ("1.1", "hooks"),
     ("2.0", "workers"),
     ("3.0", "warnings"),
-    ("3.1", "subagents"),
 ]
 
 OUTPUT_PATH = Path("/tmp/monitor_cc_screenshot.png")
@@ -35,10 +34,9 @@ PANE_LAYOUT = [
     (0.25, 0.0,  0.25, 0.5),   # 1: tokens
     (0.5,  0.0,  0.25, 0.5),   # 2: rules
     (0.75, 0.0,  0.25, 0.5),   # 3: hooks
-    # Row 2: Window 2 (workers) | Window 3 (warnings+subagents)
-    (0.0,  0.5,  0.333, 0.5),  # 4: workers
-    (0.333, 0.5, 0.333, 0.5),  # 5: warnings
-    (0.666, 0.5, 0.334, 0.5),  # 6: subagents
+    # Row 2: Window 2 (workers+subagents) | Window 3 (warnings)
+    (0.0,  0.5,  0.5,  0.5),   # 4: workers (incl. subagents)
+    (0.5,  0.5,  0.5,  0.5),   # 5: warnings
 ]
 
 COMBINED_WIDTH = 3200
@@ -91,7 +89,7 @@ def render_pane_png(txt_path: str, idx: int, columns: str) -> str:
 
 
 def compose_layout(png_paths: list[str]) -> Image.Image:
-    """Load 7 pane PNGs and compose into combined layout image."""
+    """Load 6 pane PNGs and compose into combined layout image."""
     combined = Image.new("RGB", (COMBINED_WIDTH, COMBINED_HEIGHT), color=(30, 30, 30))
     for idx, png_path in enumerate(png_paths):
         pane_img = Image.open(png_path)
@@ -108,7 +106,7 @@ def compose_layout(png_paths: list[str]) -> Image.Image:
 # --- ORCHESTRATOR ---
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Screenshot all 7 Monitor_CC tmux panes.")
+    parser = argparse.ArgumentParser(description="Screenshot all 6 Monitor_CC tmux panes.")
     parser.add_argument("--session", default=None, help="tmux session name (default: auto-detect monitor_cc_*)")
     args = parser.parse_args()
 

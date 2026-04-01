@@ -4,9 +4,8 @@
 
 - `formatter.py`: 21 Funktionen + Workers-Block + Session-Browser, color-coded output (green=main, blue=subagent, red=error, pastel=meta)
 - `ui_mode.py`: `format_rules_block()` rendert `ACTIVE RULES (XP / YG)` mit `[P]`/`[G]` Prefix pro Regel, pastel blue
-- `subagent_ui.py`: collapsible list, Digits 1-9 toggle via `click_handler.py`
-- `ui_mode.py`: `run_ui_mode()` Screen-clear refresh loop mit raw stdin
-- Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose
+- `subagent_ui.py`: collapsible list, Digits 1-9 toggle via `click_handler.py`, `start_line` param für korrekte line_to_agent_map in kombinierten Panes
+- Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Subagents werden darunter gerendert via `render_subagent_list()`.
 
 **BUG (fixed):** `active_rules` was populated by `process_hook_log()` but never rendered in streaming mode.
 Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Window 1, Pane 1.0).
@@ -71,7 +70,7 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 
 ### Restart Hotkey (Kategorie: Display / UX)
 
-`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py:142-150): `respawn-pane -k` für alle 7 Panes across 4 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 3.0, 3.1) via `\;`-Chain. Restarts all monitor processes with their original commands.
+`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` für alle 6 Panes across 4 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 3.0) via `\;`-Chain. Restarts all monitor processes with their original commands.
 
 **BUG (fixed, Session 6):** User reports "Monitor restarted" message appears but panes don't visibly restart.
 - Root cause: `C-r` binding is global (`-T root`) with hardcoded session name via Python f-string (`f"{session_name}:0.0"`). When multiple monitor sessions exist simultaneously, the last `configure_tmux_session()` call wins → C-r respawns panes of the wrong session. User sees "Monitor restarted" display-message but no visual change because the respawn happens in a different (possibly hidden) session.
@@ -98,16 +97,16 @@ Eigenes tmux Pane (Window 1 "rules", Pane 1.1, rechts 50%) via `--mode hooks`:
 
 ### Warnings-Pane (Kategorie: Format-Stabilität)
 
-Eigenes tmux Pane (Window 3 "debug", Pane 3.0, links 50%) via `--mode warnings`:
+Eigenes tmux Pane (Window 3 "debug", Pane 3.0, fullscreen) via `--mode warnings`:
 - `run_warnings_loop()` in monitor.py: pollt `monitor_sessions()`, rendert `format_warnings_block()`
 - `format_unknown_type_warning()` in formatter.py (formatter.py:229-230): `[!] Unknown JSONL type: <type> (seen Nx)`
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py:132, Pane 3.0)
 
-### Workers-Pane (Kategorie: Worker-Monitoring, Session 3+7)
+### Workers-Pane (Kategorie: Worker-Monitoring, Session 3+7+9)
 
-Eigenes tmux Pane (Window 2 "workers", Pane 2.0, fullscreen) via `--mode workers`:
-- `run_workers_loop()` in monitor.py: pollt `list_workers()`, rendert `format_workers_block()` bei Änderungen. Keyboard-Input (Digits 1-9 toggle) + SGR Mouse-Click toggle via `read_keypress()` + `read_mouse_event()`
+Eigenes tmux Pane (Window 2 "workers", Pane 2.0, fullscreen) via `--mode workers`. Rendert Workers oben und Subagents darunter in einer kombinierten Ansicht:
+- `run_workers_loop()` in monitor.py: pollt `list_workers()` + `monitor_sessions()`, rendert `format_workers_block()` + `render_subagent_list()` kombiniert. Keyboard-Input (Digits 1-9 toggle) + SGR Mouse-Click toggle für beide Abschnitte.
 - `list_workers(project_path)` (monitor.py): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
 - `detect_worker_status(session)` (monitor.py): prüft `#{pane_dead}` für exited-Status; analysiert `#{window_activity}` Timestamp für idle-Detection (10s Threshold)
 - `get_tmux_env(session, var)` (monitor.py): liest WORKER_SPAWNED, WORKER_PURPOSE aus tmux show-environment
@@ -115,27 +114,24 @@ Eigenes tmux Pane (Window 2 "workers", Pane 2.0, fullscreen) via `--mode workers
 - `find_worker_jsonl(session_name)` (monitor.py): Worker JSONL Discovery via `pane_current_path` → `encode_project_path()` → `~/.claude/projects/<encoded>/`
 - `extract_worker_tool_calls(jsonl_path)` (monitor.py): Parsed Worker-JSONL für tool_use Entries (tool name, input, timestamp, call_number)
 - `format_workers_block(workers, expand_states, tool_calls_by_worker, line_map, hover_row, scroll_offsets, max_lines)` (formatter.py): Expand/Collapse per Worker. Collapsed: `[+] [idx] name STATUS spawn_time` + truncated purpose. Expanded: `[-] [idx] name STATUS spawn_time` + full purpose + scrollable tool call list (compact display: MCP → `short_name: params`, non-MCP → `tool_name (1.2k)`). Viewport slicing: max 15 lines per block with `[↑ N more]` / `[↓ N more]` indicators. Hover-Highlight: `HOVER_BG` on header line when `hover_row` matches.
-- State: `worker_expand_states: Dict[str, bool]`, `worker_scroll_offsets: Dict[str, int]`, `worker_line_map: Dict[int, str]`, `hover_row: Optional[int]` (monitor.py)
-- `line_map` maps ALL lines of expanded block (header, purpose, tool calls, scroll indicators) → worker name (not just header). Enables scroll targeting and click-to-collapse on any line.
+- State: `worker_expand_states: Dict[str, bool]`, `worker_scroll_offsets: Dict[str, int]`, `worker_line_map: Dict[int, str]`, `hover_row: Optional[int]` (monitor.py); `subagent_scroll_offsets: Dict[str, int]` (local in run_workers_loop)
+- `line_map` maps ALL lines of expanded worker block → worker name. `line_to_agent_map` (subagent_ui.py) maps all subagent entry lines → agent_id. Disjoint row ranges (workers top, subagents bottom).
+- `start_line` in `render_subagent_list()`: computed as `workers_output.count('\n') + 5` so that `line_to_agent_map` rows align with actual terminal positions in the combined pane.
 - Status-Farben: working=GREEN, idle=YELLOW, exited=RED, unknown=WHITE
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
-- M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py:131, Pane 2.0)
-- Dual poll intervals: Input polling at 50ms (`INPUT_POLL_INTERVAL`), data refresh at 500ms (`POLL_INTERVAL`). Responsive hover/click without excessive tmux subprocess calls.
-- **Mouse UX (Session 8, fixed):** Mode 1003 (Any Event Tracking) + SGR 1006. Input-Buffer Draining (while-loop). Hover-Highlight (HOVER_BG on clickable lines). Scroll (button 64/65). On expand toggle: scroll offset reset to newest calls. All reads via `os.read(fd, 1)` (unbuffered, bypasses Python IO layer).
+- M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 2.0)
+- Dual poll intervals: Input polling at 50ms (`INPUT_POLL_INTERVAL`), data refresh at 500ms (`POLL_INTERVAL`). `monitor_sessions()` called on data refresh to populate subagent state.
+- **Mouse UX:** Mode 1003 (Any Event Tracking) + SGR 1006. Input-Buffer Draining (while-loop). Hover-Highlight (HOVER_BG on clickable lines). Scroll (button 64/65). Click dispatch: `worker_line_map.get(row)` first → worker toggle; else `line_to_agent_map.get(row)` → subagent toggle. All reads via `os.read(fd, 1)` (unbuffered).
+- **Digit Keys:** digits within worker range (1..len(workers)) toggle workers; digits outside range toggle subagents via `get_agent_by_index()`.
+- Subagent rendering moved from `ui_mode.py:run_ui_loop()` (removed) into this loop. `ui_mode_active = True` set at start so `handle_subagent_call()` routes data to `track_subagent_metadata()` instead of displaying inline.
 
-### Subagent-Pane Mouse Support (Kategorie: Display / UX, Session 7)
+### Subagent Display (merged into Workers-Pane, Session 9)
 
-SGR Mouse Support in Subagent-Pane (Window 3, Pane 3.1):
-- `enable_mouse()` / `disable_mouse()` in click_handler.py: `\033[?1003h\033[?1006h` / `\033[?1003l\033[?1006l` (Mode 1003 = Any Event Tracking incl. motion)
-- `read_mouse_event(first_char)` in click_handler.py: Parsed SGR sequence `\033[<b;col;rowM/m` via `os.read(fd, 1)` (unbuffered), returns `(button, col, row)` for press/motion, None for release/failure. Non-blocking via `select.select` mit 0.05s Timeout.
-- `handle_pending_keypresses(subagent_metadata, tool_calls_by_agent)` in ui_mode.py: Input drain loop (while True). `\033` → Mouse-Branch: button 0 = click toggle, button 64/65 = scroll, button >= 32 = hover. Else → Digit-Branch (1-9 toggle).
-- `line_to_agent_map` (subagent_ui.py): maps ALL lines of expanded block → agent_id (not just header). Enables scroll targeting.
-- State: `hover_row: Optional[int]`, `subagent_scroll_offsets: Dict[str, int]` (ui_mode.py)
-- Scrollable viewport: `EXPANDED_MAX_LINES = 15`, `[↑ N more]` / `[↓ N more]` indicators, mouse wheel scroll.
-- Compact tool call display: MCP → `short_name: params`, non-MCP → `tool_name (1.2k)`.
-- Keyboard Digits 1-9 weiterhin funktional als Fallback.
+Subagent list rendered below workers section in Window 2, Pane 2.0. Previously a separate pane (Window 3, Pane 3.1). Merged to reduce pane count from 7 to 6.
+- `render_subagent_list()` called with computed `start_line` so `line_to_agent_map` row numbers match actual terminal row positions in the combined output.
+- Mouse click/scroll, hover, and digit keyboard (1-9) all work for both workers and subagents sections.
+- `subagent_ui.py:build_all_entries()` accepts `start_line: int = 3` parameter (default unchanged for standalone use).
 - Verifiziert gegen tmux Source Code (`repo/input-keys.c:755-822`): tmux forwarded SGR Mouse Events an App wenn `MODE_MOUSE_ALL` + `MODE_MOUSE_SGR` gesetzt sind. Kein Konflikt mit tmux `mouse on`.
-- **BUG (fixed, Session 8):** `sys.stdin.read(1)` caused Python's BufferedReader to read 4096+ bytes into internal buffer. Subsequent `select.select()` on OS fd returned "no data" (data in Python buffer, not OS fd). Partial escape sequences leaked as digit keypresses → spurious agent toggles on hover. Fix: `os.read(fd, 1)` in click_handler.py (all reads).
 
 ### print_session_status Fix (Kategorie: Display / Startup)
 
@@ -161,7 +157,7 @@ Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ### Screenshot-Tool (Kategorie: Dev Tooling / Feedback)
 
-`dev/display/screenshot_panes.py`: Captures all 7 tmux panes across 4 windows via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
+`dev/display/screenshot_panes.py`: Captures all 6 tmux panes across 4 windows via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
 
 Dependencies: `termshot` (brew), `Pillow` (pip). Auto-detects running `monitor_cc_*` session.
 

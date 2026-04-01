@@ -15,7 +15,7 @@ _last_entry_count: int = 0
 _last_expanded_entries: int = 0
 
 # ORCHESTRATOR
-def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], hover_row: Optional[int] = None, scroll_offsets: Dict[str, int] = None) -> str:
+def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], hover_row: Optional[int] = None, scroll_offsets: Dict[str, int] = None, start_line: int = 3) -> str:
     global _last_agent_count, _last_expanded_count
 
     agent_count = len(subagent_metadata)
@@ -26,7 +26,7 @@ def render_subagent_list(subagent_metadata: Dict[str, dict], tool_calls_by_agent
         _last_expanded_count = expanded_count
 
     header = build_list_header(agent_count)
-    entries = build_all_entries(subagent_metadata, tool_calls_by_agent, hover_row, scroll_offsets)
+    entries = build_all_entries(subagent_metadata, tool_calls_by_agent, hover_row, scroll_offsets, start_line=start_line)
     combined = combine_sections(header, entries)
 
     return combined
@@ -38,7 +38,7 @@ def build_list_header(count: int) -> str:
     return f"{CYAN}Active Subagents ({count}){RESET}\n"
 
 # Builds all subagent entries based on expanded state with viewport slicing
-def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], hover_row: Optional[int] = None, scroll_offsets: Optional[Dict[str, int]] = None, max_lines: int = EXPANDED_MAX_LINES) -> str:
+def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], hover_row: Optional[int] = None, scroll_offsets: Optional[Dict[str, int]] = None, max_lines: int = EXPANDED_MAX_LINES, start_line: int = 3) -> str:
     global _last_entry_count, _last_expanded_entries, line_to_agent_map
 
     if not subagent_metadata:
@@ -47,7 +47,7 @@ def build_all_entries(subagent_metadata: Dict[str, dict], tool_calls_by_agent: D
     entries = []
     expanded_entries = 0
     line_to_agent_map.clear()
-    current_line = 3
+    current_line = start_line
 
     for idx, (agent_id, metadata) in enumerate(sorted(subagent_metadata.items(), key=lambda x: x[1]['timestamp']), 1):
         is_expanded = subagent_states.get(agent_id, False)

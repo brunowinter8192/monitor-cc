@@ -58,7 +58,6 @@ KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt'
 PANE_HEADERS = {
     'main': 'MAIN',
     'rules': 'RULES',
-    'subagent': 'SUBAGENTS',
     'hooks': 'HOOKS',
     'warnings': 'WARNINGS',
     'tokens': 'TOKENS',
