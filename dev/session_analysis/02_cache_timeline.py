@@ -12,6 +12,8 @@ PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 BAR_WIDTH = 40
 LARGE_CACHE_THRESHOLD = 10000
 TIME_GAP_MINUTES = 5
+TIME_GAP_SECONDS_SMALL = 5
+TTL_MAX_MINUTES = 60
 
 # ORCHESTRATOR
 
@@ -23,7 +25,7 @@ def main():
         if args.aggregate:
             output = run_aggregate_view(session_path, turns)
         else:
-            output = run_timeline_view(session_path, turns)
+            output = run_timeline_view(session_path, turns, anomalies_only=args.anomalies_only)
     elif args.project:
         output = run_project_view(args.project, include_workers=args.workers)
     else:
@@ -31,18 +33,20 @@ def main():
         sys.exit(1)
     print(output)
 
-def run_timeline_view(session_path, turns):
+def run_timeline_view(session_path, turns, anomalies_only=False):
+    flags, anomaly_details = detect_anomalies(turns)
     lines = [f'# Cache Timeline — {session_path.name}\n']
-    lines.append(format_turn_table(turns))
+    lines.append(format_turn_table(turns, flags=flags, anomalies_only=anomalies_only))
     lines.append('')
-    lines.append(format_summary(turns))
+    lines.append(format_summary(turns, anomaly_details=anomaly_details))
     return '\n'.join(lines)
 
 def run_aggregate_view(session_path, turns):
+    _, anomaly_details = detect_anomalies(turns)
     lines = [f'# Cache Timeline (per-minute) — {session_path.name}\n']
     lines.append(format_minute_chart(turns))
     lines.append('')
-    lines.append(format_summary(turns))
+    lines.append(format_summary(turns, anomaly_details=anomaly_details))
     return '\n'.join(lines)
 
 def run_project_view(project_path, include_workers=False):
@@ -62,6 +66,7 @@ def parse_args():
     parser.add_argument('--project', help='Project path (absolute) — summary per session')
     parser.add_argument('--aggregate', action='store_true', help='Per-minute aggregation view (requires --session)')
     parser.add_argument('--workers', action='store_true', help='Include worker sessions (requires --project)')
+    parser.add_argument('--anomalies-only', action='store_true', dest='anomalies_only', help='Only show turns with anomalies (requires --session)')
     return parser.parse_args()
 
 # Encode project path to match Claude directory naming
@@ -208,28 +213,137 @@ def format_time(ts):
     m = re.search(r'T(\d{2}:\d{2}:\d{2})', ts)
     return m.group(1) if m else '??:??:??'
 
-# Format per-turn timeline table
-def format_turn_table(turns):
+# Detect STUCK_CACHE, FAILED_RESUME, PREMATURE_TTL anomalies across all turns
+def detect_anomalies(turns):
+    flags = defaultdict(list)
+    details = []
+
+    for i in range(4, len(turns)):
+        cr_n = turns[i]['cache_read']
+        cr_n2 = turns[i - 2]['cache_read']
+        cr_n4 = turns[i - 4]['cache_read']
+        cc_n = turns[i]['cache_creation']
+        cc_n2 = turns[i - 2]['cache_creation']
+        if cr_n == cr_n2 == cr_n4 and cc_n > cc_n2:
+            flags[i].append('STUCK_CACHE')
+
+    stuck_indices = sorted(i for i, f in flags.items() if 'STUCK_CACHE' in f)
+    if stuck_indices:
+        ranges = []
+        start = prev = stuck_indices[0]
+        for idx in stuck_indices[1:]:
+            if idx == prev + 1:
+                prev = idx
+            else:
+                ranges.append((start, prev))
+                start = prev = idx
+        ranges.append((start, prev))
+        for s, e in ranges:
+            cr_stuck = turns[s]['cache_read']
+            cc_s = turns[s]['cache_creation']
+            cc_e = turns[e]['cache_creation']
+            details.append({
+                'type': 'STUCK_CACHE',
+                'turns': (s + 1, e + 1),
+                'description': (
+                    f'cache_read stuck at {cr_stuck:,} for {e - s + 1} turns '
+                    f'while cache_creation grew from {format_k(cc_s)} to {format_k(cc_e)}'
+                ),
+            })
+
+    for i in range(1, len(turns) - 1):
+        t_prev = parse_timestamp(turns[i - 1]['timestamp'])
+        t_curr = parse_timestamp(turns[i]['timestamp'])
+        if not (t_prev and t_curr):
+            continue
+        gap_seconds = (t_curr - t_prev).total_seconds()
+        if gap_seconds <= TIME_GAP_SECONDS_SMALL:
+            continue
+        if turns[i]['cache_read'] != 0:
+            continue
+        cr_next = turns[i + 1]['cache_read']
+        cc_next = turns[i + 1]['cache_creation']
+        if cc_next > 0 and cr_next < cc_next * 0.5:
+            flags[i + 1].append('FAILED_RESUME')
+            details.append({
+                'type': 'FAILED_RESUME',
+                'turns': (i + 1, i + 2),
+                'description': (
+                    f'Resume at {format_time(turns[i]["timestamp"])} after '
+                    f'{gap_seconds / 60:.0f}m gap, cache_read did not recover by turn {i + 2}'
+                ),
+            })
+
+    for i in range(1, len(turns)):
+        t_prev = parse_timestamp(turns[i - 1]['timestamp'])
+        t_curr = parse_timestamp(turns[i]['timestamp'])
+        if not (t_prev and t_curr):
+            continue
+        gap_minutes = (t_curr - t_prev).total_seconds() / 60
+        if not (TIME_GAP_MINUTES < gap_minutes < TTL_MAX_MINUTES):
+            continue
+        cr = turns[i]['cache_read']
+        cc = turns[i]['cache_creation']
+        if cr == 0 and cc > LARGE_CACHE_THRESHOLD:
+            flags[i].append('PREMATURE_TTL')
+            details.append({
+                'type': 'PREMATURE_TTL',
+                'turns': (i + 1, i + 1),
+                'description': (
+                    f'Full cache rebuild ({format_k(cc)} new) after {gap_minutes:.0f}m gap '
+                    f'at turn {i + 1} ({format_time(turns[i]["timestamp"])})'
+                ),
+            })
+
+    return dict(flags), details
+
+# Format per-turn timeline table, with optional anomaly flags and anomalies-only filter
+def format_turn_table(turns, flags=None, anomalies_only=False):
     if not turns:
         return '_No assistant turns found._'
+    flags = flags or {}
     header = (
         f'{"Turn":>5}  {"Time":8}  {"Direct":>8}  {"CacheNew":>10}  '
-        f'{"CacheHit":>10}  {"Output":>8}  {"Tool/Type":<22}  Cache Status'
+        f'{"CacheHit":>10}  {"Output":>8}  {"Tool/Type":<22}  {"Cache Status":<24}  Anomalies'
     )
     sep = '-' * len(header)
     rows = [header, sep]
     for i, turn in enumerate(turns, 1):
+        turn_flags = flags.get(i - 1, [])
+        if anomalies_only and not turn_flags:
+            continue
         tl = type_label(turn)
         status = cache_status(turn)
+        flag_str = '  '.join(turn_flags)
         rows.append(
             f'{i:>5}  {format_time(turn["timestamp"]):8}  '
             f'{turn["input_tokens"]:>8,}  '
             f'{turn["cache_creation"]:>10,}  '
             f'{turn["cache_read"]:>10,}  '
             f'{turn["output_tokens"]:>8,}  '
-            f'{tl:<22}  {status}'
+            f'{tl:<22}  {status:<24}  {flag_str}'
         )
     return '\n'.join(rows)
+
+# Format anomalies summary section
+def format_anomalies_section(anomaly_details):
+    counts = {'STUCK_CACHE': [], 'FAILED_RESUME': [], 'PREMATURE_TTL': []}
+    for d in anomaly_details:
+        counts[d['type']].append(d)
+    lines = ['## Anomalies\n']
+    for atype, items in counts.items():
+        if not items:
+            lines.append(f'{atype}: 0 occurrences')
+        else:
+            turn_ranges = ', '.join(
+                f'turns {d["turns"][0]}-{d["turns"][1]}' if d["turns"][0] != d["turns"][1]
+                else f'turn {d["turns"][0]}'
+                for d in items
+            )
+            lines.append(f'{atype}: {len(items)} occurrence{"s" if len(items) > 1 else ""} ({turn_ranges})')
+            for d in items:
+                lines.append(f'  {d["description"]}')
+    return '\n'.join(lines)
 
 # Find time gaps larger than min_gap_minutes between consecutive turns
 def find_time_gaps(turns, min_gap_minutes):
@@ -249,8 +363,8 @@ def find_time_gaps(turns, min_gap_minutes):
                 })
     return gaps
 
-# Format summary section with totals, hit rate, spikes, and time gaps
-def format_summary(turns):
+# Format summary section with totals, hit rate, spikes, time gaps, and anomalies
+def format_summary(turns, anomaly_details=None):
     if not turns:
         return ''
     total_turns = len(turns)
@@ -279,7 +393,10 @@ def format_summary(turns):
         lines.append(f'- Gaps >{TIME_GAP_MINUTES}m: {", ".join(gap_strs)}')
     else:
         lines.append(f'- Gaps >{TIME_GAP_MINUTES}m: none')
-    return '\n'.join(lines)
+    result = '\n'.join(lines)
+    if anomaly_details is not None:
+        result += '\n\n' + format_anomalies_section(anomaly_details)
+    return result
 
 # Format per-minute token bar chart
 def format_minute_chart(turns):
