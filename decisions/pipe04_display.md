@@ -114,23 +114,28 @@ Eigenes tmux Pane (Window 2 "workers", Pane 2.0, fullscreen) via `--mode workers
 - `get_worker_project_name(project_path)` (monitor.py): extrahiert Projektname worktree-aware (splittet bei `/.claude/worktrees/`)
 - `find_worker_jsonl(session_name)` (monitor.py): Worker JSONL Discovery via `pane_current_path` → `encode_project_path()` → `~/.claude/projects/<encoded>/`
 - `extract_worker_tool_calls(jsonl_path)` (monitor.py): Parsed Worker-JSONL für tool_use Entries (tool name, input, timestamp, call_number)
-- `format_workers_block(workers, expand_states, tool_calls_by_worker, line_map)` (formatter.py): Expand/Collapse per Worker. Collapsed: `[+] [idx] name STATUS spawn_time` + truncated purpose. Expanded: `[-] [idx] name STATUS spawn_time` + full purpose + tool call list (tool name + input preview, kein Output)
-- State: `worker_expand_states: Dict[str, bool]`, `worker_line_map: Dict[int, str]` (monitor.py)
+- `format_workers_block(workers, expand_states, tool_calls_by_worker, line_map, hover_row, scroll_offsets, max_lines)` (formatter.py): Expand/Collapse per Worker. Collapsed: `[+] [idx] name STATUS spawn_time` + truncated purpose. Expanded: `[-] [idx] name STATUS spawn_time` + full purpose + scrollable tool call list (compact display: MCP → `short_name: params`, non-MCP → `tool_name (1.2k)`). Viewport slicing: max 15 lines per block with `[↑ N more]` / `[↓ N more]` indicators. Hover-Highlight: `HOVER_BG` on header line when `hover_row` matches.
+- State: `worker_expand_states: Dict[str, bool]`, `worker_scroll_offsets: Dict[str, int]`, `worker_line_map: Dict[int, str]`, `hover_row: Optional[int]` (monitor.py)
+- `line_map` maps ALL lines of expanded block (header, purpose, tool calls, scroll indicators) → worker name (not just header). Enables scroll targeting and click-to-collapse on any line.
 - Status-Farben: working=GREEN, idle=YELLOW, exited=RED, unknown=WHITE
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py:131, Pane 2.0)
-- **Known UX issue (Session 7):** Mouse-Click Response langsam und inkonsistent. Ursache: Mode 1000 (nur Clicks) + Single-Read pro 0.5s Poll-Iteration. Geplant: Mode 1003 (Motion Tracking), Hover-Highlight, Input-Buffer Draining.
+- Dual poll intervals: Input polling at 50ms (`INPUT_POLL_INTERVAL`), data refresh at 500ms (`POLL_INTERVAL`). Responsive hover/click without excessive tmux subprocess calls.
+- **Mouse UX (Session 8, fixed):** Mode 1003 (Any Event Tracking) + SGR 1006. Input-Buffer Draining (while-loop). Hover-Highlight (HOVER_BG on clickable lines). Scroll (button 64/65). On expand toggle: scroll offset reset to newest calls. All reads via `os.read(fd, 1)` (unbuffered, bypasses Python IO layer).
 
 ### Subagent-Pane Mouse Support (Kategorie: Display / UX, Session 7)
 
-SGR Mouse-Click Support in Subagent-Pane (Window 3, Pane 3.1):
-- `enable_mouse()` / `disable_mouse()` in click_handler.py: `\033[?1000h\033[?1006h` / `\033[?1000l\033[?1006l`
-- `read_mouse_event(first_char)` in click_handler.py: Parsed SGR sequence `\033[<b;col;rowM/m`, returns `(button, col, row)` für press, None für release/failure. Non-blocking via `select.select` mit 0.05s Timeout.
-- `handle_pending_keypresses()` in ui_mode.py: `\033` → Mouse-Branch (lookup row in `line_to_agent_map`), sonst → Digit-Branch (1-9 toggle)
-- `line_to_agent_map` (subagent_ui.py): bereits seit Session 3 vorhanden, mapped Display-Zeile → Agent-ID
-- Keyboard Digits 1-9 weiterhin funktional als Fallback
-- Verifiziert gegen tmux Source Code (`repo/input-keys.c:755-822`): tmux forwarded SGR Mouse Events an App wenn `MODE_MOUSE_STANDARD` + `MODE_MOUSE_SGR` gesetzt sind. Kein Konflikt mit tmux `mouse on`.
-- **Known UX issue:** Gleich wie Workers-Pane — langsame Response, kein Hover-Feedback.
+SGR Mouse Support in Subagent-Pane (Window 3, Pane 3.1):
+- `enable_mouse()` / `disable_mouse()` in click_handler.py: `\033[?1003h\033[?1006h` / `\033[?1003l\033[?1006l` (Mode 1003 = Any Event Tracking incl. motion)
+- `read_mouse_event(first_char)` in click_handler.py: Parsed SGR sequence `\033[<b;col;rowM/m` via `os.read(fd, 1)` (unbuffered), returns `(button, col, row)` for press/motion, None for release/failure. Non-blocking via `select.select` mit 0.05s Timeout.
+- `handle_pending_keypresses(subagent_metadata, tool_calls_by_agent)` in ui_mode.py: Input drain loop (while True). `\033` → Mouse-Branch: button 0 = click toggle, button 64/65 = scroll, button >= 32 = hover. Else → Digit-Branch (1-9 toggle).
+- `line_to_agent_map` (subagent_ui.py): maps ALL lines of expanded block → agent_id (not just header). Enables scroll targeting.
+- State: `hover_row: Optional[int]`, `subagent_scroll_offsets: Dict[str, int]` (ui_mode.py)
+- Scrollable viewport: `EXPANDED_MAX_LINES = 15`, `[↑ N more]` / `[↓ N more]` indicators, mouse wheel scroll.
+- Compact tool call display: MCP → `short_name: params`, non-MCP → `tool_name (1.2k)`.
+- Keyboard Digits 1-9 weiterhin funktional als Fallback.
+- Verifiziert gegen tmux Source Code (`repo/input-keys.c:755-822`): tmux forwarded SGR Mouse Events an App wenn `MODE_MOUSE_ALL` + `MODE_MOUSE_SGR` gesetzt sind. Kein Konflikt mit tmux `mouse on`.
+- **BUG (fixed, Session 8):** `sys.stdin.read(1)` caused Python's BufferedReader to read 4096+ bytes into internal buffer. Subsequent `select.select()` on OS fd returned "no data" (data in Python buffer, not OS fd). Partial escape sequences leaked as digit keypresses → spurious agent toggles on hover. Fix: `os.read(fd, 1)` in click_handler.py (all reads).
 
 ### print_session_status Fix (Kategorie: Display / Startup)
 
