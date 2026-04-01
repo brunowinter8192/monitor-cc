@@ -408,6 +408,79 @@ def extract_usage_data(messages: List[dict]) -> List[dict]:
 
     return usage_items
 
+# Extract per-turn cache tracking data grouped by user prompts
+def extract_cache_turns(messages: list) -> list:
+    turns = []
+    current_turn = None
+
+    for message in messages:
+        msg_type = message.get('type')
+
+        if msg_type == 'user' and message.get('userType') == 'external':
+            content = message.get('message', {}).get('content', '')
+            has_tool_result = False
+            text = ''
+            if isinstance(content, list):
+                has_tool_result = any(
+                    isinstance(b, dict) and b.get('type') == 'tool_result'
+                    for b in content
+                )
+                text_parts = [
+                    b.get('text', '') for b in content
+                    if isinstance(b, dict) and b.get('type') == 'text'
+                ]
+                text = '\n'.join(text_parts)
+            elif isinstance(content, str):
+                text = content
+
+            stripped = text.strip()
+            if not has_tool_result and stripped:
+                if stripped.startswith('<command-message>') or stripped.startswith('<command-name>'):
+                    continue
+                if stripped.startswith('Base directory for this skill:'):
+                    continue
+                current_turn = {
+                    'prompt': stripped,
+                    'timestamp': message.get('timestamp', ''),
+                    'api_calls': [],
+                }
+                turns.append(current_turn)
+            continue
+
+        if msg_type == 'assistant' and current_turn is not None:
+            usage = message.get('message', {}).get('usage', {})
+            cache_read = usage.get('cache_read_input_tokens', 0)
+            cache_creation = usage.get('cache_creation_input_tokens', 0)
+            input_tokens = usage.get('input_tokens', 0)
+            output_tokens = usage.get('output_tokens', 0)
+
+            if cache_read == 0 and cache_creation == 0 and input_tokens == 0:
+                continue
+
+            content_blocks = message.get('message', {}).get('content', [])
+            blocks = []
+            if isinstance(content_blocks, list):
+                for block in content_blocks:
+                    if not isinstance(block, dict):
+                        continue
+                    bt = block.get('type', '')
+                    if bt == 'thinking':
+                        blocks.append({'type': 'thinking'})
+                    elif bt == 'tool_use':
+                        blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown')})
+                    elif bt == 'text':
+                        blocks.append({'type': 'text'})
+
+            current_turn['api_calls'].append({
+                'cache_read': cache_read,
+                'cache_creation': cache_creation,
+                'direct': input_tokens,
+                'output_tokens': output_tokens,
+                'content_blocks': blocks,
+            })
+
+    return turns
+
 # Detect unknown message types not in KNOWN or KNOWN_IGNORED sets
 def detect_unknown_types(messages: List[dict]) -> List[dict]:
     all_known = KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES

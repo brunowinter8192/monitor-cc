@@ -13,9 +13,9 @@ INDENT = '  '
 # From session_finder.py: Discover active Claude Code sessions
 from .session_finder import find_active_sessions, encode_project_path
 # From jsonl_parser.py: Parse JSONL and extract tool calls
-from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines, get_message_content, is_tool_use
+from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines, get_message_content, is_tool_use, extract_cache_turns
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_token_profile, format_token_profile_cumulative, format_workers_block
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_cache_tracker, format_workers_block
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management and rendering
@@ -42,8 +42,9 @@ hook_log_position: int = 0
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
-token_cumulative_n: Optional[int] = None
-token_input_buffer: str = ''
+cache_expand_states: Dict[tuple, bool] = {}
+cache_line_map: Dict[int, tuple] = {}
+cache_hover_row: Optional[int] = None
 worker_expand_states: Dict[str, bool] = {}
 worker_scroll_offsets: Dict[str, int] = {}
 worker_line_map: Dict[int, str] = {}
@@ -409,124 +410,68 @@ def get_main_session_files() -> List[Path]:
     sessions = find_active_sessions(active_project_filter)
     return [s for s in sessions if not is_agent_file(s)]
 
-# Read all token usage from last N main session files (position 0)
-def compute_cumulative_tokens(n: int) -> List[dict]:
+# Build cache turns from the most recent main session JSONL
+def build_cache_turns() -> list:
     main_sessions = get_main_session_files()
-    selected = main_sessions[:n]
-    sessions_data = []
-    for filepath in selected:
-        _, _, _, _, _, _, _, _, usage_data = parse_new_tool_calls(filepath, 0, {})
-        stats: dict = {
-            'file': filepath.name,
-            'input_total': 0,
-            'output_total': 0,
-            'cache_creation': 0,
-            'cache_read': 0,
-            'turns': 0,
-            'tools': {},
-            'text': 0,
-        }
-        request_ids: Set[str] = set()
-        for ud in usage_data:
-            cache_c = ud.get('cache_creation_input_tokens', 0)
-            cache_r = ud.get('cache_read_input_tokens', 0)
-            output_tok = ud.get('output_tokens', 0)
-            block_type = ud.get('type', 'text')
-            tool_name = ud.get('tool_name')
-            stats['input_total'] += ud.get('input_tokens', 0) + cache_c + cache_r
-            stats['output_total'] += output_tok
-            stats['cache_creation'] += cache_c
-            stats['cache_read'] += cache_r
-            if block_type == 'tool_use' and tool_name:
-                stats['tools'][tool_name] = stats['tools'].get(tool_name, 0) + output_tok
-            elif block_type == 'text':
-                stats['text'] += output_tok
-            rid = ud.get('request_id', '')
-            if rid:
-                request_ids.add(rid)
-        stats['turns'] = len(request_ids)
-        sessions_data.append(stats)
-    return sessions_data
+    if not main_sessions:
+        return []
+    filepath = main_sessions[0]
+    lines = read_new_lines(filepath, 0)
+    messages, _ = parse_jsonl_lines(lines)
+    return extract_cache_turns(messages)
 
-
-# Runs token profiling display loop (for dedicated tokens tmux pane)
+# Runs cache tracker display loop (for dedicated tokens tmux pane)
 def run_tokens_loop() -> None:
-    global token_cumulative_n, token_input_buffer
+    global cache_expand_states, cache_line_map, cache_hover_row
     last_output = None
+    turns = []
+    last_data_refresh = 0.0
     setup_keyboard_input()
+    enable_mouse()
     try:
         while True:
-            char = read_keypress()
-            if char is not None:
-                if char in '\r\n':
-                    stripped = token_input_buffer.strip()
-                    if stripped == '' or stripped == 'q':
-                        token_cumulative_n = None
-                    else:
-                        try:
-                            n = int(stripped)
-                            if n == 0:
-                                token_cumulative_n = None
-                            elif n > 0:
-                                token_cumulative_n = n
-                        except ValueError:
-                            pass
-                    token_input_buffer = ''
-                elif char == 'q' and not token_input_buffer:
-                    token_cumulative_n = None
-                elif char in ('\x7f', '\x08'):
-                    token_input_buffer = token_input_buffer[:-1]
-                elif char.isdigit():
-                    token_input_buffer += char
+            input_changed = False
+            while True:
+                char = read_keypress()
+                if char is None:
+                    break
+                if char == '\033':
+                    event = read_mouse_event(char)
+                    if event is not None:
+                        button, col, row = event
+                        if button == 0:
+                            key = cache_line_map.get(row)
+                            if key:
+                                cache_expand_states[key] = not cache_expand_states.get(key, False)
+                                input_changed = True
+                        elif button >= 32:
+                            cache_hover_row = row
+                            input_changed = True
 
-            monitor_sessions()
-            output = format_tokens_block()
-            if output != last_output:
-                print("\033[2J\033[3J\033[H", end='', flush=True)
-                if output:
-                    print(output)
-                last_output = output
-            time.sleep(POLL_INTERVAL)
+            now = time.time()
+            if now - last_data_refresh >= POLL_INTERVAL:
+                turns = build_cache_turns()
+                last_data_refresh = now
+                input_changed = True
+
+            if input_changed:
+                try:
+                    term = os.get_terminal_size()
+                    pane_height = term.lines - 1
+                    pane_width = term.columns
+                except OSError:
+                    pane_height = 50
+                    pane_width = 80
+                output = format_cache_tracker(turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width)
+                if output != last_output:
+                    print("\033[2J\033[3J\033[H", end='', flush=True)
+                    if output:
+                        print(output)
+                    last_output = output
+            time.sleep(INPUT_POLL_INTERVAL)
     finally:
+        disable_mouse()
         restore_terminal()
-
-# Format token profile block for dedicated pane
-def format_tokens_block() -> str:
-    session_count = len(get_main_session_files())
-    header_line = f"{CYAN}Sessions: {session_count}{RESET}"
-
-    if token_cumulative_n is not None:
-        sessions_data = compute_cumulative_tokens(token_cumulative_n + 1)
-        profile_str = format_token_profile_cumulative(sessions_data, token_cumulative_n)
-    else:
-        sessions_data = compute_cumulative_tokens(1)
-        if not sessions_data:
-            profile_str = ''
-        else:
-            s = sessions_data[0]
-            profile = {
-                'total': s['output_total'],
-                'turns': s['turns'],
-                'text': s.get('text', 0),
-                'tools': s.get('tools', {}),
-                'input_total': s['input_total'],
-                'input_tokens': s['input_total'] - s['cache_creation'] - s['cache_read'],
-                'cache_creation': s['cache_creation'],
-                'cache_read': s['cache_read'],
-            }
-            profile_str = format_token_profile(profile)
-
-    if token_input_buffer:
-        prompt_line = f"{YELLOW}Last N sessions › {token_input_buffer}_{RESET}"
-    else:
-        prompt_line = f"{YELLOW}Last N sessions › {RESET}"
-
-    parts = [header_line, '']
-    if profile_str:
-        parts.append(profile_str)
-        parts.append('')
-    parts.append(prompt_line)
-    return '\n'.join(parts)
 
 # Derive worker project name from project path (worktree-aware, matches tmux_spawn.sh logic)
 def get_worker_project_name(project_path: str) -> str:
