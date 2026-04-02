@@ -45,6 +45,7 @@ unknown_type_counts: Dict[str, int] = {}
 cache_expand_states: Dict[tuple, bool] = {}
 cache_line_map: Dict[int, tuple] = {}
 cache_hover_row: Optional[int] = None
+cache_scroll_offset: int = 0
 worker_expand_states: Dict[str, bool] = {}
 worker_scroll_offsets: Dict[str, int] = {}
 worker_line_map: Dict[int, str] = {}
@@ -365,8 +366,18 @@ def handle_subagent_call(tool_call: dict, filepath: Path) -> tuple:
 
     return ui_tracked, displayed, buffered
 
+# Load historical data from newest main session for initial display
+def load_historical_main() -> None:
+    global file_positions, tool_use_caches
+    main_sessions = get_main_session_files()
+    if main_sessions:
+        filepath = main_sessions[0]
+        file_positions[filepath] = 0
+        tool_use_caches[filepath] = {}
+
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
+    load_historical_main()
     while True:
         process_hook_log()
         monitor_sessions()
@@ -381,8 +392,18 @@ def track_unknown_type(unknown_entry: dict) -> None:
     count = unknown_entry.get('count', 1)
     unknown_type_counts[msg_type] = unknown_type_counts.get(msg_type, 0) + count
 
+# Load historical warnings from newest main session
+def load_historical_warnings() -> None:
+    global file_positions, tool_use_caches
+    main_sessions = get_main_session_files()
+    if main_sessions:
+        filepath = main_sessions[0]
+        file_positions[filepath] = 0
+        tool_use_caches[filepath] = {}
+
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
+    load_historical_warnings()
     last_output = None
     while True:
         monitor_sessions()
@@ -422,7 +443,7 @@ def build_cache_turns() -> list:
 
 # Runs cache tracker display loop (for dedicated tokens tmux pane)
 def run_tokens_loop() -> None:
-    global cache_expand_states, cache_line_map, cache_hover_row
+    global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
     last_output = None
     turns = []
     last_data_refresh = 0.0
@@ -444,6 +465,12 @@ def run_tokens_loop() -> None:
                             if key:
                                 cache_expand_states[key] = not cache_expand_states.get(key, False)
                                 input_changed = True
+                        elif button == 64:
+                            cache_scroll_offset += 3
+                            input_changed = True
+                        elif button == 65:
+                            cache_scroll_offset = max(0, cache_scroll_offset - 3)
+                            input_changed = True
                         elif button >= 32:
                             cache_hover_row = row
                             input_changed = True
@@ -462,7 +489,7 @@ def run_tokens_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                output = format_cache_tracker(turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width)
+                output = format_cache_tracker(turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width, cache_scroll_offset)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
@@ -718,8 +745,28 @@ def run_workers_loop() -> None:
         disable_mouse()
         restore_terminal()
 
+# Load historical hook entries for display
+def load_historical_hooks() -> None:
+    global hook_log_position
+    entries, new_pos = parse_new_hook_entries(0)
+    filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
+    for entry in filtered:
+        output = entry.get('output', '')
+        if not output:
+            continue
+        formatted = format_hook_event(
+            timestamp=entry.get('timestamp', ''),
+            hook_event=entry.get('hook_event', ''),
+            hook_script=entry.get('hook_script', ''),
+            output=output
+        )
+        print(formatted)
+        print()
+    hook_log_position = new_pos
+
 # Runs hooks display loop (for dedicated hooks tmux pane)
 def run_hooks_loop() -> None:
+    load_historical_hooks()
     while True:
         process_hook_log_for_display()
         time.sleep(POLL_INTERVAL)
@@ -744,9 +791,24 @@ def process_hook_log_for_display() -> None:
         print(formatted)
         print()
 
+# Load historical rules from hook log
+def load_historical_rules() -> None:
+    global hook_log_position
+    entries, new_pos = parse_new_hook_entries(0)
+    filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
+    for entry in filtered:
+        if entry.get('hook_event') == HOOK_INSTRUCTIONS_LOADED:
+            output = entry.get('output', '')
+            if output.startswith('[P]'):
+                active_rules['project'].add(output[4:])
+            elif output.startswith('[G]'):
+                active_rules['global'].add(output[4:])
+    hook_log_position = new_pos
+
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
     from .ui_mode import format_rules_block
+    load_historical_rules()
     last_output = None
     while True:
         process_hook_log()

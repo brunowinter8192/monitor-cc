@@ -2,12 +2,12 @@
 
 ## Status Quo
 
-- `monitor.py`: `run_streaming_loop()` pollt alle 0.5s, ruft `process_hook_log()` + `monitor_sessions()` auf
-- `monitor.py`: `run_rules_loop()` pollt alle 0.5s, ruft `process_hook_log()` auf (nur InstructionsLoaded) und rendert `format_rules_block(active_rules)` bei Änderungen
-- `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, akkumuliert Token-Usage via `accumulate_tokens()` und rendert `format_tokens_block()` bei Änderungen. Unterstützt Session-Browser via Keyboard-Input (`token_cumulative_n`).
-- `monitor.py`: `run_hooks_loop()` pollt alle 0.5s, ruft `process_hook_log_for_display()` auf und zeigt Hooks mit Output sofort an (scrolling stream)
-- `monitor.py`: `run_warnings_loop()` pollt alle 0.5s, ruft `monitor_sessions()` auf und rendert `format_warnings_block()` bei Änderungen
-- `monitor.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen
+- `monitor.py`: `run_streaming_loop()` ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `process_hook_log()` + `monitor_sessions()`
+- `monitor.py`: `run_rules_loop()` ruft `load_historical_rules()` auf (liest Hook-Log ab 0, füllt `active_rules`), dann pollt alle 0.5s via `process_hook_log()` und rendert `format_rules_block(active_rules)` bei Änderungen
+- `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
+- `monitor.py`: `run_hooks_loop()` ruft `load_historical_hooks()` auf (liest Hook-Log ab 0, druckt Entries mit Output), dann pollt alle 0.5s via `process_hook_log_for_display()`
+- `monitor.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `format_warnings_block()` bei Änderungen
+- `monitor.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. `extract_worker_tool_calls()` liest ab Position 0.
 - Hook routing in `process_hook_log()`: nur noch 1 Event → 1 State Dict
   - `InstructionsLoaded` → `active_rules` (via `[P]`/`[G]` Prefix-Routing)
   - `UserPromptSubmit` und `PreToolUse` werden nicht mehr gebuffert (Buffering in Session 2/3 entfernt)

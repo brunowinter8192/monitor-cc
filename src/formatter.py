@@ -240,7 +240,7 @@ def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, pct: flo
     return f" {symbol} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} {pct:.0f}%"
 
 # Format cache tracker for dedicated tokens pane with per-turn, per-API-call detail
-def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80) -> str:
+def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> str:
     if not turns:
         return f"{YELLOW}No turns yet{RESET}"
 
@@ -303,7 +303,10 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
         line_keys.pop()
 
     viewport_lines = pane_height - 1
-    start = max(0, len(all_lines) - viewport_lines)
+    max_scroll = max(0, len(all_lines) - viewport_lines)
+    clamped_offset = min(scroll_offset, max_scroll)
+    start = max(0, len(all_lines) - viewport_lines - clamped_offset)
+    end = start + viewport_lines
 
     sticky_header = None
     if start > 0:
@@ -321,8 +324,8 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                     sticky_header = raw
                 break
 
-    visible_lines = all_lines[start:]
-    visible_keys = line_keys[start:]
+    visible_lines = all_lines[start:end]
+    visible_keys = line_keys[start:end]
 
     if line_map is not None:
         line_map.clear()
