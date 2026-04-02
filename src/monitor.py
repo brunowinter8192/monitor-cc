@@ -1082,10 +1082,10 @@ def run_rules_loop() -> None:
                                 rules_expand_states[rule_key] = not rules_expand_states.get(rule_key, False)
                                 input_changed = True
                         elif button == 64:
-                            rules_scroll_offset = min(rules_scroll_offset + 3, max(0, rules_total_lines - 5))
+                            rules_scroll_offset = max(0, rules_scroll_offset - 3)
                             input_changed = True
                         elif button == 65:
-                            rules_scroll_offset = max(0, rules_scroll_offset - 3)
+                            rules_scroll_offset = min(rules_scroll_offset + 3, max(0, rules_total_lines - 5))
                             input_changed = True
                         elif button >= 32:
                             rules_hover_row = row
