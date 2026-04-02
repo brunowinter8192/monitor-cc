@@ -11,7 +11,7 @@ from .constants import RESET, RED, GREEN, MAGENTA
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Claude Code Tool Monitor')
     parser.add_argument('--project', type=str, default=None, help='Filter by project path')
-    parser.add_argument('--mode', type=str, choices=['all', 'main', 'subagent', 'rules', 'warnings', 'hooks', 'tokens', 'workers'], default='all', help='Monitor mode: all, main, subagent, rules, warnings, hooks, tokens, or workers')
+    parser.add_argument('--mode', type=str, choices=['all', 'main', 'subagent', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'subagents'], default='all', help='Monitor mode: all, main, subagent, rules, warnings, hooks, tokens, workers, or subagents')
     parser.add_argument('--ui', action='store_true', help='Enable collapsible UI mode (subagent only)')
     args = parser.parse_args()
     return args
@@ -37,7 +37,7 @@ def print_startup_message(project_filter: Optional[str] = None, mode: str = 'all
     else:
         print("Monitoring ~/.claude/projects for tool calls...")
 
-    mode_labels = {'main': 'MAIN AGENT', 'subagent': 'SUBAGENT', 'rules': 'RULES', 'warnings': 'WARNINGS', 'hooks': 'HOOKS', 'tokens': 'TOKENS'}
+    mode_labels = {'main': 'MAIN AGENT', 'subagent': 'SUBAGENT', 'rules': 'RULES', 'warnings': 'WARNINGS', 'hooks': 'HOOKS', 'tokens': 'TOKENS', 'subagents': 'SUBAGENTS'}
     if mode in mode_labels:
         print(f"Mode: {mode_labels[mode]} only")
 

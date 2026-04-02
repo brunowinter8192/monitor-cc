@@ -17,7 +17,7 @@ def main() -> None:
         launch_split_screen(args.project, args.ui, os.path.abspath(__file__))
     else:
         setup_signal_handlers()
-        if args.mode not in ('rules', 'warnings', 'hooks', 'tokens', 'workers'):
+        if args.mode not in ('rules', 'warnings', 'hooks', 'tokens', 'workers', 'subagents'):
             print_startup_message(args.project, args.mode)
         run_monitor(args.project, args.mode, args.ui)
 
