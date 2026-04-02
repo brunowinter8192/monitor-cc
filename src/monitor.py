@@ -430,22 +430,20 @@ def _get_newest_main_session() -> Optional[Path]:
     main_sessions = get_main_session_files()
     return main_sessions[0] if main_sessions else None
 
-# Derive session start from most recent CLAUDE InstructionsLoaded hook entry minus 30s
+# Extract timestamp 60s before the first message in the newest main session JSONL
 def _get_session_start_ts() -> Optional[str]:
-    entries, _ = parse_new_hook_entries(0)
-    filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
-    last_ts = None
-    for entry in filtered:
-        if entry.get('hook_event') != HOOK_INSTRUCTIONS_LOADED:
-            continue
-        output = entry.get('output', '')
-        if output.startswith('[P] CLAUDE') or output.startswith('[G] CLAUDE'):
-            last_ts = entry.get('timestamp')
-    if not last_ts:
+    session = _get_newest_main_session()
+    if not session:
         return None
-    dt = datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
-    dt_adjusted = dt - timedelta(seconds=30)
-    return dt_adjusted.isoformat().replace('+00:00', 'Z')
+    lines = read_new_lines(session, 0)
+    messages, _ = parse_jsonl_lines(lines[:5])
+    for msg in messages:
+        ts = msg.get('timestamp')
+        if ts:
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            dt_adjusted = dt - timedelta(seconds=60)
+            return dt_adjusted.isoformat().replace('+00:00', 'Z')
+    return None
 
 # Track unknown JSONL message type for warnings pane
 def track_unknown_type(unknown_entry: dict) -> None:
