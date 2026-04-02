@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 import os
 import subprocess
@@ -430,7 +430,7 @@ def _get_newest_main_session() -> Optional[Path]:
     main_sessions = get_main_session_files()
     return main_sessions[0] if main_sessions else None
 
-# Extract timestamp of the first message in the newest main session JSONL
+# Extract timestamp 60s before the first message in the newest main session JSONL
 def _get_session_start_ts() -> Optional[str]:
     session = _get_newest_main_session()
     if not session:
@@ -440,7 +440,9 @@ def _get_session_start_ts() -> Optional[str]:
     for msg in messages:
         ts = msg.get('timestamp')
         if ts:
-            return ts
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            dt_adjusted = dt - timedelta(seconds=60)
+            return dt_adjusted.isoformat().replace('+00:00', 'Z')
     return None
 
 # Track unknown JSONL message type for warnings pane
