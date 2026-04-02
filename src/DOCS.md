@@ -54,7 +54,7 @@ src/
 **Output:** Constants imported by other modules:
 - 256-color ANSI palette (RESET, RED, GREEN, YELLOW, BLUE, CYAN, MAGENTA, WHITE, PURPLE, ORANGE, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, HOVER_BG)
 - Config values (POLL_INTERVAL, INPUT_POLL_INTERVAL, LONG_OUTPUT_THRESHOLD, TMUX_HISTORY_LIMIT, EXPANDED_MAX_LINES)
-- Tool names, mode strings (MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS), hook event names
+- Tool names, mode strings (MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS), hook event names
 - Excluded tool set, regex patterns
 - JSONL message type sets (KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES)
 - Pane header labels (PANE_HEADERS)
@@ -85,7 +85,7 @@ print_startup_message(args.project, args.mode)
 
 **Input:** `project_filter` (optional path), `ui` (bool for collapsible UI mode), `script_path` (absolute path to workflow.py).
 
-**Output:** Creates and attaches to a tmux session with 4-window layout (main+tokens | rules+hooks | workers | warnings+subagents).
+**Output:** Creates and attaches to a tmux session with 4-window layout (main+tokens | rules+hooks | workers+subagents | warnings). Window 2 has 2 panes: Pane 2.0 (left 50%) = workers, Pane 2.1 (right 50%) = subagents.
 
 **Usage:**
 ```python
@@ -99,11 +99,13 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls with color-coded output.
 
-**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens/workers), `ui_mode` (bool).
+**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens/workers/subagents), `ui_mode` (bool).
 
-**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read with color legend + output tokens per tool flat list, session browser for cumulative N sessions with granular output breakdown) with screen-clear refresh; workers display (real-time worker status via window_activity timestamp, expand/collapse with scrollable viewport + compact tool call display, hover-highlight, keyboard + SGR mouse input with dual poll intervals 50ms/500ms). Headers rendered as sticky tmux pane-border labels (PASTEL_ORANGE).
+**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read with color legend + output tokens per tool flat list, session browser for cumulative N sessions with granular output breakdown) with screen-clear refresh; workers display (real-time worker status via window_activity timestamp, expand/collapse with scrollable viewport + cache-tracker token view (CR/CC/D per API call), hover-highlight, keyboard + SGR mouse input with dual poll intervals 50ms/500ms); subagents display (collapsible agent list with per-agent cache-tracker view, SGR mouse + digit keyboard). Headers rendered as sticky tmux pane-border labels (PASTEL_ORANGE).
 
-**Workers-Pane functions:** `find_worker_jsonl(session)` discovers worker JSONL via tmux `pane_current_path` → `encode_project_path()`. `extract_worker_tool_calls(jsonl_path)` parses tool_use entries. State: `worker_expand_states`, `worker_scroll_offsets`, `worker_line_map`, `hover_row`.
+**Workers-Pane functions:** `find_worker_jsonl(session)` discovers worker JSONL via tmux `pane_current_path` → `encode_project_path()` → worktree-aware (strips `/.claude/worktrees/` prefix when needed). State: `worker_expand_states`, `worker_scroll_offsets`, `worker_line_map`, `hover_row`.
+
+**Subagents-Pane functions:** `run_subagents_loop()` polls sessions, renders subagent list + per-agent cache tracker, handles mouse/keyboard input. `load_historical_subagents()` resets newest main session + its agent files (from `filepath.parent/filepath.stem/subagents/`) to position 0. `find_agent_jsonl(agent_id)` searches active sessions for `agent-{id}.jsonl`. `render_subagents_with_tokens(metadata, turns_by_agent, ...)` renders collapsible list with `format_cache_tracker()` for expanded agents. State: `agent_turns`, `agent_pane_line_map`, `agent_pane_hover_row`, `agent_cache_scroll_offsets`.
 
 **Usage:**
 ```python
@@ -131,7 +133,7 @@ run_ui_loop(metadata, calls, agent_to_task, agent_to_type, monitor_fn, active_ru
 
 ## session_finder.py
 
-**Purpose:** Discovers active Claude Code session files in `~/.claude/projects` with optional project filtering. Includes subagent files from `*/subagents/agent-*.jsonl` subdirectories.
+**Purpose:** Discovers active Claude Code session files in `~/.claude/projects` with optional project filtering. Includes subagent files from `*/subagents/agent-*.jsonl` subdirectories. `encode_project_path()` replaces `/`, `_`, and `.` with `-` to match Claude Code's directory naming convention (dot replacement required for paths containing `.claude/worktrees/`).
 
 **Input:** `project_filter` (optional project path to match against encoded directory names).
 
@@ -179,7 +181,7 @@ entries, new_position = parse_new_hook_entries(file_path, last_position)
 
 ## formatter.py
 
-**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, token profiles (input + output sections with bar charts), cumulative token profiles, worker status blocks, and pane headers as color-coded terminal strings.
+**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, token profiles (input + output sections with bar charts), cumulative token profiles, worker status blocks, and pane headers as color-coded terminal strings. `format_workers_block()` renders cache-tracker token view (CR/CC/D per API call) per worker when expanded instead of a tool call list. `_get_tool_preview()` extracts a readable preview string from tool input dicts for cache-tracker expanded entries.
 
 **Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, is_error flag).
 

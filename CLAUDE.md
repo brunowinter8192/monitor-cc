@@ -12,8 +12,8 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks\|tokens\|workers`, `--project`, `--ui` |
-| tmux Launch | tmux_launcher.py | 4-Window (main+tokens \| rules+hooks \| workers \| warnings+subagents), history 50000 |
+| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks\|tokens\|workers\|subagents`, `--project`, `--ui` |
+| tmux Launch | tmux_launcher.py | 4-Window (main+tokens \| rules+hooks \| workers+subagents \| warnings), history 50000 |
 | Signal Handling | startup.py | SIGINT/SIGTERM → graceful shutdown |
 
 ### Data Sources

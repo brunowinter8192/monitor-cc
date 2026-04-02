@@ -103,35 +103,34 @@ Eigenes tmux Pane (Window 3 "debug", Pane 3.0, fullscreen) via `--mode warnings`
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py:132, Pane 3.0)
 
-### Workers-Pane (Kategorie: Worker-Monitoring, Session 3+7+9)
+### Workers-Pane (Kategorie: Worker-Monitoring, Session 3+7+9+10)
 
-Eigenes tmux Pane (Window 2 "workers", Pane 2.0, fullscreen) via `--mode workers`. Rendert Workers oben und Subagents darunter in einer kombinierten Ansicht:
-- `run_workers_loop()` in monitor.py: pollt `list_workers()` + `monitor_sessions()`, rendert `format_workers_block()` + `render_subagent_list()` kombiniert. Keyboard-Input (Digits 1-9 toggle) + SGR Mouse-Click toggle für beide Abschnitte.
+Eigenes tmux Pane (Window 2 "workers", Pane 2.0, links 50%) via `--mode workers`. Rendert nur Workers (Subagents haben jetzt ein eigenes Pane):
+- `run_workers_loop()` in monitor.py: pollt `list_workers()`, rendert `format_workers_block()`. Keyboard-Input (Digits 1-9 toggle) + SGR Mouse-Click toggle + Scroll.
 - `list_workers(project_path)` (monitor.py): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
 - `detect_worker_status(session)` (monitor.py): prüft `#{pane_dead}` für exited-Status; analysiert `#{window_activity}` Timestamp für idle-Detection (10s Threshold)
 - `get_tmux_env(session, var)` (monitor.py): liest WORKER_SPAWNED, WORKER_PURPOSE aus tmux show-environment
 - `get_worker_project_name(project_path)` (monitor.py): extrahiert Projektname worktree-aware (splittet bei `/.claude/worktrees/`)
-- `find_worker_jsonl(session_name)` (monitor.py): Worker JSONL Discovery via `pane_current_path` → `encode_project_path()` → `~/.claude/projects/<encoded>/`
-- `extract_worker_tool_calls(jsonl_path)` (monitor.py): Parsed Worker-JSONL für tool_use Entries (tool name, input, timestamp, call_number)
-- `format_workers_block(workers, expand_states, tool_calls_by_worker, line_map, hover_row, scroll_offsets, max_lines)` (formatter.py): Expand/Collapse per Worker. Collapsed: `[+] [idx] name STATUS spawn_time` + truncated purpose. Expanded: `[-] [idx] name STATUS spawn_time` + full purpose + scrollable tool call list (compact display: MCP → `short_name: params`, non-MCP → `tool_name (1.2k)`). Viewport slicing: max 15 lines per block with `[↑ N more]` / `[↓ N more]` indicators. Hover-Highlight: `HOVER_BG` on header line when `hover_row` matches.
-- State: `worker_expand_states: Dict[str, bool]`, `worker_scroll_offsets: Dict[str, int]`, `worker_line_map: Dict[int, str]`, `hover_row: Optional[int]` (monitor.py); `subagent_scroll_offsets: Dict[str, int]` (local in run_workers_loop)
-- `line_map` maps ALL lines of expanded worker block → worker name. `line_to_agent_map` (subagent_ui.py) maps all subagent entry lines → agent_id. Disjoint row ranges (workers top, subagents bottom).
-- `start_line` in `render_subagent_list()`: computed as `workers_output.count('\n') + 5` so that `line_to_agent_map` rows align with actual terminal positions in the combined pane.
+- `find_worker_jsonl(session_name)` (monitor.py): Worker JSONL Discovery via `pane_current_path` → `encode_project_path()` → `~/.claude/projects/<encoded>/`. Worktree-aware: direkter Lookup auf Worktree-Verzeichnis (kein Fallback auf Base-Projekt).
+- `format_workers_block(workers, expand_states, worker_turns, line_map, hover_row, scroll_offsets)` (formatter.py): Expand/Collapse per Worker. Collapsed: `[+] [idx] name STATUS spawn_time` + truncated purpose. Expanded: `[-] [idx] name STATUS spawn_time` + full purpose + scrollable Cache-Tracker Token-View (CR/CC/D per API call via `format_cache_tracker()`). Hover-Highlight: `HOVER_BG` on header line when `hover_row` matches.
+- State: `worker_expand_states: Dict[str, bool]`, `worker_scroll_offsets: Dict[str, int]`, `worker_line_map: Dict[int, str]`, `hover_row: Optional[int]` (monitor.py)
 - Status-Farben: working=GREEN, idle=YELLOW, exited=RED, unknown=WHITE
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 2.0)
-- Dual poll intervals: Input polling at 50ms (`INPUT_POLL_INTERVAL`), data refresh at 500ms (`POLL_INTERVAL`). `monitor_sessions()` called on data refresh to populate subagent state.
-- **Mouse UX:** Mode 1003 (Any Event Tracking) + SGR 1006. Input-Buffer Draining (while-loop). Hover-Highlight (HOVER_BG on clickable lines). Scroll (button 64/65). Click dispatch: `worker_line_map.get(row)` first → worker toggle; else `line_to_agent_map.get(row)` → subagent toggle. All reads via `os.read(fd, 1)` (unbuffered).
-- **Digit Keys:** digits within worker range (1..len(workers)) toggle workers; digits outside range toggle subagents via `get_agent_by_index()`.
-- Subagent rendering moved from `ui_mode.py:run_ui_loop()` (removed) into this loop. `ui_mode_active = True` set at start so `handle_subagent_call()` routes data to `track_subagent_metadata()` instead of displaying inline.
-
-### Subagent Display (merged into Workers-Pane, Session 9)
-
-Subagent list rendered below workers section in Window 2, Pane 2.0. Previously a separate pane (Window 3, Pane 3.1). Merged to reduce pane count from 7 to 6.
-- `render_subagent_list()` called with computed `start_line` so `line_to_agent_map` row numbers match actual terminal row positions in the combined output.
-- Mouse click/scroll, hover, and digit keyboard (1-9) all work for both workers and subagents sections.
-- `subagent_ui.py:build_all_entries()` accepts `start_line: int = 3` parameter (default unchanged for standalone use).
+- Dual poll intervals: Input polling at 50ms (`INPUT_POLL_INTERVAL`), data refresh at 500ms (`POLL_INTERVAL`).
+- **Mouse UX:** Mode 1003 (Any Event Tracking) + SGR 1006. Input-Buffer Draining (while-loop). Hover-Highlight. Scroll (button 64/65 → increment/decrement scroll_offset). All reads via `os.read(fd, 1)` (unbuffered).
 - Verifiziert gegen tmux Source Code (`repo/input-keys.c:755-822`): tmux forwarded SGR Mouse Events an App wenn `MODE_MOUSE_ALL` + `MODE_MOUSE_SGR` gesetzt sind. Kein Konflikt mit tmux `mouse on`.
+
+### Subagents-Pane (Window 2, Pane 2.1, Session 10)
+
+Eigenes tmux Pane (Window 2 "workers", Pane 2.1, rechts 50%) via `--mode subagents`. Split aus Workers-Pane (vorher kombiniert in Pane 2.0).
+- `run_subagents_loop()` in monitor.py: pollt `monitor_sessions()` + per-Agent JSONL, rendert `render_subagents_with_tokens()`. Keyboard (Digits 1-9) + SGR Mouse (click, scroll, hover).
+- `load_historical_subagents()` in monitor.py: setzt neueste Main-Session + deren Agent-Files (`filepath.parent/filepath.stem/subagents/agent-*.jsonl`) auf Position 0 — nur aktuelle Session, nicht alle historischen.
+- `find_agent_jsonl(agent_id)` in monitor.py: sucht `agent-{id}.jsonl` in aktiven Sessions via `find_active_sessions()`.
+- `render_subagents_with_tokens(metadata, turns_by_agent, ...)` in monitor.py: collapsible Agent-Liste. Collapsed: `[+/-] [idx] name (id) - timestamp`. Expanded: per-Agent Cache-Tracker Token-View via `format_cache_tracker()` mit separatem `agent_cache_scroll_offsets` Dict.
+- `toggle_subagent_state(agent_id)` in subagent_ui.py: toggled `subagent_states[agent_id]`; nutzt `.get()` Default sodass neue Agents direkt togglebar sind ohne Pre-Initialisierung.
+- State: `agent_turns`, `agent_pane_line_map`, `agent_pane_hover_row`, `agent_cache_scroll_offsets` (monitor.py); `subagent_states` (subagent_ui.py)
+- `ui_mode_active = True` gesetzt beim Start so `handle_subagent_call()` Metadata via `track_subagent_metadata()` populiert statt inline display.
 
 ### print_session_status Fix (Kategorie: Display / Startup)
 

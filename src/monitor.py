@@ -1,7 +1,9 @@
 # INFRASTRUCTURE
 from datetime import datetime
+import io
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Dict, Set, List, Optional
@@ -851,7 +853,10 @@ def run_subagents_loop() -> None:
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
+                _stdout = sys.stdout
+                sys.stdout = io.StringIO()
                 monitor_sessions()
+                sys.stdout = _stdout
                 agent_turns = {}
                 for agent_id in subagent_metadata:
                     jsonl_path = find_agent_jsonl(agent_id)

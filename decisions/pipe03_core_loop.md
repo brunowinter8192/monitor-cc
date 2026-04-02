@@ -7,7 +7,10 @@
 - `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
 - `monitor.py`: `run_hooks_loop()` ruft `load_historical_hooks()` auf (liest Hook-Log ab 0, druckt Entries mit Output), dann pollt alle 0.5s via `process_hook_log_for_display()`
 - `monitor.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `format_warnings_block()` bei Änderungen
-- `monitor.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. `extract_worker_tool_calls()` liest ab Position 0.
+- `monitor.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. Expanded Workers zeigen Cache-Tracker Token-View (CR/CC/D per API Call) via `extract_cache_turns()` + `format_cache_tracker()`. Keine Subagent-Rendering mehr (separates Pane).
+- `monitor.py`: `run_subagents_loop()` pollt alle 0.5s, ruft `monitor_sessions()` auf, lädt per-Agent JSONL via `find_agent_jsonl()`, rendert `render_subagents_with_tokens()` bei Änderungen. Unterstützt Mouse-Events (Expand/Collapse, Scroll, Hover) und Digit-Keys.
+- `monitor.py`: `load_historical_subagents()` setzt neueste Main-Session + deren Agent-Files (`filepath.parent/filepath.stem/subagents/agent-*.jsonl`) auf Position 0 (nur aktuelle Session, nicht alle historischen).
+- `run_monitor()` routet `MODE_SUBAGENTS` → `run_subagents_loop()`.
 - Hook routing in `process_hook_log()`: nur noch 1 Event → 1 State Dict
   - `InstructionsLoaded` → `active_rules` (via `[P]`/`[G]` Prefix-Routing)
   - `UserPromptSubmit` und `PreToolUse` werden nicht mehr gebuffert (Buffering in Session 2/3 entfernt)
@@ -25,9 +28,10 @@
 `run_workers_loop()` Ablauf:
 1. `list_workers(active_project_filter)` → liest tmux-Sessions mit `worker-{project}-` Prefix
 2. Pro Worker: `detect_worker_status()` via `#{pane_dead}` + pane-content-Analyse, `get_tmux_env()` für WORKER_SPAWNED + WORKER_PURPOSE
-3. `format_workers_block(workers)` → rendert Worker-Liste
-4. Bei Änderung: Screen-Clear + Print
-5. `time.sleep(POLL_INTERVAL)`
+3. Pro erweitertem Worker: `find_worker_jsonl()` → `extract_cache_turns()` → `worker_turns[name]`
+4. `format_workers_block(workers, expand_states, worker_turns, ...)` → rendert Worker-Liste mit Cache-Tracker bei Expand
+5. Bei Änderung: Screen-Clear + Print
+6. `time.sleep(POLL_INTERVAL)`
 
 ## IST — Stellschrauben
 
