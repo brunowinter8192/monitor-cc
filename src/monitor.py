@@ -46,6 +46,8 @@ rules_invokers: Dict[str, List[dict]] = {}
 rules_expand_states: Dict[str, bool] = {}
 rules_line_map: Dict[int, str] = {}
 rules_hover_row: Optional[int] = None
+rules_scroll_offset: int = 0
+rules_total_lines: int = 0
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
 cache_expand_states: Dict[tuple, bool] = {}
@@ -1043,19 +1045,23 @@ def record_rule_invoker(entry: dict) -> None:
         rules_invokers[rule_key] = []
     rules_invokers[rule_key].append({'timestamp': ts, 'source': source, 'cwd': cwd})
 
-# Load historical rules from hook log
+# Load historical rules from hook log (names only, no invokers — current session only)
 def load_historical_rules() -> None:
     global hook_log_position
     entries, new_pos = parse_new_hook_entries(0)
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
     for entry in filtered:
         if entry.get('hook_event') == HOOK_INSTRUCTIONS_LOADED:
-            record_rule_invoker(entry)
+            output = entry.get('output', '')
+            if output.startswith('[P]'):
+                active_rules['project'].add(output[4:])
+            elif output.startswith('[G]'):
+                active_rules['global'].add(output[4:])
     hook_log_position = new_pos
 
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
-    global rules_expand_states, rules_line_map, rules_hover_row
+    global rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset, rules_total_lines
     from .ui_mode import format_rules_block
     load_historical_rules()
     last_output = None
@@ -1077,6 +1083,12 @@ def run_rules_loop() -> None:
                             if rule_key:
                                 rules_expand_states[rule_key] = not rules_expand_states.get(rule_key, False)
                                 input_changed = True
+                        elif button == 64:
+                            rules_scroll_offset = min(rules_scroll_offset + 3, max(0, rules_total_lines - 5))
+                            input_changed = True
+                        elif button == 65:
+                            rules_scroll_offset = max(0, rules_scroll_offset - 3)
+                            input_changed = True
                         elif button >= 32:
                             rules_hover_row = row
                             input_changed = True
@@ -1090,7 +1102,7 @@ def run_rules_loop() -> None:
                             input_changed = True
 
             process_hook_log()
-            output = format_rules_block(active_rules, rules_invokers, rules_expand_states, rules_line_map, rules_hover_row)
+            output, rules_total_lines = format_rules_block(active_rules, rules_invokers, rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset)
             if output != last_output or input_changed:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:
