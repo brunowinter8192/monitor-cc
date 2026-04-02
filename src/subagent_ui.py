@@ -214,7 +214,5 @@ def get_input_preview(input_data: dict) -> str:
 # Toggles expanded/collapsed state for agent
 def toggle_subagent_state(agent_id: str) -> bool:
     global subagent_states
-    if agent_id in subagent_states:
-        subagent_states[agent_id] = not subagent_states[agent_id]
-        return True
-    return False
+    subagent_states[agent_id] = not subagent_states.get(agent_id, False)
+    return True

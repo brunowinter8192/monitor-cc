@@ -381,13 +381,20 @@ def load_historical_main() -> None:
         file_positions[filepath] = 0
         tool_use_caches[filepath] = {}
 
-# Load historical data from main session + all agent files for subagents pane
+# Load historical data from newest main session + its agent files for subagents pane
 def load_historical_subagents() -> None:
     global file_positions, tool_use_caches
-    sessions = find_active_sessions(active_project_filter)
-    for session_file in sessions:
-        file_positions[session_file] = 0
-        tool_use_caches[session_file] = {}
+    main_sessions = get_main_session_files()
+    if not main_sessions:
+        return
+    filepath = main_sessions[0]
+    file_positions[filepath] = 0
+    tool_use_caches[filepath] = {}
+    subagents_dir = filepath.parent / filepath.stem / 'subagents'
+    if subagents_dir.exists():
+        for agent_file in subagents_dir.glob('agent-*.jsonl'):
+            file_positions[agent_file] = 0
+            tool_use_caches[agent_file] = {}
 
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
@@ -594,6 +601,13 @@ def find_worker_jsonl(session_name: str) -> Optional[Path]:
     working_dir = result.stdout.strip()
     encoded = encode_project_path(working_dir)
     project_dir = Path.home() / '.claude' / 'projects' / encoded
+
+    if not project_dir.exists():
+        worktree_marker = '/.claude/worktrees/'
+        if worktree_marker in working_dir:
+            base_dir = working_dir[:working_dir.index(worktree_marker)]
+            encoded = encode_project_path(base_dir)
+            project_dir = Path.home() / '.claude' / 'projects' / encoded
 
     if not project_dir.exists():
         return None
