@@ -683,12 +683,12 @@ def run_workers_loop() -> None:
                         elif button == 64:
                             name = worker_line_map.get(row)
                             if name:
-                                worker_scroll_offsets[name] = max(0, worker_scroll_offsets.get(name, 0) - 3)
+                                worker_scroll_offsets[name] = worker_scroll_offsets.get(name, 0) + 3
                                 input_changed = True
                         elif button == 65:
                             name = worker_line_map.get(row)
                             if name:
-                                worker_scroll_offsets[name] = worker_scroll_offsets.get(name, 0) + 3
+                                worker_scroll_offsets[name] = max(0, worker_scroll_offsets.get(name, 0) - 3)
                                 input_changed = True
                         elif button >= 32:
                             hover_row = row
@@ -838,12 +838,12 @@ def run_subagents_loop() -> None:
                         elif button == 64:
                             agent_id = agent_pane_line_map.get(row)
                             if agent_id and subagent_states.get(agent_id, False):
-                                agent_cache_scroll_offsets[agent_id] = max(0, agent_cache_scroll_offsets.get(agent_id, 0) - 1)
+                                agent_cache_scroll_offsets[agent_id] = agent_cache_scroll_offsets.get(agent_id, 0) + 3
                                 input_changed = True
                         elif button == 65:
                             agent_id = agent_pane_line_map.get(row)
                             if agent_id and subagent_states.get(agent_id, False):
-                                agent_cache_scroll_offsets[agent_id] = agent_cache_scroll_offsets.get(agent_id, 0) + 1
+                                agent_cache_scroll_offsets[agent_id] = max(0, agent_cache_scroll_offsets.get(agent_id, 0) - 3)
                                 input_changed = True
                         elif button >= 32:
                             agent_pane_hover_row = row
