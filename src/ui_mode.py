@@ -34,7 +34,7 @@ def track_subagent_metadata(tool_call: dict, filepath, subagent_metadata: Dict[s
     subagent_metadata[agent_id]['call_count'] = count_calls_for_agent(tool_calls_by_agent[agent_id])
 
 # Format active rules block for UI display with expandable invoker info
-def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str, List[dict]]] = None, expand_states: Optional[Dict[str, bool]] = None, line_map: Optional[Dict[int, str]] = None, hover_row: Optional[int] = None, scroll_offset: int = 0, frozen: bool = False) -> tuple:
+def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str, Dict[str, str]]] = None, expand_states: Optional[Dict[str, bool]] = None, line_map: Optional[Dict[int, str]] = None, hover_row: Optional[int] = None, scroll_offset: int = 0, frozen: bool = False) -> tuple:
     if not active_rules:
         return ('', 0)
     project_rules = sorted(active_rules.get('project', set()))
@@ -59,11 +59,9 @@ def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str
             rule_key_at[rule_line_idx] = rule_key
 
             if is_expanded and invokers:
-                rule_invocations = invokers.get(rule_key, [])
-                if rule_invocations:
-                    for inv in rule_invocations:
-                        ts = inv.get('timestamp', '??:??:??')
-                        source = inv.get('source', 'unknown')
+                source_map = invokers.get(rule_key, {})
+                if source_map:
+                    for source, ts in sorted(source_map.items()):
                         all_lines.append(f"      {DIM}[{ts}] {source}{RESET}")
                 else:
                     all_lines.append(f"      {DIM}(no invoker data){RESET}")

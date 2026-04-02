@@ -42,7 +42,7 @@ tool_calls_by_agent: Dict[str, List[dict]] = {}
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
-rules_invokers: Dict[str, List[dict]] = {}
+rules_invokers: Dict[str, Dict[str, str]] = {}
 rules_expand_states: Dict[str, bool] = {}
 rules_line_map: Dict[int, str] = {}
 rules_hover_row: Optional[int] = None
@@ -1042,8 +1042,8 @@ def record_rule_invoker(entry: dict) -> None:
     source = derive_rule_source(cwd)
     ts = format_timestamp(entry.get('timestamp', ''))
     if rule_key not in rules_invokers:
-        rules_invokers[rule_key] = []
-    rules_invokers[rule_key].append({'timestamp': ts, 'source': source, 'cwd': cwd})
+        rules_invokers[rule_key] = {}
+    rules_invokers[rule_key][source] = ts
 
 # Load historical rules from hook log (with invoker data from cwd)
 def load_historical_rules() -> None:
