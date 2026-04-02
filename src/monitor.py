@@ -1045,18 +1045,14 @@ def record_rule_invoker(entry: dict) -> None:
         rules_invokers[rule_key] = []
     rules_invokers[rule_key].append({'timestamp': ts, 'source': source, 'cwd': cwd})
 
-# Load historical rules from hook log (names only, no invokers — current session only)
+# Load historical rules from hook log (with invoker data from cwd)
 def load_historical_rules() -> None:
     global hook_log_position
     entries, new_pos = parse_new_hook_entries(0)
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
     for entry in filtered:
         if entry.get('hook_event') == HOOK_INSTRUCTIONS_LOADED:
-            output = entry.get('output', '')
-            if output.startswith('[P]'):
-                active_rules['project'].add(output[4:])
-            elif output.startswith('[G]'):
-                active_rules['global'].add(output[4:])
+            record_rule_invoker(entry)
     hook_log_position = new_pos
 
 # Runs rules-only display loop (for dedicated rules tmux pane)
@@ -1065,6 +1061,8 @@ def run_rules_loop() -> None:
     from .ui_mode import format_rules_block
     load_historical_rules()
     last_output = None
+    last_data_refresh = 0.0
+    frozen = False
     setup_keyboard_input()
     enable_mouse()
     try:
@@ -1093,22 +1091,30 @@ def run_rules_loop() -> None:
                             rules_hover_row = row
                             input_changed = True
                 else:
-                    idx = parse_digit_key(char)
-                    if idx is not None:
-                        all_keys = _get_sorted_rule_keys()
-                        if 1 <= idx <= len(all_keys):
-                            rule_key = all_keys[idx - 1]
-                            rules_expand_states[rule_key] = not rules_expand_states.get(rule_key, False)
-                            input_changed = True
+                    if char == 'f':
+                        frozen = not frozen
+                        input_changed = True
+                    else:
+                        idx = parse_digit_key(char)
+                        if idx is not None:
+                            all_keys = _get_sorted_rule_keys()
+                            if 1 <= idx <= len(all_keys):
+                                rule_key = all_keys[idx - 1]
+                                rules_expand_states[rule_key] = not rules_expand_states.get(rule_key, False)
+                                input_changed = True
 
-            process_hook_log()
-            output, rules_total_lines = format_rules_block(active_rules, rules_invokers, rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset)
-            if output != last_output or input_changed:
+            now = time.time()
+            if not frozen and now - last_data_refresh >= POLL_INTERVAL:
+                process_hook_log()
+                last_data_refresh = now
+
+            output, rules_total_lines = format_rules_block(active_rules, rules_invokers, rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset, frozen)
+            if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:
                     print(output)
                 last_output = output
-            time.sleep(POLL_INTERVAL)
+            time.sleep(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()

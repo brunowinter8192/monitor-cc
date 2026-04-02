@@ -2,7 +2,7 @@
 from typing import Dict, List, Optional
 
 # From constants.py: Colors
-from .constants import RESET, PASTEL_BLUE, DIM, HOVER_BG
+from .constants import RESET, PASTEL_BLUE, DIM, HOVER_BG, YELLOW, CYAN
 
 # From subagent_ui.py: Subagent state and display names
 from .subagent_ui import get_agent_display_name, count_calls_for_agent, subagent_states
@@ -34,7 +34,7 @@ def track_subagent_metadata(tool_call: dict, filepath, subagent_metadata: Dict[s
     subagent_metadata[agent_id]['call_count'] = count_calls_for_agent(tool_calls_by_agent[agent_id])
 
 # Format active rules block for UI display with expandable invoker info
-def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str, List[dict]]] = None, expand_states: Optional[Dict[str, bool]] = None, line_map: Optional[Dict[int, str]] = None, hover_row: Optional[int] = None, scroll_offset: int = 0) -> tuple:
+def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str, List[dict]]] = None, expand_states: Optional[Dict[str, bool]] = None, line_map: Optional[Dict[int, str]] = None, hover_row: Optional[int] = None, scroll_offset: int = 0, frozen: bool = False) -> tuple:
     if not active_rules:
         return ('', 0)
     project_rules = sorted(active_rules.get('project', set()))
@@ -45,7 +45,8 @@ def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str
     all_lines: List[str] = []
     rule_key_at: Dict[int, str] = {}
 
-    header = f"{PASTEL_BLUE}ACTIVE RULES ({len(project_rules)}P / {len(global_rules)}G){RESET}"
+    freeze_indicator = f" {YELLOW}[FROZEN]{RESET}" if frozen else f" {CYAN}[LIVE]{RESET}"
+    header = f"{PASTEL_BLUE}ACTIVE RULES ({len(project_rules)}P / {len(global_rules)}G){RESET}{freeze_indicator}"
     all_lines.append(header)
 
     for prefix, rule_list in [('[P]', project_rules), ('[G]', global_rules)]:
