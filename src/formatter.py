@@ -239,6 +239,13 @@ def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, pct: flo
         return f"  {symbol} CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  {pct:.0f}%  ({_format_k(out)} out)"
     return f" {symbol} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} {pct:.0f}%"
 
+# Extract first meaningful value from tool input dict for preview
+def _get_tool_preview(input_data: dict) -> str:
+    for key in ('file_path', 'pattern', 'command', 'subagent_type', 'prompt', 'query'):
+        if key in input_data:
+            return str(input_data[key])
+    return ''
+
 # Format cache tracker for dedicated tokens pane with per-turn, per-API-call detail
 def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> str:
     if not turns:
@@ -288,11 +295,19 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                         tool_name = block.get('tool_name', 'Unknown')
                         if tool_name.startswith('mcp__'):
                             tool_name = shorten_tool_name(tool_name)
-                        all_lines.append(f"    {GREEN}{tool_name}{RESET}")
+                        preview = _get_tool_preview(block.get('preview', {}))
+                        if preview:
+                            all_lines.append(f"    {GREEN}{tool_name}: {preview[:30]}{RESET}")
+                        else:
+                            all_lines.append(f"    {GREEN}{tool_name}{RESET}")
                     elif bt == 'thinking':
                         all_lines.append(f"    {PASTEL_ORANGE}thinking{RESET}")
                     elif bt == 'text':
-                        all_lines.append(f"    {WHITE}text{RESET}")
+                        preview = block.get('preview', '')
+                        if preview:
+                            all_lines.append(f"    {WHITE}text: {preview}{RESET}")
+                        else:
+                            all_lines.append(f"    {WHITE}text{RESET}")
                     line_keys.append(None)
 
         all_lines.append('')

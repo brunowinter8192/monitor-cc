@@ -436,8 +436,18 @@ def extract_cache_turns(messages: list) -> list:
             stripped = text.strip()
             if not has_tool_result and stripped:
                 if stripped.startswith('<command-message>') or stripped.startswith('<command-name>'):
+                    m = re.search(r'<command-name>([^<]+)</command-name>', stripped)
+                    skill_name = m.group(1) if m else 'unknown'
+                    current_turn = {
+                        'prompt': f'\u25cf skill:{skill_name}',
+                        'timestamp': message.get('timestamp', ''),
+                        'api_calls': [],
+                    }
+                    turns.append(current_turn)
                     continue
                 if stripped.startswith('Base directory for this skill:'):
+                    continue
+                if current_turn and current_turn.get('timestamp') == message.get('timestamp', ''):
                     continue
                 current_turn = {
                     'prompt': stripped,
@@ -467,9 +477,10 @@ def extract_cache_turns(messages: list) -> list:
                     if bt == 'thinking':
                         blocks.append({'type': 'thinking'})
                     elif bt == 'tool_use':
-                        blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown')})
+                        input_data = block.get('input', {})
+                        blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown'), 'preview': input_data})
                     elif bt == 'text':
-                        blocks.append({'type': 'text'})
+                        blocks.append({'type': 'text', 'preview': block.get('text', '')[:30]})
 
             current_turn['api_calls'].append({
                 'cache_read': cache_read,

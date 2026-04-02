@@ -93,6 +93,7 @@ def find_project_sessions(project_path, include_workers=False):
 # Parse all assistant turns from a JSONL session file
 def parse_session_turns(filepath):
     turns = []
+    last_user_timestamp = None
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
@@ -103,6 +104,11 @@ def parse_session_turns(filepath):
                     message = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if message.get('type') == 'user':
+                    ts = message.get('timestamp', '')
+                    if ts and ts == last_user_timestamp:
+                        continue
+                    last_user_timestamp = ts
                 turn = extract_turn(message)
                 if turn:
                     turns.append(turn)
