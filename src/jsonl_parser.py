@@ -480,7 +480,7 @@ def extract_cache_turns(messages: list) -> list:
                         input_data = block.get('input', {})
                         blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown'), 'preview': input_data})
                     elif bt == 'text':
-                        blocks.append({'type': 'text', 'preview': block.get('text', '')[:30]})
+                        blocks.append({'type': 'text', 'preview': block.get('text', '').replace('\n', ' ')[:50]})
 
             current_turn['api_calls'].append({
                 'cache_read': cache_read,

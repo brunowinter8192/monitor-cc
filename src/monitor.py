@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, HOOK_INSTRUCTIONS_LOADED, EXPANDED_MAX_LINES
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, HOOK_INSTRUCTIONS_LOADED
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -381,6 +381,14 @@ def load_historical_main() -> None:
         file_positions[filepath] = 0
         tool_use_caches[filepath] = {}
 
+# Load historical data from main session + all agent files for subagents pane
+def load_historical_subagents() -> None:
+    global file_positions, tool_use_caches
+    sessions = find_active_sessions(active_project_filter)
+    for session_file in sessions:
+        file_positions[session_file] = 0
+        tool_use_caches[session_file] = {}
+
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
     load_historical_main()
@@ -635,7 +643,7 @@ def run_workers_loop() -> None:
     ui_mode_active = True
     last_output = None
     workers = []
-    tool_calls_by_worker: Dict[str, List[dict]] = {}
+    worker_turns: Dict[str, list] = {}
     last_data_refresh = 0.0
     setup_keyboard_input()
     enable_mouse()
@@ -656,20 +664,17 @@ def run_workers_loop() -> None:
                                 is_now_expanded = not worker_expand_states.get(name, False)
                                 worker_expand_states[name] = is_now_expanded
                                 if is_now_expanded:
-                                    calls = tool_calls_by_worker.get(name, [])
-                                    worker_scroll_offsets[name] = max(0, len(calls) - EXPANDED_MAX_LINES)
+                                    worker_scroll_offsets[name] = 0
                                 input_changed = True
                         elif button == 64:
                             name = worker_line_map.get(row)
                             if name:
-                                worker_scroll_offsets[name] = max(0, worker_scroll_offsets.get(name, 0) - 1)
+                                worker_scroll_offsets[name] = max(0, worker_scroll_offsets.get(name, 0) - 3)
                                 input_changed = True
                         elif button == 65:
                             name = worker_line_map.get(row)
                             if name:
-                                total = len(tool_calls_by_worker.get(name, []))
-                                max_off = max(0, total - EXPANDED_MAX_LINES)
-                                worker_scroll_offsets[name] = min(max_off, worker_scroll_offsets.get(name, 0) + 1)
+                                worker_scroll_offsets[name] = worker_scroll_offsets.get(name, 0) + 3
                                 input_changed = True
                         elif button >= 32:
                             hover_row = row
@@ -682,32 +687,35 @@ def run_workers_loop() -> None:
                             is_now_expanded = not worker_expand_states.get(name, False)
                             worker_expand_states[name] = is_now_expanded
                             if is_now_expanded:
-                                calls = tool_calls_by_worker.get(name, [])
-                                worker_scroll_offsets[name] = max(0, len(calls) - EXPANDED_MAX_LINES)
+                                worker_scroll_offsets[name] = 0
                             input_changed = True
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
                 workers = list_workers(active_project_filter) if active_project_filter else []
-                tool_calls_by_worker = {}
+                worker_turns = {}
                 for w in workers:
                     name = w.get('name', '')
                     jsonl_path = find_worker_jsonl(w.get('session', ''))
                     if jsonl_path:
                         w['tokens'] = extract_worker_tokens(jsonl_path)
                         if worker_expand_states.get(name, False):
-                            tool_calls_by_worker[name] = extract_worker_tool_calls(jsonl_path)
+                            lines = read_new_lines(jsonl_path, 0)
+                            messages, _ = parse_jsonl_lines(lines)
+                            worker_turns[name] = extract_cache_turns(messages)
                 last_data_refresh = now
                 input_changed = True
             elif input_changed:
                 for w in workers:
                     name = w.get('name', '')
-                    if worker_expand_states.get(name, False) and name not in tool_calls_by_worker:
+                    if worker_expand_states.get(name, False) and name not in worker_turns:
                         jsonl_path = find_worker_jsonl(w.get('session', ''))
                         if jsonl_path:
-                            tool_calls_by_worker[name] = extract_worker_tool_calls(jsonl_path)
+                            lines = read_new_lines(jsonl_path, 0)
+                            messages, _ = parse_jsonl_lines(lines)
+                            worker_turns[name] = extract_cache_turns(messages)
 
-            output = format_workers_block(workers, worker_expand_states, tool_calls_by_worker, worker_line_map, hover_row, worker_scroll_offsets)
+            output = format_workers_block(workers, worker_expand_states, worker_turns, worker_line_map, hover_row, worker_scroll_offsets)
             if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:
@@ -792,6 +800,7 @@ def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_lin
 def run_subagents_loop() -> None:
     global agent_turns, agent_pane_line_map, agent_pane_hover_row, agent_cache_scroll_offsets, ui_mode_active
     ui_mode_active = True
+    load_historical_subagents()
     last_output = None
     last_data_refresh = 0.0
     setup_keyboard_input()

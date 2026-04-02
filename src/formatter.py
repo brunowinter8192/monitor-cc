@@ -5,9 +5,7 @@ from typing import Optional
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
 # From constants.py: Colors and config values
-from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG, EXPANDED_MAX_LINES
-# From subagent_ui.py: Input preview and char count for tool calls
-from .subagent_ui import get_input_preview, format_char_count
+from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG
 
 INDENT = '  '
 
@@ -243,7 +241,7 @@ def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, pct: flo
 def _get_tool_preview(input_data: dict) -> str:
     for key in ('file_path', 'pattern', 'command', 'subagent_type', 'prompt', 'query'):
         if key in input_data:
-            return str(input_data[key])
+            return str(input_data[key]).replace('\n', ' ')
     return ''
 
 # Format cache tracker for dedicated tokens pane with per-turn, per-API-call detail
@@ -297,7 +295,7 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                             tool_name = shorten_tool_name(tool_name)
                         preview = _get_tool_preview(block.get('preview', {}))
                         if preview:
-                            all_lines.append(f"    {GREEN}{tool_name}: {preview[:30]}{RESET}")
+                            all_lines.append(f"    {GREEN}{tool_name}: {preview[:50]}{RESET}")
                         else:
                             all_lines.append(f"    {GREEN}{tool_name}{RESET}")
                     elif bt == 'thinking':
@@ -363,15 +361,15 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
 
     return '\n'.join(result_lines)
 
-# Format workers pane with optional expand/collapse showing tool calls per worker with viewport slicing
-def format_workers_block(workers: list, expand_states: dict = None, tool_calls_by_worker: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None, max_lines: int = EXPANDED_MAX_LINES) -> str:
+# Format workers pane with optional expand/collapse showing cache tracker per worker
+def format_workers_block(workers: list, expand_states: dict = None, worker_turns: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None) -> str:
     if not workers:
         return f"{YELLOW}No active workers{RESET}"
 
     if expand_states is None:
         expand_states = {}
-    if tool_calls_by_worker is None:
-        tool_calls_by_worker = {}
+    if worker_turns is None:
+        worker_turns = {}
 
     status_colors = {
         'working': GREEN,
@@ -423,58 +421,25 @@ def format_workers_block(workers: list, expand_states: dict = None, tool_calls_b
             current_line += 1
 
         if is_expanded:
-            tool_calls = tool_calls_by_worker.get(name, [])
-            if not tool_calls:
+            turns = worker_turns.get(name, [])
+            if not turns:
                 if line_map is not None:
                     line_map[current_line] = name
-                lines.append(f"{INDENT}{YELLOW}(no tool calls yet){RESET}")
+                lines.append(f"{INDENT}{YELLOW}(no token data yet){RESET}")
                 current_line += 1
             else:
-                total = len(tool_calls)
-                offset = (scroll_offsets or {}).get(name, 0)
-
-                if total > max_lines:
-                    visible = tool_calls[offset:offset + max_lines]
-                    if offset > 0:
-                        if line_map is not None:
-                            line_map[current_line] = name
-                        lines.append(f"  {YELLOW}[↑ {offset} more]{RESET}")
-                        current_line += 1
-                    for call in visible:
-                        tool_name = call.get('tool_name', 'Unknown')
-                        call_number = call.get('call_number', '?')
-                        timestamp = format_timestamp(call.get('timestamp', ''))
-                        if tool_name.startswith('mcp__'):
-                            display = shorten_tool_name(tool_name)
-                            preview = get_input_preview(call.get('input', {}))
-                            lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {display}{RESET}: {preview}")
-                        else:
-                            char_count = format_char_count(call.get('input', {}))
-                            lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {tool_name} ({char_count}){RESET}")
-                        if line_map is not None:
-                            line_map[current_line] = name
-                        current_line += 1
-                    remaining = total - offset - len(visible)
-                    if remaining > 0:
-                        if line_map is not None:
-                            line_map[current_line] = name
-                        lines.append(f"  {YELLOW}[↓ {remaining} more]{RESET}")
-                        current_line += 1
-                else:
-                    for call in tool_calls:
-                        tool_name = call.get('tool_name', 'Unknown')
-                        call_number = call.get('call_number', '?')
-                        timestamp = format_timestamp(call.get('timestamp', ''))
-                        if tool_name.startswith('mcp__'):
-                            display = shorten_tool_name(tool_name)
-                            preview = get_input_preview(call.get('input', {}))
-                            lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {display}{RESET}: {preview}")
-                        else:
-                            char_count = format_char_count(call.get('input', {}))
-                            lines.append(f"  {GREEN}[{timestamp}] -> #{call_number} {tool_name} ({char_count}){RESET}")
-                        if line_map is not None:
-                            line_map[current_line] = name
-                        current_line += 1
+                scroll_offset = (scroll_offsets or {}).get(name, 0)
+                try:
+                    import os as _os
+                    pane_width = _os.get_terminal_size().columns
+                except OSError:
+                    pane_width = 80
+                cache_output = format_cache_tracker(turns, {}, None, None, 15, pane_width - 2, scroll_offset)
+                for cl in cache_output.split('\n'):
+                    lines.append(f"  {cl}")
+                    if line_map is not None:
+                        line_map[current_line] = name
+                    current_line += 1
 
         lines.append('')
         current_line += 1
