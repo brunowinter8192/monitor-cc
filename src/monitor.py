@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, HOOK_INSTRUCTIONS_LOADED
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, HOOK_INSTRUCTIONS_LOADED, DIM
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -42,6 +42,10 @@ tool_calls_by_agent: Dict[str, List[dict]] = {}
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
+rules_invokers: Dict[str, List[dict]] = {}
+rules_expand_states: Dict[str, bool] = {}
+rules_line_map: Dict[int, str] = {}
+rules_hover_row: Optional[int] = None
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
 cache_expand_states: Dict[tuple, bool] = {}
@@ -1006,6 +1010,39 @@ def process_hook_log_for_display() -> None:
         print(formatted)
         print()
 
+# Derive source label from cwd path
+def derive_rule_source(cwd: str) -> str:
+    if not cwd:
+        return 'unknown'
+    worktree_marker = '/.claude/worktrees/'
+    idx = cwd.find(worktree_marker)
+    if idx >= 0:
+        remainder = cwd[idx + len(worktree_marker):]
+        worker_name = remainder.split('/')[0]
+        return f'worker:{worker_name}'
+    return 'main'
+
+# Record a rule and its invoker from a hook entry
+def record_rule_invoker(entry: dict) -> None:
+    from .utils import format_timestamp
+    output = entry.get('output', '')
+    if not output:
+        return
+    if output.startswith('[P]'):
+        active_rules['project'].add(output[4:])
+        rule_key = output
+    elif output.startswith('[G]'):
+        active_rules['global'].add(output[4:])
+        rule_key = output
+    else:
+        return
+    cwd = entry.get('cwd', '')
+    source = derive_rule_source(cwd)
+    ts = format_timestamp(entry.get('timestamp', ''))
+    if rule_key not in rules_invokers:
+        rules_invokers[rule_key] = []
+    rules_invokers[rule_key].append({'timestamp': ts, 'source': source, 'cwd': cwd})
+
 # Load historical rules from hook log
 def load_historical_rules() -> None:
     global hook_log_position
@@ -1013,27 +1050,62 @@ def load_historical_rules() -> None:
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
     for entry in filtered:
         if entry.get('hook_event') == HOOK_INSTRUCTIONS_LOADED:
-            output = entry.get('output', '')
-            if output.startswith('[P]'):
-                active_rules['project'].add(output[4:])
-            elif output.startswith('[G]'):
-                active_rules['global'].add(output[4:])
+            record_rule_invoker(entry)
     hook_log_position = new_pos
 
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
+    global rules_expand_states, rules_line_map, rules_hover_row
     from .ui_mode import format_rules_block
     load_historical_rules()
     last_output = None
-    while True:
-        process_hook_log()
-        output = format_rules_block(active_rules)
-        if output != last_output:
-            print("\033[2J\033[3J\033[H", end='', flush=True)
-            if output:
-                print(output)
-            last_output = output
-        time.sleep(POLL_INTERVAL)
+    setup_keyboard_input()
+    enable_mouse()
+    try:
+        while True:
+            input_changed = False
+            while True:
+                char = read_keypress()
+                if char is None:
+                    break
+                if char == '\033':
+                    event = read_mouse_event(char)
+                    if event is not None:
+                        button, _col, row = event
+                        if button == 0:
+                            rule_key = rules_line_map.get(row)
+                            if rule_key:
+                                rules_expand_states[rule_key] = not rules_expand_states.get(rule_key, False)
+                                input_changed = True
+                        elif button >= 32:
+                            rules_hover_row = row
+                            input_changed = True
+                else:
+                    idx = parse_digit_key(char)
+                    if idx is not None:
+                        all_keys = _get_sorted_rule_keys()
+                        if 1 <= idx <= len(all_keys):
+                            rule_key = all_keys[idx - 1]
+                            rules_expand_states[rule_key] = not rules_expand_states.get(rule_key, False)
+                            input_changed = True
+
+            process_hook_log()
+            output = format_rules_block(active_rules, rules_invokers, rules_expand_states, rules_line_map, rules_hover_row)
+            if output != last_output or input_changed:
+                print("\033[2J\033[3J\033[H", end='', flush=True)
+                if output:
+                    print(output)
+                last_output = output
+            time.sleep(POLL_INTERVAL)
+    finally:
+        disable_mouse()
+        restore_terminal()
+
+# Build sorted list of all rule keys ([P]/[G] prefixed)
+def _get_sorted_rule_keys() -> List[str]:
+    project_keys = [f'[P] {r}' for r in sorted(active_rules.get('project', set()))]
+    global_keys = [f'[G] {r}' for r in sorted(active_rules.get('global', set()))]
+    return project_keys + global_keys
 
 # Process hook log for InstructionsLoaded entries (rules pane routing)
 def process_hook_log() -> None:
@@ -1044,11 +1116,7 @@ def process_hook_log() -> None:
 
     for entry in filtered:
         if entry.get('hook_event') == HOOK_INSTRUCTIONS_LOADED:
-            output = entry.get('output', '')
-            if output.startswith('[P]'):
-                active_rules['project'].add(output[4:])
-            elif output.startswith('[G]'):
-                active_rules['global'].add(output[4:])
+            record_rule_invoker(entry)
 
 # Display USER PROMPT detected from session JSONL
 def display_user_prompt_from_jsonl(prompt_item: dict) -> None:
