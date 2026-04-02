@@ -364,9 +364,11 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
     return '\n'.join(result_lines)
 
 # Format workers pane with optional expand/collapse showing cache tracker per worker
-def format_workers_block(workers: list, expand_states: dict = None, worker_turns: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None, cache_expand_states: dict = None, cache_line_map: dict = None) -> str:
+def format_workers_block(workers: list, expand_states: dict = None, worker_turns: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None, cache_expand_states: dict = None, cache_line_map: dict = None, frozen: bool = False) -> str:
+    freeze_indicator = f" {YELLOW}[FROZEN]{RESET}" if frozen else f" {CYAN}[LIVE]{RESET}"
+
     if not workers:
-        return f"{YELLOW}No active workers{RESET}"
+        return f"{WHITE}Workers{RESET}{freeze_indicator}\n\n{YELLOW}No active workers{RESET}"
 
     if expand_states is None:
         expand_states = {}
@@ -382,6 +384,10 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
 
     lines = []
     current_line = 1
+
+    lines.append(f"{WHITE}Workers{RESET}{freeze_indicator}")
+    lines.append('')
+    current_line += 2
 
     if line_map is not None:
         line_map.clear()

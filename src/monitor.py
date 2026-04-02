@@ -671,6 +671,7 @@ def run_workers_loop() -> None:
     workers = []
     worker_turns: Dict[str, list] = {}
     last_data_refresh = 0.0
+    frozen = False
     setup_keyboard_input()
     enable_mouse()
     try:
@@ -713,18 +714,22 @@ def run_workers_loop() -> None:
                             hover_row = row
                             input_changed = True
                 else:
-                    idx = parse_digit_key(char)
-                    if idx is not None:
-                        if 1 <= idx <= len(workers):
-                            name = workers[idx - 1]['name']
-                            is_now_expanded = not worker_expand_states.get(name, False)
-                            worker_expand_states[name] = is_now_expanded
-                            if is_now_expanded:
-                                worker_scroll_offsets[name] = 0
-                            input_changed = True
+                    if char == 'f':
+                        frozen = not frozen
+                        input_changed = True
+                    else:
+                        idx = parse_digit_key(char)
+                        if idx is not None:
+                            if 1 <= idx <= len(workers):
+                                name = workers[idx - 1]['name']
+                                is_now_expanded = not worker_expand_states.get(name, False)
+                                worker_expand_states[name] = is_now_expanded
+                                if is_now_expanded:
+                                    worker_scroll_offsets[name] = 0
+                                input_changed = True
 
             now = time.time()
-            if now - last_data_refresh >= POLL_INTERVAL:
+            if not frozen and now - last_data_refresh >= POLL_INTERVAL:
                 workers = list_workers(active_project_filter) if active_project_filter else []
                 worker_turns = {}
                 for w in workers:
@@ -748,7 +753,7 @@ def run_workers_loop() -> None:
                             messages, _ = parse_jsonl_lines(lines)
                             worker_turns[name] = extract_cache_turns(messages)
 
-            output = format_workers_block(workers, worker_expand_states, worker_turns, worker_line_map, hover_row, worker_scroll_offsets, worker_cache_expand_states, worker_cache_line_map)
+            output = format_workers_block(workers, worker_expand_states, worker_turns, worker_line_map, hover_row, worker_scroll_offsets, worker_cache_expand_states, worker_cache_line_map, frozen=frozen)
             if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:
@@ -769,12 +774,13 @@ def find_agent_jsonl(agent_id: str) -> Optional[Path]:
     return None
 
 # Render subagent list with cache-tracker turns for expanded agents
-def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_line_map, pane_hover_row, pane_height, pane_width, scroll_offsets, cache_expand_states=None, cache_line_map=None) -> str:
+def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_line_map, pane_hover_row, pane_height, pane_width, scroll_offsets, cache_expand_states=None, cache_line_map=None, frozen: bool = False) -> str:
     agent_count = len(subagent_metadata_map)
     all_lines = []
     all_keys = []
 
-    header = f"{CYAN}Active Subagents ({agent_count}){RESET}"
+    freeze_indicator = f" {YELLOW}[FROZEN]{RESET}" if frozen else f" {CYAN}[LIVE]{RESET}"
+    header = f"{CYAN}Active Subagents ({agent_count}){RESET}{freeze_indicator}"
     all_lines.append(header)
     all_keys.append(None)
     all_lines.append('')
@@ -856,6 +862,7 @@ def run_subagents_loop() -> None:
     current_main_session = _get_newest_main_session()
     last_output = None
     last_data_refresh = 0.0
+    frozen = False
     setup_keyboard_input()
     enable_mouse()
     try:
@@ -895,15 +902,19 @@ def run_subagents_loop() -> None:
                             agent_pane_hover_row = row
                             input_changed = True
                 else:
-                    idx = parse_digit_key(char)
-                    if idx is not None:
-                        agent_id = get_agent_by_index(idx, subagent_metadata)
-                        if agent_id:
-                            toggle_subagent_state(agent_id)
-                            input_changed = True
+                    if char == 'f':
+                        frozen = not frozen
+                        input_changed = True
+                    else:
+                        idx = parse_digit_key(char)
+                        if idx is not None:
+                            agent_id = get_agent_by_index(idx, subagent_metadata)
+                            if agent_id:
+                                toggle_subagent_state(agent_id)
+                                input_changed = True
 
             now = time.time()
-            if now - last_data_refresh >= POLL_INTERVAL:
+            if not frozen and now - last_data_refresh >= POLL_INTERVAL:
                 newest = _get_newest_main_session()
                 if newest != current_main_session and newest is not None:
                     current_main_session = newest
@@ -938,7 +949,7 @@ def run_subagents_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                output = render_subagents_with_tokens(subagent_metadata, agent_turns, agent_pane_line_map, agent_pane_hover_row, pane_height, pane_width, agent_cache_scroll_offsets, agent_cache_expand_states, agent_cache_line_map)
+                output = render_subagents_with_tokens(subagent_metadata, agent_turns, agent_pane_line_map, agent_pane_hover_row, pane_height, pane_width, agent_cache_scroll_offsets, agent_cache_expand_states, agent_cache_line_map, frozen=frozen)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
