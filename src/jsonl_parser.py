@@ -475,20 +475,49 @@ def extract_cache_turns(messages: list) -> list:
                         continue
                     bt = block.get('type', '')
                     if bt == 'thinking':
-                        blocks.append({'type': 'thinking'})
+                        blocks.append({'type': 'thinking', 'output_tokens': output_tokens})
                     elif bt == 'tool_use':
                         input_data = block.get('input', {})
                         blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown'), 'preview': input_data})
                     elif bt == 'text':
                         blocks.append({'type': 'text', 'preview': block.get('text', '').replace('\n', ' ')[:50]})
 
-            current_turn['api_calls'].append({
-                'cache_read': cache_read,
-                'cache_creation': cache_creation,
-                'direct': input_tokens,
-                'output_tokens': output_tokens,
-                'content_blocks': blocks,
-            })
+            input_key = (cache_read, cache_creation, input_tokens)
+            existing_calls = current_turn['api_calls']
+            if existing_calls and existing_calls[-1].get('_input_key') == input_key:
+                prev = existing_calls[-1]
+                prev['output_tokens'] = max(prev['output_tokens'], output_tokens)
+                seen_types = set()
+                for b in prev['content_blocks']:
+                    if b['type'] == 'tool_use':
+                        seen_types.add(('tool_use', b.get('tool_name', '')))
+                    elif b['type'] == 'thinking':
+                        seen_types.add(('thinking',))
+                    elif b['type'] == 'text':
+                        seen_types.add(('text', b.get('preview', '')))
+                for b in blocks:
+                    if b['type'] == 'tool_use':
+                        sig = ('tool_use', b.get('tool_name', ''))
+                    elif b['type'] == 'thinking':
+                        sig = ('thinking',)
+                    else:
+                        sig = ('text', b.get('preview', ''))
+                    if sig not in seen_types:
+                        prev['content_blocks'].append(b)
+                        seen_types.add(sig)
+            else:
+                current_turn['api_calls'].append({
+                    'cache_read': cache_read,
+                    'cache_creation': cache_creation,
+                    'direct': input_tokens,
+                    'output_tokens': output_tokens,
+                    'content_blocks': blocks,
+                    '_input_key': input_key,
+                })
+
+    for turn in turns:
+        for call in turn.get('api_calls', []):
+            call.pop('_input_key', None)
 
     return turns
 

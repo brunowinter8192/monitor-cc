@@ -232,10 +232,10 @@ def format_unknown_type_warning(msg_type: str, count: int) -> str:
     return f"{INDENT}{YELLOW}[!] Unknown JSONL type: {msg_type} (seen {count}x){RESET}"
 
 # Format a single API call line for cache tracker (wide or compact based on pane width)
-def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, pct: float, wide: bool) -> str:
+def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool) -> str:
     if wide:
-        return f"  {symbol} CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  {pct:.0f}%  ({_format_k(out)} out)"
-    return f" {symbol} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} {pct:.0f}%"
+        return f"  {symbol} CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out)"
+    return f" {symbol} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out)"
 
 # Extract first meaningful value from tool input dict for preview
 def _get_tool_preview(input_data: dict) -> str:
@@ -275,14 +275,12 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
             cc = call.get('cache_creation', 0)
             d = call.get('direct', 0)
             out = call.get('output_tokens', 0)
-            total_in = cr + cc + d
-            pct = (cr / total_in * 100) if total_in > 0 else 0
 
             key = (turn_idx, call_idx)
             is_expanded = expand_states.get(key, False)
             symbol = '\u25bc' if is_expanded else '\u25b6'
 
-            call_line = _format_cache_call(symbol, cr, cc, d, out, pct, wide)
+            call_line = _format_cache_call(symbol, cr, cc, d, out, wide)
             all_lines.append(call_line)
             line_keys.append(key)
 
@@ -299,7 +297,11 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                         else:
                             all_lines.append(f"    {GREEN}{tool_name}{RESET}")
                     elif bt == 'thinking':
-                        all_lines.append(f"    {PASTEL_ORANGE}thinking{RESET}")
+                        think_out = block.get('output_tokens')
+                        if think_out:
+                            all_lines.append(f"    {PASTEL_ORANGE}thinking ({_format_k(think_out)} out){RESET}")
+                        else:
+                            all_lines.append(f"    {PASTEL_ORANGE}thinking{RESET}")
                     elif bt == 'text':
                         preview = block.get('preview', '')
                         if preview:

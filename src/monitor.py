@@ -405,10 +405,23 @@ def load_historical_subagents() -> None:
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
     load_historical_main()
+    current_main_session = _get_newest_main_session()
     while True:
         process_hook_log()
+        newest = _get_newest_main_session()
+        if newest != current_main_session and newest is not None:
+            current_main_session = newest
+            file_positions[newest] = 0
+            tool_use_caches[newest] = {}
+            print("\033[2J\033[3J\033[H", end='', flush=True)
+            print(f"{CYAN}--- New session detected ---{RESET}\n")
         monitor_sessions()
         time.sleep(POLL_INTERVAL)
+
+# Get the newest main (non-agent) session file
+def _get_newest_main_session() -> Optional[Path]:
+    main_sessions = get_main_session_files()
+    return main_sessions[0] if main_sessions else None
 
 # Track unknown JSONL message type for warnings pane
 def track_unknown_type(unknown_entry: dict) -> None:
@@ -824,11 +837,23 @@ def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_lin
 
     return '\n'.join(result_lines)
 
+# Find the nearest agent ID at or above a given row in the pane line map
+def _find_agent_at_row(row: int, line_map: dict) -> Optional[str]:
+    agent_id = line_map.get(row)
+    if agent_id:
+        return agent_id
+    for r in range(row - 1, 0, -1):
+        agent_id = line_map.get(r)
+        if agent_id:
+            return agent_id
+    return None
+
 # Runs subagents display loop (for dedicated subagents tmux pane, shows per-agent cache token view)
 def run_subagents_loop() -> None:
     global agent_turns, agent_pane_line_map, agent_pane_hover_row, agent_cache_scroll_offsets, ui_mode_active, agent_cache_expand_states, agent_cache_line_map
     ui_mode_active = True
     load_historical_subagents()
+    current_main_session = _get_newest_main_session()
     last_output = None
     last_data_refresh = 0.0
     setup_keyboard_input()
@@ -857,12 +882,12 @@ def run_subagents_loop() -> None:
                                     toggle_subagent_state(agent_id)
                                     input_changed = True
                         elif button == 64:
-                            agent_id = agent_pane_line_map.get(row)
+                            agent_id = _find_agent_at_row(row, agent_pane_line_map)
                             if agent_id and subagent_states.get(agent_id, False):
                                 agent_cache_scroll_offsets[agent_id] = agent_cache_scroll_offsets.get(agent_id, 0) + 3
                                 input_changed = True
                         elif button == 65:
-                            agent_id = agent_pane_line_map.get(row)
+                            agent_id = _find_agent_at_row(row, agent_pane_line_map)
                             if agent_id and subagent_states.get(agent_id, False):
                                 agent_cache_scroll_offsets[agent_id] = max(0, agent_cache_scroll_offsets.get(agent_id, 0) - 3)
                                 input_changed = True
@@ -879,6 +904,18 @@ def run_subagents_loop() -> None:
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
+                newest = _get_newest_main_session()
+                if newest != current_main_session and newest is not None:
+                    current_main_session = newest
+                    subagent_metadata.clear()
+                    agent_turns.clear()
+                    agent_cache_expand_states.clear()
+                    agent_cache_line_map.clear()
+                    agent_cache_scroll_offsets.clear()
+                    subagent_states.clear()
+                    file_positions.clear()
+                    tool_use_caches.clear()
+                    load_historical_subagents()
                 _stdout = sys.stdout
                 sys.stdout = io.StringIO()
                 monitor_sessions()

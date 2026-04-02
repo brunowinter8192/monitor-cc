@@ -59,6 +59,9 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 - M-t Keybinding: Tokens-Pane Content → Clipboard via pbcopy
 - JSONL-Datenquelle: `message.usage.output_tokens` pro Content-Block (assistant Messages)
 - Known limitation: output_tokens ~1.9x undercount (Claude Code Bug #27361), für Proportionen irrelevant
+- **Token-Dedup (Session 11):** `extract_cache_turns()` groups consecutive assistant messages with identical `(cache_read, cache_creation, input_tokens)` into one API call entry. Uses MAX(output_tokens), aggregates unique content_blocks. Reduces 189 → 87 lines for test session.
+- **% Removed (Session 11):** `_format_cache_call()` no longer calculates or displays cache-read percentage. Shows only raw JSONL values: CR, CC, D, output_tokens.
+- **Thinking Display (Session 11):** Thinking content_blocks now include `output_tokens` from message-level usage. Rendered as `thinking (Xk out)` in expanded API call view.
 
 **Session-Browser (Session 3):**
 - `token_cumulative_n: Optional[int]` (monitor.py:48): steuert Modus. `None` = current session, `N` = letzte N Main-Sessions kumuliert
@@ -131,6 +134,12 @@ Eigenes tmux Pane (Window 2 "workers", Pane 2.1, rechts 50%) via `--mode subagen
 - `toggle_subagent_state(agent_id)` in subagent_ui.py: toggled `subagent_states[agent_id]`; nutzt `.get()` Default sodass neue Agents direkt togglebar sind ohne Pre-Initialisierung.
 - State: `agent_turns`, `agent_pane_line_map`, `agent_pane_hover_row`, `agent_cache_scroll_offsets` (monitor.py); `subagent_states` (subagent_ui.py)
 - `ui_mode_active = True` gesetzt beim Start so `handle_subagent_call()` Metadata via `track_subagent_metadata()` populiert statt inline display.
+- **Session-Reset (Session 11):** `run_subagents_loop()` detects main session JSONL change via `_get_newest_main_session()`. On change: clears `subagent_metadata`, `agent_turns`, expand/scroll states, `subagent_states`, `file_positions`, `tool_use_caches`; re-runs `load_historical_subagents()`. Prevents cross-session accumulation of stale agents.
+- **Scroll Fix (Session 11):** `_find_agent_at_row(row, line_map)` walks upward from mouse row to find parent agent ID. Scroll events (button 64/65) now use this instead of direct `agent_pane_line_map.get(row)`, fixing scroll in expanded cache-tracker areas where row maps to None.
+
+### Main Pane Session-Reset (Session 11)
+
+`run_streaming_loop()` tracks `current_main_session` via `_get_newest_main_session()`. Each poll cycle checks if newest main JSONL changed. On change: resets `file_positions[newest] = 0`, clears screen (`\033[2J\033[3J\033[H`), prints `--- New session detected ---` separator. Replays new session from beginning, old session messages not repeated.
 
 ### print_session_status Fix (Kategorie: Display / Startup)
 

@@ -2,13 +2,13 @@
 
 ## Status Quo
 
-- `monitor.py`: `run_streaming_loop()` ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `process_hook_log()` + `monitor_sessions()`
+- `monitor.py`: `run_streaming_loop()` ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), trackt `current_main_session` via `_get_newest_main_session()`. Detects session change each poll cycle → clears screen + resets position. Pollt alle 0.5s via `process_hook_log()` + `monitor_sessions()`
 - `monitor.py`: `run_rules_loop()` ruft `load_historical_rules()` auf (liest Hook-Log ab 0, füllt `active_rules`), dann pollt alle 0.5s via `process_hook_log()` und rendert `format_rules_block(active_rules)` bei Änderungen
 - `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
 - `monitor.py`: `run_hooks_loop()` ruft `load_historical_hooks()` auf (liest Hook-Log ab 0, druckt Entries mit Output), dann pollt alle 0.5s via `process_hook_log_for_display()`
 - `monitor.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `format_warnings_block()` bei Änderungen
 - `monitor.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. Expanded Workers zeigen Cache-Tracker Token-View (CR/CC/D per API Call) via `extract_cache_turns()` + `format_cache_tracker()`. Keine Subagent-Rendering mehr (separates Pane).
-- `monitor.py`: `run_subagents_loop()` pollt alle 0.5s, ruft `monitor_sessions()` auf, lädt per-Agent JSONL via `find_agent_jsonl()`, rendert `render_subagents_with_tokens()` bei Änderungen. Unterstützt Mouse-Events (Expand/Collapse, Scroll, Hover) und Digit-Keys.
+- `monitor.py`: `run_subagents_loop()` pollt alle 0.5s, ruft `monitor_sessions()` auf, lädt per-Agent JSONL via `find_agent_jsonl()`, rendert `render_subagents_with_tokens()` bei Änderungen. Unterstützt Mouse-Events (Expand/Collapse, Scroll, Hover) und Digit-Keys. Session-Reset: detects main session change via `_get_newest_main_session()`, clears all subagent state (metadata, turns, expand/scroll states, subagent_states, file_positions, tool_use_caches), re-runs `load_historical_subagents()`. Scroll fix: `_find_agent_at_row()` walks upward in line_map for scroll events in expanded areas.
 - `monitor.py`: `load_historical_subagents()` setzt neueste Main-Session + deren Agent-Files (`filepath.parent/filepath.stem/subagents/agent-*.jsonl`) auf Position 0 (nur aktuelle Session, nicht alle historischen).
 - `run_monitor()` routet `MODE_SUBAGENTS` → `run_subagents_loop()`.
 - Hook routing in `process_hook_log()`: nur noch 1 Event → 1 State Dict
