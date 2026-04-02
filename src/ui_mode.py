@@ -55,7 +55,13 @@ def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str
             is_expanded = (expand_states or {}).get(rule_key, False)
             toggle = "[-]" if is_expanded else "[+]"
             rule_line_idx = len(all_lines)
-            all_lines.append(f"  {PASTEL_BLUE}{toggle} {prefix} {r}{RESET}")
+            source_tag = ''
+            if invokers:
+                source_map = invokers.get(rule_key, {})
+                if source_map:
+                    latest_source = max(source_map, key=lambda s: source_map[s])
+                    source_tag = f'  {DIM}[{latest_source}]{RESET}'
+            all_lines.append(f"  {PASTEL_BLUE}{toggle} {prefix} {r}{RESET}{source_tag}")
             rule_key_at[rule_line_idx] = rule_key
 
             if is_expanded and invokers:
