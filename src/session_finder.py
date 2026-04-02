@@ -67,7 +67,7 @@ def matches_project_filter(project_dir: Path, project_filter: str) -> bool:
 
 # Encode project path to match Claude's directory naming convention
 def encode_project_path(path: str) -> str:
-    encoded = path.replace('/', '-').replace('_', '-')
+    encoded = path.replace('/', '-').replace('_', '-').replace('.', '-')
     return encoded
 
 # Sort files by modification time (newest first)

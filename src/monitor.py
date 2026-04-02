@@ -603,13 +603,6 @@ def find_worker_jsonl(session_name: str) -> Optional[Path]:
     project_dir = Path.home() / '.claude' / 'projects' / encoded
 
     if not project_dir.exists():
-        worktree_marker = '/.claude/worktrees/'
-        if worktree_marker in working_dir:
-            base_dir = working_dir[:working_dir.index(worktree_marker)]
-            encoded = encode_project_path(base_dir)
-            project_dir = Path.home() / '.claude' / 'projects' / encoded
-
-    if not project_dir.exists():
         return None
 
     jsonl_files = [f for f in project_dir.glob('*.jsonl') if not f.name.startswith('agent-')]
