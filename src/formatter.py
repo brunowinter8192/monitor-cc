@@ -362,7 +362,7 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
     return '\n'.join(result_lines)
 
 # Format workers pane with optional expand/collapse showing cache tracker per worker
-def format_workers_block(workers: list, expand_states: dict = None, worker_turns: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None) -> str:
+def format_workers_block(workers: list, expand_states: dict = None, worker_turns: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None, cache_expand_states: dict = None, cache_line_map: dict = None) -> str:
     if not workers:
         return f"{YELLOW}No active workers{RESET}"
 
@@ -383,6 +383,8 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
 
     if line_map is not None:
         line_map.clear()
+    if cache_line_map is not None:
+        cache_line_map.clear()
 
     for idx, w in enumerate(workers, 1):
         status = w.get('status', 'unknown')
@@ -429,12 +431,20 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
                 current_line += 1
             else:
                 scroll_offset = (scroll_offsets or {}).get(name, 0)
+                per_worker_expand = (cache_expand_states or {}).get(name, {})
                 try:
                     import os as _os
                     pane_width = _os.get_terminal_size().columns
                 except OSError:
                     pane_width = 80
-                cache_output = format_cache_tracker(turns, {}, None, None, 15, pane_width - 2, scroll_offset)
+                if cache_line_map is not None:
+                    temp_clm: dict = {}
+                    cache_output = format_cache_tracker(turns, per_worker_expand, temp_clm, None, 15, pane_width - 2, scroll_offset)
+                    cache_start = current_line
+                    for rel_row, key in temp_clm.items():
+                        cache_line_map[rel_row + cache_start - 1] = (name, key[0], key[1])
+                else:
+                    cache_output = format_cache_tracker(turns, per_worker_expand, None, None, 15, pane_width - 2, scroll_offset)
                 for cl in cache_output.split('\n'):
                     lines.append(f"  {cl}")
                     if line_map is not None:

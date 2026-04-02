@@ -56,6 +56,10 @@ agent_turns: Dict[str, list] = {}
 agent_pane_line_map: Dict[int, str] = {}
 agent_pane_hover_row: Optional[int] = None
 agent_cache_scroll_offsets: Dict[str, int] = {}
+worker_cache_expand_states: Dict[str, Dict[tuple, bool]] = {}
+worker_cache_line_map: Dict[int, tuple] = {}
+agent_cache_expand_states: Dict[str, Dict[tuple, bool]] = {}
+agent_cache_line_map: Dict[int, tuple] = {}
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -648,7 +652,7 @@ def extract_worker_tool_calls(jsonl_path: Path) -> List[dict]:
 
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
-    global worker_expand_states, worker_scroll_offsets, worker_line_map, hover_row, ui_mode_active
+    global worker_expand_states, worker_scroll_offsets, worker_line_map, hover_row, ui_mode_active, worker_cache_expand_states, worker_cache_line_map
     ui_mode_active = True
     last_output = None
     workers = []
@@ -668,13 +672,20 @@ def run_workers_loop() -> None:
                     if event is not None:
                         button, col, row = event
                         if button == 0:
-                            name = worker_line_map.get(row)
-                            if name:
-                                is_now_expanded = not worker_expand_states.get(name, False)
-                                worker_expand_states[name] = is_now_expanded
-                                if is_now_expanded:
-                                    worker_scroll_offsets[name] = 0
+                            cache_key = worker_cache_line_map.get(row)
+                            if cache_key:
+                                w_name, t_idx, c_idx = cache_key
+                                states = worker_cache_expand_states.setdefault(w_name, {})
+                                states[(t_idx, c_idx)] = not states.get((t_idx, c_idx), False)
                                 input_changed = True
+                            else:
+                                name = worker_line_map.get(row)
+                                if name:
+                                    is_now_expanded = not worker_expand_states.get(name, False)
+                                    worker_expand_states[name] = is_now_expanded
+                                    if is_now_expanded:
+                                        worker_scroll_offsets[name] = 0
+                                    input_changed = True
                         elif button == 64:
                             name = worker_line_map.get(row)
                             if name:
@@ -724,7 +735,7 @@ def run_workers_loop() -> None:
                             messages, _ = parse_jsonl_lines(lines)
                             worker_turns[name] = extract_cache_turns(messages)
 
-            output = format_workers_block(workers, worker_expand_states, worker_turns, worker_line_map, hover_row, worker_scroll_offsets)
+            output = format_workers_block(workers, worker_expand_states, worker_turns, worker_line_map, hover_row, worker_scroll_offsets, worker_cache_expand_states, worker_cache_line_map)
             if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:
@@ -745,7 +756,7 @@ def find_agent_jsonl(agent_id: str) -> Optional[Path]:
     return None
 
 # Render subagent list with cache-tracker turns for expanded agents
-def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_line_map, pane_hover_row, pane_height, pane_width, scroll_offsets) -> str:
+def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_line_map, pane_hover_row, pane_height, pane_width, scroll_offsets, cache_expand_states=None, cache_line_map=None) -> str:
     agent_count = len(subagent_metadata_map)
     all_lines = []
     all_keys = []
@@ -776,7 +787,15 @@ def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_lin
                 all_lines.append(f"  {YELLOW}(no token data yet){RESET}")
                 all_keys.append(None)
             else:
-                cache_output = format_cache_tracker(turns, {}, None, None, 15, pane_width - 2, scroll_offset)
+                per_agent_expand = (cache_expand_states or {}).get(agent_id, {})
+                if cache_line_map is not None:
+                    temp_clm: dict = {}
+                    cache_output = format_cache_tracker(turns, per_agent_expand, temp_clm, None, 15, pane_width - 2, scroll_offset)
+                    cache_start = len(all_lines) + 1
+                    for rel_row, key in temp_clm.items():
+                        cache_line_map[rel_row + cache_start - 1] = (agent_id, key[0], key[1])
+                else:
+                    cache_output = format_cache_tracker(turns, per_agent_expand, None, None, 15, pane_width - 2, scroll_offset)
                 for cl in cache_output.split('\n'):
                     all_lines.append(f"  {cl}")
                     all_keys.append(None)
@@ -807,7 +826,7 @@ def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_lin
 
 # Runs subagents display loop (for dedicated subagents tmux pane, shows per-agent cache token view)
 def run_subagents_loop() -> None:
-    global agent_turns, agent_pane_line_map, agent_pane_hover_row, agent_cache_scroll_offsets, ui_mode_active
+    global agent_turns, agent_pane_line_map, agent_pane_hover_row, agent_cache_scroll_offsets, ui_mode_active, agent_cache_expand_states, agent_cache_line_map
     ui_mode_active = True
     load_historical_subagents()
     last_output = None
@@ -826,10 +845,17 @@ def run_subagents_loop() -> None:
                     if event is not None:
                         button, col, row = event
                         if button == 0:
-                            agent_id = agent_pane_line_map.get(row)
-                            if agent_id:
-                                toggle_subagent_state(agent_id)
+                            cache_key = agent_cache_line_map.get(row)
+                            if cache_key:
+                                ag_id, t_idx, c_idx = cache_key
+                                states = agent_cache_expand_states.setdefault(ag_id, {})
+                                states[(t_idx, c_idx)] = not states.get((t_idx, c_idx), False)
                                 input_changed = True
+                            else:
+                                agent_id = agent_pane_line_map.get(row)
+                                if agent_id:
+                                    toggle_subagent_state(agent_id)
+                                    input_changed = True
                         elif button == 64:
                             agent_id = agent_pane_line_map.get(row)
                             if agent_id and subagent_states.get(agent_id, False):
@@ -875,7 +901,7 @@ def run_subagents_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                output = render_subagents_with_tokens(subagent_metadata, agent_turns, agent_pane_line_map, agent_pane_hover_row, pane_height, pane_width, agent_cache_scroll_offsets)
+                output = render_subagents_with_tokens(subagent_metadata, agent_turns, agent_pane_line_map, agent_pane_hover_row, pane_height, pane_width, agent_cache_scroll_offsets, agent_cache_expand_states, agent_cache_line_map)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
