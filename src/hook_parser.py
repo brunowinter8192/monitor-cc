@@ -54,3 +54,9 @@ def filter_by_project(entries: List[dict], project_filter: str) -> List[dict]:
     if not project_filter:
         return entries
     return [e for e in entries if e.get('cwd') == project_filter]
+
+# Filter entries to only those at or after a given ISO 8601 timestamp
+def filter_by_timestamp(entries: List[dict], since_ts: str) -> List[dict]:
+    if not since_ts:
+        return entries
+    return [e for e in entries if e.get('timestamp', '') >= since_ts]

@@ -11,6 +11,13 @@
 Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Window 1, Pane 1.0).
 **BUG (fixed):** Project `.claude/rules/*.md` did not appear — root cause was YAML array syntax in `paths:` frontmatter (Claude Code Bug #19377/#33581). CSV parser expects string, receives JS Array from `yaml.parse()`, producing broken globs. Fix: CSV string format (`paths: src/**, workflow.py`). All project rules now load correctly via InstructionsLoaded hook.
 **BUG (fixed):** Rules-Pane showed historical rules from previous sessions because `hook_log_position` was set to 0 (read from beginning of hook log). Fix: removed `hook_log_position = 0` override, now starts from EOF like all other modes.
+**BUG (fixed, Session 12):** Rules-Pane and Hooks-Pane showed data from ALL past sessions (old timestamps, closed-worktree rules, 20000+ historical hook events). Root cause: `load_historical_rules()` and `load_historical_hooks()` read `hook_outputs.jsonl` from position 0 with no timestamp filter; `active_rules` only accumulated, never cleared. Fix:
+- `_get_session_start_ts()` reads first `timestamp` from newest main session JSONL → `session_start_ts` global
+- `filter_by_timestamp()` added to `hook_parser.py`: ISO 8601 lexicographic comparison filters entries before session start
+- `load_historical_rules()`: clears `active_rules` + `rules_invokers` before loading, applies `filter_by_timestamp()`
+- `load_historical_hooks()`: applies `filter_by_timestamp()` to suppress pre-session entries
+- `run_rules_loop()` and `run_hooks_loop()`: track `current_main_session` via `_get_newest_main_session()`; on session change: update `session_start_ts`, re-run historical load with new timestamp
+- Token Pane unaffected (reads session JSONL directly, natural session boundary)
 
 Rules-Pane Layout:
 - Window 1 "rules", Pane 1.0 (links 50%): `python3 workflow.py --mode rules` → `run_rules_loop()`
@@ -181,7 +188,7 @@ Pending — needs evaluation.
 
 ## Offene Fragen
 
-- Rules-Pane: `active_rules` ist ein Set (nur add, kein remove) — Rules verschwinden nicht wenn sie out-of-scope gehen
+- Rules-Pane: `active_rules` ist ein Set (nur add, kein remove) — Rules verschwinden nicht wenn sie out-of-scope gehen [RESOLVED Session 12: `load_historical_rules()` clears both sets on session change]
 - InstructionsLoaded Hook feuert nicht nach /clear oder /compact (#30973, #31017) — Monitor kann Reloads nicht tracken
 - Session-JSONL enthält keine Rules/Instructions-Daten (verifiziert via dev/display/jsonl_exploration Scripts)
 

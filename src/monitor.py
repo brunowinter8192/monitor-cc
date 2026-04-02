@@ -19,7 +19,7 @@ from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_line
 # From formatter.py: Format tool calls for display
 from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_cache_tracker, format_workers_block
 # From hook_parser.py: Parse hook log entries
-from .hook_parser import parse_new_hook_entries, filter_by_project, get_current_position as get_hook_log_position
+from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management and rendering
 from .subagent_ui import subagent_states, toggle_subagent_state, build_collapsed_entry
 # From click_handler.py: Keyboard input for token and workers panes
@@ -41,6 +41,7 @@ subagent_metadata: Dict[str, dict] = {}
 tool_calls_by_agent: Dict[str, List[dict]] = {}
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
+session_start_ts: Optional[str] = None
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 rules_invokers: Dict[str, Dict[str, str]] = {}
 rules_expand_states: Dict[str, bool] = {}
@@ -428,6 +429,19 @@ def run_streaming_loop() -> None:
 def _get_newest_main_session() -> Optional[Path]:
     main_sessions = get_main_session_files()
     return main_sessions[0] if main_sessions else None
+
+# Extract timestamp of the first message in the newest main session JSONL
+def _get_session_start_ts() -> Optional[str]:
+    session = _get_newest_main_session()
+    if not session:
+        return None
+    lines = read_new_lines(session, 0)
+    messages, _ = parse_jsonl_lines(lines[:5])
+    for msg in messages:
+        ts = msg.get('timestamp')
+        if ts:
+            return ts
+    return None
 
 # Track unknown JSONL message type for warnings pane
 def track_unknown_type(unknown_entry: dict) -> None:
@@ -966,11 +980,13 @@ def run_subagents_loop() -> None:
         disable_mouse()
         restore_terminal()
 
-# Load historical hook entries for display
+# Load historical hook entries for display, session-scoped
 def load_historical_hooks() -> None:
     global hook_log_position
     entries, new_pos = parse_new_hook_entries(0)
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
+    if session_start_ts:
+        filtered = filter_by_timestamp(filtered, session_start_ts)
     for entry in filtered:
         output = entry.get('output', '')
         if not output:
@@ -987,8 +1003,18 @@ def load_historical_hooks() -> None:
 
 # Runs hooks display loop (for dedicated hooks tmux pane)
 def run_hooks_loop() -> None:
+    global session_start_ts
+    session_start_ts = _get_session_start_ts()
     load_historical_hooks()
+    current_main_session = _get_newest_main_session()
     while True:
+        newest = _get_newest_main_session()
+        if newest != current_main_session and newest is not None:
+            current_main_session = newest
+            session_start_ts = _get_session_start_ts()
+            print("\033[2J\033[3J\033[H", end='', flush=True)
+            print(f"{CYAN}--- New session detected ---{RESET}\n")
+            load_historical_hooks()
         process_hook_log_for_display()
         time.sleep(POLL_INTERVAL)
 
@@ -1045,11 +1071,16 @@ def record_rule_invoker(entry: dict) -> None:
         rules_invokers[rule_key] = {}
     rules_invokers[rule_key][source] = ts
 
-# Load historical rules from hook log (with invoker data from cwd)
+# Load historical rules from hook log (with invoker data from cwd), session-scoped
 def load_historical_rules() -> None:
-    global hook_log_position
+    global hook_log_position, active_rules, rules_invokers
+    active_rules['project'].clear()
+    active_rules['global'].clear()
+    rules_invokers.clear()
     entries, new_pos = parse_new_hook_entries(0)
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
+    if session_start_ts:
+        filtered = filter_by_timestamp(filtered, session_start_ts)
     for entry in filtered:
         if entry.get('hook_event') == HOOK_INSTRUCTIONS_LOADED:
             record_rule_invoker(entry)
@@ -1057,9 +1088,11 @@ def load_historical_rules() -> None:
 
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
-    global rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset, rules_total_lines
+    global rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset, rules_total_lines, session_start_ts
     from .ui_mode import format_rules_block
+    session_start_ts = _get_session_start_ts()
     load_historical_rules()
+    current_main_session = _get_newest_main_session()
     last_output = None
     last_data_refresh = 0.0
     frozen = False
@@ -1105,6 +1138,12 @@ def run_rules_loop() -> None:
 
             now = time.time()
             if not frozen and now - last_data_refresh >= POLL_INTERVAL:
+                newest = _get_newest_main_session()
+                if newest != current_main_session and newest is not None:
+                    current_main_session = newest
+                    session_start_ts = _get_session_start_ts()
+                    load_historical_rules()
+                    input_changed = True
                 process_hook_log()
                 last_data_refresh = now
 
