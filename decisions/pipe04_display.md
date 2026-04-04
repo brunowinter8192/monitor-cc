@@ -119,7 +119,7 @@ Fix:
 - Added None fallback in `run_hooks_loop()` and `run_rules_loop()`: if `_get_session_start_ts()` returns None, `session_start_ts` is set to current UTC time.
 
 **Enhancement — Per-File Opus Rule Injection:**
-Previously one SessionStart hook assembled all 6 opus-*.md files into one 52.7KB `hookSpecificOutput.additionalContext` blob — exceeding Claude Code's 50K character limit (v2.1.89), causing truncation to 2KB preview.
+Previously one SessionStart hook assembled all 6 opus-*.md files into one 52.7KB `hookSpecificOutput.additionalContext` blob — exceeding Claude Code's per-hook additionalContext limit, causing truncation to 2KB preview. Live-tested limit (Session 14): ~10KB per hook (9,945 bytes passed, 10,081 bytes truncated). GitHub CHANGELOG v2.1.89 claims 50K — this is incorrect or refers to a different limit.
 
 Fix: Split into 7 separate SessionStart hooks in `settings.json`:
 - 1x `session-start-rules.sh` (worktree logger only, no injection)
@@ -234,7 +234,7 @@ Fix:
 - `format_hooks_block()` in `formatter.py`: neuer optionaler `item_positions_out: Optional[dict]` Parameter. Wenn übergeben, wird `{item_idx: all_lines_line_idx}` für jeden Item befüllt.
 - `run_hooks_loop()` in `monitor.py`: nach Expand via Click wird `just_expanded_idx` gesetzt. Nach dem ersten `format_hooks_block()`-Aufruf: wenn `item_positions[just_expanded_idx]` UNTER dem Viewport-Start liegt (`item_line < start`), wird `hooks_scroll_offset` so gesetzt dass der Item-Header oben im Viewport erscheint (`max(0, total_lines - viewport_lines - item_line)`). Danach zweiter `format_hooks_block()`-Aufruf mit dem korrigierten Offset.
 
-Deliverable 2 (Truncation Warning): Wenn Content > 50K Zeichen, zeigt `format_hooks_block()` eine Warning-Line direkt nach dem Header: `[content N chars — exceeds 50K limit, Claude Code may have persisted additionalContext to disk]`. Keine der aktuellen 6 Entries überschreitet 50K (max: opus-workers.md 21.7KB). GitHub research (CHANGELOG v2.1.89): Claude Code speichert hook outputs > 50K als persisted-output File statt direkte Context-Injection.
+Deliverable 2 (Truncation Warning): Wenn Content > 50K Zeichen, zeigt `format_hooks_block()` eine Warning-Line direkt nach dem Header: `[content N chars — exceeds 50K limit, Claude Code may have persisted additionalContext to disk]`. Note: Der 50K-Threshold im Code ist zu hoch — live-getestetes Limit ist ~10KB per hook (Session 14). Threshold sollte auf 10K angepasst werden. Alle 9 aktuellen Entries liegen unter 9.5KB (nach Split von communication in 2, workers in 3 Teile).
 
 ## Quellen
 
@@ -245,5 +245,6 @@ Deliverable 2 (Truncation Warning): Wenn Content > 50K Zeichen, zeigt `format_ho
 - GitHub anthropics/claude-code #16299 — Path-scoped rules load globally (opposite bug, version-dependent)
 - GitHub anthropics/claude-code #27724: JSONL format undocumented, changes without changelog
 - GitHub anthropics/claude-code #33414: FireHose monitoring feature request (kein offizielles Monitoring-API)
-- GitHub anthropics/claude-code CHANGELOG v2.1.89: hook output > 50K → persisted-output (file path + preview statt direkter Injection)
+- GitHub anthropics/claude-code CHANGELOG v2.1.89: hook output > 50K → persisted-output (file path + preview statt direkter Injection). KORREKTUR: Live-Test (Session 14) zeigt ~10KB per-hook limit, nicht 50K.
 - GitHub anthropics/claude-code #41799: Hooks docs omit >50K output file-path preview behavior
+- Live-Test Session 14 (2026-04-05): additionalContext per-hook limit = ~10KB (9,945 bytes ✅, 10,081 bytes ❌). Binäre Suche über 4 Iterationen. Multiple hooks merge as separate system-reminders.
