@@ -1049,6 +1049,32 @@ def process_sessions_for_system_reminders() -> None:
                 if item is not None:
                     hooks_display_items.append(item)
 
+# Auto-scroll viewport so the given item index is visible
+def _auto_scroll_to_item(items: list, item_idx, scroll_offset: int) -> int:
+    if item_idx is None or not items:
+        return scroll_offset
+    # Count lines before this item
+    line_count = 0
+    for i, item in enumerate(items):
+        if i == item_idx:
+            break
+        line_count += 1
+        if item.get('expanded') and item.get('detail'):
+            line_count += len([l for l in item['detail'].split('\n') if l.strip()])
+    # Get terminal height
+    try:
+        import shutil
+        term_h = shutil.get_terminal_size().lines - 2
+    except Exception:
+        term_h = 40
+    # If item is above viewport, scroll up to it
+    if line_count < scroll_offset:
+        return line_count
+    # If item is below viewport, scroll down
+    if line_count >= scroll_offset + term_h:
+        return line_count - term_h + 1
+    return scroll_offset
+
 # Runs hooks display loop with expandable items and keyboard/mouse navigation
 def run_hooks_loop() -> None:
     global session_start_ts, hooks_display_items, hooks_hover_item_idx, hooks_line_map, hooks_scroll_offset, hooks_total_lines, hooks_seen_reminder_hashes
@@ -1094,9 +1120,11 @@ def run_hooks_loop() -> None:
                     if char == 'j':
                         n = len(hooks_display_items)
                         hooks_hover_item_idx = min((hooks_hover_item_idx or 0) + 1, n - 1) if n > 0 else None
+                        hooks_scroll_offset = _auto_scroll_to_item(hooks_display_items, hooks_hover_item_idx, hooks_scroll_offset)
                         input_changed = True
                     elif char == 'k':
                         hooks_hover_item_idx = max((hooks_hover_item_idx or 0) - 1, 0) if hooks_display_items else None
+                        hooks_scroll_offset = _auto_scroll_to_item(hooks_display_items, hooks_hover_item_idx, hooks_scroll_offset)
                         input_changed = True
                     elif char in ('\r', ' '):
                         if hooks_hover_item_idx is not None and 0 <= hooks_hover_item_idx < len(hooks_display_items):
