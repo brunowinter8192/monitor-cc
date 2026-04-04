@@ -1131,7 +1131,7 @@ def run_hooks_loop() -> None:
                     input_changed = True
                 last_data_refresh = now
             output, hooks_total_lines = format_hooks_block(hooks_display_items, hooks_line_map, hooks_hover_item_idx, hooks_scroll_offset)
-            if output != last_output or input_changed:
+            if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:
                     print(output)
