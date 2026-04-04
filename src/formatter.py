@@ -289,7 +289,7 @@ def format_hooks_item_lines(item: dict) -> List[str]:
     return lines
 
 # Render hooks pane items with [+]/[-] expand/collapse, hover highlight, scrolling
-def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], scroll_offset: int, pane_height: int = 50, pane_width: int = 80) -> tuple:
+def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], scroll_offset: int, pane_height: int = 50, pane_width: int = 80, item_positions_out: Optional[dict] = None) -> tuple:
     if not items:
         return ('', 0)
     all_lines = []
@@ -308,10 +308,15 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
         line_idx = len(all_lines)
         all_lines.append(header)
         item_idx_at[line_idx] = item_idx
+        if item_positions_out is not None:
+            item_positions_out[item_idx] = line_idx
         if item.get('expanded'):
             content = item.get('content', '')
             text = content if content else item.get('detail', '')
             if text:
+                if content and len(content) > 50000:
+                    warn = f"    {YELLOW}[content {len(content):,} chars — exceeds 50K limit, Claude Code may have persisted additionalContext to disk]{RESET}"
+                    all_lines.append(warn)
                 max_text = pane_width - 5  # 4 indent + margin
                 for line in text.split('\n'):
                     stripped = line.strip()

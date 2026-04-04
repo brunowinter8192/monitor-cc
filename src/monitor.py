@@ -1066,8 +1066,10 @@ def run_hooks_loop() -> None:
     setup_keyboard_input()
     enable_mouse()
     try:
+        just_expanded_idx = None
         while True:
             input_changed = False
+            just_expanded_idx = None
             while True:
                 char = read_keypress()
                 if char is None:
@@ -1079,8 +1081,11 @@ def run_hooks_loop() -> None:
                         if button == 0:
                             item_idx = hooks_line_map.get(row)
                             if item_idx is not None and 0 <= item_idx < len(hooks_display_items):
-                                hooks_display_items[item_idx]['expanded'] = not hooks_display_items[item_idx].get('expanded', False)
+                                was_expanded = hooks_display_items[item_idx].get('expanded', False)
+                                hooks_display_items[item_idx]['expanded'] = not was_expanded
                                 input_changed = True
+                                if not was_expanded:
+                                    just_expanded_idx = item_idx
                         elif button == 64:
                             hooks_scroll_offset += 3
                             input_changed = True
@@ -1130,7 +1135,17 @@ def run_hooks_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                output, hooks_total_lines = format_hooks_block(hooks_display_items, hooks_line_map, hooks_hover_row, hooks_scroll_offset, pane_height, pane_width)
+                item_positions: dict = {}
+                output, hooks_total_lines = format_hooks_block(hooks_display_items, hooks_line_map, hooks_hover_row, hooks_scroll_offset, pane_height, pane_width, item_positions)
+                if just_expanded_idx is not None and just_expanded_idx in item_positions:
+                    item_line = item_positions[just_expanded_idx]
+                    viewport_lines = pane_height - 1
+                    max_scroll = max(0, hooks_total_lines - viewport_lines)
+                    clamped = min(hooks_scroll_offset, max_scroll)
+                    start = max(0, hooks_total_lines - viewport_lines - clamped)
+                    if item_line < start or item_line >= start + viewport_lines:
+                        hooks_scroll_offset = max(0, hooks_total_lines - viewport_lines - item_line)
+                        output, hooks_total_lines = format_hooks_block(hooks_display_items, hooks_line_map, hooks_hover_row, hooks_scroll_offset, pane_height, pane_width)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:

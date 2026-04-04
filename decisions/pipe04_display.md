@@ -226,6 +226,16 @@ Pending — needs evaluation.
 - InstructionsLoaded Hook feuert nicht nach /clear oder /compact (#30973, #31017) — Monitor kann Reloads nicht tracken
 - Session-JSONL enthält keine Rules/Instructions-Daten (verifiziert via dev/display/jsonl_exploration Scripts)
 
+**BUG (fixed, 2026-04-05 hooks-content branch):** Hooks-Pane expand shows only green summary line — expanded content not visible.
+
+Root cause: Viewport-Bug. Die 6 `SessionStart`-Entries mit injected-Content (opus-communication.md etc.) stehen am Anfang von `hooks_display_items` (erste Items, älteste Timestamps). Beim Expand werden ihre Content-Lines in `all_lines` direkt nach dem Header eingefügt — aber da der Display bottom-anchored ist, springt der Viewport nach unten um genau M Lines (M = Anzahl Content-Lines). Header UND Content landen dadurch ÜBER dem neuen Viewport. Nur der Sticky-Header zeigte den Item-Header.
+
+Fix:
+- `format_hooks_block()` in `formatter.py`: neuer optionaler `item_positions_out: Optional[dict]` Parameter. Wenn übergeben, wird `{item_idx: all_lines_line_idx}` für jeden Item befüllt.
+- `run_hooks_loop()` in `monitor.py`: nach Expand via Click wird `just_expanded_idx` gesetzt. Nach dem ersten `format_hooks_block()`-Aufruf: wenn `item_positions[just_expanded_idx]` UNTER dem Viewport-Start liegt (`item_line < start`), wird `hooks_scroll_offset` so gesetzt dass der Item-Header oben im Viewport erscheint (`max(0, total_lines - viewport_lines - item_line)`). Danach zweiter `format_hooks_block()`-Aufruf mit dem korrigierten Offset.
+
+Deliverable 2 (Truncation Warning): Wenn Content > 50K Zeichen, zeigt `format_hooks_block()` eine Warning-Line direkt nach dem Header: `[content N chars — exceeds 50K limit, Claude Code may have persisted additionalContext to disk]`. Keine der aktuellen 6 Entries überschreitet 50K (max: opus-workers.md 21.7KB). GitHub research (CHANGELOG v2.1.89): Claude Code speichert hook outputs > 50K als persisted-output File statt direkte Context-Injection.
+
 ## Quellen
 
 - GitHub anthropics/claude-code #19377 — YAML array syntax for `paths:` broken (CSV parser bug)
@@ -235,3 +245,5 @@ Pending — needs evaluation.
 - GitHub anthropics/claude-code #16299 — Path-scoped rules load globally (opposite bug, version-dependent)
 - GitHub anthropics/claude-code #27724: JSONL format undocumented, changes without changelog
 - GitHub anthropics/claude-code #33414: FireHose monitoring feature request (kein offizielles Monitoring-API)
+- GitHub anthropics/claude-code CHANGELOG v2.1.89: hook output > 50K → persisted-output (file path + preview statt direkter Injection)
+- GitHub anthropics/claude-code #41799: Hooks docs omit >50K output file-path preview behavior
