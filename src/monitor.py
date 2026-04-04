@@ -1007,6 +1007,7 @@ def load_historical_hooks() -> None:
 def run_hooks_loop() -> None:
     global session_start_ts
     session_start_ts = _get_session_start_ts()
+    print("\033[2J\033[3J\033[H", end='', flush=True)
     load_historical_hooks()
     current_main_session = _get_newest_main_session()
     while True:
