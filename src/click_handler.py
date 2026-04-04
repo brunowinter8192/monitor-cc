@@ -75,6 +75,16 @@ def disable_mouse() -> None:
     sys.stdout.write('\033[?1003l\033[?1006l')
     sys.stdout.flush()
 
+# Enables SGR mouse reporting (button clicks only, no motion/wheel — tmux handles scrolling)
+def enable_mouse_clicks() -> None:
+    sys.stdout.write('\033[?1000h\033[?1006h')
+    sys.stdout.flush()
+
+# Disables click-only mouse reporting
+def disable_mouse_clicks() -> None:
+    sys.stdout.write('\033[?1000l\033[?1006l')
+    sys.stdout.flush()
+
 # Reads SGR mouse event after escape char; returns (button, col, row) for press/motion, None otherwise
 def read_mouse_event(first_char: str) -> Optional[Tuple[int, int, int]]:
     if first_char != '\033':

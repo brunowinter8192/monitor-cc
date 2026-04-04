@@ -23,7 +23,7 @@ from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_ti
 # From subagent_ui.py: Subagent state management and rendering
 from .subagent_ui import subagent_states, toggle_subagent_state, build_collapsed_entry
 # From click_handler.py: Keyboard input for token and workers panes
-from .click_handler import read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal, enable_mouse, disable_mouse, read_mouse_event, get_agent_by_index
+from .click_handler import read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal, enable_mouse, disable_mouse, enable_mouse_clicks, disable_mouse_clicks, read_mouse_event, get_agent_by_index
 # From ui_mode.py: Subagent tracking and rules formatting
 from .ui_mode import track_subagent_metadata
 
@@ -1082,7 +1082,7 @@ def run_hooks_loop() -> None:
     current_main_session = _get_newest_main_session()
     last_data_refresh = 0.0
     setup_keyboard_input()
-    enable_mouse()
+    enable_mouse_clicks()
     total_lines = _hooks_print_all(hooks_display_items, hooks_line_map)
     try:
         while True:
@@ -1139,7 +1139,7 @@ def run_hooks_loop() -> None:
                 last_data_refresh = now
             time.sleep(INPUT_POLL_INTERVAL)
     finally:
-        disable_mouse()
+        disable_mouse_clicks()
         restore_terminal()
 
 # Append new hook log entries to hooks_display_items
