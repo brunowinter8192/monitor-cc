@@ -234,11 +234,11 @@ def format_unknown_type_warning(msg_type: str, count: int) -> str:
 # Format a single API call line for cache tracker (wide or compact based on pane width)
 def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool) -> str:
     cc_broken = cc > cr
+    bg = LIGHT_RED_BG if cc_broken else ''
+    end = RESET if cc_broken else ''
     if wide:
-        cc_str = f"{RED}{cc:>7,}{RESET}" if cc_broken else f"{cc:>7,}"
-        return f"  {symbol} CR: {cr:>7,}  CC: {cc_str}  D: {d:>5,}  ({_format_k(out)} out)"
-    cc_k = f"{RED}{_format_k(cc)}{RESET}" if cc_broken else _format_k(cc)
-    return f" {symbol} {_format_k(cr)}/{cc_k}/{_format_k(d)} ({_format_k(out)} out)"
+        return f"{bg}  {symbol} CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){end}"
+    return f"{bg} {symbol} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){end}"
 
 # Extract first meaningful value from tool input dict for preview
 def _get_tool_preview(input_data: dict) -> str:
