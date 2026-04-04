@@ -23,7 +23,7 @@ from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_ti
 # From subagent_ui.py: Subagent state management and rendering
 from .subagent_ui import subagent_states, toggle_subagent_state, build_collapsed_entry
 # From click_handler.py: Keyboard input for token and workers panes
-from .click_handler import read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal, enable_mouse, disable_mouse, enable_mouse_clicks, disable_mouse_clicks, read_mouse_event, get_agent_by_index
+from .click_handler import read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal, enable_mouse, disable_mouse, read_mouse_event, get_agent_by_index
 # From ui_mode.py: Subagent tracking and rules formatting
 from .ui_mode import track_subagent_metadata
 
@@ -1049,28 +1049,21 @@ def process_sessions_for_system_reminders() -> None:
                     hooks_display_items.append(item)
 
 # Print all hooks items to stdout, populate line_map (content_line → item_idx), return total lines printed
-def _hooks_print_all(items: list, line_map: dict) -> int:
+def _hooks_print_all(items: list, line_map: dict, selected_idx: Optional[int] = None) -> int:
     line_map.clear()
     line_num = 1
     for item_idx, item in enumerate(items):
         item_lines = format_hooks_item_lines(item)
         line_map[line_num] = item_idx
-        for line in item_lines:
-            print(line, flush=True)
+        for i, line in enumerate(item_lines):
+            if i == 0 and item_idx == selected_idx:
+                print(f"\033[7m{line}\033[m", flush=True)
+            else:
+                print(line, flush=True)
         line_num += len(item_lines)
     return line_num - 1
 
-# Resolve mouse click at visible row to item_idx using content_line offset for scrolled content
-def _hooks_resolve_row(row: int, line_map: dict, total_lines: int) -> Optional[int]:
-    try:
-        import shutil
-        term_h = shutil.get_terminal_size().lines
-    except Exception:
-        term_h = 40
-    offset = max(0, total_lines - term_h)
-    return line_map.get(row + offset)
-
-# Runs hooks display loop: append-only streaming, full redraw only on expand/collapse
+# Runs hooks display loop: append-only streaming, j/k navigation, redraw only on user action
 def run_hooks_loop() -> None:
     global session_start_ts, hooks_display_items, hooks_line_map, hooks_seen_reminder_hashes
     session_start_ts = _get_session_start_ts()
@@ -1081,37 +1074,40 @@ def run_hooks_loop() -> None:
     hooks_display_items.sort(key=lambda x: x.get('timestamp', ''))
     current_main_session = _get_newest_main_session()
     last_data_refresh = 0.0
+    selected_idx: Optional[int] = None
     setup_keyboard_input()
-    enable_mouse_clicks()
-    total_lines = _hooks_print_all(hooks_display_items, hooks_line_map)
+    total_lines = _hooks_print_all(hooks_display_items, hooks_line_map, selected_idx)
     try:
         while True:
-            toggle_requested = False
+            redraw_needed = False
             while True:
                 char = read_keypress()
                 if char is None:
                     break
-                if char == '\033':
-                    event = read_mouse_event(char)
-                    if event is not None:
-                        button, _col, row = event
-                        if button == 0:
-                            item_idx = _hooks_resolve_row(row, hooks_line_map, total_lines)
-                            if item_idx is not None and 0 <= item_idx < len(hooks_display_items):
-                                hooks_display_items[item_idx]['expanded'] = not hooks_display_items[item_idx].get('expanded', False)
-                                toggle_requested = True
-                else:
-                    if char == 'a':
-                        for item in hooks_display_items:
-                            item['expanded'] = True
-                        toggle_requested = True
-                    elif char == 'A':
-                        for item in hooks_display_items:
-                            item['expanded'] = False
-                        toggle_requested = True
-            if toggle_requested:
+                if char == 'j':
+                    n = len(hooks_display_items)
+                    if n > 0:
+                        selected_idx = min((selected_idx if selected_idx is not None else -1) + 1, n - 1)
+                        redraw_needed = True
+                elif char == 'k':
+                    if hooks_display_items:
+                        selected_idx = max((selected_idx if selected_idx is not None else 1) - 1, 0)
+                        redraw_needed = True
+                elif char in ('\r', ' '):
+                    if selected_idx is not None and 0 <= selected_idx < len(hooks_display_items):
+                        hooks_display_items[selected_idx]['expanded'] = not hooks_display_items[selected_idx].get('expanded', False)
+                        redraw_needed = True
+                elif char == 'a':
+                    for item in hooks_display_items:
+                        item['expanded'] = True
+                    redraw_needed = True
+                elif char == 'A':
+                    for item in hooks_display_items:
+                        item['expanded'] = False
+                    redraw_needed = True
+            if redraw_needed:
                 print("\033[2J\033[H", end='', flush=True)
-                total_lines = _hooks_print_all(hooks_display_items, hooks_line_map)
+                total_lines = _hooks_print_all(hooks_display_items, hooks_line_map, selected_idx)
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
                 newest = _get_newest_main_session()
@@ -1120,11 +1116,12 @@ def run_hooks_loop() -> None:
                     session_start_ts = _get_session_start_ts()
                     hooks_display_items.clear()
                     hooks_seen_reminder_hashes.clear()
+                    selected_idx = None
                     load_historical_hooks()
                     load_historical_system_reminders()
                     hooks_display_items.sort(key=lambda x: x.get('timestamp', ''))
                     print("\033[2J\033[H", end='', flush=True)
-                    total_lines = _hooks_print_all(hooks_display_items, hooks_line_map)
+                    total_lines = _hooks_print_all(hooks_display_items, hooks_line_map, selected_idx)
                 else:
                     old_count = len(hooks_display_items)
                     process_hook_log_for_display()
@@ -1139,7 +1136,6 @@ def run_hooks_loop() -> None:
                 last_data_refresh = now
             time.sleep(INPUT_POLL_INTERVAL)
     finally:
-        disable_mouse_clicks()
         restore_terminal()
 
 # Append new hook log entries to hooks_display_items
