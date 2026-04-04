@@ -1080,10 +1080,10 @@ def run_hooks_loop() -> None:
                                 hooks_display_items[item_idx]['expanded'] = not hooks_display_items[item_idx].get('expanded', False)
                                 input_changed = True
                         elif button == 64:
-                            hooks_scroll_offset = max(0, hooks_scroll_offset - 3)
+                            hooks_scroll_offset += 3
                             input_changed = True
                         elif button == 65:
-                            hooks_scroll_offset = min(hooks_scroll_offset + 3, max(0, hooks_total_lines - 5))
+                            hooks_scroll_offset = max(0, hooks_scroll_offset - 3)
                             input_changed = True
                         elif button >= 32:
                             hooks_hover_row = row
@@ -1118,12 +1118,20 @@ def run_hooks_loop() -> None:
                     if len(hooks_display_items) != old_count:
                         input_changed = True
                 last_data_refresh = now
-            output, hooks_total_lines = format_hooks_block(hooks_display_items, hooks_line_map, hooks_hover_row, hooks_scroll_offset)
-            if output != last_output:
-                print("\033[2J\033[3J\033[H", end='', flush=True)
-                if output:
-                    print(output)
-                last_output = output
+            if input_changed:
+                try:
+                    term = os.get_terminal_size()
+                    pane_height = term.lines - 1
+                    pane_width = term.columns
+                except OSError:
+                    pane_height = 50
+                    pane_width = 80
+                output, hooks_total_lines = format_hooks_block(hooks_display_items, hooks_line_map, hooks_hover_row, hooks_scroll_offset, pane_height, pane_width)
+                if output != last_output:
+                    print("\033[2J\033[3J\033[H", end='', flush=True)
+                    if output:
+                        print(output)
+                    last_output = output
             time.sleep(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
