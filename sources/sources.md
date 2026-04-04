@@ -25,3 +25,6 @@ External references used as evidence for pipeline decisions.
 | claude-hud | github.com/jarrodwatts/claude-hud | CC statusline plugin, native context_window/rate_limits stdin data, transcript caching | pipe02, pipe03, pipe04 |
 | Claude-Code-Usage-Monitor | github.com/Maciek-roboblog/Claude-Code-Usage-Monitor | Real-time TUI token monitor (7k stars), Python, P90 session limits | pipe02, pipe03 |
 | tokscale | github.com/junhoyeo/tokscale | CLI token tracking with contributions graph, multi-agent support | pipe02, pipe03 |
+| claude-code-hook-hero | github.com/damahua/claude-code-hook-hero | Plugin capturing 14 hook events, universal hook logging pattern | pipe03 |
+| HitCC | github.com/hitmux/HitCC | Deep technical analysis: 25 hook events, InstructionsLoaded schema, hook return types | pipe03 |
+| claude-howto | github.com/luongnv89/claude-howto | Comprehensive 25-event hook guide with JSON I/O schema, practical examples | pipe03 |
