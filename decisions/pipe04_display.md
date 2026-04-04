@@ -95,6 +95,40 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 
 Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H` setzt Cursor auf Position 0,0.
 
+### Hooks-Pane Display Fixes (Session 13)
+
+Three fixes + one enhancement:
+
+**Fix 1 — Full Content on Expand:**
+`session-start-rules.sh` previously logged only summary strings ("injected: opus-xxx.md (108 lines)") to `hook_outputs.jsonl`. Expanded entries showed only metadata, not the rule file content.
+
+Fix:
+- `hook_logger.py`: `log_hook()` gains optional `content` parameter; if present, written as `content` field in JSONL entry. CLI: `sys.argv[6]` = content_file path.
+- `session-start-rules.sh`: passes content_file path per opus file. `output` field retains summary for collapsed [+] view.
+- `formatter.py` `build_hook_display_item()`: passes `content` field from entry into display item dict.
+- `formatter.py` `format_hooks_block()` + `format_hooks_item_lines()`: expanded view uses `item['content']` if non-empty, falls back to `item['detail']`.
+
+**Fix 2 — Remove Summary Hook:**
+Removed redundant summary entry ("source=startup | injected N opus rules") from `session-start-rules.sh`. All 6 files shown individually.
+
+**Fix 3 — Pre-SessionStart Entries:**
+Historical entries from previous session appeared in hooks pane. Root cause: `_get_session_start_ts()` subtracted 60s buffer from first JSONL message timestamp.
+
+Fix:
+- Reduced buffer from 60s → 10s. SessionStart hooks fire within seconds of first message; 10s is safe margin.
+- Added None fallback in `run_hooks_loop()` and `run_rules_loop()`: if `_get_session_start_ts()` returns None, `session_start_ts` is set to current UTC time.
+
+**Enhancement — Per-File Opus Rule Injection:**
+Previously one SessionStart hook assembled all 6 opus-*.md files into one 52.7KB `hookSpecificOutput.additionalContext` blob — exceeding Claude Code's 50K character limit (v2.1.89), causing truncation to 2KB preview.
+
+Fix: Split into 7 separate SessionStart hooks in `settings.json`:
+- 1x `session-start-rules.sh` (worktree logger only, no injection)
+- 6x `session-start-rule-inject.sh` (one per opus-*.md file, each under 22KB)
+
+Verified: Multiple SessionStart hooks each returning `additionalContext` produce separate `<system-reminder>` tags — they DO merge (contrary to GitHub source analysis which claimed "last one wins").
+
+Verified: `_meta["anthropic/maxResultSizeChars"]` does NOT work for hook outputs (only MCP tool results).
+
 ### Hooks-Pane (Kategorie: Hook-Monitoring)
 
 Eigenes tmux Pane (Window 1 "rules", Pane 1.1, rechts 50%) via `--mode hooks`:
