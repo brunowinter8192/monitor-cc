@@ -266,7 +266,7 @@ def build_reminder_display_item(timestamp: str, reminder_text: str, tool_name: s
     }
 
 # Render hooks pane items with [+]/[-] expand/collapse, hover highlight, scrolling
-def format_hooks_block(items: list, line_map: dict, hover_item_idx: Optional[int], scroll_offset: int) -> tuple:
+def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], scroll_offset: int) -> tuple:
     if not items:
         return ('', 0)
     all_lines = []
@@ -301,8 +301,9 @@ def format_hooks_block(items: list, line_map: dict, hover_item_idx: Optional[int
                 line_map[screen_row] = item_idx_at[content_idx]
     output_lines = []
     for screen_row_0, line in enumerate(visible):
+        screen_row = screen_row_0 + 1
         content_idx = scroll_offset + screen_row_0
-        if hover_item_idx is not None and item_idx_at.get(content_idx) == hover_item_idx:
+        if hover_row is not None and screen_row == hover_row and content_idx in item_idx_at:
             line = f"{HOVER_BG}{line}{RESET}"
         output_lines.append(line)
     return ('\n'.join(output_lines), total_lines)
