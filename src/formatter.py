@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 import re
-from typing import Optional
+from typing import List, Optional
 
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
@@ -264,6 +264,27 @@ def build_reminder_display_item(timestamp: str, reminder_text: str, tool_name: s
         'color': PASTEL_BLUE,
         'expanded': False,
     }
+
+# Format a single hooks display item into output lines (header + optional detail)
+def format_hooks_item_lines(item: dict) -> List[str]:
+    toggle = "[-]" if item.get('expanded') else "[+]"
+    color = item.get('color', PASTEL_PURPLE)
+    time_str = item.get('time_str', '')
+    if item['type'] == 'hook':
+        hook_event = item.get('hook_event', '')
+        hook_script = item.get('hook_script', '')
+        header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{RESET}"
+    else:
+        tool_name = item.get('tool_name', '')
+        header = f"{PASTEL_BLUE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
+    lines = [header]
+    if item.get('expanded'):
+        detail = item.get('detail', '')
+        if detail:
+            for line in detail.split('\n'):
+                if line.strip():
+                    lines.append(f"    {color}{line}{RESET}")
+    return lines
 
 # Render hooks pane items with [+]/[-] expand/collapse, hover highlight, scrolling
 def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], scroll_offset: int) -> tuple:
