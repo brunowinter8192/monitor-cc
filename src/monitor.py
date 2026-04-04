@@ -17,7 +17,7 @@ from .session_finder import find_active_sessions, encode_project_path
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines, get_message_content, is_tool_use, extract_cache_turns
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_cache_tracker, format_workers_block, format_system_message
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_cache_tracker, format_workers_block, format_system_message, format_system_reminder_for_hooks
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management and rendering
@@ -41,6 +41,8 @@ subagent_metadata: Dict[str, dict] = {}
 tool_calls_by_agent: Dict[str, List[dict]] = {}
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
+hooks_file_positions: Dict[Path, int] = {}
+hooks_tool_use_caches: Dict[Path, dict] = {}
 session_start_ts: Optional[str] = None
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 rules_invokers: Dict[str, Dict[str, str]] = {}
@@ -1003,12 +1005,54 @@ def load_historical_hooks() -> None:
         print()
     hook_log_position = new_pos
 
+# Load historical system reminders from JSONL session files, session-scoped
+def load_historical_system_reminders() -> None:
+    global hooks_file_positions, hooks_tool_use_caches
+    hooks_file_positions.clear()
+    hooks_tool_use_caches.clear()
+    sessions = find_active_sessions(active_project_filter)
+    for session_file in sessions:
+        cache: dict = {}
+        hooks_tool_use_caches[session_file] = cache
+        tool_calls, new_pos, *_ = parse_new_tool_calls(session_file, 0, cache)
+        hooks_file_positions[session_file] = new_pos
+        for tool_call in tool_calls:
+            if session_start_ts and tool_call.get('timestamp', '') < session_start_ts:
+                continue
+            for reminder in tool_call.get('system_reminders', []):
+                formatted = format_system_reminder_for_hooks(
+                    tool_call['timestamp'], reminder, tool_call['tool_name']
+                )
+                print(formatted)
+                print()
+
+# Scan JSONL session files for new system reminders and display in hooks pane
+def process_sessions_for_system_reminders() -> None:
+    global hooks_file_positions, hooks_tool_use_caches
+    sessions = find_active_sessions(active_project_filter)
+    for session_file in sessions:
+        if session_file not in hooks_file_positions:
+            hooks_file_positions[session_file] = 0
+            hooks_tool_use_caches[session_file] = {}
+        cache = hooks_tool_use_caches[session_file]
+        last_pos = hooks_file_positions[session_file]
+        tool_calls, new_pos, *_ = parse_new_tool_calls(session_file, last_pos, cache)
+        hooks_file_positions[session_file] = new_pos
+        for tool_call in tool_calls:
+            for reminder in tool_call.get('system_reminders', []):
+                formatted = format_system_reminder_for_hooks(
+                    tool_call['timestamp'], reminder, tool_call['tool_name']
+                )
+                print(formatted)
+                print()
+
 # Runs hooks display loop (for dedicated hooks tmux pane)
 def run_hooks_loop() -> None:
     global session_start_ts
     session_start_ts = _get_session_start_ts()
     print("\033[2J\033[3J\033[H", end='', flush=True)
     load_historical_hooks()
+    load_historical_system_reminders()
     current_main_session = _get_newest_main_session()
     while True:
         newest = _get_newest_main_session()
@@ -1018,7 +1062,9 @@ def run_hooks_loop() -> None:
             print("\033[2J\033[3J\033[H", end='', flush=True)
             print(f"{CYAN}--- New session detected ---{RESET}\n")
             load_historical_hooks()
+            load_historical_system_reminders()
         process_hook_log_for_display()
+        process_sessions_for_system_reminders()
         time.sleep(POLL_INTERVAL)
 
 # Process hook log and display all hook events in hooks pane

@@ -208,15 +208,24 @@ def format_hook_event(timestamp: str, hook_event: str, hook_script: str, output:
     color = _HOOK_CATEGORY_COLORS.get(category, PASTEL_PURPLE)
     header = f"{color}[{time_str}] {hook_event} | {hook_script}{RESET}"
     if output:
-        return f"{header}\n{INDENT}{color}{output}{RESET}"
+        lines = output.split('\n')
+        formatted_lines = '\n'.join(f"{INDENT}{color}{line}{RESET}" for line in lines)
+        return f"{header}\n{formatted_lines}"
     return header
+
+# Format system reminder for Hooks pane display, attributed to triggering tool
+def format_system_reminder_for_hooks(timestamp: str, reminder_text: str, tool_name: str) -> str:
+    time_str = format_timestamp(timestamp)
+    header = f"{CYAN}[{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
+    lines = reminder_text.split('\n')
+    formatted_lines = '\n'.join(f"{INDENT}{CYAN}{line}{RESET}" for line in lines if line.strip())
+    return f"{header}\n{formatted_lines}" if formatted_lines else header
 
 # Format system message from JSONL for display
 def format_system_message(timestamp: str, text: str) -> str:
     time_str = format_timestamp(timestamp)
     header = f"{CYAN}[{time_str}] SYSTEM MESSAGE{RESET}"
-    truncated = text[:200] + '...' if len(text) > 200 else text
-    body_lines = truncated.split('\n')
+    body_lines = text.split('\n')
     formatted_body = '\n'.join(f"{INDENT}{line}" for line in body_lines if line.strip())
     return f"{header}\n{formatted_body}" if formatted_body else header
 
