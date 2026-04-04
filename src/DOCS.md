@@ -107,6 +107,8 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 **Subagents-Pane functions:** `run_subagents_loop()` polls sessions, renders subagent list + per-agent cache tracker, handles mouse/keyboard input. `load_historical_subagents()` resets newest main session + its agent files (from `filepath.parent/filepath.stem/subagents/`) to position 0. `find_agent_jsonl(agent_id)` searches active sessions for `agent-{id}.jsonl`. `render_subagents_with_tokens(metadata, turns_by_agent, ...)` renders collapsible list with `format_cache_tracker()` for expanded agents. State: `agent_turns`, `agent_pane_line_map`, `agent_pane_hover_row`, `agent_cache_scroll_offsets`.
 
+**Session-Scoping:** `_get_session_start_ts()` extracts first message timestamp from newest main session JSONL minus 60s buffer as cutoff. `session_start_ts` global used by `load_historical_rules()` and `load_historical_hooks()` to filter hook entries. Both `run_rules_loop()` and `run_hooks_loop()` detect session changes via `_get_newest_main_session()` and re-scope on change.
+
 **Usage:**
 ```python
 from src.monitor import run_monitor
@@ -165,23 +167,25 @@ tool_calls, new_position, warnings, user_media, thinking, user_prompts, skill_ac
 
 ## hook_parser.py
 
-**Purpose:** Parses hook log file (`src/logs/hook_outputs.jsonl`) written by Claude Code hooks for display in the monitor.
+**Purpose:** Parses hook log file (`src/logs/hook_outputs.jsonl`) written by Claude Code hooks for display in the monitor. Provides project filtering (prefix match, includes worktree subdirectories) and timestamp filtering for session-scoping.
 
-**Input:** `file_path` (hook log file path), `last_position` (byte offset for incremental reads).
+**Input:** `last_position` (byte offset for incremental reads).
 
 **Output:** List of hook entry dicts (timestamp, cwd, hook_event, hook_script, output, tool_name); new file position.
 
 **Usage:**
 ```python
-from src.hook_parser import parse_new_hook_entries
-entries, new_position = parse_new_hook_entries(file_path, last_position)
+from src.hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp
+entries, new_position = parse_new_hook_entries(last_position)
+filtered = filter_by_project(entries, project_path)  # startswith match, includes worktrees
+filtered = filter_by_timestamp(filtered, since_ts)   # ISO 8601 cutoff
 ```
 
 ---
 
 ## formatter.py
 
-**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, token profiles (input + output sections with bar charts), cumulative token profiles, worker status blocks, and pane headers as color-coded terminal strings. `format_workers_block()` renders cache-tracker token view (CR/CC/D per API call) per worker when expanded instead of a tool call list. `_get_tool_preview()` extracts a readable preview string from tool input dicts for cache-tracker expanded entries.
+**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, token profiles (input + output sections with bar charts), cumulative token profiles, worker status blocks, and pane headers as color-coded terminal strings. `format_workers_block()` renders cache-tracker token view (CR/CC/D per API call) per worker when expanded instead of a tool call list. `_get_tool_preview()` extracts a readable preview string from tool input dicts for cache-tracker expanded entries. `_format_cache_call()` highlights the entire line with `LIGHT_RED_BG` when CC > CR (broken prompt caching indicator).
 
 **Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, is_error flag).
 
