@@ -245,6 +245,7 @@ def build_hook_display_item(entry: dict) -> dict:
         'hook_event': entry.get('hook_event', ''),
         'hook_script': entry.get('hook_script', ''),
         'detail': entry.get('output', ''),
+        'content': entry.get('content', ''),
         'color': color,
         'expanded': False,
     }
@@ -279,9 +280,10 @@ def format_hooks_item_lines(item: dict) -> List[str]:
         header = f"{PASTEL_BLUE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
     lines = [header]
     if item.get('expanded'):
-        detail = item.get('detail', '')
-        if detail:
-            for line in detail.split('\n'):
+        content = item.get('content', '')
+        text = content if content else item.get('detail', '')
+        if text:
+            for line in text.split('\n'):
                 if line.strip():
                     lines.append(f"    {color}{line}{RESET}")
     return lines
@@ -307,14 +309,15 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
         all_lines.append(header)
         item_idx_at[line_idx] = item_idx
         if item.get('expanded'):
-            detail = item.get('detail', '')
-            if detail:
+            content = item.get('content', '')
+            text = content if content else item.get('detail', '')
+            if text:
                 max_text = pane_width - 5  # 4 indent + margin
-                for line in detail.split('\n'):
+                for line in text.split('\n'):
                     stripped = line.strip()
                     if stripped:
                         truncated = line[:max_text] if len(line) > max_text else line
-                        if stripped.startswith(('source=', 'injected:', 'tool=')):
+                        if not content and stripped.startswith(('source=', 'injected:', 'tool=')):
                             all_lines.append(f"    {GREEN}{truncated}{RESET}")
                         else:
                             all_lines.append(f"    {color}{truncated}{RESET}")

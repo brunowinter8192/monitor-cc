@@ -28,3 +28,6 @@ External references used as evidence for pipeline decisions.
 | claude-code-hook-hero | github.com/damahua/claude-code-hook-hero | Plugin capturing 14 hook events, universal hook logging pattern | pipe03 |
 | HitCC | github.com/hitmux/HitCC | Deep technical analysis: 25 hook events, InstructionsLoaded schema, hook return types | pipe03 |
 | claude-howto | github.com/luongnv89/claude-howto | Comprehensive 25-event hook guide with JSON I/O schema, practical examples | pipe03 |
+| Claude Code source | github.com/anthropics/claude-code | Hook internals: additionalContext merging, 50K truncation limit (v2.1.89), _meta override (MCP only), hookSpecificOutput format | pipe03, pipe04 |
+| Claude Code #41799 | github.com/anthropics/claude-code/issues/41799 | 50K hook output truncation undocumented | pipe04 |
+| Claude Code #42869 | github.com/anthropics/claude-code/issues/42869 | _meta maxResultSizeChars undocumented (MCP only, not hooks) | pipe04 |

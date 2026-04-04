@@ -452,7 +452,7 @@ def _get_session_start_ts() -> Optional[str]:
         ts = msg.get('timestamp')
         if ts:
             dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-            dt_adjusted = dt - timedelta(seconds=60)
+            dt_adjusted = dt - timedelta(seconds=10)
             return dt_adjusted.isoformat().replace('+00:00', 'Z')
     return None
 
@@ -1053,6 +1053,8 @@ def process_sessions_for_system_reminders() -> None:
 def run_hooks_loop() -> None:
     global session_start_ts, hooks_display_items, hooks_hover_row, hooks_line_map, hooks_scroll_offset, hooks_total_lines, hooks_seen_reminder_hashes
     session_start_ts = _get_session_start_ts()
+    if session_start_ts is None:
+        session_start_ts = datetime.utcnow().isoformat() + 'Z'
     hooks_display_items.clear()
     hooks_seen_reminder_hashes.clear()
     load_historical_hooks()
@@ -1103,6 +1105,8 @@ def run_hooks_loop() -> None:
                 if newest != current_main_session and newest is not None:
                     current_main_session = newest
                     session_start_ts = _get_session_start_ts()
+                    if session_start_ts is None:
+                        session_start_ts = datetime.utcnow().isoformat() + 'Z'
                     hooks_display_items.clear()
                     hooks_seen_reminder_hashes.clear()
                     hooks_scroll_offset = 0
@@ -1198,6 +1202,8 @@ def run_rules_loop() -> None:
     global rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset, rules_total_lines, session_start_ts
     from .ui_mode import format_rules_block
     session_start_ts = _get_session_start_ts()
+    if session_start_ts is None:
+        session_start_ts = datetime.utcnow().isoformat() + 'Z'
     load_historical_rules()
     current_main_session = _get_newest_main_session()
     last_output = None
@@ -1249,6 +1255,8 @@ def run_rules_loop() -> None:
                 if newest != current_main_session and newest is not None:
                     current_main_session = newest
                     session_start_ts = _get_session_start_ts()
+                    if session_start_ts is None:
+                        session_start_ts = datetime.utcnow().isoformat() + 'Z'
                     load_historical_rules()
                     input_changed = True
                 process_hook_log()
