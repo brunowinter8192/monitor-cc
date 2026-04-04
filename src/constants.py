@@ -39,10 +39,66 @@ MODE_TOKENS = 'tokens'
 MODE_WORKERS = 'workers'
 MODE_SUBAGENTS = 'subagents'
 
-# Hook events
+# Hook events — session lifecycle
+HOOK_SESSION_START = 'SessionStart'
+HOOK_SESSION_END = 'SessionEnd'
+
+# Hook events — user input
 HOOK_USER_PROMPT = 'UserPromptSubmit'
-HOOK_PRE_TOOL = 'PreToolUse'
 HOOK_INSTRUCTIONS_LOADED = 'InstructionsLoaded'
+
+# Hook events — tools
+HOOK_PRE_TOOL = 'PreToolUse'
+HOOK_POST_TOOL = 'PostToolUse'
+HOOK_POST_TOOL_FAILURE = 'PostToolUseFailure'
+HOOK_PERMISSION_REQUEST = 'PermissionRequest'
+HOOK_PERMISSION_DENIED = 'PermissionDenied'
+
+# Hook events — agents
+HOOK_SUBAGENT_START = 'SubagentStart'
+HOOK_SUBAGENT_STOP = 'SubagentStop'
+HOOK_TEAMMATE_IDLE = 'TeammateIdle'
+
+# Hook events — tasks
+HOOK_TASK_CREATED = 'TaskCreated'
+HOOK_TASK_COMPLETED = 'TaskCompleted'
+
+# Hook events — response
+HOOK_STOP = 'Stop'
+HOOK_STOP_FAILURE = 'StopFailure'
+
+# Hook events — files
+HOOK_FILE_CHANGED = 'FileChanged'
+HOOK_CWD_CHANGED = 'CwdChanged'
+HOOK_CONFIG_CHANGE = 'ConfigChange'
+
+# Hook events — context
+HOOK_PRE_COMPACT = 'PreCompact'
+HOOK_POST_COMPACT = 'PostCompact'
+
+# Hook events — MCP
+HOOK_ELICITATION = 'Elicitation'
+HOOK_ELICITATION_RESULT = 'ElicitationResult'
+HOOK_NOTIFICATION = 'Notification'
+
+# Hook events — worktree
+HOOK_WORKTREE_CREATE = 'WorktreeCreate'
+HOOK_WORKTREE_REMOVE = 'WorktreeRemove'
+
+# Hook event categories for color-coded display
+HOOK_EVENT_CATEGORIES = {
+    'SessionStart': 'session', 'SessionEnd': 'session',
+    'UserPromptSubmit': 'user_input', 'InstructionsLoaded': 'user_input',
+    'PreToolUse': 'tool', 'PostToolUse': 'tool', 'PostToolUseFailure': 'tool',
+    'PermissionRequest': 'tool', 'PermissionDenied': 'tool',
+    'SubagentStart': 'agent', 'SubagentStop': 'agent', 'TeammateIdle': 'agent',
+    'TaskCreated': 'task', 'TaskCompleted': 'task',
+    'Stop': 'response', 'StopFailure': 'response',
+    'FileChanged': 'file', 'CwdChanged': 'file', 'ConfigChange': 'file',
+    'PreCompact': 'context', 'PostCompact': 'context',
+    'Elicitation': 'mcp', 'ElicitationResult': 'mcp', 'Notification': 'mcp',
+    'WorktreeCreate': 'worktree', 'WorktreeRemove': 'worktree',
+}
 
 # Excluded tools from display
 EXCLUDED_TOOLS = {'Edit'}
@@ -54,7 +110,7 @@ SYSTEM_REMINDER_PATTERN = r'<system-reminder>.*?</system-reminder>'
 KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}
 
 # JSONL message types deliberately ignored (known but not relevant for monitoring)
-KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name'}
+KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode'}
 
 # Pane header labels
 PANE_HEADERS = {

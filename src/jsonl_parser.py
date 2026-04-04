@@ -10,7 +10,7 @@ from .constants import RESET, RED, GREEN, YELLOW, BLUE, WHITE
 from .constants import EXCLUDED_TOOLS, SYSTEM_REMINDER_PATTERN, KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES
 
 # ORCHESTRATOR
-def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
+def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
 
     new_position = get_current_position(filepath)
@@ -22,9 +22,10 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     skill_activations = extract_skill_activations(messages)
     unknown_types = detect_unknown_types(messages)
     usage_data = extract_usage_data(messages)
+    system_messages = extract_system_messages(messages)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
 
-    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data
+    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data, system_messages
 
 # FUNCTIONS
 
@@ -520,6 +521,26 @@ def extract_cache_turns(messages: list) -> list:
             call.pop('_input_key', None)
 
     return turns
+
+# Extract system messages (type=system) and their text content
+def extract_system_messages(messages: List[dict]) -> List[dict]:
+    items = []
+    for message in messages:
+        if message.get('type') != 'system':
+            continue
+        timestamp = message.get('timestamp', '')
+        content = message.get('content', '') or message.get('message', {}).get('content', '')
+        if isinstance(content, list):
+            text_parts = [b.get('text', '') for b in content if isinstance(b, dict) and b.get('type') == 'text']
+            text = '\n'.join(text_parts)
+        elif isinstance(content, str):
+            text = content
+        else:
+            continue
+        text = text.strip()
+        if text:
+            items.append({'timestamp': timestamp, 'text': text})
+    return items
 
 # Detect unknown message types not in KNOWN or KNOWN_IGNORED sets
 def detect_unknown_types(messages: List[dict]) -> List[dict]:

@@ -5,9 +5,22 @@ from typing import Optional
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
 # From constants.py: Colors and config values
-from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG
+from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, ORANGE, DIM, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG, HOOK_EVENT_CATEGORIES
 
 INDENT = '  '
+
+_HOOK_CATEGORY_COLORS = {
+    'session': WHITE,
+    'user_input': PASTEL_PURPLE,
+    'tool': PASTEL_PURPLE,
+    'agent': BLUE,
+    'task': GREEN,
+    'response': PASTEL_ORANGE,
+    'file': DIM,
+    'context': ORANGE,
+    'mcp': CYAN,
+    'worktree': PASTEL_BLUE,
+}
 
 # Format token count as compact "Xk" or "X.Xk" string
 def _format_k(n: int) -> str:
@@ -188,13 +201,24 @@ def format_user_prompt(timestamp: str, hook_outputs: list = None) -> str:
 def format_hook_annotation(hook_output: str, hook_script: str) -> str:
     return f"{INDENT}{PASTEL_PURPLE}Hook [{hook_script}]: {hook_output}{RESET}"
 
-# Format single hook event for hooks pane display
+# Format single hook event for hooks pane display, color-coded by event category
 def format_hook_event(timestamp: str, hook_event: str, hook_script: str, output: str) -> str:
     time_str = format_timestamp(timestamp)
-    header = f"{PASTEL_PURPLE}[{time_str}] {hook_event} | {hook_script}{RESET}"
+    category = HOOK_EVENT_CATEGORIES.get(hook_event, 'tool')
+    color = _HOOK_CATEGORY_COLORS.get(category, PASTEL_PURPLE)
+    header = f"{color}[{time_str}] {hook_event} | {hook_script}{RESET}"
     if output:
-        return f"{header}\n{INDENT}{PASTEL_PURPLE}{output}{RESET}"
+        return f"{header}\n{INDENT}{color}{output}{RESET}"
     return header
+
+# Format system message from JSONL for display
+def format_system_message(timestamp: str, text: str) -> str:
+    time_str = format_timestamp(timestamp)
+    header = f"{CYAN}[{time_str}] SYSTEM MESSAGE{RESET}"
+    truncated = text[:200] + '...' if len(text) > 200 else text
+    body_lines = truncated.split('\n')
+    formatted_body = '\n'.join(f"{INDENT}{line}" for line in body_lines if line.strip())
+    return f"{header}\n{formatted_body}" if formatted_body else header
 
 # Format user media item (image or document)
 def format_user_media(media_item: dict) -> str:

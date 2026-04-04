@@ -4,14 +4,15 @@
 
 - `session_finder.py`: `~/.claude/projects/` → glob `*.jsonl` + `*/subagents/agent-*.jsonl`, sorted by mtime
 - `jsonl_parser.py`: tool_use/tool_result correlation via cache, extracts 9 data types (tools, prompts, media, thinking, skills, warnings, usage, unknown_types) via 9-Tuple-Rückgabe
-- `hook_parser.py`: reads `src/logs/hook_outputs.jsonl`, filters by project cwd
-- External pipeline: `instructions-loaded-hook.sh` (native hook in `~/.claude/settings.json`) → `hook_logger.py` → `hook_outputs.jsonl`
-- `constants.py`: `KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}`, `KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name'}`
-- `jsonl_parser.py`: `detect_unknown_types()` (jsonl_parser.py:412-423) scannt Messages gegen `KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES` und gibt unbekannte Types zurück → Warnings-Pane
+- `hook_parser.py`: reads `src/logs/hook_outputs.jsonl`, filters by project cwd — generisch, kein Event-Typ-Filter
+- External pipeline: `instructions-loaded-hook.sh` + `session-start-rules.sh` (native hooks in `~/.claude/settings.json`) → `hook_logger.py` → `hook_outputs.jsonl`
+- `constants.py`: `KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}`, `KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode'}`
+- `constants.py`: 25 Hook-Event-Konstanten (`HOOK_SESSION_START`, `HOOK_SESSION_END`, `HOOK_POST_TOOL`, `HOOK_POST_TOOL_FAILURE`, `HOOK_PERMISSION_REQUEST`, `HOOK_PERMISSION_DENIED`, `HOOK_SUBAGENT_START`, `HOOK_SUBAGENT_STOP`, `HOOK_TEAMMATE_IDLE`, `HOOK_TASK_CREATED`, `HOOK_TASK_COMPLETED`, `HOOK_STOP`, `HOOK_STOP_FAILURE`, `HOOK_FILE_CHANGED`, `HOOK_CWD_CHANGED`, `HOOK_CONFIG_CHANGE`, `HOOK_PRE_COMPACT`, `HOOK_POST_COMPACT`, `HOOK_ELICITATION`, `HOOK_ELICITATION_RESULT`, `HOOK_NOTIFICATION`, `HOOK_WORKTREE_CREATE`, `HOOK_WORKTREE_REMOVE` + bestehende 3) und `HOOK_EVENT_CATEGORIES` Dict für Color-Mapping
+- `jsonl_parser.py`: `detect_unknown_types()` scannt Messages gegen `KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES` und gibt unbekannte Types zurück → Warnings-Pane
+- `jsonl_parser.py`: `extract_system_messages()` extrahiert `type=system` Messages und deren Text-Content; Rückgabe als 10. Element des Parse-Tuples
+- `session-start-rules.sh`: liest stdin (JSON mit `source`, `cwd`), logt via `hook_logger.py` mit `source=$SOURCE`; nutzt `$CWD` aus JSON statt `$(pwd)` für Worktree-Check
 
 Hook types routed by `process_hook_log()` in monitor.py:
-- `UserPromptSubmit` → `pending_user_prompt_hook`
-- `PreToolUse` → `pending_pretooluse_hooks`
 - `InstructionsLoaded` → `active_rules`
 
 ## IST — Stellschrauben

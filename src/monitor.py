@@ -17,7 +17,7 @@ from .session_finder import find_active_sessions, encode_project_path
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines, get_message_content, is_tool_use, extract_cache_turns
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_cache_tracker, format_workers_block
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_cache_tracker, format_workers_block, format_system_message
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management and rendering
@@ -166,7 +166,7 @@ def process_session_file(filepath: Path) -> None:
     last_position = file_positions[filepath]
     cache = tool_use_caches[filepath]
 
-    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, _ = parse_new_tool_calls(filepath, last_position, cache)
+    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, _, system_messages = parse_new_tool_calls(filepath, last_position, cache)
 
     for ut in unknown_types:
         track_unknown_type(ut)
@@ -181,6 +181,9 @@ def process_session_file(filepath: Path) -> None:
 
     for prompt_item in user_prompts:
         display_user_prompt_from_jsonl(prompt_item)
+
+    for sys_msg in system_messages:
+        display_system_message(sys_msg)
 
     for skill_item in skill_activations:
         display_skill_activation(skill_item)
@@ -990,14 +993,11 @@ def load_historical_hooks() -> None:
     if session_start_ts:
         filtered = filter_by_timestamp(filtered, session_start_ts)
     for entry in filtered:
-        output = entry.get('output', '')
-        if not output:
-            continue
         formatted = format_hook_event(
             timestamp=entry.get('timestamp', ''),
             hook_event=entry.get('hook_event', ''),
             hook_script=entry.get('hook_script', ''),
-            output=output
+            output=entry.get('output', '')
         )
         print(formatted)
         print()
@@ -1020,7 +1020,7 @@ def run_hooks_loop() -> None:
         process_hook_log_for_display()
         time.sleep(POLL_INTERVAL)
 
-# Process hook log and display hooks with output immediately
+# Process hook log and display all hook events in hooks pane
 def process_hook_log_for_display() -> None:
     global hook_log_position
 
@@ -1028,14 +1028,11 @@ def process_hook_log_for_display() -> None:
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
 
     for entry in filtered:
-        output = entry.get('output', '')
-        if not output:
-            continue
         formatted = format_hook_event(
             timestamp=entry.get('timestamp', ''),
             hook_event=entry.get('hook_event', ''),
             hook_script=entry.get('hook_script', ''),
-            output=output
+            output=entry.get('output', '')
         )
         print(formatted)
         print()
@@ -1180,6 +1177,12 @@ def process_hook_log() -> None:
 # Display USER PROMPT detected from session JSONL
 def display_user_prompt_from_jsonl(prompt_item: dict) -> None:
     formatted = format_user_prompt(prompt_item.get('timestamp', ''))
+    print(formatted)
+    print()
+
+# Display system message detected from session JSONL
+def display_system_message(sys_msg: dict) -> None:
+    formatted = format_system_message(sys_msg.get('timestamp', ''), sys_msg.get('text', ''))
     print(formatted)
     print()
 

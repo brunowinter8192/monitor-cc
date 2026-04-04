@@ -5,7 +5,7 @@
 - `monitor.py`: `run_streaming_loop()` ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), trackt `current_main_session` via `_get_newest_main_session()`. Detects session change each poll cycle → clears screen + resets position. Pollt alle 0.5s via `process_hook_log()` + `monitor_sessions()`
 - `monitor.py`: `run_rules_loop()` ruft `load_historical_rules()` auf (liest Hook-Log ab 0, füllt `active_rules`), dann pollt alle 0.5s via `process_hook_log()` und rendert `format_rules_block(active_rules)` bei Änderungen
 - `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
-- `monitor.py`: `run_hooks_loop()` ruft `load_historical_hooks()` auf (liest Hook-Log ab 0, druckt Entries mit Output), dann pollt alle 0.5s via `process_hook_log_for_display()`
+- `monitor.py`: `run_hooks_loop()` ruft `load_historical_hooks()` auf (liest Hook-Log ab 0, druckt ALLE Entries inkl. ohne Output), dann pollt alle 0.5s via `process_hook_log_for_display()`
 - `monitor.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `format_warnings_block()` bei Änderungen
 - `monitor.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. Expanded Workers zeigen Cache-Tracker Token-View (CR/CC/D per API Call) via `extract_cache_turns()` + `format_cache_tracker()`. Keine Subagent-Rendering mehr (separates Pane).
 - `monitor.py`: `run_subagents_loop()` pollt alle 0.5s, ruft `monitor_sessions()` auf, lädt per-Agent JSONL via `find_agent_jsonl()`, rendert `render_subagents_with_tokens()` bei Änderungen. Unterstützt Mouse-Events (Expand/Collapse, Scroll, Hover) und Digit-Keys. Session-Reset: detects main session change via `_get_newest_main_session()`, clears all subagent state (metadata, turns, expand/scroll states, subagent_states, file_positions, tool_use_caches), re-runs `load_historical_subagents()`. Scroll fix: `_find_agent_at_row()` walks upward in line_map for scroll events in expanded areas.
@@ -13,8 +13,11 @@
 - `run_monitor()` routet `MODE_SUBAGENTS` → `run_subagents_loop()`.
 - Hook routing in `process_hook_log()`: nur noch 1 Event → 1 State Dict
   - `InstructionsLoaded` → `active_rules` (via `[P]`/`[G]` Prefix-Routing)
+  - Alle anderen Hook-Events → `process_hook_log_for_display()` (Hooks-Pane, kein State)
   - `UserPromptSubmit` und `PreToolUse` werden nicht mehr gebuffert (Buffering in Session 2/3 entfernt)
-- `process_hook_log_for_display()` (separater Code-Pfad für Hooks-Pane): filtert auf output-tragende Entries, zeigt alle Hook-Events mit Output sofort an
+- `format_hook_event()` in formatter.py: color-coded per `HOOK_EVENT_CATEGORIES` aus constants.py (session=WHITE, agent=BLUE, context=ORANGE, mcp=CYAN, file=DIM, etc.)
+- `system_messages` wird als 10. Return-Wert von `parse_new_tool_calls()` zurückgegeben; `process_session_file()` entpackt und rendert via `display_system_message()` / `format_system_message()`
+- `process_hook_log_for_display()` (separater Code-Pfad für Hooks-Pane): zeigt ALLE Hook-Events an (mit und ohne Output); Events ohne Output als One-Liner (`[HH:MM:SS] EventType | script_name`), Events mit Output mit Einrückung
 - Agent tracking: `agent_to_task`, `agent_to_type` maps, `buffered_subagent_calls` für Orphans (Calls ohne bekannten Agent)
 - Token profiling: `accumulate_tokens()` aggregiert Output-Tokens nach Block-Type (thinking/tool_use/text) und Tool-Name in `token_profile` + `token_profile_tools` Globals. Turn-Count via `token_profile_request_ids` Set (dedupliziert `requestId`s). Session-Isolation via file-level Byte-Offsets (nicht 5h-Filter).
 - Session-Browser: `token_cumulative_n: Optional[int]` (monitor.py:48) steuert Modus. Keyboard-Input in `run_tokens_loop()`: Ziffern → buffer, Enter → set/clear n, 'q' → clear. `compute_cumulative_tokens(n)` liest letzte N Main-Sessions von Position 0.
