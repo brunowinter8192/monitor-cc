@@ -17,7 +17,7 @@ from .session_finder import find_active_sessions, encode_project_path
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines, get_message_content, is_tool_use, extract_cache_turns
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_cache_tracker, format_workers_block, format_system_message, format_system_reminder_for_hooks
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_cache_tracker, format_workers_block, format_system_message, format_system_reminder_for_hooks, build_hook_display_item, build_reminder_display_item, format_hooks_block
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management and rendering
@@ -43,6 +43,12 @@ _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
 hooks_file_positions: Dict[Path, int] = {}
 hooks_tool_use_caches: Dict[Path, dict] = {}
+hooks_display_items: List[dict] = []
+hooks_hover_item_idx: Optional[int] = None
+hooks_line_map: Dict[int, int] = {}
+hooks_scroll_offset: int = 0
+hooks_total_lines: int = 0
+hooks_seen_reminder_hashes: set = set()
 session_start_ts: Optional[str] = None
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 rules_invokers: Dict[str, Dict[str, str]] = {}
@@ -987,27 +993,20 @@ def run_subagents_loop() -> None:
         disable_mouse()
         restore_terminal()
 
-# Load historical hook entries for display, session-scoped
+# Load historical hook entries into hooks_display_items, session-scoped
 def load_historical_hooks() -> None:
-    global hook_log_position
+    global hook_log_position, hooks_display_items
     entries, new_pos = parse_new_hook_entries(0)
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
     if session_start_ts:
         filtered = filter_by_timestamp(filtered, session_start_ts)
     for entry in filtered:
-        formatted = format_hook_event(
-            timestamp=entry.get('timestamp', ''),
-            hook_event=entry.get('hook_event', ''),
-            hook_script=entry.get('hook_script', ''),
-            output=entry.get('output', '')
-        )
-        print(formatted)
-        print()
+        hooks_display_items.append(build_hook_display_item(entry))
     hook_log_position = new_pos
 
-# Load historical system reminders from JSONL session files, session-scoped
+# Load historical system reminders into hooks_display_items, session-scoped
 def load_historical_system_reminders() -> None:
-    global hooks_file_positions, hooks_tool_use_caches
+    global hooks_file_positions, hooks_tool_use_caches, hooks_display_items, hooks_seen_reminder_hashes
     hooks_file_positions.clear()
     hooks_tool_use_caches.clear()
     sessions = find_active_sessions(active_project_filter)
@@ -1020,15 +1019,17 @@ def load_historical_system_reminders() -> None:
             if session_start_ts and tool_call.get('timestamp', '') < session_start_ts:
                 continue
             for reminder in tool_call.get('system_reminders', []):
-                formatted = format_system_reminder_for_hooks(
-                    tool_call['timestamp'], reminder, tool_call['tool_name']
-                )
-                print(formatted)
-                print()
+                content_hash = hash(reminder)
+                if content_hash in hooks_seen_reminder_hashes:
+                    continue
+                hooks_seen_reminder_hashes.add(content_hash)
+                item = build_reminder_display_item(tool_call['timestamp'], reminder, tool_call['tool_name'])
+                if item is not None:
+                    hooks_display_items.append(item)
 
-# Scan JSONL session files for new system reminders and display in hooks pane
+# Scan JSONL session files for new system reminders and append to hooks_display_items
 def process_sessions_for_system_reminders() -> None:
-    global hooks_file_positions, hooks_tool_use_caches
+    global hooks_file_positions, hooks_tool_use_caches, hooks_display_items, hooks_seen_reminder_hashes
     sessions = find_active_sessions(active_project_filter)
     for session_file in sessions:
         if session_file not in hooks_file_positions:
@@ -1040,49 +1041,113 @@ def process_sessions_for_system_reminders() -> None:
         hooks_file_positions[session_file] = new_pos
         for tool_call in tool_calls:
             for reminder in tool_call.get('system_reminders', []):
-                formatted = format_system_reminder_for_hooks(
-                    tool_call['timestamp'], reminder, tool_call['tool_name']
-                )
-                print(formatted)
-                print()
+                content_hash = hash(reminder)
+                if content_hash in hooks_seen_reminder_hashes:
+                    continue
+                hooks_seen_reminder_hashes.add(content_hash)
+                item = build_reminder_display_item(tool_call['timestamp'], reminder, tool_call['tool_name'])
+                if item is not None:
+                    hooks_display_items.append(item)
 
-# Runs hooks display loop (for dedicated hooks tmux pane)
+# Runs hooks display loop with expandable items and keyboard/mouse navigation
 def run_hooks_loop() -> None:
-    global session_start_ts
+    global session_start_ts, hooks_display_items, hooks_hover_item_idx, hooks_line_map, hooks_scroll_offset, hooks_total_lines, hooks_seen_reminder_hashes
     session_start_ts = _get_session_start_ts()
-    print("\033[2J\033[3J\033[H", end='', flush=True)
+    hooks_display_items.clear()
+    hooks_seen_reminder_hashes.clear()
     load_historical_hooks()
     load_historical_system_reminders()
+    hooks_display_items.sort(key=lambda x: x.get('timestamp', ''))
     current_main_session = _get_newest_main_session()
-    while True:
-        newest = _get_newest_main_session()
-        if newest != current_main_session and newest is not None:
-            current_main_session = newest
-            session_start_ts = _get_session_start_ts()
-            print("\033[2J\033[3J\033[H", end='', flush=True)
-            print(f"{CYAN}--- New session detected ---{RESET}\n")
-            load_historical_hooks()
-            load_historical_system_reminders()
-        process_hook_log_for_display()
-        process_sessions_for_system_reminders()
-        time.sleep(POLL_INTERVAL)
+    last_output = None
+    last_data_refresh = 0.0
+    setup_keyboard_input()
+    enable_mouse()
+    try:
+        while True:
+            input_changed = False
+            while True:
+                char = read_keypress()
+                if char is None:
+                    break
+                if char == '\033':
+                    event = read_mouse_event(char)
+                    if event is not None:
+                        button, _col, row = event
+                        if button == 0:
+                            item_idx = hooks_line_map.get(row)
+                            if item_idx is not None and 0 <= item_idx < len(hooks_display_items):
+                                hooks_display_items[item_idx]['expanded'] = not hooks_display_items[item_idx].get('expanded', False)
+                                input_changed = True
+                        elif button == 64:
+                            hooks_scroll_offset = max(0, hooks_scroll_offset - 3)
+                            input_changed = True
+                        elif button == 65:
+                            hooks_scroll_offset = min(hooks_scroll_offset + 3, max(0, hooks_total_lines - 5))
+                            input_changed = True
+                        elif button >= 32:
+                            item_idx = hooks_line_map.get(row)
+                            if item_idx is not None:
+                                hooks_hover_item_idx = item_idx
+                                input_changed = True
+                else:
+                    if char == 'j':
+                        n = len(hooks_display_items)
+                        hooks_hover_item_idx = min((hooks_hover_item_idx or 0) + 1, n - 1) if n > 0 else None
+                        input_changed = True
+                    elif char == 'k':
+                        hooks_hover_item_idx = max((hooks_hover_item_idx or 0) - 1, 0) if hooks_display_items else None
+                        input_changed = True
+                    elif char in ('\r', ' '):
+                        if hooks_hover_item_idx is not None and 0 <= hooks_hover_item_idx < len(hooks_display_items):
+                            hooks_display_items[hooks_hover_item_idx]['expanded'] = not hooks_display_items[hooks_hover_item_idx].get('expanded', False)
+                            input_changed = True
+                    elif char == 'a':
+                        for item in hooks_display_items:
+                            item['expanded'] = True
+                        input_changed = True
+                    elif char == 'A':
+                        for item in hooks_display_items:
+                            item['expanded'] = False
+                        input_changed = True
+            now = time.time()
+            if now - last_data_refresh >= POLL_INTERVAL:
+                newest = _get_newest_main_session()
+                if newest != current_main_session and newest is not None:
+                    current_main_session = newest
+                    session_start_ts = _get_session_start_ts()
+                    hooks_display_items.clear()
+                    hooks_seen_reminder_hashes.clear()
+                    hooks_scroll_offset = 0
+                    hooks_hover_item_idx = None
+                    load_historical_hooks()
+                    load_historical_system_reminders()
+                    hooks_display_items.sort(key=lambda x: x.get('timestamp', ''))
+                    input_changed = True
+                old_count = len(hooks_display_items)
+                process_hook_log_for_display()
+                process_sessions_for_system_reminders()
+                if len(hooks_display_items) != old_count:
+                    input_changed = True
+                last_data_refresh = now
+            output, hooks_total_lines = format_hooks_block(hooks_display_items, hooks_line_map, hooks_hover_item_idx, hooks_scroll_offset)
+            if output != last_output or input_changed:
+                print("\033[2J\033[3J\033[H", end='', flush=True)
+                if output:
+                    print(output)
+                last_output = output
+            time.sleep(INPUT_POLL_INTERVAL)
+    finally:
+        disable_mouse()
+        restore_terminal()
 
-# Process hook log and display all hook events in hooks pane
+# Append new hook log entries to hooks_display_items
 def process_hook_log_for_display() -> None:
-    global hook_log_position
-
+    global hook_log_position, hooks_display_items
     entries, hook_log_position = parse_new_hook_entries(hook_log_position)
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
-
     for entry in filtered:
-        formatted = format_hook_event(
-            timestamp=entry.get('timestamp', ''),
-            hook_event=entry.get('hook_event', ''),
-            hook_script=entry.get('hook_script', ''),
-            output=entry.get('output', '')
-        )
-        print(formatted)
-        print()
+        hooks_display_items.append(build_hook_display_item(entry))
 
 # Derive source label from cwd path
 def derive_rule_source(cwd: str) -> str:

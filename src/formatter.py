@@ -216,10 +216,96 @@ def format_hook_event(timestamp: str, hook_event: str, hook_script: str, output:
 # Format system reminder for Hooks pane display, attributed to triggering tool
 def format_system_reminder_for_hooks(timestamp: str, reminder_text: str, tool_name: str) -> str:
     time_str = format_timestamp(timestamp)
-    header = f"{CYAN}[{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
-    lines = reminder_text.split('\n')
-    formatted_lines = '\n'.join(f"{INDENT}{CYAN}{line}{RESET}" for line in lines if line.strip())
+    header = f"{PASTEL_BLUE}[{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
+    clean_text = reminder_text.replace('\\n', '\n')
+    lines = clean_text.split('\n')
+    formatted_lines = '\n'.join(f"{INDENT}{PASTEL_BLUE}{line}{RESET}" for line in lines if line.strip())
     return f"{header}\n{formatted_lines}" if formatted_lines else header
+
+_REMINDER_JUNK_PATTERN = re.compile(r'^[\.\*\?\(\)\[\]\+\|\\^$\s]+$')
+
+# Check if reminder text is a real reminder (not a regex snippet or too short)
+def _is_valid_reminder(text: str) -> bool:
+    stripped = text.strip()
+    if len(stripped) < 20:
+        return False
+    if _REMINDER_JUNK_PATTERN.match(stripped):
+        return False
+    return True
+
+# Build hooks pane display item dict for a hook log entry
+def build_hook_display_item(entry: dict) -> dict:
+    time_str = format_timestamp(entry.get('timestamp', ''))
+    category = HOOK_EVENT_CATEGORIES.get(entry.get('hook_event', ''), 'tool')
+    color = _HOOK_CATEGORY_COLORS.get(category, PASTEL_PURPLE)
+    return {
+        'type': 'hook',
+        'timestamp': entry.get('timestamp', ''),
+        'time_str': time_str,
+        'hook_event': entry.get('hook_event', ''),
+        'hook_script': entry.get('hook_script', ''),
+        'detail': entry.get('output', ''),
+        'color': color,
+        'expanded': False,
+    }
+
+# Build hooks pane display item dict for a system reminder, returns None if invalid
+def build_reminder_display_item(timestamp: str, reminder_text: str, tool_name: str) -> Optional[dict]:
+    clean_text = reminder_text.replace('\\n', '\n')
+    if not _is_valid_reminder(clean_text):
+        return None
+    time_str = format_timestamp(timestamp)
+    return {
+        'type': 'reminder',
+        'timestamp': timestamp,
+        'time_str': time_str,
+        'tool_name': tool_name,
+        'detail': clean_text,
+        'color': PASTEL_BLUE,
+        'expanded': False,
+    }
+
+# Render hooks pane items with [+]/[-] expand/collapse, hover highlight, scrolling
+def format_hooks_block(items: list, line_map: dict, hover_item_idx: Optional[int], scroll_offset: int) -> tuple:
+    if not items:
+        return ('', 0)
+    all_lines = []
+    item_idx_at: dict = {}
+    for item_idx, item in enumerate(items):
+        toggle = "[-]" if item.get('expanded') else "[+]"
+        color = item.get('color', PASTEL_PURPLE)
+        time_str = item.get('time_str', '')
+        if item['type'] == 'hook':
+            hook_event = item.get('hook_event', '')
+            hook_script = item.get('hook_script', '')
+            header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{RESET}"
+        else:
+            tool_name = item.get('tool_name', '')
+            header = f"{PASTEL_BLUE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
+        line_idx = len(all_lines)
+        all_lines.append(header)
+        item_idx_at[line_idx] = item_idx
+        if item.get('expanded'):
+            detail = item.get('detail', '')
+            if detail:
+                for line in detail.split('\n'):
+                    if line.strip():
+                        all_lines.append(f"    {color}{line}{RESET}")
+    total_lines = len(all_lines)
+    visible = all_lines[scroll_offset:]
+    if line_map is not None:
+        line_map.clear()
+        for screen_row_0, content_idx in enumerate(range(scroll_offset, total_lines)):
+            screen_row = screen_row_0 + 1
+            if content_idx in item_idx_at:
+                line_map[screen_row] = item_idx_at[content_idx]
+    output_lines = []
+    for screen_row_0, line in enumerate(visible):
+        content_idx = scroll_offset + screen_row_0
+        if hover_item_idx is not None and item_idx_at.get(content_idx) == hover_item_idx:
+            line = f"{HOVER_BG}{line}{RESET}"
+        output_lines.append(line)
+    return ('\n'.join(output_lines), total_lines)
 
 # Format system message from JSONL for display
 def format_system_message(timestamp: str, text: str) -> str:
