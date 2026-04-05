@@ -1005,7 +1005,7 @@ def _scan_persisted_hook_files() -> Dict[str, tuple]:
     result = {}
     sessions = find_active_sessions(active_project_filter)
     for session_file in sessions:
-        tool_results_dir = Path(session_file).parent / "tool-results"
+        tool_results_dir = Path(session_file).with_suffix('') / "tool-results"
         if not tool_results_dir.exists():
             continue
         for p in sorted(tool_results_dir.glob("hook-*-additionalContext.txt")):
