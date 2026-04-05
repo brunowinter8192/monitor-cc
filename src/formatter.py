@@ -202,7 +202,6 @@ def format_hook_annotation(hook_output: str, hook_script: str) -> str:
     return f"{INDENT}{PASTEL_PURPLE}Hook [{hook_script}]: {hook_output}{RESET}"
 
 _REMINDER_JUNK_PATTERN = re.compile(r'^[\.\*\?\(\)\[\]\+\|\\^$\s]+$')
-_REMINDER_DEBUG_PATTERN = re.compile(r'^(Line \d+:|MATCH in |content preview:|REAL INJECTION|type=|block\[|tool_use_id=|[{\[]|[\'"]<)')
 
 # Check if reminder text is a real reminder (not a regex snippet or too short)
 def _is_valid_reminder(text: str) -> bool:
@@ -210,9 +209,6 @@ def _is_valid_reminder(text: str) -> bool:
     if len(stripped) < 20:
         return False
     if _REMINDER_JUNK_PATTERN.match(stripped):
-        return False
-    first_line = next((l for l in stripped.splitlines() if l.strip()), '')
-    if _REMINDER_DEBUG_PATTERN.match(first_line.strip()):
         return False
     return True
 
