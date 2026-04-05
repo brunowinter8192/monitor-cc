@@ -202,14 +202,7 @@ def extract_result_content(block: dict) -> str:
 # Extract system-reminder tags from content string
 def extract_system_reminders(content: str) -> List[str]:
     pattern = re.compile(r'<system-reminder>(.*?)</system-reminder>', re.DOTALL)
-    results = []
-    search_pos = 0
-    for match in pattern.finditer(content):
-        if content[search_pos:match.start()].strip():
-            break
-        results.append(match.group(1).strip())
-        search_pos = match.end()
-    return results
+    return [match.group(1).strip() for match in pattern.finditer(content)]
 
 # Remove system-reminder tags from content string
 def strip_system_reminders(content: str) -> str:
