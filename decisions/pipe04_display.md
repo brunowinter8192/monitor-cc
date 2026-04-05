@@ -138,6 +138,9 @@ Eigenes tmux Pane (Window 1 "rules", Pane 1.1, rechts 50%) via `--mode hooks`:
 - Hooks ohne Output werden gefiltert (`if not output: continue`)
 - M-h Keybinding: Hooks-Pane Content → Clipboard via pbcopy
 - Hook-Routing geändert: `process_hook_log()` nur noch für InstructionsLoaded → Rules-Pane. Kein Buffering mehr (`pending_pretooluse_hooks`, `pending_user_prompt_hook` entfernt).
+- **Universal-logger-Filter (hooks-redesign branch):** `_is_noise_entry()` in monitor.py filtert Einträge mit `hook_script.endswith('universal-logger.sh')` AND `output.startswith('tool=')` heraus — in `load_historical_hooks()` und `process_hook_log_for_display()`.
+- **Persisted additionalContext Loading (hooks-redesign branch):** `_scan_persisted_hook_files()` scannt `tool-results/hook-*-additionalContext.txt` in aktiven Sessions. `_enrich_with_persisted()` matched Dateien zu Hook-Items via Timestamp-Nähe (< 60s). Wenn Match: `item['content']` = Dateiinhalt, `item['was_truncated'] = True`.
+- **Truncation-Threshold (hooks-redesign branch):** `format_hooks_block()` zeigt Warning wenn `len(content) > 10_000` (vorher 50_000). Passt zum live-getesteten Limit von ~10KB (Session 14).
 
 ### Warnings-Pane (Kategorie: Format-Stabilität)
 

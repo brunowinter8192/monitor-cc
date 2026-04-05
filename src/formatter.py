@@ -314,8 +314,8 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
             content = item.get('content', '')
             text = content if content else item.get('detail', '')
             if text:
-                if content and len(content) > 50000:
-                    warn = f"    {YELLOW}[content {len(content):,} chars — exceeds 50K limit, Claude Code may have persisted additionalContext to disk]{RESET}"
+                if content and len(content) > 10_000:
+                    warn = f"    {YELLOW}[content {len(content):,} chars — exceeds 10K limit, Claude Code may have persisted additionalContext to disk]{RESET}"
                     all_lines.append(warn)
                 max_text = pane_width - 5  # 4 indent + margin
                 for line in text.split('\n'):
