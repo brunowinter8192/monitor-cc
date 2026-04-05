@@ -251,3 +251,57 @@ Deliverable 2 (Truncation Warning): Wenn Content > 50K Zeichen, zeigt `format_ho
 - GitHub anthropics/claude-code CHANGELOG v2.1.89: hook output > 50K → persisted-output (file path + preview statt direkter Injection). KORREKTUR: Live-Test (Session 14) zeigt ~10KB per-hook limit, nicht 50K.
 - GitHub anthropics/claude-code #41799: Hooks docs omit >50K output file-path preview behavior
 - Live-Test Session 14 (2026-04-05): additionalContext per-hook limit = ~10KB (9,945 bytes ✅, 10,081 bytes ❌). Binäre Suche über 4 Iterationen. Multiple hooks merge as separate system-reminders.
+
+## Rules Architecture: Hook-based Injection with Target Control (Session 15, 2026-04-05)
+
+### Old Approach (Static .claude/rules/)
+
+**Problem:** All rules in `Monitor_CC/.claude/rules/` loaded statically for ALL sessions — both Opus and Workers. No target-group control. Rules with `paths: .claude/worktrees/**` frontmatter (scalar string, not array) were likely silently dropped (see GitHub #19377, #33581 — YAML array syntax required for `paths:`). In practice, every rule loaded for every session.
+
+**Files:** `Monitor_CC/.claude/rules/` contained:
+- 7 symlinks → `~/.claude/shared-rules/global/` (code-standards, code-organization, decisions, dev-convention, documentation, project-standards, claude-md-convention)
+- 3 local files with `paths: .claude/worktrees/**` (dev-verification.md, monitor-standards.md, tui-standards.md)
+- Note: hook-limits.md lived in `~/.claude/shared-rules/monitor/` root, injected by existing opus hook pointing to that root
+
+### New Approach (Hook-based Injection with Target Control)
+
+**Architecture:** 6 SessionStart hooks inject rules based on CWD at session start. Target groups enforced by hook scripts.
+
+**Directory structure:**
+```
+~/.claude/shared-rules/monitor/
+├── opus/
+│   └── hook-limits.md              — Opus only (hook design constraints)
+├── worker1/
+│   └── dev-verification.md         — Workers only (bug fix/feature verification workflow)
+├── worker2/
+│   ├── monitor-standards.md        — Workers only (Monitor_CC coding standards)
+│   └── tui-standards.md            — Workers only (TUI reference patterns)
+├── shared-a/
+│   └── documentation.md            → symlink to global (6,817 bytes)
+├── shared-b/
+│   ├── code-organization.md        → symlink to global
+│   ├── decisions.md                → symlink to global
+│   └── dev-convention.md           → symlink to global  (9,065 bytes total)
+└── shared-c/
+    ├── claude-md-convention.md     → symlink to global
+    ├── code-standards.md           → symlink to global
+    └── project-standards.md       → symlink to global  (3,678 bytes total)
+```
+
+**Hook scripts:**
+- `session-start-project-rules.sh` (existing) — Opus-only: injects RULE_DIR for PROJECT_FILTER, excludes worktrees
+- `session-start-monitor-worker.sh` (new) — Worker-only: injects RULE_DIR only when CWD contains `/.claude/worktrees/`, project-filtered
+- `session-start-monitor-shared.sh` (new) — Shared: injects RULE_DIR for all sessions matching PROJECT_FILTER (no worktree exclusion)
+
+**6 SessionStart hooks in `~/.claude/settings.json`:**
+1. `RULE_DIR=monitor/opus PROJECT_FILTER=Monitor_CC session-start-project-rules.sh` → Opus only
+2. `RULE_DIR=monitor/worker1 PROJECT_FILTER=Monitor_CC session-start-monitor-worker.sh` → Workers only
+3. `RULE_DIR=monitor/worker2 PROJECT_FILTER=Monitor_CC session-start-monitor-worker.sh` → Workers only
+4. `RULE_DIR=monitor/shared-a PROJECT_FILTER=Monitor_CC session-start-monitor-shared.sh` → Both
+5. `RULE_DIR=monitor/shared-b PROJECT_FILTER=Monitor_CC session-start-monitor-shared.sh` → Both
+6. `RULE_DIR=monitor/shared-c PROJECT_FILTER=Monitor_CC session-start-monitor-shared.sh` → Both
+
+**Size constraint:** Each hook injects ≤9,500 bytes (10KB per-hook limit, safety margin). Split into subdirectories to respect this: worker1+worker2 for worker rules (5,124 + 6,505 bytes), shared-a/b/c for global rules (6,817 + 9,065 + 3,678 bytes).
+
+**Monitor_CC/.claude/rules/:** Now empty. All rules delivered via hook injection.
