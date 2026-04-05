@@ -201,17 +201,6 @@ def format_user_prompt(timestamp: str, hook_outputs: list = None) -> str:
 def format_hook_annotation(hook_output: str, hook_script: str) -> str:
     return f"{INDENT}{PASTEL_PURPLE}Hook [{hook_script}]: {hook_output}{RESET}"
 
-_REMINDER_JUNK_PATTERN = re.compile(r'^[\.\*\?\(\)\[\]\+\|\\^$\s]+$')
-
-# Check if reminder text is a real reminder (not a regex snippet or too short)
-def _is_valid_reminder(text: str) -> bool:
-    stripped = text.strip()
-    if len(stripped) < 20:
-        return False
-    if _REMINDER_JUNK_PATTERN.match(stripped):
-        return False
-    return True
-
 # Build hooks pane display item dict for a hook log entry
 def build_hook_display_item(entry: dict) -> dict:
     time_str = format_timestamp(entry.get('timestamp', ''))
@@ -236,41 +225,22 @@ def build_hook_display_item(entry: dict) -> dict:
         'expanded': False,
     }
 
-# Build hooks pane display item dict for a system reminder, returns None if invalid
-def build_reminder_display_item(timestamp: str, reminder_text: str, tool_name: str) -> Optional[dict]:
-    clean_text = reminder_text.replace('\\n', '\n')
-    if not _is_valid_reminder(clean_text):
-        return None
-    time_str = format_timestamp(timestamp)
-    return {
-        'type': 'reminder',
-        'timestamp': timestamp,
-        'time_str': time_str,
-        'tool_name': tool_name,
-        'detail': clean_text,
-        'color': PASTEL_PURPLE,
-        'expanded': False,
-    }
 
 # Format a single hooks display item into output lines (header + optional detail)
 def format_hooks_item_lines(item: dict) -> List[str]:
     toggle = "[-]" if item.get('expanded') else "[+]"
     color = item.get('color', PASTEL_PURPLE)
     time_str = item.get('time_str', '')
-    if item['type'] == 'hook':
-        hook_event = item.get('hook_event', '')
-        hook_script = item.get('hook_script', '')
-        detail = item.get('detail', '')
-        filename_suffix = ''
-        if detail.startswith('injected: '):
-            rest = detail[len('injected: '):]
-            paren_idx = rest.find(' (')
-            if paren_idx != -1:
-                filename_suffix = ' \u2192 ' + rest[:paren_idx]
-        header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{RESET}"
-    else:
-        tool_name = item.get('tool_name', '')
-        header = f"{PASTEL_PURPLE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
+    hook_event = item.get('hook_event', '')
+    hook_script = item.get('hook_script', '')
+    detail = item.get('detail', '')
+    filename_suffix = ''
+    if detail.startswith('injected: '):
+        rest = detail[len('injected: '):]
+        paren_idx = rest.find(' (')
+        if paren_idx != -1:
+            filename_suffix = ' \u2192 ' + rest[:paren_idx]
+    header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{RESET}"
     lines = [header]
     if item.get('expanded'):
         content = item.get('content', '')
@@ -291,20 +261,16 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
         toggle = "[-]" if item.get('expanded') else "[+]"
         color = item.get('color', PASTEL_PURPLE)
         time_str = item.get('time_str', '')
-        if item['type'] == 'hook':
-            hook_event = item.get('hook_event', '')
-            hook_script = item.get('hook_script', '')
-            detail = item.get('detail', '')
-            filename_suffix = ''
-            if detail.startswith('injected: '):
-                rest = detail[len('injected: '):]
-                paren_idx = rest.find(' (')
-                if paren_idx != -1:
-                    filename_suffix = ' \u2192 ' + rest[:paren_idx]
-            header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{RESET}"
-        else:
-            tool_name = item.get('tool_name', '')
-            header = f"{PASTEL_PURPLE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
+        hook_event = item.get('hook_event', '')
+        hook_script = item.get('hook_script', '')
+        detail = item.get('detail', '')
+        filename_suffix = ''
+        if detail.startswith('injected: '):
+            rest = detail[len('injected: '):]
+            paren_idx = rest.find(' (')
+            if paren_idx != -1:
+                filename_suffix = ' \u2192 ' + rest[:paren_idx]
+        header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{RESET}"
         line_idx = len(all_lines)
         all_lines.append(header)
         item_idx_at[line_idx] = item_idx

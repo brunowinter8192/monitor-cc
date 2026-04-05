@@ -17,7 +17,7 @@ from .session_finder import find_active_sessions, encode_project_path
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines, get_message_content, is_tool_use, extract_cache_turns
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_cache_tracker, format_workers_block, format_system_message, build_hook_display_item, build_reminder_display_item, format_hooks_block
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_cache_tracker, format_workers_block, format_system_message, build_hook_display_item, format_hooks_block
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management and rendering
@@ -41,14 +41,11 @@ subagent_metadata: Dict[str, dict] = {}
 tool_calls_by_agent: Dict[str, List[dict]] = {}
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
-hooks_file_positions: Dict[Path, int] = {}
-hooks_tool_use_caches: Dict[Path, dict] = {}
 hooks_display_items: List[dict] = []
 hooks_hover_row: Optional[int] = None
 hooks_line_map: Dict[int, int] = {}
 hooks_scroll_offset: int = 0
 hooks_total_lines: int = 0
-hooks_seen_reminder_hashes: set = set()
 session_start_ts: Optional[str] = None
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
 rules_invokers: Dict[str, Dict[str, str]] = {}
@@ -1080,61 +1077,15 @@ def load_historical_hooks() -> None:
         hooks_display_items.append(item)
     hook_log_position = new_pos
 
-# Load historical system reminders into hooks_display_items, session-scoped
-def load_historical_system_reminders() -> None:
-    global hooks_file_positions, hooks_tool_use_caches, hooks_display_items, hooks_seen_reminder_hashes
-    hooks_file_positions.clear()
-    hooks_tool_use_caches.clear()
-    sessions = find_active_sessions(active_project_filter)
-    for session_file in sessions:
-        cache: dict = {}
-        hooks_tool_use_caches[session_file] = cache
-        tool_calls, new_pos, *_ = parse_new_tool_calls(session_file, 0, cache)
-        hooks_file_positions[session_file] = new_pos
-        for tool_call in tool_calls:
-            if session_start_ts and tool_call.get('timestamp', '') < session_start_ts:
-                continue
-            for reminder in tool_call.get('system_reminders', []):
-                content_hash = hash(reminder)
-                if content_hash in hooks_seen_reminder_hashes:
-                    continue
-                hooks_seen_reminder_hashes.add(content_hash)
-                item = build_reminder_display_item(tool_call['timestamp'], reminder, tool_call['tool_name'])
-                if item is not None:
-                    hooks_display_items.append(item)
-
-# Scan JSONL session files for new system reminders and append to hooks_display_items
-def process_sessions_for_system_reminders() -> None:
-    global hooks_file_positions, hooks_tool_use_caches, hooks_display_items, hooks_seen_reminder_hashes
-    sessions = find_active_sessions(active_project_filter)
-    for session_file in sessions:
-        if session_file not in hooks_file_positions:
-            hooks_file_positions[session_file] = 0
-            hooks_tool_use_caches[session_file] = {}
-        cache = hooks_tool_use_caches[session_file]
-        last_pos = hooks_file_positions[session_file]
-        tool_calls, new_pos, *_ = parse_new_tool_calls(session_file, last_pos, cache)
-        hooks_file_positions[session_file] = new_pos
-        for tool_call in tool_calls:
-            for reminder in tool_call.get('system_reminders', []):
-                content_hash = hash(reminder)
-                if content_hash in hooks_seen_reminder_hashes:
-                    continue
-                hooks_seen_reminder_hashes.add(content_hash)
-                item = build_reminder_display_item(tool_call['timestamp'], reminder, tool_call['tool_name'])
-                if item is not None:
-                    hooks_display_items.append(item)
 
 # Runs hooks display loop with mouse scroll, click expand/collapse, hover — tokens pane pattern
 def run_hooks_loop() -> None:
-    global session_start_ts, hooks_display_items, hooks_hover_row, hooks_line_map, hooks_scroll_offset, hooks_total_lines, hooks_seen_reminder_hashes
+    global session_start_ts, hooks_display_items, hooks_hover_row, hooks_line_map, hooks_scroll_offset, hooks_total_lines
     session_start_ts = _get_session_start_ts()
     if session_start_ts is None:
         session_start_ts = datetime.utcnow().isoformat() + 'Z'
     hooks_display_items.clear()
-    hooks_seen_reminder_hashes.clear()
     load_historical_hooks()
-    load_historical_system_reminders()
     hooks_display_items.sort(key=lambda x: x.get('timestamp', ''))
     current_main_session = _get_newest_main_session()
     last_output = None
@@ -1190,17 +1141,14 @@ def run_hooks_loop() -> None:
                     if session_start_ts is None:
                         session_start_ts = datetime.utcnow().isoformat() + 'Z'
                     hooks_display_items.clear()
-                    hooks_seen_reminder_hashes.clear()
                     hooks_scroll_offset = 0
                     hooks_hover_row = None
                     load_historical_hooks()
-                    load_historical_system_reminders()
                     hooks_display_items.sort(key=lambda x: x.get('timestamp', ''))
                     input_changed = True
                 else:
                     old_count = len(hooks_display_items)
                     process_hook_log_for_display()
-                    process_sessions_for_system_reminders()
                     if len(hooks_display_items) != old_count:
                         input_changed = True
                 last_data_refresh = now

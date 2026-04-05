@@ -104,8 +104,6 @@ HOOK_EVENT_CATEGORIES = {
 # Excluded tools from display
 EXCLUDED_TOOLS = {'Edit'}
 
-# Regex pattern for system-reminder tags
-SYSTEM_REMINDER_PATTERN = r'<system-reminder>.*?</system-reminder>'
 
 # JSONL message types the parser actively processes
 KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}

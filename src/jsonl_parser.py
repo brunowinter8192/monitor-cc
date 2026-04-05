@@ -7,7 +7,7 @@ from typing import List, Tuple, Optional
 # From constants.py: Colors
 from .constants import RESET, RED, GREEN, YELLOW, BLUE, WHITE
 # From constants.py: Shared constants
-from .constants import EXCLUDED_TOOLS, SYSTEM_REMINDER_PATTERN, KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES
+from .constants import EXCLUDED_TOOLS, KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES
 
 # ORCHESTRATOR
 def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
@@ -130,8 +130,7 @@ def extract_tool_calls(messages: List[dict], tool_use_cache: dict) -> List[dict]
                 if tool_use_id in tool_use_cache:
                     tool_data = tool_use_cache[tool_use_id]
                     raw_content = extract_result_content(block)
-                    tool_data['output'] = strip_system_reminders(raw_content)
-                    tool_data['system_reminders'] = extract_system_reminders(raw_content)
+                    tool_data['output'] = raw_content
                     tool_data['spawned_agent_id'] = extract_spawned_agent_id(message)
                     tool_data['is_error'] = block.get('is_error', False)
                     tool_calls.append(tool_data)
@@ -199,14 +198,6 @@ def extract_result_content(block: dict) -> str:
         return str(content[0])
     return str(content)
 
-# Extract system-reminder tags from content string
-def extract_system_reminders(content: str) -> List[str]:
-    pattern = re.compile(r'<system-reminder>(.*?)</system-reminder>', re.DOTALL)
-    return [match.group(1).strip() for match in pattern.finditer(content)]
-
-# Remove system-reminder tags from content string
-def strip_system_reminders(content: str) -> str:
-    return re.sub(SYSTEM_REMINDER_PATTERN, '', content, flags=re.DOTALL).strip()
 
 # Filter out excluded tools
 def filter_excluded_tools(tool_calls: List[dict]) -> List[dict]:
