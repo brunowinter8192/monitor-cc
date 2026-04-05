@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECTS_DIR = Path.home() / '.claude' / 'projects'
-DEFAULT_PROJECT = '-Users-brunowinter2000-Documents-ai-Meta-ClaudeCode-MCP-RAG'
+DEFAULT_PROJECT = None  # auto-discover newest project
 REPORTS_DIR = Path(__file__).parent / '03_reports'
 
 SEARCH_PATTERNS = [
@@ -36,8 +36,14 @@ SEARCH_PATTERNS = [
 ]
 
 
-def find_latest_jsonl(project_name: str) -> Path:
-    project_dir = PROJECTS_DIR / project_name
+def find_latest_jsonl(project_name: str = None) -> Path:
+    if project_name:
+        project_dir = PROJECTS_DIR / project_name
+    else:
+        project_dirs = [d for d in PROJECTS_DIR.iterdir() if d.is_dir() and not d.name.startswith('.')]
+        if not project_dirs:
+            raise FileNotFoundError(f"No projects found in {PROJECTS_DIR}")
+        project_dir = max(project_dirs, key=lambda d: d.stat().st_mtime)
     if not project_dir.exists():
         raise FileNotFoundError(f"Project dir not found: {project_dir}")
     jsonl_files = sorted(project_dir.glob('*.jsonl'), key=lambda x: x.stat().st_mtime, reverse=True)
