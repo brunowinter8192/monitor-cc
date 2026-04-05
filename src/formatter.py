@@ -5,7 +5,7 @@ from typing import List, Optional
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
 # From constants.py: Colors and config values
-from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, PASTEL_RED, WHITE, ORANGE, DIM, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG, HOOK_EVENT_CATEGORIES
+from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, PASTEL_GREEN, WHITE, ORANGE, DIM, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG, HOOK_EVENT_CATEGORIES
 
 INDENT = '  '
 
@@ -223,7 +223,7 @@ def build_hook_display_item(entry: dict) -> dict:
     elif 'rule-inject' in hook_script or hook_script == 'session-start-rules.sh':
         color = PASTEL_BLUE
     elif 'worker-inject' in hook_script or 'monitor-worker' in hook_script or 'worker-rules' in hook_script:
-        color = PASTEL_RED
+        color = PASTEL_GREEN
     return {
         'type': 'hook',
         'timestamp': entry.get('timestamp', ''),
