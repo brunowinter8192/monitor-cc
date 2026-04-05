@@ -220,7 +220,7 @@ def build_hook_display_item(entry: dict) -> dict:
     hook_script = entry.get('hook_script', '')
     if 'global-inject' in hook_script or 'project-inject' in hook_script or 'monitor-shared' in hook_script:
         color = PASTEL_ORANGE
-    elif 'rule-inject' in hook_script:
+    elif 'rule-inject' in hook_script or hook_script == 'session-start-rules.sh':
         color = PASTEL_BLUE
     elif 'worker-inject' in hook_script or 'monitor-worker' in hook_script or 'worker-rules' in hook_script:
         color = PASTEL_RED
