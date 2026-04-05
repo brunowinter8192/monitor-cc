@@ -253,7 +253,14 @@ def format_hooks_item_lines(item: dict) -> List[str]:
     if item['type'] == 'hook':
         hook_event = item.get('hook_event', '')
         hook_script = item.get('hook_script', '')
-        header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{RESET}"
+        detail = item.get('detail', '')
+        filename_suffix = ''
+        if detail.startswith('injected: '):
+            rest = detail[len('injected: '):]
+            paren_idx = rest.find(' (')
+            if paren_idx != -1:
+                filename_suffix = ' \u2192 ' + rest[:paren_idx]
+        header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{RESET}"
     else:
         tool_name = item.get('tool_name', '')
         header = f"{PASTEL_PURPLE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
@@ -280,7 +287,14 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
         if item['type'] == 'hook':
             hook_event = item.get('hook_event', '')
             hook_script = item.get('hook_script', '')
-            header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{RESET}"
+            detail = item.get('detail', '')
+            filename_suffix = ''
+            if detail.startswith('injected: '):
+                rest = detail[len('injected: '):]
+                paren_idx = rest.find(' (')
+                if paren_idx != -1:
+                    filename_suffix = ' \u2192 ' + rest[:paren_idx]
+            header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{RESET}"
         else:
             tool_name = item.get('tool_name', '')
             header = f"{PASTEL_PURPLE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
