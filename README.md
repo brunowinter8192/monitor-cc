@@ -1,64 +1,116 @@
-# Monitor_CC - Claude Code CLI Monitor
+# Monitor_CC
 
-Live monitoring tool for Claude Code CLI conversations - captures all tool calls with full input/output.
+Real-time TUI dashboard for Claude Code CLI sessions. See every tool call, token breakdown, hook injection, and worker status as it happens.
 
-## Directory Structure
+## Features
 
-```
-Monitor_CC/
-├── workflow.py                     → Pipeline entry point
-├── README.md
-├── CLAUDE.md
-├── src/                            → [DOCS.md](src/DOCS.md)
-├── decisions/                      → Pipeline decision records
-├── sources/                        → External reference index
-├── dev/                            → [DOCS.md](dev/DOCS.md)
-├── not_working/                    → Failed approaches
-└── repo/                           → tmux source code (external reference)
-```
-
-## Workflow
-
-### Phase 1: Session Discovery
-
-**Purpose:** Find active Claude Code sessions in ~/.claude/projects
-
-**Input:** ~/.claude/projects directory, optional project path filter
-
-**Output:** List of JSONL file paths sorted by modification time
-
-**Details:** [src/DOCS.md](src/DOCS.md)
-
-### Phase 2: Monitoring Loop
-
-**Purpose:** Poll sessions, parse tool calls, display formatted output
-
-**Input:** Session file paths, mode filter (main/subagent/all), UI mode flag
-
-**Output:** Formatted console output with color-coded headers
-
-**Details:** [src/DOCS.md](src/DOCS.md)
+- Live tool call monitoring with full input/output (main agent + subagents)
+- 4-window tmux layout: Main + Tokens | Rules + Hooks | Workers | Warnings + Subagents
+- Token profiling per session with input cache breakdown and output by block type
+- Hook injection tracking with color-coded audience (Opus-only / Worker-only / Shared)
+- Worker monitoring with real-time status, output tokens, and per-turn breakdown
+- Keyboard + mouse interaction: expand/collapse, scroll, hover highlight
+- Auto-discovery of active sessions with live session switching
+- Cumulative session browser across multiple sessions
 
 ## Quick Start
 
 ```bash
-cd /path/to/Monitor_CC
-
-# Default: tmux split-screen (main + subagent panes)
-python3 workflow.py
-
-# Filter by project
+git clone https://github.com/your-username/Monitor_CC.git
+cd Monitor_CC
 python3 workflow.py --project /path/to/your/project
-
-# Single mode (no tmux split)
-python3 workflow.py --mode main
-python3 workflow.py --mode subagent
-
-# Collapsible UI for subagent monitoring
-python3 workflow.py --project /path/to/project --ui
 ```
 
-**Flags:**
-- `--project PATH` - Filter sessions by project path
-- `--mode {all,main,subagent,rules,warnings,hooks,tokens,workers}` - Monitor mode (default: all = tmux 4-window)
-- `--ui` - Enable collapsible subagent UI (keyboard 1-9 to toggle)
+This opens a tmux session with 4 windows and 7 panes. Switch windows with `Ctrl-b 0/1/2/3`.
+
+## Prerequisites
+
+- Python 3.10+
+- tmux
+- macOS or Linux (uses termios for raw terminal input)
+- Optional: Pillow (for `dev/display/screenshot_panes.py` screenshot tool)
+
+## Setup
+
+No external dependencies required for the core monitor — stdlib only. Just clone and run.
+
+For the screenshot dev tool:
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install Pillow
+```
+
+## Usage
+
+### CLI
+
+```bash
+# Full dashboard (4-window tmux layout)
+python3 workflow.py --project /path/to/project
+
+# Single pane modes (no tmux)
+python3 workflow.py --mode main --project /path/to/project
+python3 workflow.py --mode tokens --project /path/to/project
+python3 workflow.py --mode hooks --project /path/to/project
+python3 workflow.py --mode workers --project /path/to/project
+```
+
+| Flag | Description |
+|------|-------------|
+| `--project PATH` | Filter sessions by project path |
+| `--mode MODE` | `all` (default), `main`, `subagent`, `rules`, `warnings`, `hooks`, `tokens`, `workers`, `subagents` |
+| `--ui` | Enable collapsible subagent UI |
+
+### Window Layout
+
+| Window | Panes | Content |
+|--------|-------|---------|
+| 0 main | 2 | Main monitoring output + Token profiling |
+| 1 rules | 2 | Active rules display + Hook injections |
+| 2 workers | 1 | Worker status and token breakdown |
+| 3 debug | 2 | Warnings + Subagent list |
+
+### Keyboard & Mouse
+
+| Input | Action |
+|-------|--------|
+| `1-9` | Toggle expand/collapse for items |
+| `a` | Expand all items |
+| `A` | Collapse all items |
+| Mouse click | Toggle expand/collapse |
+| Mouse scroll | Scroll through items |
+| Mouse hover | Highlight row |
+
+## How It Works
+
+Monitor_CC discovers active Claude Code sessions by scanning `~/.claude/projects/` for JSONL files. It polls these files for new tool calls, parses them, and renders a formatted live dashboard. Hook injections are tracked via a separate log file written by Claude Code's hook system.
+
+## Troubleshooting
+
+<details>
+<summary>"Error: Already inside tmux session"</summary>
+
+You're running inside an existing tmux session. Use a specific mode instead:
+```bash
+python3 workflow.py --mode main --project /path/to/project
+```
+</details>
+
+<details>
+<summary>No sessions appearing</summary>
+
+- Check that Claude Code is running with an active session
+- Verify the `--project` path matches your project directory
+- Sessions are discovered in `~/.claude/projects/` — ensure this directory exists
+</details>
+
+<details>
+<summary>Panes not updating</summary>
+
+The monitor polls every 0.5 seconds. If a pane is empty, the session may not have produced tool calls yet. Check that the correct project filter is set.
+</details>
+
+## License
+
+MIT
