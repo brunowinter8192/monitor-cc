@@ -151,7 +151,7 @@ def format_system_reminders(reminders: list) -> str:
     for reminder in reminders:
         for line in reminder.split('\n'):
             if line.strip():
-                lines.append(f"{INDENT}{PASTEL_BLUE}{line}{RESET}")
+                lines.append(f"{INDENT}{PASTEL_PURPLE}{line}{RESET}")
     return '\n'.join(lines)
 
 # Format parameter value preserving newlines for multiline strings
@@ -202,6 +202,7 @@ def format_hook_annotation(hook_output: str, hook_script: str) -> str:
     return f"{INDENT}{PASTEL_PURPLE}Hook [{hook_script}]: {hook_output}{RESET}"
 
 _REMINDER_JUNK_PATTERN = re.compile(r'^[\.\*\?\(\)\[\]\+\|\\^$\s]+$')
+_REMINDER_DEBUG_PATTERN = re.compile(r'^(Line \d+:|MATCH in |content preview:|REAL INJECTION|type=|block\[|tool_use_id=|[{\[]|[\'"]<)')
 
 # Check if reminder text is a real reminder (not a regex snippet or too short)
 def _is_valid_reminder(text: str) -> bool:
@@ -209,6 +210,9 @@ def _is_valid_reminder(text: str) -> bool:
     if len(stripped) < 20:
         return False
     if _REMINDER_JUNK_PATTERN.match(stripped):
+        return False
+    first_line = next((l for l in stripped.splitlines() if l.strip()), '')
+    if _REMINDER_DEBUG_PATTERN.match(first_line.strip()):
         return False
     return True
 
@@ -241,7 +245,7 @@ def build_reminder_display_item(timestamp: str, reminder_text: str, tool_name: s
         'time_str': time_str,
         'tool_name': tool_name,
         'detail': clean_text,
-        'color': PASTEL_BLUE,
+        'color': PASTEL_PURPLE,
         'expanded': False,
     }
 
@@ -256,7 +260,7 @@ def format_hooks_item_lines(item: dict) -> List[str]:
         header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{RESET}"
     else:
         tool_name = item.get('tool_name', '')
-        header = f"{PASTEL_BLUE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
+        header = f"{PASTEL_PURPLE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
     lines = [header]
     if item.get('expanded'):
         content = item.get('content', '')
@@ -283,7 +287,7 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
             header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{RESET}"
         else:
             tool_name = item.get('tool_name', '')
-            header = f"{PASTEL_BLUE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
+            header = f"{PASTEL_PURPLE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
         line_idx = len(all_lines)
         all_lines.append(header)
         item_idx_at[line_idx] = item_idx
@@ -329,7 +333,7 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
                     if item['type'] == 'hook':
                         sticky_header = f"{color}{toggle} [{time_str}] {item.get('hook_event', '')} | {item.get('hook_script', '')}{RESET}"
                     else:
-                        sticky_header = f"{PASTEL_BLUE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {item.get('tool_name', '')}{RESET}"
+                        sticky_header = f"{PASTEL_PURPLE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {item.get('tool_name', '')}{RESET}"
                 break
     if line_map is not None:
         line_map.clear()
