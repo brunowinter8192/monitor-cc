@@ -239,6 +239,43 @@ Fix:
 
 Deliverable 2 (Truncation Warning): Wenn Content > 50K Zeichen, zeigt `format_hooks_block()` eine Warning-Line direkt nach dem Header: `[content N chars — exceeds 50K limit, Claude Code may have persisted additionalContext to disk]`. Note: Der 50K-Threshold im Code ist zu hoch — live-getestetes Limit ist ~10KB per hook (Session 14). Threshold sollte auf 10K angepasst werden. Alle 9 aktuellen Entries liegen unter 9.5KB (nach Split von communication in 2, workers in 3 Teile).
 
+### Buddy/Teammate Notifications (buddy-notify branch, 2026-04-05)
+
+**D1 — hook_events in hook_outputs.jsonl (vollständig):**
+
+| hook_event | count |
+|---|---|
+| ConfigChange | 188 |
+| CwdChanged | 1 |
+| InstructionsLoaded | 5692 |
+| Notification | 73 |
+| PermissionRequest | 25 |
+| PostToolUse | 1395 |
+| PostToolUseFailure | 57 |
+| PreToolUse | 7908 |
+| SessionEnd | 2 |
+| SessionStart | 64 |
+| Stop | 233 |
+| SubagentStart | 33 |
+| SubagentStop | 32 |
+| UserPromptSubmit | 12568 |
+
+**Buddy-relevante Events:** Keines vorhanden.
+- `TeammateIdle` ist in `constants.py` als `HOOK_TEAMMATE_IDLE = 'TeammateIdle'` definiert und in `HOOK_EVENT_CATEGORIES` als `'agent'`-Kategorie (BLUE) eingetragen — aber **nie in `hook_outputs.jsonl` gefeuert** (0 Occurrences).
+- `Notification`-Events (73 total): nur `type=idle_prompt` und `type=permission_prompt` — beide nicht buddy-relevant.
+
+**D2 — Designentscheidung (für wenn TeammateIdle auftritt):**
+
+TeammateIdle-Events würden automatisch via bestehenden Hooks-Pane (`run_hooks_loop()` → `build_hook_display_item()` → `format_hooks_block()`) angezeigt werden, da die Kategorie bereits als `'agent'` → BLUE konfiguriert ist.
+
+Für die Workers-Pane-Integration (Window 2) wäre nötig:
+- `process_hook_log_for_display()` erweitern um buddy events zu sammeln
+- Neuer `buddy_events: list` state in `run_workers_loop()`
+- Buddy-Section am Ende von `format_workers_block()`: `[timestamp] TeammateIdle — <buddy_name>` in BLUE, analog zu Worker-Header-Format
+- Filter: nur Events >= `session_start_ts` (gleicher Mechanismus wie Hooks-Pane)
+
+**Status: D3-D5 SKIPPED** — keine buddy events in `hook_outputs.jsonl`. Implementation deferred bis TeammateIdle tatsächlich feuert.
+
 ## Quellen
 
 - GitHub anthropics/claude-code #19377 — YAML array syntax for `paths:` broken (CSV parser bug)
