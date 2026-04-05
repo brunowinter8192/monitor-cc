@@ -5,7 +5,7 @@ from typing import List, Optional
 # From utils.py: Timestamp formatting
 from .utils import format_timestamp
 # From constants.py: Colors and config values
-from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, ORANGE, DIM, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG, HOOK_EVENT_CATEGORIES
+from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_BLUE, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, PASTEL_RED, WHITE, ORANGE, DIM, RESET, LONG_OUTPUT_THRESHOLD, HOVER_BG, HOOK_EVENT_CATEGORIES
 
 INDENT = '  '
 
@@ -217,6 +217,13 @@ def build_hook_display_item(entry: dict) -> dict:
     time_str = format_timestamp(entry.get('timestamp', ''))
     category = HOOK_EVENT_CATEGORIES.get(entry.get('hook_event', ''), 'tool')
     color = _HOOK_CATEGORY_COLORS.get(category, PASTEL_PURPLE)
+    hook_script = entry.get('hook_script', '')
+    if 'global-inject' in hook_script or 'project-inject' in hook_script or 'monitor-shared' in hook_script:
+        color = PASTEL_ORANGE
+    elif 'rule-inject' in hook_script:
+        color = PASTEL_BLUE
+    elif 'worker-inject' in hook_script or 'monitor-worker' in hook_script or 'worker-rules' in hook_script:
+        color = PASTEL_RED
     return {
         'type': 'hook',
         'timestamp': entry.get('timestamp', ''),
