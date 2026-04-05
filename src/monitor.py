@@ -667,15 +667,13 @@ def find_worker_jsonl(session_name: str) -> Optional[Path]:
 def extract_worker_tokens(jsonl_path: Path) -> dict:
     lines = read_new_lines(jsonl_path, 0)
     messages, _ = parse_jsonl_lines(lines)
-    total_input = 0
     total_output = 0
     for message in messages:
         if message.get('type') != 'assistant':
             continue
         usage = message.get('message', {}).get('usage', {})
-        total_input += usage.get('input_tokens', 0) + usage.get('cache_creation_input_tokens', 0) + usage.get('cache_read_input_tokens', 0)
         total_output += usage.get('output_tokens', 0)
-    return {'input': total_input, 'output': total_output}
+    return {'output': total_output}
 
 def extract_worker_tool_calls(jsonl_path: Path) -> List[dict]:
     lines = read_new_lines(jsonl_path, 0)

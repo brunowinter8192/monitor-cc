@@ -599,9 +599,8 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
         model = w.get('model', '')
         model_str = f"  {PASTEL_PURPLE}{model}{RESET}" if model else ''
         tokens = w.get('tokens', {})
-        tok_in = tokens.get('input', 0)
         tok_out = tokens.get('output', 0)
-        tokens_str = f"  {WHITE}{_format_k(tok_in)}in {_format_k(tok_out)}out{RESET}" if tok_in or tok_out else ''
+        tokens_str = f"  {WHITE}{_format_k(tok_out)}out{RESET}" if tok_out else ''
         header_line = f"{toggle_symbol} {CYAN}[{idx}] {name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}{model_str}{tokens_str}"
         if hover_row is not None and current_line == hover_row:
             header_line = f"{HOVER_BG}{header_line}{RESET}"
