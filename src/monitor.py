@@ -17,7 +17,7 @@ from .session_finder import find_active_sessions, encode_project_path
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines, get_message_content, is_tool_use, extract_cache_turns
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_hook_event, format_cache_tracker, format_workers_block, format_system_message, format_system_reminder_for_hooks, build_hook_display_item, build_reminder_display_item, format_hooks_block
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_cache_tracker, format_workers_block, format_system_message, build_hook_display_item, build_reminder_display_item, format_hooks_block
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management and rendering
@@ -1000,8 +1000,8 @@ def _is_noise_entry(entry: dict) -> bool:
         and entry.get('output', '').startswith('tool=')
     )
 
-# Scan active sessions' tool-results dirs for persisted hook additionalContext files, keyed by mtime
-def _scan_persisted_hook_files() -> Dict[float, str]:
+# Scan active sessions' tool-results dirs for persisted hook additionalContext files, keyed by toolUseID
+def _scan_persisted_hook_files() -> Dict[str, tuple]:
     result = {}
     sessions = find_active_sessions(active_project_filter)
     for session_file in sessions:
@@ -1009,36 +1009,63 @@ def _scan_persisted_hook_files() -> Dict[float, str]:
         if not tool_results_dir.exists():
             continue
         for p in sorted(tool_results_dir.glob("hook-*-additionalContext.txt")):
+            name = p.name
+            if not name.startswith('hook-') or not name.endswith('-additionalContext.txt'):
+                continue
+            inner = name[len('hook-'):-len('-additionalContext.txt')]
+            last_dash = inner.rfind('-')
+            if last_dash < 0 or not inner[last_dash + 1:].isdigit():
+                continue
+            tool_use_id = inner[:last_dash]
             try:
                 mtime = p.stat().st_mtime
-                result[mtime] = p.read_text(encoding='utf-8', errors='replace')
+                content = p.read_text(encoding='utf-8', errors='replace')
+                result[tool_use_id] = (content, mtime)
             except OSError:
                 pass
     return result
 
-# Enrich hook display items with persisted additionalContext content matched by timestamp proximity
-def _enrich_with_persisted(items: List[dict], persisted: Dict[float, str]) -> None:
+# Enrich hook display items with persisted additionalContext; returns standalone items for toolu_* files
+def _enrich_with_persisted(items: List[dict], persisted: Dict[str, tuple]) -> List[dict]:
     if not persisted:
-        return
-    remaining = dict(persisted)
+        return []
+    uuid_remaining = {tid: (content, mtime) for tid, (content, mtime) in persisted.items()
+                      if not tid.startswith('toolu_')}
+    toolu_entries = {tid: (content, mtime) for tid, (content, mtime) in persisted.items()
+                     if tid.startswith('toolu_')}
     for item in items:
         if item.get('type') != 'hook':
             continue
         if item.get('content') or item.get('was_truncated'):
             continue
-        if not item.get('detail') or item.get('detail', '').startswith('tool='):
+        if not item.get('detail'):
             continue
         ts_str = item.get('timestamp', '')
-        if not ts_str or not remaining:
+        if not ts_str or not uuid_remaining:
             continue
         try:
             hook_dt = datetime.fromisoformat(ts_str.rstrip('Z'))
         except ValueError:
             continue
-        closest = min(remaining.keys(), key=lambda m: abs((datetime.utcfromtimestamp(m) - hook_dt).total_seconds()))
-        if abs((datetime.utcfromtimestamp(closest) - hook_dt).total_seconds()) < 60:
-            item['content'] = remaining.pop(closest)
+        closest_tid = min(uuid_remaining.keys(),
+                          key=lambda tid: abs((datetime.utcfromtimestamp(uuid_remaining[tid][1]) - hook_dt).total_seconds()))
+        closest_mtime = uuid_remaining[closest_tid][1]
+        if abs((datetime.utcfromtimestamp(closest_mtime) - hook_dt).total_seconds()) < 60:
+            item['content'] = uuid_remaining.pop(closest_tid)[0]
             item['was_truncated'] = True
+    extra = []
+    for tid, (content, mtime) in toolu_entries.items():
+        dt = datetime.utcfromtimestamp(mtime)
+        ts = dt.isoformat() + 'Z'
+        entry = {
+            'timestamp': ts,
+            'hook_event': 'additionalContext',
+            'hook_script': f'persisted:{tid[:20]}',
+            'output': f'toolUseID={tid}',
+            'content': content,
+        }
+        extra.append(build_hook_display_item(entry))
+    return extra
 
 # Load historical hook entries into hooks_display_items, session-scoped
 def load_historical_hooks() -> None:
@@ -1048,8 +1075,8 @@ def load_historical_hooks() -> None:
     if session_start_ts:
         filtered = filter_by_timestamp(filtered, session_start_ts)
     items = [build_hook_display_item(e) for e in filtered if not _is_noise_entry(e)]
-    _enrich_with_persisted(items, _scan_persisted_hook_files())
-    for item in items:
+    extra = _enrich_with_persisted(items, _scan_persisted_hook_files())
+    for item in items + extra:
         hooks_display_items.append(item)
     hook_log_position = new_pos
 
@@ -1112,6 +1139,7 @@ def run_hooks_loop() -> None:
     current_main_session = _get_newest_main_session()
     last_output = None
     last_data_refresh = 0.0
+    force_initial_render = True
     setup_keyboard_input()
     enable_mouse()
     try:
@@ -1176,6 +1204,9 @@ def run_hooks_loop() -> None:
                     if len(hooks_display_items) != old_count:
                         input_changed = True
                 last_data_refresh = now
+            if force_initial_render and hooks_display_items:
+                input_changed = True
+                force_initial_render = False
             if input_changed:
                 try:
                     term = os.get_terminal_size()
@@ -1212,8 +1243,8 @@ def process_hook_log_for_display() -> None:
     filtered = filter_by_project(entries, active_project_filter) if active_project_filter else entries
     new_items = [build_hook_display_item(e) for e in filtered if not _is_noise_entry(e)]
     if new_items:
-        _enrich_with_persisted(new_items, _scan_persisted_hook_files())
-        for item in new_items:
+        extra = _enrich_with_persisted(new_items, _scan_persisted_hook_files())
+        for item in new_items + extra:
             hooks_display_items.append(item)
 
 # Derive source label from cwd path

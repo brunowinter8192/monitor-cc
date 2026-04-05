@@ -201,27 +201,6 @@ def format_user_prompt(timestamp: str, hook_outputs: list = None) -> str:
 def format_hook_annotation(hook_output: str, hook_script: str) -> str:
     return f"{INDENT}{PASTEL_PURPLE}Hook [{hook_script}]: {hook_output}{RESET}"
 
-# Format single hook event for hooks pane display, color-coded by event category
-def format_hook_event(timestamp: str, hook_event: str, hook_script: str, output: str) -> str:
-    time_str = format_timestamp(timestamp)
-    category = HOOK_EVENT_CATEGORIES.get(hook_event, 'tool')
-    color = _HOOK_CATEGORY_COLORS.get(category, PASTEL_PURPLE)
-    header = f"{color}[{time_str}] {hook_event} | {hook_script}{RESET}"
-    if output:
-        lines = output.split('\n')
-        formatted_lines = '\n'.join(f"{INDENT}{color}{line}{RESET}" for line in lines)
-        return f"{header}\n{formatted_lines}"
-    return header
-
-# Format system reminder for Hooks pane display, attributed to triggering tool
-def format_system_reminder_for_hooks(timestamp: str, reminder_text: str, tool_name: str) -> str:
-    time_str = format_timestamp(timestamp)
-    header = f"{PASTEL_BLUE}[{time_str}] SYSTEM REMINDER \u2190 {tool_name}{RESET}"
-    clean_text = reminder_text.replace('\\n', '\n')
-    lines = clean_text.split('\n')
-    formatted_lines = '\n'.join(f"{INDENT}{PASTEL_BLUE}{line}{RESET}" for line in lines if line.strip())
-    return f"{header}\n{formatted_lines}" if formatted_lines else header
-
 _REMINDER_JUNK_PATTERN = re.compile(r'^[\.\*\?\(\)\[\]\+\|\\^$\s]+$')
 
 # Check if reminder text is a real reminder (not a regex snippet or too short)
