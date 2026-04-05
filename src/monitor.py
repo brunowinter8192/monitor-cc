@@ -1057,6 +1057,8 @@ def _enrich_with_persisted(items: List[dict], persisted: Dict[str, tuple]) -> Li
     for tid, (content, mtime) in toolu_entries.items():
         dt = datetime.utcfromtimestamp(mtime)
         ts = dt.isoformat() + 'Z'
+        if session_start_ts and ts < session_start_ts:
+            continue
         entry = {
             'timestamp': ts,
             'hook_event': 'additionalContext',
