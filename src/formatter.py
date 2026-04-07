@@ -463,7 +463,10 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                             all_lines.append(f"    {GREEN}{tool_name}{RESET}")
                     elif bt == 'thinking':
                         think_out = block.get('output_tokens')
-                        if think_out:
+                        think_chars = block.get('chars', 0)
+                        if think_chars and think_out:
+                            all_lines.append(f"    {PASTEL_ORANGE}thinking ({think_chars:,}c, {_format_k(think_out)} out){RESET}")
+                        elif think_out:
                             all_lines.append(f"    {PASTEL_ORANGE}thinking ({_format_k(think_out)} out){RESET}")
                         else:
                             all_lines.append(f"    {PASTEL_ORANGE}thinking{RESET}")
