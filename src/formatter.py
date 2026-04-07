@@ -678,7 +678,12 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
 
                 chars_fmt = f"{chars:,}c"
                 color = PASTEL_GREEN if has_cc else WHITE
-                all_lines.append(f"  {color}[{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                preview = msg.get('content_preview', '')
+                preview_str = ''
+                if preview:
+                    max_preview = max(10, pane_width - 45)
+                    preview_str = f"  {DIM}{preview[:max_preview].replace(chr(10), ' ')}{RESET}"
+                all_lines.append(f"  {color}[{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{preview_str}{cc_marker}")
                 line_keys.append(None)
 
         all_lines.append('')
