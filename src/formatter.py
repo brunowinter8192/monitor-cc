@@ -400,7 +400,7 @@ def _get_tool_preview(input_data: dict) -> str:
     return ''
 
 # Format cache tracker for dedicated tokens pane with per-turn, per-API-call detail
-def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> str:
+def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, proxy_req_map: list = None) -> str:
     if not turns:
         return f"{YELLOW}No turns yet{RESET}"
 
@@ -437,7 +437,11 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
             symbol = '\u25bc' if is_expanded else '\u25b6'
 
             request_num += 1
-            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num)
+            if proxy_req_map and request_num <= len(proxy_req_map):
+                display_req = proxy_req_map[request_num - 1]
+            else:
+                display_req = request_num
+            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, display_req)
             all_lines.append(call_line)
             line_keys.append(key)
 

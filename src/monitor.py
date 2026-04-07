@@ -80,6 +80,8 @@ proxy_line_map: Dict[int, int] = {}
 proxy_hover_row: Optional[int] = None
 proxy_scroll_offset: int = 0
 proxy_log_position: int = 0
+proxy_req_map: list = []
+proxy_req_map_count: int = 0
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -521,9 +523,20 @@ def build_cache_turns() -> list:
     messages, _ = parse_jsonl_lines(lines)
     return extract_cache_turns(messages)
 
+# Build mapping from Opus call index to proxy REQ number (1-based)
+def build_proxy_req_mapping(project_filter: Optional[str]) -> list:
+    entries, _ = parse_proxy_log(project_filter, 0)
+    mapping = []
+    for i, entry in enumerate(entries):
+        model = entry.get('model', '')
+        if 'haiku' not in model.lower():
+            mapping.append(i + 1)
+    return mapping
+
 # Runs cache tracker display loop (for dedicated tokens tmux pane)
 def run_tokens_loop() -> None:
     global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
+    global proxy_req_map, proxy_req_map_count
     last_output = None
     turns = []
     last_data_refresh = 0.0
@@ -558,6 +571,10 @@ def run_tokens_loop() -> None:
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
                 turns = build_cache_turns()
+                new_map = build_proxy_req_mapping(active_project_filter)
+                if len(new_map) != proxy_req_map_count:
+                    proxy_req_map = new_map
+                    proxy_req_map_count = len(new_map)
                 last_data_refresh = now
                 input_changed = True
 
@@ -569,7 +586,7 @@ def run_tokens_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                output = format_cache_tracker(turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width, cache_scroll_offset)
+                output = format_cache_tracker(turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width, cache_scroll_offset, proxy_req_map=proxy_req_map)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
