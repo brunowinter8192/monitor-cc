@@ -1,0 +1,296 @@
+# INFRASTRUCTURE
+import gzip
+import json
+import os
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from mitmproxy import http
+
+ANTHROPIC_API_HOST = "api.anthropic.com"
+MESSAGES_PATH = "/v1/messages"
+DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
+
+
+# ORCHESTRATOR
+
+class ProxyAddon:
+    def __init__(self):
+        self.log_file = _resolve_log_file()
+        self.prev_messages: Optional[list] = None
+
+    def request(self, flow: http.HTTPFlow) -> None:
+        if not _is_messages_request(flow):
+            return
+
+        body = _decode_body(flow.request)
+        if body is None:
+            return
+
+        payload = _parse_payload(body)
+        if payload is None:
+            return
+
+        entry = _build_entry(flow, payload, self.prev_messages)
+        _write_entry(self.log_file, entry)
+        self.prev_messages = [_summarize_message(m) for m in payload.get("messages", [])]
+
+        # MODIFICATION HOOK: future cache optimization rules go here
+        # modified_payload = apply_cache_rules(payload)
+        # if modified_payload is not payload:
+        #     flow.request.content = json.dumps(modified_payload).encode("utf-8")
+        #     flow.request.headers.pop("content-encoding", None)
+
+
+# FUNCTIONS
+
+# Resolve log file path from env var or use fallback
+def _resolve_log_file() -> Path:
+    root = os.environ.get("MONITOR_CC_ROOT")
+    if root:
+        return Path(root) / "src" / "logs" / "api_requests.jsonl"
+    return DEFAULT_LOG_FILE
+
+
+# Check if flow is a POST to /v1/messages on api.anthropic.com
+def _is_messages_request(flow: http.HTTPFlow) -> bool:
+    return (
+        flow.request.method == "POST"
+        and flow.request.pretty_host == ANTHROPIC_API_HOST
+        and flow.request.path.startswith(MESSAGES_PATH)
+    )
+
+
+# Decode request body, decompressing gzip if needed
+def _decode_body(request: http.Request) -> Optional[bytes]:
+    content = request.content
+    if not content:
+        return None
+    if request.headers.get("content-encoding", "").lower() == "gzip":
+        try:
+            content = gzip.decompress(content)
+        except OSError:
+            return None
+    return content
+
+
+# Parse JSON payload from bytes
+def _parse_payload(body: bytes) -> Optional[dict]:
+    try:
+        return json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+# Build full log entry dict from flow, payload, and previous request state
+def _build_entry(flow: http.HTTPFlow, payload: dict, prev_messages: Optional[list]) -> dict:
+    messages = payload.get("messages", [])
+    system = payload.get("system", "")
+    system_chars = _count_system_chars(system)
+
+    message_summaries = [_summarize_message(m) for m in messages]
+    cache_breakpoints = [i for i, s in enumerate(message_summaries) if s["has_cache_control"]]
+    total_input_chars = sum(s["chars"] for s in message_summaries) + system_chars
+
+    request_id = flow.request.headers.get("x-request-id") or str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    timestamp = f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"
+
+    return {
+        "timestamp": timestamp,
+        "request_id": request_id,
+        "model": payload.get("model", ""),
+        "message_count": len(messages),
+        "total_input_chars": total_input_chars,
+        "system_prompt_chars": system_chars,
+        "has_cache_control": bool(cache_breakpoints),
+        "cache_breakpoints": cache_breakpoints,
+        "messages": message_summaries,
+        "diff_from_prev": _compute_diff(prev_messages, message_summaries),
+    }
+
+
+# Count characters in system field — supports string or list of blocks
+def _count_system_chars(system) -> int:
+    if isinstance(system, str):
+        return len(system)
+    if isinstance(system, list):
+        return sum(len(b.get("text", "")) for b in system if isinstance(b, dict))
+    return 0
+
+
+# Build a summary dict for a single message
+def _summarize_message(msg: dict) -> dict:
+    role = msg.get("role", "unknown")
+    content = msg.get("content", "")
+    msg_type, chars, preview = _classify_content(role, content)
+    return {
+        "role": role,
+        "type": msg_type,
+        "chars": chars,
+        "has_cache_control": _has_cache_control(msg),
+        "content_preview": preview[:80] if preview else "",
+    }
+
+
+# Check if message or any content block has cache_control set
+def _has_cache_control(msg: dict) -> bool:
+    if msg.get("cache_control"):
+        return True
+    content = msg.get("content", "")
+    if isinstance(content, list):
+        return any(isinstance(b, dict) and b.get("cache_control") for b in content)
+    return False
+
+
+# Classify message content — returns (type, total_chars, preview_text)
+def _classify_content(role: str, content) -> tuple:
+    if role == "system":
+        if isinstance(content, str):
+            return "system", len(content), content
+        if isinstance(content, list):
+            text = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
+            return "system", len(text), text
+        return "system", 0, ""
+
+    if isinstance(content, str):
+        return _classify_text(content), len(content), content
+
+    if isinstance(content, list):
+        return _classify_blocks(content)
+
+    return "text", 0, ""
+
+
+# Classify plain text by checking for known special tag prefixes
+def _classify_text(text: str) -> str:
+    if "<system-reminder>" in text:
+        return "system-reminder"
+    if "<task-notification>" in text:
+        return "task-notification"
+    if "<command-message>" in text:
+        return "command-message"
+    return "text"
+
+
+# Classify a list of content blocks — returns (primary_type, total_chars, preview_text)
+def _classify_blocks(blocks: list) -> tuple:
+    total_chars = 0
+    preview = ""
+    primary_type = "text"
+
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        btype = block.get("type", "text")
+
+        if btype == "text":
+            text = block.get("text", "")
+            total_chars += len(text)
+            if not preview:
+                classified = _classify_text(text)
+                if classified != "text":
+                    primary_type = classified
+                preview = text
+
+        elif btype == "tool_use":
+            primary_type = "tool_use"
+            name = block.get("name", "")
+            input_str = json.dumps(block.get("input", {}))
+            total_chars += len(name) + len(input_str)
+            if not preview:
+                preview = f"[tool_use:{name}]"
+
+        elif btype == "tool_result":
+            primary_type = "tool_result"
+            result_content = block.get("content", "")
+            if isinstance(result_content, str):
+                total_chars += len(result_content)
+                if not preview:
+                    preview = result_content
+            elif isinstance(result_content, list):
+                for sub in result_content:
+                    if isinstance(sub, dict):
+                        t = sub.get("text", "")
+                        total_chars += len(t)
+                        if not preview:
+                            preview = t
+            if not preview:
+                preview = "[tool_result]"
+
+        elif btype == "thinking":
+            if primary_type == "text":
+                primary_type = "thinking"
+            thinking_text = block.get("thinking", "")
+            total_chars += len(thinking_text)
+            if not preview:
+                preview = thinking_text
+
+    return primary_type, total_chars, preview
+
+
+# Compute diff between previous and current message summaries
+def _compute_diff(prev: Optional[list], curr: list) -> dict:
+    if prev is None:
+        return {
+            "messages_added": len(curr),
+            "messages_removed": 0,
+            "messages_modified": 0,
+            "first_diff_index": 0,
+            "summary": f"first request, {len(curr)} messages",
+        }
+
+    min_len = min(len(prev), len(curr))
+    modified = 0
+    first_diff = None
+
+    for i in range(min_len):
+        p, c = prev[i], curr[i]
+        if p["role"] != c["role"] or p["type"] != c["type"] or p["chars"] != c["chars"]:
+            modified += 1
+            if first_diff is None:
+                first_diff = i
+
+    added = max(0, len(curr) - len(prev))
+    removed = max(0, len(prev) - len(curr))
+
+    if first_diff is None and (added or removed):
+        first_diff = min_len
+
+    if first_diff is None:
+        return {
+            "messages_added": 0,
+            "messages_removed": 0,
+            "messages_modified": 0,
+            "first_diff_index": -1,
+            "summary": "no changes",
+        }
+
+    parts = []
+    if added:
+        parts.append(f"+{added} messages at end")
+    if removed:
+        parts.append(f"-{removed} messages")
+    if modified:
+        parts.append(f"{modified} msg(s) modified")
+    summary = ", ".join(parts) + f" (first diff at [{first_diff}])"
+
+    return {
+        "messages_added": added,
+        "messages_removed": removed,
+        "messages_modified": modified,
+        "first_diff_index": first_diff,
+        "summary": summary,
+    }
+
+
+# Append log entry as a single JSONL line, creating parent dirs if needed
+def _write_entry(log_file: Path, entry: dict) -> None:
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+addons = [ProxyAddon()]
