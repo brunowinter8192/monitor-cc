@@ -600,9 +600,12 @@ def run_tokens_loop() -> None:
 # Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
 def run_proxy_loop() -> None:
     global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset, proxy_log_position
+    session_start_ts = _get_session_start_ts()
+    if session_start_ts is None:
+        session_start_ts = datetime.utcnow().isoformat() + 'Z'
+    current_main_session = _get_newest_main_session()
     last_output = None
     last_data_refresh = 0.0
-    last_entry_count = 0
     setup_keyboard_input()
     enable_mouse()
     try:
@@ -633,12 +636,23 @@ def run_proxy_loop() -> None:
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
-                new_entries, proxy_log_position = parse_proxy_log(active_project_filter, proxy_log_position)
-                proxy_entries.extend(new_entries)
-                last_data_refresh = now
-                if len(proxy_entries) != last_entry_count:
+                newest = _get_newest_main_session()
+                if newest != current_main_session and newest is not None:
+                    current_main_session = newest
+                    session_start_ts = _get_session_start_ts()
+                    if session_start_ts is None:
+                        session_start_ts = datetime.utcnow().isoformat() + 'Z'
+                    proxy_entries.clear()
+                    proxy_expand_states.clear()
+                    proxy_line_map.clear()
+                    proxy_log_position = 0
                     proxy_scroll_offset = 0
-                    last_entry_count = len(proxy_entries)
+                    proxy_hover_row = None
+                    input_changed = True
+                new_entries, proxy_log_position = parse_proxy_log(active_project_filter, proxy_log_position)
+                filtered = [e for e in new_entries if e.get('timestamp', '') >= session_start_ts]
+                proxy_entries.extend(filtered)
+                last_data_refresh = now
                 input_changed = True
 
             if input_changed:

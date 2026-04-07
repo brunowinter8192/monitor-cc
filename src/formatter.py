@@ -692,10 +692,15 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     preview = msg.get('content_preview', '')
                     wrap_width = max(20, pane_width - 6)
                     if preview:
-                        for line_start in range(0, len(preview), wrap_width):
-                            chunk = preview[line_start:line_start + wrap_width].replace('\n', ' ')
-                            all_lines.append(f"      {DIM}{chunk}{RESET}")
-                            line_keys.append(None)
+                        for raw_line in preview.split('\n'):
+                            if not raw_line:
+                                all_lines.append(f"      {DIM}{RESET}")
+                                line_keys.append(None)
+                                continue
+                            for line_start in range(0, len(raw_line), wrap_width):
+                                chunk = raw_line[line_start:line_start + wrap_width]
+                                all_lines.append(f"      {DIM}{chunk}{RESET}")
+                                line_keys.append(None)
                     else:
                         all_lines.append(f"      {DIM}(no preview){RESET}")
                         line_keys.append(None)
