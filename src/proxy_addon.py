@@ -133,7 +133,7 @@ def _summarize_message(msg: dict) -> dict:
         "type": msg_type,
         "chars": chars,
         "has_cache_control": _has_cache_control(msg),
-        "content_preview": preview[:80] if preview else "",
+        "content_preview": preview if preview else "",
     }
 
 

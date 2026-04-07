@@ -682,13 +682,23 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
 
                 chars_fmt = f"{chars:,}c"
                 color = PASTEL_GREEN if has_cc else WHITE
-                preview = msg.get('content_preview', '')
-                preview_str = ''
-                if preview:
-                    max_preview = max(10, pane_width - 45)
-                    preview_str = f"  {DIM}{preview[:max_preview].replace(chr(10), ' ')}{RESET}"
-                all_lines.append(f"  {color}[{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{preview_str}{cc_marker}")
-                line_keys.append(None)
+                msg_key = (entry_idx, 'msg', msg_idx)
+                is_msg_expanded = expand_states.get(msg_key, False)
+                msg_symbol = '\u25bc' if is_msg_expanded else '\u25b6'
+                all_lines.append(f"  {color}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                line_keys.append(msg_key)
+
+                if is_msg_expanded:
+                    preview = msg.get('content_preview', '')
+                    wrap_width = max(20, pane_width - 6)
+                    if preview:
+                        for line_start in range(0, len(preview), wrap_width):
+                            chunk = preview[line_start:line_start + wrap_width].replace('\n', ' ')
+                            all_lines.append(f"      {DIM}{chunk}{RESET}")
+                            line_keys.append(None)
+                    else:
+                        all_lines.append(f"      {DIM}(no preview){RESET}")
+                        line_keys.append(None)
 
         all_lines.append('')
         line_keys.append(None)
