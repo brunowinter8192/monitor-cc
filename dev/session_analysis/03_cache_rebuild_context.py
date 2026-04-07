@@ -38,6 +38,7 @@ def run_session(session_path, context_window, summary_only):
             lines.append(format_rebuild_block(rebuild, messages, i, context_window))
             lines.append('')
     lines.append(format_pattern_summary(rebuilds))
+    lines.append(format_delta_summary(rebuilds))
     return '\n'.join(lines)
 
 def run_all(context_window):
@@ -54,6 +55,7 @@ def run_all(context_window):
     lines.append(format_session_rebuild_table(session_rows))
     lines.append('')
     lines.append(format_pattern_summary(all_rebuilds))
+    lines.append(format_delta_summary(all_rebuilds))
     return '\n'.join(lines)
 
 # FUNCTIONS
@@ -118,6 +120,7 @@ def extract_message(raw):
         usage = msg.get('usage', {})
         result['cache_read'] = usage.get('cache_read_input_tokens', 0)
         result['cache_creation'] = usage.get('cache_creation_input_tokens', 0)
+        result['input_tokens'] = usage.get('input_tokens', 0)
         result['label'] = classify_assistant_content(msg.get('content', []))
     elif msg_type == 'user':
         result['label'] = classify_user_message(raw)
@@ -244,6 +247,14 @@ def detect_rebuilds(messages):
         if prev_max_cr > 0 and cc > cr and cr < prev_max_cr * REBUILD_THRESHOLD:
             gap_seconds = compute_gap_from_prev_assistant(messages, i)
             preceding_label, preceding_category = compute_preceding_event(messages, i, gap_seconds)
+            rebuild_total = cr + cc + msg.get('input_tokens', 0)
+            prev_total = compute_prev_assistant_total(messages, i)
+            if prev_total is not None and prev_total > 0:
+                delta = rebuild_total - prev_total
+                delta_pct = delta / prev_total * 100
+            else:
+                delta = None
+                delta_pct = None
             rebuilds.append({
                 'msg_index': i,
                 'timestamp': msg['timestamp'],
@@ -253,11 +264,23 @@ def detect_rebuilds(messages):
                 'gap_seconds': gap_seconds,
                 'preceding_label': preceding_label,
                 'preceding_category': preceding_category,
+                'rebuild_total': rebuild_total,
+                'prev_total': prev_total,
+                'delta': delta,
+                'delta_pct': delta_pct,
             })
 
         prev_max_cr = max(prev_max_cr, cr)
 
     return rebuilds
+
+# Return total input tokens (CR + CC + direct) from the previous assistant message before index i
+def compute_prev_assistant_total(messages, i):
+    for j in range(i - 1, -1, -1):
+        if messages[j]['type'] == 'assistant':
+            m = messages[j]
+            return m['cache_read'] + m['cache_creation'] + m.get('input_tokens', 0)
+    return None
 
 # Compute time gap in seconds from previous assistant message to index i
 def compute_gap_from_prev_assistant(messages, i):
@@ -290,6 +313,13 @@ def format_rebuild_block(rebuild, messages, rebuild_num, context_window):
 
     lines = [f'=== REBUILD #{rebuild_num} at {time_str} ===']
     lines.append(f'  CR: {cr:,}  CC: {cc:,}  (prev max CR was {prev_max:,})')
+    if rebuild.get('prev_total') is not None and rebuild.get('delta') is not None:
+        prev_t = rebuild['prev_total']
+        reb_t = rebuild['rebuild_total']
+        delta = rebuild['delta']
+        delta_pct = rebuild['delta_pct']
+        sign = '+' if delta >= 0 else ''
+        lines.append(f'  Total input: {prev_t:,} → {reb_t:,}  (delta: {sign}{delta:,}, {sign}{delta_pct:.1f}%)')
     if gap is not None:
         lines.append(f'  Gap from previous API call: {format_gap(gap)}')
 
@@ -340,6 +370,33 @@ def format_pattern_summary(rebuilds):
     for label, count in rows:
         pct = int(count / total * 100)
         lines.append(f'| {label:<{w}} | {count:>5} | {pct:>9}% |')
+    return '\n'.join(lines)
+
+# Format total input delta analysis summary table
+def format_delta_summary(rebuilds):
+    cats = {'Same (±1%)': 0, 'Grew (>1%)': 0, 'Shrunk (<-1%)': 0}
+    total = 0
+    for r in rebuilds:
+        if r.get('delta_pct') is None:
+            continue
+        total += 1
+        pct = r['delta_pct']
+        if abs(pct) <= 1:
+            cats['Same (±1%)'] += 1
+        elif pct > 1:
+            cats['Grew (>1%)'] += 1
+        else:
+            cats['Shrunk (<-1%)'] += 1
+    if total == 0:
+        return ''
+    ordered = list(cats.items())
+    w = max(len('Category'), max(len(k) for k, _ in ordered))
+    lines = ['\n## Total Input Delta Analysis']
+    lines.append(f'| {"Category":<{w}} | {"Count":>5} | {"Percentage":>10} |')
+    lines.append(f'|{"-"*(w+2)}|{"-"*7}|{"-"*12}|')
+    for label, count in ordered:
+        pct_val = int(count / total * 100) if total else 0
+        lines.append(f'| {label:<{w}} | {count:>5} | {pct_val:>9}% |')
     return '\n'.join(lines)
 
 # Format per-session rebuild count table for --all mode
