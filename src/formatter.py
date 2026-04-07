@@ -384,13 +384,13 @@ def format_unknown_type_warning(msg_type: str, count: int) -> str:
     return f"{INDENT}{YELLOW}[!] Unknown JSONL type: {msg_type} (seen {count}x){RESET}"
 
 # Format a single API call line for cache tracker (wide or compact based on pane width)
-def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool) -> str:
+def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0) -> str:
     cc_broken = cc > cr
     bg = LIGHT_RED_BG if cc_broken else ''
     end = RESET if cc_broken else ''
     if wide:
-        return f"{bg}  {symbol} CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){end}"
-    return f"{bg} {symbol} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){end}"
+        return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){end}"
+    return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){end}"
 
 # Extract first meaningful value from tool input dict for preview
 def _get_tool_preview(input_data: dict) -> str:
@@ -412,6 +412,7 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
 
     all_lines = []
     line_keys = []
+    request_num = 0
 
     if not wide:
         all_lines.append(f"{WHITE}CR/CC/D = Read/Create/Direct{RESET}")
@@ -435,7 +436,8 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
             is_expanded = expand_states.get(key, False)
             symbol = '\u25bc' if is_expanded else '\u25b6'
 
-            call_line = _format_cache_call(symbol, cr, cc, d, out, wide)
+            request_num += 1
+            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num)
             all_lines.append(call_line)
             line_keys.append(key)
 
