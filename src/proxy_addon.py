@@ -2,6 +2,7 @@
 import gzip
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -101,6 +102,7 @@ def _build_entry(flow: http.HTTPFlow, payload: dict, prev_messages: Optional[lis
     now = datetime.now(timezone.utc)
     timestamp = f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"
 
+    tools = payload.get("tools", [])
     return {
         "timestamp": timestamp,
         "request_id": request_id,
@@ -110,6 +112,8 @@ def _build_entry(flow: http.HTTPFlow, payload: dict, prev_messages: Optional[lis
         "system_prompt_chars": system_chars,
         "has_cache_control": bool(cache_breakpoints),
         "cache_breakpoints": cache_breakpoints,
+        "tools_count": len(tools),
+        "tools_chars": sum(len(json.dumps(t)) for t in tools),
         "messages": message_summaries,
         "diff_from_prev": _compute_diff(prev_messages, message_summaries),
         "modifications": modifications or [],
@@ -301,6 +305,12 @@ def apply_modification_rules(payload: dict) -> tuple:
             new_messages.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
             modifications.append("removed_plan_mode_sr")
             changed = True
+        elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<task-notification>"):
+            new_msg = dict(msg)
+            new_msg["content"] = _strip_task_notification_tags(msg.get("content", ""))
+            new_messages.append(new_msg)
+            modifications.append("trimmed_task_notification")
+            changed = True
         else:
             new_messages.append(msg)
     if not changed:
@@ -319,6 +329,23 @@ def _content_contains(content, substring: str) -> bool:
             if isinstance(block, dict) and substring in block.get("text", ""):
                 return True
     return False
+
+
+# Remove output-file and tool-use-id tags from task-notification content
+def _strip_task_notification_tags(content) -> str:
+    _STRIP_PATTERN = re.compile(r'<(?:output-file|tool-use-id)>.*?</(?:output-file|tool-use-id)>\n?', re.DOTALL)
+    if isinstance(content, str):
+        return _STRIP_PATTERN.sub('', content)
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                stripped = _STRIP_PATTERN.sub('', block.get("text", ""))
+                result.append({**block, "text": stripped})
+            else:
+                result.append(block)
+        return result
+    return content
 
 
 # Append log entry as a single JSONL line, creating parent dirs if needed
