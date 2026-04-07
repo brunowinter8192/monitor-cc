@@ -5,7 +5,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from mitmproxy import http
 
@@ -19,7 +19,7 @@ DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
 class ProxyAddon:
     def __init__(self):
         self.log_file = _resolve_log_file()
-        self.prev_messages: Optional[list] = None
+        self.prev_messages_by_model: Dict[str, list] = {}
 
     def request(self, flow: http.HTTPFlow) -> None:
         if not _is_messages_request(flow):
@@ -33,9 +33,11 @@ class ProxyAddon:
         if payload is None:
             return
 
-        entry = _build_entry(flow, payload, self.prev_messages)
+        model = payload.get("model", "")
+        model_family = "haiku" if "haiku" in model.lower() else "opus"
+        entry = _build_entry(flow, payload, self.prev_messages_by_model.get(model_family))
         _write_entry(self.log_file, entry)
-        self.prev_messages = [_summarize_message(m) for m in payload.get("messages", [])]
+        self.prev_messages_by_model[model_family] = [_summarize_message(m) for m in payload.get("messages", [])]
 
         # MODIFICATION HOOK: future cache optimization rules go here
         # modified_payload = apply_cache_rules(payload)
