@@ -112,9 +112,6 @@ KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}
 # JSONL message types deliberately ignored (known but not relevant for monitoring)
 KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode'}
 
-# Proxy log file (relative to project root, used by monitor pane integration)
-PROXY_LOG_FILE = "src/logs/api_requests.jsonl"
-
 # Pane header labels
 PANE_HEADERS = {
     'main': 'MAIN',

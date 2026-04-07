@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, MODE_PROXY, HOOK_INSTRUCTIONS_LOADED, DIM, PROXY_LOG_FILE
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, MODE_PROXY, HOOK_INSTRUCTIONS_LOADED, DIM
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -79,6 +79,7 @@ proxy_expand_states: Dict[int, bool] = {}
 proxy_line_map: Dict[int, int] = {}
 proxy_hover_row: Optional[int] = None
 proxy_scroll_offset: int = 0
+proxy_log_position: int = 0
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -579,33 +580,9 @@ def run_tokens_loop() -> None:
         disable_mouse()
         restore_terminal()
 
-# Read all entries from api_requests.jsonl and return as list of dicts
-def parse_proxy_log() -> List[dict]:
-    log_path = Path(PROXY_LOG_FILE)
-    if not log_path.is_absolute():
-        script_dir = Path(__file__).parent.parent
-        log_path = script_dir / PROXY_LOG_FILE
-    if not log_path.exists():
-        return []
-    entries = []
-    try:
-        with open(log_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    import json as _json
-                    entries.append(_json.loads(line))
-                except Exception:
-                    continue
-    except OSError:
-        return []
-    return entries
-
 # Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
 def run_proxy_loop() -> None:
-    global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset
+    global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset, proxy_log_position
     last_output = None
     last_data_refresh = 0.0
     last_entry_count = 0
@@ -639,7 +616,8 @@ def run_proxy_loop() -> None:
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
-                proxy_entries = parse_proxy_log()
+                new_entries, proxy_log_position = parse_proxy_log(active_project_filter, proxy_log_position)
+                proxy_entries.extend(new_entries)
                 last_data_refresh = now
                 if len(proxy_entries) != last_entry_count:
                     proxy_scroll_offset = 0
@@ -1472,7 +1450,9 @@ def _proxy_session_id_for_project(project_path: str) -> str:
 # Read new proxy log entries for the monitored project, returning (entries, new_position)
 def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
     root = os.environ.get("MONITOR_CC_ROOT", "")
-    if not root or not project_filter:
+    if not root:
+        root = str(Path(__file__).parent.parent)
+    if not project_filter:
         return [], last_position
     session_id = _proxy_session_id_for_project(project_filter)
     log_file = Path(root) / "src" / "logs" / f"api_requests_{session_id}.jsonl"
