@@ -2,12 +2,20 @@
 from typing import Dict, List, Optional
 
 # From constants.py: Colors
-from .constants import RESET, PASTEL_BLUE, DIM, HOVER_BG, YELLOW, CYAN
+from .constants import RESET, PASTEL_BLUE, DIM, HOVER_BG, YELLOW, CYAN, GREEN
 
 # From subagent_ui.py: Subagent state and display names
 from .subagent_ui import get_agent_display_name, count_calls_for_agent, subagent_states
 
 # FUNCTIONS
+
+# Map source label to display color
+def _source_color(source: str) -> str:
+    if source == 'main':
+        return CYAN
+    if source.startswith('worker:'):
+        return GREEN
+    return DIM
 
 # Tracks subagent metadata from tool calls
 def track_subagent_metadata(tool_call: dict, filepath, subagent_metadata: Dict[str, dict], tool_calls_by_agent: Dict[str, List[dict]], agent_to_task: Dict[str, str], agent_to_type: Dict[str, str]) -> None:
@@ -55,14 +63,19 @@ def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str
             is_expanded = (expand_states or {}).get(rule_key, False)
             toggle = "[-]" if is_expanded else "[+]"
             rule_line_idx = len(all_lines)
-            all_lines.append(f"  {PASTEL_BLUE}{toggle} {prefix} {r}{RESET}")
+            source_map = (invokers or {}).get(rule_key, {})
+            source_indicator = ''
+            if source_map:
+                recent_source = max(source_map.items(), key=lambda x: x[1])[0]
+                source_indicator = f" {_source_color(recent_source)}●{RESET}"
+            all_lines.append(f"  {PASTEL_BLUE}{toggle} {prefix} {r}{RESET}{source_indicator}")
             rule_key_at[rule_line_idx] = rule_key
 
             if is_expanded and invokers:
-                source_map = invokers.get(rule_key, {})
                 if source_map:
                     for source, ts in sorted(source_map.items()):
-                        all_lines.append(f"      {DIM}[{ts}] {source}{RESET}")
+                        color = _source_color(source)
+                        all_lines.append(f"      {color}[{ts}] {source}{RESET}")
                 else:
                     all_lines.append(f"      {DIM}(no invoker data){RESET}")
 
