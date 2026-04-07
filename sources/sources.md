@@ -31,3 +31,7 @@ External references used as evidence for pipeline decisions.
 | Claude Code source | github.com/anthropics/claude-code | Hook internals: additionalContext merging, 50K truncation limit (v2.1.89), _meta override (MCP only), hookSpecificOutput format | pipe03, pipe04 |
 | Claude Code #41799 | github.com/anthropics/claude-code/issues/41799 | 50K hook output truncation undocumented | pipe04 |
 | Claude Code #42869 | github.com/anthropics/claude-code/issues/42869 | _meta maxResultSizeChars undocumented (MCP only, not hooks) | pipe04 |
+| Reddit: cc-cache-fix | reddit.com/r/ClaudeCode/comments/1seo9gg/ | Cache investigation, community discussion | cache-investigation |
+| Claude Code #42796 | github.com/anthropics/claude-code/issues/42796 | Cache investigation | cache-investigation |
+| HackerNews: 47660925 | news.ycombinator.com/item?id=47660925 | Cache investigation | cache-investigation |
+| cc-cache-fix repo | github.com/Rangizingo/cc-cache-fix/ | Cache investigation, reference implementation | cache-investigation |

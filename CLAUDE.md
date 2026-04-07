@@ -12,8 +12,8 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks\|tokens\|workers\|subagents`, `--project`, `--ui` |
-| tmux Launch | tmux_launcher.py | 4-Window (main+tokens \| rules+hooks \| workers+subagents \| warnings), history 50000 |
+| CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks\|tokens\|workers\|subagents\|proxy`, `--project`, `--ui` |
+| tmux Launch | tmux_launcher.py | 5-Window (main+tokens \| proxy \| rules+hooks \| workers+subagents \| warnings), history 50000 |
 | Signal Handling | startup.py | SIGINT/SIGTERM → graceful shutdown |
 
 ### Data Sources
@@ -46,6 +46,7 @@ See [sources/sources.md](sources/sources.md)
 | Warnings Display | monitor.py + formatter.py | Dedicated tmux pane, format_unknown_type_warning |
 | Token Display | monitor.py + formatter.py | Dedicated tmux pane, format_token_profile, bar chart, session browser (cumulative N sessions) |
 | Workers Display | monitor.py + formatter.py | Dedicated tmux pane, format_workers_block, real-time worker status |
+| Proxy Display | monitor.py + formatter.py | Dedicated tmux pane, format_proxy_block, API request structure |
 
 ### Key Files
 
@@ -53,7 +54,7 @@ See [sources/sources.md](sources/sources.md)
 |------|-----------|
 | `workflow.py` | Entry point, mode routing |
 | `src/startup.py` | CLI args, signal handlers |
-| `src/tmux_launcher.py` | tmux session, 4-window layout |
+| `src/tmux_launcher.py` | tmux session, 5-window layout |
 | `src/monitor.py` | Core polling orchestrator |
 | `src/session_finder.py` | Session discovery |
 | `src/jsonl_parser.py` | JSONL parsing, tool call extraction |
@@ -64,6 +65,9 @@ See [sources/sources.md](sources/sources.md)
 | `src/click_handler.py` | Keyboard input handling |
 | `src/constants.py` | Shared constants |
 | `src/utils.py` | Colors, timestamps |
+| `src/proxy_addon.py` | mitmproxy API request logging |
+| `src/proxy_launcher.sh` | Proxy start script |
+| `src/claude_proxy_start.sh` | Combined proxy + Claude Code launcher |
 
 ## Project Structure
 
@@ -93,10 +97,17 @@ Monitor_CC/
 │   ├── startup.py
 │   ├── constants.py
 │   ├── utils.py
+│   ├── proxy_addon.py
+│   ├── proxy_launcher.sh
+│   ├── claude_proxy_start.sh
 │   └── logs/                       → Runtime log files (gitignored)
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
-│   └── display/                    → [DOCS.md](dev/display/DOCS.md)
-│       ├── test_tmux_layout.sh
-│       ├── scan_jsonl_rules.py
-│       └── screenshot_panes.py     → tmux pane screenshot tool (4-window, 7-pane → PNG)
+│   ├── display/                    → [DOCS.md](dev/display/DOCS.md)
+│   │   ├── test_tmux_layout.sh
+│   │   ├── scan_jsonl_rules.py
+│   │   └── screenshot_panes.py     → tmux pane screenshot tool (5-window, 8-pane → PNG)
+│   └── session_analysis/
+│       ├── 01_extract.py
+│       ├── 02_cache_timeline.py
+│       └── 03_cache_rebuild_context.py
 ```
