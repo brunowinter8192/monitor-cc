@@ -35,15 +35,14 @@ class ProxyAddon:
 
         model = payload.get("model", "")
         model_family = "haiku" if "haiku" in model.lower() else "opus"
-        entry = _build_entry(flow, payload, self.prev_messages_by_model.get(model_family))
+        modified_payload, modifications = apply_modification_rules(payload)
+        entry = _build_entry(flow, payload, self.prev_messages_by_model.get(model_family), modifications)
         _write_entry(self.log_file, entry)
         self.prev_messages_by_model[model_family] = [_summarize_message(m) for m in payload.get("messages", [])]
 
-        # MODIFICATION HOOK: future cache optimization rules go here
-        # modified_payload = apply_cache_rules(payload)
-        # if modified_payload is not payload:
-        #     flow.request.content = json.dumps(modified_payload).encode("utf-8")
-        #     flow.request.headers.pop("content-encoding", None)
+        if modified_payload is not payload:
+            flow.request.content = json.dumps(modified_payload).encode("utf-8")
+            flow.request.headers.pop("content-encoding", None)
 
 
 # FUNCTIONS
@@ -89,7 +88,7 @@ def _parse_payload(body: bytes) -> Optional[dict]:
 
 
 # Build full log entry dict from flow, payload, and previous request state
-def _build_entry(flow: http.HTTPFlow, payload: dict, prev_messages: Optional[list]) -> dict:
+def _build_entry(flow: http.HTTPFlow, payload: dict, prev_messages: Optional[list], modifications: list = None) -> dict:
     messages = payload.get("messages", [])
     system = payload.get("system", "")
     system_chars = _count_system_chars(system)
@@ -113,6 +112,7 @@ def _build_entry(flow: http.HTTPFlow, payload: dict, prev_messages: Optional[lis
         "cache_breakpoints": cache_breakpoints,
         "messages": message_summaries,
         "diff_from_prev": _compute_diff(prev_messages, message_summaries),
+        "modifications": modifications or [],
     }
 
 
@@ -288,6 +288,37 @@ def _compute_diff(prev: Optional[list], curr: list) -> dict:
         "first_diff_index": first_diff,
         "summary": summary,
     }
+
+
+# Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules)
+def apply_modification_rules(payload: dict) -> tuple:
+    modifications = []
+    messages = payload.get("messages", [])
+    new_messages = []
+    changed = False
+    for msg in messages:
+        if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
+            new_messages.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
+            modifications.append("removed_plan_mode_sr")
+            changed = True
+        else:
+            new_messages.append(msg)
+    if not changed:
+        return payload, modifications
+    modified = dict(payload)
+    modified["messages"] = new_messages
+    return modified, modifications
+
+
+# Check if message content (str or list of blocks) contains a given substring
+def _content_contains(content, substring: str) -> bool:
+    if isinstance(content, str):
+        return substring in content
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and substring in block.get("text", ""):
+                return True
+    return False
 
 
 # Append log entry as a single JSONL line, creating parent dirs if needed
