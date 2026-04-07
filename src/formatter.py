@@ -377,7 +377,9 @@ def format_skill_activation(skill_item: dict) -> str:
 def format_thinking(thinking_item: dict) -> str:
     time_str = format_timestamp(thinking_item.get('timestamp', ''))
     thinking_text = thinking_item.get('thinking', '')
-    return f"{PASTEL_ORANGE}[{time_str}] THINKING: {thinking_text}{RESET}"
+    char_count = len(thinking_text)
+    preview = thinking_text[:80] + ('...' if len(thinking_text) > 80 else '')
+    return f"{PASTEL_ORANGE}[{time_str}] THINKING ({char_count:,}c): {preview}{RESET}"
 
 # Format unknown JSONL type warning for warnings pane
 def format_unknown_type_warning(msg_type: str, count: int) -> str:
@@ -423,7 +425,9 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
         timestamp = format_timestamp(turn.get('timestamp', ''))
         truncated = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
 
-        all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{timestamp}]: \"{truncated}\"{RESET}")
+        thinking_chars = turn.get('thinking_chars', 0)
+        think_str = f" ({thinking_chars:,}c thinking)" if thinking_chars > 0 else ""
+        all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{timestamp}]{think_str}: \"{truncated}\"{RESET}")
         line_keys.append(None)
 
         for call_idx, call in enumerate(turn.get('api_calls', [])):

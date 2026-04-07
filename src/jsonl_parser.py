@@ -433,6 +433,7 @@ def extract_cache_turns(messages: list) -> list:
                         'prompt': f'\u25cf skill:{skill_name}',
                         'timestamp': message.get('timestamp', ''),
                         'api_calls': [],
+                        'thinking_chars': 0,
                     }
                     turns.append(current_turn)
                     continue
@@ -444,6 +445,7 @@ def extract_cache_turns(messages: list) -> list:
                     'prompt': stripped,
                     'timestamp': message.get('timestamp', ''),
                     'api_calls': [],
+                    'thinking_chars': 0,
                 }
                 turns.append(current_turn)
             continue
@@ -466,7 +468,8 @@ def extract_cache_turns(messages: list) -> list:
                         continue
                     bt = block.get('type', '')
                     if bt == 'thinking':
-                        blocks.append({'type': 'thinking', 'output_tokens': output_tokens})
+                        think_chars = len(block.get('thinking', ''))
+                        blocks.append({'type': 'thinking', 'output_tokens': output_tokens, 'chars': think_chars})
                     elif bt == 'tool_use':
                         input_data = block.get('input', {})
                         blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown'), 'preview': input_data})
@@ -496,6 +499,8 @@ def extract_cache_turns(messages: list) -> list:
                     if sig not in seen_types:
                         prev['content_blocks'].append(b)
                         seen_types.add(sig)
+                        if b['type'] == 'thinking':
+                            current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + b.get('chars', 0)
             else:
                 current_turn['api_calls'].append({
                     'cache_read': cache_read,
@@ -505,6 +510,7 @@ def extract_cache_turns(messages: list) -> list:
                     'content_blocks': blocks,
                     '_input_key': input_key,
                 })
+                current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + sum(b.get('chars', 0) for b in blocks if b['type'] == 'thinking')
 
     for turn in turns:
         for call in turn.get('api_calls', []):
