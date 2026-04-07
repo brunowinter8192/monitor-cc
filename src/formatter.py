@@ -665,17 +665,20 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             line_keys.append(None)
 
             messages = entry.get('messages', [])
-            for msg_idx, msg in enumerate(messages):
+            start_idx = max(0, first_diff) if first_diff >= 0 else 0
+            if start_idx > 0:
+                all_lines.append(f"  {DIM}... [0-{start_idx - 1}] unchanged ({start_idx} messages){RESET}")
+                line_keys.append(None)
+            for msg_idx, msg in enumerate(messages[start_idx:], start=start_idx):
                 role = msg.get('role', '?')[:4]
                 msg_type = msg.get('type', 'text')
                 chars = msg.get('chars', 0)
                 has_cc = msg.get('has_cache_control', False)
                 cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
-                diff_marker = f"  {YELLOW}← first diff{RESET}" if msg_idx == first_diff else ''
 
                 chars_fmt = f"{chars:,}c"
                 color = PASTEL_GREEN if has_cc else WHITE
-                all_lines.append(f"  {color}[{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}{diff_marker}")
+                all_lines.append(f"  {color}[{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
                 line_keys.append(None)
 
         all_lines.append('')
