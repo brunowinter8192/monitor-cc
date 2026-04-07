@@ -114,6 +114,7 @@ def _build_entry(flow: http.HTTPFlow, payload: dict, prev_messages: Optional[lis
         "cache_breakpoints": cache_breakpoints,
         "tools_count": len(tools),
         "tools_chars": sum(len(json.dumps(t)) for t in tools),
+        "tools_names": [t.get("name", "") for t in tools],
         "messages": message_summaries,
         "diff_from_prev": _compute_diff(prev_messages, message_summaries),
         "modifications": modifications or [],
