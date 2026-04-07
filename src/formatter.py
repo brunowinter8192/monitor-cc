@@ -620,6 +620,96 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
         lines.pop()
     return '\n'.join(lines)
 
+# Format proxy pane with API request entries, expand/collapse, scroll, hover
+def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> str:
+    if not entries:
+        return f"{YELLOW}No API requests logged yet{RESET}"
+
+    if expand_states is None:
+        expand_states = {}
+
+    all_lines = []
+    line_keys = []
+
+    for entry_idx, entry in enumerate(entries):
+        timestamp = format_timestamp(entry.get('timestamp', ''))
+        model = entry.get('model', 'unknown')
+        msg_count = entry.get('message_count', 0)
+        input_chars = entry.get('total_input_chars', 0)
+        cache_bp = entry.get('cache_breakpoints', [])
+        diff = entry.get('diff_from_prev', {})
+        diff_summary = diff.get('summary', '')
+        first_diff = diff.get('first_diff_index', -1)
+
+        if input_chars >= 1000:
+            chars_str = f"{input_chars / 1000:.0f}k" if input_chars >= 10000 else f"{input_chars / 1000:.1f}k"
+        else:
+            chars_str = str(input_chars)
+
+        bp_str = str(cache_bp) if cache_bp else '[]'
+        is_expanded = expand_states.get(entry_idx, False)
+        symbol = '\u25bc' if is_expanded else '\u25b6'
+
+        header = f"{WHITE}{symbol} [{timestamp}] REQ #{entry_idx + 1}  model:{model}  msgs:{msg_count}  input:{chars_str} chars  cache_bp:{bp_str}{RESET}"
+        all_lines.append(header)
+        line_keys.append(entry_idx)
+
+        if diff_summary:
+            all_lines.append(f"  {YELLOW}{diff_summary}{RESET}")
+            line_keys.append(None)
+
+        if is_expanded:
+            all_lines.append(f"  {DIM}{'─' * min(40, pane_width - 4)}{RESET}")
+            line_keys.append(None)
+
+            messages = entry.get('messages', [])
+            for msg_idx, msg in enumerate(messages):
+                role = msg.get('role', '?')[:4]
+                msg_type = msg.get('type', 'text')
+                chars = msg.get('chars', 0)
+                has_cc = msg.get('has_cache_control', False)
+                cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
+                diff_marker = f"  {YELLOW}← first diff{RESET}" if msg_idx == first_diff else ''
+
+                chars_fmt = f"{chars:,}c"
+                color = PASTEL_GREEN if has_cc else WHITE
+                all_lines.append(f"  {color}[{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}{diff_marker}")
+                line_keys.append(None)
+
+        all_lines.append('')
+        line_keys.append(None)
+
+    while all_lines and all_lines[-1] == '':
+        all_lines.pop()
+        line_keys.pop()
+
+    viewport_lines = pane_height - 1
+    max_scroll = max(0, len(all_lines) - viewport_lines)
+    clamped_offset = min(scroll_offset, max_scroll)
+    start = max(0, len(all_lines) - viewport_lines - clamped_offset)
+    end = start + viewport_lines
+
+    visible_lines = all_lines[start:end]
+    visible_keys = line_keys[start:end]
+
+    if line_map is not None:
+        line_map.clear()
+        for row_idx, key in enumerate(visible_keys):
+            if key is not None:
+                line_map[row_idx + 1] = key
+
+    result_lines = []
+    for row_offset, line in enumerate(visible_lines):
+        row = row_offset + 1
+        key = visible_keys[row_offset]
+        if key is not None and hover_row is not None and row == hover_row:
+            result_lines.append(f"{HOVER_BG}{line}{RESET}")
+        else:
+            result_lines.append(line)
+
+    return '\n'.join(result_lines)
+
+
 # Shorten MCP tool names for display (mcp__plugin_xxx_yyy__tool_name → tool_name)
 def shorten_tool_name(name: str) -> str:
     if name.startswith('mcp__'):

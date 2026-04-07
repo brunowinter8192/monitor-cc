@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, HOOK_INSTRUCTIONS_LOADED, DIM
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, MODE_PROXY, HOOK_INSTRUCTIONS_LOADED, DIM, PROXY_LOG_FILE
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -17,7 +17,7 @@ from .session_finder import find_active_sessions, encode_project_path
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines, get_message_content, is_tool_use, extract_cache_turns
 # From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_cache_tracker, format_workers_block, format_system_message, build_hook_display_item, format_hooks_block
+from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_unknown_type_warning, format_cache_tracker, format_workers_block, format_system_message, build_hook_display_item, format_hooks_block, format_proxy_block
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp, get_current_position as get_hook_log_position
 # From subagent_ui.py: Subagent state management and rendering
@@ -72,6 +72,11 @@ worker_cache_expand_states: Dict[str, Dict[tuple, bool]] = {}
 worker_cache_line_map: Dict[int, tuple] = {}
 agent_cache_expand_states: Dict[str, Dict[tuple, bool]] = {}
 agent_cache_line_map: Dict[int, tuple] = {}
+proxy_entries: List[dict] = []
+proxy_expand_states: Dict[int, bool] = {}
+proxy_line_map: Dict[int, int] = {}
+proxy_hover_row: Optional[int] = None
+proxy_scroll_offset: int = 0
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
@@ -94,6 +99,8 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
         run_warnings_loop()
     elif mode == MODE_HOOKS:
         run_hooks_loop()
+    elif mode == MODE_PROXY:
+        run_proxy_loop()
     else:
         sessions = find_active_sessions(active_project_filter)
         session_count = len(filter_sessions_by_mode(sessions, mode))
@@ -560,6 +567,92 @@ def run_tokens_loop() -> None:
                     pane_height = 50
                     pane_width = 80
                 output = format_cache_tracker(turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width, cache_scroll_offset)
+                if output != last_output:
+                    print("\033[2J\033[3J\033[H", end='', flush=True)
+                    if output:
+                        print(output)
+                    last_output = output
+            time.sleep(INPUT_POLL_INTERVAL)
+    finally:
+        disable_mouse()
+        restore_terminal()
+
+# Read all entries from api_requests.jsonl and return as list of dicts
+def parse_proxy_log() -> List[dict]:
+    log_path = Path(PROXY_LOG_FILE)
+    if not log_path.is_absolute():
+        script_dir = Path(__file__).parent.parent
+        log_path = script_dir / PROXY_LOG_FILE
+    if not log_path.exists():
+        return []
+    entries = []
+    try:
+        with open(log_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    import json as _json
+                    entries.append(_json.loads(line))
+                except Exception:
+                    continue
+    except OSError:
+        return []
+    return entries
+
+# Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
+def run_proxy_loop() -> None:
+    global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset
+    last_output = None
+    last_data_refresh = 0.0
+    last_entry_count = 0
+    setup_keyboard_input()
+    enable_mouse()
+    try:
+        while True:
+            input_changed = False
+            while True:
+                char = read_keypress()
+                if char is None:
+                    break
+                if char == '\033':
+                    event = read_mouse_event(char)
+                    if event is not None:
+                        button, col, row = event
+                        if button == 0:
+                            key = proxy_line_map.get(row)
+                            if key is not None:
+                                proxy_expand_states[key] = not proxy_expand_states.get(key, False)
+                                input_changed = True
+                        elif button == 64:
+                            proxy_scroll_offset += 3
+                            input_changed = True
+                        elif button == 65:
+                            proxy_scroll_offset = max(0, proxy_scroll_offset - 3)
+                            input_changed = True
+                        elif button >= 32:
+                            proxy_hover_row = row
+                            input_changed = True
+
+            now = time.time()
+            if now - last_data_refresh >= POLL_INTERVAL:
+                proxy_entries = parse_proxy_log()
+                last_data_refresh = now
+                if len(proxy_entries) != last_entry_count:
+                    proxy_scroll_offset = 0
+                    last_entry_count = len(proxy_entries)
+                input_changed = True
+
+            if input_changed:
+                try:
+                    term = os.get_terminal_size()
+                    pane_height = term.lines - 1
+                    pane_width = term.columns
+                except OSError:
+                    pane_height = 50
+                    pane_width = 80
+                output = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, pane_height, pane_width, proxy_scroll_offset)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
