@@ -1,6 +1,8 @@
 # INFRASTRUCTURE
 from datetime import datetime, timedelta
+import hashlib
 import io
+import json
 import os
 import subprocess
 import sys
@@ -1462,3 +1464,30 @@ def truncate_line(line: str, max_length: int) -> str:
     if len(line) <= max_length:
         return line
     return line[:max_length] + '...'
+
+# Derive proxy session_id from project path — matches claude_proxy_start.sh md5 hash logic
+def _proxy_session_id_for_project(project_path: str) -> str:
+    return hashlib.md5(project_path.encode()).hexdigest()[:8]
+
+# Read new proxy log entries for the monitored project, returning (entries, new_position)
+def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
+    root = os.environ.get("MONITOR_CC_ROOT", "")
+    if not root or not project_filter:
+        return [], last_position
+    session_id = _proxy_session_id_for_project(project_filter)
+    log_file = Path(root) / "src" / "logs" / f"api_requests_{session_id}.jsonl"
+    if not log_file.exists():
+        return [], last_position
+    with open(log_file, "r", encoding="utf-8") as f:
+        f.seek(last_position)
+        content = f.read()
+    if not content:
+        return [], last_position
+    lines = [ln for ln in content.split("\n") if ln.strip()]
+    entries = []
+    for line in lines:
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return entries, log_file.stat().st_size

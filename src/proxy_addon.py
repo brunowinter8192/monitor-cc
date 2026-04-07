@@ -46,12 +46,14 @@ class ProxyAddon:
 
 # FUNCTIONS
 
-# Resolve log file path from env var or use fallback
+# Resolve log file path from env vars — session_id gives per-project isolation
 def _resolve_log_file() -> Path:
     root = os.environ.get("MONITOR_CC_ROOT")
+    session_id = os.environ.get("PROXY_SESSION_ID")
+    filename = f"api_requests_{session_id}.jsonl" if session_id else "api_requests.jsonl"
     if root:
-        return Path(root) / "src" / "logs" / "api_requests.jsonl"
-    return DEFAULT_LOG_FILE
+        return Path(root) / "src" / "logs" / filename
+    return Path("/tmp") / filename
 
 
 # Check if flow is a POST to /v1/messages on api.anthropic.com
