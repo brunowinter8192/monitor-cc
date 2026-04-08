@@ -384,13 +384,14 @@ def format_unknown_type_warning(msg_type: str, count: int) -> str:
     return f"{INDENT}{YELLOW}[!] Unknown JSONL type: {msg_type} (seen {count}x){RESET}"
 
 # Format a single API call line for cache tracker (wide or compact based on pane width)
-def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0) -> str:
+def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False) -> str:
     cc_broken = cc > cr
     bg = LIGHT_RED_BG if cc_broken else ''
     end = RESET if cc_broken else ''
+    think_indicator = ' 🧠' if has_thinking else ''
     if wide:
-        return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){end}"
-    return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){end}"
+        return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}{end}"
+    return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}{end}"
 
 # Extract first meaningful value from tool input dict for preview
 def _get_tool_preview(input_data: dict) -> str:
@@ -423,12 +424,16 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
         timestamp = format_timestamp(turn.get('timestamp', ''))
         truncated = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
 
-        thinking_chars = turn.get('thinking_chars', 0)
-        think_str = f" ({thinking_chars:,}c thinking)" if thinking_chars > 0 else ""
+        api_calls = turn.get('api_calls', [])
+        thinking_calls = sum(
+            1 for call in api_calls
+            if any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
+        )
+        think_str = f" ({thinking_calls}/{len(api_calls)} 🧠)" if thinking_calls > 0 else ""
         all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{timestamp}]{think_str}: \"{truncated}\"{RESET}")
         line_keys.append(None)
 
-        for call_idx, call in enumerate(turn.get('api_calls', [])):
+        for call_idx, call in enumerate(api_calls):
             cr = call.get('cache_read', 0)
             cc = call.get('cache_creation', 0)
             d = call.get('direct', 0)
@@ -443,7 +448,8 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                 display_req = proxy_req_map[request_num - 1]
             else:
                 display_req = request_num
-            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, display_req)
+            has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
+            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, display_req, has_thinking)
             all_lines.append(call_line)
             line_keys.append(key)
 
