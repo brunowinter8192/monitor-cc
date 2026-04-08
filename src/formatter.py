@@ -207,12 +207,10 @@ def build_hook_display_item(entry: dict) -> dict:
     category = HOOK_EVENT_CATEGORIES.get(entry.get('hook_event', ''), 'tool')
     color = _HOOK_CATEGORY_COLORS.get(category, PASTEL_PURPLE)
     hook_script = entry.get('hook_script', '')
-    if 'global-inject' in hook_script or 'project-inject' in hook_script or 'monitor-shared' in hook_script:
-        color = PASTEL_ORANGE
-    elif 'rule-inject' in hook_script or hook_script == 'session-start-rules.sh':
-        color = PASTEL_BLUE
-    elif 'worker-inject' in hook_script or 'monitor-worker' in hook_script or 'worker-rules' in hook_script:
+    if 'worker' in hook_script.lower():
         color = PASTEL_GREEN
+    else:
+        color = CYAN
     return {
         'type': 'hook',
         'timestamp': entry.get('timestamp', ''),
