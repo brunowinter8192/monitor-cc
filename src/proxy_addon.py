@@ -3,6 +3,7 @@ import gzip
 import json
 import os
 import re
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,27 +24,30 @@ class ProxyAddon:
         self.prev_messages_by_model: Dict[str, list] = {}
 
     def request(self, flow: http.HTTPFlow) -> None:
-        if not _is_messages_request(flow):
-            return
+        try:
+            if not _is_messages_request(flow):
+                return
 
-        body = _decode_body(flow.request)
-        if body is None:
-            return
+            body = _decode_body(flow.request)
+            if body is None:
+                return
 
-        payload = _parse_payload(body)
-        if payload is None:
-            return
+            payload = _parse_payload(body)
+            if payload is None:
+                return
 
-        model = payload.get("model", "")
-        model_family = "haiku" if "haiku" in model.lower() else "opus"
-        modified_payload, modifications = apply_modification_rules(payload)
-        entry = _build_entry(flow, payload, self.prev_messages_by_model.get(model_family), modifications)
-        _write_entry(self.log_file, entry)
-        self.prev_messages_by_model[model_family] = [_summarize_message(m) for m in payload.get("messages", [])]
+            model = payload.get("model", "")
+            model_family = "haiku" if "haiku" in model.lower() else "opus"
+            modified_payload, modifications = apply_modification_rules(payload)
+            entry = _build_entry(flow, payload, self.prev_messages_by_model.get(model_family), modifications)
+            _write_entry(self.log_file, entry)
+            self.prev_messages_by_model[model_family] = [_summarize_message(m) for m in payload.get("messages", [])]
 
-        if modified_payload is not payload:
-            flow.request.content = json.dumps(modified_payload).encode("utf-8")
-            flow.request.headers.pop("content-encoding", None)
+            if modified_payload is not payload:
+                flow.request.content = json.dumps(modified_payload).encode("utf-8")
+                flow.request.headers.pop("content-encoding", None)
+        except Exception as e:
+            print(f"[proxy_addon] Error: {e}", file=sys.stderr)
 
 
 # FUNCTIONS
@@ -128,6 +132,8 @@ def _build_entry(flow: http.HTTPFlow, payload: dict, prev_messages: Optional[lis
         "messages": message_summaries,
         "diff_from_prev": _compute_diff(prev_messages, message_summaries),
         "modifications": modifications or [],
+        "raw_payload": payload,
+        "request_headers": {k: v for k, v in flow.request.headers.items()},
     }
 
 
