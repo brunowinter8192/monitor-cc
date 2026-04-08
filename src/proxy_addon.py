@@ -339,6 +339,22 @@ def _strip_plan_mode_blocks(content):
     return None
 
 
+# Strip any <system-reminder> block whose text contains marker, from string or list content
+def _strip_system_reminder(content, marker: str):
+    pattern = re.compile(r'<system-reminder>.*?' + re.escape(marker) + r'.*?</system-reminder>\s*', re.DOTALL)
+    if isinstance(content, str):
+        return pattern.sub('', content)
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                result.append({**block, "text": pattern.sub('', block.get("text", ""))})
+            else:
+                result.append(block)
+        return result
+    return content
+
+
 # Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules)
 def apply_modification_rules(payload: dict) -> tuple:
     modifications = []
@@ -361,6 +377,12 @@ def apply_modification_rules(payload: dict) -> tuple:
             new_msg["content"] = _strip_task_notification_tags(msg.get("content", ""))
             new_messages.append(new_msg)
             modifications.append("trimmed_task_notification")
+            changed = True
+        elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "task tools haven"):
+            new_msg = dict(msg)
+            new_msg["content"] = _strip_system_reminder(msg.get("content", ""), "task tools haven")
+            new_messages.append(new_msg)
+            modifications.append("stripped_task_tools_nag")
             changed = True
         else:
             new_messages.append(msg)
