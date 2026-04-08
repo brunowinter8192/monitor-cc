@@ -62,6 +62,8 @@ MARKER_FILE="$LOG_DIR/.proxy_session_$SESSION_ID"
 echo "$PROXY_PORT" > "$MARKER_FILE"
 # Also write to /tmp for cross-repo discovery (workers find proxy via this)
 echo "$PROXY_PORT" > "/tmp/.monitor_cc_proxy_${SESSION_ID}"
+# Write MONITOR_CC_ROOT for cross-repo worker proxy discovery
+echo "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_root"
 
 # Start proxy in background
 export MONITOR_CC_ROOT
@@ -75,6 +77,7 @@ cleanup() {
     wait $PROXY_PID 2>/dev/null
     rm -f "$MARKER_FILE"
     rm -f "/tmp/.monitor_cc_proxy_${SESSION_ID}"
+    rm -f "/tmp/.monitor_cc_root"
 }
 trap cleanup EXIT INT TERM
 
