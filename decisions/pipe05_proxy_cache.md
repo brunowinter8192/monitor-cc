@@ -69,9 +69,21 @@ Nach Implementierung der eigenen Breakpoints (Session auf test project, 14+ Requ
 - **Kein einziger Rebuild** — auch nicht bei ToolSearch (REQ#8: CC:425)
 - BP3 verhindert Cache-Invalidierung durch Modifications: modifizierter Content ist deterministisch (gleicher Input → gleicher Output), daher ist der Prefix zwischen Requests stabil
 
+### Tool-Stripping
+
+`TOOL_BLOCKLIST` (frozenset) in `proxy_addon.py` entfernt 21 ungenutzte Tools aus dem `tools`-Array vor dem API-Send. ~25k chars weniger pro Request. Agent-Tool bleibt, aber Description getrimmt auf git-committer-only (~300 chars statt 10k).
+
+### Live-Copy Isolation
+
+`claude_proxy_start.sh` kopiert `proxy_addon.py` nach `$LOG_DIR/.proxy_addon_live.py` beim Start. mitmproxy lädt die Kopie. Git-Merges auf das Original triggern keinen Hot-Reload. Cleanup bei Proxy-Stop.
+
+### Log-Naming & Rotation
+
+Log-Dateien: `api_requests_{projektname}_{timestamp}.jsonl` statt kryptischer MD5-Hashes. Max 30 Dateien, älteste werden bei Proxy-Start gelöscht.
+
 ## Recommendation (SOLL)
 
-Keep (no change needed) — eigene Breakpoints sind implementiert und verifiziert.
+Keep (no change needed) — eigene Breakpoints sind implementiert und verifiziert. TTL `1h` und `scope: "global"` korrekt auf Markern gesetzt.
 
 ### API Constraints (Referenz)
 
