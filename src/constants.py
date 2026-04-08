@@ -115,7 +115,7 @@ KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt'
 KNOWN_PAYLOAD_KEYS = {'model', 'max_tokens', 'messages', 'metadata', 'output_config', 'stream', 'system', 'thinking', 'tools', 'temperature', 'top_p', 'top_k', 'tool_choice'}
 
 # Known message content block types
-KNOWN_CONTENT_BLOCK_TYPES = {'text', 'thinking', 'tool_use', 'tool_result'}
+KNOWN_CONTENT_BLOCK_TYPES = {'text', 'thinking', 'tool_use', 'tool_result', 'image'}
 
 # Known tool definition keys
 KNOWN_TOOL_DEFINITION_KEYS = {'name', 'description', 'input_schema', 'defer_loading'}
