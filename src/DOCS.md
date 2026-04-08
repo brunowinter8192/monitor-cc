@@ -15,18 +15,25 @@ cd Monitor_CC/
 ```
 src/
 ├── __init__.py
-├── utils.py
-├── constants.py
-├── startup.py
-├── tmux_launcher.py
-├── monitor.py
-├── ui_mode.py
+├── monitor.py            → Core polling orchestrator (~460 lines)
+├── token_pane.py         → Token profiling pane
+├── proxy_pane.py         → Proxy pane + log parsing
+├── worker_pane.py        → Workers pane + status detection
+├── hooks_pane.py         → Hooks pane + persisted context
+├── rules_pane.py         → Rules pane + InstructionsLoaded routing
+├── warnings_pane.py      → Warnings pane
+├── subagent_pane.py      → Subagent pane
+├── formatter.py          → Shared tool call formatting (~230 lines)
 ├── session_finder.py
 ├── jsonl_parser.py
 ├── hook_parser.py
-├── formatter.py
+├── ui_mode.py
 ├── subagent_ui.py
 ├── click_handler.py
+├── constants.py
+├── utils.py
+├── startup.py
+├── tmux_launcher.py
 ├── proxy_addon.py
 ├── proxy_launcher.sh
 ├── claude_proxy_start.sh
@@ -100,17 +107,83 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 ## monitor.py
 
-**Purpose:** Core polling orchestrator. Continuously monitors session files and displays new tool calls with color-coded output.
+**Purpose:** Core polling orchestrator (~460 lines). Session discovery, streaming loop, tool call routing, task/subagent tracking. Delegates pane rendering to dedicated pane modules.
 
-**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens/workers/subagents), `ui_mode` (bool).
+**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens/workers/subagents/proxy), `ui_mode` (bool).
 
-**Output:** Formatted tool calls to console; collapsible UI list; rules display with screen-clear refresh; warnings display with screen-clear refresh; hooks display as scrolling stream; token profiling display (input tokens: direct/cache create/cache read with color legend + output tokens per tool flat list, session browser for cumulative N sessions with granular output breakdown) with screen-clear refresh; workers display (real-time worker status via window_activity timestamp, expand/collapse with scrollable viewport + cache-tracker token view (CR/CC/D per API call), hover-highlight, keyboard + SGR mouse input with dual poll intervals 50ms/500ms); subagents display (collapsible agent list with per-agent cache-tracker view, SGR mouse + digit keyboard). Headers rendered as sticky tmux pane-border labels (PASTEL_ORANGE).
+**Output:** Formatted tool calls to console. Routes to pane-specific loops via `run_monitor()`.
 
-**Workers-Pane functions:** `find_worker_jsonl(session)` discovers worker JSONL via tmux `pane_current_path` → `encode_project_path()` → worktree-aware (strips `/.claude/worktrees/` prefix when needed). State: `worker_expand_states`, `worker_scroll_offsets`, `worker_line_map`, `hover_row`.
+**Session-Scoping:** `_get_session_start_ts()` extracts first message timestamp from newest main session JSONL minus 60s buffer as cutoff.
 
-**Subagents-Pane functions:** `run_subagents_loop()` polls sessions, renders subagent list + per-agent cache tracker, handles mouse/keyboard input. `load_historical_subagents()` resets newest main session + its agent files (from `filepath.parent/filepath.stem/subagents/`) to position 0. `find_agent_jsonl(agent_id)` searches active sessions for `agent-{id}.jsonl`. `render_subagents_with_tokens(metadata, turns_by_agent, ...)` renders collapsible list with `format_cache_tracker()` for expanded agents. State: `agent_turns`, `agent_pane_line_map`, `agent_pane_hover_row`, `agent_cache_scroll_offsets`.
+---
 
-**Session-Scoping:** `_get_session_start_ts()` extracts first message timestamp from newest main session JSONL minus 60s buffer as cutoff. `session_start_ts` global used by `load_historical_rules()` and `load_historical_hooks()` to filter hook entries. Both `run_rules_loop()` and `run_hooks_loop()` detect session changes via `_get_newest_main_session()` and re-scope on change.
+## token_pane.py
+
+**Purpose:** Token profiling pane. Cache tracker with CR/CC/D per API call, session browser for cumulative N sessions.
+
+**Input:** Session JSONL files, proxy req mapping.
+
+**Output:** Formatted token display with expand/collapse, hover, scroll. Mouse + keyboard input.
+
+---
+
+## proxy_pane.py
+
+**Purpose:** Proxy pane. Reads `api_requests_*.jsonl`, shows expandable API request entries with schema warnings.
+
+**Input:** Proxy log file (discovered via marker file), project filter.
+
+**Output:** Formatted proxy entries with expand/collapse, hover, scroll.
+
+---
+
+## worker_pane.py
+
+**Purpose:** Workers pane. Real-time worker status via tmux `window_activity` timestamp. Expand/collapse with per-worker cache-tracker view.
+
+**Input:** tmux session list, worker JSONL files.
+
+**Output:** Worker status display with cache-tracker per worker.
+
+---
+
+## hooks_pane.py
+
+**Purpose:** Hooks pane. Hook events with expand/collapse, persisted additionalContext enrichment.
+
+**Input:** Hook log (`src/logs/hook_outputs.jsonl`), persisted hook files from `tool-results/` dirs.
+
+**Output:** Scrollable hooks stream with expand/collapse.
+
+---
+
+## rules_pane.py
+
+**Purpose:** Rules pane. Active rules display with [P]/[G] prefix, InstructionsLoaded routing from hook log.
+
+**Input:** Hook log entries (InstructionsLoaded events).
+
+**Output:** Rules list with expand/collapse, source labels.
+
+---
+
+## warnings_pane.py
+
+**Purpose:** Warnings pane. Unknown JSONL message types detected during parsing.
+
+**Input:** Unknown type entries from session processing.
+
+**Output:** Warning display with type counts.
+
+---
+
+## subagent_pane.py
+
+**Purpose:** Subagent pane. Per-agent cache token view with expand/collapse.
+
+**Input:** Subagent metadata, agent JSONL files.
+
+**Output:** Collapsible agent list with cache-tracker per agent.
 
 **Usage:**
 ```python
@@ -188,7 +261,7 @@ filtered = filter_by_timestamp(filtered, since_ts)   # ISO 8601 cutoff
 
 ## formatter.py
 
-**Purpose:** Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, token profiles (input + output sections with bar charts), cumulative token profiles, worker status blocks, and pane headers as color-coded terminal strings. `format_workers_block()` renders cache-tracker token view (CR/CC/D per API call) per worker when expanded instead of a tool call list. `_get_tool_preview()` extracts a readable preview string from tool input dicts for cache-tracker expanded entries. `_format_cache_call()` highlights the entire line with `LIGHT_RED_BG` when CC > CR (broken prompt caching indicator).
+**Purpose:** Shared tool call formatting (~230 lines). Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, and system messages as color-coded terminal strings. Pane-specific formatting (cache tracker, workers block, proxy block, hooks block) moved to respective pane modules.
 
 **Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, is_error flag).
 
@@ -240,7 +313,7 @@ if key == '\033':
 
 ## proxy_addon.py
 
-**Purpose:** mitmproxy addon that intercepts Claude Code API requests for logging and cache optimization. Logs full request payloads to JSONL. Applies content modifications (strip plan-mode, task-tools-nag, task-notification; replace system prompt). Takes over cache_control placement from Claude Code: strips all CC-set markers, sets own 4 breakpoints on the modified payload (system[-1], last non-deferred tool, last stable message, last message). Tracks previous modified messages per model family for stable BP3 calculation.
+**Purpose:** mitmproxy addon that intercepts Claude Code API requests for logging and cache optimization. Logs full request payloads to JSONL. Applies content modifications (strip plan-mode, task-tools-nag, task-notification, rejection messages; replace system prompt; strip session-specific guidance; extract hook-injected rules to system block with `scope: "global"`). Strips unused tools via blocklist + trims Agent description. Takes over cache_control placement from Claude Code: strips all CC-set markers, sets own 4 breakpoints on the modified payload (rules block or system[-1], last non-deferred tool, last stable message, last message). Tracks previous modified messages per model family for stable BP3 calculation.
 
 **Input:** HTTP flows to `api.anthropic.com/v1/messages` via mitmproxy.
 

@@ -30,9 +30,9 @@ See [sources/sources.md](sources/sources.md)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| Polling | monitor.py `run_streaming_loop` / `run_rules_loop` / `run_hooks_loop` / `run_tokens_loop` / `run_workers_loop` | 0.5s interval |
-| Token Profiling | monitor.py `accumulate_tokens` / `format_tokens_block` | Input tokens (direct, cache create, cache read) + output tokens by block type + tool name |
-| Hook Routing | monitor.py `process_hook_log` / `process_hook_log_for_display` | InstructionsLoaded → rules pane, hooks with output → hooks pane |
+| Polling | monitor.py `run_streaming_loop` | 0.5s interval |
+| Token Profiling | token_pane.py `run_tokens_loop` | Input tokens (direct, cache create, cache read) + output tokens by block type + tool name |
+| Hook Routing | rules_pane.py `process_hook_log` / hooks_pane.py `process_hook_log_for_display` | InstructionsLoaded → rules pane, hooks with output → hooks pane |
 | Agent Tracking | monitor.py | agent_to_task, agent_to_type, buffered calls |
 
 ### Display
@@ -41,12 +41,13 @@ See [sources/sources.md](sources/sources.md)
 |-----------|---------------|--------|
 | Tool Call Formatting | formatter.py | Green (main), Blue (subagent), Red (error) |
 | UI Mode Loop | ui_mode.py | Screen-clear refresh, raw stdin |
-| Rules Display | ui_mode.py `format_rules_block` | Pastel blue, [P]/[G] prefix, eigenes tmux Pane |
-| Hooks Display | monitor.py + formatter.py | Dedicated tmux pane, format_hook_event, scrolling stream |
-| Warnings Display | monitor.py + formatter.py | Dedicated tmux pane, format_unknown_type_warning |
-| Token Display | monitor.py + formatter.py | Dedicated tmux pane, format_token_profile, bar chart, session browser (cumulative N sessions) |
-| Workers Display | monitor.py + formatter.py | Dedicated tmux pane, format_workers_block, real-time worker status |
-| Proxy Display | monitor.py + formatter.py | Dedicated tmux pane, format_proxy_block, API request structure |
+| Rules Display | rules_pane.py | Pastel blue, [P]/[G] prefix, eigenes tmux Pane |
+| Hooks Display | hooks_pane.py | Dedicated tmux pane, scrolling stream, expand/collapse |
+| Warnings Display | warnings_pane.py | Dedicated tmux pane, unknown type warnings |
+| Token Display | token_pane.py | Dedicated tmux pane, bar chart, session browser (cumulative N sessions) |
+| Workers Display | worker_pane.py | Dedicated tmux pane, real-time worker status |
+| Proxy Display | proxy_pane.py | Dedicated tmux pane, API request structure |
+| Subagent Display | subagent_pane.py | Dedicated tmux pane, per-agent cache token view |
 
 ### Key Files
 
@@ -55,17 +56,22 @@ See [sources/sources.md](sources/sources.md)
 | `workflow.py` | Entry point, mode routing |
 | `src/startup.py` | CLI args, signal handlers |
 | `src/tmux_launcher.py` | tmux session, 5-window layout |
-| `src/monitor.py` | Core polling orchestrator |
+| `src/monitor.py` | Core polling orchestrator (~460 lines) |
+| `src/token_pane.py` | Token profiling pane |
+| `src/proxy_pane.py` | Proxy pane + log parsing |
+| `src/worker_pane.py` | Workers pane + status detection |
+| `src/hooks_pane.py` | Hooks pane + persisted context |
+| `src/rules_pane.py` | Rules pane + InstructionsLoaded routing |
+| `src/warnings_pane.py` | Warnings pane |
+| `src/subagent_pane.py` | Subagent pane |
+| `src/formatter.py` | Shared tool call formatting (~230 lines) |
 | `src/session_finder.py` | Session discovery |
 | `src/jsonl_parser.py` | JSONL parsing, tool call extraction |
 | `src/hook_parser.py` | Hook log parsing |
-| `src/formatter.py` | Tool call formatting |
-| `src/ui_mode.py` | UI mode loop, rules formatting |
 | `src/click_handler.py` | Keyboard input handling |
 | `src/constants.py` | Shared constants |
 | `src/utils.py` | Colors, timestamps |
-| `src/proxy_addon.py` | mitmproxy API request logging + cache_control placement |
-| `src/proxy_launcher.sh` | Proxy start script |
+| `src/proxy_addon.py` | mitmproxy addon (cache_control, tool stripping, rules caching) |
 | `src/claude_proxy_start.sh` | Combined proxy + Claude Code launcher |
 
 ## Project Structure
@@ -85,11 +91,18 @@ Monitor_CC/
 ├── not_working/                    → Failed approaches (markdown records)
 ├── repo/                           → tmux source code (external reference, own .git)
 ├── src/                            → [DOCS.md](src/DOCS.md)
-│   ├── monitor.py
+│   ├── monitor.py                  → Core polling orchestrator
+│   ├── token_pane.py               → Token profiling pane (cache tracker, session browser)
+│   ├── proxy_pane.py               → Proxy pane (API request structure, log parsing)
+│   ├── worker_pane.py              → Workers pane (status, cache per worker)
+│   ├── hooks_pane.py               → Hooks pane (hook events, expand/collapse)
+│   ├── rules_pane.py               → Rules pane (active rules, InstructionsLoaded routing)
+│   ├── warnings_pane.py            → Warnings pane (unknown JSONL types)
+│   ├── subagent_pane.py            → Subagent pane (per-agent cache token view)
 │   ├── session_finder.py
 │   ├── jsonl_parser.py
 │   ├── hook_parser.py
-│   ├── formatter.py
+│   ├── formatter.py                → Shared tool call formatting
 │   ├── click_handler.py
 │   ├── ui_mode.py
 │   ├── subagent_ui.py
@@ -97,7 +110,7 @@ Monitor_CC/
 │   ├── startup.py
 │   ├── constants.py
 │   ├── utils.py
-│   ├── proxy_addon.py
+│   ├── proxy_addon.py              → mitmproxy addon (cache_control, tool stripping, rules caching)
 │   ├── proxy_launcher.sh
 │   ├── claude_proxy_start.sh
 │   └── logs/                       → Runtime log files (gitignored)
