@@ -26,4 +26,8 @@ else
     export PROXY_LOG_ID="$(date +%s)"
 fi
 
-mitmdump -p 8080 -s "$MONITOR_CC_ROOT/src/proxy_addon.py" --set flow_detail=0 -q
+# Copy addon to isolated live copy — prevents git merge hot-reload
+LIVE_ADDON="/tmp/.proxy_addon_live.py"
+cp "$MONITOR_CC_ROOT/src/proxy_addon.py" "$LIVE_ADDON"
+
+mitmdump -p 8080 -s "$LIVE_ADDON" --set flow_detail=0 -q
