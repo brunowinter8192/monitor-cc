@@ -15,9 +15,14 @@ ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
 DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
 
+AGENT_TRIMMED_DESCRIPTION = """Launch an agent to handle a task.
+
+Available agent types:
+- iterative-dev:git-committer: Autonomous git committer. Handles git status, diff, add, commit, push. Returns structured summary. (Tools: All tools)
+
+Specify subagent_type parameter to select agent type."""
+
 TOOL_BLOCKLIST = frozenset({
-    # Agent tool (we use workers, not subagents)
-    "Agent",
     # Task tools (we use beads)
     "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",
     # Cron tools
@@ -562,17 +567,21 @@ def apply_modification_rules(payload: dict) -> tuple:
     return modified, modifications
 
 
-# Remove blocklisted tools from payload. Returns (modified_payload, count_removed).
+# Remove blocklisted tools from payload and trim Agent description. Returns (modified_payload, count_removed).
 def _strip_unused_tools(payload: dict) -> tuple:
     tools = payload.get("tools", [])
     if not tools:
         return payload, 0
     kept = [t for t in tools if t.get("name") not in TOOL_BLOCKLIST]
     removed = len(tools) - len(kept)
-    if removed == 0:
+    trimmed = [
+        {**t, "description": AGENT_TRIMMED_DESCRIPTION} if t.get("name") == "Agent" else t
+        for t in kept
+    ]
+    if removed == 0 and trimmed == kept:
         return payload, 0
     modified = dict(payload)
-    modified["tools"] = kept
+    modified["tools"] = trimmed
     return modified, removed
 
 
