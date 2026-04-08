@@ -48,6 +48,13 @@ if [ ! -f "$MITMPROXY_CA" ]; then
     echo "NOTE: You may need to trust this cert in your system keychain for HTTPS to work."
 fi
 
+# Build combined CA bundle (system CAs + mitmproxy CA) for Python MCP servers
+COMBINED_CA="$HOME/.mitmproxy/combined-ca.pem"
+SYSTEM_CA="/opt/homebrew/etc/ca-certificates/cert.pem"
+if [ -f "$MITMPROXY_CA" ] && [ -f "$SYSTEM_CA" ]; then
+    cat "$SYSTEM_CA" "$MITMPROXY_CA" > "$COMBINED_CA"
+fi
+
 # Write marker file so monitor can discover port for this session
 LOG_DIR="$MONITOR_CC_ROOT/src/logs"
 mkdir -p "$LOG_DIR"
@@ -74,4 +81,6 @@ echo "Proxy for $PROJECT on port $PROXY_PORT, log: api_requests_$SESSION_ID.json
 # Start Claude Code with proxy settings
 HTTPS_PROXY="http://localhost:$PROXY_PORT" \
 NODE_EXTRA_CA_CERTS="$MITMPROXY_CA" \
+SSL_CERT_FILE="$COMBINED_CA" \
+REQUESTS_CA_BUNDLE="$COMBINED_CA" \
 claude "${CLAUDE_ARGS[@]}"

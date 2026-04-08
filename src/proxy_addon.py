@@ -305,6 +305,24 @@ def _compute_diff(prev: Optional[list], curr: list) -> dict:
     }
 
 
+# Remove only plan-mode blocks/sections from content, preserving everything else.
+# Returns the remaining content, or None if nothing is left after stripping.
+def _strip_plan_mode_blocks(content):
+    if isinstance(content, list):
+        kept = [b for b in content if not (isinstance(b, dict) and "Plan mode is active" in b.get("text", ""))]
+        if not kept:
+            return None
+        return kept
+    if isinstance(content, str):
+        # Remove the <system-reminder> block that contains plan-mode
+        stripped = re.sub(
+            r'<system-reminder>\s*Plan mode .*?</system-reminder>\s*',
+            '', content, flags=re.DOTALL
+        )
+        return stripped.strip() or None
+    return None
+
+
 # Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules)
 def apply_modification_rules(payload: dict) -> tuple:
     modifications = []
@@ -313,7 +331,13 @@ def apply_modification_rules(payload: dict) -> tuple:
     changed = False
     for msg in messages:
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
-            new_messages.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
+            stripped = _strip_plan_mode_blocks(msg.get("content", ""))
+            if stripped:
+                new_msg = dict(msg)
+                new_msg["content"] = stripped
+                new_messages.append(new_msg)
+            else:
+                new_messages.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
             modifications.append("removed_plan_mode_sr")
             changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<task-notification>"):
