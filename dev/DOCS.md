@@ -27,6 +27,7 @@ Analysis scripts for Claude Code session JSONL data. No pipeline mapping — sta
 | `01_extract.py` | Extract and analyze Claude Code session JSONL files |
 | `02_cache_timeline.py` | Analyze cache/token behavior over time in Claude Code sessions |
 | `03_cache_rebuild_context.py` | Detect cache rebuilds and display surrounding message context; `--session <path>` or `--all`; `--context N` (default 5), `--summary-only` |
+| `04_cache_validation.py` | Validate proxy cache breakpoint placement and stability; `<proxy_log.jsonl>` `--limit N` `--rebuilds-only` |
 
 **Usage:**
 
