@@ -35,3 +35,4 @@ External references used as evidence for pipeline decisions.
 | Claude Code #42796 | github.com/anthropics/claude-code/issues/42796 | Cache investigation | cache-investigation |
 | HackerNews: 47660925 | news.ycombinator.com/item?id=47660925 | Cache investigation | cache-investigation |
 | cc-cache-fix repo | github.com/Rangizingo/cc-cache-fix/ | Cache investigation, reference implementation | cache-investigation |
+| Reddit: adaptive-thinking | reddit.com/r/ClaudeCode (post) | CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING + MAX_THINKING_TOKENS env vars for restoring pre-adaptive thinking quality | proxy-tuning |

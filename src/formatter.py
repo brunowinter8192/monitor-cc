@@ -207,10 +207,11 @@ def build_hook_display_item(entry: dict) -> dict:
     category = HOOK_EVENT_CATEGORIES.get(entry.get('hook_event', ''), 'tool')
     color = _HOOK_CATEGORY_COLORS.get(category, PASTEL_PURPLE)
     hook_script = entry.get('hook_script', '')
-    if 'worker' in hook_script.lower():
-        color = PASTEL_GREEN
+    cwd = entry.get('cwd', '')
+    if '.claude/worktrees/' in cwd:
+        color = GREEN
     else:
-        color = CYAN
+        color = PASTEL_ORANGE
     return {
         'type': 'hook',
         'timestamp': entry.get('timestamp', ''),
