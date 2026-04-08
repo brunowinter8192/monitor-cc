@@ -85,6 +85,32 @@ Log-Dateien: `api_requests_{projektname}_{timestamp}.jsonl` statt kryptischer MD
 
 Keep (no change needed) — eigene Breakpoints sind implementiert und verifiziert. TTL `1h` und `scope: "global"` korrekt auf Markern gesetzt.
 
+### Global Rules Caching
+
+Change: Hook-injizierte Rules (78k chars, `SessionStart hook additional context:`) werden aus MSG[0] extrahiert und als eigener System-Block mit `scope: "global"` eingefügt. System-Block Position: nach system[2] (stripped), vor dynamischem Content (gitStatus). BP1 zielt auf den Rules-Block statt auf den letzten System-Block.
+
+Erwarteter Impact: ~25-30k Tokens CR statt CC ab dem 2. Request jeder Session. Cross-session Cache-Hits bei unveränderten Rules. Cross-model: Opus + Worker mit gleichen Rules → Cache-Hit.
+
+### Rejection Message Stripping
+
+Change: ESC-Abbruch tool_result Messages ("The user doesn't want to proceed with this tool use...") werden auf `"."` gekürzt. Marker: `_REJECTION_MARKER` Konstante.
+
+### Agent-Tool Trimming
+
+Change: Agent-Tool bleibt im tools-Array, aber Description von ~10k auf ~300 chars getrimmt (nur git-committer Subagent-Type). `AGENT_TRIMMED_DESCRIPTION` Konstante.
+
+### Session-Guidance Stripping
+
+Change: `# Session-specific guidance` Sektion aus system[3→4] entfernt. `# Environment`, `# Language`, `gitStatus` bleiben erhalten.
+
+### Worker Proxy Live-Copy
+
+Change: Worker-Proxies verwenden jetzt ebenfalls Live-Copy (`.proxy_addon_worker_{name}.py`). Verhindert Hot-Reload bei Git-Merges auf proxy_addon.py. Fix in iterative-dev Plugin `tmux_spawn.sh`.
+
+### Proxy Log-Naming
+
+Change: Main-Logs heißen `api_requests_opus_{project}_{timestamp}.jsonl`, Worker-Logs `api_requests_worker_{name}_{timestamp}.jsonl`. Klare Trennung zwischen Opus und Worker Proxy-Logs.
+
 ### API Constraints (Referenz)
 
 - Max 4 Breakpoints pro Request
@@ -92,11 +118,13 @@ Keep (no change needed) — eigene Breakpoints sind implementiert und verifizier
 - Min cacheable prefix: 2048 Tokens (Opus) / 1024 (Haiku)
 - Cache Write kostet 125% der Token — falsches Placement kann teurer sein als kein Caching
 - cache_control marker: `{"type": "ephemeral"}` (kein TTL nötig, API bestimmt)
+- `scope: "global"` — Content-basierter Cache über Sessions/API-Keys hinweg. Gleicher Content = Cache-Hit, unterschiedlicher Content = separate Einträge. Kein Cross-Contamination zwischen Opus und Worker.
 
 ## Offene Fragen
 
 - Langzeit-Stabilität: Verhalten bei Sessions >500 Requests noch nicht beobachtet
 - Claude Code Updates könnten cache_control Handling ändern (z.B. mehr als 2 eigene Breakpoints) — `_strip_all_cache_control` entfernt alles, daher robust gegen Änderungen
+- Global Rules Caching: `scope: "global"` auf eigenen System-Blöcken verifizieren — cross-session Cache-Hit testen (gleiche Rules, neue Session → CR statt CC?)
 
 ## Quellen
 
