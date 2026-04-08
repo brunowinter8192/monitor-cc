@@ -667,8 +667,39 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         all_lines.append(header)
         line_keys.append(entry_idx)
 
-        if diff_summary:
-            all_lines.append(f"  {YELLOW}{diff_summary}{RESET}")
+        sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
+        tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+        tools_n = entry.get('tools_count', 0)
+        msgs_chars = entry.get('messages_total_chars', 0)
+        mods = entry.get('modifications', [])
+        info_parts = [f"sys:{_format_k(sys_chars)}", f"tools:{_format_k(tools_chars)}({tools_n})", f"msgs:{_format_k(msgs_chars)}"]
+        info_line = f"  {DIM}{'  '.join(info_parts)}"
+        if mods:
+            info_line += f"  {YELLOW}mods:[{','.join(mods)}]{DIM}"
+        info_line += RESET
+        all_lines.append(info_line)
+        line_keys.append(None)
+
+        prev_entry = entries[entry_idx - 1] if entry_idx > 0 else None
+        cache_warnings = []
+        if prev_entry is not None:
+            if entry.get('tools_hash') and prev_entry.get('tools_hash') and entry.get('tools_hash') != prev_entry.get('tools_hash'):
+                cache_warnings.append('⚠ TOOLS CHANGED')
+            if entry.get('system_total_chars') is not None and prev_entry.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_entry.get('system_total_chars'):
+                cache_warnings.append('⚠ SYSTEM CHANGED')
+            msgs_modified = diff.get('messages_modified', 0)
+            if msgs_modified > 0 and first_diff >= 0 and cache_bp:
+                if first_diff < min(cache_bp):
+                    cache_warnings.append('⚠ PRE-BP MSG MODIFIED')
+
+        if diff_summary or cache_warnings:
+            warn_str = '  '.join(f"{RED}{w}{RESET}" for w in cache_warnings)
+            if diff_summary and cache_warnings:
+                all_lines.append(f"  {YELLOW}{diff_summary}{RESET}  {warn_str}")
+            elif diff_summary:
+                all_lines.append(f"  {YELLOW}{diff_summary}{RESET}")
+            else:
+                all_lines.append(f"  {warn_str}")
             line_keys.append(None)
 
         if is_expanded:

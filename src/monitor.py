@@ -1478,6 +1478,46 @@ def truncate_line(line: str, max_length: int) -> str:
 def _proxy_session_id_for_project(project_path: str) -> str:
     return hashlib.md5(project_path.encode()).hexdigest()[:8]
 
+# Count total chars in a raw message's content (string or list of content blocks)
+def _raw_msg_chars(msg: dict) -> int:
+    content = msg.get('content', '')
+    if isinstance(content, str):
+        return len(content)
+    if isinstance(content, list):
+        total = 0
+        for block in content:
+            if isinstance(block, dict):
+                total += len(block.get('text', ''))
+        return total
+    return 0
+
+# Extract analysis fields from raw_payload into entry dict, then delete raw_payload to save memory
+def _extract_raw_payload_fields(entry: dict) -> None:
+    raw = entry.get('raw_payload', {})
+    if raw:
+        system = raw.get('system', [])
+        entry['system_blocks'] = [
+            {'idx': i, 'chars': len(b.get('text', '')), 'has_cc': bool(b.get('cache_control'))}
+            for i, b in enumerate(system) if isinstance(b, dict)
+        ] if isinstance(system, list) else []
+        entry['system_total_chars'] = sum(b['chars'] for b in entry['system_blocks'])
+
+        tools = raw.get('tools', [])
+        entry['tools_total_chars'] = sum(len(json.dumps(t)) for t in tools)
+        entry['tools_count'] = len(tools)
+        entry['tools_hash'] = hashlib.md5(json.dumps(sorted([t.get('name', '') for t in tools])).encode()).hexdigest()[:8]
+
+        entry['thinking_config'] = raw.get('thinking', {})
+        entry['output_config'] = raw.get('output_config', {})
+
+        msgs = raw.get('messages', [])
+        entry['messages_total_chars'] = sum(_raw_msg_chars(m) for m in msgs)
+
+        del entry['raw_payload']
+
+    if 'request_headers' in entry:
+        del entry['request_headers']
+
 # Read new proxy log entries for the monitored project, returning (entries, new_position)
 def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
     root = os.environ.get("MONITOR_CC_ROOT", "")
@@ -1498,7 +1538,9 @@ def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
     entries = []
     for line in lines:
         try:
-            entries.append(json.loads(line))
+            entry = json.loads(line)
+            _extract_raw_payload_fields(entry)
+            entries.append(entry)
         except json.JSONDecodeError:
             pass
     return entries, log_file.stat().st_size
