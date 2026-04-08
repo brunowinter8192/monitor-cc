@@ -39,13 +39,23 @@ class ProxyAddon:
             model = payload.get("model", "")
             model_family = "haiku" if "haiku" in model.lower() else "opus"
             modified_payload, modifications = apply_modification_rules(payload)
+
+            # Log ORIGINAL payload for analysis (before cache_control changes)
             entry = _build_entry(flow, payload, self.prev_messages_by_model.get(model_family), modifications)
             _write_entry(self.log_file, entry)
-            self.prev_messages_by_model[model_family] = [_summarize_message(m) for m in payload.get("messages", [])]
 
-            if modified_payload is not payload:
-                flow.request.content = json.dumps(modified_payload).encode("utf-8")
-                flow.request.headers.pop("content-encoding", None)
+            # Cache-control: strip CC's markers, set our own on the modified payload
+            prev_mod_msgs = self.prev_messages_by_model.get(model_family)
+            modified_payload = _strip_all_cache_control(modified_payload)
+            modified_payload = _set_cache_breakpoints(modified_payload, prev_mod_msgs)
+
+            # Store MODIFIED message summaries for next request's diff (BP3 stability)
+            self.prev_messages_by_model[model_family] = [
+                _summarize_message(m) for m in modified_payload.get("messages", [])
+            ]
+
+            flow.request.content = json.dumps(modified_payload).encode("utf-8")
+            flow.request.headers.pop("content-encoding", None)
         except Exception as e:
             print(f"[proxy_addon] Error: {e}", file=sys.stderr)
             try:
@@ -359,6 +369,121 @@ def _strip_system_reminder(content, marker: str):
                 result.append(block)
         return result
     return content
+
+
+# Remove ALL cache_control markers from payload (system, tools, messages)
+def _strip_all_cache_control(payload: dict) -> dict:
+    result = dict(payload)
+
+    # Strip from system blocks
+    system = result.get("system", [])
+    if isinstance(system, list):
+        new_system = []
+        for block in system:
+            if isinstance(block, dict) and "cache_control" in block:
+                block = {k: v for k, v in block.items() if k != "cache_control"}
+            new_system.append(block)
+        result["system"] = new_system
+
+    # Strip from tools
+    tools = result.get("tools", [])
+    if tools:
+        new_tools = []
+        for tool in tools:
+            if isinstance(tool, dict) and "cache_control" in tool:
+                tool = {k: v for k, v in tool.items() if k != "cache_control"}
+            new_tools.append(tool)
+        result["tools"] = new_tools
+
+    # Strip from messages (top-level and content blocks)
+    messages = result.get("messages", [])
+    new_messages = []
+    for msg in messages:
+        new_msg = {k: v for k, v in msg.items() if k != "cache_control"}
+        content = new_msg.get("content", "")
+        if isinstance(content, list):
+            new_blocks = []
+            for block in content:
+                if isinstance(block, dict) and "cache_control" in block:
+                    block = {k: v for k, v in block.items() if k != "cache_control"}
+                new_blocks.append(block)
+            new_msg["content"] = new_blocks
+        new_messages.append(new_msg)
+    result["messages"] = new_messages
+
+    return result
+
+
+# Set our own cache_control breakpoints (max 4) on the already-modified, stripped payload.
+# prev_mod_messages: summaries from the PREVIOUS request's modified payload (for BP3).
+def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dict:
+    result = dict(payload)
+    bp_count = 0
+    cc_marker = {"type": "ephemeral"}
+
+    # BP1: last system block
+    system = result.get("system", [])
+    if isinstance(system, list) and system:
+        last_sys = system[-1]
+        if isinstance(last_sys, dict):
+            new_system = list(system)
+            new_system[-1] = {**last_sys, "cache_control": cc_marker}
+            result["system"] = new_system
+            bp_count += 1
+
+    # BP2: last tool WITHOUT defer_loading (defer_loading + cache_control = API error)
+    tools = result.get("tools", [])
+    if tools:
+        new_tools = list(tools)
+        for ti in range(len(new_tools) - 1, -1, -1):
+            tool = new_tools[ti]
+            if isinstance(tool, dict) and not tool.get("defer_loading"):
+                new_tools[ti] = {**tool, "cache_control": cc_marker}
+                bp_count += 1
+                break
+        result["tools"] = new_tools
+
+    # BP3: last message that is UNCHANGED from previous request
+    messages = result.get("messages", [])
+    if messages and prev_mod_messages is not None:
+        curr_summaries = [_summarize_message(m) for m in messages]
+        diff = _compute_diff(prev_mod_messages, curr_summaries)
+        first_diff = diff.get("first_diff_index", -1)
+
+        # Place BP3 at the message just before the first difference
+        if first_diff > 0:
+            bp3_idx = first_diff - 1
+            messages = list(messages)
+            messages[bp3_idx] = _add_cache_control_to_message(messages[bp3_idx], cc_marker)
+            bp_count += 1
+
+    # BP4: last message (for next request's cache)
+    if messages:
+        last_idx = len(messages) - 1
+        # Don't double-set if BP3 already set on last message
+        if not _has_cache_control(messages[last_idx]):
+            messages = list(messages) if not isinstance(messages, list) else messages
+            messages[last_idx] = _add_cache_control_to_message(messages[last_idx], cc_marker)
+            bp_count += 1
+
+    result["messages"] = messages
+    return result
+
+
+# Add cache_control to the last content block of a message
+def _add_cache_control_to_message(msg: dict, cc_marker: dict) -> dict:
+    new_msg = dict(msg)
+    content = new_msg.get("content", "")
+    if isinstance(content, list) and content:
+        new_blocks = list(content)
+        last_block = new_blocks[-1]
+        if isinstance(last_block, dict):
+            new_blocks[-1] = {**last_block, "cache_control": cc_marker}
+        new_msg["content"] = new_blocks
+    elif isinstance(content, str):
+        # String content → wrap in block to attach cache_control
+        new_msg["content"] = [{"type": "text", "text": content, "cache_control": cc_marker}]
+    return new_msg
 
 
 # Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules)

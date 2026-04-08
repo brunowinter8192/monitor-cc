@@ -64,7 +64,7 @@ See [sources/sources.md](sources/sources.md)
 | `src/click_handler.py` | Keyboard input handling |
 | `src/constants.py` | Shared constants |
 | `src/utils.py` | Colors, timestamps |
-| `src/proxy_addon.py` | mitmproxy API request logging |
+| `src/proxy_addon.py` | mitmproxy API request logging + cache_control placement |
 | `src/proxy_launcher.sh` | Proxy start script |
 | `src/claude_proxy_start.sh` | Combined proxy + Claude Code launcher |
 
@@ -79,7 +79,8 @@ Monitor_CC/
 │   ├── pipe01_entry_startup.md
 │   ├── pipe02_data_sources.md
 │   ├── pipe03_core_loop.md
-│   └── pipe04_display.md
+│   ├── pipe04_display.md
+│   └── pipe05_proxy_cache.md
 ├── sources/                        → [sources.md](sources/sources.md)
 ├── not_working/                    → Failed approaches (markdown records)
 ├── repo/                           → tmux source code (external reference, own .git)
