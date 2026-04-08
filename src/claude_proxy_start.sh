@@ -30,8 +30,9 @@ else
     SESSION_ID="$(echo -n "$PROJECT" | md5sum | head -c 8)"
 fi
 
-# Generate per-start log id: session_id + unix timestamp (unique across proxy restarts)
-LOG_ID="${SESSION_ID}_$(date +%s)"
+# Generate per-start log id: sanitized project basename + unix timestamp (human-readable)
+PROJECT_BASENAME="$(basename "$PROJECT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '_' | sed 's/^_*//;s/_*$//')"
+LOG_ID="${PROJECT_BASENAME}_$(date +%s)"
 
 # Find a free port starting at 8080
 PROXY_PORT=8080
@@ -72,8 +73,11 @@ echo "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_root"
 export MONITOR_CC_ROOT
 export PROXY_SESSION_ID="$SESSION_ID"
 export PROXY_LOG_ID="$LOG_ID"
-mitmdump -p $PROXY_PORT -s "$SCRIPT_DIR/proxy_addon.py" --set flow_detail=0 -q 2>"$LOG_DIR/proxy_errors_$SESSION_ID.log" &
+mitmdump -p $PROXY_PORT -s "$SCRIPT_DIR/proxy_addon.py" --set flow_detail=0 -q 2>"$LOG_DIR/proxy_errors_$LOG_ID.log" &
 PROXY_PID=$!
+
+# Log rotation: keep max 30 log files total (jsonl + error logs), delete oldest by mtime
+(cd "$LOG_DIR" && ls -t api_requests_*.jsonl proxy_errors_*.log 2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f "$f"; done)
 
 # Cleanup on exit: kill proxy and remove marker file
 cleanup() {
@@ -86,7 +90,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 sleep 1
-echo "Proxy for $PROJECT on port $PROXY_PORT, log: api_requests_$LOG_ID.jsonl"
+echo "Proxy for $PROJECT on port $PROXY_PORT, log: api_requests_${LOG_ID}.jsonl"
 
 # Start Claude Code with proxy settings
 HTTPS_PROXY="http://localhost:$PROXY_PORT" \
