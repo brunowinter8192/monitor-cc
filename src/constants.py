@@ -38,7 +38,6 @@ MODE_WARNINGS = 'warnings'
 MODE_HOOKS = 'hooks'
 MODE_TOKENS = 'tokens'
 MODE_WORKERS = 'workers'
-MODE_SUBAGENTS = 'subagents'
 MODE_PROXY = 'proxy'
 
 # Hook events — session lifecycle
@@ -132,5 +131,4 @@ PANE_HEADERS = {
     'warnings': 'WARNINGS',
     'tokens': 'TOKENS',
     'workers': 'WORKERS',
-    'subagents': 'SUBAGENTS',
 }
