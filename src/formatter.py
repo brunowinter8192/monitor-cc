@@ -754,6 +754,15 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             line_keys.append(None)
 
             messages = entry.get('messages', [])
+            stripped_indices = set()
+            for _idx, _msg in enumerate(messages):
+                if _msg.get('type', '') == 'system-reminder':
+                    _preview = _msg.get('content_preview', '')
+                    if 'stripped_task_tools_nag' in mods and 'task tools haven' in _preview:
+                        stripped_indices.add(_idx)
+                    if 'removed_plan_mode_sr' in mods and 'Plan mode is active' in _preview:
+                        stripped_indices.add(_idx)
+
             start_idx = max(0, first_diff) if first_diff >= 0 else 0
             if start_idx > 0:
                 all_lines.append(f"  {DIM}... [0-{start_idx - 1}] unchanged ({start_idx} messages){RESET}")
@@ -766,11 +775,15 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
 
                 chars_fmt = f"{chars:,}c"
-                color = PASTEL_GREEN if has_cc else WHITE
                 msg_key = (entry_idx, 'msg', msg_idx)
                 is_msg_expanded = expand_states.get(msg_key, False)
                 msg_symbol = '\u25bc' if is_msg_expanded else '\u25b6'
-                all_lines.append(f"  {color}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                is_stripped = msg_idx in stripped_indices
+                if is_stripped:
+                    all_lines.append(f"  {DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}  {YELLOW}[STRIPPED]{RESET}")
+                else:
+                    color = PASTEL_GREEN if has_cc else WHITE
+                    all_lines.append(f"  {color}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
                 line_keys.append(msg_key)
 
                 if is_msg_expanded:
