@@ -30,9 +30,9 @@ else
     SESSION_ID="$(echo -n "$PROJECT" | md5sum | head -c 8)"
 fi
 
-# Generate per-start log id: sanitized project basename + unix timestamp (human-readable)
+# Generate per-start log id: opus_ prefix + sanitized project basename + unix timestamp
 PROJECT_BASENAME="$(basename "$PROJECT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '_' | sed 's/^_*//;s/_*$//')"
-LOG_ID="${PROJECT_BASENAME}_$(date +%s)"
+LOG_ID="opus_${PROJECT_BASENAME}_$(date +%s)"
 
 # Find a free port starting at 8080
 PROXY_PORT=8080
