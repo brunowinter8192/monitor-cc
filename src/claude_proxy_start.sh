@@ -64,7 +64,7 @@ echo "$PROXY_PORT" > "$MARKER_FILE"
 # Start proxy in background
 export MONITOR_CC_ROOT
 export PROXY_SESSION_ID="$SESSION_ID"
-mitmdump -p $PROXY_PORT -s "$SCRIPT_DIR/proxy_addon.py" --set flow_detail=0 -q &
+mitmdump -p $PROXY_PORT -s "$SCRIPT_DIR/proxy_addon.py" --set flow_detail=0 -q 2>"$LOG_DIR/proxy_errors_$SESSION_ID.log" &
 PROXY_PID=$!
 
 # Cleanup on exit: kill proxy and remove marker file

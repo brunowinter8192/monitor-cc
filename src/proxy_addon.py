@@ -48,6 +48,16 @@ class ProxyAddon:
                 flow.request.headers.pop("content-encoding", None)
         except Exception as e:
             print(f"[proxy_addon] Error: {e}", file=sys.stderr)
+            try:
+                error_entry = {
+                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "request_url": flow.request.pretty_url if flow else "unknown",
+                }
+                _write_entry(self.log_file, error_entry)
+            except Exception:
+                pass  # last resort — don't crash trying to log the error
 
 
 # FUNCTIONS
