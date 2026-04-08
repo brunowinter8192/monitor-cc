@@ -328,6 +328,9 @@ def _strip_plan_mode_blocks(content):
         kept = [b for b in content if not (isinstance(b, dict) and "Plan mode is active" in b.get("text", ""))]
         if not kept:
             return None
+        for i, b in enumerate(kept):
+            if isinstance(b, dict) and not b.get("text", "").strip() and b.get("cache_control"):
+                kept[i] = {**b, "text": "."}
         return kept
     if isinstance(content, str):
         # Remove the <system-reminder> block that contains plan-mode
@@ -343,12 +346,15 @@ def _strip_plan_mode_blocks(content):
 def _strip_system_reminder(content, marker: str):
     pattern = re.compile(r'<system-reminder>.*?' + re.escape(marker) + r'.*?</system-reminder>\s*', re.DOTALL)
     if isinstance(content, str):
-        return pattern.sub('', content)
+        return pattern.sub('', content) or "."
     if isinstance(content, list):
         result = []
         for block in content:
             if isinstance(block, dict) and block.get("type") == "text":
-                result.append({**block, "text": pattern.sub('', block.get("text", ""))})
+                new_text = pattern.sub('', block.get("text", ""))
+                if not new_text.strip() and block.get("cache_control"):
+                    new_text = "."
+                result.append({**block, "text": new_text})
             else:
                 result.append(block)
         return result
@@ -427,8 +433,10 @@ def _strip_task_notification_tags(content) -> str:
         result = []
         for block in content:
             if isinstance(block, dict) and block.get("type") == "text":
-                stripped = _STRIP_PATTERN.sub('', block.get("text", ""))
-                result.append({**block, "text": stripped})
+                new_text = _STRIP_PATTERN.sub('', block.get("text", ""))
+                if not new_text.strip() and block.get("cache_control"):
+                    new_text = "."
+                result.append({**block, "text": new_text})
             else:
                 result.append(block)
         return result
