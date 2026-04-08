@@ -15,6 +15,24 @@ ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
 DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
 
+TOOL_BLOCKLIST = frozenset({
+    # Agent tool (we use workers, not subagents)
+    "Agent",
+    # Task tools (we use beads)
+    "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",
+    # Cron tools
+    "CronCreate", "CronDelete", "CronList",
+    # Worktree tools (workers handle this)
+    "EnterWorktree", "ExitWorktree",
+    # Unused built-ins
+    "LSP", "ListMcpResourcesTool", "ReadMcpResourceTool", "RemoteTrigger",
+    "WebFetch", "WebSearch", "web_search",
+    # Plan mode (we use iterative-dev skill)
+    "EnterPlanMode", "ExitPlanMode",
+    # Other
+    "AskUserQuestion", "NotebookEdit",
+})
+
 
 # ORCHESTRATOR
 
@@ -43,6 +61,11 @@ class ProxyAddon:
             # Log ORIGINAL payload for analysis (before cache_control changes)
             entry = _build_entry(flow, payload, self.prev_messages_by_model.get(model_family), modifications)
             _write_entry(self.log_file, entry)
+
+            # Strip unused tools from the modified payload before sending to API
+            modified_payload, stripped_count = _strip_unused_tools(modified_payload)
+            if stripped_count > 0:
+                modifications.append(f"stripped_{stripped_count}_unused_tools")
 
             # Cache-control: strip CC's markers, set our own on the modified payload
             prev_mod_msgs = self.prev_messages_by_model.get(model_family)
@@ -537,6 +560,20 @@ def apply_modification_rules(payload: dict) -> tuple:
     modified["messages"] = new_messages
     modified["system"] = new_system
     return modified, modifications
+
+
+# Remove blocklisted tools from payload. Returns (modified_payload, count_removed).
+def _strip_unused_tools(payload: dict) -> tuple:
+    tools = payload.get("tools", [])
+    if not tools:
+        return payload, 0
+    kept = [t for t in tools if t.get("name") not in TOOL_BLOCKLIST]
+    removed = len(tools) - len(kept)
+    if removed == 0:
+        return payload, 0
+    modified = dict(payload)
+    modified["tools"] = kept
+    return modified, removed
 
 
 # Check if message content (str or list of blocks) contains a given substring
