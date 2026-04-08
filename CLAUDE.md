@@ -13,6 +13,7 @@ See [sources/sources.md](sources/sources.md)
 | Component | Implementation | Config |
 |-----------|---------------|--------|
 | CLI Entry | workflow.py → argparse | `--mode all\|main\|subagent\|rules\|warnings\|hooks\|tokens\|workers\|proxy`, `--project`, `--ui` |
+
 | tmux Launch | tmux_launcher.py | 5-Window (main+tokens \| proxy \| rules+hooks \| workers \| warnings), history 50000 |
 | Signal Handling | startup.py | SIGINT/SIGTERM → graceful shutdown |
 
@@ -39,7 +40,6 @@ See [sources/sources.md](sources/sources.md)
 | Component | Implementation | Config |
 |-----------|---------------|--------|
 | Tool Call Formatting | formatter.py | Green (main), Blue (subagent), Red (error) |
-| Subagent UI | subagent_ui.py + click_handler.py | Collapsible list, digits 1-9 toggle |
 | UI Mode Loop | ui_mode.py | Screen-clear refresh, raw stdin |
 | Rules Display | ui_mode.py `format_rules_block` | Pastel blue, [P]/[G] prefix, eigenes tmux Pane |
 | Hooks Display | monitor.py + formatter.py | Dedicated tmux pane, format_hook_event, scrolling stream |
@@ -61,7 +61,6 @@ See [sources/sources.md](sources/sources.md)
 | `src/hook_parser.py` | Hook log parsing |
 | `src/formatter.py` | Tool call formatting |
 | `src/ui_mode.py` | UI mode loop, rules formatting |
-| `src/subagent_ui.py` | Subagent list rendering |
 | `src/click_handler.py` | Keyboard input handling |
 | `src/constants.py` | Shared constants |
 | `src/utils.py` | Colors, timestamps |
@@ -105,7 +104,7 @@ Monitor_CC/
 │   ├── display/                    → [DOCS.md](dev/display/DOCS.md)
 │   │   ├── test_tmux_layout.sh
 │   │   ├── scan_jsonl_rules.py
-│   │   └── screenshot_panes.py     → tmux pane screenshot tool (5-window, 8-pane → PNG)
+│   │   └── screenshot_panes.py     → tmux pane screenshot tool (5-window, 7-pane → PNG)
 │   └── session_analysis/
 │       ├── 01_extract.py
 │       ├── 02_cache_timeline.py
