@@ -329,7 +329,7 @@ def _strip_plan_mode_blocks(content):
         if not kept:
             return None
         for i, b in enumerate(kept):
-            if isinstance(b, dict) and not b.get("text", "").strip() and b.get("cache_control"):
+            if isinstance(b, dict) and not b.get("text", "").strip():
                 kept[i] = {**b, "text": "."}
         return kept
     if isinstance(content, str):
@@ -352,7 +352,7 @@ def _strip_system_reminder(content, marker: str):
         for block in content:
             if isinstance(block, dict) and block.get("type") == "text":
                 new_text = pattern.sub('', block.get("text", ""))
-                if not new_text.strip() and block.get("cache_control"):
+                if not new_text.strip():
                     new_text = "."
                 result.append({**block, "text": new_text})
             else:
@@ -434,7 +434,7 @@ def _strip_task_notification_tags(content) -> str:
         for block in content:
             if isinstance(block, dict) and block.get("type") == "text":
                 new_text = _STRIP_PATTERN.sub('', block.get("text", ""))
-                if not new_text.strip() and block.get("cache_control"):
+                if not new_text.strip():
                     new_text = "."
                 result.append({**block, "text": new_text})
             else:
