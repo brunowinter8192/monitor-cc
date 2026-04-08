@@ -419,7 +419,8 @@ def _strip_all_cache_control(payload: dict) -> dict:
 def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dict:
     result = dict(payload)
     bp_count = 0
-    cc_marker = {"type": "ephemeral"}
+    cc_marker = {"type": "ephemeral", "ttl": "1h"}
+    cc_marker_global = {"type": "ephemeral", "ttl": "1h", "scope": "global"}
 
     # BP1: last system block
     system = result.get("system", [])
@@ -427,7 +428,7 @@ def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dic
         last_sys = system[-1]
         if isinstance(last_sys, dict):
             new_system = list(system)
-            new_system[-1] = {**last_sys, "cache_control": cc_marker}
+            new_system[-1] = {**last_sys, "cache_control": cc_marker_global}
             result["system"] = new_system
             bp_count += 1
 
