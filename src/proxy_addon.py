@@ -62,11 +62,11 @@ class ProxyAddon:
 
 # FUNCTIONS
 
-# Resolve log file path from env vars — session_id gives per-project isolation
+# Resolve log file path from env vars — log_id gives per-proxy-start isolation
 def _resolve_log_file() -> Path:
     root = os.environ.get("MONITOR_CC_ROOT")
-    session_id = os.environ.get("PROXY_SESSION_ID")
-    filename = f"api_requests_{session_id}.jsonl" if session_id else "api_requests.jsonl"
+    log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID")
+    filename = f"api_requests_{log_id}.jsonl" if log_id else "api_requests.jsonl"
     if root:
         return Path(root) / "src" / "logs" / filename
     return Path("/tmp") / filename

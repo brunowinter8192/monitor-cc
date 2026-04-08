@@ -30,6 +30,9 @@ else
     SESSION_ID="$(echo -n "$PROJECT" | md5sum | head -c 8)"
 fi
 
+# Generate per-start log id: session_id + unix timestamp (unique across proxy restarts)
+LOG_ID="${SESSION_ID}_$(date +%s)"
+
 # Find a free port starting at 8080
 PROXY_PORT=8080
 while lsof -iTCP:$PROXY_PORT -sTCP:LISTEN &>/dev/null 2>&1; do
@@ -55,19 +58,20 @@ if [ -f "$MITMPROXY_CA" ] && [ -f "$SYSTEM_CA" ]; then
     cat "$SYSTEM_CA" "$MITMPROXY_CA" > "$COMBINED_CA"
 fi
 
-# Write marker file so monitor can discover port for this session
+# Write marker file so monitor can discover port and log_id for this session
 LOG_DIR="$MONITOR_CC_ROOT/src/logs"
 mkdir -p "$LOG_DIR"
 MARKER_FILE="$LOG_DIR/.proxy_session_$SESSION_ID"
-echo "$PROXY_PORT" > "$MARKER_FILE"
+printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "$MARKER_FILE"
 # Also write to /tmp for cross-repo discovery (workers find proxy via this)
-echo "$PROXY_PORT" > "/tmp/.monitor_cc_proxy_${SESSION_ID}"
+printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "/tmp/.monitor_cc_proxy_${SESSION_ID}"
 # Write MONITOR_CC_ROOT for cross-repo worker proxy discovery
 echo "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_root"
 
 # Start proxy in background
 export MONITOR_CC_ROOT
 export PROXY_SESSION_ID="$SESSION_ID"
+export PROXY_LOG_ID="$LOG_ID"
 mitmdump -p $PROXY_PORT -s "$SCRIPT_DIR/proxy_addon.py" --set flow_detail=0 -q 2>"$LOG_DIR/proxy_errors_$SESSION_ID.log" &
 PROXY_PID=$!
 
@@ -82,7 +86,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 sleep 1
-echo "Proxy for $PROJECT on port $PROXY_PORT, log: api_requests_$SESSION_ID.jsonl"
+echo "Proxy for $PROJECT on port $PROXY_PORT, log: api_requests_$LOG_ID.jsonl"
 
 # Start Claude Code with proxy settings
 HTTPS_PROXY="http://localhost:$PROXY_PORT" \

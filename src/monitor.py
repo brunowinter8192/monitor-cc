@@ -1547,7 +1547,13 @@ def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
     if not project_filter:
         return [], last_position
     session_id = _proxy_session_id_for_project(project_filter)
-    log_file = Path(root) / "src" / "logs" / f"api_requests_{session_id}.jsonl"
+    marker_file = Path(root) / "src" / "logs" / f".proxy_session_{session_id}"
+    log_id = session_id
+    if marker_file.exists():
+        lines = marker_file.read_text(encoding="utf-8").splitlines()
+        if len(lines) >= 2 and lines[1].strip():
+            log_id = lines[1].strip()
+    log_file = Path(root) / "src" / "logs" / f"api_requests_{log_id}.jsonl"
     if not log_file.exists():
         return [], last_position
     with open(log_file, "r", encoding="utf-8") as f:
