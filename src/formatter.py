@@ -684,27 +684,58 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         all_lines.append(info_line)
         line_keys.append(None)
 
-        prev_entry = entries[entry_idx - 1] if entry_idx > 0 else None
+        model_family = "haiku" if "haiku" in model.lower() else "opus"
+        prev_entry = None
+        for _i in range(entry_idx - 1, -1, -1):
+            _prev_model = entries[_i].get('model', '')
+            _prev_family = "haiku" if "haiku" in _prev_model.lower() else "opus"
+            if _prev_family == model_family:
+                prev_entry = entries[_i]
+                break
+
         cache_warnings = []
+        warn_details = []
         if prev_entry is not None:
             if entry.get('tools_hash') and prev_entry.get('tools_hash') and entry.get('tools_hash') != prev_entry.get('tools_hash'):
                 cache_warnings.append('⚠ TOOLS CHANGED')
+                curr_names = set(entry.get('tools_names', []))
+                prev_names = set(prev_entry.get('tools_names', []))
+                added = sorted(curr_names - prev_names)
+                removed = sorted(prev_names - curr_names)
+                detail_lines = [f"    {GREEN}+{n}{RESET}" for n in added] + [f"    {RED}-{n}{RESET}" for n in removed]
+                warn_details.append(detail_lines)
             if entry.get('system_total_chars') is not None and prev_entry.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_entry.get('system_total_chars'):
                 cache_warnings.append('⚠ SYSTEM CHANGED')
+                old_c = prev_entry['system_total_chars']
+                new_c = entry['system_total_chars']
+                delta = new_c - old_c
+                warn_details.append([f"    {DIM}sys: {_format_k(old_c)} → {_format_k(new_c)} ({delta:+,}){RESET}"])
             msgs_modified = diff.get('messages_modified', 0)
             if msgs_modified > 0 and first_diff >= 0 and cache_bp:
                 if first_diff < min(cache_bp):
                     cache_warnings.append('⚠ PRE-BP MSG MODIFIED')
+                    warn_details.append([f"    {DIM}first change at msg #{first_diff}  {diff_summary}{RESET}"])
+
+        warn_key = (entry_idx, 'warnings')
+        is_warn_expanded = expand_states.get(warn_key, False)
 
         if diff_summary or cache_warnings:
-            warn_str = '  '.join(f"{RED}{w}{RESET}" for w in cache_warnings)
-            if diff_summary and cache_warnings:
-                all_lines.append(f"  {YELLOW}{diff_summary}{RESET}  {warn_str}")
-            elif diff_summary:
-                all_lines.append(f"  {YELLOW}{diff_summary}{RESET}")
+            if cache_warnings:
+                warn_symbol = '\u25bc' if is_warn_expanded else '\u25b6'
+                warn_str = '  '.join(f"{RED}{w}{RESET}" for w in cache_warnings)
+                if diff_summary:
+                    all_lines.append(f"  {warn_symbol} {YELLOW}{diff_summary}{RESET}  {warn_str}")
+                else:
+                    all_lines.append(f"  {warn_symbol} {warn_str}")
+                line_keys.append(warn_key)
+                if is_warn_expanded:
+                    for detail_lines in warn_details:
+                        for dl in detail_lines:
+                            all_lines.append(dl)
+                            line_keys.append(None)
             else:
-                all_lines.append(f"  {warn_str}")
-            line_keys.append(None)
+                all_lines.append(f"  {YELLOW}{diff_summary}{RESET}")
+                line_keys.append(None)
 
         if is_expanded:
             all_lines.append(f"  {DIM}{'─' * min(40, pane_width - 4)}{RESET}")
