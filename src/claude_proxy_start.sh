@@ -69,11 +69,15 @@ printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "/tmp/.monitor_cc_proxy_${SESSION_ID
 # Write MONITOR_CC_ROOT for cross-repo worker proxy discovery
 echo "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_root"
 
+# Copy addon to isolated live copy — prevents git merge hot-reload
+LIVE_ADDON="$LOG_DIR/.proxy_addon_live.py"
+cp "$SCRIPT_DIR/proxy_addon.py" "$LIVE_ADDON"
+
 # Start proxy in background
 export MONITOR_CC_ROOT
 export PROXY_SESSION_ID="$SESSION_ID"
 export PROXY_LOG_ID="$LOG_ID"
-mitmdump -p $PROXY_PORT -s "$SCRIPT_DIR/proxy_addon.py" --set flow_detail=0 -q 2>"$LOG_DIR/proxy_errors_$LOG_ID.log" &
+mitmdump -p $PROXY_PORT -s "$LIVE_ADDON" --set flow_detail=0 -q 2>"$LOG_DIR/proxy_errors_$LOG_ID.log" &
 PROXY_PID=$!
 
 # Log rotation: keep max 30 log files total (jsonl + error logs), delete oldest by mtime
@@ -86,6 +90,7 @@ cleanup() {
     rm -f "$MARKER_FILE"
     rm -f "/tmp/.monitor_cc_proxy_${SESSION_ID}"
     rm -f "/tmp/.monitor_cc_root"
+    rm -f "$LIVE_ADDON"
 }
 trap cleanup EXIT INT TERM
 
