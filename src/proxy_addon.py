@@ -399,6 +399,50 @@ def _strip_system_reminder(content, marker: str):
     return content
 
 
+_REJECTION_MARKER = "The user doesn't want to proceed with this tool use"
+
+
+# Check if user message content contains a tool_result block with the rejection text
+def _message_has_rejection(content) -> bool:
+    if isinstance(content, str):
+        return _REJECTION_MARKER in content
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            tool_content = block.get("content", "")
+            if isinstance(tool_content, str) and _REJECTION_MARKER in tool_content:
+                return True
+            if isinstance(tool_content, list) and any(
+                _REJECTION_MARKER in sub.get("text", "")
+                for sub in tool_content if isinstance(sub, dict)
+            ):
+                return True
+    return False
+
+
+# Replace rejection tool_result block content with '.'
+def _strip_rejection_message(content):
+    if isinstance(content, str):
+        return "."
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                tool_content = block.get("content", "")
+                has_rejection = (isinstance(tool_content, str) and _REJECTION_MARKER in tool_content) or (
+                    isinstance(tool_content, list) and any(
+                        _REJECTION_MARKER in sub.get("text", "")
+                        for sub in tool_content if isinstance(sub, dict)
+                    )
+                )
+                result.append({**block, "content": "."} if has_rejection else block)
+            else:
+                result.append(block)
+        return result
+    return content
+
+
 # Remove ALL cache_control markers from payload (system, tools, messages)
 def _strip_all_cache_control(payload: dict) -> dict:
     result = dict(payload)
@@ -543,6 +587,12 @@ def apply_modification_rules(payload: dict) -> tuple:
             new_msg["content"] = _strip_system_reminder(msg.get("content", ""), "task tools haven")
             new_messages.append(new_msg)
             modifications.append("stripped_task_tools_nag")
+            changed = True
+        elif msg.get("role") == "user" and _message_has_rejection(msg.get("content", "")):
+            new_msg = dict(msg)
+            new_msg["content"] = _strip_rejection_message(msg.get("content", ""))
+            new_messages.append(new_msg)
+            modifications.append("stripped_rejection_message")
             changed = True
         else:
             new_messages.append(msg)
