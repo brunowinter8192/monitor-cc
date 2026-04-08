@@ -364,10 +364,24 @@ def apply_modification_rules(payload: dict) -> tuple:
             changed = True
         else:
             new_messages.append(msg)
+
+    system = payload.get("system", [])
+    new_system = system
+    if isinstance(system, list) and len(system) >= 3:
+        block = system[2]
+        if isinstance(block, dict) and block.get("type") == "text" and len(block.get("text", "")) > 5000:
+            new_block = dict(block)
+            new_block["text"] = "."
+            new_system = list(system)
+            new_system[2] = new_block
+            modifications.append("replaced_system_prompt")
+            changed = True
+
     if not changed:
         return payload, modifications
     modified = dict(payload)
     modified["messages"] = new_messages
+    modified["system"] = new_system
     return modified, modifications
 
 
