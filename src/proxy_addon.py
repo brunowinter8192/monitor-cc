@@ -443,6 +443,54 @@ def _strip_rejection_message(content):
     return content
 
 
+# Extract SessionStart system-reminder block from MSG[0] content. Returns (modified_content, extracted_text_or_None).
+def _extract_session_start_block(content):
+    _RULES_MARKER = "SessionStart hook additional context:"
+    _TAG_OPEN = "<system-reminder>"
+    _TAG_CLOSE = "</system-reminder>"
+
+    def _extract_from_text(text: str):
+        if _RULES_MARKER not in text:
+            return text, None
+        marker_idx = text.index(_RULES_MARKER)
+        open_idx = text.rfind(_TAG_OPEN, 0, marker_idx)
+        if open_idx == -1:
+            return text, None
+        close_idx = text.find(_TAG_CLOSE, marker_idx)
+        if close_idx == -1:
+            return text, None
+        close_end = close_idx + len(_TAG_CLOSE)
+        extracted = text[open_idx:close_end]
+        remaining = (text[:open_idx] + text[close_end:]).strip() or "."
+        return remaining, extracted
+
+    if isinstance(content, str):
+        return _extract_from_text(content)
+    if isinstance(content, list):
+        for i, block in enumerate(content):
+            if not isinstance(block, dict) or block.get("type") != "text":
+                continue
+            new_text, extracted = _extract_from_text(block.get("text", ""))
+            if extracted:
+                new_blocks = list(content)
+                new_blocks[i] = {**block, "text": new_text}
+                return new_blocks, extracted
+    return content, None
+
+
+# Remove '# Session-specific guidance' section from text, keeping '# Environment' onward.
+def _strip_session_guidance(text: str) -> str:
+    marker = "# Session-specific guidance"
+    env_marker = "# Environment"
+    if marker not in text:
+        return text
+    start = text.index(marker)
+    env_idx = text.find(env_marker, start)
+    if env_idx == -1:
+        return text[:start].strip() or "."
+    return (text[:start] + text[env_idx:]).strip()
+
+
 # Remove ALL cache_control markers from payload (system, tools, messages)
 def _strip_all_cache_control(payload: dict) -> dict:
     result = dict(payload)
@@ -494,13 +542,19 @@ def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dic
     cc_marker = {"type": "ephemeral", "ttl": "1h"}
     cc_marker_global = {"type": "ephemeral", "ttl": "1h", "scope": "global"}
 
-    # BP1: last system block
+    # BP1: rules block (SessionStart system-reminder), fallback to last system block
     system = result.get("system", [])
     if isinstance(system, list) and system:
-        last_sys = system[-1]
-        if isinstance(last_sys, dict):
-            new_system = list(system)
-            new_system[-1] = {**last_sys, "cache_control": cc_marker_global}
+        new_system = list(system)
+        rules_prefix = "<system-reminder>\nSessionStart hook additional context:"
+        rules_idx = next(
+            (i for i, b in enumerate(new_system) if isinstance(b, dict) and b.get("text", "").startswith(rules_prefix)),
+            None,
+        )
+        target_idx = rules_idx if rules_idx is not None else len(new_system) - 1
+        target = new_system[target_idx]
+        if isinstance(target, dict):
+            new_system[target_idx] = {**target, "cache_control": cc_marker_global}
             result["system"] = new_system
             bp_count += 1
 
@@ -562,10 +616,22 @@ def _add_cache_control_to_message(msg: dict, cc_marker: dict) -> dict:
 # Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules)
 def apply_modification_rules(payload: dict) -> tuple:
     modifications = []
-    messages = payload.get("messages", [])
-    new_messages = []
     changed = False
-    for msg in messages:
+
+    # Pre-process MSG[0]: extract SessionStart rules block → will be inserted into system array
+    extracted_rules_text = None
+    messages_to_process = list(payload.get("messages", []))
+    if messages_to_process:
+        msg0 = messages_to_process[0]
+        if msg0.get("role") == "user" and _content_contains(msg0.get("content", ""), "SessionStart hook additional context:"):
+            modified_content, extracted_rules_text = _extract_session_start_block(msg0.get("content", ""))
+            if extracted_rules_text:
+                messages_to_process[0] = {**msg0, "content": modified_content}
+                modifications.append("extracted_rules_to_system")
+                changed = True
+
+    new_messages = []
+    for msg in messages_to_process:
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
             stripped = _strip_plan_mode_blocks(msg.get("content", ""))
             if stripped:
@@ -598,16 +664,26 @@ def apply_modification_rules(payload: dict) -> tuple:
             new_messages.append(msg)
 
     system = payload.get("system", [])
-    new_system = system
-    if isinstance(system, list) and len(system) >= 3:
-        block = system[2]
+    new_system = list(system) if isinstance(system, list) else system
+
+    if isinstance(new_system, list) and len(new_system) >= 3:
+        block = new_system[2]
         if isinstance(block, dict) and block.get("type") == "text" and len(block.get("text", "")) > 5000:
-            new_block = dict(block)
-            new_block["text"] = "."
-            new_system = list(system)
-            new_system[2] = new_block
+            new_system[2] = {**block, "text": "."}
             modifications.append("replaced_system_prompt")
             changed = True
+
+    if extracted_rules_text and isinstance(new_system, list):
+        rules_block = {"type": "text", "text": extracted_rules_text}
+        new_system = new_system[:3] + [rules_block] + new_system[3:]
+        # Strip session guidance from new system[4] (was system[3])
+        if len(new_system) > 4:
+            block4 = new_system[4]
+            if isinstance(block4, dict) and block4.get("type") == "text":
+                stripped = _strip_session_guidance(block4.get("text", ""))
+                if stripped != block4.get("text", ""):
+                    new_system[4] = {**block4, "text": stripped}
+                    modifications.append("stripped_session_guidance")
 
     if not changed:
         return payload, modifications
