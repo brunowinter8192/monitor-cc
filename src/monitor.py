@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, MODE_PROXY, HOOK_INSTRUCTIONS_LOADED, DIM
+from .constants import RESET, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, HOVER_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL, TOOL_TASK, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_SUBAGENTS, MODE_PROXY, HOOK_INSTRUCTIONS_LOADED, DIM, KNOWN_PAYLOAD_KEYS, KNOWN_CONTENT_BLOCK_TYPES, KNOWN_TOOL_DEFINITION_KEYS, KNOWN_MESSAGE_ROLES
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -1513,6 +1513,28 @@ def _extract_raw_payload_fields(entry: dict) -> None:
 
         msgs = raw.get('messages', [])
         entry['messages_total_chars'] = sum(_raw_msg_chars(m) for m in msgs)
+
+        schema_warnings = []
+        unknown_keys = set(raw.keys()) - KNOWN_PAYLOAD_KEYS
+        for k in sorted(unknown_keys):
+            schema_warnings.append(f"unknown payload key: {k}")
+        for msg in msgs:
+            role = msg.get('role', '')
+            if role and role not in KNOWN_MESSAGE_ROLES:
+                schema_warnings.append(f"unknown message role: {role}")
+            content = msg.get('content', [])
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        btype = block.get('type', '')
+                        if btype and btype not in KNOWN_CONTENT_BLOCK_TYPES:
+                            schema_warnings.append(f"unknown block type: {btype}")
+        for tool in tools:
+            if isinstance(tool, dict):
+                unknown_tool_keys = set(tool.keys()) - KNOWN_TOOL_DEFINITION_KEYS
+                for k in sorted(unknown_tool_keys):
+                    schema_warnings.append(f"unknown tool key: {k}")
+        entry['schema_warnings'] = schema_warnings
 
         del entry['raw_payload']
 

@@ -112,6 +112,18 @@ KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}
 # JSONL message types deliberately ignored (known but not relevant for monitoring)
 KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode'}
 
+# Known API payload top-level keys (Anthropic Messages API)
+KNOWN_PAYLOAD_KEYS = {'model', 'max_tokens', 'messages', 'metadata', 'output_config', 'stream', 'system', 'thinking', 'tools', 'temperature', 'top_p', 'top_k', 'tool_choice'}
+
+# Known message content block types
+KNOWN_CONTENT_BLOCK_TYPES = {'text', 'thinking', 'tool_use', 'tool_result'}
+
+# Known tool definition keys
+KNOWN_TOOL_DEFINITION_KEYS = {'name', 'description', 'input_schema', 'defer_loading'}
+
+# Known message roles
+KNOWN_MESSAGE_ROLES = {'assistant', 'user'}
+
 # Pane header labels
 PANE_HEADERS = {
     'main': 'MAIN',

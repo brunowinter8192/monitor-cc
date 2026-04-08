@@ -737,6 +737,18 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 all_lines.append(f"  {YELLOW}{diff_summary}{RESET}")
                 line_keys.append(None)
 
+        schema_warnings = entry.get('schema_warnings', [])
+        if schema_warnings:
+            schema_key = (entry_idx, 'schema')
+            is_schema_expanded = expand_states.get(schema_key, False)
+            schema_symbol = '\u25bc' if is_schema_expanded else '\u25b6'
+            all_lines.append(f"  {schema_symbol} {RED}⚠ SCHEMA DRIFT ({len(schema_warnings)}){RESET}")
+            line_keys.append(schema_key)
+            if is_schema_expanded:
+                for sw in schema_warnings:
+                    all_lines.append(f"    {DIM}{sw}{RESET}")
+                    line_keys.append(None)
+
         if is_expanded:
             all_lines.append(f"  {DIM}{'─' * min(40, pane_width - 4)}{RESET}")
             line_keys.append(None)
