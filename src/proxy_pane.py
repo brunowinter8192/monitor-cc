@@ -229,7 +229,6 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         if msgs_modified > 0 and first_diff >= 0 and cache_bp:
             if first_diff < min(cache_bp):
                 warn_symbols.append(f"{RED}⚠M{RESET}")
-                warn_details.append([f"{L3}{DIM}first change at msg #{first_diff}{RESET}"])
 
     status_str = '  '.join(warn_symbols) if warn_symbols else f"{PASTEL_GREEN}✓{RESET}"
     mods_str = f"  {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''

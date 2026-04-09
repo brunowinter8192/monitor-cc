@@ -24,8 +24,6 @@ proxy_req_map_count: int = 0
 _cache_jsonl_position: int = 0
 _cache_turns: list = []
 _cache_current_filepath = None
-_proxy_log_pos: int = 0
-_proxy_total_entries: int = 0
 
 # FUNCTIONS
 
@@ -225,18 +223,15 @@ def build_cache_turns(filepath, last_position: int, existing_turns: list):
         result = existing_turns + new_turns
     return result, new_position
 
-# Build proxy req mapping incrementally — appends new non-haiku entries to existing mapping
-def build_proxy_req_mapping(project_filter, last_position: int, existing_mapping: list, existing_entry_count: int):
-    from .proxy_pane import parse_proxy_log
-    new_entries, new_position = parse_proxy_log(project_filter, last_position)
-    count = existing_entry_count
-    result = list(existing_mapping)
-    for entry in new_entries:
-        count += 1
+# Build proxy req mapping from proxy_entries — maps Nth non-haiku call to its 1-based position in all proxy entries
+def build_proxy_req_mapping() -> list:
+    from .proxy_pane import proxy_entries
+    mapping = []
+    for i, entry in enumerate(proxy_entries):
         model = entry.get('model', '')
         if 'haiku' not in model.lower():
-            result.append(count)
-    return result, new_position, count
+            mapping.append(i + 1)
+    return mapping
 
 # Format timestamp for display (import lazily to avoid circular at module level)
 def _format_ts(timestamp: str) -> str:
@@ -249,7 +244,6 @@ def run_tokens_loop() -> None:
     global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
     global proxy_req_map, proxy_req_map_count
     global _cache_jsonl_position, _cache_turns, _cache_current_filepath
-    global _proxy_log_pos, _proxy_total_entries
     last_output = None
     last_data_refresh = 0.0
     setup_keyboard_input()
@@ -290,8 +284,6 @@ def run_tokens_loop() -> None:
                     _cache_current_filepath = filepath
                     _cache_jsonl_position = 0
                     _cache_turns = []
-                    _proxy_log_pos = 0
-                    _proxy_total_entries = 0
                     proxy_req_map = []
                     proxy_req_map_count = 0
                     cache_expand_states.clear()
@@ -302,9 +294,7 @@ def run_tokens_loop() -> None:
                     _cache_turns, _cache_jsonl_position = build_cache_turns(
                         filepath, _cache_jsonl_position, _cache_turns
                     )
-                    new_map, _proxy_log_pos, _proxy_total_entries = build_proxy_req_mapping(
-                        _monitor.active_project_filter, _proxy_log_pos, proxy_req_map, _proxy_total_entries
-                    )
+                    new_map = build_proxy_req_mapping()
                     if len(new_map) != proxy_req_map_count:
                         proxy_req_map = new_map
                         proxy_req_map_count = len(new_map)
