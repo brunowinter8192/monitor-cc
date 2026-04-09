@@ -129,11 +129,19 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 ## proxy_pane.py
 
-**Purpose:** Proxy pane. Reads `api_requests_*.jsonl`, shows API request entries grouped by turn with compact format, deltas, and token estimates.
+**Purpose:** Proxy pane. Reads `api_requests_*.jsonl`, shows API request entries grouped by turn with two-level expand hierarchy.
 
-**Input:** Proxy log file (discovered via marker file), session JSONL (for turn detection via `extract_cache_turns`), project filter.
+**Input:** Proxy log file (discovered via marker file), session JSONL (for turn detection via `build_cache_turns` from token_pane.py), project filter.
 
-**Output:** Three-level hierarchy: Turn summary (total + Δturn) → Request header (compact, ⚠T/⚠S/⚠M symbols) → Request delta (Δsys/Δtools/Δmsgs with ~token estimates via chars/3.5). Legend at top. Expand shows only new messages (delta from previous request).
+**Output:** Two-level expand hierarchy:
+- **Turn header (clickable):** `▶ Turn N [HH:MM] effort:X think:Yk(type) Δsys/Δtools/Δmsgs` — delta vs previous turn. Effort, thinking budget, and thinking type from API payload.
+- **Baseline line:** `total: sys:Xk tools:Xk msgs:Xk` — cumulative totals from previous turn's last entry.
+- **Expanded turn → Request metadata lines:** Compact one-liners per request (`#N model Xmsg BP:Y 🔧Z ⚠T/⚠S/⚠M Δmsgs`). Clickable for second-level expand.
+- **Expanded request → Message lines:** New messages since previous request (or modified messages via backwards scan for same-count entries). Content preview auto-shown. Modified messages use `content_tail` field for showing appended content.
+
+**REQ numbering:** Synced to session JSONL api_calls at turn boundaries. Helper requests (BP:0, non-haiku) get sub-numbers (#7.1, #7.2). Haiku labeled "H".
+
+**Data enrichment:** `_extract_raw_payload_fields()` processes raw API payload into per-entry fields (system_blocks, tools_hash, schema_warnings, thinking_config, output_config) and enriches per-message data with `content_tail` (last 500 chars) for modified-message detection. Raw payload deleted after extraction.
 
 ---
 

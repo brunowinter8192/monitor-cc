@@ -66,9 +66,21 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 - M-t Keybinding: Tokens-Pane Content → Clipboard via pbcopy
 - JSONL-Datenquelle: `message.usage.output_tokens` pro Content-Block (assistant Messages)
 - Known limitation: output_tokens ~1.9x undercount (Claude Code Bug #27361), für Proportionen irrelevant
-- **Token-Dedup (Session 11):** `extract_cache_turns()` groups consecutive assistant messages with identical `(cache_read, cache_creation, input_tokens)` into one API call entry. Uses MAX(output_tokens), aggregates unique content_blocks. Reduces 189 → 87 lines for test session.
+- **Token-Dedup (Session 11, updated Session 17):** `extract_cache_turns()` deduplicates streaming chunks using `requestId` as primary key (falls back to `(cache_read, cache_creation, input_tokens)` for entries without requestId). Uses MAX(output_tokens), aggregates unique content_blocks. `request_id` stored as persistent field on api_call dicts for incremental merge in `build_cache_turns()`.
 - **% Removed (Session 11):** `_format_cache_call()` no longer calculates or displays cache-read percentage. Shows only raw JSONL values: CR, CC, D, output_tokens.
 - **Thinking Display (Session 11):** Thinking content_blocks now include `output_tokens` from message-level usage. Rendered as `thinking (Xk out)` in expanded API call view.
+
+### Proxy Pane Redesign (Session 17, 2026-04-09)
+
+**Turn-based expand/collapse:** Proxy Pane redesigned from per-request expand to two-level turn-based hierarchy. Turn header is clickable (expand/collapse). Expanded turn shows: request metadata lines (compact, also clickable) + message lines. Request expand shows messages belonging to that specific request.
+
+**REQ numbering sync:** `opus_req_num` reset at each turn boundary using cumulative `api_calls` count from session JSONL turns. Eliminates cross-turn drift from proxy-only requests (that don't appear in session JSONL). Helper requests (non-haiku, BP:0) get sub-numbers (#7.1, #7.2).
+
+**Modified message detection:** When consecutive requests have same message_count but different total chars, backwards scan from end finds divergence point. `content_tail` field (last 500 chars) stored in `_extract_raw_payload_fields()` enables showing the actual new content appended to modified messages.
+
+**Turn header config:** Shows `effort:X`, `think:Yk(type)` from API payload's `output_config.effort` and `thinking.budget_tokens`/`thinking.type`. Red highlight when values change between turns.
+
+**Image grouping (Main Pane):** `format_user_media()` in formatter.py now accepts list of media items grouped by timestamp. Multiple images rendered as single line: `[4x IMAGE: image/png]`.
 
 **Session-Browser (Session 3):**
 - `token_cumulative_n: Optional[int]` (monitor.py:48): steuert Modus. `None` = current session, `N` = letzte N Main-Sessions kumuliert
