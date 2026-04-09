@@ -476,7 +476,8 @@ def extract_cache_turns(messages: list) -> list:
                     elif bt == 'text':
                         blocks.append({'type': 'text', 'preview': block.get('text', '').replace('\n', ' ')[:50]})
 
-            input_key = (cache_read, cache_creation, input_tokens)
+            request_id = message.get('requestId', '')
+            input_key = request_id if request_id else (cache_read, cache_creation, input_tokens)
             existing_calls = current_turn['api_calls']
             if existing_calls and existing_calls[-1].get('_input_key') == input_key:
                 prev = existing_calls[-1]
@@ -508,6 +509,7 @@ def extract_cache_turns(messages: list) -> list:
                     'direct': input_tokens,
                     'output_tokens': output_tokens,
                     'content_blocks': blocks,
+                    'request_id': request_id,
                     '_input_key': input_key,
                 })
                 current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + sum(b.get('chars', 0) for b in blocks if b['type'] == 'thinking')

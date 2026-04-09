@@ -197,13 +197,20 @@ def build_cache_turns(filepath, last_position: int, existing_turns: list):
         merged = dict(existing_turns[-1])
         merged_calls = list(merged.get('api_calls', []))
         for call in new_turns[0].get('api_calls', []):
-            dup_idx = next(
-                (i for i, c in enumerate(merged_calls)
-                 if c.get('cache_read') == call.get('cache_read')
-                 and c.get('cache_creation') == call.get('cache_creation')
-                 and c.get('direct') == call.get('direct')),
-                None
-            )
+            new_rid = call.get('request_id', '')
+            if new_rid:
+                dup_idx = next(
+                    (i for i, c in enumerate(merged_calls) if c.get('request_id') == new_rid),
+                    None
+                )
+            else:
+                dup_idx = next(
+                    (i for i, c in enumerate(merged_calls)
+                     if c.get('cache_read') == call.get('cache_read')
+                     and c.get('cache_creation') == call.get('cache_creation')
+                     and c.get('direct') == call.get('direct')),
+                    None
+                )
             if dup_idx is None:
                 merged_calls.append(call)
             else:
