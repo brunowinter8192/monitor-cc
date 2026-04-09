@@ -584,15 +584,16 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                         all_lines.append(f"      {DIM}{t_symbol} {t_name}{RESET}{marker}")
                                     line_keys.append(tool_key)
                                     if is_tool_exp:
+                                        bg = DIM_YELLOW_BG if is_stripped_tool else ''
                                         description = tool_def.get('description', '')
                                         if description:
                                             for raw_line in description.split('\n'):
                                                 if not raw_line:
-                                                    all_lines.append(f"        {DIM}{RESET}")
+                                                    all_lines.append(f"        {bg}{DIM}{RESET}")
                                                     line_keys.append(None)
                                                     continue
                                                 for chunk_start in range(0, len(raw_line), wrap_w):
-                                                    all_lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_w]}{RESET}")
+                                                    all_lines.append(f"        {bg}{DIM}{raw_line[chunk_start:chunk_start + wrap_w]}{RESET}")
                                                     line_keys.append(None)
                                         input_schema = tool_def.get('input_schema', {})
                                         props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
@@ -606,7 +607,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                                 if param_desc:
                                                     param_line += f" \u2014 {param_desc}"
                                                 for chunk_start in range(0, len(param_line), wrap_w):
-                                                    all_lines.append(f"        {DIM}{param_line[chunk_start:chunk_start + wrap_w]}{RESET}")
+                                                    all_lines.append(f"        {bg}{DIM}{param_line[chunk_start:chunk_start + wrap_w]}{RESET}")
                                                     line_keys.append(None)
                         messages = entry.get('messages', [])
                         stripped_indices = set(entry.get('stripped_msg_indices', []))
