@@ -356,6 +356,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     if groups:
         prev_group_last_entry = None
         for group in groups:
+            opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:group['turn_idx']])
+            sub_req_num = 0
             turn_ts = format_timestamp(group['timestamp'])[:5]
             all_lines.append(f"{PASTEL_PURPLE}Turn {group['turn_idx'] + 1} [{turn_ts}]{RESET}")
             line_keys.append(None)
