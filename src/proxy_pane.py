@@ -84,7 +84,7 @@ def _extract_raw_payload_fields(entry: dict) -> None:
     if raw:
         system = raw.get('system', [])
         entry['system_blocks'] = [
-            {'idx': i, 'chars': len(b.get('text', '')), 'has_cc': bool(b.get('cache_control')), 'preview': b.get('text', '')[:1000]}
+            {'idx': i, 'chars': len(b.get('text', '')), 'has_cc': bool(b.get('cache_control')), 'preview': b.get('text', '')}
             for i, b in enumerate(system) if isinstance(b, dict)
         ] if isinstance(system, list) else []
         entry['system_total_chars'] = sum(b['chars'] for b in entry['system_blocks'])
@@ -94,6 +94,14 @@ def _extract_raw_payload_fields(entry: dict) -> None:
         entry['tools_count'] = len(tools)
         entry['tools_hash'] = hashlib.md5(json.dumps(sorted([t.get('name', '') for t in tools])).encode()).hexdigest()[:8]
         entry['tools_names'] = [t.get('name', '') for t in tools]
+        entry['tools_defs'] = [
+            {
+                'name': t.get('name', ''),
+                'description': t.get('description', ''),
+                'input_schema': t.get('input_schema', {}),
+            }
+            for t in tools
+        ]
 
         entry['thinking_config'] = raw.get('thinking', {})
         entry['output_config'] = raw.get('output_config', {})
@@ -541,31 +549,41 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                             all_lines.append(f"    {DIM}{tools_symbol} tools: {tools_count} defs ({_format_k(tools_chars)}){hash_str}{RESET}{tools_delta_str}")
                             line_keys.append(tools_key)
                             if is_tools_expanded:
-                                wrap_w = max(20, pane_width - 8)
-                                row_parts: list = []
-                                row_len = 0
-                                for name in tools_names:
-                                    is_long = name.startswith('mcp__') or len(name) > 25
-                                    marker = f" {RED}+{RESET}" if name in added else ''
-                                    if is_long:
-                                        if row_parts:
-                                            all_lines.append(f"      {DIM}{', '.join(row_parts)}{RESET}")
-                                            line_keys.append(None)
-                                            row_parts = []
-                                            row_len = 0
-                                        all_lines.append(f"      {DIM}{name}{RESET}{marker}")
-                                        line_keys.append(None)
-                                    else:
-                                        if row_len + len(name) + 2 > wrap_w - 6 and row_parts:
-                                            all_lines.append(f"      {DIM}{', '.join(row_parts)}{RESET}")
-                                            line_keys.append(None)
-                                            row_parts = []
-                                            row_len = 0
-                                        row_parts.append(name)
-                                        row_len += len(name) + 2
-                                if row_parts:
-                                    all_lines.append(f"      {DIM}{', '.join(row_parts)}{RESET}")
-                                    line_keys.append(None)
+                                wrap_w = max(20, pane_width - 12)
+                                tools_defs = entry.get('tools_defs', [])
+                                for tool_idx, tool_def in enumerate(tools_defs):
+                                    t_name = tool_def.get('name', '')
+                                    marker = f" {RED}+{RESET}" if t_name in added else ''
+                                    tool_key = ('tool', entry_idx, tool_idx)
+                                    is_tool_exp = expand_states.get(tool_key, False)
+                                    t_symbol = '\u25bc' if is_tool_exp else '\u25b6'
+                                    all_lines.append(f"      {DIM}{t_symbol} {t_name}{RESET}{marker}")
+                                    line_keys.append(tool_key)
+                                    if is_tool_exp:
+                                        description = tool_def.get('description', '')
+                                        if description:
+                                            for raw_line in description.split('\n'):
+                                                if not raw_line:
+                                                    all_lines.append(f"        {DIM}{RESET}")
+                                                    line_keys.append(None)
+                                                    continue
+                                                for chunk_start in range(0, len(raw_line), wrap_w):
+                                                    all_lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_w]}{RESET}")
+                                                    line_keys.append(None)
+                                        input_schema = tool_def.get('input_schema', {})
+                                        props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
+                                        required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
+                                        for param_name, param_info in props.items():
+                                            if isinstance(param_info, dict):
+                                                param_type = param_info.get('type', '?')
+                                                param_desc = param_info.get('description', '')
+                                                req_marker = '*' if param_name in required_props else ''
+                                                param_line = f"{param_name}{req_marker}: {param_type}"
+                                                if param_desc:
+                                                    param_line += f" \u2014 {param_desc}"
+                                                for chunk_start in range(0, len(param_line), wrap_w):
+                                                    all_lines.append(f"        {DIM}{param_line[chunk_start:chunk_start + wrap_w]}{RESET}")
+                                                    line_keys.append(None)
                         messages = entry.get('messages', [])
                         stripped_indices = set()
                         for _idx, _msg in enumerate(messages):
