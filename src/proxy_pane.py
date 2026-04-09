@@ -48,6 +48,27 @@ def _shorten_model(model: str) -> str:
         return 'opus'
     return model[:8] if model else '?'
 
+# Extract content_preview of the last non-tool_result user message in a proxy entry
+def _get_last_user_prompt(entry: dict) -> str:
+    messages = entry.get('messages', [])
+    for msg in reversed(messages):
+        if msg.get('role') == 'user' and msg.get('type') != 'tool_result':
+            return msg.get('content_preview', '').strip()
+    return ''
+
+# Group proxy entries into turns — a new turn starts when the last user message changes
+def _group_entries_by_turn(entries: list) -> list:
+    turns = []
+    current_turn = None
+    for entry_idx, entry in enumerate(entries):
+        prompt = _get_last_user_prompt(entry)
+        if current_turn is None or prompt != current_turn['prompt']:
+            ts = entry.get('timestamp', '')
+            current_turn = {'prompt': prompt, 'timestamp': ts, 'entry_pairs': []}
+            turns.append(current_turn)
+        current_turn['entry_pairs'].append((entry_idx, entry))
+    return turns
+
 # Derive proxy session_id from project path — matches claude_proxy_start.sh md5 hash logic
 def _proxy_session_id_for_project(project_path: str) -> str:
     return hashlib.md5(project_path.encode()).hexdigest()[:8]
@@ -148,7 +169,7 @@ def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
             pass
     return entries, log_file.stat().st_size
 
-# Format proxy pane with API request entries, expand/collapse, scroll, hover
+# Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
 def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> str:
     from .utils import format_timestamp
 
@@ -166,159 +187,162 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
 
     all_lines = []
     line_keys = []
+    turns = _group_entries_by_turn(entries)
 
-    for entry_idx, entry in enumerate(entries):
-        timestamp = format_timestamp(entry.get('timestamp', ''))[:5]  # HH:MM only
-        model = _shorten_model(entry.get('model', '?'))
-        msg_count = entry.get('message_count', 0)
-        input_chars = entry.get('total_input_chars', 0)
-        cache_bp = entry.get('cache_breakpoints', [])
-        diff = entry.get('diff_from_prev', {})
-        diff_summary = diff.get('summary', '')
-        first_diff = diff.get('first_diff_index', -1)
-        mods = entry.get('modifications', [])
-
-        chars_str = _format_k(input_chars)
-        bp_count = len(cache_bp)
-        mods_count = len(mods)
-        is_expanded = expand_states.get(entry_idx, False)
-        symbol = '\u25bc' if is_expanded else '\u25b6'
-
-        # Determine cache warnings first (for header indicator)
-        model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
-        prev_entry = None
-        for _i in range(entry_idx - 1, -1, -1):
-            _prev_model = entries[_i].get('model', '')
-            _prev_family = "haiku" if "haiku" in _prev_model.lower() else "opus"
-            if _prev_family == model_family:
-                prev_entry = entries[_i]
-                break
-
-        warn_symbols = []
-        warn_details = []
-        if prev_entry is not None:
-            if entry.get('tools_hash') and prev_entry.get('tools_hash') and entry.get('tools_hash') != prev_entry.get('tools_hash'):
-                warn_symbols.append(f"{RED}⚠T{RESET}")
-                curr_names = set(entry.get('tools_names', []))
-                prev_names = set(prev_entry.get('tools_names', []))
-                added = sorted(curr_names - prev_names)
-                removed = sorted(prev_names - curr_names)
-                warn_details.append([f"    {GREEN}+{n}{RESET}" for n in added] + [f"    {RED}-{n}{RESET}" for n in removed])
-            if entry.get('system_total_chars') is not None and prev_entry.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_entry.get('system_total_chars'):
-                warn_symbols.append(f"{RED}⚠S{RESET}")
-                old_c = prev_entry['system_total_chars']
-                new_c = entry['system_total_chars']
-                delta = new_c - old_c
-                warn_details.append([f"    {DIM}sys: {_format_k(old_c)} → {_format_k(new_c)} ({delta:+,}){RESET}"])
-            msgs_modified = diff.get('messages_modified', 0)
-            if msgs_modified > 0 and first_diff >= 0 and cache_bp:
-                if first_diff < min(cache_bp):
-                    warn_symbols.append(f"{RED}⚠M{RESET}")
-                    warn_details.append([f"    {DIM}first change at msg #{first_diff}  {diff_summary}{RESET}"])
-
-        status_str = '  '.join(warn_symbols) if warn_symbols else f"{PASTEL_GREEN}✓{RESET}"
-        mods_str = f"  {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
-
-        header = f"{WHITE}{symbol} [{timestamp}] #{entry_idx + 1}  {model}  {msg_count}msg  {chars_str}  BP:{bp_count}{mods_str}  {status_str}{RESET}"
-        all_lines.append(header)
-        line_keys.append(entry_idx)
-
-        sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
-        tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
-        msgs_chars = entry.get('messages_total_chars', 0)
-        info_parts = [
-            f"sys:{_format_k(sys_chars)}({_format_tok_est(sys_chars)})",
-            f"tools:{_format_k(tools_chars)}({_format_tok_est(tools_chars)})",
-            f"msgs:{_format_k(msgs_chars)}({_format_tok_est(msgs_chars)})",
-        ]
-        all_lines.append(f"  {DIM}{'  '.join(info_parts)}{RESET}")
+    for turn_idx, turn in enumerate(turns):
+        turn_ts = format_timestamp(turn['timestamp'])[:5]
+        prompt = turn['prompt']
+        prompt_max = max(20, pane_width - 20)
+        prompt_display = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
+        all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{turn_ts}]: \"{prompt_display}\"{RESET}")
         line_keys.append(None)
 
-        warn_key = (entry_idx, 'warnings')
-        is_warn_expanded = expand_states.get(warn_key, False)
+        for entry_idx, entry in turn['entry_pairs']:
+            model = _shorten_model(entry.get('model', '?'))
+            msg_count = entry.get('message_count', 0)
+            input_chars = entry.get('total_input_chars', 0)
+            cache_bp = entry.get('cache_breakpoints', [])
+            diff = entry.get('diff_from_prev', {})
+            first_diff = diff.get('first_diff_index', -1)
+            mods = entry.get('modifications', [])
 
-        if warn_symbols or diff_summary:
-            warn_symbol = '\u25bc' if is_warn_expanded else '\u25b6'
-            warn_str = '  '.join(warn_symbols)
-            if diff_summary and warn_str:
-                all_lines.append(f"  {warn_symbol} {warn_str}  {YELLOW}{diff_summary}{RESET}")
-            elif warn_str:
-                all_lines.append(f"  {warn_symbol} {warn_str}")
-            else:
-                all_lines.append(f"  {YELLOW}{diff_summary}{RESET}")
-            line_keys.append(warn_key if warn_symbols else None)
-            if is_warn_expanded and warn_symbols:
-                for detail_lines in warn_details:
-                    for dl in detail_lines:
-                        all_lines.append(dl)
-                        line_keys.append(None)
+            chars_str = _format_k(input_chars)
+            bp_count = len(cache_bp)
+            mods_count = len(mods)
+            is_expanded = expand_states.get(entry_idx, False)
+            symbol = '\u25bc' if is_expanded else '\u25b6'
 
-        schema_warnings = entry.get('schema_warnings', [])
-        if schema_warnings:
-            schema_key = (entry_idx, 'schema')
-            is_schema_expanded = expand_states.get(schema_key, False)
-            schema_symbol = '\u25bc' if is_schema_expanded else '\u25b6'
-            all_lines.append(f"  {schema_symbol} {RED}⚠ SCHEMA DRIFT ({len(schema_warnings)}){RESET}")
-            line_keys.append(schema_key)
-            if is_schema_expanded:
-                for sw in schema_warnings:
-                    all_lines.append(f"    {DIM}{sw}{RESET}")
-                    line_keys.append(None)
+            # Determine cache warnings (for header indicator)
+            model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
+            prev_entry = None
+            for _i in range(entry_idx - 1, -1, -1):
+                _prev_model = entries[_i].get('model', '')
+                _prev_family = "haiku" if "haiku" in _prev_model.lower() else "opus"
+                if _prev_family == model_family:
+                    prev_entry = entries[_i]
+                    break
 
-        if is_expanded:
-            all_lines.append(f"  {DIM}{'─' * min(40, pane_width - 4)}{RESET}")
+            warn_symbols = []
+            warn_details = []
+            if prev_entry is not None:
+                if entry.get('tools_hash') and prev_entry.get('tools_hash') and entry.get('tools_hash') != prev_entry.get('tools_hash'):
+                    warn_symbols.append(f"{RED}⚠T{RESET}")
+                    curr_names = set(entry.get('tools_names', []))
+                    prev_names = set(prev_entry.get('tools_names', []))
+                    added = sorted(curr_names - prev_names)
+                    removed = sorted(prev_names - curr_names)
+                    warn_details.append([f"      {GREEN}+{n}{RESET}" for n in added] + [f"      {RED}-{n}{RESET}" for n in removed])
+                if entry.get('system_total_chars') is not None and prev_entry.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_entry.get('system_total_chars'):
+                    warn_symbols.append(f"{RED}⚠S{RESET}")
+                    old_c = prev_entry['system_total_chars']
+                    new_c = entry['system_total_chars']
+                    delta = new_c - old_c
+                    warn_details.append([f"      {DIM}sys: {_format_k(old_c)} → {_format_k(new_c)} ({delta:+,}){RESET}"])
+                msgs_modified = diff.get('messages_modified', 0)
+                if msgs_modified > 0 and first_diff >= 0 and cache_bp:
+                    if first_diff < min(cache_bp):
+                        warn_symbols.append(f"{RED}⚠M{RESET}")
+                        warn_details.append([f"      {DIM}first change at msg #{first_diff}{RESET}"])
+
+            status_str = '  '.join(warn_symbols) if warn_symbols else f"{PASTEL_GREEN}✓{RESET}"
+            mods_str = f"  {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
+
+            # Entry header indented 2 spaces (inside turn)
+            header = f"{WHITE}  {symbol} #{entry_idx + 1}  {model}  {msg_count}msg  {chars_str}  BP:{bp_count}{mods_str}  {status_str}{RESET}"
+            all_lines.append(header)
+            line_keys.append(entry_idx)
+
+            sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
+            tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+            msgs_chars = entry.get('messages_total_chars', 0)
+            info_parts = [
+                f"sys:{_format_k(sys_chars)}({_format_tok_est(sys_chars)})",
+                f"tools:{_format_k(tools_chars)}({_format_tok_est(tools_chars)})",
+                f"msgs:{_format_k(msgs_chars)}({_format_tok_est(msgs_chars)})",
+            ]
+            all_lines.append(f"    {DIM}{'  '.join(info_parts)}{RESET}")
             line_keys.append(None)
 
-            messages = entry.get('messages', [])
-            stripped_indices = set()
-            for _idx, _msg in enumerate(messages):
-                if _msg.get('type', '') == 'system-reminder':
-                    _preview = _msg.get('content_preview', '')
-                    if 'stripped_task_tools_nag' in mods and 'task tools haven' in _preview:
-                        stripped_indices.add(_idx)
-                    if 'removed_plan_mode_sr' in mods and 'Plan mode is active' in _preview:
-                        stripped_indices.add(_idx)
+            # Cache warnings — compact symbols only, no diff_summary text
+            if warn_symbols:
+                warn_key = (entry_idx, 'warnings')
+                is_warn_expanded = expand_states.get(warn_key, False)
+                warn_symbol = '\u25bc' if is_warn_expanded else '\u25b6'
+                all_lines.append(f"    {warn_symbol} {'  '.join(warn_symbols)}")
+                line_keys.append(warn_key)
+                if is_warn_expanded:
+                    for detail_lines in warn_details:
+                        for dl in detail_lines:
+                            all_lines.append(dl)
+                            line_keys.append(None)
 
-            start_idx = max(0, first_diff) if first_diff >= 0 else 0
-            if start_idx > 0:
-                all_lines.append(f"  {DIM}... [0-{start_idx - 1}] unchanged ({start_idx} messages){RESET}")
-                line_keys.append(None)
-            for msg_idx, msg in enumerate(messages[start_idx:], start=start_idx):
-                role = msg.get('role', '?')[:4]
-                msg_type = msg.get('type', 'text')
-                chars = msg.get('chars', 0)
-                has_cc = msg.get('has_cache_control', False)
-                cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
-
-                chars_fmt = f"{chars:,}c"
-                msg_key = (entry_idx, 'msg', msg_idx)
-                is_msg_expanded = expand_states.get(msg_key, False)
-                msg_symbol = '\u25bc' if is_msg_expanded else '\u25b6'
-                is_stripped = msg_idx in stripped_indices
-                if is_stripped:
-                    all_lines.append(f"  {DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}  {YELLOW}[STRIPPED]{RESET}")
-                else:
-                    color = PASTEL_GREEN if has_cc else WHITE
-                    all_lines.append(f"  {color}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
-                line_keys.append(msg_key)
-
-                if is_msg_expanded:
-                    preview = msg.get('content_preview', '')
-                    wrap_width = max(20, pane_width - 6)
-                    if preview:
-                        for raw_line in preview.split('\n'):
-                            if not raw_line:
-                                all_lines.append(f"      {DIM}{RESET}")
-                                line_keys.append(None)
-                                continue
-                            for line_start in range(0, len(raw_line), wrap_width):
-                                chunk = raw_line[line_start:line_start + wrap_width]
-                                all_lines.append(f"      {DIM}{chunk}{RESET}")
-                                line_keys.append(None)
-                    else:
-                        all_lines.append(f"      {DIM}(no preview){RESET}")
+            schema_warnings = entry.get('schema_warnings', [])
+            if schema_warnings:
+                schema_key = (entry_idx, 'schema')
+                is_schema_expanded = expand_states.get(schema_key, False)
+                schema_symbol = '\u25bc' if is_schema_expanded else '\u25b6'
+                all_lines.append(f"    {schema_symbol} {RED}⚠ SCHEMA DRIFT ({len(schema_warnings)}){RESET}")
+                line_keys.append(schema_key)
+                if is_schema_expanded:
+                    for sw in schema_warnings:
+                        all_lines.append(f"      {DIM}{sw}{RESET}")
                         line_keys.append(None)
 
+            if is_expanded:
+                all_lines.append(f"    {DIM}{'─' * min(38, pane_width - 6)}{RESET}")
+                line_keys.append(None)
+
+                messages = entry.get('messages', [])
+                stripped_indices = set()
+                for _idx, _msg in enumerate(messages):
+                    if _msg.get('type', '') == 'system-reminder':
+                        _preview = _msg.get('content_preview', '')
+                        if 'stripped_task_tools_nag' in mods and 'task tools haven' in _preview:
+                            stripped_indices.add(_idx)
+                        if 'removed_plan_mode_sr' in mods and 'Plan mode is active' in _preview:
+                            stripped_indices.add(_idx)
+
+                start_idx = max(0, first_diff) if first_diff >= 0 else 0
+                if start_idx > 0:
+                    all_lines.append(f"    {DIM}... [0-{start_idx - 1}] unchanged ({start_idx} messages){RESET}")
+                    line_keys.append(None)
+                for msg_idx, msg in enumerate(messages[start_idx:], start=start_idx):
+                    role = msg.get('role', '?')[:4]
+                    msg_type = msg.get('type', 'text')
+                    chars = msg.get('chars', 0)
+                    has_cc = msg.get('has_cache_control', False)
+                    cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
+
+                    chars_fmt = f"{chars:,}c"
+                    msg_key = (entry_idx, 'msg', msg_idx)
+                    is_msg_expanded = expand_states.get(msg_key, False)
+                    msg_symbol = '\u25bc' if is_msg_expanded else '\u25b6'
+                    is_stripped = msg_idx in stripped_indices
+                    if is_stripped:
+                        all_lines.append(f"    {DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}  {YELLOW}[STRIPPED]{RESET}")
+                    else:
+                        color = PASTEL_GREEN if has_cc else WHITE
+                        all_lines.append(f"    {color}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                    line_keys.append(msg_key)
+
+                    if is_msg_expanded:
+                        preview = msg.get('content_preview', '')
+                        wrap_width = max(20, pane_width - 8)
+                        if preview:
+                            for raw_line in preview.split('\n'):
+                                if not raw_line:
+                                    all_lines.append(f"        {DIM}{RESET}")
+                                    line_keys.append(None)
+                                    continue
+                                for line_start in range(0, len(raw_line), wrap_width):
+                                    chunk = raw_line[line_start:line_start + wrap_width]
+                                    all_lines.append(f"        {DIM}{chunk}{RESET}")
+                                    line_keys.append(None)
+                        else:
+                            all_lines.append(f"        {DIM}(no preview){RESET}")
+                            line_keys.append(None)
+
+        # Empty line between turns
         all_lines.append('')
         line_keys.append(None)
 
