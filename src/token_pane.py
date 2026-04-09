@@ -18,8 +18,6 @@ cache_expand_states: Dict[tuple, bool] = {}
 cache_line_map: Dict[int, tuple] = {}
 cache_hover_row: Optional[int] = None
 cache_scroll_offset: int = 0
-proxy_req_map: list = []
-proxy_req_map_count: int = 0
 
 _cache_jsonl_position: int = 0
 _cache_turns: list = []
@@ -52,7 +50,7 @@ def _get_tool_preview(input_data: dict) -> str:
     return ''
 
 # Format cache tracker for dedicated tokens pane with per-turn, per-API-call detail
-def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, proxy_req_map: list = None) -> str:
+def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> str:
     from .formatter import shorten_tool_name
     if not turns:
         return f"{YELLOW}No turns yet{RESET}"
@@ -96,12 +94,8 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
             symbol = '\u25bc' if is_expanded else '\u25b6'
 
             request_num += 1
-            if proxy_req_map and request_num <= len(proxy_req_map):
-                display_req = proxy_req_map[request_num - 1]
-            else:
-                display_req = request_num
             has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
-            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, display_req, has_thinking)
+            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking)
             all_lines.append(call_line)
             line_keys.append(key)
 
@@ -223,16 +217,6 @@ def build_cache_turns(filepath, last_position: int, existing_turns: list):
         result = existing_turns + new_turns
     return result, new_position
 
-# Build proxy req mapping from proxy_entries — maps Nth non-haiku call to its 1-based position in all proxy entries
-def build_proxy_req_mapping() -> list:
-    from .proxy_pane import proxy_entries
-    mapping = []
-    for i, entry in enumerate(proxy_entries):
-        model = entry.get('model', '')
-        if 'haiku' not in model.lower():
-            mapping.append(i + 1)
-    return mapping
-
 # Format timestamp for display (import lazily to avoid circular at module level)
 def _format_ts(timestamp: str) -> str:
     from .utils import format_timestamp
@@ -242,7 +226,6 @@ def _format_ts(timestamp: str) -> str:
 def run_tokens_loop() -> None:
     from . import monitor as _monitor
     global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
-    global proxy_req_map, proxy_req_map_count
     global _cache_jsonl_position, _cache_turns, _cache_current_filepath
     last_output = None
     last_data_refresh = 0.0
@@ -284,8 +267,6 @@ def run_tokens_loop() -> None:
                     _cache_current_filepath = filepath
                     _cache_jsonl_position = 0
                     _cache_turns = []
-                    proxy_req_map = []
-                    proxy_req_map_count = 0
                     cache_expand_states.clear()
                     cache_scroll_offset = 0
                     cache_hover_row = None
@@ -294,10 +275,6 @@ def run_tokens_loop() -> None:
                     _cache_turns, _cache_jsonl_position = build_cache_turns(
                         filepath, _cache_jsonl_position, _cache_turns
                     )
-                    new_map = build_proxy_req_mapping()
-                    if len(new_map) != proxy_req_map_count:
-                        proxy_req_map = new_map
-                        proxy_req_map_count = len(new_map)
 
                 last_data_refresh = now
                 input_changed = True
@@ -310,7 +287,7 @@ def run_tokens_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                output = format_cache_tracker(_cache_turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width, cache_scroll_offset, proxy_req_map=proxy_req_map)
+                output = format_cache_tracker(_cache_turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width, cache_scroll_offset)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
