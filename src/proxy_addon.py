@@ -668,7 +668,7 @@ def apply_modification_rules(payload: dict) -> tuple:
 
     if isinstance(new_system, list) and len(new_system) >= 3:
         block = new_system[2]
-        if isinstance(block, dict) and block.get("type") == "text" and len(block.get("text", "")) > 5000:
+        if isinstance(block, dict) and block.get("type") == "text":
             new_system[2] = {**block, "text": "."}
             modifications.append("replaced_system_prompt")
             changed = True
