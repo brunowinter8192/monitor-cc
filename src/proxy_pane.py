@@ -225,7 +225,6 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     mods = entry.get('modifications', [])
 
     bp_count = len(cache_bp)
-    mods_count = len(mods)
     is_expanded = expand_states.get(entry_idx, False)
     symbol = '\u25bc' if is_expanded else '\u25b6'
 
@@ -265,7 +264,18 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     if has_warn_m:
         all_status.append(f"{RED}⚠M{RESET}")
     status_str = '  '.join(all_status)
-    mods_str = f"  {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
+    _curr_tools = entry.get('tools_names', [])
+    _prev_tools = prev_entry.get('tools_names', []) if prev_entry is not None else []
+    _t_added = len(set(_curr_tools) - set(_prev_tools))
+    _t_removed = len(set(_prev_tools) - set(_curr_tools))
+    if _t_added > 0 and _t_removed > 0:
+        mods_str = f"  {YELLOW}🔧+{_t_added}-{_t_removed}{RESET}"
+    elif _t_added > 0:
+        mods_str = f"  {YELLOW}🔧+{_t_added}{RESET}"
+    elif _t_removed > 0:
+        mods_str = f"  {YELLOW}🔧-{_t_removed}{RESET}"
+    else:
+        mods_str = ''
 
     lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{RESET}")
     keys.append(entry_idx)
@@ -461,7 +471,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     cache_bp = entry.get('cache_breakpoints', [])
                     bp_count = len(cache_bp)
                     mods = entry.get('modifications', [])
-                    mods_count = len(mods)
                     diff = entry.get('diff_from_prev', {})
                     first_diff = diff.get('first_diff_index', -1)
                     # Warning indicators (not expandable)
@@ -489,7 +498,18 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                         req_delta_str = f"  {_format_delta('msgs', d_req_msgs)}" if d_req_msgs != 0 else ''
                     else:
                         req_delta_str = ''
-                    mods_str = f" {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
+                    _curr_tools = entry.get('tools_names', [])
+                    _prev_tools = prev_same.get('tools_names', []) if prev_same is not None else []
+                    _t_added = len(set(_curr_tools) - set(_prev_tools))
+                    _t_removed = len(set(_prev_tools) - set(_curr_tools))
+                    if _t_added > 0 and _t_removed > 0:
+                        mods_str = f" {YELLOW}🔧+{_t_added}-{_t_removed}{RESET}"
+                    elif _t_added > 0:
+                        mods_str = f" {YELLOW}🔧+{_t_added}{RESET}"
+                    elif _t_removed > 0:
+                        mods_str = f" {YELLOW}🔧-{_t_removed}{RESET}"
+                    else:
+                        mods_str = ''
                     warn_str = f"  {'  '.join(warn_parts)}" if warn_parts else ''
                     req_key = ('req', entry_idx)
                     is_req_expanded = expand_states.get(req_key, False)
