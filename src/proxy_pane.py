@@ -464,6 +464,17 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                             color = PASTEL_GREEN if has_cc else WHITE
                             all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
                             line_keys.append(None)
+                            preview = msg.get('content_preview', '')
+                            if preview:
+                                wrap_width = max(20, pane_width - 8)
+                                for raw_line in preview.split('\n'):
+                                    if not raw_line:
+                                        all_lines.append(f"      {DIM}{RESET}")
+                                        line_keys.append(None)
+                                        continue
+                                    for chunk_start in range(0, len(raw_line), wrap_width):
+                                        all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                        line_keys.append(None)
                     prev_entry_for_delta = entry
 
             prev_group_last_entry = last_e
