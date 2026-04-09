@@ -220,8 +220,6 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     model = _shorten_model(entry.get('model', '?'))
     msg_count = entry.get('message_count', 0)
     cache_bp = entry.get('cache_breakpoints', [])
-    diff = entry.get('diff_from_prev', {})
-    first_diff = diff.get('first_diff_index', -1)
     mods = entry.get('modifications', [])
 
     bp_count = len(cache_bp)
@@ -253,16 +251,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
             new_c = entry['system_total_chars']
             delta = new_c - old_c
             warn_details.append([f"{L3}{DIM}sys: {_format_k(old_c)} → {_format_k(new_c)} ({delta:+,}){RESET}"])
-    has_warn_m = False
-    if prev_entry is not None:
-        msgs_modified = diff.get('messages_modified', 0)
-        if msgs_modified > 0 and first_diff >= 0 and cache_bp:
-            if first_diff < min(cache_bp):
-                has_warn_m = True
-
     all_status = warn_symbols[:]
-    if has_warn_m:
-        all_status.append(f"{RED}⚠M{RESET}")
     status_str = '  '.join(all_status)
     _curr_tools = entry.get('tools_names', [])
     _prev_tools = prev_entry.get('tools_names', []) if prev_entry is not None else []
@@ -471,8 +460,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     cache_bp = entry.get('cache_breakpoints', [])
                     bp_count = len(cache_bp)
                     mods = entry.get('modifications', [])
-                    diff = entry.get('diff_from_prev', {})
-                    first_diff = diff.get('first_diff_index', -1)
                     # Warning indicators (not expandable)
                     warn_parts = []
                     prev_same = None
@@ -487,10 +474,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                             warn_parts.append(f"{RED}⚠T{RESET}")
                         if entry.get('system_total_chars') is not None and prev_same.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_same.get('system_total_chars'):
                             warn_parts.append(f"{RED}⚠S{RESET}")
-                        msgs_modified = diff.get('messages_modified', 0)
-                        if msgs_modified > 0 and first_diff >= 0 and cache_bp:
-                            if first_diff < min(cache_bp):
-                                warn_parts.append(f"{RED}⚠M{RESET}")
                     # Per-request Δmsgs
                     e_msgs = entry.get('messages_total_chars', 0)
                     if prev_entry_for_delta is not None:
@@ -752,8 +735,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                             bg = DIM_YELLOW_BG if is_stripped else ''
                                             all_lines.append(f"      {bg}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                                             line_keys.append(None)
-                    if len(entry.get('cache_breakpoints', [])) >= 1:
-                        prev_entry_for_delta = entry
+                    prev_entry_for_delta = entry
 
             main_entries = [e for _, e in group['entry_pairs'] if len(e.get('cache_breakpoints', [])) >= 1]
             if main_entries:
