@@ -243,17 +243,15 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
     msgs_chars = entry.get('messages_total_chars', 0)
-    if prev_entry is None:
-        lines.append(f"{L2}{DIM}(first request){RESET}")
-    else:
+    lines.append(f"{L2}{DIM}sys:{_format_k(sys_chars)}  tools:{_format_k(tools_chars)}  msgs:{_format_k(msgs_chars)}{RESET}")
+    keys.append(None)
+    if prev_entry is not None:
         d_sys = sys_chars - prev_entry.get('system_total_chars', prev_entry.get('system_prompt_chars', 0))
         d_tools = tools_chars - prev_entry.get('tools_total_chars', prev_entry.get('tools_chars', 0))
         d_msgs = msgs_chars - prev_entry.get('messages_total_chars', 0)
-        if d_sys == 0 and d_tools == 0 and d_msgs == 0:
-            lines.append(f"{L2}{DIM}Δ: (no change){RESET}")
-        else:
-            lines.append(f"{L2}{_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}")
-    keys.append(None)
+        if not (d_sys == 0 and d_tools == 0 and d_msgs == 0):
+            lines.append(f"{L2}{DIM}Δ: {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}{RESET}")
+            keys.append(None)
 
     if warn_symbols:
         warn_key = (entry_idx, 'warnings')
@@ -293,7 +291,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
                 if 'removed_plan_mode_sr' in mods and 'Plan mode is active' in _preview:
                     stripped_indices.add(_idx)
 
-        start_idx = prev_entry.get('message_count', 0) if prev_entry is not None else 0
+        start_idx = 0
         for msg_idx, msg in enumerate(messages[start_idx:], start=start_idx):
             role = msg.get('role', '?')[:4]
             msg_type = msg.get('type', 'text')
