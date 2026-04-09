@@ -513,23 +513,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 curr_chars = msg.get('chars', 0)
                                 prev_chars = prev_msg.get('chars', 0) if prev_msg else 0
                                 delta_chars = curr_chars - prev_chars
-                                chars_fmt = f"+{delta_chars}c"
-                                has_cc = msg.get('has_cache_control', False)
-                                cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
-                                color = PASTEL_GREEN if has_cc else WHITE
-                                all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                                all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20} +{delta_chars}c{RESET}")
                                 line_keys.append(None)
-                                preview = msg.get('content_preview', '')
-                                if preview and delta_chars > 0:
-                                    new_content = preview[-delta_chars:] if len(preview) > delta_chars else preview
-                                    for raw_line in new_content.split('\n'):
-                                        if not raw_line:
-                                            all_lines.append(f"      {DIM}{RESET}")
-                                            line_keys.append(None)
-                                            continue
-                                        for chunk_start in range(0, len(raw_line), wrap_width):
-                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
-                                            line_keys.append(None)
                     prev_entry_for_delta = entry
 
             prev_group_last_entry = last_e
