@@ -329,7 +329,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
             msg_symbol = '\u25bc' if is_msg_expanded else '\u25b6'
             is_stripped = msg_idx in stripped_indices
             if is_stripped:
-                lines.append(f"{L2}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}  {YELLOW}[STRIPPED]{RESET}")
+                lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}{cc_marker}")
             else:
                 color = PASTEL_GREEN if has_cc else WHITE
                 lines.append(f"{L2}{color}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
@@ -341,15 +341,18 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
                 if preview:
                     for raw_line in preview.split('\n'):
                         if not raw_line:
-                            lines.append(f"{L4}{DIM}{RESET}")
+                            bg = DIM_YELLOW_BG if is_stripped else ''
+                            lines.append(f"{L4}{bg}{DIM}{RESET}")
                             keys.append(None)
                             continue
                         for line_start in range(0, len(raw_line), wrap_width):
                             chunk = raw_line[line_start:line_start + wrap_width]
-                            lines.append(f"{L4}{DIM}{chunk}{RESET}")
+                            bg = DIM_YELLOW_BG if is_stripped else ''
+                            lines.append(f"{L4}{bg}{DIM}{chunk}{RESET}")
                             keys.append(None)
                 else:
-                    lines.append(f"{L4}{DIM}(no preview){RESET}")
+                    bg = DIM_YELLOW_BG if is_stripped else ''
+                    lines.append(f"{L4}{bg}{DIM}(no preview){RESET}")
                     keys.append(None)
 
     return lines, keys
@@ -506,25 +509,32 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                     bchars = sb.get('chars', 0)
                                     has_cc = sb.get('has_cc', False)
                                     cc_str = f"  {PASTEL_GREEN}CC●{RESET}" if has_cc else ''
-                                    stripped_str = f"  {YELLOW}[STRIPPED]{RESET}" if 'replaced_system_prompt' in mods and bidx == 2 else ''
+                                    is_sys_stripped = 'replaced_system_prompt' in mods and bidx == 2
+                                    stripped_str = f"  [STRIPPED]" if is_sys_stripped else ''
                                     block_key = ('sys_block', entry_idx, bidx)
                                     is_block_expanded = expand_states.get(block_key, False)
                                     block_symbol = '\u25bc' if is_block_expanded else '\u25b6'
-                                    all_lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{RESET}{cc_str}{stripped_str}")
+                                    if is_sys_stripped:
+                                        all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{stripped_str}{RESET}{cc_str}")
+                                    else:
+                                        all_lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{RESET}{cc_str}")
                                     line_keys.append(block_key)
                                     if is_block_expanded:
                                         preview = sb.get('preview', '')
                                         if preview:
                                             for raw_line in preview.split('\n'):
                                                 if not raw_line:
-                                                    all_lines.append(f"        {DIM}{RESET}")
+                                                    bg = DIM_YELLOW_BG if is_sys_stripped else ''
+                                                    all_lines.append(f"        {bg}{DIM}{RESET}")
                                                     line_keys.append(None)
                                                     continue
                                                 for chunk_start in range(0, len(raw_line), wrap_width_meta):
-                                                    all_lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
+                                                    bg = DIM_YELLOW_BG if is_sys_stripped else ''
+                                                    all_lines.append(f"        {bg}{DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
                                                     line_keys.append(None)
                                         else:
-                                            all_lines.append(f"        {DIM}(no preview){RESET}")
+                                            bg = DIM_YELLOW_BG if is_sys_stripped else ''
+                                            all_lines.append(f"        {bg}{DIM}(no preview){RESET}")
                                             line_keys.append(None)
                         # Tools (expandable)
                         tools_count = entry.get('tools_count', 0)
@@ -637,7 +647,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
                                 is_stripped = msg_idx in stripped_indices
                                 if is_stripped:
-                                    all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}  {YELLOW}[STRIPPED]{RESET}")
+                                    all_lines.append(f"    {DIM_YELLOW_BG}{DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}{cc_marker}")
                                 else:
                                     color = PASTEL_GREEN if has_cc else WHITE
                                     all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
@@ -646,11 +656,13 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 if preview:
                                     for raw_line in preview.split('\n'):
                                         if not raw_line:
-                                            all_lines.append(f"      {DIM}{RESET}")
+                                            bg = DIM_YELLOW_BG if is_stripped else ''
+                                            all_lines.append(f"      {bg}{DIM}{RESET}")
                                             line_keys.append(None)
                                             continue
                                         for chunk_start in range(0, len(raw_line), wrap_width):
-                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                            bg = DIM_YELLOW_BG if is_stripped else ''
+                                            all_lines.append(f"      {bg}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                                             line_keys.append(None)
                         else:
                             prev_messages = prev_entry_for_delta.get('messages', []) if prev_entry_for_delta is not None else []
@@ -671,8 +683,10 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 prev_chars = prev_msg.get('chars', 0) if prev_msg else 0
                                 delta_chars = curr_chars - prev_chars
                                 is_stripped = msg_idx in stripped_indices
-                                stripped_marker = f"  {YELLOW}[STRIPPED]{RESET}" if is_stripped else ''
-                                all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}{RESET}{stripped_marker}")
+                                if is_stripped:
+                                    all_lines.append(f"    {DIM_YELLOW_BG}{DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{RESET}")
+                                else:
+                                    all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}{RESET}")
                                 line_keys.append(None)
                                 tail = msg.get('content_tail', '')
                                 if tail and delta_chars > 0:
@@ -680,11 +694,13 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                     wrap_width = max(20, pane_width - 8)
                                     for raw_line in new_content.split('\n'):
                                         if not raw_line:
-                                            all_lines.append(f"      {DIM}{RESET}")
+                                            bg = DIM_YELLOW_BG if is_stripped else ''
+                                            all_lines.append(f"      {bg}{DIM}{RESET}")
                                             line_keys.append(None)
                                             continue
                                         for chunk_start in range(0, len(raw_line), wrap_width):
-                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                            bg = DIM_YELLOW_BG if is_stripped else ''
+                                            all_lines.append(f"      {bg}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                                             line_keys.append(None)
                     if len(entry.get('cache_breakpoints', [])) >= 1:
                         prev_entry_for_delta = entry
