@@ -290,10 +290,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
                 if 'removed_plan_mode_sr' in mods and 'Plan mode is active' in _preview:
                     stripped_indices.add(_idx)
 
-        start_idx = max(0, first_diff) if first_diff >= 0 else 0
-        if start_idx > 0:
-            lines.append(f"{L2}{DIM}... [0-{start_idx - 1}] unchanged ({start_idx} messages){RESET}")
-            keys.append(None)
+        start_idx = prev_entry.get('message_count', 0) if prev_entry is not None else 0
         for msg_idx, msg in enumerate(messages[start_idx:], start=start_idx):
             role = msg.get('role', '?')[:4]
             msg_type = msg.get('type', 'text')
