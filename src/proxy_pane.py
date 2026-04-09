@@ -478,21 +478,24 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                             line_keys.append(None)
                         else:
                             prev_messages = prev_entry_for_delta.get('messages', []) if prev_entry_for_delta is not None else []
-                            for msg_idx in range(len(messages)):
+                            diff_start = len(messages)
+                            for j in range(1, min(len(messages), len(prev_messages)) + 1):
+                                curr_msg = messages[-j]
+                                prev_msg = prev_messages[-j]
+                                if curr_msg.get('chars', 0) != prev_msg.get('chars', 0) or curr_msg.get('type', '') != prev_msg.get('type', ''):
+                                    diff_start = len(messages) - j
+                                else:
+                                    break
+                            for msg_idx in range(diff_start, len(messages)):
                                 msg = messages[msg_idx]
-                                prev_msg = prev_messages[msg_idx] if msg_idx < len(prev_messages) else None
-                                curr_chars = msg.get('chars', 0)
-                                prev_chars = prev_msg.get('chars', 0) if prev_msg else 0
-                                if curr_chars == prev_chars:
-                                    continue
                                 role = msg.get('role', '?')[:4]
                                 msg_type = msg.get('type', 'text')
-                                chars_fmt = f"{curr_chars:,}c"
-                                delta_c = curr_chars - prev_chars
+                                chars = msg.get('chars', 0)
+                                chars_fmt = f"{chars:,}c"
                                 has_cc = msg.get('has_cache_control', False)
                                 cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
                                 color = PASTEL_GREEN if has_cc else WHITE
-                                all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8} ({delta_c:+}c){RESET}{cc_marker}")
+                                all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
                                 line_keys.append(None)
                                 preview = msg.get('content_preview', '')
                                 if preview:
