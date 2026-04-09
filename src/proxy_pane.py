@@ -400,9 +400,9 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             budget = tc.get('budget_tokens', 0)
             budget_str = _format_k(budget) if budget else '?'
             think_type = tc.get('type', '?')
-            effort_changed = prev_effort is not None and effort != prev_effort
-            budget_changed = prev_budget is not None and budget != prev_budget
-            type_changed = prev_think_type is not None and think_type != prev_think_type
+            effort_changed = prev_effort is not None and prev_effort != '?' and effort != '?' and effort != prev_effort
+            budget_changed = prev_budget is not None and prev_budget != 0 and budget != 0 and budget != prev_budget
+            type_changed = prev_think_type is not None and prev_think_type != '?' and think_type != '?' and think_type != prev_think_type
             effort_color = RED if effort_changed else ''
             budget_color = RED if (budget_changed or type_changed) else ''
             config_str = f"  {effort_color}effort:{effort_short}{RESET if effort_color else ''}  {budget_color}think:{budget_str}({think_type}){RESET if budget_color else ''}"
