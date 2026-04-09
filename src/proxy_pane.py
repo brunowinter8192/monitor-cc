@@ -357,6 +357,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         prev_group_last_entry = None
         prev_effort = None
         prev_budget = None
+        prev_think_type = None
         for group in groups:
             turn_idx = group['turn_idx']
             opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:turn_idx])
@@ -375,11 +376,13 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             effort_short = effort[:3] if len(effort) > 3 else effort
             budget = tc.get('budget_tokens', 0)
             budget_str = _format_k(budget) if budget else '?'
+            think_type = tc.get('type', '?')
             effort_changed = prev_effort is not None and effort != prev_effort
             budget_changed = prev_budget is not None and budget != prev_budget
+            type_changed = prev_think_type is not None and think_type != prev_think_type
             effort_color = RED if effort_changed else ''
-            budget_color = RED if budget_changed else ''
-            config_str = f"  {effort_color}effort:{effort_short}{RESET if effort_color else ''}  {budget_color}think:{budget_str}{RESET if budget_color else ''}"
+            budget_color = RED if (budget_changed or type_changed) else ''
+            config_str = f"  {effort_color}effort:{effort_short}{RESET if effort_color else ''}  {budget_color}think:{budget_str}({think_type}){RESET if budget_color else ''}"
 
             # Delta vs previous turn's last entry
             if prev_group_last_entry is not None:
@@ -528,6 +531,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             prev_group_last_entry = last_e
             prev_effort = effort
             prev_budget = budget
+            prev_think_type = think_type
             all_lines.append('')
             line_keys.append(None)
     else:
