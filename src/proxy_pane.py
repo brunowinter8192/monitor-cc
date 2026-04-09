@@ -580,11 +580,23 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                             if is_tools_expanded:
                                 wrap_w = max(20, pane_width - 12)
                                 tools_defs = entry.get('tools_defs', [])
+                                is_first_request = not prev_tools_hash
+                                added_set = set(added)
+                                if not is_first_request and not tools_changed:
+                                    all_lines.append(f"      {DIM}(unchanged){RESET}")
+                                    line_keys.append(None)
+                                else:
+                                    # Show removed tools as non-expandable labels
+                                    for r_name in removed:
+                                        all_lines.append(f"      {DIM}{RED}-{r_name}{RESET}")
+                                        line_keys.append(None)
                                 for tool_idx, tool_def in enumerate(tools_defs):
                                     t_name = tool_def.get('name', '')
+                                    # First request: show all; changed: only added; unchanged: skip all
+                                    if not is_first_request and (not tools_changed or t_name not in added_set):
+                                        continue
                                     is_stripped_tool = t_name in TOOL_BLOCKLIST
-                                    # Stripped tools are not actually sent — suppress the + marker
-                                    marker = f" {RED}+{RESET}" if (t_name in added and not is_stripped_tool) else ''
+                                    marker = ''
                                     tool_key = ('tool', entry_idx, tool_idx)
                                     is_tool_exp = expand_states.get(tool_key, False)
                                     t_symbol = '\u25bc' if is_tool_exp else '\u25b6'
