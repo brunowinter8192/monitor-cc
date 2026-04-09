@@ -18,6 +18,7 @@ PASTEL_ORANGE = '\033[38;5;209m'
 PASTEL_GREEN = '\033[38;5;114m'
 HOVER_BG = '\033[48;5;236m'
 DIM = '\033[2m'
+DIM_YELLOW_BG = '\033[48;5;58m'
 
 # Config values
 POLL_INTERVAL = 0.5
@@ -123,6 +124,30 @@ KNOWN_TOOL_DEFINITION_KEYS = {'name', 'description', 'input_schema', 'defer_load
 
 # Known message roles
 KNOWN_MESSAGE_ROLES = {'assistant', 'user'}
+
+# Proxy addon — tool stripping (shared between proxy_addon.py and proxy_pane.py)
+AGENT_TRIMMED_DESCRIPTION = """Launch an agent to handle a task.
+
+Available agent types:
+- iterative-dev:git-committer: Autonomous git committer. Handles git status, diff, add, commit, push. Returns structured summary. (Tools: All tools)
+
+Specify subagent_type parameter to select agent type."""
+
+TOOL_BLOCKLIST = frozenset({
+    # Task tools (we use beads)
+    "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",
+    # Cron tools
+    "CronCreate", "CronDelete", "CronList",
+    # Worktree tools (workers handle this)
+    "EnterWorktree", "ExitWorktree",
+    # Unused built-ins
+    "LSP", "ListMcpResourcesTool", "ReadMcpResourceTool", "RemoteTrigger",
+    "WebFetch", "WebSearch", "web_search",
+    # Plan mode (we use iterative-dev skill)
+    "EnterPlanMode", "ExitPlanMode",
+    # Other
+    "AskUserQuestion", "NotebookEdit",
+})
 
 # Pane header labels
 PANE_HEADERS = {

@@ -15,28 +15,8 @@ ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
 DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
 
-AGENT_TRIMMED_DESCRIPTION = """Launch an agent to handle a task.
-
-Available agent types:
-- iterative-dev:git-committer: Autonomous git committer. Handles git status, diff, add, commit, push. Returns structured summary. (Tools: All tools)
-
-Specify subagent_type parameter to select agent type."""
-
-TOOL_BLOCKLIST = frozenset({
-    # Task tools (we use beads)
-    "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",
-    # Cron tools
-    "CronCreate", "CronDelete", "CronList",
-    # Worktree tools (workers handle this)
-    "EnterWorktree", "ExitWorktree",
-    # Unused built-ins
-    "LSP", "ListMcpResourcesTool", "ReadMcpResourceTool", "RemoteTrigger",
-    "WebFetch", "WebSearch", "web_search",
-    # Plan mode (we use iterative-dev skill)
-    "EnterPlanMode", "ExitPlanMode",
-    # Other
-    "AskUserQuestion", "NotebookEdit",
-})
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import TOOL_BLOCKLIST, AGENT_TRIMMED_DESCRIPTION
 
 
 # ORCHESTRATOR
