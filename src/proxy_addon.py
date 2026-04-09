@@ -15,7 +15,8 @@ ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
 DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
 
-sys.path.insert(0, str(Path(__file__).parent))
+_src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent)), "src")
+sys.path.insert(0, _src_dir)
 from constants import TOOL_BLOCKLIST, AGENT_TRIMMED_DESCRIPTION
 
 
@@ -41,10 +42,12 @@ class ProxyAddon:
 
             model = payload.get("model", "")
             model_family = "haiku" if "haiku" in model.lower() else "opus"
-            modified_payload, modifications = apply_modification_rules(payload)
+            modified_payload, modifications, original_system2 = apply_modification_rules(payload)
 
-            # Log ORIGINAL payload for analysis (before cache_control changes)
-            entry = _build_entry(flow, payload, self.prev_messages_by_model.get(model_family), modifications)
+            # Log MODIFIED payload (after rule application, before tool strip + cache breakpoints)
+            entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
+            if original_system2 is not None:
+                entry['original_system2_text'] = original_system2
             _write_entry(self.log_file, entry)
 
             # Strip unused tools from the modified payload before sending to API
@@ -646,9 +649,11 @@ def apply_modification_rules(payload: dict) -> tuple:
     system = payload.get("system", [])
     new_system = list(system) if isinstance(system, list) else system
 
+    original_system2_text = None
     if isinstance(new_system, list) and len(new_system) >= 3:
         block = new_system[2]
         if isinstance(block, dict) and block.get("type") == "text":
+            original_system2_text = block.get("text", "")
             if extracted_rules_text:
                 new_system[2] = {**block, "text": extracted_rules_text}
             else:
@@ -667,11 +672,11 @@ def apply_modification_rules(payload: dict) -> tuple:
                     modifications.append("stripped_session_guidance")
 
     if not changed:
-        return payload, modifications
+        return payload, modifications, None
     modified = dict(payload)
     modified["messages"] = new_messages
     modified["system"] = new_system
-    return modified, modifications
+    return modified, modifications, original_system2_text
 
 
 # Remove blocklisted tools from payload and trim Agent description. Returns (modified_payload, count_removed).
