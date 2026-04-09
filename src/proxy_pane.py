@@ -485,6 +485,15 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     line_keys.append(req_key)
                     if is_req_expanded:
                         messages = entry.get('messages', [])
+                        stripped_indices = set()
+                        for _idx, _msg in enumerate(messages):
+                            _preview = _msg.get('content_preview', '')
+                            if 'stripped_task_tools_nag' in mods and 'task tools haven' in _preview:
+                                stripped_indices.add(_idx)
+                            if 'removed_plan_mode_sr' in mods and 'Plan mode is active' in _preview:
+                                stripped_indices.add(_idx)
+                            if 'stripped_rejection_message' in mods and "doesn't want to proceed" in _preview:
+                                stripped_indices.add(_idx)
                         prev_msg_count = prev_entry_for_delta.get('message_count', 0) if prev_entry_for_delta is not None else 0
                         wrap_width = max(20, pane_width - 8)
                         if prev_msg_count < len(messages):
@@ -496,8 +505,12 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 chars_fmt = f"{chars:,}c"
                                 has_cc = msg.get('has_cache_control', False)
                                 cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
-                                color = PASTEL_GREEN if has_cc else WHITE
-                                all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                                is_stripped = msg_idx in stripped_indices
+                                if is_stripped:
+                                    all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}  {YELLOW}[STRIPPED]{RESET}")
+                                else:
+                                    color = PASTEL_GREEN if has_cc else WHITE
+                                    all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
                                 line_keys.append(None)
                                 preview = msg.get('content_preview', '')
                                 if preview:
@@ -527,7 +540,9 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 curr_chars = msg.get('chars', 0)
                                 prev_chars = prev_msg.get('chars', 0) if prev_msg else 0
                                 delta_chars = curr_chars - prev_chars
-                                all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}{RESET}")
+                                is_stripped = msg_idx in stripped_indices
+                                stripped_marker = f"  {YELLOW}[STRIPPED]{RESET}" if is_stripped else ''
+                                all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}{RESET}{stripped_marker}")
                                 line_keys.append(None)
                                 tail = msg.get('content_tail', '')
                                 if tail and delta_chars > 0:
