@@ -258,7 +258,7 @@ def _classify_blocks(blocks: list) -> tuple:
             input_str = json.dumps(block.get("input", {}))
             total_chars += len(name) + len(input_str)
             if not preview:
-                preview = f"[tool_use:{name}]"
+                preview = f"[tool_use:{name}]\n{input_str}"
 
         elif btype == "tool_result":
             primary_type = "tool_result"
