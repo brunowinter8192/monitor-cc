@@ -669,20 +669,21 @@ def apply_modification_rules(payload: dict) -> tuple:
     if isinstance(new_system, list) and len(new_system) >= 3:
         block = new_system[2]
         if isinstance(block, dict) and block.get("type") == "text":
-            new_system[2] = {**block, "text": "."}
+            if extracted_rules_text:
+                new_system[2] = {**block, "text": extracted_rules_text}
+            else:
+                new_system[2] = {**block, "text": "."}
             modifications.append("replaced_system_prompt")
             changed = True
 
     if extracted_rules_text and isinstance(new_system, list):
-        rules_block = {"type": "text", "text": extracted_rules_text}
-        new_system = new_system[:3] + [rules_block] + new_system[3:]
-        # Strip session guidance from new system[4] (was system[3])
-        if len(new_system) > 4:
-            block4 = new_system[4]
-            if isinstance(block4, dict) and block4.get("type") == "text":
-                stripped = _strip_session_guidance(block4.get("text", ""))
-                if stripped != block4.get("text", ""):
-                    new_system[4] = {**block4, "text": stripped}
+        # Strip session guidance from system[3] (rules now live in system[2], no extra block inserted)
+        if len(new_system) > 3:
+            block3 = new_system[3]
+            if isinstance(block3, dict) and block3.get("type") == "text":
+                stripped = _strip_session_guidance(block3.get("text", ""))
+                if stripped != block3.get("text", ""):
+                    new_system[3] = {**block3, "text": stripped}
                     modifications.append("stripped_session_guidance")
 
     if not changed:
