@@ -123,6 +123,20 @@ def _extract_raw_payload_fields(entry: dict) -> None:
                     schema_warnings.append(f"unknown tool key: {k}")
         entry['schema_warnings'] = schema_warnings
 
+        # Enrich messages with content tail from raw payload for modified-message detection
+        stored_msgs = entry.get('messages', [])
+        if stored_msgs and isinstance(msgs, list):
+            for i, raw_msg in enumerate(msgs):
+                if i < len(stored_msgs):
+                    content = raw_msg.get('content', '')
+                    if isinstance(content, str):
+                        text = content
+                    elif isinstance(content, list):
+                        text = ''.join(b.get('text', '') for b in content if isinstance(b, dict))
+                    else:
+                        text = ''
+                    stored_msgs[i]['content_tail'] = text[-500:] if len(text) > 500 else text
+
         del entry['raw_payload']
 
     if 'request_headers' in entry:
@@ -507,10 +521,30 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                     break
                             for msg_idx in range(diff_start, len(messages)):
                                 msg = messages[msg_idx]
+                                prev_msg = prev_messages[msg_idx] if msg_idx < len(prev_messages) else None
                                 role = msg.get('role', '?')[:4]
                                 msg_type = msg.get('type', 'text')
-                                all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}{RESET}")
+                                curr_chars = msg.get('chars', 0)
+                                prev_chars = prev_msg.get('chars', 0) if prev_msg else 0
+                                delta_chars = curr_chars - prev_chars
+                                chars_fmt = f"{delta_chars:,}c"
+                                has_cc = msg.get('has_cache_control', False)
+                                cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
+                                color = PASTEL_GREEN if has_cc else WHITE
+                                all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
                                 line_keys.append(None)
+                                tail = msg.get('content_tail', '')
+                                if tail and delta_chars > 0:
+                                    new_content = tail[-delta_chars:] if len(tail) > delta_chars else tail
+                                    wrap_width = max(20, pane_width - 8)
+                                    for raw_line in new_content.split('\n'):
+                                        if not raw_line:
+                                            all_lines.append(f"      {DIM}{RESET}")
+                                            line_keys.append(None)
+                                            continue
+                                        for chunk_start in range(0, len(raw_line), wrap_width):
+                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                            line_keys.append(None)
                     prev_entry_for_delta = entry
 
             prev_group_last_entry = last_e
