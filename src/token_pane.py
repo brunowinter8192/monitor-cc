@@ -21,6 +21,12 @@ cache_scroll_offset: int = 0
 proxy_req_map: list = []
 proxy_req_map_count: int = 0
 
+_cache_jsonl_position: int = 0
+_cache_turns: list = []
+_cache_current_filepath = None
+_proxy_log_pos: int = 0
+_proxy_total_entries: int = 0
+
 # FUNCTIONS
 
 # Format token count as compact "Xk" or "X.Xk" string
@@ -183,27 +189,54 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
 
     return '\n'.join(result_lines)
 
-# Build cache turns from the most recent main session JSONL
-def build_cache_turns() -> list:
-    from . import monitor as _monitor
-    main_sessions = _monitor.get_main_session_files()
-    if not main_sessions:
-        return []
-    filepath = main_sessions[0]
-    lines = read_new_lines(filepath, 0)
+# Build cache turns incrementally — only reads new lines since last_position
+def build_cache_turns(filepath, last_position: int, existing_turns: list):
+    from .jsonl_parser import get_current_position
+    lines = read_new_lines(filepath, last_position)
+    new_position = get_current_position(filepath) if filepath.exists() else last_position
+    if not lines:
+        return existing_turns, last_position
     messages, _ = parse_jsonl_lines(lines)
-    return extract_cache_turns(messages)
+    new_turns = extract_cache_turns(messages)
+    if not new_turns:
+        return existing_turns, new_position
+    if existing_turns and new_turns[0].get('prompt') == existing_turns[-1].get('prompt'):
+        # Last existing turn was incomplete (streaming) — merge its api_calls with fresh parse
+        merged = dict(existing_turns[-1])
+        merged_calls = list(merged.get('api_calls', []))
+        for call in new_turns[0].get('api_calls', []):
+            dup_idx = next(
+                (i for i, c in enumerate(merged_calls)
+                 if c.get('cache_read') == call.get('cache_read')
+                 and c.get('cache_creation') == call.get('cache_creation')
+                 and c.get('direct') == call.get('direct')),
+                None
+            )
+            if dup_idx is None:
+                merged_calls.append(call)
+            else:
+                # Update output_tokens in case streaming advanced
+                prev = dict(merged_calls[dup_idx])
+                prev['output_tokens'] = max(prev.get('output_tokens', 0), call.get('output_tokens', 0))
+                merged_calls[dup_idx] = prev
+        merged['api_calls'] = merged_calls
+        result = existing_turns[:-1] + [merged] + new_turns[1:]
+    else:
+        result = existing_turns + new_turns
+    return result, new_position
 
-# Build mapping from Opus call index to proxy REQ number (1-based)
-def build_proxy_req_mapping(project_filter) -> list:
+# Build proxy req mapping incrementally — appends new non-haiku entries to existing mapping
+def build_proxy_req_mapping(project_filter, last_position: int, existing_mapping: list, existing_entry_count: int):
     from .proxy_pane import parse_proxy_log
-    entries, _ = parse_proxy_log(project_filter, 0)
-    mapping = []
-    for i, entry in enumerate(entries):
+    new_entries, new_position = parse_proxy_log(project_filter, last_position)
+    count = existing_entry_count
+    result = list(existing_mapping)
+    for entry in new_entries:
+        count += 1
         model = entry.get('model', '')
         if 'haiku' not in model.lower():
-            mapping.append(i + 1)
-    return mapping
+            result.append(count)
+    return result, new_position, count
 
 # Format timestamp for display (import lazily to avoid circular at module level)
 def _format_ts(timestamp: str) -> str:
@@ -215,8 +248,9 @@ def run_tokens_loop() -> None:
     from . import monitor as _monitor
     global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
     global proxy_req_map, proxy_req_map_count
+    global _cache_jsonl_position, _cache_turns, _cache_current_filepath
+    global _proxy_log_pos, _proxy_total_entries
     last_output = None
-    turns = []
     last_data_refresh = 0.0
     setup_keyboard_input()
     enable_mouse()
@@ -248,11 +282,33 @@ def run_tokens_loop() -> None:
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
-                turns = build_cache_turns()
-                new_map = build_proxy_req_mapping(_monitor.active_project_filter)
-                if len(new_map) != proxy_req_map_count:
-                    proxy_req_map = new_map
-                    proxy_req_map_count = len(new_map)
+                main_sessions = _monitor.get_main_session_files()
+                filepath = main_sessions[0] if main_sessions else None
+
+                if filepath != _cache_current_filepath:
+                    # Session changed — reset all incremental state
+                    _cache_current_filepath = filepath
+                    _cache_jsonl_position = 0
+                    _cache_turns = []
+                    _proxy_log_pos = 0
+                    _proxy_total_entries = 0
+                    proxy_req_map = []
+                    proxy_req_map_count = 0
+                    cache_expand_states.clear()
+                    cache_scroll_offset = 0
+                    cache_hover_row = None
+
+                if filepath is not None:
+                    _cache_turns, _cache_jsonl_position = build_cache_turns(
+                        filepath, _cache_jsonl_position, _cache_turns
+                    )
+                    new_map, _proxy_log_pos, _proxy_total_entries = build_proxy_req_mapping(
+                        _monitor.active_project_filter, _proxy_log_pos, proxy_req_map, _proxy_total_entries
+                    )
+                    if len(new_map) != proxy_req_map_count:
+                        proxy_req_map = new_map
+                        proxy_req_map_count = len(new_map)
+
                 last_data_refresh = now
                 input_changed = True
 
@@ -264,7 +320,7 @@ def run_tokens_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                output = format_cache_tracker(turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width, cache_scroll_offset, proxy_req_map=proxy_req_map)
+                output = format_cache_tracker(_cache_turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width, cache_scroll_offset, proxy_req_map=proxy_req_map)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
