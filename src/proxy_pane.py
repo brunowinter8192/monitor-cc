@@ -356,51 +356,115 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     if groups:
         prev_group_last_entry = None
         for group in groups:
-            opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:group['turn_idx']])
+            turn_idx = group['turn_idx']
+            opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:turn_idx])
             sub_req_num = 0
-            turn_ts = format_timestamp(group['timestamp'])[:5]
-            all_lines.append(f"{PASTEL_PURPLE}Turn {group['turn_idx'] + 1} [{turn_ts}]{RESET}")
-            line_keys.append(None)
 
             last_e = group['entry_pairs'][-1][1]
             last_sys = last_e.get('system_total_chars', last_e.get('system_prompt_chars', 0))
             last_tools = last_e.get('tools_total_chars', last_e.get('tools_chars', 0))
             last_msgs = last_e.get('messages_total_chars', 0)
-            total_parts = [
-                f"sys:{_format_k(last_sys)}({_format_tok_est(last_sys)})",
-                f"tools:{_format_k(last_tools)}({_format_tok_est(last_tools)})",
-                f"msgs:{_format_k(last_msgs)}({_format_tok_est(last_msgs)})",
-            ]
-            all_lines.append(f"  {DIM}total: {'  '.join(total_parts)}{RESET}")
-            line_keys.append(None)
+
+            # Delta vs previous turn's last entry
             if prev_group_last_entry is not None:
                 ple = prev_group_last_entry
                 d_sys = last_sys - ple.get('system_total_chars', ple.get('system_prompt_chars', 0))
                 d_tools = last_tools - ple.get('tools_total_chars', ple.get('tools_chars', 0))
                 d_msgs = last_msgs - ple.get('messages_total_chars', 0)
-                all_lines.append(f"  Δturn: {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}")
+                delta_str = f"  {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}"
             else:
-                all_lines.append(f"  {DIM}Δturn: (first turn){RESET}")
+                delta_str = f"  {DIM}(first turn){RESET}"
+
+            turn_key = ('turn', turn_idx)
+            is_turn_expanded = expand_states.get(turn_key, False)
+            turn_symbol = '\u25bc' if is_turn_expanded else '\u25b6'
+            turn_ts = format_timestamp(group['timestamp'])[:5]
+
+            # Turn header line (clickable — expand/collapse unit)
+            all_lines.append(f"{PASTEL_PURPLE}{turn_symbol} Turn {turn_idx + 1} [{turn_ts}]{delta_str}{RESET}")
+            line_keys.append(turn_key)
+
+            # Baseline totals from PREVIOUS turn's last entry (not clickable)
+            if prev_group_last_entry is not None:
+                ple = prev_group_last_entry
+                prev_sys = ple.get('system_total_chars', ple.get('system_prompt_chars', 0))
+                prev_tools = ple.get('tools_total_chars', ple.get('tools_chars', 0))
+                prev_msgs = ple.get('messages_total_chars', 0)
+                all_lines.append(f"  {DIM}total: sys:{_format_k(prev_sys)}  tools:{_format_k(prev_tools)}  msgs:{_format_k(prev_msgs)}{RESET}")
+            else:
+                all_lines.append(f"  {DIM}total: (first turn){RESET}")
             line_keys.append(None)
-            prev_group_last_entry = last_e
 
-            for entry_idx, entry in group['entry_pairs']:
-                model_short = _shorten_model(entry.get('model', '?'))
-                if model_short == 'haiku':
-                    num_label = 'H'
-                else:
-                    bp_len = len(entry.get('cache_breakpoints', []))
-                    if entry_idx == 0 or bp_len >= 1:
-                        opus_req_num += 1
-                        sub_req_num = 0
-                        num_label = f'#{opus_req_num}'
+            if is_turn_expanded:
+                # Request metadata lines — one compact line per entry, no click
+                prev_entry_for_delta = prev_group_last_entry
+                for entry_idx, entry in group['entry_pairs']:
+                    model_short = _shorten_model(entry.get('model', '?'))
+                    if model_short == 'haiku':
+                        num_label = 'H'
                     else:
-                        sub_req_num += 1
-                        num_label = f'#{opus_req_num}.{sub_req_num}'
-                e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='  ', num_label=num_label)
-                all_lines.extend(e_lines)
-                line_keys.extend(e_keys)
+                        bp_len = len(entry.get('cache_breakpoints', []))
+                        if entry_idx == 0 or bp_len >= 1:
+                            opus_req_num += 1
+                            sub_req_num = 0
+                            num_label = f'#{opus_req_num}'
+                        else:
+                            sub_req_num += 1
+                            num_label = f'#{opus_req_num}.{sub_req_num}'
+                    msg_count = entry.get('message_count', 0)
+                    cache_bp = entry.get('cache_breakpoints', [])
+                    bp_count = len(cache_bp)
+                    mods = entry.get('modifications', [])
+                    mods_count = len(mods)
+                    diff = entry.get('diff_from_prev', {})
+                    first_diff = diff.get('first_diff_index', -1)
+                    # Warning indicators (not expandable)
+                    warn_parts = []
+                    prev_same = None
+                    for _i in range(entry_idx - 1, -1, -1):
+                        _ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
+                        _pf = 'haiku' if 'haiku' in entries[_i].get('model', '').lower() else 'opus'
+                        if _pf == _ef:
+                            prev_same = entries[_i]
+                            break
+                    if prev_same is not None:
+                        if entry.get('tools_hash') and prev_same.get('tools_hash') and entry.get('tools_hash') != prev_same.get('tools_hash'):
+                            warn_parts.append(f"{RED}⚠T{RESET}")
+                        if entry.get('system_total_chars') is not None and prev_same.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_same.get('system_total_chars'):
+                            warn_parts.append(f"{RED}⚠S{RESET}")
+                        msgs_modified = diff.get('messages_modified', 0)
+                        if msgs_modified > 0 and first_diff >= 0 and cache_bp:
+                            if first_diff < min(cache_bp):
+                                warn_parts.append(f"{RED}⚠M{RESET}")
+                    # Per-request Δmsgs
+                    e_msgs = entry.get('messages_total_chars', 0)
+                    if prev_entry_for_delta is not None:
+                        d_req_msgs = e_msgs - prev_entry_for_delta.get('messages_total_chars', 0)
+                        req_delta_str = f"  {_format_delta('msgs', d_req_msgs)}" if d_req_msgs != 0 else ''
+                    else:
+                        req_delta_str = ''
+                    mods_str = f" {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
+                    warn_str = f"  {'  '.join(warn_parts)}" if warn_parts else f"  {PASTEL_GREEN}✓{RESET}"
+                    all_lines.append(f"  {WHITE}{num_label} {model_short} {msg_count}msg BP:{bp_count}{mods_str}{warn_str}{req_delta_str}{RESET}")
+                    line_keys.append(None)
+                    prev_entry_for_delta = entry
 
+                # Message lines: all messages NEW since prev turn's last entry
+                messages = last_e.get('messages', [])
+                start_idx = prev_group_last_entry.get('message_count', 0) if prev_group_last_entry is not None else 0
+                for msg_idx in range(start_idx, len(messages)):
+                    msg = messages[msg_idx]
+                    role = msg.get('role', '?')[:4]
+                    msg_type = msg.get('type', 'text')
+                    chars = msg.get('chars', 0)
+                    chars_fmt = f"{chars:,}c"
+                    has_cc = msg.get('has_cache_control', False)
+                    cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
+                    color = PASTEL_GREEN if has_cc else WHITE
+                    all_lines.append(f"  {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                    line_keys.append(None)
+
+            prev_group_last_entry = last_e
             all_lines.append('')
             line_keys.append(None)
     else:
