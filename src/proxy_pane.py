@@ -541,9 +541,12 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                         for chunk_start in range(0, len(raw_line), wrap_width):
                                             all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                                             line_keys.append(None)
-                    prev_entry_for_delta = entry
+                    if len(entry.get('cache_breakpoints', [])) >= 1:
+                        prev_entry_for_delta = entry
 
-            prev_group_last_entry = last_e
+            main_entries = [e for _, e in group['entry_pairs'] if len(e.get('cache_breakpoints', [])) >= 1]
+            if main_entries:
+                prev_group_last_entry = main_entries[-1]
             prev_effort = effort
             prev_budget = budget
             prev_think_type = think_type
