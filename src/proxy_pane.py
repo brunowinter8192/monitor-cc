@@ -507,18 +507,22 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                     break
                             for msg_idx in range(diff_start, len(messages)):
                                 msg = messages[msg_idx]
+                                prev_msg = prev_messages[msg_idx] if msg_idx < len(prev_messages) else None
                                 role = msg.get('role', '?')[:4]
                                 msg_type = msg.get('type', 'text')
-                                chars = msg.get('chars', 0)
-                                chars_fmt = f"{chars:,}c"
+                                curr_chars = msg.get('chars', 0)
+                                prev_chars = prev_msg.get('chars', 0) if prev_msg else 0
+                                delta_chars = curr_chars - prev_chars
+                                chars_fmt = f"+{delta_chars}c"
                                 has_cc = msg.get('has_cache_control', False)
                                 cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
                                 color = PASTEL_GREEN if has_cc else WHITE
                                 all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
                                 line_keys.append(None)
                                 preview = msg.get('content_preview', '')
-                                if preview:
-                                    for raw_line in preview.split('\n'):
+                                if preview and delta_chars > 0:
+                                    new_content = preview[-delta_chars:] if len(preview) > delta_chars else preview
+                                    for raw_line in new_content.split('\n'):
                                         if not raw_line:
                                             all_lines.append(f"      {DIM}{RESET}")
                                             line_keys.append(None)
