@@ -107,17 +107,28 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                         tool_name = block.get('tool_name', 'Unknown')
                         if tool_name.startswith('mcp__'):
                             tool_name = shorten_tool_name(tool_name)
-                        preview = _get_tool_preview(block.get('preview', {}))
-                        if preview:
-                            first = True
-                            for chunk_start in range(0, max(1, len(preview)), wrap_width):
-                                chunk = preview[chunk_start:chunk_start + wrap_width]
-                                if first:
-                                    all_lines.append(f"    {GREEN}{tool_name}: {chunk}{RESET}")
-                                    first = False
-                                else:
-                                    all_lines.append(f"    {GREEN}{chunk}{RESET}")
-                                line_keys.append(None)
+                        input_data = block.get('preview', {})
+                        if isinstance(input_data, dict) and input_data:
+                            all_lines.append(f"    {GREEN}{tool_name}{RESET}")
+                            line_keys.append(None)
+                            for k, v in input_data.items():
+                                val_str = str(v).replace('\n', ' ') if not isinstance(v, str) else v
+                                header = f"      {k}: "
+                                remaining_width = max(20, wrap_width - len(header) + 6)
+                                for raw_line in val_str.split('\n'):
+                                    if not raw_line:
+                                        all_lines.append(f"      {DIM}{RESET}")
+                                        line_keys.append(None)
+                                        continue
+                                    first_chunk = True
+                                    for chunk_start in range(0, max(1, len(raw_line)), remaining_width):
+                                        chunk = raw_line[chunk_start:chunk_start + remaining_width]
+                                        if first_chunk:
+                                            all_lines.append(f"      {GREEN}{k}: {chunk}{RESET}")
+                                            first_chunk = False
+                                        else:
+                                            all_lines.append(f"      {GREEN}{' ' * (len(k) + 2)}{chunk}{RESET}")
+                                        line_keys.append(None)
                         else:
                             all_lines.append(f"    {GREEN}{tool_name}{RESET}")
                             line_keys.append(None)
