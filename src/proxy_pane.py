@@ -191,10 +191,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
 
     for turn_idx, turn in enumerate(turns):
         turn_ts = format_timestamp(turn['timestamp'])[:5]
-        prompt = turn['prompt']
-        prompt_max = max(20, pane_width - 20)
-        prompt_display = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
-        all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{turn_ts}]: \"{prompt_display}\"{RESET}")
+        all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{turn_ts}]{RESET}")
         line_keys.append(None)
 
         for entry_idx, entry in turn['entry_pairs']:
