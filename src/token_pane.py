@@ -100,6 +100,7 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
             line_keys.append(key)
 
             if is_expanded:
+                wrap_width = max(20, pane_width - 8)
                 for block in call.get('content_blocks', []):
                     bt = block.get('type', '')
                     if bt == 'tool_use':
@@ -108,9 +109,18 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                             tool_name = shorten_tool_name(tool_name)
                         preview = _get_tool_preview(block.get('preview', {}))
                         if preview:
-                            all_lines.append(f"    {GREEN}{tool_name}: {preview[:50]}{RESET}")
+                            first = True
+                            for chunk_start in range(0, max(1, len(preview)), wrap_width):
+                                chunk = preview[chunk_start:chunk_start + wrap_width]
+                                if first:
+                                    all_lines.append(f"    {GREEN}{tool_name}: {chunk}{RESET}")
+                                    first = False
+                                else:
+                                    all_lines.append(f"    {GREEN}{chunk}{RESET}")
+                                line_keys.append(None)
                         else:
                             all_lines.append(f"    {GREEN}{tool_name}{RESET}")
+                            line_keys.append(None)
                     elif bt == 'thinking':
                         think_out = block.get('output_tokens')
                         think_chars = block.get('chars', 0)
@@ -120,13 +130,27 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                             all_lines.append(f"    {PASTEL_ORANGE}thinking ({_format_k(think_out)} out){RESET}")
                         else:
                             all_lines.append(f"    {PASTEL_ORANGE}thinking{RESET}")
+                        line_keys.append(None)
                     elif bt == 'text':
                         preview = block.get('preview', '')
                         if preview:
-                            all_lines.append(f"    {WHITE}text: {preview}{RESET}")
+                            first = True
+                            for raw_line in preview.split('\n'):
+                                if not raw_line:
+                                    all_lines.append(f"    {WHITE}{RESET}")
+                                    line_keys.append(None)
+                                    continue
+                                for chunk_start in range(0, len(raw_line), wrap_width):
+                                    chunk = raw_line[chunk_start:chunk_start + wrap_width]
+                                    if first:
+                                        all_lines.append(f"    {WHITE}text: {chunk}{RESET}")
+                                        first = False
+                                    else:
+                                        all_lines.append(f"    {WHITE}{chunk}{RESET}")
+                                    line_keys.append(None)
                         else:
                             all_lines.append(f"    {WHITE}text{RESET}")
-                    line_keys.append(None)
+                            line_keys.append(None)
 
         all_lines.append('')
         line_keys.append(None)

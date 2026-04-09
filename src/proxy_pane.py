@@ -135,7 +135,7 @@ def _extract_raw_payload_fields(entry: dict) -> None:
                         text = ''.join(b.get('text', '') for b in content if isinstance(b, dict))
                     else:
                         text = ''
-                    stored_msgs[i]['content_tail'] = text[-500:] if len(text) > 500 else text
+                    stored_msgs[i]['content_tail'] = text
 
         del entry['raw_payload']
 

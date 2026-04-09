@@ -474,7 +474,7 @@ def extract_cache_turns(messages: list) -> list:
                         input_data = block.get('input', {})
                         blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown'), 'preview': input_data})
                     elif bt == 'text':
-                        blocks.append({'type': 'text', 'preview': block.get('text', '').replace('\n', ' ')[:50]})
+                        blocks.append({'type': 'text', 'preview': block.get('text', '')})
 
             request_id = message.get('requestId', '')
             input_key = request_id if request_id else (cache_read, cache_creation, input_tokens)
