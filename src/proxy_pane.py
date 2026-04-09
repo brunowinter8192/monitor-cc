@@ -507,13 +507,9 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                     break
                             for msg_idx in range(diff_start, len(messages)):
                                 msg = messages[msg_idx]
-                                prev_msg = prev_messages[msg_idx] if msg_idx < len(prev_messages) else None
                                 role = msg.get('role', '?')[:4]
                                 msg_type = msg.get('type', 'text')
-                                curr_chars = msg.get('chars', 0)
-                                prev_chars = prev_msg.get('chars', 0) if prev_msg else 0
-                                delta_chars = curr_chars - prev_chars
-                                all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20} +{delta_chars}c{RESET}")
+                                all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}{RESET}")
                                 line_keys.append(None)
                     prev_entry_for_delta = entry
 
