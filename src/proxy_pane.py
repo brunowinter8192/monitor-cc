@@ -13,7 +13,7 @@ from .constants import (
     HOVER_BG,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
     KNOWN_PAYLOAD_KEYS, KNOWN_CONTENT_BLOCK_TYPES, KNOWN_TOOL_DEFINITION_KEYS, KNOWN_MESSAGE_ROLES,
-    TOOL_BLOCKLIST, AGENT_TRIMMED_DESCRIPTION,
+    TOOL_BLOCKLIST,
 )
 from .token_pane import _format_k, build_cache_turns
 from .click_handler import (
@@ -519,7 +519,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                         else:
                                             all_lines.append(f"        {DIM}(no preview){RESET}")
                                             line_keys.append(None)
-                                        # Show original CC prompt below with DIM_YELLOW_BG (same pattern as Agent tool)
+                                        # Show original CC prompt below with DIM_YELLOW_BG
                                         original_text = sb.get('original_text', '')
                                         if original_text:
                                             all_lines.append(f"        {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
@@ -584,9 +584,9 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                         all_lines.append(f"      {DIM}{t_symbol} {t_name}{RESET}{marker}")
                                     line_keys.append(tool_key)
                                     if is_tool_exp:
-                                        if t_name == 'Agent':
-                                            # Show trimmed description (what is actually sent to API)
-                                            for raw_line in AGENT_TRIMMED_DESCRIPTION.split('\n'):
+                                        description = tool_def.get('description', '')
+                                        if description:
+                                            for raw_line in description.split('\n'):
                                                 if not raw_line:
                                                     all_lines.append(f"        {DIM}{RESET}")
                                                     line_keys.append(None)
@@ -594,44 +594,20 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                                 for chunk_start in range(0, len(raw_line), wrap_w):
                                                     all_lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_w]}{RESET}")
                                                     line_keys.append(None)
-                                            # Show original description with stripped background
-                                            all_lines.append(f"        {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
-                                            line_keys.append(None)
-                                            original_desc = tool_def.get('description', '')
-                                            if original_desc:
-                                                for raw_line in original_desc.split('\n'):
-                                                    if not raw_line:
-                                                        all_lines.append(f"        {DIM_YELLOW_BG}{DIM}{RESET}")
-                                                        line_keys.append(None)
-                                                        continue
-                                                    for chunk_start in range(0, len(raw_line), wrap_w):
-                                                        all_lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_w]}{RESET}")
-                                                        line_keys.append(None)
-                                        else:
-                                            description = tool_def.get('description', '')
-                                            if description:
-                                                for raw_line in description.split('\n'):
-                                                    if not raw_line:
-                                                        all_lines.append(f"        {DIM}{RESET}")
-                                                        line_keys.append(None)
-                                                        continue
-                                                    for chunk_start in range(0, len(raw_line), wrap_w):
-                                                        all_lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_w]}{RESET}")
-                                                        line_keys.append(None)
-                                            input_schema = tool_def.get('input_schema', {})
-                                            props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
-                                            required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
-                                            for param_name, param_info in props.items():
-                                                if isinstance(param_info, dict):
-                                                    param_type = param_info.get('type', '?')
-                                                    param_desc = param_info.get('description', '')
-                                                    req_marker = '*' if param_name in required_props else ''
-                                                    param_line = f"{param_name}{req_marker}: {param_type}"
-                                                    if param_desc:
-                                                        param_line += f" \u2014 {param_desc}"
-                                                    for chunk_start in range(0, len(param_line), wrap_w):
-                                                        all_lines.append(f"        {DIM}{param_line[chunk_start:chunk_start + wrap_w]}{RESET}")
-                                                        line_keys.append(None)
+                                        input_schema = tool_def.get('input_schema', {})
+                                        props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
+                                        required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
+                                        for param_name, param_info in props.items():
+                                            if isinstance(param_info, dict):
+                                                param_type = param_info.get('type', '?')
+                                                param_desc = param_info.get('description', '')
+                                                req_marker = '*' if param_name in required_props else ''
+                                                param_line = f"{param_name}{req_marker}: {param_type}"
+                                                if param_desc:
+                                                    param_line += f" \u2014 {param_desc}"
+                                                for chunk_start in range(0, len(param_line), wrap_w):
+                                                    all_lines.append(f"        {DIM}{param_line[chunk_start:chunk_start + wrap_w]}{RESET}")
+                                                    line_keys.append(None)
                         messages = entry.get('messages', [])
                         stripped_indices = set(entry.get('stripped_msg_indices', []))
                         prev_msg_count = prev_entry_for_delta.get('message_count', 0) if prev_entry_for_delta is not None else 0
