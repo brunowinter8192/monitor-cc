@@ -162,8 +162,12 @@ def process_session_file(filepath: Path) -> None:
     for skill_item in skill_activations:
         display_skill_activation(skill_item)
 
+    media_groups: dict = {}
     for media_item in user_media:
-        display_user_media(media_item)
+        ts = media_item.get('timestamp', '')
+        media_groups.setdefault(ts, []).append(media_item)
+    for ts_group in media_groups.values():
+        display_user_media(ts_group)
 
     for thinking_item in thinking_blocks:
         display_thinking(thinking_item)
@@ -203,8 +207,8 @@ def display_warning(warning: dict) -> None:
     print()
 
 # Display formatted user media to console
-def display_user_media(media_item: dict) -> None:
-    formatted = format_user_media(media_item)
+def display_user_media(media_items: list) -> None:
+    formatted = format_user_media(media_items)
     print(formatted)
     print()
 

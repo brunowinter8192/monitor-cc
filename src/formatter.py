@@ -190,20 +190,27 @@ def format_system_message(timestamp: str, text: str) -> str:
     formatted_body = '\n'.join(f"{INDENT}{line}" for line in body_lines if line.strip())
     return f"{header}\n{formatted_body}" if formatted_body else header
 
-# Format user media item (image or document)
-def format_user_media(media_item: dict) -> str:
-    time_str = format_timestamp(media_item.get('timestamp', ''))
-    media_type = media_item.get('type', 'unknown')
-    mime_type = media_item.get('media_type', 'unknown')
-
-    if media_type == 'image':
-        label = f"[IMAGE: {mime_type}]"
-    elif media_type == 'document':
-        label = f"[DOC: {mime_type}]"
-    else:
-        label = f"[MEDIA: {mime_type}]"
-
-    return f"{PASTEL_PURPLE}[{time_str}] USER PROMPT {label}{RESET}"
+# Format grouped user media items (same timestamp) as one line
+def format_user_media(media_items: list) -> str:
+    if not media_items:
+        return ''
+    time_str = format_timestamp(media_items[0].get('timestamp', ''))
+    counts: dict = {}
+    for item in media_items:
+        media_type = item.get('type', 'unknown')
+        mime_type = item.get('media_type', 'unknown')
+        key = (media_type, mime_type)
+        counts[key] = counts.get(key, 0) + 1
+    parts = []
+    for (media_type, mime_type), count in counts.items():
+        if media_type == 'image':
+            label = f"IMAGE: {mime_type}"
+        elif media_type == 'document':
+            label = f"DOC: {mime_type}"
+        else:
+            label = f"MEDIA: {mime_type}"
+        parts.append(f"[{count}x {label}]" if count > 1 else f"[{label}]")
+    return f"{PASTEL_PURPLE}[{time_str}] USER PROMPT {' '.join(parts)}{RESET}"
 
 # Format skill/command activation with full content
 def format_skill_activation(skill_item: dict) -> str:
