@@ -5,7 +5,7 @@ import time
 
 from .constants import (
     RESET, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE,
-    LIGHT_RED_BG, HOVER_BG,
+    LIGHT_RED_BG, HOVER_BG, DIM,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
 )
 from .jsonl_parser import read_new_lines, parse_jsonl_lines, extract_cache_turns
