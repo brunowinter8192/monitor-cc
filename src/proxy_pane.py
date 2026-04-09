@@ -9,7 +9,7 @@ import time
 
 from .constants import (
     RESET, GREEN, RED, YELLOW, WHITE, CYAN, DIM, DIM_YELLOW_BG,
-    PASTEL_GREEN, PASTEL_PURPLE,
+    PASTEL_PURPLE,
     HOVER_BG,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
     KNOWN_PAYLOAD_KEYS, KNOWN_CONTENT_BLOCK_TYPES, KNOWN_TOOL_DEFINITION_KEYS, KNOWN_MESSAGE_ROLES,
@@ -327,18 +327,15 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
             role = msg.get('role', '?')[:4]
             msg_type = msg.get('type', 'text')
             chars = msg.get('chars', 0)
-            has_cc = msg.get('has_cache_control', False)
-            cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
             chars_fmt = f"{chars:,}c"
             msg_key = (entry_idx, 'msg', msg_idx)
             is_msg_expanded = expand_states.get(msg_key, False)
             msg_symbol = '\u25bc' if is_msg_expanded else '\u25b6'
             is_stripped = msg_idx in stripped_indices
             if is_stripped:
-                lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}{cc_marker}")
+                lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}")
             else:
-                color = PASTEL_GREEN if has_cc else WHITE
-                lines.append(f"{L2}{color}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                lines.append(f"{L2}{WHITE}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}")
             keys.append(msg_key)
 
             if is_msg_expanded:
@@ -517,17 +514,15 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 for sb in sys_blocks:
                                     bidx = sb['idx']
                                     bchars = sb.get('chars', 0)
-                                    has_cc = sb.get('has_cc', False)
-                                    cc_str = f"  {PASTEL_GREEN}CC●{RESET}" if has_cc else ''
                                     is_sys_stripped = 'replaced_system_prompt' in mods and bidx == 2
                                     stripped_str = f"  [STRIPPED]" if is_sys_stripped else ''
                                     block_key = ('sys_block', entry_idx, bidx)
                                     is_block_expanded = expand_states.get(block_key, False)
                                     block_symbol = '\u25bc' if is_block_expanded else '\u25b6'
                                     if is_sys_stripped:
-                                        all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{stripped_str}{RESET}{cc_str}")
+                                        all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{stripped_str}{RESET}")
                                     else:
-                                        all_lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{RESET}{cc_str}")
+                                        all_lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{RESET}")
                                     line_keys.append(block_key)
                                     if is_block_expanded:
                                         preview = sb.get('preview', '')
@@ -676,14 +671,11 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 msg_type = msg.get('type', 'text')
                                 chars = msg.get('chars', 0)
                                 chars_fmt = f"{chars:,}c"
-                                has_cc = msg.get('has_cache_control', False)
-                                cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
                                 is_stripped = msg_idx in stripped_indices
                                 if is_stripped:
-                                    all_lines.append(f"    {DIM_YELLOW_BG}{DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}{cc_marker}")
+                                    all_lines.append(f"    {DIM_YELLOW_BG}{DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}")
                                 else:
-                                    color = PASTEL_GREEN if has_cc else WHITE
-                                    all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                                    all_lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}")
                                 line_keys.append(None)
                                 preview = msg.get('content_preview', '')
                                 if preview:

@@ -75,16 +75,14 @@ def _format_metadata(entry: dict) -> str:
         for sb in sys_blocks:
             idx = sb.get('idx', 0)
             chars = sb.get('chars', 0)
-            has_cc = sb.get('has_cc', False)
-            cc_str = f"  {PASTEL_GREEN}CC●{RESET}" if has_cc else ''
             key = f"sys_chars_{idx}"
             new_values[key] = chars
             prev = _prev_values.get(key)
             changed = prev is not None and prev != chars
             if changed:
-                lines.append(f"  {RED}[{idx}]: {_format_k(prev)} → {_format_k(chars)}{RESET}{cc_str}")
+                lines.append(f"  {RED}[{idx}]: {_format_k(prev)} → {_format_k(chars)}{RESET}")
             else:
-                lines.append(f"  {DIM}[{idx}]: {_format_k(chars)}{RESET}{cc_str}")
+                lines.append(f"  {DIM}[{idx}]: {_format_k(chars)}{RESET}")
         new_values['sys_total'] = sys_total
         prev_total = _prev_values.get('sys_total')
         total_changed = prev_total is not None and prev_total != sys_total
