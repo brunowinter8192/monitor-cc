@@ -41,10 +41,11 @@ class ProxyAddon:
 
             model = payload.get("model", "")
             model_family = "haiku" if "haiku" in model.lower() else "opus"
-            modified_payload, modifications = apply_modification_rules(payload)
+            modified_payload, modifications, stripped_msg_indices = apply_modification_rules(payload)
 
             # Log ORIGINAL payload for analysis (before cache_control changes)
             entry = _build_entry(flow, payload, self.prev_messages_by_model.get(model_family), modifications)
+            entry['stripped_msg_indices'] = stripped_msg_indices
             _write_entry(self.log_file, entry)
 
             # Strip unused tools from the modified payload before sending to API
@@ -611,7 +612,8 @@ def apply_modification_rules(payload: dict) -> tuple:
                 changed = True
 
     new_messages = []
-    for msg in messages_to_process:
+    stripped_msg_indices = []
+    for idx, msg in enumerate(messages_to_process):
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
             stripped = _strip_plan_mode_blocks(msg.get("content", ""))
             if stripped:
@@ -621,6 +623,7 @@ def apply_modification_rules(payload: dict) -> tuple:
             else:
                 new_messages.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
             modifications.append("removed_plan_mode_sr")
+            stripped_msg_indices.append(idx)
             changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<task-notification>"):
             new_msg = dict(msg)
@@ -633,12 +636,14 @@ def apply_modification_rules(payload: dict) -> tuple:
             new_msg["content"] = _strip_system_reminder(msg.get("content", ""), "task tools haven")
             new_messages.append(new_msg)
             modifications.append("stripped_task_tools_nag")
+            stripped_msg_indices.append(idx)
             changed = True
         elif msg.get("role") == "user" and _message_has_rejection(msg.get("content", "")):
             new_msg = dict(msg)
             new_msg["content"] = _strip_rejection_message(msg.get("content", ""))
             new_messages.append(new_msg)
             modifications.append("stripped_rejection_message")
+            stripped_msg_indices.append(idx)
             changed = True
         else:
             new_messages.append(msg)
@@ -667,11 +672,11 @@ def apply_modification_rules(payload: dict) -> tuple:
                     modifications.append("stripped_session_guidance")
 
     if not changed:
-        return payload, modifications
+        return payload, modifications, stripped_msg_indices
     modified = dict(payload)
     modified["messages"] = new_messages
     modified["system"] = new_system
-    return modified, modifications
+    return modified, modifications, stripped_msg_indices
 
 
 # Remove blocklisted tools from payload and trim Agent description. Returns (modified_payload, count_removed).
