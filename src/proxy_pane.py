@@ -37,6 +37,16 @@ def _chars_to_tokens(chars: int) -> int:
 def _format_tok_est(chars: int) -> str:
     return f"~{_format_k(_chars_to_tokens(chars))}tok"
 
+# Format a signed char-count delta with token estimate (GREEN=positive, RED=negative, DIM=zero)
+def _format_delta(label: str, delta: int) -> str:
+    if delta == 0:
+        return f"{DIM}Δ{label}:0{RESET}"
+    sign = '+' if delta > 0 else '-'
+    color = GREEN if delta > 0 else RED
+    abs_chars = abs(delta)
+    tok_est = _chars_to_tokens(abs_chars)
+    return f"{color}Δ{label}:{sign}{_format_k(abs_chars)}(~{_format_k(tok_est)}tok){RESET}"
+
 # Shorten full model name to family label
 def _shorten_model(model: str) -> str:
     m = model.lower()
@@ -194,22 +204,42 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{turn_ts}]{RESET}")
         line_keys.append(None)
 
+        # Turn summary: totals from last request, delta vs previous turn's last request
+        last_e = turn['entry_pairs'][-1][1]
+        last_sys = last_e.get('system_total_chars', last_e.get('system_prompt_chars', 0))
+        last_tools = last_e.get('tools_total_chars', last_e.get('tools_chars', 0))
+        last_msgs = last_e.get('messages_total_chars', 0)
+        total_parts = [
+            f"sys:{_format_k(last_sys)}({_format_tok_est(last_sys)})",
+            f"tools:{_format_k(last_tools)}({_format_tok_est(last_tools)})",
+            f"msgs:{_format_k(last_msgs)}({_format_tok_est(last_msgs)})",
+        ]
+        all_lines.append(f"  {DIM}total: {'  '.join(total_parts)}{RESET}")
+        line_keys.append(None)
+        if turn_idx > 0:
+            prev_last_e = turns[turn_idx - 1]['entry_pairs'][-1][1]
+            d_sys = last_sys - prev_last_e.get('system_total_chars', prev_last_e.get('system_prompt_chars', 0))
+            d_tools = last_tools - prev_last_e.get('tools_total_chars', prev_last_e.get('tools_chars', 0))
+            d_msgs = last_msgs - prev_last_e.get('messages_total_chars', 0)
+            all_lines.append(f"  Δturn: {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}")
+        else:
+            all_lines.append(f"  {DIM}Δturn: (first turn){RESET}")
+        line_keys.append(None)
+
         for entry_idx, entry in turn['entry_pairs']:
             model = _shorten_model(entry.get('model', '?'))
             msg_count = entry.get('message_count', 0)
-            input_chars = entry.get('total_input_chars', 0)
             cache_bp = entry.get('cache_breakpoints', [])
             diff = entry.get('diff_from_prev', {})
             first_diff = diff.get('first_diff_index', -1)
             mods = entry.get('modifications', [])
 
-            chars_str = _format_k(input_chars)
             bp_count = len(cache_bp)
             mods_count = len(mods)
             is_expanded = expand_states.get(entry_idx, False)
             symbol = '\u25bc' if is_expanded else '\u25b6'
 
-            # Determine cache warnings (for header indicator)
+            # Determine cache warnings and prev_entry (same model family)
             model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
             prev_entry = None
             for _i in range(entry_idx - 1, -1, -1):
@@ -244,20 +274,25 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             status_str = '  '.join(warn_symbols) if warn_symbols else f"{PASTEL_GREEN}✓{RESET}"
             mods_str = f"  {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
 
-            # Entry header indented 2 spaces (inside turn)
-            header = f"{WHITE}  {symbol} #{entry_idx + 1}  {model}  {msg_count}msg  {chars_str}  BP:{bp_count}{mods_str}  {status_str}{RESET}"
+            # Entry header — no total chars (turn summary already shows totals)
+            header = f"{WHITE}  {symbol} #{entry_idx + 1}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{RESET}"
             all_lines.append(header)
             line_keys.append(entry_idx)
 
+            # Request delta: what's new vs previous same-family request
             sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
             tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
             msgs_chars = entry.get('messages_total_chars', 0)
-            info_parts = [
-                f"sys:{_format_k(sys_chars)}({_format_tok_est(sys_chars)})",
-                f"tools:{_format_k(tools_chars)}({_format_tok_est(tools_chars)})",
-                f"msgs:{_format_k(msgs_chars)}({_format_tok_est(msgs_chars)})",
-            ]
-            all_lines.append(f"    {DIM}{'  '.join(info_parts)}{RESET}")
+            if prev_entry is None:
+                all_lines.append(f"    {DIM}(first request){RESET}")
+            else:
+                d_sys = sys_chars - prev_entry.get('system_total_chars', prev_entry.get('system_prompt_chars', 0))
+                d_tools = tools_chars - prev_entry.get('tools_total_chars', prev_entry.get('tools_chars', 0))
+                d_msgs = msgs_chars - prev_entry.get('messages_total_chars', 0)
+                if d_sys == 0 and d_tools == 0 and d_msgs == 0:
+                    all_lines.append(f"    {DIM}Δ: (no change){RESET}")
+                else:
+                    all_lines.append(f"    {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}")
             line_keys.append(None)
 
             # Cache warnings — compact symbols only, no diff_summary text
