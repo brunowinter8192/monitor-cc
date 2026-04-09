@@ -84,7 +84,7 @@ def _extract_raw_payload_fields(entry: dict) -> None:
     if raw:
         system = raw.get('system', [])
         entry['system_blocks'] = [
-            {'idx': i, 'chars': len(b.get('text', '')), 'has_cc': bool(b.get('cache_control'))}
+            {'idx': i, 'chars': len(b.get('text', '')), 'has_cc': bool(b.get('cache_control')), 'preview': b.get('text', '')[:1000]}
             for i, b in enumerate(system) if isinstance(b, dict)
         ] if isinstance(system, list) else []
         entry['system_total_chars'] = sum(b['chars'] for b in entry['system_blocks'])
@@ -248,7 +248,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     all_status = warn_symbols[:]
     if has_warn_m:
         all_status.append(f"{RED}⚠M{RESET}")
-    status_str = '  '.join(all_status) if all_status else f"{PASTEL_GREEN}✓{RESET}"
+    status_str = '  '.join(all_status)
     mods_str = f"  {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
 
     lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{RESET}")
@@ -471,29 +471,101 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     else:
                         req_delta_str = ''
                     mods_str = f" {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
-                    warn_str = f"  {'  '.join(warn_parts)}" if warn_parts else f"  {PASTEL_GREEN}✓{RESET}"
+                    warn_str = f"  {'  '.join(warn_parts)}" if warn_parts else ''
                     req_key = ('req', entry_idx)
                     is_req_expanded = expand_states.get(req_key, False)
                     req_symbol = '\u25bc' if is_req_expanded else '\u25b6'
                     all_lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{mods_str}{warn_str}{req_delta_str}{RESET}")
                     line_keys.append(req_key)
                     if is_req_expanded:
+                        wrap_width_meta = max(20, pane_width - 10)
+                        # System blocks (expandable)
                         sys_blocks = entry.get('system_blocks', [])
                         sys_total = entry.get('system_total_chars', 0)
                         if sys_blocks:
-                            block_parts = []
-                            for sb in sys_blocks:
-                                cc_dot = ' CC●' if sb.get('has_cc') else ''
-                                block_parts.append(f"[{sb['idx']}]:{_format_k(sb['chars'])}{cc_dot}")
-                            all_lines.append(f"    {DIM}sys: {len(sys_blocks)} blocks ({sys_total:,}c)  {'  '.join(block_parts)}{RESET}")
-                            line_keys.append(None)
+                            sys_key = ('sys', entry_idx)
+                            is_sys_expanded = expand_states.get(sys_key, False)
+                            sys_symbol = '\u25bc' if is_sys_expanded else '\u25b6'
+                            prev_sys_total = prev_entry_for_delta.get('system_total_chars', 0) if prev_entry_for_delta else 0
+                            sys_delta = sys_total - prev_sys_total if prev_entry_for_delta else 0
+                            sys_delta_str = f"  {_format_delta('sys', sys_delta)}" if sys_delta != 0 else ''
+                            all_lines.append(f"    {DIM}{sys_symbol} sys: {len(sys_blocks)} blocks ({sys_total:,}c){RESET}{sys_delta_str}")
+                            line_keys.append(sys_key)
+                            if is_sys_expanded:
+                                for sb in sys_blocks:
+                                    bidx = sb['idx']
+                                    bchars = sb.get('chars', 0)
+                                    has_cc = sb.get('has_cc', False)
+                                    cc_str = f"  {PASTEL_GREEN}CC●{RESET}" if has_cc else ''
+                                    stripped_str = f"  {YELLOW}[STRIPPED]{RESET}" if 'replaced_system_prompt' in mods and bidx == 2 else ''
+                                    block_key = ('sys_block', entry_idx, bidx)
+                                    is_block_expanded = expand_states.get(block_key, False)
+                                    block_symbol = '\u25bc' if is_block_expanded else '\u25b6'
+                                    all_lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{RESET}{cc_str}{stripped_str}")
+                                    line_keys.append(block_key)
+                                    if is_block_expanded:
+                                        preview = sb.get('preview', '')
+                                        if preview:
+                                            for raw_line in preview.split('\n'):
+                                                if not raw_line:
+                                                    all_lines.append(f"        {DIM}{RESET}")
+                                                    line_keys.append(None)
+                                                    continue
+                                                for chunk_start in range(0, len(raw_line), wrap_width_meta):
+                                                    all_lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
+                                                    line_keys.append(None)
+                                        else:
+                                            all_lines.append(f"        {DIM}(no preview){RESET}")
+                                            line_keys.append(None)
+                        # Tools (expandable)
                         tools_count = entry.get('tools_count', 0)
                         tools_chars = entry.get('tools_total_chars', 0)
                         tools_hash = entry.get('tools_hash', '')
+                        tools_names = entry.get('tools_names', [])
                         if tools_count:
+                            tools_key = ('tools', entry_idx)
+                            is_tools_expanded = expand_states.get(tools_key, False)
+                            tools_symbol = '\u25bc' if is_tools_expanded else '\u25b6'
                             hash_str = f"  hash:{tools_hash[:8]}" if tools_hash else ''
-                            all_lines.append(f"    {DIM}tools: {tools_count} defs ({tools_chars:,}c){hash_str}{RESET}")
-                            line_keys.append(None)
+                            prev_tools_hash = prev_entry_for_delta.get('tools_hash', '') if prev_entry_for_delta else ''
+                            prev_tools_names = prev_entry_for_delta.get('tools_names', []) if prev_entry_for_delta else []
+                            tools_changed = bool(prev_tools_hash) and prev_tools_hash != tools_hash
+                            added = [n for n in tools_names if n not in set(prev_tools_names)] if tools_changed else []
+                            removed = [n for n in prev_tools_names if n not in set(tools_names)] if tools_changed else []
+                            delta_parts = []
+                            if added:
+                                delta_parts.append(f"{RED}+{len(added)}{RESET}")
+                            if removed:
+                                delta_parts.append(f"{RED}-{len(removed)}{RESET}")
+                            tools_delta_str = f"  {'  '.join(delta_parts)}" if delta_parts else ''
+                            all_lines.append(f"    {DIM}{tools_symbol} tools: {tools_count} defs ({_format_k(tools_chars)}){hash_str}{RESET}{tools_delta_str}")
+                            line_keys.append(tools_key)
+                            if is_tools_expanded:
+                                wrap_w = max(20, pane_width - 8)
+                                row_parts: list = []
+                                row_len = 0
+                                for name in tools_names:
+                                    is_long = name.startswith('mcp__') or len(name) > 25
+                                    marker = f" {RED}+{RESET}" if name in added else ''
+                                    if is_long:
+                                        if row_parts:
+                                            all_lines.append(f"      {DIM}{', '.join(row_parts)}{RESET}")
+                                            line_keys.append(None)
+                                            row_parts = []
+                                            row_len = 0
+                                        all_lines.append(f"      {DIM}{name}{RESET}{marker}")
+                                        line_keys.append(None)
+                                    else:
+                                        if row_len + len(name) + 2 > wrap_w - 6 and row_parts:
+                                            all_lines.append(f"      {DIM}{', '.join(row_parts)}{RESET}")
+                                            line_keys.append(None)
+                                            row_parts = []
+                                            row_len = 0
+                                        row_parts.append(name)
+                                        row_len += len(name) + 2
+                                if row_parts:
+                                    all_lines.append(f"      {DIM}{', '.join(row_parts)}{RESET}")
+                                    line_keys.append(None)
                         messages = entry.get('messages', [])
                         stripped_indices = set()
                         for _idx, _msg in enumerate(messages):
