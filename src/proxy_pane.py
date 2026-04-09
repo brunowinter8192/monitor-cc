@@ -90,6 +90,13 @@ def _extract_raw_payload_fields(entry: dict) -> None:
         ] if isinstance(system, list) else []
         entry['system_total_chars'] = sum(b['chars'] for b in entry['system_blocks'])
 
+        # Attach original CC system prompt text to system[2] for display (set by proxy_addon)
+        if entry.get('original_system2_text'):
+            for sb in entry['system_blocks']:
+                if sb['idx'] == 2:
+                    sb['original_text'] = entry['original_system2_text']
+                    break
+
         tools = raw.get('tools', [])
         entry['tools_total_chars'] = sum(len(json.dumps(t)) for t in tools)
         entry['tools_count'] = len(tools)
@@ -521,21 +528,32 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                     line_keys.append(block_key)
                                     if is_block_expanded:
                                         preview = sb.get('preview', '')
+                                        # Preview is active content (rules injected by proxy) — always normal rendering
                                         if preview:
                                             for raw_line in preview.split('\n'):
                                                 if not raw_line:
-                                                    bg = DIM_YELLOW_BG if is_sys_stripped else ''
-                                                    all_lines.append(f"        {bg}{DIM}{RESET}")
+                                                    all_lines.append(f"        {DIM}{RESET}")
                                                     line_keys.append(None)
                                                     continue
                                                 for chunk_start in range(0, len(raw_line), wrap_width_meta):
-                                                    bg = DIM_YELLOW_BG if is_sys_stripped else ''
-                                                    all_lines.append(f"        {bg}{DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
+                                                    all_lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
                                                     line_keys.append(None)
                                         else:
-                                            bg = DIM_YELLOW_BG if is_sys_stripped else ''
-                                            all_lines.append(f"        {bg}{DIM}(no preview){RESET}")
+                                            all_lines.append(f"        {DIM}(no preview){RESET}")
                                             line_keys.append(None)
+                                        # Show original CC prompt below with DIM_YELLOW_BG (same pattern as Agent tool)
+                                        original_text = sb.get('original_text', '')
+                                        if original_text:
+                                            all_lines.append(f"        {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
+                                            line_keys.append(None)
+                                            for raw_line in original_text.split('\n'):
+                                                if not raw_line:
+                                                    all_lines.append(f"        {DIM_YELLOW_BG}{DIM}{RESET}")
+                                                    line_keys.append(None)
+                                                    continue
+                                                for chunk_start in range(0, len(raw_line), wrap_width_meta):
+                                                    all_lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
+                                                    line_keys.append(None)
                         # Tools (expandable)
                         tools_count = entry.get('tools_count', 0)
                         tools_chars = entry.get('tools_total_chars', 0)
