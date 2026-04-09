@@ -16,7 +16,7 @@ MESSAGES_PATH = "/v1/messages"
 DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
 
 sys.path.insert(0, str(Path(__file__).parent))
-from constants import TOOL_BLOCKLIST, AGENT_TRIMMED_DESCRIPTION
+from constants import TOOL_BLOCKLIST
 
 
 # ORCHESTRATOR
@@ -686,14 +686,10 @@ def _strip_unused_tools(payload: dict) -> tuple:
         return payload, 0
     kept = [t for t in tools if t.get("name") not in TOOL_BLOCKLIST]
     removed = len(tools) - len(kept)
-    trimmed = [
-        {**t, "description": AGENT_TRIMMED_DESCRIPTION} if t.get("name") == "Agent" else t
-        for t in kept
-    ]
-    if removed == 0 and trimmed == kept:
+    if removed == 0:
         return payload, 0
     modified = dict(payload)
-    modified["tools"] = trimmed
+    modified["tools"] = kept
     return modified, removed
 
 

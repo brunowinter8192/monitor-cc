@@ -126,13 +126,6 @@ KNOWN_TOOL_DEFINITION_KEYS = {'name', 'description', 'input_schema', 'defer_load
 KNOWN_MESSAGE_ROLES = {'assistant', 'user'}
 
 # Proxy addon — tool stripping (shared between proxy_addon.py and proxy_pane.py)
-AGENT_TRIMMED_DESCRIPTION = """Launch an agent to handle a task.
-
-Available agent types:
-- iterative-dev:git-committer: Autonomous git committer. Handles git status, diff, add, commit, push. Returns structured summary. (Tools: All tools)
-
-Specify subagent_type parameter to select agent type."""
-
 TOOL_BLOCKLIST = frozenset({
     # Task tools (we use beads)
     "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",
@@ -145,6 +138,8 @@ TOOL_BLOCKLIST = frozenset({
     "WebFetch", "WebSearch", "web_search",
     # Plan mode (we use iterative-dev skill)
     "EnterPlanMode", "ExitPlanMode",
+    # Agent tool (we use MCP tools for git operations)
+    "Agent",
     # Other
     "AskUserQuestion", "NotebookEdit",
 })
