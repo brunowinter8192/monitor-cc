@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, TOOL_TASK
+from .constants import RESET, GREEN, YELLOW, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, TOOL_TASK
 INDENT = '  '
 
 # From session_finder.py: Discover active Claude Code sessions
@@ -63,6 +63,9 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
     elif mode == MODE_PROXY:
         from .proxy_pane import run_proxy_loop
         run_proxy_loop()
+    elif mode == MODE_METADATA:
+        from .metadata_pane import run_metadata_loop
+        run_metadata_loop()
     else:
         sessions = find_active_sessions(active_project_filter)
         session_count = len(filter_sessions_by_mode(sessions, mode))

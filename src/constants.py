@@ -39,6 +39,7 @@ MODE_HOOKS = 'hooks'
 MODE_TOKENS = 'tokens'
 MODE_WORKERS = 'workers'
 MODE_PROXY = 'proxy'
+MODE_METADATA = 'metadata'
 
 # Hook events — session lifecycle
 HOOK_SESSION_START = 'SessionStart'

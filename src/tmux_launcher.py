@@ -31,6 +31,7 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     main_cmd = f"python3 {script_path} --mode main {project_arg}"
     tokens_cmd = f"python3 {script_path} --mode tokens {project_arg}"
     proxy_cmd = f"python3 {script_path} --mode proxy {project_arg}"
+    metadata_cmd = f"python3 {script_path} --mode metadata {project_arg}"
     rules_cmd = f"python3 {script_path} --mode rules {project_arg}"
     warnings_cmd = f"python3 {script_path} --mode warnings {project_arg}"
     hooks_cmd = f"python3 {script_path} --mode hooks {project_arg}"
@@ -50,6 +51,7 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:0.0", "-l", "30%", tokens_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:1", "-n", "proxy", proxy_cmd])
+    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:1.0", "-l", "30%", metadata_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:2", "-n", "rules", rules_cmd])
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:2.0", "-l", "50%", hooks_cmd])
@@ -124,7 +126,7 @@ def configure_tmux_session(session_name: str) -> None:
     subprocess.run(["tmux", "bind-key", "-T", "root", "WheelDownPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode; send-keys -X -N 5 scroll-down"])
     pane_titles = {
         '0.0': 'MAIN', '0.1': 'TOKENS',
-        '1.0': 'PROXY',
+        '1.0': 'PROXY', '1.1': 'METADATA',
         '2.0': 'RULES', '2.1': 'HOOKS',
         '3.0': 'WORKERS',
         '4.0': 'WARNINGS',
@@ -156,6 +158,7 @@ def configure_tmux_session(session_name: str) -> None:
         "tmux respawn-pane -k -t '#{session_name}:0.0'; "
         "tmux respawn-pane -k -t '#{session_name}:0.1'; "
         "tmux respawn-pane -k -t '#{session_name}:1.0'; "
+        "tmux respawn-pane -k -t '#{session_name}:1.1'; "
         "tmux respawn-pane -k -t '#{session_name}:2.0'; "
         "tmux respawn-pane -k -t '#{session_name}:2.1'; "
         "tmux respawn-pane -k -t '#{session_name}:3.0'; "

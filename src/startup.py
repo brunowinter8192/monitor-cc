@@ -11,7 +11,7 @@ from .constants import RESET, RED, GREEN, MAGENTA
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Claude Code Tool Monitor')
     parser.add_argument('--project', type=str, default=None, help='Filter by project path')
-    parser.add_argument('--mode', type=str, choices=['all', 'main', 'subagent', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy'], default='all', help='Monitor mode: all, main, subagent, rules, warnings, hooks, tokens, workers, or proxy')
+    parser.add_argument('--mode', type=str, choices=['all', 'main', 'subagent', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'metadata'], default='all', help='Monitor mode: all, main, subagent, rules, warnings, hooks, tokens, workers, proxy, or metadata')
     parser.add_argument('--ui', action='store_true', help='Enable collapsible UI mode (subagent only)')
     args = parser.parse_args()
     return args
