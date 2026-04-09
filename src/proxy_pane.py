@@ -153,8 +153,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     from .utils import format_timestamp
 
     LEGEND = [
-        f"{DIM}▶/▼ expand  ⚠ cache break  🔧 mods  BP: breakpoints  ~tok: chars/3.5 ±15%{RESET}",
-        f"{DIM}sys=system  tools=tool defs  msgs=messages{RESET}",
+        f"{PASTEL_GREEN}▶/▼ expand  ⚠ cache break  🔧 mods  BP: breakpoints  ~tok: chars/3.5 ±15%{RESET}",
+        f"{PASTEL_GREEN}sys=system  tools=tool defs  msgs=messages{RESET}",
     ]
     LEGEND_ROWS = len(LEGEND)
 
