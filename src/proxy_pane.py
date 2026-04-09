@@ -348,14 +348,8 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
 # Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
 def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None) -> str:
     from .utils import format_timestamp
-    LEGEND = [
-        f"{PASTEL_GREEN}▶/▼ expand  ⚠ cache break  🔧 mods  BP: breakpoints  ~tok: chars/3.5 ±15%{RESET}",
-        f"{PASTEL_GREEN}sys=system  tools=tool defs  msgs=messages{RESET}",
-    ]
-    LEGEND_ROWS = len(LEGEND)
-
     if not entries:
-        return '\n'.join(LEGEND) + f"\n{YELLOW}No API requests logged yet{RESET}"
+        return f"{YELLOW}No API requests logged yet{RESET}"
 
     if expand_states is None:
         expand_states = {}
@@ -607,8 +601,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         all_lines.pop()
         line_keys.pop()
 
-    # Reserve LEGEND_ROWS lines at top — content viewport is smaller
-    viewport_lines = max(1, pane_height - 1 - LEGEND_ROWS)
+    viewport_lines = max(1, pane_height - 1)
     max_scroll = max(0, len(all_lines) - viewport_lines)
     clamped_offset = min(scroll_offset, max_scroll)
     start = max(0, len(all_lines) - viewport_lines - clamped_offset)
@@ -617,16 +610,15 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     visible_lines = all_lines[start:end]
     visible_keys = line_keys[start:end]
 
-    # line_map rows start after legend (rows 1..LEGEND_ROWS are legend)
     if line_map is not None:
         line_map.clear()
         for row_idx, key in enumerate(visible_keys):
             if key is not None:
-                line_map[row_idx + 1 + LEGEND_ROWS] = key
+                line_map[row_idx + 1] = key
 
-    result_lines = list(LEGEND)
+    result_lines = []
     for row_offset, line in enumerate(visible_lines):
-        row = row_offset + 1 + LEGEND_ROWS
+        row = row_offset + 1
         key = visible_keys[row_offset]
         if key is not None and hover_row is not None and row == hover_row:
             result_lines.append(f"{HOVER_BG}{line}{RESET}")

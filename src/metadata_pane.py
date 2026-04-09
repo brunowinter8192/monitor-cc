@@ -1,27 +1,55 @@
 # INFRASTRUCTURE
 import time
+from datetime import datetime
 
 from .constants import (
-    RESET, WHITE, RED, DIM, PASTEL_GREEN,
+    RESET, WHITE, RED, DIM, PASTEL_GREEN, YELLOW,
     POLL_INTERVAL,
 )
 from .token_pane import _format_k
 
 _prev_values: dict = {}
+_meta_log_position: int = 0
+_meta_entries: list = []
+
+LEGEND = [
+    f"{PASTEL_GREEN}▶/▼ expand  ⚠ cache break  🔧 mods  BP: breakpoints  ~tok: chars/3.5 ±15%{RESET}",
+    f"{PASTEL_GREEN}sys=system  tools=tool defs  msgs=messages{RESET}",
+]
 
 # ORCHESTRATOR
 
-# Run metadata pane loop — shows API config state from latest proxy entry
+# Run metadata pane loop — reads proxy log directly and shows API config state
 def run_metadata_loop() -> None:
-    from . import proxy_pane as _proxy
+    from . import monitor as _monitor
+    from .proxy_pane import parse_proxy_log
+    global _prev_values, _meta_log_position, _meta_entries
+
+    session_start_ts = _monitor._get_session_start_ts()
+    if session_start_ts is None:
+        session_start_ts = datetime.utcnow().isoformat() + 'Z'
+    current_main_session = _monitor._get_newest_main_session()
     last_output = None
 
     while True:
-        entries = _proxy.proxy_entries
-        if entries:
-            output = _format_metadata(entries[-1])
+        newest = _monitor._get_newest_main_session()
+        if newest != current_main_session and newest is not None:
+            current_main_session = newest
+            session_start_ts = _monitor._get_session_start_ts()
+            if session_start_ts is None:
+                session_start_ts = datetime.utcnow().isoformat() + 'Z'
+            _meta_entries.clear()
+            _meta_log_position = 0
+            _prev_values = {}
+
+        new_entries, _meta_log_position = parse_proxy_log(_monitor.active_project_filter, _meta_log_position)
+        filtered = [e for e in new_entries if e.get('timestamp', '') >= session_start_ts]
+        _meta_entries.extend(filtered)
+
+        if _meta_entries:
+            output = _format_metadata(_meta_entries[-1])
         else:
-            output = f"{DIM}Waiting for proxy data...{RESET}"
+            output = '\n'.join(LEGEND) + f"\n{DIM}Waiting for proxy data...{RESET}"
 
         if output != last_output:
             print("\033[2J\033[3J\033[H", end='', flush=True)
@@ -35,7 +63,8 @@ def run_metadata_loop() -> None:
 # Format metadata display for latest proxy entry with change detection
 def _format_metadata(entry: dict) -> str:
     global _prev_values
-    lines = []
+    lines = list(LEGEND)
+    lines.append('')
     new_values: dict = {}
 
     # SYSTEM section
