@@ -676,7 +676,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                             bg = DIM_YELLOW_BG if is_stripped else ''
                                             all_lines.append(f"      {bg}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                                             line_keys.append(None)
-                    prev_entry_for_delta = entry
+                    if len(entry.get('cache_breakpoints', [])) >= 1:
+                        prev_entry_for_delta = entry
 
             main_entries = [e for _, e in group['entry_pairs'] if len(e.get('cache_breakpoints', [])) >= 1]
             if main_entries:
