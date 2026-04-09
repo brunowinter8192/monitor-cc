@@ -29,6 +29,25 @@ proxy_log_position: int = 0
 
 # FUNCTIONS
 
+# Estimate token count from char count (chars/3.5 heuristic, ~±15%)
+def _chars_to_tokens(chars: int) -> int:
+    return int(chars / 3.5)
+
+# Format token estimate as compact string with ~ prefix
+def _format_tok_est(chars: int) -> str:
+    return f"~{_format_k(_chars_to_tokens(chars))}tok"
+
+# Shorten full model name to family label
+def _shorten_model(model: str) -> str:
+    m = model.lower()
+    if 'haiku' in m:
+        return 'haiku'
+    if 'sonnet' in m:
+        return 'sonnet'
+    if 'opus' in m:
+        return 'opus'
+    return model[:8] if model else '?'
+
 # Derive proxy session_id from project path — matches claude_proxy_start.sh md5 hash logic
 def _proxy_session_id_for_project(project_path: str) -> str:
     return hashlib.md5(project_path.encode()).hexdigest()[:8]
@@ -132,8 +151,15 @@ def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
 # Format proxy pane with API request entries, expand/collapse, scroll, hover
 def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> str:
     from .utils import format_timestamp
+
+    LEGEND = [
+        f"{DIM}▶/▼ expand  ⚠ cache break  🔧 mods  BP: breakpoints  ~tok: chars/3.5 ±15%{RESET}",
+        f"{DIM}sys=system  tools=tool defs  msgs=messages{RESET}",
+    ]
+    LEGEND_ROWS = len(LEGEND)
+
     if not entries:
-        return f"{YELLOW}No API requests logged yet{RESET}"
+        return '\n'.join(LEGEND) + f"\n{YELLOW}No API requests logged yet{RESET}"
 
     if expand_states is None:
         expand_states = {}
@@ -142,42 +168,24 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     line_keys = []
 
     for entry_idx, entry in enumerate(entries):
-        timestamp = format_timestamp(entry.get('timestamp', ''))
-        model = entry.get('model', 'unknown')
+        timestamp = format_timestamp(entry.get('timestamp', ''))[:5]  # HH:MM only
+        model = _shorten_model(entry.get('model', '?'))
         msg_count = entry.get('message_count', 0)
         input_chars = entry.get('total_input_chars', 0)
         cache_bp = entry.get('cache_breakpoints', [])
         diff = entry.get('diff_from_prev', {})
         diff_summary = diff.get('summary', '')
         first_diff = diff.get('first_diff_index', -1)
+        mods = entry.get('modifications', [])
 
-        if input_chars >= 1000:
-            chars_str = f"{input_chars / 1000:.0f}k" if input_chars >= 10000 else f"{input_chars / 1000:.1f}k"
-        else:
-            chars_str = str(input_chars)
-
-        bp_str = str(cache_bp) if cache_bp else '[]'
+        chars_str = _format_k(input_chars)
+        bp_count = len(cache_bp)
+        mods_count = len(mods)
         is_expanded = expand_states.get(entry_idx, False)
         symbol = '\u25bc' if is_expanded else '\u25b6'
 
-        header = f"{WHITE}{symbol} [{timestamp}] REQ #{entry_idx + 1}  model:{model}  msgs:{msg_count}  input:{chars_str} chars  cache_bp:{bp_str}{RESET}"
-        all_lines.append(header)
-        line_keys.append(entry_idx)
-
-        sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
-        tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
-        tools_n = entry.get('tools_count', 0)
-        msgs_chars = entry.get('messages_total_chars', 0)
-        mods = entry.get('modifications', [])
-        info_parts = [f"sys:{_format_k(sys_chars)}", f"tools:{_format_k(tools_chars)}({tools_n})", f"msgs:{_format_k(msgs_chars)}"]
-        info_line = f"  {DIM}{'  '.join(info_parts)}"
-        if mods:
-            info_line += f"  {YELLOW}mods:[{','.join(mods)}]{DIM}"
-        info_line += RESET
-        all_lines.append(info_line)
-        line_keys.append(None)
-
-        model_family = "haiku" if "haiku" in model.lower() else "opus"
+        # Determine cache warnings first (for header indicator)
+        model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
         prev_entry = None
         for _i in range(entry_idx - 1, -1, -1):
             _prev_model = entries[_i].get('model', '')
@@ -186,19 +194,18 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 prev_entry = entries[_i]
                 break
 
-        cache_warnings = []
+        warn_symbols = []
         warn_details = []
         if prev_entry is not None:
             if entry.get('tools_hash') and prev_entry.get('tools_hash') and entry.get('tools_hash') != prev_entry.get('tools_hash'):
-                cache_warnings.append('⚠ TOOLS CHANGED')
+                warn_symbols.append(f"{RED}⚠T{RESET}")
                 curr_names = set(entry.get('tools_names', []))
                 prev_names = set(prev_entry.get('tools_names', []))
                 added = sorted(curr_names - prev_names)
                 removed = sorted(prev_names - curr_names)
-                detail_lines = [f"    {GREEN}+{n}{RESET}" for n in added] + [f"    {RED}-{n}{RESET}" for n in removed]
-                warn_details.append(detail_lines)
+                warn_details.append([f"    {GREEN}+{n}{RESET}" for n in added] + [f"    {RED}-{n}{RESET}" for n in removed])
             if entry.get('system_total_chars') is not None and prev_entry.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_entry.get('system_total_chars'):
-                cache_warnings.append('⚠ SYSTEM CHANGED')
+                warn_symbols.append(f"{RED}⚠S{RESET}")
                 old_c = prev_entry['system_total_chars']
                 new_c = entry['system_total_chars']
                 delta = new_c - old_c
@@ -206,29 +213,45 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             msgs_modified = diff.get('messages_modified', 0)
             if msgs_modified > 0 and first_diff >= 0 and cache_bp:
                 if first_diff < min(cache_bp):
-                    cache_warnings.append('⚠ PRE-BP MSG MODIFIED')
+                    warn_symbols.append(f"{RED}⚠M{RESET}")
                     warn_details.append([f"    {DIM}first change at msg #{first_diff}  {diff_summary}{RESET}"])
+
+        status_str = '  '.join(warn_symbols) if warn_symbols else f"{PASTEL_GREEN}✓{RESET}"
+        mods_str = f"  {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
+
+        header = f"{WHITE}{symbol} [{timestamp}] #{entry_idx + 1}  {model}  {msg_count}msg  {chars_str}  BP:{bp_count}{mods_str}  {status_str}{RESET}"
+        all_lines.append(header)
+        line_keys.append(entry_idx)
+
+        sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
+        tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+        msgs_chars = entry.get('messages_total_chars', 0)
+        info_parts = [
+            f"sys:{_format_k(sys_chars)}({_format_tok_est(sys_chars)})",
+            f"tools:{_format_k(tools_chars)}({_format_tok_est(tools_chars)})",
+            f"msgs:{_format_k(msgs_chars)}({_format_tok_est(msgs_chars)})",
+        ]
+        all_lines.append(f"  {DIM}{'  '.join(info_parts)}{RESET}")
+        line_keys.append(None)
 
         warn_key = (entry_idx, 'warnings')
         is_warn_expanded = expand_states.get(warn_key, False)
 
-        if diff_summary or cache_warnings:
-            if cache_warnings:
-                warn_symbol = '\u25bc' if is_warn_expanded else '\u25b6'
-                warn_str = '  '.join(f"{RED}{w}{RESET}" for w in cache_warnings)
-                if diff_summary:
-                    all_lines.append(f"  {warn_symbol} {YELLOW}{diff_summary}{RESET}  {warn_str}")
-                else:
-                    all_lines.append(f"  {warn_symbol} {warn_str}")
-                line_keys.append(warn_key)
-                if is_warn_expanded:
-                    for detail_lines in warn_details:
-                        for dl in detail_lines:
-                            all_lines.append(dl)
-                            line_keys.append(None)
+        if warn_symbols or diff_summary:
+            warn_symbol = '\u25bc' if is_warn_expanded else '\u25b6'
+            warn_str = '  '.join(warn_symbols)
+            if diff_summary and warn_str:
+                all_lines.append(f"  {warn_symbol} {warn_str}  {YELLOW}{diff_summary}{RESET}")
+            elif warn_str:
+                all_lines.append(f"  {warn_symbol} {warn_str}")
             else:
                 all_lines.append(f"  {YELLOW}{diff_summary}{RESET}")
-                line_keys.append(None)
+            line_keys.append(warn_key if warn_symbols else None)
+            if is_warn_expanded and warn_symbols:
+                for detail_lines in warn_details:
+                    for dl in detail_lines:
+                        all_lines.append(dl)
+                        line_keys.append(None)
 
         schema_warnings = entry.get('schema_warnings', [])
         if schema_warnings:
@@ -303,7 +326,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         all_lines.pop()
         line_keys.pop()
 
-    viewport_lines = pane_height - 1
+    # Reserve LEGEND_ROWS lines at top — content viewport is smaller
+    viewport_lines = max(1, pane_height - 1 - LEGEND_ROWS)
     max_scroll = max(0, len(all_lines) - viewport_lines)
     clamped_offset = min(scroll_offset, max_scroll)
     start = max(0, len(all_lines) - viewport_lines - clamped_offset)
@@ -312,15 +336,16 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     visible_lines = all_lines[start:end]
     visible_keys = line_keys[start:end]
 
+    # line_map rows start after legend (rows 1..LEGEND_ROWS are legend)
     if line_map is not None:
         line_map.clear()
         for row_idx, key in enumerate(visible_keys):
             if key is not None:
-                line_map[row_idx + 1] = key
+                line_map[row_idx + 1 + LEGEND_ROWS] = key
 
-    result_lines = []
+    result_lines = list(LEGEND)
     for row_offset, line in enumerate(visible_lines):
-        row = row_offset + 1
+        row = row_offset + 1 + LEGEND_ROWS
         key = visible_keys[row_offset]
         if key is not None and hover_row is not None and row == hover_row:
             result_lines.append(f"{HOVER_BG}{line}{RESET}")
