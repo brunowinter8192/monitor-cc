@@ -119,21 +119,21 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 ## token_pane.py
 
-**Purpose:** Token profiling pane. Cache tracker with CR/CC/D per API call, session browser for cumulative N sessions.
+**Purpose:** Token profiling pane. Cache tracker with CR/CC/D per API call, grouped by turn.
 
-**Input:** Session JSONL files, proxy req mapping.
+**Input:** Session JSONL files (incremental parsing with position tracking).
 
-**Output:** Formatted token display with expand/collapse, hover, scroll. Mouse + keyboard input.
+**Output:** Formatted token display with expand/collapse, hover, scroll. Mouse + keyboard input. Sequential request numbering (independent of proxy pane).
 
 ---
 
 ## proxy_pane.py
 
-**Purpose:** Proxy pane. Reads `api_requests_*.jsonl`, shows expandable API request entries with schema warnings.
+**Purpose:** Proxy pane. Reads `api_requests_*.jsonl`, shows API request entries grouped by turn with compact format, deltas, and token estimates.
 
-**Input:** Proxy log file (discovered via marker file), project filter.
+**Input:** Proxy log file (discovered via marker file), session JSONL (for turn detection via `extract_cache_turns`), project filter.
 
-**Output:** Formatted proxy entries with expand/collapse, hover, scroll.
+**Output:** Three-level hierarchy: Turn summary (total + Δturn) → Request header (compact, ⚠T/⚠S/⚠M symbols) → Request delta (Δsys/Δtools/Δmsgs with ~token estimates via chars/3.5). Legend at top. Expand shows only new messages (delta from previous request).
 
 ---
 
