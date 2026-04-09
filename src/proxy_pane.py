@@ -445,24 +445,26 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                         req_delta_str = ''
                     mods_str = f" {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
                     warn_str = f"  {'  '.join(warn_parts)}" if warn_parts else f"  {PASTEL_GREEN}✓{RESET}"
-                    all_lines.append(f"  {WHITE}{num_label} {model_short} {msg_count}msg BP:{bp_count}{mods_str}{warn_str}{req_delta_str}{RESET}")
-                    line_keys.append(None)
+                    req_key = ('req', entry_idx)
+                    is_req_expanded = expand_states.get(req_key, False)
+                    req_symbol = '\u25bc' if is_req_expanded else '\u25b6'
+                    all_lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{mods_str}{warn_str}{req_delta_str}{RESET}")
+                    line_keys.append(req_key)
+                    if is_req_expanded:
+                        messages = entry.get('messages', [])
+                        prev_msg_count = prev_entry_for_delta.get('message_count', 0) if prev_entry_for_delta is not None else 0
+                        for msg_idx in range(prev_msg_count, len(messages)):
+                            msg = messages[msg_idx]
+                            role = msg.get('role', '?')[:4]
+                            msg_type = msg.get('type', 'text')
+                            chars = msg.get('chars', 0)
+                            chars_fmt = f"{chars:,}c"
+                            has_cc = msg.get('has_cache_control', False)
+                            cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
+                            color = PASTEL_GREEN if has_cc else WHITE
+                            all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                            line_keys.append(None)
                     prev_entry_for_delta = entry
-
-                # Message lines: all messages NEW since prev turn's last entry
-                messages = last_e.get('messages', [])
-                start_idx = prev_group_last_entry.get('message_count', 0) if prev_group_last_entry is not None else 0
-                for msg_idx in range(start_idx, len(messages)):
-                    msg = messages[msg_idx]
-                    role = msg.get('role', '?')[:4]
-                    msg_type = msg.get('type', 'text')
-                    chars = msg.get('chars', 0)
-                    chars_fmt = f"{chars:,}c"
-                    has_cc = msg.get('has_cache_control', False)
-                    cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
-                    color = PASTEL_GREEN if has_cc else WHITE
-                    all_lines.append(f"  {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
-                    line_keys.append(None)
 
             prev_group_last_entry = last_e
             all_lines.append('')
