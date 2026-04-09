@@ -453,28 +453,57 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     if is_req_expanded:
                         messages = entry.get('messages', [])
                         prev_msg_count = prev_entry_for_delta.get('message_count', 0) if prev_entry_for_delta is not None else 0
-                        for msg_idx in range(prev_msg_count, len(messages)):
-                            msg = messages[msg_idx]
-                            role = msg.get('role', '?')[:4]
-                            msg_type = msg.get('type', 'text')
-                            chars = msg.get('chars', 0)
-                            chars_fmt = f"{chars:,}c"
-                            has_cc = msg.get('has_cache_control', False)
-                            cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
-                            color = PASTEL_GREEN if has_cc else WHITE
-                            all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
-                            line_keys.append(None)
-                            preview = msg.get('content_preview', '')
-                            if preview:
-                                wrap_width = max(20, pane_width - 8)
-                                for raw_line in preview.split('\n'):
-                                    if not raw_line:
-                                        all_lines.append(f"      {DIM}{RESET}")
-                                        line_keys.append(None)
-                                        continue
-                                    for chunk_start in range(0, len(raw_line), wrap_width):
-                                        all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
-                                        line_keys.append(None)
+                        wrap_width = max(20, pane_width - 8)
+                        if prev_msg_count < len(messages):
+                            for msg_idx in range(prev_msg_count, len(messages)):
+                                msg = messages[msg_idx]
+                                role = msg.get('role', '?')[:4]
+                                msg_type = msg.get('type', 'text')
+                                chars = msg.get('chars', 0)
+                                chars_fmt = f"{chars:,}c"
+                                has_cc = msg.get('has_cache_control', False)
+                                cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
+                                color = PASTEL_GREEN if has_cc else WHITE
+                                all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}{cc_marker}")
+                                line_keys.append(None)
+                                preview = msg.get('content_preview', '')
+                                if preview:
+                                    for raw_line in preview.split('\n'):
+                                        if not raw_line:
+                                            all_lines.append(f"      {DIM}{RESET}")
+                                            line_keys.append(None)
+                                            continue
+                                        for chunk_start in range(0, len(raw_line), wrap_width):
+                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                            line_keys.append(None)
+                        else:
+                            prev_messages = prev_entry_for_delta.get('messages', []) if prev_entry_for_delta is not None else []
+                            for msg_idx in range(len(messages)):
+                                msg = messages[msg_idx]
+                                prev_msg = prev_messages[msg_idx] if msg_idx < len(prev_messages) else None
+                                curr_chars = msg.get('chars', 0)
+                                prev_chars = prev_msg.get('chars', 0) if prev_msg else 0
+                                if curr_chars == prev_chars:
+                                    continue
+                                role = msg.get('role', '?')[:4]
+                                msg_type = msg.get('type', 'text')
+                                chars_fmt = f"{curr_chars:,}c"
+                                delta_c = curr_chars - prev_chars
+                                has_cc = msg.get('has_cache_control', False)
+                                cc_marker = f"  {PASTEL_GREEN}CC ●{RESET}" if has_cc else ''
+                                color = PASTEL_GREEN if has_cc else WHITE
+                                all_lines.append(f"    {color}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8} ({delta_c:+}c){RESET}{cc_marker}")
+                                line_keys.append(None)
+                                preview = msg.get('content_preview', '')
+                                if preview:
+                                    for raw_line in preview.split('\n'):
+                                        if not raw_line:
+                                            all_lines.append(f"      {DIM}{RESET}")
+                                            line_keys.append(None)
+                                            continue
+                                        for chunk_start in range(0, len(raw_line), wrap_width):
+                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                            line_keys.append(None)
                     prev_entry_for_delta = entry
 
             prev_group_last_entry = last_e
