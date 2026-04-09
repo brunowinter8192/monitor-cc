@@ -208,7 +208,6 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     model = _shorten_model(entry.get('model', '?'))
     msg_count = entry.get('message_count', 0)
     cache_bp = entry.get('cache_breakpoints', [])
-    mods = entry.get('modifications', [])
 
     bp_count = len(cache_bp)
     is_expanded = expand_states.get(entry_idx, False)
@@ -301,14 +300,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         keys.append(None)
 
         messages = entry.get('messages', [])
-        stripped_indices = set()
-        for _idx, _msg in enumerate(messages):
-            if _msg.get('type', '') == 'system-reminder':
-                _preview = _msg.get('content_preview', '')
-                if 'stripped_task_tools_nag' in mods and 'task tools haven' in _preview:
-                    stripped_indices.add(_idx)
-                if 'removed_plan_mode_sr' in mods and 'Plan mode is active' in _preview:
-                    stripped_indices.add(_idx)
+        stripped_indices = set(entry.get('stripped_msg_indices', []))
 
         start_idx = prev_entry.get('message_count', 0) if prev_entry is not None else 0
         for msg_idx, msg in enumerate(messages[start_idx:], start=start_idx):
@@ -641,15 +633,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                                         all_lines.append(f"        {DIM}{param_line[chunk_start:chunk_start + wrap_w]}{RESET}")
                                                         line_keys.append(None)
                         messages = entry.get('messages', [])
-                        stripped_indices = set()
-                        for _idx, _msg in enumerate(messages):
-                            _preview = _msg.get('content_preview', '')
-                            if 'stripped_task_tools_nag' in mods and 'task tools haven' in _preview:
-                                stripped_indices.add(_idx)
-                            if 'removed_plan_mode_sr' in mods and 'Plan mode is active' in _preview:
-                                stripped_indices.add(_idx)
-                            if 'stripped_rejection_message' in mods and "doesn't want to proceed" in _preview:
-                                stripped_indices.add(_idx)
+                        stripped_indices = set(entry.get('stripped_msg_indices', []))
                         prev_msg_count = prev_entry_for_delta.get('message_count', 0) if prev_entry_for_delta is not None else 0
                         wrap_width = max(20, pane_width - 8)
                         if prev_msg_count < len(messages):
