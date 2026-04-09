@@ -355,6 +355,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
 
     if groups:
         prev_group_last_entry = None
+        prev_effort = None
+        prev_budget = None
         for group in groups:
             turn_idx = group['turn_idx']
             opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:turn_idx])
@@ -364,6 +366,20 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             last_sys = last_e.get('system_total_chars', last_e.get('system_prompt_chars', 0))
             last_tools = last_e.get('tools_total_chars', last_e.get('tools_chars', 0))
             last_msgs = last_e.get('messages_total_chars', 0)
+
+            # Thinking config from first entry of turn
+            first_e = group['entry_pairs'][0][1]
+            tc = first_e.get('thinking_config', {})
+            oc = first_e.get('output_config', {})
+            effort = oc.get('effort', '?')
+            effort_short = effort[:3] if len(effort) > 3 else effort
+            budget = tc.get('budget_tokens', 0)
+            budget_str = _format_k(budget) if budget else '?'
+            effort_changed = prev_effort is not None and effort != prev_effort
+            budget_changed = prev_budget is not None and budget != prev_budget
+            effort_color = RED if effort_changed else ''
+            budget_color = RED if budget_changed else ''
+            config_str = f"  {effort_color}effort:{effort_short}{RESET if effort_color else ''}  {budget_color}think:{budget_str}{RESET if budget_color else ''}"
 
             # Delta vs previous turn's last entry
             if prev_group_last_entry is not None:
@@ -381,7 +397,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             turn_ts = format_timestamp(group['timestamp'])[:5]
 
             # Turn header line (clickable — expand/collapse unit)
-            all_lines.append(f"{PASTEL_PURPLE}{turn_symbol} Turn {turn_idx + 1} [{turn_ts}]{delta_str}{RESET}")
+            all_lines.append(f"{PASTEL_PURPLE}{turn_symbol} Turn {turn_idx + 1} [{turn_ts}]{config_str}{delta_str}{RESET}")
             line_keys.append(turn_key)
 
             # Baseline totals from PREVIOUS turn's last entry (not clickable)
@@ -510,6 +526,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     prev_entry_for_delta = entry
 
             prev_group_last_entry = last_e
+            prev_effort = effort
+            prev_budget = budget
             all_lines.append('')
             line_keys.append(None)
     else:
