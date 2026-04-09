@@ -179,7 +179,7 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
     return [g for g in groups if g['entry_pairs']]
 
 # Render a single proxy entry into (lines, line_keys). indent sets the nesting level.
-def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '', req_num: int = 0) -> tuple:
+def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '', num_label: str = '#0') -> tuple:
     L1 = indent
     L2 = indent + '  '
     L3 = indent + '    '
@@ -224,15 +224,19 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
             new_c = entry['system_total_chars']
             delta = new_c - old_c
             warn_details.append([f"{L3}{DIM}sys: {_format_k(old_c)} → {_format_k(new_c)} ({delta:+,}){RESET}"])
+    has_warn_m = False
+    if prev_entry is not None:
         msgs_modified = diff.get('messages_modified', 0)
         if msgs_modified > 0 and first_diff >= 0 and cache_bp:
             if first_diff < min(cache_bp):
-                warn_symbols.append(f"{RED}⚠M{RESET}")
+                has_warn_m = True
 
-    status_str = '  '.join(warn_symbols) if warn_symbols else f"{PASTEL_GREEN}✓{RESET}"
+    all_status = warn_symbols[:]
+    if has_warn_m:
+        all_status.append(f"{RED}⚠M{RESET}")
+    status_str = '  '.join(all_status) if all_status else f"{PASTEL_GREEN}✓{RESET}"
     mods_str = f"  {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
 
-    num_label = f"#{req_num}" if model != 'haiku' else "H"
     lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{RESET}")
     keys.append(entry_idx)
 
@@ -347,6 +351,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
 
     groups = _assign_turns_to_entries(entries, turns) if turns else None
     opus_req_num = 0
+    sub_req_num = 0
 
     if groups:
         prev_group_last_entry = None
@@ -378,9 +383,19 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             prev_group_last_entry = last_e
 
             for entry_idx, entry in group['entry_pairs']:
-                if _shorten_model(entry.get('model', '?')) != 'haiku':
-                    opus_req_num += 1
-                e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='  ', req_num=opus_req_num)
+                model_short = _shorten_model(entry.get('model', '?'))
+                if model_short == 'haiku':
+                    num_label = 'H'
+                else:
+                    bp_len = len(entry.get('cache_breakpoints', []))
+                    if entry_idx == 0 or bp_len >= 1:
+                        opus_req_num += 1
+                        sub_req_num = 0
+                        num_label = f'#{opus_req_num}'
+                    else:
+                        sub_req_num += 1
+                        num_label = f'#{opus_req_num}.{sub_req_num}'
+                e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='  ', num_label=num_label)
                 all_lines.extend(e_lines)
                 line_keys.extend(e_keys)
 
@@ -388,9 +403,19 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             line_keys.append(None)
     else:
         for entry_idx, entry in enumerate(entries):
-            if _shorten_model(entry.get('model', '?')) != 'haiku':
-                opus_req_num += 1
-            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', req_num=opus_req_num)
+            model_short = _shorten_model(entry.get('model', '?'))
+            if model_short == 'haiku':
+                num_label = 'H'
+            else:
+                bp_len = len(entry.get('cache_breakpoints', []))
+                if entry_idx == 0 or bp_len >= 1:
+                    opus_req_num += 1
+                    sub_req_num = 0
+                    num_label = f'#{opus_req_num}'
+                else:
+                    sub_req_num += 1
+                    num_label = f'#{opus_req_num}.{sub_req_num}'
+            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label)
             all_lines.extend(e_lines)
             line_keys.extend(e_keys)
             all_lines.append('')
