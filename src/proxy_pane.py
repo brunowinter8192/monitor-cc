@@ -484,6 +484,22 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     all_lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{mods_str}{warn_str}{req_delta_str}{RESET}")
                     line_keys.append(req_key)
                     if is_req_expanded:
+                        sys_blocks = entry.get('system_blocks', [])
+                        sys_total = entry.get('system_total_chars', 0)
+                        if sys_blocks:
+                            block_parts = []
+                            for sb in sys_blocks:
+                                cc_dot = ' CC●' if sb.get('has_cc') else ''
+                                block_parts.append(f"[{sb['idx']}]:{_format_k(sb['chars'])}{cc_dot}")
+                            all_lines.append(f"    {DIM}sys: {len(sys_blocks)} blocks ({sys_total:,}c)  {'  '.join(block_parts)}{RESET}")
+                            line_keys.append(None)
+                        tools_count = entry.get('tools_count', 0)
+                        tools_chars = entry.get('tools_total_chars', 0)
+                        tools_hash = entry.get('tools_hash', '')
+                        if tools_count:
+                            hash_str = f"  hash:{tools_hash[:8]}" if tools_hash else ''
+                            all_lines.append(f"    {DIM}tools: {tools_count} defs ({tools_chars:,}c){hash_str}{RESET}")
+                            line_keys.append(None)
                         messages = entry.get('messages', [])
                         stripped_indices = set()
                         for _idx, _msg in enumerate(messages):
