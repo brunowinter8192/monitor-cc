@@ -14,8 +14,7 @@ from .constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
     KNOWN_PAYLOAD_KEYS, KNOWN_CONTENT_BLOCK_TYPES, KNOWN_TOOL_DEFINITION_KEYS, KNOWN_MESSAGE_ROLES,
 )
-from .token_pane import _format_k
-from .jsonl_parser import read_new_lines, parse_jsonl_lines, extract_cache_turns
+from .token_pane import _format_k, build_cache_turns
 from .click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
@@ -180,7 +179,7 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
     return [g for g in groups if g['entry_pairs']]
 
 # Render a single proxy entry into (lines, line_keys). indent sets the nesting level.
-def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '') -> tuple:
+def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '', req_num: int = 0) -> tuple:
     L1 = indent
     L2 = indent + '  '
     L3 = indent + '    '
@@ -233,7 +232,8 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     status_str = '  '.join(warn_symbols) if warn_symbols else f"{PASTEL_GREEN}✓{RESET}"
     mods_str = f"  {YELLOW}🔧{mods_count}{RESET}" if mods_count > 0 else ''
 
-    lines.append(f"{WHITE}{L1}{symbol} #{entry_idx + 1}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{RESET}")
+    num_label = f"#{req_num}" if model != 'haiku' else "H"
+    lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{RESET}")
     keys.append(entry_idx)
 
     sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
@@ -346,6 +346,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     line_keys = []
 
     groups = _assign_turns_to_entries(entries, turns) if turns else None
+    opus_req_num = 0
 
     if groups:
         prev_group_last_entry = None
@@ -377,7 +378,9 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             prev_group_last_entry = last_e
 
             for entry_idx, entry in group['entry_pairs']:
-                e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='  ')
+                if _shorten_model(entry.get('model', '?')) != 'haiku':
+                    opus_req_num += 1
+                e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='  ', req_num=opus_req_num)
                 all_lines.extend(e_lines)
                 line_keys.extend(e_keys)
 
@@ -385,7 +388,9 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             line_keys.append(None)
     else:
         for entry_idx, entry in enumerate(entries):
-            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='')
+            if _shorten_model(entry.get('model', '?')) != 'haiku':
+                opus_req_num += 1
+            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', req_num=opus_req_num)
             all_lines.extend(e_lines)
             line_keys.extend(e_keys)
             all_lines.append('')
@@ -486,18 +491,7 @@ def run_proxy_loop() -> None:
                 main_sessions = _monitor.get_main_session_files()
                 if main_sessions:
                     filepath = main_sessions[0]
-                    new_lines = read_new_lines(filepath, _proxy_jsonl_position)
-                    if new_lines:
-                        _proxy_jsonl_position = filepath.stat().st_size
-                        msgs, _ = parse_jsonl_lines(new_lines)
-                        new_turns = extract_cache_turns(msgs)
-                        if new_turns:
-                            if _proxy_cache_turns and new_turns[0].get('prompt') == _proxy_cache_turns[-1].get('prompt'):
-                                for call in new_turns[0].get('api_calls', []):
-                                    _proxy_cache_turns[-1]['api_calls'].append(call)
-                                _proxy_cache_turns.extend(new_turns[1:])
-                            else:
-                                _proxy_cache_turns.extend(new_turns)
+                    _proxy_cache_turns, _proxy_jsonl_position = build_cache_turns(filepath, _proxy_jsonl_position, _proxy_cache_turns)
                 last_data_refresh = now
                 input_changed = True
 
