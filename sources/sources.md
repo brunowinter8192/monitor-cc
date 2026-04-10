@@ -36,4 +36,4 @@ External references used as evidence for pipeline decisions.
 | HackerNews: 47660925 | news.ycombinator.com/item?id=47660925 | Cache investigation | cache-investigation |
 | cc-cache-fix repo | github.com/Rangizingo/cc-cache-fix/ | Cache investigation, reference implementation | cache-investigation |
 | Reddit: adaptive-thinking | reddit.com/r/ClaudeCode (post) | CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING + MAX_THINKING_TOKENS env vars for restoring pre-adaptive thinking quality | proxy-tuning |
-| Anthropic Prompt Caching | docs.anthropic.com/en/docs/build-with-claude/prompt-caching | cache_control placement, prefix order, max 4 breakpoints, auto-detection at block boundaries, TTL, pricing | proxy-tuning, cache-investigation |
+| Anthropic Prompt Caching | docs.anthropic.com/en/docs/build-with-claude/prompt-caching | cache_control placement, prefix order, max 4 breakpoints, auto-detection at block boundaries, TTL (`"1h"` string format confirmed), pricing, scope:global, content-hash-based cache keys, org-isolated | proxy-tuning, cache-investigation | Verified |

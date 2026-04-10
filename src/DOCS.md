@@ -177,11 +177,11 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 ## warnings_pane.py
 
-**Purpose:** Warnings pane. Unknown JSONL message types detected during parsing.
+**Purpose:** Warnings pane. Two sections: (1) Unknown JSONL message types from session parsing, (2) Tool errors detected from Proxy JSONL (expandable with full error text).
 
-**Input:** Unknown type entries from session processing.
+**Input:** Unknown type entries from session processing + Proxy JSONL entries (incremental read via `parse_proxy_log`).
 
-**Output:** Warning display with type counts.
+**Output:** Interactive pane with mouse support (click expand/collapse, scroll). Format Warnings section (type counts) + Tool Errors section (timestamp, tool name, error summary, expandable full text).
 
 ---
 
