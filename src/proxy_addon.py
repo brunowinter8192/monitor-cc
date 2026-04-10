@@ -85,6 +85,40 @@ class ProxyAddon:
             except Exception:
                 pass  # last resort — don't crash trying to log the error
 
+    def response(self, flow: http.HTTPFlow) -> None:
+        """Log full request payload when API returns 4xx error — for debugging malformed requests."""
+        try:
+            if not _is_messages_request(flow):
+                return
+            if flow.response and 400 <= flow.response.status_code < 500:
+                # Decode the response body for error details
+                resp_body = ""
+                try:
+                    resp_body = flow.response.content.decode("utf-8", errors="replace")[:2000]
+                except Exception:
+                    pass
+                # Get the request payload that was sent to the API
+                req_payload = None
+                try:
+                    req_payload = json.loads(flow.request.content.decode("utf-8", errors="replace"))
+                except Exception:
+                    pass
+                # Write error + full payload to a dedicated error file
+                log_dir = os.path.dirname(self.log_file)
+                error_file = os.path.join(log_dir, f"api_error_payload_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json")
+                error_data = {
+                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                    "status_code": flow.response.status_code,
+                    "error_response": resp_body,
+                    "request_url": flow.request.pretty_url,
+                    "request_payload": req_payload,
+                }
+                with open(error_file, "w", encoding="utf-8") as f:
+                    json.dump(error_data, f, indent=2, ensure_ascii=False)
+                print(f"[proxy_addon] API {flow.response.status_code} error — payload saved to {error_file}", file=sys.stderr)
+        except Exception as e:
+            print(f"[proxy_addon] Error in response hook: {e}", file=sys.stderr)
+
 
 # FUNCTIONS
 
