@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 from typing import Dict, List, Optional
 from pathlib import Path
+import hashlib
 import os
 import subprocess
 import time
@@ -27,8 +28,30 @@ worker_line_map: Dict[int, str] = {}
 worker_hover_row: Optional[int] = None
 worker_cache_expand_states: Dict[str, Dict[tuple, bool]] = {}
 worker_cache_line_map: Dict[int, tuple] = {}
+worker_selected_name: Optional[str] = None
 
 # FUNCTIONS
+
+# Build path to the selection IPC file for the given project (shared with proxy/metadata panes)
+def get_selection_file_path(project_filter: Optional[str]) -> str:
+    if project_filter:
+        normalized = os.path.normpath(os.path.expanduser(project_filter))
+        project_hash = hashlib.md5(normalized.encode()).hexdigest()[:8]
+    else:
+        project_hash = 'global'
+    return f"/tmp/monitor_cc_selected_worker_{project_hash}.txt"
+
+# Write selected worker name to IPC selection file
+def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None:
+    path = get_selection_file_path(project_filter)
+    try:
+        if name:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(name)
+        elif os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
 
 # Derive worker project name from project path (worktree-aware, matches tmux_spawn.sh logic)
 def get_worker_project_name(project_path: str) -> str:
@@ -153,7 +176,7 @@ def extract_worker_tool_calls(jsonl_path: Path) -> List[dict]:
     return calls
 
 # Format workers pane with optional expand/collapse showing cache tracker per worker
-def format_workers_block(workers: list, expand_states: dict = None, worker_turns: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None, cache_expand_states: dict = None, cache_line_map: dict = None, frozen: bool = False) -> str:
+def format_workers_block(workers: list, expand_states: dict = None, worker_turns: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None, cache_expand_states: dict = None, cache_line_map: dict = None, frozen: bool = False, selected_name: Optional[str] = None) -> str:
     freeze_indicator = f" {YELLOW}[FROZEN]{RESET}" if frozen else f" {CYAN}[LIVE]{RESET}"
 
     if not workers:
@@ -201,7 +224,9 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
         tokens = w.get('tokens', {})
         tok_out = tokens.get('output', 0)
         tokens_str = f"  {WHITE}{_format_k(tok_out)}out{RESET}" if tok_out else ''
-        header_line = f"{toggle_symbol} {CYAN}[{idx}] {name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}{model_str}{tokens_str}"
+        is_selected = selected_name is not None and name == selected_name
+        sel_prefix = f"{GREEN}>>{RESET} " if is_selected else "   "
+        header_line = f"{sel_prefix}{toggle_symbol} {CYAN}[{idx}] {name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}{model_str}{tokens_str}"
         if hover_row is not None and current_line == hover_row:
             header_line = f"{HOVER_BG}{header_line}{RESET}"
         lines.append(header_line)
@@ -256,7 +281,7 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
     from . import monitor as _monitor
-    global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map
+    global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map, worker_selected_name
     _monitor.ui_mode_active = True
     last_output = None
     workers = []
@@ -317,11 +342,16 @@ def run_workers_loop() -> None:
                                 worker_expand_states[name] = is_now_expanded
                                 if is_now_expanded:
                                     worker_scroll_offsets[name] = 0
+                                worker_selected_name = name
+                                _write_selection(_monitor.active_project_filter, name)
                                 input_changed = True
 
             now = time.time()
             if not frozen and now - last_data_refresh >= POLL_INTERVAL:
                 workers = list_workers(_monitor.active_project_filter) if _monitor.active_project_filter else []
+                if worker_selected_name is None and workers:
+                    worker_selected_name = workers[0]['name']
+                    _write_selection(_monitor.active_project_filter, worker_selected_name)
                 worker_turns = {}
                 for w in workers:
                     name = w.get('name', '')
@@ -344,7 +374,7 @@ def run_workers_loop() -> None:
                             messages, _ = parse_jsonl_lines(lines)
                             worker_turns[name] = extract_cache_turns(messages)
 
-            output = format_workers_block(workers, worker_expand_states, worker_turns, worker_line_map, worker_hover_row, worker_scroll_offsets, worker_cache_expand_states, worker_cache_line_map, frozen=frozen)
+            output = format_workers_block(workers, worker_expand_states, worker_turns, worker_line_map, worker_hover_row, worker_scroll_offsets, worker_cache_expand_states, worker_cache_line_map, frozen=frozen, selected_name=worker_selected_name)
             if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:
