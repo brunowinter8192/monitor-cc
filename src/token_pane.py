@@ -8,7 +8,8 @@ from .constants import (
     LIGHT_RED_BG, HOVER_BG, DIM,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
 )
-from .jsonl_parser import read_new_lines, parse_jsonl_lines, extract_cache_turns
+from .jsonl_parser import read_new_lines, parse_jsonl_lines
+from .jsonl_cache_turns import extract_cache_turns
 from .click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,

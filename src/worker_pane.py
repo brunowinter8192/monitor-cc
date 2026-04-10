@@ -13,7 +13,8 @@ from .constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
 )
 from .token_pane import _format_k, format_cache_tracker
-from .jsonl_parser import read_new_lines, parse_jsonl_lines, extract_cache_turns, get_message_content, is_tool_use
+from .jsonl_parser import read_new_lines, parse_jsonl_lines, get_message_content, is_tool_use
+from .jsonl_cache_turns import extract_cache_turns
 from .session_finder import encode_project_path
 from .click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
