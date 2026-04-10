@@ -9,7 +9,8 @@ from typing import Dict, Optional
 
 from mitmproxy import http
 
-from .logging import _build_entry, _summarize_message, _summarize_content_for_log
+from .logging import _build_entry, _summarize_content_for_log
+from .message_summary import _summarize_message
 from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools

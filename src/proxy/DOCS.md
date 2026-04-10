@@ -19,20 +19,28 @@ Contains:
 
 ## logging.py
 
-**Purpose:** Build structured log entries and summarize message content.
+**Purpose:** Build structured log entries from flow + payload data.
 **Input:** Raw payload dicts, message lists.
 **Output:** Structured dicts for JSONL logging.
 
 Contains:
 - `_build_entry()` — builds full log entry from flow + payload + previous state
 - `_count_system_chars()` — counts chars in system field (string or list)
+- `_compute_diff()` — computes diff between previous and current message summaries
+- `_summarize_content_for_log()` — truncates raw content for log storage
+
+## message_summary.py
+
+**Purpose:** Summarize and classify message content for log entries.
+**Input:** Raw message dicts from API payload.
+**Output:** Compact summary dicts (role, type, chars, preview, blocks, has_cache_control).
+
+Contains:
 - `_summarize_message()` — summarizes a single message into a compact dict
 - `_has_cache_control()` — checks if message or any block has cache_control set
 - `_classify_content()` — classifies message content into (type, chars, preview)
 - `_classify_text()` — classifies plain text by special tag prefixes
 - `_classify_blocks()` — classifies a list of content blocks
-- `_compute_diff()` — computes diff between previous and current message summaries
-- `_summarize_content_for_log()` — truncates raw content for log storage
 
 ## rules.py
 
@@ -42,15 +50,23 @@ Contains:
 
 Contains:
 - `apply_modification_rules()` — orchestrates all rules, returns 5-tuple
+- `_strip_blocked_tool_references()` — removes tool_reference blocks for TOOL_BLOCKLIST tools
+- `_content_contains()` — checks if message content contains a substring
+- `_strip_task_notification_tags()` — removes output-file and tool-use-id tags
+
+## content_strip.py
+
+**Purpose:** Strip or extract specific content blocks from API message payloads.
+**Input:** Message content (string or list of blocks), marker strings.
+**Output:** Modified content (string or list), or extracted text.
+
+Contains:
 - `_strip_plan_mode_blocks()` — removes plan-mode system-reminder blocks
 - `_strip_system_reminder()` — strips system-reminder blocks containing a marker string
 - `_message_has_rejection()` — detects tool rejection marker in user message
 - `_strip_rejection_message()` — replaces rejection tool_result content with "."
 - `_extract_session_start_block()` — extracts SessionStart rules block from MSG[0]
 - `_strip_session_guidance()` — removes "Session-specific guidance" section from text
-- `_strip_blocked_tool_references()` — removes tool_reference blocks for TOOL_BLOCKLIST tools
-- `_content_contains()` — checks if message content contains a substring
-- `_strip_task_notification_tags()` — removes output-file and tool-use-id tags
 
 ## cache.py
 
