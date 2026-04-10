@@ -48,6 +48,7 @@ See [sources/sources.md](sources/sources.md)
 | Workers Display | worker_pane.py | Dedicated tmux pane, real-time worker status |
 | Proxy Display | proxy_pane.py | Dedicated tmux pane, API request structure |
 | Subagent Display | subagent_pane.py | Dedicated tmux pane, per-agent cache token view |
+| Metadata Display | metadata_pane.py | Dedicated tmux pane, API config state (model, tokens, thinking, sampling, cache markers) |
 
 ### Key Files
 
@@ -64,6 +65,7 @@ See [sources/sources.md](sources/sources.md)
 | `src/rules_pane.py` | Rules pane + InstructionsLoaded routing |
 | `src/warnings_pane.py` | Warnings pane |
 | `src/subagent_pane.py` | Subagent pane |
+| `src/metadata_pane.py` | Metadata pane (API config: model, max_tokens, thinking, sampling, cache markers) |
 | `src/formatter.py` | Shared tool call formatting (~230 lines) |
 | `src/session_finder.py` | Session discovery |
 | `src/jsonl_parser.py` | JSONL parsing, tool call extraction |
@@ -99,6 +101,7 @@ Monitor_CC/
 │   ├── rules_pane.py               → Rules pane (active rules, InstructionsLoaded routing)
 │   ├── warnings_pane.py            → Warnings pane (unknown JSONL types)
 │   ├── subagent_pane.py            → Subagent pane (per-agent cache token view)
+│   ├── metadata_pane.py            → Metadata pane (API config state, change detection)
 │   ├── session_finder.py
 │   ├── jsonl_parser.py
 │   ├── hook_parser.py
