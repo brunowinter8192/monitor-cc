@@ -68,9 +68,12 @@ printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "$MARKER_FILE"
 # Format: line 1 = port, line 2 = log_id, line 3 = MONITOR_CC_ROOT
 printf "%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_proxy_${SESSION_ID}"
 
-# Copy addon to isolated live copy — prevents git merge hot-reload
+# Copy addon and entire proxy/ package to isolated live copies — prevents git merge hot-reload
 LIVE_ADDON="$LOG_DIR/.proxy_addon_live_${SESSION_ID}.py"
+LIVE_DIR="$LOG_DIR/.proxy_live_${SESSION_ID}"
 cp "$SCRIPT_DIR/proxy_addon.py" "$LIVE_ADDON"
+mkdir -p "$LIVE_DIR"
+cp -r "$SCRIPT_DIR/proxy" "$LIVE_DIR/"
 
 # Start proxy in background
 export MONITOR_CC_ROOT
@@ -89,6 +92,7 @@ cleanup() {
     rm -f "$MARKER_FILE"
     rm -f "/tmp/.monitor_cc_proxy_${SESSION_ID}"
     rm -f "$LIVE_ADDON"
+    rm -rf "$LIVE_DIR"
 }
 trap cleanup EXIT INT TERM
 
