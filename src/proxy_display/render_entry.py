@@ -169,14 +169,24 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
             if is_msg_expanded:
                 bg = DIM_YELLOW_BG if is_stripped else ''
                 if blocks:
+                    wrap_width = max(20, pane_width - len(L4) - 2)
                     for bidx, blk in enumerate(blocks):
                         btype = blk.get('type', 'text')
                         bchars = blk.get('chars', 0)
-                        bpreview = blk.get('preview', '')
                         bcc = ' [CC]' if blk.get('has_cc') else ''
-                        preview_str = f"  {DIM}{bpreview[:40]}{RESET}" if bpreview else ''
-                        lines.append(f"{L3}{bg}{DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{preview_str}{RESET}")
+                        lines.append(f"{L3}{bg}{DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{RESET}")
                         keys.append(None)
+                        full_text = blk.get('full_text', blk.get('preview', ''))
+                        if full_text:
+                            for raw_line in full_text.split('\n'):
+                                if not raw_line:
+                                    lines.append(f"{L4}{bg}{DIM}{RESET}")
+                                    keys.append(None)
+                                    continue
+                                for line_start in range(0, len(raw_line), wrap_width):
+                                    chunk = raw_line[line_start:line_start + wrap_width]
+                                    lines.append(f"{L4}{bg}{DIM}{chunk}{RESET}")
+                                    keys.append(None)
                 else:
                     preview = msg.get('content_preview', '')
                     wrap_width = max(20, pane_width - len(L4) - 2)

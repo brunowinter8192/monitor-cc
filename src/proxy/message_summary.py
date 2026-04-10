@@ -19,29 +19,36 @@ def _summarize_message(msg: dict) -> dict:
                 text = block.get("text", "")
                 bchars = len(text)
                 bpreview = text.split('\n')[0][:60]
+                bfull = text
             elif btype == "tool_use":
                 name = block.get("name", "")
                 bchars = len(name) + len(json.dumps(block.get("input", {})))
                 bpreview = name
+                bfull = name + "\n" + json.dumps(block.get("input", {}))
             elif btype == "tool_result":
                 rc = block.get("content", "")
                 if isinstance(rc, str):
                     bchars = len(rc)
                     bpreview = rc.split('\n')[0][:60]
+                    bfull = rc
                 elif isinstance(rc, list):
                     bchars = sum(len(s.get("text", "")) for s in rc if isinstance(s, dict))
                     bpreview = next((s.get("text", "").split('\n')[0][:60] for s in rc if isinstance(s, dict) and s.get("text")), "")
+                    bfull = "\n".join(s.get("text", "") for s in rc if isinstance(s, dict) and s.get("text"))
                 else:
                     bchars = 0
                     bpreview = ""
+                    bfull = ""
             elif btype == "thinking":
                 thinking_text = block.get("thinking", "")
                 bchars = len(thinking_text)
                 bpreview = thinking_text.split('\n')[0][:60]
+                bfull = thinking_text
             else:
                 bchars = len(json.dumps(block))
                 bpreview = btype
-            blocks.append({"type": btype, "chars": bchars, "preview": bpreview, "has_cc": has_cc})
+                bfull = json.dumps(block)
+            blocks.append({"type": btype, "chars": bchars, "preview": bpreview, "full_text": bfull, "has_cc": has_cc})
     return {
         "role": role,
         "type": msg_type,
