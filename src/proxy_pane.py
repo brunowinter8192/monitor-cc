@@ -291,15 +291,44 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     msgs_chars = entry.get('messages_total_chars', 0)
     if prev_entry is None:
         lines.append(f"{L2}{DIM}(first request){RESET}")
+        keys.append(None)
     else:
         d_sys = sys_chars - prev_entry.get('system_total_chars', prev_entry.get('system_prompt_chars', 0))
         d_tools = tools_chars - prev_entry.get('tools_total_chars', prev_entry.get('tools_chars', 0))
         d_msgs = msgs_chars - prev_entry.get('messages_total_chars', 0)
         if d_sys == 0 and d_tools == 0 and d_msgs == 0:
             lines.append(f"{L2}{DIM}Δ: (no change){RESET}")
+            keys.append(None)
+        elif d_tools < 0 or d_msgs < 0:
+            neg_key = (entry_idx, 'neg_delta')
+            is_neg_exp = expand_states.get(neg_key, False)
+            neg_sym = '\u25bc' if is_neg_exp else '\u25b6'
+            lines.append(f"{L2}{neg_sym} {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}")
+            keys.append(neg_key)
+            if is_neg_exp:
+                if d_tools < 0:
+                    curr_names = set(entry.get('tools_names', []))
+                    prev_names = prev_entry.get('tools_names', [])
+                    prev_defs = {d.get('name', ''): d for d in prev_entry.get('tools_defs', [])}
+                    removed_tools = [n for n in prev_names if n not in curr_names]
+                    for t_name in removed_tools:
+                        t_chars = len(json.dumps(prev_defs.get(t_name, {})))
+                        lines.append(f"{L3}{RED}removed:{RESET} {DIM}{t_name} ({_format_k(t_chars)}c){RESET}")
+                        keys.append(None)
+                if d_msgs < 0:
+                    curr_msgs = entry.get('messages', [])
+                    prev_msgs = prev_entry.get('messages', [])
+                    removed_msgs = prev_msgs[len(curr_msgs):]
+                    for m_offset, msg in enumerate(removed_msgs):
+                        m_idx = len(curr_msgs) + m_offset
+                        role = msg.get('role', '?')[:4]
+                        m_type = msg.get('type', 'text')
+                        m_chars = msg.get('chars', 0)
+                        lines.append(f"{L3}{RED}removed:{RESET} {DIM}[{m_idx:3d}] {role:<8} {m_type:<20} {m_chars:,}c{RESET}")
+                        keys.append(None)
         else:
             lines.append(f"{L2}{_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}")
-    keys.append(None)
+            keys.append(None)
 
     if warn_symbols:
         warn_key = (entry_idx, 'warnings')
@@ -757,6 +786,15 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                         for chunk_start in range(0, len(raw_line), wrap_width):
                                             all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                                             line_keys.append(None)
+                            # Show messages that existed in prev but were removed in current
+                            removed_from_prev = prev_messages[len(messages):]
+                            for m_offset, msg in enumerate(removed_from_prev):
+                                m_idx = len(messages) + m_offset
+                                role = msg.get('role', '?')[:4]
+                                m_type = msg.get('type', 'text')
+                                m_chars = msg.get('chars', 0)
+                                all_lines.append(f"    {RED}removed:{RESET} {DIM}[{m_idx:3d}] {role:<4}  {m_type:<20} {m_chars:,}c{RESET}")
+                                line_keys.append(None)
                     if len(entry.get('cache_breakpoints', [])) >= 1:
                         prev_entry_for_delta = entry
 
