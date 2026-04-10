@@ -1,12 +1,10 @@
 # INFRASTRUCTURE
 from datetime import datetime
 from typing import Dict, List, Optional
-from pathlib import Path
 import os
 import time
 
 from .constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
-from .session_finder import find_active_sessions
 from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp
 from .click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
@@ -14,6 +12,8 @@ from .click_handler import (
 )
 # From hooks_format.py: Hook entry formatting and block rendering
 from .hooks_format import _is_noise_entry, build_hook_display_item, format_hooks_block
+# From hooks_persist.py: Persisted additionalContext enrichment
+from .hooks_persist import scan_persisted_hook_files, enrich_with_persisted
 
 hooks_display_items: List[dict] = []
 hooks_hover_row: Optional[int] = None
@@ -24,76 +24,6 @@ session_start_ts: Optional[str] = None
 
 # FUNCTIONS
 
-# Scan active sessions' tool-results dirs for persisted hook additionalContext files, keyed by toolUseID
-def _scan_persisted_hook_files() -> Dict[str, tuple]:
-    from . import monitor as _monitor
-    result = {}
-    sessions = find_active_sessions(_monitor.active_project_filter)
-    for session_file in sessions:
-        tool_results_dir = Path(session_file).with_suffix('') / "tool-results"
-        if not tool_results_dir.exists():
-            continue
-        for p in sorted(tool_results_dir.glob("hook-*-additionalContext.txt")):
-            name = p.name
-            if not name.startswith('hook-') or not name.endswith('-additionalContext.txt'):
-                continue
-            inner = name[len('hook-'):-len('-additionalContext.txt')]
-            last_dash = inner.rfind('-')
-            if last_dash < 0 or not inner[last_dash + 1:].isdigit():
-                continue
-            tool_use_id = inner[:last_dash]
-            try:
-                mtime = p.stat().st_mtime
-                content = p.read_text(encoding='utf-8', errors='replace')
-                result[tool_use_id] = (content, mtime)
-            except OSError:
-                pass
-    return result
-
-# Enrich hook display items with persisted additionalContext; returns standalone items for toolu_* files
-def _enrich_with_persisted(items: List[dict], persisted: Dict[str, tuple]) -> List[dict]:
-    if not persisted:
-        return []
-    uuid_remaining = {tid: (content, mtime) for tid, (content, mtime) in persisted.items()
-                      if not tid.startswith('toolu_')}
-    toolu_entries = {tid: (content, mtime) for tid, (content, mtime) in persisted.items()
-                     if tid.startswith('toolu_')}
-    for item in items:
-        if item.get('type') != 'hook':
-            continue
-        if item.get('content') or item.get('was_truncated'):
-            continue
-        if not item.get('detail'):
-            continue
-        ts_str = item.get('timestamp', '')
-        if not ts_str or not uuid_remaining:
-            continue
-        try:
-            hook_dt = datetime.fromisoformat(ts_str.rstrip('Z'))
-        except ValueError:
-            continue
-        closest_tid = min(uuid_remaining.keys(),
-                          key=lambda tid: abs((datetime.utcfromtimestamp(uuid_remaining[tid][1]) - hook_dt).total_seconds()))
-        closest_mtime = uuid_remaining[closest_tid][1]
-        if abs((datetime.utcfromtimestamp(closest_mtime) - hook_dt).total_seconds()) < 60:
-            item['content'] = uuid_remaining.pop(closest_tid)[0]
-            item['was_truncated'] = True
-    extra = []
-    for tid, (content, mtime) in toolu_entries.items():
-        dt = datetime.utcfromtimestamp(mtime)
-        ts = dt.isoformat() + 'Z'
-        if session_start_ts and ts < session_start_ts:
-            continue
-        entry = {
-            'timestamp': ts,
-            'hook_event': 'additionalContext',
-            'hook_script': f'persisted:{tid[:20]}',
-            'output': f'toolUseID={tid}',
-            'content': content,
-        }
-        extra.append(build_hook_display_item(entry))
-    return extra
-
 # Load historical hook entries into hooks_display_items, session-scoped
 def load_historical_hooks() -> None:
     from . import monitor as _monitor
@@ -103,7 +33,7 @@ def load_historical_hooks() -> None:
     if session_start_ts:
         filtered = filter_by_timestamp(filtered, session_start_ts)
     items = [build_hook_display_item(e) for e in filtered if not _is_noise_entry(e)]
-    extra = _enrich_with_persisted(items, _scan_persisted_hook_files())
+    extra = enrich_with_persisted(items, scan_persisted_hook_files(_monitor.active_project_filter), session_start_ts)
     for item in items + extra:
         hooks_display_items.append(item)
     _monitor.hook_log_position = new_pos
@@ -116,7 +46,7 @@ def process_hook_log_for_display() -> None:
     filtered = filter_by_project(entries, _monitor.active_project_filter) if _monitor.active_project_filter else entries
     new_items = [build_hook_display_item(e) for e in filtered if not _is_noise_entry(e)]
     if new_items:
-        extra = _enrich_with_persisted(new_items, _scan_persisted_hook_files())
+        extra = enrich_with_persisted(new_items, scan_persisted_hook_files(_monitor.active_project_filter), session_start_ts)
         for item in new_items + extra:
             hooks_display_items.append(item)
 

@@ -5,20 +5,18 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, TOOL_TASK
+from .constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA
 
 # From session_finder.py: Discover active Claude Code sessions
 from .session_finder import find_active_sessions
-# From jsonl_parser.py: Parse JSONL and extract tool calls
-from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines
+# From jsonl_parser.py: Parse JSONL lines for session start timestamp
+from .jsonl_parser import parse_jsonl_lines, read_new_lines
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import get_current_position as get_hook_log_position
-# From ui_mode.py: Subagent tracking and rules formatting
-from .ui_mode import track_subagent_metadata
-# From warnings_pane.py: Unknown type tracking
-from .warnings_pane import track_unknown_type
-# From monitor_display.py: Console output for tool calls and session status
-from .monitor_display import display_warning, display_user_media, display_skill_activation, display_thinking, display_tool_call, display_user_prompt_from_jsonl, display_system_message, print_session_status
+# From monitor_display.py: Session status output
+from .monitor_display import print_session_status
+# From monitor_session.py: Session file processing, task handling, historical load
+from .monitor_session import get_file_end_position, get_initial_position, process_session_file, load_historical_main, load_historical_subagents
 
 file_positions: Dict[Path, int] = {}
 tool_use_caches: Dict[Path, dict] = {}
@@ -138,83 +136,6 @@ def process_all_sessions(sessions: list) -> None:
         if session_file in file_positions:
             process_session_file(session_file)
 
-# Process single session file for new tool calls and warnings
-def process_session_file(filepath: Path) -> None:
-    global file_positions, tool_use_caches, call_counter
-
-    if filepath not in tool_use_caches:
-        tool_use_caches[filepath] = {}
-
-    last_position = file_positions[filepath]
-    cache = tool_use_caches[filepath]
-
-    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, _, system_messages = parse_new_tool_calls(filepath, last_position, cache)
-
-    for ut in unknown_types:
-        track_unknown_type(ut)
-
-    file_positions[filepath] = new_position
-
-    if active_mode in (MODE_WARNINGS, MODE_TOKENS):
-        return
-
-    for warning in malformed_warnings:
-        display_warning(warning)
-
-    for prompt_item in user_prompts:
-        display_user_prompt_from_jsonl(prompt_item)
-
-    for sys_msg in system_messages:
-        display_system_message(sys_msg)
-
-    for skill_item in skill_activations:
-        display_skill_activation(skill_item)
-
-    media_groups: dict = {}
-    for media_item in user_media:
-        ts = media_item.get('timestamp', '')
-        media_groups.setdefault(ts, []).append(media_item)
-    for ts_group in media_groups.values():
-        display_user_media(ts_group)
-
-    for thinking_item in thinking_blocks:
-        display_thinking(thinking_item)
-
-    task_requests = 0
-    task_responses = 0
-    subagent_ui_tracked = 0
-    subagent_displayed = 0
-    subagent_buffered = 0
-    other_displayed = 0
-
-    for tool_call in tool_calls:
-        if is_task_request(tool_call):
-            task_requests += handle_task_request(tool_call)
-        elif is_task_response(tool_call):
-            task_responses += handle_task_response(tool_call)
-        elif is_subagent_call(tool_call):
-            ui, disp, buff = handle_subagent_call(tool_call, filepath)
-            subagent_ui_tracked += ui
-            subagent_displayed += disp
-            subagent_buffered += buff
-        else:
-            other_displayed += 1
-            call_counter += 1
-            display_tool_call(tool_call, call_counter)
-
-
-# Get end position of file (for initializing at EOF)
-def get_file_end_position(filepath: Path) -> int:
-    if not filepath.exists():
-        return 0
-    return filepath.stat().st_size
-
-# Get initial position for new session file
-def get_initial_position(filepath: Path) -> int:
-    if is_agent_file(filepath):
-        return 0
-    return get_file_end_position(filepath)
-
 # Check if file is a subagent file
 def is_agent_file(filepath: Path) -> bool:
     return filepath.name.startswith('agent-')
@@ -231,104 +152,6 @@ def filter_sessions_by_mode(sessions: list, mode: str) -> list:
         filtered = sessions
 
     return filtered
-
-# Check if tool call is a Task REQUEST
-def is_task_request(tool_call: dict) -> bool:
-    return tool_call.get('tool_name') == TOOL_TASK and tool_call.get('output') is None
-
-# Check if tool call is a Task RESPONSE
-def is_task_response(tool_call: dict) -> bool:
-    return tool_call.get('tool_name') == TOOL_TASK and tool_call.get('output') is not None
-
-# Check if tool call is from a Subagent
-def is_subagent_call(tool_call: dict) -> bool:
-    return tool_call.get('is_subagent', False)
-
-# Handle Task tool REQUEST (no output yet)
-def handle_task_request(tool_call: dict) -> int:
-    global call_counter, task_requests_seen
-    call_counter += 1
-    task_requests_seen.add(tool_call['tool_use_id'])
-    display_tool_call(tool_call, call_counter)
-    return 1
-
-# Handle Task tool RESPONSE (has output, may spawn agent)
-def handle_task_response(tool_call: dict) -> int:
-    global call_counter, agent_to_task, agent_to_type, buffered_subagent_calls
-
-    spawned_agent_id = tool_call.get('spawned_agent_id')
-    if spawned_agent_id:
-        agent_to_task[spawned_agent_id] = tool_call['tool_use_id']
-        subagent_type = tool_call.get('input', {}).get('subagent_type', '')
-        agent_to_type[spawned_agent_id] = subagent_type
-
-        if spawned_agent_id in buffered_subagent_calls:
-            if not ui_mode_active:
-                for buffered_call in buffered_subagent_calls[spawned_agent_id]:
-                    call_counter += 1
-                    display_tool_call(buffered_call, call_counter)
-            del buffered_subagent_calls[spawned_agent_id]
-
-    call_counter += 1
-    display_tool_call(tool_call, call_counter)
-    return 1
-
-# Handle tool call from subagent
-def handle_subagent_call(tool_call: dict, filepath: Path) -> tuple:
-    global call_counter, buffered_subagent_calls
-
-    agent_id = tool_call.get('agent_id')
-    ui_tracked = 0
-    displayed = 0
-    buffered = 0
-
-    if active_mode == MODE_MAIN:
-        return ui_tracked, displayed, buffered
-
-    if ui_mode_active:
-        ui_tracked = 1
-        call_counter += 1
-        tool_call['call_number'] = call_counter
-        track_subagent_metadata(tool_call, filepath, subagent_metadata, tool_calls_by_agent, agent_to_task, agent_to_type)
-    elif active_mode == MODE_SUBAGENT:
-        displayed = 1
-        call_counter += 1
-        display_tool_call(tool_call, call_counter)
-    elif agent_id and agent_id in agent_to_task:
-        displayed = 1
-        call_counter += 1
-        display_tool_call(tool_call, call_counter)
-    elif agent_id:
-        buffered = 1
-        if agent_id not in buffered_subagent_calls:
-            buffered_subagent_calls[agent_id] = []
-        buffered_subagent_calls[agent_id].append(tool_call)
-
-    return ui_tracked, displayed, buffered
-
-# Load historical data from newest main session for initial display
-def load_historical_main() -> None:
-    global file_positions, tool_use_caches
-    main_sessions = get_main_session_files()
-    if main_sessions:
-        filepath = main_sessions[0]
-        file_positions[filepath] = 0
-        tool_use_caches[filepath] = {}
-
-# Load historical data from newest main session + its agent files for subagents pane
-def load_historical_subagents() -> None:
-    global file_positions, tool_use_caches
-    main_sessions = get_main_session_files()
-    if not main_sessions:
-        return
-    filepath = main_sessions[0]
-    file_positions[filepath] = 0
-    tool_use_caches[filepath] = {}
-    subagents_dir = filepath.parent / filepath.stem / 'subagents'
-    if subagents_dir.exists():
-        for agent_file in subagents_dir.glob('agent-*.jsonl'):
-            file_positions[agent_file] = 0
-            tool_use_caches[agent_file] = {}
 
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
@@ -371,4 +194,3 @@ def _get_session_start_ts() -> Optional[str]:
 def get_main_session_files() -> List[Path]:
     sessions = find_active_sessions(active_project_filter)
     return [s for s in sessions if not is_agent_file(s)]
-
