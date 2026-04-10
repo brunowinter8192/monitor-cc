@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import json
 import os
 import re
 import sys
@@ -13,9 +14,13 @@ from .content_strip import (
     _strip_system_reminder,
     _message_has_rejection,
     _strip_rejection_message,
-    _extract_session_start_block,
     _strip_session_guidance,
 )
+
+_SHARED_RULES_DIR = Path.home() / ".claude" / "shared-rules"
+_PROXY_RULES_CONFIG = _SHARED_RULES_DIR / "proxy_rules.json"
+_file_cache: dict = {}
+_config_cache: list = [None]
 
 # FUNCTIONS
 
@@ -88,21 +93,108 @@ def _strip_task_notification_tags(content) -> str:
     return content
 
 
+# Load proxy_rules.json config, re-reading only when mtime changes
+def _load_config() -> dict:
+    try:
+        mtime = _PROXY_RULES_CONFIG.stat().st_mtime
+        cached = _config_cache[0]
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+        with open(_PROXY_RULES_CONFIG, encoding="utf-8") as f:
+            config = json.load(f)
+        _config_cache[0] = (mtime, config)
+        return config
+    except Exception:
+        return {}
+
+
+# Read a rule file by path relative to shared-rules dir, caching by mtime
+def _read_rule_file(rel_path: str) -> str:
+    path = _SHARED_RULES_DIR / rel_path
+    try:
+        mtime = path.stat().st_mtime
+        cached = _file_cache.get(rel_path)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+        content = path.read_text(encoding="utf-8")
+        _file_cache[rel_path] = (mtime, content)
+        return content
+    except Exception:
+        return ""
+
+
+# Detect session type from model name in payload: sonnet/haiku → worker, opus → opus
+def _get_session_type(payload: dict) -> str:
+    model = payload.get("model", "").lower()
+    if "sonnet" in model or "haiku" in model:
+        return "worker"
+    return "opus"
+
+
+# Extract project working directory path from system[3] environment block
+def _get_project_path(system: list) -> str:
+    if not isinstance(system, list) or len(system) < 4:
+        return ""
+    block3 = system[3]
+    if not isinstance(block3, dict) or block3.get("type") != "text":
+        return ""
+    text = block3.get("text", "")
+    marker = "Primary working directory: "
+    if marker not in text:
+        return ""
+    start = text.index(marker) + len(marker)
+    end = text.find("\n", start)
+    return text[start:end].strip() if end != -1 else text[start:].strip()
+
+
+# Concatenate rule files for given session type from config
+def _load_session_rules(session_type: str) -> str:
+    config = _load_config()
+    files = config.get("system2_rules", {}).get(session_type, {}).get("files", [])
+    parts = [c for c in (_read_rule_file(f) for f in files) if c]
+    return "\n\n".join(parts)
+
+
+# Concatenate project-specific rule files using longest-prefix match on project_path
+def _load_project_rules(project_path: str) -> str:
+    if not project_path:
+        return ""
+    config = _load_config()
+    project_rules = config.get("project_rules", {})
+    best_prefix = ""
+    best_files = []
+    for prefix, proj_config in project_rules.items():
+        if project_path.startswith(prefix) and len(prefix) > len(best_prefix):
+            best_prefix = prefix
+            best_files = proj_config.get("files", [])
+    parts = [c for c in (_read_rule_file(f) for f in best_files) if c]
+    return "\n\n".join(parts)
+
+
 # Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules, original_system2_text, stripped_msg_indices, stripped_msg_originals)
 def apply_modification_rules(payload: dict) -> tuple:
     modifications = []
     changed = False
 
-    extracted_rules_text = None
+    session_type = _get_session_type(payload)
+    system_rules = _load_session_rules(session_type)
+
+    project_path = _get_project_path(payload.get("system", []))
+    project_rules = _load_project_rules(project_path)
+
     messages_to_process = list(payload.get("messages", []))
-    if messages_to_process:
+
+    if project_rules and messages_to_process:
         msg0 = messages_to_process[0]
-        if msg0.get("role") == "user" and _content_contains(msg0.get("content", ""), "SessionStart hook additional context:"):
-            modified_content, extracted_rules_text = _extract_session_start_block(msg0.get("content", ""))
-            if extracted_rules_text:
-                messages_to_process[0] = {**msg0, "content": modified_content}
-                modifications.append("extracted_rules_to_system")
-                changed = True
+        if msg0.get("role") == "user":
+            content = msg0.get("content", "")
+            project_block = f"\n\n<system-reminder>\n{project_rules}\n</system-reminder>"
+            if isinstance(content, str):
+                messages_to_process[0] = {**msg0, "content": content + project_block}
+            elif isinstance(content, list):
+                messages_to_process[0] = {**msg0, "content": list(content) + [{"type": "text", "text": project_block}]}
+            modifications.append("injected_project_rules")
+            changed = True
 
     new_messages = []
     stripped_msg_indices = []
@@ -166,21 +258,17 @@ def apply_modification_rules(payload: dict) -> tuple:
         block = new_system[2]
         if isinstance(block, dict) and block.get("type") == "text":
             original_system2_text = block.get("text", "")
-            if extracted_rules_text:
-                new_system[2] = {**block, "text": extracted_rules_text}
-            else:
-                new_system[2] = {**block, "text": "."}
+            new_system[2] = {**block, "text": system_rules if system_rules else "."}
             modifications.append("replaced_system_prompt")
             changed = True
 
-    if extracted_rules_text and isinstance(new_system, list):
-        if len(new_system) > 3:
-            block3 = new_system[3]
-            if isinstance(block3, dict) and block3.get("type") == "text":
-                stripped = _strip_session_guidance(block3.get("text", ""))
-                if stripped != block3.get("text", ""):
-                    new_system[3] = {**block3, "text": stripped}
-                    modifications.append("stripped_session_guidance")
+    if isinstance(new_system, list) and len(new_system) > 3:
+        block3 = new_system[3]
+        if isinstance(block3, dict) and block3.get("type") == "text":
+            stripped = _strip_session_guidance(block3.get("text", ""))
+            if stripped != block3.get("text", ""):
+                new_system[3] = {**block3, "text": stripped}
+                modifications.append("stripped_session_guidance")
 
     if not changed:
         return payload, modifications, None, stripped_msg_indices, stripped_msg_originals
