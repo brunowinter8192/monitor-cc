@@ -503,47 +503,60 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                             all_lines.append(f"    {DIM}{sys_symbol} sys: {len(sys_blocks)} blocks ({sys_total:,}c){RESET}{sys_delta_str}")
                             line_keys.append(sys_key)
                             if is_sys_expanded:
-                                for sb in sys_blocks:
-                                    bidx = sb['idx']
-                                    bchars = sb.get('chars', 0)
-                                    is_sys_stripped = 'replaced_system_prompt' in mods and bidx == 2
-                                    stripped_str = f"  [STRIPPED]" if is_sys_stripped else ''
-                                    block_key = ('sys_block', entry_idx, bidx)
-                                    is_block_expanded = expand_states.get(block_key, False)
-                                    block_symbol = '\u25bc' if is_block_expanded else '\u25b6'
-                                    if is_sys_stripped:
-                                        all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{stripped_str}{RESET}")
-                                    else:
-                                        all_lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{RESET}")
-                                    line_keys.append(block_key)
-                                    if is_block_expanded:
-                                        preview = sb.get('preview', '')
-                                        # Preview is active content (rules injected by proxy) — always normal rendering
-                                        if preview:
-                                            for raw_line in preview.split('\n'):
-                                                if not raw_line:
-                                                    all_lines.append(f"        {DIM}{RESET}")
-                                                    line_keys.append(None)
-                                                    continue
-                                                for chunk_start in range(0, len(raw_line), wrap_width_meta):
-                                                    all_lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
-                                                    line_keys.append(None)
+                                prev_sys_blocks = prev_entry_for_delta.get('system_blocks', []) if prev_entry_for_delta else []
+                                sys_unchanged = (
+                                    prev_sys_blocks
+                                    and len(prev_sys_blocks) == len(sys_blocks)
+                                    and all(
+                                        prev_sys_blocks[i].get('chars', 0) == sys_blocks[i].get('chars', 0)
+                                        for i in range(len(sys_blocks))
+                                    )
+                                )
+                                if sys_unchanged:
+                                    all_lines.append(f"      {DIM}(unchanged){RESET}")
+                                    line_keys.append(None)
+                                else:
+                                    for sb in sys_blocks:
+                                        bidx = sb['idx']
+                                        bchars = sb.get('chars', 0)
+                                        is_sys_stripped = 'replaced_system_prompt' in mods and bidx == 2
+                                        stripped_str = f"  [STRIPPED]" if is_sys_stripped else ''
+                                        block_key = ('sys_block', entry_idx, bidx)
+                                        is_block_expanded = expand_states.get(block_key, False)
+                                        block_symbol = '\u25bc' if is_block_expanded else '\u25b6'
+                                        if is_sys_stripped:
+                                            all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{stripped_str}{RESET}")
                                         else:
-                                            all_lines.append(f"        {DIM}(no preview){RESET}")
-                                            line_keys.append(None)
-                                        # Show original CC prompt below with DIM_YELLOW_BG
-                                        original_text = sb.get('original_text', '')
-                                        if original_text:
-                                            all_lines.append(f"        {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
-                                            line_keys.append(None)
-                                            for raw_line in original_text.split('\n'):
-                                                if not raw_line:
-                                                    all_lines.append(f"        {DIM_YELLOW_BG}{DIM}{RESET}")
-                                                    line_keys.append(None)
-                                                    continue
-                                                for chunk_start in range(0, len(raw_line), wrap_width_meta):
-                                                    all_lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
-                                                    line_keys.append(None)
+                                            all_lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{RESET}")
+                                        line_keys.append(block_key)
+                                        if is_block_expanded:
+                                            preview = sb.get('preview', '')
+                                            # Preview is active content (rules injected by proxy) — always normal rendering
+                                            if preview:
+                                                for raw_line in preview.split('\n'):
+                                                    if not raw_line:
+                                                        all_lines.append(f"        {DIM}{RESET}")
+                                                        line_keys.append(None)
+                                                        continue
+                                                    for chunk_start in range(0, len(raw_line), wrap_width_meta):
+                                                        all_lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
+                                                        line_keys.append(None)
+                                            else:
+                                                all_lines.append(f"        {DIM}(no preview){RESET}")
+                                                line_keys.append(None)
+                                            # Show original CC prompt below with DIM_YELLOW_BG
+                                            original_text = sb.get('original_text', '')
+                                            if original_text:
+                                                all_lines.append(f"        {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
+                                                line_keys.append(None)
+                                                for raw_line in original_text.split('\n'):
+                                                    if not raw_line:
+                                                        all_lines.append(f"        {DIM_YELLOW_BG}{DIM}{RESET}")
+                                                        line_keys.append(None)
+                                                        continue
+                                                    for chunk_start in range(0, len(raw_line), wrap_width_meta):
+                                                        all_lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width_meta]}{RESET}")
+                                                        line_keys.append(None)
                         # Tools (expandable)
                         tools_count = entry.get('tools_count', 0)
                         tools_chars = entry.get('tools_total_chars', 0)
