@@ -451,24 +451,25 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                             warn_parts.append(f"{RED}⚠T{RESET}")
                         if entry.get('system_total_chars') is not None and prev_same.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_same.get('system_total_chars'):
                             warn_parts.append(f"{RED}⚠S{RESET}")
-                    # Per-request deltas (sys, tools, msgs) — only for main requests (BP>=1)
+                    # Per-request deltas (sys, tools, msgs)
+                    e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
+                    e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+                    e_msgs = entry.get('messages_total_chars', 0)
                     req_delta_str = ''
-                    if len(entry.get('cache_breakpoints', [])) >= 1:
-                        e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
-                        e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
-                        e_msgs = entry.get('messages_total_chars', 0)
-                        if prev_entry_for_delta is not None:
+                    if prev_entry_for_delta is not None:
+                        delta_parts = []
+                        if e_sys > 0:
                             d_req_sys = e_sys - prev_entry_for_delta.get('system_total_chars', prev_entry_for_delta.get('system_prompt_chars', 0))
-                            d_req_tools = e_tools - prev_entry_for_delta.get('tools_total_chars', prev_entry_for_delta.get('tools_chars', 0))
-                            d_req_msgs = e_msgs - prev_entry_for_delta.get('messages_total_chars', 0)
-                            delta_parts = []
                             if d_req_sys != 0:
                                 delta_parts.append(_format_delta('sys', d_req_sys))
+                        if e_tools > 0:
+                            d_req_tools = e_tools - prev_entry_for_delta.get('tools_total_chars', prev_entry_for_delta.get('tools_chars', 0))
                             if d_req_tools != 0:
                                 delta_parts.append(_format_delta('tools', d_req_tools))
-                            if d_req_msgs != 0:
-                                delta_parts.append(_format_delta('msgs', d_req_msgs))
-                            req_delta_str = f"  {'  '.join(delta_parts)}" if delta_parts else ''
+                        d_req_msgs = e_msgs - prev_entry_for_delta.get('messages_total_chars', 0)
+                        if d_req_msgs != 0:
+                            delta_parts.append(_format_delta('msgs', d_req_msgs))
+                        req_delta_str = f"  {'  '.join(delta_parts)}" if delta_parts else ''
                     _curr_tools = entry.get('tools_names', [])
                     _prev_tools = prev_same.get('tools_names', []) if prev_same is not None else []
                     _t_added = len(set(_curr_tools) - set(_prev_tools))
