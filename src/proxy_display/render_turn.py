@@ -34,8 +34,13 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
 
         warn_parts = []
         prev_same = None
-        is_haiku = 'haiku' in entry.get('model', '').lower()
-        if not is_haiku:
+        is_standalone = (
+            'haiku' in entry.get('model', '').lower()
+            or (entry.get('system_total_chars', entry.get('system_prompt_chars', 0)) == 0
+                and entry.get('tools_total_chars', entry.get('tools_chars', 0)) == 0
+                and len(entry.get('cache_breakpoints', [])) == 0)
+        )
+        if not is_standalone:
             for _i in range(entry_idx - 1, -1, -1):
                 _ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
                 _pf = 'haiku' if 'haiku' in entries[_i].get('model', '').lower() else 'opus'
@@ -52,7 +57,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
         e_msgs = entry.get('messages_total_chars', 0)
         req_delta_str = ''
-        if not is_haiku and prev_entry_for_delta is not None:
+        if not is_standalone and prev_entry_for_delta is not None:
             delta_parts = []
             if e_sys > 0:
                 d_req_sys = e_sys - prev_entry_for_delta.get('system_total_chars', prev_entry_for_delta.get('system_prompt_chars', 0))
@@ -93,7 +98,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         keys.append(req_key)
 
         if is_req_expanded:
-            _delta_ref = None if is_haiku else prev_entry_for_delta
+            _delta_ref = None if is_standalone else prev_entry_for_delta
             s_lines, s_keys = render_system_blocks(entry_idx, entry, _delta_ref, expand_states, pane_width, mods)
             lines.extend(s_lines)
             keys.extend(s_keys)

@@ -26,9 +26,15 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     is_expanded = expand_states.get(entry_idx, False)
     symbol = '\u25bc' if is_expanded else '\u25b6'
 
+    is_standalone = (
+        'haiku' in entry.get('model', '').lower()
+        or (entry.get('system_total_chars', entry.get('system_prompt_chars', 0)) == 0
+            and entry.get('tools_total_chars', entry.get('tools_chars', 0)) == 0
+            and len(entry.get('cache_breakpoints', [])) == 0)
+    )
     model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
     prev_entry = None
-    if model_family != "haiku":
+    if not is_standalone:
         for _i in range(entry_idx - 1, -1, -1):
             _prev_model = entries[_i].get('model', '')
             _prev_family = "haiku" if "haiku" in _prev_model.lower() else "opus"
@@ -70,7 +76,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
     msgs_chars = entry.get('messages_total_chars', 0)
-    if 'haiku' in entry.get('model', '').lower():
+    if is_standalone:
         haiku_info = f"  sys:{_format_k(sys_chars)} tools:{_format_k(tools_chars)} msgs:{_format_k(msgs_chars)}"
     else:
         haiku_info = ''
