@@ -134,6 +134,76 @@ def _format_metadata(entry: dict) -> str:
     think_color = RED if think_changed else DIM
     lines.append(f"  {think_color}thinking: {budget_str} ({think_type}){RESET}")
 
+    # Model
+    model = entry.get('model', '?')
+    new_values['model'] = model
+    prev_model = _prev_values.get('model')
+    model_changed = prev_model is not None and prev_model != model
+    if model_changed:
+        lines.append(f"  {RED}model: {prev_model} → {model}{RESET}")
+    else:
+        lines.append(f"  {DIM}model: {model}{RESET}")
+
+    # Max tokens
+    max_tokens = entry.get('max_tokens', 0)
+    new_values['max_tokens'] = max_tokens
+    prev_max = _prev_values.get('max_tokens')
+    max_changed = prev_max is not None and prev_max != max_tokens
+    max_str = _format_k(max_tokens) if max_tokens else '?'
+    if max_changed:
+        lines.append(f"  {RED}max_tokens: {_format_k(prev_max)} → {max_str}{RESET}")
+    else:
+        lines.append(f"  {DIM}max_tokens: {max_str}{RESET}")
+
+    # Temperature (only show if set)
+    temperature = entry.get('temperature', None)
+    if temperature is not None:
+        new_values['temperature'] = temperature
+        prev_temp = _prev_values.get('temperature')
+        temp_changed = prev_temp is not None and prev_temp != temperature
+        if temp_changed:
+            lines.append(f"  {RED}temperature: {prev_temp} → {temperature}{RESET}")
+        else:
+            lines.append(f"  {DIM}temperature: {temperature}{RESET}")
+
+    # Top-p (only show if set)
+    top_p = entry.get('top_p', None)
+    if top_p is not None:
+        new_values['top_p'] = top_p
+        lines.append(f"  {DIM}top_p: {top_p}{RESET}")
+
+    # Top-k (only show if set)
+    top_k = entry.get('top_k', None)
+    if top_k is not None:
+        new_values['top_k'] = top_k
+        lines.append(f"  {DIM}top_k: {top_k}{RESET}")
+
+    # Tool choice (only show if non-empty)
+    tool_choice = entry.get('tool_choice', {})
+    if tool_choice:
+        tc_type = tool_choice.get('type', '')
+        if tc_type:
+            new_values['tool_choice'] = tc_type
+            lines.append(f"  {DIM}tool_choice: {tc_type}{RESET}")
+
+    # Output format (only show if set)
+    output_format = entry.get('output_config', {}).get('format', {})
+    if output_format:
+        fmt_type = output_format.get('type', '')
+        new_values['output_format'] = fmt_type
+        prev_fmt = _prev_values.get('output_format')
+        fmt_changed = prev_fmt is not None and prev_fmt != fmt_type
+        if fmt_changed:
+            lines.append(f"  {RED}output_format: {prev_fmt} → {fmt_type}{RESET}")
+        else:
+            lines.append(f"  {DIM}output_format: {fmt_type}{RESET}")
+
+    # Stream
+    stream = entry.get('stream', None)
+    if stream is not None:
+        new_values['stream'] = stream
+        lines.append(f"  {DIM}stream: {stream}{RESET}")
+
     # CACHE MARKERS section
     cache_bps = entry.get('cache_breakpoints', [])
     msg_count = entry.get('message_count', 0)
@@ -145,6 +215,16 @@ def _format_metadata(entry: dict) -> str:
             lines.append(f"  {DIM}msg[{bp_idx}]{label}{RESET}")
     else:
         lines.append(f"  {DIM}(no message breakpoints){RESET}")
+
+    # SESSION section
+    lines.append('')
+    lines.append(f"{WHITE}─── SESSION ───{RESET}")
+    request_id = entry.get('request_id', '')
+    if request_id:
+        lines.append(f"  {DIM}req: {request_id[:12]}{RESET}")
+    mods = entry.get('modifications', [])
+    if mods:
+        lines.append(f"  {DIM}mods: {', '.join(mods)}{RESET}")
 
     _prev_values = new_values
     return '\n'.join(lines)

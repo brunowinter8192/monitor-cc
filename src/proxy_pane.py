@@ -100,6 +100,12 @@ def _extract_raw_payload_fields(entry: dict) -> None:
 
         entry['thinking_config'] = raw.get('thinking', {})
         entry['output_config'] = raw.get('output_config', {})
+        # Additional metadata
+        entry['max_tokens'] = raw.get('max_tokens', 0)
+        entry['temperature'] = raw.get('temperature', None)
+        entry['top_p'] = raw.get('top_p', None)
+        entry['top_k'] = raw.get('top_k', None)
+        entry['tool_choice'] = raw.get('tool_choice', {})
 
         stored_msgs = entry.get('messages', [])
         entry['messages_total_chars'] = sum(m.get('chars', 0) for m in stored_msgs)
