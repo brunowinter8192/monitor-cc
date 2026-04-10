@@ -117,6 +117,8 @@ def _parse_log_file(log_path: Path, last_position: int) -> tuple:
     for line in lines:
         try:
             entry = json.loads(line)
+            if entry.get('type') == 'sent_meta':
+                continue
             _extract_raw_payload_fields(entry)
             entries.append(entry)
         except json.JSONDecodeError:
