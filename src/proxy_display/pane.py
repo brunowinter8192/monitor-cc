@@ -11,6 +11,7 @@ from ..constants import (
 from .parser import parse_proxy_log, find_worker_proxy_log, _parse_log_file
 from .format import format_proxy_block
 from ..token_pane import build_cache_turns
+from ..worker_tmux import find_worker_jsonl, list_workers
 from ..click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
@@ -32,6 +33,9 @@ worker_proxy_line_map: Dict[int, int] = {}
 worker_proxy_hover_row: Optional[int] = None
 worker_proxy_scroll_offset: int = 0
 worker_proxy_log_position: int = 0
+
+_worker_proxy_jsonl_position: int = 0
+_worker_proxy_cache_turns: list = []
 
 # FUNCTIONS
 
@@ -129,6 +133,7 @@ def run_worker_proxy_loop() -> None:
     from .. import monitor as _monitor
     from ..worker_pane import get_selection_file_path
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
+    global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
     last_output = None
     last_data_refresh = 0.0
     last_worker_name: Optional[str] = None
@@ -177,16 +182,28 @@ def run_worker_proxy_loop() -> None:
                     worker_proxy_scroll_offset = 0
                     worker_proxy_hover_row = None
                     worker_proxy_log_position = 0
+                    _worker_proxy_jsonl_position = 0
+                    _worker_proxy_cache_turns = []
                     last_worker_name = worker_name
                     input_changed = True
 
                 if worker_name:
+                    new_entries: list = []
                     log_path = find_worker_proxy_log(worker_name)
                     if log_path:
                         new_entries, worker_proxy_log_position = _parse_log_file(log_path, worker_proxy_log_position)
                         worker_proxy_entries.extend(new_entries)
                         if new_entries:
                             input_changed = True
+                    workers = list_workers(_monitor.active_project_filter) if _monitor.active_project_filter else []
+                    worker_session = next((w.get('session', '') for w in workers if w.get('name') == worker_name), '')
+                    worker_jsonl = find_worker_jsonl(worker_session) if worker_session else None
+                    if worker_jsonl:
+                        _worker_proxy_cache_turns, _worker_proxy_jsonl_position = build_cache_turns(str(worker_jsonl), _worker_proxy_jsonl_position, _worker_proxy_cache_turns)
+                    if new_entries and _worker_proxy_cache_turns:
+                        latest_turn_key = ('turn', len(_worker_proxy_cache_turns) - 1)
+                        if latest_turn_key not in worker_proxy_expand_states:
+                            worker_proxy_expand_states[latest_turn_key] = True
 
                 last_data_refresh = now
 
@@ -211,7 +228,7 @@ def run_worker_proxy_loop() -> None:
                 elif not worker_proxy_entries:
                     output = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No proxy data yet — is worker proxy running?{RESET}"
                 else:
-                    output = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, pane_height, pane_width, worker_proxy_scroll_offset, turns=None)
+                    output = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, pane_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns)
 
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
