@@ -283,12 +283,15 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     else:
         mods_str = ''
 
-    lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{RESET}")
-    keys.append(entry_idx)
-
     sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
     msgs_chars = entry.get('messages_total_chars', 0)
+    if 'haiku' in entry.get('model', '').lower():
+        haiku_info = f"  sys:{_format_k(sys_chars)} tools:{_format_k(tools_chars)} msgs:{_format_k(msgs_chars)}"
+    else:
+        haiku_info = ''
+    lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{haiku_info}{RESET}")
+    keys.append(entry_idx)
     if prev_entry is None:
         lines.append(f"{L2}{DIM}(first request){RESET}")
         keys.append(None)
@@ -435,7 +438,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:turn_idx])
             sub_req_num = 0
 
-            last_e = group['entry_pairs'][-1][1]
+            _opus_pairs = [(idx, e) for idx, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
+            last_e = _opus_pairs[-1][1] if _opus_pairs else group['entry_pairs'][-1][1]
             last_sys = last_e.get('system_total_chars', last_e.get('system_prompt_chars', 0))
             last_tools = last_e.get('tools_total_chars', last_e.get('tools_chars', 0))
             last_msgs = last_e.get('messages_total_chars', 0)
@@ -481,7 +485,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 prev_sys = ple.get('system_total_chars', ple.get('system_prompt_chars', 0))
                 prev_tools = ple.get('tools_total_chars', ple.get('tools_chars', 0))
                 prev_msgs = ple.get('messages_total_chars', 0)
-                all_lines.append(f"  {DIM}total: sys:{_format_k(prev_sys)}  tools:{_format_k(prev_tools)}  msgs:{_format_k(prev_msgs)}{RESET}")
+                all_lines.append(f"  {DIM}total: tools:{_format_k(prev_tools)}  msgs:{_format_k(prev_msgs)}{RESET}")
             else:
                 all_lines.append(f"  {DIM}total: (first turn){RESET}")
             line_keys.append(None)
@@ -555,7 +559,11 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     req_key = ('req', entry_idx)
                     is_req_expanded = expand_states.get(req_key, False)
                     req_symbol = '\u25bc' if is_req_expanded else '\u25b6'
-                    all_lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{mods_str}{warn_str}{req_delta_str}{RESET}")
+                    if model_short == 'haiku':
+                        haiku_info = f"  sys:{_format_k(e_sys)} tools:{_format_k(e_tools)} msgs:{_format_k(e_msgs)}"
+                    else:
+                        haiku_info = ''
+                    all_lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{mods_str}{warn_str}{req_delta_str}{haiku_info}{RESET}")
                     line_keys.append(req_key)
                     if is_req_expanded:
                         wrap_width_meta = max(20, pane_width - 10)
@@ -828,7 +836,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                     if len(entry.get('cache_breakpoints', [])) >= 1:
                         prev_entry_for_delta = entry
 
-            main_entries = [e for _, e in group['entry_pairs'] if len(e.get('cache_breakpoints', [])) >= 1]
+            main_entries = [e for _, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
             if main_entries:
                 prev_group_last_entry = main_entries[-1]
             prev_effort = effort
