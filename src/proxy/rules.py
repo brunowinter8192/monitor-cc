@@ -123,51 +123,11 @@ def _read_rule_file(rel_path: str) -> str:
         return ""
 
 
-# Detect session type from model name in payload: sonnet/haiku → worker, opus → opus
-def _get_session_type(payload: dict) -> str:
-    model = payload.get("model", "").lower()
-    if "sonnet" in model or "haiku" in model:
-        return "worker"
-    return "opus"
-
-
-# Extract project working directory path from system[3] environment block
-def _get_project_path(system: list) -> str:
-    if not isinstance(system, list) or len(system) < 4:
-        return ""
-    block3 = system[3]
-    if not isinstance(block3, dict) or block3.get("type") != "text":
-        return ""
-    text = block3.get("text", "")
-    marker = "Primary working directory: "
-    if marker not in text:
-        return ""
-    start = text.index(marker) + len(marker)
-    end = text.find("\n", start)
-    return text[start:end].strip() if end != -1 else text[start:].strip()
-
-
-# Concatenate rule files for given session type from config
-def _load_session_rules(session_type: str) -> str:
+# Concatenate global rule files from config — identical for all session types
+def _load_global_rules() -> str:
     config = _load_config()
-    files = config.get("system2_rules", {}).get(session_type, {}).get("files", [])
+    files = config.get("system2_rules", {}).get("global", {}).get("files", [])
     parts = [c for c in (_read_rule_file(f) for f in files) if c]
-    return "\n\n".join(parts)
-
-
-# Concatenate project-specific rule files using longest-prefix match on project_path
-def _load_project_rules(project_path: str) -> str:
-    if not project_path:
-        return ""
-    config = _load_config()
-    project_rules = config.get("project_rules", {})
-    best_prefix = ""
-    best_files = []
-    for prefix, proj_config in project_rules.items():
-        if project_path.startswith(prefix) and len(prefix) > len(best_prefix):
-            best_prefix = prefix
-            best_files = proj_config.get("files", [])
-    parts = [c for c in (_read_rule_file(f) for f in best_files) if c]
     return "\n\n".join(parts)
 
 
@@ -176,25 +136,9 @@ def apply_modification_rules(payload: dict) -> tuple:
     modifications = []
     changed = False
 
-    session_type = _get_session_type(payload)
-    system_rules = _load_session_rules(session_type)
-
-    project_path = _get_project_path(payload.get("system", []))
-    project_rules = _load_project_rules(project_path)
+    system_rules = _load_global_rules()
 
     messages_to_process = list(payload.get("messages", []))
-
-    if project_rules and messages_to_process:
-        msg0 = messages_to_process[0]
-        if msg0.get("role") == "user":
-            content = msg0.get("content", "")
-            project_block = f"\n\n<system-reminder>\n{project_rules}\n</system-reminder>"
-            if isinstance(content, str):
-                messages_to_process[0] = {**msg0, "content": content + project_block}
-            elif isinstance(content, list):
-                messages_to_process[0] = {**msg0, "content": list(content) + [{"type": "text", "text": project_block}]}
-            modifications.append("injected_project_rules")
-            changed = True
 
     new_messages = []
     stripped_msg_indices = []
