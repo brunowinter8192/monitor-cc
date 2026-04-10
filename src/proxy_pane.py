@@ -367,35 +367,45 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
             msg_type = msg.get('type', 'text')
             chars = msg.get('chars', 0)
             chars_fmt = f"{chars:,}c"
+            blocks = msg.get('blocks', [])
             msg_key = (entry_idx, 'msg', msg_idx)
             is_msg_expanded = expand_states.get(msg_key, False)
             msg_symbol = '\u25bc' if is_msg_expanded else '\u25b6'
             is_stripped = msg_idx in stripped_indices
+            type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
             if is_stripped:
-                lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}")
+                lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}  [STRIPPED]{RESET}")
             else:
-                lines.append(f"{L2}{WHITE}{msg_symbol} [{msg_idx:3d}] {role:<8} {msg_type:<20} {chars_fmt:>8}{RESET}")
+                lines.append(f"{L2}{WHITE}{msg_symbol} [{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{RESET}")
             keys.append(msg_key)
 
             if is_msg_expanded:
-                preview = msg.get('content_preview', '')
-                wrap_width = max(20, pane_width - len(L4) - 2)
-                if preview:
-                    for raw_line in preview.split('\n'):
-                        if not raw_line:
-                            bg = DIM_YELLOW_BG if is_stripped else ''
-                            lines.append(f"{L4}{bg}{DIM}{RESET}")
-                            keys.append(None)
-                            continue
-                        for line_start in range(0, len(raw_line), wrap_width):
-                            chunk = raw_line[line_start:line_start + wrap_width]
-                            bg = DIM_YELLOW_BG if is_stripped else ''
-                            lines.append(f"{L4}{bg}{DIM}{chunk}{RESET}")
-                            keys.append(None)
+                bg = DIM_YELLOW_BG if is_stripped else ''
+                if blocks:
+                    for bidx, blk in enumerate(blocks):
+                        btype = blk.get('type', 'text')
+                        bchars = blk.get('chars', 0)
+                        bpreview = blk.get('preview', '')
+                        bcc = ' [CC]' if blk.get('has_cc') else ''
+                        preview_str = f"  {DIM}{bpreview[:40]}{RESET}" if bpreview else ''
+                        lines.append(f"{L3}{bg}{DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{preview_str}{RESET}")
+                        keys.append(None)
                 else:
-                    bg = DIM_YELLOW_BG if is_stripped else ''
-                    lines.append(f"{L4}{bg}{DIM}(no preview){RESET}")
-                    keys.append(None)
+                    preview = msg.get('content_preview', '')
+                    wrap_width = max(20, pane_width - len(L4) - 2)
+                    if preview:
+                        for raw_line in preview.split('\n'):
+                            if not raw_line:
+                                lines.append(f"{L4}{bg}{DIM}{RESET}")
+                                keys.append(None)
+                                continue
+                            for line_start in range(0, len(raw_line), wrap_width):
+                                chunk = raw_line[line_start:line_start + wrap_width]
+                                lines.append(f"{L4}{bg}{DIM}{chunk}{RESET}")
+                                keys.append(None)
+                    else:
+                        lines.append(f"{L4}{bg}{DIM}(no preview){RESET}")
+                        keys.append(None)
 
     return lines, keys
 
@@ -606,8 +616,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                             # Show original CC prompt below with DIM_YELLOW_BG
                                             original_text = sb.get('original_text', '')
                                             if original_text:
-                                                all_lines.append(f"        {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
-                                                line_keys.append(None)
                                                 for raw_line in original_text.split('\n'):
                                                     if not raw_line:
                                                         all_lines.append(f"        {DIM_YELLOW_BG}{DIM}{RESET}")
@@ -711,8 +719,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                     originals = entry.get('stripped_msg_originals', {})
                                     orig_text = originals.get(str(msg_idx), '')
                                     if orig_text:
-                                        all_lines.append(f"      {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
-                                        line_keys.append(None)
                                         for raw_line in orig_text.split('\n')[:15]:
                                             if not raw_line:
                                                 all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
@@ -723,18 +729,31 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                                 line_keys.append(None)
                                     continue
                                 else:
-                                    all_lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}")
+                                    blocks = msg.get('blocks', [])
+                                    type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
+                                    all_lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {type_label:<20} {chars_fmt:>8}{RESET}")
                                 line_keys.append(None)
-                                preview = msg.get('content_preview', '')
-                                if preview:
-                                    for raw_line in preview.split('\n'):
-                                        if not raw_line:
-                                            all_lines.append(f"      {DIM}{RESET}")
-                                            line_keys.append(None)
-                                            continue
-                                        for chunk_start in range(0, len(raw_line), wrap_width):
-                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
-                                            line_keys.append(None)
+                                blocks = msg.get('blocks', [])
+                                if blocks:
+                                    for bidx, blk in enumerate(blocks):
+                                        btype = blk.get('type', 'text')
+                                        bchars = blk.get('chars', 0)
+                                        bpreview = blk.get('preview', '')
+                                        bcc = ' [CC]' if blk.get('has_cc') else ''
+                                        preview_str = f"  {DIM}{bpreview[:40]}{RESET}" if bpreview else ''
+                                        all_lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{preview_str}{RESET}")
+                                        line_keys.append(None)
+                                else:
+                                    preview = msg.get('content_preview', '')
+                                    if preview:
+                                        for raw_line in preview.split('\n'):
+                                            if not raw_line:
+                                                all_lines.append(f"      {DIM}{RESET}")
+                                                line_keys.append(None)
+                                                continue
+                                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                                all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                                line_keys.append(None)
                         else:
                             prev_messages = prev_entry_for_delta.get('messages', []) if prev_entry_for_delta is not None else []
                             diff_start = len(messages)
@@ -760,8 +779,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                     originals = entry.get('stripped_msg_originals', {})
                                     orig_text = originals.get(str(msg_idx), '')
                                     if orig_text:
-                                        all_lines.append(f"      {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
-                                        line_keys.append(None)
                                         for raw_line in orig_text.split('\n')[:15]:
                                             if not raw_line:
                                                 all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
@@ -772,20 +789,33 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                                 line_keys.append(None)
                                     continue
                                 else:
-                                    all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}{RESET}")
+                                    blocks = msg.get('blocks', [])
+                                    type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
+                                    all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {type_label:<20}{RESET}")
                                 line_keys.append(None)
-                                tail = msg.get('content_tail', '')
-                                if tail and delta_chars > 0:
-                                    new_content = tail[-delta_chars:] if len(tail) > delta_chars else tail
-                                    wrap_width = max(20, pane_width - 8)
-                                    for raw_line in new_content.split('\n'):
-                                        if not raw_line:
-                                            all_lines.append(f"      {DIM}{RESET}")
-                                            line_keys.append(None)
-                                            continue
-                                        for chunk_start in range(0, len(raw_line), wrap_width):
-                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
-                                            line_keys.append(None)
+                                blocks = msg.get('blocks', [])
+                                if blocks:
+                                    for bidx, blk in enumerate(blocks):
+                                        btype = blk.get('type', 'text')
+                                        bchars = blk.get('chars', 0)
+                                        bpreview = blk.get('preview', '')
+                                        bcc = ' [CC]' if blk.get('has_cc') else ''
+                                        preview_str = f"  {DIM}{bpreview[:40]}{RESET}" if bpreview else ''
+                                        all_lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{preview_str}{RESET}")
+                                        line_keys.append(None)
+                                else:
+                                    tail = msg.get('content_tail', '')
+                                    if tail and delta_chars > 0:
+                                        new_content = tail[-delta_chars:] if len(tail) > delta_chars else tail
+                                        wrap_width = max(20, pane_width - 8)
+                                        for raw_line in new_content.split('\n'):
+                                            if not raw_line:
+                                                all_lines.append(f"      {DIM}{RESET}")
+                                                line_keys.append(None)
+                                                continue
+                                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                                all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                                line_keys.append(None)
                             # Show messages that existed in prev but were removed in current
                             removed_from_prev = prev_messages[len(messages):]
                             for m_offset, msg in enumerate(removed_from_prev):

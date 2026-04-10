@@ -70,7 +70,7 @@ printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "/tmp/.monitor_cc_proxy_${SESSION_ID
 echo "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_root"
 
 # Copy addon to isolated live copy — prevents git merge hot-reload
-LIVE_ADDON="$LOG_DIR/.proxy_addon_live.py"
+LIVE_ADDON="$LOG_DIR/.proxy_addon_live_${SESSION_ID}.py"
 cp "$SCRIPT_DIR/proxy_addon.py" "$LIVE_ADDON"
 
 # Start proxy in background

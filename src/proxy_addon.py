@@ -59,6 +59,7 @@ class ProxyAddon:
             modified_payload, stripped_count = _strip_unused_tools(modified_payload)
             if stripped_count > 0:
                 modifications.append(f"stripped_{stripped_count}_unused_tools")
+            modified_payload = _strip_blocked_tool_references(modified_payload)
 
             # Cache-control: strip CC's markers, set our own on the modified payload
             prev_mod_msgs = self.prev_messages_by_model.get(model_family)
@@ -221,12 +222,47 @@ def _summarize_message(msg: dict) -> dict:
     role = msg.get("role", "unknown")
     content = msg.get("content", "")
     msg_type, chars, preview = _classify_content(role, content)
+    blocks = []
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type", "text")
+            has_cc = bool(block.get("cache_control"))
+            if btype == "text":
+                text = block.get("text", "")
+                bchars = len(text)
+                bpreview = text.split('\n')[0][:60]
+            elif btype == "tool_use":
+                name = block.get("name", "")
+                bchars = len(name) + len(json.dumps(block.get("input", {})))
+                bpreview = name
+            elif btype == "tool_result":
+                rc = block.get("content", "")
+                if isinstance(rc, str):
+                    bchars = len(rc)
+                    bpreview = rc.split('\n')[0][:60]
+                elif isinstance(rc, list):
+                    bchars = sum(len(s.get("text", "")) for s in rc if isinstance(s, dict))
+                    bpreview = next((s.get("text", "").split('\n')[0][:60] for s in rc if isinstance(s, dict) and s.get("text")), "")
+                else:
+                    bchars = 0
+                    bpreview = ""
+            elif btype == "thinking":
+                thinking_text = block.get("thinking", "")
+                bchars = len(thinking_text)
+                bpreview = thinking_text.split('\n')[0][:60]
+            else:
+                bchars = len(json.dumps(block))
+                bpreview = btype
+            blocks.append({"type": btype, "chars": bchars, "preview": bpreview, "has_cc": has_cc})
     return {
         "role": role,
         "type": msg_type,
         "chars": chars,
         "has_cache_control": _has_cache_control(msg),
         "content_preview": preview if preview else "",
+        "blocks": blocks,
     }
 
 
@@ -772,6 +808,44 @@ def _strip_unused_tools(payload: dict) -> tuple:
     modified = dict(payload)
     modified["tools"] = kept
     return modified, removed
+
+
+# Remove tool_reference blocks for blocked tools from tool_result content blocks
+def _strip_blocked_tool_references(payload: dict) -> dict:
+    messages = payload.get("messages", [])
+    if not messages:
+        return payload
+    modified = False
+    new_messages = []
+    for msg in messages:
+        content = msg.get("content", [])
+        if not isinstance(content, list):
+            new_messages.append(msg)
+            continue
+        new_content = []
+        changed = False
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                inner = block.get("content", [])
+                if isinstance(inner, list):
+                    filtered = [
+                        item for item in inner
+                        if not (isinstance(item, dict) and item.get("type") == "tool_reference" and item.get("tool_name") in TOOL_BLOCKLIST)
+                    ]
+                    if len(filtered) != len(inner):
+                        block = {**block, "content": filtered}
+                        changed = True
+            new_content.append(block)
+        if changed:
+            new_messages.append({**msg, "content": new_content})
+            modified = True
+        else:
+            new_messages.append(msg)
+    if not modified:
+        return payload
+    result = dict(payload)
+    result["messages"] = new_messages
+    return result
 
 
 # Check if message content (str or list of blocks) contains a given substring
