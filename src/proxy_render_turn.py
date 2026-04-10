@@ -1,0 +1,107 @@
+# INFRASTRUCTURE
+from .constants import (
+    RESET, RED, WHITE, YELLOW,
+)
+from .proxy_format import _shorten_model, _format_delta, _format_k
+
+# FUNCTIONS
+
+# Render all per-request rows for an expanded turn group, returning (lines, keys, opus_req_num, sub_req_num)
+def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int) -> tuple:
+    from .proxy_render_sections import render_system_blocks, render_tools
+    from .proxy_render_messages import render_messages
+    lines = []
+    keys = []
+
+    for entry_idx, entry in group['entry_pairs']:
+        model_short = _shorten_model(entry.get('model', '?'))
+        if model_short == 'haiku':
+            num_label = 'H'
+        else:
+            bp_len = len(entry.get('cache_breakpoints', []))
+            if entry_idx == 0 or bp_len >= 1:
+                opus_req_num += 1
+                sub_req_num = 0
+                num_label = f'#{opus_req_num}'
+            else:
+                sub_req_num += 1
+                num_label = f'#{opus_req_num}.{sub_req_num}'
+
+        msg_count = entry.get('message_count', 0)
+        cache_bp = entry.get('cache_breakpoints', [])
+        bp_count = len(cache_bp)
+        mods = entry.get('modifications', [])
+
+        warn_parts = []
+        prev_same = None
+        for _i in range(entry_idx - 1, -1, -1):
+            _ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
+            _pf = 'haiku' if 'haiku' in entries[_i].get('model', '').lower() else 'opus'
+            if _pf == _ef:
+                prev_same = entries[_i]
+                break
+        if prev_same is not None:
+            if entry.get('tools_hash') and prev_same.get('tools_hash') and entry.get('tools_hash') != prev_same.get('tools_hash'):
+                warn_parts.append(f"{RED}⚠T{RESET}")
+            if entry.get('system_total_chars') is not None and prev_same.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_same.get('system_total_chars'):
+                warn_parts.append(f"{RED}⚠S{RESET}")
+
+        e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
+        e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+        e_msgs = entry.get('messages_total_chars', 0)
+        req_delta_str = ''
+        if prev_entry_for_delta is not None:
+            delta_parts = []
+            if e_sys > 0:
+                d_req_sys = e_sys - prev_entry_for_delta.get('system_total_chars', prev_entry_for_delta.get('system_prompt_chars', 0))
+                if d_req_sys != 0:
+                    delta_parts.append(_format_delta('sys', d_req_sys))
+            if e_tools > 0:
+                d_req_tools = e_tools - prev_entry_for_delta.get('tools_total_chars', prev_entry_for_delta.get('tools_chars', 0))
+                if d_req_tools != 0:
+                    delta_parts.append(_format_delta('tools', d_req_tools))
+            d_req_msgs = e_msgs - prev_entry_for_delta.get('messages_total_chars', 0)
+            if d_req_msgs != 0:
+                delta_parts.append(_format_delta('msgs', d_req_msgs))
+            req_delta_str = f"  {'  '.join(delta_parts)}" if delta_parts else ''
+
+        _curr_tools = entry.get('tools_names', [])
+        _prev_tools = prev_same.get('tools_names', []) if prev_same is not None else []
+        _t_added = len(set(_curr_tools) - set(_prev_tools))
+        _t_removed = len(set(_prev_tools) - set(_curr_tools))
+        if _t_added > 0 and _t_removed > 0:
+            mods_str = f" {YELLOW}🔧+{_t_added}-{_t_removed}{RESET}"
+        elif _t_added > 0:
+            mods_str = f" {YELLOW}🔧+{_t_added}{RESET}"
+        elif _t_removed > 0:
+            mods_str = f" {YELLOW}🔧-{_t_removed}{RESET}"
+        else:
+            mods_str = ''
+
+        warn_str = f"  {'  '.join(warn_parts)}" if warn_parts else ''
+        req_key = ('req', entry_idx)
+        is_req_expanded = expand_states.get(req_key, False)
+        req_symbol = '\u25bc' if is_req_expanded else '\u25b6'
+        if model_short == 'haiku':
+            haiku_info = f"  sys:{_format_k(e_sys)} tools:{_format_k(e_tools)} msgs:{_format_k(e_msgs)}"
+        else:
+            haiku_info = ''
+
+        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{mods_str}{warn_str}{req_delta_str}{haiku_info}{RESET}")
+        keys.append(req_key)
+
+        if is_req_expanded:
+            s_lines, s_keys = render_system_blocks(entry_idx, entry, prev_entry_for_delta, expand_states, pane_width, mods)
+            lines.extend(s_lines)
+            keys.extend(s_keys)
+            t_lines, t_keys = render_tools(entry_idx, entry, prev_entry_for_delta, expand_states, pane_width)
+            lines.extend(t_lines)
+            keys.extend(t_keys)
+            m_lines, m_keys = render_messages(entry, prev_entry_for_delta, entries, expand_states, pane_width)
+            lines.extend(m_lines)
+            keys.extend(m_keys)
+
+        if len(entry.get('cache_breakpoints', [])) >= 1:
+            prev_entry_for_delta = entry
+
+    return lines, keys, opus_req_num, sub_req_num

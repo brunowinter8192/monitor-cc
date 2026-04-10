@@ -1,0 +1,195 @@
+# INFRASTRUCTURE
+from typing import Optional
+
+from .constants import (
+    RESET, GREEN, RED, DIM, YELLOW, PASTEL_PURPLE, HOVER_BG,
+)
+from .token_pane import _format_k
+from .proxy_parser import _chars_to_tokens
+
+# FUNCTIONS
+
+# Format token estimate as compact string with ~ prefix
+def _format_tok_est(chars: int) -> str:
+    return f"~{_format_k(_chars_to_tokens(chars))}tok"
+
+# Format a signed char-count delta with token estimate (GREEN=positive, RED=negative, DIM=zero)
+def _format_delta(label: str, delta: int) -> str:
+    if delta == 0:
+        return f"{DIM}Δ{label}:0{RESET}"
+    sign = '+' if delta > 0 else '-'
+    color = GREEN if delta > 0 else RED
+    abs_chars = abs(delta)
+    tok_est = _chars_to_tokens(abs_chars)
+    return f"{color}Δ{label}:{sign}{_format_k(abs_chars)}(~{_format_k(tok_est)}tok){RESET}"
+
+# Shorten full model name to family label
+def _shorten_model(model: str) -> str:
+    m = model.lower()
+    if 'haiku' in m:
+        return 'haiku'
+    if 'sonnet' in m:
+        return 'sonnet'
+    if 'opus' in m:
+        return 'opus'
+    return model[:8] if model else '?'
+
+# Assign each proxy entry to the matching turn based on timestamp comparison
+def _assign_turns_to_entries(entries: list, turns: list) -> list:
+    if not turns or not entries:
+        return []
+    groups = [{'turn_idx': i, 'timestamp': t.get('timestamp', ''), 'entry_pairs': []} for i, t in enumerate(turns)]
+    for entry_idx, entry in enumerate(entries):
+        entry_ts = entry.get('timestamp', '')
+        assigned = False
+        for i in range(len(turns) - 1, -1, -1):
+            if entry_ts >= turns[i].get('timestamp', ''):
+                groups[i]['entry_pairs'].append((entry_idx, entry))
+                assigned = True
+                break
+        if not assigned:
+            groups[0]['entry_pairs'].append((entry_idx, entry))
+    return [g for g in groups if g['entry_pairs']]
+
+# Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
+def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None) -> str:
+    from .utils import format_timestamp
+    from .proxy_render_entry import _render_entry_lines
+    from .proxy_render_turn import render_turn_expanded
+    if not entries:
+        return f"{YELLOW}No API requests logged yet{RESET}"
+
+    if expand_states is None:
+        expand_states = {}
+
+    all_lines = []
+    line_keys = []
+
+    groups = _assign_turns_to_entries(entries, turns) if turns else None
+    opus_req_num = 0
+    sub_req_num = 0
+
+    if groups:
+        prev_group_last_entry = None
+        prev_effort = None
+        prev_budget = None
+        prev_think_type = None
+        for group in groups:
+            turn_idx = group['turn_idx']
+            opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:turn_idx])
+            sub_req_num = 0
+
+            _opus_pairs = [(idx, e) for idx, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
+            last_e = _opus_pairs[-1][1] if _opus_pairs else group['entry_pairs'][-1][1]
+            last_sys = last_e.get('system_total_chars', last_e.get('system_prompt_chars', 0))
+            last_tools = last_e.get('tools_total_chars', last_e.get('tools_chars', 0))
+            last_msgs = last_e.get('messages_total_chars', 0)
+
+            first_e = group['entry_pairs'][0][1]
+            tc = first_e.get('thinking_config', {})
+            oc = first_e.get('output_config', {})
+            effort = oc.get('effort', '?')
+            effort_short = effort[:3] if len(effort) > 3 else effort
+            budget = tc.get('budget_tokens', 0)
+            budget_str = _format_k(budget) if budget else '?'
+            think_type = tc.get('type', '?')
+            effort_changed = prev_effort is not None and prev_effort != '?' and effort != '?' and effort != prev_effort
+            budget_changed = prev_budget is not None and prev_budget != 0 and budget != 0 and budget != prev_budget
+            type_changed = prev_think_type is not None and prev_think_type != '?' and think_type != '?' and think_type != prev_think_type
+            effort_color = RED if effort_changed else ''
+            budget_color = RED if (budget_changed or type_changed) else ''
+            config_str = f"  {effort_color}effort:{effort_short}{RESET if effort_color else ''}  {budget_color}think:{budget_str}({think_type}){RESET if budget_color else ''}"
+
+            if prev_group_last_entry is not None:
+                ple = prev_group_last_entry
+                d_sys = last_sys - ple.get('system_total_chars', ple.get('system_prompt_chars', 0))
+                d_tools = last_tools - ple.get('tools_total_chars', ple.get('tools_chars', 0))
+                d_msgs = last_msgs - ple.get('messages_total_chars', 0)
+                delta_str = f"  {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}"
+            else:
+                delta_str = f"  {DIM}(first turn){RESET}"
+
+            turn_key = ('turn', turn_idx)
+            is_turn_expanded = expand_states.get(turn_key, False)
+            turn_symbol = '\u25bc' if is_turn_expanded else '\u25b6'
+            turn_ts = format_timestamp(group['timestamp'])[:5]
+
+            all_lines.append(f"{PASTEL_PURPLE}{turn_symbol} Turn {turn_idx + 1} [{turn_ts}]{config_str}{delta_str}{RESET}")
+            line_keys.append(turn_key)
+
+            if prev_group_last_entry is not None:
+                ple = prev_group_last_entry
+                prev_sys = ple.get('system_total_chars', ple.get('system_prompt_chars', 0))
+                prev_tools = ple.get('tools_total_chars', ple.get('tools_chars', 0))
+                prev_msgs = ple.get('messages_total_chars', 0)
+                all_lines.append(f"  {DIM}total: tools:{_format_k(prev_tools)}  msgs:{_format_k(prev_msgs)}{RESET}")
+            else:
+                all_lines.append(f"  {DIM}total: (first turn){RESET}")
+            line_keys.append(None)
+
+            if is_turn_expanded:
+                prev_entry_for_delta = prev_group_last_entry
+                t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
+                    group, entries, expand_states, pane_width,
+                    prev_entry_for_delta, opus_req_num, sub_req_num,
+                )
+                all_lines.extend(t_lines)
+                line_keys.extend(t_keys)
+
+            main_entries = [e for _, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
+            if main_entries:
+                prev_group_last_entry = main_entries[-1]
+            prev_effort = effort
+            prev_budget = budget
+            prev_think_type = think_type
+            all_lines.append('')
+            line_keys.append(None)
+    else:
+        for entry_idx, entry in enumerate(entries):
+            model_short = _shorten_model(entry.get('model', '?'))
+            if model_short == 'haiku':
+                num_label = 'H'
+            else:
+                bp_len = len(entry.get('cache_breakpoints', []))
+                if entry_idx == 0 or bp_len >= 1:
+                    opus_req_num += 1
+                    sub_req_num = 0
+                    num_label = f'#{opus_req_num}'
+                else:
+                    sub_req_num += 1
+                    num_label = f'#{opus_req_num}.{sub_req_num}'
+            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label)
+            all_lines.extend(e_lines)
+            line_keys.extend(e_keys)
+            all_lines.append('')
+            line_keys.append(None)
+
+    while all_lines and all_lines[-1] == '':
+        all_lines.pop()
+        line_keys.pop()
+
+    viewport_lines = max(1, pane_height - 1)
+    max_scroll = max(0, len(all_lines) - viewport_lines)
+    clamped_offset = min(scroll_offset, max_scroll)
+    start = max(0, len(all_lines) - viewport_lines - clamped_offset)
+    end = start + viewport_lines
+
+    visible_lines = all_lines[start:end]
+    visible_keys = line_keys[start:end]
+
+    if line_map is not None:
+        line_map.clear()
+        for row_idx, key in enumerate(visible_keys):
+            if key is not None:
+                line_map[row_idx + 1] = key
+
+    result_lines = []
+    for row_offset, line in enumerate(visible_lines):
+        row = row_offset + 1
+        key = visible_keys[row_offset]
+        if key is not None and hover_row is not None and row == hover_row:
+            result_lines.append(f"{HOVER_BG}{line}{RESET}")
+        else:
+            result_lines.append(line)
+
+    return '\n'.join(result_lines)
