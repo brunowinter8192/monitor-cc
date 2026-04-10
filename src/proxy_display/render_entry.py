@@ -2,10 +2,10 @@
 import json
 from typing import Optional
 
-from .constants import (
+from ..constants import (
     RESET, GREEN, RED, YELLOW, WHITE, DIM, DIM_YELLOW_BG,
 )
-from .proxy_format import _shorten_model, _format_delta, _format_k
+from .format import _shorten_model, _format_delta, _format_k
 
 # FUNCTIONS
 

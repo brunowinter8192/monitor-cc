@@ -1,11 +1,11 @@
 # INFRASTRUCTURE
 from typing import Optional
 
-from .constants import (
+from ..constants import (
     RESET, GREEN, RED, DIM, YELLOW, PASTEL_PURPLE, HOVER_BG,
 )
-from .token_pane import _format_k
-from .proxy_parser import _chars_to_tokens
+from ..token_pane import _format_k
+from .parser import _chars_to_tokens
 
 # FUNCTIONS
 
@@ -53,9 +53,9 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
 
 # Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
 def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None) -> str:
-    from .utils import format_timestamp
-    from .proxy_render_entry import _render_entry_lines
-    from .proxy_render_turn import render_turn_expanded
+    from ..utils import format_timestamp
+    from .render_entry import _render_entry_lines
+    from .render_turn import render_turn_expanded
     if not entries:
         return f"{YELLOW}No API requests logged yet{RESET}"
 

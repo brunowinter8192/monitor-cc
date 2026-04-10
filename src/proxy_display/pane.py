@@ -4,14 +4,14 @@ from typing import Dict, List, Optional
 import os
 import time
 
-from .constants import (
+from ..constants import (
     RESET, YELLOW, DIM,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
 )
-from .proxy_parser import parse_proxy_log, find_worker_proxy_log, _parse_log_file
-from .proxy_format import format_proxy_block
-from .token_pane import build_cache_turns
-from .click_handler import (
+from .parser import parse_proxy_log, find_worker_proxy_log, _parse_log_file
+from .format import format_proxy_block
+from ..token_pane import build_cache_turns
+from ..click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
@@ -37,7 +37,7 @@ worker_proxy_log_position: int = 0
 
 # Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
 def run_proxy_loop() -> None:
-    from . import monitor as _monitor
+    from .. import monitor as _monitor
     global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset, proxy_log_position
     global _proxy_jsonl_position, _proxy_cache_turns
     session_start_ts = _monitor._get_session_start_ts()
@@ -126,8 +126,8 @@ def run_proxy_loop() -> None:
 
 # Runs worker-proxy pane — reads selected worker's proxy log and shows expandable entries
 def run_worker_proxy_loop() -> None:
-    from . import monitor as _monitor
-    from .worker_pane import get_selection_file_path
+    from .. import monitor as _monitor
+    from ..worker_pane import get_selection_file_path
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
     last_output = None
     last_data_refresh = 0.0

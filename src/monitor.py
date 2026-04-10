@@ -61,13 +61,13 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
         from .hooks_pane import run_hooks_loop
         run_hooks_loop()
     elif mode == MODE_PROXY:
-        from .proxy_pane import run_proxy_loop
+        from .proxy_display import run_proxy_loop
         run_proxy_loop()
     elif mode == MODE_METADATA:
         from .metadata_pane import run_metadata_loop
         run_metadata_loop()
     elif mode == MODE_WORKER_PROXY:
-        from .proxy_pane import run_worker_proxy_loop
+        from .proxy_display import run_worker_proxy_loop
         run_worker_proxy_loop()
     elif mode == MODE_WORKER_METADATA:
         from .metadata_pane import run_worker_metadata_loop

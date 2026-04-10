@@ -1,9 +1,9 @@
 # INFRASTRUCTURE
-from .constants import (
+from ..constants import (
     RESET, RED, DIM, DIM_YELLOW_BG,
     TOOL_BLOCKLIST,
 )
-from .proxy_format import _format_delta, _format_k
+from .format import _format_delta, _format_k
 
 # FUNCTIONS
 

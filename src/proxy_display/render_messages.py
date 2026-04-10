@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from .constants import (
+from ..constants import (
     RESET, RED, WHITE, DIM, DIM_YELLOW_BG,
 )
 

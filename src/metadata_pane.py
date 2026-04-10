@@ -29,7 +29,7 @@ LEGEND = [
 # Run metadata pane loop — reads proxy log directly and shows API config state
 def run_metadata_loop() -> None:
     from . import monitor as _monitor
-    from .proxy_parser import parse_proxy_log
+    from .proxy_display import parse_proxy_log
     global _prev_values, _meta_log_position, _meta_entries
 
     session_start_ts = _monitor._get_session_start_ts()
@@ -69,7 +69,7 @@ def run_metadata_loop() -> None:
 def run_worker_metadata_loop() -> None:
     from . import monitor as _monitor
     from .worker_pane import get_selection_file_path
-    from .proxy_parser import find_worker_proxy_log, _parse_log_file
+    from .proxy_display import find_worker_proxy_log, _parse_log_file
     global _worker_prev_values, _worker_meta_log_position, _worker_meta_entries, _worker_meta_last_name
     last_output = None
 

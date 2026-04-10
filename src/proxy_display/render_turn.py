@@ -1,15 +1,15 @@
 # INFRASTRUCTURE
-from .constants import (
+from ..constants import (
     RESET, RED, WHITE, YELLOW,
 )
-from .proxy_format import _shorten_model, _format_delta, _format_k
+from .format import _shorten_model, _format_delta, _format_k
 
 # FUNCTIONS
 
 # Render all per-request rows for an expanded turn group, returning (lines, keys, opus_req_num, sub_req_num)
 def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int) -> tuple:
-    from .proxy_render_sections import render_system_blocks, render_tools
-    from .proxy_render_messages import render_messages
+    from .render_sections import render_system_blocks, render_tools
+    from .render_messages import render_messages
     lines = []
     keys = []
 

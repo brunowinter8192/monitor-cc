@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from .constants import (
+from ..constants import (
     KNOWN_PAYLOAD_KEYS, KNOWN_CONTENT_BLOCK_TYPES,
     KNOWN_TOOL_DEFINITION_KEYS, KNOWN_MESSAGE_ROLES,
 )
@@ -127,7 +127,7 @@ def _parse_log_file(log_path: Path, last_position: int) -> tuple:
 def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
     root = os.environ.get("MONITOR_CC_ROOT", "")
     if not root:
-        root = str(Path(__file__).parent.parent)
+        root = str(Path(__file__).parent.parent.parent)
     if not project_filter:
         return [], last_position
     session_id = _proxy_session_id_for_project(project_filter)
@@ -144,7 +144,7 @@ def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
 def find_worker_proxy_log(worker_name: str) -> Optional[Path]:
     root = os.environ.get("MONITOR_CC_ROOT", "")
     if not root:
-        root = str(Path(__file__).parent.parent)
+        root = str(Path(__file__).parent.parent.parent)
     logs_dir = Path(root) / "src" / "logs"
     if not logs_dir.exists():
         return None
