@@ -199,7 +199,7 @@ def run_worker_proxy_loop() -> None:
                     worker_session = next((w.get('session', '') for w in workers if w.get('name') == worker_name), '')
                     worker_jsonl = find_worker_jsonl(worker_session) if worker_session else None
                     if worker_jsonl:
-                        _worker_proxy_cache_turns, _worker_proxy_jsonl_position = build_cache_turns(str(worker_jsonl), _worker_proxy_jsonl_position, _worker_proxy_cache_turns)
+                        _worker_proxy_cache_turns, _worker_proxy_jsonl_position = build_cache_turns(worker_jsonl, _worker_proxy_jsonl_position, _worker_proxy_cache_turns)
                     if new_entries and _worker_proxy_cache_turns:
                         latest_turn_key = ('turn', len(_worker_proxy_cache_turns) - 1)
                         if latest_turn_key not in worker_proxy_expand_states:
