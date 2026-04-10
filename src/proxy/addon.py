@@ -165,18 +165,17 @@ def _build_sent_meta(payload: dict, request_id: str, timestamp: str) -> dict:
     system = payload.get("system", []) or []
     messages = payload.get("messages", []) or []
     tool_names = sorted(t.get("name", "") for t in tools if isinstance(t, dict))
-    sent_bp = (
-        [i for i, b in enumerate(system) if isinstance(b, dict) and b.get("cache_control")]
-        + [i for i, t in enumerate(tools) if isinstance(t, dict) and t.get("cache_control")]
-        + [i for i, m in enumerate(messages) if _has_cache_control(m)]
-    )
     return {
         "type": "sent_meta",
         "request_id": request_id,
         "timestamp": timestamp,
         "sent_tools_count": len(tools),
         "sent_tools_hash": hashlib.md5(json.dumps(tool_names).encode()).hexdigest()[:8],
-        "sent_cache_breakpoints": sent_bp,
+        "sent_cache_breakpoints": {
+            "system": [i for i, b in enumerate(system) if isinstance(b, dict) and b.get("cache_control")],
+            "tools": [i for i, t in enumerate(tools) if isinstance(t, dict) and t.get("cache_control")],
+            "messages": [i for i, m in enumerate(messages) if _has_cache_control(m)],
+        },
         "sent_system_hash": hashlib.md5(json.dumps(system).encode()).hexdigest()[:8],
         "sent_tools_bytes_hash": hashlib.md5(json.dumps(tools).encode()).hexdigest()[:8],
     }

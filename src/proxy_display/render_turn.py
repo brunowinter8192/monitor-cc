@@ -13,7 +13,12 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
     lines = []
     keys = []
 
-    turn_api_calls = (turns[turn_idx].get('api_calls', []) if turns and turn_idx < len(turns) else [])
+    _raw_calls = turns[turn_idx].get('api_calls', []) if turns and turn_idx < len(turns) else []
+    turn_api_calls = [
+        c for c in _raw_calls
+        if c.get('cache_read', 0) + c.get('cache_creation', 0) > 0
+        or c.get('cache_read', 0) + c.get('cache_creation', 0) + c.get('direct', 0) > 1000
+    ]
     opus_call_idx = 0
 
     for entry_idx, entry in group['entry_pairs']:
@@ -100,9 +105,8 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         think_str = f" think:{_format_k(budget)}" if budget > 0 else ''
         if model_short != 'haiku':
             api_call = turn_api_calls[opus_call_idx] if opus_call_idx < len(turn_api_calls) else {}
-            usage = api_call.get('usage', {})
-            cr = usage.get('cache_read_input_tokens', 0)
-            cc = usage.get('cache_creation_input_tokens', 0)
+            cr = api_call.get('cache_read', 0)
+            cc = api_call.get('cache_creation', 0)
             cr_cc_str = f" CR:{_format_k(cr)} CC:{_format_k(cc)}"
             opus_call_idx += 1
         else:
