@@ -44,12 +44,15 @@ Contains:
 
 ## rules.py
 
-**Purpose:** Apply proxy modification rules to API payloads before forwarding.
+**Purpose:** Apply proxy modification rules to API payloads before forwarding. Reads global rules directly from `~/.claude/shared-rules/` and writes them into system[2].
 **Input:** Raw `payload` dict from Claude Code's API request.
 **Output:** `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals)` tuple.
 
 Contains:
-- `apply_modification_rules()` — orchestrates all rules, returns 5-tuple
+- `apply_modification_rules()` — orchestrates all rules, returns 5-tuple. Loads global rules via `_load_global_rules()` and replaces system[2] content.
+- `_load_config()` — reads `~/.claude/shared-rules/proxy_rules.json`, caches by mtime
+- `_read_rule_file()` — reads a rule file relative to shared-rules dir, caches by mtime
+- `_load_global_rules()` — concatenates global rule files from config (identical for all session types)
 - `_strip_blocked_tool_references()` — removes tool_reference blocks for TOOL_BLOCKLIST tools
 - `_content_contains()` — checks if message content contains a substring
 - `_strip_task_notification_tags()` — removes output-file and tool-use-id tags
@@ -65,7 +68,7 @@ Contains:
 - `_strip_system_reminder()` — strips system-reminder blocks containing a marker string
 - `_message_has_rejection()` — detects tool rejection marker in user message
 - `_strip_rejection_message()` — replaces rejection tool_result content with "."
-- `_extract_session_start_block()` — extracts SessionStart rules block from MSG[0]
+- `_extract_session_start_block()` — extracts SessionStart rules block from MSG[0] (dead code — no longer called from rules.py since proxy reads files directly)
 - `_strip_session_guidance()` — removes "Session-specific guidance" section from text
 
 ## cache.py

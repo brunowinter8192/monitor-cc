@@ -22,7 +22,7 @@ Proxy pane package — displays live API request structure from mitmproxy logs.
 
 ## render_entry.py
 
-**Purpose:** Renders a single proxy request entry (collapsed or expanded) into a list of display lines. Shows model, message count, cache breakpoints, change warnings, delta breakdown, and per-message detail when expanded.
+**Purpose:** Renders a single proxy request entry (collapsed or expanded) into a list of display lines. Shows model, message count, cache breakpoints, change warnings, delta breakdown, and per-message detail when expanded. When expanded, shows ALL messages (old messages in DIM, new messages in WHITE). Delta line is expandable for both positive and negative deltas (added/removed tools and messages).
 **Input:** Entry index, entry dict, all entries (for prev-entry lookup), expand states, pane width, indent, num label.
 **Output:** `(lines, keys)` tuple.
 
@@ -40,6 +40,6 @@ Proxy pane package — displays live API request structure from mitmproxy logs.
 
 ## render_messages.py
 
-**Purpose:** Renders new/modified/removed messages for an expanded request entry. Handles two cases: more messages than previous (new additions) and same/fewer messages (diffs). Shows stripped message originals, block-level detail, and content previews.
+**Purpose:** Renders new/modified/removed messages for an expanded request entry (turn-view). Handles two cases: more messages than previous (new additions with full block content) and same/fewer messages (diffs with full content_tail). Shows stripped message originals, block-level detail with full_text (not truncated previews), and content tails.
 **Input:** Entry dict, previous entry, all entries, expand states, pane width.
 **Output:** `(lines, keys)` tuple.
