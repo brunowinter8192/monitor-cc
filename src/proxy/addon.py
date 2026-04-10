@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import gzip
+import hashlib
 import json
 import os
 import sys
@@ -10,7 +11,7 @@ from typing import Dict, Optional
 from mitmproxy import http
 
 from .logging import _build_entry, _summarize_content_for_log
-from .message_summary import _summarize_message
+from .message_summary import _summarize_message, _has_cache_control
 from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools
@@ -65,6 +66,9 @@ class ProxyAddon:
             self.prev_messages_by_model[model_family] = [
                 _summarize_message(m) for m in modified_payload.get("messages", [])
             ]
+
+            sent_meta = _build_sent_meta(modified_payload, entry.get("request_id", ""), entry.get("timestamp", ""))
+            _write_entry(self.log_file, sent_meta)
 
             flow.request.content = json.dumps(modified_payload).encode("utf-8")
             flow.request.headers.pop("content-encoding", None)
@@ -153,6 +157,29 @@ def _parse_payload(body: bytes) -> Optional[dict]:
         return json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
+
+
+# Build sent_meta entry from the final modified payload — logs what was actually sent to the API
+def _build_sent_meta(payload: dict, request_id: str, timestamp: str) -> dict:
+    tools = payload.get("tools", []) or []
+    system = payload.get("system", []) or []
+    messages = payload.get("messages", []) or []
+    tool_names = sorted(t.get("name", "") for t in tools if isinstance(t, dict))
+    sent_bp = (
+        [i for i, b in enumerate(system) if isinstance(b, dict) and b.get("cache_control")]
+        + [i for i, t in enumerate(tools) if isinstance(t, dict) and t.get("cache_control")]
+        + [i for i, m in enumerate(messages) if _has_cache_control(m)]
+    )
+    return {
+        "type": "sent_meta",
+        "request_id": request_id,
+        "timestamp": timestamp,
+        "sent_tools_count": len(tools),
+        "sent_tools_hash": hashlib.md5(json.dumps(tool_names).encode()).hexdigest()[:8],
+        "sent_cache_breakpoints": sent_bp,
+        "sent_system_hash": hashlib.md5(json.dumps(system).encode()).hexdigest()[:8],
+        "sent_tools_bytes_hash": hashlib.md5(json.dumps(tools).encode()).hexdigest()[:8],
+    }
 
 
 # Append log entry as a single JSONL line, creating parent dirs if needed

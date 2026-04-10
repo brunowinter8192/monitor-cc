@@ -7,11 +7,14 @@ from .format import _shorten_model, _format_delta, _format_k
 # FUNCTIONS
 
 # Render all per-request rows for an expanded turn group, returning (lines, keys, opus_req_num, sub_req_num)
-def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int) -> tuple:
+def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0) -> tuple:
     from .render_sections import render_system_blocks, render_tools
     from .render_messages import render_messages
     lines = []
     keys = []
+
+    turn_api_calls = (turns[turn_idx].get('api_calls', []) if turns and turn_idx < len(turns) else [])
+    opus_call_idx = 0
 
     for entry_idx, entry in group['entry_pairs']:
         model_short = _shorten_model(entry.get('model', '?'))
@@ -95,8 +98,17 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
             haiku_info = ''
         budget = entry.get('thinking_config', {}).get('budget_tokens', 0)
         think_str = f" think:{_format_k(budget)}" if budget > 0 else ''
+        if model_short != 'haiku':
+            api_call = turn_api_calls[opus_call_idx] if opus_call_idx < len(turn_api_calls) else {}
+            usage = api_call.get('usage', {})
+            cr = usage.get('cache_read_input_tokens', 0)
+            cc = usage.get('cache_creation_input_tokens', 0)
+            cr_cc_str = f" CR:{_format_k(cr)} CC:{_format_k(cc)}"
+            opus_call_idx += 1
+        else:
+            cr_cc_str = ''
 
-        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{think_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{RESET}")
+        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{RESET}")
         keys.append(req_key)
 
         if is_req_expanded:

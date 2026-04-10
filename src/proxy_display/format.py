@@ -132,6 +132,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
                     group, entries, expand_states, pane_width,
                     prev_entry_for_delta, opus_req_num, sub_req_num,
+                    turns=turns, turn_idx=turn_idx,
                 )
                 all_lines.extend(t_lines)
                 line_keys.extend(t_keys)
