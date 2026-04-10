@@ -11,7 +11,7 @@ from .constants import (
     HOVER_BG,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
 )
-from .token_pane import format_cache_tracker
+from .token_format import format_cache_tracker
 from .jsonl_parser import read_new_lines, parse_jsonl_lines
 from .jsonl_cache_turns import extract_cache_turns
 from .subagent_ui import subagent_states, toggle_subagent_state, build_collapsed_entry

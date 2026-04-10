@@ -4,7 +4,7 @@ from typing import Optional
 from ..constants import (
     RESET, GREEN, RED, DIM, YELLOW, PASTEL_PURPLE, HOVER_BG,
 )
-from ..token_pane import _format_k
+from ..token_format import _format_k
 from .parser import _chars_to_tokens
 
 # FUNCTIONS
