@@ -28,12 +28,13 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
 
     model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
     prev_entry = None
-    for _i in range(entry_idx - 1, -1, -1):
-        _prev_model = entries[_i].get('model', '')
-        _prev_family = "haiku" if "haiku" in _prev_model.lower() else "opus"
-        if _prev_family == model_family:
-            prev_entry = entries[_i]
-            break
+    if model_family != "haiku":
+        for _i in range(entry_idx - 1, -1, -1):
+            _prev_model = entries[_i].get('model', '')
+            _prev_family = "haiku" if "haiku" in _prev_model.lower() else "opus"
+            if _prev_family == model_family:
+                prev_entry = entries[_i]
+                break
 
     warn_symbols = []
     warn_details = []

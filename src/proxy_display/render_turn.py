@@ -34,12 +34,14 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
 
         warn_parts = []
         prev_same = None
-        for _i in range(entry_idx - 1, -1, -1):
-            _ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
-            _pf = 'haiku' if 'haiku' in entries[_i].get('model', '').lower() else 'opus'
-            if _pf == _ef:
-                prev_same = entries[_i]
-                break
+        is_haiku = 'haiku' in entry.get('model', '').lower()
+        if not is_haiku:
+            for _i in range(entry_idx - 1, -1, -1):
+                _ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
+                _pf = 'haiku' if 'haiku' in entries[_i].get('model', '').lower() else 'opus'
+                if _pf == _ef:
+                    prev_same = entries[_i]
+                    break
         if prev_same is not None:
             if entry.get('tools_hash') and prev_same.get('tools_hash') and entry.get('tools_hash') != prev_same.get('tools_hash'):
                 warn_parts.append(f"{RED}⚠T{RESET}")
@@ -50,7 +52,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
         e_msgs = entry.get('messages_total_chars', 0)
         req_delta_str = ''
-        if prev_entry_for_delta is not None:
+        if not is_haiku and prev_entry_for_delta is not None:
             delta_parts = []
             if e_sys > 0:
                 d_req_sys = e_sys - prev_entry_for_delta.get('system_total_chars', prev_entry_for_delta.get('system_prompt_chars', 0))
@@ -91,13 +93,14 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         keys.append(req_key)
 
         if is_req_expanded:
-            s_lines, s_keys = render_system_blocks(entry_idx, entry, prev_entry_for_delta, expand_states, pane_width, mods)
+            _delta_ref = None if is_haiku else prev_entry_for_delta
+            s_lines, s_keys = render_system_blocks(entry_idx, entry, _delta_ref, expand_states, pane_width, mods)
             lines.extend(s_lines)
             keys.extend(s_keys)
-            t_lines, t_keys = render_tools(entry_idx, entry, prev_entry_for_delta, expand_states, pane_width)
+            t_lines, t_keys = render_tools(entry_idx, entry, _delta_ref, expand_states, pane_width)
             lines.extend(t_lines)
             keys.extend(t_keys)
-            m_lines, m_keys = render_messages(entry, prev_entry_for_delta, entries, expand_states, pane_width)
+            m_lines, m_keys = render_messages(entry, _delta_ref, entries, expand_states, pane_width)
             lines.extend(m_lines)
             keys.extend(m_keys)
 
