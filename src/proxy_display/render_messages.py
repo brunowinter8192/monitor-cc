@@ -46,11 +46,19 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 for bidx, blk in enumerate(blocks):
                     btype = blk.get('type', 'text')
                     bchars = blk.get('chars', 0)
-                    bpreview = blk.get('preview', '')
                     bcc = ' [CC]' if blk.get('has_cc') else ''
-                    preview_str = f"  {DIM}{bpreview[:40]}{RESET}" if bpreview else ''
-                    lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{preview_str}{RESET}")
+                    lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{RESET}")
                     keys.append(None)
+                    full_text = blk.get('full_text', blk.get('preview', ''))
+                    if full_text:
+                        for raw_line in full_text.split('\n'):
+                            if not raw_line:
+                                lines.append(f"        {DIM}{RESET}")
+                                keys.append(None)
+                                continue
+                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                keys.append(None)
             else:
                 preview = msg.get('content_preview', '')
                 if preview:
@@ -74,12 +82,8 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 break
         for msg_idx in range(diff_start, len(messages)):
             msg = messages[msg_idx]
-            prev_msg = prev_messages[msg_idx] if msg_idx < len(prev_messages) else None
             role = msg.get('role', '?')[:4]
             msg_type = msg.get('type', 'text')
-            curr_chars = msg.get('chars', 0)
-            prev_chars = prev_msg.get('chars', 0) if prev_msg else 0
-            delta_chars = curr_chars - prev_chars
             is_stripped = msg_idx in stripped_indices
             if is_stripped:
                 lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{RESET}")
@@ -106,17 +110,23 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 for bidx, blk in enumerate(blocks):
                     btype = blk.get('type', 'text')
                     bchars = blk.get('chars', 0)
-                    bpreview = blk.get('preview', '')
                     bcc = ' [CC]' if blk.get('has_cc') else ''
-                    preview_str = f"  {DIM}{bpreview[:40]}{RESET}" if bpreview else ''
-                    lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{preview_str}{RESET}")
+                    lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{RESET}")
                     keys.append(None)
+                    full_text = blk.get('full_text', blk.get('preview', ''))
+                    if full_text:
+                        for raw_line in full_text.split('\n'):
+                            if not raw_line:
+                                lines.append(f"        {DIM}{RESET}")
+                                keys.append(None)
+                                continue
+                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                lines.append(f"        {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                keys.append(None)
             else:
                 tail = msg.get('content_tail', '')
-                if tail and delta_chars > 0:
-                    new_content = tail[-delta_chars:] if len(tail) > delta_chars else tail
-                    wrap_width = max(20, pane_width - 8)
-                    for raw_line in new_content.split('\n'):
+                if tail:
+                    for raw_line in tail.split('\n'):
                         if not raw_line:
                             lines.append(f"      {DIM}{RESET}")
                             keys.append(None)

@@ -92,7 +92,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         if d_sys == 0 and d_tools == 0 and d_msgs == 0:
             lines.append(f"{L2}{DIM}Δ: (no change){RESET}")
             keys.append(None)
-        elif d_tools < 0 or d_msgs < 0:
+        else:
             neg_key = (entry_idx, 'neg_delta')
             is_neg_exp = expand_states.get(neg_key, False)
             neg_sym = '\u25bc' if is_neg_exp else '\u25b6'
@@ -108,6 +108,15 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
                         t_chars = len(json.dumps(prev_defs.get(t_name, {})))
                         lines.append(f"{L3}{RED}removed:{RESET} {DIM}{t_name} ({_format_k(t_chars)}c){RESET}")
                         keys.append(None)
+                elif d_tools > 0:
+                    curr_names = entry.get('tools_names', [])
+                    prev_names = set(prev_entry.get('tools_names', []))
+                    curr_defs = {d.get('name', ''): d for d in entry.get('tools_defs', [])}
+                    added_tools = [n for n in curr_names if n not in prev_names]
+                    for t_name in added_tools:
+                        t_chars = len(json.dumps(curr_defs.get(t_name, {})))
+                        lines.append(f"{L3}{GREEN}added:{RESET} {DIM}{t_name} ({_format_k(t_chars)}c){RESET}")
+                        keys.append(None)
                 if d_msgs < 0:
                     curr_msgs = entry.get('messages', [])
                     prev_msgs = prev_entry.get('messages', [])
@@ -119,9 +128,17 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
                         m_chars = msg.get('chars', 0)
                         lines.append(f"{L3}{RED}removed:{RESET} {DIM}[{m_idx:3d}] {role:<8} {m_type:<20} {m_chars:,}c{RESET}")
                         keys.append(None)
-        else:
-            lines.append(f"{L2}{_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}")
-            keys.append(None)
+                elif d_msgs > 0:
+                    curr_msgs = entry.get('messages', [])
+                    prev_msgs = prev_entry.get('messages', []) if prev_entry else []
+                    added_msgs = curr_msgs[len(prev_msgs):]
+                    for m_offset, msg in enumerate(added_msgs):
+                        m_idx = len(prev_msgs) + m_offset
+                        role = msg.get('role', '?')[:4]
+                        m_type = msg.get('type', 'text')
+                        m_chars = msg.get('chars', 0)
+                        lines.append(f"{L3}{GREEN}added:{RESET} {DIM}[{m_idx:3d}] {role:<8} {m_type:<20} {m_chars:,}c{RESET}")
+                        keys.append(None)
 
     if warn_symbols:
         warn_key = (entry_idx, 'warnings')
@@ -154,8 +171,8 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         messages = entry.get('messages', [])
         stripped_indices = set(entry.get('stripped_msg_indices', []))
 
-        start_idx = prev_entry.get('message_count', 0) if prev_entry is not None else 0
-        for msg_idx, msg in enumerate(messages[start_idx:], start=start_idx):
+        new_start = prev_entry.get('message_count', 0) if prev_entry is not None else 0
+        for msg_idx, msg in enumerate(messages):
             role = msg.get('role', '?')[:4]
             msg_type = msg.get('type', 'text')
             chars = msg.get('chars', 0)
@@ -165,9 +182,12 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
             is_msg_expanded = expand_states.get(msg_key, False)
             msg_symbol = '\u25bc' if is_msg_expanded else '\u25b6'
             is_stripped = msg_idx in stripped_indices
+            is_old = msg_idx < new_start
             type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
             if is_stripped:
                 lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}  [STRIPPED]{RESET}")
+            elif is_old:
+                lines.append(f"{L2}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{RESET}")
             else:
                 lines.append(f"{L2}{WHITE}{msg_symbol} [{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{RESET}")
             keys.append(msg_key)
