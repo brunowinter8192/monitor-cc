@@ -1,0 +1,164 @@
+# INFRASTRUCTURE
+import gzip
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, Optional
+
+from mitmproxy import http
+
+from .logging import _build_entry, _summarize_message, _summarize_content_for_log
+from .rules import apply_modification_rules, _strip_blocked_tool_references
+from .cache import _strip_all_cache_control, _set_cache_breakpoints
+from .tools import _strip_unused_tools
+
+ANTHROPIC_API_HOST = "api.anthropic.com"
+MESSAGES_PATH = "/v1/messages"
+DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
+
+# ORCHESTRATOR
+
+class ProxyAddon:
+    def __init__(self):
+        self.log_file = _resolve_log_file()
+        self.prev_messages_by_model: Dict[str, list] = {}
+
+    def request(self, flow: http.HTTPFlow) -> None:
+        try:
+            if not _is_messages_request(flow):
+                return
+
+            body = _decode_body(flow.request)
+            if body is None:
+                return
+
+            payload = _parse_payload(body)
+            if payload is None:
+                return
+
+            model = payload.get("model", "")
+            model_family = "haiku" if "haiku" in model.lower() else "opus"
+            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals = apply_modification_rules(payload)
+
+            entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
+            if original_system2 is not None:
+                entry['original_system2_text'] = original_system2
+            entry['stripped_msg_indices'] = stripped_msg_indices
+            if stripped_msg_originals:
+                entry['stripped_msg_originals'] = {}
+                for k, v in stripped_msg_originals.items():
+                    entry['stripped_msg_originals'][str(k)] = _summarize_content_for_log(v)
+            _write_entry(self.log_file, entry)
+
+            modified_payload, stripped_count = _strip_unused_tools(modified_payload)
+            if stripped_count > 0:
+                modifications.append(f"stripped_{stripped_count}_unused_tools")
+            modified_payload = _strip_blocked_tool_references(modified_payload)
+
+            prev_mod_msgs = self.prev_messages_by_model.get(model_family)
+            modified_payload = _strip_all_cache_control(modified_payload)
+            modified_payload = _set_cache_breakpoints(modified_payload, prev_mod_msgs)
+
+            self.prev_messages_by_model[model_family] = [
+                _summarize_message(m) for m in modified_payload.get("messages", [])
+            ]
+
+            flow.request.content = json.dumps(modified_payload).encode("utf-8")
+            flow.request.headers.pop("content-encoding", None)
+        except Exception as e:
+            print(f"[proxy_addon] Error: {e}", file=sys.stderr)
+            try:
+                error_entry = {
+                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "request_url": flow.request.pretty_url if flow else "unknown",
+                }
+                _write_entry(self.log_file, error_entry)
+            except Exception:
+                pass
+
+    def response(self, flow: http.HTTPFlow) -> None:
+        """Log full request payload when API returns 4xx error — for debugging malformed requests."""
+        try:
+            if not _is_messages_request(flow):
+                return
+            if flow.response and 400 <= flow.response.status_code < 500:
+                resp_body = ""
+                try:
+                    resp_body = flow.response.content.decode("utf-8", errors="replace")[:2000]
+                except Exception:
+                    pass
+                req_payload = None
+                try:
+                    req_payload = json.loads(flow.request.content.decode("utf-8", errors="replace"))
+                except Exception:
+                    pass
+                log_dir = os.path.dirname(self.log_file)
+                error_file = os.path.join(log_dir, f"api_error_payload_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json")
+                error_data = {
+                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                    "status_code": flow.response.status_code,
+                    "error_response": resp_body,
+                    "request_url": flow.request.pretty_url,
+                    "request_payload": req_payload,
+                }
+                with open(error_file, "w", encoding="utf-8") as f:
+                    json.dump(error_data, f, indent=2, ensure_ascii=False)
+                print(f"[proxy_addon] API {flow.response.status_code} error — payload saved to {error_file}", file=sys.stderr)
+        except Exception as e:
+            print(f"[proxy_addon] Error in response hook: {e}", file=sys.stderr)
+
+
+# FUNCTIONS
+
+# Resolve log file path from env vars — log_id gives per-proxy-start isolation
+def _resolve_log_file() -> Path:
+    root = os.environ.get("MONITOR_CC_ROOT")
+    log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID")
+    filename = f"api_requests_{log_id}.jsonl" if log_id else "api_requests.jsonl"
+    if root:
+        return Path(root) / "src" / "logs" / filename
+    return Path("/tmp") / filename
+
+
+# Check if flow is a POST to /v1/messages on api.anthropic.com
+def _is_messages_request(flow: http.HTTPFlow) -> bool:
+    return (
+        flow.request.method == "POST"
+        and flow.request.pretty_host == ANTHROPIC_API_HOST
+        and flow.request.path.startswith(MESSAGES_PATH)
+    )
+
+
+# Decode request body, decompressing gzip if needed
+def _decode_body(request: http.Request) -> Optional[bytes]:
+    content = request.content
+    if not content:
+        return None
+    if request.headers.get("content-encoding", "").lower() == "gzip":
+        try:
+            content = gzip.decompress(content)
+        except OSError:
+            return None
+    return content
+
+
+# Parse JSON payload from bytes
+def _parse_payload(body: bytes) -> Optional[dict]:
+    try:
+        return json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+# Append log entry as a single JSONL line, creating parent dirs if needed
+def _write_entry(log_file: Path, entry: dict) -> None:
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+addons = [ProxyAddon()]
