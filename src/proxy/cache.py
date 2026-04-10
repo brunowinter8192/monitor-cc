@@ -52,16 +52,11 @@ def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dic
     cc_marker = {"type": "ephemeral", "ttl": "1h"}
     cc_marker_global = {"type": "ephemeral", "ttl": "1h", "scope": "global"}
 
-    # BP1: rules block (SessionStart system-reminder), fallback to last system block
+    # BP1: rules block (system[2]), fallback to last system block
     system = result.get("system", [])
     if isinstance(system, list) and system:
         new_system = list(system)
-        rules_prefix = "<system-reminder>\nSessionStart hook additional context:"
-        rules_idx = next(
-            (i for i, b in enumerate(new_system) if isinstance(b, dict) and b.get("text", "").startswith(rules_prefix)),
-            None,
-        )
-        target_idx = rules_idx if rules_idx is not None else len(new_system) - 1
+        target_idx = 2 if len(new_system) > 2 else len(new_system) - 1
         target = new_system[target_idx]
         if isinstance(target, dict):
             new_system[target_idx] = {**target, "cache_control": cc_marker_global}

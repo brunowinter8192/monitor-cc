@@ -118,6 +118,11 @@ def _parse_log_file(log_path: Path, last_position: int) -> tuple:
         try:
             entry = json.loads(line)
             if entry.get('type') == 'sent_meta':
+                if entries and entries[-1].get('request_id') == entry.get('request_id'):
+                    last = entries[-1]
+                    last['tools_count'] = entry.get('sent_tools_count', last.get('tools_count'))
+                    last['tools_hash'] = entry.get('sent_tools_hash', last.get('tools_hash'))
+                    last['sent_cache_breakpoints'] = entry.get('sent_cache_breakpoints', {})
                 continue
             _extract_raw_payload_fields(entry)
             entries.append(entry)
