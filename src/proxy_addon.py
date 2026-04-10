@@ -239,7 +239,7 @@ def _classify_text(text: str) -> str:
 # Classify a list of content blocks — returns (primary_type, total_chars, preview_text)
 def _classify_blocks(blocks: list) -> tuple:
     total_chars = 0
-    preview = ""
+    parts = []
     primary_type = "text"
 
     for block in blocks:
@@ -250,45 +250,47 @@ def _classify_blocks(blocks: list) -> tuple:
         if btype == "text":
             text = block.get("text", "")
             total_chars += len(text)
-            if not preview:
+            if not parts:
                 classified = _classify_text(text)
                 if classified != "text":
                     primary_type = classified
-                preview = text
+            parts.append(text)
 
         elif btype == "tool_use":
             primary_type = "tool_use"
             name = block.get("name", "")
             input_str = json.dumps(block.get("input", {}))
             total_chars += len(name) + len(input_str)
-            if not preview:
-                preview = f"[tool_use:{name}]\n{input_str}"
+            parts.append(f"[tool_use:{name}]\n{input_str}")
 
         elif btype == "tool_result":
             primary_type = "tool_result"
             result_content = block.get("content", "")
+            result_appended = False
             if isinstance(result_content, str):
                 total_chars += len(result_content)
-                if not preview:
-                    preview = result_content
+                if result_content:
+                    parts.append(result_content)
+                    result_appended = True
             elif isinstance(result_content, list):
                 for sub in result_content:
                     if isinstance(sub, dict):
                         t = sub.get("text", "")
                         total_chars += len(t)
-                        if not preview:
-                            preview = t
-            if not preview:
-                preview = "[tool_result]"
+                        if t:
+                            parts.append(t)
+                            result_appended = True
+            if not result_appended:
+                parts.append("[tool_result]")
 
         elif btype == "thinking":
             if primary_type == "text":
                 primary_type = "thinking"
             thinking_text = block.get("thinking", "")
             total_chars += len(thinking_text)
-            if not preview:
-                preview = thinking_text
+            parts.append(thinking_text)
 
+    preview = "\n".join(parts)
     return primary_type, total_chars, preview
 
 
