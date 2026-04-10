@@ -641,9 +641,9 @@ def apply_modification_rules(payload: dict) -> tuple:
             modifications.append("stripped_task_tools_nag")
             stripped_msg_indices.append(idx)
             changed = True
-        elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "deferred tools"):
+        elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "deferred tools are now available via ToolSearch"):
             new_msg = dict(msg)
-            new_msg["content"] = _strip_system_reminder(msg.get("content", ""), "deferred tools")
+            new_msg["content"] = _strip_system_reminder(msg.get("content", ""), "deferred tools are now available via ToolSearch")
             new_messages.append(new_msg)
             modifications.append("stripped_deferred_tools_sr")
             stripped_msg_indices.append(idx)
