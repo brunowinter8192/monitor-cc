@@ -59,8 +59,8 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:2.0", "-l", "50%", hooks_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:3", "-n", "workers", workers_cmd])
-    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:3.0", "-l", "50%", worker_proxy_cmd])
-    subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:3.1", "-l", "50%", worker_metadata_cmd])
+    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:3.0", "-l", "66%", worker_proxy_cmd])
+    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:3.1", "-l", "50%", worker_metadata_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:4", "-n", "debug", warnings_cmd])
 
