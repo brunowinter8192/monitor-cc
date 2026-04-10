@@ -225,6 +225,18 @@ def build_cache_turns(filepath, last_position: int, existing_turns: list):
         return existing_turns, last_position
     messages, _ = parse_jsonl_lines(lines)
     new_turns = extract_cache_turns(messages)
+    if not new_turns and existing_turns and messages:
+        # No user message in this batch → mid-turn requests (user message was read in a prior cycle)
+        # Synthesize a user message from the last existing turn so extract_cache_turns
+        # can set current_turn and process the assistant messages in this batch
+        last_turn = existing_turns[-1]
+        synthetic_user = {
+            'type': 'user',
+            'userType': 'external',
+            'message': {'content': last_turn.get('prompt', '')},
+            'timestamp': last_turn.get('timestamp', ''),
+        }
+        new_turns = extract_cache_turns([synthetic_user] + messages)
     if not new_turns:
         return existing_turns, new_position
     if existing_turns and new_turns[0].get('prompt') == existing_turns[-1].get('prompt'):
