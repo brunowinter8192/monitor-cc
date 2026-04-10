@@ -131,8 +131,12 @@ def _format_metadata(entry: dict) -> str:
     prev_think_type = _prev_values.get('think_type')
     think_changed = (prev_budget is not None and prev_budget != budget) or (prev_think_type is not None and prev_think_type != think_type)
     budget_str = _format_k(budget) if budget else '?'
-    think_color = RED if think_changed else DIM
-    lines.append(f"  {think_color}thinking: {budget_str} ({think_type}){RESET}")
+    think_str = f"{budget_str} ({think_type})"
+    if think_type == 'adaptive':
+        think_color = YELLOW if not think_changed else RED
+    else:
+        think_color = RED if think_changed else DIM
+    lines.append(f"  {think_color}thinking: {think_str}{RESET}")
 
     # Model
     model = entry.get('model', '?')
@@ -155,54 +159,55 @@ def _format_metadata(entry: dict) -> str:
     else:
         lines.append(f"  {DIM}max_tokens: {max_str}{RESET}")
 
-    # Temperature (only show if set)
+    # Temperature
     temperature = entry.get('temperature', None)
-    if temperature is not None:
-        new_values['temperature'] = temperature
-        prev_temp = _prev_values.get('temperature')
-        temp_changed = prev_temp is not None and prev_temp != temperature
-        if temp_changed:
-            lines.append(f"  {RED}temperature: {prev_temp} → {temperature}{RESET}")
-        else:
-            lines.append(f"  {DIM}temperature: {temperature}{RESET}")
+    new_values['temperature'] = temperature
+    prev_temp = _prev_values.get('temperature')
+    temp_changed = prev_temp is not None and prev_temp != temperature
+    temp_str = str(temperature) if temperature is not None else 'default'
+    if temp_changed:
+        prev_str = str(prev_temp) if prev_temp is not None else 'default'
+        lines.append(f"  {RED}temperature: {prev_str} → {temp_str}{RESET}")
+    else:
+        lines.append(f"  {DIM}temperature: {temp_str}{RESET}")
 
-    # Top-p (only show if set)
+    # Top-p
     top_p = entry.get('top_p', None)
-    if top_p is not None:
-        new_values['top_p'] = top_p
-        lines.append(f"  {DIM}top_p: {top_p}{RESET}")
+    new_values['top_p'] = top_p
+    top_p_str = str(top_p) if top_p is not None else 'default'
+    lines.append(f"  {DIM}top_p: {top_p_str}{RESET}")
 
-    # Top-k (only show if set)
+    # Top-k
     top_k = entry.get('top_k', None)
-    if top_k is not None:
-        new_values['top_k'] = top_k
-        lines.append(f"  {DIM}top_k: {top_k}{RESET}")
+    new_values['top_k'] = top_k
+    top_k_str = str(top_k) if top_k is not None else 'default'
+    lines.append(f"  {DIM}top_k: {top_k_str}{RESET}")
 
-    # Tool choice (only show if non-empty)
+    # Tool choice
     tool_choice = entry.get('tool_choice', {})
-    if tool_choice:
-        tc_type = tool_choice.get('type', '')
-        if tc_type:
-            new_values['tool_choice'] = tc_type
-            lines.append(f"  {DIM}tool_choice: {tc_type}{RESET}")
+    tc_type = tool_choice.get('type', '') if tool_choice else ''
+    new_values['tool_choice'] = tc_type
+    tc_str = tc_type if tc_type else 'auto'
+    lines.append(f"  {DIM}tool_choice: {tc_str}{RESET}")
 
-    # Output format (only show if set)
+    # Output format
     output_format = entry.get('output_config', {}).get('format', {})
-    if output_format:
-        fmt_type = output_format.get('type', '')
-        new_values['output_format'] = fmt_type
-        prev_fmt = _prev_values.get('output_format')
-        fmt_changed = prev_fmt is not None and prev_fmt != fmt_type
-        if fmt_changed:
-            lines.append(f"  {RED}output_format: {prev_fmt} → {fmt_type}{RESET}")
-        else:
-            lines.append(f"  {DIM}output_format: {fmt_type}{RESET}")
+    fmt_type = output_format.get('type', '') if output_format else ''
+    new_values['output_format'] = fmt_type
+    prev_fmt = _prev_values.get('output_format')
+    fmt_changed = prev_fmt is not None and prev_fmt != fmt_type
+    fmt_str = fmt_type if fmt_type else '-'
+    if fmt_changed:
+        prev_fmt_str = _prev_values.get('output_format', '-') or '-'
+        lines.append(f"  {RED}output_format: {prev_fmt_str} → {fmt_str}{RESET}")
+    else:
+        lines.append(f"  {DIM}output_format: {fmt_str}{RESET}")
 
     # Stream
     stream = entry.get('stream', None)
-    if stream is not None:
-        new_values['stream'] = stream
-        lines.append(f"  {DIM}stream: {stream}{RESET}")
+    new_values['stream'] = stream
+    stream_str = str(stream) if stream is not None else '-'
+    lines.append(f"  {DIM}stream: {stream_str}{RESET}")
 
     # CACHE MARKERS section
     cache_bps = entry.get('cache_breakpoints', [])
@@ -224,7 +229,15 @@ def _format_metadata(entry: dict) -> str:
         lines.append(f"  {DIM}req: {request_id[:12]}{RESET}")
     mods = entry.get('modifications', [])
     if mods:
-        lines.append(f"  {DIM}mods: {', '.join(mods)}{RESET}")
+        from collections import Counter
+        mod_counts = Counter(mods)
+        mod_parts = []
+        for mod, count in mod_counts.items():
+            if count > 1:
+                mod_parts.append(f"{mod} ×{count}")
+            else:
+                mod_parts.append(mod)
+        lines.append(f"  {DIM}mods: {', '.join(mod_parts)}{RESET}")
 
     _prev_values = new_values
     return '\n'.join(lines)
