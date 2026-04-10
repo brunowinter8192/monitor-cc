@@ -65,9 +65,8 @@ mkdir -p "$LOG_DIR"
 MARKER_FILE="$LOG_DIR/.proxy_session_$SESSION_ID"
 printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "$MARKER_FILE"
 # Also write to /tmp for cross-repo discovery (workers find proxy via this)
-printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "/tmp/.monitor_cc_proxy_${SESSION_ID}"
-# Write MONITOR_CC_ROOT for cross-repo worker proxy discovery
-echo "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_root"
+# Format: line 1 = port, line 2 = log_id, line 3 = MONITOR_CC_ROOT
+printf "%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_proxy_${SESSION_ID}"
 
 # Copy addon to isolated live copy — prevents git merge hot-reload
 LIVE_ADDON="$LOG_DIR/.proxy_addon_live_${SESSION_ID}.py"
@@ -89,7 +88,6 @@ cleanup() {
     wait $PROXY_PID 2>/dev/null
     rm -f "$MARKER_FILE"
     rm -f "/tmp/.monitor_cc_proxy_${SESSION_ID}"
-    rm -f "/tmp/.monitor_cc_root"
     rm -f "$LIVE_ADDON"
 }
 trap cleanup EXIT INT TERM

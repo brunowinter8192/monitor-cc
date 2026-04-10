@@ -321,7 +321,7 @@ if key == '\033':
 
 ## proxy_addon.py
 
-**Purpose:** mitmproxy addon that intercepts Claude Code API requests for logging and cache optimization. Logs full request payloads to JSONL. Applies content modifications (strip plan-mode, task-tools-nag, task-notification, rejection messages; replace system prompt; strip session-specific guidance; extract hook-injected rules to system block with `scope: "global"`). Strips unused tools via blocklist + trims Agent description. Takes over cache_control placement from Claude Code: strips all CC-set markers, sets own 4 breakpoints on the modified payload (rules block or system[-1], last non-deferred tool, last stable message, last message). Tracks previous modified messages per model family for stable BP3 calculation.
+**Purpose:** mitmproxy addon that intercepts Claude Code API requests for logging and cache optimization. Logs full request payloads to JSONL. Applies content modifications (strip plan-mode, task-tools-nag, task-notification, rejection messages; replace system prompt; strip session-specific guidance; extract hook-injected rules to system block with `scope: "global"`). Strips unused tools via blocklist + trims Agent description. Strips `tool_reference` blocks that reference blocklisted tools (prevents 400 errors from ToolSearch returning references to stripped tools). Takes over cache_control placement from Claude Code: strips all CC-set markers, sets own 4 breakpoints on the modified payload (rules block or system[-1], last non-deferred tool, last stable message, last message). Tracks previous modified messages per model family for stable BP3 calculation. `_summarize_message()` builds per-block breakdown (type, chars, preview, has_cc) for proxy pane display.
 
 **Input:** HTTP flows to `api.anthropic.com/v1/messages` via mitmproxy.
 
@@ -331,7 +331,7 @@ if key == '\033':
 
 ## claude_proxy_start.sh
 
-**Purpose:** Combined launcher that starts mitmproxy with `proxy_addon.py` and then launches Claude Code with proxy env vars (`HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`). Generates per-proxy-start log IDs, writes marker files to `/tmp/` for worker proxy discovery, and handles cleanup on exit.
+**Purpose:** Combined launcher that starts mitmproxy with `proxy_addon.py` and then launches Claude Code with proxy env vars (`HTTPS_PROXY`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`). Generates per-proxy-start log IDs, writes per-session marker files to `/tmp/.monitor_cc_proxy_${SESSION_ID}` (3-line format: port, log_id, MONITOR_CC_ROOT) for worker proxy discovery. Creates per-session live-copy of proxy_addon.py (`.proxy_addon_live_${SESSION_ID}.py`) to prevent hot-reload conflicts between parallel proxy instances. Handles cleanup on exit.
 
 **Input:** `--project <path>` (optional, defaults to CWD), additional Claude Code args.
 
