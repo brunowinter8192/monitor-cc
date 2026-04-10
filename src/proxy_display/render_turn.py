@@ -93,8 +93,10 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
             haiku_info = f"  sys:{_format_k(e_sys)} tools:{_format_k(e_tools)} msgs:{_format_k(e_msgs)}"
         else:
             haiku_info = ''
+        budget = entry.get('thinking_config', {}).get('budget_tokens', 0)
+        think_str = f" think:{_format_k(budget)}" if budget > 0 else ''
 
-        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{mods_str}{warn_str}{req_delta_str}{haiku_info}{RESET}")
+        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{think_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{RESET}")
         keys.append(req_key)
 
         if is_req_expanded:
