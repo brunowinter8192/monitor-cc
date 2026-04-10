@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
-from .logging import _summarize_message, _compute_diff, _has_cache_control
+from .logging import _summarize_message, _compute_diff
+from .message_summary import _has_cache_control
 
 # FUNCTIONS
 
