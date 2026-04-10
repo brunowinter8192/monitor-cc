@@ -118,7 +118,7 @@ def _compute_diff(prev: Optional[list], curr: list) -> dict:
 
 
 # Summarize raw message content for logging (str or list-of-blocks → truncated str)
-def _summarize_content_for_log(content, max_chars=2000):
+def _summarize_content_for_log(content, max_chars=50000):
     if isinstance(content, str):
         return content[:max_chars]
     if isinstance(content, list):

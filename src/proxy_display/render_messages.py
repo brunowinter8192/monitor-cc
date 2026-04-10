@@ -27,7 +27,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 originals = entry.get('stripped_msg_originals', {})
                 orig_text = originals.get(str(msg_idx), '')
                 if orig_text:
-                    for raw_line in orig_text.split('\n')[:15]:
+                    for raw_line in orig_text.split('\n'):
                         if not raw_line:
                             lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
                             keys.append(None)
@@ -35,7 +35,6 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                         for chunk_start in range(0, len(raw_line), wrap_width):
                             lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                             keys.append(None)
-                continue
             else:
                 blocks = msg.get('blocks', [])
                 type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
@@ -91,7 +90,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 originals = entry.get('stripped_msg_originals', {})
                 orig_text = originals.get(str(msg_idx), '')
                 if orig_text:
-                    for raw_line in orig_text.split('\n')[:15]:
+                    for raw_line in orig_text.split('\n'):
                         if not raw_line:
                             lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
                             keys.append(None)
@@ -99,7 +98,6 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                         for chunk_start in range(0, len(raw_line), wrap_width):
                             lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                             keys.append(None)
-                continue
             else:
                 blocks = msg.get('blocks', [])
                 type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type

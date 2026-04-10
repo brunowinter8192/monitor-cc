@@ -53,13 +53,16 @@ def _message_has_rejection(content) -> bool:
             if not isinstance(block, dict) or block.get("type") != "tool_result":
                 continue
             tool_content = block.get("content", "")
-            if isinstance(tool_content, str) and _REJECTION_MARKER in tool_content:
-                return True
-            if isinstance(tool_content, list) and any(
-                _REJECTION_MARKER in sub.get("text", "")
-                for sub in tool_content if isinstance(sub, dict)
-            ):
-                return True
+            if isinstance(tool_content, str):
+                if _REJECTION_MARKER in tool_content and len(tool_content) <= 200:
+                    return True
+            elif isinstance(tool_content, list):
+                for sub in tool_content:
+                    if not isinstance(sub, dict):
+                        continue
+                    sub_text = sub.get("text", "")
+                    if _REJECTION_MARKER in sub_text and len(sub_text) <= 200:
+                        return True
     return False
 
 

@@ -145,52 +145,66 @@ def apply_modification_rules(payload: dict) -> tuple:
     stripped_msg_originals = {}
     for idx, msg in enumerate(messages_to_process):
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
-            stripped_msg_originals[idx] = msg.get("content", "")
-            stripped = _strip_plan_mode_blocks(msg.get("content", ""))
+            old_content = msg.get("content", "")
+            stripped = _strip_plan_mode_blocks(old_content)
             if stripped:
                 new_msg = dict(msg)
                 new_msg["content"] = stripped
                 new_messages.append(new_msg)
+                if stripped != old_content:
+                    stripped_msg_originals[idx] = old_content
+                    stripped_msg_indices.append(idx)
+                    modifications.append("removed_plan_mode_sr")
+                    changed = True
             else:
                 new_messages.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
-            modifications.append("removed_plan_mode_sr")
-            stripped_msg_indices.append(idx)
-            changed = True
+                stripped_msg_originals[idx] = old_content
+                stripped_msg_indices.append(idx)
+                modifications.append("removed_plan_mode_sr")
+                changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<task-notification>"):
-            stripped_msg_originals[idx] = msg.get("content", "")
+            old_content = msg.get("content", "")
             new_msg = dict(msg)
-            new_msg["content"] = _strip_task_notification_tags(msg.get("content", ""))
+            new_msg["content"] = _strip_task_notification_tags(old_content)
             if _content_contains(new_msg["content"], "task tools haven"):
                 new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
                 modifications.append("stripped_task_tools_nag")
             new_messages.append(new_msg)
-            modifications.append("trimmed_task_notification")
-            stripped_msg_indices.append(idx)
-            changed = True
+            if new_msg["content"] != old_content:
+                stripped_msg_originals[idx] = old_content
+                stripped_msg_indices.append(idx)
+                modifications.append("trimmed_task_notification")
+                changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "task tools haven"):
-            stripped_msg_originals[idx] = msg.get("content", "")
+            old_content = msg.get("content", "")
             new_msg = dict(msg)
-            new_msg["content"] = _strip_system_reminder(msg.get("content", ""), "task tools haven")
+            new_msg["content"] = _strip_system_reminder(old_content, "task tools haven")
             new_messages.append(new_msg)
-            modifications.append("stripped_task_tools_nag")
-            stripped_msg_indices.append(idx)
-            changed = True
+            if new_msg["content"] != old_content:
+                stripped_msg_originals[idx] = old_content
+                stripped_msg_indices.append(idx)
+                modifications.append("stripped_task_tools_nag")
+                changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "deferred tools are now available via ToolSearch"):
-            stripped_msg_originals[idx] = msg.get("content", "")
+            old_content = msg.get("content", "")
             new_msg = dict(msg)
-            new_msg["content"] = _strip_system_reminder(msg.get("content", ""), "deferred tools are now available via ToolSearch")
+            new_msg["content"] = _strip_system_reminder(old_content, "deferred tools are now available via ToolSearch")
             new_messages.append(new_msg)
-            modifications.append("stripped_deferred_tools_sr")
-            stripped_msg_indices.append(idx)
-            changed = True
+            if new_msg["content"] != old_content:
+                stripped_msg_originals[idx] = old_content
+                stripped_msg_indices.append(idx)
+                modifications.append("stripped_deferred_tools_sr")
+                changed = True
         elif msg.get("role") == "user" and _message_has_rejection(msg.get("content", "")):
-            stripped_msg_originals[idx] = msg.get("content", "")
+            old_content = msg.get("content", "")
             new_msg = dict(msg)
-            new_msg["content"] = _strip_rejection_message(msg.get("content", ""))
+            new_msg["content"] = _strip_rejection_message(old_content)
             new_messages.append(new_msg)
-            modifications.append("stripped_rejection_message")
-            stripped_msg_indices.append(idx)
-            changed = True
+            if new_msg["content"] != old_content:
+                stripped_msg_originals[idx] = old_content
+                stripped_msg_indices.append(idx)
+                modifications.append("stripped_rejection_message")
+                changed = True
         else:
             new_messages.append(msg)
 
