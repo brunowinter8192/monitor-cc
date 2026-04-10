@@ -647,7 +647,22 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 chars_fmt = f"{chars:,}c"
                                 is_stripped = msg_idx in stripped_indices
                                 if is_stripped:
-                                    all_lines.append(f"    {DIM_YELLOW_BG}{DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}")
+                                    all_lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}")
+                                    line_keys.append(None)
+                                    originals = entry.get('stripped_msg_originals', {})
+                                    orig_text = originals.get(str(msg_idx), '')
+                                    if orig_text:
+                                        all_lines.append(f"      {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
+                                        line_keys.append(None)
+                                        for raw_line in orig_text.split('\n')[:15]:
+                                            if not raw_line:
+                                                all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
+                                                line_keys.append(None)
+                                                continue
+                                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                                all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                                line_keys.append(None)
+                                    continue
                                 else:
                                     all_lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}{RESET}")
                                 line_keys.append(None)
@@ -655,13 +670,11 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 if preview:
                                     for raw_line in preview.split('\n'):
                                         if not raw_line:
-                                            bg = DIM_YELLOW_BG if is_stripped else ''
-                                            all_lines.append(f"      {bg}{DIM}{RESET}")
+                                            all_lines.append(f"      {DIM}{RESET}")
                                             line_keys.append(None)
                                             continue
                                         for chunk_start in range(0, len(raw_line), wrap_width):
-                                            bg = DIM_YELLOW_BG if is_stripped else ''
-                                            all_lines.append(f"      {bg}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                                             line_keys.append(None)
                         else:
                             prev_messages = prev_entry_for_delta.get('messages', []) if prev_entry_for_delta is not None else []
@@ -683,7 +696,22 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                 delta_chars = curr_chars - prev_chars
                                 is_stripped = msg_idx in stripped_indices
                                 if is_stripped:
-                                    all_lines.append(f"    {DIM_YELLOW_BG}{DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{RESET}")
+                                    all_lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{RESET}")
+                                    line_keys.append(None)
+                                    originals = entry.get('stripped_msg_originals', {})
+                                    orig_text = originals.get(str(msg_idx), '')
+                                    if orig_text:
+                                        all_lines.append(f"      {DIM_YELLOW_BG}{DIM}(original, stripped){RESET}")
+                                        line_keys.append(None)
+                                        for raw_line in orig_text.split('\n')[:15]:
+                                            if not raw_line:
+                                                all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
+                                                line_keys.append(None)
+                                                continue
+                                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                                all_lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                                line_keys.append(None)
+                                    continue
                                 else:
                                     all_lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {msg_type:<20}{RESET}")
                                 line_keys.append(None)
@@ -693,13 +721,11 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                                     wrap_width = max(20, pane_width - 8)
                                     for raw_line in new_content.split('\n'):
                                         if not raw_line:
-                                            bg = DIM_YELLOW_BG if is_stripped else ''
-                                            all_lines.append(f"      {bg}{DIM}{RESET}")
+                                            all_lines.append(f"      {DIM}{RESET}")
                                             line_keys.append(None)
                                             continue
                                         for chunk_start in range(0, len(raw_line), wrap_width):
-                                            bg = DIM_YELLOW_BG if is_stripped else ''
-                                            all_lines.append(f"      {bg}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                            all_lines.append(f"      {DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
                                             line_keys.append(None)
                     if len(entry.get('cache_breakpoints', [])) >= 1:
                         prev_entry_for_delta = entry

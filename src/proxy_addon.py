@@ -42,13 +42,17 @@ class ProxyAddon:
 
             model = payload.get("model", "")
             model_family = "haiku" if "haiku" in model.lower() else "opus"
-            modified_payload, modifications, original_system2, stripped_msg_indices = apply_modification_rules(payload)
+            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals = apply_modification_rules(payload)
 
             # Log MODIFIED payload (after rule application, before tool strip + cache breakpoints)
             entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
             if original_system2 is not None:
                 entry['original_system2_text'] = original_system2
             entry['stripped_msg_indices'] = stripped_msg_indices
+            if stripped_msg_originals:
+                entry['stripped_msg_originals'] = {}
+                for k, v in stripped_msg_originals.items():
+                    entry['stripped_msg_originals'][str(k)] = _summarize_content_for_log(v)
             _write_entry(self.log_file, entry)
 
             # Strip unused tools from the modified payload before sending to API
@@ -597,6 +601,25 @@ def _add_cache_control_to_message(msg: dict, cc_marker: dict) -> dict:
     return new_msg
 
 
+# Summarize raw message content for logging (str or list-of-blocks → truncated str)
+def _summarize_content_for_log(content, max_chars=2000):
+    if isinstance(content, str):
+        return content[:max_chars]
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                text = block.get("text", "")
+                if text:
+                    parts.append(text)
+                elif block.get("type") == "tool_result":
+                    tc = block.get("content", "")
+                    if isinstance(tc, str):
+                        parts.append(tc)
+        return "\n".join(parts)[:max_chars]
+    return str(content)[:max_chars]
+
+
 # Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules)
 def apply_modification_rules(payload: dict) -> tuple:
     modifications = []
@@ -616,8 +639,10 @@ def apply_modification_rules(payload: dict) -> tuple:
 
     new_messages = []
     stripped_msg_indices = []
+    stripped_msg_originals = {}
     for idx, msg in enumerate(messages_to_process):
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
+            stripped_msg_originals[idx] = msg.get("content", "")
             stripped = _strip_plan_mode_blocks(msg.get("content", ""))
             if stripped:
                 new_msg = dict(msg)
@@ -629,6 +654,7 @@ def apply_modification_rules(payload: dict) -> tuple:
             stripped_msg_indices.append(idx)
             changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<task-notification>"):
+            stripped_msg_originals[idx] = msg.get("content", "")
             new_msg = dict(msg)
             new_msg["content"] = _strip_task_notification_tags(msg.get("content", ""))
             if _content_contains(new_msg["content"], "task tools haven"):
@@ -639,6 +665,7 @@ def apply_modification_rules(payload: dict) -> tuple:
             stripped_msg_indices.append(idx)
             changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "task tools haven"):
+            stripped_msg_originals[idx] = msg.get("content", "")
             new_msg = dict(msg)
             new_msg["content"] = _strip_system_reminder(msg.get("content", ""), "task tools haven")
             new_messages.append(new_msg)
@@ -646,6 +673,7 @@ def apply_modification_rules(payload: dict) -> tuple:
             stripped_msg_indices.append(idx)
             changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "deferred tools are now available via ToolSearch"):
+            stripped_msg_originals[idx] = msg.get("content", "")
             new_msg = dict(msg)
             new_msg["content"] = _strip_system_reminder(msg.get("content", ""), "deferred tools are now available via ToolSearch")
             new_messages.append(new_msg)
@@ -653,6 +681,7 @@ def apply_modification_rules(payload: dict) -> tuple:
             stripped_msg_indices.append(idx)
             changed = True
         elif msg.get("role") == "user" and _message_has_rejection(msg.get("content", "")):
+            stripped_msg_originals[idx] = msg.get("content", "")
             new_msg = dict(msg)
             new_msg["content"] = _strip_rejection_message(msg.get("content", ""))
             new_messages.append(new_msg)
@@ -688,11 +717,11 @@ def apply_modification_rules(payload: dict) -> tuple:
                     modifications.append("stripped_session_guidance")
 
     if not changed:
-        return payload, modifications, None, stripped_msg_indices
+        return payload, modifications, None, stripped_msg_indices, stripped_msg_originals
     modified = dict(payload)
     modified["messages"] = new_messages
     modified["system"] = new_system
-    return modified, modifications, original_system2_text, stripped_msg_indices
+    return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals
 
 
 # Remove blocklisted tools from payload and trim Agent description. Returns (modified_payload, count_removed).
