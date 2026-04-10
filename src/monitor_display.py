@@ -3,7 +3,8 @@ from datetime import datetime
 from typing import Optional
 
 from .constants import RESET, GREEN, YELLOW, CYAN, MODE_ALL, MODE_MAIN, MODE_SUBAGENT
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_system_message
+from .formatter import format_tool_call
+from .formatter_events import format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_system_message
 
 INDENT = '  '
 

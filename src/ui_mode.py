@@ -4,8 +4,10 @@ from typing import Dict, List, Optional
 # From constants.py: Colors
 from .constants import RESET, PASTEL_BLUE, DIM, HOVER_BG, YELLOW, CYAN, GREEN
 
-# From subagent_ui.py: Subagent state and display names
-from .subagent_ui import get_agent_display_name, count_calls_for_agent, subagent_states
+# From subagent_ui.py: Subagent state
+from .subagent_ui import subagent_states
+# From subagent_ui_format.py: Display name helpers
+from .subagent_ui_format import get_agent_display_name, count_calls_for_agent
 
 # FUNCTIONS
 

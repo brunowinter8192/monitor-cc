@@ -1,21 +1,17 @@
 # INFRASTRUCTURE
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from pathlib import Path
 import io
 import os
 import sys
 import time
 
-from .constants import (
-    RESET, YELLOW, CYAN,
-    HOVER_BG,
-    POLL_INTERVAL, INPUT_POLL_INTERVAL,
-)
-from .token_format import format_cache_tracker
+from .constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
 from .jsonl_parser import read_new_lines, parse_jsonl_lines
-from .jsonl_cache_turns import extract_cache_turns
-from .subagent_ui import subagent_states, toggle_subagent_state, build_collapsed_entry
 from .session_finder import find_active_sessions
+from .jsonl_cache_turns import extract_cache_turns
+from .subagent_ui import subagent_states, toggle_subagent_state
+from .subagent_render import render_subagents_with_tokens
 from .click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, get_agent_by_index,
@@ -39,76 +35,6 @@ def find_agent_jsonl(agent_id: str) -> Optional[Path]:
         if session_file.name == target_name:
             return session_file
     return None
-
-# Render subagent list with cache-tracker turns for expanded agents
-def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_line_map, pane_hover_row, pane_height, pane_width, scroll_offsets, cache_expand_states=None, cache_line_map=None, frozen: bool = False) -> str:
-    agent_count = len(subagent_metadata_map)
-    all_lines = []
-    all_keys = []
-
-    freeze_indicator = f" {YELLOW}[FROZEN]{RESET}" if frozen else f" {CYAN}[LIVE]{RESET}"
-    header = f"{CYAN}Active Subagents ({agent_count}){RESET}{freeze_indicator}"
-    all_lines.append(header)
-    all_keys.append(None)
-    all_lines.append('')
-    all_keys.append(None)
-
-    if not subagent_metadata_map:
-        all_lines.append(f"{YELLOW}No subagents active yet{RESET}")
-        all_keys.append(None)
-        if pane_line_map is not None:
-            pane_line_map.clear()
-        return '\n'.join(all_lines)
-
-    for idx, (agent_id, metadata) in enumerate(sorted(subagent_metadata_map.items(), key=lambda x: x[1]['timestamp']), 1):
-        is_expanded = subagent_states.get(agent_id, False)
-        entry_header = build_collapsed_entry(idx, metadata, is_expanded=is_expanded)
-        all_lines.append(entry_header)
-        all_keys.append(agent_id)
-
-        if is_expanded:
-            turns = turns_by_agent.get(agent_id, [])
-            scroll_offset = scroll_offsets.get(agent_id, 0)
-            if not turns:
-                all_lines.append(f"  {YELLOW}(no token data yet){RESET}")
-                all_keys.append(None)
-            else:
-                per_agent_expand = (cache_expand_states or {}).get(agent_id, {})
-                if cache_line_map is not None:
-                    temp_clm: dict = {}
-                    cache_output = format_cache_tracker(turns, per_agent_expand, temp_clm, None, 15, pane_width - 2, scroll_offset)
-                    cache_start = len(all_lines) + 1
-                    for rel_row, key in temp_clm.items():
-                        cache_line_map[rel_row + cache_start - 1] = (agent_id, key[0], key[1])
-                else:
-                    cache_output = format_cache_tracker(turns, per_agent_expand, None, None, 15, pane_width - 2, scroll_offset)
-                for cl in cache_output.split('\n'):
-                    all_lines.append(f"  {cl}")
-                    all_keys.append(None)
-
-        all_lines.append('')
-        all_keys.append(None)
-
-    while all_lines and all_lines[-1] == '':
-        all_lines.pop()
-        all_keys.pop()
-
-    if pane_line_map is not None:
-        pane_line_map.clear()
-        for row_idx, key in enumerate(all_keys):
-            if key is not None:
-                pane_line_map[row_idx + 1] = key
-
-    result_lines = []
-    for row_offset, line in enumerate(all_lines):
-        row = row_offset + 1
-        key = all_keys[row_offset]
-        if key is not None and pane_hover_row is not None and row == pane_hover_row:
-            result_lines.append(f"{HOVER_BG}{line}{RESET}")
-        else:
-            result_lines.append(line)
-
-    return '\n'.join(result_lines)
 
 # Find the nearest agent ID at or above a given row in the pane line map
 def _find_agent_at_row(row: int, line_map: dict) -> Optional[str]:
