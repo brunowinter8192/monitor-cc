@@ -5,21 +5,20 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, GREEN, YELLOW, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, TOOL_TASK
-INDENT = '  '
+from .constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, TOOL_TASK
 
 # From session_finder.py: Discover active Claude Code sessions
 from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL and extract tool calls
 from .jsonl_parser import parse_new_tool_calls, parse_jsonl_lines, read_new_lines
-# From formatter.py: Format tool calls for display
-from .formatter import format_tool_call, format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_system_message
 # From hook_parser.py: Parse hook log entries
 from .hook_parser import get_current_position as get_hook_log_position
 # From ui_mode.py: Subagent tracking and rules formatting
 from .ui_mode import track_subagent_metadata
 # From warnings_pane.py: Unknown type tracking
 from .warnings_pane import track_unknown_type
+# From monitor_display.py: Console output for tool calls and session status
+from .monitor_display import display_warning, display_user_media, display_skill_activation, display_thinking, display_tool_call, display_user_prompt_from_jsonl, display_system_message, print_session_status
 
 file_positions: Dict[Path, int] = {}
 tool_use_caches: Dict[Path, dict] = {}
@@ -203,74 +202,6 @@ def process_session_file(filepath: Path) -> None:
             call_counter += 1
             display_tool_call(tool_call, call_counter)
 
-# Display formatted warning to console
-def display_warning(warning: dict) -> None:
-    formatted = format_warning(
-        file_path=warning['file_path'],
-        line_number=warning['line_number'],
-        error_message=warning['error_message'],
-        raw_line=warning['raw_line']
-    )
-
-    print(formatted)
-    print()
-
-# Display formatted user media to console
-def display_user_media(media_items: list) -> None:
-    formatted = format_user_media(media_items)
-    print(formatted)
-    print()
-
-# Display formatted skill/command activation to console
-def display_skill_activation(skill_item: dict) -> None:
-    formatted = format_skill_activation(skill_item)
-    print(formatted)
-    print()
-
-# Display formatted thinking block to console
-def display_thinking(thinking_item: dict) -> None:
-    formatted = format_thinking(thinking_item)
-    print(formatted)
-    print()
-
-# Display formatted tool call to console
-def display_tool_call(tool_call: dict, call_number: int) -> None:
-    tool_name = tool_call['tool_name']
-
-    formatted = format_tool_call(
-        tool_name=tool_name,
-        input_data=tool_call['input'],
-        output_data=tool_call['output'] or '',
-        tool_use_id=tool_call['tool_use_id'],
-        timestamp=tool_call['timestamp'],
-        call_number=call_number,
-        is_subagent=tool_call.get('is_subagent', False),
-        system_reminders=tool_call.get('system_reminders', []),
-        is_error=tool_call.get('is_error', False)
-    )
-
-    print(formatted)
-    print()
-
-# Print session status after initialization
-def print_session_status(session_count: int, project_filter: Optional[str] = None, mode: str = MODE_ALL) -> None:
-    if session_count == 0:
-        print(f"{YELLOW}No sessions found.{RESET}")
-        if project_filter:
-            print(f"{YELLOW}Project {project_filter} has no active Claude Code sessions.{RESET}\n")
-        else:
-            print(f"{YELLOW}No sessions in ~/.claude/projects{RESET}\n")
-    else:
-        mode_label = ''
-        if mode == MODE_MAIN:
-            mode_label = ' (main agent only)'
-        elif mode == MODE_SUBAGENT:
-            mode_label = ' (subagent only)'
-
-        print(f"{GREEN}Monitoring {session_count} sessions{mode_label}{RESET}")
-        if project_filter:
-            print(f"{CYAN}Project: {project_filter}{RESET}")
-        print(f"{CYAN}Waiting for new tool calls...{RESET}\n")
 
 # Get end position of file (for initializing at EOF)
 def get_file_end_position(filepath: Path) -> int:
@@ -441,36 +372,3 @@ def get_main_session_files() -> List[Path]:
     sessions = find_active_sessions(active_project_filter)
     return [s for s in sessions if not is_agent_file(s)]
 
-# Display USER PROMPT detected from session JSONL
-def display_user_prompt_from_jsonl(prompt_item: dict) -> None:
-    formatted = format_user_prompt(prompt_item.get('timestamp', ''))
-    print(formatted)
-    print()
-
-# Display system message detected from session JSONL
-def display_system_message(sys_msg: dict) -> None:
-    formatted = format_system_message(sys_msg.get('timestamp', ''), sys_msg.get('text', ''))
-    print(formatted)
-    print()
-
-# Format WARNING header with yellow color for malformed lines
-def format_warning(file_path: str, line_number: int, error_message: str, raw_line: str) -> str:
-    now = datetime.now().strftime('%H:%M:%S')
-    header = f"{YELLOW}[{now}] [!] WARNING - Malformed JSON{RESET}"
-
-    truncated_line = truncate_line(raw_line, 200)
-
-    details = [
-        f"{INDENT}File: {file_path}",
-        f"{INDENT}Line: {line_number}",
-        f"{INDENT}Error: {error_message}",
-        f"{INDENT}Content: {truncated_line}"
-    ]
-
-    return f"{header}\n" + '\n'.join(details)
-
-# Truncate line to max length for display
-def truncate_line(line: str, max_length: int) -> str:
-    if len(line) <= max_length:
-        return line
-    return line[:max_length] + '...'

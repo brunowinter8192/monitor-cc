@@ -6,22 +6,16 @@ import os
 import subprocess
 import time
 
-from .constants import (
-    RESET, GREEN, RED, YELLOW, WHITE, CYAN,
-    PASTEL_PURPLE,
-    HOVER_BG,
-    POLL_INTERVAL, INPUT_POLL_INTERVAL,
-)
-from .token_pane import _format_k, format_cache_tracker
-from .jsonl_parser import read_new_lines, parse_jsonl_lines, get_message_content, is_tool_use
+from .constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
+from .jsonl_parser import read_new_lines, parse_jsonl_lines
 from .jsonl_cache_turns import extract_cache_turns
 from .session_finder import encode_project_path
 from .click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
-
-INDENT = '  '
+# From worker_format.py: Worker data extraction and block rendering
+from .worker_format import get_worker_project_name, extract_worker_tokens, format_workers_block
 
 worker_expand_states: Dict[str, bool] = {}
 worker_scroll_offsets: Dict[str, int] = {}
@@ -53,13 +47,6 @@ def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None
             os.remove(path)
     except OSError:
         pass
-
-# Derive worker project name from project path (worktree-aware, matches tmux_spawn.sh logic)
-def get_worker_project_name(project_path: str) -> str:
-    if '/.claude/worktrees/' in project_path:
-        base = project_path.split('/.claude/worktrees/')[0]
-        return os.path.basename(base)
-    return os.path.basename(os.path.normpath(project_path))
 
 # Read a single env var from a tmux session
 def get_tmux_env(session: str, var: str) -> str:
@@ -143,141 +130,6 @@ def find_worker_jsonl(session_name: str) -> Optional[Path]:
         return None
 
     return max(jsonl_files, key=lambda f: f.stat().st_mtime)
-
-# Extract all tool_use entries from a worker's JSONL file
-def extract_worker_tokens(jsonl_path: Path) -> dict:
-    lines = read_new_lines(jsonl_path, 0)
-    messages, _ = parse_jsonl_lines(lines)
-    total_output = 0
-    for message in messages:
-        if message.get('type') != 'assistant':
-            continue
-        usage = message.get('message', {}).get('usage', {})
-        total_output += usage.get('output_tokens', 0)
-    return {'output': total_output}
-
-# Extract tool call list from a worker's JSONL file
-def extract_worker_tool_calls(jsonl_path: Path) -> List[dict]:
-    lines = read_new_lines(jsonl_path, 0)
-    messages, _ = parse_jsonl_lines(lines)
-    calls = []
-    call_number = 0
-    for message in messages:
-        content_blocks = get_message_content(message)
-        timestamp = message.get('timestamp', '')
-        for block in content_blocks:
-            if is_tool_use(block):
-                call_number += 1
-                calls.append({
-                    'tool_name': block.get('name', 'Unknown'),
-                    'input': block.get('input', {}),
-                    'timestamp': timestamp,
-                    'call_number': call_number,
-                })
-    return calls
-
-# Format workers pane with optional expand/collapse showing cache tracker per worker
-def format_workers_block(workers: list, expand_states: dict = None, worker_turns: dict = None, line_map: dict = None, hover_row: Optional[int] = None, scroll_offsets: dict = None, cache_expand_states: dict = None, cache_line_map: dict = None, frozen: bool = False, selected_name: Optional[str] = None) -> str:
-    freeze_indicator = f" {YELLOW}[FROZEN]{RESET}" if frozen else f" {CYAN}[LIVE]{RESET}"
-
-    if not workers:
-        return f"{WHITE}Workers{RESET}{freeze_indicator}\n\n{YELLOW}No active workers{RESET}"
-
-    if expand_states is None:
-        expand_states = {}
-    if worker_turns is None:
-        worker_turns = {}
-
-    status_colors = {
-        'working': GREEN,
-        'idle': YELLOW,
-        'exited': RED,
-        'unknown': WHITE,
-    }
-
-    lines = []
-    current_line = 1
-
-    lines.append(f"{WHITE}Workers{RESET}{freeze_indicator}")
-    lines.append('')
-    current_line += 2
-
-    if line_map is not None:
-        line_map.clear()
-    if cache_line_map is not None:
-        cache_line_map.clear()
-
-    for idx, w in enumerate(workers, 1):
-        status = w.get('status', 'unknown')
-        sc = status_colors.get(status, WHITE)
-        name = w.get('name', '?')
-        spawned = w.get('spawned', '')
-        purpose = w.get('purpose', '')
-        is_expanded = expand_states.get(name, False)
-        toggle_symbol = "[-]" if is_expanded else "[+]"
-
-        if line_map is not None:
-            line_map[current_line] = name
-
-        spawned_str = f"  {WHITE}{spawned}{RESET}" if spawned else ''
-        model = w.get('model', '')
-        model_str = f"  {PASTEL_PURPLE}{model}{RESET}" if model else ''
-        tokens = w.get('tokens', {})
-        tok_out = tokens.get('output', 0)
-        tokens_str = f"  {WHITE}{_format_k(tok_out)}out{RESET}" if tok_out else ''
-        is_selected = selected_name is not None and name == selected_name
-        sel_prefix = f"{GREEN}>>{RESET} " if is_selected else "   "
-        header_line = f"{sel_prefix}{toggle_symbol} {CYAN}[{idx}] {name}{RESET}  {sc}{status.upper()}{RESET}{spawned_str}{model_str}{tokens_str}"
-        if hover_row is not None and current_line == hover_row:
-            header_line = f"{HOVER_BG}{header_line}{RESET}"
-        lines.append(header_line)
-        current_line += 1
-
-        if purpose:
-            if is_expanded:
-                purpose_line = f"{INDENT}{WHITE}{purpose}{RESET}"
-                if line_map is not None:
-                    line_map[current_line] = name
-            else:
-                truncated = purpose[:60] + ('...' if len(purpose) > 60 else '')
-                purpose_line = f"{INDENT}{WHITE}{truncated}{RESET}"
-            lines.append(purpose_line)
-            current_line += 1
-
-        if is_expanded:
-            turns = worker_turns.get(name, [])
-            if not turns:
-                if line_map is not None:
-                    line_map[current_line] = name
-                lines.append(f"{INDENT}{YELLOW}(no token data yet){RESET}")
-                current_line += 1
-            else:
-                scroll_offset = (scroll_offsets or {}).get(name, 0)
-                per_worker_expand = (cache_expand_states or {}).get(name, {})
-                try:
-                    pane_width = os.get_terminal_size().columns
-                except OSError:
-                    pane_width = 80
-                if cache_line_map is not None:
-                    temp_clm: dict = {}
-                    cache_output = format_cache_tracker(turns, per_worker_expand, temp_clm, None, 15, pane_width - 2, scroll_offset)
-                    cache_start = current_line
-                    for rel_row, key in temp_clm.items():
-                        cache_line_map[rel_row + cache_start - 1] = (name, key[0], key[1])
-                else:
-                    cache_output = format_cache_tracker(turns, per_worker_expand, None, None, 15, pane_width - 2, scroll_offset)
-                for cl in cache_output.split('\n'):
-                    lines.append(f"  {cl}")
-                    if line_map is not None:
-                        line_map[current_line] = name
-                    current_line += 1
-
-        lines.append('')
-        current_line += 1
-
-    if lines and lines[-1] == '':
-        lines.pop()
-    return '\n'.join(lines)
 
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
