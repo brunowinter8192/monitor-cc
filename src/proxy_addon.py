@@ -631,8 +631,12 @@ def apply_modification_rules(payload: dict) -> tuple:
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<task-notification>"):
             new_msg = dict(msg)
             new_msg["content"] = _strip_task_notification_tags(msg.get("content", ""))
+            if _content_contains(new_msg["content"], "task tools haven"):
+                new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
+                modifications.append("stripped_task_tools_nag")
             new_messages.append(new_msg)
             modifications.append("trimmed_task_notification")
+            stripped_msg_indices.append(idx)
             changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "task tools haven"):
             new_msg = dict(msg)
