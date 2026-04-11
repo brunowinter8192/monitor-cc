@@ -41,8 +41,15 @@ class ProxyAddon:
                 return
 
             model = payload.get("model", "")
-            model_family = "haiku" if "haiku" in model.lower() else "opus"
-            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals = apply_modification_rules(payload)
+            model_lower = model.lower()
+            if "haiku" in model_lower:
+                model_family = "haiku"
+            elif "sonnet" in model_lower:
+                model_family = "sonnet"
+            else:
+                model_family = "opus"
+            project_path = os.environ.get("PROXY_PROJECT_PATH", "")
+            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals = apply_modification_rules(payload, model_family, project_path)
 
             entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
             if original_system2 is not None:

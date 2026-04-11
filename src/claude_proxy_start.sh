@@ -79,6 +79,7 @@ cp -r "$SCRIPT_DIR/proxy" "$LIVE_DIR/"
 export MONITOR_CC_ROOT
 export PROXY_SESSION_ID="$SESSION_ID"
 export PROXY_LOG_ID="$LOG_ID"
+export PROXY_PROJECT_PATH="$PROJECT"
 mitmdump -p $PROXY_PORT -s "$LIVE_ADDON" --set flow_detail=0 -q 2>"$LOG_DIR/proxy_errors_$LOG_ID.log" &
 PROXY_PID=$!
 

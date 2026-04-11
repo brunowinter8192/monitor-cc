@@ -123,20 +123,45 @@ def _read_rule_file(rel_path: str) -> str:
         return ""
 
 
-# Concatenate global rule files from config — identical for all session types
-def _load_global_rules() -> str:
+# Concatenate system2 rule files for a given model family (global + model-specific)
+def _load_system2_rules(model_family: str) -> str:
     config = _load_config()
-    files = config.get("system2_rules", {}).get("global", {}).get("files", [])
-    parts = [c for c in (_read_rule_file(f) for f in files) if c]
+    s2 = config.get("system2_rules", {})
+    global_files = s2.get("global", {}).get("files", [])
+    # Map model family to config key: opus → "opus", sonnet/haiku → "worker"
+    model_key = "opus" if model_family == "opus" else "worker"
+    model_files = s2.get(model_key, {}).get("files", [])
+    # haiku gets no rules (returns empty → system[2] becomes ".")
+    if model_family == "haiku":
+        return ""
+    all_files = global_files + model_files
+    parts = [c for c in (_read_rule_file(f) for f in all_files) if c]
     return "\n\n".join(parts)
 
 
+# Load project-specific rules based on project path, returns concatenated content or empty string
+def _load_project_rules(project_path: str) -> str:
+    if not project_path:
+        return ""
+    config = _load_config()
+    projects = config.get("message_rules", {}).get("projects", {})
+    parts = []
+    for _name, proj in projects.items():
+        path_contains = proj.get("path_contains", "")
+        if path_contains and path_contains in project_path:
+            for f in proj.get("files", []):
+                content = _read_rule_file(f)
+                if content:
+                    parts.append(content)
+    return "\n\n".join(parts) if parts else ""
+
+
 # Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules, original_system2_text, stripped_msg_indices, stripped_msg_originals)
-def apply_modification_rules(payload: dict) -> tuple:
+def apply_modification_rules(payload: dict, model_family: str = "opus", project_path: str = "") -> tuple:
     modifications = []
     changed = False
 
-    system_rules = _load_global_rules()
+    system_rules = _load_system2_rules(model_family)
 
     messages_to_process = list(payload.get("messages", []))
 
@@ -227,6 +252,21 @@ def apply_modification_rules(payload: dict) -> tuple:
             if stripped != block3.get("text", ""):
                 new_system[3] = {**block3, "text": stripped}
                 modifications.append("stripped_session_guidance")
+
+    # Inject project rules into MSG[0] if available
+    project_rules = _load_project_rules(project_path)
+    if project_rules and new_messages:
+        msg0 = new_messages[0]
+        if msg0.get("role") == "user":
+            pr_block = f"<system-reminder>\n{project_rules}\n</system-reminder>"
+            content = msg0.get("content", "")
+            if isinstance(content, str):
+                new_messages[0] = {**msg0, "content": pr_block + "\n" + content}
+            elif isinstance(content, list):
+                new_block = {"type": "text", "text": pr_block}
+                new_messages[0] = {**msg0, "content": [new_block] + list(content)}
+            modifications.append("injected_project_rules")
+            changed = True
 
     if not changed:
         return payload, modifications, None, stripped_msg_indices, stripped_msg_originals
