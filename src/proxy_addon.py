@@ -11,7 +11,7 @@ _src_dir = None
 
 # If running as a live-copy, look for the frozen proxy package in the co-located live dir
 if '_live_' in _stem:
-    _session_id = _stem.rsplit('_', 1)[-1]
+    _session_id = _stem.split('_live_', 1)[-1]
     _live_dir = _here / f'.proxy_live_{_session_id}'
     if (_live_dir / 'proxy').is_dir():
         _src_dir = str(_live_dir)
