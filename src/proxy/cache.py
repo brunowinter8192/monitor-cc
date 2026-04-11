@@ -50,7 +50,6 @@ def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dic
     result = dict(payload)
     bp_count = 0
     cc_marker = {"type": "ephemeral", "ttl": "1h"}
-    cc_marker_global = {"type": "ephemeral", "ttl": "1h", "scope": "global"}
 
     # BP1: rules block (system[2]), fallback to last system block
     system = result.get("system", [])
@@ -59,7 +58,7 @@ def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dic
         target_idx = 2 if len(new_system) > 2 else len(new_system) - 1
         target = new_system[target_idx]
         if isinstance(target, dict):
-            new_system[target_idx] = {**target, "cache_control": cc_marker_global}
+            new_system[target_idx] = {**target, "cache_control": cc_marker}
             result["system"] = new_system
             bp_count += 1
 
