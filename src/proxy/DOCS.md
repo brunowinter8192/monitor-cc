@@ -78,7 +78,8 @@ Contains:
 **Output:** Modified payload dicts with cache_control added or stripped.
 
 Contains:
-- `_strip_all_cache_control()` — removes all cache_control markers from system, tools, messages
+- `_strip_all_cache_control()` — removes all cache_control markers from system, tools, messages; calls `_normalize_user_content_shape()` on user msgs after strip
+- `_normalize_user_content_shape()` — collapses `[{"type":"text","text":"X"}]` (single text block, no extra fields) to plain string `"X"` for user messages. Prevents byte-diff with Claude Code's native string form when BPs move across turns (see `decisions/cache_rebuild_cases.md` Case 1)
 - `_set_cache_breakpoints()` — sets BP1 (rules/last system), BP2 (last tool), BP3 (last unchanged msg), BP4 (last msg)
 - `_add_cache_control_to_message()` — adds cache_control to the last content block of a message
 

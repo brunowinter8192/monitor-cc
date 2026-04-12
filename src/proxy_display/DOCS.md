@@ -40,6 +40,6 @@ Proxy pane package — displays live API request structure from mitmproxy logs.
 
 ## render_messages.py
 
-**Purpose:** Renders new/modified/removed messages for an expanded request entry (turn-view). Handles two cases: more messages than previous (new additions with full block content) and same/fewer messages (diffs with full content_tail). Shows stripped message originals, block-level detail with full_text (not truncated previews), and content tails.
+**Purpose:** Renders new/modified/removed messages for an expanded request entry (turn-view). Handles two cases: more messages than previous (new additions with full block content) and same/fewer messages (diffs with full content_tail). For stripped messages prefers `entry['stripped_msg_removed']` (only the chunks actually removed, rendered yellow) and falls back to `entry['stripped_msg_originals']` (full pre-modification text) for old log files. Shows block-level detail with full_text (not truncated previews), and content tails.
 **Input:** Entry dict, previous entry, all entries, expand states, pane width.
 **Output:** `(lines, keys)` tuple.
