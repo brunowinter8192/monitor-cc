@@ -172,6 +172,24 @@ def _build_sent_meta(payload: dict, request_id: str, timestamp: str) -> dict:
     system = payload.get("system", []) or []
     messages = payload.get("messages", []) or []
     tool_names = sorted(t.get("name", "") for t in tools if isinstance(t, dict))
+
+    sys_bps = [i for i, b in enumerate(system) if isinstance(b, dict) and b.get("cache_control")]
+    tool_bps = [i for i, t in enumerate(tools) if isinstance(t, dict) and t.get("cache_control")]
+    msg_bps = [i for i, m in enumerate(messages) if _has_cache_control(m)]
+
+    bp1_idx = sys_bps[0] if sys_bps else None
+    bp2_idx = tool_bps[0] if tool_bps else None
+    bp3_idx = msg_bps[0] if msg_bps else None
+    bp4_idx = msg_bps[-1] if len(msg_bps) >= 2 else None
+
+    def _md5(data: str) -> str:
+        return hashlib.md5(data.encode("utf-8")).hexdigest()[:10]
+
+    prefix_hash_bp1 = _md5(json.dumps(system[0:bp1_idx + 1])) if bp1_idx is not None else None
+    prefix_hash_bp2 = _md5(json.dumps({"system": system, "tools": tools[0:bp2_idx + 1]})) if bp2_idx is not None else None
+    prefix_hash_bp3 = _md5(json.dumps({"system": system, "tools": tools, "messages": messages[0:bp3_idx + 1]})) if bp3_idx is not None else None
+    prefix_hash_bp4 = _md5(json.dumps({"system": system, "tools": tools, "messages": messages[0:bp4_idx + 1]})) if bp4_idx is not None else None
+
     return {
         "type": "sent_meta",
         "request_id": request_id,
@@ -179,12 +197,16 @@ def _build_sent_meta(payload: dict, request_id: str, timestamp: str) -> dict:
         "sent_tools_count": len(tools),
         "sent_tools_hash": hashlib.md5(json.dumps(tool_names).encode()).hexdigest()[:8],
         "sent_cache_breakpoints": {
-            "system": [i for i, b in enumerate(system) if isinstance(b, dict) and b.get("cache_control")],
-            "tools": [i for i, t in enumerate(tools) if isinstance(t, dict) and t.get("cache_control")],
-            "messages": [i for i, m in enumerate(messages) if _has_cache_control(m)],
+            "system": sys_bps,
+            "tools": tool_bps,
+            "messages": msg_bps,
         },
         "sent_system_hash": hashlib.md5(json.dumps(system).encode()).hexdigest()[:8],
         "sent_tools_bytes_hash": hashlib.md5(json.dumps(tools).encode()).hexdigest()[:8],
+        "prefix_hash_bp1_sys": prefix_hash_bp1,
+        "prefix_hash_bp2_tools": prefix_hash_bp2,
+        "prefix_hash_bp3_msg": prefix_hash_bp3,
+        "prefix_hash_bp4_msg": prefix_hash_bp4,
     }
 
 
