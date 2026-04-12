@@ -100,8 +100,10 @@ trap cleanup EXIT INT TERM
 sleep 1
 echo "Proxy for $PROJECT on port $PROXY_PORT, log: api_requests_${LOG_ID}.jsonl"
 
-# Find claude binary — check PATH first, then known install locations
-CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
+# Find claude binary — env var CLAUDE_BIN wins, then PATH, then known install locations
+if [ -z "${CLAUDE_BIN:-}" ]; then
+    CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
+fi
 if [ -z "$CLAUDE_BIN" ]; then
     CLAUDE_BIN="$(ls -t "$HOME/Library/Application Support/Claude/claude-code"/*/claude 2>/dev/null | head -1)"
 fi
@@ -109,6 +111,7 @@ if [ -z "$CLAUDE_BIN" ]; then
     echo "ERROR: claude binary not found" >&2
     exit 1
 fi
+echo "Using claude binary: $CLAUDE_BIN"
 
 # Start Claude Code with proxy settings
 HTTPS_PROXY="http://localhost:$PROXY_PORT" \
