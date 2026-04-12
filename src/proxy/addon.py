@@ -49,7 +49,7 @@ class ProxyAddon:
             else:
                 model_family = "opus"
             project_path = os.environ.get("PROXY_PROJECT_PATH", "")
-            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals = apply_modification_rules(payload, model_family, project_path)
+            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed = apply_modification_rules(payload, model_family, project_path)
 
             entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
             if original_system2 is not None:
@@ -59,6 +59,8 @@ class ProxyAddon:
                 entry['stripped_msg_originals'] = {}
                 for k, v in stripped_msg_originals.items():
                     entry['stripped_msg_originals'][str(k)] = _summarize_content_for_log(v)
+            if stripped_msg_removed:
+                entry['stripped_msg_removed'] = {str(k): v for k, v in stripped_msg_removed.items()}
             _write_entry(self.log_file, entry)
 
             modified_payload, stripped_count = _strip_unused_tools(modified_payload)

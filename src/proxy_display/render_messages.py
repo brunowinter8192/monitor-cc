@@ -24,17 +24,33 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             if is_stripped:
                 lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{RESET}")
                 keys.append(None)
-                originals = entry.get('stripped_msg_originals', {})
-                orig_text = originals.get(str(msg_idx), '')
-                if orig_text:
-                    for raw_line in orig_text.split('\n'):
-                        if not raw_line:
+                removed_map = entry.get('stripped_msg_removed')
+                if removed_map is not None:
+                    removed_chunks = removed_map.get(str(msg_idx), [])
+                    for chunk_idx, chunk in enumerate(removed_chunks):
+                        if chunk_idx > 0:
                             lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
                             keys.append(None)
-                            continue
-                        for chunk_start in range(0, len(raw_line), wrap_width):
-                            lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
-                            keys.append(None)
+                        for raw_line in chunk.split('\n'):
+                            if not raw_line:
+                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
+                                keys.append(None)
+                                continue
+                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                keys.append(None)
+                else:
+                    originals = entry.get('stripped_msg_originals', {})
+                    orig_text = originals.get(str(msg_idx), '')
+                    if orig_text:
+                        for raw_line in orig_text.split('\n'):
+                            if not raw_line:
+                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
+                                keys.append(None)
+                                continue
+                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                keys.append(None)
             else:
                 blocks = msg.get('blocks', [])
                 type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
@@ -87,17 +103,33 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             if is_stripped:
                 lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{RESET}")
                 keys.append(None)
-                originals = entry.get('stripped_msg_originals', {})
-                orig_text = originals.get(str(msg_idx), '')
-                if orig_text:
-                    for raw_line in orig_text.split('\n'):
-                        if not raw_line:
+                removed_map = entry.get('stripped_msg_removed')
+                if removed_map is not None:
+                    removed_chunks = removed_map.get(str(msg_idx), [])
+                    for chunk_idx, chunk in enumerate(removed_chunks):
+                        if chunk_idx > 0:
                             lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
                             keys.append(None)
-                            continue
-                        for chunk_start in range(0, len(raw_line), wrap_width):
-                            lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
-                            keys.append(None)
+                        for raw_line in chunk.split('\n'):
+                            if not raw_line:
+                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
+                                keys.append(None)
+                                continue
+                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                keys.append(None)
+                else:
+                    originals = entry.get('stripped_msg_originals', {})
+                    orig_text = originals.get(str(msg_idx), '')
+                    if orig_text:
+                        for raw_line in orig_text.split('\n'):
+                            if not raw_line:
+                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{RESET}")
+                                keys.append(None)
+                                continue
+                            for chunk_start in range(0, len(raw_line), wrap_width):
+                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line[chunk_start:chunk_start + wrap_width]}{RESET}")
+                                keys.append(None)
             else:
                 blocks = msg.get('blocks', [])
                 type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type

@@ -24,6 +24,20 @@ _config_cache: list = [None]
 
 # FUNCTIONS
 
+# Extract <system-reminder> blocks containing marker from str or list content
+def _find_system_reminder_blocks(content, marker: str) -> list:
+    pat = re.compile(r'<system-reminder>.*?' + re.escape(marker) + r'.*?</system-reminder>', re.DOTALL)
+    if isinstance(content, str):
+        return pat.findall(content)
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                result.extend(pat.findall(block.get("text", "")))
+        return result
+    return []
+
+
 # Remove tool_reference blocks for blocked tools from tool_result content blocks
 def _strip_blocked_tool_references(payload: dict) -> dict:
     messages = payload.get("messages", [])
@@ -156,7 +170,7 @@ def _load_project_rules(project_path: str) -> str:
     return "\n\n".join(parts) if parts else ""
 
 
-# Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules, original_system2_text, stripped_msg_indices, stripped_msg_originals)
+# Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)
 def apply_modification_rules(payload: dict, model_family: str = "opus", project_path: str = "") -> tuple:
     modifications = []
     changed = False
@@ -168,6 +182,9 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     new_messages = []
     stripped_msg_indices = []
     stripped_msg_originals = {}
+    stripped_msg_removed = {}
+    _tag_pat = re.compile(r'<(?:output-file|tool-use-id)>.*?</(?:output-file|tool-use-id)>', re.DOTALL)
+    _pm_pat = re.compile(r'<system-reminder>\s*Plan mode.*?</system-reminder>', re.DOTALL)
     for idx, msg in enumerate(messages_to_process):
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
             old_content = msg.get("content", "")
@@ -180,25 +197,55 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                     stripped_msg_originals[idx] = old_content
                     stripped_msg_indices.append(idx)
                     modifications.append("removed_plan_mode_sr")
+                    if isinstance(old_content, str):
+                        stripped_msg_removed[idx] = _pm_pat.findall(old_content)
+                    elif isinstance(old_content, list):
+                        stripped_msg_removed[idx] = [
+                            b.get("text", "") for b in old_content
+                            if isinstance(b, dict) and "Plan mode is active" in b.get("text", "")
+                        ]
+                    else:
+                        stripped_msg_removed[idx] = []
                     changed = True
             else:
                 new_messages.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
                 stripped_msg_originals[idx] = old_content
                 stripped_msg_indices.append(idx)
                 modifications.append("removed_plan_mode_sr")
+                if isinstance(old_content, str):
+                    stripped_msg_removed[idx] = _pm_pat.findall(old_content)
+                elif isinstance(old_content, list):
+                    stripped_msg_removed[idx] = [
+                        b.get("text", "") for b in old_content
+                        if isinstance(b, dict) and "Plan mode is active" in b.get("text", "")
+                    ]
+                else:
+                    stripped_msg_removed[idx] = []
                 changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<task-notification>"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
             new_msg["content"] = _strip_task_notification_tags(old_content)
+            also_stripped_nag = False
             if _content_contains(new_msg["content"], "task tools haven"):
                 new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
                 modifications.append("stripped_task_tools_nag")
+                also_stripped_nag = True
             new_messages.append(new_msg)
             if new_msg["content"] != old_content:
                 stripped_msg_originals[idx] = old_content
                 stripped_msg_indices.append(idx)
                 modifications.append("trimmed_task_notification")
+                removed = []
+                if isinstance(old_content, str):
+                    removed.extend(_tag_pat.findall(old_content))
+                elif isinstance(old_content, list):
+                    for _b in old_content:
+                        if isinstance(_b, dict) and _b.get("type") == "text":
+                            removed.extend(_tag_pat.findall(_b.get("text", "")))
+                if also_stripped_nag:
+                    removed.extend(_find_system_reminder_blocks(old_content, "task tools haven"))
+                stripped_msg_removed[idx] = removed
                 changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "task tools haven"):
             old_content = msg.get("content", "")
@@ -209,6 +256,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 stripped_msg_originals[idx] = old_content
                 stripped_msg_indices.append(idx)
                 modifications.append("stripped_task_tools_nag")
+                stripped_msg_removed[idx] = _find_system_reminder_blocks(old_content, "task tools haven")
                 changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "deferred tools are now available via ToolSearch"):
             old_content = msg.get("content", "")
@@ -219,6 +267,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 stripped_msg_originals[idx] = old_content
                 stripped_msg_indices.append(idx)
                 modifications.append("stripped_deferred_tools_sr")
+                stripped_msg_removed[idx] = _find_system_reminder_blocks(old_content, "deferred tools are now available via ToolSearch")
                 changed = True
         elif msg.get("role") == "user" and _message_has_rejection(msg.get("content", "")):
             old_content = msg.get("content", "")
@@ -229,6 +278,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 stripped_msg_originals[idx] = old_content
                 stripped_msg_indices.append(idx)
                 modifications.append("stripped_rejection_message")
+                stripped_msg_removed[idx] = ["(rejection marker stripped by proxy)"]
                 changed = True
         else:
             new_messages.append(msg)
@@ -269,8 +319,8 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
             changed = True
 
     if not changed:
-        return payload, modifications, None, stripped_msg_indices, stripped_msg_originals
+        return payload, modifications, None, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
     modified = dict(payload)
     modified["messages"] = new_messages
     modified["system"] = new_system
-    return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals
+    return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
