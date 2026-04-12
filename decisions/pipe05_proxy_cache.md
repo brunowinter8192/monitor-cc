@@ -81,6 +81,21 @@ Nach Implementierung der eigenen Breakpoints (Session auf test project, 14+ Requ
 
 Log-Dateien: `api_requests_{projektname}_{timestamp}.jsonl` statt kryptischer MD5-Hashes. Max 30 Dateien, älteste werden bei Proxy-Start gelöscht.
 
+### Diagnostics: Prefix-Hash Instrumentation
+
+Seit Commit `f9e4b09` (2026-04-12) schreibt `_build_sent_meta` in addon.py vier zusätzliche Felder pro `sent_meta`-Entry:
+
+- `prefix_hash_bp1_sys` — MD5[:10] von `json.dumps(system[0:bp1_idx+1])`
+- `prefix_hash_bp2_tools` — MD5[:10] von `json.dumps({"system":..., "tools": tools[0:bp2_idx+1]})`
+- `prefix_hash_bp3_msg` — MD5[:10] inkl. `messages[0:bp3_idx+1]`
+- `prefix_hash_bp4_msg` — MD5[:10] inkl. `messages[0:bp4_idx+1]`
+
+Serialisierung via `json.dumps(...).encode("utf-8")` — matcht byte-genau was mitmproxy in Zeile 80 von `request()` ans API-Wire schickt.
+
+Zweck: Byte-genauer Vergleich von BP-Prefix-Bytes zwischen aufeinanderfolgenden Requests, um zu unterscheiden ob Cache-Misses durch Byte-Drift im Prefix (dann sichtbar als Hash-Änderung) oder durch etwas außerhalb des Payloads (Header, Account-State, Fingerprint — dann alle Hashes gleich trotz Cache-Miss) verursacht werden.
+
+Nutzung: Dev-Script liest `sent_meta`-Einträge aus `api_requests_*.jsonl`, vergleicht paarweise `prefix_hash_bp*` pro Request-Boundary.
+
 ## Recommendation (SOLL)
 
 Keep (no change needed) — eigene Breakpoints sind implementiert und verifiziert. TTL `1h` und `scope: "global"` korrekt auf Markern gesetzt.
