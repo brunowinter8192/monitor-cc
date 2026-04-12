@@ -26,6 +26,8 @@ class ProxyAddon:
     def __init__(self):
         self.log_file = _resolve_log_file()
         self.prev_messages_by_model: Dict[str, list] = {}
+        self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
+        self.prev_sent_hashes_by_model: dict = {}  # model_family → hash fields from last sent_meta
 
     def request(self, flow: http.HTTPFlow) -> None:
         try:
@@ -50,6 +52,11 @@ class ProxyAddon:
                 model_family = "opus"
             project_path = os.environ.get("PROXY_PROJECT_PATH", "")
             modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed = apply_modification_rules(payload, model_family, project_path)
+
+            if model_family not in self.fixated:
+                self.fixated[model_family] = _capture_fixation(modified_payload, modifications)
+            else:
+                modified_payload = _apply_fixation(modified_payload, modifications, self.fixated[model_family])
 
             entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
             if original_system2 is not None:
@@ -76,7 +83,14 @@ class ProxyAddon:
                 _summarize_message(m) for m in modified_payload.get("messages", [])
             ]
 
-            sent_meta = _build_sent_meta(modified_payload, entry.get("request_id", ""), entry.get("timestamp", ""))
+            prev_hashes = self.prev_sent_hashes_by_model.get(model_family)
+            sent_meta = _build_sent_meta(modified_payload, entry.get("request_id", ""), entry.get("timestamp", ""), prev_hashes)
+            self.prev_sent_hashes_by_model[model_family] = {
+                "sys_block_hashes": sent_meta.get("sys_block_hashes", []),
+                "tool_hashes": sent_meta.get("tool_hashes", []),
+                "msg_hashes": sent_meta.get("msg_hashes", []),
+                "msg0_block_hashes": sent_meta.get("msg0_block_hashes", []),
+            }
             _write_entry(self.log_file, sent_meta)
 
             flow.request.content = json.dumps(modified_payload).encode("utf-8")
@@ -168,8 +182,182 @@ def _parse_payload(body: bytes) -> Optional[dict]:
         return None
 
 
+# Capture fixation values from first modified payload — sys[2] text + msg[0] project-rules block
+def _capture_fixation(payload: dict, modifications: list) -> dict:
+    fixated = {}
+    system = payload.get("system", [])
+    if isinstance(system, list) and len(system) > 2:
+        block2 = system[2]
+        if isinstance(block2, dict) and block2.get("type") == "text":
+            fixated["sys2_text"] = block2.get("text", "")
+    if "injected_project_rules" in modifications:
+        msgs = payload.get("messages", [])
+        if msgs:
+            content = msgs[0].get("content", "")
+            if isinstance(content, list) and content:
+                first_block = content[0]
+                if isinstance(first_block, dict) and first_block.get("type") == "text":
+                    fixated["msg0_pr_block"] = first_block.get("text", "")
+            elif isinstance(content, str):
+                end_tag = "</system-reminder>"
+                idx = content.find(end_tag)
+                if idx != -1:
+                    fixated["msg0_pr_block_str"] = content[:idx + len(end_tag)]
+    return fixated
+
+
+# Apply fixated content to payload — replaces sys[2] text and msg[0] rules block with cached values
+def _apply_fixation(payload: dict, modifications: list, fixated: dict) -> dict:
+    if not fixated:
+        return payload
+    result = payload
+    if "sys2_text" in fixated:
+        system = result.get("system", [])
+        if isinstance(system, list) and len(system) > 2:
+            block2 = system[2]
+            if isinstance(block2, dict) and block2.get("type") == "text":
+                new_system = list(system)
+                new_system[2] = {**block2, "text": fixated["sys2_text"]}
+                result = {**result, "system": new_system}
+    if "injected_project_rules" in modifications:
+        msgs = result.get("messages", [])
+        if msgs:
+            content = msgs[0].get("content", "")
+            if isinstance(content, list) and content and "msg0_pr_block" in fixated:
+                first_block = content[0]
+                if isinstance(first_block, dict) and first_block.get("type") == "text":
+                    new_content = [{**first_block, "text": fixated["msg0_pr_block"]}] + list(content[1:])
+                    new_msgs = list(msgs)
+                    new_msgs[0] = {**msgs[0], "content": new_content}
+                    result = {**result, "messages": new_msgs}
+            elif isinstance(content, str) and "msg0_pr_block_str" in fixated:
+                end_tag = "</system-reminder>"
+                idx = content.find(end_tag)
+                if idx != -1:
+                    old_prefix_end = idx + len(end_tag)
+                    new_content_str = fixated["msg0_pr_block_str"] + content[old_prefix_end:]
+                    new_msgs = list(msgs)
+                    new_msgs[0] = {**msgs[0], "content": new_content_str}
+                    result = {**result, "messages": new_msgs}
+    return result
+
+
+# Compute MD5[:10] hashes for each system block
+def _compute_sys_block_hashes(system) -> list:
+    if not isinstance(system, list):
+        return []
+    return [hashlib.md5(json.dumps(b).encode("utf-8")).hexdigest()[:10] for b in system]
+
+
+# Compute MD5[:10] hashes for each tool
+def _compute_tool_hashes(tools: list) -> list:
+    return [hashlib.md5(json.dumps(t).encode("utf-8")).hexdigest()[:10] for t in tools]
+
+
+# Compute per-message hashes: first 10 individually, middle as rolling summary, last 5 individually
+def _compute_msg_hashes(messages: list) -> list:
+    def _mhash(msg: dict) -> str:
+        return hashlib.md5(json.dumps(msg).encode("utf-8")).hexdigest()[:10]
+
+    n = len(messages)
+    if n == 0:
+        return []
+    first_count = min(10, n)
+    last_count = min(5, n)
+    middle_start = first_count
+    middle_end = max(first_count, n - last_count)
+    last_start = middle_end
+
+    result = []
+    for i in range(first_count):
+        result.append({"idx": i, "role": messages[i].get("role", ""), "hash": _mhash(messages[i])})
+
+    if middle_end > middle_start:
+        middle_hashes = [_mhash(messages[i]) for i in range(middle_start, middle_end)]
+        rolling = hashlib.md5("".join(middle_hashes).encode("utf-8")).hexdigest()[:10]
+        count = middle_end - middle_start
+        result.append({
+            "idx": f"{middle_start}-{middle_end - 1}",
+            "role": "middle",
+            "hash": f"count={count},rolling={rolling}",
+        })
+
+    for i in range(last_start, n):
+        result.append({"idx": i, "role": messages[i].get("role", ""), "hash": _mhash(messages[i])})
+
+    return result
+
+
+# Compute per-block hashes for messages[0].content
+def _compute_msg0_block_hashes(messages: list) -> list:
+    if not messages:
+        return []
+    content = messages[0].get("content", "")
+    if isinstance(content, str):
+        return [hashlib.md5(content.encode("utf-8")).hexdigest()[:10]]
+    if isinstance(content, list):
+        return [hashlib.md5(json.dumps(b).encode("utf-8")).hexdigest()[:10] for b in content]
+    return []
+
+
+# Compare current hash fields against previous — detect unexpected drift in stable prefix fields
+def _compute_drift_report(curr: dict, prev: Optional[dict]) -> dict:
+    if prev is None:
+        return {"initial": True}
+
+    report: dict = {"sys": [], "tools": [], "msgs": [], "msg0_blocks": []}
+
+    curr_sys = curr.get("sys_block_hashes", [])
+    prev_sys = prev.get("sys_block_hashes", [])
+    for i in range(min(len(curr_sys), len(prev_sys))):
+        if curr_sys[i] != prev_sys[i]:
+            report["sys"].append(i)
+
+    curr_tools = curr.get("tool_hashes", [])
+    prev_tools = prev.get("tool_hashes", [])
+    for i in range(min(len(curr_tools), len(prev_tools))):
+        if curr_tools[i] != prev_tools[i]:
+            report["tools"].append(i)
+
+    curr_msgs = curr.get("msg_hashes", [])
+    prev_msgs = prev.get("msg_hashes", [])
+    total_curr = 0
+    for e in curr_msgs:
+        idx = e.get("idx")
+        if isinstance(idx, str) and "-" in idx:
+            parts = idx.split("-")
+            try:
+                total_curr += int(parts[1]) - int(parts[0]) + 1
+            except (ValueError, IndexError):
+                total_curr += 1
+        else:
+            total_curr += 1
+    stable_threshold = max(0, total_curr - 2)
+    for ec, ep in zip(curr_msgs, prev_msgs):
+        c_idx = ec.get("idx")
+        p_idx = ep.get("idx")
+        if c_idx != p_idx:
+            break
+        if isinstance(c_idx, str) and "-" in c_idx:
+            if ec.get("hash") != ep.get("hash"):
+                report["msgs"].append(c_idx)
+            continue
+        if isinstance(c_idx, int) and c_idx >= stable_threshold:
+            continue
+        if ec.get("hash") != ep.get("hash"):
+            report["msgs"].append(c_idx)
+
+    curr_m0 = curr.get("msg0_block_hashes", [])
+    prev_m0 = prev.get("msg0_block_hashes", [])
+    for i in range(min(len(curr_m0), len(prev_m0))):
+        if curr_m0[i] != prev_m0[i]:
+            report["msg0_blocks"].append(i)
+
+    return report
+
+
 # Build sent_meta entry from the final modified payload — logs what was actually sent to the API
-def _build_sent_meta(payload: dict, request_id: str, timestamp: str) -> dict:
+def _build_sent_meta(payload: dict, request_id: str, timestamp: str, prev_hashes: Optional[dict] = None) -> dict:
     tools = payload.get("tools", []) or []
     system = payload.get("system", []) or []
     messages = payload.get("messages", []) or []
@@ -192,6 +380,19 @@ def _build_sent_meta(payload: dict, request_id: str, timestamp: str) -> dict:
     prefix_hash_bp3 = _md5(json.dumps({"system": system, "tools": tools, "messages": messages[0:bp3_idx + 1]})) if bp3_idx is not None else None
     prefix_hash_bp4 = _md5(json.dumps({"system": system, "tools": tools, "messages": messages[0:bp4_idx + 1]})) if bp4_idx is not None else None
 
+    sys_block_hashes = _compute_sys_block_hashes(system)
+    tool_hashes = _compute_tool_hashes(tools)
+    msg_hashes = _compute_msg_hashes(messages)
+    msg0_block_hashes = _compute_msg0_block_hashes(messages)
+
+    curr_hashes = {
+        "sys_block_hashes": sys_block_hashes,
+        "tool_hashes": tool_hashes,
+        "msg_hashes": msg_hashes,
+        "msg0_block_hashes": msg0_block_hashes,
+    }
+    drift_report = _compute_drift_report(curr_hashes, prev_hashes)
+
     return {
         "type": "sent_meta",
         "request_id": request_id,
@@ -209,6 +410,11 @@ def _build_sent_meta(payload: dict, request_id: str, timestamp: str) -> dict:
         "prefix_hash_bp2_tools": prefix_hash_bp2,
         "prefix_hash_bp3_msg": prefix_hash_bp3,
         "prefix_hash_bp4_msg": prefix_hash_bp4,
+        "sys_block_hashes": sys_block_hashes,
+        "tool_hashes": tool_hashes,
+        "msg_hashes": msg_hashes,
+        "msg0_block_hashes": msg0_block_hashes,
+        "drift_report": drift_report,
     }
 
 

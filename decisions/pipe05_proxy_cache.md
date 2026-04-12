@@ -97,6 +97,52 @@ Zweck: Byte-genauer Vergleich von BP-Prefix-Bytes zwischen aufeinanderfolgenden 
 
 Nutzung: Dev-Script liest `sent_meta`-Einträge aus `api_requests_*.jsonl`, vergleicht paarweise `prefix_hash_bp*` pro Request-Boundary.
 
+### Granular Hash Fields + Drift Report (ab Commit feat/prefix-hash-instrumentation)
+
+`_build_sent_meta` schreibt zusätzlich pro-Element-Hashes und einen automatischen Drift-Report:
+
+**Hash-Felder:**
+- `sys_block_hashes: list[str]` — MD5[:10] pro System-Block (Index 0..N-1). Erkennt wenn ein einzelner Block sich ändert.
+- `tool_hashes: list[str]` — MD5[:10] pro Tool. Erkennt Tool-Änderungen (nicht nur Append am Ende).
+- `msg_hashes: list[dict]` — Kompaktes Message-Hash-Array:
+  - First 10 Messages: `{"idx": i, "role": "user|assistant", "hash": "xxxxxxxxxx"}`
+  - Middle (idx 10 bis N-6): `{"idx": "10-N-6", "role": "middle", "hash": "count=K,rolling=xxxxxxxxxx"}` — rolling = MD5[:10] der verketteten middle-Hashes
+  - Last 5 Messages: einzeln wie first 10
+  - Bei N≤15: kein middle-Eintrag, alles einzeln
+- `msg0_block_hashes: list[str]` — MD5[:10] pro Content-Block in messages[0]. Block 0 = injizierter project-rules Block (sollte nach Fixation session-stabil sein).
+
+**Drift-Report:**
+- `drift_report: dict` — Automatischer Vergleich gegen vorherigen Request (aus `self.prev_sent_hashes_by_model`):
+  - Erster Request der Session: `{"initial": True}`
+  - Folge-Requests: `{"sys": [geänderte_indices], "tools": [geänderte_indices], "msgs": [geänderte_indices], "msg0_blocks": [geänderte_indices]}`
+  - `sys`: alle Indices mit Byte-Änderung
+  - `tools`: nur Indices < min(len(prev), len(curr)) — neue Tools am Ende sind expected, werden nicht gemeldet
+  - `msgs`: nur Indices < N-2 (letzte 2 Messages = neuer Turn, expected)
+  - `msg0_blocks`: alle Indices — Block 0 sollte nach Fixation immer leer sein
+
+Zweck: Drift in should-be-stable Prefix-Feldern wird automatisch pro Request sichtbar. Kein manuelles Pairwise-Vergleichen im Dev-Script nötig. Ein `drift_report.sys != []` oder `drift_report.msg0_blocks != [0]` nach dem ersten Request ist ein direktes Signal für ein Fixation-Problem.
+
+### Session-State Fixation (ab Commit feat/prefix-hash-instrumentation)
+
+`ProxyAddon` hält einen `self.fixated: dict` (keyed by model_family). Zweck: sys[2] und msg[0]-Projektregeln-Block werden nach dem **ersten Request** einer Proxy-Session eingefroren. Alle Folge-Requests bekommen byte-identische Bytes für diese Felder — unabhängig davon ob die zugrundeliegenden Rule-Files auf Disk geändert werden.
+
+**Warum nur model_family als Key:** Der Proxy-Prozess lebt für eine Session. Model-family ist der einzige Splitfaktor (opus vs. sonnet vs. haiku lädt unterschiedliche Rules). Bei Proxy-Restart wird `self.fixated` resettet — der erste Request lädt neu.
+
+**Was fixiert wird:**
+- `sys2_text` — Der Text-Content von `system[2]` nach `apply_modification_rules()`. Das ist der Inhalt den `_load_system2_rules()` produziert (global + model-spezifische Rule-Files).
+- `msg0_pr_block` / `msg0_pr_block_str` — Der injizierte `<system-reminder>…</system-reminder>` Block aus `_load_project_rules()`, der als erstes Content-Element in messages[0] eingefügt wird. List-content speichert `msg0_pr_block` (der Block-Text), String-content speichert `msg0_pr_block_str` (Prefix bis `</system-reminder>` inkl.).
+
+**Was NICHT fixiert wird:**
+- sys[0], sys[1], sys[3] — Claude Code kontrolliert, unberührt
+- messages[1..N-1] — session-volatil per Design
+- tools[] — append-only, unberührt
+
+**Implementierung:** Rein in `addon.py`, keine Änderung an `rules.py`. Nach `apply_modification_rules()` wird entweder gecaptured (erster Request) oder via `_apply_fixation()` überschrieben (Folge-Requests). `apply_modification_rules()` läuft immer vollständig durch (kein Short-Circuit) — der Overhead ist minimal (mtime-basiertes File-Caching in `_read_rule_file()`), die Bytes werden danach überschrieben.
+
+**Edge Cases:**
+- Content `"."` (nach stripping geleerte Messages) — kein `</system-reminder>` Marker, `_capture_fixation` speichert nichts, `_apply_fixation` ändert nichts, kein Crash.
+- Haiku (model_family="haiku") — `_load_system2_rules` gibt `""` zurück → sys[2] wird `"."`. Auch für Haiku wird fixated gespeichert (mit `"."`) damit der zweite Request nicht durch Datei-mtime-Änderungen abweicht.
+
 ## Recommendation (SOLL)
 
 Keep (no change needed) — eigene Breakpoints sind implementiert und verifiziert. TTL `1h` und `scope: "global"` korrekt auf Markern gesetzt.
