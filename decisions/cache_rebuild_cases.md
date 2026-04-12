@@ -72,6 +72,71 @@ Claude Code had placed BP4 on MSG[56] in REQ#32 (→ list form with cache_contro
 - Auto-restart if mitmdump exits unexpectedly
 - Warning in monitor when proxy log for active session is stale
 
+## Case 3 — monitor_cc REQ#108 + REQ#109 (2026-04-12)
+
+**Symptom:** Two consecutive back-to-back rebuilds.
+- REQ#107: CR=202,412  CC=591 (normal)
+- REQ#108: CR=10,449   **CC=193,621**
+- REQ#109: CR=36,517   **CC=169,298**
+- REQ#110: CR=205,815  CC=1,165 (recovered)
+
+**Context:**
+- Session: `b0f70ffe-5ab3-49a6-b9ef-58f616f18a8a` (Monitor_CC, same session as Case 1)
+- Proxy log: `src/logs/api_requests_opus_monitor_cc_1776017395.jsonl`
+- Gap REQ#107 → #108: 14 seconds. REQ#108 → #109: 15 seconds.
+- Proxy alive in path (verified via `ps aux | grep mitmdump`)
+
+**What changed:**
+
+Proxy log shows a system[2] char-count jump and a msg[0] block[0] char-count jump across consecutive requests:
+
+| proxy # | timestamp | sys chars | sys[2] hash | msg0[0] hash |
+|---|---|---|---|---|
+| #109 | 20:35:46 | 69,435 | `781ea18b45` | `cfe32ba8ec` |
+| #110 | 20:35:52 | **70,272** (+837) | **`08d3a4b252`** | `cfe32ba8ec` |
+| #111 | 20:36:07 | 70,272 | `08d3a4b252` | **`a1462ef527`** (+1,161) |
+| #112 | 20:36:22 | 70,272 | `08d3a4b252` | `a1462ef527` |
+
+**Root cause (verified):** Self-inflicted. During this session's IMPROVE phase the assistant edited two rule files:
+- `~/.claude/shared-rules/global/verify-before-execution.md` (appended ~837 chars "Correlation Check" section) → goes into sys[2]
+- `~/.claude/shared-rules/proj_monitor/monitor-proxy.md` (extended ~1,161 chars "Cache-Rebuild Investigation Pattern") → goes into msg[0] block[0] (project rules injection)
+
+The proxy's rule-loader (`_load_global_rules`, `_load_project_rules`) caches on file mtime. Each edit changed the mtime → next request reloaded the file → injected content changed → full prefix cache invalidation.
+
+**Two rebuilds, not one:** the two edits were ~15 seconds apart, each triggering one independent cache invalidation.
+
+**Interpretation:** Any edit to a rule file the proxy reads at request time is a cache-killer. This is not a theoretical risk — it happened while documenting Cases 1 and 2 in the very same session.
+
+**Classification:** Partial-to-full rebuild per event. Root cause = **proxy loads rule content from files with mtime-based reload; editing those files during an active session invalidates the prefix**.
+
+**Mitigation (to be implemented in `Monitor_CC-dye`):**
+- Fixate sys[2] and msg[0] project_rules block at session start. First request of a session reads the files normally; all subsequent requests use the cached bytes, ignoring mtime. File edits only take effect in the NEXT session.
+- Rule-family: **`rule-file-edit-during-session`** — added to `proj_monitor/monitor-proxy.md` Rule-Family catalog.
+
+### Reproduction in the same session — worker sess#7 (2026-04-12, same day)
+
+While implementing the mitigation, a second instance of Case 3 was triggered accidentally. The `prefix-fixation` worker (spawned in this session for the Monitor_CC-dye fix) experienced a cache rebuild on its own sess#7 response:
+
+| Worker proxy # | timestamp | msg[0][0] chars | msg[0][0] hash |
+|---|---|---|---|
+| #9 | 21:07:23 | 36,977 | `16fecf9afa` |
+| #10 | 21:09:06 | 37,326 (+349) | `e85378b7c7` |
+| #11 | 21:13:06 | 37,326 | `e85378b7c7` |
+
+Session CR/CC: sess#6 CR=55,502 CC=3,773 (normal) → **sess#7 CR=22,742 CC=44,275** (rebuild) → sess#8 CR=67,017 CC=2,370 (recovered).
+
+Between worker proxy #9 and #10 the assistant edited `~/.claude/shared-rules/proj_monitor/monitor-proxy.md` (+349 chars) to add the `rule-file-edit-during-session` entry to the Rule-Family catalog — i.e. while documenting Case 3 into the rules, triggering a fresh Case 3 instance in the worker's proxy.
+
+Worker proxies use live-copy of the `src/proxy/` package (isolated from git merges) but NOT live-copy of the rule-content files — both the main proxy and the worker proxy read the shared rule files directly and honor their mtime. Any rule edit during an active session affects ALL running proxies that read those files.
+
+**Implication:** the mitigation (session-state fixation in `ProxyAddon.fixated`) applies equally to main and worker proxies. Commit `96e5c98` implements it for both.
+
+### Mitigation implemented (commit 96e5c98, 2026-04-12)
+
+`ProxyAddon.fixated: dict[model_family → {sys2_text, msg0_pr_block/msg0_pr_block_str}]` captures the injected sys[2] text and msg[0] project_rules block on the first request per (proxy process, model_family). On subsequent requests `_apply_fixation()` overwrites the freshly-loaded content with the cached bytes. Rule-file edits during an active session no longer affect running proxies — the change only takes effect after the proxy restarts.
+
+Additionally the same commit adds per-block/per-tool/per-msg hash instrumentation (`sys_block_hashes`, `tool_hashes`, `msg_hashes`, `msg0_block_hashes`) and a `drift_report` field in `sent_meta`, so future rebuilds can be diagnosed at the byte-diff level automatically instead of manually forensicing proxy logs.
+
 ## Open Patterns / Hypotheses
 
 - **Shape demotion** (CC moving BP4 forward, demoting old BP anchor from list-with-block to plain string) is real and deterministic. Our proxy doesn't normalize → byte diff → at least BP3/BP4 miss at that msg position. Fix planned: `_normalize_user_content_shape()` in `cache.py`.
