@@ -4,6 +4,21 @@ from .message_summary import _has_cache_control
 
 # FUNCTIONS
 
+# Collapse single-text-block list to plain string for user messages
+def _normalize_user_content_shape(msg: dict) -> dict:
+    if msg.get("role") != "user":
+        return msg
+    content = msg.get("content")
+    if not isinstance(content, list) or len(content) != 1:
+        return msg
+    block = content[0]
+    if not isinstance(block, dict):
+        return msg
+    if set(block.keys()) == {"type", "text"} and block["type"] == "text":
+        return {**msg, "content": block["text"]}
+    return msg
+
+
 # Remove ALL cache_control markers from payload (system, tools, messages)
 def _strip_all_cache_control(payload: dict) -> dict:
     result = dict(payload)
@@ -38,6 +53,7 @@ def _strip_all_cache_control(payload: dict) -> dict:
                     block = {k: v for k, v in block.items() if k != "cache_control"}
                 new_blocks.append(block)
             new_msg["content"] = new_blocks
+        new_msg = _normalize_user_content_shape(new_msg)
         new_messages.append(new_msg)
     result["messages"] = new_messages
 
