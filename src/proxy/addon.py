@@ -15,6 +15,7 @@ from .message_summary import _summarize_message, _has_cache_control
 from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools
+from .tool_injection import inject_mcp_tools_stage0
 
 ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
@@ -73,6 +74,7 @@ class ProxyAddon:
             modified_payload, stripped_count = _strip_unused_tools(modified_payload)
             if stripped_count > 0:
                 modifications.append(f"stripped_{stripped_count}_unused_tools")
+            modified_payload = inject_mcp_tools_stage0(modified_payload)
             modified_payload = _strip_blocked_tool_references(modified_payload)
 
             prev_mod_msgs = self.prev_messages_by_model.get(model_family)
