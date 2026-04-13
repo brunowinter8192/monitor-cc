@@ -17,14 +17,18 @@
    - Ruft danach `_normalize_user_content_shape()` auf: User-Messages deren Content nach dem Strip `[{"type":"text","text":"X"}]` ist (single text block, exakt `{type,text}` Keys) werden auf plain string `"X"` kollabiert. Hintergrund: CC sendet User-Msgs nativ als String wenn keine BP drauf liegt, als list-with-block wenn BP drauf ist. Ohne Normalisierung gibt das Byte-Diff zwischen Requests wenn BP4 von einer Msg wegzieht. Siehe `cache_rebuild_cases.md` Case 1 (2026-04-12, commit 0f847b0).
 
 3. `_set_cache_breakpoints()` — Setzt eigene Breakpoints (max 4) auf modifiziertem Payload:
-   - BP1: `system[-1]` — letzter System-Block
-   - BP2: Letztes Tool OHNE `defer_loading` (defer_loading + cache_control = API Error)
+   - ~~BP1 (entfernt)~~ — System-Block-Marker entfernt. System-Content wird implizit durch das tools→system→messages Prefix bis BP3 gecacht. Der freigewordene Slot wird für den Tools-Anchor genutzt.
+   - **Tools Anchor** (neu): Letztes nicht-defer Tool an Position `prev_tools_count - 1` (d.h. der letzte Tool des *vorigen* Requests). Wird nur gesetzt wenn Tools gewachsen sind. Hält den alten Cache-Eintrag innerhalb des 20-Block Lookback-Fensters. Siehe `cache_rebuild_cases.md` Case 5.
+   - **Tools End** (bisheriges BP2): Letztes Tool OHNE `defer_loading` (defer_loading + cache_control = API Error). Cacht neu angehängte Tools.
+   - Wenn Tool-Count unverändert: Anchor == End → nur ein Marker gesetzt (kein Doppel-Mark). Effektiv identisch mit altem BP2-Verhalten.
    - BP3: Letzte Message die sich gegenüber dem vorigen Request NICHT geändert hat (`first_diff_index - 1` auf modifiziertem Content)
    - BP4: Letzte Message, letzter Content-Block — für nächsten Request
 
 ### State-Tracking
 
 `self.prev_messages_by_model` speichert Message-Summaries des **modifizierten** Payloads (nicht Original). Getrennt nach model_family ("opus" / "haiku"). BP3-Berechnung vergleicht aktuelle modifizierte Messages mit vorherigen modifizierten Messages via `_compute_diff()`.
+
+`self.prev_tools_count_by_model` speichert `len(tools)` nach jedem gesendeten Request, getrennt nach model_family. Wird in `_set_cache_breakpoints` als `prev_tools_count` übergeben um den Tools-Anchor korrekt zu setzen wenn Tools gewachsen sind.
 
 ### Worker-Isolation
 

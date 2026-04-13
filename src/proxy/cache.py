@@ -62,32 +62,44 @@ def _strip_all_cache_control(payload: dict) -> dict:
 
 # Set our own cache_control breakpoints (max 4) on the already-modified, stripped payload.
 # prev_mod_messages: summaries from the PREVIOUS request's modified payload (for BP3).
-def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dict:
+# prev_tools_count: len(tools) from the PREVIOUS request (for stable anchor on tool growth).
+def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None, prev_tools_count: int = None) -> dict:
     result = dict(payload)
     bp_count = 0
     cc_marker = {"type": "ephemeral", "ttl": "1h"}
 
-    # BP1: rules block (system[2]), fallback to last system block
-    system = result.get("system", [])
-    if isinstance(system, list) and system:
-        new_system = list(system)
-        target_idx = 2 if len(new_system) > 2 else len(new_system) - 1
-        target = new_system[target_idx]
-        if isinstance(target, dict):
-            new_system[target_idx] = {**target, "cache_control": cc_marker}
-            result["system"] = new_system
-            bp_count += 1
-
-    # BP2: last tool WITHOUT defer_loading (defer_loading + cache_control = API error)
+    # Tools breakpoints: anchor at prev last tool + end at current last non-defer tool.
+    # When tools grew, anchor preserves old cached prefix inside the 20-block lookback window.
+    # Collapses to one marker when tools count is unchanged (anchor == end position).
+    # System is cached implicitly via the tools→system→messages prefix leading to BP3.
     tools = result.get("tools", [])
     if tools:
         new_tools = list(tools)
-        for ti in range(len(new_tools) - 1, -1, -1):
-            tool = new_tools[ti]
-            if isinstance(tool, dict) and not tool.get("defer_loading"):
-                new_tools[ti] = {**tool, "cache_control": cc_marker}
-                bp_count += 1
+        n = len(new_tools)
+
+        # Find end index: last non-defer tool
+        end_idx = -1
+        for ti in range(n - 1, -1, -1):
+            if isinstance(new_tools[ti], dict) and not new_tools[ti].get("defer_loading"):
+                end_idx = ti
                 break
+
+        # Find anchor index: only when tools grew since last request
+        anchor_idx = -1
+        if prev_tools_count is not None and 0 < prev_tools_count < n:
+            for ti in range(prev_tools_count - 1, -1, -1):
+                if isinstance(new_tools[ti], dict) and not new_tools[ti].get("defer_loading"):
+                    anchor_idx = ti
+                    break
+
+        # Set anchor first (if distinct from end), then end
+        if anchor_idx >= 0 and anchor_idx != end_idx:
+            new_tools[anchor_idx] = {**new_tools[anchor_idx], "cache_control": cc_marker}
+            bp_count += 1
+        if end_idx >= 0:
+            new_tools[end_idx] = {**new_tools[end_idx], "cache_control": cc_marker}
+            bp_count += 1
+
         result["tools"] = new_tools
 
     # BP3: last message that is UNCHANGED from previous request

@@ -12,7 +12,8 @@ Observed cache-rebuild events with as much forensic detail as we can capture. Go
 
 - Proxy strips all CC cache_control markers via `_strip_all_cache_control()` in `src/proxy/cache.py`
 - Proxy sets its own BPs with `ttl:"1h"` (`cc_marker = {"type":"ephemeral","ttl":"1h"}`)
-- BP layout: BP1=sys[2], BP2=last tool without defer_loading, BP3+BP4=messages (rolling, move forward each turn)
+- BP layout (pre bp-layout-v2): BP1=sys[2], BP2=last tool without defer_loading, BP3+BP4=messages (rolling, move forward each turn)
+- BP layout (post bp-layout-v2): BP1 removed; Tools Anchor=prev last non-defer tool (only when tools grew); Tools End=current last non-defer tool; BP3+BP4=messages unchanged
 - Prefix-hash instrumentation in sent_meta: `prefix_hash_bp1_sys`, `prefix_hash_bp2_tools`, `prefix_hash_bp3_msg`, `prefix_hash_bp4_msg`
 
 ## Case 1 — monitor_cc REQ#33 (2026-04-12)
@@ -207,6 +208,32 @@ PREV    REQ#33→#34    ']' → ', {"'        10 → 16     36,211  → 104,859 
 **Mitigation:**
 
 No code fix proposed — root cause is not verified, a fix would be speculative.
+
+## Case 5 — Tool Growth (Plugin Activation) — Lookback Window Breach
+
+**Symptom:** Cache rebuild triggered when a new MCP plugin is activated mid-session, appending N new tool definitions to `tools[]`. CR drops despite byte-identical tools content up to the old BP2 position.
+
+**Root cause (design):** The proxy sets a single tools breakpoint (BP2) at the current last non-defer tool. When N new tools are appended, BP2 moves to the new last tool. The old cached prefix entry — written at the previous BP2 position (say, tool index 10) — is now at least N+1 blocks behind the new BP2 (tool index 10+N). If N+1 > 20, Anthropic's 20-block lookback window cannot reach the old entry: the lookup walks at most 20 positions back from the new BP2 and stops before reaching index 10. The cache miss is guaranteed regardless of content identity.
+
+**Anthropic docs reference (PC2, PC5):**
+- PC2: "The lookback window is 20 blocks. The system checks at most 20 positions per breakpoint, counting the breakpoint itself as the first."
+- PC2: "Add a second breakpoint closer to that position from the start so a write accumulates there before you need it."
+- PC5: "You only need multiple breakpoints if: A growing conversation pushes your breakpoint 20 or more blocks past the last cache write, putting the prior entry outside the lookback window."
+
+**Fix (implemented in `bp-layout-v2`, commit on branch):**
+
+New tools BP strategy: two markers instead of one.
+- **Anchor marker**: set at `prev_tools_count - 1` (the last tool from the previous request). Keeps the old cached prefix inside the lookback window even after growth.
+- **End marker**: set at the current last non-defer tool (same as old BP2). Caches the newly appended tools.
+- Collapses to one marker when tool count is unchanged (anchor == end).
+- On shrink or first request: only end marker (no anchor needed).
+- Neither marker may land on a `defer_loading: true` tool — both walk backward past defer tools.
+
+Additionally, BP1 (system[2]) is removed. System content is cached implicitly as part of the tools→system→messages prefix leading to BP3 (the message anchor). Dropping BP1 frees one marker slot, keeping total markers within the Anthropic limit of 4.
+
+**Classification:** Deterministic rebuild for plugin activations that add ≥20 tools. Preventable by proxy.
+
+**State tracking:** `ProxyAddon.prev_tools_count_by_model: Dict[str, int]` stores `len(tools)` after each sent request, keyed by model_family. Passed into `_set_cache_breakpoints` as `prev_tools_count`.
 
 Instrumentation upgrade in progress: per-message hash granularity in the middle range will be raised from a single rolling hash to 5-message rolling chunks. This will allow localizing any drift in msg[10..n-5] in future rebuilds. See worker `msg-hash-granular` (spawned from this session).
 
