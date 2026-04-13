@@ -137,6 +137,79 @@ Worker proxies use live-copy of the `src/proxy/` package (isolated from git merg
 
 Additionally the same commit adds per-block/per-tool/per-msg hash instrumentation (`sys_block_hashes`, `tool_hashes`, `msg_hashes`, `msg0_block_hashes`) and a `drift_report` field in `sent_meta`, so future rebuilds can be diagnosed at the byte-diff level automatically instead of manually forensicing proxy logs.
 
+## Case 4 — monitor_cc REQ#24 + REQ#25 (2026-04-13) — Root Cause Unknown
+
+**Symptom:** Two consecutive rebuilds after a tool-add turn, with a confirmed recovery in the same session structure of a previous session.
+
+| REQ# | CR | CC | Classification |
+|---|---|---|---|
+| #23 | 102,618 | 318 | healthy |
+| **#24** | **10,449** | **93,693** | **REBUILD** — CR dropped to 10k floor |
+| **#25** | **10,449** | **94,116** | **SECOND REBUILD** |
+| #26 | 104,565 | 179 | recovered |
+
+**Context:**
+- Session: `05a801e6-663a-4fc7-93ab-20e603edb5ba` (Monitor_CC, current session)
+- Proxy log: `src/logs/api_requests_opus_monitor_cc_1776029591.jsonl`
+- Gap REQ#23 → REQ#24: one turn, ~10 seconds
+- **Proxy was alive in path** (sys_hash `9af1d89d0b` stable across all 44 opus requests of this session — verified in sent_meta)
+
+**Investigation steps:**
+
+1. **Prefix hashes (sent_meta) compared REQ#23 vs REQ#24:**
+   - `sys_hash`: identical (`9af1d89d0b`) — system content unchanged
+   - `tools_hash` (bp2, last non-deferred tool): identical — bp2 anchor tool unchanged
+   - `tools_bytes_hash`: changed — expected, because tools set grew (new deferred tools appended)
+   - `bp3_msg` / `bp4_msg` hashes: advanced by one turn — expected rolling behaviour
+
+2. **Raw_payload byte-diff tools section REQ#23 vs REQ#24:**
+   - All bytes through Write's cc_marker (`...","cache_control":{"type":"ephemeral","ttl":"1h"}}`) are byte-identical between REQ#23 and REQ#24
+   - First diff at char 36,866 in the tools section: `]` → `, {"name":"mcp__plugin_iterative-dev_iterative-dev__worker_capture",...}`
+   - Pattern: 5 new deferred tools appended after Write (tools count 10 → 15)
+
+3. **Messages byte-diff REQ#23 vs REQ#24:**
+   - Only 1 diff: msg[44] cc_marker removed (BP4 rolled forward to msg[46])
+   - Identical to healthy baseline REQ#22→#23 (also a msg[44] cc_marker removal from BP4 rolling)
+   - No shape demotion, no content change in observable message positions
+
+4. **ToolSearch as cause: excluded.** Previous session (proxy log `1776017395.jsonl`) had 13 tool-count changes across REQ#16, #17, #34, #35, #118, #123, #141, #174–#179 — none caused a rebuild.
+
+5. **Cross-session falsification of "Write last→middle causes rebuild" hypothesis:**
+   - Previous session REQ#33→#34: tools 10 → 16, byte-identical Write cc_marker transition, `]` → `, {"name":"mcp__plugin_iterative-dev_iterative-dev__worker_capture",...}` (same deferred tool family)
+   - CR transition: 36,211 → **104,859** (full cache recovery, not a rebuild)
+   - Hypothesis FALSIFIED — the observable byte-level conditions were identical, outcomes were opposite
+
+**Falsification table:**
+
+```
+                      Write bytes_after   tools       CR transition        Outcome
+CURRENT REQ#23→#24    ']' → ', {"'        10 → 15     102,618 → 10,449     REBUILD
+PREV    REQ#33→#34    ']' → ', {"'        10 → 16     36,211  → 104,859    RECOVERY
+```
+
+**Classification:** Double rebuild. **Root cause: Unknown.** All byte-level observable conditions (sys, tools up to BP2, bp3/bp4 msg patterns) were identical between the rebuild case and a known-good recovery case in the previous session.
+
+**Interpretation (all hypotheses unverified):**
+
+- **Middle-range msg_hashes blind spot** _(unverified)_: Current instrumentation hashes msg[10..n-5] as a single rolling hash. A drift in this range is detectable (rolling hash changes) but not localizable. Possibly a message in the middle range was shape-demoted or content-drifted in REQ#24 in a way not visible through existing per-message granularity. Cannot rule this out or confirm it with current tooling.
+
+- **Server-side cache pool eviction** _(unverified, unobservable)_: Anthropic's cache pool state is opaque. The 10k floor CR (`10,449`) matches the BP1-only pattern (cross-session sys[0]+sys[1]+sys[2] layer), suggesting BP2 and BP3 both missed simultaneously despite byte-identical content — consistent with a pool eviction, also observed in Case 1. Plausible but unverifiable from our side.
+
+- **Proxy code version drift between sessions** _(unverified)_: The live-copy of the proxy package is frozen at session start. The current and previous sessions may have had different proxy versions, meaning different BP placement logic, message normalization, or fixation behaviour for paths not covered by sys_hash. Sys_hash identical across both sessions, so fixation path was stable. Other code paths not verified as identical.
+
+**What We Cannot Answer Yet:**
+
+- Which concrete message in the middle range msg[10..41] changed between REQ#23 and REQ#24, if any
+- Whether Anthropic's cache key is byte-wise strict or tolerates structural equivalence (e.g., list-of-one-text-block vs plain string)
+- Why the previous session tolerated the identical `]`→`, {"` tool-append transition without a rebuild (and in fact recovered)
+- Whether the double rebuild (REQ#24 and REQ#25) shares the same cause or whether the second rebuild is a separate eviction event
+
+**Mitigation:**
+
+No code fix proposed — root cause is not verified, a fix would be speculative.
+
+Instrumentation upgrade in progress: per-message hash granularity in the middle range will be raised from a single rolling hash to 5-message rolling chunks. This will allow localizing any drift in msg[10..n-5] in future rebuilds. See worker `msg-hash-granular` (spawned from this session).
+
 ## Open Patterns / Hypotheses
 
 - **Shape demotion** (CC moving BP4 forward, demoting old BP anchor from list-with-block to plain string) is real and deterministic. Our proxy doesn't normalize → byte diff → at least BP3/BP4 miss at that msg position. Fix planned: `_normalize_user_content_shape()` in `cache.py`.
