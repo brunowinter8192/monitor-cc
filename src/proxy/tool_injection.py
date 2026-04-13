@@ -136,5 +136,5 @@ def _load_active_plugins(project_path: str) -> list:
 def _resolve_schema_store_path() -> Path:
     root = os.environ.get("MONITOR_CC_ROOT")
     if root:
-        return Path(root) / "src" / "logs" / "mcp_tool_schemas"
-    return Path(__file__).parent.parent.parent / "src" / "logs" / "mcp_tool_schemas"
+        return Path(root) / "src" / "proxy" / "schemas"
+    return Path(__file__).parent / "schemas"

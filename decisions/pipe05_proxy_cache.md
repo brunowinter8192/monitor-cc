@@ -190,7 +190,7 @@ Proxy takes full deterministic control of `tools[]`:
 - `ToolSearch`, `ScheduleWakeup`, `Monitor` added to `TOOL_BLOCKLIST` → stripped from every request
 - CC deferred built-ins already in blocklist (TaskCreate, CronCreate, AskUserQuestion etc.)
 - `src/proxy/tool_injection.py` injects MCP schemas: iterative-dev always from REQ#1, other plugins appended when activated via `activate_plugin` MCP tool (iterative-dev/blank server.py)
-- Schema store at `src/logs/mcp_tool_schemas/<plugin>/<tool>.json` populated by `dev/tool_injection/01_extract_schemas.py` — one-time extraction via FastMCP introspection per plugin
+- Schema store at `src/proxy/schemas/<plugin>/<tool>.json` populated by `dev/tool_injection/01_extract_schemas.py` — one-time extraction via FastMCP introspection per plugin
 - Append-only injection logic: iterative-dev first, active plugins in activation order, stable alphabetical within each plugin block
 - `active_plugins` tracked in `ProxyAddon.fixated` for session-stable behavior; explicit `activate_plugin` calls emit `"active_plugins_changed"` modifier (one-time controlled rebuild by design)
 

@@ -28,7 +28,7 @@ _SERVERS = [
 ]
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
-_OUTPUT_BASE = _PROJECT_ROOT / "src" / "logs" / "mcp_tool_schemas"
+_OUTPUT_BASE = _PROJECT_ROOT / "src" / "proxy" / "schemas"
 
 # Inline helper: executed in each server's subprocess — prints JSON array of schemas to stdout
 _HELPER_CODE = '''

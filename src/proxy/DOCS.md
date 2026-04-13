@@ -98,7 +98,7 @@ Contains:
 **Input:** Payload dict, project_path string.
 **Output:** Modified payload with injected tools (iterative-dev always first, active plugins in activation order, stable alphabetical within each plugin block).
 
-Reads schema store at `src/logs/mcp_tool_schemas/<plugin>/*.json` (populated by `dev/tool_injection/01_extract_schemas.py`) and active plugin list at `<project>/.claude/active_plugins.json` (managed by iterative-dev MCP tools `activate_plugin` / `deactivate_plugin` / `list_active_plugins`). Schema store is loaded once per proxy process (module-level cache). Active plugins use mtime-based reload. If schema store is missing or empty, injection is a no-op with a stderr warning.
+Reads schema store at `src/proxy/schemas/<plugin>/*.json` (populated by `dev/tool_injection/01_extract_schemas.py`) and active plugin list at `<project>/.claude/active_plugins.json` (managed by iterative-dev MCP tools `activate_plugin` / `deactivate_plugin` / `list_active_plugins`). Schema store is loaded once per proxy process (module-level cache). Active plugins use mtime-based reload. If schema store is missing or empty, injection is a no-op with a stderr warning.
 
 Contains:
 - `inject_mcp_tools()` — orchestrator: appends missing schemas for all active plugins

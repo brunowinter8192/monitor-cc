@@ -8,7 +8,7 @@ Proxy needs stable, deterministic `tools[]` arrays in every API request to preve
 
 ## 01_extract_schemas.py
 
-**Purpose:** Extract tool schemas from FastMCP plugin servers and write them as JSON files to `src/logs/mcp_tool_schemas/`.
+**Purpose:** Extract tool schemas from FastMCP plugin servers and write them as JSON files to `src/proxy/schemas/`.
 
 **Input:**
 - `/Users/brunowinter2000/Documents/ai/Meta/blank/server.py` — iterative-dev server (24 tools)
@@ -16,7 +16,7 @@ Proxy needs stable, deterministic `tools[]` arrays in every API request to preve
 
 Each server is loaded in an isolated subprocess using its own Python venv. If the venv doesn't exist, the script bootstraps it from `requirements.txt`.
 
-**Output:** `src/logs/mcp_tool_schemas/<plugin>/<tool_name>.json` — one JSON file per tool, Anthropic API format:
+**Output:** `src/proxy/schemas/<plugin>/<tool_name>.json` — one JSON file per tool, Anthropic API format:
 ```json
 {
   "name": "mcp__plugin_<plugin>_<server>__<tool>",
@@ -38,4 +38,4 @@ Re-run whenever plugin tools change. Output is gitignored (lives in `src/logs/`)
 
 ## Stage 2 context
 
-See `src/proxy/tool_injection.py` for how the schema store is loaded and injected into API requests at proxy time. The proxy reads from `src/logs/mcp_tool_schemas/` on first request (cached), then appends iterative-dev tools unconditionally and active plugin tools in activation order.
+See `src/proxy/tool_injection.py` for how the schema store is loaded and injected into API requests at proxy time. The proxy reads from `src/proxy/schemas/` on first request (cached), then appends iterative-dev tools unconditionally and active plugin tools in activation order.
