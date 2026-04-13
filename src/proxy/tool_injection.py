@@ -113,7 +113,14 @@ def _load_active_plugins(project_path: str) -> list:
 
     try:
         raw = json.loads(Path(plugins_file).read_text(encoding="utf-8"))
-        plugins = raw if isinstance(raw, list) else [_ALWAYS_INJECTED_PLUGIN]
+        if isinstance(raw, dict):
+            plugins = raw.get("plugins", [_ALWAYS_INJECTED_PLUGIN])
+            if not isinstance(plugins, list):
+                plugins = [_ALWAYS_INJECTED_PLUGIN]
+        elif isinstance(raw, list):
+            plugins = raw
+        else:
+            plugins = [_ALWAYS_INJECTED_PLUGIN]
     except (json.JSONDecodeError, OSError):
         plugins = [_ALWAYS_INJECTED_PLUGIN]
 
