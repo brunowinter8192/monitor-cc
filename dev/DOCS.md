@@ -14,6 +14,7 @@ cd Monitor_CC/
 
 - [display/DOCS.md](display/DOCS.md) — Display layer tests (tmux layout, rules rendering)
 - [pipeline/DOCS.md](pipeline/DOCS.md) — Pipeline evaluation suite (memory, I/O, parsing, format stability)
+- [tool_injection/DOCS.md](tool_injection/DOCS.md) — MCP tool schema extraction for proxy-side tool injection
 - session_analysis/ — Session JSONL analysis scripts (cache behavior, rebuild detection)
 
 ## session_analysis/
