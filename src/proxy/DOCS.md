@@ -91,3 +91,17 @@ Contains:
 
 Contains:
 - `_strip_unused_tools()` — removes tools whose name is in TOOL_BLOCKLIST
+
+## tool_injection.py
+
+**Purpose:** Deterministic append-only injection of MCP tool schemas into `payload["tools"]`. Replaces Claude Code's lazy ToolSearch mechanism with proxy-side schema loading. Prevents `tools[]` mutation that causes cache rebuilds via alphabetical INSERT before BP2.
+**Input:** Payload dict, project_path string.
+**Output:** Modified payload with injected tools (iterative-dev always first, active plugins in activation order, stable alphabetical within each plugin block).
+
+Reads schema store at `src/logs/mcp_tool_schemas/<plugin>/*.json` (populated by `dev/tool_injection/01_extract_schemas.py`) and active plugin list at `<project>/.claude/active_plugins.json` (managed by iterative-dev MCP tools `activate_plugin` / `deactivate_plugin` / `list_active_plugins`). Schema store is loaded once per proxy process (module-level cache). Active plugins use mtime-based reload. If schema store is missing or empty, injection is a no-op with a stderr warning.
+
+Contains:
+- `inject_mcp_tools()` — orchestrator: appends missing schemas for all active plugins
+- `_load_schema_store()` — reads all `<plugin>/*.json` files; one-time load per process
+- `_load_active_plugins()` — reads `active_plugins.json` with mtime check; default `[iterative-dev]`
+- `_resolve_schema_store_path()` — resolves path via `MONITOR_CC_ROOT` env or module-relative fallback
