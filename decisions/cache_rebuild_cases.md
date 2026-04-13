@@ -210,6 +210,32 @@ No code fix proposed — root cause is not verified, a fix would be speculative.
 
 Instrumentation upgrade in progress: per-message hash granularity in the middle range will be raised from a single rolling hash to 5-message rolling chunks. This will allow localizing any drift in msg[10..n-5] in future rebuilds. See worker `msg-hash-granular` (spawned from this session).
 
+### Tool INSERT — a distinct mechanism from APPEND
+
+The Case 4 cross-session falsification above applies to tool **APPEND** — where new tools are added at the END of `tools[]` beyond BP2. That case is benign: bytes before BP2 are unchanged, cache is intact. The falsification table confirms this: `]` → `, {"name":"mcp__plugin_iterative-dev..."` at the end caused a recovery, not a rebuild.
+
+**Tool INSERT is different.** When Claude Code's deferred-builtin lifecycle inserts a new tool alphabetically in the MIDDLE of `tools[]` — before the last non-defer tool (BP2) — the byte prefix up to BP2 changes. BP2's logical anchor tool ("Write") is stable, but the bytes before it shifted.
+
+**Live reproduction in `src/logs/api_requests_opus_monitor_cc_1776099723.jsonl` REQ#2 → REQ#3 (2026-04-13):**
+
+| Field | REQ#2 | REQ#3 | Delta |
+|---|---|---|---|
+| tools_count | 10 | 13 | +3 |
+| prefix hash (up to BP2=Write) | `5858f5aa49c6` | `d8ac54449f94` | CHANGED |
+| prefix bytes before BP2 | 36,652 | 37,555 | +903 |
+
+The three inserted tools: `CronList`, `ListMcpResourcesTool`, `mcp__plugin_iterative-dev_iterative-dev__bead_list` — all with `defer_loading=True`, inserted alphabetically BEFORE Write.
+
+Session JSONL usage impact:
+- REQ#2: CR=58,376 CC=187
+- REQ#3: CR=37,228 CC=21,733 — **21k cache rebuild**
+
+**Mechanism:** BP2 picks the last non-defer tool ("Write" in both cases). Logical BP2 position is stable, but byte identity of the prefix before BP2 breaks because alphabetical insert places new defer-tools between existing tools in the array — shifting every subsequent byte.
+
+**Fix:** Proxy tool injection (Monitor_CC-o9b, worker `tool-inject-v2`). ToolSearch stripped entirely from every request. CC deferred built-ins (CronList, ListMcpResourcesTool etc.) go into `TOOL_BLOCKLIST`. iterative-dev schemas injected at REQ#1 from a persistent schema store (`src/logs/mcp_tool_schemas/`). New plugins via `activate_plugin` MCP tool are APPENDED after existing tools — never inserted in the middle. This eliminates the INSERT mutation at its source: the proxy controls `tools[]` from REQ#1, so Claude Code never gets the opportunity to mutate it mid-session.
+
+**Status:** Merged on branch `tool-inject-v2`, pending Stage 3 live verification (next session).
+
 ## Open Patterns / Hypotheses
 
 - **Shape demotion** (CC moving BP4 forward, demoting old BP anchor from list-with-block to plain string) is real and deterministic. Our proxy doesn't normalize → byte diff → at least BP3/BP4 miss at that msg position. Fix planned: `_normalize_user_content_shape()` in `cache.py`.
