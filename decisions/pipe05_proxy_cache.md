@@ -177,6 +177,38 @@ Change: Main-Logs heißen `api_requests_opus_{project}_{timestamp}.jsonl`, Worke
 
 - Max 4 Breakpoints pro Request
 - `defer_loading=true` und `cache_control` auf dem gleichen Tool = API Error
+
+## Tool Injection
+
+### Status Quo (IST)
+
+Before this change: `tools[]` fully controlled by Claude Code. MCP schemas loaded lazily via ToolSearch (alphabetical insert into the middle of the tools array). Deferred built-ins (CronList, ListMcpResourcesTool etc.) appear mid-session via CC's deferred-tool lifecycle. Both mechanisms cause mid-session `tools[]` mutations that break the byte prefix before BP2 → cache rebuilds (see `cache_rebuild_cases.md` Case 4 Tool INSERT subsection).
+
+### Recommendation (SOLL)
+
+Proxy takes full deterministic control of `tools[]`:
+- `ToolSearch`, `ScheduleWakeup`, `Monitor` added to `TOOL_BLOCKLIST` → stripped from every request
+- CC deferred built-ins already in blocklist (TaskCreate, CronCreate, AskUserQuestion etc.)
+- `src/proxy/tool_injection.py` injects MCP schemas: iterative-dev always from REQ#1, other plugins appended when activated via `activate_plugin` MCP tool (iterative-dev/blank server.py)
+- Schema store at `src/logs/mcp_tool_schemas/<plugin>/<tool>.json` populated by `dev/tool_injection/01_extract_schemas.py` — one-time extraction via FastMCP introspection per plugin
+- Append-only injection logic: iterative-dev first, active plugins in activation order, stable alphabetical within each plugin block
+- `active_plugins` tracked in `ProxyAddon.fixated` for session-stable behavior; explicit `activate_plugin` calls emit `"active_plugins_changed"` modifier (one-time controlled rebuild by design)
+
+### Evidenz
+
+- REQ#2 → REQ#3 rebuild in `api_requests_opus_monitor_cc_1776099723.jsonl` (see `cache_rebuild_cases.md` Case 4 Tool INSERT)
+- Stage 3 live verification — pending next session
+
+### Offene Fragen
+
+- Whether CC dispatches `tool_use` calls for proxy-injected MCP tools whose MCP client is still connected but which were never client-side loaded via ToolSearch. Stage 0 (hardcoded bead_list) already passed in a prior session; Stage 3 tests this for the full iterative-dev schema set and github-research via `activate_plugin`.
+- `claude_proxy_start.sh` integration: schema store currently populated manually via `01_extract_schemas.py`. Next step is to run the extractor automatically in the proxy startup script.
+
+### Quellen
+
+- Monitor_CC-o9b bead
+- `cache_rebuild_cases.md` Case 4
+- This session's proxy log: `api_requests_opus_monitor_cc_1776099723.jsonl`
 - Min cacheable prefix: 2048 Tokens (Opus) / 1024 (Haiku)
 - Cache Write kostet 125% der Token — falsches Placement kann teurer sein als kein Caching
 - cache_control marker: `{"type": "ephemeral"}` (kein TTL nötig, API bestimmt)
