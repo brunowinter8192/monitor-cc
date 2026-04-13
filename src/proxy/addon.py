@@ -15,7 +15,7 @@ from .message_summary import _summarize_message, _has_cache_control
 from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools
-from .tool_injection import inject_mcp_tools
+from .tool_injection import inject_mcp_tools, _load_active_plugins
 
 ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
@@ -187,7 +187,7 @@ def _parse_payload(body: bytes) -> Optional[dict]:
         return None
 
 
-# Capture fixation values from first modified payload — sys[2] text + msg[0] project-rules block
+# Capture fixation values from first modified payload — sys[2] text, msg[0] project-rules block, active_plugins
 def _capture_fixation(payload: dict, modifications: list) -> dict:
     fixated = {}
     system = payload.get("system", [])
@@ -208,10 +208,12 @@ def _capture_fixation(payload: dict, modifications: list) -> dict:
                 idx = content.find(end_tag)
                 if idx != -1:
                     fixated["msg0_pr_block_str"] = content[:idx + len(end_tag)]
+    project_path = os.environ.get("PROXY_PROJECT_PATH", "")
+    fixated["active_plugins"] = _load_active_plugins(project_path)
     return fixated
 
 
-# Apply fixated content to payload — replaces sys[2] text and msg[0] rules block with cached values
+# Apply fixated content to payload — replaces sys[2] text, msg[0] rules block; updates active_plugins fixation if changed
 def _apply_fixation(payload: dict, modifications: list, fixated: dict) -> dict:
     if not fixated:
         return payload
@@ -244,6 +246,12 @@ def _apply_fixation(payload: dict, modifications: list, fixated: dict) -> dict:
                     new_msgs = list(msgs)
                     new_msgs[0] = {**msgs[0], "content": new_content_str}
                     result = {**result, "messages": new_msgs}
+    if "active_plugins" in fixated:
+        project_path = os.environ.get("PROXY_PROJECT_PATH", "")
+        current_plugins = _load_active_plugins(project_path)
+        if current_plugins != fixated["active_plugins"]:
+            fixated["active_plugins"] = current_plugins
+            modifications.append("active_plugins_changed")
     return result
 
 
