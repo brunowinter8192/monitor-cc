@@ -144,6 +144,10 @@ TOOL_BLOCKLIST = frozenset({
     "Agent",
     # Other
     "AskUserQuestion", "NotebookEdit",
+    # Tool injection (we inject MCP tools directly, replacing ToolSearch entirely)
+    "ToolSearch",
+    # Unused scheduling + monitoring built-ins
+    "ScheduleWakeup", "Monitor",
 })
 
 # Pane header labels
