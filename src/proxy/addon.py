@@ -272,13 +272,15 @@ def _compute_msg_hashes(messages: list) -> list:
     for i in range(first_count):
         result.append({"idx": i, "role": messages[i].get("role", ""), "hash": _mhash(messages[i])})
 
-    if middle_end > middle_start:
-        middle_hashes = [_mhash(messages[i]) for i in range(middle_start, middle_end)]
-        rolling = hashlib.md5("".join(middle_hashes).encode("utf-8")).hexdigest()[:10]
-        count = middle_end - middle_start
+    chunk_size = 5
+    for chunk_start in range(middle_start, middle_end, chunk_size):
+        chunk_end = min(chunk_start + chunk_size, middle_end)
+        chunk_hashes = [_mhash(messages[i]) for i in range(chunk_start, chunk_end)]
+        rolling = hashlib.md5("".join(chunk_hashes).encode("utf-8")).hexdigest()[:10]
+        count = chunk_end - chunk_start
         result.append({
-            "idx": f"{middle_start}-{middle_end - 1}",
-            "role": "middle",
+            "idx": f"{chunk_start}-{chunk_end - 1}",
+            "role": "middle_chunk",
             "hash": f"count={count},rolling={rolling}",
         })
 
