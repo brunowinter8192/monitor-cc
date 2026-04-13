@@ -138,9 +138,13 @@ def _read_rule_file(rel_path: str) -> str:
 
 
 # Concatenate system2 rule files for a given model family (global + model-specific)
-def _load_system2_rules(model_family: str) -> str:
+def _load_system2_rules(model_family: str, project_path: str = "") -> str:
     config = _load_config()
     s2 = config.get("system2_rules", {})
+    # Project-level opt-out: exclude_projects patterns suppress all system2 injection
+    for pattern in s2.get("exclude_projects", []):
+        if pattern and pattern in project_path:
+            return ""
     global_files = s2.get("global", {}).get("files", [])
     # Map model family to config key: opus → "opus", sonnet/haiku → "worker"
     model_key = "opus" if model_family == "opus" else "worker"
@@ -175,7 +179,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     modifications = []
     changed = False
 
-    system_rules = _load_system2_rules(model_family)
+    system_rules = _load_system2_rules(model_family, project_path)
 
     messages_to_process = list(payload.get("messages", []))
 
