@@ -75,6 +75,10 @@ cp "$SCRIPT_DIR/proxy_addon.py" "$LIVE_ADDON"
 mkdir -p "$LIVE_DIR"
 cp -r "$SCRIPT_DIR/proxy" "$LIVE_DIR/"
 
+# Reset active_plugins.json to default — only iterative-dev injected at session start
+mkdir -p "$PROJECT/.claude"
+echo '{"plugins": ["iterative-dev"]}' > "$PROJECT/.claude/active_plugins.json"
+
 # Start proxy in background
 export MONITOR_CC_ROOT
 export PROXY_SESSION_ID="$SESSION_ID"
