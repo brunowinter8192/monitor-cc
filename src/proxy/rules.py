@@ -333,8 +333,8 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 new_system[3] = {**block3, "text": stripped}
                 modifications.append("stripped_session_guidance")
 
-    # Inject project rules into MSG[0] if available
-    project_rules = _load_project_rules(project_path)
+    # Inject project rules into MSG[0] if available (skip for haiku — one-shot title calls)
+    project_rules = _load_project_rules(project_path) if model_family != "haiku" else ""
     if project_rules and new_messages:
         msg0 = new_messages[0]
         if msg0.get("role") == "user":
