@@ -6,13 +6,13 @@ import os
 import sys
 import time
 
-from .constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
-from .jsonl_parser import read_new_lines, parse_jsonl_lines
-from .session_finder import find_active_sessions
-from .jsonl_cache_turns import extract_cache_turns
+from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
+from ..jsonl_parser import read_new_lines, parse_jsonl_lines
+from ..session_finder import find_active_sessions
+from ..jsonl_cache_turns import extract_cache_turns
 from .subagent_ui import subagent_states, toggle_subagent_state
 from .subagent_render import render_subagents_with_tokens
-from .click_handler import (
+from ..click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, get_agent_by_index,
 )
@@ -28,7 +28,7 @@ agent_cache_line_map: Dict[int, tuple] = {}
 
 # Find agent JSONL file by agent_id across all active sessions
 def find_agent_jsonl(agent_id: str) -> Optional[Path]:
-    from . import monitor as _monitor
+    from .. import monitor as _monitor
     sessions = find_active_sessions(_monitor.active_project_filter)
     target_name = f'agent-{agent_id}.jsonl'
     for session_file in sessions:
@@ -49,7 +49,7 @@ def _find_agent_at_row(row: int, line_map: dict) -> Optional[str]:
 
 # Runs subagents display loop (for dedicated subagents tmux pane, shows per-agent cache token view)
 def run_subagents_loop() -> None:
-    from . import monitor as _monitor
+    from .. import monitor as _monitor
     global agent_turns, agent_pane_line_map, agent_pane_hover_row, agent_cache_scroll_offsets, agent_cache_expand_states, agent_cache_line_map
     _monitor.ui_mode_active = True
     _monitor.load_historical_subagents()

@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 from typing import Dict, List, Optional
 
-from .constants import RESET, CYAN, YELLOW, HOVER_BG, EXPANDED_MAX_LINES
+from ..constants import RESET, CYAN, YELLOW, HOVER_BG, EXPANDED_MAX_LINES
 from .subagent_ui_format import build_collapsed_entry, format_tool_call_summary
 
 subagent_states: Dict[str, bool] = {}
