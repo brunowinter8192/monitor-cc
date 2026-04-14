@@ -28,7 +28,6 @@ src/
 ├── jsonl_parser.py
 ├── hook_parser.py
 ├── ui_mode.py
-├── subagent_ui.py
 ├── click_handler.py
 ├── constants.py
 ├── utils.py
@@ -270,22 +269,6 @@ filtered = filter_by_timestamp(filtered, since_ts)   # ISO 8601 cutoff
 ```python
 from src.formatter import format_tool_call, format_user_media, format_thinking
 output = format_tool_call(name, input_params, output, timestamp, tool_id, is_subagent, is_error=False)
-```
-
----
-
-## subagent_ui.py
-
-**Purpose:** Renders collapsible subagent list UI for interactive monitoring of subagent activity.
-
-**Input:** `subagent_metadata` (agent_id → metadata dict), `tool_calls_by_agent` (agent_id → tool call list), `subagent_states` (agent_id → expanded bool), `hover_row` (optional), `scroll_offsets` (optional).
-
-**Output:** Formatted terminal UI string with collapsible per-agent entries. Scrollable viewport (max 15 lines per block), compact tool call display (MCP → short_name + params, non-MCP → name + char count), hover-highlight on clickable lines.
-
-**Usage:**
-```python
-from src.subagent_ui import render_subagent_list
-ui_output = render_subagent_list(metadata, calls, hover_row=5, scroll_offsets={'agent-1': 10})
 ```
 
 ---
