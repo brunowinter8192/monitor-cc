@@ -60,6 +60,15 @@ class ProxyAddon:
             else:
                 modified_payload = _apply_fixation(modified_payload, modifications, self.fixated[model_family])
 
+            modified_payload, stripped_count = _strip_unused_tools(modified_payload)
+            if stripped_count > 0:
+                modifications.append(f"stripped_{stripped_count}_unused_tools")
+
+            modified_payload = inject_mcp_tools(modified_payload, project_path)
+            modifications.append("injected_mcp_tools")
+
+            modified_payload = _strip_blocked_tool_references(modified_payload)
+
             entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
             if original_system2 is not None:
                 entry['original_system2_text'] = original_system2
@@ -71,15 +80,6 @@ class ProxyAddon:
             if stripped_msg_removed:
                 entry['stripped_msg_removed'] = {str(k): v for k, v in stripped_msg_removed.items()}
             _write_entry(self.log_file, entry)
-
-            modified_payload, stripped_count = _strip_unused_tools(modified_payload)
-            if stripped_count > 0:
-                modifications.append(f"stripped_{stripped_count}_unused_tools")
-
-            modified_payload = inject_mcp_tools(modified_payload, project_path)
-            modifications.append("injected_mcp_tools")
-
-            modified_payload = _strip_blocked_tool_references(modified_payload)
 
             prev_mod_msgs = self.prev_messages_by_model.get(model_family)
             prev_tools_count = self.prev_tools_count_by_model.get(model_family)

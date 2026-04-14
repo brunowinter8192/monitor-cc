@@ -16,6 +16,9 @@ _ALWAYS_INJECTED_PLUGIN = "iterative-dev"
 
 # Inject MCP tool schemas into payload["tools"]: iterative-dev always first, active plugins appended.
 def inject_mcp_tools(payload: dict, project_path: str) -> dict:
+    if _is_project_excluded(project_path):
+        return payload
+
     store = _load_schema_store()
     if not store:
         return payload
@@ -138,3 +141,23 @@ def _resolve_schema_store_path() -> Path:
     if root:
         return Path(root) / "src" / "proxy" / "schemas"
     return Path(__file__).parent / "schemas"
+
+
+# Substring-match project_path against tool_injection.exclude_projects in ~/.claude/shared-rules/proxy_rules.json
+def _is_project_excluded(project_path: str) -> bool:
+    if not project_path:
+        return False
+    config_path = Path.home() / ".claude" / "shared-rules" / "proxy_rules.json"
+    if not config_path.exists():
+        return False
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    exclude_list = config.get("tool_injection", {}).get("exclude_projects", [])
+    if not isinstance(exclude_list, list):
+        return False
+    for pattern in exclude_list:
+        if pattern and isinstance(pattern, str) and pattern in project_path:
+            return True
+    return False

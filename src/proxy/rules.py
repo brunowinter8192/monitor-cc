@@ -287,6 +287,32 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         else:
             new_messages.append(msg)
 
+    # Cumulative second pass: strip Skills sr + claudeMd sr from any user message,
+    # even if the message already went through a strip branch above.
+    _SKILLS_MARKER = "The following skills are available for use with the Skill tool"
+    _CLAUDEMD_MARKER = "# claudeMd"
+    for idx, msg in enumerate(new_messages):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content", "")
+        if not content:
+            continue
+        original_before_pass = content
+        pass_mods = []
+        if _content_contains(content, _SKILLS_MARKER):
+            content = _strip_system_reminder(content, _SKILLS_MARKER)
+            pass_mods.append("stripped_skills_sr")
+        if _content_contains(content, _CLAUDEMD_MARKER):
+            content = _strip_system_reminder(content, _CLAUDEMD_MARKER)
+            pass_mods.append("stripped_claudemd_sr")
+        if content != original_before_pass:
+            new_messages[idx] = {**msg, "content": content}
+            modifications.extend(pass_mods)
+            if idx not in stripped_msg_indices:
+                stripped_msg_indices.append(idx)
+                stripped_msg_originals[idx] = original_before_pass
+            changed = True
+
     system = payload.get("system", [])
     new_system = list(system) if isinstance(system, list) else system
 
