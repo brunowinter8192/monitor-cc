@@ -208,9 +208,30 @@ Proxy takes full deterministic control of `tools[]`:
 - Whether CC dispatches `tool_use` calls for proxy-injected MCP tools whose MCP client is still connected but which were never client-side loaded via ToolSearch. Stage 0 (hardcoded bead_list) already passed in a prior session; Stage 3 tests this for the full iterative-dev schema set and github-research via `activate_plugin`.
 - `claude_proxy_start.sh` integration: schema store currently populated manually via `01_extract_schemas.py`. Next step is to run the extractor automatically in the proxy startup script.
 
+### Update 2026-04-14 (evening) — Research Plugins Converted to Skill+CLI
+
+Scope of tool injection **narrowed**: on 2026-04-14 the 4 research plugins `github-research`, `reddit`, `arxiv`, `rag` were converted from MCP servers to pure Skill+CLI plugins (43 tool schemas removed from API prefix). Each got a `cli.py` entry point; `server.py` + `mcp-start.sh` deleted; `plugin.json` `mcpServers` block removed.
+
+Consequences for Tool Injection:
+- `tool_injection.py` now only handles `iterative-dev` (4 tools) — the only remaining MCP plugin
+- `active_plugins.json` effectively stable at `{"plugins":["iterative-dev"]}` — no activation flow for research plugins because they have no MCP tools to inject
+- Dynamic `activate_plugin` MCP tool becomes an edge case (still exists for theoretical future MCP plugins)
+- First Opus REQ tools count: 7 built-ins + 4 iterative-dev = **11** (previously 31+ with research plugins injected)
+- Schema bytes per request: ~2k (previously ~13k)
+- Research plugin tools are now invoked via `Bash(<plugin>/.venv/bin/python <plugin>/cli.py <cmd> ...)` — zero prefix cost, documented in each plugin's SKILL.md
+
+Affected commits (per repo):
+- `github-research` v1.1.0 — commit `37807a3`
+- `reddit` v1.1.0 — commit `381f97e`
+- `arxiv` v1.1.0 — commit `8b89e08`
+- `rag` v1.1.0 — commit `909375d`
+
+Live verification tracked in bead `Monitor_CC-qwu`.
+
 ### Quellen
 
 - Monitor_CC-o9b bead
+- Monitor_CC-qwu bead (CLI migration live verification)
 - `cache_rebuild_cases.md` Case 4
 - This session's proxy log: `api_requests_opus_monitor_cc_1776099723.jsonl`
 - Min cacheable prefix: 2048 Tokens (Opus) / 1024 (Haiku)
