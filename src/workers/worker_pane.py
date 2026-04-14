@@ -5,10 +5,10 @@ import hashlib
 import os
 import time
 
-from .constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
-from .jsonl_parser import read_new_lines, parse_jsonl_lines
-from .jsonl_cache_turns import extract_cache_turns
-from .click_handler import (
+from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
+from ..jsonl_parser import read_new_lines, parse_jsonl_lines
+from ..jsonl_cache_turns import extract_cache_turns
+from ..click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
@@ -50,7 +50,7 @@ def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None
 
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
-    from . import monitor as _monitor
+    from .. import monitor as _monitor
     global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map, worker_selected_name
     _monitor.ui_mode_active = True
     last_output = None

@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from .session_finder import encode_project_path
+from ..session_finder import encode_project_path
 # From worker_format.py: Derive project name from path
 from .worker_format import get_worker_project_name
 

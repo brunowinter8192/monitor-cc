@@ -59,7 +59,7 @@ def run_metadata_loop() -> None:
 def run_worker_metadata_loop() -> None:
     from . import monitor as _monitor
     from . import metadata_format as _mf
-    from .worker_pane import get_selection_file_path
+    from .workers.worker_pane import get_selection_file_path
     from .proxy_display import find_worker_proxy_log, _parse_log_file
     global _worker_meta_log_position, _worker_meta_entries, _worker_meta_last_name
     last_output = None

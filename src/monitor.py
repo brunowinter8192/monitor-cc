@@ -43,7 +43,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
     initialize_file_positions()
 
     if mode == MODE_WORKERS:
-        from .worker_pane import run_workers_loop
+        from .workers import run_workers_loop
         run_workers_loop()
     elif mode == MODE_TOKENS:
         from .token_pane import run_tokens_loop

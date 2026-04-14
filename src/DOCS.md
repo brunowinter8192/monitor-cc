@@ -18,11 +18,11 @@ src/
 ├── monitor.py            → Core polling orchestrator (~460 lines)
 ├── token_pane.py         → Token profiling pane
 ├── proxy_pane.py         → Proxy pane + log parsing
-├── worker_pane.py        → Workers pane + status detection
+├── workers/              → [DOCS.md](workers/DOCS.md) Workers pane subpackage
 ├── hooks_pane.py         → Hooks pane + persisted context
 ├── rules_pane.py         → Rules pane + InstructionsLoaded routing
 ├── warnings_pane.py      → Warnings pane
-├── subagent_pane.py      → Subagent pane
+├── subagents/            → [DOCS.md](subagents/DOCS.md) Subagents pane subpackage
 ├── formatter.py          → Shared tool call formatting (~230 lines)
 ├── session_finder.py
 ├── jsonl_parser.py
@@ -145,13 +145,11 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 ---
 
-## worker_pane.py
+## workers/
 
-**Purpose:** Workers pane. Real-time worker status via tmux `window_activity` timestamp. Expand/collapse with per-worker cache-tracker view.
+See [workers/DOCS.md](workers/DOCS.md).
 
-**Input:** tmux session list, worker JSONL files.
-
-**Output:** Worker status display with cache-tracker per worker.
+**Modules:** `worker_pane.py` (event loop), `worker_format.py` (data extraction + rendering), `worker_tmux.py` (tmux session discovery + status detection).
 
 ---
 
@@ -185,19 +183,12 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 ---
 
-## subagent_pane.py
+## subagents/
 
-**Purpose:** Subagent pane. Per-agent cache token view with expand/collapse.
+See [subagents/DOCS.md](subagents/DOCS.md).
 
-**Input:** Subagent metadata, agent JSONL files.
-
-**Output:** Collapsible agent list with cache-tracker per agent.
-
-**Usage:**
-```python
-from src.monitor import run_monitor
-run_monitor(project_filter="/path/to/project", mode="main", ui_mode=False)
-```
+**Modules:** `subagent_pane.py` (event loop), `subagent_render.py` (cache-tracker rendering),
+`subagent_ui.py` (state + list building), `subagent_ui_format.py` (entry formatting helpers).
 
 ---
 

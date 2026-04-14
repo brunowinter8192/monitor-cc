@@ -1,8 +1,8 @@
 # INFRASTRUCTURE
 from typing import List
 
-from .utils import format_timestamp
-from .constants import RESET, BLUE, GREEN, YELLOW
+from ..utils import format_timestamp
+from ..constants import RESET, BLUE, GREEN, YELLOW
 
 # FUNCTIONS
 
