@@ -17,6 +17,17 @@ Contains:
 - `_write_entry()` — appends JSONL log entry to file
 - `addons = [ProxyAddon()]` — mitmproxy addon registration
 
+**Request pipeline order** (inside `ProxyAddon.request()`):
+1. `apply_modification_rules()` — strip/replace system2, inject project rules, strip system-reminders
+2. Fixation capture/apply (per model_family)
+3. `_strip_unused_tools()` — remove TOOL_BLOCKLIST entries from payload.tools
+4. `inject_mcp_tools()` — append MCP schemas from schema store
+5. `_strip_blocked_tool_references()` — remove blocklisted tool_reference blocks from tool_results
+6. `_build_entry()` + `_write_entry(entry)` — **log entry captures post-injection state**, so the Proxy Pane sees all injected MCP tools (not just CC's 10 built-ins)
+7. `_strip_all_cache_control()` + `_set_cache_breakpoints()` — cache marker placement
+8. `_build_sent_meta()` + `_write_entry(sent_meta)` — per-request hash snapshot
+9. `flow.request.content = modified_payload`
+
 ## logging.py
 
 **Purpose:** Build structured log entries from flow + payload data.
@@ -57,6 +68,8 @@ Contains:
 - `_strip_blocked_tool_references()` — removes tool_reference blocks for TOOL_BLOCKLIST tools
 - `_content_contains()` — checks if message content contains a substring
 - `_strip_task_notification_tags()` — removes output-file and tool-use-id tags
+
+**Cumulative second-pass strip (after the per-message elif-chain):** iterates over `new_messages` and strips `<system-reminder>` blocks containing `"The following skills are available for use with the Skill tool"` (marker: `stripped_skills_sr`) and `"# claudeMd"` (marker: `stripped_claudemd_sr`) from any user message. Runs additionally to the existing elif-branch strips so a single msg[0] that already had e.g. `stripped_deferred_tools_sr` applied still gets Skills and claudeMd sr removed.
 
 ## content_strip.py
 
@@ -102,7 +115,8 @@ Contains:
 Reads schema store at `src/proxy/schemas/<plugin>/*.json` (populated by `dev/tool_injection/01_extract_schemas.py`) and active plugin list at `<project>/.claude/active_plugins.json` (managed by iterative-dev MCP tools `activate_plugin` / `deactivate_plugin` / `list_active_plugins`). Schema store is loaded once per proxy process (module-level cache). Active plugins use mtime-based reload. If schema store is missing or empty, injection is a no-op with a stderr warning.
 
 Contains:
-- `inject_mcp_tools()` — orchestrator: appends missing schemas for all active plugins
+- `inject_mcp_tools()` — orchestrator: appends missing schemas for all active plugins. Short-circuits to no-op when `_is_project_excluded()` matches.
 - `_load_schema_store()` — reads all `<plugin>/*.json` files; one-time load per process
 - `_load_active_plugins()` — reads `active_plugins.json` with mtime check; default `[iterative-dev]`
 - `_resolve_schema_store_path()` — resolves path via `MONITOR_CC_ROOT` env or module-relative fallback
+- `_is_project_excluded()` — substring-matches `project_path` against `config["tool_injection"]["exclude_projects"]` in `~/.claude/shared-rules/proxy_rules.json` (same pattern as `system2_rules.exclude_projects` opt-out in `rules.py`). Used to fully disable MCP schema injection for specific projects.
