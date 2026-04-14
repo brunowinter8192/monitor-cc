@@ -11,7 +11,7 @@ from ..constants import (
 from .parser import parse_proxy_log, find_worker_proxy_log, _parse_log_file
 from .format import format_proxy_block
 from ..token_pane import build_cache_turns
-from ..worker_tmux import find_worker_jsonl, list_workers
+from ..workers.worker_tmux import find_worker_jsonl, list_workers
 from ..click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
@@ -131,7 +131,7 @@ def run_proxy_loop() -> None:
 # Runs worker-proxy pane — reads selected worker's proxy log and shows expandable entries
 def run_worker_proxy_loop() -> None:
     from .. import monitor as _monitor
-    from ..worker_pane import get_selection_file_path
+    from ..workers.worker_pane import get_selection_file_path
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
     last_output = None
