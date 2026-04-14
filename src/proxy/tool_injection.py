@@ -19,6 +19,10 @@ def inject_mcp_tools(payload: dict, project_path: str) -> dict:
     if _is_project_excluded(project_path):
         return payload
 
+    # Skip injection when request carries no tools — e.g. Haiku title-gen calls send empty tools list
+    if not payload.get("tools"):
+        return payload
+
     store = _load_schema_store()
     if not store:
         return payload
