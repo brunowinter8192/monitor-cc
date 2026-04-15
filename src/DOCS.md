@@ -19,14 +19,13 @@ src/
 ├── token_pane.py         → Token profiling pane
 ├── proxy_pane.py         → Proxy pane + log parsing
 ├── workers/              → [DOCS.md](workers/DOCS.md) Workers pane subpackage
-├── hooks_pane.py         → Hooks pane + persisted context
+├── hooks/                → [DOCS.md](hooks/DOCS.md) Hooks pane subpackage
 ├── rules_pane.py         → Rules pane + InstructionsLoaded routing
 ├── warnings_pane.py      → Warnings pane
 ├── subagents/            → [DOCS.md](subagents/DOCS.md) Subagents pane subpackage
 ├── formatter.py          → Shared tool call formatting (~230 lines)
 ├── session_finder.py
 ├── jsonl_parser.py
-├── hook_parser.py
 ├── ui_mode.py
 ├── click_handler.py
 ├── constants.py
@@ -152,13 +151,11 @@ See [workers/DOCS.md](workers/DOCS.md).
 
 ---
 
-## hooks_pane.py
+## hooks/
 
-**Purpose:** Hooks pane. Hook events with expand/collapse, persisted additionalContext enrichment.
+See [hooks/DOCS.md](hooks/DOCS.md).
 
-**Input:** Hook log (`src/logs/hook_outputs.jsonl`), persisted hook files from `tool-results/` dirs.
-
-**Output:** Scrollable hooks stream with expand/collapse.
+**Modules:** `hook_parser.py` (log parsing + filtering), `hooks_format.py` (display item building + block rendering), `hooks_persist.py` (persisted additionalContext enrichment), `hooks_pane.py` (event loop + scroll/click/hover).
 
 ---
 
@@ -238,22 +235,6 @@ tool_calls, new_position, warnings, user_media, thinking, user_prompts, skill_ac
 ```
 
 ---
-
-## hook_parser.py
-
-**Purpose:** Parses hook log file (`src/logs/hook_outputs.jsonl`) written by Claude Code hooks for display in the monitor. Provides project filtering (prefix match, includes worktree subdirectories) and timestamp filtering for session-scoping.
-
-**Input:** `last_position` (byte offset for incremental reads).
-
-**Output:** List of hook entry dicts (timestamp, cwd, hook_event, hook_script, output, tool_name); new file position.
-
-**Usage:**
-```python
-from src.hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp
-entries, new_position = parse_new_hook_entries(last_position)
-filtered = filter_by_project(entries, project_path)  # startswith match, includes worktrees
-filtered = filter_by_timestamp(filtered, since_ts)   # ISO 8601 cutoff
-```
 
 ---
 

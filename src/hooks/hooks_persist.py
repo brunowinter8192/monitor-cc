@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from pathlib import Path
 
-from .session_finder import find_active_sessions
+from ..session_finder import find_active_sessions
 # From hooks_format.py: Build hook display items
 from .hooks_format import build_hook_display_item
 

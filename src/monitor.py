@@ -11,8 +11,8 @@ from .constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUB
 from .session_finder import find_active_sessions
 # From jsonl_parser.py: Parse JSONL lines for session start timestamp
 from .jsonl_parser import parse_jsonl_lines, read_new_lines
-# From hook_parser.py: Parse hook log entries
-from .hook_parser import get_current_position as get_hook_log_position
+# From hooks/: Parse hook log entries
+from .hooks import get_current_position as get_hook_log_position
 # From monitor_display.py: Session status output
 from .monitor_display import print_session_status
 # From monitor_session.py: Session file processing, task handling, historical load
@@ -55,7 +55,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
         from .warnings_pane import run_warnings_loop
         run_warnings_loop()
     elif mode == MODE_HOOKS:
-        from .hooks_pane import run_hooks_loop
+        from .hooks import run_hooks_loop
         run_hooks_loop()
     elif mode == MODE_PROXY:
         from .proxy_display import run_proxy_loop

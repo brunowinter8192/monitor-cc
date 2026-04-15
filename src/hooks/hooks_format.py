@@ -1,14 +1,14 @@
 # INFRASTRUCTURE
 from typing import Dict, List, Optional
 
-from .constants import (
+from ..constants import (
     RESET, GREEN, YELLOW, WHITE, BLUE, CYAN,
     PASTEL_BLUE, PASTEL_PURPLE, PASTEL_ORANGE,
     ORANGE, DIM,
     HOVER_BG,
     HOOK_EVENT_CATEGORIES,
 )
-from .utils import format_timestamp
+from ..utils import format_timestamp
 
 _HOOK_CATEGORY_COLORS = {
     'session': WHITE,

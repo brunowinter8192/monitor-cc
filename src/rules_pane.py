@@ -10,7 +10,7 @@ from .constants import (
     HOOK_INSTRUCTIONS_LOADED,
 )
 from .utils import format_timestamp
-from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_timestamp
+from .hooks import parse_new_hook_entries, filter_by_project, filter_by_timestamp
 from .click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
