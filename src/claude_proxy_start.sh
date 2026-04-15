@@ -104,18 +104,16 @@ trap cleanup EXIT INT TERM
 sleep 1
 echo "Proxy for $PROJECT on port $PROXY_PORT, log: api_requests_${LOG_ID}.jsonl"
 
-# Find claude binary — env var CLAUDE_BIN wins, then PATH, then known install locations
-if [ -z "${CLAUDE_BIN:-}" ]; then
-    CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
-fi
-if [ -z "$CLAUDE_BIN" ]; then
-    CLAUDE_BIN="$(ls -t "$HOME/Library/Application Support/Claude/claude-code"/*/claude 2>/dev/null | head -1)"
-fi
-if [ -z "$CLAUDE_BIN" ]; then
-    echo "ERROR: claude binary not found" >&2
+# Pinned to v2.1.109 via ~/.local/bin/claude-109 wrapper. Override with CLAUDE_BIN env var if needed.
+CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude-109}"
+if [ ! -x "$CLAUDE_BIN" ]; then
+    echo "ERROR: $CLAUDE_BIN not found or not executable" >&2
     exit 1
 fi
 echo "Using claude binary: $CLAUDE_BIN"
+
+# Claude Code uses cwd as working directory — switch to target project
+cd "$PROJECT" || { echo "ERROR: cannot cd to $PROJECT" >&2; exit 1; }
 
 # Start Claude Code with proxy settings
 HTTPS_PROXY="http://localhost:$PROXY_PORT" \
