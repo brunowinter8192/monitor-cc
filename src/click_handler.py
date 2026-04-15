@@ -94,7 +94,7 @@ def read_mouse_event(first_char: str) -> Optional[Tuple[int, int, int]]:
     terminator = None
 
     for _ in range(32):
-        ready = select.select([_stdin_fd], [], [], 0.05)[0]
+        ready = select.select([_stdin_fd], [], [], 0.005)[0]
         if not ready:
             return None
         try:
