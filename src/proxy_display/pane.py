@@ -235,6 +235,7 @@ def run_worker_proxy_loop() -> None:
                             worker_proxy_expand_states[latest_turn_key] = True
 
                 last_data_refresh = now
+                input_changed = True
 
             if input_changed:
                 sel_path = get_selection_file_path(_monitor.active_project_filter)
@@ -266,7 +267,7 @@ def run_worker_proxy_loop() -> None:
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
-                        print(output)
+                        print(output, end='', flush=True)
                     last_output = output
             time.sleep(INPUT_POLL_INTERVAL)
     finally:
