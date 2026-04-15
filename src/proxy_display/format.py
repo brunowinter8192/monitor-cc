@@ -52,12 +52,12 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
     return [g for g in groups if g['entry_pairs']]
 
 # Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
-def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None) -> str:
+def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None) -> tuple:
     from ..utils import format_timestamp
     from .render_entry import _render_entry_lines
     from .render_turn import render_turn_expanded
     if not entries:
-        return f"{YELLOW}No API requests logged yet{RESET}"
+        return (f"{YELLOW}No API requests logged yet{RESET}", 0)
 
     if expand_states is None:
         expand_states = {}
@@ -114,6 +114,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             turn_symbol = '\u25bc' if is_turn_expanded else '\u25b6'
             turn_ts = format_timestamp(group['timestamp'])[:5]
 
+            if item_positions_out is not None:
+                item_positions_out[turn_key] = len(all_lines)
             all_lines.append(f"{PASTEL_PURPLE}{turn_symbol} Turn {turn_idx + 1} [{turn_ts}]{config_str}{delta_str}{RESET}")
             line_keys.append(turn_key)
 
@@ -169,6 +171,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         all_lines.pop()
         line_keys.pop()
 
+    total_lines = len(all_lines)
     viewport_lines = max(1, pane_height - 1)
     max_scroll = max(0, len(all_lines) - viewport_lines)
     clamped_offset = min(scroll_offset, max_scroll)
@@ -193,4 +196,4 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         else:
             result_lines.append(line)
 
-    return '\n'.join(result_lines)
+    return '\n'.join(result_lines), total_lines
