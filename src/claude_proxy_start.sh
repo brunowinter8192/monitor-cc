@@ -29,6 +29,9 @@ if command -v md5 &>/dev/null; then
 else
     SESSION_ID="$(echo -n "$PROJECT" | md5sum | head -c 8)"
 fi
+# Per-start unique id: project hash + pid + epoch — prevents live-copy collision when two
+# sessions run in the same project simultaneously (SESSION_ID stays per-project for worker discovery)
+PROXY_SESSION_UID="${SESSION_ID}_$$_$(date +%s)"
 
 # Generate per-start log id: opus_ prefix + sanitized project basename + unix timestamp
 PROJECT_BASENAME="$(basename "$PROJECT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '_' | sed 's/^_*//;s/_*$//')"
@@ -69,8 +72,9 @@ printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "$MARKER_FILE"
 printf "%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_proxy_${SESSION_ID}"
 
 # Copy addon and entire proxy/ package to isolated live copies — prevents git merge hot-reload
-LIVE_ADDON="$LOG_DIR/.proxy_addon_live_${SESSION_ID}.py"
-LIVE_DIR="$LOG_DIR/.proxy_live_${SESSION_ID}"
+# Use PROXY_SESSION_UID (not SESSION_ID) so parallel sessions in the same project don't overwrite each other
+LIVE_ADDON="$LOG_DIR/.proxy_addon_live_${PROXY_SESSION_UID}.py"
+LIVE_DIR="$LOG_DIR/.proxy_live_${PROXY_SESSION_UID}"
 cp "$SCRIPT_DIR/proxy_addon.py" "$LIVE_ADDON"
 mkdir -p "$LIVE_DIR"
 cp -r "$SCRIPT_DIR/proxy" "$LIVE_DIR/"
@@ -90,12 +94,21 @@ PROXY_PID=$!
 # Log rotation: keep max 30 log files total (jsonl + error logs), delete oldest by mtime
 (cd "$LOG_DIR" && ls -t api_requests_*.jsonl proxy_errors_*.log 2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f "$f"; done)
 
-# Cleanup on exit: kill proxy and remove marker file
+# Cleanup on exit: kill proxy, remove per-session live-copies, and conditionally the per-project marker
 cleanup() {
     kill $PROXY_PID 2>/dev/null
     wait $PROXY_PID 2>/dev/null
     rm -f "$MARKER_FILE"
-    rm -f "/tmp/.monitor_cc_proxy_${SESSION_ID}"
+    # Only remove the /tmp per-project marker if it still contains OUR port — another session
+    # that started later may have already overwritten it with its own port, so don't clobber it.
+    local tmp_marker="/tmp/.monitor_cc_proxy_${SESSION_ID}"
+    if [ -f "$tmp_marker" ]; then
+        local marker_port
+        marker_port=$(sed -n '1p' "$tmp_marker" 2>/dev/null)
+        if [ "$marker_port" = "$PROXY_PORT" ]; then
+            rm -f "$tmp_marker"
+        fi
+    fi
     rm -f "$LIVE_ADDON"
     rm -rf "$LIVE_DIR"
 }
