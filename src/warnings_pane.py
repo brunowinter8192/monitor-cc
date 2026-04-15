@@ -5,7 +5,7 @@ import time
 
 from .constants import (
     YELLOW, RED, DIM, WHITE, RESET,
-    POLL_INTERVAL, INPUT_POLL_INTERVAL,
+    INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL,
 )
 from .utils import format_timestamp
 
@@ -19,6 +19,8 @@ error_hover_row: Optional[int] = None
 error_scroll_offset: int = 0
 _proxy_log_position: int = 0
 _last_project_filter: Optional[str] = None
+_last_refresh_ts: float = 0.0
+_force_refresh: bool = False
 
 INDENT = '  '
 
@@ -112,9 +114,21 @@ def _scan_proxy_entries_for_errors(entries: list) -> list:
             })
     return errors
 
+# Build header line showing refresh key, last refresh time, and poll interval
+def _format_warnings_header() -> str:
+    if _last_refresh_ts:
+        import datetime
+        last_dt = datetime.datetime.fromtimestamp(_last_refresh_ts)
+        last_str = last_dt.strftime('%H:%M:%S')
+    else:
+        last_str = '--:--:--'
+    return f"{DIM}[r]efresh · last: {last_str} · polling: {int(WARNINGS_POLL_INTERVAL)}s{RESET}"
+
 # Render both warning sections into a scrollable viewport, filling error_line_map
 def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
     global error_line_map
+    header = _format_warnings_header()
+    content_height = max(1, pane_height - 1)
     all_lines = []
     all_keys = []
 
@@ -154,12 +168,12 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
         all_keys.append(None)
 
     error_line_map = {}
-    visible_lines = all_lines[error_scroll_offset:error_scroll_offset + pane_height]
-    visible_keys = all_keys[error_scroll_offset:error_scroll_offset + pane_height]
-    for screen_row, key in enumerate(visible_keys):
+    visible_lines = all_lines[error_scroll_offset:error_scroll_offset + content_height]
+    visible_keys = all_keys[error_scroll_offset:error_scroll_offset + content_height]
+    for screen_row, key in enumerate(visible_keys, start=1):
         if key is not None:
             error_line_map[screen_row] = key
-    return '\n'.join(visible_lines)
+    return header + '\n' + '\n'.join(visible_lines)
 
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
@@ -171,6 +185,7 @@ def run_warnings_loop() -> None:
     )
     global tool_errors, error_expand_states, error_line_map, error_hover_row
     global error_scroll_offset, _proxy_log_position, _last_project_filter
+    global _last_refresh_ts, _force_refresh
 
     load_historical_warnings()
     last_output = None
@@ -202,9 +217,14 @@ def run_warnings_loop() -> None:
                         elif button >= 32:
                             error_hover_row = row
                             input_changed = True
+                else:
+                    if char in ('r', 'R'):
+                        _force_refresh = True
+                        input_changed = True
 
             now = time.time()
-            if now - last_data_refresh >= POLL_INTERVAL:
+            if _force_refresh or now - last_data_refresh >= WARNINGS_POLL_INTERVAL:
+                _force_refresh = False
                 _monitor.monitor_sessions()
 
                 project_filter = _monitor.active_project_filter
@@ -221,6 +241,7 @@ def run_warnings_loop() -> None:
                 tool_errors.extend(new_errors)
 
                 last_data_refresh = now
+                _last_refresh_ts = now
                 input_changed = True
 
             if input_changed:
