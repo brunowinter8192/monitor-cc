@@ -14,7 +14,7 @@ from ..token_pane import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
 from ..click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
-    enable_mouse, disable_mouse, read_mouse_event,
+    enable_mouse, disable_mouse, read_mouse_event, parse_digit_key,
 )
 
 proxy_entries: List[dict] = []
@@ -36,8 +36,26 @@ worker_proxy_log_position: int = 0
 
 _worker_proxy_jsonl_position: int = 0
 _worker_proxy_cache_turns: list = []
+_worker_proxy_workers: list = []
+_worker_proxy_force_reload: bool = False
 
 # FUNCTIONS
+
+# Build header line for worker-proxy pane listing workers with current selection marked
+def _format_worker_proxy_header(workers: list, current_worker: Optional[str]) -> str:
+    from ..constants import WHITE, DIM, YELLOW, RESET
+    label = f"{YELLOW}WORKER-PROXY{RESET}  "
+    if not workers:
+        return label + f"{DIM}no workers{RESET}"
+    parts = []
+    for i, w in enumerate(workers, 1):
+        name = w['name']
+        star = '*' if name == current_worker else ''
+        if name == current_worker:
+            parts.append(f"{WHITE}[{i}{star}]{name}{RESET}")
+        else:
+            parts.append(f"{DIM}[{i}]{name}{RESET}")
+    return label + '  '.join(parts)
 
 # Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
 def run_proxy_loop() -> None:
@@ -69,10 +87,10 @@ def run_proxy_loop() -> None:
                                 proxy_expand_states[key] = not proxy_expand_states.get(key, False)
                                 input_changed = True
                         elif button == 64:
-                            proxy_scroll_offset += 3
+                            proxy_scroll_offset = max(0, proxy_scroll_offset - 3)
                             input_changed = True
                         elif button == 65:
-                            proxy_scroll_offset = max(0, proxy_scroll_offset - 3)
+                            proxy_scroll_offset += 3
                             input_changed = True
                         elif button >= 32:
                             proxy_hover_row = row
@@ -132,8 +150,10 @@ def run_proxy_loop() -> None:
 def run_worker_proxy_loop() -> None:
     from .. import monitor as _monitor
     from ..workers.worker_pane import get_selection_file_path
+    from ..workers import write_selection
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
+    global _worker_proxy_workers, _worker_proxy_force_reload
     last_output = None
     last_data_refresh = 0.0
     last_worker_name: Optional[str] = None
@@ -156,17 +176,25 @@ def run_worker_proxy_loop() -> None:
                                 worker_proxy_expand_states[key] = not worker_proxy_expand_states.get(key, False)
                                 input_changed = True
                         elif button == 64:
-                            worker_proxy_scroll_offset += 3
+                            worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset - 3)
                             input_changed = True
                         elif button == 65:
-                            worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset - 3)
+                            worker_proxy_scroll_offset += 3
                             input_changed = True
                         elif button >= 32:
                             worker_proxy_hover_row = row
                             input_changed = True
+                else:
+                    idx = parse_digit_key(char)
+                    if idx is not None and _worker_proxy_workers:
+                        if 1 <= idx <= len(_worker_proxy_workers):
+                            write_selection(_monitor.active_project_filter, _worker_proxy_workers[idx - 1]['name'])
+                            _worker_proxy_force_reload = True
+                            input_changed = True
 
             now = time.time()
-            if now - last_data_refresh >= POLL_INTERVAL:
+            if _worker_proxy_force_reload or now - last_data_refresh >= POLL_INTERVAL:
+                _worker_proxy_force_reload = False
                 sel_path = get_selection_file_path(_monitor.active_project_filter)
                 worker_name: Optional[str] = None
                 try:
@@ -174,6 +202,8 @@ def run_worker_proxy_loop() -> None:
                         worker_name = f.read().strip() or None
                 except OSError:
                     worker_name = None
+
+                _worker_proxy_workers = list_workers(_monitor.active_project_filter) if _monitor.active_project_filter else []
 
                 if worker_name != last_worker_name:
                     worker_proxy_entries.clear()
@@ -195,8 +225,7 @@ def run_worker_proxy_loop() -> None:
                         worker_proxy_entries.extend(new_entries)
                         if new_entries:
                             input_changed = True
-                    workers = list_workers(_monitor.active_project_filter) if _monitor.active_project_filter else []
-                    worker_session = next((w.get('session', '') for w in workers if w.get('name') == worker_name), '')
+                    worker_session = next((w.get('session', '') for w in _worker_proxy_workers if w.get('name') == worker_name), '')
                     worker_jsonl = find_worker_jsonl(worker_session) if worker_session else None
                     if worker_jsonl:
                         _worker_proxy_cache_turns, _worker_proxy_jsonl_position = build_cache_turns(worker_jsonl, _worker_proxy_jsonl_position, _worker_proxy_cache_turns)
@@ -223,12 +252,16 @@ def run_worker_proxy_loop() -> None:
                     pane_height = 50
                     pane_width = 80
 
+                header = _format_worker_proxy_header(_worker_proxy_workers, current_worker)
+                content_height = max(1, pane_height - 1)
+
                 if not current_worker:
-                    output = f"{YELLOW}Select a worker in the Workers pane{RESET}"
+                    body = f"{DIM}Select a worker with digit keys 1-9{RESET}"
                 elif not worker_proxy_entries:
-                    output = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No proxy data yet — is worker proxy running?{RESET}"
+                    body = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No proxy data yet — is worker proxy running?{RESET}"
                 else:
-                    output = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, pane_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns)
+                    body = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns)
+                output = header + '\n' + body
 
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
