@@ -11,8 +11,8 @@ Proxy pane package — displays live API request structure from mitmproxy logs.
 ## format.py
 
 **Purpose:** Main rendering function `format_proxy_block` — takes proxy entries, groups them by turn, applies scroll/viewport windowing, and produces the final ANSI string. Also contains shared helpers: `_shorten_model`, `_format_delta`, `_assign_turns_to_entries`.
-**Input:** `entries` list, expand states dict, line map dict, hover row, pane dimensions, scroll offset, turns list.
-**Output:** ANSI-formatted string for the proxy pane.
+**Input:** `entries` list, expand states dict, line map dict, hover row, pane dimensions, scroll offset, turns list, optional `item_positions_out` dict (keyed by line_map key → absolute line index in pre-viewport `all_lines`; used by pane.py auto-jump on expand).
+**Output:** `(ansi_string, total_lines)` tuple — rendered pane content + pre-viewport total line count for scroll math.
 
 ## parser.py
 
