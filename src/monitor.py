@@ -61,13 +61,13 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
         from .proxy_display import run_proxy_loop
         run_proxy_loop()
     elif mode == MODE_METADATA:
-        from .metadata_pane import run_metadata_loop
+        from .metadata import run_metadata_loop
         run_metadata_loop()
     elif mode == MODE_WORKER_PROXY:
         from .proxy_display import run_worker_proxy_loop
         run_worker_proxy_loop()
     elif mode == MODE_WORKER_METADATA:
-        from .metadata_pane import run_worker_metadata_loop
+        from .metadata import run_worker_metadata_loop
         run_worker_metadata_loop()
     else:
         sessions = find_active_sessions(active_project_filter)

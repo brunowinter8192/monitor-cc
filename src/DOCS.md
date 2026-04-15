@@ -20,6 +20,7 @@ src/
 ├── proxy_pane.py         → Proxy pane + log parsing
 ├── workers/              → [DOCS.md](workers/DOCS.md) Workers pane subpackage
 ├── hooks/                → [DOCS.md](hooks/DOCS.md) Hooks pane subpackage
+├── metadata/             → [DOCS.md](metadata/DOCS.md) Metadata pane subpackage
 ├── rules_pane.py         → Rules pane + InstructionsLoaded routing
 ├── warnings_pane.py      → Warnings pane
 ├── subagents/            → [DOCS.md](subagents/DOCS.md) Subagents pane subpackage
@@ -156,6 +157,14 @@ See [workers/DOCS.md](workers/DOCS.md).
 See [hooks/DOCS.md](hooks/DOCS.md).
 
 **Modules:** `hook_parser.py` (log parsing + filtering), `hooks_format.py` (display item building + block rendering), `hooks_persist.py` (persisted additionalContext enrichment), `hooks_pane.py` (event loop + scroll/click/hover).
+
+---
+
+## metadata/
+
+See [metadata/DOCS.md](metadata/DOCS.md).
+
+**Modules:** `metadata_format.py` (proxy entry formatting with change-tracking), `metadata_pane.py` (main + worker event loops).
 
 ---
 

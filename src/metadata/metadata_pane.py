@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from .constants import DIM, RESET, POLL_INTERVAL
+from ..constants import DIM, RESET, POLL_INTERVAL
 from .metadata_format import _format_metadata, _format_worker_metadata, LEGEND
 
 _meta_log_position: int = 0
@@ -17,9 +17,9 @@ _worker_meta_last_name: Optional[str] = None
 
 # Run metadata pane loop — reads proxy log directly and shows API config state
 def run_metadata_loop() -> None:
-    from . import monitor as _monitor
+    from .. import monitor as _monitor
     from . import metadata_format as _mf
-    from .proxy_display import parse_proxy_log
+    from ..proxy_display import parse_proxy_log
     global _meta_log_position, _meta_entries
 
     session_start_ts = _monitor._get_session_start_ts()
@@ -57,10 +57,10 @@ def run_metadata_loop() -> None:
 
 # Run worker-metadata pane loop — reads selected worker's proxy log and shows API config state
 def run_worker_metadata_loop() -> None:
-    from . import monitor as _monitor
+    from .. import monitor as _monitor
     from . import metadata_format as _mf
-    from .workers.worker_pane import get_selection_file_path
-    from .proxy_display import find_worker_proxy_log, _parse_log_file
+    from ..workers.worker_pane import get_selection_file_path
+    from ..proxy_display import find_worker_proxy_log, _parse_log_file
     global _worker_meta_log_position, _worker_meta_entries, _worker_meta_last_name
     last_output = None
 

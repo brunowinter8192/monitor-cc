@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 from collections import Counter
-from .constants import RESET, WHITE, RED, DIM, PASTEL_GREEN, YELLOW
-from .token_format import _format_k
+from ..constants import RESET, WHITE, RED, DIM, PASTEL_GREEN, YELLOW
+from ..token_format import _format_k
 
 _prev_values: dict = {}
 _worker_prev_values: dict = {}
