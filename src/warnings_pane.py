@@ -256,7 +256,7 @@ def run_warnings_loop() -> None:
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
-                        print(output)
+                        print(output, end='', flush=True)
                     last_output = output
             time.sleep(INPUT_POLL_INTERVAL)
     finally:
