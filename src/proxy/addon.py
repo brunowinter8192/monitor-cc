@@ -27,7 +27,6 @@ class ProxyAddon:
     def __init__(self):
         self.log_file = _resolve_log_file()
         self.prev_messages_by_model: Dict[str, list] = {}
-        self.prev_tools_count_by_model: Dict[str, int] = {}
         self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
         self.prev_sent_hashes_by_model: dict = {}  # model_family → hash fields from last sent_meta
 
@@ -82,14 +81,12 @@ class ProxyAddon:
             _write_entry(self.log_file, entry)
 
             prev_mod_msgs = self.prev_messages_by_model.get(model_family)
-            prev_tools_count = self.prev_tools_count_by_model.get(model_family)
             modified_payload = _strip_all_cache_control(modified_payload)
-            modified_payload = _set_cache_breakpoints(modified_payload, prev_mod_msgs, prev_tools_count)
+            modified_payload = _set_cache_breakpoints(modified_payload, prev_mod_msgs)
 
             self.prev_messages_by_model[model_family] = [
                 _summarize_message(m) for m in modified_payload.get("messages", [])
             ]
-            self.prev_tools_count_by_model[model_family] = len(modified_payload.get("tools", []))
 
             prev_hashes = self.prev_sent_hashes_by_model.get(model_family)
             sent_meta = _build_sent_meta(modified_payload, entry.get("request_id", ""), entry.get("timestamp", ""), prev_hashes)
