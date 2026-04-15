@@ -25,8 +25,8 @@ src/
 ├── warnings_pane.py      → Warnings pane
 ├── subagents/            → [DOCS.md](subagents/DOCS.md) Subagents pane subpackage
 ├── formatter.py          → Shared tool call formatting (~230 lines)
+├── jsonl/                → [DOCS.md](jsonl/DOCS.md) JSONL parsing subpackage
 ├── session_finder.py
-├── jsonl_parser.py
 ├── ui_mode.py
 ├── click_handler.py
 ├── constants.py
@@ -229,19 +229,11 @@ sessions = find_active_sessions(project_filter="/path/to/project")
 
 ---
 
-## jsonl_parser.py
+## jsonl/
 
-**Purpose:** Parses JSONL conversation files and extracts correlated tool_use/tool_result pairs with metadata (usage, errors, user prompts, media, thinking, skill activations).
+See [jsonl/DOCS.md](jsonl/DOCS.md).
 
-**Input:** `file_path` (JSONL session file), `last_position` (byte offset for incremental reads).
-
-**Output:** Tool call dicts; new file position; malformed line warnings; user media items; thinking blocks; user prompts; skill activation items; unknown type detections; usage data entries.
-
-**Usage:**
-```python
-from src.jsonl_parser import parse_new_tool_calls
-tool_calls, new_position, warnings, user_media, thinking, user_prompts, skill_activations, unknown_types, usage_data = parse_new_tool_calls(file_path, last_position, cache)
-```
+**Modules:** `jsonl_parser.py` (core JSONL parsing + tool call extraction), `jsonl_extractors.py` (typed extractors for prompts, media, thinking, skills, usage, unknown types), `jsonl_cache_turns.py` (cache turn grouping for token/subagent/worker panes).
 
 ---
 

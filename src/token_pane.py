@@ -4,8 +4,7 @@ import os
 import time
 
 from .constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
-from .jsonl_parser import read_new_lines, parse_jsonl_lines
-from .jsonl_cache_turns import extract_cache_turns
+from .jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
 from .click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
@@ -25,7 +24,7 @@ _cache_current_filepath = None
 
 # Build cache turns incrementally — only reads new lines since last_position
 def build_cache_turns(filepath, last_position: int, existing_turns: list):
-    from .jsonl_parser import get_current_position
+    from .jsonl import get_current_position
     lines = read_new_lines(filepath, last_position)
     new_position = get_current_position(filepath) if filepath.exists() else last_position
     if not lines:

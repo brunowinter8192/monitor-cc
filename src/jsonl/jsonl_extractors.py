@@ -2,7 +2,7 @@
 import re
 from typing import List
 
-from .constants import KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES
+from ..constants import KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES
 
 # FUNCTIONS
 

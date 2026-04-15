@@ -9,8 +9,8 @@ from .constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUB
 
 # From session_finder.py: Discover active Claude Code sessions
 from .session_finder import find_active_sessions
-# From jsonl_parser.py: Parse JSONL lines for session start timestamp
-from .jsonl_parser import parse_jsonl_lines, read_new_lines
+# From jsonl/: Parse JSONL lines for session start timestamp
+from .jsonl import parse_jsonl_lines, read_new_lines
 # From hooks/: Parse hook log entries
 from .hooks import get_current_position as get_hook_log_position
 # From monitor_display.py: Session status output

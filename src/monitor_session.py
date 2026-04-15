@@ -4,8 +4,8 @@ from typing import Dict
 
 # From constants.py: Mode constants and tool name
 from .constants import MODE_WARNINGS, MODE_TOKENS, MODE_MAIN, MODE_SUBAGENT, TOOL_TASK
-# From jsonl_parser.py: Parse JSONL and extract tool calls
-from .jsonl_parser import parse_new_tool_calls
+# From jsonl/: Parse JSONL and extract tool calls
+from .jsonl import parse_new_tool_calls
 # From warnings_pane.py: Unknown type tracking
 from .warnings_pane import track_unknown_type
 # From ui_mode.py: Subagent metadata tracking

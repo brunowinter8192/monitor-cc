@@ -7,9 +7,8 @@ import sys
 import time
 
 from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
-from ..jsonl_parser import read_new_lines, parse_jsonl_lines
+from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
 from ..session_finder import find_active_sessions
-from ..jsonl_cache_turns import extract_cache_turns
 from .subagent_ui import subagent_states, toggle_subagent_state
 from .subagent_render import render_subagents_with_tokens
 from ..click_handler import (

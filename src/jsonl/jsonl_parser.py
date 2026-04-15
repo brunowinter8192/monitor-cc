@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-from .constants import EXCLUDED_TOOLS
+from ..constants import EXCLUDED_TOOLS
 from .jsonl_extractors import (
     extract_user_media, extract_user_prompts, extract_thinking_blocks,
     extract_skill_activations, extract_usage_data, extract_system_messages,
