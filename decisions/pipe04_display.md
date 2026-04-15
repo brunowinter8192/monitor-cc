@@ -354,3 +354,61 @@ Für die Workers-Pane-Integration (Window 2) wäre nötig:
 **Size constraint:** Each hook injects ≤9,500 bytes (10KB per-hook limit, safety margin). Split into subdirectories to respect this: worker1+worker2 for worker rules (5,124 + 6,505 bytes), shared-a/b/c for global rules (6,817 + 9,065 + 3,678 bytes).
 
 **Monitor_CC/.claude/rules/:** Now empty. All rules delivered via hook injection.
+
+## Session 18 (2026-04-15) — Display Drift Update
+
+Earlier IST sections reference the pre-Session-17 layout (4 windows, 6 panes) and pre-reversal scroll direction. This section documents the current prod state. Where an earlier section conflicts, THIS section is authoritative.
+
+### Current tmux Layout (src/tmux_launcher.py:45-66, 131-137)
+
+5 windows, 10 panes. Source of truth: `configure_tmux_session()` `pane_titles` dict.
+
+| Window | Name | Panes |
+|---|---|---|
+| 0 | main | 0.0 MAIN (70%), 0.1 TOKENS (30%) |
+| 1 | proxy | 1.0 PROXY (70%), 1.1 METADATA (30%) |
+| 2 | rules | 2.0 RULES (50%), 2.1 HOOKS (50%) |
+| 3 | workers | 3.0 WORKERS (34%), 3.1 WORKER-PROXY (33%), 3.2 WORKER-METADATA (33%) |
+| 4 | debug | 4.0 WARNINGS (fullscreen) |
+
+Cross-reference: all earlier IST entries that say e.g. `Window 1 "rules" Pane 1.0` now mean `Window 2 Pane 2.0`. The functional description of each pane is still correct, only the window index shifted.
+
+New panes added since the last IST pass: Proxy Pane (Window 1.0), Metadata Pane (Window 1.1), Worker-Proxy Pane (Window 3.1), Worker-Metadata Pane (Window 3.2).
+
+### Scroll Direction Reversed (traditional)
+
+Wheel up = viewport moves toward earlier content (up), wheel down = viewport moves toward later content (down). Applied in ALL interactive panes: token, warnings, workers, hooks, metadata, proxy, worker-proxy. Reverses the Session-10..16 behaviour where wheel up scrolled toward newer content.
+
+Implementation: each pane's mouse handler maps button 64 → `scroll_offset += N`, button 65 → `scroll_offset -= N` (or equivalent semantic).
+
+### ANSI Header Overdraw Pattern (Pane Header Contract)
+
+Bug: when the body print overflows the pane height (terminal line wrap), the rendered top line of the body replaces the sticky header written by the pane loop itself. tmux `pane-border-status` still shows, but any app-level header line drawn on row 1 is lost.
+
+Fix: after body print, overdraw the header using `\033[H{header}\033[K` (cursor home + header text + erase-to-EOL). Header always survives body overflow.
+
+Applied: `src/warnings_pane.py`, `src/workers/worker_proxy_pane.py`. Pattern is generalizable — any pane that draws its own header on row 1 should use it.
+
+### Warnings Pane — 10s Polling + `r` Key
+
+- Poll interval: 10s (was 0.5s). Warnings are rare and don't need sub-second latency; 0.5s burned CPU for no gain.
+- Manual refresh: `r` key triggers immediate poll outside the 10s cycle.
+- Header: `WARNINGS  [r]efresh · last: HH:MM:SS · polling: 10s`
+- Source: `src/warnings_pane.py`
+
+### Worker-Proxy Pane — Digit Switch Header
+
+- Shows the proxy log of ONE selected worker at a time.
+- Header: `WORKER-PROXY [1*]selected [2]other [3]another` — active selection marked with `*`.
+- Digit keys 1-9 switch selection. IPC via `write_selection()` exposed from `src/workers/__init__.py`.
+- Source: `src/workers/worker_proxy_pane.py`
+
+### Mouse Wheel Scroll Contract (all interactive panes)
+
+Button codes (post-reversal):
+- `64` (wheel up)   → `scroll_offset += N`   (viewport up, older content)
+- `65` (wheel down) → `scroll_offset -= N`   (viewport down, newer content)
+- `scroll_offset` clamped to `[0, max_scroll]`
+
+N is typically 1 or 3 depending on pane density. See `src/token_pane.py` as canonical reference pattern.
+
