@@ -4,7 +4,7 @@ import os
 import time
 
 from .constants import (
-    YELLOW, RED, DIM, WHITE, RESET,
+    YELLOW, RED, DIM, WHITE, RESET, HOVER_BG,
     INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL,
 )
 from .utils import format_timestamp
@@ -149,9 +149,7 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             is_expanded = error_expand_states.get(err_idx, False)
             symbol = '\u25bc' if is_expanded else '\u25b6'
             tool_col = f"{WHITE}{err['tool_name']:<16}{RESET}"
-            is_hovered = (err_idx == error_hover_row)
-            prefix = f"{DIM}" if not is_hovered else ''
-            all_lines.append(f"{prefix}{symbol} {err['timestamp']}  {tool_col}  {DIM}{err['summary']}{RESET}")
+            all_lines.append(f"{DIM}{symbol} {err['timestamp']}  {tool_col}  {DIM}{err['summary']}{RESET}")
             all_keys.append(err_idx)
             if is_expanded:
                 for raw_line in err['full_text'].split('\n'):
@@ -168,12 +166,20 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
         all_keys.append(None)
 
     error_line_map = {}
+    header_offset = 2  # row 1 = header, body starts at row 2
     visible_lines = all_lines[error_scroll_offset:error_scroll_offset + content_height]
     visible_keys = all_keys[error_scroll_offset:error_scroll_offset + content_height]
-    for screen_row, key in enumerate(visible_keys, start=1):
+    rendered: list = []
+    for row_offset, line in enumerate(visible_lines):
+        screen_row = row_offset + header_offset
+        key = visible_keys[row_offset]
         if key is not None:
             error_line_map[screen_row] = key
-    return header + '\n' + '\n'.join(visible_lines)
+        if error_hover_row is not None and screen_row == error_hover_row and key is not None:
+            rendered.append(f"{HOVER_BG}{line}{RESET}")
+        else:
+            rendered.append(line)
+    return header + '\n' + '\n'.join(rendered)
 
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:

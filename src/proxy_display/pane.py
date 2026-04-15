@@ -73,6 +73,7 @@ def run_proxy_loop() -> None:
     try:
         while True:
             input_changed = False
+            just_expanded = None
             while True:
                 char = read_keypress()
                 if char is None:
@@ -84,13 +85,16 @@ def run_proxy_loop() -> None:
                         if button == 0:
                             key = proxy_line_map.get(row)
                             if key is not None:
-                                proxy_expand_states[key] = not proxy_expand_states.get(key, False)
+                                new_state = not proxy_expand_states.get(key, False)
+                                proxy_expand_states[key] = new_state
+                                if new_state:
+                                    just_expanded = key
                                 input_changed = True
-                        elif button == 64:
-                            proxy_scroll_offset = max(0, proxy_scroll_offset - 3)
-                            input_changed = True
-                        elif button == 65:
+                        elif button == 64:  # wheel up → older content
                             proxy_scroll_offset += 3
+                            input_changed = True
+                        elif button == 65:  # wheel down → newer content
+                            proxy_scroll_offset = max(0, proxy_scroll_offset - 3)
                             input_changed = True
                         elif button >= 32:
                             proxy_hover_row = row
@@ -135,7 +139,18 @@ def run_proxy_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                output = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, pane_height, pane_width, proxy_scroll_offset, turns=_proxy_cache_turns)
+                item_positions: dict = {}
+                output, total_lines = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, pane_height, pane_width, proxy_scroll_offset, turns=_proxy_cache_turns, item_positions_out=item_positions)
+                if just_expanded is not None and just_expanded in item_positions:
+                    item_line = item_positions[just_expanded]
+                    viewport_lines_n = pane_height - 1
+                    max_scroll = max(0, total_lines - viewport_lines_n)
+                    clamped = min(proxy_scroll_offset, max_scroll)
+                    start = max(0, total_lines - viewport_lines_n - clamped)
+                    if item_line < start or item_line >= start + viewport_lines_n:
+                        proxy_scroll_offset = max(0, total_lines - viewport_lines_n - item_line)
+                        output, total_lines = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, pane_height, pane_width, proxy_scroll_offset, turns=_proxy_cache_turns)
+                just_expanded = None
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
@@ -162,6 +177,7 @@ def run_worker_proxy_loop() -> None:
     try:
         while True:
             input_changed = False
+            just_expanded = None
             while True:
                 char = read_keypress()
                 if char is None:
@@ -173,13 +189,16 @@ def run_worker_proxy_loop() -> None:
                         if button == 0:
                             key = worker_proxy_line_map.get(row)
                             if key is not None:
-                                worker_proxy_expand_states[key] = not worker_proxy_expand_states.get(key, False)
+                                new_state = not worker_proxy_expand_states.get(key, False)
+                                worker_proxy_expand_states[key] = new_state
+                                if new_state:
+                                    just_expanded = key
                                 input_changed = True
-                        elif button == 64:
-                            worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset - 3)
-                            input_changed = True
-                        elif button == 65:
+                        elif button == 64:  # wheel up → older content
                             worker_proxy_scroll_offset += 3
+                            input_changed = True
+                        elif button == 65:  # wheel down → newer content
+                            worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset - 3)
                             input_changed = True
                         elif button >= 32:
                             worker_proxy_hover_row = row
@@ -261,7 +280,16 @@ def run_worker_proxy_loop() -> None:
                 elif not worker_proxy_entries:
                     body = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No proxy data yet — is worker proxy running?{RESET}"
                 else:
-                    body = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns)
+                    worker_item_positions: dict = {}
+                    body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns, item_positions_out=worker_item_positions)
+                    if just_expanded is not None and just_expanded in worker_item_positions:
+                        item_line = worker_item_positions[just_expanded]
+                        max_scroll = max(0, total_lines - content_height)
+                        clamped = min(worker_proxy_scroll_offset, max_scroll)
+                        start = max(0, total_lines - content_height - clamped)
+                        if item_line < start or item_line >= start + content_height:
+                            worker_proxy_scroll_offset = max(0, total_lines - content_height - item_line)
+                            body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns)
                 output = header + '\n' + body
 
                 if output != last_output:
