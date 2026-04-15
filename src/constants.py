@@ -113,7 +113,7 @@ EXCLUDED_TOOLS = {'Edit'}
 KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}
 
 # JSONL message types deliberately ignored (known but not relevant for monitoring)
-KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode'}
+KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode', 'summary'}
 
 # Known API payload top-level keys (Anthropic Messages API)
 KNOWN_PAYLOAD_KEYS = {'model', 'max_tokens', 'messages', 'metadata', 'output_config', 'stream', 'system', 'thinking', 'tools', 'temperature', 'top_p', 'top_k', 'tool_choice'}
