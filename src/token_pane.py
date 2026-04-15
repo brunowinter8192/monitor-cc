@@ -103,10 +103,10 @@ def run_tokens_loop() -> None:
                                 cache_expand_states[key] = not cache_expand_states.get(key, False)
                                 input_changed = True
                         elif button == 64:
-                            cache_scroll_offset += 3
+                            cache_scroll_offset = max(0, cache_scroll_offset - 3)
                             input_changed = True
                         elif button == 65:
-                            cache_scroll_offset = max(0, cache_scroll_offset - 3)
+                            cache_scroll_offset += 3
                             input_changed = True
                         elif button >= 32:
                             cache_hover_row = row
