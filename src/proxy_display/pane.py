@@ -268,6 +268,7 @@ def run_worker_proxy_loop() -> None:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
                         print(output, end='', flush=True)
+                        print(f"\033[H{header}\033[K", end='', flush=True)
                     last_output = output
             time.sleep(INPUT_POLL_INTERVAL)
     finally:
