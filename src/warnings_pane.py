@@ -257,6 +257,7 @@ def run_warnings_loop() -> None:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:
                         print(output, end='', flush=True)
+                        print(f"\033[H{_format_warnings_header()}\033[K", end='', flush=True)
                     last_output = output
             time.sleep(INPUT_POLL_INTERVAL)
     finally:
