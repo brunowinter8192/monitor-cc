@@ -138,6 +138,11 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 )
                 all_lines.extend(t_lines)
                 line_keys.extend(t_keys)
+                if item_positions_out is not None:
+                    base = len(all_lines) - len(t_lines)
+                    for i, key in enumerate(t_keys):
+                        if key is not None:
+                            item_positions_out[key] = base + i
 
             main_entries = [e for _, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
             if main_entries:
@@ -164,6 +169,11 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label)
             all_lines.extend(e_lines)
             line_keys.extend(e_keys)
+            if item_positions_out is not None:
+                base = len(all_lines) - len(e_lines)
+                for i, key in enumerate(e_keys):
+                    if key is not None:
+                        item_positions_out[key] = base + i
             all_lines.append('')
             line_keys.append(None)
 
