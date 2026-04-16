@@ -93,7 +93,7 @@ def run_workers_loop() -> None:
                         elif button == 65:
                             name = worker_line_map.get(row)
                             if name:
-                                worker_scroll_offsets[name] = worker_scroll_offsets.get(name, 0) + 3
+                                worker_scroll_offsets[name] = max(0, worker_scroll_offsets.get(name, 0) + 3)
                                 input_changed = True
                         elif button >= 32:
                             worker_hover_row = row

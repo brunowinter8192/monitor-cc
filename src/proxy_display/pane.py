@@ -90,11 +90,11 @@ def run_proxy_loop() -> None:
                                 if new_state:
                                     just_expanded = key
                                 input_changed = True
-                        elif button == 64:  # wheel up → older content
-                            proxy_scroll_offset += 3
-                            input_changed = True
-                        elif button == 65:  # wheel down → newer content
+                        elif button == 64:  # wheel up → newer content
                             proxy_scroll_offset = max(0, proxy_scroll_offset - 3)
+                            input_changed = True
+                        elif button == 65:  # wheel down → older content
+                            proxy_scroll_offset = max(0, proxy_scroll_offset + 3)
                             input_changed = True
                         elif button >= 32:
                             proxy_hover_row = row
@@ -194,11 +194,11 @@ def run_worker_proxy_loop() -> None:
                                 if new_state:
                                     just_expanded = key
                                 input_changed = True
-                        elif button == 64:  # wheel up → older content
-                            worker_proxy_scroll_offset += 3
-                            input_changed = True
-                        elif button == 65:  # wheel down → newer content
+                        elif button == 64:  # wheel up → newer content
                             worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset - 3)
+                            input_changed = True
+                        elif button == 65:  # wheel down → older content
+                            worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset + 3)
                             input_changed = True
                         elif button >= 32:
                             worker_proxy_hover_row = row
