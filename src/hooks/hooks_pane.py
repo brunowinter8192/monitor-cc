@@ -91,7 +91,7 @@ def run_hooks_loop() -> None:
                             hooks_scroll_offset = max(0, hooks_scroll_offset - 3)
                             input_changed = True
                         elif button == 65:
-                            hooks_scroll_offset += 3
+                            hooks_scroll_offset = max(0, hooks_scroll_offset + 3)
                             input_changed = True
                         elif button >= 32:
                             hooks_hover_row = row
