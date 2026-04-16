@@ -300,6 +300,21 @@ Live verification tracked in bead `Monitor_CC-qwu`.
 - cache_control marker: `{"type": "ephemeral"}` (kein TTL nötig, API bestimmt)
 - `scope: "global"` — Content-basierter Cache über Sessions/API-Keys hinweg. Gleicher Content = Cache-Hit, unterschiedlicher Content = separate Einträge. Kein Cross-Contamination zwischen Opus und Worker.
 
+### Tokenizer Approximation (chars/token)
+
+Für Proxy-Optimierungsentscheidungen (z.B. "Strippen X chars spart Y tokens") wird folgender Working-Ratio verwendet:
+
+- **3.68 chars/token** (Claude's Tokenizer, approximation)
+- Abgeleitet aus known prefix anchor: 154,550 chars → 41,975 tokens (mehrere historische Sessions, pre-Opus-4.7)
+- Full-rebuild Ratio (CR=0): 3.42 chars/token (N=3, stddev 0.11)
+- Stabil ~3.4-3.7 über Sessions ohne interleaved thinking
+
+**tiktoken cl100k_base ist unbrauchbar** — unterschätzt Claude's Tokenisierung um 35-75% (variabel mit thinking-Anteil). Nicht für Proxy-Entscheidungen verwenden.
+
+**Caveat:** Pro-Segment-Ratios (sys vs tools vs messages separat) sind mit aktuellen Daten NICHT extrahierbar (sys/tools konstant pro Session = keine Varianz für Regression). Der 3.68-Wert ist Prefix-dominiert (sys+tools machen 95% des Payloads aus) und gilt als "good enough" Gesamtapproximation.
+
+Details + Experimente + Paths-Forward: `decisions/OldThemes/tokenizer_baseline.md` (geparkt). Bead: Monitor_CC-fyl.
+
 ## Offene Fragen
 
 - Langzeit-Stabilität: Verhalten bei Sessions >500 Requests noch nicht beobachtet

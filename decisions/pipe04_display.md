@@ -387,7 +387,7 @@ Bug: when the body print overflows the pane height (terminal line wrap), the ren
 
 Fix: after body print, overdraw the header using `\033[H{header}\033[K` (cursor home + header text + erase-to-EOL). Header always survives body overflow.
 
-Applied: `src/warnings_pane.py`, `src/workers/worker_proxy_pane.py`. Pattern is generalizable — any pane that draws its own header on row 1 should use it.
+Applied: `src/warnings_pane.py`, `src/proxy_display/pane.py` (function `run_worker_proxy_loop`). Pattern is generalizable — any pane that draws its own header on row 1 should use it.
 
 ### Warnings Pane — 10s Polling + `r` Key
 
@@ -401,7 +401,9 @@ Applied: `src/warnings_pane.py`, `src/workers/worker_proxy_pane.py`. Pattern is 
 - Shows the proxy log of ONE selected worker at a time.
 - Header: `WORKER-PROXY [1*]selected [2]other [3]another` — active selection marked with `*`.
 - Digit keys 1-9 switch selection. IPC via `write_selection()` exposed from `src/workers/__init__.py`.
-- Source: `src/workers/worker_proxy_pane.py`
+- Source: `src/proxy_display/pane.py` (function `run_worker_proxy_loop`)
+- State clear rule: `worker_proxy_entries` (and all associated state) is cleared when `_worker_proxy_workers` is empty OR `current_worker` from selection file is not in worker list OR `worker_name != last_worker_name`. Ensures stale entries don't persist when all workers exit.
+- Thinking block display: Thinking blocks render as `[N] thinking      text:Xc sig:Yc` to expose signature byte length (encrypted thinking carrier, ~400 chars typical on Opus 4.7 `display: summarized`). Field `sig_chars` added to block dict in `src/proxy/message_summary.py`. `chars` field remains `len(thinking_text)` only — signature NOT counted (signatures are not billed as input tokens per Anthropic docs).
 
 ### Mouse Wheel Scroll Contract (all interactive panes)
 
