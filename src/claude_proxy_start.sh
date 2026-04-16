@@ -66,10 +66,32 @@ fi
 LOG_DIR="$MONITOR_CC_ROOT/src/logs"
 mkdir -p "$LOG_DIR"
 MARKER_FILE="$LOG_DIR/.proxy_session_$SESSION_ID"
-printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "$MARKER_FILE"
+# Only overwrite marker if no existing proxy is running on the port it lists.
+# Parallel sessions (e.g. hi-test) must NOT clobber the main session's marker.
+MARKER_IS_STALE=true
+if [ -f "$MARKER_FILE" ]; then
+    existing_port=$(sed -n '1p' "$MARKER_FILE" 2>/dev/null)
+    if [ -n "$existing_port" ] && lsof -iTCP:"$existing_port" -sTCP:LISTEN -P -n >/dev/null 2>&1; then
+        MARKER_IS_STALE=false
+    fi
+fi
+if [ "$MARKER_IS_STALE" = true ]; then
+    printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "$MARKER_FILE"
+fi
 # Also write to /tmp for cross-repo discovery (workers find proxy via this)
 # Format: line 1 = port, line 2 = log_id, line 3 = MONITOR_CC_ROOT
-printf "%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$MONITOR_CC_ROOT" > "/tmp/.monitor_cc_proxy_${SESSION_ID}"
+# Same guard: only overwrite if existing marker's port is not listening
+TMP_MARKER="/tmp/.monitor_cc_proxy_${SESSION_ID}"
+TMP_IS_STALE=true
+if [ -f "$TMP_MARKER" ]; then
+    existing_tmp_port=$(sed -n '1p' "$TMP_MARKER" 2>/dev/null)
+    if [ -n "$existing_tmp_port" ] && lsof -iTCP:"$existing_tmp_port" -sTCP:LISTEN -P -n >/dev/null 2>&1; then
+        TMP_IS_STALE=false
+    fi
+fi
+if [ "$TMP_IS_STALE" = true ]; then
+    printf "%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$MONITOR_CC_ROOT" > "$TMP_MARKER"
+fi
 
 # Copy addon and entire proxy/ package to isolated live copies — prevents git merge hot-reload
 # Use PROXY_SESSION_UID (not SESSION_ID) so parallel sessions in the same project don't overwrite each other
