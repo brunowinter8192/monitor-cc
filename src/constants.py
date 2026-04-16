@@ -117,7 +117,7 @@ KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}
 KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode', 'summary'}
 
 # Known API payload top-level keys (Anthropic Messages API)
-KNOWN_PAYLOAD_KEYS = {'model', 'max_tokens', 'messages', 'metadata', 'output_config', 'stream', 'system', 'thinking', 'tools', 'temperature', 'top_p', 'top_k', 'tool_choice'}
+KNOWN_PAYLOAD_KEYS = {'model', 'messages', 'system', 'tools', 'max_tokens', 'thinking', 'output_config', 'metadata', 'stream', 'context_management', 'temperature', 'top_p', 'top_k', 'tool_choice', 'stop_sequences'}
 
 # Known message content block types
 KNOWN_CONTENT_BLOCK_TYPES = {'text', 'thinking', 'tool_use', 'tool_result', 'image'}

@@ -17,6 +17,11 @@ from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools
 from .tool_injection import inject_mcp_tools, _load_active_plugins
 
+_src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+from constants import KNOWN_PAYLOAD_KEYS, KNOWN_TOOL_DEFINITION_KEYS
+
 ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
 DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
@@ -29,6 +34,7 @@ class ProxyAddon:
         self.prev_messages_by_model: Dict[str, list] = {}
         self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
         self.prev_sent_hashes_by_model: dict = {}  # model_family → hash fields from last sent_meta
+        self._schema_checked: bool = False  # schema check runs once per session (first opus request)
 
     def request(self, flow: http.HTTPFlow) -> None:
         try:
@@ -52,6 +58,18 @@ class ProxyAddon:
             else:
                 model_family = "opus"
             project_path = os.environ.get("PROXY_PROJECT_PATH", "")
+
+            if model_family == "opus" and not self._schema_checked:
+                self._schema_checked = True
+                schema_warnings = _check_payload_schema(payload)
+                if schema_warnings:
+                    _write_entry(self.log_file, {
+                        "type": "schema_warning",
+                        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                        "model": payload.get("model", ""),
+                        "model_family": model_family,
+                        "warnings": schema_warnings,
+                    })
             modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed = apply_modification_rules(payload, model_family, project_path)
 
             if model_family not in self.fixated:
@@ -461,6 +479,53 @@ def _write_entry(log_file: Path, entry: dict) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
+
+
+# Check payload structure against known-good invariants — returns list of warning strings
+def _check_payload_schema(payload: dict) -> list:
+    try:
+        warnings = []
+
+        # Unknown top-level keys
+        unknown_keys = set(payload.keys()) - KNOWN_PAYLOAD_KEYS
+        if unknown_keys:
+            warnings.append(f"Unknown top-level keys: {sorted(unknown_keys)}")
+
+        # system structure
+        system = payload.get("system")
+        if system is not None:
+            if not isinstance(system, list):
+                warnings.append(f"system is {type(system).__name__}, expected list")
+            else:
+                if len(system) != 4:
+                    warnings.append(f"system has {len(system)} blocks, expected 4")
+                if len(system) >= 3:
+                    block2 = system[2]
+                    if not isinstance(block2, dict) or block2.get("type") != "text":
+                        warnings.append(f"system[2].type={block2.get('type') if isinstance(block2, dict) else type(block2).__name__!r}, expected 'text' (BP1 anchor broken)")
+
+        # messages[0] content shape
+        messages = payload.get("messages") or []
+        if messages:
+            m0 = messages[0]
+            c0 = m0.get("content")
+            if not isinstance(c0, list):
+                warnings.append(f"messages[0].content is {type(c0).__name__}, expected list")
+
+        # tools missing for opus
+        tools = payload.get("tools") or []
+        if not tools:
+            warnings.append("tools is empty — proxy cache markers and tool stripping will not apply")
+
+        # Unknown tool definition keys (check first tool as representative sample)
+        if tools and isinstance(tools[0], dict):
+            unknown_tool_keys = set(tools[0].keys()) - KNOWN_TOOL_DEFINITION_KEYS - {"cache_control"}
+            if unknown_tool_keys:
+                warnings.append(f"Unknown keys in tools[0]: {sorted(unknown_tool_keys)}")
+
+        return warnings
+    except Exception as e:
+        return [f"schema check error: {e}"]
 
 
 addons = [ProxyAddon()]
