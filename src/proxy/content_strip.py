@@ -153,3 +153,12 @@ def _strip_session_guidance(text: str) -> str:
     if env_idx == -1:
         return text[:start].strip() or "."
     return (text[:start] + text[env_idx:]).strip()
+
+
+# Strip gitStatus section (always at bottom of sys[3]) from text — everything from 'gitStatus:' to end.
+def _strip_git_status(text: str) -> str:
+    marker = "gitStatus:"
+    idx = text.find(marker)
+    if idx == -1:
+        return text
+    return text[:idx].rstrip()
