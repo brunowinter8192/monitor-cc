@@ -351,3 +351,51 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     modified["messages"] = new_messages
     modified["system"] = new_system
     return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
+
+
+# Inject context_management block from proxy_rules.json config if enabled — returns (modified_payload, injected_bool)
+def _inject_context_management(payload: dict) -> tuple:
+    try:
+        config = _load_config()
+        cm_config = config.get("context_management", {})
+        if not cm_config.get("enabled", False):
+            return payload, False
+
+        edits = []
+
+        clear_tool_uses = cm_config.get("clear_tool_uses", {})
+        if clear_tool_uses.get("enabled", True):
+            edits.append({
+                "type": "clear_tool_uses_20250919",
+                "trigger": {
+                    "type": "input_tokens",
+                    "value": clear_tool_uses.get("trigger_input_tokens", 100000),
+                },
+                "keep": {
+                    "type": "tool_uses",
+                    "value": clear_tool_uses.get("keep_tool_uses", 5),
+                },
+                "clear_at_least": {
+                    "type": "input_tokens",
+                    "value": clear_tool_uses.get("clear_at_least_tokens", 10000),
+                },
+            })
+
+        clear_thinking = cm_config.get("clear_thinking", {})
+        if clear_thinking.get("enabled", True):
+            edits.append({
+                "type": "clear_thinking_20251015",
+                "keep": {
+                    "type": "thinking_turns",
+                    "value": clear_thinking.get("keep_thinking_turns", 2),
+                },
+            })
+
+        if not edits:
+            return payload, False
+
+        result = dict(payload)
+        result["context_management"] = {"edits": edits}
+        return result, True
+    except Exception:
+        return payload, False
