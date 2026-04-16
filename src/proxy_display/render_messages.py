@@ -62,7 +62,11 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     btype = blk.get('type', 'text')
                     bchars = blk.get('chars', 0)
                     bcc = ' [CC]' if blk.get('has_cc') else ''
-                    lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{RESET}")
+                    if btype == 'thinking':
+                        sig_chars = blk.get('sig_chars', 0)
+                        lines.append(f"      {DIM}[{bidx}] {btype:<12} text:{bchars:>5,}c sig:{sig_chars:>4,}c{bcc}{RESET}")
+                    else:
+                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{RESET}")
                     keys.append(None)
                     full_text = blk.get('full_text', blk.get('preview', ''))
                     if full_text:
@@ -141,7 +145,11 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     btype = blk.get('type', 'text')
                     bchars = blk.get('chars', 0)
                     bcc = ' [CC]' if blk.get('has_cc') else ''
-                    lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{RESET}")
+                    if btype == 'thinking':
+                        sig_chars = blk.get('sig_chars', 0)
+                        lines.append(f"      {DIM}[{bidx}] {btype:<12} text:{bchars:>5,}c sig:{sig_chars:>4,}c{bcc}{RESET}")
+                    else:
+                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{RESET}")
                     keys.append(None)
                     full_text = blk.get('full_text', blk.get('preview', ''))
                     if full_text:

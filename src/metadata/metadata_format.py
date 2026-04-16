@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from collections import Counter
-from ..constants import RESET, WHITE, RED, DIM, PASTEL_GREEN, YELLOW
+from ..constants import RESET, WHITE, RED, DIM, PASTEL_GREEN
 from ..token_format import _format_k
 
 _prev_values: dict = {}
@@ -98,10 +98,7 @@ def _format_metadata_with_state(entry: dict, prev_values: dict, new_values: dict
     think_changed = (prev_budget is not None and prev_budget != budget) or (prev_think_type is not None and prev_think_type != think_type)
     budget_str = _format_k(budget) if budget else '?'
     think_str = f"{budget_str} ({think_type})"
-    if think_type == 'adaptive':
-        think_color = YELLOW if not think_changed else RED
-    else:
-        think_color = RED if think_changed else DIM
+    think_color = RED if think_changed else DIM
     lines.append(f"  {think_color}thinking: {think_str}{RESET}")
 
     model = entry.get('model', '?')
