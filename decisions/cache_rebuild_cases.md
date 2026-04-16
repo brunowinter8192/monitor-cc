@@ -13,7 +13,8 @@ Observed cache-rebuild events with as much forensic detail as we can capture. Go
 - Proxy strips all CC cache_control markers via `_strip_all_cache_control()` in `src/proxy/cache.py`
 - Proxy sets its own BPs with `ttl:"1h"` (`cc_marker = {"type":"ephemeral","ttl":"1h"}`)
 - BP layout (pre bp-layout-v2): BP1=sys[2], BP2=last tool without defer_loading, BP3+BP4=messages (rolling, move forward each turn)
-- BP layout (post bp-layout-v2): BP1 removed; Tools Anchor=prev last non-defer tool (only when tools grew); Tools End=current last non-defer tool; BP3+BP4=messages unchanged
+- BP layout (bp-layout-v2): BP1 removed; Tools Anchor=prev last non-defer tool (only when tools grew); Tools End=current last non-defer tool; BP3+BP4=messages unchanged
+- BP layout (bp-layout-v3, 2026-04-16, dcb6aea): BP1=sys[2] (NEU, reintroduced); Tools End unchanged; Tools Anchor entfernt; BP3+BP4 unchanged. Begründung: sys[2]-Marker erzeugt Cross-Session Cache Entry der sys[3]-Drift überlebt (sys[3] = CC-injected env mit gitStatus + cwd, nicht im BP1-Prefix). Verifiziert: Fresh Session REQ#1 CR=61,231/CC=0 (2026-04-16).
 - Prefix-hash instrumentation in sent_meta: `prefix_hash_bp1_sys`, `prefix_hash_bp2_tools`, `prefix_hash_bp3_msg`, `prefix_hash_bp4_msg`
 
 ## Case 1 — monitor_cc REQ#33 (2026-04-12)
@@ -262,6 +263,42 @@ Session JSONL usage impact:
 **Fix:** Proxy tool injection (Monitor_CC-o9b, worker `tool-inject-v2`). ToolSearch stripped entirely from every request. CC deferred built-ins (CronList, ListMcpResourcesTool etc.) go into `TOOL_BLOCKLIST`. iterative-dev schemas injected at REQ#1 from a persistent schema store (`src/logs/mcp_tool_schemas/`). New plugins via `activate_plugin` MCP tool are APPENDED after existing tools — never inserted in the middle. This eliminates the INSERT mutation at its source: the proxy controls `tools[]` from REQ#1, so Claude Code never gets the opportunity to mutate it mid-session.
 
 **Status:** Merged on branch `tool-inject-v2`, pending Stage 3 live verification (next session).
+
+## Case 6 — monitor_cc REQ#103 (2026-04-16) — Live-Copy Collision via Unconditional Cleanup
+
+**Symptom:** CR=129,679 → 0. CC=2,901 → 99,786. Full rebuild.
+
+**Context:**
+- Session: Monitor_CC main, proxy log `src/logs/api_requests_opus_monitor_cc_1776287125.jsonl`
+- Gap REQ#102 → REQ#103: 5m 58s (22:02:29 → 22:08:27 UTC)
+- Main session was running with PRE-fix proxy code (BP layout v2, no sys[2] marker)
+- Two "hi" test sessions were started in the same Monitor_CC project at 22:04:10 and 22:05:01 (parallel, short-lived, exited ~22:05)
+
+**Root cause:** Live-copy collision on same-project parallel sessions, amplified by unconditional marker cleanup.
+
+1. `src/claude_proxy_start.sh:28` computed `SESSION_ID="$(md5 of PROJECT path)"` → same hash for every session in the same project
+2. LIVE_ADDON = `.proxy_addon_live_${SESSION_ID}.py` → same file path for every session
+3. `/tmp/.monitor_cc_proxy_${SESSION_ID}` → same marker file for every session
+4. When hi-session 1 started, it wrote a new `.proxy_addon_live_<hash>.py` with the CURRENT (post-merge) code — overwriting main's frozen live-copy
+5. mitmdump (watching the addon file) hot-reloaded → `ProxyAddon.__init__` re-ran → `self.fixated = {}` + `self.prev_messages_by_model = {}` wiped
+6. New code had different BP layout (sys[2] marker added, tools-anchor dropped) → different marker positions → new cache entries disconnected from old ones
+7. Main session's REQ#103 (next request after the reload) couldn't compute BP3 (no prev_mod_messages), sys[2] re-captured from scratch, BP positions shifted → full rebuild
+8. On hi-session exit, `cleanup()` did unconditional `rm -f /tmp/.monitor_cc_proxy_${SESSION_ID}` → removed main session's marker file entirely → any subsequent worker spawns in the project could not find the parent proxy (tmux_spawn.sh marker check fails)
+
+**Evidence:**
+- `sent_meta` logging STOPPED at 22:02:22 in main's proxy log (last entry before rebuild) — consistent with hot-reload interrupting the log-writer state
+- `/tmp/.monitor_cc_proxy_f93afc17` (main's marker) was absent from disk at end-of-session inspection
+- `/tmp/.monitor_cc_proxy_79b52c8d` (old zombie marker from 22:16 local = 20:16 UTC) was still present from an even earlier session
+- bug-fixes worker spawned at 00:48 local (UTC 22:48) had NO HTTPS_PROXY set (visible via `ps aux`) → confirmed the marker check failed at spawn time → worker ran proxy-bypass → CC discrepancy vs bp-sys2 worker (which spawned while marker was still present)
+
+**Fix (shipped same session):**
+- `src/claude_proxy_start.sh:33` — introduced `PROXY_SESSION_UID="${SESSION_ID}_$$_$(date +%s)"` for LIVE_ADDON + LIVE_DIR paths. Parallel sessions no longer overwrite each other's live-copies.
+- `src/claude_proxy_start.sh:100-111` — cleanup() now reads the marker port and only removes `/tmp/.monitor_cc_proxy_${SESSION_ID}` if it still contains OUR port. Prevents a later-exiting session from clobbering a still-running session's marker.
+- `iterative-dev/src/spawn/tmux_spawn.sh:287-293` — added dedup guard: if worker's `.proxy_addon_live_worker_<name>.py` already exists AND is in use by a running mitmdump (via `lsof`), abort spawn with error.
+
+**Commits:** f274c07 (Monitor_CC), 8499434 (Meta/blank plugin source).
+
+**Unresolved:** `/tmp/.monitor_cc_proxy_79b52c8d` zombie marker origin not traced (belongs to some earlier session whose project-path hash hashes to 79b52c8d, not reproducible from current Monitor_CC path). Left as-is — zombie markers are harmless if their port is not a live mitmdump.
 
 ## Open Patterns / Hypotheses
 
