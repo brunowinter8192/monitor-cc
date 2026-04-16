@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Correlates per-request char counts (system/tools/messages) with actual API token usage (CR, CC, D).
 
+Two meaningful ratios are computed:
+  A) Full-rebuild ratio: total_chars / CC for requests where CR=0 (cold cache or first request)
+  B) Message-delta ratio: Δmsgs_chars / CC for requests where CR>0, CC>0, and Δmsgs>0
+
 Reads a proxy JSONL log and optionally a session JSONL for pairing.
 All scripts assume CWD = Monitor_CC/ (project root).
 """
@@ -8,7 +12,11 @@ All scripts assume CWD = Monitor_CC/ (project root).
 import argparse
 import gzip
 import json
+import statistics
+from datetime import datetime
 from pathlib import Path
+
+REPORTS_DIR = Path("dev/session_analysis/04_reports")
 
 # ORCHESTRATOR
 
@@ -20,7 +28,15 @@ def main():
     proxy_rows = load_proxy_rows(proxy_path)
     session_rows = load_session_rows(session_path) if session_path else None
 
-    print(build_table(proxy_rows, session_rows, proxy_path, session_path))
+    paired = pair_rows(proxy_rows, session_rows)
+
+    rebuild_ratios, delta_ratios = compute_ratios(paired)
+
+    report = build_report(paired, rebuild_ratios, delta_ratios, proxy_path, session_path)
+
+    report_path = write_report(report)
+    print(report)
+    print(f"\nReport written to: {report_path}")
 
 # FUNCTIONS
 
@@ -40,7 +56,7 @@ def parse_args():
 # Open proxy JSONL — supports gzip and plain text
 def _open_jsonl(path):
     p = Path(path)
-    if p.suffix == ".gz" or (p.name.endswith(".jsonl.gz")):
+    if p.suffix == ".gz" or p.name.endswith(".jsonl.gz"):
         return gzip.open(p, "rt", encoding="utf-8")
     return open(p, encoding="utf-8")
 
@@ -91,7 +107,7 @@ def load_proxy_rows(proxy_path):
             except json.JSONDecodeError:
                 continue
             if "raw_payload" not in entry:
-                continue  # skip sent_meta entries
+                continue
             model = entry.get("model", "")
             if "haiku" in model.lower():
                 continue
@@ -157,80 +173,131 @@ def load_session_rows(session_path):
     return events
 
 
-# Format chars/CC_token ratio — show "—" when CC is zero or no session data
-def _ratio_str(chars, cc):
-    if cc and cc > 0:
-        return f"{chars / cc:.1f}"
-    return "—"
+# Join proxy rows with session rows by positional index — returns list of combined dicts
+def pair_rows(proxy_rows, session_rows):
+    paired = []
+    for row in proxy_rows:
+        n = row["req_n"]
+        token_data = None
+        if session_rows is not None and n <= len(session_rows):
+            cr, cc, d, out = session_rows[n - 1]
+            token_data = {"cr": cr, "cc": cc, "d": d, "out": out}
+        paired.append({**row, **(token_data or {})})
+    return paired
 
 
-# Build markdown table from proxy rows and optional session rows
-def build_table(proxy_rows, session_rows, proxy_path, session_path):
-    has_session = session_rows is not None
+# Compute full-rebuild and message-delta ratio lists from paired rows
+def compute_ratios(paired):
+    rebuild_ratios = []
+    delta_ratios = []
+    for row in paired:
+        cr = row.get("cr")
+        cc = row.get("cc")
+        if cr is None or cc is None or cc == 0:
+            continue
+        total_chars = row["sys_chars"] + row["tools_chars"] + row["msgs_chars"]
+        # Full-rebuild: CR=0 (entire payload was cache-created)
+        if cr == 0:
+            rebuild_ratios.append((total_chars / cc, row))
+        # Delta: CR>0, CC>0, and there is a positive message delta
+        delta = row.get("delta_msgs_chars")
+        if cr > 0 and delta is not None and delta > 0:
+            delta_ratios.append((delta / cc, row))
+    return rebuild_ratios, delta_ratios
+
+
+# Format stats block for a list of (ratio, row) tuples
+def _stats_block(ratios):
+    if not ratios:
+        return "- N data points: 0\n- (no qualifying requests)"
+    vals = [r for r, _ in ratios]
+    med = statistics.median(vals)
+    mean = statistics.mean(vals)
+    stddev = statistics.stdev(vals) if len(vals) > 1 else 0.0
+    lo, hi = min(vals), max(vals)
+    return (
+        f"- N data points: {len(vals)}\n"
+        f"- Median: {med:.2f} chars/token\n"
+        f"- Mean: {mean:.2f} (stddev: {stddev:.2f})\n"
+        f"- Range: {lo:.2f} — {hi:.2f}"
+    )
+
+
+# Build full markdown report string
+def build_report(paired, rebuild_ratios, delta_ratios, proxy_path, session_path):
+    now = datetime.now()
+    ts_header = now.strftime("%Y-%m-%d %H:%M")
     session_label = str(session_path) if session_path else "not provided"
 
     lines = [
-        "# Char-Token Ratio Analysis",
-        f"# Proxy log: {proxy_path}",
-        f"# Session JSONL: {session_label}",
+        f"# Token Ratio Analysis — {ts_header}",
+        "",
+        "## Method",
+        f"- Proxy log: {proxy_path}",
+        f"- Session JSONL: {session_label}",
+        "- Pairing: positional index (REQ#N → Nth deduplicated assistant event)",
+        "- Filters: Opus/Sonnet only (Haiku skipped), streaming chunks deduplicated",
+        "",
+        "## Full-Rebuild Ratio (CR=0 requests)",
+        "Maps total payload chars to CC tokens — measures chars/token for entire cold-cache requests.",
+        "",
+        _stats_block(rebuild_ratios),
+        "",
+        "## Message-Delta Ratio (CR>0, CC>0, Δchars>0)",
+        "Maps incremental message chars to CC tokens — measures chars/token for message content specifically.",
+        "",
+        _stats_block(delta_ratios),
+        "",
+        "## Known Prefix Size",
+        "- System+Tools: ~154,550 chars → ~41,975 tokens = 3.68 chars/token",
         "",
     ]
 
-    if has_session:
-        lines.append(
-            "| REQ# | Model | sys_chars | tools_chars | msgs_chars | msgs_count |"
-            " Δmsgs_chars | CR | CC | D | chars/CC_tok |"
-        )
-        lines.append(
-            "|------|-------|----------:|------------:|-----------:|-----------:|"
-            "-------------:|---:|---:|--:|-------------:|"
-        )
-    else:
-        lines.append(
-            "| REQ# | Model | sys_chars | tools_chars | msgs_chars | msgs_count | Δmsgs_chars |"
-        )
-        lines.append(
-            "|------|-------|----------:|------------:|-----------:|-----------:|-------------:|"
-        )
+    # Raw data table — top 20 by CC (descending), only rows with token data
+    tokened = [r for r in paired if "cc" in r]
+    top20 = sorted(tokened, key=lambda r: r["cc"], reverse=True)[:20]
 
-    for row in proxy_rows:
-        n = row["req_n"]
-        model_short = row["model"].split("/")[-1] if "/" in row["model"] else row["model"]
-        # Truncate model name for table readability
-        if len(model_short) > 24:
-            model_short = model_short[:21] + "..."
-        delta_str = f"{row['delta_msgs_chars']:+,}" if row["delta_msgs_chars"] is not None else "—"
+    lines += [
+        "## Raw Data (top 20 by CC)",
+        "| REQ# | sys_chars | tools_chars | msgs_chars | Δmsgs | CR | CC | D | ratio_type | ratio |",
+        "|-----:|----------:|------------:|-----------:|------:|---:|---:|--:|:----------:|------:|",
+    ]
+    for row in top20:
+        cr, cc, d = row["cr"], row["cc"], row["d"]
+        total_chars = row["sys_chars"] + row["tools_chars"] + row["msgs_chars"]
+        delta = row.get("delta_msgs_chars")
+        delta_str = f"{delta:+,}" if delta is not None else "—"
 
-        if has_session:
-            if n <= len(session_rows):
-                cr, cc, d, _out = session_rows[n - 1]
-                total_chars = row["sys_chars"] + row["tools_chars"] + row["msgs_chars"]
-                ratio = _ratio_str(total_chars, cc)
-                lines.append(
-                    f"| {n} | {model_short} |"
-                    f" {row['sys_chars']:,} | {row['tools_chars']:,} |"
-                    f" {row['msgs_chars']:,} | {row['msgs_count']:,} |"
-                    f" {delta_str} |"
-                    f" {cr:,} | {cc:,} | {d:,} |"
-                    f" {ratio} |"
-                )
-            else:
-                lines.append(
-                    f"| {n} | {model_short} |"
-                    f" {row['sys_chars']:,} | {row['tools_chars']:,} |"
-                    f" {row['msgs_chars']:,} | {row['msgs_count']:,} |"
-                    f" {delta_str} |"
-                    f" — | — | — | — |"
-                )
+        if cr == 0 and cc > 0:
+            ratio_type = "full-rebuild"
+            ratio_val = f"{total_chars / cc:.2f}"
+        elif cr > 0 and cc > 0 and delta and delta > 0:
+            ratio_type = "delta"
+            ratio_val = f"{delta / cc:.2f}"
         else:
-            lines.append(
-                f"| {n} | {model_short} |"
-                f" {row['sys_chars']:,} | {row['tools_chars']:,} |"
-                f" {row['msgs_chars']:,} | {row['msgs_count']:,} |"
-                f" {delta_str} |"
-            )
+            ratio_type = "—"
+            ratio_val = "—"
+
+        lines.append(
+            f"| {row['req_n']} |"
+            f" {row['sys_chars']:,} |"
+            f" {row['tools_chars']:,} |"
+            f" {row['msgs_chars']:,} |"
+            f" {delta_str} |"
+            f" {cr:,} | {cc:,} | {d:,} |"
+            f" {ratio_type} | {ratio_val} |"
+        )
 
     return "\n".join(lines)
+
+
+# Write report to 04_reports/ with timestamp filename — returns path
+def write_report(report):
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_path = REPORTS_DIR / f"{ts}_token_ratios.md"
+    report_path.write_text(report, encoding="utf-8")
+    return report_path
 
 
 if __name__ == "__main__":
