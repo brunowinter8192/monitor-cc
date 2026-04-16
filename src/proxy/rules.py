@@ -10,6 +10,7 @@ sys.path.insert(0, _src_dir)
 from constants import TOOL_BLOCKLIST
 
 from .content_strip import (
+    _strip_all_system_reminders,
     _strip_plan_mode_blocks,
     _strip_system_reminder,
     _message_has_rejection,
@@ -137,7 +138,7 @@ def _read_rule_file(rel_path: str) -> str:
         return ""
 
 
-# Concatenate system2 rule files for a given model family (global + model-specific)
+# Concatenate system2 rule files for a given model family (global + model-specific + project)
 def _load_system2_rules(model_family: str, project_path: str = "") -> str:
     config = _load_config()
     s2 = config.get("system2_rules", {})
@@ -152,26 +153,16 @@ def _load_system2_rules(model_family: str, project_path: str = "") -> str:
     # haiku gets no rules (returns empty → system[2] becomes ".")
     if model_family == "haiku":
         return ""
-    all_files = global_files + model_files
+    # Load project-specific files from system2_rules.projects
+    project_files = []
+    if project_path:
+        for _name, proj in s2.get("projects", {}).items():
+            path_contains = proj.get("path_contains", "")
+            if path_contains and path_contains in project_path:
+                project_files.extend(proj.get("files", []))
+    all_files = global_files + model_files + project_files
     parts = [c for c in (_read_rule_file(f) for f in all_files) if c]
     return "\n\n".join(parts)
-
-
-# Load project-specific rules based on project path, returns concatenated content or empty string
-def _load_project_rules(project_path: str) -> str:
-    if not project_path:
-        return ""
-    config = _load_config()
-    projects = config.get("message_rules", {}).get("projects", {})
-    parts = []
-    for _name, proj in projects.items():
-        path_contains = proj.get("path_contains", "")
-        if path_contains and path_contains in project_path:
-            for f in proj.get("files", []):
-                content = _read_rule_file(f)
-                if content:
-                    parts.append(content)
-    return "\n\n".join(parts) if parts else ""
 
 
 # Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)
@@ -313,6 +304,19 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 stripped_msg_originals[idx] = original_before_pass
             changed = True
 
+    # Final pass: strip ALL remaining <system-reminder> blocks from msg[0]
+    if new_messages and new_messages[0].get("role") == "user":
+        msg0 = new_messages[0]
+        old_content = msg0.get("content", "")
+        new_content = _strip_all_system_reminders(old_content)
+        if new_content != old_content:
+            new_messages[0] = {**msg0, "content": new_content}
+            modifications.append("stripped_all_sr_msg0")
+            if 0 not in stripped_msg_indices:
+                stripped_msg_indices.append(0)
+                stripped_msg_originals[0] = old_content
+            changed = True
+
     system = payload.get("system", [])
     new_system = list(system) if isinstance(system, list) else system
 
@@ -332,21 +336,6 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
             if stripped != block3.get("text", ""):
                 new_system[3] = {**block3, "text": stripped}
                 modifications.append("stripped_session_guidance")
-
-    # Inject project rules into MSG[0] if available (skip for haiku — one-shot title calls)
-    project_rules = _load_project_rules(project_path) if model_family != "haiku" else ""
-    if project_rules and new_messages:
-        msg0 = new_messages[0]
-        if msg0.get("role") == "user":
-            pr_block = f"<system-reminder>\n{project_rules}\n</system-reminder>"
-            content = msg0.get("content", "")
-            if isinstance(content, str):
-                new_messages[0] = {**msg0, "content": pr_block + "\n" + content}
-            elif isinstance(content, list):
-                new_block = {"type": "text", "text": pr_block}
-                new_messages[0] = {**msg0, "content": [new_block] + list(content)}
-            modifications.append("injected_project_rules")
-            changed = True
 
     if not changed:
         return payload, modifications, None, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed

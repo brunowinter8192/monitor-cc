@@ -23,6 +23,22 @@
    - **BP4 — Messages last:** Letzte Message, letzter Content-Block — für nächsten Request.
    - **Entfernt (BP Layout v2 → v3):** Tools-Anchor bei Tool-Growth. Tools werden in der Praxis innerhalb einer Session nicht verändert, der Anchor war selten aktiv. Slot freigemacht für sys[2]-Marker. `prev_tools_count_by_model` State in `addon.py` komplett entfernt.
 
+### Projekt-Rules in sys[2] (ab Refactor proj-rules-to-sys2, 2026-04-16)
+
+`_load_system2_rules(model_family, project_path)` lädt seit diesem Refactor drei Schichten:
+
+1. **global** — `system2_rules.global.files` (immer, ausser exclude_projects)
+2. **model** — `system2_rules.opus.files` oder `system2_rules.worker.files`
+3. **project** — `system2_rules.projects.<name>.files` wenn `path_contains in project_path`
+
+Verkettung: `"\n\n".join(parts)` — deterministische Reihenfolge global → model → project. Resultat landet in `system[2]`, das durch BP1 gecacht wird.
+
+`msg[0]` enthält nach diesem Refactor **nur noch user-input**: Als letzter Pass in `apply_modification_rules` werden via `_strip_all_system_reminders()` alle verbleibenden `<system-reminder>…</system-reminder>` Blöcke aus `messages[0]` entfernt (sofern `role == "user"`). Modifier: `"stripped_all_sr_msg0"`.
+
+`_load_project_rules()` und der zugehörige Injektions-Block wurden entfernt. `message_rules.projects` aus `proxy_rules.json` entfernt.
+
+**Erwarteter Cross-Session Cache-Effekt:** 2. Fresh-Session innerhalb TTL (55min): CR ≥ 55k / CC ≤ 3k (vs. pre-refactor CR=41k / CC=20k). Grund: Projekt-Rules liegen jetzt im sys[2]-Prefix der BP1-Cache-Region und werden cross-session gecacht, statt session-spezifisch in msg[0] zu driften.
+
 ### State-Tracking
 
 `self.prev_messages_by_model` speichert Message-Summaries des **modifizierten** Payloads (nicht Original). Getrennt nach model_family ("opus" / "haiku"). BP3-Berechnung vergleicht aktuelle modifizierte Messages mit vorherigen modifizierten Messages via `_compute_diff()`.

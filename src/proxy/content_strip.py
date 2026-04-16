@@ -25,6 +25,25 @@ def _strip_plan_mode_blocks(content):
     return None
 
 
+# Strip ALL <system-reminder>...</system-reminder> blocks from string or list content
+def _strip_all_system_reminders(content):
+    pattern = re.compile(r'<system-reminder>.*?</system-reminder>\s*', re.DOTALL)
+    if isinstance(content, str):
+        return pattern.sub('', content) or "."
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                new_text = pattern.sub('', block.get("text", ""))
+                if not new_text.strip():
+                    new_text = "."
+                result.append({**block, "text": new_text})
+            else:
+                result.append(block)
+        return result
+    return content
+
+
 # Strip any <system-reminder> block whose text contains marker, from string or list content
 def _strip_system_reminder(content, marker: str):
     pattern = re.compile(r'<system-reminder>.*?' + re.escape(marker) + r'.*?</system-reminder>\s*', re.DOTALL)
