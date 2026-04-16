@@ -15,6 +15,7 @@ def _summarize_message(msg: dict) -> dict:
                 continue
             btype = block.get("type", "text")
             has_cc = bool(block.get("cache_control"))
+            sig_chars = 0
             if btype == "text":
                 text = block.get("text", "")
                 bchars = len(text)
@@ -41,14 +42,19 @@ def _summarize_message(msg: dict) -> dict:
                     bfull = ""
             elif btype == "thinking":
                 thinking_text = block.get("thinking", "")
+                signature = block.get("signature", "")
                 bchars = len(thinking_text)
                 bpreview = thinking_text.split('\n')[0][:60]
                 bfull = thinking_text
+                sig_chars = len(signature)
             else:
                 bchars = len(json.dumps(block))
                 bpreview = btype
                 bfull = json.dumps(block)
-            blocks.append({"type": btype, "chars": bchars, "preview": bpreview, "full_text": bfull, "has_cc": has_cc})
+            block_dict = {"type": btype, "chars": bchars, "preview": bpreview, "full_text": bfull, "has_cc": has_cc}
+            if btype == "thinking":
+                block_dict["sig_chars"] = sig_chars
+            blocks.append(block_dict)
     return {
         "role": role,
         "type": msg_type,

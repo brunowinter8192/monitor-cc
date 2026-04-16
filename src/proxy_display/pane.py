@@ -224,6 +224,12 @@ def run_worker_proxy_loop() -> None:
 
                 _worker_proxy_workers = list_workers(_monitor.active_project_filter) if _monitor.active_project_filter else []
 
+                # Force worker_name to None when no workers exist or selection is stale
+                if not _worker_proxy_workers:
+                    worker_name = None
+                elif worker_name is not None and worker_name not in {w['name'] for w in _worker_proxy_workers}:
+                    worker_name = None
+
                 if worker_name != last_worker_name:
                     worker_proxy_entries.clear()
                     worker_proxy_expand_states.clear()
