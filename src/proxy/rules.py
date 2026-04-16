@@ -16,6 +16,7 @@ from .content_strip import (
     _message_has_rejection,
     _strip_rejection_message,
     _strip_session_guidance,
+    _strip_git_status,
 )
 
 _SHARED_RULES_DIR = Path.home() / ".claude" / "shared-rules"
@@ -332,10 +333,17 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     if isinstance(new_system, list) and len(new_system) > 3:
         block3 = new_system[3]
         if isinstance(block3, dict) and block3.get("type") == "text":
-            stripped = _strip_session_guidance(block3.get("text", ""))
-            if stripped != block3.get("text", ""):
-                new_system[3] = {**block3, "text": stripped}
+            text3 = block3.get("text", "")
+            stripped = _strip_session_guidance(text3)
+            if stripped != text3:
+                text3 = stripped
                 modifications.append("stripped_session_guidance")
+            git_stripped = _strip_git_status(text3)
+            if git_stripped != text3:
+                text3 = git_stripped
+                modifications.append("stripped_git_status")
+            if text3 != block3.get("text", ""):
+                new_system[3] = {**block3, "text": text3}
 
     if not changed:
         return payload, modifications, None, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed

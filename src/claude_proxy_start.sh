@@ -98,7 +98,15 @@ PROXY_PID=$!
 cleanup() {
     kill $PROXY_PID 2>/dev/null
     wait $PROXY_PID 2>/dev/null
-    rm -f "$MARKER_FILE"
+    # Only remove the per-project marker if it still contains OUR log_id — a parallel session
+    # in the same project may have overwritten it with its own log_id.
+    if [ -f "$MARKER_FILE" ]; then
+        local marker_log_id
+        marker_log_id=$(sed -n '2p' "$MARKER_FILE" 2>/dev/null)
+        if [ "$marker_log_id" = "$LOG_ID" ]; then
+            rm -f "$MARKER_FILE"
+        fi
+    fi
     # Only remove the /tmp per-project marker if it still contains OUR port — another session
     # that started later may have already overwritten it with its own port, so don't clobber it.
     local tmp_marker="/tmp/.monitor_cc_proxy_${SESSION_ID}"
