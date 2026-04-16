@@ -23,6 +23,7 @@ _SHARED_RULES_DIR = Path.home() / ".claude" / "shared-rules"
 _PROXY_RULES_CONFIG = _SHARED_RULES_DIR / "proxy_rules.json"
 _file_cache: dict = {}
 _config_cache: list = [None]
+_WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
 # FUNCTIONS
 
@@ -342,6 +343,10 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
             if git_stripped != text3:
                 text3 = git_stripped
                 modifications.append("stripped_git_status")
+            normalized = _WORKTREE_PATH_PATTERN.sub(r'\1', text3)
+            if normalized != text3:
+                text3 = normalized
+                modifications.append("normalized_worktree_path")
             if text3 != block3.get("text", ""):
                 new_system[3] = {**block3, "text": text3}
 
