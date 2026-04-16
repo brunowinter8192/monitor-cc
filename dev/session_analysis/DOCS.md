@@ -161,6 +161,39 @@ python3 dev/session_analysis/05_req_breakdown.py \
 
 ---
 
+## 06_char_token_ratio.py
+
+**Purpose:** Correlates message char counts with actual API token counts (CR, CC, D) to derive chars-per-token ratios for Claude's tokenizer. Supports single-file analysis and batch mode across all proxy logs with auto-pairing to session JSONLs. Generates persistent Markdown reports.
+
+**Input:** Proxy JSONL log (positional arg) or `--batch <dir>` for all logs in a directory. Optionally `--session-jsonl` for single-file mode to pair with session JSONL for token data.
+
+**Output:** Markdown table to stdout + persistent report to `04_reports/` (batch mode).
+
+**Usage:**
+```bash
+# Single proxy log (char counts only)
+python3 dev/session_analysis/06_char_token_ratio.py src/logs/api_requests_<id>.jsonl
+
+# Single proxy log + session pairing (adds CR/CC/D/ratio)
+python3 dev/session_analysis/06_char_token_ratio.py src/logs/api_requests_<id>.jsonl \
+  --session-jsonl ~/.claude/projects/<encoded>/session.jsonl
+
+# Batch mode — all proxy logs, auto-paired with session JSONLs
+python3 dev/session_analysis/06_char_token_ratio.py --batch src/logs/
+```
+
+| Flag | Description |
+|------|-------------|
+| `log_file` | *(positional, optional in batch mode)* Proxy JSONL log file |
+| `--session-jsonl` | Session JSONL for token data pairing (single-file mode) |
+| `--batch DIR` | Scan all `api_requests_*.jsonl` in DIR, auto-pair with session JSONLs |
+
+**Ratio types in output:**
+- `full-rebuild`: CR=0, ratio = total_chars / CC (entire payload tokenized)
+- `delta`: CR>0 + CC>0 + Δchars>0, ratio = Δmsgs_chars / CC (incremental message tokens)
+
+---
+
 ## 04_reports/
 
 MD reports written by `05_req_breakdown.py`. One file per run.
