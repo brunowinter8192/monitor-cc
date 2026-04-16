@@ -12,7 +12,7 @@ from mitmproxy import http
 
 from .logging import _build_entry, _summarize_content_for_log
 from .message_summary import _summarize_message, _has_cache_control
-from .rules import apply_modification_rules, _strip_blocked_tool_references, _inject_context_management
+from .rules import apply_modification_rules, _strip_blocked_tool_references, _inject_context_management, _inject_model_override
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools
 from .tool_injection import inject_mcp_tools, _load_active_plugins
@@ -72,6 +72,10 @@ class ProxyAddon:
             if cm_injected:
                 modifications.append("injected_context_management")
 
+            modified_payload, model_overridden = _inject_model_override(modified_payload, model_family)
+            if model_overridden:
+                modifications.append("injected_model_override")
+
             entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
             if original_system2 is not None:
                 entry['original_system2_text'] = original_system2
@@ -105,12 +109,18 @@ class ProxyAddon:
 
             flow.request.content = json.dumps(modified_payload).encode("utf-8")
             flow.request.headers.pop("content-encoding", None)
-            # Inject context-management beta header
+            # Strip deprecated interleaved-thinking beta header and inject context-management beta header
             existing_beta = flow.request.headers.get("anthropic-beta", "")
+            deprecated_header = "interleaved-thinking-2025-05-14"
+            if deprecated_header in existing_beta:
+                parts = [p.strip() for p in existing_beta.split(",") if p.strip() != deprecated_header]
+                existing_beta = ",".join(parts)
             beta_value = "context-management-2025-06-27"
             if existing_beta:
                 if beta_value not in existing_beta:
                     flow.request.headers["anthropic-beta"] = existing_beta + "," + beta_value
+                else:
+                    flow.request.headers["anthropic-beta"] = existing_beta
             else:
                 flow.request.headers["anthropic-beta"] = beta_value
         except Exception as e:

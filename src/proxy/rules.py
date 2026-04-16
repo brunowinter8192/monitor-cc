@@ -353,6 +353,31 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
 
 
+# Inject model override fields from proxy_rules.json config if enabled and model is opus — returns (modified_payload, injected_bool)
+def _inject_model_override(payload: dict, model_family: str) -> tuple:
+    try:
+        config = _load_config()
+        mo_config = config.get("model_override", {})
+        if not mo_config.get("enabled", False):
+            return payload, False
+        if model_family != "opus":
+            return payload, False
+        result = dict(payload)
+        if "model" in mo_config:
+            result["model"] = mo_config["model"]
+        if "thinking" in mo_config:
+            result["thinking"] = mo_config["thinking"]
+        if "effort" in mo_config:
+            output_config = dict(result.get("output_config") or {})
+            output_config["effort"] = mo_config["effort"]
+            result["output_config"] = output_config
+        if "max_tokens" in mo_config:
+            result["max_tokens"] = mo_config["max_tokens"]
+        return result, True
+    except Exception:
+        return payload, False
+
+
 # Inject context_management block from proxy_rules.json config if enabled — returns (modified_payload, injected_bool)
 def _inject_context_management(payload: dict) -> tuple:
     try:
