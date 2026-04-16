@@ -300,6 +300,35 @@ Session JSONL usage impact:
 
 **Unresolved:** `/tmp/.monitor_cc_proxy_79b52c8d` zombie marker origin not traced (belongs to some earlier session whose project-path hash hashes to 79b52c8d, not reproducible from current Monitor_CC path). Left as-is — zombie markers are harmless if their port is not a live mitmdump.
 
+## Case 7 — monitor_cc REQ#92 (2026-04-16) — Server-Side Eviction, Identical Proxy Hashes
+
+**Symptom:** CR=205,167 → **0** (complete cache loss). CC=1,312 → 155,220. Full rebuild.
+
+**Context:**
+- Session: `22c7bdb8-1c6d-4668-bcdb-c64f122d8867` (Monitor_CC)
+- Proxy log: `src/logs/api_requests_opus_monitor_cc_1776299232.jsonl`
+- Gap REQ#91 → REQ#92: ~20 seconds (01:27:42 → 01:28:02 UTC)
+- Proxy alive in path (verified via sent_meta entries before and after)
+
+**Sent_meta comparison REQ#85..REQ#95:**
+- `sent_tools_bytes_hash`: **identical** (`417c1bd5`) across all entries
+- `prefix_hash_bp2_tools`: **identical** (`6da98209d6`) across all entries
+- `sent_tools_count`: **identical** (11) across all entries
+- `sent_cache_breakpoints`: consistent pattern (sys=[2], tools=[10], messages advancing)
+
+**File modifications checked:**
+- `proxy_rules.json` last modified at 01:21:06 UTC — caused the known REQ#85 partial rebuild (Case 3 pattern, worker edited rules live)
+- **No rule file modifications between 01:22 and 01:28 UTC** — verified across all `~/.claude/shared-rules/global/`, `~/.claude/shared-rules/opus/`, `~/.claude/shared-rules/proj_monitor/`
+
+**Session context at time of rebuild:**
+- Worker `proj-rules-to-sys2` had committed 4a1c06e at ~01:22 and was being merged
+- Worker `tokenizer-baseline` was reading files in its worktree
+- Both workers had their own proxy live-copies (isolated)
+
+**Interpretation:** All proxy-observable factors (tool hashes, sys hashes, BP layout, sent_meta) are byte-identical between the normal REQ#91 and the full-rebuild REQ#92. No rule file edits in the window. 20-second gap rules out TTL. Recovery at REQ#93 (CR=155,220) confirms the cache was freshly written at REQ#92 and immediately reusable.
+
+**Classification:** Full rebuild. Root cause = **server-side cache eviction** (Anthropic cache pool pressure or internal eviction). Not actionable from proxy side.
+
 ## Open Patterns / Hypotheses
 
 - **Shape demotion** (CC moving BP4 forward, demoting old BP anchor from list-with-block to plain string) is real and deterministic. Our proxy doesn't normalize → byte diff → at least BP3/BP4 miss at that msg position. Fix planned: `_normalize_user_content_shape()` in `cache.py`.
