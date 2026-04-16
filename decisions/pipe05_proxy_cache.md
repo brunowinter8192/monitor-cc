@@ -23,6 +23,52 @@
    - **BP4 — Messages last:** Letzte Message, letzter Content-Block — für nächsten Request.
    - **Entfernt (BP Layout v2 → v3):** Tools-Anchor bei Tool-Growth. Tools werden in der Praxis innerhalb einer Session nicht verändert, der Anchor war selten aktiv. Slot freigemacht für sys[2]-Marker. `prev_tools_count_by_model` State in `addon.py` komplett entfernt.
 
+### Context Editing (ab 2026-04-17)
+
+`_inject_context_management(payload)` in `src/proxy/rules.py` injiziert einen `context_management`-Block in den API-Payload, wenn in `~/.claude/shared-rules/proxy_rules.json` unter `context_management.enabled: true` gesetzt.
+
+Injizierter Block:
+```json
+{
+  "context_management": {
+    "edits": [
+      {
+        "type": "clear_tool_uses_20250919",
+        "trigger": {"type": "input_tokens", "value": 100000},
+        "keep":    {"type": "tool_uses",    "value": 5},
+        "clear_at_least": {"type": "input_tokens", "value": 10000}
+      },
+      {
+        "type": "clear_thinking_20251015",
+        "keep": {"type": "thinking_turns", "value": 2}
+      }
+    ]
+  }
+}
+```
+
+**Strategie `clear_tool_uses_20250919`:** Löscht alte Tool-Result-Content server-seitig sobald > 100k Input-Tokens akkumuliert sind. Behält die letzten 5 Tool-Uses. Mindest-Löschmenge 10k Tokens pro Clearing-Event (sichert, dass der Cache-Invalidierungs-Overhead sich lohnt).
+
+**Strategie `clear_thinking_20251015`:** Löscht alte Thinking-Blöcke, behält nur die letzten 2 Thinking-Turns.
+
+**Beta-Header:** `src/proxy/addon.py` `request()` fügt nach `flow.request.content = ...` den Header `anthropic-beta: context-management-2025-06-27` hinzu (append-safe: prüft ob bereits vorhanden).
+
+**Logging:** `entry["context_management_injected"]: bool` in jedem Proxy-Log-Entry. `"injected_context_management"` in `modifications`-Liste wenn angewendet.
+
+**Cache-Interaktion:** Laut API-Docs invalidiert Tool-Result-Clearing den Cached-Prompt-Prefix sobald Content gelöscht wird. `clear_at_least: 10000` stellt sicher, dass mindestens 10k Tokens pro Event gelöscht werden — macht den Invalidierungs-Overhead amortisierbar. Trigger bei 100k Input-Tokens ist konservativ: kurze Sessions (<100k) sind vollständig unberührt.
+
+**Konfiguration:**
+```json
+// ~/.claude/shared-rules/proxy_rules.json
+{
+  "context_management": {
+    "enabled": true,
+    "clear_tool_uses": {"enabled": true, "trigger_input_tokens": 100000, "keep_tool_uses": 5, "clear_at_least_tokens": 10000},
+    "clear_thinking": {"enabled": true, "keep_thinking_turns": 2}
+  }
+}
+```
+
 ### Projekt-Rules in sys[2] (ab Refactor proj-rules-to-sys2, 2026-04-16)
 
 `_load_system2_rules(model_family, project_path)` lädt seit diesem Refactor drei Schichten:

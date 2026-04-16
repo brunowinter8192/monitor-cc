@@ -23,10 +23,12 @@ Contains:
 3. `_strip_unused_tools()` — remove TOOL_BLOCKLIST entries from payload.tools
 4. `inject_mcp_tools()` — append MCP schemas from schema store
 5. `_strip_blocked_tool_references()` — remove blocklisted tool_reference blocks from tool_results
-6. `_build_entry()` + `_write_entry(entry)` — **log entry captures post-injection state**, so the Proxy Pane sees all injected MCP tools (not just CC's 10 built-ins)
-7. `_strip_all_cache_control()` + `_set_cache_breakpoints()` — cache marker placement
-8. `_build_sent_meta()` + `_write_entry(sent_meta)` — per-request hash snapshot
-9. `flow.request.content = modified_payload`
+6. `_inject_context_management()` — inject `context_management` payload block if enabled in config
+7. `_build_entry()` + `_write_entry(entry)` — **log entry captures post-injection state**, so the Proxy Pane sees all injected MCP tools (not just CC's 10 built-ins); includes `context_management_injected: bool`
+8. `_strip_all_cache_control()` + `_set_cache_breakpoints()` — cache marker placement
+9. `_build_sent_meta()` + `_write_entry(sent_meta)` — per-request hash snapshot
+10. `flow.request.content = modified_payload`
+11. Beta header injection — appends `context-management-2025-06-27` to `anthropic-beta` header
 
 ## logging.py
 
@@ -68,6 +70,7 @@ Contains:
 - `_strip_blocked_tool_references()` — removes tool_reference blocks for TOOL_BLOCKLIST tools
 - `_content_contains()` — checks if message content contains a substring
 - `_strip_task_notification_tags()` — removes output-file and tool-use-id tags
+- `_inject_context_management(payload)` — reads `context_management` config from `proxy_rules.json`; if `enabled: true`, injects `context_management.edits` block with `clear_tool_uses_20250919` (trigger: 100k input tokens, keep: 5 tool_uses, clear_at_least: 10k) and `clear_thinking_20251015` (keep: 2 thinking_turns) into the payload. Returns `(modified_payload, injected_bool)`.
 
 **Cumulative second-pass strip (after the per-message elif-chain):** iterates over `new_messages` and strips `<system-reminder>` blocks containing `"The following skills are available for use with the Skill tool"` (marker: `stripped_skills_sr`) and `"# claudeMd"` (marker: `stripped_claudemd_sr`) from any user message. Runs additionally to the existing elif-branch strips so a single msg[0] that already had e.g. `stripped_deferred_tools_sr` applied still gets Skills and claudeMd sr removed.
 
@@ -84,6 +87,7 @@ Contains:
 - `_strip_rejection_message()` — replaces rejection tool_result content with "."
 - `_extract_session_start_block()` — extracts SessionStart rules block from MSG[0] (dead code — no longer called from rules.py since proxy reads files directly)
 - `_strip_session_guidance()` — removes "Session-specific guidance" section from text
+- `_strip_git_status(text)` — strips the gitStatus section from sys[3] (the CC-injected environment block); called from `apply_modification_rules()` on system[3] before forwarding
 
 ## cache.py
 
