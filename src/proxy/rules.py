@@ -363,6 +363,17 @@ def _inject_context_management(payload: dict) -> tuple:
 
         edits = []
 
+        # clear_thinking MUST be first in edits[] per Anthropic API requirement
+        clear_thinking = cm_config.get("clear_thinking", {})
+        if clear_thinking.get("enabled", True):
+            edits.append({
+                "type": "clear_thinking_20251015",
+                "keep": {
+                    "type": "thinking_turns",
+                    "value": clear_thinking.get("keep_thinking_turns", 2),
+                },
+            })
+
         clear_tool_uses = cm_config.get("clear_tool_uses", {})
         if clear_tool_uses.get("enabled", True):
             edits.append({
@@ -378,16 +389,6 @@ def _inject_context_management(payload: dict) -> tuple:
                 "clear_at_least": {
                     "type": "input_tokens",
                     "value": clear_tool_uses.get("clear_at_least_tokens", 10000),
-                },
-            })
-
-        clear_thinking = cm_config.get("clear_thinking", {})
-        if clear_thinking.get("enabled", True):
-            edits.append({
-                "type": "clear_thinking_20251015",
-                "keep": {
-                    "type": "thinking_turns",
-                    "value": clear_thinking.get("keep_thinking_turns", 2),
                 },
             })
 
