@@ -18,17 +18,19 @@ Contains:
 - `addons = [ProxyAddon()]` — mitmproxy addon registration
 
 **Request pipeline order** (inside `ProxyAddon.request()`):
-1. `apply_modification_rules()` — strip/replace system2, inject project rules, strip system-reminders
-2. Fixation capture/apply (per model_family)
-3. `_strip_unused_tools()` — remove TOOL_BLOCKLIST entries from payload.tools
-4. `inject_mcp_tools()` — append MCP schemas from schema store
-5. `_strip_blocked_tool_references()` — remove blocklisted tool_reference blocks from tool_results
-6. `_inject_context_management()` — inject `context_management` payload block if enabled in config
-7. `_build_entry()` + `_write_entry(entry)` — **log entry captures post-injection state**, so the Proxy Pane sees all injected MCP tools (not just CC's 10 built-ins); includes `context_management_injected: bool`
-8. `_strip_all_cache_control()` + `_set_cache_breakpoints()` — cache marker placement
-9. `_build_sent_meta()` + `_write_entry(sent_meta)` — per-request hash snapshot
-10. `flow.request.content = modified_payload`
-11. Beta header injection — appends `context-management-2025-06-27` to `anthropic-beta` header
+1. `_check_payload_schema()` — schema-drift detection on first opus request per session; writes `schema_warning` log entry if drift detected
+2. `apply_modification_rules()` — strip/replace system2, inject project rules, strip system-reminders, normalize worktree paths in sys[3]
+3. Fixation capture/apply (per model_family)
+4. `_strip_unused_tools()` — remove TOOL_BLOCKLIST entries from payload.tools
+5. `inject_mcp_tools()` — append MCP schemas from schema store
+6. `_strip_blocked_tool_references()` — remove blocklisted tool_reference blocks from tool_results
+7. `_inject_context_management()` — inject `context_management` payload block if enabled in config
+8. `_inject_model_override()` — override model/thinking/effort/max_tokens from `proxy_rules.json` config (opus only)
+9. `_build_entry()` + `_write_entry(entry)` — **log entry captures post-injection state**, so the Proxy Pane sees all injected MCP tools (not just CC's 10 built-ins); includes `context_management_injected: bool`
+10. `_strip_all_cache_control()` + `_set_cache_breakpoints()` — cache marker placement
+11. `_build_sent_meta()` + `_write_entry(sent_meta)` — per-request hash snapshot
+12. `flow.request.content = modified_payload`
+13. Beta header management — strips deprecated `interleaved-thinking-2025-05-14`, appends `context-management-2025-06-27`
 
 ## logging.py
 
