@@ -84,12 +84,12 @@ def run_subagents_loop() -> None:
                         elif button == 64:
                             agent_id = _find_agent_at_row(row, agent_pane_line_map)
                             if agent_id and subagent_states.get(agent_id, False):
-                                agent_cache_scroll_offsets[agent_id] = max(0, agent_cache_scroll_offsets.get(agent_id, 0) - 3)
+                                agent_cache_scroll_offsets[agent_id] = max(0, agent_cache_scroll_offsets.get(agent_id, 0) + 3)
                                 input_changed = True
                         elif button == 65:
                             agent_id = _find_agent_at_row(row, agent_pane_line_map)
                             if agent_id and subagent_states.get(agent_id, False):
-                                agent_cache_scroll_offsets[agent_id] = max(0, agent_cache_scroll_offsets.get(agent_id, 0) + 3)
+                                agent_cache_scroll_offsets[agent_id] = max(0, agent_cache_scroll_offsets.get(agent_id, 0) - 3)
                                 input_changed = True
                         elif button >= 32:
                             agent_pane_hover_row = row
