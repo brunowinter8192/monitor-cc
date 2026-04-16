@@ -215,10 +215,10 @@ def run_warnings_loop() -> None:
                                 error_expand_states[key] = not error_expand_states.get(key, False)
                                 input_changed = True
                         elif button == 64:
-                            error_scroll_offset = max(0, error_scroll_offset - 3)
+                            error_scroll_offset = max(0, error_scroll_offset + 3)
                             input_changed = True
                         elif button == 65:
-                            error_scroll_offset = max(0, error_scroll_offset + 3)
+                            error_scroll_offset = max(0, error_scroll_offset - 3)
                             input_changed = True
                         elif button >= 32:
                             error_hover_row = row
