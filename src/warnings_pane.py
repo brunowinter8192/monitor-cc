@@ -225,10 +225,16 @@ def run_warnings_loop() -> None:
                                 error_expand_states[key] = not error_expand_states.get(key, False)
                                 input_changed = True
                         elif button == 64:
-                            error_scroll_offset = max(0, error_scroll_offset + 3)
+                            # tmux.h: MOUSE_WHEEL_UP=64 → scroll viewport up → offset decreases.
+                            # NOTE: token_pane uses offset+3 for button 64 because it renders
+                            # bottom-to-top (start = len-height-offset). warnings_pane renders
+                            # top-to-bottom (visible = lines[offset:offset+height]), so directions
+                            # are opposite: wheel-up must decrease offset here.
+                            error_scroll_offset = max(0, error_scroll_offset - 3)
                             input_changed = True
                         elif button == 65:
-                            error_scroll_offset = max(0, error_scroll_offset - 3)
+                            # tmux.h: MOUSE_WHEEL_DOWN=65 → scroll viewport down → offset increases
+                            error_scroll_offset = error_scroll_offset + 3
                             input_changed = True
                         elif button >= 32:
                             error_hover_row = row
