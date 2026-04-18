@@ -157,12 +157,25 @@ def _load_system2_rules(model_family: str, project_path: str = "") -> str:
         return ""
     # Load project-specific files from system2_rules.projects
     project_files = []
+    exclusive_files = None
     if project_path:
         for _name, proj in s2.get("projects", {}).items():
             path_contains = proj.get("path_contains", "")
             if path_contains and path_contains in project_path:
+                # Exclusive project: skip global+model, load ONLY these files.
+                # Optional exclusive_model_families restricts to listed families;
+                # other families fall through to empty rules.
+                if proj.get("exclusive"):
+                    allowed = proj.get("exclusive_model_families")
+                    if allowed is not None and model_family not in allowed:
+                        return ""
+                    exclusive_files = list(proj.get("files", []))
+                    break
                 project_files.extend(proj.get("files", []))
-    all_files = global_files + model_files + project_files
+    if exclusive_files is not None:
+        all_files = exclusive_files
+    else:
+        all_files = global_files + model_files + project_files
     parts = [c for c in (_read_rule_file(f) for f in all_files) if c]
     return "\n\n".join(parts)
 

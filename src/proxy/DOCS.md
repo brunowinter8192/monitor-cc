@@ -126,3 +126,145 @@ Contains:
 - `_load_active_plugins()` — reads `active_plugins.json` with mtime check; default `[iterative-dev]`
 - `_resolve_schema_store_path()` — resolves path via `MONITOR_CC_ROOT` env or module-relative fallback
 - `_is_project_excluded()` — substring-matches `project_path` against `config["tool_injection"]["exclude_projects"]` in `~/.claude/shared-rules/proxy_rules.json` (same pattern as `system2_rules.exclude_projects` opt-out in `rules.py`). Used to fully disable MCP schema injection for specific projects.
+
+
+---
+
+# Proxy Investigation & Debugging Notes
+
+## Cross-Pane Data Correlation (CRITICAL)
+
+When two panes display the same data grouped differently (e.g., both show API requests grouped by turn), they MUST use the **same source** for grouping. Never derive grouping from different sources — the counts and boundaries will diverge.
+
+**Rule:** Correlated panes → same data source for the shared dimension (turns, requests, timestamps).
+
+Concrete failure (2026-04-09): Proxy Pane detected turns from proxy entry messages (`_get_last_user_prompt()`), Token Pane detected turns from session JSONL (`extract_cache_turns()`). Different sources → different turn boundaries → turns didn't match. 3 iterations to fix. Solution: Proxy Pane now reads session JSONL for turn detection (same source as Token Pane).
+
+**Corollary:** When request numbering must match across panes, both must count from the same source. Session JSONL api_calls (deduplicated streaming chunks) ≠ Proxy log entries (actual HTTP requests). Positional mapping between different sources is unreliable.
+
+## Proxy Edit Safety
+
+mitmproxy **hot-reloads** addon scripts when the file changes on disk. This resets `ProxyAddon` state (`prev_messages_by_model`) → BP3 can't find unchanged prefix → cache invalidation.
+
+**Live-Copy protection (implemented):** `claude_proxy_start.sh` copies `proxy_addon.py` to `.proxy_addon_live_<session_id>.py` AND copies the entire `src/proxy/` package to `src/logs/.proxy_live_<session_id>/proxy/`. The live-copy script detects `_live_` in its filename, extracts the session_id, and imports from the frozen package copy instead of `src/proxy/` on disk. Worker proxies also use live-copy (`.proxy_addon_worker_{name}.py`) since iterative-dev commit b8930f3.
+
+**Why the full package copy is needed:** The live-copy of `proxy_addon.py` alone is NOT sufficient. The addon imports from `src/proxy/` (addon.py, rules.py, cache.py, message_summary.py, etc.). When worker merges change ANY file in `src/proxy/`, Python can pick up the changed module — causing state reset and cache invalidation. Freezing the entire package at proxy-start time prevents this.
+
+**Rules:**
+- NEVER edit files in `src/proxy/` during a live session and expect the running proxy to be unaffected — the frozen copy isolates it, but only from git merges, not from direct file edits to the live copy
+- When multiple proxy changes are needed: batch them in one worker, merge once. The running proxy is isolated, but verify after next proxy restart
+- Hot-reload cannot be disabled in mitmproxy (hardcoded `reload=True` in script.py)
+- Cleanup on exit: trap removes both `.proxy_addon_live_<id>.py` and `.proxy_live_<id>/` directory
+
+Concrete failure (2026-04-08): Worker merged proxy_addon.py changes → mitmproxy hot-reloaded → state reset → 145k CC cache rebuild. Three separate merges in one session = three rebuilds.
+Concrete failure (2026-04-09): Worker proxy (spawned before live-copy fix) loaded proxy_addon.py directly → git merge triggered hot-reload → 41k CC rebuild. Fixed: worker proxies now use live-copy.
+Concrete failure (2026-04-10): Worker merged `src/proxy/message_summary.py` changes (full_text field). Live-copy of proxy_addon.py was NOT affected, but the running proxy still imported message_summary.py from disk → cache rebuild (82k CC + 87k CC, two rebuilds). Fixed: full package copy isolates ALL proxy imports.
+
+## Cache-Rebuild Investigation Pattern
+
+When a cache rebuild is observed (high CC, low CR in Token Pane):
+0. **ZEROTH:** Verify proxy was in path during the rebuild. (a) `ps aux | grep mitmdump` — is any proxy process running? (b) Does `src/logs/api_requests_*_<session>.jsonl` have an entry at the rebuild timestamp? If NO → proxy died / was bypassed. Infrastructure fix, not payload analysis.
+1. **FIRST:** `git log --since='2h' -- src/proxy/` — check for recent merges on proxy files
+2. **SECOND:** Check proxy log timestamps — correlate rebuild time with merge time
+3. **THIRD:** Only if no merge correlation AND proxy was alive → investigate payload causes (byte diff per msg, TTL, API-side).
+   - **READ `cache.py:_set_cache_breakpoints` FIRST** before theorizing about upstream causes (schema reload, strip/inject mutation, tool_injection logic, rule loader). The BP-setter is the last function to touch the payload before it hits the wire — most marker-related symptoms originate there. Chasing upstream hypotheses (tool_injection, rules.py) without first verifying what the BP setter actually placed on which tool wastes tool calls.
+   - Only after ruling out the BP setter: inspect the upstream modification path (rules, strip, inject, cache_control placement history).
+   - Concrete failure (2026-04-13): Investigated a rebuild triggered by `activate_plugin` MCP tool. Spent ~5 tool calls on upstream hypotheses (schema cache reload, file mtime drift, inject-order bug) before reading `_set_cache_breakpoints`. The root cause was visible in 10 lines of that function (BP2 marker placement on last tool every request → byte-diff on tool at the old position because `cache_control` attribute was removed).
+
+## System Block Content Investigation
+
+When investigating "what lands in sys[2] or msg[0]" (cross-session cacheability, byte-stability, worker vs opus differences): READ the proxy modification path FIRST before theorizing about content origin.
+
+- **`rules.py:_load_system2_rules(model_family, project_path)`** — returns the raw text that gets written into `system[2]` via `replaced_system_prompt` modification. Opus gets `global + opus` rule files; Sonnet/Haiku workers get `global + worker` rule files; Haiku bypass returns `""`. Per-project `exclude_projects` short-circuits to `""`.
+- **`rules.py:_load_project_rules(project_path)`** — returns the raw text injected into `messages[0]` as `injected_project_rules` modification. Substring-match against `message_rules.projects[].path_contains` in `~/.claude/shared-rules/proxy_rules.json`.
+- **`rules.py:apply_modification_rules`** — the orchestrator. It sets `new_system[2] = {**block, "text": system_rules if system_rules else "."}`. If `system_rules == ""`, sys[2] becomes `"."` (1 char).
+
+**Rule:** Before claiming "sys[2] differs across workers" or "msg[0] bytes change every request" — read `_load_system2_rules`, `_load_project_rules`, and `apply_modification_rules`. All worker sessions of the same model family get IDENTICAL sys[2] bytes (same rule files → same concatenated text). Any byte-difference claim must be grounded in what these functions actually return.
+
+Concrete failure (2026-04-14): Claimed "each worker has its own sys[2]" based on assumption that `replaced_system_prompt` meant spawn-prompt content. Actually it means rules.py output, which is byte-identical cross-worker. Wasted exchanges on a wrong cache-model hypothesis. Reading `_load_system2_rules` first would have prevented the detour entirely.
+
+See `decisions/cache_rebuild_cases.md` for the case catalog.
+
+When investigating: present each family as hypothesis, rule in/out with evidence. Do not claim root cause from a single case — see `verify-before-execution.md` "Correlation Check Before Root-Cause Claim".
+
+## Proxy Log Field Selection (CRITICAL)
+
+Proxy log entries have two independent fact surfaces. NEVER confuse them.
+
+| Surface | Where | Contains | Use for |
+|---|---|---|---|
+| **Pre-modification** | `entry.raw_payload.*`, `entry.tools`, `entry.tools_count`, `entry.tools_names` | What Claude Code **sent**. BEFORE proxy modifications (strip, inject, fixate, cache markers). | "What did CC hand us?" |
+| **Post-modification** | `sent_meta.sent_tools_count`, `sent_meta.sent_tools_bytes_hash`, `sent_meta.sent_cache_breakpoints`, `sent_meta.prefix_hash_bp2_tools` | What the proxy **forwarded to Anthropic**. Includes injected MCP tools, final cache markers, final byte hashes. | "What actually went on the wire? Why did cache rebuild?" |
+
+**Rule:** When investigating cache behavior, rebuilds, tool count, or marker placement — ALWAYS read `sent_meta.*` first. `raw_payload.tools` is a stale snapshot and will mislead you about what Anthropic actually received.
+
+Concrete failure (2026-04-14): Observed `raw_payload.tools` length = 10, concluded "tool_injection Stage 2 not merged, BP-Layout v2 never triggered". Reality: `sent_meta.sent_tools_count: 51`, tool_injection IS merged, BP-Layout v2 fired correctly on the activate_plugin grow step (`tools=[30,50]` anchor+end markers, anchor hash hit confirmed). The entire hypothesis chain (TTL eviction, cumulative idle gaps, stage 2 not merged) came from reading the wrong field. Cost: 4+ exchanges of wrong conclusions before user stopped the rabbit hole.
+
+**Query template** for rebuild forensics:
+```
+jq -c 'select(.type == "sent_meta") | {ts: .timestamp, tc: .sent_tools_count, tbh: .sent_tools_bytes_hash, bps: .sent_cache_breakpoints, bp2t: .prefix_hash_bp2_tools}' src/logs/api_requests_*.jsonl
+```
+
+## Worker-Send Proxy Staleness (CRITICAL)
+
+Long-lived workers have their own frozen proxy live-copy (`.proxy_live_worker_<name>/`). Each worker's proxy package is snapshot at spawn time and NEVER updates during the worker's lifetime. When Opus merges proxy-touching changes to `dev` AFTER a worker has spawned, the worker's proxy is behind main. The WORKER HIMSELF cannot test code he cannot reach through his stale proxy — his next API call returns `API Error: Unable to connect to API (ECONNREFUSED)` OR forwards through old code that lacks the new behavior.
+
+**Rule:** BEFORE `worker_send` to an idle worker for a proxy-touching task:
+1. Check when the worker was spawned (`worker_list` shows spawn time)
+2. `git log --since='<spawn-time>' -- src/proxy/ src/proxy_addon.py` — any merges on proxy files since spawn?
+3. If YES → one of:
+   - Kill worker + spawn new one from current `dev`
+   - Opus edits directly (with user approval — the `Opus NEVER edits source code` rule has an explicit override path)
+   - NEVER `worker_send` proxy code changes into a stale worker
+
+Concrete failure (2026-04-14): `bp-layout-v2` worker spawned 23:31, idle at 58% context. Dispatched `worker_send` with addon.py log-order fix task. Worker attempted edit → `API Error: Unable to connect to API (ECONNREFUSED)` because worker's frozen proxy package was pre-merge and the merged dev branch had imports the old proxy couldn't resolve. User had to override: "du kannst selber alle edits alleine machen". 2 exchanges + 1 failed dispatch.
+
+**The reuse-worker rule does NOT override this staleness check.** Worker reuse is only valid when the worker's proxy is AT or AFTER the merge state of the task being sent.
+
+## Proxy Log Investigation
+
+When searching for a specific message format in proxy logs (e.g., rejection messages, error patterns):
+- **Trigger it yourself first.** Running `sleep 10` + ESC is 10x faster than grepping through 800MB JSONL with wrong patterns.
+- Only grep logs when you need historical data or pattern frequency analysis.
+- The monitor's Proxy Pane shows live requests — use it to see the current format.
+
+Concrete failure (2026-04-09): 3 failed grep attempts searching for ESC-rejection message format in proxy logs. User triggered it themselves in 5 seconds.
+
+## UI Feature Scoping (Pane Display Changes)
+
+Before dispatching a worker for display changes that depend on stored data fields:
+1. **Investigate the data pipeline FIRST** — what fields exist on each entry? How are they populated? What are the size limits (e.g., content_preview truncation)?
+2. **Verify data availability** — if the display needs data from position X in a message, confirm that the stored field actually CONTAINS position X. Truncated previews, deleted raw_payloads, computed vs stored fields — all can cause "shows nothing" bugs.
+3. **Write ONE comprehensive spec** covering data storage + display logic. Do NOT send piecemeal corrections.
+
+Concrete failure (2026-04-09): Modified messages feature required 6+ correction messages to the worker. Root cause: didn't investigate that `content_preview` only stores the first ~400 chars of a message. New content appended at the END wasn't in the preview. Had to add `content_tail` field to `_extract_raw_payload_fields()` — but only discovered this after 4 failed display attempts. One upfront investigation of the data pipeline would have revealed the limitation immediately.
+
+## API Error Payload Logging
+
+When the API returns a 4xx error, the proxy's `response()` hook saves the full request payload to `src/logs/api_error_payload_{timestamp}.json`. This enables debugging of malformed requests (e.g., extra fields on tool_result blocks).
+
+**Investigation workflow:**
+1. Error occurs → check `src/logs/api_error_payload_*.json`
+2. Read the error_response field for the API's error message
+3. Navigate to the exact message index mentioned in the error
+4. Compare the message structure against API spec
+
+Concrete failure (2026-04-10): `messages.202.content.0.tool_result.text: Extra inputs are not permitted` — proxy's `_strip_system_reminder()` potentially adds `text` field to non-text blocks via `{**block, "text": new_text}`. Error-payload logging implemented to capture the exact malformed request next time it occurs.
+
+
+---
+
+## Post-Merge Proxy Load Test (MANDATORY)
+
+After ANY merge that touches `src/proxy/`, `src/proxy_addon.py`, or any file imported by the proxy addon:
+
+```bash
+cd src/logs && mitmdump -s ../.proxy_addon_live_*.py --set flow_detail=0 -q -p 0 2>&1 &
+PID=$!; sleep 3; kill $PID 2>/dev/null; wait $PID 2>/dev/null
+```
+
+If this outputs ANY import error or traceback → the merge broke the proxy. Fix BEFORE proceeding.
+
+**Why:** mitmproxy runs in its own Python environment. Import errors that Python catches at module level (missing symbols, wrong module paths) crash mitmproxy silently. Worker proxies crash too — workers get "unable to connect to API". A 3-second load test catches this immediately.
+
+Concrete failure (2026-04-10): `proxy/logging.py` split moved `_has_cache_control` to `message_summary.py`. `cache.py` still imported from `logging.py`. Neither worker nor Opus caught it in review. Next worker's proxy crashed on startup.
