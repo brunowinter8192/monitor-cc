@@ -23,6 +23,7 @@ _last_refresh_ts: float = 0.0
 _force_refresh: bool = False
 
 schema_warnings: list = []  # list of {timestamp, model, warnings: list[str]}
+zero_results: list = []  # list of {timestamp, tool_name, summary}
 
 INDENT = '  '
 
@@ -70,6 +71,27 @@ def _is_tool_error(msg: dict) -> bool:
             return True
     return False
 
+_ZERO_RESULT_PATTERNS = [
+    "no matches found",
+    "no matches found in any file.",
+    "no results found",
+]
+
+# Check if a proxy message is a zero-result tool call (exit 0 but returned empty results)
+def _is_zero_result(msg: dict) -> bool:
+    if msg.get('type') != 'tool_result':
+        return False
+    for blk in msg.get('blocks', []):
+        if blk.get('type') != 'tool_result':
+            continue
+        if blk.get('is_error') is True:
+            return False
+        text = (blk.get('full_text', '') or blk.get('preview', '')).lower().strip()
+        for pat in _ZERO_RESULT_PATTERNS:
+            if text == pat or text.startswith(pat):
+                return True
+    return False
+
 # Extract tool name from preceding tool_use message in the messages list
 def _extract_tool_name(messages: list, msg_idx: int) -> str:
     for i in range(msg_idx - 1, -1, -1):
@@ -111,6 +133,34 @@ def _scan_proxy_entries_for_errors(entries: list) -> list:
             })
     return errors
 
+# Scan new proxy entries for zero-result tool calls and return zero-result dicts
+def _scan_proxy_entries_for_zero_results(entries: list) -> list:
+    results = []
+    for entry in entries:
+        ts_raw = entry.get('timestamp', '')
+        ts = format_timestamp(ts_raw) if ts_raw else '??:??:??'
+        messages = entry.get('messages', [])
+        for msg_idx, msg in enumerate(messages):
+            if not _is_zero_result(msg):
+                continue
+            tool_name = _extract_tool_name(messages, msg_idx)
+            full_text = ''
+            for blk in msg.get('blocks', []):
+                candidate = blk.get('full_text', '') or blk.get('preview', '')
+                if candidate:
+                    full_text = candidate
+                    break
+            if not full_text:
+                full_text = msg.get('content_preview', '')
+            first_line = full_text.split('\n')[0] if full_text else ''
+            summary = first_line[:80] + ('…' if len(first_line) > 80 else '')
+            results.append({
+                'timestamp': ts,
+                'tool_name': tool_name,
+                'summary': summary,
+            })
+    return results
+
 # Build header line showing refresh key, last refresh time, and poll interval
 def _format_warnings_header() -> str:
     if _last_refresh_ts:
@@ -146,6 +196,16 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
         all_keys.append(None)
         for msg_type, count in sorted(unknown_type_counts.items(), key=lambda x: x[1], reverse=True):
             all_lines.append(format_unknown_type_warning(msg_type, count))
+            all_keys.append(None)
+        all_lines.append('')
+        all_keys.append(None)
+
+    if zero_results:
+        all_lines.append(f"{YELLOW}ZERO RESULTS ({len(zero_results)}){RESET}")
+        all_keys.append(None)
+        for zr in zero_results:
+            tool_col = f"{WHITE}{zr['tool_name']:<16}{RESET}"
+            all_lines.append(f"{INDENT}{DIM}{zr['timestamp']}  {tool_col}  {DIM}{zr['summary']}{RESET}")
             all_keys.append(None)
         all_lines.append('')
         all_keys.append(None)
@@ -201,7 +261,7 @@ def run_warnings_loop() -> None:
     global tool_errors, error_expand_states, error_line_map, error_hover_row
     global error_scroll_offset, _proxy_log_position, _last_project_filter
     global _last_refresh_ts, _force_refresh
-    global schema_warnings
+    global schema_warnings, zero_results
 
     load_historical_warnings()
     last_output = None
@@ -253,6 +313,7 @@ def run_warnings_loop() -> None:
                 if project_filter != _last_project_filter:
                     _proxy_log_position = 0
                     tool_errors = []
+                    zero_results = []
                     schema_warnings = []
                     error_expand_states.clear()
                     error_scroll_offset = 0
@@ -262,6 +323,8 @@ def run_warnings_loop() -> None:
                 new_entries, _proxy_log_position = parse_proxy_log(project_filter, _proxy_log_position)
                 new_errors = _scan_proxy_entries_for_errors(new_entries)
                 tool_errors.extend(new_errors)
+                new_zero = _scan_proxy_entries_for_zero_results(new_entries)
+                zero_results.extend(new_zero)
 
                 for entry in new_entries:
                     if entry.get('type') == 'schema_warning':
