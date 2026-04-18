@@ -54,6 +54,8 @@ def _summarize_message(msg: dict) -> dict:
             block_dict = {"type": btype, "chars": bchars, "preview": bpreview, "full_text": bfull, "has_cc": has_cc}
             if btype == "thinking":
                 block_dict["sig_chars"] = sig_chars
+            if btype == "tool_result":
+                block_dict["is_error"] = bool(block.get("is_error", False))
             blocks.append(block_dict)
     return {
         "role": role,

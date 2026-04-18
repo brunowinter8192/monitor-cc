@@ -61,17 +61,12 @@ def load_historical_warnings() -> None:
         _monitor.file_positions[filepath] = 0
         _monitor.tool_use_caches[filepath] = {}
 
-# Check if a proxy message is a tool error
+# Check if a proxy message is a tool error via the structural is_error flag on tool_result blocks
 def _is_tool_error(msg: dict) -> bool:
     if msg.get('type') != 'tool_result':
         return False
-    error_patterns = ('tool_use_error', 'exceeds maximum', 'exit code', 'returned non-zero')
-    cp = msg.get('content_preview', '').lower()
-    if any(p in cp for p in error_patterns):
-        return True
     for blk in msg.get('blocks', []):
-        blk_text = (blk.get('full_text', '') or blk.get('preview', '')).lower()
-        if any(p in blk_text for p in error_patterns):
+        if blk.get('type') == 'tool_result' and blk.get('is_error') is True:
             return True
     return False
 
