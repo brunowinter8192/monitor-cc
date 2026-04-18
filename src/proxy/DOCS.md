@@ -18,19 +18,74 @@ Contains:
 - `addons = [ProxyAddon()]` — mitmproxy addon registration
 
 **Request pipeline order** (inside `ProxyAddon.request()`):
-1. `_check_payload_schema()` — schema-drift detection on first opus request per session; writes `schema_warning` log entry if drift detected
+1. `_check_payload_schema()` (→ `schema_check.py`) — schema-drift detection on first opus request per session; writes `schema_warning` log entry if drift detected
 2. `apply_modification_rules()` — strip/replace system2, inject project rules, strip system-reminders, normalize worktree paths in sys[3]
-3. Fixation capture/apply (per model_family)
+3. Fixation capture/apply via `_capture_fixation()` / `_apply_fixation()` (→ `fixation.py`)
 4. `_strip_unused_tools()` — remove TOOL_BLOCKLIST entries from payload.tools
 5. `inject_mcp_tools()` — append MCP schemas from schema store
 6. `_strip_blocked_tool_references()` — remove blocklisted tool_reference blocks from tool_results
-7. `_inject_context_management()` — inject `context_management` payload block if enabled in config
-8. `_inject_model_override()` — override model/thinking/effort/max_tokens from `proxy_rules.json` config (opus only)
+7. `_inject_context_management()` (→ `inject_helpers.py`) — inject `context_management` payload block if enabled in config
+8. `_inject_model_override()` (→ `inject_helpers.py`) — override model/thinking/effort/max_tokens from `proxy_rules.json` config (opus only)
 9. `_build_entry()` + `_write_entry(entry)` — **log entry captures post-injection state**, so the Proxy Pane sees all injected MCP tools (not just CC's 10 built-ins); includes `context_management_injected: bool`
 10. `_strip_all_cache_control()` + `_set_cache_breakpoints()` — cache marker placement
-11. `_build_sent_meta()` + `_write_entry(sent_meta)` — per-request hash snapshot
+11. `_build_sent_meta()` (→ `hash_meta.py`) + `_write_entry(sent_meta)` — per-request hash snapshot
 12. `flow.request.content = modified_payload`
 13. Beta header management — strips deprecated `interleaved-thinking-2025-05-14`, appends `context-management-2025-06-27`
+
+## fixation.py
+
+**Purpose:** Capture and apply per-model-family fixation state — freezes sys[2] content and msg[0] project-rules block after the first request.
+**Input:** Modified payload dict, modifications list, fixated state dict.
+**Output:** Updated fixated dict (capture) or modified payload with frozen content applied (apply).
+
+Contains:
+- `_capture_fixation()` — snapshots sys[2] text, msg[0] rules block, active_plugins on first request per model_family
+- `_apply_fixation()` — applies frozen content to subsequent requests; refreshes active_plugins if changed
+
+## hash_meta.py
+
+**Purpose:** Compute per-request hash snapshots for cache-stability forensics and drift detection.
+**Input:** Final modified payload (tools, system, messages lists).
+**Output:** `sent_meta` JSONL entry dict with hashes, breakpoint indices, and drift report.
+
+Contains:
+- `_compute_sys_block_hashes()` — MD5[:10] per system block
+- `_compute_tool_hashes()` — MD5[:10] per tool
+- `_compute_msg_hashes()` — first 10 + rolling middle chunks + last 5 message hashes
+- `_compute_msg0_block_hashes()` — per-block hashes for messages[0].content
+- `_compute_drift_report()` — compares current vs previous hash snapshot, reports changed indices
+- `_build_sent_meta()` — orchestrates hash computation + drift report into the `sent_meta` JSONL entry
+
+## schema_check.py
+
+**Purpose:** Validate API payload structure against known-good invariants (system block count, messages[0] shape, tools presence).
+**Input:** Raw payload dict before proxy modifications.
+**Output:** List of warning strings (empty if no drift detected).
+
+Contains:
+- `_check_payload_schema()` — checks top-level keys, system block count, messages[0] content shape, tools presence and definition key shape
+
+## inject_helpers.py
+
+**Purpose:** Inject model override and context management fields into payloads based on `proxy_rules.json` config.
+**Input:** Payload dict, model_family string.
+**Output:** `(modified_payload, injected_bool)` tuple.
+
+Contains:
+- `_inject_model_override()` — overrides model/thinking/effort/max_tokens from config; opus only
+- `_inject_context_management()` — injects `context_management.edits` block with clear_thinking + clear_tool_uses directives
+
+## payload_helpers.py
+
+**Purpose:** Low-level payload content inspection and manipulation helpers used by rules.py.
+**Input:** Message content (str or list), payload dicts.
+**Output:** Modified content or filtered payload dicts.
+
+Contains:
+- `_find_system_reminder_blocks()` — extracts `<system-reminder>` blocks containing a marker from str or list content
+- `_strip_blocked_tool_references()` — removes tool_reference blocks for TOOL_BLOCKLIST tools from tool_result content
+- `_content_contains()` — checks if message content (str or list) contains a substring
+- `_strip_task_notification_tags()` — removes `<output-file>` and `<tool-use-id>` tags from task-notification content
 
 ## logging.py
 
