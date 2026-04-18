@@ -279,6 +279,17 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 modifications.append("stripped_deferred_tools_sr")
                 stripped_msg_removed[idx] = _find_system_reminder_blocks(old_content, "deferred tools are now available via ToolSearch")
                 changed = True
+        elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "user sent a new message while you were working"):
+            old_content = msg.get("content", "")
+            new_msg = dict(msg)
+            new_msg["content"] = _strip_system_reminder(old_content, "user sent a new message while you were working")
+            new_messages.append(new_msg)
+            if new_msg["content"] != old_content:
+                stripped_msg_originals[idx] = old_content
+                stripped_msg_indices.append(idx)
+                modifications.append("stripped_user_interrupt_sr")
+                stripped_msg_removed[idx] = _find_system_reminder_blocks(old_content, "user sent a new message while you were working")
+                changed = True
         elif msg.get("role") == "user" and _message_has_rejection(msg.get("content", "")):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
