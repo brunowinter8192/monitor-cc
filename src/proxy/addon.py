@@ -34,7 +34,7 @@ class ProxyAddon:
         self.prev_messages_by_model: Dict[str, list] = {}
         self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
         self.prev_sent_hashes_by_model: dict = {}  # model_family → hash fields from last sent_meta
-        self._schema_checked: bool = False  # schema check runs once per session (first opus request)
+        self._schema_checked: Dict[str, bool] = {}  # schema check runs once per model_family (opus + sonnet)
 
     def request(self, flow: http.HTTPFlow) -> None:
         try:
@@ -59,8 +59,8 @@ class ProxyAddon:
                 model_family = "opus"
             project_path = os.environ.get("PROXY_PROJECT_PATH", "")
 
-            if model_family == "opus" and not self._schema_checked:
-                self._schema_checked = True
+            if model_family in ("opus", "sonnet") and not self._schema_checked.get(model_family, False):
+                self._schema_checked[model_family] = True
                 schema_warnings = _check_payload_schema(payload)
                 if schema_warnings:
                     _write_entry(self.log_file, {
