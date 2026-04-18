@@ -7,7 +7,6 @@ from pathlib import Path
 
 _src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
 sys.path.insert(0, _src_dir)
-from constants import TOOL_BLOCKLIST
 
 from .content_strip import (
     _strip_all_system_reminders,
@@ -18,6 +17,12 @@ from .content_strip import (
     _strip_session_guidance,
     _strip_git_status,
 )
+from .payload_helpers import (
+    _find_system_reminder_blocks,
+    _strip_blocked_tool_references,
+    _content_contains,
+    _strip_task_notification_tags,
+)
 
 _SHARED_RULES_DIR = Path.home() / ".claude" / "shared-rules"
 _PROXY_RULES_CONFIG = _SHARED_RULES_DIR / "proxy_rules.json"
@@ -26,89 +31,6 @@ _config_cache: list = [None]
 _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
 # FUNCTIONS
-
-# Extract <system-reminder> blocks containing marker from str or list content
-def _find_system_reminder_blocks(content, marker: str) -> list:
-    pat = re.compile(r'<system-reminder>.*?' + re.escape(marker) + r'.*?</system-reminder>', re.DOTALL)
-    if isinstance(content, str):
-        return pat.findall(content)
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                result.extend(pat.findall(block.get("text", "")))
-        return result
-    return []
-
-
-# Remove tool_reference blocks for blocked tools from tool_result content blocks
-def _strip_blocked_tool_references(payload: dict) -> dict:
-    messages = payload.get("messages", [])
-    new_messages = []
-    modified = False
-    for msg in messages:
-        content = msg.get("content", "")
-        if not isinstance(content, list):
-            new_messages.append(msg)
-            continue
-        new_content = []
-        changed = False
-        for block in content:
-            if not isinstance(block, dict):
-                new_content.append(block)
-                continue
-            if block.get("type") == "tool_result":
-                inner = block.get("content", [])
-                if isinstance(inner, list):
-                    filtered = [
-                        item for item in inner
-                        if not (isinstance(item, dict) and item.get("type") == "tool_reference" and item.get("tool_name") in TOOL_BLOCKLIST)
-                    ]
-                    if len(filtered) != len(inner):
-                        block = {**block, "content": filtered}
-                        changed = True
-            new_content.append(block)
-        if changed:
-            new_messages.append({**msg, "content": new_content})
-            modified = True
-        else:
-            new_messages.append(msg)
-    if not modified:
-        return payload
-    result = dict(payload)
-    result["messages"] = new_messages
-    return result
-
-
-# Check if message content (str or list of blocks) contains a given substring
-def _content_contains(content, substring: str) -> bool:
-    if isinstance(content, str):
-        return substring in content
-    if isinstance(content, list):
-        for block in content:
-            if isinstance(block, dict) and substring in block.get("text", ""):
-                return True
-    return False
-
-
-# Remove output-file and tool-use-id tags from task-notification content
-def _strip_task_notification_tags(content) -> str:
-    _STRIP_PATTERN = re.compile(r'<(?:output-file|tool-use-id)>.*?</(?:output-file|tool-use-id)>\n?', re.DOTALL)
-    if isinstance(content, str):
-        return _STRIP_PATTERN.sub('', content)
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                new_text = _STRIP_PATTERN.sub('', block.get("text", ""))
-                if not new_text.strip():
-                    new_text = "."
-                result.append({**block, "text": new_text})
-            else:
-                result.append(block)
-        return result
-    return content
-
 
 # Load proxy_rules.json config, re-reading only when mtime changes
 def _load_config() -> dict:
@@ -380,77 +302,3 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     modified["messages"] = new_messages
     modified["system"] = new_system
     return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
-
-
-# Inject model override fields from proxy_rules.json config if enabled and model is opus — returns (modified_payload, injected_bool)
-def _inject_model_override(payload: dict, model_family: str) -> tuple:
-    try:
-        config = _load_config()
-        mo_config = config.get("model_override", {})
-        if not mo_config.get("enabled", False):
-            return payload, False
-        if model_family != "opus":
-            return payload, False
-        result = dict(payload)
-        if "model" in mo_config:
-            result["model"] = mo_config["model"]
-        if "thinking" in mo_config:
-            result["thinking"] = mo_config["thinking"]
-        if "effort" in mo_config:
-            output_config = dict(result.get("output_config") or {})
-            output_config["effort"] = mo_config["effort"]
-            result["output_config"] = output_config
-        if "max_tokens" in mo_config:
-            result["max_tokens"] = mo_config["max_tokens"]
-        return result, True
-    except Exception:
-        return payload, False
-
-
-# Inject context_management block from proxy_rules.json config if enabled — returns (modified_payload, injected_bool)
-def _inject_context_management(payload: dict) -> tuple:
-    try:
-        config = _load_config()
-        cm_config = config.get("context_management", {})
-        if not cm_config.get("enabled", False):
-            return payload, False
-
-        edits = []
-
-        # clear_thinking MUST be first in edits[] per Anthropic API requirement
-        clear_thinking = cm_config.get("clear_thinking", {})
-        if clear_thinking.get("enabled", True):
-            edits.append({
-                "type": "clear_thinking_20251015",
-                "keep": {
-                    "type": "thinking_turns",
-                    "value": clear_thinking.get("keep_thinking_turns", 2),
-                },
-            })
-
-        clear_tool_uses = cm_config.get("clear_tool_uses", {})
-        if clear_tool_uses.get("enabled", True):
-            edits.append({
-                "type": "clear_tool_uses_20250919",
-                "trigger": {
-                    "type": "input_tokens",
-                    "value": clear_tool_uses.get("trigger_input_tokens", 100000),
-                },
-                "keep": {
-                    "type": "tool_uses",
-                    "value": clear_tool_uses.get("keep_tool_uses", 5),
-                },
-                "clear_at_least": {
-                    "type": "input_tokens",
-                    "value": clear_tool_uses.get("clear_at_least_tokens", 10000),
-                },
-            })
-
-        if not edits:
-            return payload, False
-
-        result = dict(payload)
-        result["context_management"] = {"edits": edits}
-        return result, True
-    except Exception:
-        return payload, False
