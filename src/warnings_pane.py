@@ -23,7 +23,6 @@ _last_refresh_ts: float = 0.0
 _force_refresh: bool = False
 
 schema_warnings: list = []  # list of {timestamp, model, warnings: list[str]}
-_schema_proxy_log_position: int = 0
 
 INDENT = '  '
 
@@ -117,45 +116,6 @@ def _scan_proxy_entries_for_errors(entries: list) -> list:
             })
     return errors
 
-# Find active proxy log file — most recent api_requests_*.jsonl in src/logs/
-def _find_proxy_log() -> Optional[str]:
-    import glob
-    root = os.environ.get("MONITOR_CC_ROOT", "")
-    if not root:
-        return None
-    pattern = os.path.join(root, "src", "logs", "api_requests_*.jsonl")
-    files = glob.glob(pattern)
-    if not files:
-        return None
-    return max(files, key=os.path.getmtime)
-
-
-# Scan proxy log for schema_warning entries starting at byte offset, return (entries, new_position)
-def _scan_proxy_for_schema_warnings(log_path: str, position: int) -> tuple:
-    import json as _json
-    results = []
-    try:
-        with open(log_path, "r", encoding="utf-8") as f:
-            f.seek(position)
-            for line in f:
-                try:
-                    entry = _json.loads(line)
-                    if entry.get("type") == "schema_warning":
-                        ts_raw = entry.get("timestamp", "")
-                        ts = format_timestamp(ts_raw) if ts_raw else "??:??:??"
-                        results.append({
-                            "timestamp": ts,
-                            "model": entry.get("model", ""),
-                            "warnings": entry.get("warnings", []),
-                        })
-                except Exception:
-                    pass
-            position = f.tell()
-    except Exception:
-        pass
-    return results, position
-
-
 # Build header line showing refresh key, last refresh time, and poll interval
 def _format_warnings_header() -> str:
     if _last_refresh_ts:
@@ -246,7 +206,7 @@ def run_warnings_loop() -> None:
     global tool_errors, error_expand_states, error_line_map, error_hover_row
     global error_scroll_offset, _proxy_log_position, _last_project_filter
     global _last_refresh_ts, _force_refresh
-    global schema_warnings, _schema_proxy_log_position
+    global schema_warnings
 
     load_historical_warnings()
     last_output = None
@@ -292,6 +252,7 @@ def run_warnings_loop() -> None:
                 if project_filter != _last_project_filter:
                     _proxy_log_position = 0
                     tool_errors = []
+                    schema_warnings = []
                     error_expand_states.clear()
                     error_scroll_offset = 0
                     error_hover_row = None
@@ -301,12 +262,15 @@ def run_warnings_loop() -> None:
                 new_errors = _scan_proxy_entries_for_errors(new_entries)
                 tool_errors.extend(new_errors)
 
-                proxy_log_path = _find_proxy_log()
-                if proxy_log_path:
-                    new_schema_warnings, _schema_proxy_log_position = _scan_proxy_for_schema_warnings(
-                        proxy_log_path, _schema_proxy_log_position
-                    )
-                    schema_warnings.extend(new_schema_warnings)
+                for entry in new_entries:
+                    if entry.get('type') == 'schema_warning':
+                        ts_raw = entry.get('timestamp', '')
+                        ts = format_timestamp(ts_raw) if ts_raw else '??:??:??'
+                        schema_warnings.append({
+                            'timestamp': ts,
+                            'model': entry.get('model', ''),
+                            'warnings': entry.get('warnings', []),
+                        })
 
                 last_data_refresh = now
                 _last_refresh_ts = now
