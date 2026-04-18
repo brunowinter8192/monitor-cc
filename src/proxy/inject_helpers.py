@@ -3,14 +3,17 @@ from .rules import _load_config
 
 # FUNCTIONS
 
-# Inject model override fields from proxy_rules.json config if enabled and model is opus — returns (modified_payload, injected_bool)
+# Inject model override fields from proxy_rules.json config if enabled and model is opus or sonnet — returns (modified_payload, injected_bool)
 def _inject_model_override(payload: dict, model_family: str) -> tuple:
     try:
         config = _load_config()
-        mo_config = config.get("model_override", {})
-        if not mo_config.get("enabled", False):
+        if model_family == "opus":
+            mo_config = config.get("model_override", {})
+        elif model_family == "sonnet":
+            mo_config = config.get("model_override_worker", {})
+        else:
             return payload, False
-        if model_family != "opus":
+        if not mo_config.get("enabled", False):
             return payload, False
         result = dict(payload)
         if "model" in mo_config:
