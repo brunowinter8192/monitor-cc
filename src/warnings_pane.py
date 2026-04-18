@@ -8,7 +8,7 @@ from .constants import (
     YELLOW, RED, DIM, WHITE, RESET, HOVER_BG,
     INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL,
 )
-from .utils import format_timestamp
+from .utils import format_timestamp, visual_line_count
 
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
@@ -275,19 +275,22 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
     visible_lines = all_lines[error_scroll_offset:error_scroll_offset + content_height]
     visible_keys = all_keys[error_scroll_offset:error_scroll_offset + content_height]
     rendered: list = []
+    screen_row = header_offset
     for row_offset, line in enumerate(visible_lines):
-        screen_row = row_offset + header_offset
         key = visible_keys[row_offset]
+        span = visual_line_count(line, pane_width)
         if key is not None:
             key_type, key_idx = key
-            if key_type == 'error':
-                error_line_map[screen_row] = key_idx
-            elif key_type == 'zero':
-                zero_result_line_map[screen_row] = key_idx
-        if error_hover_row is not None and screen_row == error_hover_row and key is not None:
-            rendered.append(f"{HOVER_BG}{line}{RESET}")
-        else:
-            rendered.append(line)
+            for r in range(screen_row, screen_row + span):
+                if key_type == 'error':
+                    error_line_map[r] = key_idx
+                elif key_type == 'zero':
+                    zero_result_line_map[r] = key_idx
+        hover_active = (error_hover_row is not None and
+                        screen_row <= error_hover_row < screen_row + span and
+                        key is not None)
+        rendered.append(f"{HOVER_BG}{line}{RESET}" if hover_active else line)
+        screen_row += span
     return header + '\n' + '\n'.join(rendered)
 
 # Runs warnings-only display loop (for dedicated warnings tmux pane)

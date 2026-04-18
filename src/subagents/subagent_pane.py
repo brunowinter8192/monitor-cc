@@ -35,17 +35,6 @@ def find_agent_jsonl(agent_id: str) -> Optional[Path]:
             return session_file
     return None
 
-# Find the nearest agent ID at or above a given row in the pane line map
-def _find_agent_at_row(row: int, line_map: dict) -> Optional[str]:
-    agent_id = line_map.get(row)
-    if agent_id:
-        return agent_id
-    for r in range(row - 1, 0, -1):
-        agent_id = line_map.get(r)
-        if agent_id:
-            return agent_id
-    return None
-
 # Runs subagents display loop (for dedicated subagents tmux pane, shows per-agent cache token view)
 def run_subagents_loop() -> None:
     from .. import monitor as _monitor
@@ -82,12 +71,12 @@ def run_subagents_loop() -> None:
                                     toggle_subagent_state(agent_id)
                                     input_changed = True
                         elif button == 64:
-                            agent_id = _find_agent_at_row(row, agent_pane_line_map)
+                            agent_id = agent_pane_line_map.get(row)
                             if agent_id and subagent_states.get(agent_id, False):
                                 agent_cache_scroll_offsets[agent_id] = max(0, agent_cache_scroll_offsets.get(agent_id, 0) + 3)
                                 input_changed = True
                         elif button == 65:
-                            agent_id = _find_agent_at_row(row, agent_pane_line_map)
+                            agent_id = agent_pane_line_map.get(row)
                             if agent_id and subagent_states.get(agent_id, False):
                                 agent_cache_scroll_offsets[agent_id] = max(0, agent_cache_scroll_offsets.get(agent_id, 0) - 3)
                                 input_changed = True

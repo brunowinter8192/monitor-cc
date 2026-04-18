@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 from typing import Optional
 from .constants import RESET, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, HOVER_BG, DIM
+from .utils import visual_line_count
 # FUNCTIONS
 # Format token count as compact "Xk" or "X.Xk" string
 def _format_k(n: int) -> str:
@@ -176,23 +177,28 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
     visible_lines = all_lines[start:end]
     visible_keys = line_keys[start:end]
 
-    if line_map is not None:
-        line_map.clear()
-        offset = 2 if sticky_header else 1
-        for row_idx, key in enumerate(visible_keys):
-            if key is not None:
-                line_map[row_idx + offset] = key
-
     result_lines = []
     if sticky_header:
         result_lines.append(sticky_header)
+    sticky_span = visual_line_count(sticky_header, pane_width) if sticky_header else 0
+    phys_row = 1 + sticky_span
+
+    if line_map is not None:
+        line_map.clear()
+        row_cursor = phys_row
+        for line, key in zip(visible_lines, visible_keys):
+            span = visual_line_count(line, pane_width)
+            if key is not None:
+                for r in range(row_cursor, row_cursor + span):
+                    line_map[r] = key
+            row_cursor += span
 
     for row_offset, line in enumerate(visible_lines):
-        row = row_offset + (2 if sticky_header else 1)
         key = visible_keys[row_offset]
-        if key is not None and hover_row is not None and row == hover_row:
-            result_lines.append(f"{HOVER_BG}{line}{RESET}")
-        else:
-            result_lines.append(line)
+        span = visual_line_count(line, pane_width)
+        hover_active = (key is not None and hover_row is not None and
+                        phys_row <= hover_row < phys_row + span)
+        result_lines.append(f"{HOVER_BG}{line}{RESET}" if hover_active else line)
+        phys_row += span
 
     return '\n'.join(result_lines)

@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 from ..constants import RESET, YELLOW, CYAN, HOVER_BG
 from ..token_format import format_cache_tracker
+from ..utils import visual_line_count
 from .subagent_ui import subagent_states
 from .subagent_ui_format import build_collapsed_entry
 
@@ -61,17 +62,22 @@ def render_subagents_with_tokens(subagent_metadata_map, turns_by_agent, pane_lin
 
     if pane_line_map is not None:
         pane_line_map.clear()
-        for row_idx, key in enumerate(all_keys):
+        phys_row = 1
+        for line, key in zip(all_lines, all_keys):
+            span = visual_line_count(line, pane_width)
             if key is not None:
-                pane_line_map[row_idx + 1] = key
+                for r in range(phys_row, phys_row + span):
+                    pane_line_map[r] = key
+            phys_row += span
 
     result_lines = []
+    phys_row = 1
     for row_offset, line in enumerate(all_lines):
-        row = row_offset + 1
         key = all_keys[row_offset]
-        if key is not None and pane_hover_row is not None and row == pane_hover_row:
-            result_lines.append(f"{HOVER_BG}{line}{RESET}")
-        else:
-            result_lines.append(line)
+        span = visual_line_count(line, pane_width)
+        hover_active = (key is not None and pane_hover_row is not None and
+                        phys_row <= pane_hover_row < phys_row + span)
+        result_lines.append(f"{HOVER_BG}{line}{RESET}" if hover_active else line)
+        phys_row += span
 
     return '\n'.join(result_lines)
