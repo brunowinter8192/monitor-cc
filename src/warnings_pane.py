@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 from typing import Dict, Optional, Set
+import json
 import os
 import time
 
@@ -23,7 +24,9 @@ _last_refresh_ts: float = 0.0
 _force_refresh: bool = False
 
 schema_warnings: list = []  # list of {timestamp, model, warnings: list[str]}
-zero_results: list = []  # list of {timestamp, tool_name, summary}
+zero_results: list = []  # list of {timestamp, tool_name, reason, tool_call_input}
+zero_result_expand_states: Dict[int, bool] = {}
+zero_result_line_map: Dict[int, int] = {}
 
 INDENT = '  '
 
@@ -77,20 +80,32 @@ _ZERO_RESULT_PATTERNS = [
     "no results found",
 ]
 
-# Check if a proxy message is a zero-result tool call (exit 0 but returned empty results)
-def _is_zero_result(msg: dict) -> bool:
-    if msg.get('type') != 'tool_result':
-        return False
-    for blk in msg.get('blocks', []):
-        if blk.get('type') != 'tool_result':
-            continue
-        if blk.get('is_error') is True:
-            return False
-        text = (blk.get('full_text', '') or blk.get('preview', '')).lower().strip()
-        for pat in _ZERO_RESULT_PATTERNS:
-            if text == pat or text.startswith(pat):
-                return True
-    return False
+# Check if a single tool_result block is a zero-result; returns matched reason string or empty
+def _is_zero_result_block(blk: dict) -> str:
+    if blk.get('type') != 'tool_result':
+        return ''
+    if blk.get('is_error') is True:
+        return ''
+    text = (blk.get('full_text', '') or blk.get('preview', '')).lower().strip()
+    for pat in _ZERO_RESULT_PATTERNS:
+        if text == pat or text.startswith(pat):
+            return pat
+    return ''
+
+# Extract tool name and input dict from a tool_use block's full_text
+def _extract_tool_call_details(tu_blk: dict) -> tuple:
+    full_text = tu_blk.get('full_text', '') or ''
+    if not full_text:
+        return (tu_blk.get('preview', 'tool'), {})
+    lines = full_text.split('\n', 1)
+    tool_name = lines[0].strip() if lines else ''
+    input_dict = {}
+    if len(lines) > 1:
+        try:
+            input_dict = json.loads(lines[1].strip())
+        except Exception:
+            pass
+    return (tool_name or 'tool', input_dict)
 
 # Extract tool name from preceding tool_use message in the messages list
 def _extract_tool_name(messages: list, msg_idx: int) -> str:
@@ -133,7 +148,7 @@ def _scan_proxy_entries_for_errors(entries: list) -> list:
             })
     return errors
 
-# Scan new proxy entries for zero-result tool calls and return zero-result dicts
+# Scan new proxy entries for zero-result tool calls; one entry per zero-result block
 def _scan_proxy_entries_for_zero_results(entries: list) -> list:
     results = []
     for entry in entries:
@@ -141,24 +156,33 @@ def _scan_proxy_entries_for_zero_results(entries: list) -> list:
         ts = format_timestamp(ts_raw) if ts_raw else '??:??:??'
         messages = entry.get('messages', [])
         for msg_idx, msg in enumerate(messages):
-            if not _is_zero_result(msg):
+            if msg.get('type') != 'tool_result':
                 continue
-            tool_name = _extract_tool_name(messages, msg_idx)
-            full_text = ''
-            for blk in msg.get('blocks', []):
-                candidate = blk.get('full_text', '') or blk.get('preview', '')
-                if candidate:
-                    full_text = candidate
+            blocks = msg.get('blocks', [])
+            # Find preceding tool_use message for positional block matching
+            preceding_tu = None
+            for i in range(msg_idx - 1, -1, -1):
+                if messages[i].get('type') == 'tool_use':
+                    preceding_tu = messages[i]
                     break
-            if not full_text:
-                full_text = msg.get('content_preview', '')
-            first_line = full_text.split('\n')[0] if full_text else ''
-            summary = first_line[:80] + ('…' if len(first_line) > 80 else '')
-            results.append({
-                'timestamp': ts,
-                'tool_name': tool_name,
-                'summary': summary,
-            })
+            tu_blocks = preceding_tu.get('blocks', []) if preceding_tu else []
+            for blk_idx, blk in enumerate(blocks):
+                reason = _is_zero_result_block(blk)
+                if not reason:
+                    continue
+                # Positional match: tool_result block[i] corresponds to tool_use block[i]
+                tool_name = 'tool'
+                tool_call_input = {}
+                if blk_idx < len(tu_blocks):
+                    tool_name, tool_call_input = _extract_tool_call_details(tu_blocks[blk_idx])
+                elif tu_blocks:
+                    tool_name, tool_call_input = _extract_tool_call_details(tu_blocks[0])
+                results.append({
+                    'timestamp': ts,
+                    'tool_name': tool_name,
+                    'reason': reason.capitalize(),
+                    'tool_call_input': tool_call_input,
+                })
     return results
 
 # Build header line showing refresh key, last refresh time, and poll interval
@@ -171,12 +195,13 @@ def _format_warnings_header() -> str:
         last_str = '--:--:--'
     return f"{DIM}[r]efresh · last: {last_str} · polling: {int(WARNINGS_POLL_INTERVAL)}s{RESET}"
 
-# Render both warning sections into a scrollable viewport, filling error_line_map
+# Render all warning sections into a scrollable viewport, filling error_line_map and zero_result_line_map
 def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
-    global error_line_map
+    global error_line_map, zero_result_line_map
     header = _format_warnings_header()
     content_height = max(1, pane_height - 1)
     all_lines = []
+    # each key is None, ('error', idx), or ('zero', idx)
     all_keys = []
 
     if schema_warnings:
@@ -203,10 +228,19 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
     if zero_results:
         all_lines.append(f"{YELLOW}ZERO RESULTS ({len(zero_results)}){RESET}")
         all_keys.append(None)
-        for zr in zero_results:
+        wrap_width = max(20, pane_width - 6)
+        for zr_idx, zr in enumerate(zero_results):
+            is_expanded = zero_result_expand_states.get(zr_idx, False)
+            symbol = '\u25bc' if is_expanded else '\u25b6'
             tool_col = f"{WHITE}{zr['tool_name']:<16}{RESET}"
-            all_lines.append(f"{INDENT}{DIM}{zr['timestamp']}  {tool_col}  {DIM}{zr['summary']}{RESET}")
-            all_keys.append(None)
+            reason_col = f"{DIM}{zr['reason']}{RESET}"
+            all_lines.append(f"{DIM}{symbol} {zr['timestamp']}  {tool_col}  {reason_col}")
+            all_keys.append(('zero', zr_idx))
+            if is_expanded:
+                for k, v in zr.get('tool_call_input', {}).items():
+                    val_str = str(v)[:wrap_width - len(k) - 4]
+                    all_lines.append(f"    {DIM}{k}: {val_str}{RESET}")
+                    all_keys.append(None)
         all_lines.append('')
         all_keys.append(None)
 
@@ -219,7 +253,7 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             symbol = '\u25bc' if is_expanded else '\u25b6'
             tool_col = f"{WHITE}{err['tool_name']:<16}{RESET}"
             all_lines.append(f"{DIM}{symbol} {err['timestamp']}  {tool_col}  {DIM}{err['summary']}{RESET}")
-            all_keys.append(err_idx)
+            all_keys.append(('error', err_idx))
             if is_expanded:
                 for raw_line in err['full_text'].split('\n'):
                     if not raw_line:
@@ -230,11 +264,13 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
                         chunk = raw_line[line_start:line_start + wrap_width]
                         all_lines.append(f"    {DIM}{chunk}{RESET}")
                         all_keys.append(None)
-    elif not unknown_type_counts:
+
+    if not schema_warnings and not unknown_type_counts and not zero_results and not tool_errors:
         all_lines.append(f"{DIM}No warnings.{RESET}")
         all_keys.append(None)
 
     error_line_map = {}
+    zero_result_line_map = {}
     header_offset = 2  # row 1 = header, body starts at row 2
     visible_lines = all_lines[error_scroll_offset:error_scroll_offset + content_height]
     visible_keys = all_keys[error_scroll_offset:error_scroll_offset + content_height]
@@ -243,7 +279,11 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
         screen_row = row_offset + header_offset
         key = visible_keys[row_offset]
         if key is not None:
-            error_line_map[screen_row] = key
+            key_type, key_idx = key
+            if key_type == 'error':
+                error_line_map[screen_row] = key_idx
+            elif key_type == 'zero':
+                zero_result_line_map[screen_row] = key_idx
         if error_hover_row is not None and screen_row == error_hover_row and key is not None:
             rendered.append(f"{HOVER_BG}{line}{RESET}")
         else:
@@ -261,7 +301,7 @@ def run_warnings_loop() -> None:
     global tool_errors, error_expand_states, error_line_map, error_hover_row
     global error_scroll_offset, _proxy_log_position, _last_project_filter
     global _last_refresh_ts, _force_refresh
-    global schema_warnings, zero_results
+    global schema_warnings, zero_results, zero_result_expand_states, zero_result_line_map
 
     load_historical_warnings()
     last_output = None
@@ -280,10 +320,15 @@ def run_warnings_loop() -> None:
                     if event is not None:
                         button, col, row = event
                         if button == 0:
-                            key = error_line_map.get(row)
-                            if key is not None:
-                                error_expand_states[key] = not error_expand_states.get(key, False)
+                            ekey = error_line_map.get(row)
+                            if ekey is not None:
+                                error_expand_states[ekey] = not error_expand_states.get(ekey, False)
                                 input_changed = True
+                            else:
+                                zkey = zero_result_line_map.get(row)
+                                if zkey is not None:
+                                    zero_result_expand_states[zkey] = not zero_result_expand_states.get(zkey, False)
+                                    input_changed = True
                         elif button == 64:
                             # tmux.h: MOUSE_WHEEL_UP=64 → scroll viewport up → offset decreases.
                             # NOTE: token_pane uses offset+3 for button 64 because it renders
@@ -316,6 +361,7 @@ def run_warnings_loop() -> None:
                     zero_results = []
                     schema_warnings = []
                     error_expand_states.clear()
+                    zero_result_expand_states.clear()
                     error_scroll_offset = 0
                     error_hover_row = None
                     _last_project_filter = project_filter
