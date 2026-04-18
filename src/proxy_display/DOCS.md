@@ -4,9 +4,15 @@ Proxy pane package — displays live API request structure from mitmproxy logs.
 
 ## pane.py
 
-**Purpose:** Event loops for the proxy pane and worker-proxy pane. Reads `api_requests_*.jsonl` log entries incrementally, handles mouse/keyboard input (click expand/collapse, scroll, hover), and delegates rendering to `format.py`.
-**Input:** Module-level state (entries, expand states, scroll offset); reads from `parse_proxy_log` and `_parse_log_file`.
+**Purpose:** Event loop for the main proxy pane. Reads `api_requests_*.jsonl` log entries incrementally via `parse_proxy_log`, handles mouse/keyboard input (click expand/collapse, scroll, hover), and delegates rendering to `format.py`.
+**Input:** Module-level state (entries, expand states, scroll offset); active project filter.
 **Output:** Prints formatted pane content to stdout via `format_proxy_block`.
+
+## worker_proxy_pane.py
+
+**Purpose:** Event loop for the worker-proxy pane. Watches active workers via `list_workers` + `find_worker_proxy_log`, reads the selected worker's proxy log incrementally, handles digit-key worker switching, mouse/keyboard input (click, scroll, hover), and delegates rendering to `format.py`.
+**Input:** Module-level state (selected worker index, entries, expand states, scroll offset); live worker list from `workers.worker_tmux`.
+**Output:** Prints formatted pane content with worker-switcher header to stdout via `format_proxy_block`.
 
 ## format.py
 

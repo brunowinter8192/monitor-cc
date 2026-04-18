@@ -53,6 +53,10 @@ Live-tested on 2026-04-17:
 - Only messages[] varies
 - Linear regression can't isolate per-segment ratios when N-1 variables have zero variance
 
+### 5. Per-Model Tokenization Differences
+
+Anthropic's tokenizer differs noticeably across model families (Haiku/Sonnet/Opus, and across generations 3.x/4.x/4.7). A single "chars/token" number cannot be universal — any baseline would need per-model measurements. Combined with blockers 1-4 this makes a complete ratio table impractical with current data access.
+
 ## Paths Forward (when we resume)
 
 ### Option A — Synthetic Test via `/messages` with OAuth

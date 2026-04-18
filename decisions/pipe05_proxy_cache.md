@@ -149,7 +149,7 @@ Log-Dateien: `api_requests_{projektname}_{timestamp}.jsonl` statt kryptischer MD
 
 ### Diagnostics: Prefix-Hash Instrumentation
 
-Seit Commit `f9e4b09` (2026-04-12) schreibt `_build_sent_meta` in addon.py vier zusätzliche Felder pro `sent_meta`-Entry:
+Seit Commit `f9e4b09` (2026-04-12) schreibt `_build_sent_meta` (seit Refactor 2026-04-19 in `src/proxy/hash_meta.py`, aufgerufen aus `addon.py`) vier zusätzliche Felder pro `sent_meta`-Entry:
 
 - `prefix_hash_bp1_sys` — MD5[:10] von `json.dumps(system[0:bp1_idx+1])`
 - `prefix_hash_bp2_tools` — MD5[:10] von `json.dumps({"system":..., "tools": tools[0:bp2_idx+1]})`
@@ -202,7 +202,7 @@ Zweck: Drift in should-be-stable Prefix-Feldern wird automatisch pro Request sic
 - messages[1..N-1] — session-volatil per Design
 - tools[] — append-only, unberührt
 
-**Implementierung:** Rein in `addon.py`, keine Änderung an `rules.py`. Nach `apply_modification_rules()` wird entweder gecaptured (erster Request) oder via `_apply_fixation()` überschrieben (Folge-Requests). `apply_modification_rules()` läuft immer vollständig durch (kein Short-Circuit) — der Overhead ist minimal (mtime-basiertes File-Caching in `_read_rule_file()`), die Bytes werden danach überschrieben.
+**Implementierung:** Orchestrierung in `addon.py`, Helfer `_capture_fixation` / `_apply_fixation` seit Refactor 2026-04-19 in `src/proxy/fixation.py`. Keine Änderung an `rules.py`. Nach `apply_modification_rules()` wird entweder gecaptured (erster Request) oder via `_apply_fixation()` überschrieben (Folge-Requests). `apply_modification_rules()` läuft immer vollständig durch (kein Short-Circuit) — der Overhead ist minimal (mtime-basiertes File-Caching in `_read_rule_file()`), die Bytes werden danach überschrieben.
 
 **Edge Cases:**
 - Content `"."` (nach stripping geleerte Messages) — kein `</system-reminder>` Marker, `_capture_fixation` speichert nichts, `_apply_fixation` ändert nichts, kein Crash.
