@@ -15,7 +15,8 @@ from .click_handler import (
     enable_mouse, disable_mouse, read_mouse_event,
 )
 from .proxy_forensics import pairs, format_timestamp_local, Pair
-from .utils import visual_line_count, first_word_of_call
+from .proxy_display.parser import get_proxy_session_start_ts
+from .utils import visual_line_count, first_word_of_call, _iso_to_float
 
 # Tools whose high ratio is structural (content-driven), not actionable waste
 RATIO_EXCLUDED_TOOLS = ['Edit', 'Write', 'worker_send']
@@ -40,6 +41,7 @@ _waste_worker_log_positions: Dict[str, int] = {}
 _waste_log_path: Optional[Path] = None
 _waste_log_position: int = 0
 _last_project_filter: Optional[str] = None
+_monitor_start_ts: float = 0.0
 
 
 # ORCHESTRATOR
@@ -49,9 +51,10 @@ def run_waste_loop() -> None:
     from . import monitor as _monitor
     global waste_threshold, waste_expand_states, waste_line_map, waste_hover_row
     global waste_scroll_offset, _waste_log_path, _waste_log_position
-    global _last_project_filter, _waste_above
+    global _last_project_filter, _waste_above, _monitor_start_ts
     global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
 
+    _monitor_start_ts = time.time()
     last_output = None
     last_data_refresh = 0.0
     setup_keyboard_input()
@@ -209,7 +212,7 @@ def _rebuild_above() -> None:
 # Read new proxy entries, rebuild waste_pairs above threshold; returns True if data changed
 def _refresh_waste_data(project_filter: Optional[str]) -> bool:
     global _waste_log_path, _waste_log_position, _last_project_filter, _waste_above
-    global waste_expand_states, waste_scroll_offset, waste_hover_row
+    global waste_expand_states, waste_scroll_offset, waste_hover_row, _monitor_start_ts
     global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
 
     log_path = _find_proxy_log_path(project_filter)
@@ -226,6 +229,7 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
         waste_scroll_offset = 0
         waste_hover_row = None
         _last_project_filter = project_filter
+        _monitor_start_ts = get_proxy_session_start_ts(project_filter) if project_filter else time.time()
 
     if not log_path or not log_path.exists():
         return False
@@ -246,10 +250,14 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
     new_events, new_position = _read_new_events(log_path, _waste_log_position)
     if new_events:
         _waste_log_position = new_position
-        # Accumulate all events: proxy_forensics deduplicates by first occurrence,
-        # so each ToolUse gets the timestamp of its first API call — not the latest.
-        _waste_all_events.extend(new_events)
-        data_changed = True
+        # Filter out events older than session start, then accumulate.
+        # proxy_forensics deduplicates by first occurrence, so each ToolUse gets
+        # the timestamp of its first API call — not the latest.
+        new_events = [e for e in new_events
+                      if not e.get('timestamp') or _iso_to_float(e['timestamp']) >= _monitor_start_ts]
+        if new_events:
+            _waste_all_events.extend(new_events)
+            data_changed = True
 
     # Scan worker proxy logs inline: scan_worker_logs from parser.py strips raw_payload
     # via _extract_raw_payload_fields; waste_pane needs raw_payload for proxy_forensics.pairs()
@@ -263,8 +271,11 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
             w_events, w_pos = _read_new_events(wlog, pos)
             if w_events:
                 _waste_worker_log_positions[str(wlog)] = w_pos
-                _waste_worker_all_events.extend(w_events)
-                data_changed = True
+                w_events = [e for e in w_events
+                            if not e.get('timestamp') or _iso_to_float(e['timestamp']) >= _monitor_start_ts]
+                if w_events:
+                    _waste_worker_all_events.extend(w_events)
+                    data_changed = True
 
     if not data_changed:
         return False
