@@ -38,7 +38,9 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     workers_cmd = f"python3 {script_path} --mode workers {project_arg}"
     worker_proxy_cmd = f"python3 {script_path} --mode worker-proxy {project_arg}"
     worker_metadata_cmd = f"python3 {script_path} --mode worker-metadata {project_arg}"
-    waste_cmd = f"python3 {script_path} --mode waste {project_arg}"
+    # Propagate Monitor_CC root so waste_pane.py finds proxy logs regardless of cwd
+    _monitor_root = os.environ.get('MONITOR_CC_ROOT', '') or os.path.dirname(os.path.abspath(script_path))
+    waste_cmd = f"MONITOR_CC_ROOT={_monitor_root} python3 {script_path} --mode waste {project_arg}"
 
     original_history_limit = get_global_history_limit()
     subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
