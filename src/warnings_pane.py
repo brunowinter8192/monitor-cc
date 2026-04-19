@@ -9,7 +9,7 @@ from .constants import (
     YELLOW, RED, DIM, WHITE, RESET, HOVER_BG,
     INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL,
 )
-from .utils import format_timestamp, visual_line_count, first_word_of_call
+from .utils import format_timestamp, visual_line_count, first_word_of_call, format_worker_prefix
 
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}
@@ -288,7 +288,7 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             symbol = '\u25bc' if is_expanded else '\u25b6'
             tool_col = f"{WHITE}{zr['tool_name']:<16}{RESET}"
             reason_col = f"{DIM}{zr['reason']}{RESET}"
-            w_prefix = f"{YELLOW}W:{zr['worker_name']}{RESET} " if zr.get('worker_name') else ''
+            w_prefix = format_worker_prefix(zr.get('worker_name', ''))
             all_lines.append(f"{DIM}{symbol} {zr['timestamp']}  {w_prefix}{tool_col}  {reason_col}")
             all_keys.append(('zero', zr_idx))
             if is_expanded:
@@ -307,8 +307,7 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             is_expanded = error_expand_states.get(err_idx, False)
             symbol = '\u25bc' if is_expanded else '\u25b6'
             tool_col = f"{WHITE}{err['tool_name']:<16}{RESET}"
-            worker_name = err.get('worker_name', '')
-            w_prefix = f"{YELLOW}W:{worker_name}{RESET} " if worker_name else ''
+            w_prefix = format_worker_prefix(err.get('worker_name', ''))
             inline = first_word_of_call(err['tool_name'], err.get('tool_call_input', {}))
             all_lines.append(f"{DIM}{symbol} {err['timestamp']}  {w_prefix}{tool_col}  {DIM}{inline}{RESET}")
             all_keys.append(('error', err_idx))
