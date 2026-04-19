@@ -462,13 +462,10 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                 all_lines.append(header_line)
                 all_keys.append(idx)
 
-                # Command section
-                if p.tu.name == 'Bash':
-                    cmd_text = p.tu.input.get('command', '')
-                else:
-                    cmd_text = json.dumps(p.tu.input, ensure_ascii=False)
+                # Input section
+                cmd_text = json.dumps(p.tu.input, ensure_ascii=False)
 
-                all_lines.append(f'  {DIM}COMMAND ({p.tu.input_chars:,} chars):{RESET}')
+                all_lines.append(f'  {DIM}INPUT ({p.tu.input_chars:,} chars):{RESET}')
                 all_keys.append(None)
 
                 cmd_lines = cmd_text.split('\n')
