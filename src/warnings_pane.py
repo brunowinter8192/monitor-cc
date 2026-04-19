@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+from datetime import datetime
 from typing import Dict, Optional, Set
 import json
 import os
@@ -22,6 +23,8 @@ _proxy_log_position: int = 0
 _last_project_filter: Optional[str] = None
 _last_refresh_ts: float = 0.0
 _force_refresh: bool = False
+_monitor_start_ts: float = 0.0
+_worker_log_positions: Dict[str, int] = {}
 
 schema_warnings: list = []  # list of {timestamp, model, warnings: list[str]}
 zero_results: list = []  # list of {timestamp, tool_name, reason, tool_call_input}
@@ -39,6 +42,13 @@ _seen_error_keys: Set = set()
 INDENT = '  '
 
 # FUNCTIONS
+
+# Convert ISO8601 UTC timestamp string to epoch float for age comparison
+def _iso_to_float(ts: str) -> float:
+    try:
+        return datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
+    except Exception:
+        return 0.0
 
 # Track unknown JSONL message type for warnings pane
 def track_unknown_type(unknown_entry: dict) -> None:
@@ -144,52 +154,48 @@ def _resolve_tool_call(blk: dict, tu_id_map: dict, tu_blocks_positional: list, b
         return _extract_tool_call_details(tu_blocks_positional[0])
     return ('tool', {})
 
-# Scan new proxy entries for tool errors and return error dicts
+# Scan new proxy entries for tool errors; one dict per is_error block (not per message)
 def _scan_proxy_entries_for_errors(entries: list) -> list:
     errors = []
     for entry in entries:
         ts_raw = entry.get('timestamp', '')
+        if ts_raw and _iso_to_float(ts_raw) < _monitor_start_ts:
+            continue
         ts = format_timestamp(ts_raw) if ts_raw else '??:??:??'
+        worker_name = entry.get('_worker_name', '')
         messages = entry.get('messages', [])
         for msg_idx, msg in enumerate(messages):
             if not _is_tool_error(msg):
                 continue
-            full_text = ''
-            error_blk = None
-            for blk in msg.get('blocks', []):
-                if blk.get('type') == 'tool_result' and blk.get('is_error'):
-                    candidate = blk.get('full_text', '') or blk.get('preview', '')
-                    if candidate:
-                        full_text = candidate
-                        error_blk = blk
-                        break
-            if not full_text:
-                full_text = msg.get('content_preview', '')
-            dedup_key = (msg_idx, full_text[:200])
-            if dedup_key in _seen_error_keys:
-                continue
-            _seen_error_keys.add(dedup_key)
             tu_id_map = _build_tool_use_id_map(messages, msg_idx)
             preceding_tu = None
             for i in range(msg_idx - 1, -1, -1):
                 if messages[i].get('type') == 'tool_use':
                     preceding_tu = messages[i]
                     break
-            tu_blocks_positional = [b for b in (preceding_tu.get('blocks', []) if preceding_tu else []) if b.get('type') == 'tool_use']
-            if error_blk is not None:
-                tool_name, _ = _resolve_tool_call(error_blk, tu_id_map, tu_blocks_positional, 0)
-            elif tu_blocks_positional:
-                tool_name, _ = _extract_tool_call_details(tu_blocks_positional[0])
-            else:
-                tool_name = 'tool'
-            first_line = full_text.split('\n')[0] if full_text else ''
-            summary = first_line[:80] + ('…' if len(first_line) > 80 else '')
-            errors.append({
-                'timestamp': ts,
-                'tool_name': tool_name,
-                'summary': summary,
-                'full_text': full_text,
-            })
+            tu_blocks_positional = [
+                b for b in (preceding_tu.get('blocks', []) if preceding_tu else [])
+                if b.get('type') == 'tool_use'
+            ]
+            for blk_idx, blk in enumerate(msg.get('blocks', [])):
+                if blk.get('type') != 'tool_result' or not blk.get('is_error'):
+                    continue
+                full_text = blk.get('full_text', '') or blk.get('preview', '') or msg.get('content_preview', '')
+                dedup_key = (worker_name, msg_idx, full_text[:200])
+                if dedup_key in _seen_error_keys:
+                    continue
+                _seen_error_keys.add(dedup_key)
+                tool_name, tool_call_input = _resolve_tool_call(blk, tu_id_map, tu_blocks_positional, blk_idx)
+                first_line = full_text.split('\n')[0] if full_text else ''
+                summary = first_line[:80] + ('…' if len(first_line) > 80 else '')
+                errors.append({
+                    'timestamp': ts,
+                    'tool_name': tool_name,
+                    'summary': summary,
+                    'full_text': full_text,
+                    'tool_call_input': tool_call_input,
+                    'worker_name': worker_name,
+                })
     return errors
 
 # Scan new proxy entries for zero-result tool calls; one entry per zero-result block
@@ -197,7 +203,10 @@ def _scan_proxy_entries_for_zero_results(entries: list) -> list:
     results = []
     for entry in entries:
         ts_raw = entry.get('timestamp', '')
+        if ts_raw and _iso_to_float(ts_raw) < _monitor_start_ts:
+            continue
         ts = format_timestamp(ts_raw) if ts_raw else '??:??:??'
+        worker_name = entry.get('_worker_name', '')
         messages = entry.get('messages', [])
         for msg_idx, msg in enumerate(messages):
             if msg.get('type') != 'tool_result':
@@ -216,7 +225,7 @@ def _scan_proxy_entries_for_zero_results(entries: list) -> list:
                 if not reason:
                     continue
                 text_key = blk.get('full_text', '') or blk.get('preview', '')
-                dedup_key = (msg_idx, blk_idx, text_key)
+                dedup_key = (worker_name, msg_idx, blk_idx, text_key)
                 if dedup_key in _seen_zero_keys:
                     continue
                 _seen_zero_keys.add(dedup_key)
@@ -226,6 +235,7 @@ def _scan_proxy_entries_for_zero_results(entries: list) -> list:
                     'tool_name': tool_name,
                     'reason': reason.capitalize(),
                     'tool_call_input': tool_call_input,
+                    'worker_name': worker_name,
                 })
     return results
 
@@ -278,7 +288,8 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             symbol = '\u25bc' if is_expanded else '\u25b6'
             tool_col = f"{WHITE}{zr['tool_name']:<16}{RESET}"
             reason_col = f"{DIM}{zr['reason']}{RESET}"
-            all_lines.append(f"{DIM}{symbol} {zr['timestamp']}  {tool_col}  {reason_col}")
+            w_prefix = f"{YELLOW}W:{zr['worker_name']}{RESET} " if zr.get('worker_name') else ''
+            all_lines.append(f"{DIM}{symbol} {zr['timestamp']}  {w_prefix}{tool_col}  {reason_col}")
             all_keys.append(('zero', zr_idx))
             if is_expanded:
                 for k, v in zr.get('tool_call_input', {}).items():
@@ -296,9 +307,14 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             is_expanded = error_expand_states.get(err_idx, False)
             symbol = '\u25bc' if is_expanded else '\u25b6'
             tool_col = f"{WHITE}{err['tool_name']:<16}{RESET}"
-            all_lines.append(f"{DIM}{symbol} {err['timestamp']}  {tool_col}  {DIM}{err['summary']}{RESET}")
+            w_prefix = f"{YELLOW}W:{err['worker_name']}{RESET} " if err.get('worker_name') else ''
+            all_lines.append(f"{DIM}{symbol} {err['timestamp']}  {w_prefix}{tool_col}  {DIM}{err['summary']}{RESET}")
             all_keys.append(('error', err_idx))
             if is_expanded:
+                for k, v in err.get('tool_call_input', {}).items():
+                    val_str = str(v)[:wrap_width - len(k) - 4]
+                    all_lines.append(f"    {DIM}{k}: {val_str}{RESET}")
+                    all_keys.append(None)
                 for raw_line in err['full_text'].split('\n'):
                     if not raw_line:
                         all_lines.append('')
@@ -340,7 +356,7 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
     from . import monitor as _monitor
-    from .proxy_display.parser import parse_proxy_log
+    from .proxy_display.parser import parse_proxy_log, scan_worker_logs
     from .click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
@@ -349,7 +365,9 @@ def run_warnings_loop() -> None:
     global error_scroll_offset, _proxy_log_position, _last_project_filter
     global _last_refresh_ts, _force_refresh
     global schema_warnings, zero_results, zero_result_expand_states, zero_result_line_map
+    global _monitor_start_ts, _worker_log_positions
 
+    _monitor_start_ts = time.time()
     load_historical_warnings()
     last_output = None
     last_data_refresh = 0.0
@@ -404,6 +422,8 @@ def run_warnings_loop() -> None:
                 project_filter = _monitor.active_project_filter
                 if project_filter != _last_project_filter:
                     _proxy_log_position = 0
+                    _monitor_start_ts = time.time()
+                    _worker_log_positions.clear()
                     tool_errors = []
                     zero_results = []
                     schema_warnings = []
@@ -416,14 +436,18 @@ def run_warnings_loop() -> None:
                     _last_project_filter = project_filter
 
                 new_entries, _proxy_log_position = parse_proxy_log(project_filter, _proxy_log_position)
-                new_errors = _scan_proxy_entries_for_errors(new_entries)
+                worker_entries, _worker_log_positions = scan_worker_logs(_worker_log_positions)
+                all_new_entries = new_entries + worker_entries
+                new_errors = _scan_proxy_entries_for_errors(all_new_entries)
                 tool_errors.extend(new_errors)
-                new_zero = _scan_proxy_entries_for_zero_results(new_entries)
+                new_zero = _scan_proxy_entries_for_zero_results(all_new_entries)
                 zero_results.extend(new_zero)
 
                 for entry in new_entries:
                     if entry.get('type') == 'schema_warning':
                         ts_raw = entry.get('timestamp', '')
+                        if ts_raw and _iso_to_float(ts_raw) < _monitor_start_ts:
+                            continue
                         ts = format_timestamp(ts_raw) if ts_raw else '??:??:??'
                         schema_warnings.append({
                             'timestamp': ts,
