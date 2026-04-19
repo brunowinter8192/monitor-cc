@@ -19,6 +19,23 @@ def format_timestamp(iso_timestamp: str) -> str:
     except ValueError:
         return '00:00:00'
 
+# Return first meaningful word of a tool call for compact inline display
+def first_word_of_call(tool_name: str, tool_call_input: dict) -> str:
+    if not tool_call_input:
+        return ''
+    if tool_name == 'Bash':
+        cmd = tool_call_input.get('command', '')
+        parts = cmd.split()
+        return parts[0] if parts else ''
+    if tool_name == 'Grep':
+        pat = tool_call_input.get('pattern', '')
+        parts = pat.split()
+        return parts[0] if parts else ''
+    if tool_name in ('Glob', 'Read', 'Edit', 'Write'):
+        key = 'pattern' if tool_name == 'Glob' else 'file_path'
+        return tool_call_input.get(key, '')
+    return ''
+
 # Return number of terminal rows a logical line occupies after visual wrap
 def visual_line_count(line: str, pane_width: int) -> int:
     visible = _ANSI_ESCAPE_RE.sub('', line)
