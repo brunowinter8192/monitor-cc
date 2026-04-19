@@ -32,15 +32,6 @@ def _is_noise_entry(entry: dict) -> bool:
         and entry.get('output', '').startswith('tool=')
     )
 
-# Build expanded content string for PreToolUse entries
-def _build_pretooluse_content(tool_name: str, tool_input: dict, output: str) -> str:
-    lines = [f'tool: {tool_name}']
-    for k, v in tool_input.items():
-        lines.append(f'{k}: {v}')
-    lines.append(f'output: {output if output else "✓ path ok"}')
-    return '\n'.join(lines)
-
-
 # Build hooks pane display item dict for a hook log entry
 def build_hook_display_item(entry: dict) -> dict:
     time_str = format_timestamp(entry.get('timestamp', ''))
@@ -56,9 +47,6 @@ def build_hook_display_item(entry: dict) -> dict:
         color = GREEN
     else:
         color = PASTEL_ORANGE
-    content = entry.get('content', '')
-    if entry.get('hook_event') == 'PreToolUse' and entry.get('tool_input') is not None:
-        content = _build_pretooluse_content(entry.get('tool_name', ''), entry.get('tool_input', {}), detail)
     return {
         'type': 'hook',
         'timestamp': entry.get('timestamp', ''),
@@ -66,7 +54,7 @@ def build_hook_display_item(entry: dict) -> dict:
         'hook_event': entry.get('hook_event', ''),
         'hook_script': entry.get('hook_script', ''),
         'detail': detail,
-        'content': content,
+        'content': entry.get('content', ''),
         'color': color,
         'is_block': is_block,
         'expanded': False,
