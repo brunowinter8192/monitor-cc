@@ -159,3 +159,24 @@ def find_worker_proxy_log(worker_name: str) -> Optional[Path]:
     if not matches:
         return None
     return max(matches, key=lambda f: f.stat().st_mtime)
+
+# Scan all worker proxy logs incrementally, tagging each entry with _worker_name
+def scan_worker_logs(last_positions: dict) -> tuple:
+    root = os.environ.get("MONITOR_CC_ROOT", "")
+    if not root:
+        root = str(Path(__file__).parent.parent.parent)
+    logs_dir = Path(root) / "src" / "logs"
+    if not logs_dir.exists():
+        return [], last_positions
+    all_entries: list = []
+    updated_positions = dict(last_positions)
+    for log_path in logs_dir.glob("api_requests_worker_*.jsonl"):
+        stem = log_path.stem  # api_requests_worker_{name}_{ts}
+        worker_name = stem.replace('api_requests_worker_', '').rsplit('_', 1)[0]
+        pos = last_positions.get(str(log_path), 0)
+        entries, new_pos = _parse_log_file(log_path, pos)
+        for entry in entries:
+            entry['_worker_name'] = worker_name
+        all_entries.extend(entries)
+        updated_positions[str(log_path)] = new_pos
+    return all_entries, updated_positions
