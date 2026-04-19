@@ -36,6 +36,13 @@ def first_word_of_call(tool_name: str, tool_call_input: dict) -> str:
         return tool_call_input.get(key, '')
     return ''
 
+# Convert ISO8601 UTC timestamp string to epoch float for age comparison
+def _iso_to_float(ts: str) -> float:
+    try:
+        return datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
+    except Exception:
+        return 0.0
+
 # Return number of terminal rows a logical line occupies after visual wrap
 def visual_line_count(line: str, pane_width: int) -> int:
     visible = _ANSI_ESCAPE_RE.sub('', line)
