@@ -177,6 +177,25 @@ def get_proxy_session_start_ts(project_filter: str) -> float:
             pass
     return time.time()
 
+# Locate current proxy JSONL via marker file; returns Path or None
+def find_proxy_log_path(project_filter: Optional[str]) -> Optional[Path]:
+    if not project_filter:
+        return None
+    root = os.environ.get("MONITOR_CC_ROOT", "")
+    if not root:
+        root = str(Path(__file__).parent.parent.parent)
+    session_id = _proxy_session_id_for_project(project_filter)
+    marker_file = Path(root) / "src" / "logs" / f".proxy_session_{session_id}"
+    log_id = session_id
+    if marker_file.exists():
+        try:
+            lines = marker_file.read_text(encoding="utf-8").splitlines()
+            if len(lines) >= 2 and lines[1].strip():
+                log_id = lines[1].strip()
+        except OSError:
+            pass
+    return Path(root) / "src" / "logs" / f"api_requests_{log_id}.jsonl"
+
 # Scan all worker proxy logs incrementally, tagging each entry with _worker_name
 def scan_worker_logs(last_positions: dict) -> tuple:
     root = os.environ.get("MONITOR_CC_ROOT", "")

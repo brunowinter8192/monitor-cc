@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-import hashlib
 import json
 import os
 import time
@@ -16,7 +15,7 @@ from .click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
-from .proxy_display.parser import get_proxy_session_start_ts
+from .proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path
 from .utils import visual_line_count, first_word_of_call, _iso_to_float, format_worker_prefix
 
 # --- INLINED from former src/proxy_forensics.py (library removed 2026-04-19) ---
@@ -252,27 +251,6 @@ def run_waste_loop() -> None:
 
 # FUNCTIONS
 
-# Locate current proxy JSONL via marker file; returns Path or None
-def _find_proxy_log_path(project_filter: Optional[str]) -> Optional[Path]:
-    if not project_filter:
-        return None
-    root = os.environ.get('MONITOR_CC_ROOT', '')
-    if not root:
-        # src/waste_pane.py → src/ → Monitor_CC/
-        root = str(Path(__file__).resolve().parent.parent)
-    session_id = hashlib.md5(project_filter.encode()).hexdigest()[:8]
-    marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
-    log_id = session_id
-    if marker_file.exists():
-        try:
-            lines = marker_file.read_text(encoding='utf-8').splitlines()
-            if len(lines) >= 2 and lines[1].strip():
-                log_id = lines[1].strip()
-        except OSError:
-            pass
-    return Path(root) / 'src' / 'logs' / f'api_requests_{log_id}.jsonl'
-
-
 # Read new raw proxy events from log_path since byte position; returns (events, new_position)
 def _read_new_events(log_path: Path, position: int) -> tuple:
     if not log_path.exists():
@@ -320,7 +298,7 @@ def _rebuild_above() -> None:
         [p for p in all_pairs
          if p.ratio >= waste_threshold
          and not any(ex in p.tu.name for ex in RATIO_EXCLUDED_TOOLS)],
-        key=lambda p: -p.ratio,
+        key=lambda p: p.tu.timestamp,
     )
 
 
@@ -330,7 +308,7 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
     global waste_expand_states, waste_scroll_offset, waste_hover_row, _monitor_start_ts
     global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
 
-    log_path = _find_proxy_log_path(project_filter)
+    log_path = find_proxy_log_path(project_filter)
 
     # Reset on project change or log file path change
     if project_filter != _last_project_filter or log_path != _waste_log_path:
@@ -469,13 +447,19 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                 all_keys.append(None)
 
                 cmd_lines = cmd_text.split('\n')
-                for cline in cmd_lines[:CMD_MAX_LINES]:
-                    chunk = cline[:wrap_width]
-                    all_lines.append(f'    {DIM}{chunk}{RESET}')
-                    all_keys.append(None)
-                if len(cmd_lines) > CMD_MAX_LINES:
-                    remaining = len(cmd_lines) - CMD_MAX_LINES
-                    all_lines.append(f'    {DIM}… ({remaining} more lines){RESET}')
+                rendered_cmd = 0
+                for cline in cmd_lines:
+                    for line_start in range(0, max(len(cline), 1), wrap_width):
+                        if rendered_cmd >= CMD_MAX_LINES:
+                            break
+                        chunk = cline[line_start:line_start + wrap_width]
+                        all_lines.append(f'    {DIM}{chunk}{RESET}')
+                        all_keys.append(None)
+                        rendered_cmd += 1
+                    if rendered_cmd >= CMD_MAX_LINES:
+                        break
+                if rendered_cmd >= CMD_MAX_LINES and (len(cmd_lines) > 1 or len(cmd_lines[0]) > wrap_width * CMD_MAX_LINES):
+                    all_lines.append(f'    {DIM}… (truncated){RESET}')
                     all_keys.append(None)
 
                 # Output section
@@ -488,13 +472,19 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                 all_keys.append(None)
 
                 out_lines = out_text.split('\n')
-                for oline in out_lines[:OUT_MAX_LINES]:
-                    chunk = oline[:wrap_width]
-                    all_lines.append(f'    {DIM}{chunk}{RESET}')
-                    all_keys.append(None)
-                if len(out_lines) > OUT_MAX_LINES:
-                    remaining = len(out_lines) - OUT_MAX_LINES
-                    all_lines.append(f'    {DIM}… ({remaining} more lines){RESET}')
+                rendered_out = 0
+                for oline in out_lines:
+                    for line_start in range(0, max(len(oline), 1), wrap_width):
+                        if rendered_out >= OUT_MAX_LINES:
+                            break
+                        chunk = oline[line_start:line_start + wrap_width]
+                        all_lines.append(f'    {DIM}{chunk}{RESET}')
+                        all_keys.append(None)
+                        rendered_out += 1
+                    if rendered_out >= OUT_MAX_LINES:
+                        break
+                if rendered_out >= OUT_MAX_LINES and (len(out_lines) > 1 or len(out_lines[0]) > wrap_width * OUT_MAX_LINES):
+                    all_lines.append(f'    {DIM}… (truncated){RESET}')
                     all_keys.append(None)
 
                 all_lines.append('')
