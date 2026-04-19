@@ -30,9 +30,17 @@ Forensic extraction and analysis of tool_use blocks from Claude Code sessions. T
 | Flag | Description | Default |
 |------|-------------|---------|
 | `proxy_jsonl` | *(positional, variadic)* Proxy JSONL path(s) under `src/logs/` | required |
-| `--top N` | Top-N longest calls in detail section | 30 |
-| `--min-chars N` | Only include calls with total input chars ≥ N | 500 |
+| `--tool NAME` | Filter by tool name (e.g. `Bash`, `Read`, `Grep`) | all tools |
+| `--ratio` | Ratio mode: match tool_use with tool_result, report input/output ratio; excludes Edit/Write/worker_send | off |
+| `--top N` | Top-N entries in detail section (char-sorted normally, ratio-sorted in `--ratio` mode) | 30 |
+| `--min-chars N` | Min input chars filter; ignored in `--ratio` mode | 500 |
 | `--output FILE` | Output markdown file path (default: stdout) | stdout |
+
+**Modes:**
+- Default: all tools, char-sorted, `--min-chars` filter applies
+- `--tool Bash`: adds **Command-Prefix Clustering** section (extract_prefix per call, aggregated by prefix → total_chars)
+- `--ratio`: input/output ratio per matched pair; summary table shows mean/median/max ratio per tool
+- `--tool NAME --ratio`: combined — ratio mode for one specific tool (exclusion list bypassed)
 
 ## extract_zeros.py
 
@@ -68,6 +76,17 @@ Forensic extraction and analysis of tool_use blocks from Claude Code sessions. T
 - Read: result contains `"File does not exist"` or `"does not exist"` AND does not start with a line-number prefix (`\d+\t`)
 
 **Preceding text extraction:** walks the `parentUuid` chain from the tool_use event back to the nearest preceding assistant text block — gives context for what Opus was trying to accomplish.
+
+## Generated Reports
+
+### 20260419_baseline.md
+Baseline run on all 17 Proxy JSONLs (default mode, `--min-chars 500`). Top offenders: Write (Ø 6,775 chars), Edit (Ø 1,854 chars), Bash (Ø 1,391 chars).
+
+### 20260419_bash_deepdive.md
+Bash-only deep-dive (`--tool Bash --top 50 --min-chars 500`) on all 17 Proxy JSONLs. Includes Command-Prefix Clustering. Top clusters by total_chars: `python3 [heredoc]` (35 calls, 69k chars), `bd` (36 calls, 59k chars), `python3` inline (39 calls, 52k chars).
+
+### 20260419_ratio_analysis.md
+Ratio analysis (`--ratio --top 50`) on all 17 Proxy JSONLs — 1,207 matched pairs. Bash leads with max ratio 191.62 (3k chars input → 16 chars output). Read is most efficient (median ratio 0.02).
 
 ## Historical Reports
 
