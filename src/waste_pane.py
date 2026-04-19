@@ -298,7 +298,7 @@ def _rebuild_above() -> None:
         [p for p in all_pairs
          if p.ratio >= waste_threshold
          and not any(ex in p.tu.name for ex in RATIO_EXCLUDED_TOOLS)],
-        key=lambda p: -p.ratio,
+        key=lambda p: p.tu.timestamp,
     )
 
 
