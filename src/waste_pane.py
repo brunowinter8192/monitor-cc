@@ -15,16 +15,13 @@ from .click_handler import (
     enable_mouse, disable_mouse, read_mouse_event,
 )
 from .proxy_forensics import pairs, format_timestamp_local, Pair
-from .utils import visual_line_count
+from .utils import visual_line_count, first_word_of_call
 
 # Tools whose high ratio is structural (content-driven), not actionable waste
 RATIO_EXCLUDED_TOOLS = ['Edit', 'Write', 'worker_send']
 
 # Default ratio threshold; keys 1-9 set it, key 0 resets to default
 WASTE_THRESHOLD_DEFAULT = 3.0
-
-# Max chars of command shown in collapsed row preview
-CMD_PREVIEW_CHARS = 60
 
 # Max source lines shown in expanded command / output sections
 CMD_MAX_LINES = 20
@@ -284,18 +281,6 @@ def _format_waste_header(above_count: int) -> str:
             f"[0]=reset [1-9]=threshold{RESET}")
 
 
-# Extract short command preview for collapsed row display
-def _get_cmd_preview(p: Pair) -> str:
-    if p.tu.name == 'Bash':
-        raw = p.tu.input.get('command', '')
-        full = raw.split('\n')[0] if raw else ''
-    else:
-        full = json.dumps(p.tu.input)
-    if len(full) > CMD_PREVIEW_CHARS:
-        return full[:CMD_PREVIEW_CHARS] + '…'
-    return full
-
-
 # Derive short display name for a tool (strips MCP prefix noise)
 def _tool_display_name(name: str) -> str:
     if '__' in name:
@@ -392,8 +377,8 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                 all_lines.append('')
                 all_keys.append(None)
             else:
-                cmd_preview = _get_cmd_preview(p)
-                collapsed_line = f'{header_line}  {DIM}{cmd_preview}{RESET}'
+                inline = first_word_of_call(p.tu.name, p.tu.input)
+                collapsed_line = f'{header_line}  {DIM}{inline}{RESET}'
                 all_lines.append(collapsed_line)
                 all_keys.append(idx)
 
