@@ -78,6 +78,7 @@ _ZERO_RESULT_PATTERNS = [
     "no matches found",
     "no matches found in any file.",
     "no results found",
+    "no files found",
 ]
 
 # Check if a single tool_result block is a zero-result; returns matched reason string or empty
