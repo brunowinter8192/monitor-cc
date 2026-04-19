@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-import hashlib
 import json
 import os
 import time
@@ -16,7 +15,7 @@ from .click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
-from .proxy_display.parser import get_proxy_session_start_ts
+from .proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path
 from .utils import visual_line_count, first_word_of_call, _iso_to_float, format_worker_prefix
 
 # --- INLINED from former src/proxy_forensics.py (library removed 2026-04-19) ---
@@ -252,27 +251,6 @@ def run_waste_loop() -> None:
 
 # FUNCTIONS
 
-# Locate current proxy JSONL via marker file; returns Path or None
-def _find_proxy_log_path(project_filter: Optional[str]) -> Optional[Path]:
-    if not project_filter:
-        return None
-    root = os.environ.get('MONITOR_CC_ROOT', '')
-    if not root:
-        # src/waste_pane.py → src/ → Monitor_CC/
-        root = str(Path(__file__).resolve().parent.parent)
-    session_id = hashlib.md5(project_filter.encode()).hexdigest()[:8]
-    marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
-    log_id = session_id
-    if marker_file.exists():
-        try:
-            lines = marker_file.read_text(encoding='utf-8').splitlines()
-            if len(lines) >= 2 and lines[1].strip():
-                log_id = lines[1].strip()
-        except OSError:
-            pass
-    return Path(root) / 'src' / 'logs' / f'api_requests_{log_id}.jsonl'
-
-
 # Read new raw proxy events from log_path since byte position; returns (events, new_position)
 def _read_new_events(log_path: Path, position: int) -> tuple:
     if not log_path.exists():
@@ -330,7 +308,7 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
     global waste_expand_states, waste_scroll_offset, waste_hover_row, _monitor_start_ts
     global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
 
-    log_path = _find_proxy_log_path(project_filter)
+    log_path = find_proxy_log_path(project_filter)
 
     # Reset on project change or log file path change
     if project_filter != _last_project_filter or log_path != _waste_log_path:

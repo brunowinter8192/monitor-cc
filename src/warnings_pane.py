@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Optional, Set
 import json
 import os
@@ -21,6 +22,7 @@ error_hover_row: Optional[int] = None
 error_scroll_offset: int = 0
 _proxy_log_position: int = 0
 _last_project_filter: Optional[str] = None
+_last_log_path: Optional[Path] = None
 _last_refresh_ts: float = 0.0
 _force_refresh: bool = False
 _monitor_start_ts: float = 0.0
@@ -357,7 +359,7 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
     from . import monitor as _monitor
-    from .proxy_display.parser import parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts
+    from .proxy_display.parser import parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts, find_proxy_log_path
     from .click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
@@ -366,7 +368,7 @@ def run_warnings_loop() -> None:
     global error_scroll_offset, _proxy_log_position, _last_project_filter
     global _last_refresh_ts, _force_refresh
     global schema_warnings, zero_results, zero_result_expand_states, zero_result_line_map
-    global _monitor_start_ts, _worker_log_positions
+    global _monitor_start_ts, _worker_log_positions, _last_log_path
 
     _monitor_start_ts = time.time()
     load_historical_warnings()
@@ -421,7 +423,9 @@ def run_warnings_loop() -> None:
                 _monitor.monitor_sessions()
 
                 project_filter = _monitor.active_project_filter
-                if project_filter != _last_project_filter:
+                log_path = find_proxy_log_path(project_filter)
+
+                if project_filter != _last_project_filter or log_path != _last_log_path:
                     _proxy_log_position = 0
                     _monitor_start_ts = get_proxy_session_start_ts(project_filter) if project_filter else time.time()
                     _worker_log_positions.clear()
@@ -435,6 +439,24 @@ def run_warnings_loop() -> None:
                     error_scroll_offset = 0
                     error_hover_row = None
                     _last_project_filter = project_filter
+                    _last_log_path = log_path
+
+                # Detect file truncation (proxy restarted with same path)
+                if log_path and log_path.exists():
+                    try:
+                        file_size = log_path.stat().st_size
+                    except OSError:
+                        file_size = None
+                    if file_size is not None and file_size < _proxy_log_position:
+                        _proxy_log_position = 0
+                        tool_errors = []
+                        zero_results = []
+                        schema_warnings = []
+                        error_expand_states.clear()
+                        zero_result_expand_states.clear()
+                        _seen_zero_keys.clear()
+                        _seen_error_keys.clear()
+                        error_scroll_offset = 0
 
                 new_entries, _proxy_log_position = parse_proxy_log(project_filter, _proxy_log_position)
                 worker_entries, _worker_log_positions = scan_worker_logs(_worker_log_positions)
