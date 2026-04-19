@@ -27,6 +27,7 @@ WARNINGS_POLL_INTERVAL = 10.0
 LONG_OUTPUT_THRESHOLD = 10000
 TMUX_HISTORY_LIMIT = '50000'
 EXPANDED_MAX_LINES = 15
+WORKER_COL_WIDTH = 20  # name-field width; full column = W: + name + space = 23 chars
 
 # Tool names
 TOOL_TASK = 'Task'

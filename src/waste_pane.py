@@ -17,7 +17,7 @@ from .click_handler import (
     enable_mouse, disable_mouse, read_mouse_event,
 )
 from .proxy_display.parser import get_proxy_session_start_ts
-from .utils import visual_line_count, first_word_of_call, _iso_to_float
+from .utils import visual_line_count, first_word_of_call, _iso_to_float, format_worker_prefix
 
 # --- INLINED from former src/proxy_forensics.py (library removed 2026-04-19) ---
 
@@ -448,7 +448,7 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
             in_str = f'{p.tu.input_chars:>5}'
             out_str = f'{p.tr.output_chars:>5}'
             worker_name = _get_worker_from_session_file(p.tu.session_file)
-            w_prefix = f'{YELLOW}W:{worker_name}{RESET} ' if worker_name else ''
+            w_prefix = format_worker_prefix(worker_name)
 
             header_line = (
                 f'{DIM}{symbol} [{ts}]{RESET} '

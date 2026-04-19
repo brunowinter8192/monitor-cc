@@ -3,7 +3,7 @@ from datetime import datetime
 import re
 
 # From constants.py: Unified color palette
-from .constants import RESET, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, ORANGE
+from .constants import RESET, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, ORANGE, WORKER_COL_WIDTH
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 
@@ -42,6 +42,14 @@ def _iso_to_float(ts: str) -> float:
         return datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
     except Exception:
         return 0.0
+
+# Format worker-name prefix column with constant visual width (WORKER_COL_WIDTH + 3 chars)
+def format_worker_prefix(name: str) -> str:
+    if not name:
+        return ' ' * (WORKER_COL_WIDTH + 3)
+    if len(name) > WORKER_COL_WIDTH:
+        name = name[:WORKER_COL_WIDTH - 1] + '\u2026'
+    return f'{YELLOW}W:{name:<{WORKER_COL_WIDTH}}{RESET} '
 
 # Return number of terminal rows a logical line occupies after visual wrap
 def visual_line_count(line: str, pane_width: int) -> int:
