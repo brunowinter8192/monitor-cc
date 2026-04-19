@@ -1,0 +1,143 @@
+=== SOURCE JSONLs ===
+Sessions analyzed: 13
+  - src/logs/api_requests_opus_monitor_cc_1776615410.jsonl      (156 pairs)
+  - src/logs/api_requests_opus_monitor_cc_1776627603.jsonl      ( 65 pairs)
+  - src/logs/api_requests_opus_wise2627_1776542940.jsonl        ( 46 pairs)
+  - src/logs/api_requests_opus_wise2627_1776616736.jsonl        ( 57 pairs)
+  - src/logs/api_requests_worker_proxy-cleanup_1776548644.jsonl ( 89 pairs)
+  - src/logs/api_requests_worker_tool-use-analysis_1776617892.jsonl ( 81 pairs)
+  - src/logs/api_requests_worker_warnings-pane-fixes_1776546048.jsonl ( 82 pairs)
+  - src/logs/api_requests_worker_warnings-pane-fixes_1776628535.jsonl ( 46 pairs)
+  - src/logs/api_requests_worker_warnings-zero_1776554195.jsonl (116 pairs)
+  - src/logs/api_requests_worker_waste-classification_1776629575.jsonl ( 17 pairs)
+  - src/logs/api_requests_worker_waste-pane_1776623796.jsonl    ( 96 pairs)
+  - src/logs/api_requests_worker_worker-override_1776552980.jsonl (  0 pairs)
+  - src/logs/api_requests_worker_zero-results_1776607265.jsonl  (111 pairs)
+Total unique pairs: 962
+=== END SOURCE ===
+
+Loading 13 session files (< 400MB each)...
+Files: ['api_requests_opus_monitor_cc_1776615410.jsonl', 'api_requests_opus_monitor_cc_1776627603.jsonl', 'api_requests_opus_wise2627_1776542940.jsonl', 'api_requests_opus_wise2627_1776616736.jsonl', 'api_requests_worker_proxy-cleanup_1776548644.jsonl', 'api_requests_worker_tool-use-analysis_1776617892.jsonl', 'api_requests_worker_warnings-pane-fixes_1776546048.jsonl', 'api_requests_worker_warnings-pane-fixes_1776628535.jsonl', 'api_requests_worker_warnings-zero_1776554195.jsonl', 'api_requests_worker_waste-classification_1776629575.jsonl', 'api_requests_worker_waste-pane_1776623796.jsonl', 'api_requests_worker_worker-override_1776552980.jsonl', 'api_requests_worker_zero-results_1776607265.jsonl']
+  Processing api_requests_opus_monitor_cc_1776615410.jsonl (332MB)...
+    -> 156 unique tool_results, 156 pairs
+  Processing api_requests_opus_monitor_cc_1776627603.jsonl (126MB)...
+    -> 65 unique tool_results, 65 pairs
+  Processing api_requests_opus_wise2627_1776542940.jsonl (65MB)...
+    -> 46 unique tool_results, 46 pairs
+  Processing api_requests_opus_wise2627_1776616736.jsonl (60MB)...
+    -> 57 unique tool_results, 57 pairs
+  Processing api_requests_worker_proxy-cleanup_1776548644.jsonl (88MB)...
+    -> 89 unique tool_results, 89 pairs
+  Processing api_requests_worker_tool-use-analysis_1776617892.jsonl (60MB)...
+    -> 81 unique tool_results, 81 pairs
+  Processing api_requests_worker_warnings-pane-fixes_1776546048.jsonl (57MB)...
+    -> 82 unique tool_results, 82 pairs
+  Processing api_requests_worker_warnings-pane-fixes_1776628535.jsonl (26MB)...
+    -> 46 unique tool_results, 46 pairs
+  Processing api_requests_worker_warnings-zero_1776554195.jsonl (110MB)...
+    -> 116 unique tool_results, 116 pairs
+  Processing api_requests_worker_waste-classification_1776629575.jsonl (5MB)...
+    -> 17 unique tool_results, 17 pairs
+  Processing api_requests_worker_waste-pane_1776623796.jsonl (92MB)...
+    -> 96 unique tool_results, 96 pairs
+  Processing api_requests_worker_worker-override_1776552980.jsonl (2MB)...
+    -> 0 unique tool_results, 0 pairs
+  Processing api_requests_worker_zero-results_1776607265.jsonl (88MB)...
+    -> 111 unique tool_results, 111 pairs
+
+=== H1: EXACT DUPLICATES ===
+Total unique tool_results: 962
+Duplicate groups: 45
+Duplicate instances (extra copies): 136
+Duplicate bytes: 98,930 (96KB)
+
+Per-tool ranking (by duplicate bytes):
+  Read: 16 dups, 82,166 bytes
+  Edit: 49 dups, 12,914 bytes
+  Bash: 58 dups, 3,445 bytes
+  Write: 1 dups, 234 bytes
+  mcp__plugin_iterative-dev_iterative-dev__worker_send: 7 dups, 91 bytes
+  Grep: 5 dups, 80 bytes
+
+Top dup groups:
+  3 copies, 21,846 bytes each, tool=Read
+  2 copies, 13,149 bytes each, tool=Read
+  2 copies, 7,713 bytes each, tool=Read
+  2 copies, 7,107 bytes each, tool=Read
+  21 copies, 172 bytes each, tool=Edit
+
+=== H2: SUBSTRING OVERLAP ===
+Overlap pairs (same tool+input, one is prefix of other): 6
+Total redundant bytes: 105 (0KB)
+
+Per-tool:
+  Bash: 6 pairs
+
+Top examples:
+  session=api_requests_worker_zero-results_1776607, tool=Bash, A=31c, B=550c, redundant=31b
+  session=api_requests_worker_zero-results_1776607, tool=Bash, A=31c, B=550c, redundant=31b
+  session=api_requests_worker_zero-results_1776607, tool=Bash, A=550c, B=31c, redundant=31b
+  session=api_requests_opus_monitor_cc_1776615410, tool=Bash, A=523c, B=4c, redundant=4b
+  session=api_requests_opus_monitor_cc_1776615410, tool=Bash, A=523c, B=4c, redundant=4b
+
+=== H3: REPEATED TOOL+INPUT ===
+Repeated (tool, input) combos: 19
+
+Top 10 by output bytes:
+  Read N=3 bytes=52,759 VOLATILE | {"file_path": "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/
+  Bash N=2 bytes=21,460 VOLATILE | {"command": "tmux capture-pane -t worker-Monitor_CC-tool-use-analysis -p -S -200
+  mcp__plugin_iterative-dev_iterative-dev__git_check N=4 bytes=4,270 VOLATILE | {"repo_path": "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/
+  mcp__plugin_iterative-dev_iterative-dev__git_check N=3 bytes=3,523 VOLATILE | {"repo_path": "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/
+  mcp__plugin_iterative-dev_iterative-dev__git_check N=5 bytes=2,426 VOLATILE | {"repo_path": "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/
+  mcp__plugin_iterative-dev_iterative-dev__git_check N=3 bytes=2,410 VOLATILE | {"repo_path": "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/
+  Read N=2 bytes=2,222 1 unique | {"file_path": "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/
+  Read N=2 bytes=1,916 1 unique | {"file_path": "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/
+  Bash N=4 bytes=1,870 VOLATILE | {"command": "sleep 180 && echo check", "description": "Timer 3min", "run_in_back
+  Bash N=4 bytes=643 VOLATILE | {"command": "git -C /Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/workt
+
+Per-tool summary:
+  Read: 4 combos, 11 total calls, 56,897 bytes, 1 volatile
+  Bash: 11 combos, 33 total calls, 25,683 bytes, 9 volatile
+  mcp__plugin_iterative-dev_iterative-dev__git_check: 4 combos, 15 total calls, 12,629 bytes, 4 volatile
+
+=== H4: OUTPUT SIZE DISTRIBUTION ===
+Total output bytes across all tools: 1,904,313 (1.8MB)
+
+Top 20 tools/prefixes by total output bytes:
+  Read: 1,150,019b (60.4%) count=166 | 0-499:14 | 500-1999:26 | 2k-4999:46 | 5k-9999:36 | 10k-49999:44 | 50k+:0
+  Bash:tmux: 143,019b (7.5%) count=28 | 0-499:7 | 500-1999:4 | 2k-4999:10 | 5k-9999:2 | 10k-49999:5 | 50k+:0
+  Grep: 96,379b (5.1%) count=36 | 0-499:16 | 500-1999:4 | 2k-4999:7 | 5k-9999:8 | 10k-49999:1 | 50k+:0
+  Bash:python3: 82,062b (4.3%) count=80 | 0-499:38 | 500-1999:33 | 2k-4999:5 | 5k-9999:4 | 10k-49999:0 | 50k+:0
+  Edit: 64,669b (3.4%) count=149 | 0-499:98 | 500-1999:51 | 2k-4999:0 | 5k-9999:0 | 10k-49999:0 | 50k+:0
+  Bash:python: 61,261b (3.2%) count=74 | 0-499:45 | 500-1999:20 | 2k-4999:7 | 5k-9999:2 | 10k-49999:0 | 50k+:0
+  Bash:jq: 51,116b (2.7%) count=10 | 0-499:3 | 500-1999:2 | 2k-4999:2 | 5k-9999:1 | 10k-49999:2 | 50k+:0
+  Bash:git: 35,786b (1.9%) count=79 | 0-499:57 | 500-1999:21 | 2k-4999:0 | 5k-9999:0 | 10k-49999:1 | 50k+:0
+  Bash:ls: 30,558b (1.6%) count=73 | 0-499:52 | 500-1999:19 | 2k-4999:2 | 5k-9999:0 | 10k-49999:0 | 50k+:0
+  Bash:cd: 26,504b (1.4%) count=19 | 0-499:4 | 500-1999:10 | 2k-4999:5 | 5k-9999:0 | 10k-49999:0 | 50k+:0
+  Bash:bd: 24,969b (1.3%) count=27 | 0-499:17 | 500-1999:7 | 2k-4999:2 | 5k-9999:0 | 10k-49999:1 | 50k+:0
+  Bash:head: 21,694b (1.1%) count=9 | 0-499:0 | 500-1999:5 | 2k-4999:3 | 5k-9999:1 | 10k-49999:0 | 50k+:0
+  Bash:wc: 21,404b (1.1%) count=12 | 0-499:7 | 500-1999:4 | 2k-4999:0 | 5k-9999:0 | 10k-49999:1 | 50k+:0
+  Bash:grep: 20,968b (1.1%) count=30 | 0-499:17 | 500-1999:9 | 2k-4999:4 | 5k-9999:0 | 10k-49999:0 | 50k+:0
+  Write: 16,250b (0.9%) count=39 | 0-499:26 | 500-1999:13 | 2k-4999:0 | 5k-9999:0 | 10k-49999:0 | 50k+:0
+  mcp__plugin_iterative-dev_iterative-dev__git_check: 13,763b (0.7%) count=17 | 0-499:6 | 500-1999:11 | 2k-4999:0 | 5k-9999:0 | 10k-49999:0 | 50k+:0
+  Bash:sleep: 12,439b (0.7%) count=27 | 0-499:20 | 500-1999:6 | 2k-4999:1 | 5k-9999:0 | 10k-49999:0 | 50k+:0
+  Bash:tail: 11,835b (0.6%) count=1 | 0-499:0 | 500-1999:0 | 2k-4999:0 | 5k-9999:0 | 10k-49999:1 | 50k+:0
+  Glob: 4,748b (0.2%) count=7 | 0-499:3 | 500-1999:3 | 2k-4999:1 | 5k-9999:0 | 10k-49999:0 | 50k+:0
+  Bash:cat: 2,615b (0.1%) count=2 | 0-499:1 | 500-1999:0 | 2k-4999:1 | 5k-9999:0 | 10k-49999:0 | 50k+:0
+
+=== H5: CONTENT REFERENCE DECAY ===
+Sample N: 40
+Referenced (≥2 tokens found in later messages): 19 (47.5%)
+Not referenced: 21
+
+Sample details (first 10):
+  [WASTE] pos=88 bytes=1,368 tokens_found=0/0 | api_requests_worker_warnings-zero_1776554195
+  [REF] pos=8 bytes=11,687 tokens_found=4/5 | api_requests_worker_waste-pane_1776623796
+  [REF] pos=2 bytes=14,740 tokens_found=4/5 | api_requests_worker_warnings-pane-fixes_1776546048
+  [REF] pos=4 bytes=26,044 tokens_found=5/5 | api_requests_worker_proxy-cleanup_1776548644
+  [REF] pos=84 bytes=3,220 tokens_found=4/5 | api_requests_worker_tool-use-analysis_1776617892
+  [REF] pos=80 bytes=12,458 tokens_found=2/5 | api_requests_opus_wise2627_1776542940
+  [WASTE] pos=76 bytes=2,129 tokens_found=0/5 | api_requests_worker_tool-use-analysis_1776617892
+  [REF] pos=244 bytes=20,348 tokens_found=5/5 | api_requests_opus_monitor_cc_1776615410
+  [REF] pos=80 bytes=7,536 tokens_found=3/5 | api_requests_opus_monitor_cc_1776615410
+  [REF] pos=12 bytes=16,810 tokens_found=4/5 | api_requests_opus_wise2627_1776542940
