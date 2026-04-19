@@ -2,7 +2,9 @@
 
 Forensic extraction and analysis of tool_use blocks from Claude Code sessions. Library (`queries.py`) + thin CLI (`query.py`) for ad-hoc forensic queries; `extract_long_calls.py` for full Markdown reports; `extract_zeros.py` for zero-result search detection.
 
-## queries.py
+## src/proxy_forensics.py (promoted from queries.py)
+
+**Note:** `queries.py` was promoted to `src/proxy_forensics.py` as a production dependency for `waste_pane.py`. The dev/ directory no longer contains queries.py. Import from `src.proxy_forensics` directly.
 
 **Purpose:** Proxy JSONL forensic primitives. No I/O side effects outside `load_proxy`. Import for inline `-c` queries or from other scripts to avoid repeating boilerplate.
 
@@ -24,11 +26,10 @@ Forensic extraction and analysis of tool_use blocks from Claude Code sessions. L
 | `format_timestamp_local(ts_str)` | fn | UTC ISO → local HH:MM:SS |
 | `ToolUse`, `ToolResult`, `Pair`, `ToolStats`, `PrefixBucket` | dataclass | Typed containers with computed properties |
 
-**Inline usage example:**
+**Inline usage example (updated import path):**
 ```bash
 ./venv/bin/python3 -c "
-import sys; sys.path.insert(0, 'dev/tool_use_analysis')
-from queries import load_proxy, tool_use_blocks, filter_by
+from src.proxy_forensics import load_proxy, tool_use_blocks, filter_by
 evs = load_proxy(['src/logs/api_requests_opus_monitor_cc_1776615410.jsonl'])
 bash = list(filter_by(tool_use_blocks(evs), tool='Bash'))
 print(f'Bash calls: {len(bash)}, total chars: {sum(u.input_chars for u in bash):,}')

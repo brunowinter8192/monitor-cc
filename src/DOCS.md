@@ -21,9 +21,11 @@ src/
 ├── workers/              → [DOCS.md](workers/DOCS.md) Workers pane subpackage
 ├── hooks/                → [DOCS.md](hooks/DOCS.md) Hooks pane subpackage
 ├── metadata/             → [DOCS.md](metadata/DOCS.md) Metadata pane subpackage
+├── proxy_forensics.py    → Proxy JSONL forensic primitives (promoted from dev/)
 ├── rules_pane.py         → Rules pane + InstructionsLoaded routing
 ├── warnings_pane.py      → Warnings pane
-├── subagents/            → [DOCS.md](subagents/DOCS.md) Subagents pane subpackage
+├── waste_pane.py         → Waste-calls pane (live ratio outlier view)
+├── subagents/            → [DOCS.md](subagents/DOCS.md) Subagents pane subpackage (deprecated)
 ├── formatter.py          → Shared tool call formatting (~230 lines)
 ├── jsonl/                → [DOCS.md](jsonl/DOCS.md) JSONL parsing subpackage
 ├── session_finder.py
@@ -94,7 +96,12 @@ print_startup_message(args.project, args.mode)
 
 **Input:** `project_filter` (optional path), `ui` (bool for collapsible UI mode), `script_path` (absolute path to workflow.py).
 
-**Output:** Creates and attaches to a tmux session with 4-window layout (main+tokens | rules+hooks | workers+subagents | warnings). Window 2 has 2 panes: Pane 2.0 (left 50%) = workers, Pane 2.1 (right 50%) = subagents.
+**Output:** Creates and attaches to a tmux session with 5-window layout:
+- Window 0 "main": Main (left 70%) + Tokens (right 30%)
+- Window 1 "proxy": Proxy log (left 70%) + Metadata (right 30%)
+- Window 2 "rules": Rules (left 50%) + Hooks (right 50%)
+- Window 3 "workers": Workers + Worker-Proxy + Worker-Metadata (3-pane split)
+- Window 4 "debug": Warnings (left 50%) + Waste-Calls (right 50%)
 
 **Usage:**
 ```python
@@ -175,6 +182,26 @@ See [metadata/DOCS.md](metadata/DOCS.md).
 **Input:** Hook log entries (InstructionsLoaded events).
 
 **Output:** Rules list with expand/collapse, source labels.
+
+---
+
+## proxy_forensics.py
+
+**Purpose:** Proxy JSONL forensic primitives. No I/O side effects outside `load_proxy`. Promoted from `dev/tool_use_analysis/queries.py` as a production dependency used by `waste_pane.py`.
+
+**Input:** Proxy JSONL paths (via `load_proxy`). Entries with `raw_payload == null` are skipped automatically.
+
+**Output:** Typed dataclasses (`ToolUse`, `ToolResult`, `Pair`, `ToolStats`, `PrefixBucket`) and iterator/aggregation functions (`pairs`, `filter_by`, `aggregate_by_tool`, `aggregate_by_prefix`, `bucket_distribution`, `format_timestamp_local`).
+
+---
+
+## waste_pane.py
+
+**Purpose:** Live waste-calls pane. Reads the current session's proxy JSONL (`api_requests_<log_id>.jsonl`) via marker file, extracts matched tool_use/tool_result `Pair` objects, filters by `ratio >= threshold` (input_chars / output_chars), and displays sorted descending. Click to expand full command + output. High ratio = sent much input, got little output back.
+
+**Input:** Current proxy JSONL (discovered via `.proxy_session_<hash>` marker file in `src/logs/`). Session changes trigger full reset. Threshold configurable via digit keys 1–9 (key 0 resets to default 3).
+
+**Output:** Interactive pane with mouse support (click expand/collapse, scroll, hover). Header shows threshold and count above threshold. Each row: `[HH:MM:SS] ToolName  ratio=N  in=N  out=N  command_preview`. Expanded: full command text + output content. Excluded tools: Edit, Write, worker_send (content-driven, ratio misleading).
 
 ---
 
