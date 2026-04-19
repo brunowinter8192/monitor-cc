@@ -42,7 +42,7 @@ def _strip_plan_mode_blocks(content):
         if not result:
             return None
         for i, b in enumerate(result):
-            if isinstance(b, dict) and not b.get("text", "").strip():
+            if isinstance(b, dict) and b.get("type") == "text" and not b.get("text", "").strip():
                 result[i] = {**b, "text": "."}
         return result
     if isinstance(content, str):
