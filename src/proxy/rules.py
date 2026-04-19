@@ -12,6 +12,7 @@ from .content_strip import (
     _strip_all_system_reminders,
     _strip_plan_mode_blocks,
     _strip_system_reminder,
+    _strip_pyright_diagnostics,
     _message_has_rejection,
     _strip_rejection_message,
     _strip_session_guidance,
@@ -222,6 +223,17 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 stripped_msg_indices.append(idx)
                 modifications.append("stripped_rejection_message")
                 stripped_msg_removed[idx] = ["(rejection marker stripped by proxy)"]
+                changed = True
+        elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<new-diagnostics>") and _load_config().get("pyright_diagnostics_strip", {}).get("enabled", False):
+            old_content = msg.get("content", "")
+            new_msg = dict(msg)
+            new_msg["content"] = _strip_pyright_diagnostics(old_content)
+            new_messages.append(new_msg)
+            if new_msg["content"] != old_content:
+                stripped_msg_originals[idx] = old_content
+                stripped_msg_indices.append(idx)
+                modifications.append("stripped_pyright_diagnostics")
+                stripped_msg_removed[idx] = _find_system_reminder_blocks(old_content, "<new-diagnostics>")
                 changed = True
         else:
             new_messages.append(msg)

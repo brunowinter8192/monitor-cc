@@ -155,6 +155,11 @@ def _strip_session_guidance(text: str) -> str:
     return (text[:start] + text[env_idx:]).strip()
 
 
+# Strip <system-reminder> blocks containing Pyright <new-diagnostics> from content
+def _strip_pyright_diagnostics(content):
+    return _strip_system_reminder(content, "<new-diagnostics>")
+
+
 # Strip gitStatus section (always at bottom of sys[3]) from text — everything from 'gitStatus:' to end.
 def _strip_git_status(text: str) -> str:
     marker = "gitStatus:"
