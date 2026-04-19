@@ -447,13 +447,19 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                 all_keys.append(None)
 
                 cmd_lines = cmd_text.split('\n')
-                for cline in cmd_lines[:CMD_MAX_LINES]:
-                    chunk = cline[:wrap_width]
-                    all_lines.append(f'    {DIM}{chunk}{RESET}')
-                    all_keys.append(None)
-                if len(cmd_lines) > CMD_MAX_LINES:
-                    remaining = len(cmd_lines) - CMD_MAX_LINES
-                    all_lines.append(f'    {DIM}… ({remaining} more lines){RESET}')
+                rendered_cmd = 0
+                for cline in cmd_lines:
+                    for line_start in range(0, max(len(cline), 1), wrap_width):
+                        if rendered_cmd >= CMD_MAX_LINES:
+                            break
+                        chunk = cline[line_start:line_start + wrap_width]
+                        all_lines.append(f'    {DIM}{chunk}{RESET}')
+                        all_keys.append(None)
+                        rendered_cmd += 1
+                    if rendered_cmd >= CMD_MAX_LINES:
+                        break
+                if rendered_cmd >= CMD_MAX_LINES and (len(cmd_lines) > 1 or len(cmd_lines[0]) > wrap_width * CMD_MAX_LINES):
+                    all_lines.append(f'    {DIM}… (truncated){RESET}')
                     all_keys.append(None)
 
                 # Output section
@@ -466,13 +472,19 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                 all_keys.append(None)
 
                 out_lines = out_text.split('\n')
-                for oline in out_lines[:OUT_MAX_LINES]:
-                    chunk = oline[:wrap_width]
-                    all_lines.append(f'    {DIM}{chunk}{RESET}')
-                    all_keys.append(None)
-                if len(out_lines) > OUT_MAX_LINES:
-                    remaining = len(out_lines) - OUT_MAX_LINES
-                    all_lines.append(f'    {DIM}… ({remaining} more lines){RESET}')
+                rendered_out = 0
+                for oline in out_lines:
+                    for line_start in range(0, max(len(oline), 1), wrap_width):
+                        if rendered_out >= OUT_MAX_LINES:
+                            break
+                        chunk = oline[line_start:line_start + wrap_width]
+                        all_lines.append(f'    {DIM}{chunk}{RESET}')
+                        all_keys.append(None)
+                        rendered_out += 1
+                    if rendered_out >= OUT_MAX_LINES:
+                        break
+                if rendered_out >= OUT_MAX_LINES and (len(out_lines) > 1 or len(out_lines[0]) > wrap_width * OUT_MAX_LINES):
+                    all_lines.append(f'    {DIM}… (truncated){RESET}')
                     all_keys.append(None)
 
                 all_lines.append('')
