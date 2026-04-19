@@ -116,17 +116,33 @@ def _extract_tool_call_details(tu_blk: dict) -> tuple:
             pass
     return (tool_name or 'tool', input_dict)
 
-# Extract tool name from preceding tool_use message in the messages list
-def _extract_tool_name(messages: list, msg_idx: int) -> str:
-    for i in range(msg_idx - 1, -1, -1):
-        prev = messages[i]
-        if prev.get('type') == 'tool_use':
-            for blk in prev.get('blocks', []):
-                if blk.get('type') == 'tool_use':
-                    name = blk.get('preview', '')
-                    if name:
-                        return name
-    return 'tool'
+# Build id -> (tool_name, tool_call_input) map from all tool_use blocks before msg_idx
+def _build_tool_use_id_map(messages: list, msg_idx: int) -> dict:
+    id_map = {}
+    for i in range(msg_idx):
+        msg = messages[i]
+        if msg.get('type') != 'tool_use':
+            continue
+        for blk in msg.get('blocks', []):
+            if blk.get('type') != 'tool_use':
+                continue
+            bid = blk.get('id', '')
+            if bid:
+                id_map[bid] = _extract_tool_call_details(blk)
+    return id_map
+
+
+# Resolve tool name + input for a result block: id-based with positional fallback
+def _resolve_tool_call(blk: dict, tu_id_map: dict, tu_blocks_positional: list, blk_idx: int) -> tuple:
+    tool_use_id = blk.get('tool_use_id', '')
+    if tool_use_id and tool_use_id in tu_id_map:
+        return tu_id_map[tool_use_id]
+    # Fallback: positional match for old proxy log entries without tool_use_id
+    if blk_idx < len(tu_blocks_positional):
+        return _extract_tool_call_details(tu_blocks_positional[blk_idx])
+    if tu_blocks_positional:
+        return _extract_tool_call_details(tu_blocks_positional[0])
+    return ('tool', {})
 
 # Scan new proxy entries for tool errors and return error dicts
 def _scan_proxy_entries_for_errors(entries: list) -> list:
@@ -138,19 +154,34 @@ def _scan_proxy_entries_for_errors(entries: list) -> list:
         for msg_idx, msg in enumerate(messages):
             if not _is_tool_error(msg):
                 continue
-            tool_name = _extract_tool_name(messages, msg_idx)
             full_text = ''
+            error_blk = None
             for blk in msg.get('blocks', []):
-                candidate = blk.get('full_text', '') or blk.get('preview', '')
-                if candidate:
-                    full_text = candidate
-                    break
+                if blk.get('type') == 'tool_result' and blk.get('is_error'):
+                    candidate = blk.get('full_text', '') or blk.get('preview', '')
+                    if candidate:
+                        full_text = candidate
+                        error_blk = blk
+                        break
             if not full_text:
                 full_text = msg.get('content_preview', '')
             dedup_key = (msg_idx, full_text[:200])
             if dedup_key in _seen_error_keys:
                 continue
             _seen_error_keys.add(dedup_key)
+            tu_id_map = _build_tool_use_id_map(messages, msg_idx)
+            preceding_tu = None
+            for i in range(msg_idx - 1, -1, -1):
+                if messages[i].get('type') == 'tool_use':
+                    preceding_tu = messages[i]
+                    break
+            tu_blocks_positional = [b for b in (preceding_tu.get('blocks', []) if preceding_tu else []) if b.get('type') == 'tool_use']
+            if error_blk is not None:
+                tool_name, _ = _resolve_tool_call(error_blk, tu_id_map, tu_blocks_positional, 0)
+            elif tu_blocks_positional:
+                tool_name, _ = _extract_tool_call_details(tu_blocks_positional[0])
+            else:
+                tool_name = 'tool'
             first_line = full_text.split('\n')[0] if full_text else ''
             summary = first_line[:80] + ('…' if len(first_line) > 80 else '')
             errors.append({
@@ -172,13 +203,14 @@ def _scan_proxy_entries_for_zero_results(entries: list) -> list:
             if msg.get('type') != 'tool_result':
                 continue
             blocks = msg.get('blocks', [])
-            # Find preceding tool_use message for positional block matching
+            tu_id_map = _build_tool_use_id_map(messages, msg_idx)
+            # Positional fallback: only tool_use-typed blocks from the preceding tool_use message
             preceding_tu = None
             for i in range(msg_idx - 1, -1, -1):
                 if messages[i].get('type') == 'tool_use':
                     preceding_tu = messages[i]
                     break
-            tu_blocks = preceding_tu.get('blocks', []) if preceding_tu else []
+            tu_blocks_positional = [b for b in (preceding_tu.get('blocks', []) if preceding_tu else []) if b.get('type') == 'tool_use']
             for blk_idx, blk in enumerate(blocks):
                 reason = _is_zero_result_block(blk)
                 if not reason:
@@ -188,13 +220,7 @@ def _scan_proxy_entries_for_zero_results(entries: list) -> list:
                 if dedup_key in _seen_zero_keys:
                     continue
                 _seen_zero_keys.add(dedup_key)
-                # Positional match: tool_result block[i] corresponds to tool_use block[i]
-                tool_name = 'tool'
-                tool_call_input = {}
-                if blk_idx < len(tu_blocks):
-                    tool_name, tool_call_input = _extract_tool_call_details(tu_blocks[blk_idx])
-                elif tu_blocks:
-                    tool_name, tool_call_input = _extract_tool_call_details(tu_blocks[0])
+                tool_name, tool_call_input = _resolve_tool_call(blk, tu_id_map, tu_blocks_positional, blk_idx)
                 results.append({
                     'timestamp': ts,
                     'tool_name': tool_name,
