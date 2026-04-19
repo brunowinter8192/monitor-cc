@@ -38,6 +38,7 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     workers_cmd = f"python3 {script_path} --mode workers {project_arg}"
     worker_proxy_cmd = f"python3 {script_path} --mode worker-proxy {project_arg}"
     worker_metadata_cmd = f"python3 {script_path} --mode worker-metadata {project_arg}"
+    waste_cmd = f"python3 {script_path} --mode waste {project_arg}"
 
     original_history_limit = get_global_history_limit()
     subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
@@ -63,6 +64,7 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:3.1", "-l", "50%", worker_metadata_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:4", "-n", "debug", warnings_cmd])
+    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:4.0", "-l", "50%", waste_cmd])
 
     subprocess.run(["tmux", "select-window", "-t", f"{session_name}:0"])
 
@@ -133,7 +135,7 @@ def configure_tmux_session(session_name: str) -> None:
         '1.0': 'PROXY', '1.1': 'METADATA',
         '2.0': 'RULES', '2.1': 'HOOKS',
         '3.0': 'WORKERS', '3.1': 'WORKER-PROXY', '3.2': 'WORKER-METADATA',
-        '4.0': 'WARNINGS',
+        '4.0': 'WARNINGS', '4.1': 'WASTE',
     }
     for pane_ref, title in pane_titles.items():
         subprocess.run(["tmux", "select-pane", "-t", f"{session_name}:{pane_ref}", "-T", title])
@@ -169,6 +171,7 @@ def configure_tmux_session(session_name: str) -> None:
         "tmux respawn-pane -k -t '#{session_name}:3.1'; "
         "tmux respawn-pane -k -t '#{session_name}:3.2'; "
         "tmux respawn-pane -k -t '#{session_name}:4.0'; "
+        "tmux respawn-pane -k -t '#{session_name}:4.1'; "
         "tmux display-message -t '#{session_name}' 'Monitor restarted'"
     )
     subprocess.run(["tmux", "bind-key", "-T", "root", "C-r", "run-shell", restart_cmd])
