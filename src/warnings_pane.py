@@ -307,8 +307,14 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             is_expanded = error_expand_states.get(err_idx, False)
             symbol = '\u25bc' if is_expanded else '\u25b6'
             tool_col = f"{WHITE}{err['tool_name']:<16}{RESET}"
-            w_prefix = f"{YELLOW}W:{err['worker_name']}{RESET} " if err.get('worker_name') else ''
-            all_lines.append(f"{DIM}{symbol} {err['timestamp']}  {w_prefix}{tool_col}  {DIM}{err['summary']}{RESET}")
+            worker_name = err.get('worker_name', '')
+            w_prefix = f"{YELLOW}W:{worker_name}{RESET} " if worker_name else ''
+            # Visible fixed overhead: symbol(1)+space(1)+ts(8)+2+tool_col(16)+2 = 30
+            w_prefix_vis = len(f"W:{worker_name} ") if worker_name else 0
+            avail = max(10, pane_width - 30 - w_prefix_vis)
+            summary_raw = err.get('summary', '')
+            summary_trunc = summary_raw[:avail] + ('…' if len(summary_raw) > avail else '')
+            all_lines.append(f"{DIM}{symbol} {err['timestamp']}  {w_prefix}{tool_col}  {DIM}{summary_trunc}{RESET}")
             all_keys.append(('error', err_idx))
             if is_expanded:
                 for k, v in err.get('tool_call_input', {}).items():
@@ -356,7 +362,7 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
     from . import monitor as _monitor
-    from .proxy_display.parser import parse_proxy_log, scan_worker_logs
+    from .proxy_display.parser import parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts
     from .click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
@@ -422,7 +428,7 @@ def run_warnings_loop() -> None:
                 project_filter = _monitor.active_project_filter
                 if project_filter != _last_project_filter:
                     _proxy_log_position = 0
-                    _monitor_start_ts = time.time()
+                    _monitor_start_ts = get_proxy_session_start_ts(project_filter) if project_filter else time.time()
                     _worker_log_positions.clear()
                     tool_errors = []
                     zero_results = []

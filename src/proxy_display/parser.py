@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -159,6 +160,22 @@ def find_worker_proxy_log(worker_name: str) -> Optional[Path]:
     if not matches:
         return None
     return max(matches, key=lambda f: f.stat().st_mtime)
+
+# Return epoch float of proxy session start (marker file mtime); falls back silently to time.time()
+def get_proxy_session_start_ts(project_filter: str) -> float:
+    root = os.environ.get("MONITOR_CC_ROOT", "")
+    if not root:
+        root = str(Path(__file__).parent.parent.parent)
+    session_id = _proxy_session_id_for_project(project_filter)
+    marker_file = Path(root) / "src" / "logs" / f".proxy_session_{session_id}"
+    if marker_file.exists():
+        try:
+            mtime = marker_file.stat().st_mtime
+            if time.time() - mtime < 86400:  # stale guard: >24h → fallback
+                return mtime
+        except OSError:
+            pass
+    return time.time()
 
 # Scan all worker proxy logs incrementally, tagging each entry with _worker_name
 def scan_worker_logs(last_positions: dict) -> tuple:

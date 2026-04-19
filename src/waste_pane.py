@@ -37,7 +37,9 @@ waste_expand_states: Dict[int, bool] = {}
 waste_line_map: Dict[int, int] = {}
 waste_hover_row: Optional[int] = None
 waste_scroll_offset: int = 0
-_waste_last_event: Optional[dict] = None
+_waste_all_events: List[dict] = []
+_waste_worker_all_events: List[dict] = []
+_waste_worker_log_positions: Dict[str, int] = {}
 _waste_log_path: Optional[Path] = None
 _waste_log_position: int = 0
 _last_project_filter: Optional[str] = None
@@ -49,8 +51,9 @@ def run_waste_loop() -> None:
     """Event loop for the waste-calls tmux pane."""
     from . import monitor as _monitor
     global waste_threshold, waste_expand_states, waste_line_map, waste_hover_row
-    global waste_scroll_offset, _waste_last_event, _waste_log_path, _waste_log_position
+    global waste_scroll_offset, _waste_log_path, _waste_log_position
     global _last_project_filter, _waste_above
+    global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
 
     last_output = None
     last_data_refresh = 0.0
@@ -182,13 +185,22 @@ def _read_new_events(log_path: Path, position: int) -> tuple:
     return events, new_position
 
 
-# Rebuild _waste_above from _waste_last_event using current waste_threshold
+# Extract worker_name from proxy log session_file basename (api_requests_worker_{name}_{ts}.jsonl)
+def _get_worker_from_session_file(session_file: str) -> str:
+    if not session_file or 'api_requests_worker_' not in session_file:
+        return ''
+    stem = session_file.replace('.jsonl', '')
+    return stem.replace('api_requests_worker_', '').rsplit('_', 1)[0]
+
+
+# Rebuild _waste_above from all accumulated events using current waste_threshold
 def _rebuild_above() -> None:
     global _waste_above
-    if _waste_last_event is None:
+    events = _waste_all_events + _waste_worker_all_events
+    if not events:
         _waste_above = []
         return
-    all_pairs = list(pairs([_waste_last_event]))
+    all_pairs = list(pairs(events))
     _waste_above = sorted(
         [p for p in all_pairs
          if p.ratio >= waste_threshold
@@ -199,15 +211,17 @@ def _rebuild_above() -> None:
 
 # Read new proxy entries, rebuild waste_pairs above threshold; returns True if data changed
 def _refresh_waste_data(project_filter: Optional[str]) -> bool:
-    global _waste_last_event, _waste_log_path, _waste_log_position
-    global _last_project_filter, _waste_above
+    global _waste_log_path, _waste_log_position, _last_project_filter, _waste_above
     global waste_expand_states, waste_scroll_offset, waste_hover_row
+    global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
 
     log_path = _find_proxy_log_path(project_filter)
 
     # Reset on project change or log file path change
     if project_filter != _last_project_filter or log_path != _waste_log_path:
-        _waste_last_event = None
+        _waste_all_events.clear()
+        _waste_worker_all_events.clear()
+        _waste_worker_log_positions.clear()
         _waste_log_path = log_path
         _waste_log_position = 0
         _waste_above = []
@@ -226,18 +240,38 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
         return False
     if file_size < _waste_log_position:
         _waste_log_position = 0
-        _waste_last_event = None
-        _waste_above = []
+        _waste_all_events.clear()
+        _waste_worker_all_events.clear()
         waste_expand_states.clear()
         waste_scroll_offset = 0
 
+    data_changed = False
     new_events, new_position = _read_new_events(log_path, _waste_log_position)
-    if not new_events:
+    if new_events:
+        _waste_log_position = new_position
+        # Accumulate all events: proxy_forensics deduplicates by first occurrence,
+        # so each ToolUse gets the timestamp of its first API call — not the latest.
+        _waste_all_events.extend(new_events)
+        data_changed = True
+
+    # Scan worker proxy logs inline: scan_worker_logs from parser.py strips raw_payload
+    # via _extract_raw_payload_fields; waste_pane needs raw_payload for proxy_forensics.pairs()
+    root = os.environ.get('MONITOR_CC_ROOT', '')
+    if not root:
+        root = str(Path(__file__).resolve().parent.parent)
+    logs_dir = Path(root) / 'src' / 'logs'
+    if logs_dir.exists():
+        for wlog in logs_dir.glob('api_requests_worker_*.jsonl'):
+            pos = _waste_worker_log_positions.get(str(wlog), 0)
+            w_events, w_pos = _read_new_events(wlog, pos)
+            if w_events:
+                _waste_worker_log_positions[str(wlog)] = w_pos
+                _waste_worker_all_events.extend(w_events)
+                data_changed = True
+
+    if not data_changed:
         return False
 
-    _waste_log_position = new_position
-    # Most recent event has complete cumulative message history
-    _waste_last_event = new_events[-1]
     _rebuild_above()
     return True
 
@@ -283,7 +317,7 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
     all_keys: List[Optional[int]] = []
 
     if not _waste_above:
-        if _waste_last_event is None:
+        if not _waste_all_events and not _waste_worker_all_events:
             if _waste_log_path is None:
                 msg = 'No project filter — start monitor with --project.'
             else:
@@ -302,9 +336,12 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
             ratio_str = f'{p.ratio:>6.1f}'
             in_str = f'{p.tu.input_chars:>5}'
             out_str = f'{p.tr.output_chars:>5}'
+            worker_name = _get_worker_from_session_file(p.tu.session_file)
+            w_prefix = f'{YELLOW}W:{worker_name}{RESET} ' if worker_name else ''
 
             header_line = (
                 f'{DIM}{symbol} [{ts}]{RESET} '
+                f'{w_prefix}'
                 f'{WHITE}{tool_name:<16}{RESET} '
                 f'{DIM}ratio={RESET}{ORANGE}{ratio_str}{RESET}  '
                 f'{DIM}in={in_str}  out={out_str}{RESET}'
