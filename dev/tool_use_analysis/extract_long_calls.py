@@ -6,9 +6,15 @@ import argparse
 import json
 import sys
 from datetime import datetime
+from pathlib import Path
 
-# From queries.py: proxy loading, extraction, aggregation, utilities
-from queries import (
+# Add project root to sys.path so src/ is importable when run as a script
+_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+# From src/proxy_forensics.py: proxy loading, extraction, aggregation, utilities
+from src.proxy_forensics import (
     aggregate_by_prefix,
     aggregate_by_tool,
     bucket_distribution,
