@@ -1,6 +1,76 @@
 # dev/tool_use_analysis/
 
-Forensic extraction and analysis of tool_use blocks from Claude Code sessions. Two complementary scripts: one measures context cost by input length (Proxy JSONL → which calls burn the most chars), the other detects zero-result searches (Session JSONL → which searches found nothing).
+Forensic extraction and analysis of tool_use blocks from Claude Code sessions. Library (`queries.py`) + thin CLI (`query.py`) for ad-hoc forensic queries; `extract_long_calls.py` for full Markdown reports; `extract_zeros.py` for zero-result search detection.
+
+## queries.py
+
+**Purpose:** Proxy JSONL forensic primitives. No I/O side effects outside `load_proxy`. Import for inline `-c` queries or from other scripts to avoid repeating boilerplate.
+
+**Input:** Proxy JSONL paths (via `load_proxy`). Entries with `raw_payload == null` are skipped automatically.
+
+**Key exports:**
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| `load_proxy(paths)` | fn | Load + tag events from one or more JSONL paths |
+| `tool_use_blocks(events)` | generator | Deduplicated ToolUse objects (first occurrence wins) |
+| `tool_result_blocks(events)` | fn | `dict[tool_use_id, ToolResult]` |
+| `pairs(events)` | generator | Matched `Pair(ToolUse, ToolResult)` objects |
+| `filter_by(items, tool, min_input_chars, ratio_gt, exclude_tools, …)` | fn | Composable filter for ToolUse or Pair iterators |
+| `aggregate_by_tool(pair_iter)` | fn | `dict[name, ToolStats]` with count/total/mean/median/max ratio |
+| `aggregate_by_prefix(bash_uses)` | fn | `list[PrefixBucket]` sorted by total_chars desc |
+| `extract_prefix(command_str)` | fn | `(prefix, tags)` — strips env-assigns, cd-chains, detects heredoc/abs-venv/sourced-fn |
+| `bucket_distribution(items)` | fn | `list[(label, count)]` per CHAR_BUCKETS |
+| `format_timestamp_local(ts_str)` | fn | UTC ISO → local HH:MM:SS |
+| `ToolUse`, `ToolResult`, `Pair`, `ToolStats`, `PrefixBucket` | dataclass | Typed containers with computed properties |
+
+**Inline usage example:**
+```bash
+./venv/bin/python3 -c "
+import sys; sys.path.insert(0, 'dev/tool_use_analysis')
+from queries import load_proxy, tool_use_blocks, filter_by
+evs = load_proxy(['src/logs/api_requests_opus_monitor_cc_1776615410.jsonl'])
+bash = list(filter_by(tool_use_blocks(evs), tool='Bash'))
+print(f'Bash calls: {len(bash)}, total chars: {sum(u.input_chars for u in bash):,}')
+"
+```
+
+## query.py
+
+**Purpose:** Thin CLI over `queries.py` for short ad-hoc queries. Not a report builder (that's `extract_long_calls.py`). Output: compact plaintext to stdout.
+
+**Usage:**
+```bash
+# Count unique Bash calls across all logs
+./venv/bin/python3 dev/tool_use_analysis/query.py count --tool Bash src/logs/api_requests_*.jsonl
+
+# Top 5 ratio offenders with ratio > 10
+./venv/bin/python3 dev/tool_use_analysis/query.py ratio --top 5 --ratio-gt 10 src/logs/api_requests_*.jsonl
+
+# Bash prefix aggregation (top 10)
+./venv/bin/python3 dev/tool_use_analysis/query.py prefix --top 10 src/logs/api_requests_*.jsonl
+
+# Char-bucket distribution for Grep
+./venv/bin/python3 dev/tool_use_analysis/query.py bucket --tool Grep src/logs/api_requests_*.jsonl
+
+# Dump single pair as JSON
+./venv/bin/python3 dev/tool_use_analysis/query.py pair --id toolu_01ABC src/logs/api_requests_*.jsonl
+
+# Via wrapper (post-merge, from any CWD)
+proxy-query ratio --top 5 src/logs/api_requests_*.jsonl
+```
+
+| Subcommand | Flags | Description |
+|------------|-------|-------------|
+| `count` | `--tool NAME` | Count unique tool_use blocks |
+| `ratio` | `--top N`, `--tool NAME`, `--ratio-gt X` | Highest input/output ratio pairs |
+| `prefix` | `--top N` | Bash command-prefix aggregation |
+| `bucket` | `--tool NAME` | Input char-bucket distribution |
+| `pair` | `--id ID` *(required)* | Dump single pair as JSON |
+
+## proxy-query wrapper
+
+Shell wrapper at `~/.local/bin/proxy-query`. Sets `$PROJECT` from `$MONITOR_CC_ROOT` (default: `~/Documents/ai/Monitor_CC`), `cd`s there, then calls `./venv/bin/python3 dev/tool_use_analysis/query.py "$@"`. Works from any CWD after the worktree is merged to main.
 
 ## extract_long_calls.py
 
