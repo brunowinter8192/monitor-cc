@@ -1,5 +1,9 @@
 # Tool Call Ratio Report (input/output chars) — 2026-04-19 19:21:45
 
+## Source JSONLs
+
+Source: unknown (pre-convention, sessions=17 per header). For future reports, see CONVENTION.md.
+
 **Sessions analyzed:** 17 files
 **Matched pairs (tool_use + tool_result):** 1207
 **Excluded tools:** Edit, Write, *worker_send (content-driven, not shortenable)*

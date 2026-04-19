@@ -9,13 +9,42 @@ _REJECTION_MARKER = "The user doesn't want to proceed with this tool use"
 # Returns the remaining content, or None if nothing is left after stripping.
 def _strip_plan_mode_blocks(content):
     if isinstance(content, list):
-        kept = [b for b in content if not (isinstance(b, dict) and "Plan mode is active" in b.get("text", ""))]
-        if not kept:
+        result = []
+        for b in content:
+            if not isinstance(b, dict):
+                result.append(b)
+                continue
+            btype = b.get("type")
+            if btype == "text" and "Plan mode is active" in b.get("text", ""):
+                continue  # drop entire text block
+            elif btype == "tool_result":
+                inner = b.get("content", "")
+                if isinstance(inner, str) and "Plan mode is active" in inner:
+                    new_inner = re.sub(
+                        r'<system-reminder>\s*Plan mode .*?</system-reminder>\s*',
+                        '', inner, flags=re.DOTALL
+                    )
+                    result.append({**b, "content": new_inner} if new_inner != inner else b)
+                elif isinstance(inner, list):
+                    new_sub = [
+                        s for s in inner
+                        if not (isinstance(s, dict) and s.get("type") == "text"
+                                and "Plan mode is active" in s.get("text", ""))
+                    ]
+                    if len(new_sub) != len(inner):
+                        result.append({**b, "content": new_sub if new_sub else "."})
+                    else:
+                        result.append(b)
+                else:
+                    result.append(b)
+            else:
+                result.append(b)
+        if not result:
             return None
-        for i, b in enumerate(kept):
+        for i, b in enumerate(result):
             if isinstance(b, dict) and not b.get("text", "").strip():
-                kept[i] = {**b, "text": "."}
-        return kept
+                result[i] = {**b, "text": "."}
+        return result
     if isinstance(content, str):
         stripped = re.sub(
             r'<system-reminder>\s*Plan mode .*?</system-reminder>\s*',
@@ -33,11 +62,31 @@ def _strip_all_system_reminders(content):
     if isinstance(content, list):
         result = []
         for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
+            if not isinstance(block, dict):
+                result.append(block)
+                continue
+            btype = block.get("type")
+            if btype == "text":
                 new_text = pattern.sub('', block.get("text", ""))
                 if not new_text.strip():
                     new_text = "."
                 result.append({**block, "text": new_text})
+            elif btype == "tool_result":
+                inner = block.get("content", "")
+                if isinstance(inner, str):
+                    new_inner = pattern.sub('', inner)
+                    result.append({**block, "content": new_inner} if new_inner != inner else block)
+                elif isinstance(inner, list):
+                    new_sub_blocks = []
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get("type") == "text":
+                            new_text = pattern.sub('', sub.get("text", ""))
+                            new_sub_blocks.append({**sub, "text": new_text})
+                        else:
+                            new_sub_blocks.append(sub)
+                    result.append({**block, "content": new_sub_blocks})
+                else:
+                    result.append(block)
             else:
                 result.append(block)
         return result
@@ -52,11 +101,31 @@ def _strip_system_reminder(content, marker: str):
     if isinstance(content, list):
         result = []
         for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
+            if not isinstance(block, dict):
+                result.append(block)
+                continue
+            btype = block.get("type")
+            if btype == "text":
                 new_text = pattern.sub('', block.get("text", ""))
                 if not new_text.strip():
                     new_text = "."
                 result.append({**block, "text": new_text})
+            elif btype == "tool_result":
+                inner = block.get("content", "")
+                if isinstance(inner, str):
+                    new_inner = pattern.sub('', inner)
+                    result.append({**block, "content": new_inner} if new_inner != inner else block)
+                elif isinstance(inner, list):
+                    new_sub_blocks = []
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get("type") == "text":
+                            new_text = pattern.sub('', sub.get("text", ""))
+                            new_sub_blocks.append({**sub, "text": new_text})
+                        else:
+                            new_sub_blocks.append(sub)
+                    result.append({**block, "content": new_sub_blocks})
+                else:
+                    result.append(block)
             else:
                 result.append(block)
         return result

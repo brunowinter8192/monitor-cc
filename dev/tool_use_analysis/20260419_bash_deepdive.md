@@ -1,5 +1,9 @@
 # Long Tool Calls Report — 2026-04-19 19:21:31 — tool=Bash
 
+## Source JSONLs
+
+Source: unknown (pre-convention, sessions=17 per header). For future reports, see CONVENTION.md.
+
 **Sessions analyzed:** 17 files
 **Total unique tool_use blocks:** 1456 (after dedup)
 **Calls above threshold (≥ 500 chars):** 214
