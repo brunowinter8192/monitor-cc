@@ -21,7 +21,6 @@ src/
 ├── workers/              → [DOCS.md](workers/DOCS.md) Workers pane subpackage
 ├── hooks/                → [DOCS.md](hooks/DOCS.md) Hooks pane subpackage
 ├── metadata/             → [DOCS.md](metadata/DOCS.md) Metadata pane subpackage
-├── proxy_forensics.py    → Proxy JSONL forensic primitives (promoted from dev/)
 ├── rules_pane.py         → Rules pane + InstructionsLoaded routing
 ├── warnings_pane.py      → Warnings pane
 ├── waste_pane.py         → Waste-calls pane (live ratio outlier view)
@@ -182,16 +181,6 @@ See [metadata/DOCS.md](metadata/DOCS.md).
 **Input:** Hook log entries (InstructionsLoaded events).
 
 **Output:** Rules list with expand/collapse, source labels.
-
----
-
-## proxy_forensics.py
-
-**Purpose:** Proxy JSONL forensic primitives. No I/O side effects outside `load_proxy`. Promoted from `dev/tool_use_analysis/queries.py` as a production dependency used by `waste_pane.py`.
-
-**Input:** Proxy JSONL paths (via `load_proxy`). Entries with `raw_payload == null` are skipped automatically.
-
-**Output:** Typed dataclasses (`ToolUse`, `ToolResult`, `Pair`, `ToolStats`, `PrefixBucket`) and iterator/aggregation functions (`pairs`, `filter_by`, `aggregate_by_tool`, `aggregate_by_prefix`, `bucket_distribution`, `format_timestamp_local`).
 
 ---
 
