@@ -11,7 +11,7 @@ from constants import TOOL_BLOCKLIST
 
 # FUNCTIONS
 
-# Extract <system-reminder> blocks containing marker from str or list content
+# Extract <system-reminder> blocks containing marker from str or list content (incl. tool_result)
 def _find_system_reminder_blocks(content, marker: str) -> list:
     pat = re.compile(r'<system-reminder>.*?' + re.escape(marker) + r'.*?</system-reminder>', re.DOTALL)
     if isinstance(content, str):
@@ -19,8 +19,18 @@ def _find_system_reminder_blocks(content, marker: str) -> list:
     if isinstance(content, list):
         result = []
         for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
                 result.extend(pat.findall(block.get("text", "")))
+            elif block.get("type") == "tool_result":
+                inner = block.get("content", "")
+                if isinstance(inner, str):
+                    result.extend(pat.findall(inner))
+                elif isinstance(inner, list):
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get("type") == "text":
+                            result.extend(pat.findall(sub.get("text", "")))
         return result
     return []
 
@@ -64,18 +74,28 @@ def _strip_blocked_tool_references(payload: dict) -> dict:
     return result
 
 
-# Check if message content (str or list of blocks) contains a given substring
+# Check if message content (str or list of blocks incl. tool_result) contains a given substring
 def _content_contains(content, substring: str) -> bool:
     if isinstance(content, str):
         return substring in content
     if isinstance(content, list):
         for block in content:
-            if isinstance(block, dict) and substring in block.get("text", ""):
+            if not isinstance(block, dict):
+                continue
+            if substring in block.get("text", ""):
                 return True
+            if block.get("type") == "tool_result":
+                inner = block.get("content", "")
+                if isinstance(inner, str) and substring in inner:
+                    return True
+                if isinstance(inner, list):
+                    for sub in inner:
+                        if isinstance(sub, dict) and substring in sub.get("text", ""):
+                            return True
     return False
 
 
-# Remove output-file and tool-use-id tags from task-notification content
+# Remove output-file and tool-use-id tags from task-notification content (incl. tool_result)
 def _strip_task_notification_tags(content) -> str:
     _STRIP_PATTERN = re.compile(r'<(?:output-file|tool-use-id)>.*?</(?:output-file|tool-use-id)>\n?', re.DOTALL)
     if isinstance(content, str):
@@ -83,11 +103,31 @@ def _strip_task_notification_tags(content) -> str:
     if isinstance(content, list):
         result = []
         for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
+            if not isinstance(block, dict):
+                result.append(block)
+                continue
+            btype = block.get("type")
+            if btype == "text":
                 new_text = _STRIP_PATTERN.sub('', block.get("text", ""))
                 if not new_text.strip():
                     new_text = "."
                 result.append({**block, "text": new_text})
+            elif btype == "tool_result":
+                inner = block.get("content", "")
+                if isinstance(inner, str):
+                    new_inner = _STRIP_PATTERN.sub('', inner)
+                    result.append({**block, "content": new_inner} if new_inner != inner else block)
+                elif isinstance(inner, list):
+                    new_sub_blocks = []
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get("type") == "text":
+                            new_text = _STRIP_PATTERN.sub('', sub.get("text", ""))
+                            new_sub_blocks.append({**sub, "text": new_text})
+                        else:
+                            new_sub_blocks.append(sub)
+                    result.append({**block, "content": new_sub_blocks})
+                else:
+                    result.append(block)
             else:
                 result.append(block)
         return result
