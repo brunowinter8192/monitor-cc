@@ -2,7 +2,7 @@
 from typing import Dict, List, Optional
 
 from ..constants import (
-    RESET, GREEN, YELLOW, WHITE, BLUE, CYAN,
+    RESET, GREEN, RED, YELLOW, WHITE, BLUE, CYAN,
     PASTEL_BLUE, PASTEL_PURPLE, PASTEL_ORANGE,
     ORANGE, DIM,
     HOVER_BG,
@@ -39,7 +39,11 @@ def build_hook_display_item(entry: dict) -> dict:
     color = _HOOK_CATEGORY_COLORS.get(category, PASTEL_PURPLE)
     hook_script = entry.get('hook_script', '')
     cwd = entry.get('cwd', '')
-    if '.claude/worktrees/' in cwd:
+    detail = entry.get('output', '')
+    is_block = bool(entry.get('hook_event') == 'PreToolUse' and detail)
+    if is_block:
+        color = RED
+    elif '.claude/worktrees/' in cwd:
         color = GREEN
     else:
         color = PASTEL_ORANGE
@@ -49,9 +53,10 @@ def build_hook_display_item(entry: dict) -> dict:
         'time_str': time_str,
         'hook_event': entry.get('hook_event', ''),
         'hook_script': entry.get('hook_script', ''),
-        'detail': entry.get('output', ''),
+        'detail': detail,
         'content': entry.get('content', ''),
         'color': color,
+        'is_block': is_block,
         'expanded': False,
     }
 
@@ -64,7 +69,9 @@ def format_hooks_item_lines(item: dict) -> List[str]:
     hook_script = item.get('hook_script', '')
     detail = item.get('detail', '')
     filename_suffix = ''
-    if detail.startswith('injected: '):
+    if item.get('is_block'):
+        filename_suffix = ' \u2192 BLOCKED'
+    elif detail.startswith('injected: '):
         rest = detail[len('injected: '):]
         paren_idx = rest.find(' (')
         if paren_idx != -1:
@@ -94,7 +101,9 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
         hook_script = item.get('hook_script', '')
         detail = item.get('detail', '')
         filename_suffix = ''
-        if detail.startswith('injected: '):
+        if item.get('is_block'):
+            filename_suffix = ' \u2192 BLOCKED'
+        elif detail.startswith('injected: '):
             rest = detail[len('injected: '):]
             paren_idx = rest.find(' (')
             if paren_idx != -1:
