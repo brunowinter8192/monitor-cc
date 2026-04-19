@@ -16,7 +16,7 @@ cd Monitor_CC/
 - [pipeline/DOCS.md](pipeline/DOCS.md) — Pipeline evaluation suite (memory, I/O, parsing, format stability)
 - [tool_injection/DOCS.md](tool_injection/DOCS.md) — MCP tool schema extraction for proxy-side tool injection
 - [session_analysis/DOCS.md](session_analysis/DOCS.md) — Forensic session JSONL + proxy log analysis (cache behavior, rebuild detection, token attribution)
-- [zero_result_analysis/DOCS.md](zero_result_analysis/DOCS.md) — Zero-result tool call extraction from session JSONLs (Grep/Glob/Read with context)
+- [tool_use_analysis/DOCS.md](tool_use_analysis/DOCS.md) — Tool-use input size extraction (Proxy JSONL) + zero-result detection (Session JSONL)
 
 ## session_analysis/
 
