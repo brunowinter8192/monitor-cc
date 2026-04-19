@@ -28,6 +28,14 @@ zero_results: list = []  # list of {timestamp, tool_name, reason, tool_call_inpu
 zero_result_expand_states: Dict[int, bool] = {}
 zero_result_line_map: Dict[int, int] = {}
 
+# Dedup sets: proxy entries carry cumulative message history, so the same tool_result
+# block reappears in every subsequent entry. Keys prevent re-counting historic results.
+# Key format: (msg_idx, blk_idx, text_key) for zero-results; (msg_idx, text_key) for errors.
+# Note: msg_idx is stable as long as messages are only appended. Context-trimming (rare)
+# may cause a deduped item to appear at a shifted index — acceptable edge-case for v1.
+_seen_zero_keys: Set = set()
+_seen_error_keys: Set = set()
+
 INDENT = '  '
 
 # FUNCTIONS
@@ -139,6 +147,10 @@ def _scan_proxy_entries_for_errors(entries: list) -> list:
                     break
             if not full_text:
                 full_text = msg.get('content_preview', '')
+            dedup_key = (msg_idx, full_text[:200])
+            if dedup_key in _seen_error_keys:
+                continue
+            _seen_error_keys.add(dedup_key)
             first_line = full_text.split('\n')[0] if full_text else ''
             summary = first_line[:80] + ('…' if len(first_line) > 80 else '')
             errors.append({
@@ -171,6 +183,11 @@ def _scan_proxy_entries_for_zero_results(entries: list) -> list:
                 reason = _is_zero_result_block(blk)
                 if not reason:
                     continue
+                text_key = blk.get('full_text', '') or blk.get('preview', '')
+                dedup_key = (msg_idx, blk_idx, text_key)
+                if dedup_key in _seen_zero_keys:
+                    continue
+                _seen_zero_keys.add(dedup_key)
                 # Positional match: tool_result block[i] corresponds to tool_use block[i]
                 tool_name = 'tool'
                 tool_call_input = {}
@@ -366,6 +383,8 @@ def run_warnings_loop() -> None:
                     schema_warnings = []
                     error_expand_states.clear()
                     zero_result_expand_states.clear()
+                    _seen_zero_keys.clear()
+                    _seen_error_keys.clear()
                     error_scroll_offset = 0
                     error_hover_row = None
                     _last_project_filter = project_filter
