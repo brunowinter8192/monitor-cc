@@ -4,14 +4,14 @@ from typing import Dict, List, Optional
 import os
 import time
 
-from .constants import (
+from ..constants import (
     RESET, CYAN, YELLOW,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
     HOOK_INSTRUCTIONS_LOADED,
 )
-from .utils import format_timestamp
-from .hooks import parse_new_hook_entries, filter_by_project, filter_by_timestamp
-from .click_handler import (
+from ..utils import format_timestamp
+from ..hooks import parse_new_hook_entries, filter_by_project, filter_by_timestamp
+from ..click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )

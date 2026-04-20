@@ -9,7 +9,7 @@ from ..constants import (
 )
 from .parser import find_worker_proxy_log, _parse_log_file
 from .format import format_proxy_block
-from ..token_pane import build_cache_turns
+from ..panes.token_pane import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
 from ..click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,

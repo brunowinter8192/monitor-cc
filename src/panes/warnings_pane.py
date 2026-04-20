@@ -6,11 +6,11 @@ import json
 import os
 import time
 
-from .constants import (
+from ..constants import (
     YELLOW, RED, DIM, WHITE, RESET, HOVER_BG,
     INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL,
 )
-from .utils import format_timestamp, visual_line_count, first_word_of_call, format_worker_prefix
+from ..utils import format_timestamp, visual_line_count, first_word_of_call, format_worker_prefix
 
 warned_unknown_types: Set[str] = set()
 unknown_type_counts: Dict[str, int] = {}

@@ -10,7 +10,7 @@ from ..constants import (
 )
 from .parser import parse_proxy_log
 from .format import format_proxy_block
-from ..token_pane import build_cache_turns
+from ..panes.token_pane import build_cache_turns
 from ..click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
