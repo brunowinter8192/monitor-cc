@@ -158,7 +158,7 @@ def run_rules_loop() -> None:
                 process_hook_log()
                 last_data_refresh = now
 
-            visible_lines, visible_keys, _, viewport_start, rules_total_lines = format_rules_block(
+            visible_lines, visible_keys, _, viewport_start, rules_total_lines, parent_count_before = format_rules_block(
                 active_rules, rules_invokers, rules_expand_states, None, None, rules_scroll_offset, frozen
             )
             try:
@@ -168,9 +168,13 @@ def run_rules_loop() -> None:
             rules_line_map.clear()
             result_lines = []
             phys_row = 1
+            parent_count = parent_count_before
             for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
-                logical_idx = viewport_start + i
-                zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+                if key is not None:
+                    zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
+                    parent_count += 1
+                else:
+                    zebra_bg = ZEBRA_BG_A
                 is_hovered = (key is not None and rules_hover_row is not None
                               and phys_row == rules_hover_row)
                 chosen_bg = HOVER_BG if is_hovered else zebra_bg

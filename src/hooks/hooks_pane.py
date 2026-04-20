@@ -138,7 +138,7 @@ def run_hooks_loop() -> None:
                     pane_height = 50
                     pane_width = 80
                 item_positions: dict = {}
-                visible_lines, visible_keys, sticky_header, viewport_start, hooks_total_lines, sticky_item_idx = format_hooks_block(
+                visible_lines, visible_keys, sticky_header, viewport_start, hooks_total_lines, sticky_item_idx, parent_count_before = format_hooks_block(
                     hooks_display_items, hooks_scroll_offset, pane_height, pane_width, item_positions
                 )
                 if just_expanded_idx is not None and just_expanded_idx in item_positions:
@@ -149,7 +149,7 @@ def run_hooks_loop() -> None:
                     start = max(0, hooks_total_lines - viewport_lines - clamped)
                     if item_line < start or item_line >= start + viewport_lines:
                         hooks_scroll_offset = max(0, hooks_total_lines - viewport_lines - item_line)
-                        visible_lines, visible_keys, sticky_header, viewport_start, hooks_total_lines, sticky_item_idx = format_hooks_block(
+                        visible_lines, visible_keys, sticky_header, viewport_start, hooks_total_lines, sticky_item_idx, parent_count_before = format_hooks_block(
                             hooks_display_items, hooks_scroll_offset, pane_height, pane_width
                         )
                 hooks_line_map.clear()
@@ -160,9 +160,13 @@ def run_hooks_loop() -> None:
                     if sticky_item_idx is not None:
                         hooks_line_map[1] = sticky_item_idx
                 phys_row = 1 + (1 if sticky_header is not None else 0)
+                parent_count = parent_count_before
                 for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
-                    logical_idx = viewport_start + i
-                    zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+                    if key is not None:
+                        zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
+                        parent_count += 1
+                    else:
+                        zebra_bg = ZEBRA_BG_A
                     is_hovered = (key is not None and hooks_hover_row is not None
                                   and phys_row == hooks_hover_row)
                     chosen_bg = HOVER_BG if is_hovered else zebra_bg
