@@ -176,11 +176,11 @@ def run_main_loop() -> None:
                     event = read_mouse_event(char)
                     if event is not None:
                         button, col, row = event
-                        if button == 64:  # wheel down → scroll toward newer
-                            _display.main_scroll_offset = max(0, _display.main_scroll_offset - 3)
-                            input_changed = True
-                        elif button == 65:  # wheel up → scroll toward older
+                        if button == 64:  # WheelUp → older events
                             _display.main_scroll_offset = max(0, _display.main_scroll_offset + 3)
+                            input_changed = True
+                        elif button == 65:  # WheelDown → newer events
+                            _display.main_scroll_offset = max(0, _display.main_scroll_offset - 3)
                             input_changed = True
 
             now = time.time()

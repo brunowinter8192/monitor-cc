@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional
 
-from ..constants import RESET, GREEN, YELLOW, CYAN, MODE_ALL, MODE_MAIN, MAIN_EVENT_BUFFER_CAP, ZEBRA_BG_A, ZEBRA_BG_B
+from ..constants import RESET, GREEN, YELLOW, CYAN, MODE_ALL, MODE_MAIN, MAIN_EVENT_BUFFER_CAP
 from ..format.formatter import format_tool_call
 from ..format.formatter_events import format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_system_message
 from ..utils import truncate_visible
@@ -115,11 +115,9 @@ def render_main_buffer(pane_height: int, pane_width: int, scroll_offset: int) ->
     visible = all_lines[start:start + pane_height]
 
     result_lines = []
-    for i, line in enumerate(visible):
-        logical_idx = start + i
-        zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+    for line in visible:
         trunc = truncate_visible(line, pane_width)
-        result_lines.append(f"{zebra_bg}{trunc}\033[K{RESET}")
+        result_lines.append(f"{trunc}\033[K{RESET}")
     return '\n'.join(result_lines)
 
 # Print session status after initialization
