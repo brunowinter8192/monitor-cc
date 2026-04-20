@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from .constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, MODE_WASTE
+from ..constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, MODE_WASTE
 
 # From session_finder.py: Discover active Claude Code sessions
-from .session_finder import find_active_sessions
+from ..session_finder import find_active_sessions
 # From jsonl/: Parse JSONL lines for session start timestamp
-from .jsonl import parse_jsonl_lines, read_new_lines
+from ..jsonl import parse_jsonl_lines, read_new_lines
 # From hooks/: Parse hook log entries
-from .hooks import get_current_position as get_hook_log_position
+from ..hooks import get_current_position as get_hook_log_position
 # From monitor_display.py: Session status output
 from .monitor_display import print_session_status
 # From monitor_session.py: Session file processing, task handling, historical load
@@ -43,34 +43,34 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
     initialize_file_positions()
 
     if mode == MODE_WORKERS:
-        from .workers import run_workers_loop
+        from ..workers import run_workers_loop
         run_workers_loop()
     elif mode == MODE_TOKENS:
-        from .panes import run_tokens_loop
+        from ..panes import run_tokens_loop
         run_tokens_loop()
     elif mode == MODE_RULES:
-        from .panes import run_rules_loop
+        from ..panes import run_rules_loop
         run_rules_loop()
     elif mode == MODE_WARNINGS:
-        from .panes import run_warnings_loop
+        from ..panes import run_warnings_loop
         run_warnings_loop()
     elif mode == MODE_HOOKS:
-        from .hooks import run_hooks_loop
+        from ..hooks import run_hooks_loop
         run_hooks_loop()
     elif mode == MODE_PROXY:
-        from .proxy_display import run_proxy_loop
+        from ..proxy_display import run_proxy_loop
         run_proxy_loop()
     elif mode == MODE_METADATA:
-        from .metadata import run_metadata_loop
+        from ..metadata import run_metadata_loop
         run_metadata_loop()
     elif mode == MODE_WORKER_PROXY:
-        from .proxy_display import run_worker_proxy_loop
+        from ..proxy_display import run_worker_proxy_loop
         run_worker_proxy_loop()
     elif mode == MODE_WORKER_METADATA:
-        from .metadata import run_worker_metadata_loop
+        from ..metadata import run_worker_metadata_loop
         run_worker_metadata_loop()
     elif mode == MODE_WASTE:
-        from .panes import run_waste_loop
+        from ..panes import run_waste_loop
         run_waste_loop()
     else:
         sessions = find_active_sessions(active_project_filter)
@@ -158,7 +158,7 @@ def filter_sessions_by_mode(sessions: list, mode: str) -> list:
 
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
-    from .panes import process_hook_log
+    from ..panes import process_hook_log
     load_historical_main()
     current_main_session = _get_newest_main_session()
     while True:

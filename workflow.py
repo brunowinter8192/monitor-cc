@@ -7,8 +7,8 @@ from src.startup import parse_arguments, setup_signal_handlers, print_startup_me
 # From src/tmux_launcher.py: Launch tmux split-screen session
 from src.tmux_launcher import launch_split_screen
 
-# From src/monitor.py: Run continuous monitoring loop
-from src.monitor import run_monitor
+# From src/core/monitor.py: Run continuous monitoring loop
+from src.core.monitor import run_monitor
 
 # ORCHESTRATOR
 def main() -> None:

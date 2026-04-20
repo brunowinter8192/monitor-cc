@@ -30,7 +30,7 @@ _proxy_cache_turns: list = []
 
 # Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
 def run_proxy_loop() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset, proxy_log_position
     global _proxy_jsonl_position, _proxy_cache_turns
     session_start_ts = _monitor._get_session_start_ts()

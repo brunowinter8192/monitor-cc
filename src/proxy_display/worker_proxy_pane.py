@@ -47,7 +47,7 @@ def _format_worker_proxy_header(workers: list, current_worker: Optional[str]) ->
 
 # Runs worker-proxy pane — reads selected worker's proxy log and shows expandable entries
 def run_worker_proxy_loop() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     from ..workers.worker_pane import get_selection_file_path
     from ..workers import write_selection
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
