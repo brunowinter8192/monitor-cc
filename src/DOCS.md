@@ -25,8 +25,7 @@ src/
 ├── format/               → [DOCS.md](format/DOCS.md) Formatting functions subpackage
 ├── jsonl/                → [DOCS.md](jsonl/DOCS.md) JSONL parsing subpackage
 ├── session_finder.py
-├── ui_mode.py
-├── click_handler.py
+├── input/                → [DOCS.md](input/DOCS.md) Keyboard/mouse input subpackage
 ├── constants.py
 ├── utils.py
 ├── startup.py
@@ -174,19 +173,11 @@ See [subagents/DOCS.md](subagents/DOCS.md).
 
 ---
 
-## ui_mode.py
+## input/
 
-**Purpose:** UI mode loop with keyboard + mouse input, subagent tracking, and active rules display for interactive monitoring.
+See [input/DOCS.md](input/DOCS.md).
 
-**Input:** Subagent metadata dicts, tool calls by agent, agent-to-task/type mappings, monitor callback, active rules dict.
-
-**Output:** Collapsible UI rendered to terminal on each update; rules block with [P]/[G] prefixes. SGR mouse clicks toggle subagent expand/collapse, scroll wheel scrolls viewport, hover highlights clickable lines. State: `hover_row`, `subagent_scroll_offsets`. Dual poll intervals (50ms input / 500ms data).
-
-**Usage:**
-```python
-from src.ui_mode import run_ui_loop
-run_ui_loop(metadata, calls, agent_to_task, agent_to_type, monitor_fn, active_rules)
-```
+**Modules:** `click_handler.py` (keyboard + mouse stdin handling), `ui_mode.py` (subagent tracking + rules block rendering).
 
 ---
 
@@ -224,23 +215,6 @@ See [format/DOCS.md](format/DOCS.md).
 
 ---
 
-## click_handler.py
-
-**Purpose:** Handles keyboard and SGR mouse input for expand/collapse UI in subagent and workers panes. Reads digit keypresses (1-9), mouse click/motion/scroll events. All stdin reads via `os.read(fd, 1)` (unbuffered, bypasses Python IO layer).
-
-**Input:** Single character keypresses and multi-byte SGR mouse sequences from stdin in raw mode.
-
-**Output:** Agent/worker ID to toggle. Mouse functions: `enable_mouse()` / `disable_mouse()` activate SGR mode 1003+1006 (Any Event Tracking incl. motion). `read_mouse_event(first_char)` parses `\033[<b;col;rowM` sequences, returns `(button, col, row)` tuple for press/motion events (button 0=click, 32+=motion, 64/65=scroll).
-
-**Usage:**
-```python
-from src.click_handler import setup_keyboard_input, read_keypress, get_agent_by_index, enable_mouse, disable_mouse, read_mouse_event
-setup_keyboard_input()
-enable_mouse()
-key = read_keypress()
-if key == '\033':
-    event = read_mouse_event(key)  # (button, col, row) or None
-```
 
 ---
 
