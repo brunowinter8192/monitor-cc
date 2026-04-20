@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from typing import Optional
-from ..constants import RESET, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET
+from ..constants import GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET
 # FUNCTIONS
 # Format token count as compact "Xk" or "X.Xk" string
 def _format_k(n: int) -> str:
@@ -12,11 +12,10 @@ def _format_k(n: int) -> str:
 def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False) -> str:
     cc_broken = cc > cr
     bg = LIGHT_RED_BG if cc_broken else ''
-    end = RESET if cc_broken else ''
     think_indicator = ' 🧠' if has_thinking else ''
     if wide:
-        return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}{end}"
-    return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}{end}"
+        return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}"
+    return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}"
 
 # Extract first meaningful value from tool input dict for preview
 def _get_tool_preview(input_data: dict) -> str:
