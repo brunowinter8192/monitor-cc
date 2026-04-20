@@ -5,10 +5,10 @@ import os
 import time
 
 from ..constants import (
-    YELLOW, RED, DIM, WHITE, RESET, HOVER_BG,
+    YELLOW, RED, DIM, WHITE, RESET, HOVER_BG, ZEBRA_BG_A, ZEBRA_BG_B, SOFT_RESET,
     INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL,
 )
-from ..utils import format_timestamp, visual_line_count, first_word_of_call, format_worker_prefix
+from ..utils import format_timestamp, truncate_visible, first_word_of_call, format_worker_prefix
 from .warnings_parse import (
     unknown_type_counts,
     _iso_to_float,
@@ -161,19 +161,19 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
     all_keys = []
 
     if schema_warnings:
-        all_lines.append(f"{RED}SCHEMA DRIFT ({len(schema_warnings)} event(s)){RESET}")
+        all_lines.append(f"{RED}SCHEMA DRIFT ({len(schema_warnings)} event(s)){SOFT_RESET}")
         all_keys.append(None)
         for sw in schema_warnings:
-            all_lines.append(f"{INDENT}{DIM}{sw['timestamp']}  {sw['model'][:30]}{RESET}")
+            all_lines.append(f"{INDENT}{DIM}{sw['timestamp']}  {sw['model'][:30]}{SOFT_RESET}")
             all_keys.append(None)
             for w in sw['warnings']:
-                all_lines.append(f"{INDENT}  {YELLOW}[SCHEMA] {w}{RESET}")
+                all_lines.append(f"{INDENT}  {YELLOW}[SCHEMA] {w}{SOFT_RESET}")
                 all_keys.append(None)
         all_lines.append('')
         all_keys.append(None)
 
     if unknown_type_counts:
-        all_lines.append(f"{YELLOW}FORMAT WARNINGS ({len(unknown_type_counts)} unknown types){RESET}")
+        all_lines.append(f"{YELLOW}FORMAT WARNINGS ({len(unknown_type_counts)} unknown types){SOFT_RESET}")
         all_keys.append(None)
         for msg_type, count in sorted(unknown_type_counts.items(), key=lambda x: x[1], reverse=True):
             all_lines.append(format_unknown_type_warning(msg_type, count))
@@ -182,54 +182,44 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
         all_keys.append(None)
 
     if zero_results:
-        all_lines.append(f"{YELLOW}ZERO RESULTS ({len(zero_results)}){RESET}")
+        all_lines.append(f"{YELLOW}ZERO RESULTS ({len(zero_results)}){SOFT_RESET}")
         all_keys.append(None)
-        wrap_width = max(20, pane_width - 6)
         for zr_idx, zr in enumerate(zero_results):
             is_expanded = zero_result_expand_states.get(zr_idx, False)
             symbol = '\u25bc' if is_expanded else '\u25b6'
-            tool_col = f"{WHITE}{zr['tool_name']:<16}{RESET}"
-            reason_col = f"{DIM}{zr['reason']}{RESET}"
+            tool_col = f"{WHITE}{zr['tool_name']:<16}{SOFT_RESET}"
+            reason_col = f"{DIM}{zr['reason']}{SOFT_RESET}"
             w_prefix = format_worker_prefix(zr.get('worker_name', ''))
             all_lines.append(f"{DIM}{symbol} {zr['timestamp']}  {w_prefix}{tool_col}  {reason_col}")
             all_keys.append(('zero', zr_idx))
             if is_expanded:
                 for k, v in zr.get('tool_call_input', {}).items():
-                    val_str = str(v)[:wrap_width - len(k) - 4]
-                    all_lines.append(f"    {DIM}{k}: {val_str}{RESET}")
+                    all_lines.append(f"    {DIM}{k}: {str(v)}{SOFT_RESET}")
                     all_keys.append(None)
         all_lines.append('')
         all_keys.append(None)
 
     if tool_errors:
-        all_lines.append(f"{RED}TOOL ERRORS ({len(tool_errors)}){RESET}")
+        all_lines.append(f"{RED}TOOL ERRORS ({len(tool_errors)}){SOFT_RESET}")
         all_keys.append(None)
-        wrap_width = max(20, pane_width - 6)
         for err_idx, err in enumerate(tool_errors):
             is_expanded = error_expand_states.get(err_idx, False)
             symbol = '\u25bc' if is_expanded else '\u25b6'
-            tool_col = f"{WHITE}{err['tool_name']:<16}{RESET}"
+            tool_col = f"{WHITE}{err['tool_name']:<16}{SOFT_RESET}"
             w_prefix = format_worker_prefix(err.get('worker_name', ''))
             inline = first_word_of_call(err['tool_name'], err.get('tool_call_input', {}))
-            all_lines.append(f"{DIM}{symbol} {err['timestamp']}  {w_prefix}{tool_col}  {DIM}{inline}{RESET}")
+            all_lines.append(f"{DIM}{symbol} {err['timestamp']}  {w_prefix}{tool_col}  {DIM}{inline}{SOFT_RESET}")
             all_keys.append(('error', err_idx))
             if is_expanded:
                 for k, v in err.get('tool_call_input', {}).items():
-                    val_str = str(v)[:wrap_width - len(k) - 4]
-                    all_lines.append(f"    {DIM}{k}: {val_str}{RESET}")
+                    all_lines.append(f"    {DIM}{k}: {str(v)}{SOFT_RESET}")
                     all_keys.append(None)
                 for raw_line in err['full_text'].split('\n'):
-                    if not raw_line:
-                        all_lines.append('')
-                        all_keys.append(None)
-                        continue
-                    for line_start in range(0, len(raw_line), wrap_width):
-                        chunk = raw_line[line_start:line_start + wrap_width]
-                        all_lines.append(f"    {DIM}{chunk}{RESET}")
-                        all_keys.append(None)
+                    all_lines.append(f"    {DIM}{raw_line}{SOFT_RESET}" if raw_line else '')
+                    all_keys.append(None)
 
     if not schema_warnings and not unknown_type_counts and not zero_results and not tool_errors:
-        all_lines.append(f"{DIM}No warnings.{RESET}")
+        all_lines.append(f"{DIM}No warnings.{SOFT_RESET}")
         all_keys.append(None)
 
     error_line_map = {}
@@ -238,22 +228,21 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
     visible_lines = all_lines[error_scroll_offset:error_scroll_offset + content_height]
     visible_keys = all_keys[error_scroll_offset:error_scroll_offset + content_height]
     rendered: list = []
-    screen_row = header_offset
-    for row_offset, line in enumerate(visible_lines):
-        key = visible_keys[row_offset]
-        span = visual_line_count(line, pane_width)
+    phys_row = header_offset
+    for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
+        logical_idx = error_scroll_offset + i
+        zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+        is_hovered = (key is not None and error_hover_row is not None
+                      and phys_row == error_hover_row)
+        chosen_bg = HOVER_BG if is_hovered else zebra_bg
         if key is not None:
             key_type, key_idx = key
-            for r in range(screen_row, screen_row + span):
-                if key_type == 'error':
-                    error_line_map[r] = key_idx
-                elif key_type == 'zero':
-                    zero_result_line_map[r] = key_idx
-        hover_active = (error_hover_row is not None and
-                        screen_row <= error_hover_row < screen_row + span and
-                        key is not None)
-        rendered.append(f"{HOVER_BG}{line}{RESET}" if hover_active else line)
-        screen_row += span
+            if key_type == 'error':
+                error_line_map[phys_row] = key_idx
+            elif key_type == 'zero':
+                zero_result_line_map[phys_row] = key_idx
+        rendered.append(f"{chosen_bg}{truncate_visible(line, pane_width)}\033[K{RESET}")
+        phys_row += 1
     return header + '\n' + '\n'.join(rendered)
 
 # Runs warnings-only display loop (for dedicated warnings tmux pane)

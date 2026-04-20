@@ -2,11 +2,8 @@
 from typing import Dict, List, Optional
 
 from ..constants import (
-    RESET, GREEN, YELLOW, WHITE, BLUE, CYAN,
-    PASTEL_BLUE, PASTEL_PURPLE, PASTEL_ORANGE,
-    ORANGE, DIM,
-    HOVER_BG,
-    HOOK_EVENT_CATEGORIES,
+    GREEN, YELLOW, WHITE, BLUE, CYAN, PASTEL_BLUE, PASTEL_PURPLE, PASTEL_ORANGE,
+    ORANGE, DIM, SOFT_RESET, HOOK_EVENT_CATEGORIES,
 )
 from ..utils import format_timestamp
 
@@ -69,7 +66,7 @@ def format_hooks_item_lines(item: dict) -> List[str]:
         paren_idx = rest.find(' (')
         if paren_idx != -1:
             filename_suffix = ' \u2192 ' + rest[:paren_idx]
-    header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{RESET}"
+    header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{SOFT_RESET}"
     lines = [header]
     if item.get('expanded'):
         content = item.get('content', '')
@@ -77,15 +74,16 @@ def format_hooks_item_lines(item: dict) -> List[str]:
         if text:
             for line in text.split('\n'):
                 if line.strip():
-                    lines.append(f"    {color}{line}{RESET}")
+                    lines.append(f"    {color}{line}{SOFT_RESET}")
     return lines
 
-# Render hooks pane items with [+]/[-] expand/collapse, hover highlight, scrolling
-def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], scroll_offset: int, pane_height: int = 50, pane_width: int = 80, item_positions_out: Optional[dict] = None) -> tuple:
+# Build (visible_lines, visible_keys, sticky_header, viewport_start, total_lines) for hooks pane
+def format_hooks_block(items: list, scroll_offset: int, pane_height: int = 50, pane_width: int = 80, item_positions_out: Optional[dict] = None) -> tuple:
     if not items:
-        return ('', 0)
-    all_lines = []
-    item_idx_at: dict = {}
+        return ([], [], None, 0, 0, None)
+    all_lines: List[str] = []
+    all_keys: List = []
+    item_idx_at: Dict[int, int] = {}
     for item_idx, item in enumerate(items):
         toggle = "[-]" if item.get('expanded') else "[+]"
         color = item.get('color', PASTEL_PURPLE)
@@ -99,9 +97,10 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
             paren_idx = rest.find(' (')
             if paren_idx != -1:
                 filename_suffix = ' \u2192 ' + rest[:paren_idx]
-        header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{RESET}"
+        header = f"{color}{toggle} [{time_str}] {hook_event} | {hook_script}{filename_suffix}{SOFT_RESET}"
         line_idx = len(all_lines)
         all_lines.append(header)
+        all_keys.append(item_idx)
         item_idx_at[line_idx] = item_idx
         if item_positions_out is not None:
             item_positions_out[item_idx] = line_idx
@@ -110,17 +109,17 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
             text = content if content else item.get('detail', '')
             if text:
                 if content and len(content) > 10_000:
-                    warn = f"    {YELLOW}[content {len(content):,} chars — exceeds 10K limit, Claude Code may have persisted additionalContext to disk]{RESET}"
+                    warn = f"    {YELLOW}[content {len(content):,} chars — exceeds 10K limit, Claude Code may have persisted additionalContext to disk]{SOFT_RESET}"
                     all_lines.append(warn)
-                max_text = pane_width - 5
+                    all_keys.append(None)
                 for line in text.split('\n'):
                     stripped = line.strip()
                     if stripped:
-                        truncated = line[:max_text] if len(line) > max_text else line
                         if not content and stripped.startswith(('source=', 'injected:', 'tool=')):
-                            all_lines.append(f"    {GREEN}{truncated}{RESET}")
+                            all_lines.append(f"    {GREEN}{stripped}{SOFT_RESET}")
                         else:
-                            all_lines.append(f"    {color}{truncated}{RESET}")
+                            all_lines.append(f"    {color}{stripped}{SOFT_RESET}")
+                        all_keys.append(None)
     total_lines = len(all_lines)
     viewport_lines = pane_height - 1
     max_scroll = max(0, total_lines - viewport_lines)
@@ -128,7 +127,7 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
     start = max(0, total_lines - viewport_lines - clamped_offset)
     end = start + viewport_lines
     visible_lines = all_lines[start:end]
-    visible_idx_at = {k - start: v for k, v in item_idx_at.items() if start <= k < end}
+    visible_keys = all_keys[start:end]
     sticky_header = None
     sticky_item_idx = None
     if start > 0:
@@ -138,32 +137,11 @@ def format_hooks_block(items: list, line_map: dict, hover_row: Optional[int], sc
                 if items[idx].get('expanded'):
                     sticky_item_idx = idx
                     item = items[idx]
-                    toggle = "[-]"
-                    color = item.get('color', PASTEL_PURPLE)
-                    time_str = item.get('time_str', '')
+                    c = item.get('color', PASTEL_PURPLE)
+                    ts = item.get('time_str', '')
                     if item['type'] == 'hook':
-                        sticky_header = f"{color}{toggle} [{time_str}] {item.get('hook_event', '')} | {item.get('hook_script', '')}{RESET}"
+                        sticky_header = f"{c}[-] [{ts}] {item.get('hook_event', '')} | {item.get('hook_script', '')}{SOFT_RESET}"
                     else:
-                        sticky_header = f"{PASTEL_PURPLE}{toggle} [{time_str}] SYSTEM REMINDER \u2190 {item.get('tool_name', '')}{RESET}"
+                        sticky_header = f"{PASTEL_PURPLE}[-] [{ts}] SYSTEM REMINDER \u2190 {item.get('tool_name', '')}{SOFT_RESET}"
                 break
-    if line_map is not None:
-        line_map.clear()
-        offset = 2 if sticky_header else 1
-        if sticky_item_idx is not None:
-            line_map[1] = sticky_item_idx
-        for content_offset, item_idx in visible_idx_at.items():
-            screen_row = content_offset + offset
-            line_map[screen_row] = item_idx
-    output_lines = []
-    if sticky_header:
-        if hover_row is not None and hover_row == 1:
-            output_lines.append(f"{HOVER_BG}{sticky_header}{RESET}")
-        else:
-            output_lines.append(sticky_header)
-    row_offset_base = 2 if sticky_header else 1
-    for row_offset, line in enumerate(visible_lines):
-        screen_row = row_offset + row_offset_base
-        if hover_row is not None and screen_row == hover_row and (row_offset in visible_idx_at):
-            line = f"{HOVER_BG}{line}{RESET}"
-        output_lines.append(line)
-    return ('\n'.join(output_lines), total_lines)
+    return (visible_lines, visible_keys, sticky_header, start, total_lines, sticky_item_idx)

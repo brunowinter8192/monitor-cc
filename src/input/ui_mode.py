@@ -2,7 +2,7 @@
 from typing import Dict, List, Optional
 
 # From constants.py: Colors
-from ..constants import RESET, PASTEL_BLUE, DIM, HOVER_BG, YELLOW, CYAN, GREEN
+from ..constants import PASTEL_BLUE, DIM, YELLOW, CYAN, GREEN, SOFT_RESET
 
 # FUNCTIONS
 
@@ -14,21 +14,23 @@ def _source_color(source: str) -> str:
         return GREEN
     return DIM
 
-# Format active rules block for UI display with expandable invoker info
+# Build (visible_lines, visible_keys, None, scroll_offset) for rules pane; keys: str=rule_key, None=non-clickable
 def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str, Dict[str, str]]] = None, expand_states: Optional[Dict[str, bool]] = None, line_map: Optional[Dict[int, str]] = None, hover_row: Optional[int] = None, scroll_offset: int = 0, frozen: bool = False) -> tuple:
     if not active_rules:
-        return ('', 0)
+        return ([], [], None, 0, 0)
     project_rules = sorted(active_rules.get('project', set()))
     global_rules = sorted(active_rules.get('global', set()))
     if not project_rules and not global_rules:
-        return ('', 0)
+        return ([], [], None, 0, 0)
 
     all_lines: List[str] = []
+    all_keys: List = []
     rule_key_at: Dict[int, str] = {}
 
-    freeze_indicator = f" {YELLOW}[FROZEN]{RESET}" if frozen else f" {CYAN}[LIVE]{RESET}"
-    header = f"{PASTEL_BLUE}ACTIVE RULES ({len(project_rules)}P / {len(global_rules)}G){RESET}{freeze_indicator}"
+    freeze_indicator = f" {YELLOW}[FROZEN]{SOFT_RESET}" if frozen else f" {CYAN}[LIVE]{SOFT_RESET}"
+    header = f"{PASTEL_BLUE}ACTIVE RULES ({len(project_rules)}P / {len(global_rules)}G){SOFT_RESET}{freeze_indicator}"
     all_lines.append(header)
+    all_keys.append(None)
 
     for prefix, rule_list in [('[P]', project_rules), ('[G]', global_rules)]:
         for r in rule_list:
@@ -40,36 +42,23 @@ def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str
             source_indicator = ''
             if source_map:
                 recent_source = max(source_map.items(), key=lambda x: x[1])[0]
-                source_indicator = f" {_source_color(recent_source)}●{RESET}"
-            all_lines.append(f"  {PASTEL_BLUE}{toggle} {prefix} {r}{RESET}{source_indicator}")
+                source_indicator = f" {_source_color(recent_source)}●{SOFT_RESET}"
+            all_lines.append(f"  {PASTEL_BLUE}{toggle} {prefix} {r}{SOFT_RESET}{source_indicator}")
+            all_keys.append(rule_key)
             rule_key_at[rule_line_idx] = rule_key
 
             if is_expanded and invokers:
                 if source_map:
                     for source, ts in sorted(source_map.items()):
                         color = _source_color(source)
-                        all_lines.append(f"      {color}[{ts}] {source}{RESET}")
+                        all_lines.append(f"      {color}[{ts}] {source}{SOFT_RESET}")
+                        all_keys.append(None)
                 else:
-                    all_lines.append(f"      {DIM}(no invoker data){RESET}")
+                    all_lines.append(f"      {DIM}(no invoker data){SOFT_RESET}")
+                    all_keys.append(None)
 
     total_lines = len(all_lines)
-    visible = all_lines[scroll_offset:]
+    visible_lines = all_lines[scroll_offset:]
+    visible_keys = all_keys[scroll_offset:]
 
-    if line_map is not None:
-        line_map.clear()
-        for screen_row_0, content_idx in enumerate(range(scroll_offset, total_lines)):
-            screen_row = screen_row_0 + 1
-            if content_idx in rule_key_at:
-                line_map[screen_row] = rule_key_at[content_idx]
-
-    output_lines = []
-    for screen_row_0, line in enumerate(visible):
-        screen_row = screen_row_0 + 1
-        if hover_row is not None and screen_row == hover_row:
-            content_idx = scroll_offset + screen_row_0
-            if content_idx in rule_key_at:
-                line = f"{HOVER_BG}{line}{RESET}"
-        output_lines.append(line)
-
-    return ('\n'.join(output_lines), total_lines)
-
+    return (visible_lines, visible_keys, None, scroll_offset, total_lines)

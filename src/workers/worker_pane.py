@@ -5,12 +5,13 @@ import hashlib
 import os
 import time
 
-from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
+from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL, RESET, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
 from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
 from ..input.click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
+from ..utils import truncate_visible
 # From worker_format.py: Worker data extraction and block rendering
 from .worker_format import extract_worker_tokens, format_workers_block
 # From worker_tmux.py: tmux session discovery and status detection
@@ -142,7 +143,37 @@ def run_workers_loop() -> None:
                             messages, _ = parse_jsonl_lines(lines)
                             worker_turns[name] = extract_cache_turns(messages)
 
-            output = format_workers_block(workers, worker_expand_states, worker_turns, worker_line_map, worker_hover_row, worker_scroll_offsets, worker_cache_expand_states, worker_cache_line_map, frozen=frozen, selected_name=worker_selected_name)
+            all_lines, line_keys = format_workers_block(
+                workers, worker_expand_states, worker_turns,
+                worker_scroll_offsets, worker_cache_expand_states,
+                frozen=frozen, selected_name=worker_selected_name,
+            )
+            try:
+                pane_width = os.get_terminal_size().columns
+            except OSError:
+                pane_width = 80
+            worker_line_map.clear()
+            worker_cache_line_map.clear()
+            result_lines = []
+            phys_row = 1
+            for i, (line, key) in enumerate(zip(all_lines, line_keys)):
+                zebra_bg = ZEBRA_BG_B if i % 2 else ZEBRA_BG_A
+                is_hovered = (key is not None and worker_hover_row is not None
+                              and phys_row == worker_hover_row)
+                if is_hovered:
+                    chosen_bg = HOVER_BG
+                elif line.startswith(LIGHT_RED_BG):
+                    chosen_bg = LIGHT_RED_BG
+                else:
+                    chosen_bg = zebra_bg
+                trunc = truncate_visible(line, pane_width)
+                result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
+                if isinstance(key, str):
+                    worker_line_map[phys_row] = key
+                elif isinstance(key, tuple):
+                    worker_cache_line_map[phys_row] = key
+                phys_row += 1
+            output = '\n'.join(result_lines)
             if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:

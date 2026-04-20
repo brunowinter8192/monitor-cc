@@ -4,12 +4,13 @@ from typing import Dict, List, Optional
 import os
 import time
 
+
 from ..constants import (
-    RESET, CYAN, YELLOW,
+    RESET, CYAN, YELLOW, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
     HOOK_INSTRUCTIONS_LOADED,
 )
-from ..utils import format_timestamp
+from ..utils import format_timestamp, truncate_visible
 from ..hooks import parse_new_hook_entries, filter_by_project, filter_by_timestamp
 from ..input.click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
@@ -157,7 +158,28 @@ def run_rules_loop() -> None:
                 process_hook_log()
                 last_data_refresh = now
 
-            output, rules_total_lines = format_rules_block(active_rules, rules_invokers, rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset, frozen)
+            visible_lines, visible_keys, _, viewport_start, rules_total_lines = format_rules_block(
+                active_rules, rules_invokers, rules_expand_states, None, None, rules_scroll_offset, frozen
+            )
+            try:
+                pane_width = os.get_terminal_size().columns
+            except OSError:
+                pane_width = 80
+            rules_line_map.clear()
+            result_lines = []
+            phys_row = 1
+            for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
+                logical_idx = viewport_start + i
+                zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+                is_hovered = (key is not None and rules_hover_row is not None
+                              and phys_row == rules_hover_row)
+                chosen_bg = HOVER_BG if is_hovered else zebra_bg
+                trunc = truncate_visible(line, pane_width)
+                result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
+                if key is not None:
+                    rules_line_map[phys_row] = key
+                phys_row += 1
+            output = '\n'.join(result_lines)
             if output != last_output:
                 print("\033[2J\033[3J\033[H", end='', flush=True)
                 if output:
