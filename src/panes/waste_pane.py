@@ -370,11 +370,15 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
     visible_keys = all_keys[waste_scroll_offset:waste_scroll_offset + content_height]
 
     rendered: List[str] = []
+    parent_count = sum(1 for k in all_keys[:waste_scroll_offset] if k is not None)
     header_offset = 2  # row 1 = header line, body starts at row 2
     phys_row = header_offset
     for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
-        logical_idx = waste_scroll_offset + i
-        zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+        if key is not None:
+            zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
+            parent_count += 1
+        else:
+            zebra_bg = ZEBRA_BG_A
         is_hovered = (key is not None and waste_hover_row is not None
                       and phys_row == waste_hover_row)
         chosen_bg = HOVER_BG if is_hovered else zebra_bg

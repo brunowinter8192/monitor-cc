@@ -17,11 +17,11 @@ def _source_color(source: str) -> str:
 # Build (visible_lines, visible_keys, None, scroll_offset) for rules pane; keys: str=rule_key, None=non-clickable
 def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str, Dict[str, str]]] = None, expand_states: Optional[Dict[str, bool]] = None, line_map: Optional[Dict[int, str]] = None, hover_row: Optional[int] = None, scroll_offset: int = 0, frozen: bool = False) -> tuple:
     if not active_rules:
-        return ([], [], None, 0, 0)
+        return ([], [], None, 0, 0, 0)
     project_rules = sorted(active_rules.get('project', set()))
     global_rules = sorted(active_rules.get('global', set()))
     if not project_rules and not global_rules:
-        return ([], [], None, 0, 0)
+        return ([], [], None, 0, 0, 0)
 
     all_lines: List[str] = []
     all_keys: List = []
@@ -60,5 +60,6 @@ def format_rules_block(active_rules: Dict[str, set], invokers: Optional[Dict[str
     total_lines = len(all_lines)
     visible_lines = all_lines[scroll_offset:]
     visible_keys = all_keys[scroll_offset:]
+    parent_count_before = sum(1 for k in all_keys[:scroll_offset] if k is not None)
 
-    return (visible_lines, visible_keys, None, scroll_offset, total_lines)
+    return (visible_lines, visible_keys, None, scroll_offset, total_lines, parent_count_before)

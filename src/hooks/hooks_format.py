@@ -80,7 +80,7 @@ def format_hooks_item_lines(item: dict) -> List[str]:
 # Build (visible_lines, visible_keys, sticky_header, viewport_start, total_lines) for hooks pane
 def format_hooks_block(items: list, scroll_offset: int, pane_height: int = 50, pane_width: int = 80, item_positions_out: Optional[dict] = None) -> tuple:
     if not items:
-        return ([], [], None, 0, 0, None)
+        return ([], [], None, 0, 0, None, 0)
     all_lines: List[str] = []
     all_keys: List = []
     item_idx_at: Dict[int, int] = {}
@@ -144,4 +144,5 @@ def format_hooks_block(items: list, scroll_offset: int, pane_height: int = 50, p
                     else:
                         sticky_header = f"{PASTEL_PURPLE}[-] [{ts}] SYSTEM REMINDER \u2190 {item.get('tool_name', '')}{SOFT_RESET}"
                 break
-    return (visible_lines, visible_keys, sticky_header, start, total_lines, sticky_item_idx)
+    parent_count_before = sum(1 for k in all_keys[:start] if k is not None)
+    return (visible_lines, visible_keys, sticky_header, start, total_lines, sticky_item_idx, parent_count_before)

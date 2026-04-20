@@ -156,8 +156,13 @@ def run_workers_loop() -> None:
             worker_cache_line_map.clear()
             result_lines = []
             phys_row = 1
+            parent_count = 0
             for i, (line, key) in enumerate(zip(all_lines, line_keys)):
-                zebra_bg = ZEBRA_BG_B if i % 2 else ZEBRA_BG_A
+                if isinstance(key, str):
+                    zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
+                    parent_count += 1
+                else:
+                    zebra_bg = ZEBRA_BG_A
                 is_hovered = (key is not None and worker_hover_row is not None
                               and phys_row == worker_hover_row)
                 if is_hovered:
