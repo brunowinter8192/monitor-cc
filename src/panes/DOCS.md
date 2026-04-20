@@ -57,13 +57,13 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_pane.py (403 LOC)
+### warnings_pane.py (420 LOC)
 
-**Purpose:** Warnings pane event loop — two sections: (1) unknown JSONL types, (2) tool errors + zero-result calls from proxy JSONL. Scrollable expand/collapse. Remainder 403 LOC is cohesive by shared event-state globals (scanner + renderer + loop share `tool_errors`, `_seen_*_keys`, `_monitor_start_ts`) — further split would require refactoring.
+**Purpose:** Warnings pane event loop — two sections: (1) unknown JSONL types, (2) tool errors + zero-result calls from proxy JSONL. Scrollable expand/collapse. Expanded error view shows pre-strip content with DIM_YELLOW_BG highlights for proxy-stripped chunks (via `format.strip_marker`). Remainder LOC is cohesive by shared event-state globals — further split would require refactoring.
 **Reads:** Proxy JSONL (incremental via `_proxy_log_position`); worker log files; shared state `monitor.active_project_filter`.
 **Writes:** stdout (ANSI screen); mutates `tool_errors`, `error_expand_states`, `error_line_map`, `zero_results`, `schema_warnings`.
 **Called by:** `core/monitor.py` (mode dispatch).
-**Calls out:** `core.monitor` (lazy), `proxy_display.parser` (lazy), `input.click_handler` (lazy), `panes.warnings_parse`.
+**Calls out:** `core.monitor` (lazy), `proxy_display.parser` (lazy), `input.click_handler` (lazy), `panes.warnings_parse`, `format.strip_marker`.
 
 ---
 
@@ -77,13 +77,13 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### waste_pane.py (404 LOC)
+### waste_pane.py (428 LOC)
 
-**Purpose:** Proxy forensics / waste pane — reads proxy JSONL, extracts tool_use/tool_result pairs via `waste_forensics`, filters by `input_chars/output_chars >= threshold`, displays sorted descending. Digit keys 1–9 set threshold. Remainder 404 LOC is cohesive by shared globals (event loop + data layer + renderer all share module-level state) — further split would require refactoring.
+**Purpose:** Proxy forensics / waste pane — reads proxy JSONL, extracts tool_use/tool_result pairs via `waste_forensics`, filters by `input_chars/output_chars >= threshold`, displays sorted descending. Digit keys 1–9 set threshold. Expanded OUTPUT section shows pre-strip content with DIM_YELLOW_BG highlights when the tool_result's message was proxy-stripped. Remainder LOC is cohesive by shared globals — further split would require refactoring.
 **Reads:** Proxy JSONL (via marker file discovery in `proxy_display.parser`); shared state `monitor.active_project_filter`.
-**Writes:** stdout (ANSI screen); mutates `_waste_above`, `waste_expand_states`, `waste_line_map`, `waste_threshold`.
+**Writes:** stdout (ANSI screen); mutates `_waste_above`, `waste_expand_states`, `waste_line_map`, `waste_threshold`, `_strip_by_tool_result_id`.
 **Called by:** `core/monitor.py` (mode dispatch).
-**Calls out:** `input.click_handler`, `proxy_display.parser`, `core.monitor` (lazy), `panes.waste_forensics`.
+**Calls out:** `input.click_handler`, `proxy_display.parser`, `core.monitor` (lazy), `panes.waste_forensics`, `format.strip_marker`.
 
 ---
 
@@ -97,7 +97,7 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 | `rules_pane` | `active_rules`, `rules_invokers`, `rules_expand_states`, `rules_scroll_offset` |
 | `warnings_parse` | `unknown_type_counts`, `warned_unknown_types` |
 | `warnings_pane` | `tool_errors`, `error_expand_states`, `error_scroll_offset`, `_proxy_log_position` |
-| `waste_pane` | `_waste_above`, `waste_expand_states`, `waste_threshold` |
+| `waste_pane` | `_waste_above`, `waste_expand_states`, `waste_threshold`, `_strip_by_tool_result_id` |
 
 ## Gotchas
 

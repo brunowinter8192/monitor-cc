@@ -14,7 +14,7 @@ from ..jsonl import parse_jsonl_lines, read_new_lines
 # From hooks/: Parse hook log entries
 from ..hooks import get_current_position as get_hook_log_position
 # From monitor_display.py: Session status output
-from .monitor_display import print_session_status
+from .monitor_display import print_session_status, ingest_proxy_strip_data
 # From monitor_session.py: Session file processing, task handling, historical load
 from .monitor_session import get_file_end_position, get_initial_position, process_session_file, load_historical_main
 
@@ -29,6 +29,7 @@ active_project_filter: Optional[str] = None
 active_mode: str = MODE_ALL
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
+_strip_proxy_position: int = 0  # byte position in proxy log for strip-data ingestion
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> None:
@@ -197,6 +198,7 @@ def run_main_loop() -> None:
                         {'type': 'session_banner', 'data': {}, 'call_number': None}
                     )
                 monitor_sessions()
+                _refresh_strip_cache()
                 last_data_refresh = now
                 input_changed = True
 
@@ -218,6 +220,14 @@ def run_main_loop() -> None:
     finally:
         disable_mouse()
         restore_terminal()
+
+# Scan proxy log for new entries and ingest strip data into monitor_display cache
+def _refresh_strip_cache() -> None:
+    global _strip_proxy_position
+    from ..proxy_display.parser import parse_proxy_log
+    new_entries, _strip_proxy_position = parse_proxy_log(active_project_filter, _strip_proxy_position)
+    if new_entries:
+        ingest_proxy_strip_data(new_entries)
 
 # Get the newest main (non-agent) session file
 def _get_newest_main_session() -> Optional[Path]:

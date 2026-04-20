@@ -6,9 +6,10 @@ import time
 
 from ..constants import (
     YELLOW, RED, DIM, WHITE, RESET, HOVER_BG, ZEBRA_BG_A, ZEBRA_BG_B, SOFT_RESET,
-    INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL,
+    DIM_YELLOW_BG, INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL,
 )
 from ..utils import format_timestamp, truncate_visible, first_word_of_call, format_worker_prefix
+from ..format.strip_marker import highlight_stripped, get_stripped_data
 from .warnings_parse import (
     unknown_type_counts,
     _iso_to_float,
@@ -90,6 +91,7 @@ def _scan_proxy_entries_for_errors(entries: list) -> list:
                 tool_name, tool_call_input = _resolve_tool_call(blk, tu_id_map, tu_blocks_positional, blk_idx)
                 first_line = full_text.split('\n')[0] if full_text else ''
                 summary = first_line[:80] + ('…' if len(first_line) > 80 else '')
+                pre_strip_text, stripped_chunks = get_stripped_data(entry, msg_idx)
                 errors.append({
                     'timestamp': ts,
                     'tool_name': tool_name,
@@ -97,6 +99,8 @@ def _scan_proxy_entries_for_errors(entries: list) -> list:
                     'full_text': full_text,
                     'tool_call_input': tool_call_input,
                     'worker_name': worker_name,
+                    '_pre_strip_text': pre_strip_text,
+                    '_stripped_chunks': stripped_chunks,
                 })
     return errors
 
@@ -132,12 +136,15 @@ def _scan_proxy_entries_for_zero_results(entries: list) -> list:
                     continue
                 _seen_zero_keys.add(dedup_key)
                 tool_name, tool_call_input = _resolve_tool_call(blk, tu_id_map, tu_blocks_positional, blk_idx)
+                pre_strip_text, stripped_chunks = get_stripped_data(entry, msg_idx)
                 results.append({
                     'timestamp': ts,
                     'tool_name': tool_name,
                     'reason': reason.capitalize(),
                     'tool_call_input': tool_call_input,
                     'worker_name': worker_name,
+                    '_pre_strip_text': pre_strip_text,
+                    '_stripped_chunks': stripped_chunks,
                 })
     return results
 
@@ -216,7 +223,10 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
                     val_str = str(v).replace('\n', ' ')
                     all_lines.append(f"    {DIM}{k}: {val_str}{SOFT_RESET}")
                     all_keys.append(None)
-                for raw_line in err['full_text'].split('\n'):
+                pre_strip = err.get('_pre_strip_text')
+                chunks = err.get('_stripped_chunks', [])
+                display_text = highlight_stripped(pre_strip, chunks) if pre_strip else err['full_text']
+                for raw_line in display_text.split('\n'):
                     all_lines.append(f"    {DIM}{raw_line}{SOFT_RESET}" if raw_line else '')
                     all_keys.append(None)
 
@@ -240,7 +250,12 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             zebra_bg = ZEBRA_BG_A
         is_hovered = (key is not None and error_hover_row is not None
                       and phys_row == error_hover_row)
-        chosen_bg = HOVER_BG if is_hovered else zebra_bg
+        if is_hovered:
+            chosen_bg = HOVER_BG
+        elif DIM_YELLOW_BG in line:
+            chosen_bg = DIM_YELLOW_BG
+        else:
+            chosen_bg = zebra_bg
         if key is not None:
             key_type, key_idx = key
             if key_type == 'error':
