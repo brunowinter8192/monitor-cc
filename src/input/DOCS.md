@@ -1,25 +1,52 @@
 # src/input/
 
-Keyboard and mouse input handling, and interactive UI state management.
+## Role
 
-## click_handler.py
+Keyboard and mouse input handling plus shared UI state management. `click_handler.py` is the low-level stdin layer used by every interactive pane; `ui_mode.py` provides higher-level state tracking (subagent metadata) and the rules block renderer shared between the main loop and the rules pane. Touch this package to change input handling behaviour, add new mouse modes, or modify the rules block rendering. Do NOT add pane-specific logic here — each pane owns its own render loop.
 
-**Purpose:** Low-level stdin handling for keyboard and SGR mouse input. Sets terminal to raw mode, reads unbuffered keypresses and multi-byte mouse sequences, and provides enable/disable helpers for SGR mouse tracking modes 1003+1006 (Any Event Tracking incl. motion).
+## Public Interface
 
-**Input:** Stdin file descriptor in raw mode. Single-byte keypresses and `\033[<b;col;rowM/m` SGR mouse sequences.
+```python
+# Keyboard / mouse input (click_handler.py)
+from src.input import setup_keyboard_input   # set terminal to raw mode
+from src.input import set_raw_stdin          # low-level raw mode toggle
+from src.input import restore_terminal       # restore cooked mode on exit
+from src.input import read_keypress          # read one byte from stdin (non-blocking)
+from src.input import parse_digit_key        # '1'-'9' → int, else None
+from src.input import get_agent_by_index     # digit → agent_id from metadata dict
+from src.input import enable_mouse           # SGR 1003+1006 (Any Event Tracking)
+from src.input import disable_mouse
+from src.input import enable_mouse_clicks    # SGR 1000+1006 (click only)
+from src.input import disable_mouse_clicks
+from src.input import read_mouse_event       # parse \033[<b;col;rowM → (button, col, row)
 
-**Output:** Parsed results: digit keypresses as `int` via `parse_digit_key()`; mouse events as `(button, col, row)` tuple via `read_mouse_event()`; agent IDs via `get_agent_by_index()`. Side effects: terminal mode changes via `setup_keyboard_input()` / `restore_terminal()`.
+# UI state + rules rendering (ui_mode.py)
+from src.input import track_subagent_metadata   # update agent maps from tool call
+from src.input import format_rules_block        # render active rules as ANSI block
+```
 
-**Called by:** All interactive pane loops — `panes/token_pane.py`, `panes/rules_pane.py`, `panes/warnings_pane.py`, `panes/waste_pane.py`, `hooks/hooks_pane.py`, `workers/worker_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `subagents/subagent_pane.py`.
+## Modules
+
+### click_handler.py (127 LOC)
+
+**Purpose:** Low-level stdin handling — sets terminal to raw mode, reads unbuffered keypresses and multi-byte SGR mouse sequences, enables/disables mouse tracking modes.
+**Reads:** stdin file descriptor via `os.read(fd, 1)` (unbuffered, bypasses Python IO layer).
+**Writes:** stdout (escape sequences for mouse mode enable/disable only); terminal mode via `termios`.
+**Called by:** `panes/token_pane.py`, `panes/rules_pane.py`, `panes/warnings_pane.py` (lazy), `panes/waste_pane.py`, `hooks/hooks_pane.py`, `workers/worker_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `subagents/subagent_pane.py`.
+**Calls out:** nothing external (stdlib only: `os`, `select`, `sys`, `termios`, `tty`).
 
 ---
 
-## ui_mode.py
+### ui_mode.py (104 LOC)
 
-**Purpose:** UI state tracking and shared rendering helpers used across multiple panes. Tracks subagent metadata (agent-to-task/type mapping) from tool call events. Renders the active rules block with expand/collapse, hover highlight, and scroll.
+**Purpose:** Subagent metadata tracking and active rules block rendering. `track_subagent_metadata()` updates agent-to-task/type maps from tool call events. `format_rules_block()` renders the [P]/[G]-prefixed rules list with expand/collapse, hover, and scroll for use in both the rules pane and the legacy UI mode.
+**Reads:** Tool call dicts, active rules dicts, expand/line-map/hover/scroll state — all passed as arguments or shared via `subagents.subagent_ui.subagent_states`.
+**Writes:** Mutates caller-owned state dicts (`subagent_metadata`, `agent_to_task`, `agent_to_type`); returns formatted ANSI string + updated line map from `format_rules_block()`.
+**Called by:** `core/monitor_session.py` (`track_subagent_metadata`); `panes/rules_pane.py` (`format_rules_block`, lazy).
+**Calls out:** `subagents.subagent_ui`, `subagents.subagent_ui_format`.
 
-**Input:** Tool call dicts, subagent metadata dicts, agent maps, active rules dicts, expand/line-map/hover/scroll state.
+## Gotchas
 
-**Output:** Side effects on shared state dicts (subagent metadata, agent maps). Returns formatted ANSI rules block string + updated line map via `format_rules_block()`.
-
-**Called by:** `core/monitor_session.py` via `track_subagent_metadata()`; `panes/rules_pane.py` via `format_rules_block()` (lazy import).
+- All stdin reads use `os.read(fd, 1)` — NOT `sys.stdin.read(1)`. Python's stdin has a 4096-byte internal buffer that makes `select()` unreliable for escape sequence detection. `os.read` bypasses this.
+- `enable_mouse()` uses SGR mode 1003 (Any Event Tracking, incl. motion). This captures ALL mouse events from tmux — native tmux scroll (Ctrl+B [) stops working while mouse mode is active. Panes must handle scroll themselves via `scroll_offset`.
+- `ui_mode.py` imports from `subagents/` — a cross-package dependency that creates coupling. If `subagents/` is ever removed, `ui_mode.py` needs refactoring.
