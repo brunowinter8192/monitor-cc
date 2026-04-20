@@ -1,26 +1,32 @@
 # INFRASTRUCTURE
 
-# Colors — 256-color ANSI palette (single source of truth)
+# Colors — Catppuccin Mocha palette (https://catppuccin.com/palette/)
+# Truecolor ANSI \033[38;2;R;G;Bm (FG) / \033[48;2;R;G;Bm (BG)
+# Semantic mapping:
+#   text=Text, title=Mauve, title-soft=Lavender
+#   error=Red, warning=Yellow, success=Green, info=Blue
+#   accent=Sky, accent-warm=Peach
+#   hover-bg=Surface1, zebra-bg=Surface0, error-bg=Red, stripped-bg=custom mustard
 RESET = '\033[0m'
-RED = '\033[91m'
-GREEN = '\033[38;5;35m'
-YELLOW = '\033[38;5;220m'
-BLUE = '\033[38;5;33m'
-CYAN = '\033[38;5;51m'
-MAGENTA = '\033[95m'
-WHITE = '\033[97m'
-PURPLE = '\033[38;5;135m'
-ORANGE = '\033[38;5;208m'
-PASTEL_BLUE = '\033[38;5;117m'
-PASTEL_PURPLE = '\033[38;5;183m'
-LIGHT_RED_BG = '\033[48;5;203m'
-PASTEL_ORANGE = '\033[38;5;209m'
-PASTEL_GREEN = '\033[38;5;114m'
-HOVER_BG = '\033[48;5;236m'
+RED = '\033[38;2;243;139;168m'
+GREEN = '\033[38;2;166;227;161m'
+YELLOW = '\033[38;2;249;226;175m'
+BLUE = '\033[38;2;137;180;250m'
+CYAN = '\033[38;2;137;220;235m'
+MAGENTA = '\033[38;2;245;194;231m'
+WHITE = '\033[38;2;205;214;244m'
+PURPLE = '\033[38;2;203;166;247m'
+ORANGE = '\033[38;2;250;179;135m'
+PASTEL_BLUE = '\033[38;2;116;199;236m'
+PASTEL_PURPLE = '\033[38;2;180;190;254m'
+LIGHT_RED_BG = '\033[48;2;243;139;168m'
+PASTEL_ORANGE = '\033[38;2;242;205;205m'
+PASTEL_GREEN = '\033[38;2;148;226;213m'
+HOVER_BG = '\033[48;2;69;71;90m'
 DIM = '\033[2m'
-DIM_YELLOW_BG = '\033[48;5;58m'
+DIM_YELLOW_BG = '\033[48;2;94;81;47m'
 ZEBRA_BG_A = ''
-ZEBRA_BG_B = '\033[48;5;237m'
+ZEBRA_BG_B = '\033[48;2;49;50;68m'
 SOFT_RESET = '\033[39m'
 
 # Config values
