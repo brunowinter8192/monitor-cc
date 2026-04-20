@@ -40,13 +40,13 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### worker_proxy_pane.py (194 LOC)
+### worker_proxy_pane.py (201 LOC)
 
-**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's proxy log, handles digit-key worker switching, mouse/keyboard input, renders with worker-switcher header.
+**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's proxy log, handles digit-key worker switching, mouse/keyboard input, renders with worker-switcher header. Header height is computed via `utils.visual_line_count` to handle multi-line wrap correctly: `body_hover`, `content_height`, and `line_map` shift all use `header_lines` instead of a hardcoded 1.
 **Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file.
 **Writes:** ANSI output to stdout (direct tmux pane write).
 **Called by:** `src/core/monitor.py` (via `..proxy_display.run_worker_proxy_loop`)
-**Calls out:** `input` (click_handler), `workers` (worker_tmux), `panes` (token_pane.build_cache_turns)
+**Calls out:** `input` (click_handler), `workers` (worker_tmux), `panes` (token_pane.build_cache_turns), `utils` (visual_line_count)
 
 ---
 

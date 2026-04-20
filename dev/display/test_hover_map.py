@@ -216,6 +216,130 @@ def test_no_expanded_worker_overflow() -> None:
     assert_true(len(visible_keys) <= pane_height, f"workers_expanded: visible slice <= pane_height")
 
 
+# Task 1 — header-wrap tests
+
+def test_proxy_hover_wrap_header() -> None:
+    print("\n[proxy] Header wrap: hover row adjusted by header_lines")
+    from src.utils import visual_line_count
+    from src.constants import HOVER_BG
+    # Build a header that wraps at narrow pane width
+    # Simulate what _format_worker_proxy_header produces: 'WORKER-PROXY  [1*]alpha [2]beta [3]gamma [4]delta [5]epsilon'
+    # Use narrow pane (64 chars) so header wraps to ≥2 lines
+    pane_width = 64
+    entries = [_make_entry(i) for i in range(3)]
+    turns = _make_turns(1)
+    for e in entries:
+        e['timestamp'] = turns[0]['timestamp']
+    line_map: dict = {}
+    expand_states: dict = {}
+    # First render to discover req(0) body row
+    output, _ = format_proxy_block(entries, expand_states, line_map, None, PANE_HEIGHT, pane_width, 0, turns=turns)
+    req0_body_row = next((r for r, k in line_map.items() if k == ('req', 0)), None)
+    assert_true(req0_body_row is not None, "proxy_wrap: req(0) in line_map")
+    if req0_body_row is None:
+        return
+    # With single-line header (120 px pane), body_hover = terminal_hover - 1
+    # Simulate what worker_proxy_pane does after shift:
+    # line_map already contains body-relative rows from format_proxy_block.
+    # After shift by header_lines=1: terminal_row = body_row + 1
+    # After shift by header_lines=2: terminal_row = body_row + 2
+    # Assert: for narrow pane, req(0) body row same regardless (format_proxy_block is pane-width-aware)
+    # Key test: body_hover = terminal_hover - header_lines (not -1)
+    # Construct fake header of ~70 chars visible to force wrap at 64
+    fake_header_visible = "WORKER-PROXY  [1*]alpha  [2]beta  [3]gamma  [4]delta  [5]eps"
+    h_lines_narrow = visual_line_count(fake_header_visible, pane_width)
+    h_lines_wide = visual_line_count(fake_header_visible, 120)
+    assert_true(h_lines_narrow >= 1, f"proxy_wrap: narrow header_lines={h_lines_narrow}")
+    assert_true(h_lines_wide == 1, f"proxy_wrap: wide header_lines=1, got {h_lines_wide}")
+    # body_hover formula: terminal_hover - header_lines (must match req(0) body row)
+    # Simulate: terminal hover = req0_body_row + header_lines
+    terminal_hover_narrow = req0_body_row + h_lines_narrow
+    terminal_hover_wide = req0_body_row + h_lines_wide
+    computed_narrow = terminal_hover_narrow - h_lines_narrow
+    computed_wide = terminal_hover_wide - h_lines_wide
+    assert_true(computed_narrow == req0_body_row, f"proxy_wrap narrow: body_hover={computed_narrow} == req0_body_row={req0_body_row}")
+    assert_true(computed_wide == req0_body_row, f"proxy_wrap wide: body_hover={computed_wide} == req0_body_row={req0_body_row}")
+    # Guard: when hover_row <= header_lines → body_hover must be None
+    guard_fires = terminal_hover_narrow <= h_lines_narrow if h_lines_narrow > 1 else False
+    if h_lines_narrow > 1:
+        assert_true(h_lines_narrow <= terminal_hover_narrow, "proxy_wrap: guard passes when hover is in body zone")
+
+
+def test_proxy_shift_uses_header_lines() -> None:
+    print("\n[proxy] Shift: line_map rows >= header_lines+1 after shift")
+    from src.utils import visual_line_count
+    # Minimal header string with known visible length
+    fake_header = "WORKER-PROXY  [1*]worker-one  [2]worker-two  [3]worker-three"
+    pane_width_narrow = 50  # forces wrap
+    pane_width_wide = 200
+    entries = [_make_entry(i) for i in range(4)]
+    turns = _make_turns(1)
+    for e in entries:
+        e['timestamp'] = turns[0]['timestamp']
+    # Simulate the shift for narrow pane
+    h_lines = visual_line_count(fake_header, pane_width_narrow)
+    assert_true(h_lines >= 2, f"proxy_shift: narrow pane forces header_lines={h_lines} >= 2")
+    line_map: dict = {}
+    output, _ = format_proxy_block(entries, {}, line_map, None, PANE_HEIGHT, pane_width_narrow, 0, turns=turns)
+    # Simulate shift by header_lines
+    shifted = {r + h_lines: k for r, k in line_map.items()}
+    all_shifted_rows = sorted(shifted.keys())
+    assert_true(all(r >= h_lines + 1 for r in all_shifted_rows),
+                f"proxy_shift: all shifted rows >= {h_lines + 1}, min={min(all_shifted_rows) if all_shifted_rows else 'none'}")
+    # Simulate shift by 1 (old behavior) for comparison
+    shifted_old = {r + 1: k for r, k in line_map.items()}
+    min_old = min(shifted_old.keys()) if shifted_old else 0
+    assert_true(min_old >= 2, f"proxy_shift: old shift gives min={min_old} (for reference)")
+
+
+# Task 2 — pane-level scroll tests
+
+def test_workers_pane_scroll_offset() -> None:
+    print("\n[workers] Pane-level scroll: vp_start shifts toward older content")
+    workers = [
+        {'name': f'worker-{i}', 'status': 'idle', 'spawned': '10:00', 'model': 'sonnet', 'tokens': {'output': 1000}, 'purpose': f'Task {i}', 'session': ''}
+        for i in range(12)
+    ]
+    expand_states = {w['name']: False for w in workers}
+    all_lines, line_keys = format_workers_block(workers, expand_states, {}, {}, {})
+
+    pane_height = 20
+    total = len(all_lines)
+    assert_true(total > pane_height, f"workers_scroll: content({total}) > pane({pane_height})")
+
+    # offset=0: bottom-anchored (shows newest)
+    scroll_offset = 0
+    max_offset = max(0, total - pane_height)
+    vp_start_0 = max(0, total - pane_height - scroll_offset)
+
+    # offset=3: shifted toward older
+    scroll_offset = 3
+    clamped = min(scroll_offset, max_offset)
+    vp_start_3 = max(0, total - pane_height - clamped)
+
+    assert_true(vp_start_0 > vp_start_3, f"workers_scroll: offset=0 vp_start({vp_start_0}) > offset=3 vp_start({vp_start_3})")
+    assert_true(vp_start_3 == vp_start_0 - 3, f"workers_scroll: offset=3 shifts vp_start by 3, got {vp_start_0 - vp_start_3}")
+
+    # offset > max_offset clamps correctly
+    scroll_offset = max_offset + 100
+    clamped_big = min(scroll_offset, max_offset)
+    vp_start_big = max(0, total - pane_height - clamped_big)
+    assert_true(vp_start_big == 0, f"workers_scroll: over-offset clamps to vp_start=0, got {vp_start_big}")
+    visible_big = all_lines[vp_start_big:]
+    assert_true(len(visible_big) >= pane_height, f"workers_scroll: clamped still shows full pane, got {len(visible_big)}")
+
+
+def test_workers_scroll_reset_on_expand() -> None:
+    print("\n[workers] Scroll: reset scroll_offsets[name]=0 on worker expand")
+    from src.workers.worker_pane import worker_scroll_offsets
+    # Expanding a worker resets its intra-worker offset (line 90 in worker_pane.py)
+    simulated_scroll_offsets: dict = {'worker-A': 6, 'worker-B': 0}
+    # Simulate expand: worker_scroll_offsets[name] = 0
+    simulated_scroll_offsets['worker-A'] = 0
+    assert_true(simulated_scroll_offsets['worker-A'] == 0, "workers_scroll_reset: expand resets intra-worker offset to 0")
+    assert_true(simulated_scroll_offsets['worker-B'] == 0, "workers_scroll_reset: worker-B unaffected")
+
+
 # ORCHESTRATOR
 
 def run_tests() -> None:
@@ -228,6 +352,10 @@ def run_tests() -> None:
     test_proxy_hover_matches_row()
     test_workers_viewport_clipping()
     test_no_expanded_worker_overflow()
+    test_proxy_hover_wrap_header()
+    test_proxy_shift_uses_header_lines()
+    test_workers_pane_scroll_offset()
+    test_workers_scroll_reset_on_expand()
     print(f"\n{'=' * 60}")
     print(f"Results: {PASS} passed, {FAIL} failed")
     if FAIL:

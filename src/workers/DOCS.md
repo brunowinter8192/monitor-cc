@@ -42,9 +42,9 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 
 ---
 
-### worker_pane.py (163 LOC)
+### worker_pane.py (166 LOC)
 
-**Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, viewport-clipped screen rendering (bottom-anchored, clips all_lines to pane_height so phys_row always equals terminal row), and IPC selection file write for cross-pane coordination.
+**Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, viewport-clipped screen rendering with pane-level scroll (mouse wheel 64/65 adjusts `worker_scroll_offset`, clamped to `[0, total_lines - pane_height]`), and IPC selection file write for cross-pane coordination.
 **Reads:** `_monitor.active_project_filter` (shared global state); stdin (keyboard/mouse); worker JSONL files via `worker_format`.
 **Writes:** ANSI output to stdout; selected worker name to `/tmp/monitor_cc_selected_worker_<hash>.txt`.
 **Called by:** `src/core/monitor.py` (via `..workers.run_workers_loop`); `src/proxy_display/worker_proxy_pane.py` (imports `get_selection_file_path`, `write_selection`)
@@ -54,8 +54,9 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 
 ## State
 
-`worker_pane.py` owns two module-level mutable dicts:
+`worker_pane.py` owns:
 - `worker_expand_states: Dict[str, bool]` — expand/collapse state keyed by worker name
-- `worker_scroll_offsets: Dict[str, int]` — scroll position keyed by worker name
+- `worker_scroll_offsets: Dict[str, int]` — intra-worker scroll position (for expanded cache-tracker, 15-line view); reset to 0 on expand
+- `worker_scroll_offset: int` — pane-level scroll offset; wheel-up (+3) shifts viewport toward older content, wheel-down (-3) toward newer; clamped to `[0, max(0, total_lines - pane_height)]` on every render
 
-Mutated exclusively by `run_workers_loop`. Read by `format_workers_block` in the same process.
+Mutated exclusively by `run_workers_loop`. `worker_scroll_offsets` read by `format_workers_block` in the same process.
