@@ -143,7 +143,7 @@ def run_tokens_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                visible_lines, visible_keys, sticky_header, viewport_start = format_cache_tracker(
+                visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count = format_cache_tracker(
                     _cache_turns, cache_expand_states, pane_height, pane_width, cache_scroll_offset
                 )
                 result_lines = []
@@ -152,9 +152,13 @@ def run_tokens_loop() -> None:
                     result_lines.append(f"{ZEBRA_BG_A}{trunc}\033[K{RESET}")
                 cache_line_map.clear()
                 phys_row = 1 + (1 if sticky_header is not None else 0)
-                for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
-                    logical_idx = viewport_start + i
-                    zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+                parent_count = initial_parent_count
+                for line, key in zip(visible_lines, visible_keys):
+                    if key is not None:
+                        zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
+                        parent_count += 1
+                    else:
+                        zebra_bg = ZEBRA_BG_A
                     is_hovered = (key is not None and cache_hover_row is not None
                                   and phys_row == cache_hover_row)
                     if is_hovered:
