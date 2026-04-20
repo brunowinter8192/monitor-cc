@@ -22,7 +22,7 @@ src/
 ├── hooks/                → [DOCS.md](hooks/DOCS.md) Hooks pane subpackage
 ├── metadata/             → [DOCS.md](metadata/DOCS.md) Metadata pane subpackage
 ├── subagents/            → [DOCS.md](subagents/DOCS.md) Subagents pane subpackage (deprecated)
-├── formatter.py          → Shared tool call formatting (~230 lines)
+├── format/               → [DOCS.md](format/DOCS.md) Formatting functions subpackage
 ├── jsonl/                → [DOCS.md](jsonl/DOCS.md) JSONL parsing subpackage
 ├── session_finder.py
 ├── ui_mode.py
@@ -216,19 +216,11 @@ See [jsonl/DOCS.md](jsonl/DOCS.md).
 
 ---
 
-## formatter.py
+## format/
 
-**Purpose:** Shared tool call formatting (~230 lines). Formats tool calls, user prompts, hook annotations, thinking blocks, skill activations, and system messages as color-coded terminal strings. Pane-specific formatting (cache tracker, workers block, proxy block, hooks block) moved to respective pane modules.
+See [format/DOCS.md](format/DOCS.md).
 
-**Input:** Tool call data (name, input dict, output string, timestamp, tool_use_id, agent metadata, is_error flag).
-
-**Output:** Formatted ANSI-colored string for terminal display.
-
-**Usage:**
-```python
-from src.formatter import format_tool_call, format_user_media, format_thinking
-output = format_tool_call(name, input_params, output, timestamp, tool_id, is_subagent, is_error=False)
-```
+**Modules:** `formatter.py` (tool call formatting), `formatter_events.py` (event formatting), `token_format.py` (token/cache tracker rendering).
 
 ---
 
