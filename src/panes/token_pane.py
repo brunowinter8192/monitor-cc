@@ -149,7 +149,7 @@ def run_tokens_loop() -> None:
                 result_lines = []
                 if sticky_header is not None:
                     trunc = truncate_visible(sticky_header, pane_width)
-                    result_lines.append(f"{ZEBRA_BG_A}{trunc}{RESET}")
+                    result_lines.append(f"{ZEBRA_BG_A}{trunc}\033[K{RESET}")
                 cache_line_map.clear()
                 phys_row = 1 + (1 if sticky_header is not None else 0)
                 for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
@@ -164,7 +164,7 @@ def run_tokens_loop() -> None:
                     else:
                         chosen_bg = zebra_bg
                     trunc = truncate_visible(line, pane_width)
-                    result_lines.append(f"{chosen_bg}{trunc}{RESET}")
+                    result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
                     if key is not None:
                         cache_line_map[phys_row] = key
                     phys_row += 1
