@@ -26,7 +26,7 @@ session_start_ts: Optional[str] = None
 
 # Load historical hook entries into hooks_display_items, session-scoped
 def load_historical_hooks() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     global session_start_ts
     entries, new_pos = parse_new_hook_entries(0)
     filtered = filter_by_project(entries, _monitor.active_project_filter) if _monitor.active_project_filter else entries
@@ -40,7 +40,7 @@ def load_historical_hooks() -> None:
 
 # Append new hook log entries to hooks_display_items
 def process_hook_log_for_display() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     entries, new_pos = parse_new_hook_entries(_monitor.hook_log_position)
     _monitor.hook_log_position = new_pos
     filtered = filter_by_project(entries, _monitor.active_project_filter) if _monitor.active_project_filter else entries
@@ -52,7 +52,7 @@ def process_hook_log_for_display() -> None:
 
 # Runs hooks display loop with mouse scroll, click expand/collapse, hover — tokens pane pattern
 def run_hooks_loop() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     global session_start_ts, hooks_display_items, hooks_hover_row, hooks_line_map, hooks_scroll_offset, hooks_total_lines
     session_start_ts = _monitor._get_session_start_ts()
     if session_start_ts is None:

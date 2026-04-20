@@ -27,7 +27,7 @@ agent_cache_line_map: Dict[int, tuple] = {}
 
 # Find agent JSONL file by agent_id across all active sessions
 def find_agent_jsonl(agent_id: str) -> Optional[Path]:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     sessions = find_active_sessions(_monitor.active_project_filter)
     target_name = f'agent-{agent_id}.jsonl'
     for session_file in sessions:
@@ -37,7 +37,7 @@ def find_agent_jsonl(agent_id: str) -> Optional[Path]:
 
 # Runs subagents display loop (for dedicated subagents tmux pane, shows per-agent cache token view)
 def run_subagents_loop() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     global agent_turns, agent_pane_line_map, agent_pane_hover_row, agent_cache_scroll_offsets, agent_cache_expand_states, agent_cache_line_map
     _monitor.ui_mode_active = True
     _monitor.load_historical_subagents()

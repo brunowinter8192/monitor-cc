@@ -49,7 +49,7 @@ def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None
 
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map, worker_selected_name
     _monitor.ui_mode_active = True
     last_output = None

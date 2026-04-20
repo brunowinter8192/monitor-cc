@@ -79,7 +79,7 @@ def build_cache_turns(filepath, last_position: int, existing_turns: list):
 
 # Runs cache tracker display loop (for dedicated tokens tmux pane)
 def run_tokens_loop() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
     global _cache_jsonl_position, _cache_turns, _cache_current_filepath
     last_output = None

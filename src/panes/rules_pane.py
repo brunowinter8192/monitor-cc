@@ -67,7 +67,7 @@ def _get_sorted_rule_keys() -> List[str]:
 
 # Process hook log for InstructionsLoaded entries (rules pane routing)
 def process_hook_log() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     entries, new_pos = parse_new_hook_entries(_monitor.hook_log_position)
     _monitor.hook_log_position = new_pos
     filtered = filter_by_project(entries, _monitor.active_project_filter) if _monitor.active_project_filter else entries
@@ -77,7 +77,7 @@ def process_hook_log() -> None:
 
 # Load historical rules from hook log (with invoker data from cwd), session-scoped
 def load_historical_rules() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     global active_rules, rules_invokers
     active_rules['project'].clear()
     active_rules['global'].clear()
@@ -93,7 +93,7 @@ def load_historical_rules() -> None:
 
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
-    from .. import monitor as _monitor
+    from ..core import monitor as _monitor
     from ..ui_mode import format_rules_block
     global rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset, rules_total_lines, session_start_ts
     session_start_ts = _monitor._get_session_start_ts()
