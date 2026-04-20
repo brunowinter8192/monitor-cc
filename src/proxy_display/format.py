@@ -111,15 +111,10 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             else:
                 delta_str = f"  {DIM}(first turn){SOFT_RESET}"
 
-            turn_key = ('turn', turn_idx)
-            is_turn_expanded = expand_states.get(turn_key, False)
-            turn_symbol = '\u25bc' if is_turn_expanded else '\u25b6'
             turn_ts = format_timestamp(group['timestamp'])[:5]
 
-            if item_positions_out is not None:
-                item_positions_out[turn_key] = len(all_lines)
-            all_lines.append(f"{PASTEL_PURPLE}{turn_symbol} Turn {turn_idx + 1} [{turn_ts}]{config_str}{delta_str}{SOFT_RESET}")
-            line_keys.append(turn_key)
+            all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{turn_ts}]{config_str}{delta_str}{SOFT_RESET}")
+            line_keys.append(None)
 
             if prev_group_last_entry is not None:
                 ple = prev_group_last_entry
@@ -131,20 +126,19 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 all_lines.append(f"  {DIM}total: (first turn){SOFT_RESET}")
             line_keys.append(None)
 
-            if is_turn_expanded:
-                prev_entry_for_delta = prev_group_last_entry
-                t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
-                    group, entries, expand_states, pane_width,
-                    prev_entry_for_delta, opus_req_num, sub_req_num,
-                    turns=turns, turn_idx=turn_idx,
-                )
-                all_lines.extend(t_lines)
-                line_keys.extend(t_keys)
-                if item_positions_out is not None:
-                    base = len(all_lines) - len(t_lines)
-                    for i, key in enumerate(t_keys):
-                        if key is not None:
-                            item_positions_out[key] = base + i
+            prev_entry_for_delta = prev_group_last_entry
+            t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
+                group, entries, expand_states, pane_width,
+                prev_entry_for_delta, opus_req_num, sub_req_num,
+                turns=turns, turn_idx=turn_idx,
+            )
+            all_lines.extend(t_lines)
+            line_keys.extend(t_keys)
+            if item_positions_out is not None:
+                base = len(all_lines) - len(t_lines)
+                for i, key in enumerate(t_keys):
+                    if key is not None:
+                        item_positions_out[key] = base + i
 
             main_entries = [e for _, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
             if main_entries:

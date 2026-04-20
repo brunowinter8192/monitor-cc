@@ -42,9 +42,9 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 
 ---
 
-### worker_pane.py (155 LOC)
+### worker_pane.py (163 LOC)
 
-**Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, screen rendering, and IPC selection file write for cross-pane coordination.
+**Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, viewport-clipped screen rendering (bottom-anchored, clips all_lines to pane_height so phys_row always equals terminal row), and IPC selection file write for cross-pane coordination.
 **Reads:** `_monitor.active_project_filter` (shared global state); stdin (keyboard/mouse); worker JSONL files via `worker_format`.
 **Writes:** ANSI output to stdout; selected worker name to `/tmp/monitor_cc_selected_worker_<hash>.txt`.
 **Called by:** `src/core/monitor.py` (via `..workers.run_workers_loop`); `src/proxy_display/worker_proxy_pane.py` (imports `get_selection_file_path`, `write_selection`)

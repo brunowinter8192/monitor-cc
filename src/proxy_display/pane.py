@@ -95,10 +95,6 @@ def run_proxy_loop() -> None:
                 if main_sessions:
                     filepath = main_sessions[0]
                     _proxy_cache_turns, _proxy_jsonl_position = build_cache_turns(filepath, _proxy_jsonl_position, _proxy_cache_turns)
-                if filtered and _proxy_cache_turns:
-                    latest_turn_key = ('turn', len(_proxy_cache_turns) - 1)
-                    if latest_turn_key not in proxy_expand_states:
-                        proxy_expand_states[latest_turn_key] = True
                 last_data_refresh = now
                 input_changed = True
 
