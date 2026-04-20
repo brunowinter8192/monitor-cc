@@ -24,7 +24,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `metadata/` | Metadata pane (API config state from proxy log) | 297 | 2 |
 | `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering) | 1463 | 8 |
 | `subagents/` | Subagent pane (deprecated, kept for UI mode) | 449 | 4 |
-| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2002 | 7 |
+| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2002 | 13 |
 
 ## Root-Level Files
 
