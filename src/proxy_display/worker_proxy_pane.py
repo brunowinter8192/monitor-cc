@@ -15,6 +15,7 @@ from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, parse_digit_key,
 )
+from ..utils import visual_line_count
 
 worker_proxy_entries: List[dict] = []
 worker_proxy_expand_states: Dict[int, bool] = {}
@@ -158,10 +159,11 @@ def run_worker_proxy_loop() -> None:
                     pane_width = 80
 
                 header = _format_worker_proxy_header(_worker_proxy_workers, current_worker)
-                content_height = max(1, pane_height - 1)
-                # Body starts at terminal row 2 (header occupies row 1).
-                # Subtract 1 from hover_row so format_proxy_block sees a 1-indexed body row.
-                body_hover = (worker_proxy_hover_row - 1) if worker_proxy_hover_row and worker_proxy_hover_row > 1 else None
+                header_lines = visual_line_count(header, pane_width)
+                content_height = max(1, pane_height - header_lines)
+                # Body starts at terminal row header_lines+1 (header may wrap to multiple rows).
+                # Subtract header_lines from hover_row so format_proxy_block sees a 1-indexed body row.
+                body_hover = (worker_proxy_hover_row - header_lines) if worker_proxy_hover_row and worker_proxy_hover_row > header_lines else None
 
                 if not current_worker:
                     body = f"{DIM}Select a worker with digit keys 1-9{RESET}"
@@ -171,7 +173,7 @@ def run_worker_proxy_loop() -> None:
                     worker_item_positions: dict = {}
                     body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns, item_positions_out=worker_item_positions)
                     # Shift line_map by +1: body row N is at terminal row N+1 due to header
-                    shifted = {r + 1: k for r, k in worker_proxy_line_map.items()}
+                    shifted = {r + header_lines: k for r, k in worker_proxy_line_map.items()}
                     worker_proxy_line_map.clear()
                     worker_proxy_line_map.update(shifted)
                     if just_expanded is not None and just_expanded in worker_item_positions:
@@ -182,7 +184,7 @@ def run_worker_proxy_loop() -> None:
                         if item_line < start or item_line >= start + content_height:
                             worker_proxy_scroll_offset = max(0, total_lines - content_height - item_line)
                             body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns)
-                            shifted = {r + 1: k for r, k in worker_proxy_line_map.items()}
+                            shifted = {r + header_lines: k for r, k in worker_proxy_line_map.items()}
                             worker_proxy_line_map.clear()
                             worker_proxy_line_map.update(shifted)
                 output = header + '\n' + body
