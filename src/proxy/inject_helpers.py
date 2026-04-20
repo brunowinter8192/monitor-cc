@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from .rules import _load_config
+from .rules_config import _load_config
 
 # FUNCTIONS
 

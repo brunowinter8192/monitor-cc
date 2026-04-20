@@ -35,13 +35,23 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (317 LOC)
+### rules_config.py (82 LOC)
 
-**Purpose:** Apply proxy modification rules — load system2 and project rule files from `~/.claude/shared-rules/`, inject into `system[2]` and `messages[0]`, strip system-reminders and task-notification tags.
-**Reads:** `~/.claude/shared-rules/proxy_rules.json` and rule files (mtime-cached); raw payload dict.
+**Purpose:** Load and cache proxy rule files — reads `proxy_rules.json`, caches rule file content by mtime, assembles system2 rule text for a given model family and project path.
+**Reads:** `~/.claude/shared-rules/proxy_rules.json` and rule files (mtime-cached).
+**Writes:** Nothing — returns config dict or assembled rule text.
+**Called by:** `rules.py`, `inject_helpers.py`
+**Calls out:** stdlib only (`json`, `pathlib`).
+
+---
+
+### rules.py (243 LOC)
+
+**Purpose:** Apply proxy modification rules — strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported function `apply_modification_rules`. Remainder 243 LOC is a single monolithic function body — further split requires refactoring.
+**Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** —
+**Calls out:** `rules_config`, `content_strip`, `payload_helpers`.
 
 ---
 
@@ -128,7 +138,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 ### inject_helpers.py (80 LOC)
 
 **Purpose:** Inject model override (model/thinking/effort/max_tokens) and `context_management` payload block from `proxy_rules.json` config.
-**Reads:** Payload dict, model_family string; `proxy_rules.json` via `rules._load_config()`.
+**Reads:** Payload dict, model_family string; `proxy_rules.json` via `rules_config._load_config()`.
 **Writes:** Nothing — returns `(modified_payload, injected_bool)`.
 **Called by:** `src/proxy/addon.py`
 **Calls out:** —
