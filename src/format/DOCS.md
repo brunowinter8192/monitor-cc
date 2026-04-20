@@ -7,6 +7,12 @@ ANSI-colored string rendering — tool call pairs, user events, and the token/ca
 ## Public Interface
 
 ```python
+# Strip highlighting (strip_marker.py)
+from src.format.strip_marker import highlight_stripped        # inline DIM_YELLOW_BG chunk highlight
+from src.format.strip_marker import get_stripped_data         # (pre_strip_text, chunks) from proxy entry
+from src.format.strip_marker import build_tool_result_strip_lookup  # for waste_pane (raw events)
+from src.format.strip_marker import build_tool_id_strip_lookup      # for main-pane (parsed entries)
+
 # Tool call formatting (formatter.py)
 from src.format import format_tool_call
 from src.format import format_request, format_response, combine_request_response
@@ -25,6 +31,16 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ## Modules
 
+### strip_marker.py (65 LOC)
+
+**Purpose:** Proxy-strip content highlighting helper — `highlight_stripped` wraps found chunks in `DIM_YELLOW_BG`/`SOFT_RESET` inline; `get_stripped_data` extracts pre-strip text + removed chunks from a proxy entry for a given message index; `build_tool_result_strip_lookup` / `build_tool_id_strip_lookup` build `tool_use_id → (pre_strip_text, chunks)` maps for waste_pane and main-pane respectively.
+**Reads:** Proxy entry dicts passed as arguments. No I/O, no shared state.
+**Writes:** Returns strings / dicts. No stdout, no file writes.
+**Called by:** `panes.warnings_pane`, `panes.waste_pane`, `core.monitor_display`.
+**Calls out:** `constants` only.
+
+---
+
 ### formatter.py (174 LOC)
 
 **Purpose:** Format tool call request/response pairs as ANSI-colored terminal strings. Handles output truncation, todo list rendering, parameter formatting, and status icons/colors.
@@ -35,9 +51,9 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ---
 
-### formatter_events.py (72 LOC)
+### formatter_events.py (73 LOC)
 
-**Purpose:** Format non-tool-call events — user prompts, hook annotations, system messages, media items, skill activations, thinking blocks — as ANSI-colored strings.
+**Purpose:** Format non-tool-call events — user prompts, hook annotations, system messages, media items, skill activations, thinking blocks — as ANSI-colored strings. `format_user_prompt` accepts `strip_badge=True` to append a `DIM_YELLOW_BG [~]` marker when the corresponding proxy request had stripped content.
 **Reads:** Timestamps, text, hook output/script strings, item dicts passed as arguments.
 **Writes:** Returns formatted strings. No stdout, no file writes.
 **Called by:** `core/monitor_display.py` (`format_user_prompt`, `format_user_media`, `format_thinking`, `format_skill_activation`, `format_system_message`).

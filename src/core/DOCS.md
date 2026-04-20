@@ -36,11 +36,11 @@ workflow.py → run_monitor(project_filter, mode)
 
 ## Modules
 
-### monitor.py (191 LOC)
+### monitor.py (200 LOC)
 
-**Purpose:** Polling orchestrator — discovers sessions, drives the streaming loop, dispatches to pane event loops by mode, and owns all shared state dicts.
-**Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`; hook log position via `hooks`; lazy reads from `panes`, `workers`, `hooks`, `proxy_display`, `metadata`.
-**Writes:** stdout (via `monitor_display`); mutates shared state (`file_positions`, `tool_use_caches`, `agent_to_task`, `agent_to_type`, `buffered_subagent_calls`, `call_counter`).
+**Purpose:** Polling orchestrator — discovers sessions, drives the streaming loop, dispatches to pane event loops by mode, and owns all shared state dicts. In `run_main_loop()`, also scans proxy JSONL each poll cycle via `_refresh_strip_cache()` to feed strip data into `monitor_display`.
+**Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`; hook log position via `hooks`; proxy JSONL via `proxy_display.parser` (for strip cache); lazy reads from `panes`, `workers`, `hooks`, `proxy_display`, `metadata`.
+**Writes:** stdout (via `monitor_display`); mutates shared state (`file_positions`, `tool_use_caches`, `agent_to_task`, `agent_to_type`, `buffered_subagent_calls`, `call_counter`, `_strip_proxy_position`).
 **Called by:** `workflow.py` (top-level entry).
 **Calls out:** `session_finder`, `jsonl`, `hooks` (top-level); lazy: `panes`, `workers`, `proxy_display`, `metadata`.
 
@@ -56,13 +56,13 @@ workflow.py → run_monitor(project_filter, mode)
 
 ---
 
-### monitor_display.py (112 LOC)
+### monitor_display.py (135 LOC)
 
-**Purpose:** Terminal output functions for the main streaming pane — formats and prints tool calls, events, and warnings to stdout.
-**Reads:** Tool call dicts, event dicts, warning dicts passed as arguments.
-**Writes:** stdout via `print()`.
-**Called by:** `monitor.py` (`print_session_status`); `monitor_session.py` (all display functions).
-**Calls out:** `format.formatter`, `format.formatter_events`.
+**Purpose:** Terminal output + event buffer for the main streaming pane. Buffers all events (tool calls, user prompts, system messages, etc.) in `main_event_buffer`. On each render cycle, applies proxy strip highlights: tool_call output is replaced with pre-strip content and `highlight_stripped()` is applied; user prompts get a `[~]` badge when the corresponding proxy request had stripped content. `ingest_proxy_strip_data(entries)` updates the strip caches; called from `monitor._refresh_strip_cache()`.
+**Reads:** Tool call dicts, event dicts passed as arguments; module-level `_strip_by_tool_id`, `_strip_prompt_ts_set`.
+**Writes:** stdout via `print()` (via `render_main_buffer`); mutates `main_event_buffer`, `main_scroll_offset`, `_strip_by_tool_id`, `_strip_prompt_ts_set`.
+**Called by:** `monitor.py` (`print_session_status`, `ingest_proxy_strip_data`, `render_main_buffer`); `monitor_session.py` (all display functions).
+**Calls out:** `format.formatter`, `format.formatter_events`, `format.strip_marker`.
 
 ---
 
@@ -78,6 +78,7 @@ workflow.py → run_monitor(project_filter, mode)
 | `buffered_subagent_calls` | `Dict[str, List]` | `monitor_session.handle_subagent_call` |
 | `active_project_filter` | `str \| None` | `run_monitor()` on startup |
 | `hook_log_position` | `int` | `initialize_hook_log_position()` + `panes.process_hook_log` |
+| `_strip_proxy_position` | `int` | `_refresh_strip_cache()` each poll cycle |
 
 All pane modules read this state via `from ..core import monitor as _monitor`.
 

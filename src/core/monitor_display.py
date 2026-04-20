@@ -2,15 +2,18 @@
 from datetime import datetime
 from typing import Optional
 
-from ..constants import RESET, GREEN, YELLOW, CYAN, MODE_ALL, MODE_MAIN, MAIN_EVENT_BUFFER_CAP
+from ..constants import RESET, GREEN, YELLOW, CYAN, DIM_YELLOW_BG, MODE_ALL, MODE_MAIN, MAIN_EVENT_BUFFER_CAP
 from ..format.formatter import format_tool_call
 from ..format.formatter_events import format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_system_message
+from ..format.strip_marker import highlight_stripped, build_tool_id_strip_lookup
 from ..utils import truncate_visible
 
 INDENT = '  '
 
 main_event_buffer: list = []
 main_scroll_offset: int = 0
+_strip_by_tool_id: dict = {}        # tool_use_id → (pre_strip_text, removed_chunks)
+_strip_prompt_ts_set: set = set()   # proxy-entry timestamps where msg[0] was stripped
 
 # FUNCTIONS
 
@@ -68,24 +71,46 @@ def display_user_prompt_from_jsonl(prompt_item: dict) -> None:
 def display_system_message(sys_msg: dict) -> None:
     _buffer_append('system_message', sys_msg)
 
+# Ingest new proxy entries to populate strip caches (call from main loop after monitor_sessions)
+def ingest_proxy_strip_data(entries: list) -> None:
+    global _strip_by_tool_id, _strip_prompt_ts_set
+    new_tool_lookup = build_tool_id_strip_lookup(entries)
+    _strip_by_tool_id.update(new_tool_lookup)
+    for entry in entries:
+        if entry.get('stripped_msg_indices'):
+            ts = entry.get('timestamp', '')
+            if ts:
+                _strip_prompt_ts_set.add(ts[:19])  # second-precision bucket
+
 # Format buffered event to list of display strings (split by newline)
 def _format_event_to_lines(event: dict) -> list:
     t = event['type']
     d = event['data']
     if t == 'tool_call':
+        tool_use_id = d['tool_use_id']
+        strip_info = _strip_by_tool_id.get(tool_use_id)
+        if strip_info:
+            pre_strip_text, stripped_chunks = strip_info
+            output_data = pre_strip_text or d['output'] or ''
+        else:
+            output_data = d['output'] or ''
         formatted = format_tool_call(
             tool_name=d['tool_name'],
             input_data=d['input'],
-            output_data=d['output'] or '',
-            tool_use_id=d['tool_use_id'],
+            output_data=output_data,
+            tool_use_id=tool_use_id,
             timestamp=d['timestamp'],
             call_number=event['call_number'],
             is_subagent=d.get('is_subagent', False),
             system_reminders=d.get('system_reminders', []),
             is_error=d.get('is_error', False),
         )
+        if strip_info and stripped_chunks:
+            formatted = highlight_stripped(formatted, stripped_chunks)
     elif t == 'user_prompt':
-        formatted = format_user_prompt(d.get('timestamp', ''))
+        ts = d.get('timestamp', '')
+        has_strip = bool(ts and ts[:19] in _strip_prompt_ts_set)
+        formatted = format_user_prompt(ts, strip_badge=has_strip)
     elif t == 'user_media':
         formatted = format_user_media(d.get('items', []))
     elif t == 'thinking':
