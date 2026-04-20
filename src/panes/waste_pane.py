@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..constants import (
-    YELLOW, ORANGE, DIM, WHITE, RESET, HOVER_BG,
+    YELLOW, ORANGE, DIM, WHITE, RESET, HOVER_BG, ZEBRA_BG_A, ZEBRA_BG_B, SOFT_RESET,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
 )
 from ..input.click_handler import (
@@ -14,7 +14,7 @@ from ..input.click_handler import (
     enable_mouse, disable_mouse, read_mouse_event,
 )
 from ..proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path
-from ..utils import visual_line_count, first_word_of_call, _iso_to_float, format_worker_prefix
+from ..utils import truncate_visible, first_word_of_call, _iso_to_float, format_worker_prefix
 from .waste_forensics import pairs, format_timestamp_local, Pair
 
 # Tools whose high ratio is structural (content-driven), not actionable waste
@@ -285,7 +285,6 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
     above_count = len(_waste_above)
     header = _format_waste_header(above_count)
     content_height = max(1, pane_height - 1)
-    wrap_width = max(20, pane_width - 6)
 
     all_lines: List[str] = []
     all_keys: List[Optional[int]] = []
@@ -296,10 +295,10 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                 msg = 'No project filter — start monitor with --project.'
             else:
                 msg = f'Proxy log not found: {_waste_log_path.name}'
-            all_lines.append(f'{DIM}{msg}{RESET}')
+            all_lines.append(f'{DIM}{msg}{SOFT_RESET}')
         else:
             thr = int(waste_threshold) if waste_threshold == int(waste_threshold) else waste_threshold
-            all_lines.append(f'{DIM}No pairs above threshold {thr}.{RESET}')
+            all_lines.append(f'{DIM}No pairs above threshold {thr}.{SOFT_RESET}')
         all_keys.append(None)
     else:
         for idx, p in enumerate(_waste_above):
@@ -314,11 +313,11 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
             w_prefix = format_worker_prefix(worker_name)
 
             header_line = (
-                f'{DIM}{symbol} [{ts}]{RESET} '
+                f'{DIM}{symbol} [{ts}]{SOFT_RESET} '
                 f'{w_prefix}'
-                f'{WHITE}{tool_name:<16}{RESET} '
-                f'{DIM}ratio={RESET}{ORANGE}{ratio_str}{RESET}  '
-                f'{DIM}in={in_str}  out={out_str}{RESET}'
+                f'{WHITE}{tool_name:<16}{SOFT_RESET} '
+                f'{DIM}ratio={SOFT_RESET}{ORANGE}{ratio_str}{SOFT_RESET}  '
+                f'{DIM}in={in_str}  out={out_str}{SOFT_RESET}'
             )
 
             if is_expanded:
@@ -327,24 +326,17 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
 
                 # Input section
                 cmd_text = json.dumps(p.tu.input, ensure_ascii=False)
-
-                all_lines.append(f'  {DIM}INPUT ({p.tu.input_chars:,} chars):{RESET}')
+                all_lines.append(f'  {DIM}INPUT ({p.tu.input_chars:,} chars):{SOFT_RESET}')
                 all_keys.append(None)
-
-                cmd_lines = cmd_text.split('\n')
                 rendered_cmd = 0
-                for cline in cmd_lines:
-                    for line_start in range(0, max(len(cline), 1), wrap_width):
-                        if rendered_cmd >= CMD_MAX_LINES:
-                            break
-                        chunk = cline[line_start:line_start + wrap_width]
-                        all_lines.append(f'    {DIM}{chunk}{RESET}')
-                        all_keys.append(None)
-                        rendered_cmd += 1
+                for cline in cmd_text.split('\n'):
                     if rendered_cmd >= CMD_MAX_LINES:
                         break
-                if rendered_cmd >= CMD_MAX_LINES and (len(cmd_lines) > 1 or len(cmd_lines[0]) > wrap_width * CMD_MAX_LINES):
-                    all_lines.append(f'    {DIM}… (truncated){RESET}')
+                    all_lines.append(f'    {DIM}{cline}{SOFT_RESET}')
+                    all_keys.append(None)
+                    rendered_cmd += 1
+                if rendered_cmd >= CMD_MAX_LINES:
+                    all_lines.append(f'    {DIM}… (truncated){SOFT_RESET}')
                     all_keys.append(None)
 
                 # Output section
@@ -352,31 +344,24 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                     out_text = p.tr.content
                 else:
                     out_text = json.dumps(p.tr.content, ensure_ascii=False)
-
-                all_lines.append(f'  {DIM}OUTPUT ({p.tr.output_chars:,} chars):{RESET}')
+                all_lines.append(f'  {DIM}OUTPUT ({p.tr.output_chars:,} chars):{SOFT_RESET}')
                 all_keys.append(None)
-
-                out_lines = out_text.split('\n')
                 rendered_out = 0
-                for oline in out_lines:
-                    for line_start in range(0, max(len(oline), 1), wrap_width):
-                        if rendered_out >= OUT_MAX_LINES:
-                            break
-                        chunk = oline[line_start:line_start + wrap_width]
-                        all_lines.append(f'    {DIM}{chunk}{RESET}')
-                        all_keys.append(None)
-                        rendered_out += 1
+                for oline in out_text.split('\n'):
                     if rendered_out >= OUT_MAX_LINES:
                         break
-                if rendered_out >= OUT_MAX_LINES and (len(out_lines) > 1 or len(out_lines[0]) > wrap_width * OUT_MAX_LINES):
-                    all_lines.append(f'    {DIM}… (truncated){RESET}')
+                    all_lines.append(f'    {DIM}{oline}{SOFT_RESET}')
+                    all_keys.append(None)
+                    rendered_out += 1
+                if rendered_out >= OUT_MAX_LINES:
+                    all_lines.append(f'    {DIM}… (truncated){SOFT_RESET}')
                     all_keys.append(None)
 
                 all_lines.append('')
                 all_keys.append(None)
             else:
                 inline = first_word_of_call(p.tu.name, p.tu.input)
-                collapsed_line = f'{header_line}  {DIM}{inline}{RESET}'
+                collapsed_line = f'{header_line}  {DIM}{inline}{SOFT_RESET}'
                 all_lines.append(collapsed_line)
                 all_keys.append(idx)
 
@@ -386,19 +371,16 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
 
     rendered: List[str] = []
     header_offset = 2  # row 1 = header line, body starts at row 2
-    screen_row = header_offset
-    for row_offset, line in enumerate(visible_lines):
-        key = visible_keys[row_offset]
-        span = visual_line_count(line, pane_width)
+    phys_row = header_offset
+    for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
+        logical_idx = waste_scroll_offset + i
+        zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+        is_hovered = (key is not None and waste_hover_row is not None
+                      and phys_row == waste_hover_row)
+        chosen_bg = HOVER_BG if is_hovered else zebra_bg
         if key is not None:
-            for r in range(screen_row, screen_row + span):
-                waste_line_map[r] = key
-        hover_active = (
-            waste_hover_row is not None
-            and screen_row <= waste_hover_row < screen_row + span
-            and key is not None
-        )
-        rendered.append(f'{HOVER_BG}{line}{RESET}' if hover_active else line)
-        screen_row += span
+            waste_line_map[phys_row] = key
+        rendered.append(f'{chosen_bg}{truncate_visible(line, pane_width)}\033[K{RESET}')
+        phys_row += 1
 
     return header + '\n' + '\n'.join(rendered)
