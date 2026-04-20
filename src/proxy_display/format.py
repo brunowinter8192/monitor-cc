@@ -2,9 +2,11 @@
 from typing import Optional
 
 from ..constants import (
-    RESET, GREEN, RED, DIM, YELLOW, PASTEL_PURPLE, HOVER_BG,
+    RESET, SOFT_RESET, GREEN, RED, DIM, YELLOW, PASTEL_PURPLE, HOVER_BG,
+    DIM_YELLOW_BG, ZEBRA_BG_A, ZEBRA_BG_B,
 )
 from ..format.token_format import _format_k
+from ..utils import truncate_visible
 from .parser import _chars_to_tokens
 
 # FUNCTIONS
@@ -16,12 +18,12 @@ def _format_tok_est(chars: int) -> str:
 # Format a signed char-count delta with token estimate (GREEN=positive, RED=negative, DIM=zero)
 def _format_delta(label: str, delta: int) -> str:
     if delta == 0:
-        return f"{DIM}Δ{label}:0{RESET}"
+        return f"{DIM}Δ{label}:0{SOFT_RESET}"
     sign = '+' if delta > 0 else '-'
     color = GREEN if delta > 0 else RED
     abs_chars = abs(delta)
     tok_est = _chars_to_tokens(abs_chars)
-    return f"{color}Δ{label}:{sign}{_format_k(abs_chars)}(~{_format_k(tok_est)}tok){RESET}"
+    return f"{color}Δ{label}:{sign}{_format_k(abs_chars)}(~{_format_k(tok_est)}tok){SOFT_RESET}"
 
 # Shorten full model name to family label
 def _shorten_model(model: str) -> str:
@@ -57,7 +59,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     from .render_entry import _render_entry_lines
     from .render_turn import render_turn_expanded
     if not entries:
-        return (f"{YELLOW}No API requests logged yet{RESET}", 0)
+        return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
 
     if expand_states is None:
         expand_states = {}
@@ -98,7 +100,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             type_changed = prev_think_type is not None and prev_think_type != '?' and think_type != '?' and think_type != prev_think_type
             effort_color = RED if effort_changed else ''
             budget_color = RED if (budget_changed or type_changed) else ''
-            config_str = f"  {effort_color}effort:{effort_short}{RESET if effort_color else ''}  {budget_color}think:{budget_str}({think_type}){RESET if budget_color else ''}"
+            config_str = f"  {effort_color}effort:{effort_short}{SOFT_RESET if effort_color else ''}  {budget_color}think:{budget_str}({think_type}){SOFT_RESET if budget_color else ''}"
 
             if prev_group_last_entry is not None:
                 ple = prev_group_last_entry
@@ -107,7 +109,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 d_msgs = last_msgs - ple.get('messages_total_chars', 0)
                 delta_str = f"  {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}"
             else:
-                delta_str = f"  {DIM}(first turn){RESET}"
+                delta_str = f"  {DIM}(first turn){SOFT_RESET}"
 
             turn_key = ('turn', turn_idx)
             is_turn_expanded = expand_states.get(turn_key, False)
@@ -116,7 +118,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
 
             if item_positions_out is not None:
                 item_positions_out[turn_key] = len(all_lines)
-            all_lines.append(f"{PASTEL_PURPLE}{turn_symbol} Turn {turn_idx + 1} [{turn_ts}]{config_str}{delta_str}{RESET}")
+            all_lines.append(f"{PASTEL_PURPLE}{turn_symbol} Turn {turn_idx + 1} [{turn_ts}]{config_str}{delta_str}{SOFT_RESET}")
             line_keys.append(turn_key)
 
             if prev_group_last_entry is not None:
@@ -124,9 +126,9 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 prev_sys = ple.get('system_total_chars', ple.get('system_prompt_chars', 0))
                 prev_tools = ple.get('tools_total_chars', ple.get('tools_chars', 0))
                 prev_msgs = ple.get('messages_total_chars', 0)
-                all_lines.append(f"  {DIM}total: tools:{_format_k(prev_tools)}  msgs:{_format_k(prev_msgs)}{RESET}")
+                all_lines.append(f"  {DIM}total: tools:{_format_k(prev_tools)}  msgs:{_format_k(prev_msgs)}{SOFT_RESET}")
             else:
-                all_lines.append(f"  {DIM}total: (first turn){RESET}")
+                all_lines.append(f"  {DIM}total: (first turn){SOFT_RESET}")
             line_keys.append(None)
 
             if is_turn_expanded:
@@ -201,9 +203,16 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     for row_offset, line in enumerate(visible_lines):
         row = row_offset + 1
         key = visible_keys[row_offset]
-        if key is not None and hover_row is not None and row == hover_row:
-            result_lines.append(f"{HOVER_BG}{line}{RESET}")
+        logical_idx = start + row_offset
+        zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+        is_hovered = key is not None and hover_row is not None and row == hover_row
+        if is_hovered:
+            chosen_bg = HOVER_BG
+        elif DIM_YELLOW_BG in line:
+            chosen_bg = DIM_YELLOW_BG
         else:
-            result_lines.append(line)
+            chosen_bg = zebra_bg
+        trunc = truncate_visible(line, pane_width)
+        result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
 
     return '\n'.join(result_lines), total_lines
