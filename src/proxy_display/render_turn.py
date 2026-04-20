@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from ..constants import (
-    RESET, RED, WHITE, YELLOW,
+    SOFT_RESET, RED, WHITE, YELLOW,
 )
 from .format import _shorten_model, _format_delta, _format_k
 
@@ -57,9 +57,9 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
                     break
         if prev_same is not None:
             if entry.get('tools_hash') and prev_same.get('tools_hash') and entry.get('tools_hash') != prev_same.get('tools_hash'):
-                warn_parts.append(f"{RED}⚠T{RESET}")
+                warn_parts.append(f"{RED}⚠T{SOFT_RESET}")
             if entry.get('system_total_chars') is not None and prev_same.get('system_total_chars') is not None and entry.get('system_total_chars') != prev_same.get('system_total_chars'):
-                warn_parts.append(f"{RED}⚠S{RESET}")
+                warn_parts.append(f"{RED}⚠S{SOFT_RESET}")
 
         e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
         e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
@@ -85,11 +85,11 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         _t_added = len(set(_curr_tools) - set(_prev_tools))
         _t_removed = len(set(_prev_tools) - set(_curr_tools))
         if _t_added > 0 and _t_removed > 0:
-            mods_str = f" {YELLOW}🔧+{_t_added}-{_t_removed}{RESET}"
+            mods_str = f" {YELLOW}🔧+{_t_added}-{_t_removed}{SOFT_RESET}"
         elif _t_added > 0:
-            mods_str = f" {YELLOW}🔧+{_t_added}{RESET}"
+            mods_str = f" {YELLOW}🔧+{_t_added}{SOFT_RESET}"
         elif _t_removed > 0:
-            mods_str = f" {YELLOW}🔧-{_t_removed}{RESET}"
+            mods_str = f" {YELLOW}🔧-{_t_removed}{SOFT_RESET}"
         else:
             mods_str = ''
 
@@ -112,7 +112,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         else:
             cr_cc_str = ''
 
-        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{RESET}")
+        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{SOFT_RESET}")
         keys.append(req_key)
 
         if is_req_expanded:
