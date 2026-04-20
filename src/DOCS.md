@@ -15,8 +15,8 @@ cd Monitor_CC/
 ```
 src/
 ├── __init__.py
-├── monitor.py            → Core polling orchestrator (~460 lines)
 ├── proxy_pane.py         → Proxy pane + log parsing
+├── core/                 → [DOCS.md](core/DOCS.md) Core monitoring loop subpackage
 ├── panes/                → [DOCS.md](panes/DOCS.md) Pane event loops subpackage
 ├── workers/              → [DOCS.md](workers/DOCS.md) Workers pane subpackage
 ├── hooks/                → [DOCS.md](hooks/DOCS.md) Hooks pane subpackage
@@ -107,15 +107,11 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 ---
 
-## monitor.py
+## core/
 
-**Purpose:** Core polling orchestrator (~460 lines). Session discovery, streaming loop, tool call routing, task/subagent tracking. Delegates pane rendering to dedicated pane modules.
+See [core/DOCS.md](core/DOCS.md).
 
-**Input:** `project_filter` (optional path), `mode` (main/subagent/all/rules/warnings/hooks/tokens/workers/subagents/proxy), `ui_mode` (bool).
-
-**Output:** Formatted tool calls to console. Routes to pane-specific loops via `run_monitor()`.
-
-**Session-Scoping:** `_get_session_start_ts()` extracts first message timestamp from newest main session JSONL minus 60s buffer as cutoff.
+**Modules:** `monitor.py` (session discovery + streaming loop), `monitor_session.py` (per-session JSONL processing), `monitor_display.py` (terminal output for main pane).
 
 ---
 
