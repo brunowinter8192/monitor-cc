@@ -146,5 +146,6 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
 
     visible_lines = all_lines[start:end]
     visible_keys = line_keys[start:end]
+    initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
 
-    return visible_lines, visible_keys, sticky_header, start
+    return visible_lines, visible_keys, sticky_header, start, initial_parent_count
