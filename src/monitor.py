@@ -46,13 +46,13 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
         from .workers import run_workers_loop
         run_workers_loop()
     elif mode == MODE_TOKENS:
-        from .token_pane import run_tokens_loop
+        from .panes import run_tokens_loop
         run_tokens_loop()
     elif mode == MODE_RULES:
-        from .rules_pane import run_rules_loop
+        from .panes import run_rules_loop
         run_rules_loop()
     elif mode == MODE_WARNINGS:
-        from .warnings_pane import run_warnings_loop
+        from .panes import run_warnings_loop
         run_warnings_loop()
     elif mode == MODE_HOOKS:
         from .hooks import run_hooks_loop
@@ -70,7 +70,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: 
         from .metadata import run_worker_metadata_loop
         run_worker_metadata_loop()
     elif mode == MODE_WASTE:
-        from .waste_pane import run_waste_loop
+        from .panes import run_waste_loop
         run_waste_loop()
     else:
         sessions = find_active_sessions(active_project_filter)
@@ -158,7 +158,7 @@ def filter_sessions_by_mode(sessions: list, mode: str) -> list:
 
 # Runs continuous streaming monitor loop
 def run_streaming_loop() -> None:
-    from .rules_pane import process_hook_log
+    from .panes import process_hook_log
     load_historical_main()
     current_main_session = _get_newest_main_session()
     while True:

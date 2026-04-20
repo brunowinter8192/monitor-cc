@@ -7,7 +7,7 @@ from .constants import MODE_WARNINGS, MODE_TOKENS, MODE_MAIN, MODE_SUBAGENT, TOO
 # From jsonl/: Parse JSONL and extract tool calls
 from .jsonl import parse_new_tool_calls
 # From warnings_pane.py: Unknown type tracking
-from .warnings_pane import track_unknown_type
+from .panes import track_unknown_type
 # From ui_mode.py: Subagent metadata tracking
 from .ui_mode import track_subagent_metadata
 # From monitor_display.py: Console output for tool calls and session status

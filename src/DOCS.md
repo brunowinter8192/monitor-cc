@@ -16,14 +16,11 @@ cd Monitor_CC/
 src/
 ├── __init__.py
 ├── monitor.py            → Core polling orchestrator (~460 lines)
-├── token_pane.py         → Token profiling pane
 ├── proxy_pane.py         → Proxy pane + log parsing
+├── panes/                → [DOCS.md](panes/DOCS.md) Pane event loops subpackage
 ├── workers/              → [DOCS.md](workers/DOCS.md) Workers pane subpackage
 ├── hooks/                → [DOCS.md](hooks/DOCS.md) Hooks pane subpackage
 ├── metadata/             → [DOCS.md](metadata/DOCS.md) Metadata pane subpackage
-├── rules_pane.py         → Rules pane + InstructionsLoaded routing
-├── warnings_pane.py      → Warnings pane
-├── waste_pane.py         → Waste-calls pane (live ratio outlier view)
 ├── subagents/            → [DOCS.md](subagents/DOCS.md) Subagents pane subpackage (deprecated)
 ├── formatter.py          → Shared tool call formatting (~230 lines)
 ├── jsonl/                → [DOCS.md](jsonl/DOCS.md) JSONL parsing subpackage
@@ -122,13 +119,11 @@ launch_split_screen(project_filter="/path/to/project", ui=True, script_path="/pa
 
 ---
 
-## token_pane.py
+## panes/
 
-**Purpose:** Token profiling pane. Cache tracker with CR/CC/D per API call, grouped by turn.
+See [panes/DOCS.md](panes/DOCS.md).
 
-**Input:** Session JSONL files (incremental parsing with position tracking).
-
-**Output:** Formatted token display with expand/collapse, hover, scroll. Mouse + keyboard input. Sequential request numbering (independent of proxy pane).
+**Modules:** `token_pane.py` (token/cache tracker loop), `rules_pane.py` (active rules + hook log loop), `warnings_pane.py` (tool errors loop), `waste_pane.py` (proxy forensics loop).
 
 ---
 
@@ -171,36 +166,6 @@ See [hooks/DOCS.md](hooks/DOCS.md).
 See [metadata/DOCS.md](metadata/DOCS.md).
 
 **Modules:** `metadata_format.py` (proxy entry formatting with change-tracking), `metadata_pane.py` (main + worker event loops).
-
----
-
-## rules_pane.py
-
-**Purpose:** Rules pane. Active rules display with [P]/[G] prefix, InstructionsLoaded routing from hook log.
-
-**Input:** Hook log entries (InstructionsLoaded events).
-
-**Output:** Rules list with expand/collapse, source labels.
-
----
-
-## waste_pane.py
-
-**Purpose:** Live waste-calls pane. Reads the current session's proxy JSONL (`api_requests_<log_id>.jsonl`) via marker file, extracts matched tool_use/tool_result `Pair` objects, filters by `ratio >= threshold` (input_chars / output_chars), and displays sorted descending. Click to expand full command + output. High ratio = sent much input, got little output back.
-
-**Input:** Current proxy JSONL (discovered via `.proxy_session_<hash>` marker file in `src/logs/`). Session changes trigger full reset. Threshold configurable via digit keys 1–9 (key 0 resets to default 3).
-
-**Output:** Interactive pane with mouse support (click expand/collapse, scroll, hover). Header shows threshold and count above threshold. Each row: `[HH:MM:SS] ToolName  ratio=N  in=N  out=N  command_preview`. Expanded: full command text + output content. Excluded tools: Edit, Write, worker_send (content-driven, ratio misleading).
-
----
-
-## warnings_pane.py
-
-**Purpose:** Warnings pane. Two sections: (1) Unknown JSONL message types from session parsing, (2) Tool errors detected from Proxy JSONL (expandable with full error text).
-
-**Input:** Unknown type entries from session processing + Proxy JSONL entries (incremental read via `parse_proxy_log`).
-
-**Output:** Interactive pane with mouse support (click expand/collapse, scroll). Format Warnings section (type counts) + Tool Errors section (timestamp, tool name, error summary, expandable full text).
 
 ---
 

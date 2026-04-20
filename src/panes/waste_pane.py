@@ -7,16 +7,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional
 
-from .constants import (
+from ..constants import (
     YELLOW, ORANGE, DIM, WHITE, RESET, HOVER_BG,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
 )
-from .click_handler import (
+from ..click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
-from .proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path
-from .utils import visual_line_count, first_word_of_call, _iso_to_float, format_worker_prefix
+from ..proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path
+from ..utils import visual_line_count, first_word_of_call, _iso_to_float, format_worker_prefix
 
 # --- INLINED from former src/proxy_forensics.py (library removed 2026-04-19) ---
 
