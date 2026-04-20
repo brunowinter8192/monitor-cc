@@ -78,7 +78,7 @@ def format_warnings_block() -> str:
 
 # Load historical warnings from newest main session
 def load_historical_warnings() -> None:
-    from . import monitor as _monitor
+    from .. import monitor as _monitor
     main_sessions = _monitor.get_main_session_files()
     if main_sessions:
         filepath = main_sessions[0]
@@ -358,9 +358,9 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
 
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
-    from . import monitor as _monitor
-    from .proxy_display.parser import parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts, find_proxy_log_path
-    from .click_handler import (
+    from .. import monitor as _monitor
+    from ..proxy_display.parser import parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts, find_proxy_log_path
+    from ..click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
     )
