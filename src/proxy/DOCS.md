@@ -35,13 +35,23 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (317 LOC)
+### rules_config.py (82 LOC)
 
-**Purpose:** Apply proxy modification rules — load system2 and project rule files from `~/.claude/shared-rules/`, inject into `system[2]` and `messages[0]`, strip system-reminders and task-notification tags.
-**Reads:** `~/.claude/shared-rules/proxy_rules.json` and rule files (mtime-cached); raw payload dict.
+**Purpose:** Load and cache proxy rule files — reads `proxy_rules.json`, caches rule file content by mtime, assembles system2 rule text for a given model family and project path.
+**Reads:** `~/.claude/shared-rules/proxy_rules.json` and rule files (mtime-cached).
+**Writes:** Nothing — returns config dict or assembled rule text.
+**Called by:** `rules.py`, `inject_helpers.py`
+**Calls out:** stdlib only (`json`, `pathlib`).
+
+---
+
+### rules.py (243 LOC)
+
+**Purpose:** Apply proxy modification rules — strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported function `apply_modification_rules`. Remainder 243 LOC is a single monolithic function body — further split requires refactoring.
+**Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** —
+**Calls out:** `rules_config`, `content_strip`, `payload_helpers`.
 
 ---
 
@@ -55,10 +65,20 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### content_strip.py (284 LOC)
+### strip_sr.py (179 LOC)
 
-**Purpose:** Strip or extract specific content blocks from API message payloads — plan-mode blocks, system-reminder blocks, user-interrupt SRs, rejection messages, session-guidance sections, gitStatus from sys[3].
+**Purpose:** Strip `<system-reminder>` tag blocks from API message content — plan-mode blocks, all SR blocks, user-interrupt SRs (IMPORTANT-line only), marker-matched SRs, Pyright diagnostics SRs. Handles both string and list-of-blocks content shapes.
 **Reads:** Message content (string or list of blocks); marker strings.
+**Writes:** Nothing — returns modified content.
+**Called by:** `src/proxy/rules.py`
+**Calls out:** stdlib only (`re`).
+
+---
+
+### content_strip.py (104 LOC)
+
+**Purpose:** Strip or extract non-SR content from API message payloads — rejection tool_result blocks, SessionStart SR extraction, session-guidance section removal, gitStatus stripping from sys[3].
+**Reads:** Message content (string or list of blocks).
 **Writes:** Nothing — returns modified content or extracted text.
 **Called by:** `src/proxy/rules.py`
 **Calls out:** —
@@ -128,7 +148,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 ### inject_helpers.py (80 LOC)
 
 **Purpose:** Inject model override (model/thinking/effort/max_tokens) and `context_management` payload block from `proxy_rules.json` config.
-**Reads:** Payload dict, model_family string; `proxy_rules.json` via `rules._load_config()`.
+**Reads:** Payload dict, model_family string; `proxy_rules.json` via `rules_config._load_config()`.
 **Writes:** Nothing — returns `(modified_payload, injected_bool)`.
 **Called by:** `src/proxy/addon.py`
 **Calls out:** —

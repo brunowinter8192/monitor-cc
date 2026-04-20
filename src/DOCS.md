@@ -15,7 +15,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | Subdir | Role | LOC | Modules |
 |---|---|---|---|
 | `core/` | Session polling orchestrator + main-pane output | 493 | 3 |
-| `panes/` | Tmux pane event loops (tokens, rules, warnings, waste) | 1345 | 4 |
+| `panes/` | Tmux pane event loops (tokens, rules, warnings, waste) | 1345 | 6 |
 | `format/` | ANSI string rendering (tool calls, events, cache tracker) | 450 | 3 |
 | `input/` | Keyboard/mouse stdin handling + UI state | 231 | 2 |
 | `hooks/` | Hook log pipeline (parse → filter → enrich → display) | 470 | 4 |
@@ -23,7 +23,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `workers/` | Workers pane (tmux session discovery + status display) | 420 | 3 |
 | `metadata/` | Metadata pane (API config state from proxy log) | 297 | 2 |
 | `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering) | 1463 | 8 |
-| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2002 | 13 |
+| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2002 | 15 |
 
 ## Root-Level Files
 

@@ -47,23 +47,43 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_pane.py (503 LOC)
+### warnings_parse.py (110 LOC)
 
-**Purpose:** Warnings pane — two sections: (1) unknown JSONL message types from session parsing, (2) tool errors from proxy JSONL. Scrollable expand/collapse list. Also exposes `track_unknown_type()` for `monitor_session`.
-**Reads:** Proxy JSONL (incremental via `_proxy_log_position`); worker log files; shared state `monitor.active_project_filter`.
-**Writes:** stdout (ANSI screen); mutates `tool_errors`, `error_expand_states`, `error_line_map`, `warned_unknown_types`, `unknown_type_counts`.
-**Called by:** `core/monitor.py` (mode dispatch); `core/monitor_session.py` (`track_unknown_type`).
-**Calls out:** `core.monitor` (lazy), `proxy_display.parser` (lazy), `input.click_handler` (lazy).
+**Purpose:** Pure parsing/classification helpers and unknown-type tracking state for the warnings pane. No UI concerns.
+**Reads:** Proxy entry dicts (passed in as lists); reads `unknown_type_counts` module state.
+**Writes:** Mutates `unknown_type_counts`, `warned_unknown_types` (module-level state).
+**Called by:** `warnings_pane.py`; `panes.__init__` (re-exports `track_unknown_type`); `core/monitor_session.py` (via package import).
+**Calls out:** stdlib only (`json`, `datetime`), `constants`.
 
 ---
 
-### waste_pane.py (519 LOC)
+### warnings_pane.py (403 LOC)
 
-**Purpose:** Proxy forensics / waste pane — reads proxy JSONL, extracts tool_use/tool_result pairs, filters by `input_chars/output_chars >= threshold`, displays sorted descending. Digit keys 1–9 set threshold.
+**Purpose:** Warnings pane event loop — two sections: (1) unknown JSONL types, (2) tool errors + zero-result calls from proxy JSONL. Scrollable expand/collapse. Remainder 403 LOC is cohesive by shared event-state globals (scanner + renderer + loop share `tool_errors`, `_seen_*_keys`, `_monitor_start_ts`) — further split would require refactoring.
+**Reads:** Proxy JSONL (incremental via `_proxy_log_position`); worker log files; shared state `monitor.active_project_filter`.
+**Writes:** stdout (ANSI screen); mutates `tool_errors`, `error_expand_states`, `error_line_map`, `zero_results`, `schema_warnings`.
+**Called by:** `core/monitor.py` (mode dispatch).
+**Calls out:** `core.monitor` (lazy), `proxy_display.parser` (lazy), `input.click_handler` (lazy), `panes.warnings_parse`.
+
+---
+
+### waste_forensics.py (115 LOC)
+
+**Purpose:** Data model for proxy forensics — `ToolUse`, `ToolResult`, `Pair` dataclasses plus `tool_use_blocks()`, `tool_result_blocks()`, `pairs()`, `format_timestamp_local()`. No UI concerns.
+**Reads:** Raw proxy event dicts (passed in as lists).
+**Writes:** Nothing (pure functions + frozen dataclasses).
+**Called by:** `waste_pane.py`.
+**Calls out:** stdlib only (`json`, `datetime`).
+
+---
+
+### waste_pane.py (404 LOC)
+
+**Purpose:** Proxy forensics / waste pane — reads proxy JSONL, extracts tool_use/tool_result pairs via `waste_forensics`, filters by `input_chars/output_chars >= threshold`, displays sorted descending. Digit keys 1–9 set threshold. Remainder 404 LOC is cohesive by shared globals (event loop + data layer + renderer all share module-level state) — further split would require refactoring.
 **Reads:** Proxy JSONL (via marker file discovery in `proxy_display.parser`); shared state `monitor.active_project_filter`.
 **Writes:** stdout (ANSI screen); mutates `_waste_above`, `waste_expand_states`, `waste_line_map`, `waste_threshold`.
 **Called by:** `core/monitor.py` (mode dispatch).
-**Calls out:** `input.click_handler`, `proxy_display.parser`, `core.monitor` (lazy).
+**Calls out:** `input.click_handler`, `proxy_display.parser`, `core.monitor` (lazy), `panes.waste_forensics`.
 
 ---
 
@@ -75,6 +95,7 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 |---|---|
 | `token_pane` | `cache_expand_states`, `cache_line_map`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position` |
 | `rules_pane` | `active_rules`, `rules_invokers`, `rules_expand_states`, `rules_scroll_offset` |
+| `warnings_parse` | `unknown_type_counts`, `warned_unknown_types` |
 | `warnings_pane` | `tool_errors`, `error_expand_states`, `error_scroll_offset`, `_proxy_log_position` |
 | `waste_pane` | `_waste_above`, `waste_expand_states`, `waste_threshold` |
 
