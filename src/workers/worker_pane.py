@@ -26,6 +26,7 @@ worker_hover_row: Optional[int] = None
 worker_cache_expand_states: Dict[str, Dict[tuple, bool]] = {}
 worker_cache_line_map: Dict[int, tuple] = {}
 worker_selected_name: Optional[str] = None
+worker_scroll_offset: int = 0
 
 # FUNCTIONS
 
@@ -53,7 +54,7 @@ def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
     from ..core import monitor as _monitor
-    global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map, worker_selected_name
+    global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map, worker_selected_name, worker_scroll_offset
     last_output = None
     workers = []
     worker_turns: Dict[str, list] = {}
@@ -88,16 +89,12 @@ def run_workers_loop() -> None:
                                         if is_now_expanded:
                                             worker_scroll_offsets[name] = 0
                                         input_changed = True
-                            elif button == 64:
-                                name = worker_line_map.get(row)
-                                if name:
-                                    worker_scroll_offsets[name] = max(0, worker_scroll_offsets.get(name, 0) + 3)
-                                    input_changed = True
-                            elif button == 65:
-                                name = worker_line_map.get(row)
-                                if name:
-                                    worker_scroll_offsets[name] = max(0, worker_scroll_offsets.get(name, 0) - 3)
-                                    input_changed = True
+                            elif button == 64:  # wheel up → older content
+                                worker_scroll_offset = max(0, worker_scroll_offset + 3)
+                                input_changed = True
+                            elif button == 65:  # wheel down → newer content
+                                worker_scroll_offset = max(0, worker_scroll_offset - 3)
+                                input_changed = True
                             elif button >= 32:
                                 worker_hover_row = row
                                 input_changed = True
@@ -158,11 +155,12 @@ def run_workers_loop() -> None:
                 except OSError:
                     pane_width = 80
                     pane_height = 50
-                # Viewport clipping (bottom-anchored): phys_row 1..N must equal
-                # terminal row 1..N. Without clipping, content > pane_height causes
-                # the terminal to scroll, breaking the phys_row↔terminal-row mapping.
+                # Viewport clipping: phys_row 1..N must equal terminal row 1..N.
+                # worker_scroll_offset > 0 shifts viewport toward older content.
                 total_lines = len(all_lines)
-                vp_start = max(0, total_lines - pane_height)
+                max_offset = max(0, total_lines - pane_height)
+                worker_scroll_offset = min(worker_scroll_offset, max_offset)
+                vp_start = max(0, total_lines - pane_height - worker_scroll_offset)
                 visible_all = all_lines[vp_start:]
                 visible_keys = line_keys[vp_start:]
                 worker_line_map.clear()
