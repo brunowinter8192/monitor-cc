@@ -50,7 +50,7 @@ from src.format import _format_k          # compact "Xk" token count — used by
 **Purpose:** Render the token/cache tracker view — groups API calls into turns with CR/CC/D counts, handles expand/collapse, hover highlight, scroll, and viewport clipping. Also provides `_format_k` for compact token counts.
 **Reads:** Cache turn lists, expand state dicts, pane dimensions, scroll offset — all passed as arguments.
 **Writes:** Returns ANSI screen string. No stdout, no file writes.
-**Called by:** `panes/token_pane.py` (`format_cache_tracker`); `workers/worker_format.py`, `metadata/metadata_format.py`, `proxy_display/format.py`, `subagents/subagent_render.py` (`_format_k`, `format_cache_tracker`).
+**Called by:** `panes/token_pane.py` (`format_cache_tracker`); `workers/worker_format.py`, `metadata/metadata_format.py`, `proxy_display/format.py` (`_format_k`).
 **Calls out:** `format.formatter` (lazy, `shorten_tool_name` for tool name abbreviation in cache rows).
 
 ## Gotchas

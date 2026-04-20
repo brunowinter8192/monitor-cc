@@ -6,16 +6,16 @@ import sys
 from typing import Optional
 
 # From constants.py: Colors and config values
-from .constants import GREEN, YELLOW, BLUE, CYAN, TMUX_HISTORY_LIMIT
+from .constants import TMUX_HISTORY_LIMIT
 
 # ORCHESTRATOR
-def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, script_path: str = '') -> None:
+def launch_split_screen(project_filter: Optional[str] = None, script_path: str = '') -> None:
     if not is_tmux_installed():
         print("Error: tmux is not installed. Install with: brew install tmux")
         sys.exit(1)
 
     if is_inside_tmux():
-        print("Error: Already inside tmux session. Use --mode main or --mode subagent")
+        print("Error: Already inside tmux session. Use --mode main")
         sys.exit(1)
 
     session_name = generate_session_name(project_filter)
@@ -26,7 +26,6 @@ def launch_split_screen(project_filter: Optional[str] = None, ui: bool = False, 
         kill_session(session_name)
 
     project_arg = f"--project {project_filter}" if project_filter else ""
-    ui_flag = "--ui" if ui else ""
 
     main_cmd = f"python3 {script_path} --mode main {project_arg}"
     tokens_cmd = f"python3 {script_path} --mode tokens {project_arg}"

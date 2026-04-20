@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional
 
-from ..constants import RESET, GREEN, YELLOW, CYAN, MODE_ALL, MODE_MAIN, MODE_SUBAGENT
+from ..constants import RESET, GREEN, YELLOW, CYAN, MODE_ALL, MODE_MAIN
 from ..format.formatter import format_tool_call
 from ..format.formatter_events import format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_system_message
 
@@ -105,8 +105,6 @@ def print_session_status(session_count: int, project_filter: Optional[str] = Non
         mode_label = ''
         if mode == MODE_MAIN:
             mode_label = ' (main agent only)'
-        elif mode == MODE_SUBAGENT:
-            mode_label = ' (subagent only)'
 
         print(f"{GREEN}Monitoring {session_count} sessions{mode_label}{RESET}")
         if project_filter:

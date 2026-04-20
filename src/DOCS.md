@@ -2,7 +2,7 @@
 
 ## Role
 
-Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output files and the mitmproxy API log, formats tool calls and events to a terminal, and drives 10 dedicated tmux panes (tokens, rules, hooks, warnings, waste, workers, proxy, metadata, subagents). The `src/` tree is the entire application — `workflow.py` at the project root is just a 25-line entry point.
+Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output files and the mitmproxy API log, formats tool calls and events to a terminal, and drives 10 dedicated tmux panes (tokens, rules, hooks, warnings, waste, workers, worker-proxy, worker-metadata, proxy, metadata). The `src/` tree is the entire application — `workflow.py` at the project root is just a 25-line entry point.
 
 ## Entry Points
 
@@ -23,7 +23,6 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `workers/` | Workers pane (tmux session discovery + status display) | 420 | 3 |
 | `metadata/` | Metadata pane (API config state from proxy log) | 297 | 2 |
 | `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering) | 1463 | 8 |
-| `subagents/` | Subagent pane (deprecated, kept for UI mode) | 449 | 4 |
 | `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2002 | 13 |
 
 ## Root-Level Files
@@ -35,9 +34,8 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `session_finder.py` | 85 | Single module, no subpackage warranted |
 | `startup.py` | 48 | Single module; only called by `workflow.py` |
 | `tmux_launcher.py` | 179 | Single module; only called by `workflow.py` |
-| `proxy_addon.py` | 31 | mitmproxy `-s` entry point — must be a direct path, not a package import |
+| `proxy_addon.py` | 31 | Thin shim — `claude_proxy_start.sh` copies it to `src/logs/.proxy_addon_live_<id>.py` for per-session isolation. Shim has sys.path logic that finds `src/proxy/` from both root and live-copy locations. Move would break live-copy pattern. |
 | `claude_proxy_start.sh` | 166 | Shell script — launches mitmproxy + Claude Code with proxy env |
-| `proxy_launcher.sh` | 33 | Shell script — standalone mitmproxy-only launcher |
 
 ## Flow (Main Session)
 
@@ -70,4 +68,4 @@ All runtime state lives in `core/monitor.py` as module-level variables. Every pa
 - [workers/DOCS.md](workers/DOCS.md) — worker_pane, worker_format, worker_tmux
 - [metadata/DOCS.md](metadata/DOCS.md) — metadata_pane, metadata_format
 - [proxy_display/DOCS.md](proxy_display/DOCS.md) — proxy pane TUI (8 modules)
-- [subagents/DOCS.md](subagents/DOCS.md) — subagent pane (deprecated)
+- [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (13 modules)

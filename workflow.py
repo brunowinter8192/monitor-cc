@@ -14,12 +14,12 @@ from src.core.monitor import run_monitor
 def main() -> None:
     args = parse_arguments()
     if args.mode == 'all':
-        launch_split_screen(args.project, args.ui, os.path.abspath(__file__))
+        launch_split_screen(args.project, os.path.abspath(__file__))
     else:
         setup_signal_handlers()
         if args.mode not in ('rules', 'warnings', 'hooks', 'tokens', 'workers', 'metadata', 'waste'):
             print_startup_message(args.project, args.mode)
-        run_monitor(args.project, args.mode, args.ui)
+        run_monitor(args.project, args.mode)
 
 if __name__ == "__main__":
     main()

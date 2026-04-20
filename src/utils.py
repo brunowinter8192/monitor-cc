@@ -3,7 +3,7 @@ from datetime import datetime
 import re
 
 # From constants.py: Unified color palette
-from .constants import RESET, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, PURPLE, ORANGE, WORKER_COL_WIDTH
+from .constants import RESET, YELLOW, WORKER_COL_WIDTH
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 

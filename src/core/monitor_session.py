@@ -1,15 +1,12 @@
 # INFRASTRUCTURE
 from pathlib import Path
-from typing import Dict
 
 # From constants.py: Mode constants and tool name
-from ..constants import MODE_WARNINGS, MODE_TOKENS, MODE_MAIN, MODE_SUBAGENT, TOOL_TASK
+from ..constants import MODE_WARNINGS, MODE_TOKENS, MODE_MAIN, TOOL_TASK
 # From jsonl/: Parse JSONL and extract tool calls
 from ..jsonl import parse_new_tool_calls
 # From warnings_pane.py: Unknown type tracking
 from ..panes import track_unknown_type
-# From ui_mode.py: Subagent metadata tracking
-from ..input.ui_mode import track_subagent_metadata
 # From monitor_display.py: Console output for tool calls and session status
 from .monitor_display import display_warning, display_user_media, display_skill_activation, display_thinking, display_tool_call, display_user_prompt_from_jsonl, display_system_message
 
@@ -76,7 +73,7 @@ def process_session_file(filepath: Path) -> None:
         elif is_task_response(tool_call):
             handle_task_response(tool_call)
         elif is_subagent_call(tool_call):
-            handle_subagent_call(tool_call, filepath)
+            handle_subagent_call(tool_call)
         else:
             _monitor.call_counter += 1
             display_tool_call(tool_call, _monitor.call_counter)
@@ -112,10 +109,9 @@ def handle_task_response(tool_call: dict) -> int:
         _monitor.agent_to_type[spawned_agent_id] = subagent_type
 
         if spawned_agent_id in _monitor.buffered_subagent_calls:
-            if not _monitor.ui_mode_active:
-                for buffered_call in _monitor.buffered_subagent_calls[spawned_agent_id]:
-                    _monitor.call_counter += 1
-                    display_tool_call(buffered_call, _monitor.call_counter)
+            for buffered_call in _monitor.buffered_subagent_calls[spawned_agent_id]:
+                _monitor.call_counter += 1
+                display_tool_call(buffered_call, _monitor.call_counter)
             del _monitor.buffered_subagent_calls[spawned_agent_id]
 
     _monitor.call_counter += 1
@@ -123,37 +119,21 @@ def handle_task_response(tool_call: dict) -> int:
     return 1
 
 # Handle tool call from subagent
-def handle_subagent_call(tool_call: dict, filepath: Path) -> tuple:
+def handle_subagent_call(tool_call: dict) -> None:
     from . import monitor as _monitor
 
     agent_id = tool_call.get('agent_id')
-    ui_tracked = 0
-    displayed = 0
-    buffered = 0
 
     if _monitor.active_mode == MODE_MAIN:
-        return ui_tracked, displayed, buffered
+        return
 
-    if _monitor.ui_mode_active:
-        ui_tracked = 1
-        _monitor.call_counter += 1
-        tool_call['call_number'] = _monitor.call_counter
-        track_subagent_metadata(tool_call, filepath, _monitor.subagent_metadata, _monitor.tool_calls_by_agent, _monitor.agent_to_task, _monitor.agent_to_type)
-    elif _monitor.active_mode == MODE_SUBAGENT:
-        displayed = 1
-        _monitor.call_counter += 1
-        display_tool_call(tool_call, _monitor.call_counter)
-    elif agent_id and agent_id in _monitor.agent_to_task:
-        displayed = 1
+    if agent_id and agent_id in _monitor.agent_to_task:
         _monitor.call_counter += 1
         display_tool_call(tool_call, _monitor.call_counter)
     elif agent_id:
-        buffered = 1
         if agent_id not in _monitor.buffered_subagent_calls:
             _monitor.buffered_subagent_calls[agent_id] = []
         _monitor.buffered_subagent_calls[agent_id].append(tool_call)
-
-    return ui_tracked, displayed, buffered
 
 # Load historical data from newest main session for initial display
 def load_historical_main() -> None:
@@ -164,17 +144,3 @@ def load_historical_main() -> None:
         _monitor.file_positions[filepath] = 0
         _monitor.tool_use_caches[filepath] = {}
 
-# Load historical data from newest main session + its agent files for subagents pane
-def load_historical_subagents() -> None:
-    from . import monitor as _monitor
-    main_sessions = _monitor.get_main_session_files()
-    if not main_sessions:
-        return
-    filepath = main_sessions[0]
-    _monitor.file_positions[filepath] = 0
-    _monitor.tool_use_caches[filepath] = {}
-    subagents_dir = filepath.parent / filepath.stem / 'subagents'
-    if subagents_dir.exists():
-        for agent_file in subagents_dir.glob('agent-*.jsonl'):
-            _monitor.file_positions[agent_file] = 0
-            _monitor.tool_use_caches[agent_file] = {}

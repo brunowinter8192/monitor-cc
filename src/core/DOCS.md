@@ -10,9 +10,8 @@ Session discovery, polling loop, and terminal output for the main monitoring pan
 from src.core import run_monitor                  # main entry — called by workflow.py
 from src.core import process_session_file         # per-session JSONL processing
 from src.core import get_file_end_position        # init file position at EOF
-from src.core import get_initial_position         # position for new session (0 for subagents)
+from src.core import get_initial_position         # position for new session
 from src.core import load_historical_main         # replay main session on startup
-from src.core import load_historical_subagents    # replay subagent sessions on startup
 from src.core import display_tool_call            # print formatted tool call to stdout
 from src.core import display_warning              # print malformed-JSON warning
 from src.core import display_user_media           # print media items
@@ -37,27 +36,27 @@ workflow.py → run_monitor(project_filter, mode)
 
 ## Modules
 
-### monitor.py (199 LOC)
+### monitor.py (191 LOC)
 
 **Purpose:** Polling orchestrator — discovers sessions, drives the streaming loop, dispatches to pane event loops by mode, and owns all shared state dicts.
 **Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`; hook log position via `hooks`; lazy reads from `panes`, `workers`, `hooks`, `proxy_display`, `metadata`.
-**Writes:** stdout (via `monitor_display`); mutates shared state (`file_positions`, `tool_use_caches`, `agent_to_task`, `agent_to_type`, `buffered_subagent_calls`, `call_counter`, etc.).
+**Writes:** stdout (via `monitor_display`); mutates shared state (`file_positions`, `tool_use_caches`, `agent_to_task`, `agent_to_type`, `buffered_subagent_calls`, `call_counter`).
 **Called by:** `workflow.py` (top-level entry).
 **Calls out:** `session_finder`, `jsonl`, `hooks` (top-level); lazy: `panes`, `workers`, `proxy_display`, `metadata`.
 
 ---
 
-### monitor_session.py (180 LOC)
+### monitor_session.py (146 LOC)
 
 **Purpose:** Per-session JSONL processor — reads new lines, classifies tool calls as task requests/responses, subagent calls, or regular tools, and routes each to the appropriate handler.
 **Reads:** Session JSONL files (incremental, via file positions in `monitor.py` state); shared state from `monitor.py`.
 **Writes:** Mutates `monitor.call_counter`, `monitor.agent_to_task`, `monitor.agent_to_type`, `monitor.buffered_subagent_calls`; calls `monitor_display` for output.
-**Called by:** `monitor.py` via `process_all_sessions()` → `process_session_file()`; also `load_historical_main()` / `load_historical_subagents()` on startup.
-**Calls out:** `jsonl`, `panes` (track_unknown_type), `input.ui_mode` (track_subagent_metadata).
+**Called by:** `monitor.py` via `process_all_sessions()` → `process_session_file()`; also `load_historical_main()` on startup.
+**Calls out:** `jsonl`, `panes` (track_unknown_type).
 
 ---
 
-### monitor_display.py (114 LOC)
+### monitor_display.py (112 LOC)
 
 **Purpose:** Terminal output functions for the main streaming pane — formats and prints tool calls, events, and warnings to stdout.
 **Reads:** Tool call dicts, event dicts, warning dicts passed as arguments.
@@ -86,4 +85,4 @@ All pane modules read this state via `from ..core import monitor as _monitor`.
 
 - `monitor_session.py` lazy-imports `monitor` (`from . import monitor as _monitor`) to avoid circular import at module level — both live in the same package so `.` is correct.
 - Session scoping: `_get_session_start_ts()` reads the newest main session JSONL and subtracts 60s as the cutoff. Changing this affects what history gets replayed on startup.
-- `is_agent_file()` distinguishes main vs. subagent sessions by path pattern — logic must stay in sync with `session_finder.py`.
+- `is_agent_file()` in `monitor.py` filters out subagent JSONLs by path pattern — logic must stay in sync with `session_finder.py` which indexes them.

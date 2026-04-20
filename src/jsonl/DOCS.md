@@ -4,7 +4,7 @@
 
 Session JSONL parsing pipeline. Reads `~/.claude/projects/**/*.jsonl` files incrementally by byte
 offset, correlates tool_use/tool_result pairs, extracts typed metadata (prompts, media, thinking,
-skills, usage), and provides cache-turn data for the token/worker/subagent panes. This is the
+skills, usage), and provides cache-turn data for the token and worker panes. This is the
 single source of truth for all session content — every pane that displays session data reads
 through this package. Touch it when adding new message types, changing extraction logic, or
 modifying cache-turn grouping. Do NOT touch for display logic — that lives in the pane packages.
@@ -23,7 +23,7 @@ modifying cache-turn grouping. Do NOT touch for display logic — that lives in 
 
 `~/.claude/projects/**/*.jsonl` → `jsonl_parser` (incremental read by byte offset, line parse,
 tool_use/tool_result correlation) → `jsonl_extractors` (typed extractions from message list)
-→ callers: `core.monitor`, `panes.token_pane`, `workers`, `subagents`
+→ callers: `core.monitor`, `panes.token_pane`, `workers`
 
 ## Modules
 
@@ -32,7 +32,7 @@ tool_use/tool_result correlation) → `jsonl_extractors` (typed extractions from
 **Purpose:** Core session JSONL parser — reads new lines incrementally by byte offset, correlates tool_use/tool_result pairs, and delegates typed extraction to `jsonl_extractors`.
 **Reads:** Session JSONL file (by `filepath` + `last_position` byte offset); `tool_use_cache` dict for cross-chunk correlation.
 **Writes:** Nothing — returns 10-tuple `(tool_calls, malformed, prompts, media, thinking, skills, usage, system_messages, unknown_types, new_lines)` + new position.
-**Called by:** `src/core/monitor.py`, `src/core/monitor_session.py`, `src/workers/worker_format.py`, `src/workers/worker_pane.py`, `src/panes/token_pane.py`, `src/subagents/subagent_pane.py`
+**Called by:** `src/core/monitor.py`, `src/core/monitor_session.py`, `src/workers/worker_format.py`, `src/workers/worker_pane.py`, `src/panes/token_pane.py`
 **Calls out:** —
 
 ---
@@ -52,5 +52,5 @@ tool_use/tool_result correlation) → `jsonl_extractors` (typed extractions from
 **Purpose:** Extract per-turn cache tracking data grouped by user prompts; each turn contains a list of requests with CR/CC/D/Out token metrics.
 **Reads:** List of message dicts.
 **Writes:** Nothing — returns list of cache turn dicts.
-**Called by:** `src/panes/token_pane.py`, `src/workers/worker_pane.py`, `src/subagents/subagent_pane.py`
+**Called by:** `src/panes/token_pane.py`, `src/workers/worker_pane.py`
 **Calls out:** —

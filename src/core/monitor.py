@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from ..constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_SUBAGENT, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, MODE_WASTE
+from ..constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, MODE_WASTE
 
 # From session_finder.py: Discover active Claude Code sessions
 from ..session_finder import find_active_sessions
@@ -16,7 +16,7 @@ from ..hooks import get_current_position as get_hook_log_position
 # From monitor_display.py: Session status output
 from .monitor_display import print_session_status
 # From monitor_session.py: Session file processing, task handling, historical load
-from .monitor_session import get_file_end_position, get_initial_position, process_session_file, load_historical_main, load_historical_subagents
+from .monitor_session import get_file_end_position, get_initial_position, process_session_file, load_historical_main
 
 file_positions: Dict[Path, int] = {}
 tool_use_caches: Dict[Path, dict] = {}
@@ -27,18 +27,14 @@ buffered_subagent_calls: Dict[str, List[dict]] = {}
 task_requests_seen: Set[str] = set()
 active_project_filter: Optional[str] = None
 active_mode: str = MODE_ALL
-ui_mode_active: bool = False
-subagent_metadata: Dict[str, dict] = {}
-tool_calls_by_agent: Dict[str, List[dict]] = {}
 _last_monitored_count: Optional[int] = None
 hook_log_position: int = 0
 
 # ORCHESTRATOR
-def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL, ui: bool = False) -> None:
-    global active_project_filter, active_mode, ui_mode_active, hook_log_position
+def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> None:
+    global active_project_filter, active_mode, hook_log_position
     active_project_filter = project_filter
     active_mode = mode
-    ui_mode_active = ui
 
     initialize_file_positions()
 
@@ -143,14 +139,10 @@ def process_all_sessions(sessions: list) -> None:
 def is_agent_file(filepath: Path) -> bool:
     return filepath.name.startswith('agent-')
 
-# Filter sessions based on mode (all, main, subagent)
+# Filter sessions based on mode (all vs main-only)
 def filter_sessions_by_mode(sessions: list, mode: str) -> list:
-    if mode in (MODE_ALL, MODE_WARNINGS, MODE_TOKENS):
-        filtered = sessions
-    elif mode == MODE_MAIN:
+    if mode == MODE_MAIN:
         filtered = [s for s in sessions if not is_agent_file(s)]
-    elif mode == MODE_SUBAGENT:
-        filtered = [s for s in sessions if is_agent_file(s)]
     else:
         filtered = sessions
 

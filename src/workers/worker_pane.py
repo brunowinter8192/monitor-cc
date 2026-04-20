@@ -51,7 +51,6 @@ def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None
 def run_workers_loop() -> None:
     from ..core import monitor as _monitor
     global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map, worker_selected_name
-    _monitor.ui_mode_active = True
     last_output = None
     workers = []
     worker_turns: Dict[str, list] = {}

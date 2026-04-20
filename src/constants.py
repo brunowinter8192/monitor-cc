@@ -35,7 +35,6 @@ TOOL_TASK = 'Task'
 # Mode names
 MODE_ALL = 'all'
 MODE_MAIN = 'main'
-MODE_SUBAGENT = 'subagent'
 MODE_RULES = 'rules'
 MODE_WARNINGS = 'warnings'
 MODE_HOOKS = 'hooks'
@@ -153,12 +152,3 @@ TOOL_BLOCKLIST = frozenset({
     "ScheduleWakeup", "Monitor",
 })
 
-# Pane header labels
-PANE_HEADERS = {
-    'main': 'MAIN',
-    'rules': 'RULES',
-    'hooks': 'HOOKS',
-    'warnings': 'WARNINGS',
-    'tokens': 'TOKENS',
-    'workers': 'WORKERS',
-}
