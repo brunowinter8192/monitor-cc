@@ -128,7 +128,7 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
             else:
                 scroll_offset = (scroll_offsets or {}).get(name, 0)
                 per_worker_expand = (cache_expand_states or {}).get(name, {})
-                visible_lines, visible_keys, _, viewport_start = format_cache_tracker(
+                visible_lines, visible_keys, _, _, _ = format_cache_tracker(
                     turns, per_worker_expand, 15, pane_width - 4, scroll_offset
                 )
                 for cl, ck in zip(visible_lines, visible_keys):
