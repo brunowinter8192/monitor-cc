@@ -194,7 +194,8 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             all_keys.append(('zero', zr_idx))
             if is_expanded:
                 for k, v in zr.get('tool_call_input', {}).items():
-                    all_lines.append(f"    {DIM}{k}: {str(v)}{SOFT_RESET}")
+                    val_str = str(v).replace('\n', ' ')
+                    all_lines.append(f"    {DIM}{k}: {val_str}{SOFT_RESET}")
                     all_keys.append(None)
         all_lines.append('')
         all_keys.append(None)
@@ -212,7 +213,8 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
             all_keys.append(('error', err_idx))
             if is_expanded:
                 for k, v in err.get('tool_call_input', {}).items():
-                    all_lines.append(f"    {DIM}{k}: {str(v)}{SOFT_RESET}")
+                    val_str = str(v).replace('\n', ' ')
+                    all_lines.append(f"    {DIM}{k}: {val_str}{SOFT_RESET}")
                     all_keys.append(None)
                 for raw_line in err['full_text'].split('\n'):
                     all_lines.append(f"    {DIM}{raw_line}{SOFT_RESET}" if raw_line else '')
