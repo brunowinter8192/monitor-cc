@@ -199,12 +199,17 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             if key is not None:
                 line_map[row_idx + 1] = key
 
+    initial_offset = sum(1 for k in line_keys[:start] if k is not None)
+    parent_count = initial_offset
     result_lines = []
     for row_offset, line in enumerate(visible_lines):
         row = row_offset + 1
         key = visible_keys[row_offset]
-        logical_idx = start + row_offset
-        zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+        if key is not None:
+            zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
+            parent_count += 1
+        else:
+            zebra_bg = ZEBRA_BG_A
         is_hovered = key is not None and hover_row is not None and row == hover_row
         if is_hovered:
             chosen_bg = HOVER_BG
