@@ -26,6 +26,10 @@ Proxy pane package — displays live API request structure from mitmproxy logs.
 **Input:** Project filter string or log file path, last byte position.
 **Output:** List of parsed entry dicts, updated byte position.
 
+Public helpers also exported for cross-pane use:
+- `find_proxy_log_path(project_filter)` — resolves the current proxy JSONL path for a project via the `.proxy_session_*` marker file. Returns `Path` (file may not exist) or `None` if no project_filter. Used by both `waste_pane.py` and `warnings_pane.py` to detect log-file changes (new proxy session = new path) → trigger state reset.
+- `get_proxy_session_start_ts(project_filter)` — returns the proxy-session start timestamp (float epoch). Used for age-filtering stale entries.
+
 ## render_entry.py
 
 **Purpose:** Renders a single proxy request entry (collapsed or expanded) into a list of display lines. Shows model, message count, cache breakpoints, change warnings, delta breakdown, and per-message detail when expanded. When expanded, shows ALL messages (old messages in DIM, new messages in WHITE). Delta line is expandable for both positive and negative deltas (added/removed tools and messages).

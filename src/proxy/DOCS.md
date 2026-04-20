@@ -85,7 +85,7 @@ Contains:
 - `_find_system_reminder_blocks()` — extracts `<system-reminder>` blocks containing a marker from str or list content
 - `_strip_blocked_tool_references()` — removes tool_reference blocks for TOOL_BLOCKLIST tools from tool_result content
 - `_content_contains()` — checks if message content (str or list) contains a substring
-- `_strip_task_notification_tags()` — removes `<output-file>` and `<tool-use-id>` tags from task-notification content
+- `_strip_task_notification_tags()` — replaces `<task-notification>...</task-notification>` XML blocks with the plain `<summary>` text only (all other XML tags incl. task-id, status, tool-use-id, output-file stripped)
 
 ## logging.py
 
@@ -126,7 +126,7 @@ Contains:
 - `_load_project_rules(project_path)` — concatenates rule files for projects whose `path_contains` pattern matches `project_path`. Used to inject project-specific `<system-reminder>` into `messages[0]`.
 - `_strip_blocked_tool_references()` — removes tool_reference blocks for TOOL_BLOCKLIST tools
 - `_content_contains()` — checks if message content contains a substring
-- `_strip_task_notification_tags()` — removes output-file and tool-use-id tags
+- `_strip_task_notification_tags()` — replaces `<task-notification>` XML blocks with just the summary text
 - `_inject_context_management(payload)` — reads `context_management` config from `proxy_rules.json`; if `enabled: true`, injects `context_management.edits` block with `clear_tool_uses_20250919` (trigger: 100k input tokens, keep: 5 tool_uses, clear_at_least: 10k) and `clear_thinking_20251015` (keep: 2 thinking_turns) into the payload. Returns `(modified_payload, injected_bool)`.
 
 **Cumulative second-pass strip (after the per-message elif-chain):** iterates over `new_messages` and strips `<system-reminder>` blocks containing `"The following skills are available for use with the Skill tool"` (marker: `stripped_skills_sr`) and `"# claudeMd"` (marker: `stripped_claudemd_sr`) from any user message. Runs additionally to the existing elif-branch strips so a single msg[0] that already had e.g. `stripped_deferred_tools_sr` applied still gets Skills and claudeMd sr removed.
@@ -140,6 +140,7 @@ Contains:
 Contains:
 - `_strip_plan_mode_blocks()` — removes plan-mode system-reminder blocks
 - `_strip_system_reminder()` — strips system-reminder blocks containing a marker string
+- `_strip_user_interrupt_sr()` — for user-interrupt SRs (`"user sent a new message while you were working"`): preserves the whole SR block + user body, strips ONLY the `IMPORTANT:` notification line. Position-independent (works whether IMPORTANT is at top or bottom of the SR).
 - `_message_has_rejection()` — detects tool rejection marker in user message
 - `_strip_rejection_message()` — replaces rejection tool_result content with "."
 - `_extract_session_start_block()` — extracts SessionStart rules block from MSG[0] (dead code — no longer called from rules.py since proxy reads files directly)
