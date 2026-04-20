@@ -12,6 +12,7 @@ from .content_strip import (
     _strip_all_system_reminders,
     _strip_plan_mode_blocks,
     _strip_system_reminder,
+    _strip_user_interrupt_sr,
     _strip_pyright_diagnostics,
     _message_has_rejection,
     _strip_rejection_message,
@@ -205,7 +206,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "user sent a new message while you were working"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
-            new_msg["content"] = _strip_system_reminder(old_content, "user sent a new message while you were working")
+            new_msg["content"] = _strip_user_interrupt_sr(old_content, "user sent a new message while you were working")
             new_messages.append(new_msg)
             if new_msg["content"] != old_content:
                 stripped_msg_originals[idx] = old_content
