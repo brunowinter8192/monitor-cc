@@ -80,6 +80,5 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 
 ## Gotchas
 
-- `warnings_pane.py` is the largest at 503 LOC because it inlines all proxy log scanning logic (formerly `proxy_forensics.py`). If LOC grows further, extract a `warnings_parser.py`.
 - All 4 pane loops call `from ..core import monitor as _monitor` lazily (inside the run function) to avoid circular imports at module level.
 - `build_cache_turns()` in `token_pane.py` is also called by `proxy_display` — it is a shared utility even though it lives in a pane module.
