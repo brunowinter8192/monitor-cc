@@ -360,7 +360,7 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
 def run_warnings_loop() -> None:
     from ..core import monitor as _monitor
     from ..proxy_display.parser import parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts, find_proxy_log_path
-    from ..click_handler import (
+    from ..input.click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
     )
