@@ -57,13 +57,23 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### waste_pane.py (519 LOC)
+### waste_forensics.py (115 LOC)
 
-**Purpose:** Proxy forensics / waste pane — reads proxy JSONL, extracts tool_use/tool_result pairs, filters by `input_chars/output_chars >= threshold`, displays sorted descending. Digit keys 1–9 set threshold.
+**Purpose:** Data model for proxy forensics — `ToolUse`, `ToolResult`, `Pair` dataclasses plus `tool_use_blocks()`, `tool_result_blocks()`, `pairs()`, `format_timestamp_local()`. No UI concerns.
+**Reads:** Raw proxy event dicts (passed in as lists).
+**Writes:** Nothing (pure functions + frozen dataclasses).
+**Called by:** `waste_pane.py`.
+**Calls out:** stdlib only (`json`, `datetime`).
+
+---
+
+### waste_pane.py (404 LOC)
+
+**Purpose:** Proxy forensics / waste pane — reads proxy JSONL, extracts tool_use/tool_result pairs via `waste_forensics`, filters by `input_chars/output_chars >= threshold`, displays sorted descending. Digit keys 1–9 set threshold. Remainder 404 LOC is cohesive by shared globals (event loop + data layer + renderer all share module-level state) — further split would require refactoring.
 **Reads:** Proxy JSONL (via marker file discovery in `proxy_display.parser`); shared state `monitor.active_project_filter`.
 **Writes:** stdout (ANSI screen); mutates `_waste_above`, `waste_expand_states`, `waste_line_map`, `waste_threshold`.
 **Called by:** `core/monitor.py` (mode dispatch).
-**Calls out:** `input.click_handler`, `proxy_display.parser`, `core.monitor` (lazy).
+**Calls out:** `input.click_handler`, `proxy_display.parser`, `core.monitor` (lazy), `panes.waste_forensics`.
 
 ---
 
