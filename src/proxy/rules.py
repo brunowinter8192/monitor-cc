@@ -12,6 +12,7 @@ from .content_strip import (
     _strip_all_system_reminders,
     _strip_plan_mode_blocks,
     _strip_system_reminder,
+    _strip_user_interrupt_sr,
     _strip_pyright_diagnostics,
     _message_has_rejection,
     _strip_rejection_message,
@@ -116,7 +117,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     stripped_msg_indices = []
     stripped_msg_originals = {}
     stripped_msg_removed = {}
-    _tag_pat = re.compile(r'<(?:output-file|tool-use-id)>.*?</(?:output-file|tool-use-id)>', re.DOTALL)
+    _tag_pat = re.compile(r'<task-notification>.*?</task-notification>', re.DOTALL)
     _pm_pat = re.compile(r'<system-reminder>\s*Plan mode.*?</system-reminder>', re.DOTALL)
     for idx, msg in enumerate(messages_to_process):
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
@@ -205,7 +206,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "user sent a new message while you were working"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
-            new_msg["content"] = _strip_system_reminder(old_content, "user sent a new message while you were working")
+            new_msg["content"] = _strip_user_interrupt_sr(old_content, "user sent a new message while you were working")
             new_messages.append(new_msg)
             if new_msg["content"] != old_content:
                 stripped_msg_originals[idx] = old_content

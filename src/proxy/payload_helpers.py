@@ -95,11 +95,17 @@ def _content_contains(content, substring: str) -> bool:
     return False
 
 
-# Remove output-file and tool-use-id tags from task-notification content (incl. tool_result)
-def _strip_task_notification_tags(content) -> str:
-    _STRIP_PATTERN = re.compile(r'<(?:output-file|tool-use-id)>.*?</(?:output-file|tool-use-id)>\n?', re.DOTALL)
+# Replace task-notification XML blocks with plain summary text; strips all XML wrapper
+def _strip_task_notification_tags(content):
+    _NOTIF_PAT = re.compile(r'<task-notification>.*?</task-notification>\n?', re.DOTALL)
+    _SUMMARY_PAT = re.compile(r'<summary>(.*?)</summary>', re.DOTALL)
+
+    def _extract(m):
+        sm = _SUMMARY_PAT.search(m.group(0))
+        return (sm.group(1).strip() + '\n') if sm else ''
+
     if isinstance(content, str):
-        return _STRIP_PATTERN.sub('', content)
+        return _NOTIF_PAT.sub(_extract, content)
     if isinstance(content, list):
         result = []
         for block in content:
@@ -108,20 +114,20 @@ def _strip_task_notification_tags(content) -> str:
                 continue
             btype = block.get("type")
             if btype == "text":
-                new_text = _STRIP_PATTERN.sub('', block.get("text", ""))
+                new_text = _NOTIF_PAT.sub(_extract, block.get("text", ""))
                 if not new_text.strip():
                     new_text = "."
                 result.append({**block, "text": new_text})
             elif btype == "tool_result":
                 inner = block.get("content", "")
                 if isinstance(inner, str):
-                    new_inner = _STRIP_PATTERN.sub('', inner)
+                    new_inner = _NOTIF_PAT.sub(_extract, inner)
                     result.append({**block, "content": new_inner} if new_inner != inner else block)
                 elif isinstance(inner, list):
                     new_sub_blocks = []
                     for sub in inner:
                         if isinstance(sub, dict) and sub.get("type") == "text":
-                            new_text = _STRIP_PATTERN.sub('', sub.get("text", ""))
+                            new_text = _NOTIF_PAT.sub(_extract, sub.get("text", ""))
                             new_sub_blocks.append({**sub, "text": new_text})
                         else:
                             new_sub_blocks.append(sub)
