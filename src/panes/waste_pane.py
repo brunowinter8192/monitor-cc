@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 from ..constants import (
     YELLOW, ORANGE, DIM, WHITE, RESET, HOVER_BG, ZEBRA_BG_A, ZEBRA_BG_B, SOFT_RESET,
-    POLL_INTERVAL, INPUT_POLL_INTERVAL,
+    DIM_YELLOW_BG, POLL_INTERVAL, INPUT_POLL_INTERVAL,
 )
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
@@ -15,6 +15,7 @@ from ..input.click_handler import (
 )
 from ..proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path
 from ..utils import truncate_visible, first_word_of_call, _iso_to_float, format_worker_prefix
+from ..format.strip_marker import highlight_stripped, build_tool_result_strip_lookup
 from .waste_forensics import pairs, format_timestamp_local, Pair
 
 # Tools whose high ratio is structural (content-driven), not actionable waste
@@ -41,6 +42,7 @@ _waste_log_path: Optional[Path] = None
 _waste_log_position: int = 0
 _last_project_filter: Optional[str] = None
 _monitor_start_ts: float = 0.0
+_strip_by_tool_result_id: Dict[str, tuple] = {}  # tool_use_id → (pre_strip_text, removed_chunks)
 
 
 # ORCHESTRATOR
@@ -52,6 +54,7 @@ def run_waste_loop() -> None:
     global waste_scroll_offset, _waste_log_path, _waste_log_position
     global _last_project_filter, _waste_above, _monitor_start_ts
     global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
+    global _strip_by_tool_result_id
 
     _monitor_start_ts = time.time()
     last_output = None
@@ -171,12 +174,13 @@ def _get_worker_from_session_file(session_file: str) -> str:
     return stem.replace('api_requests_worker_', '').rsplit('_', 1)[0]
 
 
-# Rebuild _waste_above from all accumulated events using current waste_threshold
+# Rebuild _waste_above and _strip_by_tool_result_id from all accumulated events
 def _rebuild_above() -> None:
-    global _waste_above
+    global _waste_above, _strip_by_tool_result_id
     events = _waste_all_events + _waste_worker_all_events
     if not events:
         _waste_above = []
+        _strip_by_tool_result_id = {}
         return
     all_pairs = list(pairs(events))
     _waste_above = sorted(
@@ -185,6 +189,7 @@ def _rebuild_above() -> None:
          and not any(ex in p.tu.name for ex in RATIO_EXCLUDED_TOOLS)],
         key=lambda p: p.tu.timestamp,
     )
+    _strip_by_tool_result_id = build_tool_result_strip_lookup(events)
 
 
 # Read new proxy entries, rebuild waste_pairs above threshold; returns True if data changed
@@ -192,6 +197,7 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
     global _waste_log_path, _waste_log_position, _last_project_filter, _waste_above
     global waste_expand_states, waste_scroll_offset, waste_hover_row, _monitor_start_ts
     global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
+    global _strip_by_tool_result_id
 
     log_path = find_proxy_log_path(project_filter)
 
@@ -203,6 +209,7 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
         _waste_log_path = log_path
         _waste_log_position = 0
         _waste_above = []
+        _strip_by_tool_result_id = {}
         waste_expand_states.clear()
         waste_scroll_offset = 0
         waste_hover_row = None
@@ -339,8 +346,14 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                     all_lines.append(f'    {DIM}… (truncated){SOFT_RESET}')
                     all_keys.append(None)
 
-                # Output section
-                if isinstance(p.tr.content, str):
+                # Output section — use pre-strip content if available, else post-strip
+                strip_info = _strip_by_tool_result_id.get(p.tr.tool_use_id)
+                if strip_info:
+                    pre_strip_text, stripped_chunks = strip_info
+                    out_text = highlight_stripped(pre_strip_text or '', stripped_chunks) if pre_strip_text else (
+                        p.tr.content if isinstance(p.tr.content, str) else json.dumps(p.tr.content, ensure_ascii=False)
+                    )
+                elif isinstance(p.tr.content, str):
                     out_text = p.tr.content
                 else:
                     out_text = json.dumps(p.tr.content, ensure_ascii=False)
@@ -381,7 +394,12 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
             zebra_bg = ZEBRA_BG_A
         is_hovered = (key is not None and waste_hover_row is not None
                       and phys_row == waste_hover_row)
-        chosen_bg = HOVER_BG if is_hovered else zebra_bg
+        if is_hovered:
+            chosen_bg = HOVER_BG
+        elif DIM_YELLOW_BG in line:
+            chosen_bg = DIM_YELLOW_BG
+        else:
+            chosen_bg = zebra_bg
         if key is not None:
             waste_line_map[phys_row] = key
         rendered.append(f'{chosen_bg}{truncate_visible(line, pane_width)}\033[K{RESET}')
