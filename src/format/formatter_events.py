@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
-from .utils import format_timestamp
-from .constants import PASTEL_PURPLE, CYAN, PASTEL_ORANGE, RESET
+from ..utils import format_timestamp
+from ..constants import PASTEL_PURPLE, CYAN, PASTEL_ORANGE, RESET
 
 INDENT = '  '
 

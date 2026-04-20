@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 from typing import Optional
-from .constants import RESET, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, HOVER_BG, DIM
-from .utils import visual_line_count
+from ..constants import RESET, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, HOVER_BG, DIM
+from ..utils import visual_line_count
 # FUNCTIONS
 # Format token count as compact "Xk" or "X.Xk" string
 def _format_k(n: int) -> str:
@@ -28,7 +28,7 @@ def _get_tool_preview(input_data: dict) -> str:
 
 # Format timestamp for display (import lazily to avoid circular at module level)
 def _format_ts(timestamp: str) -> str:
-    from .utils import format_timestamp
+    from ..utils import format_timestamp
     return format_timestamp(timestamp)
 
 # Format cache tracker for dedicated tokens pane with per-turn, per-API-call detail

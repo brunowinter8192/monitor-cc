@@ -9,7 +9,7 @@ from ..click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
-from ..token_format import format_cache_tracker
+from ..format.token_format import format_cache_tracker
 
 cache_expand_states: Dict[tuple, bool] = {}
 cache_line_map: Dict[int, tuple] = {}

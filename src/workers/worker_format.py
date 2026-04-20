@@ -7,7 +7,7 @@ from ..constants import (
     PASTEL_PURPLE,
     HOVER_BG,
 )
-from ..token_format import _format_k, format_cache_tracker
+from ..format.token_format import _format_k, format_cache_tracker
 from ..jsonl import read_new_lines, parse_jsonl_lines, get_message_content, is_tool_use
 from ..utils import visual_line_count
 
