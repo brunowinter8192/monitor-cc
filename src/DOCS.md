@@ -68,4 +68,4 @@ All runtime state lives in `core/monitor.py` as module-level variables. Every pa
 - [workers/DOCS.md](workers/DOCS.md) — worker_pane, worker_format, worker_tmux
 - [metadata/DOCS.md](metadata/DOCS.md) — metadata_pane, metadata_format
 - [proxy_display/DOCS.md](proxy_display/DOCS.md) — proxy pane TUI (8 modules)
-- [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (13 modules)
+- [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (15 modules)
