@@ -20,7 +20,7 @@ HOVER_BG = '\033[48;5;236m'
 DIM = '\033[2m'
 DIM_YELLOW_BG = '\033[48;5;58m'
 ZEBRA_BG_A = ''
-ZEBRA_BG_B = '\033[48;5;234m'
+ZEBRA_BG_B = '\033[48;5;237m'
 SOFT_RESET = '\033[39m'
 
 # Config values
