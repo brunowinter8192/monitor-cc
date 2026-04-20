@@ -57,3 +57,22 @@ def visual_line_count(line: str, pane_width: int) -> int:
     if not visible:
         return 1
     return max(1, (len(visible) + pane_width - 1) // pane_width)
+
+# Truncate line to pane_width visible chars (ANSI-aware); append … if cut
+def truncate_visible(line: str, pane_width: int) -> str:
+    if pane_width <= 0:
+        return line
+    if len(_ANSI_ESCAPE_RE.sub('', line)) <= pane_width:
+        return line
+    visible_count = 0
+    i = 0
+    while i < len(line):
+        m = _ANSI_ESCAPE_RE.match(line, i)
+        if m:
+            i = m.end()
+            continue
+        if visible_count >= pane_width - 1:
+            break
+        visible_count += 1
+        i += 1
+    return line[:i] + '\u2026'

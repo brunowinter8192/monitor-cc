@@ -3,13 +3,14 @@ from typing import Dict, Optional
 import os
 import time
 
-from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
+from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL, RESET, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
 from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
 from ..format.token_format import format_cache_tracker
+from ..utils import truncate_visible
 
 cache_expand_states: Dict[tuple, bool] = {}
 cache_line_map: Dict[int, tuple] = {}
@@ -142,7 +143,32 @@ def run_tokens_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
-                output = format_cache_tracker(_cache_turns, cache_expand_states, cache_line_map, cache_hover_row, pane_height, pane_width, cache_scroll_offset)
+                visible_lines, visible_keys, sticky_header, viewport_start = format_cache_tracker(
+                    _cache_turns, cache_expand_states, pane_height, pane_width, cache_scroll_offset
+                )
+                result_lines = []
+                if sticky_header is not None:
+                    trunc = truncate_visible(sticky_header, pane_width)
+                    result_lines.append(f"{ZEBRA_BG_A}{trunc}\033[K{RESET}")
+                cache_line_map.clear()
+                phys_row = 1 + (1 if sticky_header is not None else 0)
+                for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
+                    logical_idx = viewport_start + i
+                    zebra_bg = ZEBRA_BG_B if logical_idx % 2 else ZEBRA_BG_A
+                    is_hovered = (key is not None and cache_hover_row is not None
+                                  and phys_row == cache_hover_row)
+                    if is_hovered:
+                        chosen_bg = HOVER_BG
+                    elif line.startswith(LIGHT_RED_BG):
+                        chosen_bg = LIGHT_RED_BG
+                    else:
+                        chosen_bg = zebra_bg
+                    trunc = truncate_visible(line, pane_width)
+                    result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
+                    if key is not None:
+                        cache_line_map[phys_row] = key
+                    phys_row += 1
+                output = '\n'.join(result_lines)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     if output:

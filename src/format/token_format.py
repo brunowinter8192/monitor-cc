@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 from typing import Optional
-from ..constants import RESET, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, HOVER_BG, DIM
-from ..utils import visual_line_count
+from ..constants import GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET
 # FUNCTIONS
 # Format token count as compact "Xk" or "X.Xk" string
 def _format_k(n: int) -> str:
@@ -13,11 +12,10 @@ def _format_k(n: int) -> str:
 def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False) -> str:
     cc_broken = cc > cr
     bg = LIGHT_RED_BG if cc_broken else ''
-    end = RESET if cc_broken else ''
     think_indicator = ' 🧠' if has_thinking else ''
     if wide:
-        return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}{end}"
-    return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}{end}"
+        return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}"
+    return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}"
 
 # Extract first meaningful value from tool input dict for preview
 def _get_tool_preview(input_data: dict) -> str:
@@ -31,11 +29,11 @@ def _format_ts(timestamp: str) -> str:
     from ..utils import format_timestamp
     return format_timestamp(timestamp)
 
-# Format cache tracker for dedicated tokens pane with per-turn, per-API-call detail
-def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> str:
+# Format cache tracker — returns (visible_lines, visible_keys, sticky_header, viewport_start)
+def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> tuple:
     from .formatter import shorten_tool_name
     if not turns:
-        return f"{YELLOW}No turns yet{RESET}"
+        return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0
 
     if expand_states is None:
         expand_states = {}
@@ -48,7 +46,7 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
     request_num = 0
 
     if not wide:
-        all_lines.append(f"{WHITE}CR/CC/D = Read/Create/Direct{RESET}")
+        all_lines.append(f"{WHITE}CR/CC/D = Read/Create/Direct{SOFT_RESET}")
         line_keys.append(None)
 
     for turn_idx, turn in enumerate(turns):
@@ -62,7 +60,7 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
             if any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
         )
         think_str = f" ({thinking_calls}/{len(api_calls)} 🧠)" if thinking_calls > 0 else ""
-        all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{timestamp}]{think_str}: \"{truncated}\"{RESET}")
+        all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{timestamp}]{think_str}: \"{truncated}\"{SOFT_RESET}")
         line_keys.append(None)
 
         for call_idx, call in enumerate(api_calls):
@@ -82,7 +80,6 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
             line_keys.append(key)
 
             if is_expanded:
-                wrap_width = max(20, pane_width - 8)
                 for block in call.get('content_blocks', []):
                     bt = block.get('type', '')
                     if bt == 'tool_use':
@@ -91,59 +88,32 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                             tool_name = shorten_tool_name(tool_name)
                         input_data = block.get('preview', {})
                         if isinstance(input_data, dict) and input_data:
-                            all_lines.append(f"    {GREEN}{tool_name}{RESET}")
+                            all_lines.append(f"    {GREEN}{tool_name}{SOFT_RESET}")
                             line_keys.append(None)
                             for k, v in input_data.items():
-                                val_str = str(v).replace('\n', ' ') if not isinstance(v, str) else v
-                                header = f"      {k}: "
-                                remaining_width = max(20, wrap_width - len(header) + 6)
-                                for raw_line in val_str.split('\n'):
-                                    if not raw_line:
-                                        all_lines.append(f"      {DIM}{RESET}")
-                                        line_keys.append(None)
-                                        continue
-                                    first_chunk = True
-                                    for chunk_start in range(0, max(1, len(raw_line)), remaining_width):
-                                        chunk = raw_line[chunk_start:chunk_start + remaining_width]
-                                        if first_chunk:
-                                            all_lines.append(f"      {GREEN}{k}: {chunk}{RESET}")
-                                            first_chunk = False
-                                        else:
-                                            all_lines.append(f"      {GREEN}{' ' * (len(k) + 2)}{chunk}{RESET}")
-                                        line_keys.append(None)
+                                val_str = str(v).replace('\n', ' ') if not isinstance(v, str) else v.replace('\n', ' ')
+                                all_lines.append(f"      {GREEN}{k}: {val_str}{SOFT_RESET}")
+                                line_keys.append(None)
                         else:
-                            all_lines.append(f"    {GREEN}{tool_name}{RESET}")
+                            all_lines.append(f"    {GREEN}{tool_name}{SOFT_RESET}")
                             line_keys.append(None)
                     elif bt == 'thinking':
                         think_out = block.get('output_tokens')
                         think_chars = block.get('chars', 0)
                         if think_chars and think_out:
-                            all_lines.append(f"    {PASTEL_ORANGE}thinking ({think_chars:,}c, {_format_k(think_out)} out){RESET}")
+                            all_lines.append(f"    {PASTEL_ORANGE}thinking ({think_chars:,}c, {_format_k(think_out)} out){SOFT_RESET}")
                         elif think_out:
-                            all_lines.append(f"    {PASTEL_ORANGE}thinking ({_format_k(think_out)} out){RESET}")
+                            all_lines.append(f"    {PASTEL_ORANGE}thinking ({_format_k(think_out)} out){SOFT_RESET}")
                         else:
-                            all_lines.append(f"    {PASTEL_ORANGE}thinking{RESET}")
+                            all_lines.append(f"    {PASTEL_ORANGE}thinking{SOFT_RESET}")
                         line_keys.append(None)
                     elif bt == 'text':
                         preview = block.get('preview', '')
                         if preview:
-                            first = True
-                            for raw_line in preview.split('\n'):
-                                if not raw_line:
-                                    all_lines.append(f"    {WHITE}{RESET}")
-                                    line_keys.append(None)
-                                    continue
-                                for chunk_start in range(0, len(raw_line), wrap_width):
-                                    chunk = raw_line[chunk_start:chunk_start + wrap_width]
-                                    if first:
-                                        all_lines.append(f"    {WHITE}text: {chunk}{RESET}")
-                                        first = False
-                                    else:
-                                        all_lines.append(f"    {WHITE}{chunk}{RESET}")
-                                    line_keys.append(None)
+                            all_lines.append(f"    {WHITE}text: {preview.replace(chr(10), ' ')}{SOFT_RESET}")
                         else:
-                            all_lines.append(f"    {WHITE}text{RESET}")
-                            line_keys.append(None)
+                            all_lines.append(f"    {WHITE}text{SOFT_RESET}")
+                        line_keys.append(None)
 
         all_lines.append('')
         line_keys.append(None)
@@ -167,7 +137,7 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
                     import re as _re
                     m = _re.search(r'Turn \d+ \[[^\]]+\]', raw)
                     if m:
-                        sticky_header = f"{PASTEL_PURPLE}{m.group(0)}...{RESET}"
+                        sticky_header = f"{PASTEL_PURPLE}{m.group(0)}...{SOFT_RESET}"
                     else:
                         sticky_header = raw
                 else:
@@ -177,28 +147,4 @@ def format_cache_tracker(turns: list, expand_states: dict = None, line_map: dict
     visible_lines = all_lines[start:end]
     visible_keys = line_keys[start:end]
 
-    result_lines = []
-    if sticky_header:
-        result_lines.append(sticky_header)
-    sticky_span = visual_line_count(sticky_header, pane_width) if sticky_header else 0
-    phys_row = 1 + sticky_span
-
-    if line_map is not None:
-        line_map.clear()
-        row_cursor = phys_row
-        for line, key in zip(visible_lines, visible_keys):
-            span = visual_line_count(line, pane_width)
-            if key is not None:
-                for r in range(row_cursor, row_cursor + span):
-                    line_map[r] = key
-            row_cursor += span
-
-    for row_offset, line in enumerate(visible_lines):
-        key = visible_keys[row_offset]
-        span = visual_line_count(line, pane_width)
-        hover_active = (key is not None and hover_row is not None and
-                        phys_row <= hover_row < phys_row + span)
-        result_lines.append(f"{HOVER_BG}{line}{RESET}" if hover_active else line)
-        phys_row += span
-
-    return '\n'.join(result_lines)
+    return visible_lines, visible_keys, sticky_header, start
