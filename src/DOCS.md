@@ -14,16 +14,16 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 
 | Subdir | Role | LOC | Modules |
 |---|---|---|---|
-| `core/` | Session polling orchestrator + main-pane output | 493 | 3 |
-| `panes/` | Tmux pane event loops (tokens, rules, warnings, waste) | 1345 | 6 |
-| `format/` | ANSI string rendering (tool calls, events, cache tracker) | 450 | 3 |
-| `input/` | Keyboard/mouse stdin handling + UI state | 231 | 2 |
+| `core/` | Session polling orchestrator + main-pane output | 452 | 3 |
+| `panes/` | Tmux pane event loops (tokens, rules, warnings, waste) + parsing helpers | 1360 | 6 |
+| `format/` | ANSI string rendering (tool calls, events, cache tracker) | 453 | 3 |
+| `input/` | Keyboard/mouse stdin handling + rules block renderer | 204 | 2 |
 | `hooks/` | Hook log pipeline (parse → filter → enrich → display) | 470 | 4 |
 | `jsonl/` | JSONL parsing + tool call extraction | 524 | 3 |
-| `workers/` | Workers pane (tmux session discovery + status display) | 420 | 3 |
+| `workers/` | Workers pane (tmux session discovery + status display) | 419 | 3 |
 | `metadata/` | Metadata pane (API config state from proxy log) | 297 | 2 |
 | `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering) | 1463 | 8 |
-| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2002 | 15 |
+| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2011 | 15 |
 
 ## Root-Level Files
 
