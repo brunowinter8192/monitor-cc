@@ -11,7 +11,7 @@ from .parser import find_worker_proxy_log, _parse_log_file
 from .format import format_proxy_block
 from ..panes.token_pane import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
-from ..click_handler import (
+from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, parse_digit_key,
 )

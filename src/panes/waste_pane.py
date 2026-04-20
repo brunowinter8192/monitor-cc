@@ -11,7 +11,7 @@ from ..constants import (
     YELLOW, ORANGE, DIM, WHITE, RESET, HOVER_BG,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
 )
-from ..click_handler import (
+from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )

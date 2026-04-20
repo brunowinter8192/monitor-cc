@@ -11,7 +11,7 @@ from ..constants import (
 )
 from ..utils import format_timestamp
 from ..hooks import parse_new_hook_entries, filter_by_project, filter_by_timestamp
-from ..click_handler import (
+from ..input.click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
 )
@@ -94,7 +94,7 @@ def load_historical_rules() -> None:
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
     from ..core import monitor as _monitor
-    from ..ui_mode import format_rules_block
+    from ..input.ui_mode import format_rules_block
     global rules_expand_states, rules_line_map, rules_hover_row, rules_scroll_offset, rules_total_lines, session_start_ts
     session_start_ts = _monitor._get_session_start_ts()
     if session_start_ts is None:
