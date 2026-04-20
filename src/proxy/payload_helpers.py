@@ -23,14 +23,6 @@ def _find_system_reminder_blocks(content, marker: str) -> list:
                 continue
             if block.get("type") == "text":
                 result.extend(pat.findall(block.get("text", "")))
-            elif block.get("type") == "tool_result":
-                inner = block.get("content", "")
-                if isinstance(inner, str):
-                    result.extend(pat.findall(inner))
-                elif isinstance(inner, list):
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get("type") == "text":
-                            result.extend(pat.findall(sub.get("text", "")))
         return result
     return []
 
@@ -82,16 +74,8 @@ def _content_contains(content, substring: str) -> bool:
         for block in content:
             if not isinstance(block, dict):
                 continue
-            if substring in block.get("text", ""):
+            if block.get("type") == "text" and substring in block.get("text", ""):
                 return True
-            if block.get("type") == "tool_result":
-                inner = block.get("content", "")
-                if isinstance(inner, str) and substring in inner:
-                    return True
-                if isinstance(inner, list):
-                    for sub in inner:
-                        if isinstance(sub, dict) and substring in sub.get("text", ""):
-                            return True
     return False
 
 
@@ -118,22 +102,6 @@ def _strip_task_notification_tags(content):
                 if not new_text.strip():
                     new_text = "."
                 result.append({**block, "text": new_text})
-            elif btype == "tool_result":
-                inner = block.get("content", "")
-                if isinstance(inner, str):
-                    new_inner = _NOTIF_PAT.sub(_extract, inner)
-                    result.append({**block, "content": new_inner} if new_inner != inner else block)
-                elif isinstance(inner, list):
-                    new_sub_blocks = []
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get("type") == "text":
-                            new_text = _NOTIF_PAT.sub(_extract, sub.get("text", ""))
-                            new_sub_blocks.append({**sub, "text": new_text})
-                        else:
-                            new_sub_blocks.append(sub)
-                    result.append({**block, "content": new_sub_blocks})
-                else:
-                    result.append(block)
             else:
                 result.append(block)
         return result
