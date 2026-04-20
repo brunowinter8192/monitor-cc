@@ -65,10 +65,20 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### content_strip.py (284 LOC)
+### strip_sr.py (179 LOC)
 
-**Purpose:** Strip or extract specific content blocks from API message payloads — plan-mode blocks, system-reminder blocks, user-interrupt SRs, rejection messages, session-guidance sections, gitStatus from sys[3].
+**Purpose:** Strip `<system-reminder>` tag blocks from API message content — plan-mode blocks, all SR blocks, user-interrupt SRs (IMPORTANT-line only), marker-matched SRs, Pyright diagnostics SRs. Handles both string and list-of-blocks content shapes.
 **Reads:** Message content (string or list of blocks); marker strings.
+**Writes:** Nothing — returns modified content.
+**Called by:** `src/proxy/rules.py`
+**Calls out:** stdlib only (`re`).
+
+---
+
+### content_strip.py (104 LOC)
+
+**Purpose:** Strip or extract non-SR content from API message payloads — rejection tool_result blocks, SessionStart SR extraction, session-guidance section removal, gitStatus stripping from sys[3].
+**Reads:** Message content (string or list of blocks).
 **Writes:** Nothing — returns modified content or extracted text.
 **Called by:** `src/proxy/rules.py`
 **Calls out:** —

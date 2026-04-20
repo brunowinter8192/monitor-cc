@@ -7,12 +7,14 @@ from pathlib import Path
 _src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
 sys.path.insert(0, _src_dir)
 
-from .content_strip import (
+from .strip_sr import (
     _strip_all_system_reminders,
     _strip_plan_mode_blocks,
     _strip_system_reminder,
     _strip_user_interrupt_sr,
     _strip_pyright_diagnostics,
+)
+from .content_strip import (
     _message_has_rejection,
     _strip_rejection_message,
     _strip_session_guidance,
