@@ -158,7 +158,7 @@ def run_workers_loop() -> None:
             phys_row = 1
             parent_count = 0
             for i, (line, key) in enumerate(zip(all_lines, line_keys)):
-                if key is not None:
+                if isinstance(key, str):
                     zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
                     parent_count += 1
                 else:
