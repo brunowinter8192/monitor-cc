@@ -152,15 +152,25 @@ def run_workers_loop() -> None:
                     frozen=frozen, selected_name=worker_selected_name,
                 )
                 try:
-                    pane_width = os.get_terminal_size().columns
+                    term = os.get_terminal_size()
+                    pane_width = term.columns
+                    pane_height = term.lines
                 except OSError:
                     pane_width = 80
+                    pane_height = 50
+                # Viewport clipping (bottom-anchored): phys_row 1..N must equal
+                # terminal row 1..N. Without clipping, content > pane_height causes
+                # the terminal to scroll, breaking the phys_row↔terminal-row mapping.
+                total_lines = len(all_lines)
+                vp_start = max(0, total_lines - pane_height)
+                visible_all = all_lines[vp_start:]
+                visible_keys = line_keys[vp_start:]
                 worker_line_map.clear()
                 worker_cache_line_map.clear()
                 result_lines = []
                 phys_row = 1
-                parent_count = 0
-                for i, (line, key) in enumerate(zip(all_lines, line_keys)):
+                parent_count = sum(1 for k in line_keys[:vp_start] if isinstance(k, str))
+                for line, key in zip(visible_all, visible_keys):
                     if isinstance(key, str):
                         zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
                         parent_count += 1

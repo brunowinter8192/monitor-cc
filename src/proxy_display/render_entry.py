@@ -14,7 +14,6 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     L1 = indent
     L2 = indent + '  '
     L3 = indent + '    '
-    L4 = indent + '      '
     lines = []
     keys = []
 
@@ -178,50 +177,15 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
             chars = msg.get('chars', 0)
             chars_fmt = f"{chars:,}c"
             blocks = msg.get('blocks', [])
-            msg_key = (entry_idx, 'msg', msg_idx)
-            is_msg_expanded = expand_states.get(msg_key, False)
-            msg_symbol = '\u25bc' if is_msg_expanded else '\u25b6'
             is_stripped = msg_idx in stripped_indices
             is_old = msg_idx < new_start
             type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
             if is_stripped:
-                lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
+                lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}[{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
             elif is_old:
-                lines.append(f"{L2}{DIM}{msg_symbol} [{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{SOFT_RESET}")
+                lines.append(f"{L2}{DIM}[{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{SOFT_RESET}")
             else:
-                lines.append(f"{L2}{WHITE}{msg_symbol} [{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{SOFT_RESET}")
-            keys.append(msg_key)
-
-            if is_msg_expanded:
-                bg = DIM_YELLOW_BG if is_stripped else ''
-                if blocks:
-                    for bidx, blk in enumerate(blocks):
-                        btype = blk.get('type', 'text')
-                        bchars = blk.get('chars', 0)
-                        bcc = ' [CC]' if blk.get('has_cc') else ''
-                        lines.append(f"{L3}{bg}{DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}")
-                        keys.append(None)
-                        full_text = blk.get('full_text', blk.get('preview', ''))
-                        if full_text:
-                            for raw_line in full_text.split('\n'):
-                                if not raw_line:
-                                    lines.append(f"{L4}{bg}{DIM}{SOFT_RESET}")
-                                    keys.append(None)
-                                    continue
-                                lines.append(f"{L4}{bg}{DIM}{raw_line}{SOFT_RESET}")
-                                keys.append(None)
-                else:
-                    preview = msg.get('content_preview', '')
-                    if preview:
-                        for raw_line in preview.split('\n'):
-                            if not raw_line:
-                                lines.append(f"{L4}{bg}{DIM}{SOFT_RESET}")
-                                keys.append(None)
-                                continue
-                            lines.append(f"{L4}{bg}{DIM}{raw_line}{SOFT_RESET}")
-                            keys.append(None)
-                    else:
-                        lines.append(f"{L4}{bg}{DIM}(no preview){SOFT_RESET}")
-                        keys.append(None)
+                lines.append(f"{L2}{WHITE}[{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{SOFT_RESET}")
+            keys.append(None)
 
     return lines, keys

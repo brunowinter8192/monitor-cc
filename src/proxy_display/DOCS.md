@@ -22,9 +22,11 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 ## Flow
 
 `src/logs/api_requests_*.jsonl` → `parser` (incremental JSONL read, raw_payload extraction → flat entry dicts)
-→ `format` (group by turn, viewport, scroll) → `render_entry` / `render_turn`
-→ `render_sections` + `render_messages` (expanded detail)
+→ `format` (group by turn — turns always expanded, viewport, scroll) → `render_turn` (req rows)
+→ `render_sections` + `render_messages` (expanded req detail)
 → `pane` / `worker_proxy_pane` (event loop, stdin → stdout)
+
+**Expand model (flat):** Turns are static info-headers (non-clickable, always visible). Only Req-level and below are expandable. line_map contains only Req-level and deeper keys — one sequential phys_row counter through the visible slice, no nested offsets.
 
 ## Modules
 
@@ -48,9 +50,9 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### format.py (209 LOC)
+### format.py (205 LOC)
 
-**Purpose:** `format_proxy_block` — groups proxy entries by turn, applies scroll/viewport windowing, delegates rendering to `render_entry`/`render_turn`, returns `(ansi_string, total_lines)` for scroll math.
+**Purpose:** `format_proxy_block` — groups proxy entries by turn (turns always expanded, turn header key=None), applies scroll/viewport windowing, delegates rendering to `render_turn`, returns `(ansi_string, total_lines)` for scroll math.
 **Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
 **Writes:** Nothing — returns `(ansi_string, total_lines)` tuple.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`
@@ -68,9 +70,9 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### render_entry.py (233 LOC)
+### render_entry.py (200 LOC)
 
-**Purpose:** Render a single proxy request entry (collapsed or expanded) into display lines — shows model, message count, cache breakpoints, change warnings, delta breakdown, and full per-message detail when expanded.
+**Purpose:** Render a single proxy request entry (collapsed or expanded) into display lines — shows model, message count, cache breakpoints, change warnings, delta breakdown, and flat per-message list when expanded. Used only in no-turns mode (when turns list is empty). Msg rows are non-clickable (key=None); msg-level expand was removed to keep line_map flat.
 **Reads:** Entry dict, all entries (for prev-entry lookup), expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/format.py`
