@@ -153,24 +153,17 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 modifications.append("stripped_rejection_message")
                 stripped_msg_removed[idx] = ["(rejection marker stripped by proxy)"]
                 changed = True
-        elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<new-diagnostics>") and _load_config().get("pyright_diagnostics_strip", {}).get("enabled", False):
-            old_content = msg.get("content", "")
-            new_msg = dict(msg)
-            new_msg["content"] = _strip_pyright_diagnostics(old_content)
-            new_messages.append(new_msg)
-            if new_msg["content"] != old_content:
-                stripped_msg_originals[idx] = old_content
-                stripped_msg_indices.append(idx)
-                modifications.append("stripped_pyright_diagnostics")
-                stripped_msg_removed[idx] = _find_system_reminder_blocks(old_content, "<new-diagnostics>")
-                changed = True
         else:
             new_messages.append(msg)
 
-    # Cumulative second pass: strip Skills sr + claudeMd sr from any user message,
-    # even if the message already went through a strip branch above.
+    # Cumulative second pass: strip Skills sr + claudeMd sr + pyright diagnostics sr from any
+    # user message, even if the message already went through a strip branch above.
+    # IMPORTANT: markers that can co-occur with the first-pass elif conditions MUST live here,
+    # not in the elif chain — elif is exclusive per message, so a message matching "task tools
+    # haven" would never reach a pyright elif branch even if both SRs are present.
     _SKILLS_MARKER = "The following skills are available for use with the Skill tool"
     _CLAUDEMD_MARKER = "# claudeMd"
+    _PYRIGHT_ENABLED = _load_config().get("pyright_diagnostics_strip", {}).get("enabled", False)
     for idx, msg in enumerate(new_messages):
         if msg.get("role") != "user":
             continue
@@ -185,6 +178,9 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         if _content_contains(content, _CLAUDEMD_MARKER):
             content = _strip_system_reminder(content, _CLAUDEMD_MARKER)
             pass_mods.append("stripped_claudemd_sr")
+        if _PYRIGHT_ENABLED and _content_contains(content, "<new-diagnostics>"):
+            content = _strip_pyright_diagnostics(content)
+            pass_mods.append("stripped_pyright_diagnostics")
         if content != original_before_pass:
             new_messages[idx] = {**msg, "content": content}
             modifications.extend(pass_mods)
