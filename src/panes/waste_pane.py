@@ -162,7 +162,7 @@ _monitor_start_ts: float = 0.0
 
 def run_waste_loop() -> None:
     """Event loop for the waste-calls tmux pane."""
-    from . import monitor as _monitor
+    from .. import monitor as _monitor
     global waste_threshold, waste_expand_states, waste_line_map, waste_hover_row
     global waste_scroll_offset, _waste_log_path, _waste_log_position
     global _last_project_filter, _waste_above, _monitor_start_ts

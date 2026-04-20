@@ -24,7 +24,7 @@ _cache_current_filepath = None
 
 # Build cache turns incrementally — only reads new lines since last_position
 def build_cache_turns(filepath, last_position: int, existing_turns: list):
-    from .jsonl import get_current_position
+    from ..jsonl import get_current_position
     lines = read_new_lines(filepath, last_position)
     new_position = get_current_position(filepath) if filepath.exists() else last_position
     if not lines:
@@ -79,7 +79,7 @@ def build_cache_turns(filepath, last_position: int, existing_turns: list):
 
 # Runs cache tracker display loop (for dedicated tokens tmux pane)
 def run_tokens_loop() -> None:
-    from . import monitor as _monitor
+    from .. import monitor as _monitor
     global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
     global _cache_jsonl_position, _cache_turns, _cache_current_filepath
     last_output = None
