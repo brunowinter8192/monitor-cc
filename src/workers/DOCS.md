@@ -1,53 +1,61 @@
 # src/workers/
 
-Workers pane subpackage. Discovers active Claude Code worker sessions via tmux, extracts token data
-from their JSONL files, and renders an interactive TUI pane with expand/collapse and cache-tracker
-per worker.
+## Role
 
-## worker_tmux.py
+Workers pane package. Discovers active Claude Code worker sessions via tmux, extracts token and
+tool-call data from their JSONL files, renders an interactive TUI pane with expand/collapse and
+per-worker cache-tracker, and publishes the selected worker name via an IPC file for cross-pane
+coordination with `proxy_display` and `metadata`. Touch this package when changing worker
+discovery, worker status detection, or the workers pane display. Do NOT touch for proxy or
+metadata rendering — those panes only read the IPC selection file.
 
-**Purpose:** tmux session discovery and worker status detection.
-**Input:** Project path string (to derive project name and session prefix).
-**Output:** List of worker dicts (`name`, `session`, `status`, `spawned`, `purpose`, `model`);
-optional Path to the worker's most recent JSONL file.
+## Public Interface
 
-Contains:
-- `list_workers(project_path)` — queries `tmux list-sessions`, filters by `worker-<project>-` prefix,
-  builds worker dict per session
-- `detect_worker_status(session)` — checks `#{pane_dead}` + `#{window_activity}` delta to classify
-  as `working` / `idle` / `exited` / `unknown`
-- `find_worker_jsonl(session_name)` — resolves worker's CWD from tmux, encodes it to the Claude
-  projects path, returns newest non-agent JSONL file
-- `get_tmux_env(session, var)` — reads a single env var from a tmux session
+- `run_workers_loop` — Workers pane event loop (entry point from `core.monitor`)
+- `write_selection(worker_name)` — write selected worker name to IPC file (used by `proxy_display`)
 
-## worker_format.py
+## Flow
 
-**Purpose:** Worker data extraction and pane rendering.
-**Input:** Worker JSONL path (for token extraction); worker list + state dicts (for rendering).
-**Output:** Token summary dict; tool call list; formatted TUI string for the workers pane.
+tmux session list → `worker_tmux` (discover workers, detect status, find JSONL path)
+→ `worker_format` (extract tokens + tool calls from JSONL, render block)
+→ `worker_pane` (event loop, IPC selection file write → stdout)
 
-Contains:
-- `extract_worker_tokens(jsonl_path)` — reads full JSONL, sums output tokens across all assistant
-  messages
-- `extract_worker_tool_calls(jsonl_path)` — reads full JSONL, collects all tool_use blocks with
-  name + input + timestamp
-- `format_workers_block(workers, expand_states, ...)` — renders the full workers pane: header,
-  per-worker rows with status/model/tokens, expanded cache tracker via `format_cache_tracker()`
-- `get_worker_project_name(project_path)` — derives display name, worktree-aware
+## Modules
 
-## worker_pane.py
+### worker_tmux.py (94 LOC)
 
-**Purpose:** Workers pane event loop — keyboard/mouse input, data refresh, screen rendering.
-**Input:** `_monitor.active_project_filter` (global state from monitor.py).
-**Output:** Writes formatted workers pane to stdout in a continuous loop.
+**Purpose:** Discover active Claude Code worker sessions via `tmux list-sessions`, detect per-worker status, and locate each worker's most recent session JSONL file.
+**Reads:** tmux session list (via subprocess); tmux pane/window state for status detection; worker CWD from tmux env.
+**Writes:** Nothing — returns worker dicts and JSONL paths.
+**Called by:** `src/workers/worker_pane.py`, `src/proxy_display/worker_proxy_pane.py`
+**Calls out:** `session_finder` (encode_project_path)
 
-**Event loop** (`run_workers_loop()`):
-1. Read keyboard/mouse input: click to expand/collapse, scroll within expanded worker, digit keys 1-9
-2. Data refresh every `POLL_INTERVAL` seconds: `list_workers()` → per-worker `extract_worker_tokens()`
-   + `extract_cache_turns()` for expanded workers
-3. Re-render via `format_workers_block()` only when output changed
-4. Selected worker name written to IPC file (`/tmp/monitor_cc_selected_worker_<hash>.txt`) for
-   cross-pane coordination with the proxy and metadata panes
+---
 
-**IPC:** `get_selection_file_path()` / `_write_selection()` — shared with proxy_display and
-metadata_pane to keep all three panes focused on the same worker.
+### worker_format.py (170 LOC)
+
+**Purpose:** Extract token sums and tool call lists from worker JSONL files; render the full workers pane block with per-worker rows, status, model, token counts, and expanded cache tracker.
+**Reads:** Worker JSONL file (full read for token/tool extraction); worker list + expand/scroll state dicts (for rendering).
+**Writes:** Nothing — returns token summary dict, tool call list, or formatted TUI string.
+**Called by:** `src/workers/worker_pane.py`
+**Calls out:** `jsonl`, `format` (token_format)
+
+---
+
+### worker_pane.py (155 LOC)
+
+**Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, screen rendering, and IPC selection file write for cross-pane coordination.
+**Reads:** `_monitor.active_project_filter` (shared global state); stdin (keyboard/mouse); worker JSONL files via `worker_format`.
+**Writes:** ANSI output to stdout; selected worker name to `/tmp/monitor_cc_selected_worker_<hash>.txt`.
+**Called by:** `src/core/monitor.py` (via `..workers.run_workers_loop`); `src/proxy_display/worker_proxy_pane.py` (imports `get_selection_file_path`, `write_selection`)
+**Calls out:** `jsonl`, `input` (click_handler)
+
+---
+
+## State
+
+`worker_pane.py` owns two module-level mutable dicts:
+- `worker_expand_states: Dict[str, bool]` — expand/collapse state keyed by worker name
+- `worker_scroll_offsets: Dict[str, int]` — scroll position keyed by worker name
+
+Mutated exclusively by `run_workers_loop`. Read by `format_workers_block` in the same process.

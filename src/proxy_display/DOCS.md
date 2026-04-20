@@ -1,55 +1,116 @@
-## proxy_display/
+# src/proxy_display/
 
-Proxy pane package — displays live API request structure from mitmproxy logs.
+## Role
 
-## pane.py
+Proxy pane TUI package. Reads mitmproxy log entries from `src/logs/api_requests_*.jsonl`,
+groups them by session turn, and renders an interactive expand/collapse display showing API
+request structure (model, message counts, cache breakpoints, system/tools/messages detail).
+Runs two event loops — one for the main session proxy log, one for the selected worker's proxy
+log. Also exports `parse_proxy_log` and path helpers used by `metadata`, `panes.waste_pane`,
+and `panes.warnings_pane`. Touch this package when changing proxy pane display logic or the
+parser field extraction. Do NOT touch for the proxy modification pipeline — that lives in `src/proxy/`.
 
-**Purpose:** Event loop for the main proxy pane. Reads `api_requests_*.jsonl` log entries incrementally via `parse_proxy_log`, handles mouse/keyboard input (click expand/collapse, scroll, hover), and delegates rendering to `format.py`.
-**Input:** Module-level state (entries, expand states, scroll offset); active project filter.
-**Output:** Prints formatted pane content to stdout via `format_proxy_block`.
+## Public Interface
 
-## worker_proxy_pane.py
+- `run_proxy_loop` — main proxy pane event loop (entry point from `core.monitor`)
+- `run_worker_proxy_loop` — worker proxy pane event loop (entry point from `core.monitor`)
+- `parse_proxy_log(project_filter_or_path, last_position)` — parse proxy JSONL incrementally
+- `find_worker_proxy_log(worker_name)` — resolve proxy log path for a named worker
+- `_parse_log_file(path, last_position)` — low-level log file reader
+- `format_proxy_block(entries, ...)` — render full proxy pane ANSI string
 
-**Purpose:** Event loop for the worker-proxy pane. Watches active workers via `list_workers` + `find_worker_proxy_log`, reads the selected worker's proxy log incrementally, handles digit-key worker switching, mouse/keyboard input (click, scroll, hover), and delegates rendering to `format.py`.
-**Input:** Module-level state (selected worker index, entries, expand states, scroll offset); live worker list from `workers.worker_tmux`.
-**Output:** Prints formatted pane content with worker-switcher header to stdout via `format_proxy_block`.
+## Flow
 
-## format.py
+`src/logs/api_requests_*.jsonl` → `parser` (incremental JSONL read, raw_payload extraction → flat entry dicts)
+→ `format` (group by turn, viewport, scroll) → `render_entry` / `render_turn`
+→ `render_sections` + `render_messages` (expanded detail)
+→ `pane` / `worker_proxy_pane` (event loop, stdin → stdout)
 
-**Purpose:** Main rendering function `format_proxy_block` — takes proxy entries, groups them by turn, applies scroll/viewport windowing, and produces the final ANSI string. Also contains shared helpers: `_shorten_model`, `_format_delta`, `_assign_turns_to_entries`.
-**Input:** `entries` list, expand states dict, line map dict, hover row, pane dimensions, scroll offset, turns list, optional `item_positions_out` dict (keyed by line_map key → absolute line index in pre-viewport `all_lines`; used by pane.py auto-jump on expand).
-**Output:** `(ansi_string, total_lines)` tuple — rendered pane content + pre-viewport total line count for scroll math.
+## Modules
 
-## parser.py
+### pane.py (133 LOC)
 
-**Purpose:** Reads and parses proxy log JSONL files. Extracts rich fields from `raw_payload` (system blocks, tools, messages, schema warnings) into flat entry dicts, then discards the raw payload to save memory.
-**Input:** Project filter string or log file path, last byte position.
-**Output:** List of parsed entry dicts, updated byte position.
+**Purpose:** Event loop for the main proxy pane — reads proxy log incrementally, handles mouse/keyboard input (click expand/collapse, scroll, hover), renders on change.
+**Reads:** Module-level state (entries, expand states, scroll offset, hover row, line map); active project filter from shared monitor state; stdin.
+**Writes:** ANSI output to stdout (direct tmux pane write).
+**Called by:** `src/core/monitor.py` (via `..proxy_display.run_proxy_loop`)
+**Calls out:** `input` (click_handler), `panes` (token_pane.build_cache_turns)
 
-Public helpers also exported for cross-pane use:
-- `find_proxy_log_path(project_filter)` — resolves the current proxy JSONL path for a project via the `.proxy_session_*` marker file. Returns `Path` (file may not exist) or `None` if no project_filter. Used by both `waste_pane.py` and `warnings_pane.py` to detect log-file changes (new proxy session = new path) → trigger state reset.
-- `get_proxy_session_start_ts(project_filter)` — returns the proxy-session start timestamp (float epoch). Used for age-filtering stale entries.
+---
 
-## render_entry.py
+### worker_proxy_pane.py (194 LOC)
 
-**Purpose:** Renders a single proxy request entry (collapsed or expanded) into a list of display lines. Shows model, message count, cache breakpoints, change warnings, delta breakdown, and per-message detail when expanded. When expanded, shows ALL messages (old messages in DIM, new messages in WHITE). Delta line is expandable for both positive and negative deltas (added/removed tools and messages).
-**Input:** Entry index, entry dict, all entries (for prev-entry lookup), expand states, pane width, indent, num label.
-**Output:** `(lines, keys)` tuple.
+**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's proxy log, handles digit-key worker switching, mouse/keyboard input, renders with worker-switcher header.
+**Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file.
+**Writes:** ANSI output to stdout (direct tmux pane write).
+**Called by:** `src/core/monitor.py` (via `..proxy_display.run_worker_proxy_loop`)
+**Calls out:** `input` (click_handler), `workers` (worker_tmux), `panes` (token_pane.build_cache_turns)
 
-## render_turn.py
+---
 
-**Purpose:** Renders all per-request rows for an expanded turn group. Iterates over grouped entry pairs, numbering requests, and delegates system/tools/messages rendering to the section modules.
-**Input:** Group dict, all entries, expand states, pane width, previous entry for delta, request counters.
-**Output:** `(lines, keys, opus_req_num, sub_req_num)` tuple.
+### format.py (209 LOC)
 
-## render_sections.py
+**Purpose:** `format_proxy_block` — groups proxy entries by turn, applies scroll/viewport windowing, delegates rendering to `render_entry`/`render_turn`, returns `(ansi_string, total_lines)` for scroll math.
+**Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
+**Writes:** Nothing — returns `(ansi_string, total_lines)` tuple.
+**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`
+**Calls out:** `format` (token_format)
 
-**Purpose:** Renders system blocks section (`render_system_blocks`) and tools section (`render_tools`) for an expanded request entry. Handles unchanged detection, expand/collapse per block, change highlights, and TOOL_BLOCKLIST stripping markers.
-**Input:** Entry index, entry dict, previous entry, expand states, pane width, modifications list.
-**Output:** `(lines, keys)` tuple per function.
+---
 
-## render_messages.py
+### parser.py (218 LOC)
 
-**Purpose:** Renders new/modified/removed messages for an expanded request entry (turn-view). Handles two cases: more messages than previous (new additions with full block content) and same/fewer messages (diffs with full content_tail). For stripped messages prefers `entry['stripped_msg_removed']` (only the chunks actually removed, rendered yellow) and falls back to `entry['stripped_msg_originals']` (full pre-modification text) for old log files. Shows block-level detail with full_text (not truncated previews), and content tails.
-**Input:** Entry dict, previous entry, all entries, expand states, pane width.
-**Output:** `(lines, keys)` tuple.
+**Purpose:** Read and parse proxy log JSONL files — extract rich fields from `raw_payload` (system blocks, tools, messages, schema warnings) into flat entry dicts, then discard raw payload to save memory.
+**Reads:** Proxy log JSONL file by project filter or direct path (incremental by byte position).
+**Writes:** Nothing — returns `(entry_list, new_position)`.
+**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/panes/waste_pane.py`, `src/panes/warnings_pane.py`, `src/metadata/metadata_pane.py`
+**Calls out:** —
+
+---
+
+### render_entry.py (233 LOC)
+
+**Purpose:** Render a single proxy request entry (collapsed or expanded) into display lines — shows model, message count, cache breakpoints, change warnings, delta breakdown, and full per-message detail when expanded.
+**Reads:** Entry dict, all entries (for prev-entry lookup), expand states, pane width.
+**Writes:** Nothing — returns `(lines, keys)` tuple.
+**Called by:** `src/proxy_display/format.py`
+**Calls out:** —
+
+---
+
+### render_turn.py (133 LOC)
+
+**Purpose:** Render all per-request rows for an expanded turn group, numbering requests and delegating system/tools/messages rendering to section modules.
+**Reads:** Group dict, all entries, expand states, pane width.
+**Writes:** Nothing — returns `(lines, keys, opus_req_num, sub_req_num)` tuple.
+**Called by:** `src/proxy_display/format.py`
+**Calls out:** —
+
+---
+
+### render_sections.py (156 LOC)
+
+**Purpose:** Render the system blocks section and tools section for an expanded request entry — handles unchanged detection, per-block expand/collapse, change highlights, and TOOL_BLOCKLIST stripping markers.
+**Reads:** Entry dict, previous entry, expand states, pane width, modifications list.
+**Writes:** Nothing — returns `(lines, keys)` tuple.
+**Called by:** `src/proxy_display/render_turn.py`
+**Calls out:** —
+
+---
+
+### render_messages.py (183 LOC)
+
+**Purpose:** Render new/modified/removed messages for an expanded request entry — handles added messages (full block content) and diffs (content_tail), prefers `stripped_msg_removed` over `stripped_msg_originals` for stripped-message display.
+**Reads:** Entry dict, previous entry, all entries, expand states, pane width.
+**Writes:** Nothing — returns `(lines, keys)` tuple.
+**Called by:** `src/proxy_display/render_turn.py`
+**Calls out:** —
+
+---
+
+## State
+
+`pane.py` and `worker_proxy_pane.py` each own independent module-level mutable state:
+- entries list, expand states dict, scroll offset, hover row, line map, turns list
+
+Both are reset when session changes (new proxy log file detected via `find_proxy_log_path`).
