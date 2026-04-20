@@ -3,9 +3,9 @@ import re
 from typing import List, Optional
 
 # From utils.py: Timestamp formatting
-from .utils import format_timestamp
+from ..utils import format_timestamp
 # From constants.py: Colors and config values
-from .constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD
+from ..constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD
 
 INDENT = '  '
 
