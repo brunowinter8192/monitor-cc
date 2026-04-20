@@ -1,15 +1,16 @@
 # INFRASTRUCTURE
 from ..utils import format_timestamp
-from ..constants import PASTEL_PURPLE, CYAN, PASTEL_ORANGE, RESET
+from ..constants import PASTEL_PURPLE, CYAN, PASTEL_ORANGE, DIM_YELLOW_BG, SOFT_RESET, RESET
 
 INDENT = '  '
 
 # FUNCTIONS
 
-# Format USER PROMPT stamp with optional hook outputs
-def format_user_prompt(timestamp: str, hook_outputs: list = None) -> str:
+# Format USER PROMPT stamp with optional hook outputs and strip badge
+def format_user_prompt(timestamp: str, hook_outputs: list = None, strip_badge: bool = False) -> str:
     time_str = format_timestamp(timestamp)
-    header = f"{PASTEL_PURPLE}[{time_str}] USER PROMPT{RESET}"
+    badge = f" {DIM_YELLOW_BG}[~]{SOFT_RESET}" if strip_badge else ''
+    header = f"{PASTEL_PURPLE}[{time_str}] USER PROMPT{badge}{RESET}"
 
     if hook_outputs:
         lines = [header]
