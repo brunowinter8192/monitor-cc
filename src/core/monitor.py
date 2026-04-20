@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from ..constants import RESET, CYAN, POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, MODE_WASTE
+from ..constants import RESET, CYAN, POLL_INTERVAL, INPUT_POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, MODE_WASTE
 
 # From session_finder.py: Discover active Claude Code sessions
 from ..session_finder import find_active_sessions
@@ -72,7 +72,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> N
         sessions = find_active_sessions(active_project_filter)
         session_count = len(filter_sessions_by_mode(sessions, mode))
         print_session_status(session_count, project_filter, mode)
-        run_streaming_loop()
+        run_main_loop()
 
 # FUNCTIONS
 
@@ -148,22 +148,76 @@ def filter_sessions_by_mode(sessions: list, mode: str) -> list:
 
     return filtered
 
-# Runs continuous streaming monitor loop
-def run_streaming_loop() -> None:
+# Runs virtual-rendering main loop with mouse-scroll, zebra, and truncation
+def run_main_loop() -> None:
+    import os
     from ..panes import process_hook_log
+    from ..input.click_handler import (
+        read_keypress, setup_keyboard_input, restore_terminal,
+        enable_mouse, disable_mouse, read_mouse_event,
+    )
+    from .monitor_display import render_main_buffer
+    from . import monitor_display as _display
+
     load_historical_main()
     current_main_session = _get_newest_main_session()
-    while True:
-        process_hook_log()
-        newest = _get_newest_main_session()
-        if newest != current_main_session and newest is not None:
-            current_main_session = newest
-            file_positions[newest] = 0
-            tool_use_caches[newest] = {}
-            print("\033[2J\033[3J\033[H", end='', flush=True)
-            print(f"{CYAN}--- New session detected ---{RESET}\n")
-        monitor_sessions()
-        time.sleep(POLL_INTERVAL)
+    last_output = None
+    last_data_refresh = 0.0
+    setup_keyboard_input()
+    enable_mouse()
+    try:
+        while True:
+            input_changed = False
+            while True:
+                char = read_keypress()
+                if char is None:
+                    break
+                if char == '\033':
+                    event = read_mouse_event(char)
+                    if event is not None:
+                        button, col, row = event
+                        if button == 64:  # wheel down → scroll toward newer
+                            _display.main_scroll_offset = max(0, _display.main_scroll_offset - 3)
+                            input_changed = True
+                        elif button == 65:  # wheel up → scroll toward older
+                            _display.main_scroll_offset = max(0, _display.main_scroll_offset + 3)
+                            input_changed = True
+
+            now = time.time()
+            if now - last_data_refresh >= POLL_INTERVAL:
+                process_hook_log()
+                newest = _get_newest_main_session()
+                if newest != current_main_session and newest is not None:
+                    current_main_session = newest
+                    file_positions[newest] = 0
+                    tool_use_caches[newest] = {}
+                    _display.main_event_buffer.clear()
+                    _display.main_scroll_offset = 0
+                    _display.main_event_buffer.append(
+                        {'type': 'session_banner', 'data': {}, 'call_number': None}
+                    )
+                monitor_sessions()
+                last_data_refresh = now
+                input_changed = True
+
+            if input_changed:
+                try:
+                    term = os.get_terminal_size()
+                    pane_height = term.lines - 1
+                    pane_width = term.columns
+                except OSError:
+                    pane_height = 50
+                    pane_width = 80
+                output = render_main_buffer(pane_height, pane_width, _display.main_scroll_offset)
+                if output != last_output:
+                    print("\033[2J\033[3J\033[H", end='', flush=True)
+                    if output:
+                        print(output)
+                    last_output = output
+            time.sleep(INPUT_POLL_INTERVAL)
+    finally:
+        disable_mouse()
+        restore_terminal()
 
 # Get the newest main (non-agent) session file
 def _get_newest_main_session() -> Optional[Path]:
