@@ -27,13 +27,13 @@ core/monitor.run_monitor(mode=X)
 
 ## Modules
 
-### token_pane.py (154 LOC)
+### token_pane.py (180 LOC)
 
-**Purpose:** Token/cache tracker pane — incrementally reads session JSONL, builds cache-turn dicts, renders interactive expand/collapse/scroll view with CR/CC/D per request.
+**Purpose:** Token/cache tracker pane — incrementally reads session JSONL, builds cache-turn dicts, renders interactive expand/collapse/scroll view with CR/CC/D per request. Owns the zebra/hover/truncation render loop: calls `format_cache_tracker` for logical lines, then applies `ZEBRA_BG_A/B`, `HOVER_BG` priority, and `truncate_visible` per line.
 **Reads:** Session JSONL (incremental via `_cache_jsonl_position`); shared state `monitor.active_project_filter`.
 **Writes:** stdout (ANSI screen); mutates module-level `cache_expand_states`, `cache_line_map`, `cache_hover_row`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position`.
 **Called by:** `core/monitor.py` (mode dispatch); `proxy_display/pane.py` + `proxy_display/worker_proxy_pane.py` (`build_cache_turns` function).
-**Calls out:** `jsonl`, `input.click_handler`, `format.token_format`, `core.monitor` (lazy state read).
+**Calls out:** `jsonl`, `input.click_handler`, `format.token_format`, `core.monitor` (lazy state read), `utils.truncate_visible`.
 
 ---
 
@@ -103,3 +103,5 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 
 - All 4 pane loops call `from ..core import monitor as _monitor` lazily (inside the run function) to avoid circular imports at module level.
 - `build_cache_turns()` in `token_pane.py` is also called by `proxy_display` — it is a shared utility even though it lives in a pane module.
+- Zebra/hover/truncation render loop lives in `token_pane.py`, NOT in `token_format.py`. `format_cache_tracker` returns a 4-tuple of logical lines — `token_pane.py` applies visual treatment.
+- `line_map` is built 1:1 in the render loop (one physical row per logical line). `visual_line_count` span-loops are gone — long lines are truncated at render time, not wrapped.

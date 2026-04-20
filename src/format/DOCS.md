@@ -45,15 +45,17 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ---
 
-### token_format.py (204 LOC)
+### token_format.py (151 LOC)
 
-**Purpose:** Render the token/cache tracker view — groups API calls into turns with CR/CC/D counts, handles expand/collapse, hover highlight, scroll, and viewport clipping. Also provides `_format_k` for compact token counts.
+**Purpose:** Build logical lines for the token/cache tracker — groups API calls into turns with CR/CC/D counts, handles expand/collapse and viewport clipping. Returns `(visible_lines, visible_keys, sticky_header, viewport_start)` tuple. Does NOT render (no zebra, no hover, no truncation) — that is `token_pane.py`'s job. Also provides `_format_k` for compact token counts.
 **Reads:** Cache turn lists, expand state dicts, pane dimensions, scroll offset — all passed as arguments.
-**Writes:** Returns ANSI screen string. No stdout, no file writes.
+**Writes:** Returns 4-tuple. No stdout, no file writes.
 **Called by:** `panes/token_pane.py` (`format_cache_tracker`); `workers/worker_format.py`, `metadata/metadata_format.py`, `proxy_display/format.py` (`_format_k`).
 **Calls out:** `format.formatter` (lazy, `shorten_tool_name` for tool name abbreviation in cache rows).
 
 ## Gotchas
 
-- `token_format.py` lazy-imports `formatter.shorten_tool_name` inside `_format_cache_call()` — both are in the same package so the import is `from .formatter import shorten_tool_name`. Do NOT change to `..formatter`.
+- `token_format.py` lazy-imports `formatter.shorten_tool_name` inside `format_cache_tracker()` — both are in the same package so the import is `from .formatter import shorten_tool_name`. Do NOT change to `..formatter`.
 - `_format_k` and `_format_cache_call` use leading underscores but are exported and used by 4 external callers — they are effectively public despite the naming convention.
+- `format_cache_tracker` returns a 4-tuple `(visible_lines, visible_keys, sticky_header, viewport_start)` — NOT a string. The render loop (zebra/hover/truncation) lives in `token_pane.py`.
+- Line content uses `SOFT_RESET` (`\033[39m`) instead of `RESET` (`\033[0m`) for inline FG-color endings. This lets the render loop inject a row-level BG without it being killed mid-line. Exception: `_format_cache_call` keeps `RESET` for `cc_broken` rows (error-BG ends at the line terminator, not mid-content).
