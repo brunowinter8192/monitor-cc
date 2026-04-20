@@ -1,9 +1,11 @@
 # INFRASTRUCTURE
+import os
 import time
 from datetime import datetime
 from typing import Optional
 
-from ..constants import DIM, RESET, POLL_INTERVAL
+from ..constants import DIM, RESET, ZEBRA_BG_A, ZEBRA_BG_B, POLL_INTERVAL
+from ..utils import truncate_visible
 from .metadata_format import _format_metadata, _format_worker_metadata, LEGEND
 
 _meta_log_position: int = 0
@@ -12,6 +14,20 @@ _meta_entries: list = []
 _worker_meta_log_position: int = 0
 _worker_meta_entries: list = []
 _worker_meta_last_name: Optional[str] = None
+
+# FUNCTIONS
+
+# Render list of content lines with zebra BG + truncation; returns joined string
+def _render_lines(lines: list) -> str:
+    try:
+        pane_width = os.get_terminal_size().columns
+    except OSError:
+        pane_width = 80
+    result = []
+    for i, line in enumerate(lines):
+        zebra_bg = ZEBRA_BG_B if i % 2 else ZEBRA_BG_A
+        result.append(f"{zebra_bg}{truncate_visible(line, pane_width)}\033[K{RESET}")
+    return '\n'.join(result)
 
 # ORCHESTRATOR
 
@@ -44,10 +60,11 @@ def run_metadata_loop() -> None:
         _meta_entries.extend(filtered)
 
         if _meta_entries:
-            output = _format_metadata(_meta_entries[-1])
+            lines = _format_metadata(_meta_entries[-1])
         else:
-            output = '\n'.join(LEGEND) + f"\n{DIM}Waiting for proxy data...{RESET}"
+            lines = list(LEGEND) + [f"{DIM}Waiting for proxy data...{RESET}"]
 
+        output = _render_lines(lines)
         if output != last_output:
             print("\033[2J\033[3J\033[H", end='', flush=True)
             print(output)
@@ -86,12 +103,13 @@ def run_worker_metadata_loop() -> None:
                 _worker_meta_entries.extend(new_entries)
 
         if not worker_name:
-            output = '\n'.join(LEGEND) + f"\n{DIM}Select a worker in the Workers pane{RESET}"
+            lines = list(LEGEND) + [f"{DIM}Select a worker in the Workers pane{RESET}"]
         elif not _worker_meta_entries:
-            output = '\n'.join(LEGEND) + f"\n{DIM}Worker: {worker_name} — no proxy data yet{RESET}"
+            lines = list(LEGEND) + [f"{DIM}Worker: {worker_name} — no proxy data yet{RESET}"]
         else:
-            output = _format_worker_metadata(_worker_meta_entries[-1])
+            lines = _format_worker_metadata(_worker_meta_entries[-1])
 
+        output = _render_lines(lines)
         if output != last_output:
             print("\033[2J\033[3J\033[H", end='', flush=True)
             print(output)
