@@ -1,11 +1,21 @@
 # INFRASTRUCTURE
 from datetime import datetime
 import re
+import unicodedata
 
 # From constants.py: Unified color palette
 from .constants import RESET, YELLOW, WORKER_COL_WIDTH
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+# Return terminal cell width of a single character (2 for wide/emoji, 1 otherwise)
+def _cell_width(ch: str) -> int:
+    cp = ord(ch)
+    if 0x1F000 <= cp <= 0x1FAFF or 0x2600 <= cp <= 0x27BF:
+        return 2
+    if unicodedata.east_asian_width(ch) in ('W', 'F'):
+        return 2
+    return 1
 
 # FUNCTIONS
 
@@ -58,21 +68,24 @@ def visual_line_count(line: str, pane_width: int) -> int:
         return 1
     return max(1, (len(visible) + pane_width - 1) // pane_width)
 
-# Truncate line to pane_width visible chars (ANSI-aware); append … if cut
+# Truncate line to pane_width terminal cells (ANSI- and wide-char-aware); append … if cut
 def truncate_visible(line: str, pane_width: int) -> str:
     if pane_width <= 0:
         return line
-    if len(_ANSI_ESCAPE_RE.sub('', line)) <= pane_width:
+    stripped = _ANSI_ESCAPE_RE.sub('', line)
+    if sum(_cell_width(ch) for ch in stripped) <= pane_width:
         return line
-    visible_count = 0
+    budget = pane_width - 1  # reserve 1 cell for …
+    width = 0
     i = 0
     while i < len(line):
         m = _ANSI_ESCAPE_RE.match(line, i)
         if m:
             i = m.end()
             continue
-        if visible_count >= pane_width - 1:
+        cw = _cell_width(line[i])
+        if width + cw > budget:
             break
-        visible_count += 1
+        width += cw
         i += 1
     return line[:i] + '\u2026'
