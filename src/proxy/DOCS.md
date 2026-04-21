@@ -65,10 +65,10 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_sr.py (179 LOC)
+### strip_sr.py (161 LOC)
 
-**Purpose:** Strip `<system-reminder>` tag blocks from API message content — plan-mode blocks, all SR blocks, user-interrupt SRs (IMPORTANT-line only), marker-matched SRs, Pyright diagnostics SRs. Handles both string and list-of-blocks content shapes.
-**Reads:** Message content (string or list of blocks); marker strings.
+**Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 8 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed); each has a unique identifier-string. Strip uses `startswith` against extracted SR-block text — no greedy regex across code literals.
+**Reads:** Message content (string or list of blocks); template catalog (module-local).
 **Writes:** Nothing — returns modified content.
 **Called by:** `src/proxy/rules.py`
 **Calls out:** stdlib only (`re`).

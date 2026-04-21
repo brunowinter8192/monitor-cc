@@ -7,9 +7,10 @@
 `proxy_addon.py` interceptiert alle API-Requests via mitmproxy und modifiziert den Payload vor dem Senden:
 
 1. `apply_modification_rules()` — Content-Modifications:
-   - `removed_plan_mode_sr`: Entfernt "Plan mode is active" system-reminder aus User-Messages
-   - `stripped_task_tools_nag`: Entfernt "task tools haven't been used" system-reminder
+   - **SR-Strip via Template-Catalog (commit e1a3b9a, 2026-04-21):** `strip_sr.py` matcht 8 distinct SR-Templates über exakten startswith-Identifier statt greedy regex. Templates: `task-tools-nag`, `pyright-new-diagnostics`, `deferred-tools`, `user-interrupt`, `system-notification`, `file-modified`, `claudemd-contents`, `date-changed`. Operiert auf allen 4 content-shapes: top-level string, `text`-blocks in list, `tool_result.content` (string), `tool_result.content` (list of text-sub-blocks). Vorgängerversion (greedy regex `<sr>.*?</sr>`) hatte False-Positive-Bug — matchte über Code-Literale wie `if "<system-reminder>" in text:` und entfernte echten Python-Code aus Payloads. Replay über 22 historische JSONLs (~37k strips): 0 false-positives mit neuem template-based code (vorher ~970 FPs).
+   - `removed_plan_mode_sr`: weiterhin separat behandelt (text-block drop bei "Plan mode is active")
    - `trimmed_task_notification`: Strippt output-file/tool-use-id Tags aus task-notifications
+   - `stripped_rejection_message`: Strippt rejection-Marker aus tool_result.content (eine der wenigen legitimen tool_result-strip-Operationen)
    - `replaced_system_prompt`: Ersetzt system[2] (>5000 chars) mit "." (Logging-Reduktion)
 
 2. `_strip_all_cache_control()` — Entfernt ALLE cache_control Marker von Claude Code:
