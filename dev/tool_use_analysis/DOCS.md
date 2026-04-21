@@ -106,6 +106,33 @@ Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `
 
 Only counts failures where the tool_result block itself has `is_error: true` — guards against false positives from file content that happens to contain error-marker strings.
 
+## extract_patterns.py
+
+**Purpose:** Reads one or more Proxy JSONL files, pairs every `tool_use` block with its `tool_result`, applies ratio + input-size filtering (ratio≥3, input≥50 chars) to identify waste calls, normalizes tool inputs to grouping signatures (paths→`<PATH>`, log filenames→`<LOG>`, bead IDs→`<BEAD_ID>`, hex IDs→`<HEX>`, epoch timestamps→`<TS>`, long strings→`<TEXT>`), aggregates by `(tool_name, signature)`, and outputs a 6-section Markdown report: per-source summary, tool breakdown, Bash pattern groups (top 15), other tool patterns (Grep/Glob/Read), failed-call groups, wrapper candidates.
+
+**Input:** One or more Proxy JSONL paths under `src/logs/` (positional, variadic). Entries with `raw_payload == null` are skipped.
+
+**Output:** Markdown report to stdout by default, or a file via `--output`. Sections: Source JSONLs block (CONVENTION.md), per-source summary, tool breakdown, Bash pattern groups, other-tool patterns, failed calls, wrapper candidates.
+
+**Usage:**
+```bash
+./venv/bin/python dev/tool_use_analysis/extract_patterns.py \
+  src/logs/api_requests_opus_monitor_cc_1776797402.jsonl \
+  src/logs/api_requests_worker_extract-tool-defs_1776798488.jsonl \
+  --output dev/tool_use_analysis/20260422_session_waste_patterns.md
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `proxy_jsonl` | *(positional, variadic)* Proxy JSONL path(s) under `src/logs/` | required |
+| `--output FILE` | Output markdown file path (default: stdout) | stdout |
+
+**Waste filter:** `ratio = input_chars / max(output_chars, 1) >= 3.0` AND `input_chars >= 50`. Failed calls (`is_error=True`) tracked separately regardless of ratio.
+
+**Normalization order:** paths → log filenames → bead IDs → hex IDs → epoch timestamps → long double-quoted strings → long single-quoted strings → worker session names (context-anchored after `worker-cli`).
+
+**Section 6 (Wrapper Candidates):** Write/Edit/worker_send excluded (content-driven); heredoc/`python3 -c` patterns classified as `structural`; other Bash patterns classified by presence of `|`/`&&`/`bd`. Sorted by `total_input_chars / complexity_weight` (trivial=1, medium=2, structural=4).
+
 ## Generated Reports
 
 ### 20260419_baseline.md
@@ -118,7 +145,10 @@ Bash-only deep-dive (`--tool Bash --top 50 --min-chars 500`) on all 17 Proxy JSO
 Ratio analysis (`--ratio --top 50`) on all 17 Proxy JSONLs — 1,207 matched pairs. Bash leads with max ratio 191.62 (3k chars input → 16 chars output). Read is most efficient (median ratio 0.02).
 
 ### 20260421_session_waste_failed.md
-Session-level analysis (2026-04-21 tool-use consolidation session) across 4 JSONLs — opus + 3 workers. Known quality issues: Top-10 table filtered Opus-only which produced zircular claims about worker behavior — tracked under bead `Monitor_CC-qfr`. Rewrite needs cross-source top-N and separate source-split tables.
+Session-level analysis (2026-04-21 tool-use consolidation session) across 4 JSONLs — opus + 3 workers. Known quality issues: Top-10 table filtered Opus-only which produced circular claims about worker behavior — tracked under bead `Monitor_CC-qfr`. Superseded by `20260422_session_waste_patterns.md`.
+
+### 20260422_session_waste_patterns.md
+Signature-normalized analysis (`extract_patterns.py`) across 6 JSONLs (4 from 2026-04-21 evening + 2 from 2026-04-22). 501 unique tool_use blocks, 163 waste pairs. Top waste: Write (62.2%, 176k chars), Bash (19.5%, 55k chars), Edit (14.9%, 42k chars). Top actionable Bash patterns: 66 distinct signatures after normalization — dominant offenders are `bd comments add` (5 calls, 3k chars, medium complexity) and `worker-cli status` (8 calls, 1k chars, trivial). 9 failed-call patterns; 11 failed calls total.
 
 ## Historical Reports
 
