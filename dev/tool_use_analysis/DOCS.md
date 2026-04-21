@@ -127,7 +127,7 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 | `proxy_jsonl` | *(positional, variadic)* Proxy JSONL path(s) under `src/logs/` | required |
 | `--output FILE` | Output markdown file path (default: stdout) | stdout |
 
-**Waste filter:** `ratio = input_chars / max(output_chars, 1) >= 3.0` AND `input_chars >= 50`. Failed calls (`is_error=True`) tracked separately regardless of ratio.
+**Waste filter:** `ratio = input_chars / max(output_chars, 1) >= 3.0` AND `input_chars >= 50`. Failed calls (`is_error=True`) tracked separately regardless of ratio. `CONTENT_TRANSFER_TOOLS = {'Write', 'Edit'}` plus Bash(`bd *`) and `worker_send`/`worker_merge` MCP calls are excluded from waste pairs (large input by design) and reported in Section 2b instead.
 
 **Normalization order:** paths → log filenames → bead IDs → hex IDs → epoch timestamps → long double-quoted strings → long single-quoted strings → worker session names (context-anchored after `worker-cli`).
 
@@ -148,7 +148,7 @@ Ratio analysis (`--ratio --top 50`) on all 17 Proxy JSONLs — 1,207 matched pai
 Session-level analysis (2026-04-21 tool-use consolidation session) across 4 JSONLs — opus + 3 workers. Known quality issues: Top-10 table filtered Opus-only which produced circular claims about worker behavior — tracked under bead `Monitor_CC-qfr`. Superseded by `20260422_session_waste_patterns.md`.
 
 ### 20260422_session_waste_patterns.md
-Signature-normalized analysis (`extract_patterns.py`) across 6 JSONLs (4 from 2026-04-21 evening + 2 from 2026-04-22). 501 unique tool_use blocks, 163 waste pairs. Top waste: Write (62.2%, 176k chars), Bash (19.5%, 55k chars), Edit (14.9%, 42k chars). Top actionable Bash patterns: 66 distinct signatures after normalization — dominant offenders are `bd comments add` (5 calls, 3k chars, medium complexity) and `worker-cli status` (8 calls, 1k chars, trivial). 9 failed-call patterns; 11 failed calls total.
+Signature-normalized analysis (`extract_patterns.py`) across 6 JSONLs (4 from 2026-04-21 evening + 2 from 2026-04-22). 528 unique tool_use blocks. Content-transfer excluded: Write (30 calls, 176k chars), Edit (38 calls, 46k chars), Bash(`bd*`) (19 calls, 12k chars), worker_send (15 calls, 9k chars). Actionable waste: Bash 99.3% (89 calls, 51k chars), Grep 0.7% (2 calls). Top Bash patterns: heredoc-python (structural) + `worker-cli status` (8 calls, 1k, trivial). 9 failed-call patterns; 11 failed calls total.
 
 ## Historical Reports
 

@@ -29,6 +29,16 @@ OTHER_MIN_INPUT  = 500
 EXAMPLE_CHARS    = 150
 SIG_MAX_CHARS    = 120
 
+# Tools whose large input is by design (content being written/sent) — excluded from waste analysis
+CONTENT_TRANSFER_TOOLS = {'Write', 'Edit'}
+
+# Recognizable command prefixes for Section 6 wrapper name generation (skip if absent)
+# echo excluded: second token is always quoted content, never a meaningful subcommand
+KNOWN_PREFIXES = frozenset({
+    'worker-cli', 'git', 'bd', 'ls', 'cat', 'python3', 'python',
+    'head', 'grep', 'jq', 'find',
+})
+
 # Normalization substitutions applied in order
 _NORM_SUBS = [
     (re.compile(r'/(?:Users|tmp|var|opt)/\S+'),               '<PATH>'),
@@ -57,15 +67,15 @@ def run(jsonl_paths, output_path):
     tool_results = {}
     _collect_tool_results(all_events, tool_results)
 
-    waste_pairs, failed_pairs = _build_pairs(tool_uses, tool_results)
+    waste_pairs, failed_pairs, ct_pairs = _build_pairs(tool_uses, tool_results)
     waste_groups  = _aggregate_waste(waste_pairs)
     failed_groups = _aggregate_failed(failed_pairs)
-    source_stats  = _per_source_stats(tool_uses, waste_pairs, failed_pairs, jsonl_paths)
+    source_stats  = _per_source_stats(tool_uses, waste_pairs, failed_pairs, ct_pairs, jsonl_paths)
 
     report = _build_report(
         jsonl_paths, per_source_events, tool_uses,
         source_stats, waste_pairs, waste_groups,
-        failed_pairs, failed_groups,
+        failed_pairs, failed_groups, ct_pairs,
     )
     _write_output(report, output_path)
 
@@ -125,6 +135,7 @@ def _collect_tool_uses(events, out):
                     'raw_example': _raw_example(name, inp),
                     'source': source,
                     'ts': ts,
+                    'is_ct': _is_content_transfer(name, inp),
                 }
 
 
@@ -191,6 +202,17 @@ def _raw_example(name, inp):
     return raw.replace('\n', ' ')[:EXAMPLE_CHARS]
 
 
+# Return True for content-transfer tools whose large input is by design, not waste
+def _is_content_transfer(name, inp):
+    if name in CONTENT_TRANSFER_TOOLS:
+        return True
+    if name == 'Bash' and inp.get('command', '').lstrip().startswith('bd '):
+        return True
+    if 'worker_send' in name or 'worker_merge' in name:
+        return True
+    return False
+
+
 # Classify error type from tool_result text (called only when is_error=True)
 def _classify_failure(text):
     if TOOL_USE_ERROR_OPEN in text:
@@ -206,9 +228,9 @@ def _classify_failure(text):
     return 'bash-exit-nonzero'
 
 
-# Build waste and failed pair lists from matched tool_use + tool_result pairs
+# Build waste, failed, and content-transfer pair lists from matched tool_use + tool_result pairs
 def _build_pairs(tool_uses, tool_results):
-    waste, failed = [], []
+    waste, failed, ct = [], [], []
     for tid, tu in tool_uses.items():
         tr = tool_results.get(tid)
         if tr is None:
@@ -217,9 +239,11 @@ def _build_pairs(tool_uses, tool_results):
         if tr['is_error']:
             failed.append({**tu, 'error_type': _classify_failure(tr['text']),
                            'ratio': ratio, 'output_chars': tr['output_chars']})
-        if ratio >= WASTE_RATIO_MIN and tu['input_chars'] >= WASTE_INPUT_MIN:
+        if tu['is_ct']:
+            ct.append({**tu, 'ratio': ratio, 'output_chars': tr['output_chars']})
+        elif ratio >= WASTE_RATIO_MIN and tu['input_chars'] >= WASTE_INPUT_MIN:
             waste.append({**tu, 'ratio': ratio, 'output_chars': tr['output_chars']})
-    return waste, failed
+    return waste, failed, ct
 
 
 # Aggregate waste pairs by (tool_name, sig)
@@ -251,11 +275,12 @@ def _aggregate_failed(failed_pairs):
 
 
 # Compute per-source summary stats for section 1
-def _per_source_stats(tool_uses, waste_pairs, failed_pairs, jsonl_paths):
+def _per_source_stats(tool_uses, waste_pairs, failed_pairs, ct_pairs, jsonl_paths):
     stats = {}
     for path in jsonl_paths:
         label  = _source_label(path)
         total  = sum(1 for tu in tool_uses.values()  if tu['source'] == label)
+        ct     = sum(1 for p  in ct_pairs             if p['source']  == label)
         waste  = sum(1 for p  in waste_pairs          if p['source']  == label)
         failed = sum(1 for p  in failed_pairs         if p['source']  == label)
         waste_input = sum(p['input_chars'] for p in waste_pairs if p['source'] == label)
@@ -264,8 +289,8 @@ def _per_source_stats(tool_uses, waste_pairs, failed_pairs, jsonl_paths):
             if p['source'] == label:
                 by_sig[p['sig']] += p['input_chars']
         dominant = max(by_sig, key=by_sig.get) if by_sig else '—'
-        stats[label] = {'total': total, 'waste': waste, 'failed': failed,
-                        'waste_input': waste_input, 'dominant': dominant}
+        stats[label] = {'total': total, 'content_transfer': ct, 'waste': waste,
+                        'failed': failed, 'waste_input': waste_input, 'dominant': dominant}
     return stats
 
 
@@ -300,7 +325,8 @@ def _derive_wrapper_name(sig, tool):
             break
     if first == 'worker-cli' and len(tokens) > 1:
         return f'worker-{tokens[1]}'
-    if first in ('git', 'bd', 'grep', 'find', 'ls', 'jq', 'cat', 'echo', 'head') and len(tokens) > 1:
+    # Only extract subcmd for tools with actual meaningful subcommands (not content-bearing tokens)
+    if first in ('git', 'bd', 'grep', 'find', 'jq') and len(tokens) > 1:
         subcmd = re.sub(r'[<>\$"\']', '', tokens[1]).strip('-').strip()
         if subcmd and not subcmd.startswith('<'):
             return f'{first}-{subcmd}'
@@ -315,7 +341,7 @@ def _fmt_k(n):
 # Assemble the full Markdown report
 def _build_report(jsonl_paths, per_source_events, tool_uses,
                   source_stats, waste_pairs, waste_groups,
-                  failed_pairs, failed_groups):
+                  failed_pairs, failed_groups, ct_pairs):
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     L = []
 
@@ -333,6 +359,7 @@ def _build_report(jsonl_paths, per_source_events, tool_uses,
 
     L += _render_source_summary(source_stats, jsonl_paths)
     L += _render_tool_breakdown(waste_pairs)
+    L += _render_ct_breakdown(ct_pairs)
     L += _render_bash_patterns(waste_pairs)
     L += _render_other_tools(waste_pairs)
     L += _render_failed_calls(failed_pairs, failed_groups)
@@ -341,11 +368,11 @@ def _build_report(jsonl_paths, per_source_events, tool_uses,
     return '\n'.join(L)
 
 
-# Render section 1: per-source summary table
+# Render section 1: per-source summary table (includes Content-Transfer column)
 def _render_source_summary(source_stats, jsonl_paths):
     L = ['## 1. Per-Source Summary', '',
-         '| Source | Total Calls | Waste Calls (ratio≥3) | Failed Calls | Total Waste Input | Dominant Offender |',
-         '|---|---|---|---|---|---|']
+         '| Source | Total Calls | Content-Transfer | Waste Calls (ratio≥3) | Failed Calls | Total Waste Input | Dominant Offender |',
+         '|---|---|---|---|---|---|---|']
     for path in jsonl_paths:
         label = _source_label(path)
         s = source_stats.get(label, {})
@@ -354,8 +381,9 @@ def _render_source_summary(source_stats, jsonl_paths):
             dom = dom[:50] + '…'
         dom = dom.replace('|', '\\|')
         L.append(
-            f"| {label} | {s.get('total', 0)} | {s.get('waste', 0)} |"
-            f" {s.get('failed', 0)} | {_fmt_k(s.get('waste_input', 0))} chars | `{dom}` |"
+            f"| {label} | {s.get('total', 0)} | {s.get('content_transfer', 0)} |"
+            f" {s.get('waste', 0)} | {s.get('failed', 0)}"
+            f" | {_fmt_k(s.get('waste_input', 0))} chars | `{dom}` |"
         )
     return L + ['']
 
@@ -369,7 +397,7 @@ def _render_tool_breakdown(waste_pairs):
         t['count'] += 1
         t['total_input'] += p['input_chars']
         t['total_ratio'] += p['ratio']
-    L = ['## 2. Tool Breakdown (aggregated over all 6)', '',
+    L = ['## 2. Tool Breakdown — Actionable Waste (non-content-transfer, aggregated over all 6)', '',
          '| Tool | Waste Calls | Total Waste Input | Avg Ratio | % of All Waste Input |',
          '|---|---|---|---|---|']
     for tool, s in sorted(by_tool.items(), key=lambda x: -x[1]['total_input']):
@@ -378,6 +406,33 @@ def _render_tool_breakdown(waste_pairs):
         L.append(f"| {tool} | {s['count']} | {s['total_input']:,} | {avg_r:.2f} | {pct:.1f}% |")
     if not by_tool:
         L.append('*(no waste calls detected)*')
+    return L + ['']
+
+
+# Render section 2b: content-transfer tool breakdown (large input by design — not waste)
+def _render_ct_breakdown(ct_pairs):
+    L = ['## 2b. Content-Transfer Breakdown (large input by design — excluded from waste analysis)', '',
+         '*Write, Edit, Bash(`bd *`), worker_send: large tool input is expected and not structurally wrappable.*', '',
+         '| Tool | Calls | Total Input |',
+         '|---|---|---|']
+    by_label = defaultdict(lambda: {'count': 0, 'total_input': 0})
+    for p in ct_pairs:
+        # Label bd-Bash separately from general Bash
+        if p['name'] == 'Bash':
+            label = 'Bash (bd *)'
+        elif 'worker_send' in p['name']:
+            label = 'worker_send'
+        elif 'worker_merge' in p['name']:
+            label = 'worker_merge'
+        else:
+            label = p['name']
+        g = by_label[label]
+        g['count'] += 1
+        g['total_input'] += p['input_chars']
+    for label, g in sorted(by_label.items(), key=lambda x: -x[1]['total_input']):
+        L.append(f"| {label} | {g['count']} | {g['total_input']:,} |")
+    if not ct_pairs:
+        L.append('*(no content-transfer calls detected)*')
     return L + ['']
 
 
@@ -448,6 +503,20 @@ def _render_failed_calls(failed_pairs, failed_groups):
     return L + ['']
 
 
+# Extract first recognizable command token from a normalized signature
+def _first_command_token(sig):
+    s = re.sub(r'^[A-Z_][A-Z0-9_]*=\S*\s*', '', sig).strip()
+    tokens = s.split()
+    if not tokens:
+        return ''
+    first = tokens[0].lower().rstrip('/').split('(')[0]
+    first = re.sub(r'[<>\$"\']', '', first).strip('-').strip()
+    for alias in ('./venv/bin/python', './venv/bin/python3'):
+        if first == alias:
+            return 'python3'
+    return first
+
+
 # Render section 6: wrapper candidates sorted by savings/complexity
 def _render_wrapper_candidates(waste_groups, failed_groups):
     WEIGHT = {'trivial': 1, 'medium': 2, 'structural': 4}
@@ -458,12 +527,15 @@ def _render_wrapper_candidates(waste_groups, failed_groups):
     }
     candidates = []
 
-    # Write/Edit/worker_send are content-driven; wrapping them won't reduce input size
+    # ct tools already absent from waste_groups; also skip any residual worker_send entries
     SKIP_TOOLS = {'Write', 'Edit', 'mcp__plugin_iterative-dev_iterative-dev__worker_send'}
     for (tool, sig), g in waste_groups.items():
         if g['total_input'] < 100:
             continue
         if tool in SKIP_TOOLS:
+            continue
+        # Skip candidates whose first command token is not in known prefixes (garbage names)
+        if _first_command_token(sig) not in KNOWN_PREFIXES:
             continue
         cplx  = _classify_complexity(sig, tool)
         name  = _derive_wrapper_name(sig, tool)
@@ -473,6 +545,8 @@ def _render_wrapper_candidates(waste_groups, failed_groups):
                            'complexity': cplx, 'score': score, 'is_failure': False})
 
     for (tool, sig, etype), g in failed_groups.items():
+        if _first_command_token(sig) not in KNOWN_PREFIXES:
+            continue
         cplx  = 'structural' if etype in ('tool-unavailable', 'parallel-cancel') else 'medium'
         name  = _derive_wrapper_name(sig, tool) + '-fix'
         score = g['total_input'] / WEIGHT[cplx]
