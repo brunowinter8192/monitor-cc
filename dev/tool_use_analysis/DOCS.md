@@ -1,6 +1,6 @@
 # dev/tool_use_analysis/
 
-Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `extract_long_calls.py` for full Markdown reports; `extract_zeros.py` for zero-result search detection. Each script is standalone (no shared library — helpers inlined per script).
+Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `extract_long_calls.py` for full Markdown reports; `extract_zeros.py` for zero-result search detection; `extract_failed.py` for is_error tool_result detection classified by failure type. Each script is standalone (no shared library — helpers inlined per script).
 
 ## extract_long_calls.py
 
@@ -77,6 +77,35 @@ Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `
 
 **Preceding text extraction:** walks the `parentUuid` chain from the tool_use event back to the nearest preceding assistant text block — gives context for what Opus was trying to accomplish.
 
+## extract_failed.py
+
+**Purpose:** Reads one or more Proxy JSONL files from `src/logs/`, pairs each `tool_use` block with its matching `tool_result`, detects failures via `is_error: true` at the tool_result block level, classifies failure type, and outputs a Markdown report with per-tool / per-type aggregations plus concrete examples.
+
+**Input:** One or more Proxy JSONL paths under `src/logs/` (positional, variadic). Entries with `raw_payload == null` are skipped.
+
+**Output:** Markdown report to stdout by default, or a file via `--output`. Sections: per-source failure counts, per-tool breakdown, per-failure-type breakdown, 5 concrete failure examples with input preview and error text.
+
+**Usage:**
+```bash
+./venv/bin/python3 dev/tool_use_analysis/extract_failed.py \
+  src/logs/api_requests_opus_monitor_cc_1776797402.jsonl \
+  --output dev/tool_use_analysis/20260421_session_failed.md
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `proxy_jsonl` | *(positional, variadic)* Proxy JSONL path(s) under `src/logs/` | required |
+| `--output FILE` | Output markdown file path (default: stdout) | stdout |
+
+**Failure classification logic:**
+- `parallel-cancel` — `<tool_use_error>Cancelled: parallel tool call ...</tool_use_error>` marker
+- `tool-unavailable` — `<tool_use_error>Error: No such tool available: ...</tool_use_error>` marker
+- `edit-string-not-found` — `String to replace not found in file` marker
+- `validation-error` — validation-related error text
+- `bash-exit-nonzero` — `is_error: true` without specific `<tool_use_error>` tag (raw shell exit)
+
+Only counts failures where the tool_result block itself has `is_error: true` — guards against false positives from file content that happens to contain error-marker strings.
+
 ## Generated Reports
 
 ### 20260419_baseline.md
@@ -87,6 +116,9 @@ Bash-only deep-dive (`--tool Bash --top 50 --min-chars 500`) on all 17 Proxy JSO
 
 ### 20260419_ratio_analysis.md
 Ratio analysis (`--ratio --top 50`) on all 17 Proxy JSONLs — 1,207 matched pairs. Bash leads with max ratio 191.62 (3k chars input → 16 chars output). Read is most efficient (median ratio 0.02).
+
+### 20260421_session_waste_failed.md
+Session-level analysis (2026-04-21 tool-use consolidation session) across 4 JSONLs — opus + 3 workers. Known quality issues: Top-10 table filtered Opus-only which produced zircular claims about worker behavior — tracked under bead `Monitor_CC-qfr`. Rewrite needs cross-source top-N and separate source-split tables.
 
 ## Historical Reports
 

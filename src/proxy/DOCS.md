@@ -25,7 +25,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (236 LOC)
+### addon.py (245 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
@@ -75,12 +75,12 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### content_strip.py (104 LOC)
+### content_strip.py (139 LOC)
 
-**Purpose:** Strip or extract non-SR content from API message payloads — rejection tool_result blocks, SessionStart SR extraction, session-guidance section removal, gitStatus stripping from sys[3].
-**Reads:** Message content (string or list of blocks).
-**Writes:** Nothing — returns modified content or extracted text.
-**Called by:** `src/proxy/rules.py`
+**Purpose:** Strip or extract non-SR content from API message payloads — rejection tool_result blocks, SessionStart SR extraction, session-guidance section removal, gitStatus stripping from sys[3], full sys[3] text replacement with `"."`, and `tools[*].description` stripping across all tool definitions.
+**Reads:** Message content (string or list of blocks); full payload dict for tool and system strip functions.
+**Writes:** Nothing — returns modified content, extracted text, or modified payload.
+**Called by:** `src/proxy/rules.py`; `src/proxy/addon.py` (directly calls `_strip_tool_descriptions` and `_strip_sys3` after tool injection)
 **Calls out:** —
 
 ---
