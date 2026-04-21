@@ -102,3 +102,38 @@ def _strip_git_status(text: str) -> str:
     if idx == -1:
         return text
     return text[:idx].rstrip()
+
+
+# Strip description field from all tools in payload.tools[] — keeps name + input_schema intact.
+# Returns (modified_payload, count_stripped). Idempotent: tools already empty-description are skipped.
+def _strip_tool_descriptions(payload: dict) -> tuple:
+    tools = payload.get("tools", [])
+    if not tools:
+        return payload, 0
+    stripped = 0
+    new_tools = []
+    for tool in tools:
+        if tool.get("description", "") != "":
+            new_tools.append({**tool, "description": ""})
+            stripped += 1
+        else:
+            new_tools.append(tool)
+    if stripped == 0:
+        return payload, 0
+    return {**payload, "tools": new_tools}, stripped
+
+
+# Replace sys[3].text with "." — strips claudeMd context block from system prompt.
+# Returns (modified_payload, was_stripped: bool). Idempotent: skips if already ".".
+def _strip_sys3(payload: dict) -> tuple:
+    system = payload.get("system", [])
+    if not isinstance(system, list) or len(system) < 4:
+        return payload, False
+    block = system[3]
+    if not isinstance(block, dict) or block.get("type") != "text":
+        return payload, False
+    if block.get("text", "") == ".":
+        return payload, False
+    new_system = list(system)
+    new_system[3] = {**block, "text": "."}
+    return {**payload, "system": new_system}, True
