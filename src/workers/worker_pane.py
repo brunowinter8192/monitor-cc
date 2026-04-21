@@ -161,8 +161,8 @@ def run_workers_loop() -> None:
                 max_offset = max(0, total_lines - pane_height)
                 worker_scroll_offset = min(worker_scroll_offset, max_offset)
                 vp_start = max(0, total_lines - pane_height - worker_scroll_offset)
-                visible_all = all_lines[vp_start:]
-                visible_keys = line_keys[vp_start:]
+                visible_all = all_lines[vp_start:vp_start + pane_height]
+                visible_keys = line_keys[vp_start:vp_start + pane_height]
                 worker_line_map.clear()
                 worker_cache_line_map.clear()
                 result_lines = []
