@@ -22,7 +22,6 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             is_stripped = msg_idx in stripped_indices
             if is_stripped:
                 lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
-                keys.append(None)
                 removed_map = entry.get('stripped_msg_removed')
                 if removed_map is not None:
                     removed_chunks = removed_map.get(str(msg_idx), [])
@@ -105,7 +104,6 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             is_stripped = msg_idx in stripped_indices
             if is_stripped:
                 lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{SOFT_RESET}")
-                keys.append(None)
                 removed_map = entry.get('stripped_msg_removed')
                 if removed_map is not None:
                     removed_chunks = removed_map.get(str(msg_idx), [])
