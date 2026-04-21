@@ -53,6 +53,7 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
                         preview = sb.get('preview', '')
                         if preview:
                             for raw_line in preview.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
                                 if not raw_line:
                                     lines.append(f"        {DIM}{SOFT_RESET}")
                                     keys.append(None)
@@ -65,6 +66,7 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
                         original_text = sb.get('original_text', '')
                         if original_text:
                             for raw_line in original_text.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
                                 if not raw_line:
                                     lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
                                     keys.append(None)
@@ -128,6 +130,7 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                     description = tool_def.get('description', '')
                     if description:
                         for raw_line in description.split('\n'):
+                            raw_line = raw_line.expandtabs(8)
                             if not raw_line:
                                 lines.append(f"        {bg}{DIM}{SOFT_RESET}")
                                 keys.append(None)

@@ -29,7 +29,7 @@ def format_system_message(timestamp: str, text: str) -> str:
     time_str = format_timestamp(timestamp)
     header = f"{CYAN}[{time_str}] SYSTEM MESSAGE{RESET}"
     body_lines = text.split('\n')
-    formatted_body = '\n'.join(f"{INDENT}{line}" for line in body_lines if line.strip())
+    formatted_body = '\n'.join(f"{INDENT}{line.expandtabs(8)}" for line in body_lines if line.strip())
     return f"{header}\n{formatted_body}" if formatted_body else header
 
 # Format grouped user media items (same timestamp) as one line
@@ -61,7 +61,7 @@ def format_skill_activation(skill_item: dict) -> str:
     content = skill_item.get('content', '')
     header = f"{CYAN}[{time_str}] SKILL LOADED: {skill_name}{RESET}"
     body_lines = content.split('\n')
-    formatted_body = '\n'.join(f"{INDENT}{line}" for line in body_lines)
+    formatted_body = '\n'.join(f"{INDENT}{line.expandtabs(8)}" for line in body_lines)
     return f"{header}\n{formatted_body}"
 
 # Format thinking block from assistant

@@ -227,6 +227,7 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
                 chunks = err.get('_stripped_chunks', [])
                 display_text = highlight_stripped(pre_strip, chunks) if pre_strip else err['full_text']
                 for raw_line in display_text.split('\n'):
+                    raw_line = raw_line.expandtabs(8)
                     all_lines.append(f"    {DIM}{raw_line}{SOFT_RESET}" if raw_line else '')
                     all_keys.append(None)
 
