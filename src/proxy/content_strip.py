@@ -104,36 +104,64 @@ def _strip_git_status(text: str) -> str:
     return text[:idx].rstrip()
 
 
-# Strip description field from all tools in payload.tools[] — keeps name + input_schema intact.
-# Returns (modified_payload, count_stripped). Idempotent: tools already empty-description are skipped.
+# Strip description fields from all tools in payload.tools[] — top-level description and all
+# input_schema.properties[*].description. Returns (modified_payload, count_stripped, originals_dict).
+# originals_dict = {tool_name: {"description": "...", "params": {param_name: "..."}}} — only tools
+# where anything was actually stripped; only keys present when non-empty. Idempotent.
 def _strip_tool_descriptions(payload: dict) -> tuple:
     tools = payload.get("tools", [])
     if not tools:
-        return payload, 0
+        return payload, 0, {}
     stripped = 0
+    originals = {}
     new_tools = []
     for tool in tools:
-        if tool.get("description", "") != "":
-            new_tools.append({**tool, "description": ""})
+        t_name = tool.get("name", "")
+        top_desc = tool.get("description", "")
+        input_schema = tool.get("input_schema", {})
+        props = input_schema.get("properties", {}) if isinstance(input_schema, dict) else {}
+
+        param_originals = {}
+        new_props = {}
+        for p_name, p_info in props.items():
+            if isinstance(p_info, dict) and p_info.get("description", "") != "":
+                param_originals[p_name] = p_info["description"]
+                new_props[p_name] = {**p_info, "description": ""}
+            else:
+                new_props[p_name] = p_info
+
+        if top_desc != "" or param_originals:
+            orig_entry = {}
+            if top_desc != "":
+                orig_entry["description"] = top_desc
+            if param_originals:
+                orig_entry["params"] = param_originals
+            originals[t_name] = orig_entry
             stripped += 1
+            new_tool = {**tool, "description": ""}
+            if param_originals:
+                new_tool = {**new_tool, "input_schema": {**input_schema, "properties": new_props}}
+            new_tools.append(new_tool)
         else:
             new_tools.append(tool)
+
     if stripped == 0:
-        return payload, 0
-    return {**payload, "tools": new_tools}, stripped
+        return payload, 0, {}
+    return {**payload, "tools": new_tools}, stripped, originals
 
 
 # Replace sys[3].text with "." — strips claudeMd context block from system prompt.
-# Returns (modified_payload, was_stripped: bool). Idempotent: skips if already ".".
+# Returns (modified_payload, was_stripped: bool, original_text_or_None). Idempotent: skips if already ".".
 def _strip_sys3(payload: dict) -> tuple:
     system = payload.get("system", [])
     if not isinstance(system, list) or len(system) < 4:
-        return payload, False
+        return payload, False, None
     block = system[3]
     if not isinstance(block, dict) or block.get("type") != "text":
-        return payload, False
-    if block.get("text", "") == ".":
-        return payload, False
+        return payload, False, None
+    original_text = block.get("text", "")
+    if original_text == ".":
+        return payload, False, None
     new_system = list(system)
     new_system[3] = {**block, "text": "."}
-    return {**payload, "system": new_system}, True
+    return {**payload, "system": new_system}, True, original_text

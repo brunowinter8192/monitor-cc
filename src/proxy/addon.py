@@ -83,11 +83,11 @@ class ProxyAddon:
             modified_payload = inject_mcp_tools(modified_payload, project_path)
             modifications.append("injected_mcp_tools")
 
-            modified_payload, desc_stripped = _strip_tool_descriptions(modified_payload)
+            modified_payload, desc_stripped, tool_descs_originals = _strip_tool_descriptions(modified_payload)
             if desc_stripped > 0:
                 modifications.append(f"stripped_tool_descs_{desc_stripped}")
 
-            modified_payload, sys3_stripped = _strip_sys3(modified_payload)
+            modified_payload, sys3_stripped, sys3_original = _strip_sys3(modified_payload)
             if sys3_stripped:
                 modifications.append("stripped_sys3")
 
@@ -104,6 +104,10 @@ class ProxyAddon:
             entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
             if original_system2 is not None:
                 entry['original_system2_text'] = original_system2
+            if sys3_original is not None:
+                entry['stripped_sys3_original'] = sys3_original
+            if tool_descs_originals:
+                entry['stripped_tool_descs_originals'] = tool_descs_originals
             entry['stripped_msg_indices'] = stripped_msg_indices
             entry['context_management_injected'] = cm_injected
             if stripped_msg_originals:
