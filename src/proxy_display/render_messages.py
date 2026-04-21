@@ -31,6 +31,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                             lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
                             keys.append(None)
                         for raw_line in chunk.split('\n'):
+                            raw_line = raw_line.expandtabs(8)
                             if not raw_line:
                                 lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
                                 keys.append(None)
@@ -42,6 +43,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     orig_text = originals.get(str(msg_idx), '')
                     if orig_text:
                         for raw_line in orig_text.split('\n'):
+                            raw_line = raw_line.expandtabs(8)
                             if not raw_line:
                                 lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
                                 keys.append(None)
@@ -68,6 +70,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     full_text = blk.get('full_text', blk.get('preview', ''))
                     if full_text:
                         for raw_line in full_text.split('\n'):
+                            raw_line = raw_line.expandtabs(8)
                             if not raw_line:
                                 lines.append(f"        {DIM}{SOFT_RESET}")
                                 keys.append(None)
@@ -78,6 +81,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 preview = msg.get('content_preview', '')
                 if preview:
                     for raw_line in preview.split('\n'):
+                        raw_line = raw_line.expandtabs(8)
                         if not raw_line:
                             lines.append(f"      {DIM}{SOFT_RESET}")
                             keys.append(None)
@@ -110,6 +114,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                             lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
                             keys.append(None)
                         for raw_line in chunk.split('\n'):
+                            raw_line = raw_line.expandtabs(8)
                             if not raw_line:
                                 lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
                                 keys.append(None)
@@ -121,6 +126,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     orig_text = originals.get(str(msg_idx), '')
                     if orig_text:
                         for raw_line in orig_text.split('\n'):
+                            raw_line = raw_line.expandtabs(8)
                             if not raw_line:
                                 lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
                                 keys.append(None)
@@ -147,6 +153,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     full_text = blk.get('full_text', blk.get('preview', ''))
                     if full_text:
                         for raw_line in full_text.split('\n'):
+                            raw_line = raw_line.expandtabs(8)
                             if not raw_line:
                                 lines.append(f"        {DIM}{SOFT_RESET}")
                                 keys.append(None)
@@ -157,6 +164,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 tail = msg.get('content_tail', '')
                 if tail:
                     for raw_line in tail.split('\n'):
+                        raw_line = raw_line.expandtabs(8)
                         if not raw_line:
                             lines.append(f"      {DIM}{SOFT_RESET}")
                             keys.append(None)
