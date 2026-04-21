@@ -89,12 +89,22 @@ def run_workers_loop() -> None:
                                         if is_now_expanded:
                                             worker_scroll_offsets[name] = 0
                                         input_changed = True
-                            elif button == 64:  # wheel up → older content
-                                worker_scroll_offset = max(0, worker_scroll_offset + 3)
-                                input_changed = True
-                            elif button == 65:  # wheel down → newer content
-                                worker_scroll_offset = max(0, worker_scroll_offset - 3)
-                                input_changed = True
+                            elif button in (64, 65):  # wheel up / wheel down
+                                w_name = None
+                                cache_hit = worker_cache_line_map.get(row)
+                                if cache_hit is not None:
+                                    w_name = cache_hit[0]
+                                else:
+                                    map_hit = worker_line_map.get(row)
+                                    if map_hit is not None:
+                                        w_name = map_hit
+                                    else:
+                                        w_name = worker_selected_name
+                                if w_name is not None:
+                                    current = worker_scroll_offsets.get(w_name, 0)
+                                    delta = 3 if button == 64 else -3
+                                    worker_scroll_offsets[w_name] = max(0, current + delta)
+                                    input_changed = True
                             elif button >= 32:
                                 worker_hover_row = row
                                 input_changed = True
