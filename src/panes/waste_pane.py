@@ -361,6 +361,7 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
                 all_keys.append(None)
                 rendered_out = 0
                 for oline in out_text.split('\n'):
+                    oline = oline.expandtabs(8)
                     if rendered_out >= OUT_MAX_LINES:
                         break
                     all_lines.append(f'    {DIM}{oline}{SOFT_RESET}')

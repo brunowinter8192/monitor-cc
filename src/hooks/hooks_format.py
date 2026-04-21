@@ -73,6 +73,7 @@ def format_hooks_item_lines(item: dict) -> List[str]:
         text = content if content else item.get('detail', '')
         if text:
             for line in text.split('\n'):
+                line = line.expandtabs(8)
                 if line.strip():
                     lines.append(f"    {color}{line}{SOFT_RESET}")
     return lines
@@ -113,6 +114,7 @@ def format_hooks_block(items: list, scroll_offset: int, pane_height: int = 50, p
                     all_lines.append(warn)
                     all_keys.append(None)
                 for line in text.split('\n'):
+                    line = line.expandtabs(8)
                     stripped = line.strip()
                     if stripped:
                         if not content and stripped.startswith(('source=', 'injected:', 'tool=')):

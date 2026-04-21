@@ -105,6 +105,7 @@ def format_output(content: str) -> str:
     lines = content.split('\n')
     formatted_lines = []
     for line in lines:
+        line = line.expandtabs(8)
         if SCORE_PATTERN.match(line.strip()):
             formatted_lines.append(f"{INDENT}{GREEN}{line}{RESET}")
         else:
@@ -121,7 +122,7 @@ def format_error_output(content: str) -> str:
         return f"{INDENT}{RED}(empty){RESET}"
 
     lines = content.split('\n')
-    formatted_lines = '\n'.join(f"{INDENT}{RED}{line}{RESET}" for line in lines)
+    formatted_lines = '\n'.join(f"{INDENT}{RED}{line.expandtabs(8)}{RESET}" for line in lines)
     return formatted_lines
 
 # Format system reminders with pastel blue color
@@ -131,6 +132,7 @@ def format_system_reminders(reminders: list) -> str:
     lines = []
     for reminder in reminders:
         for line in reminder.split('\n'):
+            line = line.expandtabs(8)
             if line.strip():
                 lines.append(f"{INDENT}{PASTEL_PURPLE}{line}{RESET}")
     return '\n'.join(lines)
@@ -139,7 +141,7 @@ def format_system_reminders(reminders: list) -> str:
 def format_value(value) -> str:
     if isinstance(value, str) and '\n' in value:
         lines = value.split('\n')
-        return '\n' + '\n'.join(f"{INDENT}{line}" for line in lines)
+        return '\n' + '\n'.join(f"{INDENT}{line.expandtabs(8)}" for line in lines)
     elif isinstance(value, dict):
         return str(value)
     elif isinstance(value, list):
