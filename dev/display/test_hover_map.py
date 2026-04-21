@@ -340,6 +340,37 @@ def test_workers_scroll_reset_on_expand() -> None:
     assert_true(simulated_scroll_offsets['worker-B'] == 0, "workers_scroll_reset: worker-B unaffected")
 
 
+def test_stripped_msg_pair_alignment() -> None:
+    print("\n[render_messages] Stripped-msg lines/keys exact pairing (no line_map drift)")
+    from src.proxy_display.parser import _parse_log_file
+    from src.proxy_display.render_messages import render_messages
+    from pathlib import Path
+
+    worktree_root = Path(__file__).parent.parent.parent
+    log_path = worktree_root / 'src' / 'logs' / 'api_requests_opus_monitor_cc_1776783075.jsonl'
+    if not log_path.exists():
+        # Running from a git worktree — navigate up to main repo (.claude/worktrees/<name>/../../../)
+        log_path = worktree_root.parent.parent.parent / 'src' / 'logs' / 'api_requests_opus_monitor_cc_1776783075.jsonl'
+    if not log_path.exists():
+        assert_true(True, "stripped_pair: log file missing — skipped")
+        return
+
+    entries, _ = _parse_log_file(log_path, 0)
+    stripped = [(i, e) for i, e in enumerate(entries) if e.get('stripped_msg_indices')]
+    if not stripped:
+        assert_true(True, "stripped_pair: no stripped entries in log — skipped")
+        return
+
+    tested = stripped[:5]
+    for entry_idx, entry in tested:
+        prev = entries[entry_idx - 1] if entry_idx > 0 else None
+        lines, keys = render_messages(entry, prev, entries, {entry_idx: True}, 150)
+        assert_true(
+            len(lines) == len(keys),
+            f"stripped_pair entry[{entry_idx}]: len(lines)={len(lines)} == len(keys)={len(keys)}"
+        )
+
+
 # ORCHESTRATOR
 
 def run_tests() -> None:
@@ -356,6 +387,7 @@ def run_tests() -> None:
     test_proxy_shift_uses_header_lines()
     test_workers_pane_scroll_offset()
     test_workers_scroll_reset_on_expand()
+    test_stripped_msg_pair_alignment()
     print(f"\n{'=' * 60}")
     print(f"Results: {PASS} passed, {FAIL} failed")
     if FAIL:
