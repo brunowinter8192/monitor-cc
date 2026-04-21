@@ -38,16 +38,24 @@ def _extract_raw_payload_fields(entry: dict) -> None:
                     sb['original_text'] = entry['original_system2_text']
                     break
 
+        if entry.get('stripped_sys3_original'):
+            for sb in entry['system_blocks']:
+                if sb['idx'] == 3:
+                    sb['original_text'] = entry['stripped_sys3_original']
+                    break
+
         tools = raw.get('tools', [])
         entry['tools_total_chars'] = sum(len(json.dumps(t)) for t in tools)
         entry['tools_count'] = len(tools)
         entry['tools_hash'] = hashlib.md5(json.dumps(sorted([t.get('name', '') for t in tools])).encode()).hexdigest()[:8]
         entry['tools_names'] = [t.get('name', '') for t in tools]
+        _tool_originals = entry.get('stripped_tool_descs_originals', {})
         entry['tools_defs'] = [
             {
                 'name': t.get('name', ''),
                 'description': t.get('description', ''),
                 'input_schema': t.get('input_schema', {}),
+                'stripped_original': _tool_originals.get(t.get('name', '')),
             }
             for t in tools
         ]
