@@ -39,7 +39,7 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
                 for sb in sys_blocks:
                     bidx = sb['idx']
                     bchars = sb.get('chars', 0)
-                    is_sys_stripped = 'replaced_system_prompt' in mods and bidx == 2
+                    is_sys_stripped = ('replaced_system_prompt' in mods and bidx == 2) or ('stripped_sys3' in mods and bidx == 3)
                     stripped_str = f"  [STRIPPED]" if is_sys_stripped else ''
                     block_key = ('sys_block', entry_idx, bidx)
                     is_block_expanded = expand_states.get(block_key, False)
@@ -117,13 +117,15 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                 if not is_first_request and (not tools_changed or t_name not in added_set):
                     continue
                 is_stripped_tool = t_name in TOOL_BLOCKLIST
+                stripped_original = tool_def.get('stripped_original')
+                stripped_marker = '  [STRIPPED]' if stripped_original else ''
                 tool_key = ('tool', entry_idx, tool_idx)
                 is_tool_exp = expand_states.get(tool_key, False)
                 t_symbol = '\u25bc' if is_tool_exp else '\u25b6'
                 if is_stripped_tool:
-                    lines.append(f"      {DIM_YELLOW_BG}{DIM}{t_symbol} {t_name}{SOFT_RESET}")
+                    lines.append(f"      {DIM_YELLOW_BG}{DIM}{t_symbol} {t_name}{stripped_marker}{SOFT_RESET}")
                 else:
-                    lines.append(f"      {DIM}{t_symbol} {t_name}{SOFT_RESET}")
+                    lines.append(f"      {DIM}{t_symbol} {t_name}{stripped_marker}{SOFT_RESET}")
                 keys.append(tool_key)
                 if is_tool_exp:
                     bg = DIM_YELLOW_BG if is_stripped_tool else ''
@@ -137,6 +139,16 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                                 continue
                             lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
                             keys.append(None)
+                    orig_desc = (stripped_original or {}).get('description', '')
+                    if orig_desc:
+                        for raw_line in orig_desc.split('\n'):
+                            raw_line = raw_line.expandtabs(8)
+                            if not raw_line:
+                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
+                                keys.append(None)
+                                continue
+                            lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
+                            keys.append(None)
                     input_schema = tool_def.get('input_schema', {})
                     props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
                     required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
@@ -144,10 +156,17 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                         if isinstance(param_info, dict):
                             param_type = param_info.get('type', '?')
                             param_desc = param_info.get('description', '')
+                            orig_param_desc = ''
+                            if not param_desc and stripped_original:
+                                orig_param_desc = stripped_original.get('params', {}).get(param_name, '')
                             req_marker = '*' if param_name in required_props else ''
                             param_line = f"{param_name}{req_marker}: {param_type}"
-                            if param_desc:
-                                param_line += f" \u2014 {param_desc}"
-                            lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
+                            if orig_param_desc:
+                                param_line += f" \u2014 {orig_param_desc}"
+                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{param_line}{SOFT_RESET}")
+                            else:
+                                if param_desc:
+                                    param_line += f" \u2014 {param_desc}"
+                                lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
                             keys.append(None)
     return lines, keys
