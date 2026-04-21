@@ -19,6 +19,8 @@ from .content_strip import (
     _strip_rejection_message,
     _strip_session_guidance,
     _strip_git_status,
+    _strip_tool_descriptions,
+    _strip_sys3,
 )
 from .payload_helpers import (
     _find_system_reminder_blocks,

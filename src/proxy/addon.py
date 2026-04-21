@@ -13,6 +13,7 @@ from .logging import _build_entry, _summarize_content_for_log
 from .message_summary import _summarize_message
 from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .inject_helpers import _inject_context_management, _inject_model_override
+from .content_strip import _strip_tool_descriptions, _strip_sys3
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools
 from .tool_injection import inject_mcp_tools
@@ -81,6 +82,14 @@ class ProxyAddon:
 
             modified_payload = inject_mcp_tools(modified_payload, project_path)
             modifications.append("injected_mcp_tools")
+
+            modified_payload, desc_stripped = _strip_tool_descriptions(modified_payload)
+            if desc_stripped > 0:
+                modifications.append(f"stripped_tool_descs_{desc_stripped}")
+
+            modified_payload, sys3_stripped = _strip_sys3(modified_payload)
+            if sys3_stripped:
+                modifications.append("stripped_sys3")
 
             modified_payload = _strip_blocked_tool_references(modified_payload)
 
