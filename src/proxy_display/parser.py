@@ -107,6 +107,17 @@ def _extract_raw_payload_fields(entry: dict) -> None:
                         text = ''
                     stored_msgs[i]['content_tail'] = text
 
+        persisted_originals = entry.get('stripped_persisted_output_originals', {})
+        if persisted_originals and stored_msgs:
+            for msg_idx_str, blocks_dict in persisted_originals.items():
+                msg_idx = int(msg_idx_str)
+                if msg_idx < len(stored_msgs):
+                    msg_blocks = stored_msgs[msg_idx].get('blocks', [])
+                    for block_idx_str, original_content in blocks_dict.items():
+                        block_idx = int(block_idx_str)
+                        if block_idx < len(msg_blocks):
+                            msg_blocks[block_idx]['original_persisted'] = original_content
+
         del entry['raw_payload']
 
     if 'request_headers' in entry:
