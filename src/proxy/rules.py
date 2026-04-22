@@ -189,6 +189,13 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
             if idx not in stripped_msg_indices:
                 stripped_msg_indices.append(idx)
                 stripped_msg_originals[idx] = original_before_pass
+            removed = stripped_msg_removed.setdefault(idx, [])
+            if "stripped_skills_sr" in pass_mods:
+                removed.extend(_find_system_reminder_blocks(original_before_pass, _SKILLS_MARKER))
+            if "stripped_claudemd_sr" in pass_mods:
+                removed.extend(_find_system_reminder_blocks(original_before_pass, _CLAUDEMD_MARKER))
+            if "stripped_pyright_diagnostics" in pass_mods:
+                removed.extend(_find_system_reminder_blocks(original_before_pass, "<new-diagnostics>"))
             changed = True
 
     # Final pass: strip ALL remaining <system-reminder> blocks from msg[0]
