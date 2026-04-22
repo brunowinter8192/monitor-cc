@@ -160,15 +160,22 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 
 ## strip_audit.py
 
-**Purpose:** Reads a single Proxy JSONL file, filters to claude-opus-* entries only (skips Haiku subagents and null-model `sent_meta` entries), iterates requests in order, and computes per-REQ *deltas* — which message was newly stripped, which rule fired for the first time, and which known tags remain in `raw_payload` (leaked or suspect). Solves the accumulation problem of the old format where baseline rules re-fire on every request and `modifications[]` / `stripped_msg_indices[]` repeat the full accumulated list, drowning the signal.
+**Purpose:** Reads a single Proxy JSONL file, filters to claude-opus-* entries only (skips Haiku subagents and null-model `sent_meta` entries), iterates requests in order, and classifies each REQ into five buckets using rule-counter deltas and marker-based chunk attribution. Solves four flaws in the old format: (1) index-diff NEW-STRIP detection missed mc=1 secondary calls where `smi=[0]` in both prev and curr; (2) chunk attribution used template `startswith` instead of the proxy's actual capture marker, misattributing "As you answer…" claudeMd blocks; (3) `pass_mods` inert firings were indistinguishable from real strips; (4) pauschal FP flag on any tool_result was too broad.
 
 **Input:** Single Proxy JSONL path (positional, optional). Auto-picks newest `src/logs/api_requests_opus_monitor_cc_*.jsonl` when no path is given.
 
 **Output:** `dev/tool_use_analysis/<YYYYMMDDHHMM>_strip_audit.md`. Report path is also printed to stdout. Three sections:
 
-1. **Rule Catalog** — table mapping each `_SR_TEMPLATES` entry to its `modifications[]` rule name (derived from `rules.py`/`addon.py`), identifier prefix, and strip mode (`full` / `partial`). Plus non-SR rules (`trimmed_task_notification`, `<persisted-output>` no-rule marker).
-2. **Delta Log** — one block per opus REQ: new message indices from `diff_from_prev`, newly-stripped message indices (set difference from previous REQ), rule classification per removed chunk (`stripped_msg_removed[idx]`), tool_result false-positive flag (Bash/Read/Write output containing SR tags from source code), and LEAK / SUSPECT tag signals found in `raw_payload.messages`.
-3. **Summary** — total REQs, REQs with new strips, suspect/leaked tag occurrences, false-positive candidates.
+1. **Rule Catalog** — SR Templates table (`_SR_TEMPLATES` → `modifications[]` rule name, identifier, mode); Non-SR Rules table (`trimmed_task_notification`, `stripped_rejection_message`, `<persisted-output>` no-rule marker); Attribution Note explaining the marker-inversion logic.
+2. **Delta Log** — one block per opus REQ with five clearly separated buckets:
+   - **EFFECTIVE STRIPS** — rule newly fired (counter-delta vs. prev REQ) AND attributed chunks found in `stripped_msg_removed`. Shows: `rule | msg[idx] [tool_result:Name] | N chunks | total X chars` + chunk head preview per chunk.
+   - **EVALUATED BUT INERT** — rule newly fired AND no chunks attributable to it (marker gated in `_content_contains` but actual strip found nothing or content changed only from sibling rule). Shows: `rule | marker gated but 0 chunks captured`.
+   - **INDEXED, NO CHUNKS** — index newly appeared in `stripped_msg_indices` but `stripped_msg_removed[idx]` is empty or missing. Signal for Final-Pass tracking gap (rules.py:197-208 updates `stripped_msg_indices` but not `stripped_msg_removed`). NO false-positive flag (tool_result context shown for information only).
+   - **LEAK** — known SR/TN tag found in `raw_payload.messages` AND relevant rule is in `modifications[]` (rule fired but tag survived the strip, e.g. embedded in tool_result content at non-line-start position).
+   - **SUSPECT** — known tag in `raw_payload.messages` AND no relevant rule fired. `<persisted-output>` always SUSPECT (rule rolled back, no replacement).
+3. **Summary** — total REQs, REQs with effective strips, inert rule firings, indexed-no-chunks occurrences, suspect/leaked tag counts.
+
+**Attribution mechanism:** Chunk→Rule attribution inverts the proxy's `_find_system_reminder_blocks(content, MARKER)` capture: each chunk is checked for the MARKER substring (not the template `startswith` identifier). `_RULE_MARKERS` defines the ordered table; first match wins for multi-marker chunks. `trimmed_task_notification` uses a starts-with check (TN chunks always begin with `<task-notification>`). `stripped_all_sr_msg0` (Final-Pass) is excluded — it never writes `stripped_msg_removed`, so it always appears as INERT when newly fired or triggers INDEXED-NO-CHUNKS when the index has no other tracked data.
 
 **Usage:**
 ```bash
@@ -195,7 +202,7 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 - `SUSPECT` — known tag found in `raw_payload.messages` AND no relevant rule fired: no rule applies (new tag type, or rule disabled). `<persisted-output>` is always SUSPECT (rule rolled back, no replacement).
 - Unrecognized SR blocks (inner text matches no `_SR_TEMPLATES` identifier) are intentional non-strips and are NOT flagged.
 
-**False-positive heuristic:** any newly-stripped message whose `raw_payload.messages[idx]` has `type: tool_result` content is flagged `⚠ SUSPECT FALSE POSITIVE` — strip likely hit source code or documentation content inside a Bash/Read/Write output, not a real injected SR.
+**False-positive heuristic:** removed. The old pauschal `⚠ SUSPECT FALSE POSITIVE` flag was emitted on any stripped message with `tool_result` content — too broad (legitimate task-tools-nag strips in Read tool_results were misflagged). Tool_result context (`[tool_result:Read]`) is now shown inline in EFFECTIVE STRIPS and INDEXED-NO-CHUNKS for information, without attaching a suspect label.
 
 ## Generated Reports
 
