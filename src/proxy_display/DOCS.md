@@ -100,13 +100,13 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### render_messages.py (260 LOC)
+### render_messages.py (235 LOC)
 
-**Purpose:** Render new/modified/removed messages for an expanded request entry — handles added messages (full block content) and diffs (content_tail), prefers `stripped_msg_removed` over `stripped_msg_originals` for stripped-message display. Per-chunk `EFF:RULE` label (e.g. `EFF:NAG`, `EFF:CMD`) is emitted on its own line above each chunk, computed via `strip_vocab.attribute_chunk`; the IDX case (indexed in smi but no chunks) appends `IDX` inline on the `[STRIPPED]` header row. Also exports `_detect_suspect_tags(text)`, `_aggregate_entry_tags(entry)` (suspect-tag badge helpers for render_turn + render_entry), and `_aggregate_req_buckets(entry, prev_entry)` (counter-delta INERT + IDX + LEAK/SUS signals for expanded REQ second line via `strip_vocab.classify_tags`). Content rendering highlights 4 suspect tag literals with `LIGHT_RED_BG` via `_SUSPECT_TAG_RE` substitution.
+**Purpose:** Render new/modified/removed messages for an expanded request entry — handles added messages (full block content) and diffs (content_tail), prefers `stripped_msg_removed` over `stripped_msg_originals` for stripped-message display. Per-chunk `EFF:RULE` label (e.g. `EFF:NAG`, `EFF:CMD`) is emitted on its own line above each chunk, computed via `strip_vocab.attribute_chunk`; the IDX case (indexed in smi but no chunks) appends `IDX` inline on the `[STRIPPED]` header row. Also exports `_detect_suspect_tags(text)`, `_aggregate_entry_tags(entry)` (suspect-tag badge helpers for render_turn + render_entry), and `_aggregate_req_buckets(entry, prev_entry)` — a thin delegate to `strip_vocab.classify_req` that returns the per-REQ 5-bucket signals (INERT codes, IDX msgs, LEAK/SUS signal strings) for the expanded REQ second line; semantics (chunk-diff EFFECTIVE, counter-delta INERT, smi-diff IDX, tag-scan LEAK/SUS) live in `strip_vocab`. Content rendering highlights 4 suspect tag literals with `LIGHT_RED_BG` via `_SUSPECT_TAG_RE` substitution.
 **Reads:** Entry dict, previous entry, all entries, expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`
-**Calls out:** `proxy.strip_vocab` (`attribute_chunk`, `classify_tags`, `code_for_rule`)
+**Calls out:** `proxy.strip_vocab` (`attribute_chunk`, `classify_tags`, `code_for_rule`, `classify_req`)
 
 ---
 

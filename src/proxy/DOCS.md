@@ -155,13 +155,19 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_vocab.py (80 LOC)
+### strip_vocab.py (229 LOC)
 
-**Purpose:** Shared vocabulary for strip semantics — bucket codes (EFF/INERT/IDX/LEAK/SUS), rule codes (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL), tag literal codes (PO/SR/TN/ND), chunk→rule attribution function, and Markdown legend generator. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers.
+**Purpose:** Shared vocabulary + semantics for proxy strip classification. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers. Exports:
+- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`.
+- `attribute_chunk(chunk) -> code | None` — marker-substring attribution (starts-with special-case for TN).
+- `code_for_rule(full_name) -> code | None` — reverse lookup from `modifications[]` entry to rule code.
+- `classify_tags(entry) -> (leak_signals, sus_signals)` — scans `messages[].blocks[].full_text` for the 4 tag literals, pairs each with the relevant rule in `modifications[]` to decide LEAK vs SUS.
+- `classify_req(entry, prev_entry) -> dict` — per-REQ 5-bucket classification. EFFECTIVE via chunk-tuple-diff against `prev.stripped_msg_removed` (skips chunks unchanged since prev). INERT via counter-delta on `modifications[]` filtered by "no chunks attributable". IDX from `smi` diff with empty `stripped_msg_removed[idx]`. LEAK/SUS delegate to `classify_tags`.
+- `legend_markdown() -> str` — Markdown legend block (3 tables: Buckets, Rules, Tag Literals) emitted at the top of audit reports.
 **Reads:** Nothing at module level.
 **Writes:** Nothing — pure data + helpers.
-**Called by:** `dev/tool_use_analysis/strip_audit.py` (via sys.path insertion); `src/proxy_display/render_messages.py`, `src/proxy_display/render_turn.py`, `src/proxy_display/render_entry.py` (Task B — pending).
-**Calls out:** —
+**Called by:** `dev/tool_use_analysis/strip_audit.py` (via sys.path insertion) for full legend + classify_req delegation; `src/proxy_display/render_messages.py` for attribute_chunk, classify_tags, code_for_rule, classify_req (monitor `_aggregate_req_buckets` is a thin delegate).
+**Calls out:** `collections.Counter` (counter-delta inside classify_req).
 
 ---
 
