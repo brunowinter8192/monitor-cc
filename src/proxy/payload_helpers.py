@@ -37,7 +37,7 @@ def _find_system_reminder_blocks(content, marker: str) -> list:
 
 # Extract <task-notification>...</task-notification> blocks from str or list content (incl. tool_result)
 def _find_task_notification_blocks(content) -> list:
-    pat = re.compile(r'<task-notification>.*?</task-notification>', re.DOTALL)
+    pat = re.compile(r'(?m)^<task-notification>.*?</task-notification>', re.DOTALL)
     if isinstance(content, str):
         return pat.findall(content)
     if isinstance(content, list):
@@ -121,7 +121,7 @@ def _content_contains(content, substring: str) -> bool:
 
 # Replace task-notification XML blocks with plain summary text; strips all XML wrapper
 def _strip_task_notification_tags(content):
-    _NOTIF_PAT = re.compile(r'<task-notification>.*?</task-notification>\n?', re.DOTALL)
+    _NOTIF_PAT = re.compile(r'(?m)^<task-notification>.*?</task-notification>\n?', re.DOTALL)
     _SUMMARY_PAT = re.compile(r'<summary>(.*?)</summary>', re.DOTALL)
 
     def _extract(m):
