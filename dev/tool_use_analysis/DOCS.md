@@ -135,25 +135,24 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 
 ## Generated Reports
 
-### 20260419_baseline.md
-Baseline run on all 17 Proxy JSONLs (default mode, `--min-chars 500`). Top offenders: Write (Ø 6,775 chars), Edit (Ø 1,854 chars), Bash (Ø 1,391 chars).
-
-### 20260419_bash_deepdive.md
-Bash-only deep-dive (`--tool Bash --top 50 --min-chars 500`) on all 17 Proxy JSONLs. Includes Command-Prefix Clustering. Top clusters by total_chars: `python3 [heredoc]` (35 calls, 69k chars), `bd` (36 calls, 59k chars), `python3` inline (39 calls, 52k chars).
-
-### 20260419_ratio_analysis.md
-Ratio analysis (`--ratio --top 50`) on all 17 Proxy JSONLs — 1,207 matched pairs. Bash leads with max ratio 191.62 (3k chars input → 16 chars output). Read is most efficient (median ratio 0.02).
-
-### 20260421_session_waste_failed.md
-Session-level analysis (2026-04-21 tool-use consolidation session) across 4 JSONLs — opus + 3 workers. Known quality issues: Top-10 table filtered Opus-only which produced circular claims about worker behavior — tracked under bead `Monitor_CC-qfr`. Superseded by `20260422_session_waste_patterns.md`.
-
 ### 20260422_session_waste_patterns.md
 Signature-normalized analysis (`extract_patterns.py`) across 6 JSONLs (4 from 2026-04-21 evening + 2 from 2026-04-22). 528 unique tool_use blocks. Content-transfer excluded: Write (30 calls, 176k chars), Edit (38 calls, 46k chars), Bash(`bd*`) (19 calls, 12k chars), worker_send (15 calls, 9k chars). Actionable waste: Bash 99.3% (89 calls, 51k chars), Grep 0.7% (2 calls). Top Bash patterns: heredoc-python (structural) + `worker-cli status` (8 calls, 1k, trivial). 9 failed-call patterns; 11 failed calls total.
 
-## Historical Reports
+## Archived Reports (→ archive/)
 
-### 20260418_github_cli_failures.md
+Reports moved to `archive/` — findings preserved, no longer in active directory.
+
+### archive/20260418_github_cli_failures.md
 
 **Source:** Worker proxy log `api_requests_worker_warnings-pane-fixes_1776546048.jsonl`
 
 Documents four categories of GitHub CLI (`gh-cli` Skill / `grep_repo` / `grep_file`) failures encountered during the warnings-pane-fixes session: missing `repo:` qualifier in `search_code`, POSIX `\|` vs Python `|` regex escaping confusion, wrong file path argument to `grep_file`, and wrong constant names (`WheelUp` vs `MOUSE_WHEEL_UP`). Includes root-cause analysis and fix directions for each failure.
+
+### archive/20260419_baseline.md
+Baseline run on all 17 Proxy JSONLs (default mode, `--min-chars 500`). Top offenders: Write (Ø 6,775 chars), Edit (Ø 1,854 chars), Bash (Ø 1,391 chars).
+
+### archive/20260419_bash_deepdive.md
+Bash-only deep-dive (`--tool Bash --top 50 --min-chars 500`) on all 17 Proxy JSONLs. Includes Command-Prefix Clustering. Top clusters by total_chars: `python3 [heredoc]` (35 calls, 69k chars), `bd` (36 calls, 59k chars), `python3` inline (39 calls, 52k chars).
+
+### archive/20260419_ratio_analysis.md
+Ratio analysis (`--ratio --top 50`) on all 17 Proxy JSONLs — 1,207 matched pairs. Bash leads with max ratio 191.62 (3k chars input → 16 chars output). Read is most efficient (median ratio 0.02).
