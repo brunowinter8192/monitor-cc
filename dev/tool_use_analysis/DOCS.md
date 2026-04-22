@@ -133,6 +133,31 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 
 **Section 6 (Wrapper Candidates):** Write/Edit/worker_send excluded (content-driven); heredoc/`python3 -c` patterns classified as `structural`; other Bash patterns classified by presence of `|`/`&&`/`bd`. Sorted by `total_input_chars / complexity_weight` (trivial=1, medium=2, structural=4).
 
+## waste_repetition.py
+
+**Purpose:** Reads a single Proxy JSONL file, finds the entry with the highest `message_count` (the cumulative session snapshot), extracts all deduplicated Bash `tool_use` blocks from that entry, and analyzes waste along two independent dimensions:
+
+1. **Repetition Signature Groups** — normalizes each command to a stable signature (home paths → `<HOME>/`, log filenames → `<LOG>`, quoted strings → `<STR>`, hex/digit runs → `<HEX>`/`<N>`, worker names → `<WORKER>`), groups by signature, ranks by `count × avg_chars` descending, reports all groups with `count ≥ --min-count`.
+
+2. **Known-Shortcut Path Fragments** — scans every command for replaceable path fragments using a four-rule table (`KNOWN_SHORTCUTS`): (a) any `abs-path ~/Documents/ai/<project>` in a worker-cli/git-check/dev-sync argument → `c`; (b) same for `~`-form; (c) `/Users/brunowinter2000/Documents/ai/Monitor_CC` in any context → `~/…`; (d) generic `/Users/brunowinter2000/` → `~/`. Per-rule counts are independent; the grand total deduplicates overlapping matches (best/highest-savings rule wins per fragment position).
+
+**Input:** Single Proxy JSONL path (positional). Entries with `raw_payload == null` skipped. The entry with the most messages is used as the cumulative session snapshot.
+
+**Output:** Markdown report to stdout (redirect recommended). Sections: summary line (total calls, distinct sigs, total chars, repeated-sig chars, path-shortcut-saveable), Family Overview (per first-token family with sum counts/chars), Repetition Groups table (top K), Replaceable Path Fragments table with grand total, Full Samples (top 10 expanded commands).
+
+**Usage:**
+```bash
+./venv/bin/python dev/tool_use_analysis/waste_repetition.py \
+  src/logs/api_requests_opus_monitor_cc_1776855140.jsonl \
+  > /tmp/waste_rep.md 2>&1
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `proxy_jsonl` | *(positional)* Single Proxy JSONL path | required |
+| `--min-count N` | Minimum occurrence count for a repetition group | 2 |
+| `--top K` | Show top K groups in the signature table | 20 |
+
 ## Generated Reports
 
 ### 20260422_session_waste_patterns.md
