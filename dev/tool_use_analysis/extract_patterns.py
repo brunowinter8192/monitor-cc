@@ -206,8 +206,23 @@ def _raw_example(name, inp):
 def _is_content_transfer(name, inp):
     if name in CONTENT_TRANSFER_TOOLS:
         return True
-    if name == 'Bash' and inp.get('command', '').lstrip().startswith('bd '):
-        return True
+    if name == 'Bash':
+        cmd = inp.get('command', '')
+        stripped = cmd.lstrip()
+        if stripped.startswith('bd '):
+            return True
+        # cat > / cat >> : heredoc or pipe redirect to file — equivalent to Write tool
+        if re.match(r'cat\s+>>?', stripped):
+            return True
+        # echo "long..." > file : content redirect
+        if re.match(r'echo\s+["\'].{100,}["\'].*>', stripped):
+            return True
+        # git commit with long message: commit message is content, not repeatable pattern
+        if re.search(r'\bgit\s+commit\b', cmd) and len(cmd) > 200:
+            return True
+        # worker-cli send: message arg is content (equivalent to MCP worker_send)
+        if stripped.startswith('worker-cli send '):
+            return True
     if 'worker_send' in name or 'worker_merge' in name:
         return True
     return False
@@ -412,14 +427,14 @@ def _render_tool_breakdown(waste_pairs):
 # Render section 2b: content-transfer tool breakdown (large input by design — not waste)
 def _render_ct_breakdown(ct_pairs):
     L = ['## 2b. Content-Transfer Breakdown (large input by design — excluded from waste analysis)', '',
-         '*Write, Edit, Bash(`bd *`), worker_send: large tool input is expected and not structurally wrappable.*', '',
+         '*Write, Edit, Bash(ct): bd, cat>, git-commit-long, worker-cli-send — large input expected, not wrappable.*', '',
          '| Tool | Calls | Total Input |',
          '|---|---|---|']
     by_label = defaultdict(lambda: {'count': 0, 'total_input': 0})
     for p in ct_pairs:
         # Label bd-Bash separately from general Bash
         if p['name'] == 'Bash':
-            label = 'Bash (bd *)'
+            label = 'Bash (ct)'
         elif 'worker_send' in p['name']:
             label = 'worker_send'
         elif 'worker_merge' in p['name']:
