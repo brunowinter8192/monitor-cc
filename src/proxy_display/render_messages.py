@@ -22,6 +22,15 @@ def _detect_suspect_tags(text: str) -> list[str]:
         return []
     return [label for tag, label in _SUSPECT_TAGS if tag in text]
 
+# Aggregate suspect tag labels across all blocks of an entry, return sorted list
+def _aggregate_entry_tags(entry: dict) -> list[str]:
+    found = set()
+    for msg in entry.get('messages', []):
+        for blk in msg.get('blocks', []):
+            text = blk.get('full_text', blk.get('preview', ''))
+            found.update(_detect_suspect_tags(text))
+    return sorted(found)
+
 # Render new/modified/removed messages for an expanded request entry, returning (lines, keys)
 def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_states: dict, pane_width: int) -> tuple:
     lines = []
@@ -78,13 +87,11 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     bchars = blk.get('chars', 0)
                     bcc = ' [CC]' if blk.get('has_cc') else ''
                     full_text = blk.get('full_text', blk.get('preview', ''))
-                    labels = _detect_suspect_tags(full_text)
-                    badge = f' {RED}⚠{",".join(labels)}{SOFT_RESET}' if labels else ''
                     if btype == 'thinking':
                         sig_chars = blk.get('sig_chars', 0)
                         lines.append(f"      {DIM}[{bidx}] {btype:<12} text:{bchars:>5,}c sig:{sig_chars:>4,}c{bcc}{SOFT_RESET}")
                     else:
-                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{badge}{SOFT_RESET}")
+                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}")
                     keys.append(None)
                     if full_text:
                         for raw_line in full_text.split('\n'):
@@ -165,13 +172,11 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     bchars = blk.get('chars', 0)
                     bcc = ' [CC]' if blk.get('has_cc') else ''
                     full_text = blk.get('full_text', blk.get('preview', ''))
-                    labels = _detect_suspect_tags(full_text)
-                    badge = f' {RED}⚠{",".join(labels)}{SOFT_RESET}' if labels else ''
                     if btype == 'thinking':
                         sig_chars = blk.get('sig_chars', 0)
                         lines.append(f"      {DIM}[{bidx}] {btype:<12} text:{bchars:>5,}c sig:{sig_chars:>4,}c{bcc}{SOFT_RESET}")
                     else:
-                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{badge}{SOFT_RESET}")
+                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}")
                     keys.append(None)
                     if full_text:
                         for raw_line in full_text.split('\n'):
