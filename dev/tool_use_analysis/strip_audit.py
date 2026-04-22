@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Per-REQ delta audit for proxy strip verification.
 
-Computes per-request deltas (newly-stripped messages, new rule firings,
-leaked/suspect tags) instead of repeating the full accumulated state.
+Computes per-request deltas across five buckets: Effective strips (rule fired,
+chunks attributed), Evaluated-but-inert (rule fired, no captured chunks),
+Indexed-no-chunks (tracking gap from Final-Pass), LEAK (tag survived after
+rule fired), SUSPECT (tag present, no rule fired).
 
 Input:  JSONL path (positional arg, optional — auto-picks newest
         src/logs/api_requests_opus_monitor_cc_*.jsonl when not given)
@@ -34,7 +36,6 @@ _SR_TEMPLATES = {
 }
 
 # Template ID → rule name as it appears in modifications[]
-# Derived from rules.py/addon.py modifications.append() calls
 _TEMPLATE_TO_RULE = {
     'task-tools-nag':      'stripped_task_tools_nag',
     'pyright-diagnostics': 'stripped_pyright_diagnostics',
@@ -48,12 +49,26 @@ _TEMPLATE_TO_RULE = {
     'plan-mode':           'removed_plan_mode_sr',
 }
 
-# Baseline rules that fire on every opus request (not interesting as deltas on their own)
-_BASELINE_RULES = frozenset({
-    'replaced_system_prompt', 'stripped_session_guidance', 'stripped_git_status',
-    'injected_mcp_tools', 'stripped_sys3', 'injected_model_override',
-    'stripped_deferred_tools_sr', 'stripped_skills_sr', 'stripped_claudemd_sr',
-})
+# Ordered rule→markers table for chunk attribution
+# (rule_name, [marker_substrings]) — first rule whose ANY marker appears in chunk wins
+# trimmed_task_notification: handled by starts-with check in _attribute_chunk (not listed here)
+# stripped_all_sr_msg0: final pass never writes stripped_msg_removed — not listed, always inert
+_RULE_MARKERS = [
+    ('stripped_rejection_message',   ['(rejection marker stripped by proxy)']),
+    ('stripped_task_tools_nag',      ["task tools haven"]),
+    ('stripped_deferred_tools_sr',   ['deferred tools are now available via ToolSearch']),
+    ('stripped_user_interrupt_sr',   ['user sent a new message while you were working']),
+    ('stripped_skills_sr',           ['The following skills are available for use with the Skill tool']),
+    ('stripped_claudemd_sr',         ['# claudeMd', 'Contents of ']),
+    ('stripped_pyright_diagnostics', ['<new-diagnostics>']),
+    ('removed_plan_mode_sr',         ['Plan mode is active', 'Plan mode ']),
+]
+
+# All rules eligible for effective/inert classification
+_STRIP_RULES = frozenset(r for r, _ in _RULE_MARKERS) | {
+    'trimmed_task_notification',
+    'stripped_all_sr_msg0',
+}
 
 # Non-SR tags for leak/suspect detection
 _TN_TAG = '<task-notification>'
@@ -134,10 +149,17 @@ def _build_rule_catalog():
     lines += [
         '',
         '### Non-SR Rules',
-        '| rule | tag | notes |',
+        '| rule | tag / literal | notes |',
         '|---|---|---|',
-        '| `trimmed_task_notification` | `<task-notification>` | strips full TN block |',
+        '| `trimmed_task_notification` | `<task-notification>` | strips full TN block; chunk starts with TN tag |',
+        '| `stripped_rejection_message` | `(rejection marker stripped by proxy)` | replaces rejection message with literal |',
         '| *(none — rolled back)* | `<persisted-output>` | no rule; always SUSPECT |',
+        '',
+        '### Attribution Note',
+        'Chunk→rule attribution inverts the proxy capture logic: `_find_system_reminder_blocks(content, MARKER)` '
+        'finds SR blocks containing MARKER anywhere. Attribution checks each chunk for marker substrings in priority '
+        'order. `stripped_all_sr_msg0` (Final-Pass) never writes `stripped_msg_removed` — always shows as inert or '
+        'triggers Indexed-no-chunks when the index has no tracked chunks.',
         '',
     ]
     return lines
@@ -148,13 +170,59 @@ def _build_delta_log(entries):
     lines = ['## Delta Log', '']
     prev = None
     for i, entry in enumerate(entries):
-        lines += _build_req_section(i + 1, entry, prev)
+        cls = _classify_req(entry, prev)
+        lines += _render_req_section(i + 1, entry, prev, cls)
         prev = entry
     return lines
 
 
-# Build one REQ block
-def _build_req_section(req_num, entry, prev):
+# Classify one REQ into five buckets
+def _classify_req(entry, prev):
+    prev_mods_ctr = Counter(prev.get('modifications', [])) if prev else Counter()
+    curr_mods_ctr = Counter(entry.get('modifications', []))
+
+    new_strip_mods = {
+        rule
+        for rule in curr_mods_ctr
+        if curr_mods_ctr[rule] > prev_mods_ctr.get(rule, 0) and rule in _STRIP_RULES
+    }
+
+    stripped_removed = entry.get('stripped_msg_removed', {})
+    rule_to_chunks = {}
+    unattributed = []
+    for idx_str, chunks in stripped_removed.items():
+        idx = int(idx_str)
+        for chunk in (chunks or []):
+            rule = _attribute_chunk(chunk)
+            if rule:
+                rule_to_chunks.setdefault(rule, []).append((idx, chunk))
+            else:
+                unattributed.append((idx, chunk))
+
+    rules_with_chunks = set(rule_to_chunks.keys())
+    effective = {r: rule_to_chunks[r] for r in new_strip_mods if r in rules_with_chunks}
+    inert = sorted(r for r in new_strip_mods if r not in rules_with_chunks)
+
+    prev_smi = set(prev.get('stripped_msg_indices', [])) if prev else set()
+    curr_smi = set(entry.get('stripped_msg_indices', []))
+    new_smi = curr_smi - prev_smi
+    indexed_no_chunks = [idx for idx in sorted(new_smi) if not stripped_removed.get(str(idx))]
+
+    tag_lines, n_leaks, n_suspects = _check_tags(entry, curr_mods_ctr)
+
+    return {
+        'effective': effective,
+        'inert': inert,
+        'indexed_no_chunks': indexed_no_chunks,
+        'tag_lines': tag_lines,
+        'n_leaks': n_leaks,
+        'n_suspects': n_suspects,
+        'unattributed': unattributed,
+    }
+
+
+# Render one REQ block from classification dict
+def _render_req_section(req_num, entry, prev, cls):
     lines = []
 
     ts = _format_ts(entry.get('timestamp', ''))
@@ -176,56 +244,67 @@ def _build_req_section(req_num, entry, prev):
 
     lines.append(f'REQ #{req_num}  [{ts}]  msg_count={prev_mc}→{curr_mc}  diff={diff_str}')
 
-    # --- delta computation ---
-    prev_stripped_set  = set(prev.get('stripped_msg_indices', [])) if prev else set()
-    curr_stripped_set  = set(entry.get('stripped_msg_indices', []))
-    new_stripped       = curr_stripped_set - prev_stripped_set
-
-    prev_mods_ctr = Counter(prev.get('modifications', [])) if prev else Counter()
-    curr_mods_ctr = Counter(entry.get('modifications', []))
-    new_mods = {
-        rule: curr_mods_ctr[rule] - prev_mods_ctr.get(rule, 0)
-        for rule in curr_mods_ctr
-        if curr_mods_ctr[rule] > prev_mods_ctr.get(rule, 0)
-    }
-
     raw_messages = entry.get('raw_payload', {}).get('messages', [])
-    stripped_removed = entry.get('stripped_msg_removed', {})
 
-    # --- new rules (first time ever) ---
-    for rule in sorted(new_mods):
-        if rule not in prev_mods_ctr and rule not in _BASELINE_RULES:
-            lines.append(f'  NEW RULE: {rule} (first fired this REQ, ×{new_mods[rule]})')
+    if cls['effective']:
+        lines.append('  EFFECTIVE STRIPS:')
+        for rule in sorted(cls['effective']):
+            by_idx = {}
+            for idx, chunk in cls['effective'][rule]:
+                by_idx.setdefault(idx, []).append(chunk)
+            for idx in sorted(by_idx):
+                idx_chunks = by_idx[idx]
+                n = len(idx_chunks)
+                total_chars = sum(len(c) for c in idx_chunks)
+                is_tr = _is_tool_result(raw_messages, idx)
+                tool_name = _get_tool_name(raw_messages, idx) if is_tr else None
+                tr_label = f' [tool_result:{tool_name}]' if tool_name else (' [tool_result]' if is_tr else '')
+                lines.append(f'    {rule} | msg[{idx}]{tr_label} | {n} chunk{"s" if n != 1 else ""} | total {total_chars:,} chars')
+                for ci, chunk in enumerate(idx_chunks):
+                    head = chunk[:CHUNK_HEAD].replace('\n', '↵').replace('\r', '')
+                    lines.append(f'      chunk[{ci}] head="{head}"')
 
-    # --- strip events for newly-stripped message indices ---
-    for idx in sorted(new_stripped):
-        chunks = stripped_removed.get(str(idx), [])
-        is_tr = _is_tool_result(raw_messages, idx)
-        tool_name = _get_tool_name(raw_messages, idx) if is_tr else None
-        tr_label = f' [tool_result:{tool_name}]' if tool_name else (' [tool_result]' if is_tr else '')
+    if cls['inert']:
+        lines.append('  EVALUATED BUT INERT:')
+        for rule in cls['inert']:
+            lines.append(f'    {rule} | marker gated but 0 chunks captured')
 
-        if not chunks:
-            lines.append(f'  NEW STRIP msg[{idx}]{tr_label}: (no chunk data in stripped_msg_removed)')
-        else:
-            for ci, chunk in enumerate(chunks):
-                rule_id, mode = _classify_chunk(chunk)
-                head = chunk[:CHUNK_HEAD].replace('\n', '↵').replace('\r', '')
-                lines.append(f'  NEW STRIP msg[{idx}]{tr_label}: {rule_id} (mode={mode})')
-                lines.append(f'    chunk[{ci}] head="{head}"')
+    if cls['indexed_no_chunks']:
+        lines.append('  INDEXED, NO CHUNKS:')
+        for idx in cls['indexed_no_chunks']:
+            is_tr = _is_tool_result(raw_messages, idx)
+            tool_name = _get_tool_name(raw_messages, idx) if is_tr else None
+            tr_label = f' [tool_result:{tool_name}]' if tool_name else (' [tool_result]' if is_tr else '')
+            lines.append(
+                f'    msg[{idx}]{tr_label} | indexed as stripped but no chunk data'
+                f' — Final-Pass tracking-gap suspected'
+            )
 
-        if is_tr:
-            tname = tool_name or 'tool'
-            lines.append(f'    ⚠ SUSPECT FALSE POSITIVE: {tname} tool_result stripped — may be source code')
+    lines += cls['tag_lines']
 
-    # --- tag leak/suspect detection in raw_payload ---
-    tag_lines, _, _ = _check_tags(entry, curr_mods_ctr)
-    lines += tag_lines
+    if cls['unattributed']:
+        lines.append('  UNATTRIBUTED CHUNKS:')
+        for idx, chunk in cls['unattributed']:
+            head = chunk[:CHUNK_HEAD].replace('\n', '↵').replace('\r', '')
+            lines.append(f'    msg[{idx}] head="{head}"')
 
-    if not new_stripped and not tag_lines:
+    if not any([cls['effective'], cls['inert'], cls['indexed_no_chunks'],
+                cls['tag_lines'], cls['unattributed']]):
         lines.append('  (no new strips, no suspect tags)')
 
     lines.append('')
     return lines
+
+
+# Attribute a removed chunk to a rule via marker substring match
+def _attribute_chunk(chunk):
+    if chunk.startswith('<task-notification>'):
+        return 'trimmed_task_notification'
+    for rule, markers in _RULE_MARKERS:
+        for marker in markers:
+            if marker in chunk:
+                return rule
+    return None
 
 
 # Detect leaked/suspect tags in raw_payload messages; returns (lines, n_leaks, n_suspects)
@@ -238,16 +317,15 @@ def _check_tags(entry, curr_mods_ctr):
     raw_messages = entry.get('raw_payload', {}).get('messages', [])
     texts = list(_extract_msg_texts(raw_messages))
 
-    # --- SR blocks: find, match template, classify ---
     seen_tids = set()
     for text in texts:
         for m in _SR_BLOCK_RE.finditer(text):
             inner = m.group(1).strip()
             tid, _ = _match_template(inner)
             if tid is None:
-                continue          # unrecognized SR — intentional non-strip, skip
+                continue
             if tid in seen_tids:
-                continue          # deduplicate per template per REQ
+                continue
             seen_tids.add(tid)
             rule = _TEMPLATE_TO_RULE[tid]
             head = inner[:80].replace('\n', '↵')
@@ -260,7 +338,6 @@ def _check_tags(entry, curr_mods_ctr):
                 lines.append(f'    inner head="{head}"')
                 n_suspects += 1
 
-    # --- <task-notification> ---
     for text in texts:
         if _TN_TAG in text:
             rule = 'trimmed_task_notification'
@@ -270,55 +347,46 @@ def _check_tags(entry, curr_mods_ctr):
             else:
                 lines.append(f'  ⚠ SUSPECT: {_TN_TAG} in raw_payload — `{rule}` did not fire')
                 n_suspects += 1
-            break  # one flag per REQ
+            break
 
-    # --- <persisted-output>: always SUSPECT (no active rule) ---
     for text in texts:
         if _PO_TAG in text:
             lines.append(f'  ⚠ SUSPECT: {_PO_TAG} in raw_payload — no strip rule (rolled back)')
             n_suspects += 1
-            break  # one flag per REQ
+            break
 
     return lines, n_leaks, n_suspects
 
 
-# Build summary section (second pass over entries)
+# Build summary section
 def _build_summary(entries):
     total = len(entries)
-    n_new_strip_reqs = 0
+    n_effective_reqs = 0
+    n_inert_firings = 0
+    n_indexed_no_chunks = 0
     n_suspects = 0
     n_leaks = 0
-    n_fp = 0
     prev = None
 
     for entry in entries:
-        prev_stripped = set(prev.get('stripped_msg_indices', [])) if prev else set()
-        curr_stripped = set(entry.get('stripped_msg_indices', []))
-        new_stripped  = curr_stripped - prev_stripped
-
-        if new_stripped:
-            n_new_strip_reqs += 1
-
-        raw_messages = entry.get('raw_payload', {}).get('messages', [])
-        for idx in new_stripped:
-            if _is_tool_result(raw_messages, idx):
-                n_fp += 1
-
-        curr_mods_ctr = Counter(entry.get('modifications', []))
-        _, nl, ns = _check_tags(entry, curr_mods_ctr)
-        n_leaks   += nl
-        n_suspects += ns
-
+        cls = _classify_req(entry, prev)
+        if cls['effective']:
+            n_effective_reqs += 1
+        n_inert_firings += len(cls['inert'])
+        n_indexed_no_chunks += len(cls['indexed_no_chunks'])
+        n_suspects += cls['n_suspects']
+        n_leaks += cls['n_leaks']
         prev = entry
 
     return [
         '## Summary',
         '',
         f'- Total REQs (opus): {total}',
-        f'- REQs with new strips: {n_new_strip_reqs}',
+        f'- REQs with effective strips: {n_effective_reqs}',
+        f'- Inert rule firings (gated but 0 chunks): {n_inert_firings}',
+        f'- Indexed-no-chunks occurrences (Final-Pass tracking gap): {n_indexed_no_chunks}',
         f'- Suspect tags (no rule fired): {n_suspects} occurrences',
         f'- Leaked tags (rule fired, tag survived): {n_leaks} occurrences',
-        f'- False-positive candidates (tool_result stripped): {n_fp}',
         '',
     ]
 
@@ -352,30 +420,6 @@ def _match_template(inner):
         if inner.startswith(identifier):
             return tid, mode
     return None, None
-
-
-# Classify a removed chunk → (rule_id, mode)
-def _classify_chunk(chunk):
-    if chunk.startswith(_TN_TAG):
-        return 'trimmed_task_notification', 'full'
-    # Try full SR block match (has both open + close tags)
-    m = _SR_BLOCK_RE.search(chunk)
-    if m:
-        # Decode literal \n (two-char escape stored in JSONL) before stripping
-        inner = m.group(1).replace('\\n', '\n').strip()
-    elif '<system-reminder>' in chunk:
-        # Truncated/partial chunk — JSONL stored only the head of the SR block.
-        # Extract inner text best-effort: everything after <system-reminder>.
-        # Handle both real newlines and literal \n (two-char escape) from stored content.
-        after_open = chunk.split('<system-reminder>', 1)[1]
-        inner = after_open.replace('\\n', '\n').strip()
-    else:
-        # No SR/TN wrapper — plain text removal (e.g. rejection marker)
-        return 'unknown (no SR/TN wrapper)', 'unknown'
-    tid, mode = _match_template(inner)
-    if tid:
-        return _TEMPLATE_TO_RULE[tid], mode
-    return 'stripped_all_sr_msg0 (unrecognized template)', 'unknown'
 
 
 # Check whether message at idx in raw_payload is a tool_result
