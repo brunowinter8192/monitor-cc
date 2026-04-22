@@ -158,7 +158,49 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 | `--min-count N` | Minimum occurrence count for a repetition group | 2 |
 | `--top K` | Show top K groups in the signature table | 20 |
 
+## strip_audit.py
+
+**Purpose:** Reads a single Proxy JSONL file, filters to claude-opus-* entries only (skips Haiku subagents and null-model `sent_meta` entries), iterates requests in order, and computes per-REQ *deltas* — which message was newly stripped, which rule fired for the first time, and which known tags remain in `raw_payload` (leaked or suspect). Solves the accumulation problem of the old format where baseline rules re-fire on every request and `modifications[]` / `stripped_msg_indices[]` repeat the full accumulated list, drowning the signal.
+
+**Input:** Single Proxy JSONL path (positional, optional). Auto-picks newest `src/logs/api_requests_opus_monitor_cc_*.jsonl` when no path is given.
+
+**Output:** `dev/tool_use_analysis/<YYYYMMDDHHMM>_strip_audit.md`. Report path is also printed to stdout. Three sections:
+
+1. **Rule Catalog** — table mapping each `_SR_TEMPLATES` entry to its `modifications[]` rule name (derived from `rules.py`/`addon.py`), identifier prefix, and strip mode (`full` / `partial`). Plus non-SR rules (`trimmed_task_notification`, `<persisted-output>` no-rule marker).
+2. **Delta Log** — one block per opus REQ: new message indices from `diff_from_prev`, newly-stripped message indices (set difference from previous REQ), rule classification per removed chunk (`stripped_msg_removed[idx]`), tool_result false-positive flag (Bash/Read/Write output containing SR tags from source code), and LEAK / SUSPECT tag signals found in `raw_payload.messages`.
+3. **Summary** — total REQs, REQs with new strips, suspect/leaked tag occurrences, false-positive candidates.
+
+**Usage:**
+```bash
+# Auto-pick newest log
+./venv/bin/python3 dev/tool_use_analysis/strip_audit.py
+
+# Explicit JSONL path
+./venv/bin/python3 dev/tool_use_analysis/strip_audit.py \
+  src/logs/api_requests_opus_monitor_cc_1776871226.jsonl
+
+# Explicit output path
+./venv/bin/python3 dev/tool_use_analysis/strip_audit.py \
+  src/logs/api_requests_opus_monitor_cc_1776871226.jsonl \
+  --output dev/tool_use_analysis/20260422_strip_audit.md
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `jsonl` | *(positional, optional)* Proxy JSONL path | auto-picks newest in `src/logs/` |
+| `--output FILE` | Output markdown file path | `dev/tool_use_analysis/<YYYYMMDDHHMM>_strip_audit.md` |
+
+**LEAK vs SUSPECT classification:**
+- `LEAK` — known tag found in `raw_payload.messages` AND the relevant strip rule appears in `modifications[]`: rule fired but tag survived (strip missed the occurrence, e.g. embedded in tool_result content not at line-start).
+- `SUSPECT` — known tag found in `raw_payload.messages` AND no relevant rule fired: no rule applies (new tag type, or rule disabled). `<persisted-output>` is always SUSPECT (rule rolled back, no replacement).
+- Unrecognized SR blocks (inner text matches no `_SR_TEMPLATES` identifier) are intentional non-strips and are NOT flagged.
+
+**False-positive heuristic:** any newly-stripped message whose `raw_payload.messages[idx]` has `type: tool_result` content is flagged `⚠ SUSPECT FALSE POSITIVE` — strip likely hit source code or documentation content inside a Bash/Read/Write output, not a real injected SR.
+
 ## Generated Reports
+
+### 202604221808_strip_audit.md
+Per-REQ strip delta audit (`strip_audit.py`) for session `api_requests_opus_monitor_cc_1776871226.jsonl`. 38 opus REQs. 8 REQs with new strips. Key signals: `trimmed_task_notification` leaking `<task-notification>` into `raw_payload` on every REQ from #6 onward (rule fires but TN blocks survive in tool_result content). `<persisted-output>` present in every REQ from #2 (no active rule). False-positive strips: 5 (Read/Bash/Write tool_results containing SR tags from source code or docs).
 
 ### 20260422_session_waste_patterns.md
 Signature-normalized analysis (`extract_patterns.py`) across 6 JSONLs (4 from 2026-04-21 evening + 2 from 2026-04-22). 528 unique tool_use blocks. Content-transfer excluded: Write (30 calls, 176k chars), Edit (38 calls, 46k chars), Bash(`bd*`) (19 calls, 12k chars), worker_send (15 calls, 9k chars). Actionable waste: Bash 99.3% (89 calls, 51k chars), Grep 0.7% (2 calls). Top Bash patterns: heredoc-python (structural) + `worker-cli status` (8 calls, 1k, trivial). 9 failed-call patterns; 11 failed calls total.

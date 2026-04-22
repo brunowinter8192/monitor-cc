@@ -6,6 +6,7 @@ from ..constants import (
     SOFT_RESET, GREEN, RED, YELLOW, WHITE, DIM, DIM_YELLOW_BG,
 )
 from .format import _shorten_model, _format_delta, _format_k
+from .render_messages import _aggregate_entry_tags
 
 # FUNCTIONS
 
@@ -79,7 +80,9 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         haiku_info = f"  sys:{_format_k(sys_chars)} tools:{_format_k(tools_chars)} msgs:{_format_k(msgs_chars)}"
     else:
         haiku_info = ''
-    lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{haiku_info}{SOFT_RESET}")
+    tag_labels = _aggregate_entry_tags(entry)
+    tag_badge = f'  {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
+    lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{haiku_info}{tag_badge}{SOFT_RESET}")
     keys.append(entry_idx)
     if prev_entry is None:
         lines.append(f"{L2}{DIM}(first request){SOFT_RESET}")

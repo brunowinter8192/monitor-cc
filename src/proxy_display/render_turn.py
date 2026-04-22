@@ -3,6 +3,7 @@ from ..constants import (
     SOFT_RESET, RED, WHITE, YELLOW,
 )
 from .format import _shorten_model, _format_delta, _format_k
+from .render_messages import _aggregate_entry_tags
 
 # FUNCTIONS
 
@@ -112,7 +113,9 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         else:
             cr_cc_str = ''
 
-        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{SOFT_RESET}")
+        tag_labels = _aggregate_entry_tags(entry)
+        tag_badge = f' {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
+        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{SOFT_RESET}")
         keys.append(req_key)
 
         if is_req_expanded:
