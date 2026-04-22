@@ -1,6 +1,4 @@
 # INFRASTRUCTURE
-import re
-
 _REJECTION_MARKER = "The user doesn't want to proceed with this tool use"
 
 # FUNCTIONS
@@ -150,57 +148,6 @@ def _strip_tool_descriptions(payload: dict) -> tuple:
     if stripped == 0:
         return payload, 0, {}
     return {**payload, "tools": new_tools}, stripped, originals
-
-
-# Build replacement text for a persisted-output block — extracts size if present.
-def _build_persisted_replacement(content: str) -> str:
-    for line in content.splitlines()[:5]:
-        m = re.search(r'\(([\d.]+\s*[KMG]?B)\)', line, re.IGNORECASE)
-        if m:
-            return f"[Persisted — {m.group(1)}. Use Read(offset/limit), Grep, or Bash(head/tail/grep) to extract.]"
-    return "[Persisted output stripped. Use Read(offset/limit), Grep, or Bash(head/tail/grep) to extract.]"
-
-
-# Strip <persisted-output> blocks from tool_result content in payload.messages[].
-# Returns (modified_payload, count_stripped, originals_dict) where
-# originals_dict = {msg_idx: {block_idx: original_content_string}}. Idempotent.
-def _strip_persisted_output(payload: dict) -> tuple:
-    messages = payload.get("messages", [])
-    if not messages:
-        return payload, 0, {}
-    count_stripped = 0
-    originals = {}
-    new_messages = []
-    changed = False
-    for msg_idx, msg in enumerate(messages):
-        content = msg.get("content")
-        if not isinstance(content, list):
-            new_messages.append(msg)
-            continue
-        new_content = []
-        msg_changed = False
-        for block_idx, block in enumerate(content):
-            tool_content = block.get("content") if isinstance(block, dict) else None
-            if (isinstance(block, dict)
-                    and block.get("type") == "tool_result"
-                    and isinstance(tool_content, str)
-                    and "<persisted-output>" in tool_content):
-                if msg_idx not in originals:
-                    originals[msg_idx] = {}
-                originals[msg_idx][block_idx] = tool_content
-                new_content.append({**block, "content": _build_persisted_replacement(tool_content)})
-                count_stripped += 1
-                msg_changed = True
-            else:
-                new_content.append(block)
-        if msg_changed:
-            new_messages.append({**msg, "content": new_content})
-            changed = True
-        else:
-            new_messages.append(msg)
-    if not changed:
-        return payload, 0, {}
-    return {**payload, "messages": new_messages}, count_stripped, originals
 
 
 # Replace sys[3].text with "." — strips claudeMd context block from system prompt.

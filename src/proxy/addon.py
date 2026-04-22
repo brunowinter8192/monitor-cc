@@ -13,7 +13,7 @@ from .logging import _build_entry, _summarize_content_for_log
 from .message_summary import _summarize_message
 from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .inject_helpers import _inject_context_management, _inject_model_override
-from .content_strip import _strip_tool_descriptions, _strip_sys3, _strip_persisted_output
+from .content_strip import _strip_tool_descriptions, _strip_sys3
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools
 from .tool_injection import inject_mcp_tools
@@ -91,10 +91,6 @@ class ProxyAddon:
             if sys3_stripped:
                 modifications.append("stripped_sys3")
 
-            modified_payload, persisted_count, persisted_originals = _strip_persisted_output(modified_payload)
-            if persisted_count > 0:
-                modifications.append(f"stripped_persisted_output_{persisted_count}")
-
             modified_payload = _strip_blocked_tool_references(modified_payload)
 
             modified_payload, cm_injected = _inject_context_management(modified_payload)
@@ -112,8 +108,6 @@ class ProxyAddon:
                 entry['stripped_sys3_original'] = sys3_original
             if tool_descs_originals:
                 entry['stripped_tool_descs_originals'] = tool_descs_originals
-            if persisted_originals:
-                entry['stripped_persisted_output_originals'] = persisted_originals
             entry['stripped_msg_indices'] = stripped_msg_indices
             entry['context_management_injected'] = cm_injected
             if stripped_msg_originals:
