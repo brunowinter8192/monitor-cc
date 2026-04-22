@@ -133,27 +133,51 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 
 **Section 6 (Wrapper Candidates):** Write/Edit/worker_send excluded (content-driven); heredoc/`python3 -c` patterns classified as `structural`; other Bash patterns classified by presence of `|`/`&&`/`bd`. Sorted by `total_input_chars / complexity_weight` (trivial=1, medium=2, structural=4).
 
+## waste_repetition.py
+
+**Purpose:** Reads a single Proxy JSONL file, finds the entry with the highest `message_count` (the cumulative session snapshot), extracts all deduplicated Bash `tool_use` blocks from that entry, and analyzes waste along two independent dimensions:
+
+1. **Repetition Signature Groups** — normalizes each command to a stable signature (home paths → `<HOME>/`, log filenames → `<LOG>`, quoted strings → `<STR>`, hex/digit runs → `<HEX>`/`<N>`, worker names → `<WORKER>`), groups by signature, ranks by `count × avg_chars` descending, reports all groups with `count ≥ --min-count`.
+
+2. **Known-Shortcut Path Fragments** — scans every command for replaceable path fragments using a four-rule table (`KNOWN_SHORTCUTS`): (a) any `abs-path ~/Documents/ai/<project>` in a worker-cli/git-check/dev-sync argument → `c`; (b) same for `~`-form; (c) `/Users/brunowinter2000/Documents/ai/Monitor_CC` in any context → `~/…`; (d) generic `/Users/brunowinter2000/` → `~/`. Per-rule counts are independent; the grand total deduplicates overlapping matches (best/highest-savings rule wins per fragment position).
+
+**Input:** Single Proxy JSONL path (positional). Entries with `raw_payload == null` skipped. The entry with the most messages is used as the cumulative session snapshot.
+
+**Output:** Markdown report to stdout (redirect recommended). Sections: summary line (total calls, distinct sigs, total chars, repeated-sig chars, path-shortcut-saveable), Family Overview (per first-token family with sum counts/chars), Repetition Groups table (top K), Replaceable Path Fragments table with grand total, Full Samples (top 10 expanded commands).
+
+**Usage:**
+```bash
+./venv/bin/python dev/tool_use_analysis/waste_repetition.py \
+  src/logs/api_requests_opus_monitor_cc_1776855140.jsonl \
+  > /tmp/waste_rep.md 2>&1
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `proxy_jsonl` | *(positional)* Single Proxy JSONL path | required |
+| `--min-count N` | Minimum occurrence count for a repetition group | 2 |
+| `--top K` | Show top K groups in the signature table | 20 |
+
 ## Generated Reports
-
-### 20260419_baseline.md
-Baseline run on all 17 Proxy JSONLs (default mode, `--min-chars 500`). Top offenders: Write (Ø 6,775 chars), Edit (Ø 1,854 chars), Bash (Ø 1,391 chars).
-
-### 20260419_bash_deepdive.md
-Bash-only deep-dive (`--tool Bash --top 50 --min-chars 500`) on all 17 Proxy JSONLs. Includes Command-Prefix Clustering. Top clusters by total_chars: `python3 [heredoc]` (35 calls, 69k chars), `bd` (36 calls, 59k chars), `python3` inline (39 calls, 52k chars).
-
-### 20260419_ratio_analysis.md
-Ratio analysis (`--ratio --top 50`) on all 17 Proxy JSONLs — 1,207 matched pairs. Bash leads with max ratio 191.62 (3k chars input → 16 chars output). Read is most efficient (median ratio 0.02).
-
-### 20260421_session_waste_failed.md
-Session-level analysis (2026-04-21 tool-use consolidation session) across 4 JSONLs — opus + 3 workers. Known quality issues: Top-10 table filtered Opus-only which produced circular claims about worker behavior — tracked under bead `Monitor_CC-qfr`. Superseded by `20260422_session_waste_patterns.md`.
 
 ### 20260422_session_waste_patterns.md
 Signature-normalized analysis (`extract_patterns.py`) across 6 JSONLs (4 from 2026-04-21 evening + 2 from 2026-04-22). 528 unique tool_use blocks. Content-transfer excluded: Write (30 calls, 176k chars), Edit (38 calls, 46k chars), Bash(`bd*`) (19 calls, 12k chars), worker_send (15 calls, 9k chars). Actionable waste: Bash 99.3% (89 calls, 51k chars), Grep 0.7% (2 calls). Top Bash patterns: heredoc-python (structural) + `worker-cli status` (8 calls, 1k, trivial). 9 failed-call patterns; 11 failed calls total.
 
-## Historical Reports
+## Archived Reports (→ archive/)
 
-### 20260418_github_cli_failures.md
+Reports moved to `archive/` — findings preserved, no longer in active directory.
+
+### archive/20260418_github_cli_failures.md
 
 **Source:** Worker proxy log `api_requests_worker_warnings-pane-fixes_1776546048.jsonl`
 
 Documents four categories of GitHub CLI (`gh-cli` Skill / `grep_repo` / `grep_file`) failures encountered during the warnings-pane-fixes session: missing `repo:` qualifier in `search_code`, POSIX `\|` vs Python `|` regex escaping confusion, wrong file path argument to `grep_file`, and wrong constant names (`WheelUp` vs `MOUSE_WHEEL_UP`). Includes root-cause analysis and fix directions for each failure.
+
+### archive/20260419_baseline.md
+Baseline run on all 17 Proxy JSONLs (default mode, `--min-chars 500`). Top offenders: Write (Ø 6,775 chars), Edit (Ø 1,854 chars), Bash (Ø 1,391 chars).
+
+### archive/20260419_bash_deepdive.md
+Bash-only deep-dive (`--tool Bash --top 50 --min-chars 500`) on all 17 Proxy JSONLs. Includes Command-Prefix Clustering. Top clusters by total_chars: `python3 [heredoc]` (35 calls, 69k chars), `bd` (36 calls, 59k chars), `python3` inline (39 calls, 52k chars).
+
+### archive/20260419_ratio_analysis.md
+Ratio analysis (`--ratio --top 50`) on all 17 Proxy JSONLs — 1,207 matched pairs. Bash leads with max ratio 191.62 (3k chars input → 16 chars output). Read is most efficient (median ratio 0.02).
