@@ -42,9 +42,9 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 
 ---
 
-### worker_pane.py (166 LOC)
+### worker_pane.py (216 LOC)
 
-**Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, viewport-clipped screen rendering with pane-level scroll (mouse wheel 64/65 adjusts `worker_scroll_offset`, clamped to `[0, total_lines - pane_height]`), and IPC selection file write for cross-pane coordination.
+**Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, viewport-clipped screen rendering, and IPC selection file write for cross-pane coordination. Mouse wheel 64/65 resolves the worker name from the row under the cursor (`worker_cache_line_map` → `worker_line_map` → `worker_selected_name` fallback) and updates `worker_scroll_offsets[name]` ±3, which `format_cache_tracker` reads to scroll the per-worker REQ view.
 **Reads:** `_monitor.active_project_filter` (shared global state); stdin (keyboard/mouse); worker JSONL files via `worker_format`.
 **Writes:** ANSI output to stdout; selected worker name to `/tmp/monitor_cc_selected_worker_<hash>.txt`.
 **Called by:** `src/core/monitor.py` (via `..workers.run_workers_loop`); `src/proxy_display/worker_proxy_pane.py` (imports `get_selection_file_path`, `write_selection`)
@@ -57,6 +57,10 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 `worker_pane.py` owns:
 - `worker_expand_states: Dict[str, bool]` — expand/collapse state keyed by worker name
 - `worker_scroll_offsets: Dict[str, int]` — intra-worker scroll position (for expanded cache-tracker, 15-line view); reset to 0 on expand
-- `worker_scroll_offset: int` — pane-level scroll offset; wheel-up (+3) shifts viewport toward older content, wheel-down (-3) toward newer; clamped to `[0, max(0, total_lines - pane_height)]` on every render
+- `worker_scroll_offset: int` — dormant pane-level scroll int; always 0 after wheel routing moved to `worker_scroll_offsets`; kept as bottom-anchor for viewport fail-safe slice cap
 
 Mutated exclusively by `run_workers_loop`. `worker_scroll_offsets` read by `format_workers_block` in the same process.
+
+## Gotchas
+
+**`worker_scroll_offset` (pane-level int) is dormant.** Wheel 64/65 events write to `worker_scroll_offsets[name]` (per-worker dict), which `format_cache_tracker` reads to scroll the expanded REQ view. `worker_scroll_offset` stays permanently 0 — `vp_start = max(0, total_lines - pane_height - worker_scroll_offset)` reduces to a bottom-anchor. The int is not removed because it anchors the `all_lines[vp_start:vp_start + pane_height]` slice-cap that prevents terminal overflow with many workers.
