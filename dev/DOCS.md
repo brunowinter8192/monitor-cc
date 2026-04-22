@@ -17,6 +17,7 @@ cd Monitor_CC/
 - [tool_injection/DOCS.md](tool_injection/DOCS.md) — MCP tool schema extraction for proxy-side tool injection
 - [session_analysis/DOCS.md](session_analysis/DOCS.md) — Forensic session JSONL + proxy log analysis (cache behavior, rebuild detection, token attribution)
 - [tool_use_analysis/DOCS.md](tool_use_analysis/DOCS.md) — Tool-use input size extraction (Proxy JSONL) + zero-result detection (Session JSONL)
+- `proxy_forensics/` — single-script dir. `strip_tracking_audit.py` verifies proxy-JSONL tracking invariant: for every `idx` in `stripped_msg_indices`, `stripped_msg_removed[str(idx)]` must exist and be non-empty. Usage: `./venv/bin/python dev/proxy_forensics/strip_tracking_audit.py <proxy.jsonl>` — exits 0 if clean, 1 if violations found.
 
 ## session_analysis/
 

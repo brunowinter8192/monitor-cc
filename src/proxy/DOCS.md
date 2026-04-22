@@ -45,9 +45,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (243 LOC)
+### rules.py (250 LOC)
 
-**Purpose:** Apply proxy modification rules — strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported function `apply_modification_rules`. Remainder 243 LOC is a single monolithic function body — further split requires refactoring.
+**Purpose:** Apply proxy modification rules — strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported function `apply_modification_rules`. Remainder ~250 LOC is a single monolithic function body — further split requires refactoring.
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`

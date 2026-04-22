@@ -31,7 +31,7 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ## Modules
 
-### strip_marker.py (65 LOC)
+### strip_marker.py (85 LOC)
 
 **Purpose:** Proxy-strip content highlighting helper — `highlight_stripped` wraps found chunks in `DIM_YELLOW_BG`/`SOFT_RESET` inline; `get_stripped_data` extracts pre-strip text + removed chunks from a proxy entry for a given message index; `build_tool_result_strip_lookup` / `build_tool_id_strip_lookup` build `tool_use_id → (pre_strip_text, chunks)` maps for waste_pane and main-pane respectively.
 **Reads:** Proxy entry dicts passed as arguments. No I/O, no shared state.
