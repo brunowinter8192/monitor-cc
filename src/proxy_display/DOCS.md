@@ -70,23 +70,23 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### render_entry.py (194 LOC)
+### render_entry.py (203 LOC)
 
-**Purpose:** Render a single proxy request entry (collapsed or expanded) into display lines — shows model, message count, cache breakpoints, change warnings, delta breakdown, and flat per-message list when expanded. Used only in no-turns mode (when turns list is empty). Msg rows are non-clickable (key=None); msg-level expand was removed to keep line_map flat. Emits suspect-tag badge (⚠PO,SR,TN,ND in RED) on REQ-header when new/modified msgs contain any of the 4 tags, via `_aggregate_entry_tags` import from `render_messages`.
+**Purpose:** Render a single proxy request entry (collapsed or expanded) into display lines — shows model, message count, cache breakpoints, change warnings, delta breakdown, and flat per-message list when expanded. Used only in no-turns mode (when turns list is empty). Msg rows are non-clickable (key=None); msg-level expand was removed to keep line_map flat. Emits suspect-tag badge (⚠PO,SR,TN,ND in RED) on REQ-header when new/modified msgs contain any of the 4 tags, via `_aggregate_entry_tags` import from `render_messages`. When expanded, emits a second line with aggregated bucket signals (`INERT:X  LEAK:<TN>  SUS:<PO>`) computed via `_aggregate_req_buckets`; collapsed header unchanged.
 **Reads:** Entry dict, all entries (for prev-entry lookup), expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/format.py`
-**Calls out:** `render_messages` (`_aggregate_entry_tags`)
+**Calls out:** `render_messages` (`_aggregate_entry_tags`, `_aggregate_req_buckets`)
 
 ---
 
-### render_turn.py (136 LOC)
+### render_turn.py (144 LOC)
 
-**Purpose:** Render all per-request rows for an expanded turn group, numbering requests and delegating system/tools/messages rendering to section modules. Emits suspect-tag badge (⚠PO,SR,TN,ND in RED) on REQ-header row when new/modified msgs contain any of the 4 tracked tag literals, via `_aggregate_entry_tags` import from `render_messages`.
+**Purpose:** Render all per-request rows for an expanded turn group, numbering requests and delegating system/tools/messages rendering to section modules. Emits suspect-tag badge (⚠PO,SR,TN,ND in RED) on REQ-header row when new/modified msgs contain any of the 4 tracked tag literals, via `_aggregate_entry_tags` import from `render_messages`. When a REQ is expanded, emits a second line with aggregated bucket signals (`INERT:X  IDX:N  LEAK:<TN>  SUS:<PO>`) computed via `_aggregate_req_buckets` (counter-delta semantics for INERT, mirrors strip_audit._classify_req); collapsed header unchanged.
 **Reads:** Group dict, all entries, expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys, opus_req_num, sub_req_num)` tuple.
 **Called by:** `src/proxy_display/format.py`
-**Calls out:** `render_messages` (`_aggregate_entry_tags`)
+**Calls out:** `render_messages` (`_aggregate_entry_tags`, `_aggregate_req_buckets`)
 
 ---
 
@@ -100,13 +100,13 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### render_messages.py (216 LOC)
+### render_messages.py (260 LOC)
 
-**Purpose:** Render new/modified/removed messages for an expanded request entry — handles added messages (full block content) and diffs (content_tail), prefers `stripped_msg_removed` over `stripped_msg_originals` for stripped-message display. Also exports `_detect_suspect_tags(text)` and `_aggregate_entry_tags(entry)` helpers used by `render_turn.py` + `render_entry.py` to render the suspect-tag badge (⚠PO,SR,TN,ND) on REQ-header rows; aggregation is scoped to new/modified msgs via `diff_from_prev.first_diff_index`. Content rendering highlights 4 suspect tag literals (`<persisted-output>`, `<system-reminder>`, `<task-notification>`, `<new-diagnostics>`) inline with `LIGHT_RED_BG` via `_SUSPECT_TAG_RE` substitution.
+**Purpose:** Render new/modified/removed messages for an expanded request entry — handles added messages (full block content) and diffs (content_tail), prefers `stripped_msg_removed` over `stripped_msg_originals` for stripped-message display. Per-chunk `EFF:RULE` label (e.g. `EFF:NAG`, `EFF:CMD`) is emitted on its own line above each chunk, computed via `strip_vocab.attribute_chunk`; the IDX case (indexed in smi but no chunks) appends `IDX` inline on the `[STRIPPED]` header row. Also exports `_detect_suspect_tags(text)`, `_aggregate_entry_tags(entry)` (suspect-tag badge helpers for render_turn + render_entry), and `_aggregate_req_buckets(entry, prev_entry)` (counter-delta INERT + IDX + LEAK/SUS signals for expanded REQ second line via `strip_vocab.classify_tags`). Content rendering highlights 4 suspect tag literals with `LIGHT_RED_BG` via `_SUSPECT_TAG_RE` substitution.
 **Reads:** Entry dict, previous entry, all entries, expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`
-**Calls out:** —
+**Calls out:** `proxy.strip_vocab` (`attribute_chunk`, `classify_tags`, `code_for_rule`)
 
 ---
 

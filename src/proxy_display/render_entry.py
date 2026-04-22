@@ -6,7 +6,7 @@ from ..constants import (
     SOFT_RESET, GREEN, RED, YELLOW, WHITE, DIM, DIM_YELLOW_BG,
 )
 from .format import _shorten_model, _format_delta, _format_k
-from .render_messages import _aggregate_entry_tags
+from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # FUNCTIONS
 
@@ -84,6 +84,15 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     tag_badge = f'  {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
     lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{haiku_info}{tag_badge}{SOFT_RESET}")
     keys.append(entry_idx)
+    if is_expanded:
+        buckets = _aggregate_req_buckets(entry, prev_entry)
+        parts = [f'INERT:{c}' for c in buckets['inert_codes']]
+        parts += [f'IDX:{i}' for i in buckets['idx_msgs']]
+        parts += buckets['leak_signals']
+        parts += buckets['sus_signals']
+        if parts:
+            lines.append(f"{L2}{DIM}{'  '.join(parts)}{SOFT_RESET}")
+            keys.append(None)
     if prev_entry is None:
         lines.append(f"{L2}{DIM}(first request){SOFT_RESET}")
         keys.append(None)
