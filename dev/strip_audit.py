@@ -4,6 +4,7 @@ import glob
 import json
 import os
 import sys
+from datetime import datetime
 
 TAGS = ['<system-reminder>', '<persisted-output>', '<task-notification>', '<new-diagnostics>', 'SYSTEM NOTIFICATION']
 FILE_TOOLS = {'Read', 'Grep', 'Bash', 'Glob'}
@@ -14,6 +15,7 @@ TRUNC = 100
 def main():
     ap = argparse.ArgumentParser(description='Delta-based strip analysis for proxy JSONL logs.')
     ap.add_argument('path', nargs='?', help='Path to proxy JSONL file (default: newest opus log)')
+    ap.add_argument('--output', action='store_true', help='Write report to dev/tool_use_analysis/YYYYMMDD_strip_audit.md')
     args = ap.parse_args()
     path = args.path or find_newest_log()
     if not path:
@@ -21,7 +23,12 @@ def main():
         sys.exit(1)
     entries = load_entries(path)
     print(f'Loaded {len(entries)} entries from {path}\n')
-    analyze(entries)
+    lines, stats = analyze(entries)
+    for line in lines:
+        print(line)
+    if args.output:
+        out_path = write_report(path, len(entries), lines, stats)
+        print(f'\nReport written: {out_path}')
 
 # FUNCTIONS
 
@@ -97,8 +104,10 @@ def fmt_removed(removed_map, msg_idx):
     snippet = chunks[0][:TRUNC].replace('\n', ' ')
     return f"  [STRIPPED]  removed: '{snippet}' ({TRUNC}c truncated)"
 
-# Walk entries chronologically, print delta analysis per request
+# Walk entries chronologically, collect output lines and summary stats
 def analyze(entries):
+    lines = []
+    stats = {'req_stripped': 0, 'suspect': 0, 'leaked': 0}
     prev = None
     for req_num, entry in enumerate(entries, 1):
         messages = entry.get('messages', [])
@@ -113,11 +122,12 @@ def analyze(entries):
         ts_raw = entry.get('timestamp', '')
         ts = ts_raw[11:19] if len(ts_raw) >= 19 else ts_raw
         mods = ', '.join(entry.get('modifications', []))
-        print(f"REQ #{req_num}  [{ts}]  msgs: {prev_count}→{cur_count} (+{delta})  mods: {mods}")
+        lines.append(f"REQ #{req_num}  [{ts}]  msgs: {prev_count}→{cur_count} (+{delta})  mods: {mods}")
 
         stripped_indices = set(entry.get('stripped_msg_indices', []))
         removed_map = entry.get('stripped_msg_removed') or {}
         raw_msgs = entry.get('raw_payload', {}).get('messages', [])
+        req_had_stripped = False
 
         for msg_idx in range(prev_count, cur_count):
             if msg_idx >= len(messages):
@@ -142,6 +152,8 @@ def analyze(entries):
             tool_str = f'  {tool_name}' if tool_name else ''
             is_stripped = msg_idx in stripped_indices
             stripped_str = fmt_removed(removed_map, msg_idx) if is_stripped else ''
+            if is_stripped:
+                req_had_stripped = True
 
             # Tag leak scan
             leaked = []
@@ -149,13 +161,49 @@ def analyze(entries):
                 text = raw_text(raw_msgs[msg_idx])
                 leaked = [t for t in TAGS if t in text]
             leaked_str = '  LEAKED: ' + ', '.join(leaked) if leaked else ''
+            if leaked:
+                stats['leaked'] += len(leaked)
 
-            print(f"  NEW msg[{msg_idx}] {role:<4} {msg_type:<14}{tool_str}  {chars:,}c{stripped_str}{leaked_str}")
+            lines.append(f"  NEW msg[{msg_idx}] {role:<4} {msg_type:<14}{tool_str}  {chars:,}c{stripped_str}{leaked_str}")
 
             if is_stripped and tool_name in FILE_TOOLS:
-                print(f"    \u26a0 SUSPECT FALSE POSITIVE: {tool_name} tool_result stripped — content may be source code containing SR tags")
+                lines.append(f"    \u26a0 SUSPECT FALSE POSITIVE: {tool_name} tool_result stripped — content may be source code containing SR tags")
+                stats['suspect'] += 1
 
+        if req_had_stripped:
+            stats['req_stripped'] += 1
         prev = entry
+    return lines, stats
+
+
+# Write markdown report to dev/tool_use_analysis/YYYYMMDD_strip_audit.md
+def write_report(log_path, entries_count, lines, stats):
+    now = datetime.now()
+    date_str = now.strftime('%Y-%m-%d %H:%M')
+    date_prefix = now.strftime('%Y%m%d')
+    source_name = os.path.basename(log_path)
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tool_use_analysis')
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f'{date_prefix}_strip_audit.md')
+    md = [
+        f'# Strip Audit — {date_str}',
+        f'',
+        f'Source: `{source_name}`',
+        f'Entries: {entries_count}',
+        f'',
+        f'## Summary',
+        f'',
+        f'- Requests with stripped messages: {stats["req_stripped"]}',
+        f'- Suspect false positives: {stats["suspect"]}',
+        f'- Leaked tags: {stats["leaked"]}',
+        f'',
+        f'## Delta Log',
+        f'',
+        f'```',
+    ] + lines + ['```', '']
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(md))
+    return out_path
 
 if __name__ == '__main__':
     main()
