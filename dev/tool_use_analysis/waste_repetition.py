@@ -32,6 +32,22 @@ _SIG_SUBS = [
     (re.compile(r'(worker-cli\s+\w+\s+)[\w-]+'), r'\1<WORKER>'),
 ]
 
+# (pattern, context, replacement, repl_len, label) — most specific first
+KNOWN_SHORTCUTS = [
+    (re.compile(r'/Users/brunowinter2000/Documents/ai/Monitor_CC(?=\s|$|/)'),
+     'worker_cli_arg', 'c', 1,
+     '/Users/brunowinter2000/Documents/ai/Monitor_CC → c  (worker-cli/git-check/dev-sync arg)'),
+    (re.compile(r'~/Documents/ai/Monitor_CC(?=\s|$|/)'),
+     'worker_cli_arg', 'c', 1,
+     '~/Documents/ai/Monitor_CC → c  (worker-cli/git-check/dev-sync arg)'),
+    (re.compile(r'/Users/brunowinter2000/Documents/ai/Monitor_CC(?=\s|$|/)'),
+     'any', '~/Documents/ai/Monitor_CC', 25,
+     '/Users/brunowinter2000/Documents/ai/Monitor_CC → ~/Documents/ai/Monitor_CC  (other contexts)'),
+    (re.compile(r'/Users/brunowinter2000/'),
+     'any', '~/', 2,
+     '/Users/brunowinter2000/ → ~/  (anywhere)'),
+]
+
 
 # ORCHESTRATOR
 
@@ -42,7 +58,9 @@ def run(path, min_count, top_k):
         sys.exit(1)
     cmds = _extract_bash_cmds(snapshot)
     groups = _rank_groups(cmds, min_count)
-    report = _build_report(path, cmds, groups, min_count, top_k)
+    shortcut_hits = _count_shortcuts(cmds)
+    shortcut_total = _total_shortcut_savings(cmds)
+    report = _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_total)
     print(report)
 
 
@@ -133,8 +151,51 @@ def _rank_groups(cmds, min_count):
     return sorted(result, key=lambda x: -x['score'])
 
 
+# Return True if the cmd fragment at match_start is a worker-cli / git-check / dev-sync argument
+def _ctx_worker_cli_arg(cmd, match_start):
+    prefix = cmd[max(0, match_start - 80):match_start].rstrip()
+    return bool(re.search(r'(worker-cli\s+\w+(\s+\S+)*|git-check|dev-sync)\s*$', prefix))
+
+
+# Count per-rule occurrences and chars saved across all commands
+def _count_shortcuts(cmds):
+    results = []
+    for pat, ctx, _repl, repl_len, label in KNOWN_SHORTCUTS:
+        count = 0
+        saved_per = 0
+        for cmd in cmds:
+            for m in pat.finditer(cmd):
+                if ctx == 'worker_cli_arg' and not _ctx_worker_cli_arg(cmd, m.start()):
+                    continue
+                count += 1
+                if saved_per == 0:
+                    saved_per = len(m.group()) - repl_len
+        results.append({'label': label, 'count': count,
+                        'saved_per': saved_per, 'total': count * saved_per})
+    return results
+
+
+# Total unique shortcut savings — best rule wins per fragment, no double-counting across overlapping rules
+def _total_shortcut_savings(cmds):
+    total = 0
+    for cmd in cmds:
+        matches = []
+        for pat, ctx, _repl, repl_len, _label in KNOWN_SHORTCUTS:
+            for m in pat.finditer(cmd):
+                if ctx == 'worker_cli_arg' and not _ctx_worker_cli_arg(cmd, m.start()):
+                    continue
+                matches.append((len(m.group()) - repl_len, m.start(), m.end()))
+        matches.sort(key=lambda x: -x[0])
+        taken = []
+        for sav, start, end in matches:
+            if not any(s < end and start < e for s, e in taken):
+                total += sav
+                taken.append((start, end))
+    return total
+
+
 # Assemble and return the full markdown report
-def _build_report(path, cmds, groups, min_count, top_k):
+def _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_total):
     total_bash = len(cmds)
     total_chars = sum(len(c) for c in cmds)
     distinct_sigs = len(set(_sig(c) for c in cmds))
@@ -147,7 +208,8 @@ def _build_report(path, cmds, groups, min_count, top_k):
         f'Total Bash calls: **{total_bash}** | '
         f'Distinct signatures: **{distinct_sigs}** | '
         f'Total chars: **{total_chars:,}** | '
-        f'Repeated-sig chars (count≥{min_count}): **{repeated_chars:,}**'
+        f'Repeated-sig chars (count≥{min_count}): **{repeated_chars:,}** | '
+        f'Path-shortcut-saveable: **{shortcut_total:,}** chars'
     )
     L.append('')
 
@@ -172,30 +234,42 @@ def _build_report(path, cmds, groups, min_count, top_k):
     L.append('')
     if not shown:
         L.append(f'*(no repetition groups found with count ≥ {min_count})*')
-        L.append('')
-        return '\n'.join(L)
+    else:
+        L.append('| Rank | Count | Avg chars | Total chars | Signature (80c) | Sample (80c) |')
+        L.append('|---|---|---|---|---|---|')
+        for rank, g in enumerate(shown, 1):
+            sig80 = g['sig'][:SAMPLE_DISPLAY_CHARS].replace('|', '\\|')
+            sample80 = g['sample'].replace('\n', ' ')[:SAMPLE_DISPLAY_CHARS].replace('|', '\\|')
+            L.append(
+                f"| {rank} | {g['count']} | {g['avg_chars']:,} | {g['total_chars']:,} "
+                f"| `{sig80}` | {sample80} |"
+            )
+    L.append('')
 
-    L.append('| Rank | Count | Avg chars | Total chars | Signature (80c) | Sample (80c) |')
-    L.append('|---|---|---|---|---|---|')
-    for rank, g in enumerate(shown, 1):
-        sig80 = g['sig'][:SAMPLE_DISPLAY_CHARS].replace('|', '\\|')
-        sample80 = g['sample'].replace('\n', ' ')[:SAMPLE_DISPLAY_CHARS].replace('|', '\\|')
+    L.append('## Replaceable Path Fragments')
+    L.append('')
+    L.append('| Rule | Occurrences | Chars saved / occurrence | Total saved |')
+    L.append('|---|---|---|---|')
+    for hit in shortcut_hits:
         L.append(
-            f"| {rank} | {g['count']} | {g['avg_chars']:,} | {g['total_chars']:,} "
-            f"| `{sig80}` | {sample80} |"
+            f"| {hit['label']} | {hit['count']} "
+            f"| {hit['saved_per']} | {hit['total']:,} |"
         )
     L.append('')
-
-    full_count = min(10, len(shown))
-    L.append(f'## Full Samples (top {full_count})')
+    L.append(f"**Total saveable via path-shortcuts: {shortcut_total:,} chars**")
     L.append('')
-    for rank, g in enumerate(shown[:full_count], 1):
-        L.append(f'### {rank}. `{g["sig"][:80]}`')
+
+    if shown:
+        full_count = min(10, len(shown))
+        L.append(f'## Full Samples (top {full_count})')
         L.append('')
-        L.append('```bash')
-        L.append(g['sample'])
-        L.append('```')
-        L.append('')
+        for rank, g in enumerate(shown[:full_count], 1):
+            L.append(f'### {rank}. `{g["sig"][:80]}`')
+            L.append('')
+            L.append('```bash')
+            L.append(g['sample'])
+            L.append('```')
+            L.append('')
 
     return '\n'.join(L)
 
