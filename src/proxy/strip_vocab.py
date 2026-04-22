@@ -9,6 +9,8 @@ MUST be updated in lockstep with rules.py when rules or markers change.
 
 # INFRASTRUCTURE
 
+from collections import Counter
+
 # Bucket codes — 5 semantic buckets for per-REQ strip signals
 BUCKETS: dict[str, str] = {
     'EFF':   'Effective strip (rule fired + chunk attributed)',
@@ -120,6 +122,80 @@ def classify_tags(entry: dict) -> tuple[list[str], list[str]]:
         sus_signals.append('SUS:<PO>')
 
     return leak_signals, sus_signals
+
+
+# Classify one REQ into 5 buckets; EFFECTIVE uses chunk-diff against prev_removed
+def classify_req(entry: dict, prev_entry: dict | None) -> dict:
+    """Return per-REQ bucket classification dict.
+
+    effective: dict[rule_code, list[tuple[idx, chunk]]]
+        — chunks NEW or CHANGED since prev.stripped_msg_removed
+    inert: list[rule_code] (sorted)
+        — rule codes with counter-delta > 0 but 0 captured chunks in ALL curr chunks
+    idx_msgs: list[int] (sorted)
+        — msg indices newly in smi but no chunks in stripped_msg_removed
+    leak_signals: list[str]
+    sus_signals: list[str]
+    unattributed: list[tuple[idx, chunk]]
+        — NEW chunks that no rule marker matched
+    """
+    curr_removed = entry.get('stripped_msg_removed') or {}
+    prev_removed = (prev_entry or {}).get('stripped_msg_removed') or {}
+
+    # Build set of (idx_str, chunk) pairs that already existed in prev
+    prev_pairs: set[tuple[str, str]] = set()
+    for idx_str, chunks in prev_removed.items():
+        for chunk in (chunks or []):
+            prev_pairs.add((idx_str, chunk))
+
+    # EFFECTIVE — only new/changed chunks (not in prev_pairs)
+    rule_to_chunks: dict[str, list[tuple[int, str]]] = {}
+    unattributed: list[tuple[int, str]] = []
+    for idx_str, chunks in curr_removed.items():
+        for chunk in (chunks or []):
+            if (idx_str, chunk) in prev_pairs:
+                continue
+            code = attribute_chunk(chunk)
+            if code:
+                rule_to_chunks.setdefault(code, []).append((int(idx_str), chunk))
+            else:
+                unattributed.append((int(idx_str), chunk))
+
+    # INERT — counter-delta > 0 but rule has NO chunks at all in curr (not just new)
+    prev_mods_ctr = Counter((prev_entry or {}).get('modifications', []))
+    curr_mods_ctr = Counter(entry.get('modifications', []))
+    new_strip_codes = {
+        code_for_rule(rule)
+        for rule in curr_mods_ctr
+        if curr_mods_ctr[rule] > prev_mods_ctr.get(rule, 0)
+        and code_for_rule(rule) is not None
+        and code_for_rule(rule) in STRIP_RULE_CODES
+    }
+    codes_with_any_chunks: set[str] = set()
+    for idx_str, chunks in curr_removed.items():
+        for chunk in (chunks or []):
+            c = attribute_chunk(chunk)
+            if c:
+                codes_with_any_chunks.add(c)
+    inert_codes = sorted(c for c in new_strip_codes if c not in codes_with_any_chunks)
+
+    # IDX — new smi indices with no chunks
+    prev_smi = set((prev_entry or {}).get('stripped_msg_indices', []))
+    curr_smi = set(entry.get('stripped_msg_indices', []))
+    new_smi = curr_smi - prev_smi
+    idx_msgs = [idx for idx in sorted(new_smi) if not curr_removed.get(str(idx))]
+
+    # LEAK / SUS — delegate to classify_tags (monitor-format messages)
+    leak_signals, sus_signals = classify_tags(entry)
+
+    return {
+        'effective':    rule_to_chunks,
+        'inert':        inert_codes,
+        'idx_msgs':     idx_msgs,
+        'leak_signals': leak_signals,
+        'sus_signals':  sus_signals,
+        'unattributed': unattributed,
+    }
 
 
 # Generate Markdown legend block for audit report header

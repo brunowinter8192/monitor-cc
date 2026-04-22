@@ -31,8 +31,8 @@ if _src_dir not in sys.path:
 
 from proxy.strip_vocab import (
     BUCKETS, RULES, TAG_LITERALS,
-    attribute_chunk, code_for_rule, legend_markdown,
-    STRIP_RULE_CODES,
+    attribute_chunk, classify_req as vocab_classify_req, code_for_rule,
+    legend_markdown, STRIP_RULE_CODES,
 )
 
 # SR templates — mirrors src/proxy/strip_sr.py:_SR_TEMPLATES exactly
@@ -171,49 +171,21 @@ def _build_delta_log(entries):
     return lines
 
 
-# Classify one REQ into five buckets (returns codes, not full rule names)
+# Classify one REQ into five buckets — delegates to vocab_classify_req for
+# effective/inert/idx/unattributed; builds verbose tag_lines locally via _check_tags
+# (audit needs raw_payload SR-block scanning; classify_tags uses monitor-format blocks)
 def _classify_req(entry, prev):
-    prev_mods_ctr = Counter(prev.get('modifications', [])) if prev else Counter()
+    cls = vocab_classify_req(entry, prev)
     curr_mods_ctr = Counter(entry.get('modifications', []))
-
-    new_strip_codes = {
-        code_for_rule(rule)
-        for rule in curr_mods_ctr
-        if curr_mods_ctr[rule] > prev_mods_ctr.get(rule, 0)
-        and code_for_rule(rule) is not None
-    }
-
-    stripped_removed = entry.get('stripped_msg_removed', {})
-    code_to_chunks = {}
-    unattributed = []
-    for idx_str, chunks in stripped_removed.items():
-        idx = int(idx_str)
-        for chunk in (chunks or []):
-            code = attribute_chunk(chunk)
-            if code:
-                code_to_chunks.setdefault(code, []).append((idx, chunk))
-            else:
-                unattributed.append((idx, chunk))
-
-    codes_with_chunks = set(code_to_chunks.keys())
-    effective = {c: code_to_chunks[c] for c in new_strip_codes if c in codes_with_chunks}
-    inert = sorted(c for c in new_strip_codes if c not in codes_with_chunks)
-
-    prev_smi = set(prev.get('stripped_msg_indices', [])) if prev else set()
-    curr_smi = set(entry.get('stripped_msg_indices', []))
-    new_smi = curr_smi - prev_smi
-    indexed_no_chunks = [idx for idx in sorted(new_smi) if not stripped_removed.get(str(idx))]
-
     tag_lines, n_leaks, n_suspects = _check_tags(entry, curr_mods_ctr)
-
     return {
-        'effective': effective,
-        'inert': inert,
-        'indexed_no_chunks': indexed_no_chunks,
-        'tag_lines': tag_lines,
-        'n_leaks': n_leaks,
-        'n_suspects': n_suspects,
-        'unattributed': unattributed,
+        'effective':        cls['effective'],
+        'inert':            cls['inert'],
+        'indexed_no_chunks': cls['idx_msgs'],
+        'tag_lines':        tag_lines,
+        'n_leaks':          n_leaks,
+        'n_suspects':       n_suspects,
+        'unattributed':     cls['unattributed'],
     }
 
 
