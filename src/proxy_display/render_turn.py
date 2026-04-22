@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from ..constants import (
-    SOFT_RESET, RED, WHITE, YELLOW,
+    SOFT_RESET, RED, WHITE, YELLOW, DIM,
 )
 from .format import _shorten_model, _format_delta, _format_k
 from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
