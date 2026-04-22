@@ -34,12 +34,12 @@ _SIG_SUBS = [
 
 # (pattern, context, replacement, repl_len, label) — most specific first
 KNOWN_SHORTCUTS = [
-    (re.compile(r'/Users/brunowinter2000/Documents/ai/Monitor_CC(?=\s|$|/)'),
+    (re.compile(r'/Users/brunowinter2000/Documents/ai/([^/\s]+)(?=\s|$|/)'),
      'worker_cli_arg', 'c', 1,
-     '/Users/brunowinter2000/Documents/ai/Monitor_CC → c  (worker-cli/git-check/dev-sync arg)'),
-    (re.compile(r'~/Documents/ai/Monitor_CC(?=\s|$|/)'),
+     'abs-path <project> → c shortcut (worker-cli/git-check/dev-sync only)'),
+    (re.compile(r'~/Documents/ai/([^/\s]+)(?=\s|$|/)'),
      'worker_cli_arg', 'c', 1,
-     '~/Documents/ai/Monitor_CC → c  (worker-cli/git-check/dev-sync arg)'),
+     '~-path <project> → c shortcut (worker-cli/git-check/dev-sync only)'),
     (re.compile(r'/Users/brunowinter2000/Documents/ai/Monitor_CC(?=\s|$|/)'),
      'any', '~/Documents/ai/Monitor_CC', 25,
      '/Users/brunowinter2000/Documents/ai/Monitor_CC → ~/Documents/ai/Monitor_CC  (other contexts)'),
@@ -162,16 +162,19 @@ def _count_shortcuts(cmds):
     results = []
     for pat, ctx, _repl, repl_len, label in KNOWN_SHORTCUTS:
         count = 0
+        total_saved = 0
         saved_per = 0
         for cmd in cmds:
             for m in pat.finditer(cmd):
                 if ctx == 'worker_cli_arg' and not _ctx_worker_cli_arg(cmd, m.start()):
                     continue
+                sav = len(m.group()) - repl_len
                 count += 1
+                total_saved += sav
                 if saved_per == 0:
-                    saved_per = len(m.group()) - repl_len
+                    saved_per = sav
         results.append({'label': label, 'count': count,
-                        'saved_per': saved_per, 'total': count * saved_per})
+                        'saved_per': saved_per, 'total': total_saved})
     return results
 
 
