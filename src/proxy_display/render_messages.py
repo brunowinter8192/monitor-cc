@@ -1,8 +1,10 @@
 # INFRASTRUCTURE
 import re
+from collections import Counter
 from ..constants import (
     SOFT_RESET, RED, WHITE, DIM, DIM_YELLOW_BG, LIGHT_RED_BG, RESET,
 )
+from ..proxy.strip_vocab import attribute_chunk, classify_tags, code_for_rule
 
 _SUSPECT_TAGS = [
     ('<new-diagnostics>', 'ND'),
@@ -51,14 +53,15 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             chars_fmt = f"{chars:,}c"
             is_stripped = msg_idx in stripped_indices
             if is_stripped:
-                lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
                 removed_map = entry.get('stripped_msg_removed')
-                if removed_map is not None:
-                    removed_chunks = removed_map.get(str(msg_idx), [])
-                    for chunk_idx, chunk in enumerate(removed_chunks):
-                        if chunk_idx > 0:
-                            lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                            keys.append(None)
+                removed_chunks = removed_map.get(str(msg_idx), []) if removed_map is not None else []
+                if removed_chunks:
+                    lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
+                    for chunk in removed_chunks:
+                        rule_code = attribute_chunk(chunk)
+                        label = f'EFF:{rule_code}' if rule_code else 'EFF:?'
+                        lines.append(f"      {WHITE}{label}{SOFT_RESET}")
+                        keys.append(None)
                         for raw_line in chunk.split('\n'):
                             raw_line = raw_line.expandtabs(8)
                             if not raw_line:
@@ -70,6 +73,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 else:
                     originals = entry.get('stripped_msg_originals', {})
                     orig_text = originals.get(str(msg_idx), '')
+                    lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]  IDX{SOFT_RESET}")
                     if orig_text:
                         for raw_line in orig_text.split('\n'):
                             raw_line = raw_line.expandtabs(8)
@@ -136,14 +140,15 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             msg_type = msg.get('type', 'text')
             is_stripped = msg_idx in stripped_indices
             if is_stripped:
-                lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{SOFT_RESET}")
                 removed_map = entry.get('stripped_msg_removed')
-                if removed_map is not None:
-                    removed_chunks = removed_map.get(str(msg_idx), [])
-                    for chunk_idx, chunk in enumerate(removed_chunks):
-                        if chunk_idx > 0:
-                            lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                            keys.append(None)
+                removed_chunks = removed_map.get(str(msg_idx), []) if removed_map is not None else []
+                if removed_chunks:
+                    lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{SOFT_RESET}")
+                    for chunk in removed_chunks:
+                        rule_code = attribute_chunk(chunk)
+                        label = f'EFF:{rule_code}' if rule_code else 'EFF:?'
+                        lines.append(f"      {WHITE}{label}{SOFT_RESET}")
+                        keys.append(None)
                         for raw_line in chunk.split('\n'):
                             raw_line = raw_line.expandtabs(8)
                             if not raw_line:
@@ -155,6 +160,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 else:
                     originals = entry.get('stripped_msg_originals', {})
                     orig_text = originals.get(str(msg_idx), '')
+                    lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]  IDX{SOFT_RESET}")
                     if orig_text:
                         for raw_line in orig_text.split('\n'):
                             raw_line = raw_line.expandtabs(8)
@@ -214,3 +220,41 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             lines.append(f"    {RED}removed:{SOFT_RESET} {DIM}[{m_idx:3d}] {role:<4}  {m_type:<20} {m_chars:,}c{SOFT_RESET}")
             keys.append(None)
     return lines, keys
+
+
+# Compute aggregated strip bucket signals for an expanded REQ header (INERT/IDX/LEAK/SUS)
+# Mirrors strip_audit._classify_req counter-delta semantics for INERT detection
+def _aggregate_req_buckets(entry: dict, prev_entry) -> dict:
+    prev_mods_ctr = Counter(prev_entry.get('modifications', [])) if prev_entry is not None else Counter()
+    curr_mods_ctr = Counter(entry.get('modifications', []))
+
+    new_strip_codes = {
+        code_for_rule(rule)
+        for rule in curr_mods_ctr
+        if curr_mods_ctr[rule] > prev_mods_ctr.get(rule, 0)
+        and code_for_rule(rule) is not None
+    }
+
+    stripped_removed = entry.get('stripped_msg_removed') or {}
+    codes_with_chunks: set[str] = set()
+    for idx_str, chunks in stripped_removed.items():
+        for chunk in (chunks or []):
+            code = attribute_chunk(chunk)
+            if code:
+                codes_with_chunks.add(code)
+
+    inert_codes = sorted(c for c in new_strip_codes if c not in codes_with_chunks)
+
+    prev_smi = set(prev_entry.get('stripped_msg_indices', [])) if prev_entry is not None else set()
+    curr_smi = set(entry.get('stripped_msg_indices', []))
+    new_smi = curr_smi - prev_smi
+    idx_msgs = [idx for idx in sorted(new_smi) if not stripped_removed.get(str(idx))]
+
+    leak_signals, sus_signals = classify_tags(entry)
+
+    return {
+        'inert_codes': inert_codes,
+        'idx_msgs':    idx_msgs,
+        'leak_signals': leak_signals,
+        'sus_signals':  sus_signals,
+    }

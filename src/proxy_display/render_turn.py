@@ -3,7 +3,7 @@ from ..constants import (
     SOFT_RESET, RED, WHITE, YELLOW,
 )
 from .format import _shorten_model, _format_delta, _format_k
-from .render_messages import _aggregate_entry_tags
+from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # FUNCTIONS
 
@@ -120,6 +120,14 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
 
         if is_req_expanded:
             _delta_ref = None if is_standalone else prev_entry_for_delta
+            buckets = _aggregate_req_buckets(entry, _delta_ref)
+            parts = [f'INERT:{c}' for c in buckets['inert_codes']]
+            parts += [f'IDX:{i}' for i in buckets['idx_msgs']]
+            parts += buckets['leak_signals']
+            parts += buckets['sus_signals']
+            if parts:
+                lines.append(f"    {DIM}{'  '.join(parts)}{SOFT_RESET}")
+                keys.append(None)
             s_lines, s_keys = render_system_blocks(entry_idx, entry, _delta_ref, expand_states, pane_width, mods)
             lines.extend(s_lines)
             keys.extend(s_keys)

@@ -50,6 +50,11 @@ STRIP_RULE_CODES: frozenset[str] = frozenset(RULES.keys())
 # Reverse map: full modifications[] name → code (built once at import)
 _FULL_NAME_TO_CODE: dict[str, str] = {fn: code for code, (fn, _) in RULES.items()}
 
+# Rule names that indicate an SR-wrapping strip (for LEAK:<SR> detection in classify_tags)
+_SR_STRIP_RULES: frozenset[str] = frozenset(
+    fn for code, (fn, _) in RULES.items() if code not in ('TN',)
+)
+
 
 # FUNCTIONS
 
@@ -69,6 +74,52 @@ def attribute_chunk(chunk: str) -> str | None:
 # Reverse lookup: full modifications[] name → rule code (or None if unknown)
 def code_for_rule(full_name: str) -> str | None:
     return _FULL_NAME_TO_CODE.get(full_name)
+
+
+# Scan parsed entry messages (monitor format) for leaked/suspect tag literals
+# Returns (leak_signals, sus_signals) — compact LEAK:<TAG> / SUS:<TAG> strings
+# Scans blocks[*].full_text instead of raw_payload (raw_payload discarded by monitor parser)
+def classify_tags(entry: dict) -> tuple[list[str], list[str]]:
+    mods = set(entry.get('modifications', []))
+    messages = entry.get('messages', [])
+
+    texts: list[str] = []
+    for msg in messages:
+        for blk in msg.get('blocks', []):
+            t = blk.get('full_text', blk.get('preview', ''))
+            if t:
+                texts.append(t)
+        for field in ('content_preview', 'content_tail'):
+            t = msg.get(field, '')
+            if t:
+                texts.append(t)
+
+    combined = '\n'.join(texts)
+    leak_signals: list[str] = []
+    sus_signals: list[str] = []
+
+    if '<task-notification>' in combined:
+        if 'trimmed_task_notification' in mods:
+            leak_signals.append('LEAK:<TN>')
+        else:
+            sus_signals.append('SUS:<TN>')
+
+    if '<new-diagnostics>' in combined:
+        if 'stripped_pyright_diagnostics' in mods:
+            leak_signals.append('LEAK:<ND>')
+        else:
+            sus_signals.append('SUS:<ND>')
+
+    if '<system-reminder>' in combined:
+        if mods & _SR_STRIP_RULES:
+            leak_signals.append('LEAK:<SR>')
+        else:
+            sus_signals.append('SUS:<SR>')
+
+    if '<persisted-output>' in combined:
+        sus_signals.append('SUS:<PO>')
+
+    return leak_signals, sus_signals
 
 
 # Generate Markdown legend block for audit report header
