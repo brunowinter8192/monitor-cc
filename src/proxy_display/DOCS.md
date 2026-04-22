@@ -60,7 +60,7 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### parser.py (218 LOC)
+### parser.py (226 LOC)
 
 **Purpose:** Read and parse proxy log JSONL files — extract rich fields from `raw_payload` (system blocks, tools, messages, schema warnings) into flat entry dicts, then discard raw payload to save memory.
 **Reads:** Proxy log JSONL file by project filter or direct path (incremental by byte position).
@@ -90,9 +90,9 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### render_sections.py (156 LOC)
+### render_sections.py (172 LOC)
 
-**Purpose:** Render the system blocks section and tools section for an expanded request entry — handles unchanged detection, per-block expand/collapse, change highlights, and TOOL_BLOCKLIST stripping markers.
+**Purpose:** Render the system blocks section and tools section for an expanded request entry — handles unchanged detection, per-block expand/collapse, change highlights, TOOL_BLOCKLIST stripping markers, `[STRIPPED]` markers on sys[3] and tool headers when descriptions were proxy-stripped, and DIM_YELLOW_BG pre-strip originals on expand (top-level tool description + per-parameter descriptions).
 **Reads:** Entry dict, previous entry, expand states, pane width, modifications list.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`

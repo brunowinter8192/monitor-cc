@@ -25,7 +25,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (245 LOC)
+### addon.py (249 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
@@ -75,9 +75,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### content_strip.py (139 LOC)
+### content_strip.py (167 LOC)
 
-**Purpose:** Strip or extract non-SR content from API message payloads — rejection tool_result blocks, SessionStart SR extraction, session-guidance section removal, gitStatus stripping from sys[3], full sys[3] text replacement with `"."`, and `tools[*].description` stripping across all tool definitions.
+**Purpose:** Strip or extract non-SR content from API message payloads — rejection tool_result blocks, SessionStart SR extraction, session-guidance section removal, gitStatus stripping from sys[3], full sys[3] text replacement with `"."`, `tools[*].description` stripping, and `tools[*].input_schema.properties[*].description` (per-parameter) stripping. Both `_strip_sys3` and `_strip_tool_descriptions` capture pre-strip originals and return them as a third tuple element for log entry storage.
 **Reads:** Message content (string or list of blocks); full payload dict for tool and system strip functions.
 **Writes:** Nothing — returns modified content, extracted text, or modified payload.
 **Called by:** `src/proxy/rules.py`; `src/proxy/addon.py` (directly calls `_strip_tool_descriptions` and `_strip_sys3` after tool injection)
@@ -107,7 +107,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ### tool_injection.py (167 LOC)
 
-**Purpose:** Deterministically append MCP tool schemas to `payload["tools"]` in stable order (iterative-dev first, active plugins in activation order), preventing cache rebuilds from alphabetical INSERT behavior.
+**Purpose:** Deterministically append MCP tool schemas to `payload["tools"]` in stable order (always-injected plugin slot first, then active plugins in activation order), preventing cache rebuilds from alphabetical INSERT behavior. iterative-dev schemas removed — `_ALWAYS_INJECTED_PLUGIN` constant is retained but is a no-op until new schemas are added.
 **Reads:** Schema store at `src/proxy/schemas/<plugin>/*.json` (one-time load); `<project>/.claude/active_plugins.json` (mtime-reloaded); `proxy_rules.json` exclude list.
 **Writes:** Nothing — returns modified payload.
 **Called by:** `src/proxy/addon.py`
