@@ -64,18 +64,8 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                         sig_chars = blk.get('sig_chars', 0)
                         lines.append(f"      {DIM}[{bidx}] {btype:<12} text:{bchars:>5,}c sig:{sig_chars:>4,}c{bcc}{SOFT_RESET}")
                     else:
-                        persisted_marker = ' [PERSISTED]' if blk.get('original_persisted') else ''
-                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{persisted_marker}{SOFT_RESET}")
+                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}")
                     keys.append(None)
-                    orig = blk.get('original_persisted', '')
-                    if orig:
-                        for raw_line in orig.split('\n')[:5]:
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                            else:
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                            keys.append(None)
                     full_text = blk.get('full_text', blk.get('preview', ''))
                     if full_text:
                         for raw_line in full_text.split('\n'):
@@ -156,18 +146,8 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                         sig_chars = blk.get('sig_chars', 0)
                         lines.append(f"      {DIM}[{bidx}] {btype:<12} text:{bchars:>5,}c sig:{sig_chars:>4,}c{bcc}{SOFT_RESET}")
                     else:
-                        persisted_marker = ' [PERSISTED]' if blk.get('original_persisted') else ''
-                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{persisted_marker}{SOFT_RESET}")
+                        lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}")
                     keys.append(None)
-                    orig = blk.get('original_persisted', '')
-                    if orig:
-                        for raw_line in orig.split('\n')[:5]:
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                            else:
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                            keys.append(None)
                     full_text = blk.get('full_text', blk.get('preview', ''))
                     if full_text:
                         for raw_line in full_text.split('\n'):
