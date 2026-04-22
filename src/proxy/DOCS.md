@@ -155,6 +155,16 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
+### strip_vocab.py (80 LOC)
+
+**Purpose:** Shared vocabulary for strip semantics — bucket codes (EFF/INERT/IDX/LEAK/SUS), rule codes (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL), tag literal codes (PO/SR/TN/ND), chunk→rule attribution function, and Markdown legend generator. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers.
+**Reads:** Nothing at module level.
+**Writes:** Nothing — pure data + helpers.
+**Called by:** `dev/tool_use_analysis/strip_audit.py` (via sys.path insertion); `src/proxy_display/render_messages.py`, `src/proxy_display/render_turn.py`, `src/proxy_display/render_entry.py` (Task B — pending).
+**Calls out:** —
+
+---
+
 ### payload_helpers.py (140 LOC)
 
 **Purpose:** Low-level payload content inspection and manipulation used by `rules.py` — find/strip system-reminder blocks, strip blocklisted tool_reference blocks, strip task-notification XML tags.
