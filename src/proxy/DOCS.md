@@ -25,7 +25,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (255 LOC)
+### addon.py (249 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
@@ -75,9 +75,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### content_strip.py (220 LOC)
+### content_strip.py (167 LOC)
 
-**Purpose:** Strip or extract non-SR content from API message payloads — rejection tool_result blocks, SessionStart SR extraction, session-guidance section removal, gitStatus stripping from sys[3], full sys[3] text replacement with `"."`, `tools[*].description` stripping, `tools[*].input_schema.properties[*].description` (per-parameter) stripping, and `<persisted-output>` block stripping from tool_result content. `_strip_sys3`, `_strip_tool_descriptions`, and `_strip_persisted_output` all capture pre-strip originals and return them as a third tuple element for log entry storage.
+**Purpose:** Strip or extract non-SR content from API message payloads — rejection tool_result blocks, SessionStart SR extraction, session-guidance section removal, gitStatus stripping from sys[3], full sys[3] text replacement with `"."`, `tools[*].description` stripping, and `tools[*].input_schema.properties[*].description` (per-parameter) stripping. Both `_strip_sys3` and `_strip_tool_descriptions` capture pre-strip originals and return them as a third tuple element for log entry storage.
 **Reads:** Message content (string or list of blocks); full payload dict for tool and system strip functions.
 **Writes:** Nothing — returns modified content, extracted text, or modified payload.
 **Called by:** `src/proxy/rules.py`; `src/proxy/addon.py` (directly calls `_strip_tool_descriptions` and `_strip_sys3` after tool injection)
