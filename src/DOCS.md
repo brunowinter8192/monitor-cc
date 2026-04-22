@@ -22,8 +22,8 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `jsonl/` | JSONL parsing + tool call extraction | 524 | 3 |
 | `workers/` | Workers pane (tmux session discovery + status display) | 459 | 3 |
 | `metadata/` | Metadata pane (API config state from proxy log) | 297 | 2 |
-| `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering) | 1453 | 8 |
-| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2067 | 15 |
+| `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering) | 1484 | 8 |
+| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2133 | 15 |
 
 ## Root-Level Files
 

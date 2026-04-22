@@ -158,6 +158,36 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 | `--min-count N` | Minimum occurrence count for a repetition group | 2 |
 | `--top K` | Show top K groups in the signature table | 20 |
 
+## strip_audit.py
+
+**Purpose:** Delta-based strip analysis for proxy JSONL logs. Walks requests chronologically, computes the message delta per request (new messages only), and for each new message reports: whether it was stripped, what was removed, whether unstripped tags leaked through, and whether a strip on a Read/Bash/Grep/Glob tool_result is a suspect false positive (legitimate file content containing SR tags).
+
+**Input:** Optional proxy JSONL path (positional). Defaults to newest `api_requests_opus_monitor_cc_*.jsonl` in `src/logs/`.
+
+**Output:** Delta log to stdout. With `--output`: also writes `dev/tool_use_analysis/YYYYMMDD_strip_audit.md` with summary stats + delta log.
+
+**Usage:**
+```bash
+# Stdout only
+python3 dev/strip_audit.py
+
+# Specific log
+python3 dev/strip_audit.py src/logs/api_requests_opus_monitor_cc_1776864308.jsonl
+
+# Stdout + MD report
+python3 dev/strip_audit.py --output
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `path` | *(positional, optional)* Proxy JSONL path | newest opus log |
+| `--output` | Also write MD report to `dev/tool_use_analysis/YYYYMMDD_strip_audit.md` | off |
+
+**Detection logic:**
+- `[STRIPPED]`: msg_idx in `stripped_msg_indices` — shows first removed chunk (truncated 100c)
+- `LEAKED`: raw_payload message content still contains `<system-reminder>`, `<persisted-output>`, `<task-notification>`, `<new-diagnostics>`, or `SYSTEM NOTIFICATION`
+- `⚠ SUSPECT FALSE POSITIVE`: stripped message is a tool_result from Read/Grep/Bash/Glob — content may be source code containing SR tags
+
 ## Generated Reports
 
 ### 20260422_session_waste_patterns.md
