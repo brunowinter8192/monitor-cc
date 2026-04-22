@@ -24,6 +24,7 @@ from .content_strip import (
 )
 from .payload_helpers import (
     _find_system_reminder_blocks,
+    _find_task_notification_blocks,
     _strip_blocked_tool_references,
     _content_contains,
     _strip_task_notification_tags,
@@ -100,15 +101,10 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 stripped_msg_originals[idx] = old_content
                 stripped_msg_indices.append(idx)
                 modifications.append("trimmed_task_notification")
-                removed = []
-                if isinstance(old_content, str):
-                    removed.extend(_tag_pat.findall(old_content))
-                elif isinstance(old_content, list):
-                    for _b in old_content:
-                        if isinstance(_b, dict) and _b.get("type") == "text":
-                            removed.extend(_tag_pat.findall(_b.get("text", "")))
+                removed = stripped_msg_removed.get(idx, [])
+                removed = removed + _find_task_notification_blocks(old_content)
                 if also_stripped_nag:
-                    removed.extend(_find_system_reminder_blocks(old_content, "task tools haven"))
+                    removed = removed + _find_system_reminder_blocks(old_content, "task tools haven")
                 stripped_msg_removed[idx] = removed
                 changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "task tools haven"):
