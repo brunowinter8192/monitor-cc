@@ -22,10 +22,14 @@ def _detect_suspect_tags(text: str) -> list[str]:
         return []
     return [label for tag, label in _SUSPECT_TAGS if tag in text]
 
-# Aggregate suspect tag labels across all blocks of an entry, return sorted list
+# Aggregate suspect tag labels across new/modified msgs of an entry, return sorted list
 def _aggregate_entry_tags(entry: dict) -> list[str]:
+    diff = entry.get('diff_from_prev') or {}
+    start = diff.get('first_diff_index', 0) if diff else 0
+    messages = entry.get('messages', [])
+    new_msgs = messages[start:] if diff else messages
     found = set()
-    for msg in entry.get('messages', []):
+    for msg in new_msgs:
         for blk in msg.get('blocks', []):
             text = blk.get('full_text', blk.get('preview', ''))
             found.update(_detect_suspect_tags(text))
