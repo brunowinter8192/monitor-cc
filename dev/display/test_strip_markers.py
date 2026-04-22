@@ -117,6 +117,31 @@ assert count == 2, f"expected 2 highlights, got {count}"
 print(f"  ✓ 2 occurrences highlighted: {result5}")
 print(RESET, end='')
 
+# ── test 1b: multi-line chunk — every split line must carry DIM_YELLOW_BG ────
+
+section("1b. highlight_stripped — multi-line chunk per-line coverage")
+chunk_ml = "A\nB\nC"
+text_ml = f"PREFIX\n{chunk_ml}\nSUFFIX"
+result_ml = highlight_stripped(text_ml, [chunk_ml], outer_bg='')
+split_lines = result_ml.split('\n')
+label(f"input text lines: {len(text_ml.split(chr(10)))}, output split lines: {len(split_lines)}")
+for i, sl in enumerate(split_lines):
+    has_bg = DIM_YELLOW_BG in sl
+    label(f"  line {i}: bg={'YES' if has_bg else 'no '} | {repr(sl[:80])}")
+# Lines 1, 2, 3 correspond to A, B, C (the chunk)
+chunk_lines = result_ml.split('\n')[1:4]  # PREFIX is line 0, chunk occupies lines 1-3, SUFFIX is line 4
+for i, cl in enumerate(chunk_lines):
+    assert DIM_YELLOW_BG in cl, f"chunk line {i} ('{cl[:40]}') missing DIM_YELLOW_BG"
+print(f"  ✓ all 3 chunk lines carry DIM_YELLOW_BG")
+
+label("outer_bg=ZEBRA_BG_B — restored after final chunk line")
+result_ml2 = highlight_stripped(f"X{chunk_ml}Y", [chunk_ml], outer_bg=ZEBRA_BG_B)
+last_chunk_line = result_ml2.split('\n')[2]  # "C" line
+assert DIM_YELLOW_BG in last_chunk_line, "last chunk line missing DIM_YELLOW_BG"
+assert ZEBRA_BG_B in last_chunk_line, "outer_bg not restored after final chunk line"
+print(f"  ✓ outer_bg ZEBRA_BG_B present on final chunk line after SOFT_RESET")
+print(RESET, end='')
+
 # ── test 2: get_stripped_data ────────────────────────────────────────────────
 
 section("2. get_stripped_data")

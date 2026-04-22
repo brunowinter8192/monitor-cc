@@ -71,6 +71,7 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ## Gotchas
 
+- `highlight_stripped` wraps each **line** of a chunk individually (`DIM_YELLOW_BG{line}SOFT_RESET` per `\n`-separated segment) rather than wrapping the whole chunk as a single unit. Downstream renderers (`warnings_pane`, `waste_pane`) split the result on `\n` and apply a per-line zebra BG; a single wrap around the whole chunk would leave lines 2..N without `DIM_YELLOW_BG`, causing the zebra selector to miss them. `outer_bg` is appended once after the final highlighted line to restore the caller's row background.
 - `token_format.py` lazy-imports `formatter.shorten_tool_name` inside `format_cache_tracker()` — both are in the same package so the import is `from .formatter import shorten_tool_name`. Do NOT change to `..formatter`.
 - `_format_k` and `_format_cache_call` use leading underscores but are exported and used by 4 external callers — they are effectively public despite the naming convention.
 - `format_cache_tracker` returns a 4-tuple `(visible_lines, visible_keys, sticky_header, viewport_start)` — NOT a string. The render loop (zebra/hover/truncation) lives in `token_pane.py`.
