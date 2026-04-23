@@ -5,7 +5,7 @@ from typing import Optional
 from ..constants import (
     SOFT_RESET, GREEN, RED, YELLOW, WHITE, DIM, DIM_YELLOW_BG,
 )
-from .format import _shorten_model, _format_delta, _format_k
+from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry
 from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # FUNCTIONS
@@ -26,19 +26,14 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     is_expanded = expand_states.get(entry_idx, False)
     symbol = '\u25bc' if is_expanded else '\u25b6'
 
-    is_standalone = (
-        'haiku' in entry.get('model', '').lower()
-        or (entry.get('system_total_chars', entry.get('system_prompt_chars', 0)) == 0
-            and entry.get('tools_total_chars', entry.get('tools_chars', 0)) == 0
-            and len(entry.get('cache_breakpoints', [])) == 0)
-    )
+    is_standalone = _is_standalone_entry(entry)
     model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
     prev_entry = None
     if not is_standalone:
         for _i in range(entry_idx - 1, -1, -1):
             _prev_model = entries[_i].get('model', '')
             _prev_family = "haiku" if "haiku" in _prev_model.lower() else "opus"
-            if _prev_family == model_family:
+            if _prev_family == model_family and not _is_standalone_entry(entries[_i]):
                 prev_entry = entries[_i]
                 break
 

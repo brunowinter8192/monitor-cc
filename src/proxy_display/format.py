@@ -36,6 +36,19 @@ def _shorten_model(model: str) -> str:
         return 'opus'
     return model[:8] if model else '?'
 
+# True when entry is a structural sidecar (haiku, zero-context, or mc=1 title/summary)
+# mc=1+no-BP catches CC title/summary generation; bp=[0] guard preserves real first-REQ
+def _is_standalone_entry(entry: dict) -> bool:
+    return (
+        'haiku' in entry.get('model', '').lower()
+        or (entry.get('system_total_chars', entry.get('system_prompt_chars', 0)) == 0
+            and entry.get('tools_total_chars', entry.get('tools_chars', 0)) == 0
+            and len(entry.get('cache_breakpoints', [])) == 0)
+        or (entry.get('message_count', 0) == 1
+            and len(entry.get('cache_breakpoints', [])) == 0)
+    )
+
+
 # Assign each proxy entry to the matching turn based on timestamp comparison
 def _assign_turns_to_entries(entries: list, turns: list) -> list:
     if not turns or not entries:
