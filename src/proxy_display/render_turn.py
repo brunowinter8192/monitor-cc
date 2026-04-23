@@ -2,7 +2,7 @@
 from ..constants import (
     SOFT_RESET, RED, WHITE, YELLOW, DIM,
 )
-from .format import _shorten_model, _format_delta, _format_k
+from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry
 from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # FUNCTIONS
@@ -43,17 +43,12 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
 
         warn_parts = []
         prev_same = None
-        is_standalone = (
-            'haiku' in entry.get('model', '').lower()
-            or (entry.get('system_total_chars', entry.get('system_prompt_chars', 0)) == 0
-                and entry.get('tools_total_chars', entry.get('tools_chars', 0)) == 0
-                and len(entry.get('cache_breakpoints', [])) == 0)
-        )
+        is_standalone = _is_standalone_entry(entry)
         if not is_standalone:
+            _ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
             for _i in range(entry_idx - 1, -1, -1):
-                _ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
                 _pf = 'haiku' if 'haiku' in entries[_i].get('model', '').lower() else 'opus'
-                if _pf == _ef:
+                if _pf == _ef and not _is_standalone_entry(entries[_i]):
                     prev_same = entries[_i]
                     break
         if prev_same is not None:
@@ -119,8 +114,8 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         keys.append(req_key)
 
         if is_req_expanded:
-            _delta_ref = None if is_standalone else prev_entry_for_delta
-            buckets = _aggregate_req_buckets(entry, _delta_ref)
+            _section_ref = None if is_standalone else prev_same
+            buckets = _aggregate_req_buckets(entry, _section_ref)
             parts = [f'INERT:{c}' for c in buckets['inert_codes']]
             parts += [f'IDX:{i}' for i in buckets['idx_msgs']]
             parts += buckets['leak_signals']
@@ -128,13 +123,13 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
             if parts:
                 lines.append(f"    {DIM}{'  '.join(parts)}{SOFT_RESET}")
                 keys.append(None)
-            s_lines, s_keys = render_system_blocks(entry_idx, entry, _delta_ref, expand_states, pane_width, mods)
+            s_lines, s_keys = render_system_blocks(entry_idx, entry, _section_ref, expand_states, pane_width, mods)
             lines.extend(s_lines)
             keys.extend(s_keys)
-            t_lines, t_keys = render_tools(entry_idx, entry, _delta_ref, expand_states, pane_width)
+            t_lines, t_keys = render_tools(entry_idx, entry, _section_ref, expand_states, pane_width)
             lines.extend(t_lines)
             keys.extend(t_keys)
-            m_lines, m_keys = render_messages(entry, _delta_ref, entries, expand_states, pane_width)
+            m_lines, m_keys = render_messages(entry, _section_ref, entries, expand_states, pane_width)
             lines.extend(m_lines)
             keys.extend(m_keys)
 
