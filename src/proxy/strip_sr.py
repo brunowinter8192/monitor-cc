@@ -29,6 +29,11 @@ _SR_TEMPLATES = {
 }
 _ALL_TEMPLATES = frozenset(_SR_TEMPLATES.keys())
 
+# SR blocks whose inner text starts with this preamble are CC-injected CLAUDE.md context.
+# They must be preserved — Opus needs project context and replaced_system_prompt already
+# substitutes system[2], so this SR block is the only delivery path for CLAUDE.md content.
+_PRESERVE_PREAMBLE = "As you answer the user's questions, you can use the following context:"
+
 # Map old marker strings → template IDs for backward-compat wrappers
 _MARKER_TO_TEMPLATE = {
     'task tools haven':                                'task-tools-nag',
@@ -110,6 +115,8 @@ def _apply_sr_strip(text, enabled_templates):
         if not inner_m:
             return full
         inner = inner_m.group(1).strip()
+        if inner.startswith(_PRESERVE_PREAMBLE):
+            return full  # preserve CLAUDE.md context block — Opus needs project context
         tid, mode = _match_template(inner, enabled_templates)
         if tid is None:
             return full  # unknown template — preserve as-is
