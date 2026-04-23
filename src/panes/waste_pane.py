@@ -12,6 +12,7 @@ from ..constants import (
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
+    resolve_parent_key, copy_to_clipboard,
 )
 from ..proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path
 from ..utils import truncate_visible, first_word_of_call, _iso_to_float, format_worker_prefix
@@ -90,6 +91,10 @@ def run_waste_loop() -> None:
                         elif button >= 32:
                             waste_hover_row = row
                             input_changed = True
+                elif char == 'y':
+                    key = resolve_parent_key(waste_line_map, waste_hover_row)
+                    if key is not None:
+                        copy_to_clipboard(_serialize_waste(key))
                 elif char == '0':
                     waste_threshold = WASTE_THRESHOLD_DEFAULT
                     _rebuild_above()
@@ -138,6 +143,25 @@ def run_waste_loop() -> None:
 
 
 # FUNCTIONS
+
+# Serialize a waste-pane pair to full untruncated input + output text for clipboard
+def _serialize_waste(idx: int) -> str:
+    if idx < 0 or idx >= len(_waste_above):
+        return ''
+    p = _waste_above[idx]
+    input_text = json.dumps(p.tu.input, ensure_ascii=False, indent=2)
+    if isinstance(p.tr.content, str):
+        output_text = p.tr.content
+    else:
+        output_text = json.dumps(p.tr.content, ensure_ascii=False, indent=2)
+    parts = [
+        f"{p.tu.name}  ratio={p.ratio:.1f}  in={p.tu.input_chars}c  out={p.tr.output_chars}c",
+        "---INPUT---",
+        input_text,
+        "---OUTPUT---",
+        output_text,
+    ]
+    return '\n'.join(parts)
 
 # Read new raw proxy events from log_path since byte position; returns (events, new_position)
 def _read_new_events(log_path: Path, position: int) -> tuple:

@@ -15,6 +15,7 @@ from ..hooks import parse_new_hook_entries, filter_by_project, filter_by_timesta
 from ..input.click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
+    resolve_parent_key, copy_to_clipboard,
 )
 
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
@@ -92,6 +93,18 @@ def load_historical_rules() -> None:
             record_rule_invoker(entry)
     _monitor.hook_log_position = new_pos
 
+# Serialize a rule entry to full untruncated text for clipboard
+def _serialize_rules(rule_key: str) -> str:
+    invokers = rules_invokers.get(rule_key, {})
+    parts = [f"RULE: {rule_key}"]
+    if invokers:
+        parts.append("INVOKERS:")
+        for source, ts in sorted(invokers.items(), key=lambda x: x[1]):
+            parts.append(f"  [{ts}] {source}")
+    else:
+        parts.append("INVOKERS: (none recorded)")
+    return '\n'.join(parts)
+
 # Runs rules-only display loop (for dedicated rules tmux pane)
 def run_rules_loop() -> None:
     from ..core import monitor as _monitor
@@ -133,7 +146,11 @@ def run_rules_loop() -> None:
                             rules_hover_row = row
                             input_changed = True
                 else:
-                    if char == 'f':
+                    if char == 'y':
+                        key = resolve_parent_key(rules_line_map, rules_hover_row)
+                        if key is not None:
+                            copy_to_clipboard(_serialize_rules(key))
+                    elif char == 'f':
                         frozen = not frozen
                         input_changed = True
                     else:

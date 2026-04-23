@@ -12,6 +12,7 @@ from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
 from ..input.click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
+    resolve_parent_key, copy_to_clipboard,
 )
 from ..utils import truncate_visible
 # From worker_format.py: Worker data extraction and block rendering
@@ -27,6 +28,7 @@ worker_cache_expand_states: Dict[str, Dict[tuple, bool]] = {}
 worker_cache_line_map: Dict[int, tuple] = {}
 worker_selected_name: Optional[str] = None
 worker_scroll_offset: int = 0
+worker_turns: Dict[str, list] = {}
 
 # FUNCTIONS
 
@@ -51,13 +53,48 @@ def _write_selection(project_filter: Optional[str], name: Optional[str]) -> None
     except OSError:
         pass
 
+# Serialize a worker entry to full untruncated text for clipboard
+def _serialize_workers(key) -> str:
+    import json
+    if isinstance(key, tuple):
+        # Cache call: (worker_name, turn_idx, call_idx)
+        w_name, t_idx, c_idx = key
+        turns = worker_turns.get(w_name, [])
+        if t_idx >= len(turns):
+            return ''
+        turn = turns[t_idx]
+        calls = turn.get('api_calls', [])
+        if c_idx >= len(calls):
+            return ''
+        call = calls[c_idx]
+        parts = [f"Worker: {w_name}  Turn {t_idx + 1}, Call {c_idx + 1}  CR:{call.get('cache_read', 0)}  CC:{call.get('cache_creation', 0)}  D:{call.get('direct', 0)}  out:{call.get('output_tokens', 0)}"]
+        for blk in call.get('content_blocks', []):
+            btype = blk.get('type', '')
+            if btype == 'tool_use':
+                tool_name = blk.get('tool_name', 'Unknown')
+                inp = blk.get('preview', {})
+                parts.append(f"\n--- tool_use: {tool_name} ---")
+                parts.append(json.dumps(inp, ensure_ascii=False, indent=2))
+            elif btype == 'text':
+                parts.append(f"\n--- text ---")
+                parts.append(blk.get('preview', ''))
+        return '\n'.join(parts)
+    else:
+        # Worker name — serialize status info from current workers list
+        # worker_turns holds the turns for this worker; we just emit identity info
+        name = str(key)
+        turns = worker_turns.get(name, [])
+        n_turns = len(turns)
+        n_calls = sum(len(t.get('api_calls', [])) for t in turns)
+        return f"Worker: {name}\nTurns: {n_turns}  API calls: {n_calls}"
+
 # Runs workers display loop (for dedicated workers tmux pane)
 def run_workers_loop() -> None:
     from ..core import monitor as _monitor
-    global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map, worker_selected_name, worker_scroll_offset
+    global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map, worker_selected_name, worker_scroll_offset, worker_turns
     last_output = None
     workers = []
-    worker_turns: Dict[str, list] = {}
+    worker_turns.clear()
     last_data_refresh = 0.0
     frozen = False
     setup_keyboard_input()
@@ -109,7 +146,13 @@ def run_workers_loop() -> None:
                                 worker_hover_row = row
                                 input_changed = True
                     else:
-                        if char == 'f':
+                        if char == 'y':
+                            key = resolve_parent_key(worker_line_map, worker_hover_row)
+                            if key is None:
+                                key = resolve_parent_key(worker_cache_line_map, worker_hover_row)
+                            if key is not None:
+                                copy_to_clipboard(_serialize_workers(key))
+                        elif char == 'f':
                             frozen = not frozen
                             input_changed = True
                         else:
@@ -131,7 +174,7 @@ def run_workers_loop() -> None:
                     if worker_selected_name is None and workers:
                         worker_selected_name = workers[0]['name']
                         _write_selection(_monitor.active_project_filter, worker_selected_name)
-                    worker_turns = {}
+                    worker_turns.clear()
                     for w in workers:
                         name = w.get('name', '')
                         jsonl_path = find_worker_jsonl(w.get('session', ''))

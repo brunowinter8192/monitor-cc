@@ -268,12 +268,36 @@ def _format_warnings_pane(pane_height: int, pane_width: int) -> str:
     return header + '\n' + '\n'.join(rendered)
 
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
+# Serialize a warnings-pane entry to full untruncated text for clipboard
+def _serialize_warnings(key) -> str:
+    import json
+    if isinstance(key, tuple) and len(key) == 2:
+        kind, idx = key
+        if kind == 'error' and idx < len(tool_errors):
+            err = tool_errors[idx]
+            parts = [err.get('tool_name', '?')]
+            inp = err.get('tool_call_input', {})
+            if inp:
+                parts.append(json.dumps(inp, ensure_ascii=False, indent=2))
+            parts.append('')
+            parts.append(err.get('full_text', ''))
+            return '\n'.join(parts)
+        elif kind == 'zero' and idx < len(zero_results):
+            zr = zero_results[idx]
+            parts = [f"{zr.get('tool_name', '?')}  reason: {zr.get('reason', '')}"]
+            inp = zr.get('tool_call_input', {})
+            if inp:
+                parts.append(json.dumps(inp, ensure_ascii=False, indent=2))
+            return '\n'.join(parts)
+    return ''
+
 def run_warnings_loop() -> None:
     from ..core import monitor as _monitor
     from ..proxy_display.parser import parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts, find_proxy_log_path
     from ..input.click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
+        resolve_parent_key, copy_to_clipboard,
     )
     global tool_errors, error_expand_states, error_line_map, error_hover_row
     global error_scroll_offset, _proxy_log_position, _last_project_filter
@@ -324,7 +348,13 @@ def run_warnings_loop() -> None:
                             error_hover_row = row
                             input_changed = True
                 else:
-                    if char in ('r', 'R'):
+                    if char == 'y':
+                        key = resolve_parent_key(error_line_map, error_hover_row)
+                        if key is None:
+                            key = resolve_parent_key(zero_result_line_map, error_hover_row)
+                        if key is not None:
+                            copy_to_clipboard(_serialize_warnings(key))
+                    elif char in ('r', 'R'):
                         _force_refresh = True
                         input_changed = True
 

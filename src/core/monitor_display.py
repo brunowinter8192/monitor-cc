@@ -12,6 +12,8 @@ INDENT = '  '
 
 main_event_buffer: list = []
 main_scroll_offset: int = 0
+main_hover_row: Optional[int] = None
+main_line_map: dict = {}            # phys_row → event_idx into main_event_buffer
 _strip_by_tool_id: dict = {}        # tool_use_id → (pre_strip_text, removed_chunks)
 _strip_prompt_ts_set: set = set()   # proxy-entry timestamps where msg[0] was stripped
 
@@ -127,23 +129,60 @@ def _format_event_to_lines(event: dict) -> list:
         return []
     return formatted.split('\n')
 
-# Render event buffer to screen-sized string with zebra shading + truncation
+# Render event buffer to screen-sized string with zebra shading + truncation; fills main_line_map
 def render_main_buffer(pane_height: int, pane_width: int, scroll_offset: int) -> str:
+    global main_line_map
     all_lines = []
-    for event in main_event_buffer:
-        all_lines.extend(_format_event_to_lines(event))
-        all_lines.append('')  # blank separator between events
+    all_event_indices = []  # parallel list: event_idx for each line, or -1 for blanks
+    for event_idx, event in enumerate(main_event_buffer):
+        event_lines = _format_event_to_lines(event)
+        for i, el in enumerate(event_lines):
+            all_lines.append(el)
+            all_event_indices.append(event_idx if i == 0 else event_idx)
+        all_lines.append('')
+        all_event_indices.append(-1)  # blank separator
 
     total = len(all_lines)
     # scroll_offset=0 → show newest (bottom); increasing offset scrolls up
     start = max(0, total - pane_height - scroll_offset)
     visible = all_lines[start:start + pane_height]
+    visible_event_indices = all_event_indices[start:start + pane_height]
 
+    main_line_map.clear()
     result_lines = []
-    for line in visible:
+    for phys_idx, (line, eidx) in enumerate(zip(visible, visible_event_indices)):
         trunc = truncate_visible(line, pane_width)
         result_lines.append(f"{trunc}\033[K{RESET}")
+        if eidx >= 0:
+            main_line_map[phys_idx + 1] = eidx  # phys_row is 1-indexed
     return '\n'.join(result_lines)
+
+# Serialize a main-pane event to full untruncated text for clipboard
+def serialize_main_event(event_idx: int) -> str:
+    import json
+    if event_idx < 0 or event_idx >= len(main_event_buffer):
+        return ''
+    event = main_event_buffer[event_idx]
+    t = event['type']
+    d = event['data']
+    if t == 'tool_call':
+        tool_name = d.get('tool_name', '?')
+        inp = d.get('input', {})
+        out = d.get('output', '') or ''
+        parts = [f"{tool_name}  call#{event.get('call_number', '?')}  [{d.get('timestamp', '')}]"]
+        parts.append("---INPUT---")
+        parts.append(json.dumps(inp, ensure_ascii=False, indent=2) if isinstance(inp, dict) else str(inp))
+        parts.append("---OUTPUT---")
+        parts.append(out)
+        return '\n'.join(parts)
+    elif t == 'user_prompt':
+        return f"[user_prompt] {d.get('timestamp', '')}"
+    elif t == 'thinking':
+        return d.get('text', '') or f"[thinking {d.get('chars', 0)}c]"
+    elif t == 'system_message':
+        return d.get('text', '')
+    else:
+        return f"[{t}]"
 
 # Print session status after initialization
 def print_session_status(session_count: int, project_filter: Optional[str] = None, mode: str = MODE_ALL) -> None:

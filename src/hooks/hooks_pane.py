@@ -9,6 +9,7 @@ from .hook_parser import parse_new_hook_entries, filter_by_project, filter_by_ti
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
+    resolve_parent_key, copy_to_clipboard,
 )
 from ..utils import truncate_visible
 # From hooks_format.py: Hook entry formatting and block rendering
@@ -50,6 +51,20 @@ def process_hook_log_for_display() -> None:
         extra = enrich_with_persisted(new_items, scan_persisted_hook_files(_monitor.active_project_filter), session_start_ts)
         for item in new_items + extra:
             hooks_display_items.append(item)
+
+# Serialize a hook item to full untruncated text for clipboard
+def _serialize_hooks(item_idx: int) -> str:
+    if item_idx < 0 or item_idx >= len(hooks_display_items):
+        return ''
+    item = hooks_display_items[item_idx]
+    ts = item.get('timestamp', item.get('time_str', ''))
+    hook_event = item.get('hook_event', '')
+    hook_script = item.get('hook_script', '')
+    parts = [f"[{ts}] {hook_event} | {hook_script}"]
+    text = item.get('content', '') or item.get('detail', '')
+    if text:
+        parts.append(text)
+    return '\n'.join(parts)
 
 # Runs hooks display loop with mouse scroll, click expand/collapse, hover — tokens pane pattern
 def run_hooks_loop() -> None:
@@ -98,7 +113,11 @@ def run_hooks_loop() -> None:
                             hooks_hover_row = row
                             input_changed = True
                 else:
-                    if char == 'a':
+                    if char == 'y':
+                        key = resolve_parent_key(hooks_line_map, hooks_hover_row)
+                        if key is not None:
+                            copy_to_clipboard(_serialize_hooks(key))
+                    elif char == 'a':
                         for item in hooks_display_items:
                             item['expanded'] = True
                         input_changed = True

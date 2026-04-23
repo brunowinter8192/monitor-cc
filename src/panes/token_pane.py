@@ -8,6 +8,7 @@ from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
+    resolve_parent_key, copy_to_clipboard,
 )
 from ..format.token_format import format_cache_tracker
 from ..utils import truncate_visible
@@ -78,6 +79,33 @@ def build_cache_turns(filepath, last_position: int, existing_turns: list):
         result = existing_turns + new_turns
     return result, new_position
 
+# Serialize a tokens-pane API call to full untruncated text for clipboard
+def _serialize_tokens(key: tuple) -> str:
+    import json
+    turn_idx, call_idx = key
+    if turn_idx >= len(_cache_turns):
+        return ''
+    turn = _cache_turns[turn_idx]
+    calls = turn.get('api_calls', [])
+    if call_idx >= len(calls):
+        return ''
+    call = calls[call_idx]
+    parts = [f"Turn {turn_idx + 1}, Call {call_idx + 1}  CR:{call.get('cache_read', 0)}  CC:{call.get('cache_creation', 0)}  D:{call.get('direct', 0)}  out:{call.get('output_tokens', 0)}"]
+    for blk in call.get('content_blocks', []):
+        btype = blk.get('type', '')
+        if btype == 'tool_use':
+            tool_name = blk.get('tool_name', 'Unknown')
+            inp = blk.get('preview', {})
+            parts.append(f"\n--- tool_use: {tool_name} ---")
+            parts.append(json.dumps(inp, ensure_ascii=False, indent=2))
+        elif btype == 'text':
+            text = blk.get('preview', '')
+            parts.append(f"\n--- text ---")
+            parts.append(text)
+        elif btype == 'thinking':
+            parts.append(f"\n--- thinking ({blk.get('chars', 0):,}c) ---")
+    return '\n'.join(parts)
+
 # Runs cache tracker display loop (for dedicated tokens tmux pane)
 def run_tokens_loop() -> None:
     from ..core import monitor as _monitor
@@ -112,6 +140,10 @@ def run_tokens_loop() -> None:
                         elif button >= 32:
                             cache_hover_row = row
                             input_changed = True
+                elif char == 'y':
+                    key = resolve_parent_key(cache_line_map, cache_hover_row)
+                    if key is not None:
+                        copy_to_clipboard(_serialize_tokens(key))
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:

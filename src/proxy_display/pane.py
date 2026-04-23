@@ -14,6 +14,7 @@ from ..panes.token_pane import build_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
+    resolve_parent_key, copy_to_clipboard,
 )
 
 proxy_entries: List[dict] = []
@@ -27,6 +28,44 @@ _proxy_jsonl_position: int = 0
 _proxy_cache_turns: list = []
 
 # FUNCTIONS
+
+# Extract entry_idx from any proxy line_map key variant
+def _entry_idx_from_key(key) -> Optional[int]:
+    if isinstance(key, int):
+        return key
+    if isinstance(key, tuple):
+        if isinstance(key[0], str):   # ('req', idx), ('sys', idx), ('tools', idx), ('tool', idx, n), ('sys_block', idx, n)
+            return key[1]
+        if isinstance(key[0], int):   # (idx, 'neg_delta'), (idx, 'warnings'), (idx, 'schema')
+            return key[0]
+    return None
+
+# Serialize a proxy entry to full untruncated text (all new-message blocks) for clipboard
+def _serialize_proxy(key, entries: list) -> str:
+    import json
+    entry_idx = _entry_idx_from_key(key)
+    if entry_idx is None or entry_idx >= len(entries):
+        return ''
+    entry = entries[entry_idx]
+    model = entry.get('model', '?')
+    msg_count = entry.get('message_count', 0)
+    parts = [f"entry_idx={entry_idx}  model={model}  msgs={msg_count}"]
+    for msg_idx, msg in enumerate(entry.get('messages', [])):
+        role = msg.get('role', '?')
+        msg_type = msg.get('type', '?')
+        blocks = msg.get('blocks', [])
+        if blocks:
+            for blk in blocks:
+                ft = blk.get('full_text', blk.get('preview', ''))
+                if ft:
+                    parts.append(f"\n--- msg[{msg_idx}] {role} {blk.get('type', '?')} ---")
+                    parts.append(ft)
+        else:
+            ct = msg.get('content_tail', '') or msg.get('content_preview', '')
+            if ct:
+                parts.append(f"\n--- msg[{msg_idx}] {role} {msg_type} ---")
+                parts.append(ct)
+    return '\n'.join(parts)
 
 # Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
 def run_proxy_loop() -> None:
@@ -70,6 +109,10 @@ def run_proxy_loop() -> None:
                         elif button >= 32:
                             proxy_hover_row = row
                             input_changed = True
+                elif char == 'y':
+                    key = resolve_parent_key(proxy_line_map, proxy_hover_row)
+                    if key is not None:
+                        copy_to_clipboard(_serialize_proxy(key, proxy_entries))
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:

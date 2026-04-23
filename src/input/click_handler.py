@@ -1,10 +1,11 @@
 # INFRASTRUCTURE
 import os
 import select
+import subprocess
 import sys
 import termios
 import tty
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 _original_terminal_settings = None
 _stdin_fd: int = -1
@@ -84,6 +85,20 @@ def enable_mouse_clicks() -> None:
 def disable_mouse_clicks() -> None:
     sys.stdout.write('\033[?1000l\033[?1006l')
     sys.stdout.flush()
+
+# Walk backwards from hover_row to find nearest parent key in line_map; None if nothing found
+def resolve_parent_key(line_map: Dict[int, Any], hover_row: Optional[int]) -> Any:
+    if hover_row is None:
+        return None
+    for r in range(hover_row, 0, -1):
+        k = line_map.get(r)
+        if k is not None:
+            return k
+    return None
+
+# Copy text to macOS clipboard via pbcopy
+def copy_to_clipboard(text: str) -> None:
+    subprocess.run(['pbcopy'], input=text, text=True, capture_output=True)
 
 # Reads SGR mouse event after escape char; returns (button, col, row) for press/motion, None otherwise
 def read_mouse_event(first_char: str) -> Optional[Tuple[int, int, int]]:

@@ -14,6 +14,7 @@ from ..workers.worker_tmux import find_worker_jsonl, list_workers
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, parse_digit_key,
+    resolve_parent_key, copy_to_clipboard,
 )
 from ..utils import visual_line_count
 
@@ -45,6 +46,44 @@ def _format_worker_proxy_header(workers: list, current_worker: Optional[str]) ->
         else:
             parts.append(f"{DIM}[{i}]{name}{RESET}")
     return label + '  '.join(parts)
+
+# Extract entry_idx from any proxy line_map key variant (shared with pane.py pattern)
+def _wp_entry_idx_from_key(key) -> Optional[int]:
+    if isinstance(key, int):
+        return key
+    if isinstance(key, tuple):
+        if isinstance(key[0], str):
+            return key[1]
+        if isinstance(key[0], int):
+            return key[0]
+    return None
+
+# Serialize a worker-proxy entry to full untruncated text for clipboard
+def _serialize_worker_proxy(key) -> str:
+    import json
+    entry_idx = _wp_entry_idx_from_key(key)
+    if entry_idx is None or entry_idx >= len(worker_proxy_entries):
+        return ''
+    entry = worker_proxy_entries[entry_idx]
+    model = entry.get('model', '?')
+    msg_count = entry.get('message_count', 0)
+    parts = [f"entry_idx={entry_idx}  model={model}  msgs={msg_count}"]
+    for msg_idx, msg in enumerate(entry.get('messages', [])):
+        role = msg.get('role', '?')
+        msg_type = msg.get('type', '?')
+        blocks = msg.get('blocks', [])
+        if blocks:
+            for blk in blocks:
+                ft = blk.get('full_text', blk.get('preview', ''))
+                if ft:
+                    parts.append(f"\n--- msg[{msg_idx}] {role} {blk.get('type', '?')} ---")
+                    parts.append(ft)
+        else:
+            ct = msg.get('content_tail', '') or msg.get('content_preview', '')
+            if ct:
+                parts.append(f"\n--- msg[{msg_idx}] {role} {msg_type} ---")
+                parts.append(ct)
+    return '\n'.join(parts)
 
 # Runs worker-proxy pane — reads selected worker's proxy log and shows expandable entries
 def run_worker_proxy_loop() -> None:
@@ -89,12 +128,17 @@ def run_worker_proxy_loop() -> None:
                             worker_proxy_hover_row = row
                             input_changed = True
                 else:
-                    idx = parse_digit_key(char)
-                    if idx is not None and _worker_proxy_workers:
-                        if 1 <= idx <= len(_worker_proxy_workers):
-                            write_selection(_monitor.active_project_filter, _worker_proxy_workers[idx - 1]['name'])
-                            _worker_proxy_force_reload = True
-                            input_changed = True
+                    if char == 'y':
+                        key = resolve_parent_key(worker_proxy_line_map, worker_proxy_hover_row)
+                        if key is not None:
+                            copy_to_clipboard(_serialize_worker_proxy(key))
+                    else:
+                        idx = parse_digit_key(char)
+                        if idx is not None and _worker_proxy_workers:
+                            if 1 <= idx <= len(_worker_proxy_workers):
+                                write_selection(_monitor.active_project_filter, _worker_proxy_workers[idx - 1]['name'])
+                                _worker_proxy_force_reload = True
+                                input_changed = True
 
             now = time.time()
             if _worker_proxy_force_reload or now - last_data_refresh >= POLL_INTERVAL:
