@@ -45,9 +45,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (243 LOC)
+### rules.py (264 LOC)
 
-**Purpose:** Apply proxy modification rules — strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported function `apply_modification_rules`. Remainder 243 LOC is a single monolithic function body — further split requires refactoring.
+**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported function `apply_modification_rules`. Sidecar branch short-circuits the full pass chain. Remainder is a single monolithic function body — further split requires refactoring.
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
@@ -155,10 +155,10 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_vocab.py (234 LOC)
+### strip_vocab.py (246 LOC)
 
 **Purpose:** Shared vocabulary + semantics for proxy strip classification. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers. Exports:
-- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection).
+- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL/SC with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection; excludes TN and SC).
 - `attribute_chunk(chunk) -> code | None` — marker-substring attribution (starts-with special-case for TN).
 - `code_for_rule(full_name) -> code | None` — reverse lookup from `modifications[]` entry to rule code.
 - `classify_tags(entry) -> (leak_signals, sus_signals)` — **delta-scoped**: reads `entry.diff_from_prev.first_diff_index` and scans `entry.messages[first_diff_index:][].blocks[].full_text` + content_preview/tail for the 4 tag literals. Missing `diff_from_prev` or `first_diff_index == 0` falls back to full-scan (correct for first REQ). `first_diff_index < 0` (no-change sentinel) returns empty. Pairs each found tag with the relevant rule in `modifications[]` to decide LEAK vs SUS.
@@ -171,7 +171,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### payload_helpers.py (140 LOC)
+### payload_helpers.py (186 LOC)
 
 **Purpose:** Low-level payload content inspection and manipulation used by `rules.py` — find/strip system-reminder blocks, strip blocklisted tool_reference blocks, strip task-notification XML tags.
 **Reads:** Message content (string or list), payload dicts.

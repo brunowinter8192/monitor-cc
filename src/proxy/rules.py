@@ -28,6 +28,7 @@ from .payload_helpers import (
     _strip_blocked_tool_references,
     _content_contains,
     _strip_task_notification_tags,
+    _detect_sidecar,
 )
 from .rules_config import _load_config, _load_system2_rules
 
@@ -43,6 +44,23 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     system_rules = _load_system2_rules(model_family, project_path)
 
     messages_to_process = list(payload.get("messages", []))
+
+    # Sidecar short-circuit: single-message plain-string payload with empty system
+    # Runs before all passes so no spurious stripped_all_sr_msg0 can fire on the marker
+    if _detect_sidecar(payload):
+        orig_content = payload["messages"][0]["content"]
+        orig_len = len(orig_content)
+        marker = f"[SIDECAR_STRIPPED_{orig_len}_BYTES]"
+        modified = dict(payload)
+        modified["messages"] = [{**payload["messages"][0], "content": marker}]
+        return (
+            modified,
+            ["stripped_sidecar_content"],
+            None,
+            [0],
+            {0: orig_content},
+            {0: [orig_content]},
+        )
 
     new_messages = []
     stripped_msg_indices = []
