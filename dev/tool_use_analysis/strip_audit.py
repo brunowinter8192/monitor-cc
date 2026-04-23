@@ -68,6 +68,11 @@ _TEMPLATE_TO_RULE = {
 _TN_TAG = '<task-notification>'
 _PO_TAG = '<persisted-output>'   # no active rule (rolled back) — always SUS
 
+# SR-wrapping strip rule fullnames (mirrors strip_vocab._SR_STRIP_RULES; TN excluded)
+_SR_STRIP_RULE_NAMES: frozenset = frozenset(
+    fn for code, (fn, _) in RULES.items() if code not in ('TN',)
+)
+
 # Regex for SR block inner-text extraction
 _SR_BLOCK_RE = re.compile(r'<system-reminder>(.*?)</system-reminder>', re.DOTALL)
 
@@ -255,7 +260,19 @@ def _render_req_section(req_num, entry, prev, cls):
     return lines
 
 
-# Detect leaked/suspect tags in raw_payload; returns (lines, n_leaks, n_suspects)
+# Attribute SR block inner text to a rule code via marker substring (not template startswith)
+def _attribute_sr_inner(inner):
+    for code, (_fn, markers) in RULES.items():
+        if code in ('TN', 'ALL'):
+            continue
+        for marker in markers:
+            if marker in inner:
+                return code
+    return None
+
+
+# Detect leaked/suspect tags in delta messages of raw_payload; returns (lines, n_leaks, n_suspects)
+# Delta-scoped: raw_payload.messages[first_diff_index:] to match header-badge scope.
 # Lines use compact notation: LEAK:<SR>/CODE, SUS:<PO>, LEAK:<TN>, etc.
 def _check_tags(entry, curr_mods_ctr):
     lines = []
@@ -264,23 +281,31 @@ def _check_tags(entry, curr_mods_ctr):
     mods_set = set(curr_mods_ctr.keys())
 
     raw_messages = entry.get('raw_payload', {}).get('messages', [])
-    texts = list(_extract_msg_texts(raw_messages))
+    diff = entry.get('diff_from_prev') or {}
+    start = diff.get('first_diff_index', 0) if diff else 0
+    if start < 0:
+        return [], 0, 0
+    texts = list(_extract_msg_texts(raw_messages[start:]))
 
-    seen_tids = set()
+    # SR blocks: per-block attribution via marker substring; dedup on (code, inner[:30])
+    any_sr_strip_in_mods = bool(mods_set & _SR_STRIP_RULE_NAMES)
+    seen_sr: set = set()
     for text in texts:
         for m in _SR_BLOCK_RE.finditer(text):
             inner = m.group(1).strip()
-            tid, _ = _match_template(inner)
-            if tid is None:
+            code = _attribute_sr_inner(inner)
+            dedup_key = (code, inner[:30])
+            if dedup_key in seen_sr:
                 continue
-            if tid in seen_tids:
-                continue
-            seen_tids.add(tid)
-            rule = _TEMPLATE_TO_RULE[tid]
-            code = code_for_rule(rule)
-            code_sfx = f'/{code}' if code else f'/{rule}'
+            seen_sr.add(dedup_key)
             head = inner[:80].replace('\n', '↵')
-            if rule in mods_set:
+            code_sfx = f'/{code}' if code is not None else '/?'
+            if code is not None:
+                rule = RULES[code][0]
+                is_leak = rule in mods_set
+            else:
+                is_leak = any_sr_strip_in_mods
+            if is_leak:
                 lines.append(f'  LEAK:<SR>{code_sfx}  "{head}"')
                 n_leaks += 1
             else:
