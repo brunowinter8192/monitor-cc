@@ -50,7 +50,11 @@ def _serialize_proxy(key, entries: list) -> str:
     model = entry.get('model', '?')
     msg_count = entry.get('message_count', 0)
     parts = [f"entry_idx={entry_idx}  model={model}  msgs={msg_count}"]
-    for msg_idx, msg in enumerate(entry.get('messages', [])):
+    diff = entry.get('diff_from_prev') or {}
+    start = diff.get('first_diff_index', 0) if diff else 0
+    if start < 0:
+        start = 0
+    for msg_idx, msg in enumerate(entry.get('messages', [])[start:], start=start):
         role = msg.get('role', '?')
         msg_type = msg.get('type', '?')
         blocks = msg.get('blocks', [])
