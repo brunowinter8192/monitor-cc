@@ -27,7 +27,7 @@ core/monitor.run_monitor(mode=X)
 
 ## Modules
 
-### token_pane.py (180 LOC)
+### token_pane.py (216 LOC)
 
 **Purpose:** Token/cache tracker pane — incrementally reads session JSONL, builds cache-turn dicts, renders interactive expand/collapse/scroll view with CR/CC/D per request. Owns the zebra/hover/truncation render loop: calls `format_cache_tracker` for logical lines, then applies `ZEBRA_BG_A/B`, `HOVER_BG` priority, and `truncate_visible` per line.
 **Reads:** Session JSONL (incremental via `_cache_jsonl_position`); shared state `monitor.active_project_filter`.
@@ -37,7 +37,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### rules_pane.py (169 LOC)
+### rules_pane.py (212 LOC)
 
 **Purpose:** Active rules pane — polls hook log for InstructionsLoaded events, groups rules by [P]roject/[G]lobal source, renders interactive expand/collapse view. Also exposes `process_hook_log()` for the main streaming loop.
 **Reads:** Hook log (`src/logs/hook_outputs.jsonl`) via `hooks` package; shared state `monitor.active_project_filter`, `monitor.hook_log_position`.
@@ -57,7 +57,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_pane.py (420 LOC)
+### warnings_pane.py (444 LOC)
 
 **Purpose:** Warnings pane event loop — two sections: (1) unknown JSONL types, (2) tool errors + zero-result calls from proxy JSONL. Scrollable expand/collapse. Expanded error view shows pre-strip content with DIM_YELLOW_BG highlights for proxy-stripped chunks (via `format.strip_marker`). Remainder LOC is cohesive by shared event-state globals — further split would require refactoring.
 **Reads:** Proxy JSONL (incremental via `_proxy_log_position`); worker log files; shared state `monitor.active_project_filter`.
@@ -77,7 +77,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### waste_pane.py (428 LOC)
+### waste_pane.py (433 LOC)
 
 **Purpose:** Proxy forensics / waste pane — reads proxy JSONL, extracts tool_use/tool_result pairs via `waste_forensics`, filters by `input_chars/output_chars >= threshold`, displays sorted descending. Digit keys 1–9 set threshold. Expanded OUTPUT section shows pre-strip content with DIM_YELLOW_BG highlights when the tool_result's message was proxy-stripped. Remainder LOC is cohesive by shared globals — further split would require refactoring.
 **Reads:** Proxy JSONL (via marker file discovery in `proxy_display.parser`); shared state `monitor.active_project_filter`.

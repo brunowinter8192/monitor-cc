@@ -156,6 +156,7 @@ def run_main_loop() -> None:
     from ..input.click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
+        resolve_parent_key, copy_to_clipboard,
     )
     from .monitor_display import render_main_buffer
     from . import monitor_display as _display
@@ -183,6 +184,13 @@ def run_main_loop() -> None:
                         elif button == 65:  # WheelDown → newer events
                             _display.main_scroll_offset = max(0, _display.main_scroll_offset - 3)
                             input_changed = True
+                        elif button >= 32:  # motion/hover
+                            _display.main_hover_row = row
+                            input_changed = True
+                elif char == 'y':
+                    key = resolve_parent_key(_display.main_line_map, _display.main_hover_row)
+                    if key is not None:
+                        copy_to_clipboard(_display.serialize_main_event(key))
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:

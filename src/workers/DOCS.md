@@ -42,7 +42,7 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 
 ---
 
-### worker_pane.py (216 LOC)
+### worker_pane.py (259 LOC)
 
 **Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, viewport-clipped screen rendering, and IPC selection file write for cross-pane coordination. Mouse wheel 64/65 resolves the worker name from the row under the cursor (`worker_cache_line_map` → `worker_line_map` → `worker_selected_name` fallback) and updates `worker_scroll_offsets[name]` ±3, which `format_cache_tracker` reads to scroll the per-worker REQ view.
 **Reads:** `_monitor.active_project_filter` (shared global state); stdin (keyboard/mouse); worker JSONL files via `worker_format`.

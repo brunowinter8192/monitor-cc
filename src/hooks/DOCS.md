@@ -46,7 +46,7 @@ that lives in `src/panes/rules_pane.py`.
 
 ---
 
-### hooks_pane.py (158 LOC)
+### hooks_pane.py (206 LOC)
 
 **Purpose:** Event loop for the Hooks tmux pane — polls hook log, processes mouse/keyboard input, renders on change.
 **Reads:** Shared monitor state (`active_project_filter`, session timestamp); stdin (keyboard/mouse via `input.click_handler`).

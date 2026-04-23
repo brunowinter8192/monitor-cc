@@ -36,7 +36,7 @@ workflow.py → run_monitor(project_filter, mode)
 
 ## Modules
 
-### monitor.py (200 LOC)
+### monitor.py (263 LOC)
 
 **Purpose:** Polling orchestrator — discovers sessions, drives the streaming loop, dispatches to pane event loops by mode, and owns all shared state dicts. In `run_main_loop()`, also scans proxy JSONL each poll cycle via `_refresh_strip_cache()` to feed strip data into `monitor_display`.
 **Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`; hook log position via `hooks`; proxy JSONL via `proxy_display.parser` (for strip cache); lazy reads from `panes`, `workers`, `hooks`, `proxy_display`, `metadata`.
@@ -56,12 +56,12 @@ workflow.py → run_monitor(project_filter, mode)
 
 ---
 
-### monitor_display.py (135 LOC)
+### monitor_display.py (202 LOC)
 
-**Purpose:** Terminal output + event buffer for the main streaming pane. Buffers all events (tool calls, user prompts, system messages, etc.) in `main_event_buffer`. On each render cycle, applies proxy strip highlights: tool_call output is replaced with pre-strip content and `highlight_stripped()` is applied; user prompts get a `[~]` badge when the corresponding proxy request had stripped content. `ingest_proxy_strip_data(entries)` updates the strip caches; called from `monitor._refresh_strip_cache()`.
-**Reads:** Tool call dicts, event dicts passed as arguments; module-level `_strip_by_tool_id`, `_strip_prompt_ts_set`.
-**Writes:** stdout via `print()` (via `render_main_buffer`); mutates `main_event_buffer`, `main_scroll_offset`, `_strip_by_tool_id`, `_strip_prompt_ts_set`.
-**Called by:** `monitor.py` (`print_session_status`, `ingest_proxy_strip_data`, `render_main_buffer`); `monitor_session.py` (all display functions).
+**Purpose:** Terminal output + event buffer for the main streaming pane. Buffers all events (tool calls, user prompts, system messages, etc.) in `main_event_buffer`. On each render cycle, applies proxy strip highlights: tool_call output is replaced with pre-strip content and `highlight_stripped()` is applied; user prompts get a `[~]` badge when the corresponding proxy request had stripped content. `ingest_proxy_strip_data(entries)` updates the strip caches; called from `monitor._refresh_strip_cache()`. `render_main_buffer` fills `main_line_map` (phys_row→event_idx) and reads `main_hover_row` for highlight; `serialize_main_event(event_idx)` converts a buffer entry to clipboard text for the `y`-hotkey.
+**Reads:** Tool call dicts, event dicts passed as arguments; module-level `_strip_by_tool_id`, `_strip_prompt_ts_set`, `main_hover_row`.
+**Writes:** stdout via `print()` (via `render_main_buffer`); mutates `main_event_buffer`, `main_scroll_offset`, `main_hover_row`, `main_line_map`, `_strip_by_tool_id`, `_strip_prompt_ts_set`.
+**Called by:** `monitor.py` (`print_session_status`, `ingest_proxy_strip_data`, `render_main_buffer`, `serialize_main_event`); `monitor_session.py` (all display functions).
 **Calls out:** `format.formatter`, `format.formatter_events`, `format.strip_marker`.
 
 ---
@@ -80,7 +80,16 @@ workflow.py → run_monitor(project_filter, mode)
 | `hook_log_position` | `int` | `initialize_hook_log_position()` + `panes.process_hook_log` |
 | `_strip_proxy_position` | `int` | `_refresh_strip_cache()` each poll cycle |
 
-All pane modules read this state via `from ..core import monitor as _monitor`.
+`monitor_display.py` owns main-pane render state:
+
+| Variable | Type | Mutated by |
+|---|---|---|
+| `main_event_buffer` | `list` | `_buffer_append` (via all `display_*` fns) |
+| `main_scroll_offset` | `int` | `run_main_loop` (wheel events) |
+| `main_hover_row` | `int \| None` | `run_main_loop` (mouse motion events) |
+| `main_line_map` | `Dict[int, int]` | `render_main_buffer` each render cycle |
+
+All pane modules read monitor.py state via `from ..core import monitor as _monitor`.
 
 ## Gotchas
 
