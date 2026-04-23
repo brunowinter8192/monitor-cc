@@ -237,17 +237,21 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 removed.extend(_find_system_reminder_blocks(original_before_pass, "<new-diagnostics>"))
             changed = True
 
-    # Final pass: strip ALL remaining <system-reminder> blocks from msg[0]
-    if new_messages and new_messages[0].get("role") == "user":
-        msg0 = new_messages[0]
-        old_content = msg0.get("content", "")
+    # Final pass: strip ALL remaining <system-reminder> blocks from ALL user messages.
+    # Extends the original msg[0]-only pass to catch templates without dedicated elif branches
+    # (system-notification, date-changed, file-modified) in any message position.
+    # claudeMD preamble blocks are preserved by _apply_sr_strip._replace (93l preserve-check).
+    for _fp_idx, _fp_msg in enumerate(new_messages):
+        if _fp_msg.get("role") != "user":
+            continue
+        old_content = _fp_msg.get("content", "")
         new_content = _strip_all_system_reminders(old_content)
         if new_content != old_content:
-            new_messages[0] = {**msg0, "content": new_content}
-            modifications.append("stripped_all_sr_msg0")
-            if 0 not in stripped_msg_indices:
-                stripped_msg_indices.append(0)
-                stripped_msg_originals[0] = old_content
+            new_messages[_fp_idx] = {**_fp_msg, "content": new_content}
+            modifications.append("stripped_all_sr_msg0" if _fp_idx == 0 else "stripped_all_sr")
+            if _fp_idx not in stripped_msg_indices:
+                stripped_msg_indices.append(_fp_idx)
+                stripped_msg_originals[_fp_idx] = old_content
             changed = True
 
     system = payload.get("system", [])
