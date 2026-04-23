@@ -82,13 +82,23 @@ def code_for_rule(full_name: str) -> str | None:
 # Returns (leak_signals, sus_signals) — compact LEAK:<TAG> / SUS:<TAG> strings
 # Delta-scoped: only messages[first_diff_index:] (mirrors _aggregate_entry_tags pattern)
 # Scans blocks[*].full_text instead of raw_payload (raw_payload discarded by monitor parser)
+# LEAK iff the relevant strip rule fired on a msg in delta range (smr key >= start)
 def classify_tags(entry: dict) -> tuple[list[str], list[str]]:
-    mods = set(entry.get('modifications', []))
     diff = entry.get('diff_from_prev') or {}
     start = diff.get('first_diff_index', 0) if diff else 0
     if start < 0:
         return [], []
     messages = entry.get('messages', [])[start:]
+    smr = entry.get('stripped_msg_removed') or {}
+
+    def _tag_strip_in_delta(tag: str) -> bool:
+        for idx_str, chunks in smr.items():
+            if int(idx_str) < start:
+                continue
+            for chunk in (chunks or []):
+                if tag in chunk:
+                    return True
+        return False
 
     texts: list[str] = []
     for msg in messages:
@@ -106,19 +116,19 @@ def classify_tags(entry: dict) -> tuple[list[str], list[str]]:
     sus_signals: list[str] = []
 
     if '<task-notification>' in combined:
-        if 'trimmed_task_notification' in mods:
+        if _tag_strip_in_delta('<task-notification>'):
             leak_signals.append('LEAK:<TN>')
         else:
             sus_signals.append('SUS:<TN>')
 
     if '<new-diagnostics>' in combined:
-        if 'stripped_pyright_diagnostics' in mods:
+        if _tag_strip_in_delta('<new-diagnostics>'):
             leak_signals.append('LEAK:<ND>')
         else:
             sus_signals.append('SUS:<ND>')
 
     if '<system-reminder>' in combined:
-        if mods & _SR_STRIP_RULES:
+        if _tag_strip_in_delta('<system-reminder>'):
             leak_signals.append('LEAK:<SR>')
         else:
             sus_signals.append('SUS:<SR>')
