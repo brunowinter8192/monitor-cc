@@ -166,6 +166,8 @@ def _strip_task_notification_tags(content):
 
 # Detect sidecar structural signature: single user-message with plain-string content and empty system
 def _detect_sidecar(payload: dict) -> bool:
+    if payload.get('model', '').startswith('claude-haiku'):
+        return False
     msgs = payload.get("messages", [])
     if len(msgs) != 1:
         return False
