@@ -29,6 +29,7 @@ from .payload_helpers import (
     _content_contains,
     _strip_task_notification_tags,
     _detect_sidecar,
+    _detect_idle_recap,
 )
 from .rules_config import _load_config, _load_system2_rules
 
@@ -44,6 +45,24 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     system_rules = _load_system2_rules(model_family, project_path)
 
     messages_to_process = list(payload.get("messages", []))
+
+    # Idle-recap short-circuit: CC-injected fake user message when user goes idle
+    if _detect_idle_recap(payload):
+        msgs = payload["messages"]
+        idx = len(msgs) - 1
+        orig_content = msgs[idx]["content"]
+        marker = f"[IDLE_RECAP_STRIPPED_{len(orig_content)}_BYTES]"
+        modified = dict(payload)
+        modified["messages"] = list(msgs)
+        modified["messages"][idx] = {**msgs[idx], "content": marker}
+        return (
+            modified,
+            ["stripped_idle_recap"],
+            None,
+            [idx],
+            {idx: orig_content},
+            {idx: [orig_content]},
+        )
 
     # Sidecar short-circuit: single-message plain-string payload with empty system
     # Runs before all passes so no spurious stripped_all_sr_msg0 can fire on the marker

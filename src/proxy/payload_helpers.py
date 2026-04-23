@@ -164,6 +164,20 @@ def _strip_task_notification_tags(content):
     return content
 
 
+# Detect CC idle-recap injection: last-msg-user, plain-string content, starts with idle marker
+def _detect_idle_recap(payload: dict) -> bool:
+    msgs = payload.get("messages", [])
+    if not msgs:
+        return False
+    last = msgs[-1]
+    if last.get("role") != "user":
+        return False
+    content = last.get("content", "")
+    if not isinstance(content, str):
+        return False
+    return content.startswith("The user stepped away and is coming back.")
+
+
 # Detect sidecar structural signature: single user-message with plain-string content and empty system
 def _detect_sidecar(payload: dict) -> bool:
     if payload.get('model', '').startswith('claude-haiku'):
