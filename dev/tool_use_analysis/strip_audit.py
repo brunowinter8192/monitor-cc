@@ -15,7 +15,6 @@ Output: dev/tool_use_analysis/<YYYYMMDDHHMM>_strip_audit.md
 import argparse
 import json
 import os
-import re
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -66,15 +65,13 @@ _TEMPLATE_TO_RULE = {
 
 # Non-SR tag literals for LEAK/SUSPECT detection
 _TN_TAG = '<task-notification>'
+_ND_TAG = '<new-diagnostics>'
 _PO_TAG = '<persisted-output>'   # no active rule (rolled back) — always SUS
 
 # SR-wrapping strip rule fullnames (mirrors strip_vocab._SR_STRIP_RULES; TN excluded)
 _SR_STRIP_RULE_NAMES: frozenset = frozenset(
     fn for code, (fn, _) in RULES.items() if code not in ('TN',)
 )
-
-# Regex for SR block inner-text extraction
-_SR_BLOCK_RE = re.compile(r'<system-reminder>(.*?)</system-reminder>', re.DOTALL)
 
 CHUNK_HEAD = 120   # chars of chunk to display in report
 
@@ -273,12 +270,12 @@ def _attribute_sr_inner(inner):
 
 # Detect leaked/suspect tags in delta messages of raw_payload; returns (lines, n_leaks, n_suspects)
 # Delta-scoped: raw_payload.messages[first_diff_index:] to match header-badge scope.
+# LEAK iff the relevant strip rule fired on a msg in delta range (smr key >= start).
 # Lines use compact notation: LEAK:<SR>/CODE, SUS:<PO>, LEAK:<TN>, etc.
 def _check_tags(entry, curr_mods_ctr):
     lines = []
     n_leaks = 0
     n_suspects = 0
-    mods_set = set(curr_mods_ctr.keys())
 
     raw_messages = entry.get('raw_payload', {}).get('messages', [])
     diff = entry.get('diff_from_prev') or {}
@@ -287,39 +284,63 @@ def _check_tags(entry, curr_mods_ctr):
         return [], 0, 0
     texts = list(_extract_msg_texts(raw_messages[start:]))
 
-    # SR blocks: per-block attribution via marker substring; dedup on (code, inner[:30])
-    any_sr_strip_in_mods = bool(mods_set & _SR_STRIP_RULE_NAMES)
+    smr = entry.get('stripped_msg_removed') or {}
+
+    def _tag_strip_in_delta(tag: str) -> bool:
+        for idx_str, chunks in smr.items():
+            if int(idx_str) < start:
+                continue
+            for chunk in (chunks or []):
+                if tag in chunk:
+                    return True
+        return False
+
+    # SR occurrences: substring-based (handles unclosed literals); dedup on (code, head[:30])
     seen_sr: set = set()
     for text in texts:
-        for m in _SR_BLOCK_RE.finditer(text):
-            inner = m.group(1).strip()
-            code = _attribute_sr_inner(inner)
-            dedup_key = (code, inner[:30])
-            if dedup_key in seen_sr:
-                continue
-            seen_sr.add(dedup_key)
-            head = inner[:80].replace('\n', '↵')
-            code_sfx = f'/{code}' if code is not None else '/?'
-            if code is not None:
-                rule = RULES[code][0]
-                is_leak = rule in mods_set
+        pos = 0
+        while True:
+            idx = text.find('<system-reminder>', pos)
+            if idx == -1:
+                break
+            after = idx + len('<system-reminder>')
+            close_idx = text.find('</system-reminder>', after)
+            if close_idx != -1:
+                inner = text[after:close_idx].strip()
             else:
-                is_leak = any_sr_strip_in_mods
-            if is_leak:
-                lines.append(f'  LEAK:<SR>{code_sfx}  "{head}"')
-                n_leaks += 1
-            else:
-                lines.append(f'  SUS:<SR>{code_sfx}  "{head}"')
-                n_suspects += 1
+                inner = None
+            head_text = text[after:after + 80].strip()
+            code = _attribute_sr_inner(inner if inner is not None else head_text)
+            dedup_key = (code, head_text[:30])
+            if dedup_key not in seen_sr:
+                seen_sr.add(dedup_key)
+                head = head_text[:80].replace('\n', '↵')
+                code_sfx = f'/{code}' if code is not None else '/?'
+                if _tag_strip_in_delta('<system-reminder>'):
+                    lines.append(f'  LEAK:<SR>{code_sfx}  "{head}"')
+                    n_leaks += 1
+                else:
+                    lines.append(f'  SUS:<SR>{code_sfx}  "{head}"')
+                    n_suspects += 1
+            pos = after
 
     for text in texts:
         if _TN_TAG in text:
-            rule = 'trimmed_task_notification'
-            if rule in mods_set:
+            if _tag_strip_in_delta('<task-notification>'):
                 lines.append(f'  LEAK:<TN>')
                 n_leaks += 1
             else:
                 lines.append(f'  SUS:<TN>')
+                n_suspects += 1
+            break
+
+    for text in texts:
+        if _ND_TAG in text:
+            if _tag_strip_in_delta('<new-diagnostics>'):
+                lines.append(f'  LEAK:<ND>')
+                n_leaks += 1
+            else:
+                lines.append(f'  SUS:<ND>')
                 n_suspects += 1
             break
 
@@ -366,6 +387,7 @@ def _build_summary(entries):
 
 
 # Extract all raw text strings from message content (various shapes)
+# Includes tool_use blocks (name + JSON-serialized input) to catch tag literals in tool inputs
 def _extract_msg_texts(messages):
     for msg in messages:
         content = msg.get('content', '')
@@ -386,6 +408,10 @@ def _extract_msg_texts(messages):
                         for sub in inner:
                             if isinstance(sub, dict) and sub.get('type') == 'text':
                                 yield sub.get('text', '')
+                elif btype == 'tool_use':
+                    name = block.get('name', '?')
+                    inp = block.get('input', {})
+                    yield name + '\n' + json.dumps(inp)
 
 
 # Match SR inner text against templates; returns (template_id, mode) or (None, None)
