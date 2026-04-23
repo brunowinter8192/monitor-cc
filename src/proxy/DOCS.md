@@ -171,7 +171,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### payload_helpers.py (186 LOC)
+### payload_helpers.py (188 LOC)
 
 **Purpose:** Low-level payload content inspection and manipulation used by `rules.py` — find/strip system-reminder blocks, strip blocklisted tool_reference blocks, strip task-notification XML tags.
 **Reads:** Message content (string or list), payload dicts.
