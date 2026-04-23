@@ -4,7 +4,7 @@ from collections import Counter
 from ..constants import (
     SOFT_RESET, RED, WHITE, DIM, DIM_YELLOW_BG, LIGHT_RED_BG, RESET,
 )
-from ..proxy.strip_vocab import attribute_chunk, classify_tags, classify_req, code_for_rule
+from ..proxy.strip_vocab import attribute_chunk, classify_req
 
 _SUSPECT_TAGS = [
     ('<new-diagnostics>', 'ND'),
@@ -24,17 +24,22 @@ def _detect_suspect_tags(text: str) -> list[str]:
         return []
     return [label for tag, label in _SUSPECT_TAGS if tag in text]
 
-# Aggregate suspect tag labels across new/modified msgs of an entry, return sorted list
+# Aggregate tag labels for entries where a strip rule fired in the delta range
 def _aggregate_entry_tags(entry: dict) -> list[str]:
     diff = entry.get('diff_from_prev') or {}
     start = diff.get('first_diff_index', 0) if diff else 0
-    messages = entry.get('messages', [])
-    new_msgs = messages[start:] if diff else messages
+    smr = entry.get('stripped_msg_removed') or {}
     found = set()
-    for msg in new_msgs:
-        for blk in msg.get('blocks', []):
-            text = blk.get('full_text', blk.get('preview', ''))
-            found.update(_detect_suspect_tags(text))
+    for idx_str, chunks in smr.items():
+        if int(idx_str) < start:
+            continue
+        for chunk in (chunks or []):
+            if '<system-reminder>' in chunk:
+                found.add('SR')
+            if '<task-notification>' in chunk:
+                found.add('TN')
+            if '<new-diagnostics>' in chunk:
+                found.add('ND')
     return sorted(found)
 
 # Render new/modified/removed messages for an expanded request entry, returning (lines, keys)
