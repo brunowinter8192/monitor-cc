@@ -36,6 +36,7 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'PYR': ('stripped_pyright_diagnostics', ['<new-diagnostics>']),
     'PM':  ('removed_plan_mode_sr',         ['Plan mode is active', 'Plan mode ']),
     'ALL': ('stripped_all_sr_msg0',         []),
+    'SC':  ('stripped_sidecar_content',     []),  # full original stored, no marker substring
 }
 
 # Tag literal codes — 4 raw tags tracked for LEAK/SUSPECT detection
@@ -53,8 +54,9 @@ STRIP_RULE_CODES: frozenset[str] = frozenset(RULES.keys())
 _FULL_NAME_TO_CODE: dict[str, str] = {fn: code for code, (fn, _) in RULES.items()}
 
 # Rule names that indicate an SR-wrapping strip (for LEAK:<SR> detection in classify_tags)
+# Excludes TN (tag-strip, not SR) and SC (sidecar — raw content, not SR-wrapped)
 _SR_STRIP_RULES: frozenset[str] = frozenset(
-    fn for code, (fn, _) in RULES.items() if code not in ('TN',)
+    fn for code, (fn, _) in RULES.items() if code not in ('TN', 'SC')
 )
 
 

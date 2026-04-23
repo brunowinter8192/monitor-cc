@@ -162,3 +162,25 @@ def _strip_task_notification_tags(content):
                 result.append(block)
         return result
     return content
+
+
+# Detect sidecar structural signature: single user-message with plain-string content and empty system
+def _detect_sidecar(payload: dict) -> bool:
+    msgs = payload.get("messages", [])
+    if len(msgs) != 1:
+        return False
+    msg0 = msgs[0]
+    if msg0.get("role") != "user":
+        return False
+    if not isinstance(msg0.get("content", ""), str):
+        return False
+    system = payload.get("system", "")
+    if isinstance(system, str):
+        return len(system.strip()) <= 10
+    if isinstance(system, list):
+        total = sum(
+            len(b.get("text", "").strip()) if isinstance(b, dict) else len(str(b).strip())
+            for b in system
+        )
+        return total <= 10
+    return False
