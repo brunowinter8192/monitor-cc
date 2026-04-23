@@ -12,6 +12,7 @@
    - `trimmed_task_notification`: Strippt output-file/tool-use-id Tags aus task-notifications
    - `stripped_rejection_message`: Strippt rejection-Marker aus tool_result.content (eine der wenigen legitimen tool_result-strip-Operationen)
    - `replaced_system_prompt`: Ersetzt system[2] (>5000 chars) mit "." (Logging-Reduktion)
+   - `stripped_sidecar_content` (commit 54d743e, 2026-04-23): Detektiert CC-interne Sidecar-Requests (single-msg plain-string payload, leere system, genau 1 user-msg mit plain-string content) und ersetzt `messages[0].content` durch einen kurzen Marker `[SIDECAR_STRIPPED_N_BYTES]`. Short-circuit early in `apply_modification_rules` um spurious `stripped_all_sr_msg0` auf dem Marker zu vermeiden. Evidence: session 1776956156 REQ#80.1 hatte 49,586c Inhalt und ~24k CC tokens allein für den Sidecar-Injection.
 
 2. `_strip_all_cache_control()` — Entfernt ALLE cache_control Marker von Claude Code:
    - system blocks, tools, messages (top-level + content blocks)
