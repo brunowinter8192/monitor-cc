@@ -67,7 +67,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     stripped_msg_originals = {}
     stripped_msg_removed = {}
     _tag_pat = re.compile(r'(?m)^<task-notification>.*?</task-notification>', re.DOTALL)
-    _pm_pat = re.compile(r'<system-reminder>\s*Plan mode.*?</system-reminder>', re.DOTALL)
+    _pm_pat = re.compile(r'(?m)^<system-reminder>\s*Plan mode.*?</system-reminder>', re.DOTALL)
     for idx, msg in enumerate(messages_to_process):
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
             old_content = msg.get("content", "")
