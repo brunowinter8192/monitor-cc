@@ -22,7 +22,7 @@ _SR_TEMPLATES = {
     'user-interrupt':      ('The user sent a new message while you were working:',      'partial'),
     'system-notification': ('[SYSTEM NOTIFICATION - NOT USER INPUT]',                   'full'),
     'file-modified':       ('Note: ',                                                   'full'),
-    'claudemd-contents':   ('Contents of ',                                             'full'),
+    'claudemd-contents':   (["As you answer the user's questions", 'Contents of '],     'full'),
     'date-changed':        ('The date has changed.',                                    'full'),
     'skills-available':    ('The following skills are available',                       'full'),
     'plan-mode':           ('Plan mode ',                                               'full'),
@@ -86,11 +86,16 @@ def _strip_system_reminders(content, enabled_templates=None):
 # FUNCTIONS
 
 # Find which template matches an SR inner text; returns (template_id, mode) or (None, None)
+# identifier may be a single string or list of strings (OR semantics, all startswith)
 def _match_template(inner, enabled_templates):
     for tid in enabled_templates:
         spec = _SR_TEMPLATES.get(tid)
-        if spec and inner.startswith(spec[0]):
-            return tid, spec[1]
+        if not spec:
+            continue
+        identifiers = spec[0] if isinstance(spec[0], list) else [spec[0]]
+        for identifier in identifiers:
+            if inner.startswith(identifier):
+                return tid, spec[1]
     return None, None
 
 

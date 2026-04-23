@@ -45,7 +45,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (264 LOC)
+### rules.py (270 LOC)
 
 **Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported function `apply_modification_rules`. Sidecar branch short-circuits the full pass chain. Remainder is a single monolithic function body — further split requires refactoring.
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
@@ -65,9 +65,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_sr.py (161 LOC)
+### strip_sr.py (166 LOC)
 
-**Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 8 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed); each has a unique identifier-string. Strip uses `startswith` against extracted SR-block text — no greedy regex across code literals.
+**Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 10 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, plan-mode); each template has one or more identifier strings. `claudemd-contents` uses a list of identifiers (`"As you answer the user's questions"` for CC's preamble form, `"Contents of "` for the bare form) — `_match_template` iterates the list with OR semantics. Strip uses `startswith` against extracted SR-block inner text — no greedy regex across code literals.
 **Reads:** Message content (string or list of blocks); template catalog (module-local).
 **Writes:** Nothing — returns modified content.
 **Called by:** `src/proxy/rules.py`
@@ -214,4 +214,6 @@ mitmproxy import errors are silent — the proxy crashes on startup and workers 
 
 **Worker proxies are frozen at spawn time.** Each worker's proxy package snapshot in `src/logs/.proxy_live_worker_<name>/` never updates. A worker spawned before a proxy-touching merge cannot reach new behavior or new imports. Before `worker_send` for a proxy task: check spawn time, run `git log --since='<spawn-time>' -- src/proxy/`, and kill+respawn if any merges are found.
 
-**SR stripping is template-based, not regex-greedy.** `strip_sr.py` maintains a catalog of known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed). Each template has a unique identifier-string; matching uses `startswith` against the extracted SR-block text, not a greedy regex. This is the fix for the historical false-positive bug where `<system-reminder>.*?</system-reminder>` matched across code literals (e.g. `if "<system-reminder>" in text:` in a tool_result) and stripped real user code. Adding a new strip rule = add a new template entry with its identifier-string. Tool_result.content IS strippable — CC does inject SRs there (task-tools-nag appended to tool-outputs), and the template-based matcher correctly distinguishes real SRs from code literals.
+**SR stripping is template-based, not regex-greedy.** `strip_sr.py` maintains a catalog of known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, plan-mode). Each template has one or more identifier-strings; matching uses `startswith` against the extracted SR-block inner text, not a greedy regex. This is the fix for the historical false-positive bug where `<system-reminder>.*?</system-reminder>` matched across code literals (e.g. `if "<system-reminder>" in text:` in a tool_result) and stripped real user code. Adding a new strip rule = add a new template entry with its identifier-string (or list of identifiers for OR semantics). Tool_result.content IS strippable — CC does inject SRs there (task-tools-nag appended to tool-outputs), and the template-based matcher correctly distinguishes real SRs from code literals.
+
+**Strip-tracking is guarded per-rule.** In `rules.py` second-pass, each rule (skills / claudemd / pyright) appends to `pass_mods` only if its strip function actually changed the content (`new_content != content`). Without this guard, `_content_contains` could match a marker that `_strip_system_reminder` then fails to strip (e.g. template identifier mismatch) — and `pass_mods` would incorrectly mark the rule as fired, polluting `modifications` and causing `stripped_msg_removed` to capture chunks that still survive in `raw_payload`. See bead Monitor_CC-93l for the original failure case (claudemd `"Contents of "` identifier vs CC's preamble form).

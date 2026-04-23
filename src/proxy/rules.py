@@ -189,14 +189,20 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         original_before_pass = content
         pass_mods = []
         if _content_contains(content, _SKILLS_MARKER):
-            content = _strip_system_reminder(content, _SKILLS_MARKER)
-            pass_mods.append("stripped_skills_sr")
+            new_content = _strip_system_reminder(content, _SKILLS_MARKER)
+            if new_content != content:
+                content = new_content
+                pass_mods.append("stripped_skills_sr")
         if _content_contains(content, _CLAUDEMD_MARKER):
-            content = _strip_system_reminder(content, _CLAUDEMD_MARKER)
-            pass_mods.append("stripped_claudemd_sr")
+            new_content = _strip_system_reminder(content, _CLAUDEMD_MARKER)
+            if new_content != content:
+                content = new_content
+                pass_mods.append("stripped_claudemd_sr")
         if _PYRIGHT_ENABLED and _content_contains(content, "<new-diagnostics>"):
-            content = _strip_pyright_diagnostics(content)
-            pass_mods.append("stripped_pyright_diagnostics")
+            new_content = _strip_pyright_diagnostics(content)
+            if new_content != content:
+                content = new_content
+                pass_mods.append("stripped_pyright_diagnostics")
         if content != original_before_pass:
             new_messages[idx] = {**msg, "content": content}
             modifications.extend(pass_mods)
