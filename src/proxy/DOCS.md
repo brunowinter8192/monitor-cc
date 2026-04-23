@@ -155,14 +155,14 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_vocab.py (229 LOC)
+### strip_vocab.py (234 LOC)
 
 **Purpose:** Shared vocabulary + semantics for proxy strip classification. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers. Exports:
-- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`.
+- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection).
 - `attribute_chunk(chunk) -> code | None` — marker-substring attribution (starts-with special-case for TN).
 - `code_for_rule(full_name) -> code | None` — reverse lookup from `modifications[]` entry to rule code.
-- `classify_tags(entry) -> (leak_signals, sus_signals)` — scans `messages[].blocks[].full_text` for the 4 tag literals, pairs each with the relevant rule in `modifications[]` to decide LEAK vs SUS.
-- `classify_req(entry, prev_entry) -> dict` — per-REQ 5-bucket classification. EFFECTIVE via chunk-tuple-diff against `prev.stripped_msg_removed` (skips chunks unchanged since prev). INERT via counter-delta on `modifications[]` filtered by "no chunks attributable". IDX from `smi` diff with empty `stripped_msg_removed[idx]`. LEAK/SUS delegate to `classify_tags`.
+- `classify_tags(entry) -> (leak_signals, sus_signals)` — **delta-scoped**: reads `entry.diff_from_prev.first_diff_index` and scans `entry.messages[first_diff_index:][].blocks[].full_text` + content_preview/tail for the 4 tag literals. Missing `diff_from_prev` or `first_diff_index == 0` falls back to full-scan (correct for first REQ). `first_diff_index < 0` (no-change sentinel) returns empty. Pairs each found tag with the relevant rule in `modifications[]` to decide LEAK vs SUS.
+- `classify_req(entry, prev_entry) -> dict` — per-REQ 5-bucket classification. EFFECTIVE via chunk-tuple-diff against `prev.stripped_msg_removed` (skips chunks unchanged since prev). INERT via counter-delta on `modifications[]` filtered by "no chunks attributable". IDX from `smi` diff with empty `stripped_msg_removed[idx]`. LEAK/SUS delegate to `classify_tags` (inherits delta scope automatically — no separate first_diff_index handling needed).
 - `legend_markdown() -> str` — Markdown legend block (3 tables: Buckets, Rules, Tag Literals) emitted at the top of audit reports.
 **Reads:** Nothing at module level.
 **Writes:** Nothing — pure data + helpers.
