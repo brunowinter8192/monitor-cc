@@ -8,7 +8,7 @@ from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 # FUNCTIONS
 
 # Render all per-request rows for an expanded turn group, returning (lines, keys, opus_req_num, sub_req_num)
-def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0) -> tuple:
+def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None) -> tuple:
     from .render_sections import render_system_blocks, render_tools
     from .render_messages import render_messages
     lines = []
@@ -44,6 +44,8 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         warn_parts = []
         prev_same = None
         is_standalone = _is_standalone_entry(entry)
+        if model_short != 'haiku' and not is_standalone and rendered_opus_labels is not None:
+            rendered_opus_labels.append((entry_idx, num_label))
         if not is_standalone:
             _ef = 'haiku' if 'haiku' in entry.get('model', '').lower() else 'opus'
             for _i in range(entry_idx - 1, -1, -1):
