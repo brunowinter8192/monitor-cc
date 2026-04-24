@@ -1,9 +1,10 @@
 # INFRASTRUCTURE
+from collections import Counter
 from typing import Optional
 
 from ..constants import (
     RESET, SOFT_RESET, GREEN, RED, DIM, YELLOW, PASTEL_PURPLE, HOVER_BG,
-    DIM_YELLOW_BG, ZEBRA_BG_A, ZEBRA_BG_B,
+    DIM_YELLOW_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )
 from ..format.token_format import _format_k
 from ..utils import truncate_visible
@@ -83,6 +84,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     groups = _assign_turns_to_entries(entries, turns) if turns else None
     opus_req_num = 0
     sub_req_num = 0
+    rendered_opus_labels = []
 
     if groups:
         prev_group_last_entry = None
@@ -144,6 +146,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 group, entries, expand_states, pane_width,
                 prev_entry_for_delta, opus_req_num, sub_req_num,
                 turns=turns, turn_idx=turn_idx,
+                rendered_opus_labels=rendered_opus_labels,
             )
             all_lines.extend(t_lines)
             line_keys.extend(t_keys)
@@ -175,7 +178,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 else:
                     sub_req_num += 1
                     num_label = f'#{opus_req_num}.{sub_req_num}'
-            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label)
+            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label, rendered_opus_labels=rendered_opus_labels)
             all_lines.extend(e_lines)
             line_keys.extend(e_keys)
             if item_positions_out is not None:
@@ -185,6 +188,9 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                         item_positions_out[key] = base + i
             all_lines.append('')
             line_keys.append(None)
+
+    _label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
+    collision_entry_idxs = {idx for idx, lbl in rendered_opus_labels if _label_counts[lbl] >= 2}
 
     while all_lines and all_lines[-1] == '':
         all_lines.pop()
@@ -218,10 +224,16 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         else:
             zebra_bg = ZEBRA_BG_A
         is_hovered = key is not None and hover_row is not None and row == hover_row
+        is_collision = bool(collision_entry_idxs and (
+            (isinstance(key, tuple) and key[0] == 'req' and key[1] in collision_entry_idxs) or
+            (isinstance(key, int) and key in collision_entry_idxs)
+        ))
         if is_hovered:
             chosen_bg = HOVER_BG
         elif DIM_YELLOW_BG in line:
             chosen_bg = DIM_YELLOW_BG
+        elif is_collision:
+            chosen_bg = COLLISION_BG
         else:
             chosen_bg = zebra_bg
         trunc = truncate_visible(line, pane_width)

@@ -11,7 +11,7 @@ from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 # FUNCTIONS
 
 # Render a single proxy entry into (lines, line_keys). indent sets the nesting level.
-def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '', num_label: str = '#0') -> tuple:
+def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '', num_label: str = '#0', rendered_opus_labels: list = None) -> tuple:
     L1 = indent
     L2 = indent + '  '
     L3 = indent + '    '
@@ -27,6 +27,8 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     symbol = '\u25bc' if is_expanded else '\u25b6'
 
     is_standalone = _is_standalone_entry(entry)
+    if model != 'haiku' and not is_standalone and rendered_opus_labels is not None:
+        rendered_opus_labels.append((entry_idx, num_label))
     model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
     prev_entry = None
     if not is_standalone:
