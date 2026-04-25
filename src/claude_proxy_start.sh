@@ -97,6 +97,39 @@ fi
 # Use PROXY_SESSION_UID (not SESSION_ID) so parallel sessions in the same project don't overwrite each other
 LIVE_ADDON="$LOG_DIR/.proxy_addon_live_${PROXY_SESSION_UID}.py"
 LIVE_DIR="$LOG_DIR/.proxy_live_${PROXY_SESSION_UID}"
+
+# Janitor: remove orphan live-copies left by sessions that exited without cleanup.
+# Runs before this session's own live-copies are created so they cannot be self-evicted.
+_janitor_cleanup_live_copies() {
+    local orphan_count=0 id shim dir_path
+
+    # Pass 1: iterate shim files — each shim is the authoritative reference for its pair
+    for shim in "$LOG_DIR"/.proxy_addon_live_*.py; do
+        [ -f "$shim" ] || continue
+        id="${shim##*/.proxy_addon_live_}"
+        id="${id%.py}"
+        dir_path="$LOG_DIR/.proxy_live_${id}"
+        # Skip if any mitmdump process is running with this shim's full path
+        pgrep -f "$shim" >/dev/null 2>&1 && continue
+        rm -f "$shim"
+        [ -d "$dir_path" ] && rm -rf "$dir_path"
+        orphan_count=$((orphan_count + 1))
+    done
+
+    # Pass 2: remove live dirs whose shim was already removed (or never created)
+    for dir_path in "$LOG_DIR"/.proxy_live_*/; do
+        [ -d "$dir_path" ] || continue
+        id="${dir_path##*/.proxy_live_}"
+        id="${id%/}"
+        [ -f "$LOG_DIR/.proxy_addon_live_${id}.py" ] && continue
+        rm -rf "$dir_path"
+        orphan_count=$((orphan_count + 1))
+    done
+
+    echo "Janitor: cleaned $orphan_count orphan live-copies"
+}
+_janitor_cleanup_live_copies
+
 cp "$SCRIPT_DIR/proxy_addon.py" "$LIVE_ADDON"
 mkdir -p "$LIVE_DIR"
 cp -r "$SCRIPT_DIR/proxy" "$LIVE_DIR/"
@@ -113,8 +146,14 @@ export PROXY_PROJECT_PATH="$PROJECT"
 mitmdump -p $PROXY_PORT -s "$LIVE_ADDON" --set flow_detail=0 -q 2>"$LOG_DIR/proxy_errors_$LOG_ID.log" &
 PROXY_PID=$!
 
-# Log rotation: keep max 30 log files total (jsonl + error logs), delete oldest by mtime
-(cd "$LOG_DIR" && ls -t api_requests_*.jsonl proxy_errors_*.log 2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f "$f"; done)
+# Log rotation: independent buckets so opus/worker JSONLs never compete for the 30-file limit
+(cd "$LOG_DIR" && {
+    ls -t api_requests_opus_*.jsonl   2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f "$f"; done
+    ls -t api_requests_worker_*.jsonl 2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f "$f"; done
+    ls -t proxy_errors_*.log          2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f "$f"; done
+    find . -maxdepth 1 -type f -name 'proxy_errors_*.log'       -size 0  -delete 2>/dev/null
+    find . -maxdepth 1 -type f -name 'api_error_payload_*.json' -mtime +7 -delete 2>/dev/null
+})
 
 # Cleanup on exit: kill proxy, remove per-session live-copies, and conditionally the per-project marker
 cleanup() {
