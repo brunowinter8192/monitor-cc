@@ -116,28 +116,29 @@ def _extract_raw_payload_fields(entry: dict) -> None:
 def _parse_log_file(log_path: Path, last_position: int) -> tuple:
     if not log_path.exists():
         return [], last_position
+    entries = []
+    last_entry = None  # for sent_meta lookback without holding full list in memory
     with open(log_path, "r", encoding="utf-8") as f:
         f.seek(last_position)
-        content = f.read()
-    if not content:
-        return [], last_position
-    lines = [ln for ln in content.split("\n") if ln.strip()]
-    entries = []
-    for line in lines:
-        try:
-            entry = json.loads(line)
-            if entry.get('type') == 'sent_meta':
-                if entries and entries[-1].get('request_id') == entry.get('request_id'):
-                    last = entries[-1]
-                    last['tools_count'] = entry.get('sent_tools_count', last.get('tools_count'))
-                    last['tools_hash'] = entry.get('sent_tools_hash', last.get('tools_hash'))
-                    last['sent_cache_breakpoints'] = entry.get('sent_cache_breakpoints', {})
+        for line in f:
+            line = line.strip()
+            if not line:
                 continue
-            _extract_raw_payload_fields(entry)
-            entries.append(entry)
-        except json.JSONDecodeError:
-            pass
-    return entries, log_path.stat().st_size
+            try:
+                entry = json.loads(line)
+                if entry.get('type') == 'sent_meta':
+                    if last_entry is not None and last_entry.get('request_id') == entry.get('request_id'):
+                        last_entry['tools_count'] = entry.get('sent_tools_count', last_entry.get('tools_count'))
+                        last_entry['tools_hash'] = entry.get('sent_tools_hash', last_entry.get('tools_hash'))
+                        last_entry['sent_cache_breakpoints'] = entry.get('sent_cache_breakpoints', {})
+                    continue
+                _extract_raw_payload_fields(entry)
+                entries.append(entry)
+                last_entry = entry
+            except json.JSONDecodeError:
+                pass
+        new_position = f.tell()
+    return entries, new_position
 
 # Read new proxy log entries for the monitored project, returning (entries, new_position)
 def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
