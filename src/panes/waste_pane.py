@@ -29,6 +29,9 @@ WASTE_THRESHOLD_DEFAULT = 3.0
 CMD_MAX_LINES = 20
 OUT_MAX_LINES = 10
 
+# Maximum matched pairs retained across opus + worker logs; oldest dropped on overflow
+_WASTE_PAIRS_CAP = 5000
+
 # Module state
 waste_threshold: float = WASTE_THRESHOLD_DEFAULT
 _waste_above: List[Pair] = []
@@ -36,8 +39,8 @@ waste_expand_states: Dict[int, bool] = {}
 waste_line_map: Dict[int, int] = {}
 waste_hover_row: Optional[int] = None
 waste_scroll_offset: int = 0
-_waste_all_events: List[dict] = []
-_waste_worker_all_events: List[dict] = []
+_waste_all_pairs: Dict[str, Pair] = {}
+_waste_total_pairs_seen: int = 0
 _waste_worker_log_positions: Dict[str, int] = {}
 _waste_log_path: Optional[Path] = None
 _waste_log_position: int = 0
@@ -54,7 +57,7 @@ def run_waste_loop() -> None:
     global waste_threshold, waste_expand_states, waste_line_map, waste_hover_row
     global waste_scroll_offset, _waste_log_path, _waste_log_position
     global _last_project_filter, _waste_above, _monitor_start_ts
-    global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
+    global _waste_all_pairs, _waste_total_pairs_seen, _waste_worker_log_positions
     global _strip_by_tool_result_id
 
     _monitor_start_ts = time.time()
@@ -198,37 +201,53 @@ def _get_worker_from_session_file(session_file: str) -> str:
     return stem.replace('api_requests_worker_', '').rsplit('_', 1)[0]
 
 
-# Rebuild _waste_above and _strip_by_tool_result_id from all accumulated events
+# Filter and sort _waste_all_pairs into _waste_above based on current threshold
 def _rebuild_above() -> None:
-    global _waste_above, _strip_by_tool_result_id
-    events = _waste_all_events + _waste_worker_all_events
-    if not events:
-        _waste_above = []
-        _strip_by_tool_result_id = {}
-        return
-    all_pairs = list(pairs(events))
+    global _waste_above
     _waste_above = sorted(
-        [p for p in all_pairs
+        [p for p in _waste_all_pairs.values()
          if p.ratio >= waste_threshold
          and not any(ex in p.tu.name for ex in RATIO_EXCLUDED_TOOLS)],
         key=lambda p: p.tu.timestamp,
     )
-    _strip_by_tool_result_id = build_tool_result_strip_lookup(events)
 
 
-# Read new proxy entries, rebuild waste_pairs above threshold; returns True if data changed
+# Merge pairs and strip data from new raw events into _waste_all_pairs; return True if any pair added
+def _merge_new_events(new_events: list) -> bool:
+    global _waste_all_pairs, _strip_by_tool_result_id, _waste_total_pairs_seen
+    if not new_events:
+        return False
+    changed = False
+    for pair in pairs(new_events):
+        if pair.tu.id not in _waste_all_pairs:
+            _waste_all_pairs[pair.tu.id] = pair
+            _waste_total_pairs_seen += 1
+            changed = True
+    for tid, strip_data in build_tool_result_strip_lookup(new_events).items():
+        if tid not in _strip_by_tool_result_id:
+            _strip_by_tool_result_id[tid] = strip_data
+    if len(_waste_all_pairs) > _WASTE_PAIRS_CAP:
+        sorted_items = sorted(_waste_all_pairs.items(), key=lambda x: x[1].tu.timestamp)
+        drop_n = len(_waste_all_pairs) - _WASTE_PAIRS_CAP
+        for k, _ in sorted_items[:drop_n]:
+            del _waste_all_pairs[k]
+            _strip_by_tool_result_id.pop(k, None)
+    return changed
+
+
+# Read new proxy entries, merge pairs, rebuild waste_above; returns True if data changed
 def _refresh_waste_data(project_filter: Optional[str]) -> bool:
     global _waste_log_path, _waste_log_position, _last_project_filter, _waste_above
     global waste_expand_states, waste_scroll_offset, waste_hover_row, _monitor_start_ts
-    global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
+    global _waste_all_pairs, _waste_total_pairs_seen, _waste_worker_log_positions
     global _strip_by_tool_result_id
 
     log_path = find_proxy_log_path(project_filter)
 
     # Reset on project change or log file path change
     if project_filter != _last_project_filter or log_path != _waste_log_path:
-        _waste_all_events.clear()
-        _waste_worker_all_events.clear()
+        _waste_all_pairs.clear()
+        _waste_total_pairs_seen = 0
         _waste_worker_log_positions.clear()
         _waste_log_path = log_path
         _waste_log_position = 0
@@ -250,8 +269,8 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
         return False
     if file_size < _waste_log_position:
         _waste_log_position = 0
-        _waste_all_events.clear()
-        _waste_worker_all_events.clear()
+        _waste_all_pairs.clear()
+        _waste_total_pairs_seen = 0
         waste_expand_states.clear()
         waste_scroll_offset = 0
 
@@ -259,13 +278,9 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
     new_events, new_position = _read_new_events(log_path, _waste_log_position)
     if new_events:
         _waste_log_position = new_position
-        # Filter out events older than session start, then accumulate.
-        # pairs() deduplicates by first occurrence, so each ToolUse gets
-        # the timestamp of its first API call — not the latest.
         new_events = [e for e in new_events
                       if not e.get('timestamp') or _iso_to_float(e['timestamp']) >= _monitor_start_ts]
-        if new_events:
-            _waste_all_events.extend(new_events)
+        if new_events and _merge_new_events(new_events):
             data_changed = True
 
     # Scan worker proxy logs inline: scan_worker_logs from parser.py strips raw_payload
@@ -282,8 +297,7 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
                 _waste_worker_log_positions[str(wlog)] = w_pos
                 w_events = [e for e in w_events
                             if not e.get('timestamp') or _iso_to_float(e['timestamp']) >= _monitor_start_ts]
-                if w_events:
-                    _waste_worker_all_events.extend(w_events)
+                if w_events and _merge_new_events(w_events):
                     data_changed = True
 
     if not data_changed:
@@ -321,7 +335,7 @@ def _format_waste_pane(pane_height: int, pane_width: int) -> str:
     all_keys: List[Optional[int]] = []
 
     if not _waste_above:
-        if not _waste_all_events and not _waste_worker_all_events:
+        if _waste_total_pairs_seen == 0:
             if _waste_log_path is None:
                 msg = 'No project filter — start monitor with --project.'
             else:
