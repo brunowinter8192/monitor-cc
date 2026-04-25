@@ -323,6 +323,23 @@ Details + Experimente + Paths-Forward: `decisions/OldThemes/tokenizer_baseline.m
 - Claude Code Updates könnten cache_control Handling ändern (z.B. mehr als 2 eigene Breakpoints) — `_strip_all_cache_control` entfernt alles, daher robust gegen Änderungen
 - Global Rules Caching: `scope: "global"` auf eigenen System-Blöcken verifizieren — cross-session Cache-Hit testen (gleiche Rules, neue Session → CR statt CC?)
 
+## Pane RAM (offenes Thema, Session 2026-04-25)
+
+`_parse_log_file` in `src/proxy_display/parser.py` ist seit 2026-04-25 streaming (`for line in f` statt `f.read()`). Eliminiert die ~358 MB Single-String-Buffer-Allocation beim ersten Read. Partial Win: warnings_pane RSS -360 MB live verifiziert.
+
+**Bekannte Limitierung — nicht durch Streaming gelöst:** jedes proxy-log Entry enthält `raw_payload.messages` als KUMULATIVE Conversation. Entry #N hat alle N vorherigen Messages. Damit ist die in-Memory Total-Größe der parsed entries O(N²) bezogen auf API-Calls — unabhängig davon ob mit `f.read()` oder line-by-line geladen. Bei einer 358 MB Source-File erzeugt `_parse_log_file` ~1.5-2 GB Python-Object-Heap, plus pymalloc gibt die Pages nach Free nicht ans OS zurück.
+
+Auch der pane-RAM Cap-Versuch von 2026-04-25 (waste_pane: `_waste_all_pairs` Dict mit `_strip_by_tool_result_id`-Akkumulation, cap 5000; warnings: cap 1000/500/100) wurde reverted (commit f50071c). Die Cap-Logik selber war korrekt aber sie bekämpft den Steady-State, nicht den Peak — und weil Pair-Objects mehr live-references halten als das alte Events-List, hat der „Fix" die waste-Pane RSS sogar von 1.2 GB auf 3.0 GB hochgetrieben.
+
+Nicht-getestete Angles für RAM 2.0 (Bead Monitor_CC-lhf):
+- Strip-on-parse: aus jeder geparsten Entry außer der letzten den `raw_payload.messages` Block droppen → O(N²) → O(N).
+- Subprocess parse-and-extract Pattern: parsen + extrahieren in einem Child, IPC nur die kleine extrahierte Datenstruktur, Child-Exit gibt Pages ans OS zurück.
+- mmap statt `open(...).read()` falls weiterhin gebraucht.
+- ijson für inkrementelles JSON-Streaming.
+- mitmproxy `flow.response.stream = True` im `responseheaders` hook unseres eigenen Addons (wir schreiben Bodies in JSONL, brauchen den RAM-Buffer nach Write nicht).
+
+Diagnose-Tools die wir bei der missglückten 1. Iteration nicht angepackt haben — gehört vor jeder weiteren Code-Aktion auf RAM-Front: `tracemalloc`, `gc.get_objects()` + `Counter`-by-class, `gc.get_referrers()`-walk, `memory_profiler` mit `@profile`. Vorbild: mitmproxy Issue #4456 (siehe `sources/RAM_research_2026-04-25.md`).
+
 ## Quellen
 
 - Anthropic API Docs: Prompt Caching (cache_control Semantik, Breakpoint-Limits)

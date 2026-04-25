@@ -21,6 +21,7 @@ from src.input import disable_mouse_clicks
 from src.input import read_mouse_event       # parse \033[<b;col;rowM → (button, col, row)
 from src.input import resolve_parent_key     # hover_row → canonical parent key in line_map
 from src.input import copy_to_clipboard      # copy text to system clipboard via pbcopy
+from src.input import wait_for_input         # block until stdin readable OR timeout — event-driven sleep replacement
 
 # Rules block rendering (ui_mode.py)
 from src.input import format_rules_block        # render active rules as ANSI block
@@ -28,10 +29,10 @@ from src.input import format_rules_block        # render active rules as ANSI bl
 
 ## Modules
 
-### click_handler.py (142 LOC)
+### click_handler.py (150 LOC)
 
-**Purpose:** Low-level stdin handling — sets terminal to raw mode, reads unbuffered keypresses and multi-byte SGR mouse sequences, enables/disables mouse tracking modes. Also provides `resolve_parent_key(line_map, hover_row)` (walk hover_row down to nearest mapped key) and `copy_to_clipboard(text)` (pipe to pbcopy) used by every pane's `y`-hotkey handler.
-**Reads:** stdin file descriptor via `os.read(fd, 1)` (unbuffered, bypasses Python IO layer).
+**Purpose:** Low-level stdin handling — sets terminal to raw mode, reads unbuffered keypresses and multi-byte SGR mouse sequences, enables/disables mouse tracking modes. Also provides `resolve_parent_key(line_map, hover_row)` (walk hover_row down to nearest mapped key), `copy_to_clipboard(text)` (pipe to pbcopy) used by every pane's `y`-hotkey handler, and `wait_for_input(timeout)` (block on `select.select` for stdin or timeout, fallback to `time.sleep` if stdin not raw) — used in every pane's main loop instead of fixed `time.sleep` so input wakes the loop immediately.
+**Reads:** stdin file descriptor via `os.read(fd, 1)` (unbuffered, bypasses Python IO layer); `select.select` for both `read_keypress` (timeout=0) and `wait_for_input` (caller-provided timeout).
 **Writes:** stdout (escape sequences for mouse mode enable/disable only); terminal mode via `termios`; clipboard via `pbcopy` subprocess.
 **Called by:** `core/monitor.py`, `panes/token_pane.py`, `panes/rules_pane.py`, `panes/warnings_pane.py` (lazy), `panes/waste_pane.py`, `hooks/hooks_pane.py`, `workers/worker_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`.
 **Calls out:** nothing external (stdlib only: `os`, `select`, `subprocess`, `sys`, `termios`, `tty`).

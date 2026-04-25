@@ -18,6 +18,11 @@ External references used as evidence for pipeline decisions.
 | Claude Code #33414 | github.com/anthropics/claude-code/issues/33414 | FireHose monitoring feature request | pipe02 |
 | unified-cowork JSONL Spec | github.com/yjjoeathome-byte/unified-cowork | Community reverse-engineered Cowork audit.jsonl spec (related format) | pipe02 |
 | termshot | github.com/homeport/termshot | ANSI text → PNG rendering (terminal screenshots) | pipe04 |
+| mitmproxy #4456 | github.com/mitmproxy/mitmproxy/issues/4456 | Long-running mitmdump RSS growth + SIGUSR1 gc.get_objects diagnostic + flow.response.stream pattern | pipe05 (RAM) |
+| mitmproxy http-stream-simple | github.com/mitmproxy/mitmproxy/blob/main/examples/addons/http-stream-simple.py | 15-LOC reference: enable response streaming for ALL flows | pipe05 (RAM) |
+| textual #6381 | github.com/Textualize/textual/issues/6381 | Python gen2 GC pause stutters TUI render — gc.disable() workaround pattern | pipe04 (display) |
+| glances #1447 | github.com/nicolargo/glances/issues/1447 | Long-running monitor RSS growth — memory_profiler + library-swap + --disable-history architectural option | pipe05 (RAM) |
+| sources/RAM_research_2026-04-25.md | local | Synthesis: mitmproxy/textual/glances findings + 5 action-items for RAM investigation 2.0 | pipe05 (RAM) |
 | claudeoo | github.com/monk1337/claudeoo | SSE stream interceptor for accurate token counts (solves #27361 undercount) | pipe02, pipe03 |
 | better-ccusage | github.com/cobra91/better-ccusage | Post-hoc JSONL parser with session block aggregation, multi-provider | pipe02, pipe03 |
 | ccusage | github.com/ryoppippi/ccusage | 5h billing block ceiling, session boundary detection, hash-based dedup, dual token naming convention | pipe02, pipe03 |

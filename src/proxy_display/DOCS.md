@@ -60,9 +60,9 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### parser.py (226 LOC)
+### parser.py (227 LOC)
 
-**Purpose:** Read and parse proxy log JSONL files — extract rich fields from `raw_payload` (system blocks, tools, messages, schema warnings) into flat entry dicts, then discard raw payload to save memory.
+**Purpose:** Read and parse proxy log JSONL files — extract rich fields from `raw_payload` (system blocks, tools, messages, schema warnings) into flat entry dicts, then discard raw payload to save memory. `_parse_log_file` reads STREAMING line-by-line via `for line in f` (no `f.read()` peak) and uses `f.tell()` after the loop for the new position (avoids TOCTOU race with proxy writer adding lines mid-read). The `sent_meta` lookback (merge `sent_*` fields into the previous entry) is implemented via a `last_entry` local variable instead of `entries[-1]`. **Known open issue:** despite streaming, peak RAM is still O(N²) because each proxy entry's `raw_payload.messages` is the full cumulative conversation; building all parsed entries in memory still hits gigabytes for long sessions. Real fix needs per-entry process-and-drop or message-strip-on-parse — see Bead Monitor_CC-lhf and `sources/RAM_research_2026-04-25.md`.
 **Reads:** Proxy log JSONL file by project filter or direct path (incremental by byte position).
 **Writes:** Nothing — returns `(entry_list, new_position)`.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/panes/waste_pane.py`, `src/panes/warnings_pane.py`, `src/metadata/metadata_pane.py`
