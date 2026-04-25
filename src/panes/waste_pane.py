@@ -12,7 +12,7 @@ from ..constants import (
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
-    resolve_parent_key, copy_to_clipboard,
+    resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
 from ..proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path
 from ..utils import truncate_visible, first_word_of_call, _iso_to_float, format_worker_prefix
@@ -139,7 +139,7 @@ def run_waste_loop() -> None:
                         print(f'\033[H{header}\033[K', end='', flush=True)
                     last_output = output
 
-            time.sleep(INPUT_POLL_INTERVAL)
+            wait_for_input(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()

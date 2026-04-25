@@ -14,7 +14,7 @@ from ..panes.token_pane import build_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
-    resolve_parent_key, copy_to_clipboard,
+    resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
 
 proxy_entries: List[dict] = []
@@ -170,7 +170,7 @@ def run_proxy_loop() -> None:
                     if output:
                         print(output)
                     last_output = output
-            time.sleep(INPUT_POLL_INTERVAL)
+            wait_for_input(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()

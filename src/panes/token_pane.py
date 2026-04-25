@@ -8,7 +8,7 @@ from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
-    resolve_parent_key, copy_to_clipboard,
+    resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
 from ..format.token_format import format_cache_tracker
 from ..utils import truncate_visible
@@ -210,7 +210,7 @@ def run_tokens_loop() -> None:
                     if output:
                         print(output)
                     last_output = output
-            time.sleep(INPUT_POLL_INTERVAL)
+            wait_for_input(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()
