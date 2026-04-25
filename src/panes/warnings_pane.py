@@ -46,10 +46,6 @@ _seen_error_keys: Set = set()
 
 INDENT = '  '
 
-_TOOL_ERRORS_CAP = 1000
-_ZERO_RESULTS_CAP = 500
-_SCHEMA_WARNINGS_CAP = 100
-
 # FUNCTIONS
 
 # Load historical warnings from newest main session
@@ -408,15 +404,8 @@ def run_warnings_loop() -> None:
                 all_new_entries = new_entries + worker_entries
                 new_errors = _scan_proxy_entries_for_errors(all_new_entries)
                 tool_errors.extend(new_errors)
-                if len(tool_errors) > _TOOL_ERRORS_CAP:
-                    tool_errors = tool_errors[-_TOOL_ERRORS_CAP:]
-                    error_expand_states.clear()
-                    error_scroll_offset = 0
                 new_zero = _scan_proxy_entries_for_zero_results(all_new_entries)
                 zero_results.extend(new_zero)
-                if len(zero_results) > _ZERO_RESULTS_CAP:
-                    zero_results = zero_results[-_ZERO_RESULTS_CAP:]
-                    zero_result_expand_states.clear()
 
                 for entry in new_entries:
                     if entry.get('type') == 'schema_warning':
@@ -429,8 +418,6 @@ def run_warnings_loop() -> None:
                             'model': entry.get('model', ''),
                             'warnings': entry.get('warnings', []),
                         })
-                if len(schema_warnings) > _SCHEMA_WARNINGS_CAP:
-                    schema_warnings = schema_warnings[-_SCHEMA_WARNINGS_CAP:]
 
                 last_data_refresh = now
                 _last_refresh_ts = now
