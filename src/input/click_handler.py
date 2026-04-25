@@ -4,6 +4,7 @@ import select
 import subprocess
 import sys
 import termios
+import time
 import tty
 from typing import Any, Dict, Optional, Tuple
 
@@ -37,6 +38,13 @@ def restore_terminal() -> None:
             termios.tcsetattr(fd, termios.TCSADRAIN, _original_terminal_settings)
         except Exception:
             pass
+
+# Blocks until stdin has bytes available or timeout expires; does not read
+def wait_for_input(timeout: float) -> None:
+    if _stdin_fd >= 0:
+        select.select([_stdin_fd], [], [], timeout)
+    else:
+        time.sleep(timeout)
 
 # Reads single byte from stdin fd without blocking (bypasses Python buffering)
 def read_keypress() -> Optional[str]:

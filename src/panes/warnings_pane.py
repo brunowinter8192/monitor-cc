@@ -301,7 +301,7 @@ def run_warnings_loop() -> None:
     from ..input.click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
-        resolve_parent_key, copy_to_clipboard,
+        resolve_parent_key, copy_to_clipboard, wait_for_input,
     )
     global tool_errors, error_expand_states, error_line_map, error_hover_row
     global error_scroll_offset, _proxy_log_position, _last_project_filter
@@ -451,7 +451,7 @@ def run_warnings_loop() -> None:
                         print(output, end='', flush=True)
                         print(f"\033[H{_format_warnings_header()}\033[K", end='', flush=True)
                     last_output = output
-            time.sleep(INPUT_POLL_INTERVAL)
+            wait_for_input(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()

@@ -12,7 +12,7 @@ from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
 from ..input.click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
-    resolve_parent_key, copy_to_clipboard,
+    resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
 from ..utils import truncate_visible
 # From worker_format.py: Worker data extraction and block rendering
@@ -248,12 +248,12 @@ def run_workers_loop() -> None:
                     if output:
                         print(output)
                     last_output = output
-                time.sleep(INPUT_POLL_INTERVAL)
+                wait_for_input(INPUT_POLL_INTERVAL)
             except Exception:
                 with open('/tmp/monitor_cc_error.log', 'a') as _f:
                     _f.write(f"\n[{datetime.datetime.now().isoformat()}] workers_pane error:\n")
                     traceback.print_exc(file=_f)
-                time.sleep(INPUT_POLL_INTERVAL)
+                wait_for_input(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()

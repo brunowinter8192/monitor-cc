@@ -15,7 +15,7 @@ from ..hooks import parse_new_hook_entries, filter_by_project, filter_by_timesta
 from ..input.click_handler import (
     read_keypress, parse_digit_key, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
-    resolve_parent_key, copy_to_clipboard,
+    resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
 
 active_rules: Dict[str, set] = {'project': set(), 'global': set()}
@@ -206,7 +206,7 @@ def run_rules_loop() -> None:
                 if output:
                     print(output)
                 last_output = output
-            time.sleep(INPUT_POLL_INTERVAL)
+            wait_for_input(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()
