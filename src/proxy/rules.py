@@ -13,6 +13,7 @@ from .strip_sr import (
     _strip_system_reminder,
     _strip_user_interrupt_sr,
     _strip_pyright_diagnostics,
+    _IMP_LINE_RE,
 )
 from .content_strip import (
     _message_has_rejection,
@@ -86,8 +87,6 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     stripped_msg_indices = []
     stripped_msg_originals = {}
     stripped_msg_removed = {}
-    _tag_pat = re.compile(r'(?m)^<task-notification>.*?</task-notification>', re.DOTALL)
-    _pm_pat = re.compile(r'(?m)^<system-reminder>\s*Plan mode.*?</system-reminder>', re.DOTALL)
     for idx, msg in enumerate(messages_to_process):
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
             old_content = msg.get("content", "")
@@ -100,30 +99,14 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                     stripped_msg_originals[idx] = old_content
                     stripped_msg_indices.append(idx)
                     modifications.append("removed_plan_mode_sr")
-                    if isinstance(old_content, str):
-                        stripped_msg_removed[idx] = _pm_pat.findall(old_content)
-                    elif isinstance(old_content, list):
-                        stripped_msg_removed[idx] = [
-                            b.get("text", "") for b in old_content
-                            if isinstance(b, dict) and "Plan mode is active" in b.get("text", "")
-                        ]
-                    else:
-                        stripped_msg_removed[idx] = []
+                    stripped_msg_removed[idx] = _find_system_reminder_blocks(old_content, "Plan mode")
                     changed = True
             else:
                 new_messages.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
                 stripped_msg_originals[idx] = old_content
                 stripped_msg_indices.append(idx)
                 modifications.append("removed_plan_mode_sr")
-                if isinstance(old_content, str):
-                    stripped_msg_removed[idx] = _pm_pat.findall(old_content)
-                elif isinstance(old_content, list):
-                    stripped_msg_removed[idx] = [
-                        b.get("text", "") for b in old_content
-                        if isinstance(b, dict) and "Plan mode is active" in b.get("text", "")
-                    ]
-                else:
-                    stripped_msg_removed[idx] = []
+                stripped_msg_removed[idx] = _find_system_reminder_blocks(old_content, "Plan mode")
                 changed = True
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<task-notification>"):
             old_content = msg.get("content", "")
@@ -176,7 +159,10 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
                 stripped_msg_originals[idx] = old_content
                 stripped_msg_indices.append(idx)
                 modifications.append("stripped_user_interrupt_sr")
-                stripped_msg_removed[idx] = _find_system_reminder_blocks(old_content, "user sent a new message while you were working")
+                _ui_blocks = _find_system_reminder_blocks(old_content, "user sent a new message while you were working")
+                stripped_msg_removed[idx] = [
+                    line for block in _ui_blocks for line in _IMP_LINE_RE.findall(block)
+                ] or _ui_blocks  # fallback: no IMPORTANT line found → record full block
                 changed = True
         elif msg.get("role") == "user" and _message_has_rejection(msg.get("content", "")):
             old_content = msg.get("content", "")
