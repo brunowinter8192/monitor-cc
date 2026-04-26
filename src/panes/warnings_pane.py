@@ -293,7 +293,7 @@ def _serialize_warnings(key) -> str:
 
 def run_warnings_loop() -> None:
     from ..core import monitor as _monitor
-    from ..proxy_display.parser import parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts, find_proxy_log_path
+    from ..proxy_display.parser import parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts, find_proxy_log_path, proxy_session_id_for_project
     from ..input.click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
@@ -400,7 +400,8 @@ def run_warnings_loop() -> None:
                         error_scroll_offset = 0
 
                 new_entries, _proxy_log_position = parse_proxy_log(project_filter, _proxy_log_position)
-                worker_entries, _worker_log_positions = scan_worker_logs(_worker_log_positions)
+                _worker_sid = proxy_session_id_for_project(project_filter) if project_filter else ''
+                worker_entries, _worker_log_positions = scan_worker_logs(_worker_log_positions, _worker_sid)
                 all_new_entries = new_entries + worker_entries
                 new_errors = _scan_proxy_entries_for_errors(all_new_entries)
                 tool_errors.extend(new_errors)

@@ -14,7 +14,7 @@ from ..input.click_handler import (
     enable_mouse, disable_mouse, read_mouse_event,
     resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
-from ..proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path
+from ..proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_path, proxy_session_id_for_project
 from ..utils import truncate_visible, first_word_of_call, _iso_to_float, format_worker_prefix
 from ..format.strip_marker import highlight_stripped, build_tool_result_strip_lookup
 from .waste_forensics import pairs, format_timestamp_local, Pair
@@ -190,12 +190,16 @@ def _read_new_events(log_path: Path, position: int) -> tuple:
     return events, new_position
 
 
-# Extract worker_name from proxy log session_file basename (api_requests_worker_{name}_{ts}.jsonl)
+# Extract worker_name from proxy log session_file basename (api_requests_worker_[{hash}_]{name}_{ts}.jsonl)
 def _get_worker_from_session_file(session_file: str) -> str:
     if not session_file or 'api_requests_worker_' not in session_file:
         return ''
     stem = session_file.replace('.jsonl', '')
-    return stem.replace('api_requests_worker_', '').rsplit('_', 1)[0]
+    remaining = stem.replace('api_requests_worker_', '')
+    # Strip project_session_id prefix if present (8 lowercase hex chars + '_')
+    if len(remaining) > 9 and remaining[8] == '_' and all(c in '0123456789abcdef' for c in remaining[:8]):
+        remaining = remaining[9:]
+    return remaining.rsplit('_', 1)[0]
 
 
 # Rebuild _waste_above and _strip_by_tool_result_id from all accumulated events
@@ -275,7 +279,9 @@ def _refresh_waste_data(project_filter: Optional[str]) -> bool:
         root = str(Path(__file__).resolve().parent.parent)
     logs_dir = Path(root) / 'src' / 'logs'
     if logs_dir.exists():
-        for wlog in logs_dir.glob('api_requests_worker_*.jsonl'):
+        session_id = proxy_session_id_for_project(project_filter) if project_filter else ''
+        wlog_pattern = f'api_requests_worker_{session_id}_*.jsonl' if session_id else 'api_requests_worker_*.jsonl'
+        for wlog in logs_dir.glob(wlog_pattern):
             pos = _waste_worker_log_positions.get(str(wlog), 0)
             w_events, w_pos = _read_new_events(wlog, pos)
             if w_events:
