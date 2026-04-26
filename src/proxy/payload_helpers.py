@@ -35,6 +35,30 @@ def _find_system_reminder_blocks(content, marker: str) -> list:
     return []
 
 
+# Extract ALL <system-reminder>...</system-reminder> blocks from str or list content (incl. tool_result)
+def _find_all_system_reminder_blocks(content) -> list:
+    pat = re.compile(r'(?m)^<system-reminder>.*?</system-reminder>', re.DOTALL)
+    if isinstance(content, str):
+        return pat.findall(content)
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
+                result.extend(pat.findall(block.get("text", "")))
+            elif block.get("type") == "tool_result":
+                inner = block.get("content", "")
+                if isinstance(inner, str):
+                    result.extend(pat.findall(inner))
+                elif isinstance(inner, list):
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get("type") == "text":
+                            result.extend(pat.findall(sub.get("text", "")))
+        return result
+    return []
+
+
 # Extract <task-notification>...</task-notification> blocks from str or list content (incl. tool_result)
 def _find_task_notification_blocks(content) -> list:
     pat = re.compile(r'(?m)^<task-notification>.*?</task-notification>', re.DOTALL)
