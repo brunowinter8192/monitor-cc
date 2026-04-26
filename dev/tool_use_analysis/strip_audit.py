@@ -34,20 +34,7 @@ from proxy.strip_vocab import (
     legend_markdown, STRIP_RULE_CODES,
 )
 
-# SR templates — mirrors src/proxy/strip_sr.py:_SR_TEMPLATES exactly
-# Kept locally for _check_tags LEAK/SUSPECT template matching (audit-internal)
-_SR_TEMPLATES = {
-    'task-tools-nag':      ("The task tools haven't been used recently",                'full'),
-    'pyright-diagnostics': ('<new-diagnostics>',                                        'full'),
-    'deferred-tools':      ('The following deferred tools are now available via ToolSearch', 'full'),
-    'user-interrupt':      ('The user sent a new message while you were working:',      'partial'),
-    'system-notification': ('[SYSTEM NOTIFICATION - NOT USER INPUT]',                   'full'),
-    'file-modified':       ('Note: ',                                                   'full'),
-    'claudemd-contents':   ('Contents of ',                                             'full'),
-    'date-changed':        ('The date has changed.',                                    'full'),
-    'skills-available':    ('The following skills are available',                       'full'),
-    'plan-mode':           ('Plan mode ',                                               'full'),
-}
+from proxy.strip_sr import _SR_TEMPLATES, _PRESERVE_PREAMBLE
 
 # Template ID → rule name as it appears in modifications[]
 _TEMPLATE_TO_RULE = {
@@ -139,9 +126,13 @@ def _build_rule_catalog():
         '| rule (modifications name) | template_id | identifier (startswith) | mode |',
         '|---|---|---|---|',
     ]
-    for tid, (identifier, mode) in _SR_TEMPLATES.items():
+    for tid, spec in _SR_TEMPLATES.items():
+        identifier, mode = spec[0], spec[1]
         rule = _TEMPLATE_TO_RULE[tid]
-        ident_display = identifier[:70] + ('…' if len(identifier) > 70 else '')
+        if isinstance(identifier, list):
+            ident_display = ' | '.join(i[:35] for i in identifier)
+        else:
+            ident_display = identifier[:70] + ('…' if len(identifier) > 70 else '')
         lines.append(f'| `{rule}` | `{tid}` | `{ident_display}` | {mode} |')
     lines += [
         '',
@@ -309,6 +300,9 @@ def _check_tags(entry, curr_mods_ctr):
                 inner = text[after:close_idx].strip()
             else:
                 inner = None
+            if inner is not None and inner.startswith(_PRESERVE_PREAMBLE):
+                pos = after
+                continue   # skip preserved claudeMD context blocks — not a leak/suspect
             head_text = text[after:after + 80].strip()
             code = _attribute_sr_inner(inner if inner is not None else head_text)
             dedup_key = (code, head_text[:30])
@@ -416,9 +410,14 @@ def _extract_msg_texts(messages):
 
 # Match SR inner text against templates; returns (template_id, mode) or (None, None)
 def _match_template(inner):
-    for tid, (identifier, mode) in _SR_TEMPLATES.items():
-        if inner.startswith(identifier):
-            return tid, mode
+    if inner.startswith(_PRESERVE_PREAMBLE):
+        return None, None   # intentionally preserved — not a strip candidate
+    for tid, spec in _SR_TEMPLATES.items():
+        identifiers = spec[0] if isinstance(spec[0], list) else [spec[0]]
+        mode = spec[1]
+        for identifier in identifiers:
+            if inner.startswith(identifier):
+                return tid, mode
     return None, None
 
 

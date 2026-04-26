@@ -6,23 +6,11 @@ from ..constants import (
 )
 from ..proxy.strip_vocab import attribute_chunk, classify_req
 
-_SUSPECT_TAGS = [
-    ('<new-diagnostics>', 'ND'),
-    ('<persisted-output>', 'PO'),
-    ('<system-reminder>', 'SR'),
-    ('<task-notification>', 'TN'),
-]
 _SUSPECT_TAG_RE = re.compile(
     r'(<(?:new-diagnostics|persisted-output|system-reminder|task-notification)>)'
 )
 
 # FUNCTIONS
-
-# Return sorted list of suspect tag labels found in text
-def _detect_suspect_tags(text: str) -> list[str]:
-    if not text:
-        return []
-    return [label for tag, label in _SUSPECT_TAGS if tag in text]
 
 # Aggregate tag labels for entries where a strip rule fired in the delta range
 def _aggregate_entry_tags(entry: dict) -> list[str]:
