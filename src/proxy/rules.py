@@ -285,9 +285,32 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
             if text3 != block3.get("text", ""):
                 new_system[3] = {**block3, "text": text3}
 
+    # Post-sleep Bash cap: reduce effort + cap max_tokens to minimize thinking on ACK turns.
+    # Keeps thinking.type=adaptive (no mode switch → no message cache break).
+    _post_sleep = False
+    for _msg in reversed(payload.get('messages', [])):
+        if _msg.get('role') == 'assistant':
+            _content = _msg.get('content', [])
+            if isinstance(_content, list):
+                for _blk in _content:
+                    if (isinstance(_blk, dict) and _blk.get('type') == 'tool_use'
+                            and _blk.get('name') == 'Bash'
+                            and _blk.get('input', {}).get('run_in_background') is True
+                            and re.match(r'^sleep\s+\d+', _blk.get('input', {}).get('command', ''))):
+                        _post_sleep = True
+                        break
+            break
+    if _post_sleep:
+        modifications.append('capped_post_sleep')
+        changed = True
+
     if not changed:
         return payload, modifications, None, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
     modified = dict(payload)
     modified["messages"] = new_messages
     modified["system"] = new_system
+    if _post_sleep:
+        _cfg = modified.get("output_config") or {}
+        modified["output_config"] = {**_cfg, "effort": "low"}
+        modified["max_tokens"] = 2000
     return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
