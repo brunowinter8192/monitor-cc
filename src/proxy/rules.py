@@ -24,6 +24,7 @@ from .content_strip import (
 )
 from .payload_helpers import (
     _find_system_reminder_blocks,
+    _find_all_system_reminder_blocks,
     _find_task_notification_blocks,
     _strip_blocked_tool_references,
     _content_contains,
@@ -252,6 +253,9 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
             if _fp_idx not in stripped_msg_indices:
                 stripped_msg_indices.append(_fp_idx)
                 stripped_msg_originals[_fp_idx] = old_content
+            remaining = _find_all_system_reminder_blocks(new_content)
+            removed = stripped_msg_removed.setdefault(_fp_idx, [])
+            removed.extend(sr for sr in _find_all_system_reminder_blocks(old_content) if sr not in remaining)
             changed = True
 
     system = payload.get("system", [])
