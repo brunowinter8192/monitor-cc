@@ -21,6 +21,10 @@ def _chars_to_tokens(chars: int) -> int:
 def _proxy_session_id_for_project(project_path: str) -> str:
     return hashlib.md5(project_path.encode()).hexdigest()[:8]
 
+# Public wrapper — used by panes to build project-scoped worker log globs
+def proxy_session_id_for_project(project_path: str) -> str:
+    return _proxy_session_id_for_project(project_path)
+
 # Extract analysis fields from raw_payload into entry dict, then delete raw_payload to save memory
 def _extract_raw_payload_fields(entry: dict) -> None:
     raw = entry.get('raw_payload', {})
@@ -205,8 +209,8 @@ def find_proxy_log_path(project_filter: Optional[str]) -> Optional[Path]:
             pass
     return Path(root) / "src" / "logs" / f"api_requests_{log_id}.jsonl"
 
-# Scan all worker proxy logs incrementally, tagging each entry with _worker_name
-def scan_worker_logs(last_positions: dict) -> tuple:
+# Scan worker proxy logs for active project (project_session_id scopes the glob); all logs if empty
+def scan_worker_logs(last_positions: dict, project_session_id: str = '') -> tuple:
     root = os.environ.get("MONITOR_CC_ROOT", "")
     if not root:
         root = str(Path(__file__).parent.parent.parent)
@@ -215,9 +219,14 @@ def scan_worker_logs(last_positions: dict) -> tuple:
         return [], last_positions
     all_entries: list = []
     updated_positions = dict(last_positions)
-    for log_path in logs_dir.glob("api_requests_worker_*.jsonl"):
-        stem = log_path.stem  # api_requests_worker_{name}_{ts}
-        worker_name = stem.replace('api_requests_worker_', '').rsplit('_', 1)[0]
+    pattern = f"api_requests_worker_{project_session_id}_*.jsonl" if project_session_id else "api_requests_worker_*.jsonl"
+    for log_path in logs_dir.glob(pattern):
+        stem = log_path.stem  # api_requests_worker_[{hash}_]{name}_{ts}
+        remaining = stem.replace('api_requests_worker_', '')
+        # Strip project_session_id prefix if present (8-char hex + '_')
+        if project_session_id and remaining.startswith(project_session_id + '_'):
+            remaining = remaining[len(project_session_id) + 1:]
+        worker_name = remaining.rsplit('_', 1)[0]
         pos = last_positions.get(str(log_path), 0)
         entries, new_pos = _parse_log_file(log_path, pos)
         for entry in entries:
