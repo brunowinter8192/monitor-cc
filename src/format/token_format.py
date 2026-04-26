@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from typing import Optional
-from ..constants import GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET
+from ..constants import RED, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET
 # FUNCTIONS
 # Format token count as compact "Xk" or "X.Xk" string
 def _format_k(n: int) -> str:
@@ -9,10 +9,19 @@ def _format_k(n: int) -> str:
     return str(n)
 
 # Format a single API call line for cache tracker (wide or compact based on pane width)
-def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False) -> str:
+def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False, sig_chars: int = 0) -> str:
     cc_broken = cc > cr
     bg = LIGHT_RED_BG if cc_broken else ''
-    think_indicator = ' 🧠' if has_thinking else ''
+    if has_thinking:
+        if sig_chars > 8000:
+            think_color = RED
+        elif sig_chars > 2000:
+            think_color = YELLOW
+        else:
+            think_color = GREEN
+        think_indicator = f' {think_color}🧠{_format_k(sig_chars)}{SOFT_RESET}'
+    else:
+        think_indicator = ''
     if wide:
         return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}"
     return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}"
@@ -75,7 +84,8 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
 
             request_num += 1
             has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
-            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking)
+            sig_chars = sum(b.get('sig_chars', 0) for b in call.get('content_blocks', []) if b.get('type') == 'thinking')
+            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking, sig_chars)
             all_lines.append(call_line)
             line_keys.append(key)
 
@@ -98,14 +108,9 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
                             all_lines.append(f"    {GREEN}{tool_name}{SOFT_RESET}")
                             line_keys.append(None)
                     elif bt == 'thinking':
-                        think_out = block.get('output_tokens')
-                        think_chars = block.get('chars', 0)
-                        if think_chars and think_out:
-                            all_lines.append(f"    {PASTEL_ORANGE}thinking ({think_chars:,}c, {_format_k(think_out)} out){SOFT_RESET}")
-                        elif think_out:
-                            all_lines.append(f"    {PASTEL_ORANGE}thinking ({_format_k(think_out)} out){SOFT_RESET}")
-                        else:
-                            all_lines.append(f"    {PASTEL_ORANGE}thinking{SOFT_RESET}")
+                        sc = block.get('sig_chars', 0)
+                        sig_str = f"sig: {_format_k(sc)}" if sc else "sig: —"
+                        all_lines.append(f"    {PASTEL_ORANGE}thinking ({sig_str}){SOFT_RESET}")
                         line_keys.append(None)
                     elif bt == 'text':
                         preview = block.get('preview', '')

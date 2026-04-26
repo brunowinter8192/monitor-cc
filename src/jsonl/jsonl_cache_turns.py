@@ -73,7 +73,8 @@ def extract_cache_turns(messages: list) -> list:
                     bt = block.get('type', '')
                     if bt == 'thinking':
                         think_chars = len(block.get('thinking', ''))
-                        blocks.append({'type': 'thinking', 'output_tokens': output_tokens, 'chars': think_chars})
+                        sig_chars = len(block.get('signature', ''))
+                        blocks.append({'type': 'thinking', 'output_tokens': output_tokens, 'chars': think_chars, 'sig_chars': sig_chars})
                     elif bt == 'tool_use':
                         input_data = block.get('input', {})
                         blocks.append({'type': 'tool_use', 'tool_name': block.get('name', 'Unknown'), 'preview': input_data})
@@ -106,6 +107,7 @@ def extract_cache_turns(messages: list) -> list:
                         seen_types.add(sig)
                         if b['type'] == 'thinking':
                             current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + b.get('chars', 0)
+                            current_turn['thinking_sig_chars'] = current_turn.get('thinking_sig_chars', 0) + b.get('sig_chars', 0)
             else:
                 current_turn['api_calls'].append({
                     'cache_read': cache_read,
@@ -117,6 +119,7 @@ def extract_cache_turns(messages: list) -> list:
                     '_input_key': input_key,
                 })
                 current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + sum(b.get('chars', 0) for b in blocks if b['type'] == 'thinking')
+                current_turn['thinking_sig_chars'] = current_turn.get('thinking_sig_chars', 0) + sum(b.get('sig_chars', 0) for b in blocks if b['type'] == 'thinking')
 
     for turn in turns:
         for call in turn.get('api_calls', []):
