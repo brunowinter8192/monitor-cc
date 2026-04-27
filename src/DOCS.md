@@ -20,9 +20,9 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `input/` | Keyboard/mouse stdin handling + rules block renderer | 215 | 2 |
 | `hooks/` | Hook log pipeline (parse → filter → enrich → display) | 497 | 4 |
 | `jsonl/` | JSONL parsing + tool call extraction | 518 | 3 |
-| `workers/` | Workers pane (tmux session discovery + status display) | 501 | 3 |
+| `workers/` | Workers pane (tmux session discovery + status display) | 522 | 3 |
 | `metadata/` | Metadata pane (API config state from proxy log) | 309 | 2 |
-| `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering) | 1644 | 8 |
+| `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering) | 1651 | 8 |
 | `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2474 | 16 |
 
 ## Root-Level Files
@@ -33,7 +33,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `utils.py` | 91 | Same — `format_timestamp` + `visual_line_count` used everywhere |
 | `session_finder.py` | 85 | Single module, no subpackage warranted |
 | `startup.py` | 47 | Single module; only called by `workflow.py` |
-| `tmux_launcher.py` | 178 | Single module; only called by `workflow.py` |
+| `tmux_launcher.py` | 297 | Single module; only called by `workflow.py` (mode `all` → `launch_split_screen`; mode `restart-panes` → `restart_panes`, the Ctrl+R self-heal handler) |
 | `proxy_addon.py` | 31 | Thin shim — `claude_proxy_start.sh` copies it to `src/logs/.proxy_addon_live_<id>.py` for per-session isolation. Shim has sys.path logic that finds `src/proxy/` from both root and live-copy locations. Move would break live-copy pattern. |
 | `claude_proxy_start.sh` | 205 | Shell script — launches mitmproxy + Claude Code with proxy env |
 
