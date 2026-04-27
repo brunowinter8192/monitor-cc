@@ -177,7 +177,7 @@ def run_worker_proxy_loop() -> None:
 
                 if worker_name:
                     new_entries: list = []
-                    log_path = find_worker_proxy_log(worker_name)
+                    log_path = find_worker_proxy_log(worker_name, _monitor.active_project_filter)
                     if log_path:
                         new_entries, worker_proxy_log_position = _parse_log_file(log_path, worker_proxy_log_position)
                         worker_proxy_entries.extend(new_entries)
