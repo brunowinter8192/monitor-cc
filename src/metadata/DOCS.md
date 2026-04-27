@@ -21,7 +21,7 @@ Proxy log file → `proxy_display.parse_proxy_log` (incremental read)
 
 ## Modules
 
-### metadata_format.py (196 LOC)
+### metadata_format.py (191 LOC)
 
 **Purpose:** Format the latest proxy log entry into a multi-section ANSI display (SYSTEM, TOOLS, CONFIG, CACHE MARKERS, SESSION); tracks previous values in module-level state to highlight changes in red.
 **Reads:** Proxy log entry dict (from `proxy_display.parse_proxy_log`); `_prev_values` / `_worker_prev_values` module-level state.
@@ -31,7 +31,7 @@ Proxy log file → `proxy_display.parse_proxy_log` (incremental read)
 
 ---
 
-### metadata_pane.py (100 LOC)
+### metadata_pane.py (118 LOC)
 
 **Purpose:** Two event loops — `run_metadata_loop` for the main proxy log and `run_worker_metadata_loop` for the selected worker's proxy log; polls on `POLL_INTERVAL`, renders on change.
 **Reads:** Shared monitor state (project filter, session timestamp); worker selection file via `workers.worker_pane.get_selection_file_path()`; proxy log via `proxy_display`.

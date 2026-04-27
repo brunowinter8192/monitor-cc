@@ -60,7 +60,7 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### parser.py (227 LOC)
+### parser.py (236 LOC)
 
 **Purpose:** Read and parse proxy log JSONL files — extract rich fields from `raw_payload` (system blocks, tools, messages, schema warnings) into flat entry dicts, then discard raw payload to save memory. `_parse_log_file` reads STREAMING line-by-line via `for line in f` (no `f.read()` peak) and uses `f.tell()` after the loop for the new position (avoids TOCTOU race with proxy writer adding lines mid-read). The `sent_meta` lookback (merge `sent_*` fields into the previous entry) is implemented via a `last_entry` local variable instead of `entries[-1]`. **Known open issue:** despite streaming, peak RAM is still O(N²) because each proxy entry's `raw_payload.messages` is the full cumulative conversation; building all parsed entries in memory still hits gigabytes for long sessions. Real fix needs per-entry process-and-drop or message-strip-on-parse — see Bead Monitor_CC-lhf and `sources/RAM_research_2026-04-25.md`.
 **Reads:** Proxy log JSONL file by project filter or direct path (incremental by byte position).
@@ -70,7 +70,7 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### render_entry.py (198 LOC)
+### render_entry.py (200 LOC)
 
 **Purpose:** Render a single proxy request entry (collapsed or expanded) into display lines — shows model, message count, cache breakpoints, change warnings, delta breakdown, and flat per-message list when expanded. Used only in no-turns mode (when turns list is empty). Msg rows are non-clickable (key=None); msg-level expand was removed to keep line_map flat. Emits suspect-tag badge (⚠PO,SR,TN,ND in RED) on REQ-header when new/modified msgs contain any of the 4 tags, via `_aggregate_entry_tags` import from `render_messages`. When expanded, emits a second line with aggregated bucket signals (`INERT:X  LEAK:<TN>  SUS:<PO>`) computed via `_aggregate_req_buckets`; collapsed header unchanged. Backward walk for `prev_entry` (reference for ⚠T/⚠S) uses `format._is_standalone_entry` to skip structurally-separate candidates — ensures a sidecar or zero-context entry between two real REQs does not become the reference. Accepts optional `rendered_opus_labels: list` param; when non-None, appends `(entry_idx, num_label)` per non-haiku non-standalone opus REQ so `format.py` can post-process the list into `collision_entry_idxs` for the COLLISION_BG marker.
 **Reads:** Entry dict, all entries (for prev-entry lookup), expand states, pane width.
@@ -80,7 +80,7 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### render_turn.py (139 LOC)
+### render_turn.py (141 LOC)
 
 **Purpose:** Render all per-request rows for an expanded turn group, numbering requests and delegating system/tools/messages rendering to section modules. Emits suspect-tag badge (⚠PO,SR,TN,ND in RED) on REQ-header row when new/modified msgs contain any of the 4 tracked tag literals, via `_aggregate_entry_tags` import from `render_messages`. When a REQ is expanded, emits a second line with aggregated bucket signals (`INERT:X  IDX:N  LEAK:<TN>  SUS:<PO>`) computed via `_aggregate_req_buckets` (counter-delta semantics for INERT, mirrors strip_audit._classify_req); collapsed header unchanged. Backward walk for `prev_same` (reference for ⚠T/⚠S) uses `format._is_standalone_entry` to skip standalone candidates. Expanded-REQ downstream calls — `_aggregate_req_buckets`, `render_system_blocks`, `render_tools`, `render_messages` — all use `_section_ref = None if is_standalone else prev_same`, not the BP-anchor. This aligns the "unchanged" expand display with the ⚠T/⚠S header warning on the same reference. `prev_entry_for_delta` (BP-anchor) is preserved for the header char-delta string and the BP-anchor carry-forward, not for the expanded-block comparisons. Accepts optional `rendered_opus_labels: list` param; when non-None, appends `(entry_idx, num_label)` per non-haiku non-standalone opus REQ so `format.py` can post-process the list into `collision_entry_idxs` for the COLLISION_BG marker.
 **Reads:** Group dict, all entries, expand states, pane width.
@@ -100,7 +100,7 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### render_messages.py (235 LOC)
+### render_messages.py (228 LOC)
 
 **Purpose:** Render new/modified/removed messages for an expanded request entry — handles added messages (full block content) and diffs (content_tail), prefers `stripped_msg_removed` over `stripped_msg_originals` for stripped-message display. Per-chunk `EFF:RULE` label (e.g. `EFF:NAG`, `EFF:CMD`) is emitted on its own line above each chunk, computed via `strip_vocab.attribute_chunk`; the IDX case (indexed in smi but no chunks) appends `IDX` inline on the `[STRIPPED]` header row. Also exports `_detect_suspect_tags(text)`, `_aggregate_entry_tags(entry)` (suspect-tag badge helpers for render_turn + render_entry), and `_aggregate_req_buckets(entry, prev_entry)` — a thin delegate to `strip_vocab.classify_req` that returns the per-REQ 5-bucket signals (INERT codes, IDX msgs, LEAK/SUS signal strings) for the expanded REQ second line; semantics (chunk-diff EFFECTIVE, counter-delta INERT, smi-diff IDX, tag-scan LEAK/SUS) live in `strip_vocab`. Content rendering highlights 4 suspect tag literals with `LIGHT_RED_BG` via `_SUSPECT_TAG_RE` substitution.
 **Reads:** Entry dict, previous entry, all entries, expand states, pane width.

@@ -197,7 +197,7 @@ Eigenes tmux Pane (Window 2 "workers", Pane 2.1, rechts 50%) via `--mode subagen
 
 ### Main Pane Session-Reset (Session 11)
 
-`run_streaming_loop()` tracks `current_main_session` via `_get_newest_main_session()`. Each poll cycle checks if newest main JSONL changed. On change: resets `file_positions[newest] = 0`, clears screen (`\033[2J\033[3J\033[H`), prints `--- New session detected ---` separator. Replays new session from beginning, old session messages not repeated.
+`run_main_loop()` (formerly `run_streaming_loop()`) tracks `current_main_session` via `_get_newest_main_session()`. Each poll cycle checks if newest main JSONL changed. On change: resets `file_positions[newest] = 0`, clears screen (`\033[2J\033[3J\033[H`), prints `--- New session detected ---` separator. Replays new session from beginning, old session messages not repeated.
 
 ### print_session_status Fix (Kategorie: Display / Startup)
 
