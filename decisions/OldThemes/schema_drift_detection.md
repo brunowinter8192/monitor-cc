@@ -95,3 +95,4 @@ Erwartung: mindestens Warning "Unknown top-level keys: ['extra_new_field']". Bew
 - Commit `671ca54` — initialer Detector-Deploy
 - Bead Monitor_CC-rjs (closed 2026-04-19)
 - Shared-Rules: keine spezifische, reine Projekt-IST-Doku
+- Companion: `content_drift_detection.md` — content-side drift (SR marker × location × frequency)
