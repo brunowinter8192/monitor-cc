@@ -142,21 +142,11 @@ def _scan_entry(entry, prev, req_num):
             if not text:
                 continue
 
-            # SR scan — substring loop handles non-line-start occurrences in tool_result strings
-            pos = 0
-            while True:
-                si = text.find('<system-reminder>', pos)
-                if si == -1:
-                    break
-                after = si + len('<system-reminder>')
-                ci = text.find('</system-reminder>', after)
-                if ci != -1:
-                    inner = text[after:ci].strip()
-                else:
-                    inner = text[after:after + 500].strip()
+            # SR scan — anchored regex (mirrors proxy logic: only line-start SR blocks stripped)
+            for m in _STANDALONE_SR_RE.finditer(text):
+                inner = m.group(1).strip()
 
                 if inner.startswith(_PRESERVE_PREAMBLE):
-                    pos = after
                     continue
 
                 dedup_key = (abs_idx, layer, inner[:100])
@@ -171,8 +161,6 @@ def _scan_entry(entry, prev, req_num):
                     tc['SR'] += 1
                     if tid:
                         byp[tid] += 1
-
-                pos = after
 
             # Non-SR tag scans (TN / ND / PO)
             for tag_type, tag_str in (('TN', _TN_TAG), ('ND', _ND_TAG), ('PO', _PO_TAG)):
@@ -204,8 +192,15 @@ def _scan_entry(entry, prev, req_num):
             for cline in chunk.splitlines():
                 stripped_lines.append(f'      {cline}')
         for chunk in chunks:
-            for inner in _find_sr_inners(chunk):
-                tid, _ = _match_template(inner)
+            inners = list(_find_sr_inners(chunk))
+            if inners:
+                for inner in inners:
+                    tid, _ = _match_template(inner)
+                    if tid:
+                        cap[tid] += 1
+            else:
+                # partial-mode or fragment chunk — try direct match on raw chunk
+                tid, _ = _match_template(chunk.strip())
                 if tid:
                     cap[tid] += 1
 
