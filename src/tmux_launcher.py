@@ -1,12 +1,29 @@
 # INFRASTRUCTURE
 import hashlib
 import os
+import re
 import subprocess
 import sys
 from typing import Optional
 
 # From constants.py: Colors and config values
 from .constants import TMUX_HISTORY_LIMIT
+
+# Layout definition for self-healing pane recreation (mirrors launch_split_screen)
+# Format: [(win_idx, win_name, [(mode, split_from_or_None, pct_or_None)])]
+_WINDOW_LAYOUT = [
+    (0, 'main',    [('main',            None,            None),
+                    ('tokens',          'main',          '30%')]),
+    (1, 'proxy',   [('proxy',           None,            None),
+                    ('metadata',        'proxy',         '30%')]),
+    (2, 'rules',   [('rules',           None,            None),
+                    ('hooks',           'rules',         '50%')]),
+    (3, 'workers', [('workers',         None,            None),
+                    ('worker-proxy',    'workers',       '66%'),
+                    ('worker-metadata', 'worker-proxy',  '50%')]),
+    (4, 'debug',   [('warnings',        None,            None),
+                    ('waste',           'warnings',      '50%')]),
+]
 
 # ORCHESTRATOR
 def launch_split_screen(project_filter: Optional[str] = None, script_path: str = '') -> None:
@@ -70,7 +87,7 @@ def launch_split_screen(project_filter: Optional[str] = None, script_path: str =
     subprocess.run(["tmux", "select-window", "-t", f"{session_name}:0"])
 
     restore_global_history_limit(original_history_limit)
-    configure_tmux_session(session_name)
+    configure_tmux_session(session_name, script_path, project_arg)
 
     subprocess.run(["tmux", "attach-session", "-t", session_name])
 
@@ -117,7 +134,7 @@ def restore_global_history_limit(original_value: str) -> None:
     subprocess.run(["tmux", "set-option", "-g", "history-limit", original_value])
 
 # Configure tmux session appearance and behavior
-def configure_tmux_session(session_name: str) -> None:
+def configure_tmux_session(session_name: str, script_path: str = '', project_arg: str = '') -> None:
     subprocess.run(["tmux", "set-option", "-t", session_name, "status", "on"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-style", "bg=default"])
     subprocess.run(["tmux", "set-option", "-t", session_name, "status-left", "#{?pane_in_mode,#[fg=yellow bold] COPY #[default],#[fg=green] SCROLL #[default]}"])
@@ -161,18 +178,120 @@ def configure_tmux_session(session_name: str) -> None:
     for digit in "123456789":
         subprocess.run(["tmux", "bind-key", "-T", "copy-mode", digit, "send-keys", "-X", "cancel", "\\;", "send-keys", digit])
         subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", digit, "send-keys", "-X", "cancel", "\\;", "send-keys", digit])
-    restart_cmd = (
-        "tmux respawn-pane -k -t '#{session_name}:0.0'; "
-        "tmux respawn-pane -k -t '#{session_name}:0.1'; "
-        "tmux respawn-pane -k -t '#{session_name}:1.0'; "
-        "tmux respawn-pane -k -t '#{session_name}:1.1'; "
-        "tmux respawn-pane -k -t '#{session_name}:2.0'; "
-        "tmux respawn-pane -k -t '#{session_name}:2.1'; "
-        "tmux respawn-pane -k -t '#{session_name}:3.0'; "
-        "tmux respawn-pane -k -t '#{session_name}:3.1'; "
-        "tmux respawn-pane -k -t '#{session_name}:3.2'; "
-        "tmux respawn-pane -k -t '#{session_name}:4.0'; "
-        "tmux respawn-pane -k -t '#{session_name}:4.1'; "
-        "tmux display-message -t '#{session_name}' 'Monitor restarted'"
-    )
+    restart_cmd = f"python3 {script_path} --mode restart-panes --session '#{{session_name}}' {project_arg}"
     subprocess.run(["tmux", "bind-key", "-T", "root", "C-r", "run-shell", restart_cmd])
+
+# Build mode -> shell command mapping (mirrors launch_split_screen construction exactly)
+def _build_mode_commands(script_path: str, project_path: Optional[str]) -> dict:
+    project_arg = f"--project {project_path}" if project_path else ""
+    _monitor_root = os.environ.get('MONITOR_CC_ROOT', '') or os.path.dirname(os.path.abspath(script_path))
+    cmds = {
+        mode: f"python3 {script_path} --mode {mode} {project_arg}"
+        for mode in ('main', 'tokens', 'proxy', 'metadata', 'rules', 'hooks',
+                     'workers', 'worker-proxy', 'worker-metadata', 'warnings')
+    }
+    cmds['waste'] = f"MONITOR_CC_ROOT={_monitor_root} python3 {script_path} --mode waste {project_arg}"
+    return cmds
+
+# Parse 'list-panes -F #{pane_index}|#{pane_start_command}' output; return {mode: pane_idx_str}
+def _parse_pane_modes(list_panes_output: str) -> dict:
+    present = {}
+    for line in list_panes_output.strip().split('\n'):
+        if '|' not in line:
+            continue
+        idx, cmd = line.split('|', 1)
+        m = re.search(r'--mode\s+(\S+)', cmd)
+        if m:
+            present[m.group(1)] = idx.strip()
+    return present
+
+# Return first available pane index from list-panes output, or None
+def _first_pane_idx(list_panes_output: str) -> Optional[str]:
+    for line in list_panes_output.strip().split('\n'):
+        if '|' in line:
+            idx = line.split('|', 1)[0].strip()
+            if idx.isdigit():
+                return idx
+    return None
+
+# Self-healing Ctrl+R: recreates missing panes then respawns all surviving panes
+def restart_panes(session_name: str, project_path: Optional[str] = None, script_path: str = '') -> None:
+    """Recreate any missing panes from _WINDOW_LAYOUT, then respawn all panes.
+
+    Known limitation: when multiple panes in a window are missing simultaneously,
+    the split percentage is applied against whichever pane survives (not the original
+    source), so visual proportions may differ from the initial launch. Single-missing-
+    pane case always restores the correct size.
+    """
+    mode_cmds = _build_mode_commands(script_path, project_path)
+
+    # Get existing window indices
+    win_result = subprocess.run(
+        ["tmux", "list-windows", "-t", session_name, "-F", "#{window_index}"],
+        capture_output=True, text=True
+    )
+    existing_windows = {int(x) for x in win_result.stdout.strip().split('\n') if x.strip().isdigit()}
+
+    for win_idx, win_name, pane_specs in _WINDOW_LAYOUT:
+        if win_idx not in existing_windows:
+            # Entire window is missing — recreate from scratch
+            first_mode = pane_specs[0][0]
+            subprocess.run([
+                "tmux", "new-window", "-t", f"{session_name}:{win_idx}",
+                "-n", win_name, mode_cmds[first_mode]
+            ])
+            for mode, split_from, pct in pane_specs[1:]:
+                raw = subprocess.run(
+                    ["tmux", "list-panes", "-t", f"{session_name}:{win_idx}",
+                     "-F", "#{pane_index}|#{pane_start_command}"],
+                    capture_output=True, text=True
+                ).stdout
+                present = _parse_pane_modes(raw)
+                src = present.get(split_from) if split_from else _first_pane_idx(raw)
+                if src is not None:
+                    subprocess.run([
+                        "tmux", "split-window", "-h",
+                        "-t", f"{session_name}:{win_idx}.{src}",
+                        "-l", pct, mode_cmds[mode]
+                    ])
+        else:
+            # Window exists — recreate only the missing panes
+            raw = subprocess.run(
+                ["tmux", "list-panes", "-t", f"{session_name}:{win_idx}",
+                 "-F", "#{pane_index}|#{pane_start_command}"],
+                capture_output=True, text=True
+            ).stdout
+            present = _parse_pane_modes(raw)
+
+            for mode, split_from, pct in pane_specs:
+                if mode in present:
+                    continue
+                # Prefer natural split-source; fall back to any surviving pane
+                src = present.get(split_from) if (split_from and split_from in present) else _first_pane_idx(raw)
+                if src is None:
+                    continue
+                subprocess.run([
+                    "tmux", "split-window", "-h",
+                    "-t", f"{session_name}:{win_idx}.{src}",
+                    "-l", pct or "50%", mode_cmds[mode]
+                ])
+                # Refresh pane list so subsequent iterations see the new pane
+                raw = subprocess.run(
+                    ["tmux", "list-panes", "-t", f"{session_name}:{win_idx}",
+                     "-F", "#{pane_index}|#{pane_start_command}"],
+                    capture_output=True, text=True
+                ).stdout
+                present = _parse_pane_modes(raw)
+
+    # Respawn every pane to pick up latest code changes
+    for win_idx, _, _ in _WINDOW_LAYOUT:
+        pane_raw = subprocess.run(
+            ["tmux", "list-panes", "-t", f"{session_name}:{win_idx}", "-F", "#{pane_index}"],
+            capture_output=True, text=True
+        ).stdout
+        for line in pane_raw.strip().split('\n'):
+            if line.strip().isdigit():
+                subprocess.run(["tmux", "respawn-pane", "-k",
+                                 "-t", f"{session_name}:{win_idx}.{line.strip()}"])
+
+    subprocess.run(["tmux", "display-message", "-t", session_name, "Monitor restarted"])
