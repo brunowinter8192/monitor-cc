@@ -2,8 +2,8 @@
 
 ## Status Quo
 
-- `workflow.py`: `--mode all` → tmux 5-Window (main+tokens | proxy+metadata | rules+hooks | workers+worker-proxy+worker-metadata | warnings+waste), `--mode main|rules|warnings|hooks|tokens|workers|proxy|metadata|worker-proxy|worker-metadata|waste` → einzelner Prozess
-- `startup.py`: argparse mit choices `['all', 'main', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'metadata', 'worker-proxy', 'worker-metadata', 'waste']`, `--project`
+- `workflow.py`: `--mode all` → tmux 5-Window (main+tokens | proxy+metadata | rules+hooks | workers+worker-proxy+worker-metadata | warnings+waste), `--mode main|rules|warnings|hooks|tokens|workers|proxy|metadata|worker-proxy|worker-metadata|waste|restart-panes` → einzelner Prozess
+- `startup.py`: argparse mit choices `['all', 'main', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'metadata', 'worker-proxy', 'worker-metadata', 'waste', 'restart-panes']`, `--project`
 - `tmux_launcher.py`: 5 Windows (11 Panes), history 50000, keybindings (C-q scroll, C-r restart all panes, C-f search, mouse, M-m/M-t/M-p/M-r/M-h/M-k/M-w copy)
 
 tmux Layout (5 Windows, Stand Session 18+):
