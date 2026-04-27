@@ -162,13 +162,20 @@ def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
     return _parse_log_file(log_file, last_position)
 
 # Find the most recent worker proxy log for the given worker name
-def find_worker_proxy_log(worker_name: str) -> Optional[Path]:
+def find_worker_proxy_log(worker_name: str, project_filter: Optional[str] = None) -> Optional[Path]:
     root = os.environ.get("MONITOR_CC_ROOT", "")
     if not root:
         root = str(Path(__file__).parent.parent.parent)
     logs_dir = Path(root) / "src" / "logs"
     if not logs_dir.exists():
         return None
+    # Try prefixed pattern first (current naming: api_requests_worker_{hash}_{name}_*.jsonl)
+    if project_filter:
+        project_session_id = _proxy_session_id_for_project(project_filter)
+        matches = list(logs_dir.glob(f"api_requests_worker_{project_session_id}_{worker_name}_*.jsonl"))
+        if matches:
+            return max(matches, key=lambda f: f.stat().st_mtime)
+    # Fall back to unprefixed pattern (older naming or no project_filter provided)
     matches = list(logs_dir.glob(f"api_requests_worker_{worker_name}_*.jsonl"))
     if not matches:
         return None
