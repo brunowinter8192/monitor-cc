@@ -1,16 +1,11 @@
 # INFRASTRUCTURE
 from collections import Counter
 from typing import List
-from ..constants import WHITE, RED, DIM, PASTEL_GREEN, SOFT_RESET
+from ..constants import WHITE, RED, DIM, SOFT_RESET
 from ..format.token_format import _format_k
 
 _prev_values: dict = {}
 _worker_prev_values: dict = {}
-
-LEGEND = [
-    f"{PASTEL_GREEN}▶/▼ expand  ⚠ cache break  🔧 mods  BP: breakpoints  ~tok: chars/3.5 ±15%{SOFT_RESET}",
-    f"{PASTEL_GREEN}sys=system  tools=tool defs  msgs=messages{SOFT_RESET}",
-]
 
 # FUNCTIONS
 # Format metadata display for latest proxy entry — public interface for main metadata pane
@@ -31,8 +26,7 @@ def _format_worker_metadata(entry: dict) -> List[str]:
 
 # Single implementation of metadata formatting with explicit state dicts
 def _format_metadata_with_state(entry: dict, prev_values: dict, new_values: dict) -> List[str]:
-    lines = list(LEGEND)
-    lines.append('')
+    lines: List[str] = []
 
     # SYSTEM section
     sys_blocks = entry.get('system_blocks', [])
