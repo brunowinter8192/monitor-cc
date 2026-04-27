@@ -15,7 +15,7 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 - `run_proxy_loop` — main proxy pane event loop (entry point from `core.monitor`)
 - `run_worker_proxy_loop` — worker proxy pane event loop (entry point from `core.monitor`)
 - `parse_proxy_log(project_filter_or_path, last_position)` — parse proxy JSONL incrementally
-- `find_worker_proxy_log(worker_name)` — resolve proxy log path for a named worker
+- `find_worker_proxy_log(worker_name, project_filter=None)` — resolve proxy log path for a named worker; tries prefixed glob `api_requests_worker_{hash}_{name}_*.jsonl` first (when `project_filter` provided), falls back to unprefixed for older logs
 - `_parse_log_file(path, last_position)` — low-level log file reader
 - `format_proxy_block(entries, ...)` — render full proxy pane ANSI string
 
@@ -60,7 +60,7 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### parser.py (236 LOC)
+### parser.py (243 LOC)
 
 **Purpose:** Read and parse proxy log JSONL files — extract rich fields from `raw_payload` (system blocks, tools, messages, schema warnings) into flat entry dicts, then discard raw payload to save memory. `_parse_log_file` reads STREAMING line-by-line via `for line in f` (no `f.read()` peak) and uses `f.tell()` after the loop for the new position (avoids TOCTOU race with proxy writer adding lines mid-read). The `sent_meta` lookback (merge `sent_*` fields into the previous entry) is implemented via a `last_entry` local variable instead of `entries[-1]`. **Known open issue:** despite streaming, peak RAM is still O(N²) because each proxy entry's `raw_payload.messages` is the full cumulative conversation; building all parsed entries in memory still hits gigabytes for long sessions. Real fix needs per-entry process-and-drop or message-strip-on-parse — see Bead Monitor_CC-lhf and `sources/RAM_research_2026-04-25.md`.
 **Reads:** Proxy log JSONL file by project filter or direct path (incremental by byte position).
