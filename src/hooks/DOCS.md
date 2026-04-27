@@ -36,7 +36,7 @@ that lives in `src/panes/rules_pane.py`.
 
 ---
 
-### hooks_format.py (169 LOC)
+### hooks_format.py (150 LOC)
 
 **Purpose:** Convert raw hook entry dicts into display item dicts and render the full hooks pane block with expand/collapse, scroll viewport, and hover highlight.
 **Reads:** Raw hook entry dicts; in-memory display item list; scroll offset and hover state.

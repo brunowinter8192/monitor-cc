@@ -32,7 +32,7 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 
 ---
 
-### worker_format.py (170 LOC)
+### worker_format.py (148 LOC)
 
 **Purpose:** Extract token sums and tool call lists from worker JSONL files; render the full workers pane block with per-worker rows, status, model, token counts, and expanded cache tracker.
 **Reads:** Worker JSONL file (full read for token/tool extraction); worker list + expand/scroll state dicts (for rendering).
@@ -64,3 +64,5 @@ Mutated exclusively by `run_workers_loop`. `worker_scroll_offsets` read by `form
 ## Gotchas
 
 **`worker_scroll_offset` (pane-level int) is dormant.** Wheel 64/65 events write to `worker_scroll_offsets[name]` (per-worker dict), which `format_cache_tracker` reads to scroll the expanded REQ view. `worker_scroll_offset` stays permanently 0 — `vp_start = max(0, total_lines - pane_height - worker_scroll_offset)` reduces to a bottom-anchor. The int is not removed because it anchors the `all_lines[vp_start:vp_start + pane_height]` slice-cap that prevents terminal overflow with many workers.
+
+**Safety-net error log:** `worker_pane.py` appends unhandled exceptions in its render loop to `/tmp/monitor_cc_error.log` — silent crash guard so the pane stays alive. Check this file when the workers pane appears frozen or blank without an obvious error on screen.

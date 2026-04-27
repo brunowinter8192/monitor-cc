@@ -27,12 +27,16 @@ from src.core import print_session_status         # startup session-count line
 ```
 workflow.py → run_monitor(project_filter, mode)
   → initialize_file_positions()           # scan ~/.claude/projects, set EOF positions
-  → [mode dispatch] → pane loop OR run_streaming_loop()
-  → run_streaming_loop():
+  → [mode dispatch] → pane loop OR run_main_loop()
+  → run_main_loop():
       loop: monitor_sessions() → process_all_sessions(sessions)
               → process_session_file(path) → parse_new_tool_calls()
               → classify (task/subagent/tool) → display_*(...)
+              → _refresh_strip_cache()    # ingest proxy JSONL strip data
+              → render_main_buffer()      # flush buffer to stdout
 ```
+
+Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buffer`; when the buffer exceeds `MAIN_EVENT_BUFFER_CAP` (from `constants.py`), the oldest entries are deleted to keep the buffer bounded.
 
 ## Modules
 

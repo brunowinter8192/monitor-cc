@@ -158,6 +158,49 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 | `--min-count N` | Minimum occurrence count for a repetition group | 2 |
 | `--top K` | Show top K groups in the signature table | 20 |
 
+## cc_injection_audit.py
+
+**Purpose:** CC injection catalog via proxy-log / session-JSONL cross-reference. For each user-role message in the delta range of each opus REQ, checks whether the message content appears as a real user event in the matching CC session JSONL. Unmatched messages are CC-injected; classified by `startswith` pattern. Produces a Markdown catalog of injection types and frequencies, revealing which injections inflate the context budget.
+
+**Input:** One or more proxy log paths (positional, optional). Default: newest 5 `src/logs/api_requests_opus_monitor_cc_*.jsonl`. CC session JSONL auto-discovered by mtime proximity (max 90 min); override with `--cc-session`.
+
+**Output:** `dev/tool_use_analysis/<YYYYMMDDHHMM>_cc_injection_catalog.md`. Path printed to stdout.
+
+**Usage:**
+```bash
+# Auto-pick newest 5 proxy logs
+./venv/bin/python3 dev/tool_use_analysis/cc_injection_audit.py
+
+# Explicit proxy log + explicit CC session JSONL
+./venv/bin/python3 dev/tool_use_analysis/cc_injection_audit.py \
+  src/logs/api_requests_opus_monitor_cc_1776871226.jsonl \
+  --cc-session ~/.claude/projects/-Users-.../session.jsonl
+```
+
+---
+
+## sr_bypass_audit.py
+
+**Purpose:** SR bypass audit — per-template count of bypassed vs captured SR blocks. Scans `raw_payload.messages` for SR blocks still present after proxy processing (bypassed) and `stripped_msg_removed` for SR blocks successfully removed (captured). Reports `bypass_rate` per template per log file + aggregate summary table. Designed to identify which SR templates the proxy strip pipeline is missing.
+
+**Methodology note:** The proxy `stripped_all_sr_msg0` final-pass strips all templates from `msg[0]` but does NOT write to `stripped_msg_removed`. SR blocks captured only by the final pass show as `(captured=0, bypassed=0, n/a)`. SR blocks in `msg[N>0]` that bypass the elif chain are counted as bypassed.
+
+**Input:** JSONL paths (positional, optional). Default: newest 3 `api_requests_opus_monitor_cc_*.jsonl`.
+
+**Output:** `dev/tool_use_analysis/<YYYYMMDDHHMM>_sr_bypass_audit.md`. Path printed to stdout.
+
+**Usage:**
+```bash
+# Auto-pick newest 3 proxy logs
+./venv/bin/python3 dev/tool_use_analysis/sr_bypass_audit.py
+
+# Explicit log
+./venv/bin/python3 dev/tool_use_analysis/sr_bypass_audit.py \
+  src/logs/api_requests_opus_monitor_cc_1776871226.jsonl
+```
+
+---
+
 ## strip_audit.py
 
 **Purpose:** Reads a single Proxy JSONL file, filters to claude-opus-* entries only (skips Haiku subagents and null-model `sent_meta` entries), iterates requests in order, and classifies each REQ into five buckets using rule-counter deltas and marker-based chunk attribution from `src/proxy/strip_vocab.py`. Solves four flaws in the old format: (1) index-diff NEW-STRIP detection missed mc=1 secondary calls where `smi=[0]` in both prev and curr; (2) chunk attribution used template `startswith` instead of the proxy's actual capture marker, misattributing "As you answer…" claudeMd blocks; (3) `pass_mods` inert firings were indistinguishable from real strips; (4) pauschal FP flag on any tool_result was too broad.

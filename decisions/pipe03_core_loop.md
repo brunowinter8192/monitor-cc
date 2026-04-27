@@ -2,7 +2,7 @@
 
 ## Status Quo
 
-- `monitor.py`: `run_streaming_loop()` ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), trackt `current_main_session` via `_get_newest_main_session()`. Detects session change each poll cycle → clears screen + resets position. Pollt alle 0.5s via `process_hook_log()` + `monitor_sessions()`
+- `monitor.py`: `run_main_loop()` (ehemals `run_streaming_loop()`) ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), trackt `current_main_session` via `_get_newest_main_session()`. Detects session change each poll cycle → clears screen + resets position. Pollt alle 0.5s via `process_hook_log()` + `monitor_sessions()` + `_refresh_strip_cache()` + `render_main_buffer()`
 - `monitor.py`: `run_rules_loop()` ruft `load_historical_rules()` auf (liest Hook-Log ab 0, füllt `active_rules`), dann pollt alle 0.5s via `process_hook_log()` und rendert `format_rules_block(active_rules)` bei Änderungen
 - `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
 - `monitor.py`: `run_hooks_loop()` ruft `load_historical_hooks()` auf (liest Hook-Log ab 0, druckt ALLE Entries inkl. ohne Output), dann pollt alle 0.5s via `process_hook_log_for_display()`
