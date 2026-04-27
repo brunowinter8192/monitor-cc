@@ -6,7 +6,7 @@ from typing import Optional
 
 from ..constants import DIM, RESET, ZEBRA_BG_A, ZEBRA_BG_B, POLL_INTERVAL
 from ..utils import truncate_visible
-from .metadata_format import _format_metadata, _format_worker_metadata, LEGEND
+from .metadata_format import _format_metadata, _format_worker_metadata
 
 _meta_log_position: int = 0
 _meta_entries: list = []
@@ -62,7 +62,7 @@ def run_metadata_loop() -> None:
         if _meta_entries:
             lines = _format_metadata(_meta_entries[-1])
         else:
-            lines = list(LEGEND) + [f"{DIM}Waiting for proxy data...{RESET}"]
+            lines = [f"{DIM}Waiting for proxy data...{RESET}"]
 
         output = _render_lines(lines)
         if output != last_output:
@@ -103,9 +103,9 @@ def run_worker_metadata_loop() -> None:
                 _worker_meta_entries.extend(new_entries)
 
         if not worker_name:
-            lines = list(LEGEND) + [f"{DIM}Select a worker in the Workers pane{RESET}"]
+            lines = [f"{DIM}Select a worker in the Workers pane{RESET}"]
         elif not _worker_meta_entries:
-            lines = list(LEGEND) + [f"{DIM}Worker: {worker_name} — no proxy data yet{RESET}"]
+            lines = [f"{DIM}Worker: {worker_name} — no proxy data yet{RESET}"]
         else:
             lines = _format_worker_metadata(_worker_meta_entries[-1])
 
