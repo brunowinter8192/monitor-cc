@@ -16,7 +16,7 @@ from ..input.click_handler import (
 )
 from ..utils import truncate_visible
 # From worker_format.py: Worker data extraction and block rendering
-from .worker_format import extract_worker_tokens, format_workers_block
+from .worker_format import extract_worker_tokens, extract_worker_context_pct, format_workers_block
 # From worker_tmux.py: tmux session discovery and status detection
 from .worker_tmux import list_workers, find_worker_jsonl
 
@@ -180,6 +180,7 @@ def run_workers_loop() -> None:
                         jsonl_path = find_worker_jsonl(w.get('session', ''))
                         if jsonl_path:
                             w['tokens'] = extract_worker_tokens(jsonl_path)
+                            w['context_pct'] = extract_worker_context_pct(jsonl_path)
                             if worker_expand_states.get(name, False):
                                 lines = read_new_lines(jsonl_path, 0)
                                 messages, _ = parse_jsonl_lines(lines)

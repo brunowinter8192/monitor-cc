@@ -4,7 +4,7 @@ import os
 
 from ..constants import (
     GREEN, RED, YELLOW, WHITE, CYAN,
-    PASTEL_PURPLE, SOFT_RESET,
+    DIM, PASTEL_PURPLE, SOFT_RESET,
 )
 from ..format.token_format import _format_k, format_cache_tracker
 from ..jsonl import read_new_lines, parse_jsonl_lines, get_message_content, is_tool_use
@@ -31,6 +31,21 @@ def extract_worker_tokens(jsonl_path) -> dict:
         usage = message.get('message', {}).get('usage', {})
         total_output += usage.get('output_tokens', 0)
     return {'output': total_output}
+
+# Extract remaining context percentage from a worker's JSONL (mirrors worker-cli context_pct formula)
+def extract_worker_context_pct(jsonl_path) -> Optional[int]:
+    lines = read_new_lines(jsonl_path, 0)
+    messages, _ = parse_jsonl_lines(lines)
+    cr = None
+    for message in messages:
+        if message.get('type') != 'assistant':
+            continue
+        val = message.get('message', {}).get('usage', {}).get('cache_read_input_tokens')
+        if val is not None:
+            cr = val
+    if cr is None:
+        return None
+    return (100 * (200000 - cr)) // 200000
 
 # Extract tool call list from a worker's JSONL file
 def extract_worker_tool_calls(jsonl_path) -> List[dict]:
@@ -105,9 +120,15 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
         tokens = w.get('tokens', {})
         tok_out = tokens.get('output', 0)
         tokens_str = f"  {WHITE}{_format_k(tok_out)}out{SOFT_RESET}" if tok_out else ''
+        pct = w.get('context_pct')
+        if pct is None:
+            pct_str = f"  {DIM}—%{SOFT_RESET}"
+        else:
+            pct_color = GREEN if pct >= 60 else (YELLOW if pct >= 40 else RED)
+            pct_str = f"  {pct_color}{pct:3d}%{SOFT_RESET}"
         is_selected = selected_name is not None and name == selected_name
         sel_prefix = f"{GREEN}>>{SOFT_RESET} " if is_selected else "   "
-        header_line = f"{sel_prefix}{toggle_symbol} {CYAN}[{idx}] {name}{SOFT_RESET}  {sc}{status.upper()}{SOFT_RESET}{spawned_str}{model_str}{tokens_str}"
+        header_line = f"{sel_prefix}{toggle_symbol} {CYAN}[{idx}] {name}{SOFT_RESET}  {sc}{status.upper()}{SOFT_RESET}{pct_str}{spawned_str}{model_str}{tokens_str}"
         all_lines.append(header_line)
         line_keys.append(name)
 
