@@ -8,9 +8,6 @@
 - `monitor.py`: `run_hooks_loop()` ruft `load_historical_hooks()` auf (liest Hook-Log ab 0, druckt ALLE Entries inkl. ohne Output), dann pollt alle 0.5s via `process_hook_log_for_display()`
 - `monitor.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `format_warnings_block()` bei Änderungen
 - `monitor.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. Expanded Workers zeigen Cache-Tracker Token-View (CR/CC/D per API Call) via `extract_cache_turns()` + `format_cache_tracker()`. Keine Subagent-Rendering mehr (separates Pane).
-- `monitor.py`: `run_subagents_loop()` pollt alle 0.5s, ruft `monitor_sessions()` auf, lädt per-Agent JSONL via `find_agent_jsonl()`, rendert `render_subagents_with_tokens()` bei Änderungen. Unterstützt Mouse-Events (Expand/Collapse, Scroll, Hover) und Digit-Keys. Session-Reset: detects main session change via `_get_newest_main_session()`, clears all subagent state (metadata, turns, expand/scroll states, subagent_states, file_positions, tool_use_caches), re-runs `load_historical_subagents()`. Scroll fix: `_find_agent_at_row()` walks upward in line_map for scroll events in expanded areas.
-- `monitor.py`: `load_historical_subagents()` setzt neueste Main-Session + deren Agent-Files (`filepath.parent/filepath.stem/subagents/agent-*.jsonl`) auf Position 0 (nur aktuelle Session, nicht alle historischen).
-- `run_monitor()` routet `MODE_SUBAGENTS` → `run_subagents_loop()`.
 - Hook routing in `process_hook_log()`: nur noch 1 Event → 1 State Dict
   - `InstructionsLoaded` → `active_rules` (via `[P]`/`[G]` Prefix-Routing)
   - Alle anderen Hook-Events → `process_hook_log_for_display()` (Hooks-Pane, kein State)
@@ -52,13 +49,9 @@ Alle Module-Level Variablen in `src/monitor.py` mit Zugriffs-Mapping (Stand nach
 | `buffered_subagent_calls` | `Dict[str, List[dict]]` | monitor.py:33 | monitor.py | monitor.py | Calls ohne bekannten Agent, kein TTL |
 | `task_requests_seen` | `Set[str]` | monitor.py:34 | monitor.py | monitor.py | Gesehene Task-Request IDs |
 | `active_project_filter` | `Optional[str]` | monitor.py:35 | monitor.py | monitor.py | Aktiver Projekt-Filter |
-| `active_mode` | `str` | monitor.py:36 | monitor.py | monitor.py | Aktueller Mode (all/main/subagent/rules/...) |
-| `ui_mode_active` | `bool` | monitor.py:37 | monitor.py | monitor.py | Flag: UI-Mode aktiv |
-| `subagent_metadata` | `Dict[str, dict]` | monitor.py:38 | monitor.py, ui_mode.py (via Argument) | monitor.py | Subagent-Metadaten für UI |
-| `tool_calls_by_agent` | `Dict[str, List[dict]]` | monitor.py:39 | monitor.py, ui_mode.py (via Argument) | monitor.py | Tool-Calls pro Agent für UI |
-| `_last_monitored_count` | `Optional[int]` | monitor.py:40 | monitor.py | monitor.py | Logging-Guard: Session-Count |
-| `hook_log_position` | `int` | monitor.py:41 | monitor.py | monitor.py | Byte-Offset im Hook-Log |
-| `active_rules` | `Dict[str, set]` | monitor.py:42 | monitor.py, ui_mode.py (via Argument) | monitor.py | Aktive Regeln nach Scope |
+| `active_mode` | `str` | monitor.py | monitor.py | monitor.py | Aktueller Mode (all/main/rules/workers/proxy/...) |
+| `_last_monitored_count` | `Optional[int]` | monitor.py | monitor.py | monitor.py | Logging-Guard: Session-Count |
+| `hook_log_position` | `int` | monitor.py | monitor.py | monitor.py | Byte-Offset im Hook-Log |
 | `warned_unknown_types` | `Set[str]` | monitor.py:43 | monitor.py | monitor.py | Bereits gewarnted unknown Types |
 | `unknown_type_counts` | `Dict[str, int]` | monitor.py:44 | monitor.py | monitor.py | Count pro unbekanntem Type |
 | `token_profile` | `Dict[str, int]` | monitor.py:45 | monitor.py | monitor.py | Kumulative Output-Tokens nach Block-Type |
@@ -69,7 +62,7 @@ Alle Module-Level Variablen in `src/monitor.py` mit Zugriffs-Mapping (Stand nach
 
 **Entfernt in Session 2/3:** `pending_pretooluse_hooks` und `pending_user_prompt_hook` wurden als Teil der Hook-Routing-Vereinfachung entfernt. `process_hook_log()` bufferiert keine PreToolUse/UserPromptSubmit-Outputs mehr.
 
-**Kopplungsanalyse:** `agent_to_task`, `agent_to_type`, `subagent_metadata`, `tool_calls_by_agent`, `active_rules` werden als Argumente an `run_ui_loop()` (ui_mode.py:19) übergeben und dort auch von `track_subagent_metadata()` (ui_mode.py:72) geschrieben. De-facto shared mutable state, nur formal als Argument übergeben.
+**Kopplungsanalyse:** `agent_to_task`, `agent_to_type` (und früher `subagent_metadata`, `tool_calls_by_agent`, `active_rules`) wurden als Argumente an `run_ui_loop()` (ui_mode.py, entfernt mit Subagents-Feature) übergeben — de-facto shared mutable state. `active_rules`, `warned_unknown_types`, `unknown_type_counts` wurden in Session-N in die jeweiligen Pane-Module verschoben (`panes/rules_pane.py`, `panes/warnings_parse.py`). Token-Profiling-State (`token_profile` etc.) in `panes/token_pane.py`. Nur die oben gelisteten 10 Variablen verbleiben in `monitor.py`.
 
 ### buffered_subagent_calls — kein TTL (Kategorie: Memory)
 
@@ -124,7 +117,7 @@ Pending — needs evaluation.
 Vorher: `session_count = len(sessions)` — zählte alle Sessions (main + subagent) unabhängig vom Mode
 Jetzt: `session_count = len(filter_sessions_by_mode(sessions, mode))` — zählt nur die tatsächlich im jeweiligen Mode relevanten Sessions
 
-Betrifft Modes: `MODE_MAIN` (nur Non-Agent-Files), `MODE_SUBAGENT` (nur Agent-Files), `MODE_ALL` (alle).
+Betrifft Modes: `MODE_MAIN` (nur Non-Agent-Files), `MODE_ALL` (alle). `MODE_SUBAGENT` wurde mit dem Subagents-Feature entfernt.
 
 ## Offene Fragen
 

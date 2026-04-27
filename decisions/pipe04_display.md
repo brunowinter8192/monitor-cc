@@ -2,13 +2,12 @@
 
 ## Status Quo
 
-- `formatter.py`: 21 Funktionen + Workers-Block + Session-Browser, color-coded output (green=main, blue=subagent, red=error, pastel=meta)
+- `formatter.py`: color-coded output (green=main, red=error, pastel=meta)
 - `ui_mode.py`: `format_rules_block()` rendert `ACTIVE RULES (XP / YG)` mit `[P]`/`[G]` Prefix pro Regel, pastel blue
-- `subagent_ui.py`: collapsible list, Digits 1-9 toggle via `click_handler.py`, `start_line` param für korrekte line_to_agent_map in kombinierten Panes
-- Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Subagents werden darunter gerendert via `render_subagent_list()`.
+- Workers-Pane (Window 3, Pane 3.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Three-pane split: Workers (3.0) | Worker-Proxy (3.1) | Worker-Metadata (3.2).
 
 **BUG (fixed):** `active_rules` was populated by `process_hook_log()` but never rendered in streaming mode.
-Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Window 1, Pane 1.0).
+Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Window 2, Pane 2.0).
 **BUG (fixed):** Project `.claude/rules/*.md` did not appear — root cause was YAML array syntax in `paths:` frontmatter (Claude Code Bug #19377/#33581). CSV parser expects string, receives JS Array from `yaml.parse()`, producing broken globs. Fix: CSV string format (`paths: src/**, workflow.py`). All project rules now load correctly via InstructionsLoaded hook.
 **BUG (fixed):** Rules-Pane showed historical rules from previous sessions because `hook_log_position` was set to 0 (read from beginning of hook log). Fix: removed `hook_log_position = 0` override, now starts from EOF like all other modes.
 **BUG-CLASS (fixed, 2026-04-25 Performance Session):** All 9 stdin-driven panes were polling at a 50ms floor via `time.sleep(INPUT_POLL_INTERVAL)` at the end of each loop iteration → input latency 0–50ms (~25ms median) for hover/click/scroll/keyboard regardless of how fast the rest of the loop ran. Replaced with `wait_for_input(INPUT_POLL_INTERVAL)` from `src/input/click_handler.py` — a `select.select([_stdin_fd], [], [], timeout)` wrapper with `time.sleep` fallback when stdin not in raw mode. Loop wakes immediately on any byte arriving on stdin (mouse event, keypress) OR after the timeout expires. Smoke test 11.9ms wake-latency on stdin-mid-wait. Affected modules: `panes/{token,rules,warnings,waste}_pane.py`, `hooks/hooks_pane.py`, `workers/worker_pane.py` (two call sites: try body + except handler), `proxy_display/{pane,worker_proxy_pane}.py`. `metadata_pane.py` unchanged — has no stdin handler. Pattern A (direct sleep replacement) chosen over Pattern B (refresh-aligned timeout) because `warnings_pane`'s `WARNINGS_POLL_INTERVAL=10s` would otherwise mean up to 10s blocking on input — Pattern B would have made warnings unresponsive.
@@ -22,7 +21,7 @@ Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Wind
 - Token Pane unaffected (reads session JSONL directly, natural session boundary)
 
 Rules-Pane Layout:
-- Window 1 "rules", Pane 1.0 (links 50%): `python3 workflow.py --mode rules` → `run_rules_loop()`
+- Window 2 "rules", Pane 2.0 (links 50%): `python3 workflow.py --mode rules` → `run_rules_loop()`
 - Rendert `format_rules_block()` bei jeder Änderung von `active_rules`
 - M-r Keybinding: Rules-Pane Content → Clipboard via `pbcopy`
 
@@ -37,14 +36,9 @@ Verwendet in `format_output()` (formatter.py:119-138):
 
 Zentralisiert in constants.py.
 
-### Input Preview Truncation (Kategorie: Display / UX)
+### Input Preview Truncation (Kategorie: Display / UX — REMOVED)
 
-`get_input_preview()` in `src/subagent_ui.py:159-179`:
-- Pro Key-Value-Paar: `value_str[:50] + '...'` wenn `len(value_str) > 50` (subagent_ui.py:170-171)
-- Gesamtes Ergebnis: `result[:120] + '...'` wenn `len(result) > 120` (subagent_ui.py:175)
-- Fallback für nicht-dict input: `str(input_data)[:40] + '...'` wenn `> 40` (subagent_ui.py:164)
-
-Drei verschiedene Truncation-Schwellen (40, 50, 120), alle hardcoded.
+`get_input_preview()` war in `src/subagent_ui.py` (mit Subagents-Feature entfernt, Bead Monitor_CC-f5d). Drei Truncation-Schwellen (40, 50, 120 chars) waren hardcoded. Kein Nachfolger — Subagents-Pane ist ersatzlos entfernt.
 
 ### SCORE_PATTERN Regex (Kategorie: Display / UX)
 
@@ -54,7 +48,7 @@ Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
 ### Pane Headers (Kategorie: Display / UX)
 
-Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 7 panes (MAIN, TOKENS, RULES, HOOKS, WORKERS, WARNINGS, SUBAGENTS). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
+Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 11 panes (MAIN, TOKENS, PROXY, METADATA, RULES, HOOKS, WORKERS, WORKER-PROXY, WORKER-METADATA, WARNINGS, WASTE). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
 
 `format_pane_header()` in formatter.py still exists (PASTEL_ORANGE) but is no longer called from any loop. All header print calls removed from monitor.py and ui_mode.py (Session 6).
 
@@ -94,7 +88,7 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 
 ### Restart Hotkey (Kategorie: Display / UX)
 
-`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` für alle 6 Panes across 4 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 3.0) via `\;`-Chain. Restarts all monitor processes with their original commands.
+`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` für alle 11 Panes across 5 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 2.1, 3.0, 3.1, 3.2, 4.0, 4.1) via `\;`-Chain. Restarts all monitor processes with their original commands.
 
 **BUG (fixed, Session 6):** User reports "Monitor restarted" message appears but panes don't visibly restart.
 - Root cause: `C-r` binding is global (`-T root`) with hardcoded session name via Python f-string (`f"{session_name}:0.0"`). When multiple monitor sessions exist simultaneously, the last `configure_tmux_session()` call wins → C-r respawns panes of the wrong session. User sees "Monitor restarted" display-message but no visual change because the respawn happens in a different (possibly hidden) session.
@@ -145,7 +139,7 @@ Verified: `_meta["anthropic/maxResultSizeChars"]` does NOT work for hook outputs
 
 ### Hooks-Pane (Kategorie: Hook-Monitoring)
 
-Eigenes tmux Pane (Window 1 "rules", Pane 1.1, rechts 50%) via `--mode hooks`:
+Eigenes tmux Pane (Window 2 "rules", Pane 2.1, rechts 50%) via `--mode hooks`:
 - `run_hooks_loop()` in monitor.py: pollt `process_hook_log_for_display()`
 - `format_hook_event()` in formatter.py: `[timestamp] hook_event | hook_script` + output
 - Scrolling stream (kein Screen-clear) — jeder Hook mit Output wird sofort angezeigt
@@ -158,15 +152,15 @@ Eigenes tmux Pane (Window 1 "rules", Pane 1.1, rechts 50%) via `--mode hooks`:
 
 ### Warnings-Pane (Kategorie: Format-Stabilität)
 
-Eigenes tmux Pane (Window 3 "debug", Pane 3.0, fullscreen) via `--mode warnings`:
+Eigenes tmux Pane (Window 4 "debug", Pane 4.0, links 50%) via `--mode warnings`:
 - `run_warnings_loop()` in monitor.py: pollt `monitor_sessions()`, rendert `format_warnings_block()`
 - `format_unknown_type_warning()` in formatter.py (formatter.py:229-230): `[!] Unknown JSONL type: <type> (seen Nx)`
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
-- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py:132, Pane 3.0)
+- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 4.0)
 
 ### Workers-Pane (Kategorie: Worker-Monitoring, Session 3+7+9+10)
 
-Eigenes tmux Pane (Window 2 "workers", Pane 2.0, links 50%) via `--mode workers`. Rendert nur Workers (Subagents haben jetzt ein eigenes Pane):
+Eigenes tmux Pane (Window 3 "workers", Pane 3.0, links ~34%) via `--mode workers`. Window 3 has three panes: Workers (3.0) | Worker-Proxy (3.1) | Worker-Metadata (3.2). Subagents-Pane entfernt (Bead Monitor_CC-f5d).
 - `run_workers_loop()` in monitor.py: pollt `list_workers()`, rendert `format_workers_block()`. Keyboard-Input (Digits 1-9 toggle) + SGR Mouse-Click toggle + Scroll.
 - `list_workers(project_path)` (monitor.py): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
 - `detect_worker_status(session)` (monitor.py): prüft `#{pane_dead}` für exited-Status; analysiert `#{window_activity}` Timestamp für idle-Detection (10s Threshold)
@@ -177,23 +171,14 @@ Eigenes tmux Pane (Window 2 "workers", Pane 2.0, links 50%) via `--mode workers`
 - State: `worker_expand_states: Dict[str, bool]`, `worker_scroll_offsets: Dict[str, int]`, `worker_line_map: Dict[int, str]`, `hover_row: Optional[int]` (monitor.py)
 - Status-Farben: working=GREEN, idle=YELLOW, exited=RED, unknown=WHITE
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
-- M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 2.0)
+- M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 3.0)
 - Dual poll intervals: Input polling at 50ms (`INPUT_POLL_INTERVAL`), data refresh at 500ms (`POLL_INTERVAL`).
 - **Mouse UX:** Mode 1003 (Any Event Tracking) + SGR 1006. Input-Buffer Draining (while-loop). Hover-Highlight. Scroll (button 64/65 → increment/decrement scroll_offset). All reads via `os.read(fd, 1)` (unbuffered).
 - Verifiziert gegen tmux Source Code (`repo/input-keys.c:755-822`): tmux forwarded SGR Mouse Events an App wenn `MODE_MOUSE_ALL` + `MODE_MOUSE_SGR` gesetzt sind. Kein Konflikt mit tmux `mouse on`.
 
-### Subagents-Pane (Window 2, Pane 2.1, Session 10)
+### Subagents-Pane (Window 2, Pane 2.1, Session 10) — REMOVED (Bead Monitor_CC-f5d)
 
-Eigenes tmux Pane (Window 2 "workers", Pane 2.1, rechts 50%) via `--mode subagents`. Split aus Workers-Pane (vorher kombiniert in Pane 2.0).
-- `run_subagents_loop()` in monitor.py: pollt `monitor_sessions()` + per-Agent JSONL, rendert `render_subagents_with_tokens()`. Keyboard (Digits 1-9) + SGR Mouse (click, scroll, hover).
-- `load_historical_subagents()` in monitor.py: setzt neueste Main-Session + deren Agent-Files (`filepath.parent/filepath.stem/subagents/agent-*.jsonl`) auf Position 0 — nur aktuelle Session, nicht alle historischen.
-- `find_agent_jsonl(agent_id)` in monitor.py: sucht `agent-{id}.jsonl` in aktiven Sessions via `find_active_sessions()`.
-- `render_subagents_with_tokens(metadata, turns_by_agent, ...)` in monitor.py: collapsible Agent-Liste. Collapsed: `[+/-] [idx] name (id) - timestamp`. Expanded: per-Agent Cache-Tracker Token-View via `format_cache_tracker()` mit separatem `agent_cache_scroll_offsets` Dict.
-- `toggle_subagent_state(agent_id)` in subagent_ui.py: toggled `subagent_states[agent_id]`; nutzt `.get()` Default sodass neue Agents direkt togglebar sind ohne Pre-Initialisierung.
-- State: `agent_turns`, `agent_pane_line_map`, `agent_pane_hover_row`, `agent_cache_scroll_offsets` (monitor.py); `subagent_states` (subagent_ui.py)
-- `ui_mode_active = True` gesetzt beim Start so `handle_subagent_call()` Metadata via `track_subagent_metadata()` populiert statt inline display.
-- **Session-Reset (Session 11):** `run_subagents_loop()` detects main session JSONL change via `_get_newest_main_session()`. On change: clears `subagent_metadata`, `agent_turns`, expand/scroll states, `subagent_states`, `file_positions`, `tool_use_caches`; re-runs `load_historical_subagents()`. Prevents cross-session accumulation of stale agents.
-- **Scroll Fix (Session 11):** `_find_agent_at_row(row, line_map)` walks upward from mouse row to find parent agent ID. Scroll events (button 64/65) now use this instead of direct `agent_pane_line_map.get(row)`, fixing scroll in expanded cache-tracker areas where row maps to None.
+Was: `--mode subagents` pane in Window 2 "workers", Pane 2.1 (rechts 50%). Removed along with `src/subagents/` package, `run_subagents_loop()`, `load_historical_subagents()`, `render_subagents_with_tokens()`, `src/subagent_ui.py`, `MODE_SUBAGENT` constant, and all associated state variables (`subagent_metadata`, `tool_calls_by_agent`, `ui_mode_active`, `agent_turns`, `agent_pane_line_map`, `subagent_states`). Historical detail preserved above for reference.
 
 ### Main Pane Session-Reset (Session 11)
 
@@ -217,13 +202,11 @@ Alle Farb-Konstanten zentral in `src/constants.py` definiert (256-color ANSI). A
 
 `src/ui_mode.py`: **0** `log_tagged()`-Aufrufe. Alle 4 ehemaligen Calls (`08_ui_rendering.log`) wurden entfernt. Kein `import logging` im Modul.
 
-`src/subagent_ui.py`: **0** `log_tagged()`-Aufrufe. Alle 5 ehemaligen Calls (`08_ui_rendering.log`) wurden entfernt.
-
-Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
+Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert. (`src/subagent_ui.py` wurde mit dem Subagents-Feature entfernt.)
 
 ### Screenshot-Tool (Kategorie: Dev Tooling / Feedback)
 
-`dev/display/screenshot_panes.py`: Captures all 6 tmux panes across 4 windows via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
+`dev/display/screenshot_panes.py`: Captures all 11 tmux panes across 5 windows via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
 
 Dependencies: `termshot` (brew), `Pillow` (pip). Auto-detects running `monitor_cc_*` session.
 
@@ -282,7 +265,7 @@ Deliverable 2 (Truncation Warning): Wenn Content > 50K Zeichen, zeigt `format_ho
 
 TeammateIdle-Events würden automatisch via bestehenden Hooks-Pane (`run_hooks_loop()` → `build_hook_display_item()` → `format_hooks_block()`) angezeigt werden, da die Kategorie bereits als `'agent'` → BLUE konfiguriert ist.
 
-Für die Workers-Pane-Integration (Window 2) wäre nötig:
+Für die Workers-Pane-Integration (Window 3) wäre nötig:
 - `process_hook_log_for_display()` erweitern um buddy events zu sammeln
 - Neuer `buddy_events: list` state in `run_workers_loop()`
 - Buddy-Section am Ende von `format_workers_block()`: `[timestamp] TeammateIdle — <buddy_name>` in BLUE, analog zu Worker-Header-Format
