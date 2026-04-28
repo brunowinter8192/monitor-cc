@@ -10,10 +10,12 @@ from .metadata_format import _format_metadata, _format_worker_metadata
 
 _meta_log_position: int = 0
 _meta_entries: list = []
+_meta_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
 
 _worker_meta_log_position: int = 0
 _worker_meta_entries: list = []
 _worker_meta_last_name: Optional[str] = None
+_worker_meta_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
 
 # FUNCTIONS
 
@@ -36,7 +38,7 @@ def run_metadata_loop() -> None:
     from ..core import monitor as _monitor
     from . import metadata_format as _mf
     from ..proxy_display import parse_proxy_log
-    global _meta_log_position, _meta_entries
+    global _meta_log_position, _meta_entries, _meta_pending_by_rid
 
     session_start_ts = _monitor._get_session_start_ts()
     if session_start_ts is None:
@@ -53,9 +55,10 @@ def run_metadata_loop() -> None:
                 session_start_ts = datetime.utcnow().isoformat() + 'Z'
             _meta_entries.clear()
             _meta_log_position = 0
+            _meta_pending_by_rid.clear()
             _mf._prev_values = {}
 
-        new_entries, _meta_log_position = parse_proxy_log(_monitor.active_project_filter, _meta_log_position)
+        new_entries, _meta_log_position = parse_proxy_log(_monitor.active_project_filter, _meta_log_position, _meta_pending_by_rid)
         filtered = [e for e in new_entries if e.get('timestamp', '') >= session_start_ts]
         _meta_entries.extend(filtered)
 
@@ -78,7 +81,7 @@ def run_worker_metadata_loop() -> None:
     from . import metadata_format as _mf
     from ..workers.worker_pane import get_selection_file_path
     from ..proxy_display import find_worker_proxy_log, _parse_log_file
-    global _worker_meta_log_position, _worker_meta_entries, _worker_meta_last_name
+    global _worker_meta_log_position, _worker_meta_entries, _worker_meta_last_name, _worker_meta_pending_by_rid
     last_output = None
 
     while True:
@@ -93,13 +96,14 @@ def run_worker_metadata_loop() -> None:
         if worker_name != _worker_meta_last_name:
             _worker_meta_entries.clear()
             _worker_meta_log_position = 0
+            _worker_meta_pending_by_rid.clear()
             _mf._worker_prev_values = {}
             _worker_meta_last_name = worker_name
 
         if worker_name:
             log_path = find_worker_proxy_log(worker_name)
             if log_path:
-                new_entries, _worker_meta_log_position = _parse_log_file(log_path, _worker_meta_log_position)
+                new_entries, _worker_meta_log_position = _parse_log_file(log_path, _worker_meta_log_position, _worker_meta_pending_by_rid)
                 _worker_meta_entries.extend(new_entries)
 
         if not worker_name:

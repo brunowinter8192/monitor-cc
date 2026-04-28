@@ -43,6 +43,7 @@ zero_result_line_map: Dict[int, int] = {}
 # may cause a deduped item to appear at a shifted index — acceptable edge-case for v1.
 _seen_zero_keys: Set = set()
 _seen_error_keys: Set = set()
+_proxy_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
 
 INDENT = '  '
 
@@ -304,6 +305,7 @@ def run_warnings_loop() -> None:
     global _last_refresh_ts, _force_refresh
     global schema_warnings, zero_results, zero_result_expand_states, zero_result_line_map
     global _monitor_start_ts, _worker_log_positions, _last_log_path
+    global _proxy_pending_by_rid
 
     _monitor_start_ts = time.time()
     load_historical_warnings()
@@ -377,6 +379,7 @@ def run_warnings_loop() -> None:
                     zero_result_expand_states.clear()
                     _seen_zero_keys.clear()
                     _seen_error_keys.clear()
+                    _proxy_pending_by_rid.clear()
                     error_scroll_offset = 0
                     error_hover_row = None
                     _last_project_filter = project_filter
@@ -397,9 +400,10 @@ def run_warnings_loop() -> None:
                         zero_result_expand_states.clear()
                         _seen_zero_keys.clear()
                         _seen_error_keys.clear()
+                        _proxy_pending_by_rid.clear()
                         error_scroll_offset = 0
 
-                new_entries, _proxy_log_position = parse_proxy_log(project_filter, _proxy_log_position)
+                new_entries, _proxy_log_position = parse_proxy_log(project_filter, _proxy_log_position, _proxy_pending_by_rid)
                 _worker_sid = proxy_session_id_for_project(project_filter) if project_filter else ''
                 worker_entries, _worker_log_positions = scan_worker_logs(_worker_log_positions, _worker_sid)
                 all_new_entries = new_entries + worker_entries
