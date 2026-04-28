@@ -15,7 +15,11 @@ _SUSPECT_TAG_RE = re.compile(
 # Aggregate tag labels for entries where a strip rule fired in the delta range
 def _aggregate_entry_tags(entry: dict) -> list[str]:
     diff = entry.get('diff_from_prev') or {}
-    start = diff.get('first_diff_index', 0) if diff else 0
+    start = diff.get('first_diff_index')
+    if start is None:
+        start = 0  # First REQ — all msgs are new, no diff_from_prev key
+    elif start < 0:
+        return []  # Byte-identical re-fire — no new strip activity
     smr = entry.get('stripped_msg_removed') or {}
     found = set()
     for idx_str, chunks in smr.items():
