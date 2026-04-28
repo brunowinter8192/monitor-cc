@@ -122,7 +122,10 @@ def _build_latency_update(request_id: str,
                           ttfb_ms: Optional[float],
                           stream_duration_ms: Optional[float],
                           output_tokens: Optional[int],
-                          output_tokens_per_sec: Optional[float]) -> dict:
+                          output_tokens_per_sec: Optional[float],
+                          n_stalls: int = 0,
+                          max_stall_ms: Optional[float] = None,
+                          total_stall_ms: Optional[float] = None) -> dict:
     return {
         "type": "latency_update",
         "request_id": request_id,
@@ -130,6 +133,9 @@ def _build_latency_update(request_id: str,
         "stream_duration_ms": stream_duration_ms,
         "output_tokens": output_tokens,
         "output_tokens_per_sec": output_tokens_per_sec,
+        "n_stalls": n_stalls,
+        "max_stall_ms": max_stall_ms,
+        "total_stall_ms": total_stall_ms,
     }
 
 
