@@ -29,6 +29,7 @@ _worker_proxy_jsonl_position: int = 0
 _worker_proxy_cache_turns: list = []
 _worker_proxy_workers: list = []
 _worker_proxy_force_reload: bool = False
+_worker_proxy_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
 
 # FUNCTIONS
 
@@ -96,7 +97,7 @@ def run_worker_proxy_loop() -> None:
     from ..workers import write_selection
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
-    global _worker_proxy_workers, _worker_proxy_force_reload
+    global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_pending_by_rid
     last_output = None
     last_data_refresh = 0.0
     last_worker_name: Optional[str] = None
@@ -172,6 +173,7 @@ def run_worker_proxy_loop() -> None:
                     worker_proxy_log_position = 0
                     _worker_proxy_jsonl_position = 0
                     _worker_proxy_cache_turns = []
+                    _worker_proxy_pending_by_rid.clear()
                     last_worker_name = worker_name
                     input_changed = True
 
@@ -179,7 +181,7 @@ def run_worker_proxy_loop() -> None:
                     new_entries: list = []
                     log_path = find_worker_proxy_log(worker_name, _monitor.active_project_filter)
                     if log_path:
-                        new_entries, worker_proxy_log_position = _parse_log_file(log_path, worker_proxy_log_position)
+                        new_entries, worker_proxy_log_position = _parse_log_file(log_path, worker_proxy_log_position, _worker_proxy_pending_by_rid)
                         worker_proxy_entries.extend(new_entries)
                         if new_entries:
                             input_changed = True

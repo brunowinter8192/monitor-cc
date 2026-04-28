@@ -118,12 +118,15 @@ def _extract_raw_payload_fields(entry: dict) -> None:
     if 'request_headers' in entry:
         del entry['request_headers']
 
-# Read new proxy log entries from a specific log file, returning (entries, new_position)
-def _parse_log_file(log_path: Path, last_position: int) -> tuple:
+# Read new proxy log entries from a specific log file, returning (entries, new_position).
+# pending_by_rid: caller-owned dict {request_id -> entry} persisted across calls so that
+# latency_update and sent_meta records can be merged even when the matching request entry
+# was emitted in a previous polling cycle (cross-call boundary fix) or when two requests
+# interleave within the same call (within-call fix).
+def _parse_log_file(log_path: Path, last_position: int, pending_by_rid: Optional[dict] = None) -> tuple:
     if not log_path.exists():
         return [], last_position
     entries = []
-    last_entry = None  # for sent_meta lookback without holding full list in memory
     with open(log_path, "r", encoding="utf-8") as f:
         f.seek(last_position)
         for line in f:
@@ -133,30 +136,40 @@ def _parse_log_file(log_path: Path, last_position: int) -> tuple:
             try:
                 entry = json.loads(line)
                 if entry.get('type') == 'sent_meta':
-                    if last_entry is not None and last_entry.get('request_id') == entry.get('request_id'):
-                        last_entry['tools_count'] = entry.get('sent_tools_count', last_entry.get('tools_count'))
-                        last_entry['tools_hash'] = entry.get('sent_tools_hash', last_entry.get('tools_hash'))
-                        last_entry['sent_cache_breakpoints'] = entry.get('sent_cache_breakpoints', {})
+                    if pending_by_rid is not None:
+                        rid = entry.get('request_id')
+                        target = pending_by_rid.get(rid)
+                        if target is not None:
+                            target['tools_count'] = entry.get('sent_tools_count', target.get('tools_count'))
+                            target['tools_hash'] = entry.get('sent_tools_hash', target.get('tools_hash'))
+                            target['sent_cache_breakpoints'] = entry.get('sent_cache_breakpoints', {})
                     continue
                 if entry.get('type') == 'latency_update':
-                    if last_entry is not None and last_entry.get('request_id') == entry.get('request_id'):
-                        last_entry['ttfb_ms'] = entry.get('ttfb_ms')
-                        last_entry['stream_duration_ms'] = entry.get('stream_duration_ms')
-                        last_entry['output_tokens_per_sec'] = entry.get('output_tokens_per_sec')
-                        last_entry['n_stalls'] = entry.get('n_stalls', 0)
-                        last_entry['max_stall_ms'] = entry.get('max_stall_ms')
-                        last_entry['total_stall_ms'] = entry.get('total_stall_ms')
+                    if pending_by_rid is not None:
+                        rid = entry.get('request_id')
+                        target = pending_by_rid.get(rid)
+                        if target is not None:
+                            target['ttfb_ms'] = entry.get('ttfb_ms')
+                            target['stream_duration_ms'] = entry.get('stream_duration_ms')
+                            target['output_tokens_per_sec'] = entry.get('output_tokens_per_sec')
+                            target['n_stalls'] = entry.get('n_stalls', 0)
+                            target['max_stall_ms'] = entry.get('max_stall_ms')
+                            target['total_stall_ms'] = entry.get('total_stall_ms')
+                            pending_by_rid.pop(rid, None)  # response complete; release reference
                     continue
                 _extract_raw_payload_fields(entry)
                 entries.append(entry)
-                last_entry = entry
+                if pending_by_rid is not None:
+                    rid = entry.get('request_id')
+                    if rid:
+                        pending_by_rid[rid] = entry
             except json.JSONDecodeError:
                 pass
         new_position = f.tell()
     return entries, new_position
 
 # Read new proxy log entries for the monitored project, returning (entries, new_position)
-def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
+def parse_proxy_log(project_filter: Optional[str], last_position: int, pending_by_rid: Optional[dict] = None) -> tuple:
     root = os.environ.get("MONITOR_CC_ROOT", "")
     if not root:
         root = str(Path(__file__).parent.parent.parent)
@@ -170,7 +183,7 @@ def parse_proxy_log(project_filter: Optional[str], last_position: int) -> tuple:
         if len(lines) >= 2 and lines[1].strip():
             log_id = lines[1].strip()
     log_file = Path(root) / "src" / "logs" / f"api_requests_{log_id}.jsonl"
-    return _parse_log_file(log_file, last_position)
+    return _parse_log_file(log_file, last_position, pending_by_rid)
 
 # Find the most recent worker proxy log for the given worker name
 def find_worker_proxy_log(worker_name: str, project_filter: Optional[str] = None) -> Optional[Path]:
