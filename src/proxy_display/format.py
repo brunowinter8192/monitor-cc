@@ -26,10 +26,12 @@ def _format_delta(label: str, delta: int) -> str:
     tok_est = _chars_to_tokens(abs_chars)
     return f"{color}Δ{label}:{sign}{_format_k(abs_chars)}(~{_format_k(tok_est)}tok){SOFT_RESET}"
 
-# Format TTFB + gen-rate badge for REQ header (color-coded by Opus thresholds)
+# Format TTFB + gen-rate + stall badge for REQ header (color-coded by Opus thresholds)
 # TTFB thresholds: green<2s yellow<10s red≥10s  |  gen-rate: green≥25 yellow≥10 red<10 tok/s
-def _format_latency(ttfb_ms: Optional[float], output_tokens_per_sec: Optional[float]) -> str:
-    if ttfb_ms is None and output_tokens_per_sec is None:
+# stalls: yellow 1-2, red ≥3  |  n_stalls=0 → no stall badge
+def _format_latency(ttfb_ms: Optional[float], output_tokens_per_sec: Optional[float],
+                    n_stalls: int = 0, max_stall_ms: Optional[float] = None) -> str:
+    if ttfb_ms is None and output_tokens_per_sec is None and not n_stalls:
         return ''
     parts = []
     if ttfb_ms is not None:
@@ -42,6 +44,10 @@ def _format_latency(ttfb_ms: Optional[float], output_tokens_per_sec: Optional[fl
         tps = output_tokens_per_sec
         col = GREEN if tps >= 25.0 else (YELLOW if tps >= 10.0 else RED)
         parts.append(f"{col}gen:{tps:.0f}tok/s{SOFT_RESET}")
+    if n_stalls > 0:
+        col = RED if n_stalls >= 3 else YELLOW
+        max_s = f"{max_stall_ms / 1000:.0f}s" if max_stall_ms is not None else "?s"
+        parts.append(f"{col}{n_stalls}-stalls(max {max_s}){SOFT_RESET}")
     return '  ' + ' '.join(parts)
 
 

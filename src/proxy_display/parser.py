@@ -143,6 +143,9 @@ def _parse_log_file(log_path: Path, last_position: int) -> tuple:
                         last_entry['ttfb_ms'] = entry.get('ttfb_ms')
                         last_entry['stream_duration_ms'] = entry.get('stream_duration_ms')
                         last_entry['output_tokens_per_sec'] = entry.get('output_tokens_per_sec')
+                        last_entry['n_stalls'] = entry.get('n_stalls', 0)
+                        last_entry['max_stall_ms'] = entry.get('max_stall_ms')
+                        last_entry['total_stall_ms'] = entry.get('total_stall_ms')
                     continue
                 _extract_raw_payload_fields(entry)
                 entries.append(entry)

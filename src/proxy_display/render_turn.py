@@ -114,7 +114,8 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
 
         tag_labels = _aggregate_entry_tags(entry)
         tag_badge = f' {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
-        latency_str = _format_latency(entry.get('ttfb_ms'), entry.get('output_tokens_per_sec'))
+        latency_str = _format_latency(entry.get('ttfb_ms'), entry.get('output_tokens_per_sec'),
+                                      entry.get('n_stalls', 0), entry.get('max_stall_ms'))
         lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{eff_str}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{latency_str}{SOFT_RESET}")
         keys.append(req_key)
 

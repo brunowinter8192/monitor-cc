@@ -25,7 +25,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (249 LOC)
+### addon.py (349 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses, writes `latency_update` records on successful responses.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
@@ -33,7 +33,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Called by:** mitmproxy (via `addons = [ProxyAddon()]` at module level). Hooks: `request`, `responseheaders`, `response`.
 **Calls out:** `mitmproxy`
 
-**Latency hooks:** `responseheaders(flow)` stores `flow.metadata["mc_responseheaders_at"]`. `response(flow)` success-path reads `mc_request_at` + `mc_responseheaders_at` from `flow.metadata`, computes `ttfb_ms` / `stream_duration_ms` / `output_tokens_per_sec`, writes a `latency_update` record (type=latency_update, request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec). Parser merges these fields into the main entry by matching `request_id`.
+**Latency hooks:** `responseheaders(flow)` stores `flow.metadata["mc_responseheaders_at"]`. For 2xx responses it also sets `flow.response.stream = stream_chunks` (a closure that records per-chunk relative timestamps into `flow.metadata["mc_chunk_timestamps_ms"]` and buffers body in `flow.metadata["mc_body_parts"]` — because streaming mode empties `flow.response.content`). `response(flow)` success-path reads `mc_request_at` + `mc_responseheaders_at`, computes `ttfb_ms` / `stream_duration_ms` / `output_tokens_per_sec`, calls `_compute_stall_stats(chunk_timestamps_ms)` to derive `n_stalls` / `max_stall_ms` / `total_stall_ms`, writes a `latency_update` record with all 8 fields. Parser merges these fields into the main entry by matching `request_id`.
 
 ---
 
@@ -105,7 +105,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Called by:** `src/proxy/addon.py`
 **Calls out:** —
 
-**Log record types:** `_build_entry` → main request entry. `_build_latency_update(request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec)` → `{type: "latency_update", ...}` written after successful response. Parser (proxy_display/parser.py) merges latency fields into the main entry by matching `request_id`.
+**Log record types:** `_build_entry` → main request entry. `_build_latency_update(request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec, n_stalls=0, max_stall_ms=None, total_stall_ms=None)` → `{type: "latency_update", ...}` with 9 fields; written after successful response. Parser (proxy_display/parser.py) merges all latency fields into the main entry by matching `request_id`.
 
 ---
 

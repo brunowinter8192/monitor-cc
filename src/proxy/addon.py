@@ -171,11 +171,28 @@ class ProxyAddon:
                 pass
 
     def responseheaders(self, flow: http.HTTPFlow) -> None:
-        """Capture response-headers timestamp for TTFB measurement."""
+        """Capture response-headers timestamp for TTFB measurement; attach chunk-timer for stall detection."""
         try:
             if not _is_messages_request(flow):
                 return
-            flow.metadata["mc_responseheaders_at"] = datetime.now(timezone.utc)
+            rh_at = datetime.now(timezone.utc)
+            flow.metadata["mc_responseheaders_at"] = rh_at
+            # For 2xx streaming responses: collect per-chunk relative timestamps and buffer body
+            # (streaming mode means flow.response.content is empty in response hook)
+            if flow.response and 200 <= flow.response.status_code < 300:
+                chunk_timestamps_ms = []
+                body_parts = []
+
+                def stream_chunks(chunks):
+                    for chunk in chunks:
+                        elapsed = (datetime.now(timezone.utc) - rh_at).total_seconds() * 1000
+                        chunk_timestamps_ms.append(elapsed)
+                        body_parts.append(chunk)
+                        yield chunk
+
+                flow.metadata["mc_chunk_timestamps_ms"] = chunk_timestamps_ms
+                flow.metadata["mc_body_parts"] = body_parts
+                flow.response.stream = stream_chunks
         except Exception as e:
             print(f"[proxy_addon] Error in responseheaders hook: {e}", file=sys.stderr)
 
@@ -221,18 +238,38 @@ class ProxyAddon:
                 if request_at and responseheaders_at:
                     ttfb_ms = (responseheaders_at - request_at).total_seconds() * 1000
                     stream_duration_ms = (response_complete_at - responseheaders_at).total_seconds() * 1000
-                output_tokens = _extract_output_tokens(flow.response.content)
+                # Use body buffer from streaming handler (flow.response.content is empty when streaming)
+                body_parts = flow.metadata.get("mc_body_parts")
+                response_content = b''.join(body_parts) if body_parts is not None else flow.response.content
+                output_tokens = _extract_output_tokens(response_content)
                 output_tokens_per_sec = None
                 if stream_duration_ms and stream_duration_ms > 0 and output_tokens is not None:
                     output_tokens_per_sec = output_tokens / (stream_duration_ms / 1000)
+                chunk_ts = flow.metadata.get("mc_chunk_timestamps_ms", [])
+                n_stalls, max_stall_ms, total_stall_ms = _compute_stall_stats(chunk_ts)
                 _write_entry(self.log_file, _build_latency_update(
                     request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec,
+                    n_stalls, max_stall_ms, total_stall_ms,
                 ))
         except Exception as e:
             print(f"[proxy_addon] Error in response hook: {e}", file=sys.stderr)
 
 
 # FUNCTIONS
+
+# Compute stall statistics from per-chunk relative timestamps (ms) — stall threshold 30000ms — returns (n_stalls, max_stall_ms, total_stall_ms)
+def _compute_stall_stats(timestamps_ms: list) -> tuple:
+    if len(timestamps_ms) < 2:
+        return 0, None, None
+    stall_gaps = [
+        timestamps_ms[i] - timestamps_ms[i - 1]
+        for i in range(1, len(timestamps_ms))
+        if timestamps_ms[i] - timestamps_ms[i - 1] >= 30000.0
+    ]
+    if not stall_gaps:
+        return 0, None, None
+    return len(stall_gaps), max(stall_gaps), sum(stall_gaps)
+
 
 # Parse SSE stream (or plain JSON) response body to extract output_tokens count
 def _extract_output_tokens(content: bytes) -> Optional[int]:
