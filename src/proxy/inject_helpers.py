@@ -78,3 +78,15 @@ def _inject_context_management(payload: dict) -> tuple:
         return result, True
     except Exception:
         return payload, False
+
+
+# Apply post-sleep effort cap (effort=low, max_tokens=2000) if 'capped_post_sleep' in modifications — runs AFTER _inject_model_override so cap always wins — returns modified_payload
+def _apply_post_sleep_cap(payload: dict, modifications: list) -> dict:
+    if 'capped_post_sleep' not in modifications:
+        return payload
+    result = dict(payload)
+    output_config = dict(result.get("output_config") or {})
+    output_config["effort"] = "low"
+    result["output_config"] = output_config
+    result["max_tokens"] = 2000
+    return result
