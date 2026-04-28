@@ -183,12 +183,11 @@ class ProxyAddon:
                 chunk_timestamps_ms = []
                 body_parts = []
 
-                def stream_chunks(chunks):
-                    for chunk in chunks:
-                        elapsed = (datetime.now(timezone.utc) - rh_at).total_seconds() * 1000
-                        chunk_timestamps_ms.append(elapsed)
-                        body_parts.append(chunk)
-                        yield chunk
+                def stream_chunks(chunk: bytes) -> bytes:
+                    elapsed = (datetime.now(timezone.utc) - rh_at).total_seconds() * 1000
+                    chunk_timestamps_ms.append(elapsed)
+                    body_parts.append(chunk)
+                    return chunk
 
                 flow.metadata["mc_chunk_timestamps_ms"] = chunk_timestamps_ms
                 flow.metadata["mc_body_parts"] = body_parts
