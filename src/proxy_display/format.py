@@ -45,6 +45,13 @@ def _format_latency(ttfb_ms: Optional[float], output_tokens_per_sec: Optional[fl
     return '  ' + ' '.join(parts)
 
 
+# Format effort string as compact label: 'high'→'hig', 'medium'→'med', 'low'→'lo', None→'-'
+def _fmt_effort(s: Optional[str]) -> str:
+    if s is None:
+        return '-'
+    return {'high': 'hig', 'medium': 'med', 'low': 'lo'}.get(s, s[:3])
+
+
 # Format thinking budget as compact string: None→'-', <1000→str(n), ≥1000→'Nk'
 def _fmt_thinking_budget(n: Optional[int]) -> str:
     if n is None:
@@ -129,19 +136,19 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             last_tools = last_e.get('tools_total_chars', last_e.get('tools_chars', 0))
             last_msgs = last_e.get('messages_total_chars', 0)
 
-            first_e = group['entry_pairs'][0][1]
-            oc = first_e.get('output_config', {})
-            effort = oc.get('effort', '?')
-            effort_short = effort[:3] if len(effort) > 3 else effort
+            # Aggregate effort: highest-priority value across all opus entries in turn
+            _effort_priority = {'high': 3, 'medium': 2, 'low': 1}
+            _eff_vals = [e.get('effort_value') for _, e in _opus_pairs if e.get('effort_value') is not None]
+            effort = max(_eff_vals, key=lambda x: _effort_priority.get(x, 0)) if _eff_vals else None
             # Aggregate thinking budget: max non-None across all opus entries in turn
             _bgt_vals = [e.get('thinking_budget_tokens') for _, e in _opus_pairs
                          if e.get('thinking_budget_tokens') is not None]
             budget = max(_bgt_vals) if _bgt_vals else None
-            effort_changed = prev_effort is not None and prev_effort != '?' and effort != '?' and effort != prev_effort
+            effort_changed = prev_effort is not None and effort is not None and prev_effort != effort
             budget_changed = prev_budget is not None and budget is not None and budget != prev_budget
             effort_color = RED if effort_changed else ''
             budget_color = RED if budget_changed else ''
-            config_str = f"  {effort_color}effort:{effort_short}{SOFT_RESET if effort_color else ''}  {budget_color}think:{_fmt_thinking_budget(budget)}{SOFT_RESET if budget_color else ''}"
+            config_str = f"  {effort_color}effort:{_fmt_effort(effort)}{SOFT_RESET if effort_color else ''}  {budget_color}think:{_fmt_thinking_budget(budget)}{SOFT_RESET if budget_color else ''}"
 
             if prev_group_last_entry is not None:
                 ple = prev_group_last_entry

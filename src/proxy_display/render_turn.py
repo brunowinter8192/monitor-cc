@@ -2,7 +2,7 @@
 from ..constants import (
     SOFT_RESET, RED, WHITE, YELLOW, DIM,
 )
-from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry, _format_latency, _fmt_thinking_budget
+from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry, _format_latency, _fmt_thinking_budget, _fmt_effort
 from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # FUNCTIONS
@@ -99,6 +99,8 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
             haiku_info = f"  sys:{_format_k(e_sys)} tools:{_format_k(e_tools)} msgs:{_format_k(e_msgs)}"
         else:
             haiku_info = ''
+        eff_val = entry.get('effort_value')
+        eff_str = f" eff:{_fmt_effort(eff_val)}" if eff_val is not None else ''
         tc = entry.get('thinking_config') or {}
         think_str = f" think:{_fmt_thinking_budget(entry.get('thinking_budget_tokens'))}" if tc else ''
         if model_short != 'haiku':
@@ -113,7 +115,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         tag_labels = _aggregate_entry_tags(entry)
         tag_badge = f' {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
         latency_str = _format_latency(entry.get('ttfb_ms'), entry.get('output_tokens_per_sec'))
-        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{latency_str}{SOFT_RESET}")
+        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{eff_str}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{latency_str}{SOFT_RESET}")
         keys.append(req_key)
 
         if is_req_expanded:
