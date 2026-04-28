@@ -34,6 +34,7 @@ from .payload_helpers import (
     _detect_idle_recap,
 )
 from .rules_config import _load_config, _load_system2_rules
+from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
 
 _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
@@ -242,6 +243,24 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
             remaining = _find_all_system_reminder_blocks(new_content)
             removed = stripped_msg_removed.setdefault(_fp_idx, [])
             removed.extend(sr for sr in _find_all_system_reminder_blocks(old_content) if sr not in remaining)
+            changed = True
+
+    # PO-Preview pass: strip Preview sections from <persisted-output> blocks in any user message.
+    # Runs after all SR passes — independent, no interaction with SR handling.
+    for _po_idx, _po_msg in enumerate(new_messages):
+        if _po_msg.get("role") != "user":
+            continue
+        old_content = _po_msg.get("content", "")
+        if not _content_contains(old_content, _PO_OPEN_TAG):
+            continue
+        new_content, po_removed = _strip_persisted_output_previews(old_content)
+        if po_removed:
+            new_messages[_po_idx] = {**_po_msg, "content": new_content}
+            modifications.append("stripped_po_preview")
+            if _po_idx not in stripped_msg_indices:
+                stripped_msg_indices.append(_po_idx)
+                stripped_msg_originals[_po_idx] = old_content
+            stripped_msg_removed.setdefault(_po_idx, []).extend(po_removed)
             changed = True
 
     system = payload.get("system", [])
