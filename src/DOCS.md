@@ -2,7 +2,7 @@
 
 ## Role
 
-Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output files and the mitmproxy API log, formats tool calls and events to a terminal, and drives 8 dedicated tmux panes (tokens, warnings, waste, workers, worker-proxy, worker-metadata, proxy, metadata). The `src/` tree is the entire application — `workflow.py` at the project root is just a 25-line entry point.
+Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output files and the mitmproxy API log, formats tool calls and events to a terminal, and drives 8 dedicated tmux panes (tokens, warnings, workers, worker-proxy, worker-metadata, proxy, metadata). The `src/` tree is the entire application — `workflow.py` at the project root is just a 25-line entry point.
 
 ## Entry Points
 
@@ -15,7 +15,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | Subdir | Role | LOC | Modules |
 |---|---|---|---|
 | `core/` | Session polling orchestrator + main-pane output | 611 | 3 |
-| `panes/` | Tmux pane event loops (tokens, warnings, waste) + parsing helpers | 1325 | 5 |
+| `panes/` | Tmux pane event loops (tokens, warnings) + parsing helpers | 813 | 3 |
 | `format/` | ANSI string rendering (tool calls, events, cache tracker) | 490 | 4 |
 | `input/` | Keyboard/mouse stdin handling | 150 | 1 |
 | `jsonl/` | JSONL parsing + tool call extraction | 518 | 3 |
@@ -42,7 +42,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 2. The main pane runs `run_main_loop()` (in `core/monitor.py`): every 0.5s discover sessions → for each session read new JSONL lines → classify tool calls → append to `MAIN_EVENT_BUFFER` → flush to stdout via `monitor_display.py`.
 3. Each dedicated pane runs its own event loop (e.g. `run_tokens_loop()`): poll data source → handle mouse/keyboard → render full screen.
 4. mitmproxy (started by `claude_proxy_start.sh`) intercepts API traffic, strips/modifies payloads, logs to `src/logs/api_requests_<id>.jsonl`.
-5. Panes that need proxy data (proxy_display, warnings, waste) tail that JSONL file independently.
+5. Panes that need proxy data (proxy_display, warnings) tail that JSONL file independently.
 
 ## Shared State
 
@@ -58,7 +58,7 @@ All runtime state lives in `core/monitor.py` as module-level variables. Every pa
 ## Subdir DOCS
 
 - [core/DOCS.md](core/DOCS.md) — polling loop, session processing, main-pane display
-- [panes/DOCS.md](panes/DOCS.md) — token, warnings, waste pane loops
+- [panes/DOCS.md](panes/DOCS.md) — token, warnings pane loops
 - [format/DOCS.md](format/DOCS.md) — formatter, formatter_events, token_format
 - [input/DOCS.md](input/DOCS.md) — click_handler
 - [jsonl/DOCS.md](jsonl/DOCS.md) — jsonl_parser, jsonl_extractors, jsonl_cache_turns

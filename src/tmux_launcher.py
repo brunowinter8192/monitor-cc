@@ -19,8 +19,7 @@ _WINDOW_LAYOUT = [
     (2, 'workers', [('workers',         None,            None),
                     ('worker-proxy',    'workers',       '66%'),
                     ('worker-metadata', 'worker-proxy',  '50%')]),
-    (3, 'debug',   [('warnings',        None,            None),
-                    ('waste',           'warnings',      '50%')]),
+    (3, 'debug',   [('warnings',        None,            None)]),
 ]
 
 # ORCHESTRATOR
@@ -50,9 +49,6 @@ def launch_split_screen(project_filter: Optional[str] = None, script_path: str =
     workers_cmd = f"python3 {script_path} --mode workers {project_arg}"
     worker_proxy_cmd = f"python3 {script_path} --mode worker-proxy {project_arg}"
     worker_metadata_cmd = f"python3 {script_path} --mode worker-metadata {project_arg}"
-    # Propagate Monitor_CC root so waste_pane.py finds proxy logs regardless of cwd
-    _monitor_root = os.environ.get('MONITOR_CC_ROOT', '') or os.path.dirname(os.path.abspath(script_path))
-    waste_cmd = f"MONITOR_CC_ROOT={_monitor_root} python3 {script_path} --mode waste {project_arg}"
 
     original_history_limit = get_global_history_limit()
     subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
@@ -61,7 +57,7 @@ def launch_split_screen(project_filter: Optional[str] = None, script_path: str =
     # Window 0 "main":    Main (left, 70%) + Tokens (right, 30%)
     # Window 1 "proxy":   API Proxy log + Metadata (right, 30%)
     # Window 2 "workers": Workers (left) + Worker-Proxy (top right) + Worker-Metadata (bottom right)
-    # Window 3 "debug":   Warnings + Waste (split 50%)
+    # Window 3 "debug":   Warnings (fullscreen)
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, main_cmd])
     subprocess.run(["tmux", "rename-window", "-t", f"{session_name}:0", "main"])
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:0.0", "-l", "30%", tokens_cmd])
@@ -74,7 +70,6 @@ def launch_split_screen(project_filter: Optional[str] = None, script_path: str =
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:2.1", "-l", "50%", worker_metadata_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:3", "-n", "debug", warnings_cmd])
-    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:3.0", "-l", "50%", waste_cmd])
 
     subprocess.run(["tmux", "select-window", "-t", f"{session_name}:0"])
 
@@ -144,7 +139,7 @@ def configure_tmux_session(session_name: str, script_path: str = '', project_arg
         '0.0': 'MAIN', '0.1': 'TOKENS',
         '1.0': 'PROXY', '1.1': 'METADATA',
         '2.0': 'WORKERS', '2.1': 'WORKER-PROXY', '2.2': 'WORKER-METADATA',
-        '3.0': 'WARNINGS', '3.1': 'WASTE',
+        '3.0': 'WARNINGS',
     }
     for pane_ref, title in pane_titles.items():
         subprocess.run(["tmux", "select-pane", "-t", f"{session_name}:{pane_ref}", "-T", title])
@@ -173,13 +168,11 @@ def configure_tmux_session(session_name: str, script_path: str = '', project_arg
 # Build mode -> shell command mapping (mirrors launch_split_screen construction exactly)
 def _build_mode_commands(script_path: str, project_path: Optional[str]) -> dict:
     project_arg = f"--project {project_path}" if project_path else ""
-    _monitor_root = os.environ.get('MONITOR_CC_ROOT', '') or os.path.dirname(os.path.abspath(script_path))
     cmds = {
         mode: f"python3 {script_path} --mode {mode} {project_arg}"
         for mode in ('main', 'tokens', 'proxy', 'metadata',
                      'workers', 'worker-proxy', 'worker-metadata', 'warnings')
     }
-    cmds['waste'] = f"MONITOR_CC_ROOT={_monitor_root} python3 {script_path} --mode waste {project_arg}"
     return cmds
 
 # Parse 'list-panes -F #{pane_index}|#{pane_start_command}' output; return {mode: pane_idx_str}

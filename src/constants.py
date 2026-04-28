@@ -53,7 +53,6 @@ MODE_PROXY = 'proxy'
 MODE_METADATA = 'metadata'
 MODE_WORKER_PROXY = 'worker-proxy'
 MODE_WORKER_METADATA = 'worker-metadata'
-MODE_WASTE = 'waste'
 
 # Hook events — session lifecycle
 HOOK_SESSION_START = 'SessionStart'
