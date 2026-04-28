@@ -17,6 +17,7 @@ from .warnings_parse import (
     _is_tool_error, _is_zero_result_block,
     _build_tool_use_id_map, _resolve_tool_call,
 )
+from ..ram_audit import register_ram_dump
 
 tool_errors: list = []
 error_expand_states: Dict[int, bool] = {}
@@ -306,6 +307,30 @@ def run_warnings_loop() -> None:
     global schema_warnings, zero_results, zero_result_expand_states, zero_result_line_map
     global _monitor_start_ts, _worker_log_positions, _last_log_path
     global _proxy_pending_by_rid
+
+    def _ram_state():
+        return [
+            ('tool_errors',                  tool_errors),
+            ('error_expand_states',          error_expand_states),
+            ('error_line_map',               error_line_map),
+            ('schema_warnings',              schema_warnings),
+            ('zero_results',                 zero_results),
+            ('zero_result_expand_states',    zero_result_expand_states),
+            ('zero_result_line_map',         zero_result_line_map),
+            ('_worker_log_positions',        _worker_log_positions),
+            ('_seen_zero_keys',              _seen_zero_keys),
+            ('_seen_error_keys',             _seen_error_keys),
+            ('_proxy_pending_by_rid',        _proxy_pending_by_rid),
+            ('error_hover_row',              str(error_hover_row)),
+            ('error_scroll_offset',          error_scroll_offset),
+            ('_proxy_log_position',          _proxy_log_position),
+            ('_last_project_filter',         str(_last_project_filter)),
+            ('_last_log_path',               str(_last_log_path)),
+            ('_last_refresh_ts',             _last_refresh_ts),
+            ('_force_refresh',               _force_refresh),
+            ('_monitor_start_ts',            _monitor_start_ts),
+        ]
+    register_ram_dump('warnings', _ram_state)
 
     _monitor_start_ts = time.time()
     load_historical_warnings()
