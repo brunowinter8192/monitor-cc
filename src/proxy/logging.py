@@ -2,7 +2,7 @@
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Union
 
 from .message_summary import _summarize_message
 
@@ -114,6 +114,22 @@ def _compute_diff(prev: Optional[list], curr: list) -> dict:
         "messages_modified": modified,
         "first_diff_index": first_diff,
         "summary": summary,
+    }
+
+
+# Build latency update record written by response hook (linked to main entry via request_id)
+def _build_latency_update(request_id: str,
+                          ttfb_ms: Optional[float],
+                          stream_duration_ms: Optional[float],
+                          output_tokens: Optional[int],
+                          output_tokens_per_sec: Optional[float]) -> dict:
+    return {
+        "type": "latency_update",
+        "request_id": request_id,
+        "ttfb_ms": ttfb_ms,
+        "stream_duration_ms": stream_duration_ms,
+        "output_tokens": output_tokens,
+        "output_tokens_per_sec": output_tokens_per_sec,
     }
 
 
