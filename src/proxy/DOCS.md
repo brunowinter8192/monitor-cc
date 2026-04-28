@@ -25,7 +25,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (349 LOC)
+### addon.py (356 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses, writes `latency_update` records on successful responses.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
@@ -97,7 +97,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### logging.py (136 LOC)
+### logging.py (158 LOC)
 
 **Purpose:** Build structured JSONL log entries from flow + payload data; compute message diffs vs previous request; build `latency_update` records for response-side timing.
 **Reads:** Raw payload dicts, message lists, previous message summaries.
