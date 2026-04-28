@@ -5,14 +5,12 @@ from pathlib import Path
 from typing import Dict, Set, List, Optional
 
 # From constants.py: Colors, config, shared constants
-from ..constants import RESET, CYAN, POLL_INTERVAL, INPUT_POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_RULES, MODE_WARNINGS, MODE_HOOKS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, MODE_WASTE
+from ..constants import RESET, CYAN, POLL_INTERVAL, INPUT_POLL_INTERVAL, MODE_ALL, MODE_MAIN, MODE_WARNINGS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_METADATA, MODE_WORKER_PROXY, MODE_WORKER_METADATA, MODE_WASTE
 
 # From session_finder.py: Discover active Claude Code sessions
 from ..session_finder import find_active_sessions
 # From jsonl/: Parse JSONL lines for session start timestamp
 from ..jsonl import parse_jsonl_lines, read_new_lines
-# From hooks/: Parse hook log entries
-from ..hooks import get_current_position as get_hook_log_position
 # From monitor_display.py: Session status output
 from .monitor_display import print_session_status, ingest_proxy_strip_data
 # From monitor_session.py: Session file processing, task handling, historical load
@@ -28,12 +26,11 @@ task_requests_seen: Set[str] = set()
 active_project_filter: Optional[str] = None
 active_mode: str = MODE_ALL
 _last_monitored_count: Optional[int] = None
-hook_log_position: int = 0
 _strip_proxy_position: int = 0  # byte position in proxy log for strip-data ingestion
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> None:
-    global active_project_filter, active_mode, hook_log_position
+    global active_project_filter, active_mode
     active_project_filter = project_filter
     active_mode = mode
 
@@ -45,15 +42,9 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> N
     elif mode == MODE_TOKENS:
         from ..panes import run_tokens_loop
         run_tokens_loop()
-    elif mode == MODE_RULES:
-        from ..panes import run_rules_loop
-        run_rules_loop()
     elif mode == MODE_WARNINGS:
         from ..panes import run_warnings_loop
         run_warnings_loop()
-    elif mode == MODE_HOOKS:
-        from ..hooks import run_hooks_loop
-        run_hooks_loop()
     elif mode == MODE_PROXY:
         from ..proxy_display import run_proxy_loop
         run_proxy_loop()
@@ -79,7 +70,7 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> N
 
 # Initialize file positions for all existing sessions
 def initialize_file_positions() -> int:
-    global file_positions, active_project_filter, hook_log_position
+    global file_positions, active_project_filter
 
     sessions = find_active_sessions(active_project_filter)
 
@@ -88,14 +79,7 @@ def initialize_file_positions() -> int:
             pos = get_file_end_position(session_file)
             file_positions[session_file] = pos
 
-    hook_log_position = initialize_hook_log_position()
-
     return len(sessions)
-
-# Initialize hook log position at EOF to skip historical entries
-def initialize_hook_log_position() -> int:
-    pos = get_hook_log_position()
-    return pos
 
 # Monitor all active sessions for new tool calls
 def monitor_sessions() -> None:
@@ -152,7 +136,6 @@ def filter_sessions_by_mode(sessions: list, mode: str) -> list:
 # Runs virtual-rendering main loop with mouse-scroll, zebra, and truncation
 def run_main_loop() -> None:
     import os
-    from ..panes import process_hook_log
     from ..input.click_handler import (
         read_keypress, setup_keyboard_input, restore_terminal,
         enable_mouse, disable_mouse, read_mouse_event,
@@ -194,7 +177,6 @@ def run_main_loop() -> None:
 
             now = time.time()
             if now - last_data_refresh >= POLL_INTERVAL:
-                process_hook_log()
                 newest = _get_newest_main_session()
                 if newest != current_main_session and newest is not None:
                     current_main_session = newest

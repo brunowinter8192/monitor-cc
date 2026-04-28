@@ -46,9 +46,7 @@ TOOL_TASK = 'Task'
 # Mode names
 MODE_ALL = 'all'
 MODE_MAIN = 'main'
-MODE_RULES = 'rules'
 MODE_WARNINGS = 'warnings'
-MODE_HOOKS = 'hooks'
 MODE_TOKENS = 'tokens'
 MODE_WORKERS = 'workers'
 MODE_PROXY = 'proxy'
@@ -63,7 +61,6 @@ HOOK_SESSION_END = 'SessionEnd'
 
 # Hook events — user input
 HOOK_USER_PROMPT = 'UserPromptSubmit'
-HOOK_INSTRUCTIONS_LOADED = 'InstructionsLoaded'
 
 # Hook events — tools
 HOOK_PRE_TOOL = 'PreToolUse'
