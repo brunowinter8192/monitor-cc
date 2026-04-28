@@ -67,6 +67,7 @@ def _extract_raw_payload_fields(entry: dict) -> None:
         entry['thinking_config'] = raw.get('thinking', {})
         entry['thinking_budget_tokens'] = raw.get('thinking', {}).get('budget_tokens')
         entry['output_config'] = raw.get('output_config', {})
+        entry['effort_value'] = (raw.get('output_config') or {}).get('effort')
         entry['max_tokens'] = raw.get('max_tokens', 0)
         entry['temperature'] = raw.get('temperature', None)
         entry['top_p'] = raw.get('top_p', None)
