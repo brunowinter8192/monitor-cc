@@ -1,7 +1,14 @@
 # INFRASTRUCTURE
+import atexit
+import gc
 import json
 import os
+import resource
+import signal
+import sys
 import time
+import tracemalloc
+from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -18,6 +25,8 @@ from ..proxy_display.parser import get_proxy_session_start_ts, find_proxy_log_pa
 from ..utils import truncate_visible, first_word_of_call, _iso_to_float, format_worker_prefix
 from ..format.strip_marker import highlight_stripped, build_tool_result_strip_lookup
 from .waste_forensics import pairs, format_timestamp_local, Pair
+
+tracemalloc.start(25)
 
 # Tools whose high ratio is structural (content-driven), not actionable waste
 RATIO_EXCLUDED_TOOLS = ['Edit', 'Write', 'worker_send']
@@ -56,6 +65,13 @@ def run_waste_loop() -> None:
     global _last_project_filter, _waste_above, _monitor_start_ts
     global _waste_all_events, _waste_worker_all_events, _waste_worker_log_positions
     global _strip_by_tool_result_id
+
+    # PID file + SIGUSR1 RAM-dump handler
+    _PID_FILE = '/tmp/.monitor_cc_pid_waste'
+    with open(_PID_FILE, 'w') as _f:
+        _f.write(str(os.getpid()))
+    atexit.register(lambda: os.path.exists(_PID_FILE) and os.remove(_PID_FILE))
+    signal.signal(signal.SIGUSR1, _handle_ram_dump)
 
     _monitor_start_ts = time.time()
     last_output = None
@@ -143,6 +159,83 @@ def run_waste_loop() -> None:
 
 
 # FUNCTIONS
+
+# Write RAM snapshot to dev/ram_audit/dumps/<timestamp>_waste.txt on SIGUSR1
+def _handle_ram_dump(signum, frame) -> None:
+    from datetime import datetime
+    now = datetime.now()
+    ts = now.strftime('%Y%m%d_%H%M%S')
+    pid = os.getpid()
+
+    root = os.environ.get('MONITOR_CC_ROOT', '')
+    if not root:
+        root = str(Path(__file__).resolve().parent.parent.parent)
+    dump_dir = Path(root) / 'dev' / 'ram_audit' / 'dumps'
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    dump_path = dump_dir / f'{ts}_waste.txt'
+
+    try:
+        import psutil as _psutil
+        rss = _psutil.Process(pid).memory_info().rss
+        rss_src = 'psutil'
+    except ImportError:
+        raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        rss = raw if sys.platform == 'darwin' else raw * 1024
+        rss_src = 'resource'
+    rss_str = f'{rss:,} bytes ({rss // 1024 // 1024} MB) [{rss_src}]'
+
+    out = []
+    out.append('# waste_pane RAM dump')
+    out.append(f'timestamp: {now.isoformat()}')
+    out.append(f'pid:       {pid}')
+    out.append(f'rss:       {rss_str}')
+    out.append('')
+
+    out.append('## Top-30 gc objects by class')
+    counts = Counter(type(o).__name__ for o in gc.get_objects()).most_common(30)
+    out.append(f'{"class":<40}  {"count":>8}')
+    out.append('-' * 52)
+    for cls, cnt in counts:
+        out.append(f'{cls:<40}  {cnt:>8}')
+    out.append('')
+
+    out.append('## Top-30 tracemalloc by lineno')
+    snapshot = tracemalloc.take_snapshot()
+    stats = snapshot.statistics('lineno')[:30]
+    out.append(f'{"file:line":<60}  {"size_bytes":>12}  {"count":>8}')
+    out.append('-' * 84)
+    for stat in stats:
+        frame_ = stat.traceback[0]
+        loc = f'{frame_.filename}:{frame_.lineno}'
+        out.append(f'{loc:<60}  {stat.size:>12,}  {stat.count:>8,}')
+    out.append('')
+
+    out.append('## waste_pane module state')
+    containers = [
+        ('_waste_above',                _waste_above),
+        ('waste_expand_states',         waste_expand_states),
+        ('waste_line_map',              waste_line_map),
+        ('_waste_all_events',           _waste_all_events),
+        ('_waste_worker_all_events',    _waste_worker_all_events),
+        ('_waste_worker_log_positions', _waste_worker_log_positions),
+        ('_strip_by_tool_result_id',    _strip_by_tool_result_id),
+    ]
+    scalars = [
+        ('waste_threshold',      waste_threshold),
+        ('waste_scroll_offset',  waste_scroll_offset),
+        ('_waste_log_position',  _waste_log_position),
+        ('_monitor_start_ts',    _monitor_start_ts),
+        ('_waste_log_path',      str(_waste_log_path)),
+        ('_last_project_filter', str(_last_project_filter)),
+    ]
+    for name, val in containers:
+        out.append(f'{name:<40}  len={len(val):>6}  sizeof={sys.getsizeof(val):>10,}')
+    for name, val in scalars:
+        out.append(f'{name:<40}  {val}')
+
+    dump_path.write_text('\n'.join(out) + '\n', encoding='utf-8')
+    print(f'[ram-dump] wrote {dump_path}', file=sys.stderr, flush=True)
+
 
 # Serialize a waste-pane pair to full untruncated input + output text for clipboard
 def _serialize_waste(idx: int) -> str:
