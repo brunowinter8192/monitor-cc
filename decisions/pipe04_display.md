@@ -3,14 +3,14 @@
 ## Status Quo
 
 - `formatter.py`: color-coded output (green=main, red=error, pastel=meta)
-- `ui_mode.py`: `format_rules_block()` rendert `ACTIVE RULES (XP / YG)` mit `[P]`/`[G]` Prefix pro Regel, pastel blue
-- Workers-Pane (Window 3, Pane 3.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Three-pane split: Workers (3.0) | Worker-Proxy (3.1) | Worker-Metadata (3.2).
+- Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Three-pane split: Workers (2.0) | Worker-Proxy (2.1) | Worker-Metadata (2.2).
+- *(Removed 2026-04-28: `ui_mode.py`/`format_rules_block()`, rules_pane (Window 2), hooks_pane — entire hook-log display pipeline deleted. Monitor is now 4 windows.)*
 
 **BUG (fixed):** `active_rules` was populated by `process_hook_log()` but never rendered in streaming mode.
 Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Window 2, Pane 2.0).
 **BUG (fixed):** Project `.claude/rules/*.md` did not appear — root cause was YAML array syntax in `paths:` frontmatter (Claude Code Bug #19377/#33581). CSV parser expects string, receives JS Array from `yaml.parse()`, producing broken globs. Fix: CSV string format (`paths: src/**, workflow.py`). All project rules now load correctly via InstructionsLoaded hook.
 **BUG (fixed):** Rules-Pane showed historical rules from previous sessions because `hook_log_position` was set to 0 (read from beginning of hook log). Fix: removed `hook_log_position = 0` override, now starts from EOF like all other modes.
-**BUG-CLASS (fixed, 2026-04-25 Performance Session):** All 9 stdin-driven panes were polling at a 50ms floor via `time.sleep(INPUT_POLL_INTERVAL)` at the end of each loop iteration → input latency 0–50ms (~25ms median) for hover/click/scroll/keyboard regardless of how fast the rest of the loop ran. Replaced with `wait_for_input(INPUT_POLL_INTERVAL)` from `src/input/click_handler.py` — a `select.select([_stdin_fd], [], [], timeout)` wrapper with `time.sleep` fallback when stdin not in raw mode. Loop wakes immediately on any byte arriving on stdin (mouse event, keypress) OR after the timeout expires. Smoke test 11.9ms wake-latency on stdin-mid-wait. Affected modules: `panes/{token,rules,warnings,waste}_pane.py`, `hooks/hooks_pane.py`, `workers/worker_pane.py` (two call sites: try body + except handler), `proxy_display/{pane,worker_proxy_pane}.py`. `metadata_pane.py` unchanged — has no stdin handler. Pattern A (direct sleep replacement) chosen over Pattern B (refresh-aligned timeout) because `warnings_pane`'s `WARNINGS_POLL_INTERVAL=10s` would otherwise mean up to 10s blocking on input — Pattern B would have made warnings unresponsive.
+**BUG-CLASS (fixed, 2026-04-25 Performance Session):** All 9 stdin-driven panes were polling at a 50ms floor via `time.sleep(INPUT_POLL_INTERVAL)` at the end of each loop iteration → input latency 0–50ms (~25ms median) for hover/click/scroll/keyboard regardless of how fast the rest of the loop ran. Replaced with `wait_for_input(INPUT_POLL_INTERVAL)` from `src/input/click_handler.py` — a `select.select([_stdin_fd], [], [], timeout)` wrapper with `time.sleep` fallback when stdin not in raw mode. Loop wakes immediately on any byte arriving on stdin (mouse event, keypress) OR after the timeout expires. Smoke test 11.9ms wake-latency on stdin-mid-wait. Affected modules: `panes/{token,warnings,waste}_pane.py`, `workers/worker_pane.py` (two call sites: try body + except handler), `proxy_display/{pane,worker_proxy_pane}.py`. `metadata_pane.py` unchanged — has no stdin handler. (rules_pane and hooks_pane were also affected at the time but have since been removed.) Pattern A (direct sleep replacement) chosen over Pattern B (refresh-aligned timeout) because `warnings_pane`'s `WARNINGS_POLL_INTERVAL=10s` would otherwise mean up to 10s blocking on input — Pattern B would have made warnings unresponsive.
 
 **BUG (fixed, Session 12):** Rules-Pane and Hooks-Pane showed data from ALL past sessions (old timestamps, closed-worktree rules, 20000+ historical hook events). Root cause: `load_historical_rules()` and `load_historical_hooks()` read `hook_outputs.jsonl` from position 0 with no timestamp filter; `active_rules` only accumulated, never cleared. Fix:
 - `_get_session_start_ts()` reads first `timestamp` from newest main session JSONL → `session_start_ts` global
@@ -20,10 +20,7 @@ Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Wind
 - `run_rules_loop()` and `run_hooks_loop()`: track `current_main_session` via `_get_newest_main_session()`; on session change: update `session_start_ts`, re-run historical load with new timestamp
 - Token Pane unaffected (reads session JSONL directly, natural session boundary)
 
-Rules-Pane Layout:
-- Window 2 "rules", Pane 2.0 (links 50%): `python3 workflow.py --mode rules` → `run_rules_loop()`
-- Rendert `format_rules_block()` bei jeder Änderung von `active_rules`
-- M-r Keybinding: Rules-Pane Content → Clipboard via `pbcopy`
+*(Rules-Pane Layout removed 2026-04-28 — Window 2 "rules" and all associated M-r/M-h keybinds deleted.)*
 
 ## IST — Stellschrauben
 

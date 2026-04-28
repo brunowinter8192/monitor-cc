@@ -12,8 +12,7 @@
 - `jsonl_parser.py`: `extract_system_messages()` extrahiert `type=system` Messages und deren Text-Content; Rückgabe als 10. Element des Parse-Tuples
 - `session-start-rules.sh`: liest stdin (JSON mit `source`, `cwd`), logt via `hook_logger.py` mit `source=$SOURCE`; nutzt `$CWD` aus JSON statt `$(pwd)` für Worktree-Check
 
-Hook types routed by `process_hook_log()` in monitor.py:
-- `InstructionsLoaded` → `active_rules`
+*(Removed 2026-04-28: hook_parser.py, rules_pane.py, hooks_pane.py, hooks_format.py, hooks_persist.py, ui_mode.py — the entire hook-log pipeline and rules/hooks panes were deleted. Window 2 (rules+hooks) removed; monitor is now 4 windows.)*
 
 ## IST — Stellschrauben
 

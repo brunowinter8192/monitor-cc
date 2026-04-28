@@ -2,16 +2,14 @@
 
 ## Role
 
-Dedicated tmux pane event loops — each module owns one pane's poll cycle, stdin input handling, and ANSI screen output. These modules are spawned by `core/monitor.py` when `--mode` targets a specific pane (tokens, rules, warnings, waste). They run as the process main loop and never return. Touch this package to change what a pane displays, how it handles mouse/keyboard input, or its scroll/expand state. Do NOT add general formatting logic here — that belongs in `format/`.
+Dedicated tmux pane event loops — each module owns one pane's poll cycle, stdin input handling, and ANSI screen output. These modules are spawned by `core/monitor.py` when `--mode` targets a specific pane (tokens, warnings, waste). They run as the process main loop and never return. Touch this package to change what a pane displays, how it handles mouse/keyboard input, or its scroll/expand state. Do NOT add general formatting logic here — that belongs in `format/`.
 
 ## Public Interface
 
 ```python
 from src.panes import run_tokens_loop      # token/cache tracker pane
-from src.panes import run_rules_loop       # active rules pane
 from src.panes import run_warnings_loop    # tool errors / unknown types pane
 from src.panes import run_waste_loop       # proxy forensics / waste pane
-from src.panes import process_hook_log     # one-shot hook log refresh (called from streaming loop)
 from src.panes import track_unknown_type   # called by monitor_session for unknown JSONL types
 ```
 
@@ -34,16 +32,6 @@ core/monitor.run_monitor(mode=X)
 **Writes:** stdout (ANSI screen); mutates module-level `cache_expand_states`, `cache_line_map`, `cache_hover_row`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position`.
 **Called by:** `core/monitor.py` (mode dispatch); `proxy_display/pane.py` + `proxy_display/worker_proxy_pane.py` (`build_cache_turns` function).
 **Calls out:** `jsonl`, `input.click_handler`, `format.token_format`, `core.monitor` (lazy state read), `utils.truncate_visible`.
-
----
-
-### rules_pane.py (212 LOC)
-
-**Purpose:** Active rules pane — polls hook log for InstructionsLoaded events, groups rules by [P]roject/[G]lobal source, renders interactive expand/collapse view. Also exposes `process_hook_log()` for the main streaming loop.
-**Reads:** Hook log (`src/logs/hook_outputs.jsonl`) via `hooks` package; shared state `monitor.active_project_filter`, `monitor.hook_log_position`.
-**Writes:** stdout (ANSI screen); mutates `active_rules`, `rules_invokers`, `rules_expand_states`, `rules_line_map`, `rules_scroll_offset`.
-**Called by:** `core/monitor.py` (mode dispatch + `process_hook_log` in streaming loop).
-**Calls out:** `hooks`, `input.click_handler`, `core.monitor` (lazy), `input.ui_mode` (lazy, `format_rules_block`).
 
 ---
 
@@ -94,14 +82,13 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 | Module | Key state vars |
 |---|---|
 | `token_pane` | `cache_expand_states`, `cache_line_map`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position` |
-| `rules_pane` | `active_rules`, `rules_invokers`, `rules_expand_states`, `rules_scroll_offset` |
 | `warnings_parse` | `unknown_type_counts`, `warned_unknown_types` |
 | `warnings_pane` | `tool_errors`, `error_expand_states`, `error_scroll_offset`, `_proxy_log_position` |
 | `waste_pane` | `_waste_above`, `waste_expand_states`, `waste_threshold`, `_strip_by_tool_result_id` |
 
 ## Gotchas
 
-- All 4 pane loops call `from ..core import monitor as _monitor` lazily (inside the run function) to avoid circular imports at module level.
+- All 3 pane loops call `from ..core import monitor as _monitor` lazily (inside the run function) to avoid circular imports at module level.
 - `build_cache_turns()` in `token_pane.py` is also called by `proxy_display` — it is a shared utility even though it lives in a pane module.
 - Zebra/hover/truncation render loop lives in `token_pane.py`, NOT in `token_format.py`. `format_cache_tracker` returns a 4-tuple of logical lines — `token_pane.py` applies visual treatment.
 - `line_map` is built 1:1 in the render loop (one physical row per logical line). `visual_line_count` span-loops are gone — long lines are truncated at render time, not wrapped.
