@@ -26,4 +26,28 @@ Each dump contains four sections:
 
 ## Scripts
 
-*(none yet — add analysis scripts here as `A_*.py` per dev/ convention when Phase 2 starts)*
+### dump_all.sh
+
+Triggers a SIGUSR1 RAM dump on every running monitor_cc pane in one shot.
+
+**Usage (from project root):**
+```bash
+dev/ram_audit/dump_all.sh
+```
+
+**What it does:**
+1. Iterates all `/tmp/.monitor_cc_pid_*` PID files.
+2. For each, verifies the process is alive (`kill -0`), then sends `SIGUSR1`.
+3. Sleeps 1 s for handlers to write their dumps.
+4. Lists freshly created dump files in `dev/ram_audit/dumps/`.
+5. Prints summary: `N dumps written, see dev/ram_audit/dumps/`.
+
+**Graceful handling:** skips stale PID files (process no longer running); exits cleanly with "No active pane PID files found" when no panes are instrumented.
+
+**Equivalent per-pane trigger:**
+```bash
+kill -USR1 $(cat /tmp/.monitor_cc_pid_<pane>)
+# e.g.:
+kill -USR1 $(cat /tmp/.monitor_cc_pid_proxy)
+kill -USR1 $(cat /tmp/.monitor_cc_pid_warnings)
+```

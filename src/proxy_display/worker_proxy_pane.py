@@ -17,6 +17,7 @@ from ..input.click_handler import (
     resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
 from ..utils import visual_line_count
+from ..ram_audit import register_ram_dump
 
 worker_proxy_entries: List[dict] = []
 worker_proxy_expand_states: Dict[int, bool] = {}
@@ -98,6 +99,22 @@ def run_worker_proxy_loop() -> None:
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
     global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_pending_by_rid
+
+    def _ram_state():
+        return [
+            ('worker_proxy_entries',          worker_proxy_entries),
+            ('worker_proxy_expand_states',    worker_proxy_expand_states),
+            ('worker_proxy_line_map',         worker_proxy_line_map),
+            ('_worker_proxy_cache_turns',     _worker_proxy_cache_turns),
+            ('_worker_proxy_workers',         _worker_proxy_workers),
+            ('_worker_proxy_pending_by_rid',  _worker_proxy_pending_by_rid),
+            ('worker_proxy_hover_row',        str(worker_proxy_hover_row)),
+            ('worker_proxy_scroll_offset',    worker_proxy_scroll_offset),
+            ('worker_proxy_log_position',     worker_proxy_log_position),
+            ('_worker_proxy_jsonl_position',  _worker_proxy_jsonl_position),
+            ('_worker_proxy_force_reload',    _worker_proxy_force_reload),
+        ]
+    register_ram_dump('worker_proxy', _ram_state)
     last_output = None
     last_data_refresh = 0.0
     last_worker_name: Optional[str] = None
