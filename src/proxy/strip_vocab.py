@@ -38,6 +38,7 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'ALL': ('stripped_all_sr_msg0',         []),
     'SC':  ('stripped_sidecar_content',     []),  # full original stored, no marker substring
     'IR':  ('stripped_idle_recap',          []),  # full original stored, no SR-wrapping
+    'PP':  ('stripped_po_preview',          ['Preview (first ']),  # PO wrapper kept, Preview content removed
 }
 
 # Tag literal codes — 4 raw tags tracked for LEAK/SUSPECT detection
@@ -57,7 +58,7 @@ _FULL_NAME_TO_CODE: dict[str, str] = {fn: code for code, (fn, _) in RULES.items(
 # Rule names that indicate an SR-wrapping strip (for LEAK:<SR> detection in classify_tags)
 # Excludes TN (tag-strip, not SR) and SC (sidecar — raw content, not SR-wrapped)
 _SR_STRIP_RULES: frozenset[str] = frozenset(
-    fn for code, (fn, _) in RULES.items() if code not in ('TN', 'SC', 'IR')
+    fn for code, (fn, _) in RULES.items() if code not in ('TN', 'SC', 'IR', 'PP')
 )
 
 
@@ -137,7 +138,10 @@ def classify_tags(entry: dict) -> tuple[list[str], list[str]]:
             sus_signals.append('SUS:<SR>')
 
     if '<persisted-output>' in combined:
-        sus_signals.append('SUS:<PO>')
+        if _tag_strip_in_delta('Preview (first '):
+            pass  # PP strip ran — wrapper preserved by design, not a leak
+        else:
+            sus_signals.append('SUS:<PO>')
 
     return leak_signals, sus_signals
 
@@ -237,7 +241,7 @@ def legend_markdown() -> str:
     lines.append('### Tag Literals (for LEAK / SUS)')
     lines.append('| Code | Literal | Notes |')
     lines.append('|---|---|---|')
-    lines.append('| `<PO>` | `<persisted-output>` | No active rule (rolled back) — always SUS |')
+    lines.append('| `<PO>` | `<persisted-output>` | Paired with `PP` rule — Preview stripped, wrapper preserved |')
     lines.append('| `<SR>` | `<system-reminder>` | Classified via template startswith; rule suffix added: `SUS:<SR>/CMD` |')
     lines.append('| `<TN>` | `<task-notification>` | Paired with `TN` rule |')
     lines.append('| `<ND>` | `<new-diagnostics>` | Paired with `PYR` rule |')

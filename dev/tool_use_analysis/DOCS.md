@@ -179,6 +179,38 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 
 ---
 
+## tag_presence_audit.py
+
+**Purpose:** Per-REQ, delta-scoped forensic audit for leftover tag occurrences (`<SR>`, `<TN>`, `<ND>`, `<PO>`) in `raw_payload.messages`. Complements `sr_bypass_audit.py` (which is aggregate and multi-counts persistent messages) and `strip_audit.py` (which is delta-scoped but truncated and mixed with EFF/INERT noise). This audit emits only REQs with tag occurrences, shows full content without truncation, and pairs each REQ with its `stripped_msg_removed` delta entries so the reader can answer per-REQ: "tag X was in delta msg[N] — was it stripped (visible in `stripped_msg_removed[N]`) or did it bypass?"
+
+**Input:** Single Proxy JSONL path (positional, optional). Auto-picks newest `api_requests_opus_monitor_cc_*.jsonl` from `src/logs/`.
+
+**Output:** `dev/tool_use_analysis/<YYYYMMDDHHMM>_tag_presence_audit.md`. Path printed to stdout. Sections: per-REQ blocks (only for REQs with tag occurrences) + `## Aggregate (delta-scoped)` footer with tag-type count table and SR template bypass_rate table.
+
+**Usage:**
+```bash
+# Auto-pick newest log
+./venv/bin/python3 dev/tool_use_analysis/tag_presence_audit.py
+
+# Explicit log
+./venv/bin/python3 dev/tool_use_analysis/tag_presence_audit.py \
+  src/logs/api_requests_opus_monitor_cc_1777294641.jsonl
+
+# Explicit output path
+./venv/bin/python3 dev/tool_use_analysis/tag_presence_audit.py \
+  src/logs/api_requests_opus_monitor_cc_1777294641.jsonl \
+  --output /tmp/my_audit.md
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `jsonl` | *(positional, optional)* Proxy JSONL path | auto-picks newest in `src/logs/` |
+| `--output FILE` | Output markdown file path | `dev/tool_use_analysis/<YYYYMMDDHHMM>_tag_presence_audit.md` |
+
+**Per-REQ block format:** header line with timestamp + message counts + delta_start; one occurrence block per tag found (label: `<SR>/template_id`, `<TN>`, `<ND>`, or `<PO>`; full content indented 4 spaces); then `STRIPPED` blocks from `stripped_msg_removed` for all delta-range indices. Layer labels: `text`, `tool_result_str`, `tool_result_nested`, `tool_use`, `plain_str`. SR blocks starting with `_PRESERVE_PREAMBLE` (claudeMD context) are silently skipped. Unmatched SR blocks labeled `/?`.
+
+---
+
 ## sr_bypass_audit.py
 
 **Purpose:** SR bypass audit — per-template count of bypassed vs captured SR blocks. Scans `raw_payload.messages` for SR blocks still present after proxy processing (bypassed) and `stripped_msg_removed` for SR blocks successfully removed (captured). Reports `bypass_rate` per template per log file + aggregate summary table. Designed to identify which SR templates the proxy strip pipeline is missing.

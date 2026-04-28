@@ -45,13 +45,13 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (306 LOC)
+### rules.py (325 LOC)
 
 **Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported function `apply_modification_rules`. Sidecar branch short-circuits the full pass chain. Remainder is a single monolithic function body — further split requires refactoring.
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** `rules_config`, `content_strip`, `payload_helpers`.
+**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`.
 
 ---
 
@@ -70,6 +70,16 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 10 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, plan-mode); each template has one or more identifier strings. `claudemd-contents` uses a list of identifiers (`"As you answer the user's questions"` for CC's preamble form, `"Contents of "` for the bare form) — `_match_template` iterates the list with OR semantics. Strip uses `startswith` against extracted SR-block inner text — no greedy regex across code literals.
 **Reads:** Message content (string or list of blocks); template catalog (module-local).
 **Writes:** Nothing — returns modified content.
+**Called by:** `src/proxy/rules.py`
+**Calls out:** stdlib only (`re`).
+
+---
+
+### strip_po.py (72 LOC)
+
+**Purpose:** Strip the `Preview (first NKB):` section from `<persisted-output>` blocks injected by CC when Bash output exceeds its inline limit. Preserves the `<persisted-output>` wrapper and the `Output too large ... Full output saved to:` header line; removes only the Preview section (which biases readers toward 2KB snippets rather than the persisted file). Traverses all 4 content shapes (top-level string, list→text, list→tool_result/string, list→tool_result/list-of-text) mirroring `strip_sr.py`. Malformed PO blocks (missing `Output too large` or `Preview (first` header) are left untouched. Returns `(new_content, removed_chunks)` — caller (`rules.py` PO-Preview pass) appends chunks to `stripped_msg_removed` for `attribute_chunk` PP-rule attribution.
+**Reads:** Message content (string or list of blocks).
+**Writes:** Nothing — returns `(modified_content, list[str])`.
 **Called by:** `src/proxy/rules.py`
 **Calls out:** stdlib only (`re`).
 
@@ -155,10 +165,10 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_vocab.py (247 LOC)
+### strip_vocab.py (251 LOC)
 
 **Purpose:** Shared vocabulary + semantics for proxy strip classification. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers. Exports:
-- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL/SC with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection; excludes TN and SC).
+- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL/SC/IR/PP with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection; excludes TN, SC, IR, PP).
 - `attribute_chunk(chunk) -> code | None` — marker-substring attribution (starts-with special-case for TN).
 - `code_for_rule(full_name) -> code | None` — reverse lookup from `modifications[]` entry to rule code.
 - `classify_tags(entry) -> (leak_signals, sus_signals)` — **delta-scoped**: reads `entry.diff_from_prev.first_diff_index` and scans `entry.messages[first_diff_index:][].blocks[].full_text` + content_preview/tail for the 4 tag literals. Missing `diff_from_prev` or `first_diff_index == 0` falls back to full-scan (correct for first REQ). `first_diff_index < 0` (no-change sentinel) returns empty. Pairs each found tag with the relevant rule in `modifications[]` to decide LEAK vs SUS.
