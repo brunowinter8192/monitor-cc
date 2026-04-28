@@ -46,6 +46,17 @@ _TN_TAG = '<task-notification>'
 _ND_TAG = '<new-diagnostics>'
 _PO_TAG = '<persisted-output>'
 
+# Standalone TN/ND block regexes (line-anchored, mirrors proxy strip logic)
+_STANDALONE_TN_RE = re.compile(r'(?m)^<task-notification>.*?</task-notification>', re.DOTALL)
+_STANDALONE_ND_RE = re.compile(r'(?m)^<new-diagnostics>.*?</new-diagnostics>', re.DOTALL)
+# PO preview regex — mirror of src/proxy/strip_po.py:_PO_PREVIEW_RE
+_PO_PREVIEW_RE = re.compile(
+    r'(?P<open><persisted-output>\nOutput too large[^\n]+)'
+    r'(?P<preview>\n+Preview \(first [^\n]+\):\n.*?)'
+    r'(?P<close>\n?</persisted-output>)',
+    re.DOTALL,
+)
+
 # Resolve log directory — handles both main repo and worktree execution
 _script_dir = Path(__file__).resolve().parent          # dev/tool_use_analysis/
 _repo_candidate = _script_dir.parent.parent            # worktree or main root
@@ -60,12 +71,14 @@ else:
 # ORCHESTRATOR
 
 def tag_presence_audit_workflow(jsonl_path, output_path):
-    blocks, tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags, n_non_opus = (
+    (blocks, tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags, n_non_opus,
+     tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured) = (
         _stream_and_audit(jsonl_path)
     )
     lines = _build_report(
         jsonl_path, blocks, tag_counts, sr_bypassed, sr_captured,
         n_opus, n_reqs_with_tags, n_non_opus,
+        tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text('\n'.join(lines))
@@ -80,6 +93,7 @@ def _stream_and_audit(jsonl_path):
     tag_counts = {'SR': 0, 'TN': 0, 'ND': 0, 'PO': 0}
     sr_bypassed = {tid: 0 for tid in _SR_TEMPLATES}
     sr_captured = {tid: 0 for tid in _SR_TEMPLATES}
+    tn_bypassed = tn_captured = nd_bypassed = nd_captured = po_bypassed = po_captured = 0
     n_opus = 0
     n_reqs_with_tags = 0
     n_non_opus = 0
@@ -103,13 +117,21 @@ def _stream_and_audit(jsonl_path):
             n_opus += 1
             req_num += 1
 
-            block_lines, tc_d, byp_d, cap_d, has_tags = _scan_entry(entry, prev, req_num)
+            block_lines, tc_d, byp_d, cap_d, tn_b, tn_c, nd_b, nd_c, po_b, po_c, has_tags = (
+                _scan_entry(entry, prev, req_num)
+            )
 
             for k in tag_counts:
                 tag_counts[k] += tc_d[k]
             for tid in _SR_TEMPLATES:
                 sr_bypassed[tid] += byp_d[tid]
                 sr_captured[tid] += cap_d[tid]
+            tn_bypassed += tn_b
+            tn_captured += tn_c
+            nd_bypassed += nd_b
+            nd_captured += nd_c
+            po_bypassed += po_b
+            po_captured += po_c
 
             if has_tags:
                 n_reqs_with_tags += 1
@@ -117,7 +139,8 @@ def _stream_and_audit(jsonl_path):
 
             prev = entry
 
-    return blocks, tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags, n_non_opus
+    return (blocks, tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags, n_non_opus,
+            tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured)
 
 
 # Scan one opus REQ for tag occurrences in delta range and captured SR in stripped_msg_removed
@@ -135,6 +158,7 @@ def _scan_entry(entry, prev, req_num):
     tag_occurrences = []  # list of (header_line, content_lines)
     tc = {'SR': 0, 'TN': 0, 'ND': 0, 'PO': 0}
     byp = {tid: 0 for tid in _SR_TEMPLATES}
+    tn_byp = tn_cap = nd_byp = nd_cap = po_byp = po_cap = 0
     seen = set()  # dedup within REQ
 
     for abs_idx in range(start, len(messages)):
@@ -173,6 +197,13 @@ def _scan_entry(entry, prev, req_num):
                         content_lines = _context_neighborhood(text, tag_str, 4)
                         tag_occurrences.append((header, content_lines))
                         tc[tag_type] += 1
+                    # Bypass counting: line-anchored blocks still present in post-strip payload
+                    if tag_type == 'TN':
+                        tn_byp += len(_STANDALONE_TN_RE.findall(text))
+                    elif tag_type == 'ND':
+                        nd_byp += len(_STANDALONE_ND_RE.findall(text))
+                    elif tag_type == 'PO':
+                        po_byp += len(_PO_PREVIEW_RE.findall(text))
 
     # Scan stripped_msg_removed for captured SR (always, for aggregate accuracy)
     smr = entry.get('stripped_msg_removed') or {}
@@ -203,13 +234,21 @@ def _scan_entry(entry, prev, req_num):
                 tid, _ = _match_template(chunk.strip())
                 if tid:
                     cap[tid] += 1
+            # TN/ND/PO captured detection
+            chunk_s = chunk.strip()
+            if chunk_s.startswith('<task-notification>'):
+                tn_cap += 1
+            if '<new-diagnostics>' in chunk:
+                nd_cap += 1
+            if chunk_s.startswith('Preview (first '):
+                po_cap += 1
 
     if not stripped_lines:
         stripped_lines = ['  STRIPPED (none in delta)']
 
     has_tags = bool(tag_occurrences)
     if not has_tags:
-        return [], tc, byp, cap, False
+        return [], tc, byp, cap, tn_byp, tn_cap, nd_byp, nd_cap, po_byp, po_cap, False
 
     # Build REQ block
     block_lines = [
@@ -223,7 +262,7 @@ def _scan_entry(entry, prev, req_num):
     block_lines.extend(stripped_lines)
     block_lines += ['', '---', '']
 
-    return block_lines, tc, byp, cap, True
+    return block_lines, tc, byp, cap, tn_byp, tn_cap, nd_byp, nd_cap, po_byp, po_cap, True
 
 
 # Yield (layer_label, text) for all text content in messages[abs_idx]
@@ -356,7 +395,8 @@ def _format_ts(ts_raw):
 
 # Assemble full report lines
 def _build_report(jsonl_path, blocks, tag_counts, sr_bypassed, sr_captured,
-                  n_opus, n_reqs_with_tags, n_non_opus):
+                  n_opus, n_reqs_with_tags, n_non_opus,
+                  tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured):
     total_tags = sum(tag_counts.values())
     ts = datetime.now().strftime('%Y-%m-%d %H:%M')
     lines = [
@@ -370,12 +410,16 @@ def _build_report(jsonl_path, blocks, tag_counts, sr_bypassed, sr_captured,
         '',
     ]
     lines.extend(blocks)
-    lines.extend(_build_aggregate(tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags))
+    lines.extend(_build_aggregate(tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags,
+                                  tn_bypassed, tn_captured, nd_bypassed, nd_captured,
+                                  po_bypassed, po_captured))
     return lines
 
 
 # Build aggregate footer section
-def _build_aggregate(tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags):
+def _build_aggregate(tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags,
+                     tn_bypassed, tn_captured, nd_bypassed, nd_captured,
+                     po_bypassed, po_captured):
     total_tags = sum(tag_counts.values())
     lines = [
         '## Aggregate (delta-scoped)',
@@ -400,6 +444,22 @@ def _build_aggregate(tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_t
         total = b + c
         rate = 'n/a' if total == 0 else f'{100 * b / total:.1f}%'
         lines.append(f'| {tid} | {b} | {c} | {rate} |')
+    # Non-SR tag strip verification table
+    lines += [
+        '',
+        '### Non-SR Tag Strip Verification',
+        '',
+        '| tag_type | bypassed_in_delta | captured_in_delta | bypass_rate |',
+        '|---|---|---|---|',
+    ]
+    for tag_label, byp, cap in (
+        ('task-notification', tn_bypassed, tn_captured),
+        ('new-diagnostics',   nd_bypassed, nd_captured),
+        ('persisted-output (preview)', po_bypassed, po_captured),
+    ):
+        total = byp + cap
+        rate = 'n/a' if total == 0 else f'{100 * byp / total:.1f}%'
+        lines.append(f'| {tag_label} | {byp} | {cap} | {rate} |')
     lines += [
         '',
         f'Total opus REQs: {n_opus} | REQs with tag occurrences in delta: {n_reqs_with_tags}'

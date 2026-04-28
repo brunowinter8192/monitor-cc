@@ -26,6 +26,25 @@ def _format_delta(label: str, delta: int) -> str:
     tok_est = _chars_to_tokens(abs_chars)
     return f"{color}Δ{label}:{sign}{_format_k(abs_chars)}(~{_format_k(tok_est)}tok){SOFT_RESET}"
 
+# Format TTFB + gen-rate badge for REQ header (color-coded by Opus thresholds)
+# TTFB thresholds: green<2s yellow<10s red≥10s  |  gen-rate: green≥25 yellow≥10 red<10 tok/s
+def _format_latency(ttfb_ms: Optional[float], output_tokens_per_sec: Optional[float]) -> str:
+    if ttfb_ms is None and output_tokens_per_sec is None:
+        return ''
+    parts = []
+    if ttfb_ms is not None:
+        ttfb_s = ttfb_ms / 1000.0
+        col = GREEN if ttfb_s < 2.0 else (YELLOW if ttfb_s < 10.0 else RED)
+        parts.append(f"{col}TTFB:{ttfb_s:.1f}s{SOFT_RESET}")
+    else:
+        parts.append(f"{DIM}TTFB:?{SOFT_RESET}")
+    if output_tokens_per_sec is not None:
+        tps = output_tokens_per_sec
+        col = GREEN if tps >= 25.0 else (YELLOW if tps >= 10.0 else RED)
+        parts.append(f"{col}gen:{tps:.0f}tok/s{SOFT_RESET}")
+    return '  ' + ' '.join(parts)
+
+
 # Shorten full model name to family label
 def _shorten_model(model: str) -> str:
     m = model.lower()

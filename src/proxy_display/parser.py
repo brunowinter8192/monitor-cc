@@ -136,6 +136,12 @@ def _parse_log_file(log_path: Path, last_position: int) -> tuple:
                         last_entry['tools_hash'] = entry.get('sent_tools_hash', last_entry.get('tools_hash'))
                         last_entry['sent_cache_breakpoints'] = entry.get('sent_cache_breakpoints', {})
                     continue
+                if entry.get('type') == 'latency_update':
+                    if last_entry is not None and last_entry.get('request_id') == entry.get('request_id'):
+                        last_entry['ttfb_ms'] = entry.get('ttfb_ms')
+                        last_entry['stream_duration_ms'] = entry.get('stream_duration_ms')
+                        last_entry['output_tokens_per_sec'] = entry.get('output_tokens_per_sec')
+                    continue
                 _extract_raw_payload_fields(entry)
                 entries.append(entry)
                 last_entry = entry

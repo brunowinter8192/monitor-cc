@@ -27,11 +27,13 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ### addon.py (249 LOC)
 
-**Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses.
+**Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses, writes `latency_update` records on successful responses.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
-**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl`; writes `src/logs/api_error_payload_*.json` on 4xx.
-**Called by:** mitmproxy (via `addons = [ProxyAddon()]` at module level)
+**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); writes `src/logs/api_error_payload_*.json` on 4xx.
+**Called by:** mitmproxy (via `addons = [ProxyAddon()]` at module level). Hooks: `request`, `responseheaders`, `response`.
 **Calls out:** `mitmproxy`
+
+**Latency hooks:** `responseheaders(flow)` stores `flow.metadata["mc_responseheaders_at"]`. `response(flow)` success-path reads `mc_request_at` + `mc_responseheaders_at` from `flow.metadata`, computes `ttfb_ms` / `stream_duration_ms` / `output_tokens_per_sec`, writes a `latency_update` record (type=latency_update, request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec). Parser merges these fields into the main entry by matching `request_id`.
 
 ---
 
@@ -97,11 +99,13 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ### logging.py (136 LOC)
 
-**Purpose:** Build structured JSONL log entries from flow + payload data; compute message diffs vs previous request.
+**Purpose:** Build structured JSONL log entries from flow + payload data; compute message diffs vs previous request; build `latency_update` records for response-side timing.
 **Reads:** Raw payload dicts, message lists, previous message summaries.
-**Writes:** Nothing — returns structured entry dict.
+**Writes:** Nothing — returns structured entry dicts.
 **Called by:** `src/proxy/addon.py`
 **Calls out:** —
+
+**Log record types:** `_build_entry` → main request entry. `_build_latency_update(request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec)` → `{type: "latency_update", ...}` written after successful response. Parser (proxy_display/parser.py) merges latency fields into the main entry by matching `request_id`.
 
 ---
 

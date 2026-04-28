@@ -9,7 +9,7 @@ from typing import Dict, Optional
 
 from mitmproxy import http
 
-from .logging import _build_entry, _summarize_content_for_log
+from .logging import _build_entry, _build_latency_update, _summarize_content_for_log
 from .message_summary import _summarize_message
 from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .inject_helpers import _inject_context_management, _inject_model_override
@@ -117,6 +117,9 @@ class ProxyAddon:
             if stripped_msg_removed:
                 entry['stripped_msg_removed'] = {str(k): v for k, v in stripped_msg_removed.items()}
             _write_entry(self.log_file, entry)
+            # Store timing/id for latency hooks (responseheaders + response)
+            flow.metadata["mc_request_at"] = datetime.now(timezone.utc)
+            flow.metadata["mc_request_id"] = entry.get("request_id", "")
 
             prev_mod_msgs = self.prev_messages_by_model.get(model_family)
             modified_payload = _strip_all_cache_control(modified_payload)
@@ -165,8 +168,17 @@ class ProxyAddon:
             except Exception:
                 pass
 
+    def responseheaders(self, flow: http.HTTPFlow) -> None:
+        """Capture response-headers timestamp for TTFB measurement."""
+        try:
+            if not _is_messages_request(flow):
+                return
+            flow.metadata["mc_responseheaders_at"] = datetime.now(timezone.utc)
+        except Exception as e:
+            print(f"[proxy_addon] Error in responseheaders hook: {e}", file=sys.stderr)
+
     def response(self, flow: http.HTTPFlow) -> None:
-        """Log full request payload when API returns 4xx error — for debugging malformed requests."""
+        """Log latency metrics on success; log full payload on 4xx error."""
         try:
             if not _is_messages_request(flow):
                 return
@@ -193,11 +205,67 @@ class ProxyAddon:
                 with open(error_file, "w", encoding="utf-8") as f:
                     json.dump(error_data, f, indent=2, ensure_ascii=False)
                 print(f"[proxy_addon] API {flow.response.status_code} error — payload saved to {error_file}", file=sys.stderr)
+                return
+            # Success path — compute and log latency metrics
+            if flow.response and flow.response.status_code < 400:
+                request_id = flow.metadata.get("mc_request_id", "")
+                if not request_id:
+                    return
+                request_at = flow.metadata.get("mc_request_at")
+                responseheaders_at = flow.metadata.get("mc_responseheaders_at")
+                response_complete_at = datetime.now(timezone.utc)
+                ttfb_ms = None
+                stream_duration_ms = None
+                if request_at and responseheaders_at:
+                    ttfb_ms = (responseheaders_at - request_at).total_seconds() * 1000
+                    stream_duration_ms = (response_complete_at - responseheaders_at).total_seconds() * 1000
+                output_tokens = _extract_output_tokens(flow.response.content)
+                output_tokens_per_sec = None
+                if stream_duration_ms and stream_duration_ms > 0 and output_tokens is not None:
+                    output_tokens_per_sec = output_tokens / (stream_duration_ms / 1000)
+                _write_entry(self.log_file, _build_latency_update(
+                    request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec,
+                ))
         except Exception as e:
             print(f"[proxy_addon] Error in response hook: {e}", file=sys.stderr)
 
 
 # FUNCTIONS
+
+# Parse SSE stream (or plain JSON) response body to extract output_tokens count
+def _extract_output_tokens(content: bytes) -> Optional[int]:
+    if not content:
+        return None
+    try:
+        text = content.decode("utf-8", errors="replace")
+    except Exception:
+        return None
+    # Non-streaming: plain JSON response
+    stripped = text.lstrip()
+    if stripped.startswith('{'):
+        try:
+            data = json.loads(stripped)
+            tokens = data.get('usage', {}).get('output_tokens')
+            return int(tokens) if tokens is not None else None
+        except Exception:
+            pass
+    # Streaming SSE: scan lines in reverse for message_delta event
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if not line.startswith('data:'):
+            continue
+        data_str = line[5:].strip()
+        if not data_str or data_str == '[DONE]':
+            continue
+        try:
+            data = json.loads(data_str)
+            if data.get('type') == 'message_delta':
+                tokens = data.get('usage', {}).get('output_tokens')
+                return int(tokens) if tokens is not None else None
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return None
+
 
 # Resolve log file path from env vars — log_id gives per-proxy-start isolation
 def _resolve_log_file() -> Path:
