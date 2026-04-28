@@ -2,7 +2,7 @@
 from ..constants import (
     SOFT_RESET, RED, WHITE, YELLOW, DIM,
 )
-from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry, _format_latency
+from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry, _format_latency, _fmt_thinking_budget
 from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # FUNCTIONS
@@ -99,8 +99,8 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
             haiku_info = f"  sys:{_format_k(e_sys)} tools:{_format_k(e_tools)} msgs:{_format_k(e_msgs)}"
         else:
             haiku_info = ''
-        budget = entry.get('thinking_config', {}).get('budget_tokens', 0)
-        think_str = f" think:{_format_k(budget)}" if budget > 0 else ''
+        tc = entry.get('thinking_config') or {}
+        think_str = f" think:{_fmt_thinking_budget(entry.get('thinking_budget_tokens'))}" if tc else ''
         if model_short != 'haiku':
             api_call = turn_api_calls[opus_call_idx] if opus_call_idx < len(turn_api_calls) else {}
             cr = api_call.get('cache_read', 0)

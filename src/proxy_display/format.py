@@ -45,6 +45,15 @@ def _format_latency(ttfb_ms: Optional[float], output_tokens_per_sec: Optional[fl
     return '  ' + ' '.join(parts)
 
 
+# Format thinking budget as compact string: None→'-', <1000→str(n), ≥1000→'Nk'
+def _fmt_thinking_budget(n: Optional[int]) -> str:
+    if n is None:
+        return '-'
+    if n < 1000:
+        return str(n)
+    return f'{n // 1000}k'
+
+
 # Shorten full model name to family label
 def _shorten_model(model: str) -> str:
     m = model.lower()
@@ -109,7 +118,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         prev_group_last_entry = None
         prev_effort = None
         prev_budget = None
-        prev_think_type = None
         for group in groups:
             turn_idx = group['turn_idx']
             opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:turn_idx])
@@ -122,26 +130,23 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             last_msgs = last_e.get('messages_total_chars', 0)
 
             first_e = group['entry_pairs'][0][1]
-            tc = first_e.get('thinking_config', {})
             oc = first_e.get('output_config', {})
             effort = oc.get('effort', '?')
             effort_short = effort[:3] if len(effort) > 3 else effort
-            budget = tc.get('budget_tokens', 0)
-            budget_str = _format_k(budget) if budget else '?'
-            think_type = tc.get('type', '?')
+            # Aggregate thinking budget: max non-None across all opus entries in turn
+            _bgt_vals = [e.get('thinking_budget_tokens') for _, e in _opus_pairs
+                         if e.get('thinking_budget_tokens') is not None]
+            budget = max(_bgt_vals) if _bgt_vals else None
             effort_changed = prev_effort is not None and prev_effort != '?' and effort != '?' and effort != prev_effort
-            budget_changed = prev_budget is not None and prev_budget != 0 and budget != 0 and budget != prev_budget
-            type_changed = prev_think_type is not None and prev_think_type != '?' and think_type != '?' and think_type != prev_think_type
+            budget_changed = prev_budget is not None and budget is not None and budget != prev_budget
             effort_color = RED if effort_changed else ''
-            budget_color = RED if (budget_changed or type_changed) else ''
-            config_str = f"  {effort_color}effort:{effort_short}{SOFT_RESET if effort_color else ''}  {budget_color}think:{budget_str}({think_type}){SOFT_RESET if budget_color else ''}"
+            budget_color = RED if budget_changed else ''
+            config_str = f"  {effort_color}effort:{effort_short}{SOFT_RESET if effort_color else ''}  {budget_color}think:{_fmt_thinking_budget(budget)}{SOFT_RESET if budget_color else ''}"
 
             if prev_group_last_entry is not None:
                 ple = prev_group_last_entry
-                d_sys = last_sys - ple.get('system_total_chars', ple.get('system_prompt_chars', 0))
-                d_tools = last_tools - ple.get('tools_total_chars', ple.get('tools_chars', 0))
                 d_msgs = last_msgs - ple.get('messages_total_chars', 0)
-                delta_str = f"  {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}"
+                delta_str = f"  {_format_delta('msgs', d_msgs)}"
             else:
                 delta_str = f"  {DIM}(first turn){SOFT_RESET}"
 
@@ -180,7 +185,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 prev_group_last_entry = main_entries[-1]
             prev_effort = effort
             prev_budget = budget
-            prev_think_type = think_type
             all_lines.append('')
             line_keys.append(None)
     else:
