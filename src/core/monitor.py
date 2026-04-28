@@ -15,6 +15,8 @@ from ..jsonl import parse_jsonl_lines, read_new_lines
 from .monitor_display import print_session_status, ingest_proxy_strip_data
 # From monitor_session.py: Session file processing, task handling, historical load
 from .monitor_session import get_file_end_position, get_initial_position, process_session_file, load_historical_main
+# From ram_audit: register tracemalloc + SIGUSR1 dump handler for this pane
+from ..ram_audit import register_ram_dump
 
 file_positions: Dict[Path, int] = {}
 tool_use_caches: Dict[Path, dict] = {}
@@ -143,6 +145,22 @@ def run_main_loop() -> None:
     )
     from .monitor_display import render_main_buffer
     from . import monitor_display as _display
+
+    def _ram_state():
+        return [
+            ('file_positions',          file_positions),
+            ('tool_use_caches',         tool_use_caches),
+            ('agent_to_task',           agent_to_task),
+            ('agent_to_type',           agent_to_type),
+            ('buffered_subagent_calls', buffered_subagent_calls),
+            ('task_requests_seen',      task_requests_seen),
+            ('call_counter',            call_counter),
+            ('active_project_filter',   str(active_project_filter)),
+            ('active_mode',             active_mode),
+            ('_last_monitored_count',   str(_last_monitored_count)),
+            ('_strip_proxy_position',   _strip_proxy_position),
+        ]
+    register_ram_dump('main', _ram_state)
 
     load_historical_main()
     current_main_session = _get_newest_main_session()
