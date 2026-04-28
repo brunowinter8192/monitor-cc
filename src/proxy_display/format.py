@@ -3,7 +3,7 @@ from collections import Counter
 from typing import Optional
 
 from ..constants import (
-    RESET, SOFT_RESET, GREEN, RED, DIM, YELLOW, PASTEL_PURPLE, HOVER_BG,
+    RESET, SOFT_RESET, GREEN, RED, DIM, YELLOW, HOVER_BG,
     DIM_YELLOW_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )
 from ..format.token_format import _format_k
@@ -110,7 +110,6 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
 
 # Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
 def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None) -> tuple:
-    from ..utils import format_timestamp
     from .render_entry import _render_entry_lines
     from .render_turn import render_turn_expanded
     if not entries:
@@ -129,54 +128,10 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
 
     if groups:
         prev_group_last_entry = None
-        prev_effort = None
-        prev_budget = None
         for group in groups:
             turn_idx = group['turn_idx']
             opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:turn_idx])
             sub_req_num = 0
-
-            _opus_pairs = [(idx, e) for idx, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
-            last_e = _opus_pairs[-1][1] if _opus_pairs else group['entry_pairs'][-1][1]
-            last_sys = last_e.get('system_total_chars', last_e.get('system_prompt_chars', 0))
-            last_tools = last_e.get('tools_total_chars', last_e.get('tools_chars', 0))
-            last_msgs = last_e.get('messages_total_chars', 0)
-
-            # Aggregate effort: highest-priority value across all opus entries in turn
-            _effort_priority = {'high': 3, 'medium': 2, 'low': 1}
-            _eff_vals = [e.get('effort_value') for _, e in _opus_pairs if e.get('effort_value') is not None]
-            effort = max(_eff_vals, key=lambda x: _effort_priority.get(x, 0)) if _eff_vals else None
-            # Aggregate thinking budget: max non-None across all opus entries in turn
-            _bgt_vals = [e.get('thinking_budget_tokens') for _, e in _opus_pairs
-                         if e.get('thinking_budget_tokens') is not None]
-            budget = max(_bgt_vals) if _bgt_vals else None
-            effort_changed = prev_effort is not None and effort is not None and prev_effort != effort
-            budget_changed = prev_budget is not None and budget is not None and budget != prev_budget
-            effort_color = RED if effort_changed else ''
-            budget_color = RED if budget_changed else ''
-            config_str = f"  {effort_color}effort:{_fmt_effort(effort)}{SOFT_RESET if effort_color else ''}  {budget_color}think:{_fmt_thinking_budget(budget)}{SOFT_RESET if budget_color else ''}"
-
-            if prev_group_last_entry is not None:
-                ple = prev_group_last_entry
-                d_msgs = last_msgs - ple.get('messages_total_chars', 0)
-                delta_str = f"  {_format_delta('msgs', d_msgs)}"
-            else:
-                delta_str = f"  {DIM}(first turn){SOFT_RESET}"
-
-            turn_ts = format_timestamp(group['timestamp'])[:5]
-
-            all_lines.append(f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{turn_ts}]{config_str}{delta_str}{SOFT_RESET}")
-            line_keys.append(None)
-
-            if prev_group_last_entry is not None:
-                ple = prev_group_last_entry
-                prev_sys = ple.get('system_total_chars', ple.get('system_prompt_chars', 0))
-                prev_tools = ple.get('tools_total_chars', ple.get('tools_chars', 0))
-                prev_msgs = ple.get('messages_total_chars', 0)
-                all_lines.append(f"  {DIM}total: tools:{_format_k(prev_tools)}  msgs:{_format_k(prev_msgs)}{SOFT_RESET}")
-            else:
-                all_lines.append(f"  {DIM}total: (first turn){SOFT_RESET}")
-            line_keys.append(None)
 
             prev_entry_for_delta = prev_group_last_entry
             t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
@@ -196,8 +151,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             main_entries = [e for _, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
             if main_entries:
                 prev_group_last_entry = main_entries[-1]
-            prev_effort = effort
-            prev_budget = budget
             all_lines.append('')
             line_keys.append(None)
     else:
