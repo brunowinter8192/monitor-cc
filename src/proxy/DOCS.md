@@ -159,11 +159,11 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### inject_helpers.py (80 LOC)
+### inject_helpers.py (95 LOC)
 
-**Purpose:** Inject model override (model/thinking/effort/max_tokens) and `context_management` payload block from `proxy_rules.json` config.
-**Reads:** Payload dict, model_family string; `proxy_rules.json` via `rules_config._load_config()`.
-**Writes:** Nothing — returns `(modified_payload, injected_bool)`.
+**Purpose:** Three post-rules payload injections: model override (model/thinking/effort/max_tokens from `proxy_rules.json`), `context_management` block, and post-sleep cap. `_apply_post_sleep_cap` MUST be called after `_inject_model_override` — it re-applies effort=low/max_tokens=2000 for `capped_post_sleep` turns, overriding whatever model_override set.
+**Reads:** Payload dict, model_family string, modifications list; `proxy_rules.json` via `rules_config._load_config()`.
+**Writes:** Nothing — returns modified payload or `(modified_payload, injected_bool)`.
 **Called by:** `src/proxy/addon.py`
 **Calls out:** —
 

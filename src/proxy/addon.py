@@ -12,7 +12,7 @@ from mitmproxy import http
 from .logging import _build_entry, _build_latency_update, _summarize_content_for_log
 from .message_summary import _summarize_message
 from .rules import apply_modification_rules, _strip_blocked_tool_references
-from .inject_helpers import _inject_context_management, _inject_model_override
+from .inject_helpers import _inject_context_management, _inject_model_override, _apply_post_sleep_cap
 from .content_strip import _strip_tool_descriptions, _strip_sys3
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools
@@ -100,6 +100,8 @@ class ProxyAddon:
             modified_payload, model_overridden = _inject_model_override(modified_payload, model_family)
             if model_overridden:
                 modifications.append("injected_model_override")
+
+            modified_payload = _apply_post_sleep_cap(modified_payload, modifications)
 
             entry = _build_entry(flow, modified_payload, self.prev_messages_by_model.get(model_family), modifications)
             if original_system2 is not None:

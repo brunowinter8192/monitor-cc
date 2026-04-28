@@ -318,8 +318,4 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     modified = dict(payload)
     modified["messages"] = new_messages
     modified["system"] = new_system
-    if _post_sleep:
-        _cfg = modified.get("output_config") or {}
-        modified["output_config"] = {**_cfg, "effort": "low"}
-        modified["max_tokens"] = 2000
     return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
