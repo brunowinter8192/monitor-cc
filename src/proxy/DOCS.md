@@ -51,7 +51,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** `rules_config`, `content_strip`, `payload_helpers`.
+**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`.
 
 ---
 
@@ -75,7 +75,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_po.py (62 LOC)
+### strip_po.py (72 LOC)
 
 **Purpose:** Strip the `Preview (first NKB):` section from `<persisted-output>` blocks injected by CC when Bash output exceeds its inline limit. Preserves the `<persisted-output>` wrapper and the `Output too large ... Full output saved to:` header line; removes only the Preview section (which biases readers toward 2KB snippets rather than the persisted file). Traverses all 4 content shapes (top-level string, list→text, list→tool_result/string, list→tool_result/list-of-text) mirroring `strip_sr.py`. Malformed PO blocks (missing `Output too large` or `Preview (first` header) are left untouched. Returns `(new_content, removed_chunks)` — caller (`rules.py` PO-Preview pass) appends chunks to `stripped_msg_removed` for `attribute_chunk` PP-rule attribution.
 **Reads:** Message content (string or list of blocks).
