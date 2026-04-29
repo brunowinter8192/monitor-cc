@@ -440,7 +440,11 @@ def run_warnings_loop() -> None:
 
                 new_entries, _proxy_log_position = parse_proxy_log(project_filter, _proxy_log_position, _proxy_pending_by_rid)
                 _worker_sid = proxy_session_id_for_project(project_filter) if project_filter else ''
-                worker_entries, _worker_log_positions = scan_worker_logs(_worker_log_positions, _worker_sid)
+                worker_entries, _worker_log_positions = scan_worker_logs(
+                    _worker_log_positions, _worker_sid,
+                    tail_bytes=WARNINGS_INITIAL_TAIL_BYTES,
+                    min_mtime=_monitor_start_ts - 300,
+                )
                 all_new_entries = new_entries + worker_entries
                 new_errors = _scan_proxy_entries_for_errors(all_new_entries)
                 tool_errors.extend(new_errors)

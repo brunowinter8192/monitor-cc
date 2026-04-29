@@ -271,8 +271,11 @@ def find_proxy_log_path(project_filter: Optional[str]) -> Optional[Path]:
             pass
     return Path(root) / "src" / "logs" / f"api_requests_{log_id}.jsonl"
 
-# Scan worker proxy logs for active project (project_session_id scopes the glob); all logs if empty
-def scan_worker_logs(last_positions: dict, project_session_id: str = '') -> tuple:
+# Scan worker proxy logs for active project (project_session_id scopes the glob); all logs if empty.
+# tail_bytes: if >0, first-time-seen logs seek to (fsize - tail_bytes) to bound initial alloc.
+# min_mtime: if >0, logs with mtime < min_mtime are skipped entirely (old sessions).
+def scan_worker_logs(last_positions: dict, project_session_id: str = '',
+                     tail_bytes: int = 0, min_mtime: float = 0) -> tuple:
     root = os.environ.get("MONITOR_CC_ROOT", "")
     if not root:
         root = str(Path(__file__).parent.parent.parent)
@@ -283,13 +286,27 @@ def scan_worker_logs(last_positions: dict, project_session_id: str = '') -> tupl
     updated_positions = dict(last_positions)
     pattern = f"api_requests_worker_{project_session_id}_*.jsonl" if project_session_id else "api_requests_worker_*.jsonl"
     for log_path in logs_dir.glob(pattern):
+        try:
+            stat = log_path.stat()
+        except OSError:
+            continue
+        if min_mtime > 0 and stat.st_mtime < min_mtime:
+            continue
         stem = log_path.stem  # api_requests_worker_[{hash}_]{name}_{ts}
         remaining = stem.replace('api_requests_worker_', '')
         # Strip project_session_id prefix if present (8-char hex + '_')
         if project_session_id and remaining.startswith(project_session_id + '_'):
             remaining = remaining[len(project_session_id) + 1:]
         worker_name = remaining.rsplit('_', 1)[0]
-        pos = last_positions.get(str(log_path), 0)
+        stored_pos = last_positions.get(str(log_path))
+        if stored_pos is None:
+            # First time seeing this log — apply tail-bytes to bound initial allocation
+            if tail_bytes > 0 and stat.st_size > tail_bytes:
+                pos = stat.st_size - tail_bytes
+            else:
+                pos = 0
+        else:
+            pos = stored_pos
         entries, new_pos = _parse_log_file(log_path, pos)
         for entry in entries:
             entry['_worker_name'] = worker_name
