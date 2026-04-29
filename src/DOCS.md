@@ -14,15 +14,16 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 
 | Subdir | Role | LOC | Modules |
 |---|---|---|---|
-| `core/` | Session polling orchestrator + main-pane output | 611 | 3 |
-| `panes/` | Tmux pane event loops (tokens, warnings) + parsing helpers | 813 | 3 |
+| `core/` | Session polling orchestrator + main-pane output | 608 | 3 |
+| `panes/` | Tmux pane event loops (tokens, warnings) + parsing helpers | 830 | 3 |
 | `format/` | ANSI string rendering (tool calls, events, cache tracker) | 490 | 4 |
 | `input/` | Keyboard/mouse stdin handling | 150 | 1 |
 | `jsonl/` | JSONL parsing + tool call extraction | 518 | 3 |
-| `workers/` | Workers pane (tmux session discovery + status display) | 522 | 3 |
-| `metadata/` | Metadata pane (API config state from proxy log) | 309 | 2 |
-| `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering) | 1651 | 8 |
-| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2474 | 16 |
+| `workers/` | Workers pane (tmux session discovery + status display) | 538 | 3 |
+| `metadata/` | Metadata pane (API config state from proxy log) | 335 | 2 |
+| `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering, subprocess-parse, copy-button) | 2004 | 8 |
+| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2673 | 17 |
+| `ram_audit/` | SIGUSR1 RAM-dump helper, gated by MONITOR_CC_RAM_AUDIT env | 101 | 1 |
 
 ## Root-Level Files
 
@@ -65,4 +66,5 @@ All runtime state lives in `core/monitor.py` as module-level variables. Every pa
 - [workers/DOCS.md](workers/DOCS.md) — worker_pane, worker_format, worker_tmux
 - [metadata/DOCS.md](metadata/DOCS.md) — metadata_pane, metadata_format
 - [proxy_display/DOCS.md](proxy_display/DOCS.md) — proxy pane TUI (8 modules)
-- [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (15 modules)
+- [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (17 modules)
+- [ram_audit/DOCS.md](ram_audit/DOCS.md) — SIGUSR1 RAM-dump helper (env-gated tracemalloc)

@@ -323,22 +323,38 @@ Details + Experimente + Paths-Forward: `decisions/OldThemes/tokenizer_baseline.m
 - Claude Code Updates könnten cache_control Handling ändern (z.B. mehr als 2 eigene Breakpoints) — `_strip_all_cache_control` entfernt alles, daher robust gegen Änderungen
 - Global Rules Caching: `scope: "global"` auf eigenen System-Blöcken verifizieren — cross-session Cache-Hit testen (gleiche Rules, neue Session → CR statt CC?)
 
-## Pane RAM (offenes Thema, Session 2026-04-25)
+## Pane RAM (Bead Monitor_CC-lhf — Phase 2a abgeschlossen 2026-04-29)
 
-`_parse_log_file` in `src/proxy_display/parser.py` ist seit 2026-04-25 streaming (`for line in f` statt `f.read()`). Eliminiert die ~358 MB Single-String-Buffer-Allocation beim ersten Read. Partial Win: warnings_pane RSS -360 MB live verifiziert.
+### Status Quo
 
-**Bekannte Limitierung — nicht durch Streaming gelöst:** jedes proxy-log Entry enthält `raw_payload.messages` als KUMULATIVE Conversation. Entry #N hat alle N vorherigen Messages. Damit ist die in-Memory Total-Größe der parsed entries O(N²) bezogen auf API-Calls — unabhängig davon ob mit `f.read()` oder line-by-line geladen. Bei einer 358 MB Source-File erzeugt `_parse_log_file` ~1.5-2 GB Python-Object-Heap, plus pymalloc gibt die Pages nach Free nicht ans OS zurück.
+Vier Hebel implementiert + gemerged auf dev:
 
-Auch der pane-RAM Cap-Versuch von 2026-04-25 (waste_pane: `_waste_all_pairs` Dict mit `_strip_by_tool_result_id`-Akkumulation, cap 5000; warnings: cap 1000/500/100) wurde reverted (commit f50071c). Die Cap-Logik selber war korrekt aber sie bekämpft den Steady-State, nicht den Peak — und weil Pair-Objects mehr live-references halten als das alte Events-List, hat der „Fix" die waste-Pane RSS sogar von 1.2 GB auf 3.0 GB hochgetrieben.
+**(1) Lazy-msg-strip + lazy-reload (commit cf8037c, 2026-04-29).** `src/proxy_display/parser.py` stempelt `entry['_byte_offset']` per Zeile beim Parse. `_lazy_load_messages(entry, log_path)` re-populiert `entry['messages']` on-demand via `seek(offset) + readline()`. Pane-Module (proxy, worker_proxy) droppen nach jedem `extend()` die `messages`-Liste aus Entries die NICHT in den letzten 10 sind UND NICHT aktiv expanded — `_strip_inactive_messages()` checkt drei expand-key forms (`entry_idx`, `('req', N)`, `(N, 'neg_delta')`). Click-handler triggert `_lazy_load_messages` für entry + prev_same beim Expand. metadata + worker_metadata strippen aggressiv `[:-1]` (nur latest behalten, kein Expand-UI). Das löst das O(N²)-Wachstum durch kumulative Anthropic-Wire-Format Messages. Konstante: `PROXY_MESSAGES_KEEP_LAST = 10` in `src/constants.py`.
 
-Nicht-getestete Angles für RAM 2.0 (Bead Monitor_CC-lhf):
-- Strip-on-parse: aus jeder geparsten Entry außer der letzten den `raw_payload.messages` Block droppen → O(N²) → O(N).
-- Subprocess parse-and-extract Pattern: parsen + extrahieren in einem Child, IPC nur die kleine extrahierte Datenstruktur, Child-Exit gibt Pages ans OS zurück.
-- mmap statt `open(...).read()` falls weiterhin gebraucht.
-- ijson für inkrementelles JSON-Streaming.
-- mitmproxy `flow.response.stream = True` im `responseheaders` hook unseres eigenen Addons (wir schreiben Bodies in JSONL, brauchen den RAM-Buffer nach Write nicht).
+**(2) tracemalloc env-var-Gate (commit 10f110a, 2026-04-29, Bead hvy).** `src/ram_audit/instrument.py` aktiviert `tracemalloc.start(25)` nur wenn `MONITOR_CC_RAM_AUDIT=1` gesetzt ist. Default off → kein 2-5x CPU-Overhead pro Python-Allokation in der proxy-pane Render-Schleife. Lag/Flicker im proxy-pane war primär dadurch verursacht.
 
-Diagnose-Tools die wir bei der missglückten 1. Iteration nicht angepackt haben — gehört vor jeder weiteren Code-Aktion auf RAM-Front: `tracemalloc`, `gc.get_objects()` + `Counter`-by-class, `gc.get_referrers()`-walk, `memory_profiler` mit `@profile`. Vorbild: mitmproxy Issue #4456 (siehe `sources/RAM_research_2026-04-25.md`).
+**(3) Warnings tail-bytes (commits 2ffe9b9 + 166b18b + 47a4415, 2026-04-29, Bead kin0).** `src/panes/warnings_pane.py` setzt im Site-A-Reset-Block `_proxy_log_position = max(0, fsize - WARNINGS_INITIAL_TAIL_BYTES)` statt 0. `WARNINGS_INITIAL_TAIL_BYTES = 50_000_000` in constants.py. `scan_worker_logs` in parser.py akzeptiert zwei Parameter: `tail_bytes` (für first-time-seen worker logs) und `min_mtime` (skip worker logs mit mtime < `_monitor_start_ts`). Damit parst warnings nur die letzten 50 MB der main proxy log + frische worker logs aus der laufenden Session — alte Worker-Logs aus früheren Sessions werden komplett geskipped. RSS warnings 2,856 → 506 MB (-82%) live verifiziert.
+
+**(4) Subprocess-parse für Initial-Parse (commit c3d69ed, 2026-04-29, Bead vu0n).** `_parse_log_file_isolated` und `parse_proxy_log_isolated` in `src/proxy_display/parser.py` spawnen für `last_position == 0` einen Child-Prozess via `multiprocessing.get_context('spawn')`. `_subprocess_worker` parst im Child, droppt messages pre-IPC, sendet entries + new_position + pending_rids via Queue. Parent rebuildet pending_by_rid via RID-Set-Lookup (nicht via Pickle-Kopien). Child-Exit gibt alle Pages ans OS zurück → der ~3 GB Initial-Parse-Peak hängt nicht mehr im Parent-Prozess. Fallback bei Crash, Timeout (default 60s, `SUBPROCESS_PARSE_TIMEOUT` env-überridden), oder IPC-Pickle-Failure auf in-parent Parse. Alle 4 Caller-Sites umgestellt: pane.py, worker_proxy_pane.py, beide loops in metadata_pane.py.
+
+### KPIs (29.04 final dump_all post-restart)
+
+| Pane | Baseline 28.04 | Final 29.04 | Reduktion |
+|---|---|---|---|
+| proxy | 1,151 MB | 504 MB | -56% |
+| worker_proxy | 385 MB | 170 MB | -56% |
+| metadata | 1,304 MB | 465 MB | -64% |
+| worker_metadata | 370 MB | 156 MB | -58% |
+| main | 1,131 MB | 1,043 MB | -8% (out-of-scope) |
+| warnings | 2,856 MB | 690 MB | -76% |
+| Total | 7,497 MB | 3,208 MB | **-57%** |
+
+Subjektiv: Lag/Flicker im proxy-pane vollständig weg (Quelle war tracemalloc-Overhead, nicht RAM).
+
+### Verbleibende Hebel
+
+- **main-pane bei 1043 MB** — größter verbleibender Verbraucher. Liegt nicht an proxy_display-Pfad sondern an `core/monitor.py` das session-JSONLs aus `~/.claude/projects/**/*.jsonl` parst (eigener code-pfad). Folge-Bead: subprocess-parse-Pattern für session-JSONL parsing analog zur vu0n-Lösung.
+- **Periodic Pane-Respawn / pymalloc-Akkumulation** — subprocess-parse löst nur den Initial-Peak im Parent. Ongoing inkrementelle Allokationen akkumulieren pymalloc-Pages über Stunden. Beobachtet: proxy 506 → 624 → 749 MB binnen Stunden. Folge-Bead: periodischer pane-self-respawn ODER subprocess-pattern auch für inkrementelle Parses.
 
 ## Quellen
 
