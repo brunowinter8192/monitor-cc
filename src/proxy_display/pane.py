@@ -8,6 +8,7 @@ import time
 from ..constants import (
     RESET, YELLOW, DIM,
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
+    PROXY_REPARSE_INTERVAL_SECONDS,
 )
 from .parser import parse_proxy_log_isolated, find_proxy_log_path, _lazy_load_messages
 from .format import format_proxy_block, _is_standalone_entry
@@ -33,6 +34,7 @@ _proxy_log_path: Optional[Path] = None  # current log file path, updated each po
 _proxy_pane_width: int = 80  # updated each render cycle; used by click handler for copy-button column check
 _proxy_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by format_proxy_block
 _copy_feedback_until: Dict[int, float] = {}  # entry_idx → expiry timestamp for ✓ flash
+_last_full_parse_ts: float = 0.0  # timestamp of last re-init to position 0 (time-triggered reset)
 
 # FUNCTIONS
 
@@ -105,7 +107,7 @@ def run_proxy_loop() -> None:
     from ..core import monitor as _monitor
     global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset, proxy_log_position
     global _proxy_jsonl_position, _proxy_cache_turns, _proxy_pending_by_rid, _proxy_log_path
-    global _proxy_pane_width, _proxy_copy_rows, _copy_feedback_until
+    global _proxy_pane_width, _proxy_copy_rows, _copy_feedback_until, _last_full_parse_ts
 
     def _ram_state():
         return [
@@ -199,6 +201,18 @@ def run_proxy_loop() -> None:
                     _proxy_cache_turns = []
                     _proxy_pending_by_rid.clear()
                     _proxy_log_path = None
+                    _last_full_parse_ts = now
+                    input_changed = True
+                if _last_full_parse_ts == 0.0:
+                    _last_full_parse_ts = now
+                elif now - _last_full_parse_ts >= PROXY_REPARSE_INTERVAL_SECONDS:
+                    proxy_entries.clear()
+                    proxy_line_map.clear()
+                    proxy_log_position = 0
+                    _proxy_jsonl_position = 0
+                    _proxy_cache_turns = []
+                    _proxy_pending_by_rid.clear()
+                    _last_full_parse_ts = now
                     input_changed = True
                 new_entries, proxy_log_position = parse_proxy_log_isolated(_monitor.active_project_filter, proxy_log_position, _proxy_pending_by_rid)
                 filtered = [e for e in new_entries if e.get('timestamp', '') >= session_start_ts]

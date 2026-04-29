@@ -7,6 +7,7 @@ import time
 from ..constants import (
     RESET, YELLOW, DIM, WHITE,
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
+    PROXY_REPARSE_INTERVAL_SECONDS,
 )
 from .parser import find_worker_proxy_log, _parse_log_file_isolated, _lazy_load_messages
 from .format import format_proxy_block, _is_standalone_entry
@@ -36,6 +37,7 @@ _worker_proxy_log_path: Optional[Path] = None  # current log file path, updated 
 _worker_proxy_pane_width: int = 80  # updated each render cycle; used by click handler for copy-button column check
 _worker_proxy_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by format_proxy_block
 _worker_copy_feedback_until: Dict[int, float] = {}  # entry_idx → expiry timestamp for ✓ flash
+_worker_proxy_last_full_parse_ts: float = 0.0  # timestamp of last re-init to position 0 (time-triggered reset)
 
 # FUNCTIONS
 
@@ -126,7 +128,7 @@ def run_worker_proxy_loop() -> None:
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
     global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_pending_by_rid, _worker_proxy_log_path
-    global _worker_proxy_pane_width, _worker_proxy_copy_rows, _worker_copy_feedback_until
+    global _worker_proxy_pane_width, _worker_proxy_copy_rows, _worker_copy_feedback_until, _worker_proxy_last_full_parse_ts
 
     def _ram_state():
         return [
@@ -238,7 +240,20 @@ def run_worker_proxy_loop() -> None:
                     _worker_proxy_cache_turns = []
                     _worker_proxy_pending_by_rid.clear()
                     _worker_proxy_log_path = None
+                    _worker_proxy_last_full_parse_ts = now
                     last_worker_name = worker_name
+                    input_changed = True
+
+                if _worker_proxy_last_full_parse_ts == 0.0:
+                    _worker_proxy_last_full_parse_ts = now
+                elif now - _worker_proxy_last_full_parse_ts >= PROXY_REPARSE_INTERVAL_SECONDS:
+                    worker_proxy_entries.clear()
+                    worker_proxy_line_map.clear()
+                    worker_proxy_log_position = 0
+                    _worker_proxy_jsonl_position = 0
+                    _worker_proxy_cache_turns = []
+                    _worker_proxy_pending_by_rid.clear()
+                    _worker_proxy_last_full_parse_ts = now
                     input_changed = True
 
                 if worker_name:
