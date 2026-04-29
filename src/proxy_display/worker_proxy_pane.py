@@ -8,7 +8,7 @@ from ..constants import (
     RESET, YELLOW, DIM, WHITE,
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
 )
-from .parser import find_worker_proxy_log, _parse_log_file, _lazy_load_messages
+from .parser import find_worker_proxy_log, _parse_log_file_isolated, _lazy_load_messages
 from .format import format_proxy_block, _is_standalone_entry
 from ..panes.token_pane import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
@@ -238,7 +238,7 @@ def run_worker_proxy_loop() -> None:
                     new_entries: list = []
                     log_path = find_worker_proxy_log(worker_name, _monitor.active_project_filter)
                     if log_path:
-                        new_entries, worker_proxy_log_position = _parse_log_file(log_path, worker_proxy_log_position, _worker_proxy_pending_by_rid)
+                        new_entries, worker_proxy_log_position = _parse_log_file_isolated(log_path, worker_proxy_log_position, _worker_proxy_pending_by_rid)
                         worker_proxy_entries.extend(new_entries)
                         _worker_proxy_log_path = log_path
                         _strip_inactive_wp_messages(worker_proxy_entries, worker_proxy_expand_states)

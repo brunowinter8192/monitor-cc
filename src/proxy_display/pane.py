@@ -9,7 +9,7 @@ from ..constants import (
     RESET, YELLOW, DIM,
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
 )
-from .parser import parse_proxy_log, find_proxy_log_path, _lazy_load_messages
+from .parser import parse_proxy_log_isolated, find_proxy_log_path, _lazy_load_messages
 from .format import format_proxy_block, _is_standalone_entry
 from ..panes.token_pane import build_cache_turns
 from ..input.click_handler import (
@@ -192,7 +192,7 @@ def run_proxy_loop() -> None:
                     _proxy_pending_by_rid.clear()
                     _proxy_log_path = None
                     input_changed = True
-                new_entries, proxy_log_position = parse_proxy_log(_monitor.active_project_filter, proxy_log_position, _proxy_pending_by_rid)
+                new_entries, proxy_log_position = parse_proxy_log_isolated(_monitor.active_project_filter, proxy_log_position, _proxy_pending_by_rid)
                 filtered = [e for e in new_entries if e.get('timestamp', '') >= session_start_ts]
                 proxy_entries.extend(filtered)
                 _proxy_log_path = find_proxy_log_path(_monitor.active_project_filter)
