@@ -1,14 +1,16 @@
 # INFRASTRUCTURE
+import time
 from ..constants import (
     SOFT_RESET, RED, WHITE, YELLOW, DIM,
 )
+from ..utils import _ANSI_ESCAPE_RE, _cell_width
 from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry, _format_latency, _fmt_thinking_budget, _fmt_effort
 from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # FUNCTIONS
 
 # Render all per-request rows for an expanded turn group, returning (lines, keys, opus_req_num, sub_req_num)
-def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None) -> tuple:
+def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None) -> tuple:
     from .render_sections import render_system_blocks, render_tools
     from .render_messages import render_messages
     lines = []
@@ -116,7 +118,20 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         tag_badge = f' {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
         latency_str = _format_latency(entry.get('ttfb_ms'), entry.get('output_tokens_per_sec'),
                                       entry.get('n_stalls', 0), entry.get('max_stall_ms'))
-        lines.append(f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{eff_str}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{latency_str}{SOFT_RESET}")
+        header_raw = f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{eff_str}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{latency_str}{SOFT_RESET}"
+        if copy_feedback is not None:
+            _stripped_h = _ANSI_ESCAPE_RE.sub('', header_raw)
+            visible_len = sum(_cell_width(ch) for ch in _stripped_h)
+            is_flash = copy_feedback.get(entry_idx, 0) > time.time()
+            copy_sym = '✓' if is_flash else '⎘'
+            sym_cells = _cell_width(copy_sym)
+            pad = pane_width - 1 - sym_cells - visible_len  # 1 space + sym_cells
+            if pad >= 0:
+                lines.append(header_raw + ' ' * pad + ' ' + copy_sym)
+            else:
+                lines.append(header_raw)
+        else:
+            lines.append(header_raw)
         keys.append(req_key)
 
         if is_req_expanded:

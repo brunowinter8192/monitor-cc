@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 import os
 import time
 
@@ -33,6 +33,9 @@ _worker_proxy_workers: list = []
 _worker_proxy_force_reload: bool = False
 _worker_proxy_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
 _worker_proxy_log_path: Optional[Path] = None  # current log file path, updated each poll cycle for lazy-reload
+_worker_proxy_pane_width: int = 80  # updated each render cycle; used by click handler for copy-button column check
+_worker_proxy_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by format_proxy_block
+_worker_copy_feedback_until: Dict[int, float] = {}  # entry_idx → expiry timestamp for ✓ flash
 
 # FUNCTIONS
 
@@ -123,6 +126,7 @@ def run_worker_proxy_loop() -> None:
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
     global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_pending_by_rid, _worker_proxy_log_path
+    global _worker_proxy_pane_width, _worker_proxy_copy_rows, _worker_copy_feedback_until
 
     def _ram_state():
         return [
@@ -159,21 +163,34 @@ def run_worker_proxy_loop() -> None:
                         if button == 0:
                             key = worker_proxy_line_map.get(row)
                             if key is not None:
-                                new_state = not worker_proxy_expand_states.get(key, False)
-                                worker_proxy_expand_states[key] = new_state
-                                if new_state:
+                                is_req = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
+                                if is_req and col >= _worker_proxy_pane_width - 2 and row in _worker_proxy_copy_rows:
+                                    # Copy-button click: right-aligned ⎘ in REQ header
                                     entry_idx = _wp_entry_idx_from_key(key)
                                     if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
                                         e = worker_proxy_entries[entry_idx]
                                         if e.get('messages') is None:
                                             _lazy_load_messages(e, _worker_proxy_log_path)
-                                        prev_idx = _resolve_prev_same_wp(worker_proxy_entries, entry_idx)
-                                        if prev_idx is not None:
-                                            pe = worker_proxy_entries[prev_idx]
-                                            if pe.get('messages') is None:
-                                                _lazy_load_messages(pe, _worker_proxy_log_path)
-                                    just_expanded = key
-                                input_changed = True
+                                    copy_to_clipboard(_serialize_worker_proxy(key))
+                                    if entry_idx is not None:
+                                        _worker_copy_feedback_until[entry_idx] = time.time() + 1.5
+                                    input_changed = True
+                                else:
+                                    new_state = not worker_proxy_expand_states.get(key, False)
+                                    worker_proxy_expand_states[key] = new_state
+                                    if new_state:
+                                        entry_idx = _wp_entry_idx_from_key(key)
+                                        if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
+                                            e = worker_proxy_entries[entry_idx]
+                                            if e.get('messages') is None:
+                                                _lazy_load_messages(e, _worker_proxy_log_path)
+                                            prev_idx = _resolve_prev_same_wp(worker_proxy_entries, entry_idx)
+                                            if prev_idx is not None:
+                                                pe = worker_proxy_entries[prev_idx]
+                                                if pe.get('messages') is None:
+                                                    _lazy_load_messages(pe, _worker_proxy_log_path)
+                                        just_expanded = key
+                                    input_changed = True
                         elif button == 64:  # wheel up → older content
                             worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset + 3)
                             input_changed = True
@@ -184,22 +201,12 @@ def run_worker_proxy_loop() -> None:
                             worker_proxy_hover_row = row
                             input_changed = True
                 else:
-                    if char == 'y':
-                        key = resolve_parent_key(worker_proxy_line_map, worker_proxy_hover_row)
-                        if key is not None:
-                            entry_idx = _wp_entry_idx_from_key(key)
-                            if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
-                                e = worker_proxy_entries[entry_idx]
-                                if e.get('messages') is None:
-                                    _lazy_load_messages(e, _worker_proxy_log_path)
-                            copy_to_clipboard(_serialize_worker_proxy(key))
-                    else:
-                        idx = parse_digit_key(char)
-                        if idx is not None and _worker_proxy_workers:
-                            if 1 <= idx <= len(_worker_proxy_workers):
-                                write_selection(_monitor.active_project_filter, _worker_proxy_workers[idx - 1]['name'])
-                                _worker_proxy_force_reload = True
-                                input_changed = True
+                    idx = parse_digit_key(char)
+                    if idx is not None and _worker_proxy_workers:
+                        if 1 <= idx <= len(_worker_proxy_workers):
+                            write_selection(_monitor.active_project_filter, _worker_proxy_workers[idx - 1]['name'])
+                            _worker_proxy_force_reload = True
+                            input_changed = True
 
             now = time.time()
             if _worker_proxy_force_reload or now - last_data_refresh >= POLL_INTERVAL:
@@ -251,6 +258,12 @@ def run_worker_proxy_loop() -> None:
                 last_data_refresh = now
                 input_changed = True
 
+            # Cleanup expired copy-flash states; refresh display while any flash is active
+            _now_t_wp = time.time()
+            _worker_copy_feedback_until = {k: v for k, v in _worker_copy_feedback_until.items() if v > _now_t_wp}
+            if _worker_copy_feedback_until:
+                input_changed = True
+
             if input_changed:
                 sel_path = get_selection_file_path(_monitor.active_project_filter)
                 try:
@@ -266,6 +279,7 @@ def run_worker_proxy_loop() -> None:
                 except OSError:
                     pane_height = 50
                     pane_width = 80
+                _worker_proxy_pane_width = pane_width
 
                 header = _format_worker_proxy_header(_worker_proxy_workers, current_worker)
                 header_lines = visual_line_count(header, pane_width)
@@ -280,11 +294,15 @@ def run_worker_proxy_loop() -> None:
                     body = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No proxy data yet — is worker proxy running?{RESET}"
                 else:
                     worker_item_positions: dict = {}
-                    body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns, item_positions_out=worker_item_positions)
-                    # Shift line_map by +1: body row N is at terminal row N+1 due to header
+                    _worker_proxy_copy_rows.clear()
+                    body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns, item_positions_out=worker_item_positions, copy_feedback=_worker_copy_feedback_until, copy_rows_out=_worker_proxy_copy_rows)
+                    # Shift line_map and copy_rows by header_lines: body row N is at terminal row N+header_lines
                     shifted = {r + header_lines: k for r, k in worker_proxy_line_map.items()}
                     worker_proxy_line_map.clear()
                     worker_proxy_line_map.update(shifted)
+                    shifted_copy = {r + header_lines for r in _worker_proxy_copy_rows}
+                    _worker_proxy_copy_rows.clear()
+                    _worker_proxy_copy_rows.update(shifted_copy)
                     if just_expanded is not None and just_expanded in worker_item_positions:
                         item_line = worker_item_positions[just_expanded]
                         max_scroll = max(0, total_lines - content_height)
@@ -292,10 +310,14 @@ def run_worker_proxy_loop() -> None:
                         start = max(0, total_lines - content_height - clamped)
                         if item_line < start or item_line >= start + content_height:
                             worker_proxy_scroll_offset = max(0, total_lines - content_height - item_line)
-                            body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns)
+                            _worker_proxy_copy_rows.clear()
+                            body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns, copy_feedback=_worker_copy_feedback_until, copy_rows_out=_worker_proxy_copy_rows)
                             shifted = {r + header_lines: k for r, k in worker_proxy_line_map.items()}
                             worker_proxy_line_map.clear()
                             worker_proxy_line_map.update(shifted)
+                            shifted_copy = {r + header_lines for r in _worker_proxy_copy_rows}
+                            _worker_proxy_copy_rows.clear()
+                            _worker_proxy_copy_rows.update(shifted_copy)
                 output = header + '\n' + body
 
                 if output != last_output:

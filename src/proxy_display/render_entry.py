@@ -1,17 +1,19 @@
 # INFRASTRUCTURE
 import json
+import time
 from typing import Optional
 
 from ..constants import (
     SOFT_RESET, GREEN, RED, YELLOW, WHITE, DIM, DIM_YELLOW_BG,
 )
+from ..utils import _ANSI_ESCAPE_RE, _cell_width
 from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry
 from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # FUNCTIONS
 
 # Render a single proxy entry into (lines, line_keys). indent sets the nesting level.
-def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '', num_label: str = '#0', rendered_opus_labels: list = None) -> tuple:
+def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '', num_label: str = '#0', rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None) -> tuple:
     L1 = indent
     L2 = indent + '  '
     L3 = indent + '    '
@@ -79,7 +81,20 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         haiku_info = ''
     tag_labels = _aggregate_entry_tags(entry)
     tag_badge = f'  {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
-    lines.append(f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{haiku_info}{tag_badge}{SOFT_RESET}")
+    header_raw_e = f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{haiku_info}{tag_badge}{SOFT_RESET}"
+    if copy_feedback is not None:
+        _stripped_he = _ANSI_ESCAPE_RE.sub('', header_raw_e)
+        visible_len = sum(_cell_width(ch) for ch in _stripped_he)
+        is_flash = copy_feedback.get(entry_idx, 0) > time.time()
+        copy_sym = '✓' if is_flash else '⎘'
+        sym_cells = _cell_width(copy_sym)
+        pad = pane_width - 1 - sym_cells - visible_len  # 1 space + sym_cells
+        if pad >= 0:
+            lines.append(header_raw_e + ' ' * pad + ' ' + copy_sym)
+        else:
+            lines.append(header_raw_e)
+    else:
+        lines.append(header_raw_e)
     keys.append(entry_idx)
     if is_expanded:
         buckets = _aggregate_req_buckets(entry, prev_entry)
