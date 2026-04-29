@@ -15,7 +15,7 @@ from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .inject_helpers import _inject_context_management, _inject_model_override
 from .content_strip import _strip_tool_descriptions, _strip_sys3
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
-from .tools import _strip_unused_tools
+from .tools import _strip_unused_tools, _extract_deferred_tool_names
 from .tool_injection import inject_mcp_tools
 from .fixation import _capture_fixation, _apply_fixation
 from .hash_meta import _build_sent_meta
@@ -70,13 +70,14 @@ class ProxyAddon:
                         "warnings": schema_warnings,
                     })
             modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed = apply_modification_rules(payload, model_family, project_path)
+            deferred_tool_names = _extract_deferred_tool_names(payload)
 
             if model_family not in self.fixated:
                 self.fixated[model_family] = _capture_fixation(modified_payload, modifications)
             else:
                 modified_payload = _apply_fixation(modified_payload, modifications, self.fixated[model_family])
 
-            modified_payload, stripped_count = _strip_unused_tools(modified_payload)
+            modified_payload, stripped_count, stripped_tool_names = _strip_unused_tools(modified_payload)
             if stripped_count > 0:
                 modifications.append(f"stripped_{stripped_count}_unused_tools")
 
@@ -116,6 +117,10 @@ class ProxyAddon:
                     entry['stripped_msg_originals'][str(k)] = _summarize_content_for_log(v)
             if stripped_msg_removed:
                 entry['stripped_msg_removed'] = {str(k): v for k, v in stripped_msg_removed.items()}
+            if stripped_tool_names:
+                entry['stripped_unused_tools_names'] = stripped_tool_names
+            if deferred_tool_names:
+                entry['deferred_tools_names'] = deferred_tool_names
             _write_entry(self.log_file, entry)
             # Store timing/id for latency hooks (responseheaders + response)
             flow.metadata["mc_request_at"] = datetime.now(timezone.utc)
