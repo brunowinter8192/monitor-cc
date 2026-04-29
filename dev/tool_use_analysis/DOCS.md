@@ -280,6 +280,50 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 
 **False-positive heuristic:** removed. The old pauschal `⚠ SUSPECT FALSE POSITIVE` flag was emitted on any stripped message with `tool_result` content — too broad (legitimate task-tools-nag strips in Read tool_results were misflagged). Tool_result context (`[tool_result:Read]`) is now shown inline in `EFF:*` and `IDX` lines for information, without attaching a suspect label.
 
+---
+
+## sr_session_audit.py
+
+**Purpose:** Longitudinal SR audit across all Claude Code session JSONLs under `~/.claude/projects/*/*.jsonl`. For each user-role message, extracts `<system-reminder>` blocks (linestart-anchored, mirror of `src/proxy/strip_sr._STANDALONE_SR_RE`), classifies against the live strip catalog imported from `src/proxy/strip_sr._SR_TEMPLATES` + `_PRESERVE_PREAMBLE` (no duplication), and reports known/preserved/unknown buckets with per-bucket layer split (text vs tool_result), date timeline (first/last seen), and CC version attribution. Designed to surface (a) which catalog templates have empirical hits in modern CC versions, (b) which SR templates are leaking through (gap candidates for catalog extension).
+
+**Input:** `~/.claude/projects/*/*.jsonl` (all CC project session files). Optional positional substring filter on project directory name.
+
+**Output:** Markdown report at `dev/tool_use_analysis/<YYYYMMDDHHMM>_sr_session_audit.md` (auto-generated, override via `--output`). Path printed to stdout. Sections: header (run metadata), Scan Parameters (incl. noise filter description), Known Templates table, Preserved table, Unknown / Gap Candidates table (top N), Top-N Unknown sample text (full inner text up to 600 chars per bucket).
+
+**Usage:**
+```bash
+# Default: all projects, since 2026-04-16 (Opus 4.7 / CC 2.1.x cutoff)
+./venv/bin/python3 dev/tool_use_analysis/sr_session_audit.py
+
+# All sessions (pre-cutoff included)
+./venv/bin/python3 dev/tool_use_analysis/sr_session_audit.py --since 2026-03-01
+
+# Single project
+./venv/bin/python3 dev/tool_use_analysis/sr_session_audit.py Monitor-CC --since 2026-04-16
+
+# Custom output path
+./venv/bin/python3 dev/tool_use_analysis/sr_session_audit.py --output /tmp/audit.md
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `project_filter` | *(positional, optional)* Substring match on project dir name | `''` (all projects) |
+| `--since YYYY-MM-DD` | Skip messages older than this date | `2026-04-16` |
+| `--output FILE` | Output Markdown path | `dev/tool_use_analysis/<ts>_sr_session_audit.md` |
+| `--top N` | Show top-N Unknown buckets in detail tables | `30` |
+
+**Noise filters:**
+- **code-heuristic** — drops SR matches whose inner text starts with regex syntax (`.*?`, `\s*`, `(.*`, `...`, `\n`, `\d+\t` line-number prefix) or contains code markers (`re.compile`, `re.escape`, `_SR_TEMPLATES`, `_TAG_`, `_STRIP_`, ` def `). Applies to ALL classifications. Counted under `n_code_noise`.
+- **data-file-noise (Option A)** — UNKNOWN-bucket only. Drops SR when the 120 chars of context BEFORE the `<system-reminder>` tag contains `\d+\t` (Read-tool line-number prefix). Indicates the SR was read FROM a data file (e.g. old session JSONL excerpts in `/tmp/`, audit reports referencing the SR text) rather than INJECTED by CC. Known/Preserved templates are never filtered by this rule. Counted under `n_data_file_noise`.
+
+**Classification logic (mirrors `src/proxy/strip_sr._match_template`):**
+1. Inner stripped of leading/trailing whitespace.
+2. If matches `_PRESERVE_PREAMBLE` (`"As you answer the user's questions, you can use the following context:"`) → `PRESERVED`.
+3. For each template in `_SR_TEMPLATES`, identifier(s) checked via `inner.startswith(ident)`. List identifiers tried with OR semantics (e.g. `claudemd-contents` has `["As you answer the user's questions", "Contents of "]`). First match wins. → `KNOWN:<template_id>`.
+4. Otherwise → `UNKNOWN` (after data-file-noise check).
+
+**CC version extraction:** session JSONL entries carry top-level `version` field (e.g. `"2.1.114"`). Per-bucket `versions` set tracks all distinct CC versions where the SR appeared. Entries lacking `version` field are recorded as `unknown`.
+
 ## Generated Reports
 
 ### 202604221808_strip_audit.md
