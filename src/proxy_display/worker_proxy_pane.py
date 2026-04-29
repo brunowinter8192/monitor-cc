@@ -1,14 +1,15 @@
 # INFRASTRUCTURE
+from pathlib import Path
 from typing import Dict, List, Optional
 import os
 import time
 
 from ..constants import (
     RESET, YELLOW, DIM, WHITE,
-    POLL_INTERVAL, INPUT_POLL_INTERVAL,
+    POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
 )
-from .parser import find_worker_proxy_log, _parse_log_file
-from .format import format_proxy_block
+from .parser import find_worker_proxy_log, _parse_log_file, _lazy_load_messages
+from .format import format_proxy_block, _is_standalone_entry
 from ..panes.token_pane import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
 from ..input.click_handler import (
@@ -30,6 +31,7 @@ _worker_proxy_cache_turns: list = []
 _worker_proxy_workers: list = []
 _worker_proxy_force_reload: bool = False
 _worker_proxy_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
+_worker_proxy_log_path: Optional[Path] = None  # current log file path, updated each poll cycle for lazy-reload
 
 # FUNCTIONS
 
@@ -90,6 +92,28 @@ def _serialize_worker_proxy(key) -> str:
                 parts.append(ct)
     return '\n'.join(parts)
 
+# Walk backward from k-1 to find first non-standalone entry idx (prev_same reference)
+def _resolve_prev_same_wp(entries: list, k: int) -> Optional[int]:
+    for i in range(k - 1, -1, -1):
+        if not _is_standalone_entry(entries[i]):
+            return i
+    return None
+
+# Strip messages from all entries outside the keep-last window that are not expanded
+def _strip_inactive_wp_messages(entries: list, expand_states: dict) -> None:
+    cutoff = max(0, len(entries) - PROXY_MESSAGES_KEEP_LAST)
+    for i in range(cutoff):
+        e = entries[i]
+        if e.get('messages') is None:
+            continue
+        is_active = (
+            expand_states.get(i, False) or
+            expand_states.get(('req', i), False) or
+            expand_states.get((i, 'neg_delta'), False)
+        )
+        if not is_active:
+            del e['messages']
+
 # Runs worker-proxy pane — reads selected worker's proxy log and shows expandable entries
 def run_worker_proxy_loop() -> None:
     from ..core import monitor as _monitor
@@ -97,7 +121,7 @@ def run_worker_proxy_loop() -> None:
     from ..workers import write_selection
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
-    global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_pending_by_rid
+    global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_pending_by_rid, _worker_proxy_log_path
     last_output = None
     last_data_refresh = 0.0
     last_worker_name: Optional[str] = None
@@ -121,6 +145,16 @@ def run_worker_proxy_loop() -> None:
                                 new_state = not worker_proxy_expand_states.get(key, False)
                                 worker_proxy_expand_states[key] = new_state
                                 if new_state:
+                                    entry_idx = _wp_entry_idx_from_key(key)
+                                    if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
+                                        e = worker_proxy_entries[entry_idx]
+                                        if e.get('messages') is None:
+                                            _lazy_load_messages(e, _worker_proxy_log_path)
+                                        prev_idx = _resolve_prev_same_wp(worker_proxy_entries, entry_idx)
+                                        if prev_idx is not None:
+                                            pe = worker_proxy_entries[prev_idx]
+                                            if pe.get('messages') is None:
+                                                _lazy_load_messages(pe, _worker_proxy_log_path)
                                     just_expanded = key
                                 input_changed = True
                         elif button == 64:  # wheel up → older content
@@ -136,6 +170,11 @@ def run_worker_proxy_loop() -> None:
                     if char == 'y':
                         key = resolve_parent_key(worker_proxy_line_map, worker_proxy_hover_row)
                         if key is not None:
+                            entry_idx = _wp_entry_idx_from_key(key)
+                            if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
+                                e = worker_proxy_entries[entry_idx]
+                                if e.get('messages') is None:
+                                    _lazy_load_messages(e, _worker_proxy_log_path)
                             copy_to_clipboard(_serialize_worker_proxy(key))
                     else:
                         idx = parse_digit_key(char)
@@ -174,6 +213,7 @@ def run_worker_proxy_loop() -> None:
                     _worker_proxy_jsonl_position = 0
                     _worker_proxy_cache_turns = []
                     _worker_proxy_pending_by_rid.clear()
+                    _worker_proxy_log_path = None
                     last_worker_name = worker_name
                     input_changed = True
 
@@ -183,6 +223,8 @@ def run_worker_proxy_loop() -> None:
                     if log_path:
                         new_entries, worker_proxy_log_position = _parse_log_file(log_path, worker_proxy_log_position, _worker_proxy_pending_by_rid)
                         worker_proxy_entries.extend(new_entries)
+                        _worker_proxy_log_path = log_path
+                        _strip_inactive_wp_messages(worker_proxy_entries, worker_proxy_expand_states)
                         if new_entries:
                             input_changed = True
                     worker_session = next((w.get('session', '') for w in _worker_proxy_workers if w.get('name') == worker_name), '')

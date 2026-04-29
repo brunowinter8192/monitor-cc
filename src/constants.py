@@ -37,6 +37,7 @@ WARNINGS_POLL_INTERVAL = 10.0
 LONG_OUTPUT_THRESHOLD = 10000
 TMUX_HISTORY_LIMIT = '50000'
 EXPANDED_MAX_LINES = 15
+PROXY_MESSAGES_KEEP_LAST = 10  # entries at end of list that retain messages for expand UX
 WORKER_COL_WIDTH = 20  # name-field width; full column = W: + name + space = 23 chars
 MAIN_EVENT_BUFFER_CAP = 1000
 
