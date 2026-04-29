@@ -443,7 +443,10 @@ def run_warnings_loop() -> None:
                 worker_entries, _worker_log_positions = scan_worker_logs(
                     _worker_log_positions, _worker_sid,
                     tail_bytes=WARNINGS_INITIAL_TAIL_BYTES,
-                    min_mtime=_monitor_start_ts - 300,
+                    # Strict current-session only: worker logs are always written AFTER the proxy
+                    # session starts, so their mtime is always >> _monitor_start_ts. No clock-skew
+                    # buffer needed.
+                    min_mtime=_monitor_start_ts,
                 )
                 all_new_entries = new_entries + worker_entries
                 new_errors = _scan_proxy_entries_for_errors(all_new_entries)
