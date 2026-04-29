@@ -39,6 +39,7 @@ TMUX_HISTORY_LIMIT = '50000'
 EXPANDED_MAX_LINES = 15
 PROXY_MESSAGES_KEEP_LAST = 10  # entries at end of list that retain messages for expand UX
 WORKER_COL_WIDTH = 20  # name-field width; full column = W: + name + space = 23 chars
+WARNINGS_INITIAL_TAIL_BYTES = 50_000_000  # max bytes to back-seek on initial log parse to bound pymalloc peak
 MAIN_EVENT_BUFFER_CAP = 1000
 
 # Tool names
