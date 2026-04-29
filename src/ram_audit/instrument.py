@@ -28,8 +28,9 @@ def register_ram_dump(pane_name: str, module_state_provider: Callable[[], list])
         Scalars: rendered as `name = value`.
         Walks done by the helper.
     """
-    if not tracemalloc.is_tracing():
-        tracemalloc.start(25)
+    if os.environ.get('MONITOR_CC_RAM_AUDIT') == '1':
+        if not tracemalloc.is_tracing():
+            tracemalloc.start(25)
 
     pid_file = f'/tmp/.monitor_cc_pid_{pane_name}'
     with open(pid_file, 'w') as _f:
@@ -74,14 +75,17 @@ def register_ram_dump(pane_name: str, module_state_provider: Callable[[], list])
         out.append('')
 
         out.append('## Top-30 tracemalloc by lineno')
-        snapshot = tracemalloc.take_snapshot()
-        stats = snapshot.statistics('lineno')[:30]
-        out.append(f'{"file:line":<60}  {"size_bytes":>12}  {"count":>8}')
-        out.append('-' * 84)
-        for stat in stats:
-            frame_ = stat.traceback[0]
-            loc = f'{frame_.filename}:{frame_.lineno}'
-            out.append(f'{loc:<60}  {stat.size:>12,}  {stat.count:>8,}')
+        if tracemalloc.is_tracing():
+            snapshot = tracemalloc.take_snapshot()
+            stats = snapshot.statistics('lineno')[:30]
+            out.append(f'{"file:line":<60}  {"size_bytes":>12}  {"count":>8}')
+            out.append('-' * 84)
+            for stat in stats:
+                frame_ = stat.traceback[0]
+                loc = f'{frame_.filename}:{frame_.lineno}'
+                out.append(f'{loc:<60}  {stat.size:>12,}  {stat.count:>8,}')
+        else:
+            out.append('## tracemalloc not active (set MONITOR_CC_RAM_AUDIT=1 to enable)')
         out.append('')
 
         out.append(f'## {pane_name} module state')
