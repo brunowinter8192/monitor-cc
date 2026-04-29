@@ -21,29 +21,32 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ## Flow
 
-`src/logs/api_requests_*.jsonl` → `parser` (incremental JSONL read, raw_payload extraction → flat entry dicts)
+`src/logs/api_requests_*.jsonl` → `parser` (incremental JSONL read via `readline()`, stamps `_byte_offset` per entry, raw_payload extraction → flat entry dicts, `del raw_payload`)
+→ `pane` strip-on-extend: messages deleted from entries outside keep-last=10 window + not-expanded
 → `format` (group by turn — turns always expanded, viewport, scroll) → `render_turn` (req rows)
-→ `render_sections` + `render_messages` (expanded req detail)
+→ `render_sections` + `render_messages` (expanded req detail; requires messages — lazy-reload ensures they are present)
 → `pane` / `worker_proxy_pane` (event loop, stdin → stdout)
+
+On expand-click: `_lazy_load_messages(entry, log_path)` seeks to `entry['_byte_offset']`, reads one JSONL line, re-populates `entry['messages']` + `content_tail` enrichment. Also reloads `prev_same` (first non-standalone predecessor) in the same click handler.
 
 **Expand model (flat):** Turns are static info-headers (non-clickable, always visible). Only Req-level and below are expandable. line_map contains only Req-level and deeper keys — one sequential phys_row counter through the visible slice, no nested offsets.
 
 ## Modules
 
-### pane.py (176 LOC)
+### pane.py (220 LOC)
 
-**Purpose:** Event loop for the main proxy pane — reads proxy log incrementally, handles mouse/keyboard input (click expand/collapse, scroll, hover), renders on change.
-**Reads:** Module-level state (entries, expand states, scroll offset, hover row, line map); active project filter from shared monitor state; stdin.
+**Purpose:** Event loop for the main proxy pane — reads proxy log incrementally, handles mouse/keyboard input (click expand/collapse, scroll, hover), renders on change. Strip-on-extend: after each `proxy_entries.extend()`, strips `messages` from entries outside the `PROXY_MESSAGES_KEEP_LAST=10` window that are not actively expanded. On expand-click, lazy-reloads messages for the target entry AND its `prev_same` (first non-standalone predecessor) via `_lazy_load_messages`; same reload on 'y' clipboard copy.
+**Reads:** Module-level state (entries, expand states, scroll offset, hover row, line map, `_proxy_log_path`); active project filter from shared monitor state; stdin.
 **Writes:** ANSI output to stdout (direct tmux pane write).
 **Called by:** `src/core/monitor.py` (via `..proxy_display.run_proxy_loop`)
 **Calls out:** `input` (click_handler), `panes` (token_pane.build_cache_turns)
 
 ---
 
-### worker_proxy_pane.py (249 LOC)
+### worker_proxy_pane.py (293 LOC)
 
-**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's proxy log, handles digit-key worker switching, mouse/keyboard input, renders with worker-switcher header. Header height is computed via `utils.visual_line_count` to handle multi-line wrap correctly: `body_hover`, `content_height`, and `line_map` shift all use `header_lines` instead of a hardcoded 1.
-**Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file.
+**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's proxy log, handles digit-key worker switching, mouse/keyboard input, renders with worker-switcher header. Header height is computed via `utils.visual_line_count` to handle multi-line wrap correctly: `body_hover`, `content_height`, and `line_map` shift all use `header_lines` instead of a hardcoded 1. Same strip-on-extend + lazy-reload pattern as `pane.py` — `_strip_inactive_wp_messages` runs after each extend; click-expand triggers `_lazy_load_messages` for entry + `prev_same`; `_worker_proxy_log_path` holds the current worker's JSONL path.
+**Reads:** Module-level state (including `_worker_proxy_log_path`); live worker list from `workers.worker_tmux`; worker selection IPC file.
 **Writes:** ANSI output to stdout (direct tmux pane write).
 **Called by:** `src/core/monitor.py` (via `..proxy_display.run_worker_proxy_loop`)
 **Calls out:** `input` (click_handler), `workers` (worker_tmux), `panes` (token_pane.build_cache_turns), `utils` (visual_line_count)
@@ -60,12 +63,12 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 ---
 
-### parser.py (254 LOC)
+### parser.py (298 LOC)
 
-**Purpose:** Read and parse proxy log JSONL files — extract rich fields from `raw_payload` (system blocks, tools, messages, schema warnings) into flat entry dicts, then discard raw payload to save memory. `_parse_log_file` reads STREAMING line-by-line via `for line in f` (no `f.read()` peak) and uses `f.tell()` after the loop for the new position (avoids TOCTOU race with proxy writer adding lines mid-read). The `sent_meta` lookback (merge `sent_*` fields into the previous entry) is implemented via a `last_entry` local variable instead of `entries[-1]`. `latency_update` records (type=latency_update) are handled the same way: matched to `last_entry` by `request_id`, fields `ttfb_ms`, `stream_duration_ms`, `output_tokens_per_sec`, `n_stalls`, `max_stall_ms`, `total_stall_ms` are merged in. Flat fields: `thinking_budget_tokens` from `raw_payload.thinking.budget_tokens` (None if absent); `effort_value` from `raw_payload.output_config.effort` (None if absent — set by proxy `injected_model_override` + `capped_post_sleep` rules). **Known open issue:** despite streaming, peak RAM is still O(N²) because each proxy entry's `raw_payload.messages` is the full cumulative conversation; building all parsed entries in memory still hits gigabytes for long sessions. Real fix needs per-entry process-and-drop or message-strip-on-parse — see Bead Monitor_CC-lhf and `sources/RAM_research_2026-04-25.md`.
+**Purpose:** Read and parse proxy log JSONL files — extract rich fields from `raw_payload` (system blocks, tools, messages, schema warnings) into flat entry dicts, then discard raw payload to save memory. `_parse_log_file` reads STREAMING line-by-line via `readline()` loop (captures `line_start = f.tell()` before each read to stamp `entry['_byte_offset']`; uses `f.tell()` after loop for `new_position`). `_byte_offset` is the byte position of each entry's JSONL line — used by `_lazy_load_messages` to seek-and-reload a stripped entry's `messages` list on demand. `_enrich_content_tails(stored_msgs, raw_msgs)` populates `content_tail` on each stored message from the corresponding raw_payload message content — extracted as a reusable helper called by both `_extract_raw_payload_fields` (initial parse) and `_lazy_load_messages` (reload). `sent_meta` and `latency_update` records are merged into the pending entry by `request_id` via `pending_by_rid` dict. Flat fields: `thinking_budget_tokens` from `raw_payload.thinking.budget_tokens`; `effort_value` from `raw_payload.output_config.effort`.
 **Reads:** Proxy log JSONL file by project filter or direct path (incremental by byte position).
 **Writes:** Nothing — returns `(entry_list, new_position)`.
-**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/panes/waste_pane.py`, `src/panes/warnings_pane.py`, `src/metadata/metadata_pane.py`
+**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/panes/warnings_pane.py`, `src/metadata/metadata_pane.py`
 **Calls out:** —
 
 ---
@@ -114,5 +117,8 @@ parser field extraction. Do NOT touch for the proxy modification pipeline — th
 
 `pane.py` and `worker_proxy_pane.py` each own independent module-level mutable state:
 - entries list, expand states dict, scroll offset, hover row, line map, turns list
+- `_proxy_log_path` / `_worker_proxy_log_path` — current JSONL path, updated each poll cycle; used by lazy-reload on expand-click and 'y' clipboard copy
 
-Both are reset when session changes (new proxy log file detected via `find_proxy_log_path`).
+Both are reset when session changes (new proxy log file detected via `find_proxy_log_path`). On reset, the log path is cleared to `None`.
+
+**Lazy-reload invariant:** every entry in the entries list that is outside the `PROXY_MESSAGES_KEEP_LAST=10` tail window and not in `expand_states` has `messages` deleted (stripped). Entries inside the window or with an active expand key (`('req', i)`, `i`, or `(i, 'neg_delta')`) always retain messages. On expand-click, `_lazy_load_messages(entry, log_path)` reloads from `entry['_byte_offset']` in the JSONL file; `prev_same` (first non-standalone predecessor) is reloaded in the same click handler.

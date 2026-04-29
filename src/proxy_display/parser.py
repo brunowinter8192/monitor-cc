@@ -25,6 +25,41 @@ def _proxy_session_id_for_project(project_path: str) -> str:
 def proxy_session_id_for_project(project_path: str) -> str:
     return _proxy_session_id_for_project(project_path)
 
+# Populate content_tail on stored_msgs from corresponding raw_payload messages content
+def _enrich_content_tails(stored_msgs: list, raw_msgs: list) -> None:
+    for i, raw_msg in enumerate(raw_msgs):
+        if i >= len(stored_msgs):
+            break
+        content = raw_msg.get('content', '')
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            text = ''.join(b.get('text', '') for b in content if isinstance(b, dict))
+        else:
+            text = ''
+        stored_msgs[i]['content_tail'] = text
+
+# Re-populate messages on a stripped entry by seeking to its _byte_offset in the log file
+def _lazy_load_messages(entry: dict, log_path: Path) -> bool:
+    offset = entry.get('_byte_offset')
+    if offset is None or not log_path.exists():
+        return False
+    try:
+        with open(log_path, 'r', encoding='utf-8') as f:
+            f.seek(offset)
+            raw_line = f.readline().strip()
+        if not raw_line:
+            return False
+        raw_entry = json.loads(raw_line)
+    except (OSError, json.JSONDecodeError):
+        return False
+    stored_msgs = raw_entry.get('messages', [])
+    raw_payload = raw_entry.get('raw_payload') or {}
+    raw_msgs = raw_payload.get('messages', [])
+    _enrich_content_tails(stored_msgs, raw_msgs)
+    entry['messages'] = stored_msgs
+    return True
+
 # Extract analysis fields from raw_payload into entry dict, then delete raw_payload to save memory
 def _extract_raw_payload_fields(entry: dict) -> None:
     raw = entry.get('raw_payload', {})
@@ -102,16 +137,7 @@ def _extract_raw_payload_fields(entry: dict) -> None:
 
         stored_msgs = entry.get('messages', [])
         if stored_msgs and isinstance(msgs, list):
-            for i, raw_msg in enumerate(msgs):
-                if i < len(stored_msgs):
-                    content = raw_msg.get('content', '')
-                    if isinstance(content, str):
-                        text = content
-                    elif isinstance(content, list):
-                        text = ''.join(b.get('text', '') for b in content if isinstance(b, dict))
-                    else:
-                        text = ''
-                    stored_msgs[i]['content_tail'] = text
+            _enrich_content_tails(stored_msgs, msgs)
 
         del entry['raw_payload']
 
@@ -129,8 +155,12 @@ def _parse_log_file(log_path: Path, last_position: int, pending_by_rid: Optional
     entries = []
     with open(log_path, "r", encoding="utf-8") as f:
         f.seek(last_position)
-        for line in f:
-            line = line.strip()
+        while True:
+            line_start = f.tell()
+            raw_line = f.readline()
+            if not raw_line:
+                break
+            line = raw_line.strip()
             if not line:
                 continue
             try:
@@ -157,6 +187,7 @@ def _parse_log_file(log_path: Path, last_position: int, pending_by_rid: Optional
                             target['total_stall_ms'] = entry.get('total_stall_ms')
                             pending_by_rid.pop(rid, None)  # response complete; release reference
                     continue
+                entry['_byte_offset'] = line_start
                 _extract_raw_payload_fields(entry)
                 entries.append(entry)
                 if pending_by_rid is not None:

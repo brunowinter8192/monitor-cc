@@ -1,15 +1,16 @@
 # INFRASTRUCTURE
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 import os
 import time
 
 from ..constants import (
     RESET, YELLOW, DIM,
-    POLL_INTERVAL, INPUT_POLL_INTERVAL,
+    POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
 )
-from .parser import parse_proxy_log
-from .format import format_proxy_block
+from .parser import parse_proxy_log, find_proxy_log_path, _lazy_load_messages
+from .format import format_proxy_block, _is_standalone_entry
 from ..panes.token_pane import build_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
@@ -27,6 +28,7 @@ proxy_log_position: int = 0
 _proxy_jsonl_position: int = 0
 _proxy_cache_turns: list = []
 _proxy_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
+_proxy_log_path: Optional[Path] = None  # current log file path, updated each poll cycle for lazy-reload
 
 # FUNCTIONS
 
@@ -72,11 +74,33 @@ def _serialize_proxy(key, entries: list) -> str:
                 parts.append(ct)
     return '\n'.join(parts)
 
+# Walk backward from k-1 to find first non-standalone entry idx (prev_same reference)
+def _resolve_prev_same(entries: list, k: int) -> Optional[int]:
+    for i in range(k - 1, -1, -1):
+        if not _is_standalone_entry(entries[i]):
+            return i
+    return None
+
+# Strip messages from all entries outside the keep-last window that are not expanded
+def _strip_inactive_messages(entries: list, expand_states: dict) -> None:
+    cutoff = max(0, len(entries) - PROXY_MESSAGES_KEEP_LAST)
+    for i in range(cutoff):
+        e = entries[i]
+        if e.get('messages') is None:
+            continue
+        is_active = (
+            expand_states.get(i, False) or
+            expand_states.get(('req', i), False) or
+            expand_states.get((i, 'neg_delta'), False)
+        )
+        if not is_active:
+            del e['messages']
+
 # Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
 def run_proxy_loop() -> None:
     from ..core import monitor as _monitor
     global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset, proxy_log_position
-    global _proxy_jsonl_position, _proxy_cache_turns, _proxy_pending_by_rid
+    global _proxy_jsonl_position, _proxy_cache_turns, _proxy_pending_by_rid, _proxy_log_path
     session_start_ts = _monitor._get_session_start_ts()
     if session_start_ts is None:
         session_start_ts = datetime.utcnow().isoformat() + 'Z'
@@ -103,6 +127,16 @@ def run_proxy_loop() -> None:
                                 new_state = not proxy_expand_states.get(key, False)
                                 proxy_expand_states[key] = new_state
                                 if new_state:
+                                    entry_idx = _entry_idx_from_key(key)
+                                    if entry_idx is not None and entry_idx < len(proxy_entries) and _proxy_log_path:
+                                        e = proxy_entries[entry_idx]
+                                        if e.get('messages') is None:
+                                            _lazy_load_messages(e, _proxy_log_path)
+                                        prev_idx = _resolve_prev_same(proxy_entries, entry_idx)
+                                        if prev_idx is not None:
+                                            pe = proxy_entries[prev_idx]
+                                            if pe.get('messages') is None:
+                                                _lazy_load_messages(pe, _proxy_log_path)
                                     just_expanded = key
                                 input_changed = True
                         elif button == 64:  # wheel up → older content
@@ -117,6 +151,11 @@ def run_proxy_loop() -> None:
                 elif char == 'y':
                     key = resolve_parent_key(proxy_line_map, proxy_hover_row)
                     if key is not None:
+                        entry_idx = _entry_idx_from_key(key)
+                        if entry_idx is not None and entry_idx < len(proxy_entries) and _proxy_log_path:
+                            e = proxy_entries[entry_idx]
+                            if e.get('messages') is None:
+                                _lazy_load_messages(e, _proxy_log_path)
                         copy_to_clipboard(_serialize_proxy(key, proxy_entries))
 
             now = time.time()
@@ -136,10 +175,13 @@ def run_proxy_loop() -> None:
                     _proxy_jsonl_position = 0
                     _proxy_cache_turns = []
                     _proxy_pending_by_rid.clear()
+                    _proxy_log_path = None
                     input_changed = True
                 new_entries, proxy_log_position = parse_proxy_log(_monitor.active_project_filter, proxy_log_position, _proxy_pending_by_rid)
                 filtered = [e for e in new_entries if e.get('timestamp', '') >= session_start_ts]
                 proxy_entries.extend(filtered)
+                _proxy_log_path = find_proxy_log_path(_monitor.active_project_filter)
+                _strip_inactive_messages(proxy_entries, proxy_expand_states)
                 main_sessions = _monitor.get_main_session_files()
                 if main_sessions:
                     filepath = main_sessions[0]

@@ -61,6 +61,8 @@ def run_metadata_loop() -> None:
         new_entries, _meta_log_position = parse_proxy_log(_monitor.active_project_filter, _meta_log_position, _meta_pending_by_rid)
         filtered = [e for e in new_entries if e.get('timestamp', '') >= session_start_ts]
         _meta_entries.extend(filtered)
+        for _e in _meta_entries[:-1]:
+            _e.pop('messages', None)
 
         if _meta_entries:
             lines = _format_metadata(_meta_entries[-1])
@@ -105,6 +107,8 @@ def run_worker_metadata_loop() -> None:
             if log_path:
                 new_entries, _worker_meta_log_position = _parse_log_file(log_path, _worker_meta_log_position, _worker_meta_pending_by_rid)
                 _worker_meta_entries.extend(new_entries)
+                for _e in _worker_meta_entries[:-1]:
+                    _e.pop('messages', None)
 
         if not worker_name:
             lines = [f"{DIM}Select a worker in the Workers pane{RESET}"]
