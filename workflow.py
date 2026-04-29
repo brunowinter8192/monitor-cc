@@ -19,7 +19,7 @@ def main() -> None:
         restart_panes(args.session, args.project, os.path.abspath(__file__))
     else:
         setup_signal_handlers()
-        if args.mode not in ('rules', 'warnings', 'hooks', 'tokens', 'workers', 'metadata', 'waste'):
+        if args.mode not in ('warnings', 'tokens', 'workers', 'metadata'):
             print_startup_message(args.project, args.mode)
         run_monitor(args.project, args.mode)
 

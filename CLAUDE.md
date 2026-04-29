@@ -19,5 +19,5 @@ See [decisions/](decisions/) — one file per pipeline component (entry, data so
 1. `workflow.py --mode all` → `tmux_launcher` spawns 10 panes, each running `workflow.py --mode <pane>`.
 2. Main pane: `core/monitor.py` polls `~/.claude/projects/**/*.jsonl` every 0.5s, classifies tool calls, prints to stdout.
 3. mitmproxy (`src/proxy/`) intercepts API traffic, strips/modifies payloads, logs to `src/logs/api_requests_<id>.jsonl`.
-4. Dedicated panes (`panes/`, `hooks/`, `workers/`, `proxy_display/`, `metadata/`) tail their respective data sources and render interactive ANSI TUI.
+4. Dedicated panes (`panes/`, `workers/`, `proxy_display/`, `metadata/`) tail their respective data sources and render interactive ANSI TUI.
 5. All panes read shared runtime state from `core/monitor.py` via lazy `from ..core import monitor as _monitor`.

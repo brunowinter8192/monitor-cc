@@ -2,19 +2,18 @@
 
 ## Status Quo
 
-- `workflow.py`: `--mode all` → tmux 5-Window (main+tokens | proxy+metadata | rules+hooks | workers+worker-proxy+worker-metadata | warnings+waste), `--mode main|rules|warnings|hooks|tokens|workers|proxy|metadata|worker-proxy|worker-metadata|waste|restart-panes` → einzelner Prozess
-- `startup.py`: argparse mit choices `['all', 'main', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'metadata', 'worker-proxy', 'worker-metadata', 'waste', 'restart-panes']`, `--project`
-- `tmux_launcher.py`: 5 Windows (11 Panes), history 50000, keybindings (C-q scroll, C-r restart all panes, C-f search, mouse, M-m/M-t/M-p/M-r/M-h/M-k/M-w copy)
+- `workflow.py`: `--mode all` → tmux 4-Window (main+tokens | proxy+metadata | workers+worker-proxy+worker-metadata | warnings), `--mode main|rules|warnings|hooks|tokens|workers|proxy|metadata|worker-proxy|worker-metadata|restart-panes` → einzelner Prozess
+- `startup.py`: argparse mit choices `['all', 'main', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'metadata', 'worker-proxy', 'worker-metadata', 'restart-panes']`, `--project`
+- `tmux_launcher.py`: 4 Windows (10 Panes), history 50000, keybindings (C-q scroll, C-r restart all panes, C-f search, mouse, M-m/M-t/M-p/M-r/M-h/M-k/M-w copy)
 
-tmux Layout (5 Windows, Stand Session 18+):
+tmux Layout (4 Windows):
 ```
 Window 0 "main":    Main (0.0, left 70%)   | Tokens (0.1, right 30%)
 Window 1 "proxy":   Proxy (1.0, left 70%)  | Metadata (1.1, right 30%)
-Window 2 "rules":   Rules (2.0, left 50%)  | Hooks (2.1, right 50%)
-Window 3 "workers": Workers (3.0, 34%)     | Worker-Proxy (3.1, 33%) | Worker-Metadata (3.2, 33%)
-Window 4 "debug":   Warnings (4.0, left 50%) | Waste (4.1, right 50%)
+Window 2 "workers": Workers (2.0, 34%)     | Worker-Proxy (2.1, 33%) | Worker-Metadata (2.2, 33%)
+Window 3 "debug":   Warnings (3.0, fullscreen)
 ```
-Switch windows: Ctrl-b 0/1/2/3/4
+Switch windows: Ctrl-b 0/1/2/3
 
 Window-Erstellung:
 1. `new-session -d -s $session $main_cmd` → Window 0, Pane 0.0
@@ -22,14 +21,11 @@ Window-Erstellung:
 3. `split-window -h -t $session:0.0 -l 30% $tokens_cmd` → Pane 0.1
 4. `new-window -t $session:1 -n "proxy" $proxy_cmd` → Window 1, Pane 1.0
 5. `split-window -h -t $session:1.0 -l 30% $metadata_cmd` → Pane 1.1
-6. `new-window -t $session:2 -n "rules" $rules_cmd` → Window 2, Pane 2.0
-7. `split-window -h -t $session:2.0 -l 50% $hooks_cmd` → Pane 2.1
-8. `new-window -t $session:3 -n "workers" $workers_cmd` → Window 3, Pane 3.0
-9. `split-window -h -t $session:3.0 -l 66% $worker_proxy_cmd` → Pane 3.1
-10. `split-window -h -t $session:3.1 -l 50% $worker_metadata_cmd` → Pane 3.2
-11. `new-window -t $session:4 -n "debug" $warnings_cmd` → Window 4, Pane 4.0
-12. `split-window -h -t $session:4.0 -l 50% $waste_cmd` → Pane 4.1
-13. `select-window -t $session:0` → Main window active on attach
+6. `new-window -t $session:2 -n "workers" $workers_cmd` → Window 2, Pane 2.0
+7. `split-window -h -t $session:2.0 -l 66% $worker_proxy_cmd` → Pane 2.1
+8. `split-window -h -t $session:2.1 -l 50% $worker_metadata_cmd` → Pane 2.2
+9. `new-window -t $session:3 -n "debug" $warnings_cmd` → Window 3, Pane 3.0
+10. `select-window -t $session:0` → Main window active on attach
 
 ## IST — Stellschrauben
 
@@ -63,7 +59,7 @@ Hardcoded Split-Befehle in `src/tmux_launcher.py`:
 - Window 1: `-l 30%` — horizontaler Split (proxy links 70% | metadata rechts 30%)
 - Window 2: `-l 50%` — horizontaler Split (rules links 50% | hooks rechts 50%)
 - Window 3: two splits — `-l 66%` (workers 34% | rest 66%), then `-l 50%` on 3.1 (worker-proxy | worker-metadata each ~33%)
-- Window 4: `-l 50%` — horizontaler Split (warnings links 50% | waste rechts 50%)
+- Window 3: kein Split — warnings fullscreen
 
 Keine Config-Parameter. Ratios nicht als Konstanten benannt.
 

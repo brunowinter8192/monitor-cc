@@ -101,8 +101,8 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
             haiku_info = ''
         eff_val = entry.get('effort_value')
         eff_str = f" eff:{_fmt_effort(eff_val)}" if eff_val is not None else ''
-        tc = entry.get('thinking_config') or {}
-        think_str = f" think:{_fmt_thinking_budget(entry.get('thinking_budget_tokens'))}" if tc else ''
+        mt = entry.get('max_tokens') or 0
+        think_str = f" think:{_fmt_thinking_budget(mt)}" if (mt and model_short != 'haiku') else ''
         if model_short != 'haiku':
             api_call = turn_api_calls[opus_call_idx] if opus_call_idx < len(turn_api_calls) else {}
             cr = api_call.get('cache_read', 0)

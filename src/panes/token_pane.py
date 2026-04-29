@@ -12,6 +12,7 @@ from ..input.click_handler import (
 )
 from ..format.token_format import format_cache_tracker
 from ..utils import truncate_visible
+from ..ram_audit import register_ram_dump
 
 cache_expand_states: Dict[tuple, bool] = {}
 cache_line_map: Dict[int, tuple] = {}
@@ -111,6 +112,18 @@ def run_tokens_loop() -> None:
     from ..core import monitor as _monitor
     global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
     global _cache_jsonl_position, _cache_turns, _cache_current_filepath
+
+    def _ram_state():
+        return [
+            ('cache_expand_states',    cache_expand_states),
+            ('cache_line_map',         cache_line_map),
+            ('_cache_turns',           _cache_turns),
+            ('cache_scroll_offset',    cache_scroll_offset),
+            ('cache_hover_row',        str(cache_hover_row)),
+            ('_cache_jsonl_position',  _cache_jsonl_position),
+            ('_cache_current_filepath', str(_cache_current_filepath)),
+        ]
+    register_ram_dump('tokens', _ram_state)
     last_output = None
     last_data_refresh = 0.0
     setup_keyboard_input()
