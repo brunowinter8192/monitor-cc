@@ -34,6 +34,55 @@ def _aggregate_entry_tags(entry: dict) -> list[str]:
                 found.add('ND')
     return sorted(found)
 
+# Render header + stripped chunks for one message, returning (lines, keys) with len==len
+# show_chars=True adds chars_fmt to the header line (Branch 1 style); False omits it (Branch 2 style)
+# Header key is appended last (matches render_messages loop convention)
+def _render_stripped_block(entry: dict, msg_idx: int, msg: dict, show_chars: bool = True) -> tuple:
+    lines = []
+    keys = []
+    role = msg.get('role', '?')[:4]
+    msg_type = msg.get('type', 'text')
+    removed_map = entry.get('stripped_msg_removed')
+    removed_chunks = removed_map.get(str(msg_idx), []) if removed_map is not None else []
+    if removed_chunks:
+        if show_chars:
+            chars_fmt = f"{msg.get('chars', 0):,}c"
+            lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
+        else:
+            lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{SOFT_RESET}")
+        for chunk in removed_chunks:
+            rule_code = attribute_chunk(chunk)
+            label = f'EFF:{rule_code}' if rule_code else 'EFF:?'
+            lines.append(f"      {WHITE}{label}{SOFT_RESET}")
+            keys.append(None)
+            for raw_line in chunk.split('\n'):
+                raw_line = raw_line.expandtabs(8)
+                if not raw_line:
+                    lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
+                    keys.append(None)
+                    continue
+                lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
+                keys.append(None)
+    else:
+        originals = entry.get('stripped_msg_originals', {})
+        orig_text = originals.get(str(msg_idx), '')
+        if show_chars:
+            chars_fmt = f"{msg.get('chars', 0):,}c"
+            lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]  IDX{SOFT_RESET}")
+        else:
+            lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]  IDX{SOFT_RESET}")
+        if orig_text:
+            for raw_line in orig_text.split('\n'):
+                raw_line = raw_line.expandtabs(8)
+                if not raw_line:
+                    lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
+                    keys.append(None)
+                    continue
+                lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
+                keys.append(None)
+    keys.append(None)  # key for header line
+    return lines, keys
+
 # Render new/modified/removed messages for an expanded request entry, returning (lines, keys)
 def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_states: dict, pane_width: int) -> tuple:
     lines = []
@@ -41,51 +90,32 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
     messages = entry.get('messages', [])
     stripped_indices = set(entry.get('stripped_msg_indices', []))
     prev_msg_count = prev_entry_for_delta.get('message_count', 0) if prev_entry_for_delta is not None else 0
+    diff = entry.get('diff_from_prev') or {}
+    fdi = diff.get('first_diff_index')
+    if fdi is None:
+        fdi = 0
     if prev_msg_count < len(messages):
+        # Render stripped messages from [fdi, prev_msg_count) skipped by the new-range loop below
+        if fdi >= 0:
+            for msg_idx in sorted(s for s in stripped_indices if fdi <= s < prev_msg_count):
+                s_lines, s_keys = _render_stripped_block(entry, msg_idx, messages[msg_idx], show_chars=True)
+                lines.extend(s_lines)
+                keys.extend(s_keys)
         for msg_idx in range(prev_msg_count, len(messages)):
             msg = messages[msg_idx]
-            role = msg.get('role', '?')[:4]
-            msg_type = msg.get('type', 'text')
-            chars = msg.get('chars', 0)
-            chars_fmt = f"{chars:,}c"
             is_stripped = msg_idx in stripped_indices
+            blocks = msg.get('blocks', [])
             if is_stripped:
-                removed_map = entry.get('stripped_msg_removed')
-                removed_chunks = removed_map.get(str(msg_idx), []) if removed_map is not None else []
-                if removed_chunks:
-                    lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
-                    for chunk in removed_chunks:
-                        rule_code = attribute_chunk(chunk)
-                        label = f'EFF:{rule_code}' if rule_code else 'EFF:?'
-                        lines.append(f"      {WHITE}{label}{SOFT_RESET}")
-                        keys.append(None)
-                        for raw_line in chunk.split('\n'):
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                                keys.append(None)
-                                continue
-                            lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                            keys.append(None)
-                else:
-                    originals = entry.get('stripped_msg_originals', {})
-                    orig_text = originals.get(str(msg_idx), '')
-                    lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20} {chars_fmt:>8}  [STRIPPED]  IDX{SOFT_RESET}")
-                    if orig_text:
-                        for raw_line in orig_text.split('\n'):
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                                keys.append(None)
-                                continue
-                            lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                            keys.append(None)
+                s_lines, s_keys = _render_stripped_block(entry, msg_idx, msg, show_chars=True)
+                lines.extend(s_lines)
+                keys.extend(s_keys)
             else:
-                blocks = msg.get('blocks', [])
+                role = msg.get('role', '?')[:4]
+                msg_type = msg.get('type', 'text')
+                chars_fmt = f"{msg.get('chars', 0):,}c"
                 type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
                 lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {type_label:<20} {chars_fmt:>8}{SOFT_RESET}")
-            keys.append(None)
-            blocks = msg.get('blocks', [])
+                keys.append(None)
             if blocks:
                 for bidx, blk in enumerate(blocks):
                     btype = blk.get('type', 'text')
@@ -131,48 +161,26 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                 diff_start = len(messages) - j
             else:
                 break
+        # Render stripped messages from [fdi, diff_start) skipped by the diff-range loop below
+        if fdi >= 0:
+            for msg_idx in sorted(s for s in stripped_indices if fdi <= s < diff_start):
+                s_lines, s_keys = _render_stripped_block(entry, msg_idx, messages[msg_idx], show_chars=False)
+                lines.extend(s_lines)
+                keys.extend(s_keys)
         for msg_idx in range(diff_start, len(messages)):
             msg = messages[msg_idx]
-            role = msg.get('role', '?')[:4]
-            msg_type = msg.get('type', 'text')
             is_stripped = msg_idx in stripped_indices
+            blocks = msg.get('blocks', [])
             if is_stripped:
-                removed_map = entry.get('stripped_msg_removed')
-                removed_chunks = removed_map.get(str(msg_idx), []) if removed_map is not None else []
-                if removed_chunks:
-                    lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]{SOFT_RESET}")
-                    for chunk in removed_chunks:
-                        rule_code = attribute_chunk(chunk)
-                        label = f'EFF:{rule_code}' if rule_code else 'EFF:?'
-                        lines.append(f"      {WHITE}{label}{SOFT_RESET}")
-                        keys.append(None)
-                        for raw_line in chunk.split('\n'):
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                                keys.append(None)
-                                continue
-                            lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                            keys.append(None)
-                else:
-                    originals = entry.get('stripped_msg_originals', {})
-                    orig_text = originals.get(str(msg_idx), '')
-                    lines.append(f"    {WHITE}[{msg_idx:3d}] {role:<4}  {msg_type:<20}  [STRIPPED]  IDX{SOFT_RESET}")
-                    if orig_text:
-                        for raw_line in orig_text.split('\n'):
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"      {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                                keys.append(None)
-                                continue
-                            lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                            keys.append(None)
+                s_lines, s_keys = _render_stripped_block(entry, msg_idx, msg, show_chars=False)
+                lines.extend(s_lines)
+                keys.extend(s_keys)
             else:
-                blocks = msg.get('blocks', [])
+                role = msg.get('role', '?')[:4]
+                msg_type = msg.get('type', 'text')
                 type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
                 lines.append(f"    {DIM}[{msg_idx:3d}] {role:<4}  {type_label:<20}{SOFT_RESET}")
-            keys.append(None)
-            blocks = msg.get('blocks', [])
+                keys.append(None)
             if blocks:
                 for bidx, blk in enumerate(blocks):
                     btype = blk.get('type', 'text')
