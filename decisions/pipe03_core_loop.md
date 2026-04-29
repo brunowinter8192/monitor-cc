@@ -2,11 +2,10 @@
 
 ## Status Quo
 
-- `monitor.py`: `run_main_loop()` (ehemals `run_streaming_loop()`) ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), trackt `current_main_session` via `_get_newest_main_session()`. Detects session change each poll cycle → clears screen + resets position. Pollt alle 0.5s via `process_hook_log()` + `monitor_sessions()` + `_refresh_strip_cache()` + `render_main_buffer()`
-- `monitor.py`: `run_rules_loop()` ruft `load_historical_rules()` auf (liest Hook-Log ab 0, füllt `active_rules`), dann pollt alle 0.5s via `process_hook_log()` und rendert `format_rules_block(active_rules)` bei Änderungen
+- `monitor.py`: `run_main_loop()` (ehemals `run_streaming_loop()`) ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), trackt `current_main_session` via `_get_newest_main_session()`. Detects session change each poll cycle → clears screen + resets position. Pollt alle 0.5s via `monitor_sessions()` + `_refresh_strip_cache()` + `render_main_buffer()`
 - `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
-- `monitor.py`: `run_hooks_loop()` ruft `load_historical_hooks()` auf (liest Hook-Log ab 0, druckt ALLE Entries inkl. ohne Output), dann pollt alle 0.5s via `process_hook_log_for_display()`
 - `monitor.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `format_warnings_block()` bei Änderungen
+- *(Removed 2026-04-28: `run_rules_loop()`, `run_hooks_loop()`, `process_hook_log()`, `process_hook_log_for_display()`, `initialize_hook_log_position()`, `hook_log_position` state — entire hook-log pipeline and rules/hooks panes deleted. Window 2 removed, monitor is now 4 windows.)*
 - `monitor.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. Expanded Workers zeigen Cache-Tracker Token-View (CR/CC/D per API Call) via `extract_cache_turns()` + `format_cache_tracker()`. Keine Subagent-Rendering mehr (separates Pane).
 - Hook routing in `process_hook_log()`: nur noch 1 Event → 1 State Dict
   - `InstructionsLoaded` → `active_rules` (via `[P]`/`[G]` Prefix-Routing)
@@ -18,12 +17,6 @@
 - Agent tracking: `agent_to_task`, `agent_to_type` maps, `buffered_subagent_calls` für Orphans (Calls ohne bekannten Agent)
 - Token profiling: `accumulate_tokens()` aggregiert Output-Tokens nach Block-Type (thinking/tool_use/text) und Tool-Name in `token_profile` + `token_profile_tools` Globals. Turn-Count via `token_profile_request_ids` Set (dedupliziert `requestId`s). Session-Isolation via file-level Byte-Offsets (nicht 5h-Filter).
 - Session-Browser: `token_cumulative_n: Optional[int]` (monitor.py:48) steuert Modus. Keyboard-Input in `run_tokens_loop()`: Ziffern → buffer, Enter → set/clear n, 'q' → clear. `compute_cumulative_tokens(n)` liest letzte N Main-Sessions von Position 0.
-
-`run_rules_loop()` Ablauf:
-1. `process_hook_log()` → aktualisiert `active_rules`
-2. `format_rules_block(active_rules)` → rendert ACTIVE RULES Block
-3. Bei Änderung: Screen-Clear + Print
-4. `time.sleep(POLL_INTERVAL)`
 
 `run_workers_loop()` Ablauf:
 1. `list_workers(active_project_filter)` → liest tmux-Sessions mit `worker-{project}-` Prefix
@@ -51,7 +44,6 @@ Alle Module-Level Variablen in `src/monitor.py` mit Zugriffs-Mapping (Stand nach
 | `active_project_filter` | `Optional[str]` | monitor.py:35 | monitor.py | monitor.py | Aktiver Projekt-Filter |
 | `active_mode` | `str` | monitor.py | monitor.py | monitor.py | Aktueller Mode (all/main/rules/workers/proxy/...) |
 | `_last_monitored_count` | `Optional[int]` | monitor.py | monitor.py | monitor.py | Logging-Guard: Session-Count |
-| `hook_log_position` | `int` | monitor.py | monitor.py | monitor.py | Byte-Offset im Hook-Log |
 | `warned_unknown_types` | `Set[str]` | monitor.py:43 | monitor.py | monitor.py | Bereits gewarnted unknown Types |
 | `unknown_type_counts` | `Dict[str, int]` | monitor.py:44 | monitor.py | monitor.py | Count pro unbekanntem Type |
 | `token_profile` | `Dict[str, int]` | monitor.py:45 | monitor.py | monitor.py | Kumulative Output-Tokens nach Block-Type |
@@ -62,7 +54,7 @@ Alle Module-Level Variablen in `src/monitor.py` mit Zugriffs-Mapping (Stand nach
 
 **Entfernt in Session 2/3:** `pending_pretooluse_hooks` und `pending_user_prompt_hook` wurden als Teil der Hook-Routing-Vereinfachung entfernt. `process_hook_log()` bufferiert keine PreToolUse/UserPromptSubmit-Outputs mehr.
 
-**Kopplungsanalyse:** `agent_to_task`, `agent_to_type` (und früher `subagent_metadata`, `tool_calls_by_agent`, `active_rules`) wurden als Argumente an `run_ui_loop()` (ui_mode.py, entfernt mit Subagents-Feature) übergeben — de-facto shared mutable state. `active_rules`, `warned_unknown_types`, `unknown_type_counts` wurden in Session-N in die jeweiligen Pane-Module verschoben (`panes/rules_pane.py`, `panes/warnings_parse.py`). Token-Profiling-State (`token_profile` etc.) in `panes/token_pane.py`. Nur die oben gelisteten 10 Variablen verbleiben in `monitor.py`.
+**Kopplungsanalyse:** `agent_to_task`, `agent_to_type` (und früher `subagent_metadata`, `tool_calls_by_agent`, `active_rules`) wurden als Argumente an `run_ui_loop()` (ui_mode.py, entfernt mit Subagents-Feature) übergeben — de-facto shared mutable state. `warned_unknown_types`, `unknown_type_counts` leben in `panes/warnings_parse.py`. Token-Profiling-State (`token_profile` etc.) in `panes/token_pane.py`. `active_rules` und `hook_log_position` entfernt 2026-04-28 mit den rules/hooks panes.
 
 ### buffered_subagent_calls — kein TTL (Kategorie: Memory)
 
@@ -78,21 +70,7 @@ Alle Module-Level Variablen in `src/monitor.py` mit Zugriffs-Mapping (Stand nach
 - `detect_unknown_types()` in jsonl_parser.py erkennt Message Types die nicht in KNOWN_MESSAGE_TYPES oder KNOWN_IGNORED_TYPES sind
 - `track_unknown_type()` in monitor.py akkumuliert Counts
 - `format_warnings_block()` rendert Warnings für dediziertes tmux Pane
-- `run_warnings_loop()` pollt und rendert wie run_rules_loop()
-
-### Hook Routing — vereinfacht (Kategorie: Korrektheit)
-
-**Stand nach Session 2/3:** `pending_pretooluse_hooks` und `pending_user_prompt_hook` wurden entfernt.
-
-`process_hook_log()` (monitor.py:687-699) verarbeitet jetzt NUR noch `InstructionsLoaded`:
-- Alle anderen Hook-Events werden ignoriert (nicht gebuffert, nicht angezeigt)
-- `[P]` Prefix → `active_rules['project'].add(...)`
-- `[G]` Prefix → `active_rules['global'].add(...)`
-
-`process_hook_log_for_display()` (monitor.py:651-668) ist der separate Code-Pfad für die Hooks-Pane:
-- Verarbeitet ALLE Hook-Events mit Output (kein Typ-Filter)
-- Zeigt Output sofort als scrolling stream an (kein State, kein Buffering)
-- Hooks ohne Output werden gefiltert (`if not output: continue`)
+- `run_warnings_loop()` pollt und rendert per eigenem Poll-Zyklus
 
 ### Logging im Core Loop (Kategorie: Observability)
 

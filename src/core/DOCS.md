@@ -43,10 +43,10 @@ Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buf
 ### monitor.py (263 LOC)
 
 **Purpose:** Polling orchestrator — discovers sessions, drives the streaming loop, dispatches to pane event loops by mode, and owns all shared state dicts. In `run_main_loop()`, also scans proxy JSONL each poll cycle via `_refresh_strip_cache()` to feed strip data into `monitor_display`.
-**Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`; hook log position via `hooks`; proxy JSONL via `proxy_display.parser` (for strip cache); lazy reads from `panes`, `workers`, `hooks`, `proxy_display`, `metadata`.
+**Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`; proxy JSONL via `proxy_display.parser` (for strip cache); lazy reads from `panes`, `workers`, `proxy_display`, `metadata`.
 **Writes:** stdout (via `monitor_display`); mutates shared state (`file_positions`, `tool_use_caches`, `agent_to_task`, `agent_to_type`, `buffered_subagent_calls`, `call_counter`, `_strip_proxy_position`).
 **Called by:** `workflow.py` (top-level entry).
-**Calls out:** `session_finder`, `jsonl`, `hooks` (top-level); lazy: `panes`, `workers`, `proxy_display`, `metadata`.
+**Calls out:** `session_finder`, `jsonl`; lazy: `panes`, `workers`, `proxy_display`, `metadata`.
 
 ---
 
@@ -81,7 +81,6 @@ Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buf
 | `agent_to_task` / `agent_to_type` | `Dict[str, str]` | `monitor_session.handle_task_request` |
 | `buffered_subagent_calls` | `Dict[str, List]` | `monitor_session.handle_subagent_call` |
 | `active_project_filter` | `str \| None` | `run_monitor()` on startup |
-| `hook_log_position` | `int` | `initialize_hook_log_position()` + `panes.process_hook_log` |
 | `_strip_proxy_position` | `int` | `_refresh_strip_cache()` each poll cycle |
 
 `monitor_display.py` owns main-pane render state:

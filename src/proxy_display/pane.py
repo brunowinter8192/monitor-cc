@@ -17,6 +17,7 @@ from ..input.click_handler import (
     enable_mouse, disable_mouse, read_mouse_event,
     resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
+from ..ram_audit import register_ram_dump
 
 proxy_entries: List[dict] = []
 proxy_expand_states: Dict[int, bool] = {}
@@ -101,6 +102,20 @@ def run_proxy_loop() -> None:
     from ..core import monitor as _monitor
     global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset, proxy_log_position
     global _proxy_jsonl_position, _proxy_cache_turns, _proxy_pending_by_rid, _proxy_log_path
+
+    def _ram_state():
+        return [
+            ('proxy_entries',         proxy_entries),
+            ('proxy_expand_states',   proxy_expand_states),
+            ('proxy_line_map',        proxy_line_map),
+            ('_proxy_cache_turns',    _proxy_cache_turns),
+            ('_proxy_pending_by_rid', _proxy_pending_by_rid),
+            ('proxy_hover_row',       str(proxy_hover_row)),
+            ('proxy_scroll_offset',   proxy_scroll_offset),
+            ('proxy_log_position',    proxy_log_position),
+            ('_proxy_jsonl_position', _proxy_jsonl_position),
+        ]
+    register_ram_dump('proxy', _ram_state)
     session_start_ts = _monitor._get_session_start_ts()
     if session_start_ts is None:
         session_start_ts = datetime.utcnow().isoformat() + 'Z'

@@ -19,6 +19,7 @@ from ..utils import truncate_visible
 from .worker_format import extract_worker_tokens, extract_worker_context_pct, format_workers_block
 # From worker_tmux.py: tmux session discovery and status detection
 from .worker_tmux import list_workers, find_worker_jsonl
+from ..ram_audit import register_ram_dump
 
 worker_expand_states: Dict[str, bool] = {}
 worker_scroll_offsets: Dict[str, int] = {}
@@ -92,6 +93,20 @@ def _serialize_workers(key) -> str:
 def run_workers_loop() -> None:
     from ..core import monitor as _monitor
     global worker_expand_states, worker_scroll_offsets, worker_line_map, worker_hover_row, worker_cache_expand_states, worker_cache_line_map, worker_selected_name, worker_scroll_offset, worker_turns
+
+    def _ram_state():
+        return [
+            ('worker_expand_states',       worker_expand_states),
+            ('worker_scroll_offsets',      worker_scroll_offsets),
+            ('worker_line_map',            worker_line_map),
+            ('worker_cache_expand_states', worker_cache_expand_states),
+            ('worker_cache_line_map',      worker_cache_line_map),
+            ('worker_turns',               worker_turns),
+            ('worker_hover_row',           str(worker_hover_row)),
+            ('worker_selected_name',       str(worker_selected_name)),
+            ('worker_scroll_offset',       worker_scroll_offset),
+        ]
+    register_ram_dump('workers', _ram_state)
     last_output = None
     workers = []
     worker_turns.clear()

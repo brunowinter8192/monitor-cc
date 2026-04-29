@@ -33,7 +33,7 @@ def get_stripped_data(entry: dict, msg_idx: int) -> tuple:
     return pre_strip, removed
 
 
-# Build tool_use_id → (pre_strip_text, removed_chunks) lookup from raw proxy events (waste_pane use)
+# Build tool_use_id → (pre_strip_text, removed_chunks) lookup from raw proxy events
 def build_tool_result_strip_lookup(events: list) -> dict:
     lookup = {}
     for event in events:
