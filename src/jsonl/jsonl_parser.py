@@ -1,5 +1,8 @@
 # INFRASTRUCTURE
 import json
+import logging
+import os
+import time
 from pathlib import Path
 from typing import List, Tuple, Optional
 
@@ -9,6 +12,65 @@ from .jsonl_extractors import (
     extract_skill_activations, extract_usage_data, extract_system_messages,
     detect_unknown_types,
 )
+
+# Top-level subprocess worker (must be importable by name for multiprocessing 'spawn').
+# Parses session JSONL in a child process, returns 10-tuple + cache via Queue.
+# SUBPROCESS_PARSE_FAIL=1 / SUBPROCESS_PARSE_SLOW=1 env vars activate test hooks.
+def _subprocess_worker(filepath_str: str, root_dir: str, q) -> None:
+    import sys
+    if root_dir and root_dir not in sys.path:
+        sys.path.insert(0, root_dir)
+    try:
+        if os.environ.get('SUBPROCESS_PARSE_FAIL') == '1':
+            raise RuntimeError('forced failure for testing')
+        if os.environ.get('SUBPROCESS_PARSE_SLOW') == '1':
+            time.sleep(10)
+        from pathlib import Path as _Path
+        from src.jsonl.jsonl_parser import parse_new_tool_calls as _parse
+        cache: dict = {}
+        result = _parse(_Path(filepath_str), 0, cache)
+        q.put(('ok', result, dict(cache)))
+    except Exception as exc:
+        q.put(('error', str(exc)))
+
+# parse_new_tool_calls variant that offloads initial parse (last_position==0) to a subprocess.
+# Subprocess peak allocation (large session JSONL) is discarded when child exits;
+# parent receives only extracted scalar fields.  Cache state is transmitted explicitly
+# via Queue since pending entries are not present in the returned tuple.
+# Falls back to in-parent parse on subprocess failure, timeout, or IPC error.
+# Test hooks: SUBPROCESS_PARSE_TIMEOUT env (override 60s default), SUBPROCESS_PARSE_FAIL=1,
+# SUBPROCESS_PARSE_SLOW=1 (child sleeps 10s to exercise timeout path).
+def parse_new_tool_calls_isolated(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
+    if last_position != 0:
+        return parse_new_tool_calls(filepath, last_position, tool_use_cache)
+    import multiprocessing as _mp
+    import queue as _queue
+    root = os.environ.get('MONITOR_CC_ROOT', '') or str(Path(__file__).parent.parent.parent)
+    timeout = int(os.environ.get('SUBPROCESS_PARSE_TIMEOUT', '60'))
+    ctx = _mp.get_context('spawn')
+    q = ctx.Queue()
+    p = ctx.Process(target=_subprocess_worker, args=(str(filepath), root, q), daemon=True)
+    result = None
+    try:
+        p.start()
+        result = q.get(timeout=timeout)
+    except _queue.Empty:
+        logging.warning('subprocess jsonl parse timed out after %ss — falling back to in-parent', timeout)
+    except Exception as exc:
+        logging.warning('subprocess jsonl parse IPC error: %s — falling back to in-parent', exc)
+    finally:
+        if p.is_alive():
+            p.terminate()
+        if p.pid is not None:
+            p.join(timeout=5)
+    if result is None or result[0] == 'error':
+        if result is not None:
+            logging.warning('subprocess jsonl parse worker error: %s — falling back to in-parent', result[1])
+        return parse_new_tool_calls(filepath, last_position, tool_use_cache)
+    _, result_tuple, cache_state = result
+    tool_use_cache.clear()
+    tool_use_cache.update(cache_state)
+    return result_tuple
 
 # ORCHESTRATOR
 def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:

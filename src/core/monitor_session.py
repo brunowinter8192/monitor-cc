@@ -4,7 +4,7 @@ from pathlib import Path
 # From constants.py: Mode constants and tool name
 from ..constants import MODE_WARNINGS, MODE_TOKENS, MODE_MAIN, TOOL_TASK
 # From jsonl/: Parse JSONL and extract tool calls
-from ..jsonl import parse_new_tool_calls
+from ..jsonl import parse_new_tool_calls_isolated
 # From warnings_pane.py: Unknown type tracking
 from ..panes import track_unknown_type
 # From monitor_display.py: Console output for tool calls and session status
@@ -35,7 +35,7 @@ def process_session_file(filepath: Path) -> None:
     last_position = _monitor.file_positions[filepath]
     cache = _monitor.tool_use_caches[filepath]
 
-    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, _, system_messages = parse_new_tool_calls(filepath, last_position, cache)
+    tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, _, system_messages = parse_new_tool_calls_isolated(filepath, last_position, cache)
 
     for ut in unknown_types:
         track_unknown_type(ut)
