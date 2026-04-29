@@ -109,7 +109,7 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
     return [g for g in groups if g['entry_pairs']]
 
 # Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
-def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None) -> tuple:
+def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None) -> tuple:
     from .render_entry import _render_entry_lines
     from .render_turn import render_turn_expanded
     if not entries:
@@ -139,6 +139,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 prev_entry_for_delta, opus_req_num, sub_req_num,
                 turns=turns, turn_idx=turn_idx,
                 rendered_opus_labels=rendered_opus_labels,
+                copy_feedback=copy_feedback,
+                copy_rows_out=copy_rows_out,
             )
             all_lines.extend(t_lines)
             line_keys.extend(t_keys)
@@ -167,7 +169,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 else:
                     sub_req_num += 1
                     num_label = f'#{opus_req_num}.{sub_req_num}'
-            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label, rendered_opus_labels=rendered_opus_labels)
+            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label, rendered_opus_labels=rendered_opus_labels, copy_feedback=copy_feedback, copy_rows_out=copy_rows_out)
             all_lines.extend(e_lines)
             line_keys.extend(e_keys)
             if item_positions_out is not None:
@@ -207,6 +209,10 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     for row_offset, line in enumerate(visible_lines):
         row = row_offset + 1
         key = visible_keys[row_offset]
+        if copy_rows_out is not None:
+            is_req_line = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
+            if is_req_line and ('⎘' in line or '✓' in line):
+                copy_rows_out.add(row)
         if key is not None:
             zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
             parent_count += 1
