@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 import hashlib
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -313,3 +314,83 @@ def scan_worker_logs(last_positions: dict, project_session_id: str = '',
         all_entries.extend(entries)
         updated_positions[str(log_path)] = new_pos
     return all_entries, updated_positions
+
+# Top-level subprocess worker (must be importable by name for multiprocessing 'spawn').
+# Parses log file in a child process, drops messages pre-IPC, returns entries via Queue.
+# SUBPROCESS_PARSE_FAIL=1 / SUBPROCESS_PARSE_SLOW=1 env vars activate test hooks.
+def _subprocess_worker(log_path_str: str, start_pos: int, root_dir: str, q) -> None:
+    import sys
+    if root_dir and root_dir not in sys.path:
+        sys.path.insert(0, root_dir)
+    try:
+        if os.environ.get('SUBPROCESS_PARSE_FAIL') == '1':
+            raise RuntimeError('forced failure for testing')
+        if os.environ.get('SUBPROCESS_PARSE_SLOW') == '1':
+            time.sleep(10)
+        pending: dict = {}
+        entries, new_pos = _parse_log_file(Path(log_path_str), start_pos, pending)
+        for e in entries:
+            e.pop('messages', None)
+        pending_rids = list(pending.keys())
+        q.put(('ok', entries, new_pos, pending_rids))
+    except Exception as exc:
+        q.put(('error', str(exc)))
+
+# _parse_log_file variant that offloads initial parse (last_position==0) to a subprocess.
+# Subprocess peak allocation (~3 GB for large logs) is discarded when child exits;
+# parent receives only scalar entry fields (~10–20 MB).  messages are stripped pre-IPC;
+# lazy-reload via _byte_offset handles on-demand reload when user expands an entry.
+# Falls back to in-parent parse on subprocess failure, timeout, or IPC error.
+# Test hooks: SUBPROCESS_PARSE_TIMEOUT env (override 60s default), SUBPROCESS_PARSE_FAIL=1,
+# SUBPROCESS_PARSE_SLOW=1 (child sleeps 10s to exercise timeout path).
+def _parse_log_file_isolated(log_path: Path, last_position: int, pending_by_rid: Optional[dict] = None) -> tuple:
+    if last_position != 0:
+        return _parse_log_file(log_path, last_position, pending_by_rid)
+    import multiprocessing as _mp
+    import queue as _queue
+    root = os.environ.get('MONITOR_CC_ROOT', '') or str(Path(__file__).parent.parent.parent)
+    timeout = int(os.environ.get('SUBPROCESS_PARSE_TIMEOUT', '60'))
+    ctx = _mp.get_context('spawn')
+    q = ctx.Queue()
+    p = ctx.Process(target=_subprocess_worker, args=(str(log_path), 0, root, q), daemon=True)
+    p.start()
+    result = None
+    try:
+        result = q.get(timeout=timeout)
+    except _queue.Empty:
+        logging.warning('subprocess parse timed out after %ss — falling back to in-parent', timeout)
+    except Exception as exc:
+        logging.warning('subprocess parse IPC error: %s — falling back to in-parent', exc)
+    finally:
+        if p.is_alive():
+            p.terminate()
+        p.join(timeout=5)
+    if result is None or result[0] == 'error':
+        if result is not None:
+            logging.warning('subprocess parse worker error: %s — falling back to in-parent', result[1])
+        return _parse_log_file(log_path, last_position, pending_by_rid)
+    _, entries, new_pos, pending_rids = result
+    if pending_by_rid is not None and pending_rids:
+        pending_set = set(pending_rids)
+        for e in entries:
+            rid = e.get('request_id')
+            if rid and rid in pending_set:
+                pending_by_rid[rid] = e
+    return entries, new_pos
+
+# parse_proxy_log variant that uses _parse_log_file_isolated for the initial parse.
+# Marker-file lookup identical to parse_proxy_log; subprocess decision delegated to
+# _parse_log_file_isolated based on last_position.
+def parse_proxy_log_isolated(project_filter: Optional[str], last_position: int, pending_by_rid: Optional[dict] = None) -> tuple:
+    root = os.environ.get('MONITOR_CC_ROOT', '') or str(Path(__file__).parent.parent.parent)
+    if not project_filter:
+        return [], last_position
+    session_id = _proxy_session_id_for_project(project_filter)
+    marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
+    log_id = session_id
+    if marker_file.exists():
+        lines = marker_file.read_text(encoding='utf-8').splitlines()
+        if len(lines) >= 2 and lines[1].strip():
+            log_id = lines[1].strip()
+    log_file = Path(root) / 'src' / 'logs' / f'api_requests_{log_id}.jsonl'
+    return _parse_log_file_isolated(log_file, last_position, pending_by_rid)

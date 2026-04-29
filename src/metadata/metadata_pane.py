@@ -38,7 +38,7 @@ def _render_lines(lines: list) -> str:
 def run_metadata_loop() -> None:
     from ..core import monitor as _monitor
     from . import metadata_format as _mf
-    from ..proxy_display import parse_proxy_log
+    from ..proxy_display import parse_proxy_log_isolated
     global _meta_log_position, _meta_entries, _meta_pending_by_rid
 
     def _ram_state():
@@ -67,7 +67,7 @@ def run_metadata_loop() -> None:
             _meta_pending_by_rid.clear()
             _mf._prev_values = {}
 
-        new_entries, _meta_log_position = parse_proxy_log(_monitor.active_project_filter, _meta_log_position, _meta_pending_by_rid)
+        new_entries, _meta_log_position = parse_proxy_log_isolated(_monitor.active_project_filter, _meta_log_position, _meta_pending_by_rid)
         filtered = [e for e in new_entries if e.get('timestamp', '') >= session_start_ts]
         _meta_entries.extend(filtered)
         for _e in _meta_entries[:-1]:
@@ -91,7 +91,7 @@ def run_worker_metadata_loop() -> None:
     from ..core import monitor as _monitor
     from . import metadata_format as _mf
     from ..workers.worker_pane import get_selection_file_path
-    from ..proxy_display import find_worker_proxy_log, _parse_log_file
+    from ..proxy_display import find_worker_proxy_log, _parse_log_file_isolated
     global _worker_meta_log_position, _worker_meta_entries, _worker_meta_last_name, _worker_meta_pending_by_rid
 
     def _ram_state():
@@ -123,7 +123,7 @@ def run_worker_metadata_loop() -> None:
         if worker_name:
             log_path = find_worker_proxy_log(worker_name, _monitor.active_project_filter)
             if log_path:
-                new_entries, _worker_meta_log_position = _parse_log_file(log_path, _worker_meta_log_position, _worker_meta_pending_by_rid)
+                new_entries, _worker_meta_log_position = _parse_log_file_isolated(log_path, _worker_meta_log_position, _worker_meta_pending_by_rid)
                 _worker_meta_entries.extend(new_entries)
                 for _e in _worker_meta_entries[:-1]:
                     _e.pop('messages', None)
