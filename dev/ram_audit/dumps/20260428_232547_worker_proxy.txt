@@ -1,0 +1,85 @@
+# worker_proxy RAM dump
+timestamp: 2026-04-28T23:25:47.725552
+pid:       50958
+rss:       404,406,272 bytes (385 MB) [resource]
+
+## Top-30 gc objects by class
+class                                        count
+----------------------------------------------------
+dict                                         64589
+list                                         25846
+function                                      3532
+tuple                                         1836
+wrapper_descriptor                            1162
+builtin_function_or_method                     971
+ReferenceType                                  953
+method_descriptor                              912
+getset_descriptor                              593
+type                                           523
+member_descriptor                              480
+cell                                           372
+PosixPath                                      224
+frozenset                                      187
+module                                         179
+ModuleSpec                                     176
+set                                            154
+slice                                          125
+SourceFileLoader                               113
+classmethod                                    107
+property                                       100
+_abc_data                                       87
+staticmethod                                    77
+ABCMeta                                         77
+_NamedIntConstant                               76
+_tuplegetter                                    76
+GenericAlias                                    75
+classmethod_descriptor                          59
+Union                                           41
+Field                                           41
+
+## Top-30 tracemalloc by lineno
+file:line                                                       size_bytes     count
+------------------------------------------------------------------------------------
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py:361   206,332,803   385,697
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:111    14,930,245     3,828
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:78       208,960       269
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:58       181,952     2,017
+<frozen importlib._bootstrap_external>:511                         108,967       647
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:34        93,992     1,234
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:112        37,936       274
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:80        26,152       326
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/worker_proxy_pane.py:257        23,060         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:55        16,088       268
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:82        11,888       154
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/format.py:231        11,320         1
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1035        10,030       170
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:75         8,768       137
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/render_turn.py:95         8,064       126
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:68         7,560       135
+<frozen importlib._bootstrap>:491                                    7,553        20
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:81         7,504       134
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:57         7,504       134
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:33         7,448       133
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/render_turn.py:48         7,360       115
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/format.py:104         7,296       114
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:77         6,944        97
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1030         6,903       117
+<frozen abc>:123                                                     5,674        55
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/format.py:149         4,624         1
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:52         4,232       135
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:37         3,868       135
+<frozen importlib._bootstrap_external>:1437                          3,378        23
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:73         3,122        32
+
+## worker_proxy module state
+worker_proxy_entries                      len=   137  sizeof=     1,160
+worker_proxy_expand_states                len=     0  sizeof=        64
+worker_proxy_line_map                     len=    47  sizeof=     2,264
+_worker_proxy_cache_turns                 len=     4  sizeof=        88
+_worker_proxy_workers                     len=     2  sizeof=        88
+_worker_proxy_pending_by_rid              len=     0  sizeof=       184
+worker_proxy_hover_row                    None
+worker_proxy_scroll_offset                0
+worker_proxy_log_position                 141423336
+_worker_proxy_jsonl_position              1290057
+_worker_proxy_force_reload                False

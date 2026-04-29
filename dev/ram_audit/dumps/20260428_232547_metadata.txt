@@ -1,0 +1,77 @@
+# metadata RAM dump
+timestamp: 2026-04-28T23:25:47.630389
+pid:       50949
+rss:       1,367,474,176 bytes (1304 MB) [resource]
+
+## Top-30 gc objects by class
+class                                        count
+----------------------------------------------------
+dict                                        168622
+list                                         67881
+function                                      3521
+tuple                                         1729
+wrapper_descriptor                            1162
+builtin_function_or_method                     970
+ReferenceType                                  951
+method_descriptor                              912
+getset_descriptor                              593
+type                                           523
+member_descriptor                              480
+cell                                           371
+PosixPath                                      224
+frozenset                                      185
+module                                         176
+ModuleSpec                                     173
+set                                            154
+slice                                          123
+SourceFileLoader                               110
+classmethod                                    107
+property                                       100
+_abc_data                                       87
+staticmethod                                    77
+ABCMeta                                         77
+_NamedIntConstant                               76
+_tuplegetter                                    76
+GenericAlias                                    75
+classmethod_descriptor                          59
+Union                                           41
+Field                                           41
+
+## Top-30 tracemalloc by lineno
+file:line                                                       size_bytes     count
+------------------------------------------------------------------------------------
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py:361   855,238,691  1,034,641
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:111    50,589,745    14,536
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:78       363,932       468
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:58       314,632     3,496
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:34       160,632     2,123
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:55        28,200       470
+<frozen importlib._bootstrap_external>:511                          18,603        80
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:75        15,104       236
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:57        13,216       236
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:81        13,160       235
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:33        13,160       235
+<frozen abc>:123                                                     7,807        88
+<frozen importlib._bootstrap>:491                                    7,600        21
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:52         7,388       234
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:37         7,040       234
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/metadata/metadata_pane.py:33         4,856         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:130         3,687        62
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:298         3,444        61
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:771         3,304        56
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:73         3,122        32
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:654         2,280        95
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:136         2,128        38
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/metadata/metadata_pane.py:72         1,888         1
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:153         1,520         1
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:589         1,512        21
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:69         1,132        22
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:274           936         2
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:591           672        21
+<frozen importlib._bootstrap_external>:133                             501         3
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:579           468         9
+
+## metadata module state
+_meta_entries                             len=   236  sizeof=     1,944
+_meta_pending_by_rid                      len=     4  sizeof=       272
+_meta_log_position                        706246075

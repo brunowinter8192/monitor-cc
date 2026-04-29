@@ -1,0 +1,83 @@
+# workers RAM dump
+timestamp: 2026-04-28T23:25:47.737320
+pid:       50952
+rss:       226,672,640 bytes (216 MB) [resource]
+
+## Top-30 gc objects by class
+class                                        count
+----------------------------------------------------
+function                                      3453
+dict                                          2227
+tuple                                         1717
+wrapper_descriptor                            1162
+builtin_function_or_method                     960
+ReferenceType                                  931
+method_descriptor                              912
+list                                           679
+getset_descriptor                              593
+type                                           523
+member_descriptor                              480
+cell                                           371
+PosixPath                                      223
+frozenset                                      185
+module                                         168
+ModuleSpec                                     165
+set                                            136
+slice                                          118
+classmethod                                    107
+SourceFileLoader                               102
+property                                       100
+_abc_data                                       87
+staticmethod                                    77
+ABCMeta                                         77
+_NamedIntConstant                               76
+_tuplegetter                                    76
+GenericAlias                                    75
+classmethod_descriptor                          59
+Union                                           41
+Field                                           41
+
+## Top-30 tracemalloc by lineno
+file:line                                                       size_bytes     count
+------------------------------------------------------------------------------------
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1033       131,632         6
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1028       131,632         6
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py:361        19,072       264
+<frozen importlib._bootstrap_external>:511                          18,827        83
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1035         9,834       164
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1030         7,887       131
+<frozen importlib._bootstrap>:491                                    7,456        19
+<frozen abc>:123                                                     5,658        55
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_pane.py:261         3,156         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:73         3,122        32
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_parser.py:48         1,799        30
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:589         1,440        20
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_pane.py:255         1,363         8
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:69         1,132        22
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:298         1,028        18
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:274           936         2
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:579           660        13
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:591           636        22
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_tmux.py:20           594         6
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_tmux.py:64           576         5
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:554           536         3
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_format.py:131           515         2
+<frozen importlib._bootstrap_external>:133                             501         3
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_format.py:140           472         2
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1098           457         1
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:52           456         1
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_tmux.py:58           378         6
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/selectors.py:398           376         4
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/collections/__init__.py:709           352        12
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:39           336         2
+
+## workers module state
+worker_expand_states                      len=     0  sizeof=        64
+worker_scroll_offsets                     len=     0  sizeof=        64
+worker_line_map                           len=     4  sizeof=       224
+worker_cache_expand_states                len=     0  sizeof=        64
+worker_cache_line_map                     len=     0  sizeof=        64
+worker_turns                              len=     0  sizeof=        64
+worker_hover_row                          None
+worker_selected_name                      ram-audit-all
+worker_scroll_offset                      0

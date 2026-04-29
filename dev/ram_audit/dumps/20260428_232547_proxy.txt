@@ -1,0 +1,83 @@
+# proxy RAM dump
+timestamp: 2026-04-28T23:25:47.636645
+pid:       50946
+rss:       1,207,173,120 bytes (1151 MB) [resource]
+
+## Top-30 gc objects by class
+class                                        count
+----------------------------------------------------
+dict                                        169547
+list                                         68451
+function                                      3532
+tuple                                         1836
+wrapper_descriptor                            1162
+builtin_function_or_method                     970
+ReferenceType                                  951
+method_descriptor                              912
+getset_descriptor                              593
+type                                           523
+member_descriptor                              480
+cell                                           371
+PosixPath                                      350
+frozenset                                      187
+module                                         179
+ModuleSpec                                     176
+set                                            153
+slice                                          125
+SourceFileLoader                               113
+classmethod                                    107
+property                                       100
+_abc_data                                       87
+staticmethod                                    77
+ABCMeta                                         77
+_NamedIntConstant                               76
+_tuplegetter                                    76
+GenericAlias                                    75
+classmethod_descriptor                          59
+Union                                           41
+Field                                           41
+
+## Top-30 tracemalloc by lineno
+file:line                                                       size_bytes     count
+------------------------------------------------------------------------------------
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py:361   855,770,566  1,036,848
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:111    50,589,745    14,536
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:78       363,964       469
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:58       314,632     3,496
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:34       160,504     2,121
+<frozen importlib._bootstrap_external>:511                         108,891       646
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:112        65,712       526
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:298        63,098     1,034
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:77        34,224       476
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:80        32,752       386
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/format.py:231        31,412         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:55        28,200       470
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:82        23,464       272
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/glob.py:535        21,760       128
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/render_turn.py:95        16,064       251
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:75        15,104       236
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:635        13,520       130
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/render_turn.py:48        13,440       210
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:57        13,216       236
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:81        13,160       235
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:33        13,160       235
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:68        12,936       231
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:48        12,208       133
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/format.py:104        11,328       177
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/format.py:149        10,284        37
+<frozen importlib._bootstrap>:491                                    7,600        21
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:52         7,388       234
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:136         7,280       130
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:37         7,040       234
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/format.py:98         6,864       114
+
+## proxy module state
+proxy_entries                             len=   236  sizeof=     1,944
+proxy_expand_states                       len=     0  sizeof=        64
+proxy_line_map                            len=    38  sizeof=     1,168
+_proxy_cache_turns                        len=    68  sizeof=       600
+_proxy_pending_by_rid                     len=     4  sizeof=       272
+proxy_hover_row                           None
+proxy_scroll_offset                       0
+proxy_log_position                        706246075
+_proxy_jsonl_position                     4025677

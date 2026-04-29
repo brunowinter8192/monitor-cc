@@ -1,0 +1,85 @@
+# main RAM dump
+timestamp: 2026-04-28T23:25:47.625857
+pid:       50938
+rss:       1,186,660,352 bytes (1131 MB) [resource]
+
+## Top-30 gc objects by class
+class                                        count
+----------------------------------------------------
+function                                      3510
+dict                                          3008
+list                                          1815
+tuple                                         1754
+wrapper_descriptor                            1162
+builtin_function_or_method                     959
+ReferenceType                                  929
+method_descriptor                              912
+PosixPath                                      860
+getset_descriptor                              593
+type                                           523
+member_descriptor                              480
+cell                                           382
+DirEntryInfo                                   258
+frozenset                                      185
+module                                         173
+ModuleSpec                                     170
+set                                            139
+slice                                          121
+classmethod                                    107
+SourceFileLoader                               107
+property                                       100
+_abc_data                                       87
+staticmethod                                    77
+ABCMeta                                         77
+_NamedIntConstant                               76
+_tuplegetter                                    76
+GenericAlias                                    75
+classmethod_descriptor                          59
+Union                                           41
+
+## Top-30 tracemalloc by lineno
+file:line                                                       size_bytes     count
+------------------------------------------------------------------------------------
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py:361     1,286,896     2,292
+<frozen importlib._bootstrap_external>:511                         314,983     2,167
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:298       117,259     1,895
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:837        91,450       774
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/utils.py:28        69,004     1,453
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:635        53,456       514
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_parser.py:163        45,568       334
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/glob.py:535        43,180       254
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/core/monitor_display.py:25        37,248       406
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:136        28,784       514
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_parser.py:48        27,968       473
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/core/monitor_display.py:85        22,292       236
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:826        16,512       258
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:154        16,448       513
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_extractors.py:64        12,640       138
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/core/monitor_session.py:33        12,624       126
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/core/monitor_display.py:158        11,516         2
+<frozen importlib._bootstrap>:491                                    7,456        19
+<frozen abc>:123                                                     5,659        57
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/textwrap.py:17         5,099        11
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:214         4,464       126
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/traceback.py:1004         4,459        11
+<frozen importlib._bootstrap_external>:133                           4,322        31
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/traceback.py:278         3,879        20
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:73         3,122        32
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:654         2,764       112
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/traceback.py:981         2,704        11
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/codeop.py:125         2,673        11
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/traceback.py:434         2,656        11
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/codeop.py:104         2,616        11
+
+## main module state
+file_positions                            len=   126  sizeof=     9,304
+tool_use_caches                           len=   126  sizeof=     4,688
+agent_to_task                             len=     0  sizeof=        64
+agent_to_type                             len=     0  sizeof=        64
+buffered_subagent_calls                   len=     0  sizeof=        64
+task_requests_seen                        len=     0  sizeof=       216
+call_counter                              167
+active_project_filter                     /Users/brunowinter2000/Documents/ai/Monitor_CC
+active_mode                               main
+_last_monitored_count                     219
+_strip_proxy_position                     706246075

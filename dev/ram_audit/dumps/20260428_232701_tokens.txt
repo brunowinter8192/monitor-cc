@@ -1,0 +1,81 @@
+# tokens RAM dump
+timestamp: 2026-04-28T23:27:01.349235
+pid:       50943
+rss:       65,880,064 bytes (62 MB) [resource]
+
+## Top-30 gc objects by class
+class                                        count
+----------------------------------------------------
+function                                      3341
+dict                                          3106
+tuple                                         1687
+list                                          1212
+wrapper_descriptor                            1162
+builtin_function_or_method                     980
+ReferenceType                                  941
+method_descriptor                              912
+getset_descriptor                              577
+type                                           513
+member_descriptor                              470
+cell                                           362
+PosixPath                                      349
+frozenset                                      185
+module                                         162
+ModuleSpec                                     159
+set                                            143
+slice                                          113
+classmethod                                    102
+property                                        95
+SourceFileLoader                                95
+_abc_data                                       87
+ABCMeta                                         77
+staticmethod                                    76
+_NamedIntConstant                               76
+GenericAlias                                    75
+_tuplegetter                                    70
+classmethod_descriptor                          59
+Union                                           41
+Field                                           41
+
+## Top-30 tracemalloc by lineno
+file:line                                                       size_bytes     count
+------------------------------------------------------------------------------------
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py:361       550,907     2,423
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/utils.py:28        69,733     1,473
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:112        66,256       530
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:298        64,569     1,061
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:77        34,352       479
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:80        32,880       388
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/token_pane.py:220        31,568         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:82        23,528       273
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/glob.py:535        21,590       127
+<frozen importlib._bootstrap_external>:511                          17,883        75
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/token_pane.py:216        16,178        49
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:635        13,472       130
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:68        13,048       233
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_parser.py:48        12,685       215
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:48        12,208       133
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/format/token_format.py:81        11,776       184
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/format/token_format.py:26         9,914        32
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:136         9,184       164
+<frozen importlib._bootstrap>:491                                    7,236        15
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tracemalloc.py:193         6,888       123
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tracemalloc.py:67         5,616        78
+<frozen abc>:123                                                     5,604        56
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:76         5,088       159
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:154         4,128       128
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/format/token_format.py:72         4,100         8
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:51         3,696        66
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:73         3,122        32
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:579         2,640        40
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:654         2,280        95
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_cache_turns.py:122         2,048        64
+
+## tokens module state
+cache_expand_states                       len=     0  sizeof=        64
+cache_line_map                            len=    32  sizeof=     1,168
+_cache_turns                              len=    68  sizeof=       600
+cache_scroll_offset                       0
+cache_hover_row                           31
+_cache_jsonl_position                     4042617
+_cache_current_filepath                   /Users/brunowinter2000/.claude/projects/-Users-brunowinter2000-Documents-ai-Monitor-CC/ef29314b-2a30-4ac4-81e6-4f87ab6d595d.jsonl

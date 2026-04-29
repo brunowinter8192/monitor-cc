@@ -1,0 +1,87 @@
+# waste_pane RAM dump
+timestamp: 2026-04-28T23:25:47.705089
+pid:       36466
+rss:       2,030,403,584 bytes (1936 MB) [resource]
+
+## Top-30 gc objects by class
+class                                        count
+----------------------------------------------------
+dict                                        631537
+list                                        215142
+function                                      3568
+tuple                                         1874
+wrapper_descriptor                            1162
+builtin_function_or_method                     959
+ReferenceType                                  935
+method_descriptor                              912
+getset_descriptor                              593
+type                                           529
+member_descriptor                              490
+cell                                           399
+PosixPath                                      223
+frozenset                                      191
+module                                         175
+ModuleSpec                                     172
+set                                            143
+slice                                          126
+SourceFileLoader                               109
+classmethod                                    107
+property                                       104
+_abc_data                                       87
+staticmethod                                    77
+ABCMeta                                         77
+_NamedIntConstant                               76
+_tuplegetter                                    76
+GenericAlias                                    75
+ToolResult                                      72
+ToolUse                                         72
+Pair                                            72
+
+## Top-30 tracemalloc by lineno
+file:line                                                       size_bytes     count
+------------------------------------------------------------------------------------
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py:361  1,887,292,638  3,365,383
+<frozen importlib._bootstrap_external>:511                         219,488     1,564
+<frozen importlib._bootstrap>:491                                   48,691       289
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/glob.py:535        42,395       233
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:635        23,088       222
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/waste_pane.py:264        22,243       377
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/waste_forensics.py:113        20,192       423
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/format/strip_marker.py:60        15,104       186
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:136        12,432       222
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/waste_pane.py:532        10,980         2
+<frozen abc>:106                                                    10,285        33
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/enum.py:262         9,976        58
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/enum.py:550         9,689        25
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/core/monitor.py:82         9,240         1
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:654         7,808       269
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:214         7,772       219
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:154         7,072       220
+<frozen abc>:123                                                     5,947        61
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/waste_forensics.py:65         5,184        72
+<frozen importlib._bootstrap_external>:133                           4,449        26
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/waste_forensics.py:90         4,032        72
+<frozen importlib._bootstrap_external>:1437                          3,467        38
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/waste_forensics.py:104         3,456        72
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/shutil.py:1511         3,432         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/waste_pane.py:199         3,122        32
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:771         2,596        44
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/waste_pane.py:385         2,496         1
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/waste_pane.py:528         2,200         1
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/re/_compiler.py:778         2,176         8
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/fnmatch.py:181         2,168        26
+
+## waste_pane module state
+_waste_above                              len=    72  sizeof=       632
+waste_expand_states                       len=     0  sizeof=        64
+waste_line_map                            len=    51  sizeof=     2,264
+_waste_all_events                         len=   237  sizeof=     2,200
+_waste_worker_all_events                  len=   309  sizeof=     2,552
+_waste_worker_log_positions               len=    14  sizeof=       464
+_strip_by_tool_result_id                  len=   114  sizeof=     3,328
+waste_threshold                           3.0
+waste_scroll_offset                       0
+_waste_log_position                       706246075
+_monitor_start_ts                         1777394557.7915487
+_waste_log_path                           /Users/brunowinter2000/Documents/ai/Monitor_CC/src/logs/api_requests_opus_monitor_cc_1777394557.jsonl
+_last_project_filter                      /Users/brunowinter2000/Documents/ai/Monitor_CC

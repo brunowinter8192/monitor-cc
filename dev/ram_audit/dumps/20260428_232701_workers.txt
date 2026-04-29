@@ -1,0 +1,83 @@
+# workers RAM dump
+timestamp: 2026-04-28T23:27:01.433805
+pid:       50952
+rss:       249,708,544 bytes (238 MB) [resource]
+
+## Top-30 gc objects by class
+class                                        count
+----------------------------------------------------
+dict                                          5252
+function                                      3460
+tuple                                         1716
+list                                          1321
+wrapper_descriptor                            1162
+builtin_function_or_method                     981
+ReferenceType                                  953
+method_descriptor                              912
+getset_descriptor                              593
+type                                           523
+member_descriptor                              480
+cell                                           371
+PosixPath                                      223
+frozenset                                      185
+module                                         170
+ModuleSpec                                     167
+set                                            147
+slice                                          118
+classmethod                                    107
+SourceFileLoader                               103
+property                                       100
+_abc_data                                       87
+staticmethod                                    77
+ABCMeta                                         77
+_NamedIntConstant                               76
+_tuplegetter                                    76
+GenericAlias                                    75
+classmethod_descriptor                          59
+Union                                           41
+Field                                           41
+
+## Top-30 tracemalloc by lineno
+file:line                                                       size_bytes     count
+------------------------------------------------------------------------------------
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py:361     3,198,842    29,017
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_parser.py:53     2,036,855       488
+<frozen importlib._bootstrap_external>:511                          18,827        83
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1035        15,576       264
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1030        10,561       179
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tracemalloc.py:193         7,616       136
+<frozen importlib._bootstrap>:491                                    7,283        16
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tracemalloc.py:67         5,688        79
+<frozen abc>:123                                                     5,658        55
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_parser.py:55         3,960         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_parser.py:71         3,648         1
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_pane.py:261         3,156         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:73         3,122        32
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_pane.py:255         1,363         8
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:589         1,296        18
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_parser.py:48         1,268        21
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:69         1,196        23
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:298         1,027        18
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:274           936         2
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:579           832        14
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/heapq.py:591           672        21
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_tmux.py:20           594         6
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_tmux.py:64           576         5
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_format.py:131           515         2
+<frozen importlib._bootstrap_external>:133                             501         3
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/workers/worker_format.py:140           472         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:52           456         1
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/collections/__init__.py:709           384        12
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:41           378         6
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:771           368         5
+
+## workers module state
+worker_expand_states                      len=     0  sizeof=        64
+worker_scroll_offsets                     len=     0  sizeof=        64
+worker_line_map                           len=     4  sizeof=       224
+worker_cache_expand_states                len=     0  sizeof=        64
+worker_cache_line_map                     len=     0  sizeof=        64
+worker_turns                              len=     0  sizeof=        64
+worker_hover_row                          None
+worker_selected_name                      ram-audit-all
+worker_scroll_offset                      0

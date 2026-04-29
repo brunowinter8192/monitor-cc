@@ -1,0 +1,93 @@
+# warnings RAM dump
+timestamp: 2026-04-28T23:27:54.437914
+pid:       68038
+rss:       883,163,136 bytes (842 MB) [resource]
+
+## Top-30 gc objects by class
+class                                        count
+----------------------------------------------------
+dict                                        125473
+list                                         40837
+function                                      3507
+tuple                                         1766
+wrapper_descriptor                            1162
+builtin_function_or_method                     959
+ReferenceType                                  929
+method_descriptor                              912
+getset_descriptor                              593
+type                                           523
+member_descriptor                              480
+cell                                           371
+PosixPath                                      268
+frozenset                                      185
+module                                         173
+ModuleSpec                                     170
+set                                            139
+slice                                          121
+classmethod                                    107
+SourceFileLoader                               107
+property                                       100
+_abc_data                                       87
+staticmethod                                    77
+ABCMeta                                         77
+_NamedIntConstant                               76
+_tuplegetter                                    76
+GenericAlias                                    75
+classmethod_descriptor                          59
+Union                                           41
+Field                                           41
+
+## Top-30 tracemalloc by lineno
+file:line                                                       size_bytes     count
+------------------------------------------------------------------------------------
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py:361   571,981,670   720,125
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:111    51,721,055     7,591
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:78       527,996       686
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:58       352,344     4,206
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:34       187,732     2,711
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:55        41,368       690
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/utils.py:28        35,027       722
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/glob.py:535        28,718       136
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:75        22,400       350
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:57        19,600       350
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:81        19,544       349
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:33        19,544       349
+<frozen importlib._bootstrap_external>:511                          19,011        86
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:635        14,040       135
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/core/monitor_session.py:33        13,008       132
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:54        11,662       238
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:52        10,688       341
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:37         9,752       341
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:136         7,560       135
+<frozen importlib._bootstrap>:491                                    7,456        19
+<frozen abc>:123                                                     5,155        50
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:214         4,696       132
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:154         4,288       133
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/warnings_parse.py:84         3,648        57
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/ram_audit/instrument.py:73         3,122        32
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/warnings_pane.py:434         2,856         2
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/jsonl/jsonl_parser.py:48         2,124        36
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/panes/warnings_parse.py:76         2,117        47
+/Users/brunowinter2000/Documents/ai/Monitor_CC/src/proxy_display/parser.py:265         1,920         1
+/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/fnmatch.py:181         1,608        16
+
+## warnings module state
+tool_errors                               len=     5  sizeof=       104
+error_expand_states                       len=     0  sizeof=        64
+error_line_map                            len=     0  sizeof=        64
+schema_warnings                           len=     0  sizeof=        56
+zero_results                              len=     0  sizeof=        56
+zero_result_expand_states                 len=     0  sizeof=        64
+zero_result_line_map                      len=     0  sizeof=        64
+_worker_log_positions                     len=     4  sizeof=       184
+_seen_zero_keys                           len=     0  sizeof=       216
+_seen_error_keys                          len=     5  sizeof=       728
+_proxy_pending_by_rid                     len=     1  sizeof=       184
+error_hover_row                           None
+error_scroll_offset                       0
+_proxy_log_position                       157258880
+_last_project_filter                      /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/MCP/RAG
+_last_log_path                            /Users/brunowinter2000/Documents/ai/Monitor_CC/src/logs/api_requests_opus_rag_1777405092.jsonl
+_last_refresh_ts                          0.0
+_force_refresh                            False
+_monitor_start_ts                         1777405092.9549122
