@@ -6,7 +6,7 @@ import time
 
 from ..constants import (
     YELLOW, RED, DIM, WHITE, RESET, HOVER_BG, ZEBRA_BG_A, ZEBRA_BG_B, SOFT_RESET,
-    DIM_YELLOW_BG, INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL,
+    DIM_YELLOW_BG, INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL, WARNINGS_INITIAL_TAIL_BYTES,
 )
 from ..utils import format_timestamp, truncate_visible, first_word_of_call, format_worker_prefix
 from ..format.strip_marker import highlight_stripped, get_stripped_data
@@ -394,7 +394,17 @@ def run_warnings_loop() -> None:
                 log_path = find_proxy_log_path(project_filter)
 
                 if project_filter != _last_project_filter or log_path != _last_log_path:
+                    # Seek to last WARNINGS_INITIAL_TAIL_BYTES instead of position 0 to bound
+                    # peak pymalloc allocation. Partial first line at seek point is silently
+                    # skipped by _parse_log_file's JSONDecodeError handler.
                     _proxy_log_position = 0
+                    if log_path and log_path.exists():
+                        try:
+                            fsize = log_path.stat().st_size
+                            if fsize > WARNINGS_INITIAL_TAIL_BYTES:
+                                _proxy_log_position = fsize - WARNINGS_INITIAL_TAIL_BYTES
+                        except OSError:
+                            pass
                     _monitor_start_ts = get_proxy_session_start_ts(project_filter) if project_filter else time.time()
                     _worker_log_positions.clear()
                     tool_errors = []
