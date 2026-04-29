@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 from ..constants import (
     SOFT_RESET, RED, DIM, DIM_YELLOW_BG,
-    TOOL_BLOCKLIST,
 )
 from .format import _format_delta, _format_k
 
@@ -116,19 +115,15 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                 t_name = tool_def.get('name', '')
                 if not is_first_request and (not tools_changed or t_name not in added_set):
                     continue
-                is_stripped_tool = t_name in TOOL_BLOCKLIST
                 stripped_original = tool_def.get('stripped_original')
                 stripped_marker = '  [STRIPPED]' if stripped_original else ''
                 tool_key = ('tool', entry_idx, tool_idx)
                 is_tool_exp = expand_states.get(tool_key, False)
                 t_symbol = '\u25bc' if is_tool_exp else '\u25b6'
-                if is_stripped_tool:
-                    lines.append(f"      {DIM_YELLOW_BG}{DIM}{t_symbol} {t_name}{stripped_marker}{SOFT_RESET}")
-                else:
-                    lines.append(f"      {DIM}{t_symbol} {t_name}{stripped_marker}{SOFT_RESET}")
+                lines.append(f"      {DIM}{t_symbol} {t_name}{stripped_marker}{SOFT_RESET}")
                 keys.append(tool_key)
                 if is_tool_exp:
-                    bg = DIM_YELLOW_BG if is_stripped_tool else ''
+                    bg = ''
                     description = tool_def.get('description', '')
                     if description:
                         for raw_line in description.split('\n'):
@@ -169,4 +164,14 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                                     param_line += f" \u2014 {param_desc}"
                                 lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
                             keys.append(None)
+            stripped_unused = entry.get('stripped_unused_tools_names', [])
+            deferred = entry.get('deferred_tools_names', [])
+            if stripped_unused:
+                for s_name in stripped_unused:
+                    lines.append(f"      {DIM_YELLOW_BG}{DIM}\u25b6 {s_name}  [STRIPPED]{SOFT_RESET}")
+                    keys.append(None)
+            if deferred:
+                for d_name in deferred:
+                    lines.append(f"      {DIM_YELLOW_BG}{DIM}\u25b6 {d_name}  [DEFERRED]{SOFT_RESET}")
+                    keys.append(None)
     return lines, keys

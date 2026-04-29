@@ -99,6 +99,8 @@ def _extract_raw_payload_fields(entry: dict) -> None:
             }
             for t in tools
         ]
+        entry.setdefault('stripped_unused_tools_names', [])
+        entry.setdefault('deferred_tools_names', [])
 
         entry['thinking_config'] = raw.get('thinking', {})
         entry['thinking_budget_tokens'] = raw.get('thinking', {}).get('budget_tokens')
