@@ -25,11 +25,11 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (356 LOC)
+### addon.py (358 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses, writes `latency_update` records on successful responses.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
-**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); writes `src/logs/api_error_payload_*.json` on 4xx.
+**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); writes `src/logs/api_error_payload_*.json` on 4xx. Entry fields stamped post-modification include `stripped_unused_tools_names` (from `_strip_unused_tools` 3-tuple) and `deferred_tools_names` (from `_extract_deferred_tool_names` on the ORIGINAL pre-strip payload). Both default-omitted when empty.
 **Called by:** mitmproxy (via `addons = [ProxyAddon()]` at module level). Hooks: `request`, `responseheaders`, `response`.
 **Calls out:** `mitmproxy`
 
@@ -129,13 +129,15 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### tools.py (23 LOC)
+### tools.py (52 LOC)
 
-**Purpose:** Strip blocklisted tools from `payload["tools"]` using `TOOL_BLOCKLIST`.
-**Reads:** Payload dict with tools list.
-**Writes:** Nothing — returns `(modified_payload, count_removed)`.
+**Purpose:** Two helpers used during the modification pipeline.
+- `_strip_unused_tools(payload)` removes blocklisted tools from `payload["tools"]` using `TOOL_BLOCKLIST`. Returns `(modified_payload, count_removed, removed_names)` — the 3rd element preserves the dropped tool names for downstream stamping on the log entry as `stripped_unused_tools_names`.
+- `_extract_deferred_tool_names(payload)` scans user-message content of the ORIGINAL payload (pre-modification) for the `<system-reminder>` block matching the deferred-tools identifier, parses the listed tool names, and returns a deduplicated list. Mirror of the linestart-anchored regex used in `strip_sr.py`. Stamped on the entry as `deferred_tools_names`. Reads from the original payload (not the modified copy) so it captures the SR before `apply_modification_rules` strips it.
+**Reads:** Payload dict with tools list and (for deferred-extraction) `messages`.
+**Writes:** Nothing — returns tuples / list per function.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** —
+**Calls out:** stdlib only (`re`).
 
 ---
 

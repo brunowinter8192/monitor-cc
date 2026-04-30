@@ -93,9 +93,9 @@ On expand-click: `_lazy_load_messages(entry, log_path)` seeks to `entry['_byte_o
 
 ---
 
-### render_sections.py (172 LOC)
+### render_sections.py (177 LOC)
 
-**Purpose:** Render the system blocks section and tools section for an expanded request entry — handles unchanged detection, per-block expand/collapse, change highlights, TOOL_BLOCKLIST stripping markers, `[STRIPPED]` markers on sys[3] and tool headers when descriptions were proxy-stripped, and DIM_YELLOW_BG pre-strip originals on expand (top-level tool description + per-parameter descriptions).
+**Purpose:** Render the system blocks section and tools section for an expanded request entry — handles unchanged detection, per-block expand/collapse, change highlights, `[STRIPPED]` markers on sys[3] and tool headers when descriptions were proxy-stripped, and DIM_YELLOW_BG pre-strip originals on expand (top-level tool description + per-parameter descriptions). After the in-array tools loop, two supplementary subsections render with `DIM_YELLOW_BG`: tools dropped by `_strip_unused_tools` (one row per name in `entry.stripped_unused_tools_names` with `[STRIPPED]` marker) and CC's deferred tools (one row per name in `entry.deferred_tools_names` with `[DEFERRED]` marker). Both are non-clickable rows. Tool-level `is_stripped_tool = t_name in TOOL_BLOCKLIST` highlighting was removed in the same change — that branch never fired because `tools_defs` is post-strip.
 **Reads:** Entry dict, previous entry, expand states, pane width, modifications list.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`
