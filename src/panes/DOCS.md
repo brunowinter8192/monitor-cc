@@ -39,18 +39,38 @@ core/monitor.run_monitor(mode=X)
 **Purpose:** Pure parsing/classification helpers and unknown-type tracking state for the warnings pane. No UI concerns.
 **Reads:** Proxy entry dicts (passed in as lists); reads `unknown_type_counts` module state.
 **Writes:** Mutates `unknown_type_counts`, `warned_unknown_types` (module-level state).
-**Called by:** `warnings_pane.py`; `panes.__init__` (re-exports `track_unknown_type`); `core/monitor_session.py` (via package import).
+**Called by:** `warnings_pane.py` (`_iso_to_float`); `warnings_scan.py` (parse helpers); `warnings_render.py` (`unknown_type_counts`, `format_unknown_type_warning`); `panes.__init__` (re-exports `track_unknown_type`); `core/monitor_session.py` (via package import).
 **Calls out:** stdlib only (`json`, `datetime`), `constants`.
 
 ---
 
-### warnings_pane.py (474 LOC)
+### warnings_pane.py (258 LOC)
 
-**Purpose:** Warnings pane event loop — two sections: (1) unknown JSONL types, (2) tool errors + zero-result calls from proxy JSONL. Scrollable expand/collapse. Expanded error view shows pre-strip content with DIM_YELLOW_BG highlights for proxy-stripped chunks (via `format.strip_marker`). Remainder LOC is cohesive by shared event-state globals — further split would require refactoring.
+**Purpose:** Warnings pane event loop and module-level state owner. Owns all mutable globals (`tool_errors`, `zero_results`, `schema_warnings`, dedup sets, scroll/hover state). Delegates scanning to `warnings_scan`, rendering to `warnings_render`. Processes schema-warning entries inline (no scan helper needed — simpler pattern).
 **Reads:** Proxy JSONL (incremental via `_proxy_log_position`); worker log files; shared state `monitor.active_project_filter`.
-**Writes:** stdout (ANSI screen); mutates `tool_errors`, `error_expand_states`, `error_line_map`, `zero_results`, `schema_warnings`.
+**Writes:** stdout (ANSI screen); rebinds `error_line_map`, `zero_result_line_map` from render return tuple; extends `tool_errors`, `zero_results`, `schema_warnings`.
 **Called by:** `core/monitor.py` (mode dispatch).
-**Calls out:** `core.monitor` (lazy), `proxy_display.parser` (lazy), `input.click_handler` (lazy), `panes.warnings_parse`, `format.strip_marker`.
+**Calls out:** `core.monitor` (lazy), `proxy_display.parser` (lazy), `input.click_handler` (lazy), `panes.warnings_parse` (`_iso_to_float`), `panes.warnings_scan`, `panes.warnings_render`.
+
+---
+
+### warnings_scan.py (103 LOC)
+
+**Purpose:** Pure scanning helpers — reads proxy/worker log entry dicts, classifies tool errors and zero-result blocks, deduplicates via caller-supplied seen-key sets. No UI concerns, no module-level state. Returns `(items_list, new_dedup_keys)` tuples; caller extends its own lists and updates its own seen sets.
+**Reads:** Entry dicts passed as `entries` list; `seen_error_keys` / `seen_zero_keys` sets read-only for dedup check.
+**Writes:** Nothing — returns new lists and sets; no mutation of arguments.
+**Called by:** `panes.warnings_pane` (`run_warnings_loop`).
+**Calls out:** `panes.warnings_parse` (`_iso_to_float`, `_is_tool_error`, `_is_zero_result_block`, `_build_tool_use_id_map`, `_resolve_tool_call`), `utils.format_timestamp`, `format.strip_marker` (`get_stripped_data`).
+
+---
+
+### warnings_render.py (167 LOC)
+
+**Purpose:** Pure rendering helpers — formats the warnings pane from caller-supplied state. `_format_warnings_pane` returns `(rendered_str, new_error_line_map, new_zero_result_line_map)` as a tuple; no globals written. Reads `unknown_type_counts` from `warnings_parse` (its owner module). `_serialize_warnings` formats clipboard output given explicit tool_errors/zero_results lists.
+**Reads:** All pane state passed as function arguments; `unknown_type_counts` imported from `warnings_parse` (read-only).
+**Writes:** Nothing — returns rendered strings and new line-map dicts; no mutation of arguments.
+**Called by:** `panes.warnings_pane` (`run_warnings_loop`).
+**Calls out:** `panes.warnings_parse` (`unknown_type_counts`, `format_unknown_type_warning`), `format.strip_marker` (`highlight_stripped`), `utils` (`truncate_visible`, `first_word_of_call`, `format_worker_prefix`), `constants`.
 
 ---
 
@@ -62,7 +82,9 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 |---|---|
 | `token_pane` | `cache_expand_states`, `cache_line_map`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position` |
 | `warnings_parse` | `unknown_type_counts`, `warned_unknown_types` |
-| `warnings_pane` | `tool_errors`, `error_expand_states`, `error_scroll_offset`, `_proxy_log_position` |
+| `warnings_pane` | `tool_errors`, `error_expand_states`, `error_line_map`, `zero_results`, `zero_result_line_map`, `schema_warnings`, `_seen_error_keys`, `_seen_zero_keys`, `error_scroll_offset`, `_proxy_log_position` |
+| `warnings_scan` | none (stateless — receives state as args, returns new values) |
+| `warnings_render` | none (stateless — receives state as args, returns new values) |
 
 ## Gotchas
 
