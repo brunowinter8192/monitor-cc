@@ -15,7 +15,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | Subdir | Role | LOC | Modules |
 |---|---|---|---|
 | `core/` | Session polling orchestrator + main-pane output | 608 | 3 |
-| `panes/` | Tmux pane event loops (tokens, warnings) + parsing helpers | 830 | 3 |
+| `panes/` | Tmux pane event loops (tokens, warnings) + warnings scan/render/parse helpers | 867 | 5 |
 | `format/` | ANSI string rendering (tool calls, events, cache tracker) | 490 | 4 |
 | `input/` | Keyboard/mouse stdin handling | 150 | 1 |
 | `jsonl/` | JSONL parsing + tool call extraction | 518 | 3 |
