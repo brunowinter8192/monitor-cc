@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 import gzip
 import json
+import logging
 import os
 import sys
 from datetime import datetime, timezone
@@ -10,6 +11,23 @@ from typing import Dict, Optional
 from mitmproxy import http
 
 from .logging import _build_entry, _build_latency_update, _summarize_content_for_log
+
+
+# Suppress noise from `NotImplementedError: HTTP trailers are not implemented yet.`
+# mitmproxy 12.x hardcodes this raise in proxy/layers/http/_http1.py:118 when an HTTP/1.1
+# upstream sends Transfer-Encoding chunked with trailers. Crashes the single connection
+# only (other flows unaffected). Filter the LogRecord before it reaches stderr — keeps
+# legitimate "mitmproxy has crashed!" messages with other exceptions visible.
+class _TrailerCrashFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info:
+            exc_type, exc_val, _ = record.exc_info
+            if exc_type is NotImplementedError and "trailers" in str(exc_val).lower():
+                return False
+        return True
+
+
+logging.getLogger("mitmproxy.proxy.server").addFilter(_TrailerCrashFilter())
 from .message_summary import _summarize_message
 from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .inject_helpers import _inject_context_management, _inject_model_override
