@@ -66,13 +66,22 @@ fi
 LOG_DIR="$MONITOR_CC_ROOT/src/logs"
 mkdir -p "$LOG_DIR"
 MARKER_FILE="$LOG_DIR/.proxy_session_$SESSION_ID"
-# Only overwrite marker if no existing proxy is running on the port it lists.
-# Parallel sessions (e.g. hi-test) must NOT clobber the main session's marker.
+# Only overwrite marker if its referenced log_id is no longer being actively written.
+# Parallel sessions (e.g. hi-test) for the same project must NOT clobber the live marker.
+# Check via log file mtime, not the listed port — port can be reused by an unrelated mitmdump
+# of another project, which led to false-positive "fresh" reads of marker pointing to a stale log_id.
 MARKER_IS_STALE=true
 if [ -f "$MARKER_FILE" ]; then
-    existing_port=$(sed -n '1p' "$MARKER_FILE" 2>/dev/null)
-    if [ -n "$existing_port" ] && lsof -iTCP:"$existing_port" -sTCP:LISTEN -P -n >/dev/null 2>&1; then
-        MARKER_IS_STALE=false
+    existing_log_id=$(sed -n '2p' "$MARKER_FILE" 2>/dev/null)
+    if [ -n "$existing_log_id" ]; then
+        existing_log="$LOG_DIR/api_requests_${existing_log_id}.jsonl"
+        if [ -f "$existing_log" ]; then
+            log_mtime=$(stat -f %m "$existing_log" 2>/dev/null || stat -c %Y "$existing_log" 2>/dev/null)
+            now=$(date +%s)
+            if [ -n "$log_mtime" ] && [ $((now - log_mtime)) -lt 60 ]; then
+                MARKER_IS_STALE=false
+            fi
+        fi
     fi
 fi
 if [ "$MARKER_IS_STALE" = true ]; then
@@ -84,9 +93,16 @@ fi
 TMP_MARKER="/tmp/.monitor_cc_proxy_${SESSION_ID}"
 TMP_IS_STALE=true
 if [ -f "$TMP_MARKER" ]; then
-    existing_tmp_port=$(sed -n '1p' "$TMP_MARKER" 2>/dev/null)
-    if [ -n "$existing_tmp_port" ] && lsof -iTCP:"$existing_tmp_port" -sTCP:LISTEN -P -n >/dev/null 2>&1; then
-        TMP_IS_STALE=false
+    existing_tmp_log_id=$(sed -n '2p' "$TMP_MARKER" 2>/dev/null)
+    if [ -n "$existing_tmp_log_id" ]; then
+        existing_tmp_log="$LOG_DIR/api_requests_${existing_tmp_log_id}.jsonl"
+        if [ -f "$existing_tmp_log" ]; then
+            tmp_log_mtime=$(stat -f %m "$existing_tmp_log" 2>/dev/null || stat -c %Y "$existing_tmp_log" 2>/dev/null)
+            tmp_now=$(date +%s)
+            if [ -n "$tmp_log_mtime" ] && [ $((tmp_now - tmp_log_mtime)) -lt 60 ]; then
+                TMP_IS_STALE=false
+            fi
+        fi
     fi
 fi
 if [ "$TMP_IS_STALE" = true ]; then
