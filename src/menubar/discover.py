@@ -8,7 +8,7 @@ from typing import List, NamedTuple, Optional
 # From session_finder.py: Scan ~/.claude/projects directories
 from ..session_finder import get_project_directories
 
-ALIVE_WINDOW_SECS = 300        # sessions older than 5 min are stale
+ALIVE_WINDOW_SECS = 3600       # sessions older than 1h are stale
 WORKING_THRESHOLD_SECS = 10    # <= 10s since last JSONL write = working
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
 
