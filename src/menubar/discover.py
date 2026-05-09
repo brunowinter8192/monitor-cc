@@ -42,8 +42,8 @@ def _newest_jsonl(project_dir: Path) -> Optional[Path]:
         return None
     return max(files, key=lambda f: f.stat().st_mtime)
 
-# Read last non-empty line of file as parsed JSON; None on any error
-def _read_last_line(path: Path) -> Optional[dict]:
+# Scan last 10 non-empty lines for a cwd field; returns first cwd found (newest first)
+def _cwd_from_jsonl(path: Path) -> Optional[str]:
     try:
         with open(path, 'rb') as f:
             f.seek(0, 2)
@@ -52,20 +52,33 @@ def _read_last_line(path: Path) -> Optional[dict]:
                 return None
             f.seek(-min(8192, size), 2)
             chunk = f.read().decode('utf-8', errors='replace')
+        count = 0
         for line in reversed(chunk.split('\n')):
             line = line.strip()
-            if line:
-                return json.loads(line)
+            if not line:
+                continue
+            count += 1
+            if count > 10:
+                break
+            try:
+                cwd = json.loads(line).get('cwd', '')
+                if cwd:
+                    return cwd
+            except Exception:
+                continue
     except Exception:
         pass
     return None
 
-# Extract friendly project name from a parsed JSONL line
-def _project_name(last_line: dict) -> str:
-    cwd = last_line.get('cwd', '')
-    if cwd:
-        return os.path.basename(cwd.rstrip('/'))
-    return 'unknown'
+# Last-resort: decode encoded ~/.claude/projects dir name to readable project name
+def _decode_dir_name(name: str) -> str:
+    parts = [p for p in name.split('-') if p]
+    if not parts:
+        return name
+    last = parts[-1]
+    if len(last) <= 4 and len(parts) >= 2:
+        return f'{parts[-2]}-{last}'
+    return last
 
 # True if any *.output file in the session tasks dir has 0 bytes (= in-progress task)
 def _has_active_bg(encoded_dir: str, session_id: str) -> bool:
@@ -85,8 +98,8 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
     mtime = jsonl.stat().st_mtime
     if now - mtime > ALIVE_WINDOW_SECS:
         return None
-    last_line = _read_last_line(jsonl)
-    name = _project_name(last_line) if last_line else project_dir.name
+    cwd = _cwd_from_jsonl(jsonl)
+    name = os.path.basename(cwd.rstrip('/')) if cwd else _decode_dir_name(project_dir.name)
     status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
     session_id = jsonl.stem
     encoded_dir = project_dir.name
