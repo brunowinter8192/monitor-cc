@@ -121,7 +121,10 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     all_lines = []
     line_keys = []
 
-    groups = _assign_turns_to_entries(entries, turns) if turns else None
+    if turns:
+        groups = _assign_turns_to_entries(entries, turns)
+    else:
+        groups = [{'turn_idx': 0, 'timestamp': '', 'entry_pairs': list(enumerate(entries))}]
     opus_req_num = 0
     sub_req_num = 0
     rendered_opus_labels = []
@@ -130,7 +133,7 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         prev_group_last_entry = None
         for group in groups:
             turn_idx = group['turn_idx']
-            opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:turn_idx])
+            opus_req_num = sum(len(t.get('api_calls', [])) for t in (turns or [])[:turn_idx])
             sub_req_num = 0
 
             prev_entry_for_delta = prev_group_last_entry
