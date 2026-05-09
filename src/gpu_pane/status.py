@@ -3,8 +3,8 @@ import json
 import os
 import pathlib
 import subprocess
-
-import httpx
+import urllib.request
+import urllib.error
 
 SERVERS = ['embedding', 'reranker', 'splade']
 LOCK_DIR = pathlib.Path.home() / ".rag-locks"
@@ -48,8 +48,9 @@ def _stopped(name: str) -> dict:
 # GET /health on port; return True if 200, False on any error
 def _check_health(port: int) -> bool:
     try:
-        resp = httpx.get(f"http://localhost:{port}/health", timeout=2.0)
-        return resp.status_code == 200
+        req = urllib.request.Request(f'http://localhost:{port}/health')
+        with urllib.request.urlopen(req, timeout=2.0) as resp:
+            return resp.status == 200
     except Exception:
         return False
 
