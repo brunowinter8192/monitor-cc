@@ -21,7 +21,7 @@ _SR_TEMPLATES = {
     'deferred-tools':      ('The following deferred tools are now available via ToolSearch', 'full'),
     'user-interrupt':      ('The user sent a new message while you were working:',      'partial'),
     'system-notification': ('[SYSTEM NOTIFICATION - NOT USER INPUT]',                   'full'),
-    'file-modified':       ('Note: ',                                                   'full'),
+    'file-modified':       ('Note: ', 'full', ' was modified'),  # required_fragment guards against broad 'Note: ' false-positives
     'claudemd-contents':   (["As you answer the user's questions", 'Contents of '],     'full'),
     'date-changed':        ('The date has changed.',                                    'full'),
     'skills-available':    ('The following skills are available',                       'full'),
@@ -92,15 +92,18 @@ def _strip_system_reminders(content, enabled_templates=None):
 
 # Find which template matches an SR inner text; returns (template_id, mode) or (None, None)
 # identifier may be a single string or list of strings (OR semantics, all startswith)
+# optional spec[2] required_fragment: inner must also contain this string (AND semantics)
 def _match_template(inner, enabled_templates):
     for tid in enabled_templates:
         spec = _SR_TEMPLATES.get(tid)
         if not spec:
             continue
         identifiers = spec[0] if isinstance(spec[0], list) else [spec[0]]
+        required_fragment = spec[2] if len(spec) > 2 else None
         for identifier in identifiers:
             if inner.startswith(identifier):
-                return tid, spec[1]
+                if required_fragment is None or required_fragment in inner:
+                    return tid, spec[1]
     return None, None
 
 
