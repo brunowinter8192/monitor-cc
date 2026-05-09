@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.brunowinter.monitor_cc_menubar</string>
+
+  <!-- Replace <PROJECT_ROOT> with the absolute path to your Monitor_CC checkout -->
+  <key>ProgramArguments</key>
+  <array>
+    <string><PROJECT_ROOT>/venv/bin/python3</string>
+    <string><PROJECT_ROOT>/workflow.py</string>
+    <string>--mode</string>
+    <string>menubar</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/monitor_cc_menubar.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/monitor_cc_menubar.err</string>
+</dict>
+</plist>

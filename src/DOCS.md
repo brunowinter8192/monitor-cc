@@ -24,6 +24,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering, subprocess-parse, copy-button) | 2004 | 8 |
 | `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2673 | 17 |
 | `ram_audit/` | SIGUSR1 RAM-dump helper, gated by MONITOR_CC_RAM_AUDIT env | 101 | 1 |
+| `menubar/` | macOS status-bar app showing live CC sessions (rumps/AppKit) | 131 | 2 |
 
 ## Root-Level Files
 
@@ -68,3 +69,4 @@ All runtime state lives in `core/monitor.py` as module-level variables. Every pa
 - [proxy_display/DOCS.md](proxy_display/DOCS.md) — proxy pane TUI (8 modules)
 - [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (17 modules)
 - [ram_audit/DOCS.md](ram_audit/DOCS.md) — SIGUSR1 RAM-dump helper (env-gated tracemalloc)
+- [menubar/DOCS.md](menubar/DOCS.md) — macOS menubar app (rumps, session discovery, background-task badge)
