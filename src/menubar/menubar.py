@@ -55,16 +55,15 @@ def _blink(app: CCMenuBarApp) -> None:
 def _restore_icon(app: CCMenuBarApp) -> None:
     app.title = ICON_NORMAL
 
-# Rebuild dropdown menu; re-appends quit button so it survives menu.clear()
+# Rebuild dropdown menu; clear first to prevent accumulation, re-add quit button explicitly
 def _rebuild_menu(app: CCMenuBarApp, sessions) -> None:
-    items = []
+    app.menu.clear()
     for s in sessions:
         dot = '🟢' if s.status == 'working' else '🔴'
         badge = ' [B]' if s.has_bg else ''
-        items.append(f'{s.name}  {dot}{badge}')
-    if not items:
-        items = ['No active sessions']
+        app.menu.add(f'{s.name}  {dot}{badge}')
+    if not sessions:
+        app.menu.add('No active sessions')
     if app._quit_button is not None:
-        items.append(None)
-        items.append(app._quit_button)
-    app.menu = items
+        app.menu.add(None)
+        app.menu.add(app._quit_button)
