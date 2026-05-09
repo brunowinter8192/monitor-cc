@@ -20,6 +20,7 @@ _WINDOW_LAYOUT = [
                     ('worker-proxy',    'workers',       '66%'),
                     ('worker-metadata', 'worker-proxy',  '50%')]),
     (3, 'debug',   [('warnings',        None,            None)]),
+    (4, 'gpu',     [('gpu',             None,            None)]),
 ]
 
 # ORCHESTRATOR
@@ -46,6 +47,7 @@ def launch_split_screen(project_filter: Optional[str] = None, script_path: str =
     proxy_cmd = f"python3 {script_path} --mode proxy {project_arg}"
     metadata_cmd = f"python3 {script_path} --mode metadata {project_arg}"
     warnings_cmd = f"python3 {script_path} --mode warnings {project_arg}"
+    gpu_cmd = f"python3 {script_path} --mode gpu {project_arg}"
     workers_cmd = f"python3 {script_path} --mode workers {project_arg}"
     worker_proxy_cmd = f"python3 {script_path} --mode worker-proxy {project_arg}"
     worker_metadata_cmd = f"python3 {script_path} --mode worker-metadata {project_arg}"
@@ -70,6 +72,7 @@ def launch_split_screen(project_filter: Optional[str] = None, script_path: str =
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:2.1", "-l", "50%", worker_metadata_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:3", "-n", "debug", warnings_cmd])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:4", "-n", "gpu", gpu_cmd])
 
     subprocess.run(["tmux", "select-window", "-t", f"{session_name}:0"])
 
@@ -140,10 +143,11 @@ def configure_tmux_session(session_name: str, script_path: str = '', project_arg
         '1.0': 'PROXY', '1.1': 'METADATA',
         '2.0': 'WORKERS', '2.1': 'WORKER-PROXY', '2.2': 'WORKER-METADATA',
         '3.0': 'WARNINGS',
+        '4.0': 'GPU',
     }
     for pane_ref, title in pane_titles.items():
         subprocess.run(["tmux", "select-pane", "-t", f"{session_name}:{pane_ref}", "-T", title])
-    for win in range(4):
+    for win in range(5):
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-border-style", "fg=colour240"])
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-active-border-style", "fg=colour245"])
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "wrap-search", "on"])
@@ -171,7 +175,7 @@ def _build_mode_commands(script_path: str, project_path: Optional[str]) -> dict:
     cmds = {
         mode: f"python3 {script_path} --mode {mode} {project_arg}"
         for mode in ('main', 'tokens', 'proxy', 'metadata',
-                     'workers', 'worker-proxy', 'worker-metadata', 'warnings')
+                     'workers', 'worker-proxy', 'worker-metadata', 'warnings', 'gpu')
     }
     return cmds
 
