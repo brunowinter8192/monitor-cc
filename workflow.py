@@ -17,6 +17,9 @@ def main() -> None:
         launch_split_screen(args.project, os.path.abspath(__file__))
     elif args.mode == 'restart-panes':
         restart_panes(args.session, args.project, os.path.abspath(__file__))
+    elif args.mode == 'menubar':
+        from src.menubar.menubar import run
+        run()
     else:
         setup_signal_handlers()
         if args.mode not in ('warnings', 'tokens', 'workers', 'metadata'):
