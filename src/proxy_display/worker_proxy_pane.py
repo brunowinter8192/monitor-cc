@@ -77,10 +77,8 @@ def _serialize_worker_proxy(key) -> str:
     model = entry.get('model', '?')
     msg_count = entry.get('message_count', 0)
     parts = [f"entry_idx={entry_idx}  model={model}  msgs={msg_count}"]
-    diff = entry.get('diff_from_prev') or {}
-    start = diff.get('first_diff_index', 0) if diff else 0
-    if start < 0:
-        start = 0
+    prev_same_idx = _resolve_prev_same_wp(worker_proxy_entries, entry_idx)
+    start = worker_proxy_entries[prev_same_idx].get('message_count', 0) if prev_same_idx is not None else 0
     for msg_idx, msg in enumerate(entry.get('messages', [])[start:], start=start):
         role = msg.get('role', '?')
         msg_type = msg.get('type', '?')
