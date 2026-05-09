@@ -1,6 +1,10 @@
 # INFRASTRUCTURE
 import threading
+from itertools import groupby
+
 import rumps
+from AppKit import (NSAttributedString, NSFont, NSColor,
+                    NSFontAttributeName, NSForegroundColorAttributeName)
 
 # From discover.py: Live session discovery + status
 from .discover import list_alive_sessions
@@ -9,6 +13,8 @@ ICON_NORMAL    = '◉'
 ICON_BLINK     = '●'
 BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
+_NAME_WIDTH    = 22     # chars for left-justified name column
+_MENLO         = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
 
 # ORCHESTRATOR
 
@@ -55,15 +61,44 @@ def _blink(app: CCMenuBarApp) -> None:
 def _restore_icon(app: CCMenuBarApp) -> None:
     app.title = ICON_NORMAL
 
-# Rebuild dropdown menu; clear first to prevent accumulation, re-add quit button explicitly
+# Apply Menlo monospace font (+ optional color) to a rumps MenuItem via NSAttributedString
+def _set_mono(item, text: str, color=None) -> None:
+    attrs = {NSFontAttributeName: _MENLO()}
+    if color is not None:
+        attrs[NSForegroundColorAttributeName] = color
+    astr = NSAttributedString.alloc().initWithString_attributes_(text, attrs)
+    item._menuitem.setAttributedTitle_(astr)
+
+# Section header line: ─── ProjectName ──────────
+def _make_header(project_name: str) -> str:
+    fill = '─' * max(2, 30 - len(project_name))
+    return f'─── {project_name} {fill}'
+
+# Rebuild dropdown menu grouped by project; clear first to prevent accumulation
 def _rebuild_menu(app: CCMenuBarApp, sessions) -> None:
     app.menu.clear()
-    for s in sessions:
-        dot = '🟢' if s.status == 'working' else '🔴'
-        badge = ' [B]' if s.has_bg else ''
-        app.menu.add(f'{s.name}  {dot}{badge}')
     if not sessions:
         app.menu.add('No active sessions')
+    else:
+        sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
+        for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
+            header_text = _make_header(project_name)
+            header = rumps.MenuItem(header_text)
+            _set_mono(header, header_text)
+            app.menu.add(header)
+            for s in group_iter:
+                dot = '🟢' if s.status == 'working' else '🔴'
+                badge = ' [B]' if s.has_bg else ''
+                name_col = s.name.ljust(_NAME_WIDTH)
+                if not s.is_worker:
+                    line = f'● {name_col} {dot}{badge}'
+                    item = rumps.MenuItem(line)
+                    _set_mono(item, line, NSColor.systemOrangeColor())
+                else:
+                    line = f'   {name_col} {dot}{badge}'
+                    item = rumps.MenuItem(line)
+                    _set_mono(item, line)
+                app.menu.add(item)
     if app._quit_button is not None:
         app.menu.add(None)
         app.menu.add(app._quit_button)
