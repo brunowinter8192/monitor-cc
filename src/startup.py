@@ -12,7 +12,7 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Claude Code Tool Monitor')
     parser.add_argument('--project', type=str, default=None, help='Filter by project path')
     parser.add_argument('--session', type=str, default=None, help='Tmux session name (used by restart-panes mode)')
-    parser.add_argument('--mode', type=str, choices=['all', 'main', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'metadata', 'worker-proxy', 'worker-metadata', 'restart-panes', 'menubar'], default='all', help='Monitor mode: all, main, rules, warnings, hooks, tokens, workers, proxy, metadata, worker-proxy, worker-metadata, restart-panes, or menubar')
+    parser.add_argument('--mode', type=str, choices=['all', 'main', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'metadata', 'worker-proxy', 'worker-metadata', 'restart-panes', 'menubar', 'gpu'], default='all', help='Monitor mode: all, main, rules, warnings, hooks, tokens, workers, proxy, metadata, worker-proxy, worker-metadata, restart-panes, menubar, or gpu')
     args = parser.parse_args()
     return args
 

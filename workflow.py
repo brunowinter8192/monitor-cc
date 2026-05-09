@@ -20,6 +20,9 @@ def main() -> None:
     elif args.mode == 'menubar':
         from src.menubar.menubar import run
         run()
+    elif args.mode == 'gpu':
+        from src.gpu_pane.pane import run_gpu_loop
+        run_gpu_loop()
     else:
         setup_signal_handlers()
         if args.mode not in ('warnings', 'tokens', 'workers', 'metadata'):
