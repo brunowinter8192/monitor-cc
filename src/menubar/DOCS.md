@@ -27,13 +27,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (334 LOC)
+### discover.py (368 LOC)
 
 **Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker). Provides Ghostty terminal UUID mapping for reliable click-to-focus.
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; `/tmp/claude-<uid>/` task dirs; `ps`/`lsof` output (CC process cache); tmux session state; `/dev/ttysXXX` device files (OSC 2 marker writes for Ghostty mapping).
-**Writes:** `/dev/ttysXXX` (transient OSC 2 probe marker + empty-string cleanup). Module-level cache: `_cc_proc_cache`, `_cc_proc_last_refresh`, `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`.
+**Writes:** `/dev/ttysXXX` (transient OSC 2 probe marker + empty-string cleanup). Module-level cache: `_cc_proc_cache`, `_cc_proc_last_refresh`, `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_tmux_state_cache`, `_tmux_state_last_refresh`.
 **Called by:** `menubar.py:CCMenuBarApp._tick` (`list_alive_sessions`), `menubar.py:_focus_session` (`get_ghostty_terminal_id`).
-**Calls out:** `session_finder.get_project_directories`; `subprocess` (ps, lsof, tmux, pgrep, osascript).
+**Calls out:** `session_finder.get_project_directories`; `subprocess` (ps, lsof, tmux, osascript).
 
 ---
 
