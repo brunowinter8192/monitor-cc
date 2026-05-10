@@ -178,18 +178,21 @@ Why port-based:
 `log_path`: absolute path — used by watchdog for mtime check, by GPU pane for display.
 
 ### Write timing:
-AFTER health endpoint confirms 200. Rationale: failed starts leave no state file, no cleanup required.
-If the process starts but never becomes healthy (timeout), `start()` raises RuntimeError — no state file written.
+IMMEDIATELY after `subprocess.Popen()` returns — PID is known, state file is written before the
+health-check loop starts. Rationale: prevents the watchdog tick-level purge from killing an in-flight
+startup process (it would appear as an unregistered llama-server PID without an early state write).
+If health-check times out, `start()`'s exception handler unlinks the state file. No `pending` flag needed.
 
 ### Cleanup story:
 | Event | Action |
 |---|---|
 | Graceful stop (`rag-cli server stop`) | SIGTERM → 5s wait → SIGKILL → `unlink(state_file)` |
 | Watchdog idle stop | SIGTERM → 5s wait → SIGKILL → `unlink(state_file)` |
+| `start()` health-check timeout (RuntimeError) | Exception handler `unlink(state_file)` |
 | Watchdog tick: PID dead | `unlink(state_file)` (no kill needed) |
 | Watchdog tick: PID alive, port mismatch | SIGTERM the PID → `unlink(state_file)` |
-| Watchdog startup purge: alive PID not in any state file | SIGTERM → 5s wait → SIGKILL |
-| Watchdog startup purge: stale state file (PID dead) | `unlink(state_file)` |
+| Tick purge: alive llama-server PID not in any state file | SIGTERM → 5s wait → SIGKILL |
+| Tick purge: stale state file (PID dead) | `unlink(state_file)` |
 
 ### Migration: old `.port` JSON files:
 `~/.rag-locks/rag-server-{name}.port` files (existing format) can coexist during migration.
@@ -207,41 +210,68 @@ If the process starts but never becomes healthy (timeout), `start()` raises Runt
 
 ## NQ4: Out-of-Box Purge Mechanism — Recommendation
 
-**Recommendation: Run on EVERY watchdog spawn. SIGTERM → 5s wait → SIGKILL cascade. Stale state files unlinked without kill.**
+**Recommendation: Run on EVERY watchdog tick (not just on spawn). Shared `_purge_orphans()` helper called from both first-entry and each tick.**
 
 ### When to run:
-EVERY watchdog spawn — not just first. `_ensure_watchdog_process()` is called on every `ensure_ready()`.
-It only respawns when the PID in `watchdog.pid` is dead. Respawn events: machine boot, watchdog killed,
-crash. All of these scenarios have the same orphan-cleanup requirement.
+Every tick. An orphan process that starts between watchdog spawns would otherwise survive until the next
+machine boot or watchdog restart. Tick-level purge enforces the box invariant continuously: any orphan
+dies within ~30s (one `WATCHDOG_INTERVAL`).
 
-### Purge sequence (`_purge_on_startup()`):
+Cost: one `pgrep llama-server` per tick (~2ms on macOS) + set-diff against in-memory state-file PIDs.
+No kills happen unless an actual orphan exists. Acceptable overhead.
+
+`_purge_on_startup()` as a separate function is unnecessary — the tick-level purge covers first-entry too
+(it runs before the `while True: sleep()` loop).
+
+### `_purge_orphans()` helper (pseudocode from amendment):
 ```python
-1. registered_pids = {state["pid"] for state in _load_all_state_files()}
-2. live_pids = set(pgrep_llama_server())  # pgrep llama-server → list of ints
-3. orphan_pids = live_pids - registered_pids
-4. For pid in orphan_pids:
-       os.kill(pid, SIGTERM)
-5. Wait up to 5s (poll 0.5s each)
-6. For pid still alive in orphan_pids: os.kill(pid, SIGKILL)
-7. For each state_file where state["pid"] not in live_pids:
-       state_file.unlink()   # stale, process died outside box
-8. For each state_file where state["pid"] in live_pids:
-       port = state["port"]
-       bound_pids = lsof_pids_on_port(port)
-       if state["pid"] not in bound_pids:
-           # PID alive but not on expected port — SIGTERM + unlink
-           os.kill(state["pid"], SIGTERM); state_file.unlink()
+def _purge_orphans():
+    """Kill llama-server PIDs not in the state-file registry."""
+    registered_pids = set()
+    for state_file in TIMESTAMP_DIR.glob("server-port-*.json"):
+        try:
+            registered_pids.add(json.loads(state_file.read_text())["pid"])
+        except (json.JSONDecodeError, FileNotFoundError, KeyError):
+            continue
+    live_pids = set(_pgrep_llama_server())
+    orphan_pids = live_pids - registered_pids
+    if not orphan_pids:
+        return
+    for pid in orphan_pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    for _ in range(10):
+        time.sleep(0.5)
+        still_alive = {pid for pid in orphan_pids if _pid_alive(pid)}
+        if not still_alive:
+            break
+        orphan_pids = still_alive
+    for pid in orphan_pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    logging.info(f"Watchdog purge: killed {len(live_pids - registered_pids)} orphan llama-server PIDs")
 ```
 
+### Stale state file cleanup (separate from `_purge_orphans()`):
+Handled per-state-file in `_watchdog_tick()`: if `os.kill(pid, 0)` raises `ProcessLookupError` →
+`state_file.unlink()`. This is already in the per-state-file loop (NQ5), no separate cleanup pass.
+
+### Port-mismatch cleanup:
+Also in `_watchdog_tick()` per-file: if `lsof -ti :PORT` doesn't include the state file's PID →
+SIGTERM the PID + unlink state file. Kept in tick logic, not in `_purge_orphans()`.
+
 ### Edge cases:
-- State file PID is dead: step 7 catches it, unlinks without kill. No kill-nothing-to-kill error.
-- State file's PID alive but port changed: step 8 catches it, SIGTERM + unlink. Next `rag-cli start`
-  creates a fresh state file.
-- Two state files share the same PID (shouldn't happen, but): both get cleaned — one will have correct port,
-  other gets step 8 treatment. Net effect: both unlinked, one kill. Acceptable.
-- pgrep returns empty (no llama-server processes): purge is a no-op, runs in <1ms.
-- Watchdog crashes mid-purge after SIGTERM but before SIGKILL: next spawn does step 6 (SIGKILL) against
-  the still-alive orphan. Idempotent because purge always re-runs from scratch.
+- pgrep returns empty: `orphan_pids` is empty, returns immediately (<1ms).
+- Race: `rag-cli server start --model PATH --port N` — `subprocess.Popen` returns PID, state file is
+  written IMMEDIATELY (before health-check loop). Purge running concurrently sees the state file, skips
+  the PID. No race window. See NQ2 write-timing rationale.
+- Watchdog crashes mid-purge after SIGTERM but before SIGKILL: next tick re-runs `_purge_orphans()`,
+  issues SIGKILL to still-alive orphan. Idempotent.
+- `pgrep` returns a PID that dies between `pgrep` and `os.kill`: `ProcessLookupError` is caught, skipped.
 
 ---
 
@@ -254,12 +284,13 @@ crash. All of these scenarios have the same orphan-cleanup requirement.
 LOG_PATH = Path(RAG_ROOT) / "src/rag/logs"
 
 def _watchdog_loop():
-    _purge_on_startup()
+    _purge_orphans()   # runs immediately on first entry; no separate _purge_on_startup needed
     while True:
         time.sleep(WATCHDOG_INTERVAL)
         _watchdog_tick()
 
 def _watchdog_tick():
+    _purge_orphans()   # continuous enforcement — orphan dies within one interval
     now = time.time()
     for state_file in TIMESTAMP_DIR.glob("server-port-*.json"):
         try:
@@ -332,7 +363,8 @@ user stops it manually.
 
 ### Crash recovery:
 State files are the persistent layer. After watchdog restart:
-- `_purge_on_startup()` cleans orphans (dead PIDs, rogue processes)
+- `_purge_orphans()` runs immediately on `_watchdog_loop()` first entry — cleans orphans (rogue processes)
+  and stale state files (PID dead) in the per-file loop
 - `_watchdog_tick()` resumes normal idle monitoring for remaining state files
 - No in-memory state to restore — everything is re-read from disk each tick
 - Fully correct after restart, no special handling needed
@@ -400,12 +432,17 @@ are each independently deployable and rollback-safe.
 
 ## Additional Concerns
 
-1. **Splade is uvicorn, not llama-server.** `pgrep llama-server` won't find the splade process.
-   The box architecture must handle splade as a special case: no per-request log output from uvicorn
-   by default (unlike llama-server). Splade idle tracking needs a different mechanism or a separate
-   wrapper that logs requests. Recommend: splade stays preset-only, keep `touch_timestamp("splade")`
-   for its idle tracking, watchdog checks state file for splade but reads `last-used` file for idle
-   (not log mtime). Document as exception in state-file format (`idle_source: "timestamp" | "log_mtime"`).
+1. **Splade is NOT a special case.** `splade_server.py:47` — `logging.info(f"Encoded {len(req.input)} texts")`
+   fires on every POST `/v1/sparse-embeddings`. `logging.basicConfig(filename=LOG_DIR / "splade_server.log", ...)`
+   at `splade_server.py:13-17` routes all log output to `RAG_ROOT/src/rag/logs/splade_server.log`.
+   The `/health` endpoint (`splade_server.py:36-37`) has no `logging.info()` call — silent, same as llama-server.
+   Mtime tracking via `splade_server.log` works identically. No `idle_source` field needed in the schema.
+   State file for splade: `log_path = RAG_ROOT/src/rag/logs/splade_server.log` (existing file written by
+   Python's `logging` module — do NOT redirect uvicorn's stdout/stderr; the log is already being written).
+   Live mtime-update probe deferred to Phase B — splade not running at time of this analysis.
+   Purge implication: `_purge_orphans()` uses `pgrep llama-server` — does NOT find splade (uvicorn process).
+   Splade is always box-managed (state file written by `rag-cli server start splade`), so the state-file
+   glob covers it for idle tracking. Rogue uvicorn instances outside the box are out of scope for purge.
 
 2. **Log rotation / log growth.** Llama-server logs grow unbounded (1474 lines observed for ~363 requests).
    At high throughput, logs can grow large. Recommend: add `LLAMA_LOG_MAX_MB` env var, watchdog
@@ -419,15 +456,16 @@ are each independently deployable and rollback-safe.
 
 4. **`_ensure_watchdog_process()` is called from `ensure_ready()`, which is called on every RAG request.**
    The watchdog check (PID liveness via `os.kill(pid, 0)`) adds ~1ms per request. Acceptable.
-   The purge-on-startup runs only when the watchdog is dead — rare. No performance concern.
+   `_purge_orphans()` now runs every tick (~30s), not startup-only. Cost: one `pgrep llama-server` (~2ms)
+   + set-diff. No kills unless an orphan exists. Per-request cost is unchanged (watchdog PID check only).
 
 ---
 
 ## Phase B Sketch
 
 1. **`RAG/src/rag/server_manager.py`** — Phase 1: `_write_state_file()`, `_unlink_state_file()`,
-   modify `start()` (log redirect + state write), modify `stop()` (state unlink).
-   Phase 2: new `_watchdog_loop()`, `_purge_on_startup()`, `_check_health_port()`, `_stop_by_state()`.
+   modify `start()` (log redirect + immediate state write + exception handler unlink), modify `stop()` (state unlink).
+   Phase 2: new `_watchdog_loop()`, `_purge_orphans()`, `_check_health_port()`, `_stop_by_state()`.
    Phase 3: `start_arbitrary()`, extend `cli_server()` with new subcommands.
 
 2. **`RAG/src/rag/watchdog_main.py`** — unchanged (still calls `_watchdog_loop()`).
