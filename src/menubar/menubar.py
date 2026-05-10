@@ -9,7 +9,7 @@ from AppKit import (NSAttributedString, NSFont, NSColor,
                     NSFontAttributeName, NSForegroundColorAttributeName)
 
 # From discover.py: Live session discovery + status
-from .discover import list_alive_sessions
+from .discover import list_alive_sessions, get_ghostty_terminal_id
 
 ICON_NORMAL    = '◉'
 ICON_BLINK     = '●'
@@ -82,25 +82,38 @@ def _make_header(project_name: str) -> str:
     fill = '─' * max(2, 30 - len(project_name))
     return f'─── {project_name} {fill}'
 
-# Focus Ghostty terminal whose working directory matches cwd; logs to /tmp/monitor_cc_menubar_focus.log
+# Focus Ghostty terminal for cwd; prefers UUID-based focus, falls back to cwd-match
 def _focus_session(cwd: str) -> None:
     import datetime
-    safe_cwd = cwd.replace('"', '\\"')
-    script = (
-        'tell application "Ghostty"\n'
-        '  activate\n'
-        f'  focus (first terminal whose working directory is "{safe_cwd}")\n'
-        'end tell'
-    )
+    term_id = get_ghostty_terminal_id(cwd)
     ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if term_id:
+        safe_id = term_id.replace('"', '\\"')
+        script = (
+            'tell application "Ghostty"\n'
+            '  activate\n'
+            f'  focus terminal id "{safe_id}"\n'
+            'end tell'
+        )
+        label = f'id={term_id}'
+    else:
+        safe_cwd = cwd.replace('"', '\\"')
+        script = (
+            'tell application "Ghostty"\n'
+            '  activate\n'
+            '  try\n'
+            f'    focus (first terminal whose working directory is "{safe_cwd}")\n'
+            '  on error\n'
+            '  end try\n'
+            'end tell'
+        )
+        label = f'cwd={cwd}'
     try:
         r = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=3)
-        if r.returncode == 0:
-            msg = f'{ts} OK cwd={cwd}\n'
-        else:
-            msg = f'{ts} ERR rc={r.returncode} cwd={cwd} stderr={r.stderr.decode(errors="replace").strip()}\n'
+        msg = (f'{ts} OK {label}\n' if r.returncode == 0 else
+               f'{ts} ERR rc={r.returncode} {label} stderr={r.stderr.decode(errors="replace").strip()}\n')
     except subprocess.TimeoutExpired:
-        msg = f'{ts} TIMEOUT cwd={cwd}\n'
+        msg = f'{ts} TIMEOUT {label}\n'
     with open('/tmp/monitor_cc_menubar_focus.log', 'a') as fh:
         fh.write(msg)
 
