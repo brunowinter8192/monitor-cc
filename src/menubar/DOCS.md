@@ -69,7 +69,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 **Probe flow** (`_refresh_ghostty_tty_to_id`):
 
-1. `pgrep -x ghostty` → Ghostty PID.
+1. `pgrep -f 'Ghostty.app/Contents/MacOS'` → Ghostty PID.
 2. `ps -A -o pid=,ppid=,tty=` filtered by ppid = Ghostty PID → all current TTYs (`all_ttys`).
 3. **Stale cleanup**: remove `_ghostty_tty_to_id` entries whose TTY is no longer in `all_ttys` (closed tabs).
 4. **Incremental filter**: `new_ttys = [t for t in all_ttys if t not in _ghostty_tty_to_id]`. If empty → return immediately, **no title flash, no sleep**.
@@ -98,7 +98,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 - Background task detection: `/tmp/claude-<uid>/` uses the numeric Unix UID (`os.getuid()`). `*.output` files with `st_size == 0` = in-progress; `done\n` (5 bytes) = completed.
 - `LSUIElement=1` must be set before `app.run()` to suppress the Dock icon. Set in `run()` via `os.environ.setdefault`.
 - Launched via launchd: `KeepAlive=true` auto-restarts on crash. Logs → `/tmp/monitor_cc_menubar.{log,err}`.
-- **Ghostty binary name**: `pgrep` must use lowercase `ghostty` (matches `ps -o comm=` output), NOT `Ghostty` (the app display name). `pgrep -x Ghostty` returns nothing.
+- **Ghostty pgrep pattern**: `ps -o comm=` returns the full binary path (`/Applications/Ghostty.app/Contents/MacOS/ghostty`), not a basename. `pgrep -x ghostty` and `pgrep -x Ghostty` both return nothing. Use `pgrep -f 'Ghostty.app/Contents/MacOS'` which matches against the full command line.
 - **Ghostty AppleScript**: Ghostty.sdef exposes `id` (UUID, stable), `name` (current title), `working directory` per `terminal`. `focus` command takes a specifier: `focus terminal id "<UUID>"`. Does NOT expose `tty` or `pid`.
 - **OSC 2 cleanup**: After the probe, `\033]2;\007` (empty-string OSC 2) written to the probed TTYs restores the shell's default title (CWD from PROMPT_COMMAND / precmd hook). Without cleanup, idle shells show `__GHT_XXXXXXXX` until next prompt display.
 - **TTY ownership**: Ghostty children run as `/usr/bin/login` (root) but the `/dev/ttysXXX` device files are owned by the logged-in user → write access OK.

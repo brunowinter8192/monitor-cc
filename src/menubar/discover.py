@@ -154,8 +154,8 @@ def _refresh_cc_proc_cache(now: float) -> None:
 # Return PID string of running Ghostty.app process, or None
 def _ghostty_pid() -> Optional[str]:
     try:
-        # Binary name is lowercase 'ghostty' (ps -o comm= output)
-        r = subprocess.run(['pgrep', '-x', 'ghostty'],
+        # ps -o comm= returns full path on macOS; pgrep -f matches full command line
+        r = subprocess.run(['pgrep', '-f', 'Ghostty.app/Contents/MacOS'],
                            capture_output=True, text=True, timeout=2)
         pid = r.stdout.strip().split('\n')[0].strip()
         return pid if pid else None
