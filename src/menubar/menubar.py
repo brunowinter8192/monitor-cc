@@ -80,15 +80,27 @@ def _make_header(project_name: str) -> str:
     fill = '─' * max(2, 30 - len(project_name))
     return f'─── {project_name} {fill}'
 
-# Focus Ghostty terminal whose working directory matches cwd; no-op if not found
+# Focus Ghostty terminal whose working directory matches cwd; logs to /tmp/monitor_cc_menubar_focus.log
 def _focus_session(cwd: str) -> None:
+    import datetime
+    safe_cwd = cwd.replace('"', '\\"')
     script = (
         'tell application "Ghostty"\n'
         '  activate\n'
-        f'  focus (first terminal whose working directory is "{cwd}")\n'
+        f'  focus (first terminal whose working directory is "{safe_cwd}")\n'
         'end tell'
     )
-    subprocess.run(['osascript', '-e', script], capture_output=True, timeout=3)
+    ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        r = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=3)
+        if r.returncode == 0:
+            msg = f'{ts} OK cwd={cwd}\n'
+        else:
+            msg = f'{ts} ERR rc={r.returncode} cwd={cwd} stderr={r.stderr.decode(errors="replace").strip()}\n'
+    except subprocess.TimeoutExpired:
+        msg = f'{ts} TIMEOUT cwd={cwd}\n'
+    with open('/tmp/monitor_cc_menubar_focus.log', 'a') as fh:
+        fh.write(msg)
 
 # Return a click callback that focuses the Ghostty terminal for cwd
 def _make_focus_cb(cwd: str):
