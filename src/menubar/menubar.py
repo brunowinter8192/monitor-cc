@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import subprocess
 import threading
 from itertools import groupby
 
@@ -15,6 +16,11 @@ BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
 _NAME_WIDTH    = 22     # chars for left-justified name column
 _MENLO         = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
+
+_BADGE_WORKING = '[*]'   # green — ASCII fixed-width, no emoji drift
+_BADGE_IDLE    = '[ ]'   # red
+_BADGE_BG      = '[B]'   # orange badge suffix for background tasks
+_NO_BG         = '   '   # 3-char spacer when no background task
 
 # ORCHESTRATOR
 
@@ -74,6 +80,22 @@ def _make_header(project_name: str) -> str:
     fill = '─' * max(2, 30 - len(project_name))
     return f'─── {project_name} {fill}'
 
+# Focus Ghostty terminal whose working directory matches cwd; no-op if not found
+def _focus_session(cwd: str) -> None:
+    script = (
+        'tell application "Ghostty"\n'
+        '  activate\n'
+        f'  focus (first terminal whose working directory is "{cwd}")\n'
+        'end tell'
+    )
+    subprocess.run(['osascript', '-e', script], capture_output=True, timeout=3)
+
+# Return a click callback that focuses the Ghostty terminal for cwd
+def _make_focus_cb(cwd: str):
+    def _cb(_sender):
+        _focus_session(cwd)
+    return _cb
+
 # Rebuild dropdown menu grouped by project; clear first to prevent accumulation
 def _rebuild_menu(app: CCMenuBarApp, sessions) -> None:
     app.menu.clear()
@@ -87,15 +109,18 @@ def _rebuild_menu(app: CCMenuBarApp, sessions) -> None:
             _set_mono(header, header_text)
             app.menu.add(header)
             for s in group_iter:
-                dot = '🟢' if s.status == 'working' else '🔴'
-                badge = ' [B]' if s.has_bg else ''
+                dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
+                badge    = _BADGE_BG if s.has_bg else _NO_BG
                 name_col = s.name.ljust(_NAME_WIDTH)
                 if not s.is_worker:
-                    line = f'● {name_col} {dot}{badge}'
-                    item = rumps.MenuItem(line)
+                    # prefix '● ' = 2 chars; badge column at 2+22+1=25
+                    line = f'● {name_col} {dot} {badge}'
+                    cb   = _make_focus_cb(s.cwd) if s.cwd else None
+                    item = rumps.MenuItem(line, callback=cb, key='l' if cb else None)
                     _set_mono(item, line, NSColor.systemOrangeColor())
                 else:
-                    line = f'   {name_col} {dot}{badge}'
+                    # prefix '  ' = 2 chars (indent via name padding); same badge column
+                    line = f'  {name_col} {dot} {badge}'
                     item = rumps.MenuItem(line)
                     _set_mono(item, line)
                 app.menu.add(item)
