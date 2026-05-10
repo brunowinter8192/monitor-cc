@@ -42,8 +42,8 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 | Variable | Module | Type | Owner | Description |
 |---|---|---|---|---|
 | `CCMenuBarApp._last_statuses` | menubar.py | `dict` | app instance | `{name: status}` snapshot for blink-on-change detection |
-| `_cc_proc_cache` | discover.py | `List[(pid, tty, cwd)]` | module | CC processes from `ps -A` + `lsof -d cwd`. Rebuilt every 10s. |
-| `_cc_proc_last_refresh` | discover.py | `float` | module | Timestamp of last CC cache rebuild. |
+| `_cc_proc_cache` | discover.py | `Dict[pid, (tty, cwd)]` | module | CC processes. Incremental: `ps -A` every 10s drops gone PIDs; `lsof -d cwd` only for newly seen PIDs (cwd is stable after launch). Steady-state: ~75ms (ps only). |
+| `_cc_proc_last_refresh` | discover.py | `float` | module | Timestamp of last CC cache pass. |
 | `_ghostty_tty_to_id` | discover.py | `Dict[str, str]` | module | tty → Ghostty terminal UUID. Populated incrementally by OSC 2 probe. |
 | `_ghostty_tty_last_refresh` | discover.py | `float` | module | Timestamp of last probe cycle (updated only when a probe actually ran). |
 
