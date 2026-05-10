@@ -15,6 +15,16 @@ _TTY_WORKING_THRESHOLD = 3      # TTY mtime: <= 3s since last byte = working
 _WORKER_ACTIVITY_THRESHOLD = 10 # tmux window_activity: <= 10s = working
 _PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
+_GHOSTTY_TTY_REFRESH_INTERVAL = 10.0   # cooldown between new-TTY probe cycles
+_GHOSTTY_MARKER_PREFIX = '__GHT_'      # OSC 2 title marker prefix (not used by CC)
+
+# Module-level (pid, tty, cwd) cache for CC processes; refreshed every 10s
+_cc_proc_cache: List[Tuple[str, str, str]] = []
+_cc_proc_last_refresh: float = 0.0
+
+# tty→Ghostty terminal UUID; populated by OSC 2 title-marker probe (incremental)
+_ghostty_tty_to_id: Dict[str, str] = {}
+_ghostty_tty_last_refresh: float = 0.0
 
 class SessionInfo(NamedTuple):
     name: str          # display name: cwd basename for mains, worktree name for workers
@@ -35,6 +45,7 @@ _cc_proc_last_refresh: float = 0.0
 def list_alive_sessions() -> List[SessionInfo]:
     now = time.time()
     _refresh_cc_proc_cache(now)
+    _refresh_ghostty_tty_to_id(now)
     results = []
     for project_dir in get_project_directories():
         try:
@@ -140,12 +151,108 @@ def _refresh_cc_proc_cache(now: float) -> None:
     _cc_proc_cache = procs
     _cc_proc_last_refresh = now
 
+# Return PID string of running Ghostty.app process, or None
+def _ghostty_pid() -> Optional[str]:
+    try:
+        # Binary name is lowercase 'ghostty' (ps -o comm= output)
+        r = subprocess.run(['pgrep', '-x', 'ghostty'],
+                           capture_output=True, text=True, timeout=2)
+        pid = r.stdout.strip().split('\n')[0].strip()
+        return pid if pid else None
+    except Exception:
+        return None
+
+# Return TTY names for all direct children of ghostty_pid (one ps call)
+def _ghostty_child_ttys(ghostty_pid: str) -> List[str]:
+    try:
+        r = subprocess.run(['ps', '-A', '-o', 'pid=,ppid=,tty='],
+                           capture_output=True, text=True, timeout=3)
+        ttys = []
+        for line in r.stdout.strip().split('\n'):
+            parts = line.split()
+            if len(parts) >= 3 and parts[1] == ghostty_pid and parts[2] != '??':
+                ttys.append(parts[2])
+        return ttys
+    except Exception:
+        return []
+
+# Probe new Ghostty TTYs via OSC 2 marker + AppleScript; merge into _ghostty_tty_to_id
+def _refresh_ghostty_tty_to_id(now: float) -> None:
+    global _ghostty_tty_to_id, _ghostty_tty_last_refresh
+    if now - _ghostty_tty_last_refresh < _GHOSTTY_TTY_REFRESH_INTERVAL:
+        return
+    ghostty_pid = _ghostty_pid()
+    if not ghostty_pid:
+        return
+    all_ttys = _ghostty_child_ttys(ghostty_pid)
+    # Stale cleanup: remove cache entries for closed Ghostty terminals
+    for tty in list(_ghostty_tty_to_id):
+        if tty not in all_ttys:
+            del _ghostty_tty_to_id[tty]
+    # Only probe TTYs not yet mapped — avoids title-flash on already-known terminals
+    new_ttys = [t for t in all_ttys if t not in _ghostty_tty_to_id]
+    if not new_ttys:
+        return  # no probe; timestamp NOT updated so next tick re-checks
+    # Write unique OSC 2 marker into each new TTY
+    tty_marker: List[Tuple[str, str]] = []
+    for tty in new_ttys:
+        marker = f'{_GHOSTTY_MARKER_PREFIX}{os.urandom(4).hex()}'
+        tty_marker.append((tty, marker))
+        try:
+            with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
+                fh.write(f'\033]2;{marker}\007'.encode())
+        except OSError:
+            pass
+    time.sleep(0.12)
+    # Query Ghostty for id|||name pairs (newline-separated)
+    osa = (
+        'tell application "Ghostty"\n'
+        '  set pairs to {}\n'
+        '  repeat with t in every terminal\n'
+        '    set end of pairs to (id of t) & "|||" & (name of t)\n'
+        '  end repeat\n'
+        '  set AppleScript\'s text item delimiters to ASCII character 10\n'
+        '  return pairs as text\n'
+        'end tell'
+    )
+    try:
+        r3 = subprocess.run(['osascript', '-e', osa],
+                            capture_output=True, text=True, timeout=3)
+    except Exception:
+        r3 = None
+    # Cleanup: restore shell-default title on all probed TTYs
+    for tty, _ in tty_marker:
+        try:
+            with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
+                fh.write(b'\033]2;\007')
+        except OSError:
+            pass
+    if not r3 or r3.returncode != 0:
+        return
+    # Parse output and merge new tty→id entries into cache
+    name_to_id: Dict[str, str] = {}
+    for line in r3.stdout.strip().split('\n'):
+        if '|||' in line:
+            tid, _, tname = line.partition('|||')
+            name_to_id[tname.strip()] = tid.strip()
+    for tty, marker in tty_marker:
+        if marker in name_to_id:
+            _ghostty_tty_to_id[tty] = name_to_id[marker]
+    _ghostty_tty_last_refresh = now
+
 # Return tty name for the CC process with the given cwd; None if not in cache
 def _tty_for_cwd(cwd: str) -> Optional[str]:
     for _, tty, proc_cwd in _cc_proc_cache:
         if proc_cwd == cwd:
             return tty
     return None
+
+# Return Ghostty terminal UUID for a main CC session's cwd, or None if not mapped
+def get_ghostty_terminal_id(cwd: str) -> Optional[str]:
+    tty = _tty_for_cwd(cwd)
+    if tty is None:
+        return None
+    return _ghostty_tty_to_id.get(tty)
 
 # True if TTY for the main session's cwd had output within _TTY_WORKING_THRESHOLD seconds
 def _main_is_working(cwd: str) -> bool:
