@@ -16,13 +16,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### menubar.py (129 LOC)
+### menubar.py (198 LOC)
 
-**Purpose:** `CCMenuBarApp` rumps subclass + timer + blink logic + `_rebuild_menu` + `_focus_session` helper + `run()` entry point.
+**Purpose:** `CCMenuBarApp` rumps subclass + timer + blink logic + `_rebuild_menu` + `_focus_session` + `_register_hotkey` + `run()` entry point.
 **Reads:** `list_alive_sessions()` result on every tick.
 **Writes:** `app.title` (icon), `app.menu` (dropdown items).
 **Called by:** `workflow.py` (`--mode menubar` route).
-**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSFont/NSColor), `subprocess` (osascript for click-to-focus), `threading.Timer`.
+**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSFont/NSColor), `subprocess` (osascript for click-to-focus), `threading.Timer`, `ctypes` (Carbon hotkey).
 
 ---
 
@@ -65,3 +65,4 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 - **Ghostty AppleScript**: Ghostty.sdef (`/Applications/Ghostty.app/Contents/Resources/Ghostty.sdef`) exposes `working directory` and `id` per `terminal` class, but NOT `tty` or `pid`. Click-to-focus uses `focus (first terminal whose working directory is "{cwd}")` + `activate`. If Ghostty is not running, the osascript call times out silently — no crash.
 - **tmux exact-match**: `tmux has-session -t name` uses prefix matching; `=name` enforces exact match. `display-message -t name` works correctly once the session is confirmed to exist (no `=` needed there — exact match preferred before prefix by tmux's resolution order).
 - **Badge column alignment**: ASCII badges `[*]/[ ]/[B]` are strictly fixed-width in Menlo. Both mains (prefix `● `) and workers (prefix `  `) use a 2-char prefix → badge column always at position 25.
+- **Global hotkey Cmd+L**: registered in `CCMenuBarApp.__init__` via Carbon `RegisterEventHotKey` (ctypes, no pyobjc-framework-Carbon, no extra permissions). keycode 37 (`kVK_ANSI_L`), modifier `0x0100` (cmdKey). Callback fires on NSApp's CFRunLoop and calls `nsstatusitem.button().performClick_(None)` to open the dropdown. `app._hotkey_cb` and `app._hotkey_ref` are held on the instance to prevent GC of the ctypes callback.
