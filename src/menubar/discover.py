@@ -18,8 +18,8 @@ _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
 _GHOSTTY_TTY_REFRESH_INTERVAL = 10.0   # cooldown between new-TTY probe cycles
 _GHOSTTY_MARKER_PREFIX = '__GHT_'      # OSC 2 title marker prefix (not used by CC)
 
-# Module-level (pid, tty, cwd) cache for CC processes; refreshed every 10s
-_cc_proc_cache: List[Tuple[str, str, str]] = []
+# pid→(tty, cwd) cache for CC processes; incremental: lsof only on new PIDs
+_cc_proc_cache: Dict[str, Tuple[str, str]] = {}
 _cc_proc_last_refresh: float = 0.0
 
 # tty→Ghostty terminal UUID; populated by OSC 2 title-marker probe (incremental)
@@ -34,10 +34,6 @@ class SessionInfo(NamedTuple):
     project_name: str  # project this session belongs to (for grouping)
     is_worker: bool    # True if session lives under .claude/worktrees/
     cwd: str           # full working directory (non-empty for mains; '' for workers)
-
-# Module-level (pid, tty, cwd) cache for CC processes; refreshed every 10s
-_cc_proc_cache: List[Tuple[str, str, str]] = []
-_cc_proc_last_refresh: float = 0.0
 
 # ORCHESTRATOR
 
@@ -123,21 +119,32 @@ def _has_active_bg(encoded_dir: str, session_id: str) -> bool:
     except OSError:
         return False
 
-# Rebuild (pid, tty, cwd) list for all claude.exe processes; no-op within TTL
+# Update pid→(tty,cwd) cache incrementally: drop gone PIDs, lsof only for new ones
 def _refresh_cc_proc_cache(now: float) -> None:
-    global _cc_proc_cache, _cc_proc_last_refresh
+    global _cc_proc_last_refresh
     if now - _cc_proc_last_refresh < _PROC_REFRESH_INTERVAL:
         return
-    procs: List[Tuple[str, str, str]] = []
+    _cc_proc_last_refresh = now
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid,tty,comm'],
                            capture_output=True, text=True, timeout=3)
-        pid_tty_pairs = []
-        for line in r.stdout.strip().split('\n')[1:]:
-            parts = line.split(None, 2)
-            if len(parts) == 3 and 'claude' in parts[2].lower() and parts[1] != '??':
-                pid_tty_pairs.append((parts[0].strip(), parts[1].strip()))
-        for pid, tty in pid_tty_pairs:
+    except Exception:
+        return
+    # Build {pid: tty} for active CC processes with valid TTY
+    active: Dict[str, str] = {}
+    for line in r.stdout.strip().split('\n')[1:]:
+        parts = line.split(None, 2)
+        if len(parts) == 3 and 'claude' in parts[2].lower() and parts[1] != '??':
+            active[parts[0].strip()] = parts[1].strip()
+    # Drop entries for gone PIDs
+    for pid in list(_cc_proc_cache):
+        if pid not in active:
+            del _cc_proc_cache[pid]
+    # lsof only for PIDs not yet in cache (cwd is stable after launch)
+    for pid, tty in active.items():
+        if pid in _cc_proc_cache:
+            continue
+        try:
             r2 = subprocess.run(['lsof', '-a', '-d', 'cwd', '-p', pid],
                                  capture_output=True, text=True, timeout=2)
             for line in r2.stdout.strip().split('\n'):
@@ -145,11 +152,10 @@ def _refresh_cc_proc_cache(now: float) -> None:
                     continue
                 fields = line.split(None, 8)
                 if len(fields) == 9:
-                    procs.append((pid, tty, fields[8]))
-    except Exception:
-        pass
-    _cc_proc_cache = procs
-    _cc_proc_last_refresh = now
+                    _cc_proc_cache[pid] = (tty, fields[8])
+                    break
+        except Exception:
+            pass
 
 # Return PID string of running Ghostty.app process, or None
 def _ghostty_pid() -> Optional[str]:
@@ -243,9 +249,9 @@ def _refresh_ghostty_tty_to_id(now: float) -> None:
             _ghostty_tty_to_id[tty] = name_to_id[marker]
     _ghostty_tty_last_refresh = now
 
-# Return tty name for the CC process with the given cwd; None if not in cache
+# Return tty for the CC process with the given cwd; None if not in cache
 def _tty_for_cwd(cwd: str) -> Optional[str]:
-    for _, tty, proc_cwd in _cc_proc_cache:
+    for pid, (tty, proc_cwd) in _cc_proc_cache.items():
         if proc_cwd == cwd:
             return tty
     return None
