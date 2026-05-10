@@ -16,7 +16,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### menubar.py (127 LOC)
+### menubar.py (129 LOC)
 
 **Purpose:** `CCMenuBarApp` rumps subclass + timer + blink logic + `_rebuild_menu` + `_focus_session` helper + `run()` entry point.
 **Reads:** `list_alive_sessions()` result on every tick.
@@ -26,7 +26,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (228 LOC)
+### discover.py (227 LOC)
 
 **Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker).
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; `/tmp/claude-<uid>/` task dirs; `ps`/`lsof` output (CC process cache); tmux session state.
