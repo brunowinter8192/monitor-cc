@@ -1,15 +1,19 @@
 # INFRASTRUCTURE
 import json
 import os
+import subprocess
 import time
 from pathlib import Path
-from typing import List, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 # From session_finder.py: Scan ~/.claude/projects directories
 from ..session_finder import get_project_directories
 
-ALIVE_WINDOW_SECS = 3600       # sessions older than 1h are stale
-WORKING_THRESHOLD_SECS = 10    # <= 10s since last JSONL write = working
+ALIVE_WINDOW_SECS      = 3600   # stale threshold for main sessions (1h)
+WORKING_THRESHOLD_SECS = 10     # JSONL-mtime fallback: <= 10s = working
+_TTY_WORKING_THRESHOLD = 3      # TTY mtime: <= 3s since last byte = working
+_WORKER_ACTIVITY_THRESHOLD = 10 # tmux window_activity: <= 10s = working
+_PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
 
 class SessionInfo(NamedTuple):
@@ -19,12 +23,18 @@ class SessionInfo(NamedTuple):
     encoded_dir: str   # ~/.claude/projects/ dir name, e.g. '-Users-.../Monitor_CC'
     project_name: str  # project this session belongs to (for grouping)
     is_worker: bool    # True if session lives under .claude/worktrees/
+    cwd: str           # full working directory (non-empty for mains; '' for workers)
+
+# Module-level (pid, tty, cwd) cache for CC processes; refreshed every 10s
+_cc_proc_cache: List[Tuple[str, str, str]] = []
+_cc_proc_last_refresh: float = 0.0
 
 # ORCHESTRATOR
 
 # Return list of alive CC sessions across all projects; swallows per-session errors
 def list_alive_sessions() -> List[SessionInfo]:
     now = time.time()
+    _refresh_cc_proc_cache(now)
     results = []
     for project_dir in get_project_directories():
         try:
@@ -102,23 +112,116 @@ def _has_active_bg(encoded_dir: str, session_id: str) -> bool:
     except OSError:
         return False
 
-# Build SessionInfo for one project dir; None if stale or unreadable
+# Rebuild (pid, tty, cwd) list for all claude.exe processes; no-op within TTL
+def _refresh_cc_proc_cache(now: float) -> None:
+    global _cc_proc_cache, _cc_proc_last_refresh
+    if now - _cc_proc_last_refresh < _PROC_REFRESH_INTERVAL:
+        return
+    procs: List[Tuple[str, str, str]] = []
+    try:
+        r = subprocess.run(['ps', '-A', '-o', 'pid,tty,comm'],
+                           capture_output=True, text=True, timeout=3)
+        pid_tty_pairs = []
+        for line in r.stdout.strip().split('\n')[1:]:
+            parts = line.split(None, 2)
+            if len(parts) == 3 and 'claude' in parts[2].lower() and parts[1] != '??':
+                pid_tty_pairs.append((parts[0].strip(), parts[1].strip()))
+        for pid, tty in pid_tty_pairs:
+            r2 = subprocess.run(['lsof', '-a', '-d', 'cwd', '-p', pid],
+                                 capture_output=True, text=True, timeout=2)
+            for line in r2.stdout.strip().split('\n'):
+                if line.startswith('COMMAND') or not line:
+                    continue
+                fields = line.split(None, 8)
+                if len(fields) == 9:
+                    procs.append((pid, tty, fields[8]))
+    except Exception:
+        pass
+    _cc_proc_cache = procs
+    _cc_proc_last_refresh = now
+
+# Return tty name for the CC process with the given cwd; None if not in cache
+def _tty_for_cwd(cwd: str) -> Optional[str]:
+    for _, tty, proc_cwd in _cc_proc_cache:
+        if proc_cwd == cwd:
+            return tty
+    return None
+
+# True if TTY for the main session's cwd had output within _TTY_WORKING_THRESHOLD seconds
+def _main_is_working(cwd: str) -> bool:
+    tty = _tty_for_cwd(cwd)
+    if tty is None:
+        return False
+    try:
+        mtime = os.stat(f'/dev/{tty}').st_mtime
+        return (time.time() - mtime) <= _TTY_WORKING_THRESHOLD
+    except OSError:
+        return False
+
+# Build tmux session name from worker JSONL cwd; None if cwd is not a worktree path
+def _worker_tmux_session(cwd: str, worker_name: str) -> Optional[str]:
+    if '/.claude/worktrees/' not in cwd:
+        return None
+    project_path, _, _ = cwd.partition('/.claude/worktrees/')
+    basename = os.path.basename(project_path)
+    return f'worker-{basename}-{worker_name}'
+
+# True if the named tmux session exists (= prefix enforces exact match)
+def _tmux_session_exists(session_name: str) -> bool:
+    r = subprocess.run(['tmux', 'has-session', '-t', f'={session_name}'],
+                       capture_output=True)
+    return r.returncode == 0
+
+# True if tmux window_activity for the session is within _WORKER_ACTIVITY_THRESHOLD
+def _worker_is_working(session_name: str) -> bool:
+    try:
+        r = subprocess.run(
+            ['tmux', 'display-message', '-t', session_name, '-p', '#{window_activity}'],
+            capture_output=True, text=True, timeout=2)
+        if r.returncode != 0:
+            return False
+        return (time.time() - int(r.stdout.strip())) <= _WORKER_ACTIVITY_THRESHOLD
+    except (ValueError, Exception):
+        return False
+
+# Build SessionInfo for one project dir; None if session is gone or unreadable
 def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]:
     jsonl = _newest_jsonl(project_dir)
     if jsonl is None:
         return None
     mtime = jsonl.stat().st_mtime
-    if now - mtime > ALIVE_WINDOW_SECS:
-        return None
     encoded_dir = project_dir.name
     project_name, is_worker, worker_name = _classify_encoded_dir(encoded_dir)
-    if is_worker:
-        name = worker_name
-    else:
-        cwd = _cwd_from_jsonl(jsonl)
-        name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
-    status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
     session_id = jsonl.stem
     has_bg = _has_active_bg(encoded_dir, session_id)
-    return SessionInfo(name=name, status=status, has_bg=has_bg, encoded_dir=encoded_dir,
-                       project_name=project_name, is_worker=is_worker)
+
+    if is_worker:
+        cwd = _cwd_from_jsonl(jsonl)
+        if cwd and '/.claude/worktrees/' in cwd:
+            # Worker alive iff its tmux session exists (consistent with worker-cli)
+            tmux_session = _worker_tmux_session(cwd, worker_name)
+            if not tmux_session or not _tmux_session_exists(tmux_session):
+                return None
+            status = 'working' if _worker_is_working(tmux_session) else 'idle'
+        else:
+            # cwd unavailable — fall back to JSONL age
+            if now - mtime > ALIVE_WINDOW_SECS:
+                return None
+            status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
+        return SessionInfo(name=worker_name, status=status, has_bg=has_bg,
+                           encoded_dir=encoded_dir, project_name=project_name,
+                           is_worker=True, cwd='')
+    else:
+        # Main session: stale if JSONL > 1h
+        if now - mtime > ALIVE_WINDOW_SECS:
+            return None
+        cwd = _cwd_from_jsonl(jsonl)
+        name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
+        # Activity: TTY mtime if CC process found, else JSONL-mtime fallback
+        if cwd and _tty_for_cwd(cwd):
+            status = 'working' if _main_is_working(cwd) else 'idle'
+        else:
+            status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
+        return SessionInfo(name=name, status=status, has_bg=has_bg,
+                           encoded_dir=encoded_dir, project_name=project_name,
+                           is_worker=False, cwd=cwd or '')
