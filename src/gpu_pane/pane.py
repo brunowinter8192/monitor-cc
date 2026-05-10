@@ -47,12 +47,13 @@ def run_gpu_loop() -> None:
                 char = read_keypress()
                 if char is None:
                     break
-                if char in ('1', '2', '3'):
+                if char.isdigit() and char != '0':
                     idx = int(char) - 1
-                    name = PRESET_NAMES[idx]
-                    if name not in _toggle_state:
-                        _toggle_server(idx, presets)
-                        input_changed = True
+                    if idx < len(PRESET_NAMES):
+                        name = PRESET_NAMES[idx]
+                        if name not in _toggle_state:
+                            _toggle_server(idx, presets)
+                            input_changed = True
                 elif char in ('r', 'R'):
                     force_refresh = True
                     input_changed = True
@@ -236,7 +237,7 @@ def _render_pane(pane_width: int, pane_height: int,
         err_str    = f"errors today: {err_col}{err_n}{RESET}"
         btn        = _button_label(s)
         action     = ('stop' if s['healthy'] else 'restart') if s['running'] else 'start'
-        content    = (f"[{i+1}] {s['name']:<12} {badge} {status_txt:<15} "
+        content    = (f"[{i+1}] {s['name']:<16} {badge} {status_txt:<15} "
                       f"{countdown:<16} {port_str:<14} {pid_str:<13} "
                       f"{rss_str:<14} {model_str:<20} {err_str}")
         vis_len    = len(_strip_ansi(content))
@@ -290,8 +291,10 @@ def _render_pane(pane_width: int, pane_height: int,
         lines.append(f"  {DIM}(no errors today){RESET}")
 
     lines.append("")
+    n_presets = len(presets)
+    digit_hint = f"[1-{n_presets}]" if n_presets > 1 else "[1]"
     lines.append(
-        f"{DIM}[1/2/3] toggle presets  click [start]/[stop]/[restart]  "
+        f"{DIM}{digit_hint} toggle presets  click [start]/[stop]/[restart]  "
         f"{GREEN}●{RESET}{DIM}=healthy {YELLOW}◐{RESET}{DIM}=unhealthy "
         f"{RED}○{RESET}{DIM}=stopped  arbitrary: click [stop]{RESET}"
     )

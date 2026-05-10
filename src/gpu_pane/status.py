@@ -7,8 +7,27 @@ import time
 import urllib.request
 from pathlib import Path
 
-PRESET_NAMES = ['embedding', 'reranker', 'splade']
 RAG_LOCKS_DIR = Path.home() / '.rag-locks'
+
+
+# Discovered once per process via `rag-cli server presets --json`. Falls back to
+# the legacy three-name list if rag-cli is missing or fails. Process is respawned
+# by Monitor's Ctrl+R, which re-imports this module → new presets surface there.
+def _discover_preset_names() -> list[str]:
+    try:
+        r = subprocess.run(
+            ['rag-cli', 'server', 'presets', '--json'],
+            capture_output=True, text=True, timeout=3,
+        )
+        if r.returncode == 0:
+            payload = json.loads(r.stdout)
+            return [p['name'] for p in payload]
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
+        pass
+    return ['embedding', 'reranker', 'splade']  # legacy fallback
+
+
+PRESET_NAMES = _discover_preset_names()
 
 _last_anomalies: list[dict] = []  # reset each tick by all_statuses()
 _legacy_warned: bool = False       # log legacy port-file warning once per session
