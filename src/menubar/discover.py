@@ -17,6 +17,7 @@ _PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
 _GHOSTTY_TTY_REFRESH_INTERVAL = 10.0   # cooldown between new-TTY probe cycles
 _GHOSTTY_MARKER_PREFIX = '__GHT_'      # OSC 2 title marker prefix (not used by CC)
+_TMUX_REFRESH_INTERVAL = 3.0           # seconds between tmux list-sessions polls
 
 # pid→(tty, cwd) cache for CC processes; incremental: lsof only on new PIDs
 _cc_proc_cache: Dict[str, Tuple[str, str]] = {}
@@ -25,6 +26,10 @@ _cc_proc_last_refresh: float = 0.0
 # tty→Ghostty terminal UUID; populated by OSC 2 title-marker probe (incremental)
 _ghostty_tty_to_id: Dict[str, str] = {}
 _ghostty_tty_last_refresh: float = 0.0
+
+# session_name→(alive, session_activity_unix_ts); one list-sessions call per 3s
+_tmux_state_cache: Dict[str, Tuple[bool, int]] = {}
+_tmux_state_last_refresh: float = 0.0
 
 class SessionInfo(NamedTuple):
     name: str          # display name: cwd basename for mains, worktree name for workers
@@ -42,6 +47,7 @@ def list_alive_sessions() -> List[SessionInfo]:
     now = time.time()
     _refresh_cc_proc_cache(now)
     _refresh_ghostty_tty_to_id(now)
+    _refresh_tmux_state(now)
     results = []
     for project_dir in get_project_directories():
         try:
@@ -282,23 +288,42 @@ def _worker_tmux_session(cwd: str, worker_name: str) -> Optional[str]:
     basename = os.path.basename(project_path)
     return f'worker-{basename}-{worker_name}'
 
-# True if the named tmux session exists (= prefix enforces exact match)
-def _tmux_session_exists(session_name: str) -> bool:
-    r = subprocess.run(['tmux', 'has-session', '-t', f'={session_name}'],
-                       capture_output=True)
-    return r.returncode == 0
-
-# True if tmux window_activity for the session is within _WORKER_ACTIVITY_THRESHOLD
-def _worker_is_working(session_name: str) -> bool:
+# Refresh tmux session state via one list-sessions call; no-op within 3s TTL
+def _refresh_tmux_state(now: float) -> None:
+    global _tmux_state_cache, _tmux_state_last_refresh
+    if now - _tmux_state_last_refresh < _TMUX_REFRESH_INTERVAL:
+        return
+    _tmux_state_last_refresh = now
     try:
         r = subprocess.run(
-            ['tmux', 'display-message', '-t', session_name, '-p', '#{window_activity}'],
-            capture_output=True, text=True, timeout=2)
+            ['tmux', 'list-sessions', '-F', '#{session_name}|#{session_activity}'],
+            capture_output=True, text=True, timeout=3)
         if r.returncode != 0:
-            return False
-        return (time.time() - int(r.stdout.strip())) <= _WORKER_ACTIVITY_THRESHOLD
-    except (ValueError, Exception):
+            _tmux_state_cache = {}
+            return
+    except Exception:
+        return
+    new_cache: Dict[str, Tuple[bool, int]] = {}
+    for line in r.stdout.strip().split('\n'):
+        if '|' not in line:
+            continue
+        name, _, ts = line.partition('|')
+        name = name.strip()
+        ts = ts.strip()
+        if name and ts.isdigit():
+            new_cache[name] = (True, int(ts))
+    _tmux_state_cache = new_cache
+
+# True if session_name appears in the tmux state cache (= exists)
+def _tmux_session_exists(session_name: str) -> bool:
+    return session_name in _tmux_state_cache
+
+# True if cached session_activity for session_name is within _WORKER_ACTIVITY_THRESHOLD
+def _worker_is_working(session_name: str) -> bool:
+    state = _tmux_state_cache.get(session_name)
+    if state is None:
         return False
+    return (time.time() - state[1]) <= _WORKER_ACTIVITY_THRESHOLD
 
 # Build SessionInfo for one project dir; None if session is gone or unreadable
 def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]:

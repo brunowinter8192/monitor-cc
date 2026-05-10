@@ -46,6 +46,8 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 | `_cc_proc_last_refresh` | discover.py | `float` | module | Timestamp of last CC cache pass. |
 | `_ghostty_tty_to_id` | discover.py | `Dict[str, str]` | module | tty → Ghostty terminal UUID. Populated incrementally by OSC 2 probe. |
 | `_ghostty_tty_last_refresh` | discover.py | `float` | module | Timestamp of last probe cycle (updated only when a probe actually ran). |
+| `_tmux_state_cache` | discover.py | `Dict[str, (bool, int)]` | module | session_name → (alive, session_activity unix ts). One `tmux list-sessions` call per 3s replaces per-worker `has-session` + `display-message` pairs. |
+| `_tmux_state_last_refresh` | discover.py | `float` | module | Timestamp of last tmux state refresh. |
 
 ## Activity Detection (per session type)
 
