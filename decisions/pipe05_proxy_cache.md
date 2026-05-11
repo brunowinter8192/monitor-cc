@@ -111,33 +111,7 @@ Worker (Worktree) → mitmdump :8085 → proxy_addon.py → api_requests_<worker
 
 Beide schreiben nach `$MONITOR_CC_ROOT/src/logs/`. Monitor liest per `session_id` das richtige Log.
 
-## Evidenz
-
-### Problem: Claude Code's instabiles cache_control Placement
-
-Claude Code setzt 2 Breakpoints: `system[2]` + letzte Message. Der Breakpoint auf der letzten Message wandert bei jedem Request weiter (erwartetes Verhalten). Alte Breakpoints werden entfernt.
-
-**Kritisch:** Proxy-Modifications ändern Messages die VOR dem cache_control Breakpoint liegen. Die API sieht modifizierten Content → Prefix-Mismatch → Cache invalidiert.
-
-Analyse der Session `a3b6577a` (148 Requests mit Modifications):
-- **98%** der Requests hatten Modifications VOR dem Breakpoint
-- 4 Cache-Rebuilds beobachtet:
-  - REQ#0: 36k CC (erster Request, erwartbar)
-  - REQ#1: 27k CC (ToolSearch-Load, erwartbar)
-  - REQ#70: 93k CC, nur 9k CR (91% Rebuild)
-  - REQ#133: 162k CC, nur 9k CR (95% Rebuild)
-- Die 9.297 CR bei REQ#70 und #133 = exakt `system[2]` Breakpoint. Alles danach (Tools + 100+ Messages) wurde neu geschrieben.
-- Gesamtkosten: 319k Tokens für Rebuilds (2% vom Total, aber 162k = ~6% Session-Limit für einen Request)
-
-### Fix-Verifikation
-
-Nach Implementierung der eigenen Breakpoints (Session auf test project, 14+ Requests):
-- REQ#2: CR:0, CC:30.478 (erster Request, erwartbar)
-- REQ#3-#14: Alle CR >30k, CC nur 150-1200 (neuer Content)
-- **Kein einziger Rebuild** — auch nicht bei ToolSearch (REQ#8: CC:425)
-- BP3 verhindert Cache-Invalidierung durch Modifications: modifizierter Content ist deterministisch (gleicher Input → gleicher Output), daher ist der Prefix zwischen Requests stabil
-
-### Tool-Stripping
+### Tool Stripping (TOOL_BLOCKLIST)
 
 `TOOL_BLOCKLIST` (frozenset) in `proxy_addon.py` entfernt 21 ungenutzte Tools aus dem `tools`-Array vor dem API-Send. ~25k chars weniger pro Request. Agent-Tool bleibt, aber Description getrimmt auf git-committer-only (~300 chars statt 10k).
 
@@ -149,9 +123,9 @@ Nach Implementierung der eigenen Breakpoints (Session auf test project, 14+ Requ
 
 Log-Dateien: `api_requests_{projektname}_{timestamp}.jsonl` statt kryptischer MD5-Hashes. Max 30 Dateien, älteste werden bei Proxy-Start gelöscht.
 
-### Diagnostics: Prefix-Hash Instrumentation
+### Prefix-Hash Instrumentation (ab Commit feat/prefix-hash-instrumentation)
 
-Seit Commit `f9e4b09` (2026-04-12) schreibt `_build_sent_meta` (seit Refactor 2026-04-19 in `src/proxy/hash_meta.py`, aufgerufen aus `addon.py`) vier zusätzliche Felder pro `sent_meta`-Entry:
+`_build_sent_meta` (seit Refactor 2026-04-19 in `src/proxy/hash_meta.py`, aufgerufen aus `addon.py`) schreibt vier zusätzliche Felder pro `sent_meta`-Entry:
 
 - `prefix_hash_bp1_sys` — MD5[:10] von `json.dumps(system[0:bp1_idx+1])`
 - `prefix_hash_bp2_tools` — MD5[:10] von `json.dumps({"system":..., "tools": tools[0:bp2_idx+1]})`
@@ -210,6 +184,117 @@ Zweck: Drift in should-be-stable Prefix-Feldern wird automatisch pro Request sic
 - Content `"."` (nach stripping geleerte Messages) — kein `</system-reminder>` Marker, `_capture_fixation` speichert nichts, `_apply_fixation` ändert nichts, kein Crash.
 - Haiku (model_family="haiku") — `_load_system2_rules` gibt `""` zurück → sys[2] wird `"."`. Auch für Haiku wird fixated gespeichert (mit `"."`) damit der zweite Request nicht durch Datei-mtime-Änderungen abweicht.
 
+### API Constraints (Referenz)
+
+- Max 4 Breakpoints pro Request
+- `defer_loading=true` und `cache_control` auf dem gleichen Tool = API Error
+- Min cacheable prefix: 2048 Tokens (Opus) / 1024 (Haiku)
+- Cache Write kostet 125% der Token — falsches Placement kann teurer sein als kein Caching
+- `cache_control` marker: `{"type": "ephemeral"}` (kein TTL nötig, API bestimmt)
+- `scope: "global"` — Content-basierter Cache über Sessions/API-Keys hinweg. Gleicher Content = Cache-Hit, unterschiedlicher Content = separate Einträge. Kein Cross-Contamination zwischen Opus und Worker.
+
+### Tool Injection
+
+Before this change: `tools[]` fully controlled by Claude Code. MCP schemas loaded lazily via ToolSearch (alphabetical insert into the middle of the tools array). Deferred built-ins (CronList, ListMcpResourcesTool etc.) appear mid-session via CC's deferred-tool lifecycle. Both mechanisms cause mid-session `tools[]` mutations that break the byte prefix before BP2 → cache rebuilds (see `cache_rebuild_cases.md` Case 4 Tool INSERT subsection).
+
+Current implementation: Proxy takes full deterministic control of `tools[]`:
+- `ToolSearch`, `ScheduleWakeup`, `Monitor` added to `TOOL_BLOCKLIST` → stripped from every request
+- CC deferred built-ins already in blocklist (TaskCreate, CronCreate, AskUserQuestion etc.)
+- `src/proxy/tool_injection.py` injects MCP schemas: iterative-dev always from REQ#1, other plugins appended when activated via `activate_plugin` MCP tool (iterative-dev/blank server.py)
+- Schema store at `src/proxy/schemas/<plugin>/<tool>.json` populated by `dev/tool_injection/01_extract_schemas.py` — one-time extraction via FastMCP introspection per plugin
+- Append-only injection logic: iterative-dev first, active plugins in activation order, stable alphabetical within each plugin block
+- `active_plugins` tracked in `ProxyAddon.fixated` for session-stable behavior; explicit `activate_plugin` calls emit `"active_plugins_changed"` modifier (one-time controlled rebuild by design)
+
+**Update 2026-04-14 (evening) — Research Plugins Converted to Skill+CLI:**
+
+Scope of tool injection **narrowed**: on 2026-04-14 the 4 research plugins `github-research`, `reddit`, `arxiv`, `rag` were converted from MCP servers to pure Skill+CLI plugins (43 tool schemas removed from API prefix). Each got a `cli.py` entry point; `server.py` + `mcp-start.sh` deleted; `plugin.json` `mcpServers` block removed.
+
+Consequences for Tool Injection:
+- `tool_injection.py` now only handles `iterative-dev` (4 tools) — the only remaining MCP plugin
+- `active_plugins.json` effectively stable at `{"plugins":["iterative-dev"]}` — no activation flow for research plugins because they have no MCP tools to inject
+- Dynamic `activate_plugin` MCP tool becomes an edge case (still exists for theoretical future MCP plugins)
+- First Opus REQ tools count: 7 built-ins + 4 iterative-dev = **11** (previously 31+ with research plugins injected)
+- Schema bytes per request: ~2k (previously ~13k)
+- Research plugin tools are now invoked via `Bash(<plugin>/.venv/bin/python <plugin>/cli.py <cmd> ...)` — zero prefix cost, documented in each plugin's SKILL.md
+
+Affected commits (per repo):
+- `github-research` v1.1.0 — commit `37807a3`
+- `reddit` v1.1.0 — commit `381f97e`
+- `arxiv` v1.1.0 — commit `8b89e08`
+- `rag` v1.1.0 — commit `909375d`
+
+### Pane RAM (Phase 2a abgeschlossen 2026-04-29)
+
+Vier Hebel implementiert + gemerged auf dev:
+
+**(1) Lazy-msg-strip + lazy-reload (commit cf8037c, 2026-04-29).** `src/proxy_display/parser.py` stempelt `entry['_byte_offset']` per Zeile beim Parse. `_lazy_load_messages(entry, log_path)` re-populiert `entry['messages']` on-demand via `seek(offset) + readline()`. Pane-Module (proxy, worker_proxy) droppen nach jedem `extend()` die `messages`-Liste aus Entries die NICHT in den letzten 10 sind UND NICHT aktiv expanded — `_strip_inactive_messages()` checkt drei expand-key forms (`entry_idx`, `('req', N)`, `(N, 'neg_delta')`). Click-handler triggert `_lazy_load_messages` für entry + prev_same beim Expand. metadata + worker_metadata strippen aggressiv `[:-1]` (nur latest behalten, kein Expand-UI). Das löst das O(N²)-Wachstum durch kumulative Anthropic-Wire-Format Messages. Konstante: `PROXY_MESSAGES_KEEP_LAST = 10` in `src/constants.py`.
+
+**(2) tracemalloc env-var-Gate (commit 10f110a, 2026-04-29).** `src/ram_audit/instrument.py` aktiviert `tracemalloc.start(25)` nur wenn `MONITOR_CC_RAM_AUDIT=1` gesetzt ist. Default off → kein 2-5x CPU-Overhead pro Python-Allokation in der proxy-pane Render-Schleife. Lag/Flicker im proxy-pane war primär dadurch verursacht.
+
+**(3) Warnings tail-bytes (commits 2ffe9b9 + 166b18b + 47a4415, 2026-04-29).** `src/panes/warnings_pane.py` setzt im Site-A-Reset-Block `_proxy_log_position = max(0, fsize - WARNINGS_INITIAL_TAIL_BYTES)` statt 0. `WARNINGS_INITIAL_TAIL_BYTES = 50_000_000` in constants.py. `scan_worker_logs` in parser.py akzeptiert zwei Parameter: `tail_bytes` (für first-time-seen worker logs) und `min_mtime` (skip worker logs mit mtime < `_monitor_start_ts`). Damit parst warnings nur die letzten 50 MB der main proxy log + frische worker logs aus der laufenden Session — alte Worker-Logs aus früheren Sessions werden komplett geskipped.
+
+**(4) Subprocess-parse für Initial-Parse (commit c3d69ed, 2026-04-29).** `_parse_log_file_isolated` und `parse_proxy_log_isolated` in `src/proxy_display/parser.py` spawnen für `last_position == 0` einen Child-Prozess via `multiprocessing.get_context('spawn')`. `_subprocess_worker` parst im Child, droppt messages pre-IPC, sendet entries + new_position + pending_rids via Queue. Parent rebuildet pending_by_rid via RID-Set-Lookup (nicht via Pickle-Kopien). Child-Exit gibt alle Pages ans OS zurück → der ~3 GB Initial-Parse-Peak hängt nicht mehr im Parent-Prozess. Fallback bei Crash, Timeout (default 60s, `SUBPROCESS_PARSE_TIMEOUT` env-überridden), oder IPC-Pickle-Failure auf in-parent Parse. Alle 4 Caller-Sites umgestellt: pane.py, worker_proxy_pane.py, beide loops in metadata_pane.py.
+
+## Evidenz
+
+### Cache-Rebuild Analysis (Session a3b6577a)
+
+Analyse der Session `a3b6577a` (148 Requests mit Modifications):
+- **98%** der Requests hatten Modifications VOR dem Breakpoint
+- 4 Cache-Rebuilds beobachtet:
+  - REQ#0: 36k CC (erster Request, erwartbar)
+  - REQ#1: 27k CC (ToolSearch-Load, erwartbar)
+  - REQ#70: 93k CC, nur 9k CR (91% Rebuild)
+  - REQ#133: 162k CC, nur 9k CR (95% Rebuild)
+- Die 9.297 CR bei REQ#70 und #133 = exakt `system[2]` Breakpoint. Alles danach (Tools + 100+ Messages) wurde neu geschrieben.
+- Gesamtkosten: 319k Tokens für Rebuilds (2% vom Total, aber 162k = ~6% Session-Limit für einen Request)
+
+Data source: Session-JSONL `a3b6577a-8f2c-4cef-a594-15aa18c0f520.jsonl` (CR/CC/D Werte); Proxy-Log `src/logs/api_requests_f93afc17.jsonl` (825MB, Session vom 2026-04-08); Dev-Script `dev/session_analysis/04_cache_validation.py`.
+
+**Kritisch:** Proxy-Modifications ändern Messages die VOR dem cache_control Breakpoint liegen. Die API sieht modifizierten Content → Prefix-Mismatch → Cache invalidiert.
+
+### Fix-Verifikation
+
+Nach Implementierung der eigenen Breakpoints (Session auf test project, 14+ Requests):
+- REQ#2: CR:0, CC:30.478 (erster Request, erwartbar)
+- REQ#3-#14: Alle CR >30k, CC nur 150-1200 (neuer Content)
+- **Kein einziger Rebuild** — auch nicht bei ToolSearch (REQ#8: CC:425)
+- BP3 verhindert Cache-Invalidierung durch Modifications: modifizierter Content ist deterministisch (gleicher Input → gleicher Output), daher ist der Prefix zwischen Requests stabil
+
+### Tool Injection Evidenz
+
+- REQ#2 → REQ#3 rebuild in `api_requests_opus_monitor_cc_1776099723.jsonl` (see `cache_rebuild_cases.md` Case 4 Tool INSERT)
+- Stage 3 live verification — pending next session
+
+### Pane RAM KPIs (29.04 final dump_all post-restart)
+
+| Pane | Baseline 28.04 | Final 29.04 | Reduktion |
+|---|---|---|---|
+| proxy | 1,151 MB | 504 MB | -56% |
+| worker_proxy | 385 MB | 170 MB | -56% |
+| metadata | 1,304 MB | 465 MB | -64% |
+| worker_metadata | 370 MB | 156 MB | -58% |
+| main | 1,131 MB | 1,043 MB | -8% (out-of-scope) |
+| warnings | 2,856 MB | 690 MB | -76% |
+| Total | 7,497 MB | 3,208 MB | **-57%** |
+
+Subjektiv: Lag/Flicker im proxy-pane vollständig weg (Quelle war tracemalloc-Overhead, nicht RAM). RSS warnings 2,856 → 506 MB (-82%) live verifiziert nach Hebel 3.
+
+### Tokenizer Approximation (chars/token)
+
+Für Proxy-Optimierungsentscheidungen (z.B. "Strippen X chars spart Y tokens") wird folgender Working-Ratio verwendet:
+
+- **3.68 chars/token** (Claude's Tokenizer, approximation)
+- Abgeleitet aus known prefix anchor: 154,550 chars → 41,975 tokens (mehrere historische Sessions, pre-Opus-4.7)
+- Full-rebuild Ratio (CR=0): 3.42 chars/token (N=3, stddev 0.11)
+- Stabil ~3.4-3.7 über Sessions ohne interleaved thinking
+
+**tiktoken cl100k_base ist unbrauchbar** — unterschätzt Claude's Tokenisierung um 35-75% (variabel mit thinking-Anteil). Nicht für Proxy-Entscheidungen verwenden.
+
+**Caveat:** Pro-Segment-Ratios (sys vs tools vs messages separat) sind mit aktuellen Daten NICHT extrahierbar (sys/tools konstant pro Session = keine Varianz für Regression). Der 3.68-Wert ist Prefix-dominiert (sys+tools machen 95% des Payloads aus) und gilt als "good enough" Gesamtapproximation.
+
+Details + Experimente + Paths-Forward: `decisions/OldThemes/tokenizer/tokenizer_baseline.md` (geparkt).
+
 ## Recommendation (SOLL)
 
 Keep (no change needed) — eigene Breakpoints sind implementiert und verifiziert. TTL `1h` und `scope: "global"` korrekt auf Markern gesetzt.
@@ -240,125 +325,27 @@ Change: Worker-Proxies verwenden jetzt ebenfalls Live-Copy (`.proxy_addon_worker
 
 Change: Main-Logs heißen `api_requests_opus_{project}_{timestamp}.jsonl`, Worker-Logs `api_requests_worker_{name}_{timestamp}.jsonl`. Klare Trennung zwischen Opus und Worker Proxy-Logs.
 
-### API Constraints (Referenz)
+### Tool Injection (Deterministic Control)
 
-- Max 4 Breakpoints pro Request
-- `defer_loading=true` und `cache_control` auf dem gleichen Tool = API Error
-
-## Tool Injection
-
-### Status Quo (IST)
-
-Before this change: `tools[]` fully controlled by Claude Code. MCP schemas loaded lazily via ToolSearch (alphabetical insert into the middle of the tools array). Deferred built-ins (CronList, ListMcpResourcesTool etc.) appear mid-session via CC's deferred-tool lifecycle. Both mechanisms cause mid-session `tools[]` mutations that break the byte prefix before BP2 → cache rebuilds (see `cache_rebuild_cases.md` Case 4 Tool INSERT subsection).
-
-### Recommendation (SOLL)
-
-Proxy takes full deterministic control of `tools[]`:
+Change: Proxy takes full deterministic control of `tools[]`:
 - `ToolSearch`, `ScheduleWakeup`, `Monitor` added to `TOOL_BLOCKLIST` → stripped from every request
 - CC deferred built-ins already in blocklist (TaskCreate, CronCreate, AskUserQuestion etc.)
-- `src/proxy/tool_injection.py` injects MCP schemas: iterative-dev always from REQ#1, other plugins appended when activated via `activate_plugin` MCP tool (iterative-dev/blank server.py)
+- `src/proxy/tool_injection.py` injects MCP schemas: iterative-dev always from REQ#1, other plugins appended when activated via `activate_plugin` MCP tool
 - Schema store at `src/proxy/schemas/<plugin>/<tool>.json` populated by `dev/tool_injection/01_extract_schemas.py` — one-time extraction via FastMCP introspection per plugin
 - Append-only injection logic: iterative-dev first, active plugins in activation order, stable alphabetical within each plugin block
-- `active_plugins` tracked in `ProxyAddon.fixated` for session-stable behavior; explicit `activate_plugin` calls emit `"active_plugins_changed"` modifier (one-time controlled rebuild by design)
-
-### Evidenz
-
-- REQ#2 → REQ#3 rebuild in `api_requests_opus_monitor_cc_1776099723.jsonl` (see `cache_rebuild_cases.md` Case 4 Tool INSERT)
-- Stage 3 live verification — pending next session
-
-### Offene Fragen
-
-- Whether CC dispatches `tool_use` calls for proxy-injected MCP tools whose MCP client is still connected but which were never client-side loaded via ToolSearch. Stage 0 (hardcoded bead_list) already passed in a prior session; Stage 3 tests this for the full iterative-dev schema set and github-research via `activate_plugin`.
-- `claude_proxy_start.sh` integration: schema store currently populated manually via `01_extract_schemas.py`. Next step is to run the extractor automatically in the proxy startup script.
-
-### Update 2026-04-14 (evening) — Research Plugins Converted to Skill+CLI
-
-Scope of tool injection **narrowed**: on 2026-04-14 the 4 research plugins `github-research`, `reddit`, `arxiv`, `rag` were converted from MCP servers to pure Skill+CLI plugins (43 tool schemas removed from API prefix). Each got a `cli.py` entry point; `server.py` + `mcp-start.sh` deleted; `plugin.json` `mcpServers` block removed.
-
-Consequences for Tool Injection:
-- `tool_injection.py` now only handles `iterative-dev` (4 tools) — the only remaining MCP plugin
-- `active_plugins.json` effectively stable at `{"plugins":["iterative-dev"]}` — no activation flow for research plugins because they have no MCP tools to inject
-- Dynamic `activate_plugin` MCP tool becomes an edge case (still exists for theoretical future MCP plugins)
-- First Opus REQ tools count: 7 built-ins + 4 iterative-dev = **11** (previously 31+ with research plugins injected)
-- Schema bytes per request: ~2k (previously ~13k)
-- Research plugin tools are now invoked via `Bash(<plugin>/.venv/bin/python <plugin>/cli.py <cmd> ...)` — zero prefix cost, documented in each plugin's SKILL.md
-
-Affected commits (per repo):
-- `github-research` v1.1.0 — commit `37807a3`
-- `reddit` v1.1.0 — commit `381f97e`
-- `arxiv` v1.1.0 — commit `8b89e08`
-- `rag` v1.1.0 — commit `909375d`
-
-Live verification tracked in bead `Monitor_CC-qwu`.
-
-### Quellen
-
-- Monitor_CC-o9b bead
-- Monitor_CC-qwu bead (CLI migration live verification)
-- `cache_rebuild_cases.md` Case 4
-- This session's proxy log: `api_requests_opus_monitor_cc_1776099723.jsonl`
-- Min cacheable prefix: 2048 Tokens (Opus) / 1024 (Haiku)
-- Cache Write kostet 125% der Token — falsches Placement kann teurer sein als kein Caching
-- cache_control marker: `{"type": "ephemeral"}` (kein TTL nötig, API bestimmt)
-- `scope: "global"` — Content-basierter Cache über Sessions/API-Keys hinweg. Gleicher Content = Cache-Hit, unterschiedlicher Content = separate Einträge. Kein Cross-Contamination zwischen Opus und Worker.
-
-### Tokenizer Approximation (chars/token)
-
-Für Proxy-Optimierungsentscheidungen (z.B. "Strippen X chars spart Y tokens") wird folgender Working-Ratio verwendet:
-
-- **3.68 chars/token** (Claude's Tokenizer, approximation)
-- Abgeleitet aus known prefix anchor: 154,550 chars → 41,975 tokens (mehrere historische Sessions, pre-Opus-4.7)
-- Full-rebuild Ratio (CR=0): 3.42 chars/token (N=3, stddev 0.11)
-- Stabil ~3.4-3.7 über Sessions ohne interleaved thinking
-
-**tiktoken cl100k_base ist unbrauchbar** — unterschätzt Claude's Tokenisierung um 35-75% (variabel mit thinking-Anteil). Nicht für Proxy-Entscheidungen verwenden.
-
-**Caveat:** Pro-Segment-Ratios (sys vs tools vs messages separat) sind mit aktuellen Daten NICHT extrahierbar (sys/tools konstant pro Session = keine Varianz für Regression). Der 3.68-Wert ist Prefix-dominiert (sys+tools machen 95% des Payloads aus) und gilt als "good enough" Gesamtapproximation.
-
-Details + Experimente + Paths-Forward: `decisions/OldThemes/tokenizer/tokenizer_baseline.md` (geparkt). Bead: Monitor_CC-fyl.
+- `active_plugins` tracked in `ProxyAddon.fixated` for session-stable behavior
 
 ## Offene Fragen
 
 - Langzeit-Stabilität: Verhalten bei Sessions >500 Requests noch nicht beobachtet
 - Claude Code Updates könnten cache_control Handling ändern (z.B. mehr als 2 eigene Breakpoints) — `_strip_all_cache_control` entfernt alles, daher robust gegen Änderungen
 - Global Rules Caching: `scope: "global"` auf eigenen System-Blöcken verifizieren — cross-session Cache-Hit testen (gleiche Rules, neue Session → CR statt CC?)
-
-## Pane RAM (Bead Monitor_CC-lhf — Phase 2a abgeschlossen 2026-04-29)
-
-### Status Quo
-
-Vier Hebel implementiert + gemerged auf dev:
-
-**(1) Lazy-msg-strip + lazy-reload (commit cf8037c, 2026-04-29).** `src/proxy_display/parser.py` stempelt `entry['_byte_offset']` per Zeile beim Parse. `_lazy_load_messages(entry, log_path)` re-populiert `entry['messages']` on-demand via `seek(offset) + readline()`. Pane-Module (proxy, worker_proxy) droppen nach jedem `extend()` die `messages`-Liste aus Entries die NICHT in den letzten 10 sind UND NICHT aktiv expanded — `_strip_inactive_messages()` checkt drei expand-key forms (`entry_idx`, `('req', N)`, `(N, 'neg_delta')`). Click-handler triggert `_lazy_load_messages` für entry + prev_same beim Expand. metadata + worker_metadata strippen aggressiv `[:-1]` (nur latest behalten, kein Expand-UI). Das löst das O(N²)-Wachstum durch kumulative Anthropic-Wire-Format Messages. Konstante: `PROXY_MESSAGES_KEEP_LAST = 10` in `src/constants.py`.
-
-**(2) tracemalloc env-var-Gate (commit 10f110a, 2026-04-29, Bead hvy).** `src/ram_audit/instrument.py` aktiviert `tracemalloc.start(25)` nur wenn `MONITOR_CC_RAM_AUDIT=1` gesetzt ist. Default off → kein 2-5x CPU-Overhead pro Python-Allokation in der proxy-pane Render-Schleife. Lag/Flicker im proxy-pane war primär dadurch verursacht.
-
-**(3) Warnings tail-bytes (commits 2ffe9b9 + 166b18b + 47a4415, 2026-04-29, Bead kin0).** `src/panes/warnings_pane.py` setzt im Site-A-Reset-Block `_proxy_log_position = max(0, fsize - WARNINGS_INITIAL_TAIL_BYTES)` statt 0. `WARNINGS_INITIAL_TAIL_BYTES = 50_000_000` in constants.py. `scan_worker_logs` in parser.py akzeptiert zwei Parameter: `tail_bytes` (für first-time-seen worker logs) und `min_mtime` (skip worker logs mit mtime < `_monitor_start_ts`). Damit parst warnings nur die letzten 50 MB der main proxy log + frische worker logs aus der laufenden Session — alte Worker-Logs aus früheren Sessions werden komplett geskipped. RSS warnings 2,856 → 506 MB (-82%) live verifiziert.
-
-**(4) Subprocess-parse für Initial-Parse (commit c3d69ed, 2026-04-29, Bead vu0n).** `_parse_log_file_isolated` und `parse_proxy_log_isolated` in `src/proxy_display/parser.py` spawnen für `last_position == 0` einen Child-Prozess via `multiprocessing.get_context('spawn')`. `_subprocess_worker` parst im Child, droppt messages pre-IPC, sendet entries + new_position + pending_rids via Queue. Parent rebuildet pending_by_rid via RID-Set-Lookup (nicht via Pickle-Kopien). Child-Exit gibt alle Pages ans OS zurück → der ~3 GB Initial-Parse-Peak hängt nicht mehr im Parent-Prozess. Fallback bei Crash, Timeout (default 60s, `SUBPROCESS_PARSE_TIMEOUT` env-überridden), oder IPC-Pickle-Failure auf in-parent Parse. Alle 4 Caller-Sites umgestellt: pane.py, worker_proxy_pane.py, beide loops in metadata_pane.py.
-
-### KPIs (29.04 final dump_all post-restart)
-
-| Pane | Baseline 28.04 | Final 29.04 | Reduktion |
-|---|---|---|---|
-| proxy | 1,151 MB | 504 MB | -56% |
-| worker_proxy | 385 MB | 170 MB | -56% |
-| metadata | 1,304 MB | 465 MB | -64% |
-| worker_metadata | 370 MB | 156 MB | -58% |
-| main | 1,131 MB | 1,043 MB | -8% (out-of-scope) |
-| warnings | 2,856 MB | 690 MB | -76% |
-| Total | 7,497 MB | 3,208 MB | **-57%** |
-
-Subjektiv: Lag/Flicker im proxy-pane vollständig weg (Quelle war tracemalloc-Overhead, nicht RAM).
-
-### Verbleibende Hebel
-
-- **main-pane bei 1043 MB** — größter verbleibender Verbraucher. Liegt nicht an proxy_display-Pfad sondern an `core/monitor.py` das session-JSONLs aus `~/.claude/projects/**/*.jsonl` parst (eigener code-pfad). Folge-Bead: subprocess-parse-Pattern für session-JSONL parsing analog zur vu0n-Lösung.
-- **Periodic Pane-Respawn / pymalloc-Akkumulation** — subprocess-parse löst nur den Initial-Peak im Parent. Ongoing inkrementelle Allokationen akkumulieren pymalloc-Pages über Stunden. Beobachtet: proxy 506 → 624 → 749 MB binnen Stunden. Folge-Bead: periodischer pane-self-respawn ODER subprocess-pattern auch für inkrementelle Parses.
+- Whether CC dispatches `tool_use` calls for proxy-injected MCP tools whose MCP client is still connected but which were never client-side loaded via ToolSearch. Stage 0 (hardcoded bead_list) already passed in a prior session; Stage 3 tests this for the full iterative-dev schema set and github-research via `activate_plugin`.
+- `claude_proxy_start.sh` integration: schema store currently populated manually via `01_extract_schemas.py`. Next step is to run the extractor automatically in the proxy startup script.
+- **main-pane bei 1043 MB** — größter verbleibender Verbraucher. Liegt nicht an proxy_display-Pfad sondern an `core/monitor.py` das session-JSONLs aus `~/.claude/projects/**/*.jsonl` parst (eigener code-pfad). Folge: subprocess-parse-Pattern für session-JSONL parsing analog zur vu0n-Lösung.
+- **Periodic Pane-Respawn / pymalloc-Akkumulation** — subprocess-parse löst nur den Initial-Peak im Parent. Ongoing inkrementelle Allokationen akkumulieren pymalloc-Pages über Stunden. Beobachtet: proxy 506 → 624 → 749 MB binnen Stunden. Folge: periodischer pane-self-respawn ODER subprocess-pattern auch für inkrementelle Parses.
 
 ## Quellen
 
 - Anthropic API Docs: Prompt Caching (cache_control Semantik, Breakpoint-Limits)
-- Proxy-Log-Analyse: `src/logs/api_requests_f93afc17.jsonl` (825MB, Session vom 2026-04-08)
-- Session-JSONL-Analyse: `a3b6577a-8f2c-4cef-a594-15aa18c0f520.jsonl` (CR/CC/D Werte)
-- Dev-Script: `dev/session_analysis/04_cache_validation.py`
+- `cache_rebuild_cases.md` Case 4 (Tool INSERT subsection)

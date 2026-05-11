@@ -1,6 +1,6 @@
 # Pipe Section: Core Loop
 
-## Status Quo
+## Status Quo (IST)
 
 - `monitor.py`: `run_main_loop()` (ehemals `run_streaming_loop()`) ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), trackt `current_main_session` via `_get_newest_main_session()`. Detects session change each poll cycle → clears screen + resets position. Pollt alle 0.5s via `monitor_sessions()` + `_refresh_strip_cache()` + `render_main_buffer()`
 - `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
@@ -25,8 +25,6 @@
 4. `format_workers_block(workers, expand_states, worker_turns, ...)` → rendert Worker-Liste mit Cache-Tracker bei Expand
 5. Bei Änderung: Screen-Clear + Print
 6. `time.sleep(POLL_INTERVAL)`
-
-## IST — Stellschrauben
 
 ### Globale Mutable State — alle Variablen (Kategorie: Architektur / Kopplung)
 
@@ -72,6 +70,15 @@ Alle Module-Level Variablen in `src/monitor.py` mit Zugriffs-Mapping (Stand nach
 - `format_warnings_block()` rendert Warnings für dediziertes tmux Pane
 - `run_warnings_loop()` pollt und rendert per eigenem Poll-Zyklus
 
+### filter_sessions_by_mode — Session Count im Header (Session 4, Kategorie: Korrektheit)
+
+`run_monitor()` (monitor.py:52-79) ruft jetzt `filter_sessions_by_mode(sessions, mode)` auf, BEVOR es `print_session_status(session_count, ...)` aufruft (monitor.py:72-73 und 77-78).
+
+Vorher: `session_count = len(sessions)` — zählte alle Sessions (main + subagent) unabhängig vom Mode
+Jetzt: `session_count = len(filter_sessions_by_mode(sessions, mode))` — zählt nur die tatsächlich im jeweiligen Mode relevanten Sessions
+
+Betrifft Modes: `MODE_MAIN` (nur Non-Agent-Files), `MODE_ALL` (alle). `MODE_SUBAGENT` wurde mit dem Subagents-Feature entfernt.
+
 ### Logging im Core Loop (Kategorie: Observability)
 
 **Stand nach Session 3 (Logging-Entfernung):**
@@ -82,20 +89,11 @@ Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ## Evidenz
 
-Pending — needs evaluation.
+Pending — no measurements documented in this file. To be reconciled against `dev/` in a separate pass.
 
 ## Recommendation (SOLL)
 
 Pending — needs evaluation.
-
-### filter_sessions_by_mode — Session Count im Header (Session 4, Kategorie: Korrektheit)
-
-`run_monitor()` (monitor.py:52-79) ruft jetzt `filter_sessions_by_mode(sessions, mode)` auf, BEVOR es `print_session_status(session_count, ...)` aufruft (monitor.py:72-73 und 77-78).
-
-Vorher: `session_count = len(sessions)` — zählte alle Sessions (main + subagent) unabhängig vom Mode
-Jetzt: `session_count = len(filter_sessions_by_mode(sessions, mode))` — zählt nur die tatsächlich im jeweiligen Mode relevanten Sessions
-
-Betrifft Modes: `MODE_MAIN` (nur Non-Agent-Files), `MODE_ALL` (alle). `MODE_SUBAGENT` wurde mit dem Subagents-Feature entfernt.
 
 ## Offene Fragen
 
