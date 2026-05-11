@@ -131,7 +131,7 @@ Pending — needs evaluation.
 
 - InstructionsLoaded feuert nicht nach compaction (Issue #30973) oder /clear (Issue #31017) — Rules-Pane zeigt nur initial geladene Rules
 - ANNAHME: Skill-Aktivierung triggert InstructionsLoaded NICHT (CHANGELOG definiert Scope als CLAUDE.md und project-rules-Dateien)
-- Project `.claude/rules/*.md` werden vom Hook nicht erfasst (Bug #33275) — nur Global Rules + CLAUDE.md feuern
+- Project-rules-Dateien werden vom Hook nicht erfasst (Bug #33275) — nur Global Rules + CLAUDE.md feuern
 - System Prompt (mit "Contents of" Zeilen) wird NICHT ins Session-JSONL geschrieben — alternative Quelle nötig
 
 ## Quellen
