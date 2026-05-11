@@ -99,7 +99,43 @@ Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ## Evidenz
 
-Pending — no measurements documented in this file. To be reconciled against `dev/` in a separate pass.
+### Session Discovery I/O (IST-1)
+
+`dev/pipeline/io_profile/01_reports/poll_cycle_20260322_152817.md` (Script: `dev/pipeline/io_profile/01_poll_cycle_cost.py`, Dataset: 70 Projekte, 1479 JSONL-Dateien in `~/.claude/projects/`, 2026-03-22):
+
+- Ohne Project-Filter: Cycle-Duration **9.58ms** (±0.99), **1479 stat()-Calls**, 140 glob()-Calls pro Zyklus
+- Mit Project-Filter (Monitor_CC): **0.25ms** (±0.05), 0 stat()-Calls
+- Filterung reduziert Zyklus-Overhead um 9.33ms (97%)
+
+### JSONL Multi-Pass Parsing (IST-2)
+
+`dev/pipeline/parsing_profile/01_reports/multipass_20260322_152816.md` (Script: `dev/pipeline/parsing_profile/01_multipass_cost.py`, Dataset: Session `35ca8892`, 351 Messages, 10 Messläufe):
+
+| Funktion | Mean (µs) | % |
+|---|---|---|
+| `extract_tool_calls` | 1773.6 | 93.6% |
+| `extract_skill_activations` | 39.9 | 2.1% |
+| `extract_user_prompts` | 37.3 | 2.0% |
+| `extract_thinking_blocks` | 26.9 | 1.4% |
+| `extract_user_media` | 17.8 | 0.9% |
+| **Total (5 Passes)** | **1895.5** | 100% |
+
+Average 5.40 µs/Message. Single-pass savings estimate: 70.2 µs.
+
+### tool_use_cache Orphan-Verhalten (IST-3)
+
+`dev/pipeline/memory_profile/01_reports/cache_growth_20260322_152818.md` (Script: `dev/pipeline/memory_profile/01_cache_growth.py`, Dataset: Session `35ca8892`, 357 Messages):
+- Peak cache entries: 1; Final orphaned: **1** (Bash-Call ohne zugehöriges tool_result)
+- Estimated memory per 1000 messages: 515 bytes
+
+### Format-Stabilität / Unknown Types (IST-7)
+
+`dev/pipeline/format_stability/01_reports/unknown_types_20260322_152802.md` (Script: `dev/pipeline/format_stability/01_unknown_types.py`, Dataset: **1479 JSONL-Dateien**, 222,636 Lines, 52 Parse-Errors, 2026-03-22):
+- Known top-level type coverage: **91.9%**
+- 5 unknown top-level types: `file-history-snapshot`, `queue-operation`, `last-prompt`, `custom-title`, `agent-name`
+- Unknown content-block types: **0** (100% bekannt)
+
+IST-4 (`EXCLUDED_TOOLS`), IST-5 (Truncation-Handling), IST-6 (Content Polymorphism), IST-8 (Logging 0) sind code-read-derived — kein dev/-Benchmark backing.
 
 ## Recommendation (SOLL)
 
