@@ -10,8 +10,7 @@
 
 `LONG_OUTPUT_THRESHOLD = 10000` in `src/constants.py`.
 Verwendet in `format_output()` (formatter.py:119-138):
-- `len(content) >= LONG_OUTPUT_THRESHOLD` → `log_long_output(content)` aufgerufen + `LIGHT_RED_BG` Hintergrundfarbe für den gesamten Output-Block
-- `log_long_output()` (formatter.py:213-219) schreibt: char_count, line_count, 500-char Preview, und **den vollständigen Content** nach `src/logs/10_long_outputs.log`
+- `len(content) >= LONG_OUTPUT_THRESHOLD` → `LIGHT_RED_BG` Hintergrundfarbe für den gesamten Output-Block
 
 Zentralisiert in constants.py.
 
@@ -25,13 +24,10 @@ Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
 Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 11 panes (MAIN, TOKENS, PROXY, METADATA, RULES, HOOKS, WORKERS, WORKER-PROXY, WORKER-METADATA, WARNINGS, WASTE). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
 
-`format_pane_header()` in formatter.py still exists (PASTEL_ORANGE) but is no longer called from any loop. All header print calls removed from monitor.py (Session 6).
 
 ### Token-Profiling Pane (Kategorie: Display / Token Visibility)
 
 Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
-- `run_tokens_loop()` in monitor.py: pollt `monitor_sessions()`, akkumuliert via `accumulate_tokens()`, rendert `format_tokens_block()`
-- `format_token_profile()` in formatter.py: flat Breakdown (per-tool + Text) mit Unicode Bar-Chart (bar_width=30) und Prozentwerten. Color legend for input section. Thinking bar removed (JSONL has no thinking token data). "Tool Calls" aggregate removed — each tool shown at same indentation level.
 - `shorten_tool_name()` in formatter.py: MCP Tool-Namen kürzen (`mcp__plugin_xxx__tool` → `tool`)
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-t Keybinding: Tokens-Pane Content → Clipboard via pbcopy
@@ -59,7 +55,6 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 - Keyboard-Input in `run_tokens_loop()` (monitor.py:479-517): Ziffern → `token_input_buffer`, Enter → setzt `token_cumulative_n`, 'q' → setzt auf None, Backspace → löscht letzten Char
 - `compute_cumulative_tokens(n)` (monitor.py:423-450): liest letzte N Main-Session-Files von Position 0 (kein Byte-Offset, full rescan), aggregiert Input/Output/Cache/Turns + per-tool output breakdown
 - Input `0` → returns to current session view (`token_cumulative_n = None`)
-- `format_token_profile_cumulative()` (formatter.py:324-371): rendert kumulative Ansicht mit granularem Output-Breakdown (per-tool + Text, same as current session view) + Per-Session-Breakdown (Input/Output/Turns pro File)
 - Live-Prompt-Anzeige: `"Last N sessions › {buffer}_"` am Ende des Pane-Outputs
 
 ### Restart Hotkey (Kategorie: Display / UX)

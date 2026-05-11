@@ -159,3 +159,13 @@ BERT
 
 # --- Shell / OS environment variables ---
 PROMPT_COMMAND
+
+# --- External / OS / spec references (not Python identifiers in this codebase) ---
+MODE_MOUSE_ALL
+MODE_MOUSE_SGR
+USR1
+ECONNREFUSED
+YYYYMMDD_HHMMSS
+RULE_DIR
+PROJECT_FILTER
+LOG_DIR
