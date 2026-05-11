@@ -360,7 +360,22 @@ N is typically 1 or 3 depending on pane density. See `src/token_pane.py` as cano
 
 ## Evidenz
 
-Live-Test Session 14 (2026-04-05): additionalContext per-hook limit = ~10KB (9,945 bytes ✅, 10,081 bytes ❌). Binäre Suche über 4 Iterationen. Multiple hooks merge as separate system-reminders (contrary to GitHub source analysis claiming "last one wins").
+### additionalContext per-Hook Limit
+
+Live-Test Session 14 (2026-04-05), kein dev/-Script — manueller Test via settings.json hook-config + InstructionsLoaded-Observation. Binäre Suche über 4 Iterationen:
+- 9,945 bytes → CC-Session erhält vollständigen Content ✅
+- 10,081 bytes → truncated to 2KB preview ❌
+
+Multiple SessionStart-Hooks mergen als separate `<system-reminder>` Tags (widerspricht GitHub-Source-Analyse "last one wins" — letztere ist falsch).
+
+### Session-JSONL enthält keine Rules/Instructions-Daten
+
+`dev/display/jsonl_exploration/` — Suite aus 3 Scripts (`01_map_message_types.py`, `02_map_content_blocks.py`, `03_scan_instructions.py`). Key Finding dokumentiert in `dev/display/jsonl_exploration/DOCS.md` (kein committed Report-MD im worktree):
+- `Contents of`: **0 hits** (kein CLAUDE.md / .claude/rules/*.md Inhalt im JSONL)
+- `system-reminder`: **0 hits** (nur zur API-Call-Zeit injiziert, nicht persistiert)
+- `claudeMd`: **0 hits**
+
+Dataset: mindestens 1 CC-Session-JSONL. Scripts laufen gegen beliebige Session-JSONL via positional arg.
 
 ## Recommendation (SOLL)
 
