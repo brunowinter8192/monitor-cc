@@ -80,7 +80,13 @@ Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ## Evidenz
 
-`dev/display/test_tmux_layout.sh` — Pane-Index Verifikation nach verschachtelten Splits (internal test script, no quantitative results documented).
+Keine dev/-Messungen für Entry/Startup-Claims vorhanden.
+
+`dev/display/test_tmux_layout.sh` ist das einzige Script mit tmux-Bezug — es verifiziert Pane-Indizes nach verschachtelten Splits für ein altes 3-Pane-Layout und produziert kein persistentes Report-MD (Session wird nach Ausgabe automatisch gelöscht). Per Evidenz-Spec (documentation.md): Scripts ohne quantitative Messdaten sind kein Evidenz.
+
+Alle anderen dev/-Subdirs betreffen andere Pipeline-Stages (pipe02/03: `pipeline/`, `session_analysis/`; Proxy: `tool_injection/`, `proxy/`, `tool_use_analysis/`; Infrastructure: `cc_source_research/`, `ram_audit/`).
+
+IST-Quellen für POLL_INTERVAL (0.5), TMUX_HISTORY_LIMIT (50000, save/restore), Split-Ratios, Session-Name-Format und Logging (0 Calls) sind code-read-derived — kein dev/-Benchmark backing.
 
 ## Recommendation (SOLL)
 
