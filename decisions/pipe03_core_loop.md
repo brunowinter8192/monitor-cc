@@ -89,7 +89,21 @@ Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ## Evidenz
 
-Pending — no measurements documented in this file. To be reconciled against `dev/` in a separate pass.
+Die `dev/pipeline/`-Suites wurden primär für pipe02-Entscheidungen aufgesetzt; ihre Messergebnisse backen mehrere pipe03-Claims:
+
+### Poll-Overhead pro 0.5s-Zyklus (IST-1 Kontext)
+
+`dev/pipeline/io_profile/01_reports/poll_cycle_20260322_152817.md` (Script: `dev/pipeline/io_profile/01_poll_cycle_cost.py`, Dataset: 70 Projekte, 1479 Dateien, 2026-03-22): Discovery-Overhead 9.58ms pro Zyklus (ohne Filter) vs. 0.25ms (mit Project-Filter). Bestätigt dass POLL_INTERVAL=0.5s mit Project-Filter die dominante Wartezeit bleibt (Discovery 0.25ms << 500ms Sleep).
+
+### tool_use_cache Orphan-Behavior (IST-4 strukturale Evidenz)
+
+`dev/pipeline/memory_profile/01_reports/cache_growth_20260322_152818.md` (Script: `dev/pipeline/memory_profile/01_cache_growth.py`, Dataset: Session `35ca8892`, 357 Messages): 1 Orphaned Entry nach 357 Messages (Bash-Call ohne tool_result). `buffered_subagent_calls`-Sektion nicht im Report — Test-Session enthielt keine Subagents. Struktural analoges Verhalten zu `tool_use_caches`.
+
+### Unknown Types / Warnings Coverage (IST-5)
+
+`dev/pipeline/format_stability/01_reports/unknown_types_20260322_152802.md` (Script: `dev/pipeline/format_stability/01_unknown_types.py`, Dataset: 1479 Dateien, 222,636 Lines, 2026-03-22): 5 real-world unknown top-level types gefunden (8.1% unbekannt ohne Filter). Belegt dass Warnings-Loop reale Fälle detektiert — nicht nur theoretisch.
+
+IST-2 (workers-loop 6-step), IST-3 (state table), IST-6 (`filter_sessions_by_mode`), IST-7 (token profiling globals), IST-8 (logging 0) sind code-read-derived — kein dev/-Benchmark backing.
 
 ## Recommendation (SOLL)
 

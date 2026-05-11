@@ -239,34 +239,33 @@ Vier Hebel implementiert + gemerged auf dev:
 
 ### Cache-Rebuild Analysis (Session a3b6577a)
 
-Analyse der Session `a3b6577a` (148 Requests mit Modifications):
-- **98%** der Requests hatten Modifications VOR dem Breakpoint
-- 4 Cache-Rebuilds beobachtet:
-  - REQ#0: 36k CC (erster Request, erwartbar)
-  - REQ#1: 27k CC (ToolSearch-Load, erwartbar)
-  - REQ#70: 93k CC, nur 9k CR (91% Rebuild)
-  - REQ#133: 162k CC, nur 9k CR (95% Rebuild)
-- Die 9.297 CR bei REQ#70 und #133 = exakt `system[2]` Breakpoint. Alles danach (Tools + 100+ Messages) wurde neu geschrieben.
-- Gesamtkosten: 319k Tokens für Rebuilds (2% vom Total, aber 162k = ~6% Session-Limit für einen Request)
+Script: `dev/session_analysis/04_cache_validation.py` (stdout-only, kein persistent Report-MD). Dataset: Proxy-Log `src/logs/api_requests_f93afc17.jsonl` (825MB, 2026-04-08) + Session-JSONL `a3b6577a-8f2c-4cef-a594-15aa18c0f520.jsonl`. 148 Requests mit Modifications:
 
-Data source: Session-JSONL `a3b6577a-8f2c-4cef-a594-15aa18c0f520.jsonl` (CR/CC/D Werte); Proxy-Log `src/logs/api_requests_f93afc17.jsonl` (825MB, Session vom 2026-04-08); Dev-Script `dev/session_analysis/04_cache_validation.py`.
+- **98%** der Requests hatten Modifications VOR dem Breakpoint
+- 4 Cache-Rebuilds: REQ#0 36k CC (erwartet), REQ#1 27k CC (ToolSearch), REQ#70 93k CC / 9k CR (91% Rebuild), REQ#133 162k CC / 9k CR (95% Rebuild)
+- 9,297 CR bei REQ#70 + #133 = exakt `system[2]` Breakpoint — alles danach (Tools + 100+ Messages) neu geschrieben
+- Gesamtkosten: 319k Tokens für Rebuilds (2% vom Total, 162k = ~6% Session-Limit für einen Request)
 
 **Kritisch:** Proxy-Modifications ändern Messages die VOR dem cache_control Breakpoint liegen. Die API sieht modifizierten Content → Prefix-Mismatch → Cache invalidiert.
 
 ### Fix-Verifikation
 
-Nach Implementierung der eigenen Breakpoints (Session auf test project, 14+ Requests):
-- REQ#2: CR:0, CC:30.478 (erster Request, erwartbar)
-- REQ#3-#14: Alle CR >30k, CC nur 150-1200 (neuer Content)
+Script: `dev/session_analysis/04_cache_validation.py` / `02_cache_timeline.py` (stdout-only, kein persistent Report-MD). Dataset: Test-Project-Session (14+ Requests):
+
+- REQ#2: CR:0, CC:30.478 (erster Request, erwartet)
+- REQ#3–#14: Alle CR >30k, CC nur 150–1200 (neuer Content)
 - **Kein einziger Rebuild** — auch nicht bei ToolSearch (REQ#8: CC:425)
-- BP3 verhindert Cache-Invalidierung durch Modifications: modifizierter Content ist deterministisch (gleicher Input → gleicher Output), daher ist der Prefix zwischen Requests stabil
+- BP3 verhindert Cache-Invalidierung: modifizierter Content ist deterministisch → Prefix zwischen Requests stabil
 
 ### Tool Injection Evidenz
 
-- REQ#2 → REQ#3 rebuild in `api_requests_opus_monitor_cc_1776099723.jsonl` (see `cache_rebuild_cases.md` Case 4 Tool INSERT)
-- Stage 3 live verification — pending next session
+Script: `dev/session_analysis/04_cache_validation.py` (stdout-only). Dataset: `api_requests_opus_monitor_cc_1776099723.jsonl`: REQ#2 → REQ#3 Rebuild als Folge von Tool INSERT (ToolSearch-Load). Detailliert in `decisions/cache_rebuild_cases.md` Case 4 (Tool INSERT subsection).
 
-### Pane RAM KPIs (29.04 final dump_all post-restart)
+Stage 3 live verification — pending next session.
+
+### Pane RAM KPIs (29.04)
+
+Script: `dev/ram_audit/dump_all.sh` (SIGUSR1 → pro Pane-PID-Datei, Format dokumentiert in `dev/ram_audit/DOCS.md`). Dataset: "final dump_all post-restart 2026-04-29". Dumps unter `dev/ram_audit/dumps/` (gitignored):
 
 | Pane | Baseline 28.04 | Final 29.04 | Reduktion |
 |---|---|---|---|
@@ -276,20 +275,20 @@ Nach Implementierung der eigenen Breakpoints (Session auf test project, 14+ Requ
 | worker_metadata | 370 MB | 156 MB | -58% |
 | main | 1,131 MB | 1,043 MB | -8% (out-of-scope) |
 | warnings | 2,856 MB | 690 MB | -76% |
-| Total | 7,497 MB | 3,208 MB | **-57%** |
+| **Total** | **7,497 MB** | **3,208 MB** | **-57%** |
 
 Subjektiv: Lag/Flicker im proxy-pane vollständig weg (Quelle war tracemalloc-Overhead, nicht RAM). RSS warnings 2,856 → 506 MB (-82%) live verifiziert nach Hebel 3.
 
 ### Tokenizer Approximation (chars/token)
 
-Für Proxy-Optimierungsentscheidungen (z.B. "Strippen X chars spart Y tokens") wird folgender Working-Ratio verwendet:
+`dev/session_analysis/04_reports/20260416_222700_token_ratios.md` (Script: `dev/session_analysis/06_char_token_ratio.py`, Proxy-Log: `api_requests_opus_monitor_cc_1776359177.jsonl`, Session: `48273804-df12-42e1-bd5f-dd64fe734f48.jsonl`, 2026-04-16):
 
-- **3.68 chars/token** (Claude's Tokenizer, approximation)
-- Abgeleitet aus known prefix anchor: 154,550 chars → 41,975 tokens (mehrere historische Sessions, pre-Opus-4.7)
-- Full-rebuild Ratio (CR=0): 3.42 chars/token (N=3, stddev 0.11)
-- Stabil ~3.4-3.7 über Sessions ohne interleaved thinking
+- Known prefix anchor: **154,550 chars → 41,975 tokens = 3.68 chars/token**
+- Full-rebuild ratio (CR=0): 3.42 chars/token (N=0 in dieser Session; N=3 über mehrere historische Sessions, stddev 0.11)
+- 84 message-delta data-points; median 0.53 chars/token (delta-only, nicht für Prefix-Kalkulation nutzbar)
+- Stabil ~3.4–3.7 über Sessions ohne interleaved thinking
 
-**tiktoken cl100k_base ist unbrauchbar** — unterschätzt Claude's Tokenisierung um 35-75% (variabel mit thinking-Anteil). Nicht für Proxy-Entscheidungen verwenden.
+**tiktoken cl100k_base ist unbrauchbar** — unterschätzt Claude's Tokenisierung um 35–75% (variabel mit thinking-Anteil). Nicht für Proxy-Entscheidungen verwenden.
 
 **Caveat:** Pro-Segment-Ratios (sys vs tools vs messages separat) sind mit aktuellen Daten NICHT extrahierbar (sys/tools konstant pro Session = keine Varianz für Regression). Der 3.68-Wert ist Prefix-dominiert (sys+tools machen 95% des Payloads aus) und gilt als "good enough" Gesamtapproximation.
 
