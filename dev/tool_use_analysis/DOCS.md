@@ -284,7 +284,7 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 
 ## sr_session_audit.py
 
-**Purpose:** Longitudinal SR audit across all Claude Code session JSONLs under `~/.claude/projects/*/*.jsonl`. For each user-role message, extracts `<system-reminder>` blocks (linestart-anchored, mirror of `src/proxy/strip_sr._STANDALONE_SR_RE`), classifies against the live strip catalog imported from `src/proxy/strip_sr._SR_TEMPLATES` + `_PRESERVE_PREAMBLE` (no duplication), and reports known/preserved/unknown buckets with per-bucket layer split (text vs tool_result), date timeline (first/last seen), and CC version attribution. Designed to surface (a) which catalog templates have empirical hits in modern CC versions, (b) which SR templates are leaking through (gap candidates for catalog extension).
+**Purpose:** Longitudinal SR audit across all Claude Code session JSONLs under `~/.claude/projects/*/*.jsonl`. For each user-role message, extracts `<system-reminder>` blocks (linestart-anchored, mirror of `_STANDALONE_SR_RE` in `src/proxy/strip_sr.py`), classifies against the live strip catalog imported from `_SR_TEMPLATES` in `src/proxy/strip_sr.py` + `_PRESERVE_PREAMBLE` (no duplication), and reports known/preserved/unknown buckets with per-bucket layer split (text vs tool_result), date timeline (first/last seen), and CC version attribution. Designed to surface (a) which catalog templates have empirical hits in modern CC versions, (b) which SR templates are leaking through (gap candidates for catalog extension).
 
 **Input:** `~/.claude/projects/*/*.jsonl` (all CC project session files). Optional positional substring filter on project directory name.
 
@@ -316,7 +316,7 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 - **code-heuristic** — drops SR matches whose inner text starts with regex syntax (`.*?`, `\s*`, `(.*`, `...`, `\n`, `\d+\t` line-number prefix) or contains code markers (`re.compile`, `re.escape`, `_SR_TEMPLATES`, `_TAG_`, `_STRIP_`, ` def `). Applies to ALL classifications. Counted under `n_code_noise`.
 - **data-file-noise (Option A)** — UNKNOWN-bucket only. Drops SR when the 120 chars of context BEFORE the `<system-reminder>` tag contains `\d+\t` (Read-tool line-number prefix). Indicates the SR was read FROM a data file (e.g. old session JSONL excerpts in `/tmp/`, audit reports referencing the SR text) rather than INJECTED by CC. Known/Preserved templates are never filtered by this rule. Counted under `n_data_file_noise`.
 
-**Classification logic (mirrors `src/proxy/strip_sr._match_template`):**
+**Classification logic (mirrors `_match_template()` in `src/proxy/strip_sr.py`):**
 1. Inner stripped of leading/trailing whitespace.
 2. If matches `_PRESERVE_PREAMBLE` (`"As you answer the user's questions, you can use the following context:"`) → `PRESERVED`.
 3. For each template in `_SR_TEMPLATES`, identifier(s) checked via `inner.startswith(ident)`. List identifiers tried with OR semantics (e.g. `claudemd-contents` has `["As you answer the user's questions", "Contents of "]`). First match wins. → `KNOWN:<template_id>`.

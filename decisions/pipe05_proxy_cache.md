@@ -315,7 +315,7 @@ Für Proxy-Optimierungsentscheidungen (z.B. "Strippen X chars spart Y tokens") w
 
 **Caveat:** Pro-Segment-Ratios (sys vs tools vs messages separat) sind mit aktuellen Daten NICHT extrahierbar (sys/tools konstant pro Session = keine Varianz für Regression). Der 3.68-Wert ist Prefix-dominiert (sys+tools machen 95% des Payloads aus) und gilt als "good enough" Gesamtapproximation.
 
-Details + Experimente + Paths-Forward: `decisions/OldThemes/tokenizer_baseline.md` (geparkt). Bead: Monitor_CC-fyl.
+Details + Experimente + Paths-Forward: `decisions/OldThemes/tokenizer/tokenizer_baseline.md` (geparkt). Bead: Monitor_CC-fyl.
 
 ## Offene Fragen
 

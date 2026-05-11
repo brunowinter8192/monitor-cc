@@ -42,20 +42,21 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 ## Flow (Main Session)
 
 1. `workflow.py` → `run_monitor(project_filter, mode="all")` → `tmux_launcher.launch_split_screen()` spawns 8 panes each running `workflow.py --mode <X>`.
-2. The main pane runs `run_main_loop()` (in `core/monitor.py`): every 0.5s discover sessions → for each session read new JSONL lines → classify tool calls → append to `MAIN_EVENT_BUFFER` → flush to stdout via `monitor_display.py`.
+2. The main pane runs `run_main_loop()` (in `core/monitor.py`): every 0.5s discover sessions → for each session read new JSONL lines → classify tool calls → append to `main_event_buffer` (list in `core/monitor_display.py`) → render via `render_main_buffer()` → `print()` to stdout in `run_main_loop()`.
 3. Each dedicated pane runs its own event loop (e.g. `run_tokens_loop()`): poll data source → handle mouse/keyboard → render full screen.
 4. mitmproxy (started by `claude_proxy_start.sh`) intercepts API traffic, strips/modifies payloads, logs to `src/logs/api_requests_<id>.jsonl`.
 5. Panes that need proxy data (proxy_display, warnings) tail that JSONL file independently.
 
 ## Shared State
 
-All runtime state lives in `core/monitor.py` as module-level variables. Every pane that needs it imports via `from ..core import monitor as _monitor` (lazy, inside the run function to avoid circular imports).
+Most runtime state lives in `core/monitor.py` as module-level variables; display-side buffer state lives in `core/monitor_display.py`. Every pane that needs session state imports via `from ..core import monitor as _monitor` (lazy, inside the run function to avoid circular imports).
 
 | State | Owner | Readers |
 |---|---|---|
 | `file_positions`, `call_counter` | `core/monitor.py` | `core/monitor_session.py` |
 | `agent_to_task`, `agent_to_type` | `core/monitor.py` | `core/monitor_session.py`, pane loops |
 | `active_project_filter` | `core/monitor.py` | all pane loops |
+| `main_event_buffer`, `main_scroll_offset`, `main_hover_row`, `main_line_map` | `core/monitor_display.py` | `core/monitor.py` (`run_main_loop`) |
 | Pane scroll/expand state | each pane module | that pane only |
 
 ## Subdir DOCS

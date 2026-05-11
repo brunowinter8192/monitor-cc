@@ -156,3 +156,6 @@ NLP
 LLM
 NLU
 BERT
+
+# --- Shell / OS environment variables ---
+PROMPT_COMMAND

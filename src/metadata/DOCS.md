@@ -31,7 +31,7 @@ Proxy log file → `proxy_display.parse_proxy_log` (incremental read)
 
 ---
 
-### metadata_pane.py (118 LOC)
+### metadata_pane.py (144 LOC)
 
 **Purpose:** Two event loops — `run_metadata_loop` for the main proxy log and `run_worker_metadata_loop` for the selected worker's proxy log; polls on `POLL_INTERVAL`, renders on change.
 **Reads:** Shared monitor state (project filter, session timestamp); worker selection file via `workers.worker_pane.get_selection_file_path()`; proxy log via `proxy_display`.
