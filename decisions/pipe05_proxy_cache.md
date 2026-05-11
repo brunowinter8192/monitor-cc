@@ -27,7 +27,7 @@
 
 ### Context Editing (ab 2026-04-17)
 
-`_inject_context_management(payload)` in `src/proxy/rules.py` injiziert einen `context_management`-Block in den API-Payload, wenn in `~/.claude/shared-rules/proxy_rules.json` unter `context_management.enabled: true` gesetzt.
+`_inject_context_management(payload)` in `src/proxy/inject_helpers.py` injiziert einen `context_management`-Block in den API-Payload, wenn in `~/.claude/shared-rules/proxy_rules.json` unter `context_management.enabled: true` gesetzt.
 
 Injizierter Block:
 ```json
