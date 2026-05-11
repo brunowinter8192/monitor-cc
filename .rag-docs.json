@@ -3,7 +3,6 @@
     {
       "name": "Monitor_CC-meta",
       "include": [
-        "CLAUDE.md",
         "src/DOCS.md",
         "src/*/DOCS.md",
         "dev/DOCS.md",
