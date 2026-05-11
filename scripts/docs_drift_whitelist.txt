@@ -1,0 +1,158 @@
+# docs_drift_whitelist.txt — Monitor_CC
+# Identifiers to skip in the Symbol-Existence check (Check 3 of docs-drift-check).
+# Format: one identifier per line, # for comments.
+#
+# What belongs here:
+#   - Python builtins / stdlib names
+#   - Universal acronyms (API, CLI, GPU, ...)
+#   - External tool / framework / spec names
+#   - ALL_CAPS prose emphasis words (English + German)
+#   - Doc status / section markers
+#   - Long-lived line-number labels (L<num>) referenced from external sources
+#
+# What does NOT belong here:
+#   - Project-specific Python constants that should exist in code — those must
+#     be in src/, otherwise they are real drift and should be fixed in code or doc
+#   - Function names — same rule
+#   - One-shot symbols from stale doc passages — fix the doc, do not whitelist
+
+# --- Python builtins / stdlib ---
+DEBUG
+ERROR
+WARNING
+INFO
+NOTE
+TODO
+TRUE
+FALSE
+NONE
+
+# --- Universal acronyms ---
+API
+CLI
+CPU
+GPU
+HTTP
+HTTPS
+JSON
+JSONL
+LOC
+MCP
+RAG
+RAM
+SDK
+TOC
+URL
+SOLL
+IST
+GUI
+TUI
+YAML
+HTML
+ANSI
+UUID
+TTY
+PID
+PNG
+MITM
+
+# --- Doc status / section markers ---
+DEPRECATED
+REMOVED
+ADDED
+CHANGED
+MOVED
+FIXED
+WIP
+RESOLVED
+SKIPPED
+VERIFIED
+SOURCE
+STATUS
+
+# --- Common English ALL_CAPS prose words used as emphasis ---
+MUST
+BEFORE
+AFTER
+WHILE
+WORSE
+SOLE
+CRASH
+LABEL
+PATH
+SKILL
+STARTED
+README
+NULL
+DEAD
+CODE
+DOCS
+THIS
+CRITICAL
+ENTIRE
+BOTH
+WHAT
+HAPPENED
+INSIGHTS
+INJECTED
+FROM
+ORIGINAL
+STREAMING
+SERVERS
+TEST
+CHANGELOG
+WASTE
+CLASS
+INSERT
+STRIP
+POSITIVE
+NEGATIVE
+
+# --- German ALL_CAPS prose words (decisions/ documents mix DE and EN) ---
+BEIDE
+ALLE
+OHNE
+ANNAHME
+NICHT
+BEVOR
+UNTER
+ODER
+ANDERS
+NEUE
+ALTE
+KEINE
+JEDE
+EINMAL
+KORREKTUR
+
+# --- Source-line labels (pipe-docs reference upstream source lines as L<number>) ---
+# Add new entries as line-references appear; whitelist has no regex support.
+L340
+L840
+L3591
+
+# --- SQL keywords mentioned in prose / examples (not Python constants) ---
+SELECT
+ALTER
+TABLE
+EXISTS
+GROUP
+CREATE
+COLUMN
+DATABASE
+DROP
+UPDATE
+DELETE
+
+# --- HTTP methods in prose ---
+POST
+HEAD
+OPTIONS
+PATCH
+
+# --- Industry / ML acronyms in prose ---
+SOTA
+NLP
+LLM
+NLU
+BERT
