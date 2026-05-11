@@ -1,6 +1,6 @@
 # Pipe Section: Entry & Startup
 
-## Status Quo
+## Status Quo (IST)
 
 - `workflow.py`: `--mode all` → tmux 4-Window (main+tokens | proxy+metadata | workers+worker-proxy+worker-metadata | warnings), `--mode main|rules|warnings|hooks|tokens|workers|proxy|metadata|worker-proxy|worker-metadata|restart-panes` → einzelner Prozess
 - `startup.py`: argparse mit choices `['all', 'main', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'metadata', 'worker-proxy', 'worker-metadata', 'restart-panes']`, `--project`
@@ -27,8 +27,6 @@ Window-Erstellung:
 9. `new-window -t $session:3 -n "debug" $warnings_cmd` → Window 3, Pane 3.0
 10. `select-window -t $session:0` → Main window active on attach
 
-## IST — Stellschrauben
-
 ### POLL_INTERVAL (Kategorie: Performance)
 
 Zentralisiert in `src/constants.py:20`: `POLL_INTERVAL = 0.5`
@@ -52,7 +50,7 @@ subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT]
 - Nach dem Session-Aufbau wird der Original-Wert wiederhergestellt (`restore_global_history_limit()`, tmux_launcher.py:103-105)
 - Wert jetzt als Konstante in constants.py, kein hardcoded String in tmux_launcher.py mehr
 
-### 5-Window Layout Split-Ratios (Kategorie: Konfiguration)
+### Split-Ratios (Kategorie: Konfiguration)
 
 Hardcoded Split-Befehle in `src/tmux_launcher.py`:
 - Window 0: `-l 30%` — horizontaler Split (main links 70% | tokens rechts 30%)
@@ -82,7 +80,7 @@ Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ## Evidenz
 
-Pending — needs evaluation.
+`dev/display/test_tmux_layout.sh` — Pane-Index Verifikation nach verschachtelten Splits (internal test script, no quantitative results documented).
 
 ## Recommendation (SOLL)
 
@@ -98,6 +96,5 @@ Pending — needs evaluation.
 ## Quellen
 
 - tmux man page: github.com/tmux/tmux `tmux.1` L3591-3648 (split-window), L840-890 (pane targeting)
-- dev/display/test_tmux_layout.sh: Pane-Index Verifikation nach verschachtelten Splits
 - GitHub anthropics/claude-code #27724: JSONL format undocumented, changes without changelog
 - GitHub anthropics/claude-code #33414: FireHose monitoring feature request (kein offizielles Monitoring-API)

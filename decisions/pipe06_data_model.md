@@ -1,6 +1,8 @@
 # Monitor Data Pipeline
 
-## Two Data Sources
+## Status Quo (IST)
+
+### Two Data Sources
 
 The monitor has two independent data sources — never confuse them:
 
@@ -14,7 +16,7 @@ The monitor has two independent data sources — never confuse them:
 
 To understand cache behavior: you need BOTH. Proxy shows WHY (what changed in the request), Session JSONL shows WHAT HAPPENED (how many tokens were cached/created).
 
-## Streaming Chunks (Session JSONL)
+### Streaming Chunks (Session JSONL)
 
 The Session JSONL contains **multiple `assistant` events per API call** — these are streaming chunks. Each chunk repeats the same input usage but has incrementally growing output tokens.
 
@@ -29,7 +31,7 @@ CR:0  CC:36389  D:9  Out:159   ← final (highest Out)
 
 **The Token Pane already deduplicates** — it shows per-request values from `accumulate_tokens()`. But when analyzing raw JSONL manually (dev scripts, debugging), always deduplicate first.
 
-## Proxy Fields: Logged vs Computed
+### Proxy Fields: Logged vs Computed
 
 Some fields exist in the Proxy JSONL directly, others are computed by `monitor.py` at display time:
 
@@ -42,7 +44,7 @@ Some fields exist in the Proxy JSONL directly, others are computed by `monitor.p
 | `system_total_chars` | monitor.py | Computed from `raw_payload.system` blocks |
 | `schema_warnings` | monitor.py | Computed by checking against `KNOWN_*` sets in constants.py |
 
-## Cache-Control vs Cache Behavior
+### Cache-Control vs Cache Behavior
 
 **`CC ●` in Proxy Pane** = the message has `cache_control` set in the API request. This is a **cache breakpoint marker** — it tells the API "cache everything up to here".
 
@@ -55,7 +57,7 @@ Some fields exist in the Proxy JSONL directly, others are computed by `monitor.p
 - `cache_creation_input_tokens` (CC) — tokens written to cache (new or rewritten)
 - `input_tokens` (D) — tokens not cached at all
 
-## Cache Invalidation Patterns
+### Cache Invalidation Patterns
 
 When the Token Pane shows high CC (cache_creation) despite similar total_in:
 
@@ -68,7 +70,7 @@ When the Token Pane shows high CC (cache_creation) despite similar total_in:
 
 **Key insight from 2026-04-08 investigation:** The FIRST tool load via ToolSearch (e.g., loading `bead_list` schema) can cause a massive cache rewrite (~27k CC) because it changes the tool definitions in the prefix. Subsequent tool loads cause only small CC (~200-500) because the prefix is already established and tools are appended.
 
-## Known Cache Invalidation Triggers
+### Known Cache Invalidation Triggers
 
 Beyond content changes, these events cause cache invalidation:
 
@@ -80,7 +82,7 @@ Beyond content changes, these events cause cache invalidation:
 
 **MCP reconnect is extremely expensive.** Avoid `/mcp` unless the server actually crashed. Each reconnect rewrites the ENTIRE cached prefix — cost scales linearly with session length. At 500k tokens into a session, that's 500k CC. At 1M tokens, it's 1M CC.
 
-## Verify API Behavior (CRITICAL)
+### Verify API Behavior (CRITICAL)
 
 When investigating cache behavior, TTL, or any API-side mechanism:
 1. **Check the raw_payload in the Proxy JSONL FIRST** — it shows exactly what was sent
@@ -89,9 +91,9 @@ When investigating cache behavior, TTL, or any API-side mechanism:
 
 Concrete failure (2026-04-08): Opus claimed "Cache TTL is ~5 minutes" from training data. Raw payload showed `ttl: "1h"` explicitly. The actual bug was the proxy stripping TTL from markers.
 
-## Dev Scripts for Analysis
+### Dev Scripts for Analysis
 
-Manual `python3 -c` analysis in Bash is an anti-pattern. Reusable analysis belongs in `dev/session_analysis/`:
+Reusable analysis in `dev/session_analysis/`:
 
 - `01_extract.py` — Session JSONL extraction
 - `02_cache_timeline.py` — Cache behavior over time
@@ -100,3 +102,19 @@ Manual `python3 -c` analysis in Bash is an anti-pattern. Reusable analysis belon
 - `05_req_breakdown.py` — Forensic per-segment token attribution (tiktoken cl100k_base); writes MD reports to `04_reports/`. Supports cross-session byte-diff for prefix attribution (`--prev-proxy-log`).
 
 When adding new analysis: follow existing script patterns in `dev/session_analysis/`.
+
+## Evidenz
+
+Pending — no measurements documented in this file. To be reconciled against `dev/` in a separate pass.
+
+## Recommendation (SOLL)
+
+Pending — needs evaluation.
+
+## Offene Fragen
+
+_None._
+
+## Quellen
+
+_None._

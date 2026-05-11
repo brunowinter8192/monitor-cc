@@ -1,6 +1,6 @@
 # Pipe Section: Data Sources
 
-## Status Quo
+## Status Quo (IST)
 
 - `session_finder.py`: `~/.claude/projects/` → glob `*.jsonl` + `*/subagents/agent-*.jsonl`, sorted by mtime
 - `jsonl_parser.py`: tool_use/tool_result correlation via cache, extracts 9 data types (tools, prompts, media, thinking, skills, warnings, usage, unknown_types) via 9-Tuple-Rückgabe
@@ -13,8 +13,6 @@
 - `session-start-rules.sh`: liest stdin (JSON mit `source`, `cwd`), logt via `hook_logger.py` mit `source=$SOURCE`; nutzt `$CWD` aus JSON statt `$(pwd)` für Worktree-Check
 
 *(Removed 2026-04-28: hook_parser.py, rules_pane.py, hooks_pane.py, hooks_format.py, hooks_persist.py, ui_mode.py — the entire hook-log pipeline and rules/hooks panes were deleted. Window 2 (rules+hooks) removed; monitor is now 4 windows.)*
-
-## IST — Stellschrauben
 
 ### Session Discovery — Filesystem-Scan pro Poll (Kategorie: Performance)
 
@@ -101,7 +99,7 @@ Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ## Evidenz
 
-Pending — needs evaluation.
+Pending — no measurements documented in this file. To be reconciled against `dev/` in a separate pass.
 
 ## Recommendation (SOLL)
 
