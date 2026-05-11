@@ -83,15 +83,11 @@ Verkettung: `"\n\n".join(parts)` — deterministische Reihenfolge global → mod
 
 `msg[0]` enthält nach diesem Refactor **nur noch user-input**: Als letzter Pass in `apply_modification_rules` werden via `_strip_all_system_reminders()` alle verbleibenden `<system-reminder>…</system-reminder>` Blöcke aus `messages[0]` entfernt (sofern `role == "user"`). Modifier: `"stripped_all_sr_msg0"`.
 
-`_load_project_rules()` und der zugehörige Injektions-Block wurden entfernt. `message_rules.projects` aus `proxy_rules.json` entfernt.
-
 **Erwarteter Cross-Session Cache-Effekt:** 2. Fresh-Session innerhalb TTL (55min): CR ≥ 55k / CC ≤ 3k (vs. pre-refactor CR=41k / CC=20k). Grund: Projekt-Rules liegen jetzt im sys[2]-Prefix der BP1-Cache-Region und werden cross-session gecacht, statt session-spezifisch in msg[0] zu driften.
 
 ### State-Tracking
 
 `self.prev_messages_by_model` speichert Message-Summaries des **modifizierten** Payloads (nicht Original). Getrennt nach model_family ("opus" / "haiku"). BP3-Berechnung vergleicht aktuelle modifizierte Messages mit vorherigen modifizierten Messages via `_compute_diff()`.
-
-~~`self.prev_tools_count_by_model`~~ — entfernt mit BP Layout v3 (2026-04-16). Tools-Anchor nicht mehr gesetzt, State nicht mehr nötig.
 
 ### Worker-Isolation
 

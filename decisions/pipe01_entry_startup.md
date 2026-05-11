@@ -31,8 +31,7 @@ Window-Erstellung:
 
 Zentralisiert in `src/constants.py:20`: `POLL_INTERVAL = 0.5`
 
-- `src/monitor.py:10`: `from .constants import ... POLL_INTERVAL ...` — kein eigener Wert mehr
-- `src/ui_mode.py:6`: `from .constants import ... POLL_INTERVAL ...` — kein eigener Wert mehr
+- `src/core/monitor.py:10`: `from .constants import ... POLL_INTERVAL ...` — kein eigener Wert mehr
 
 Keine Duplikation. Wert muss nur noch an einer Stelle geändert werden. (Umgesetzt in Session 3 via centralize-all-tunable-values in constants.py)
 
@@ -68,15 +67,6 @@ Keine Config-Parameter. Ratios nicht als Konstanten benannt.
 - Projekt-Modus: `"monitor_cc_" + MD5(normpath(project_path))[:8]`
 - Hash-Länge 8 Zeichen (potenzielle Kollision bei vielen Projekten)
 
-### Logging in Entry/Startup (Kategorie: Observability)
-
-**Stand nach Session 3 (Logging-Entfernung):**
-
-`src/tmux_launcher.py`: **0** `log_tagged()`-Aufrufe. Alle 14 ehemaligen Calls (SPLIT_LAUNCH, SESS_NAME, SCRIPT_PATH, HIST_SET, TMUX_CREATE, TMUX_SPLIT_H, TMUX_SPLIT_V, TMUX_CHECK, TMUX_INSIDE, SESS_EXISTS, SESS_KILL, HIST_ORIG, HIST_RESTORE, TMUX_CONFIG) wurden in Session 3 entfernt.
-
-`workflow.py`: **0** `log_tagged()`-Aufrufe. `import logging`, Logger-Setup (`log_format`, `logger_startup`, `startup_handler`), `MAGENTA`-Import und `log_tagged()`-Aufruf in `main()` wurden in Session 4 entfernt.
-
-Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ## Evidenz
 
@@ -94,10 +84,8 @@ Pending — needs evaluation.
 
 ## Offene Fragen
 
-- ~~tmux Keybinding für 3. Pane: M-r für Rules-Pane Copy~~ — implementiert, `session:1.0` (verifiziert in tmux_launcher.py:129)
 - ~~M-w Keybinding: Warnings-Pane Content → Clipboard~~ — implementiert (tmux_launcher.py): `M-w` → `session:4.0` (warnings)
 - M-k Keybinding für Workers-Pane implementiert (tmux_launcher.py): `M-k` → `session:3.0` (workers)
-- ~~workflow.py stale logging (import logging, log_tagged)~~ — entfernt in Session 4
 
 ## Quellen
 

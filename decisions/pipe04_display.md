@@ -4,23 +4,7 @@
 
 - `formatter.py`: color-coded output (green=main, red=error, pastel=meta)
 - Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Three-pane split: Workers (2.0) | Worker-Proxy (2.1) | Worker-Metadata (2.2).
-- *(Removed 2026-04-28: `ui_mode.py`/`format_rules_block()`, rules_pane (Window 2), hooks_pane — entire hook-log display pipeline deleted. Monitor is now 4 windows.)*
-
-**BUG (fixed):** `active_rules` was populated by `process_hook_log()` but never rendered in streaming mode.
-Fix: `run_rules_loop()` in monitor.py + dedicated `--mode rules` tmux pane (Window 2, Pane 2.0).
-**BUG (fixed):** Project `.claude/rules/*.md` did not appear — root cause was YAML array syntax in `paths:` frontmatter (Claude Code Bug #19377/#33581). CSV parser expects string, receives JS Array from `yaml.parse()`, producing broken globs. Fix: CSV string format (`paths: src/**, workflow.py`). All project rules now load correctly via InstructionsLoaded hook.
-**BUG (fixed):** Rules-Pane showed historical rules from previous sessions because `hook_log_position` was set to 0 (read from beginning of hook log). Fix: removed `hook_log_position = 0` override, now starts from EOF like all other modes.
-**BUG-CLASS (fixed, 2026-04-25 Performance Session):** All 9 stdin-driven panes were polling at a 50ms floor via `time.sleep(INPUT_POLL_INTERVAL)` at the end of each loop iteration → input latency 0–50ms (~25ms median) for hover/click/scroll/keyboard regardless of how fast the rest of the loop ran. Replaced with `wait_for_input(INPUT_POLL_INTERVAL)` from `src/input/click_handler.py` — a `select.select([_stdin_fd], [], [], timeout)` wrapper with `time.sleep` fallback when stdin not in raw mode. Loop wakes immediately on any byte arriving on stdin (mouse event, keypress) OR after the timeout expires. Smoke test 11.9ms wake-latency on stdin-mid-wait. Affected modules: `panes/{token,warnings}_pane.py`, `workers/worker_pane.py` (two call sites: try body + except handler), `proxy_display/{pane,worker_proxy_pane}.py`. `metadata_pane.py` unchanged — has no stdin handler. (rules_pane, hooks_pane, and waste_pane were also affected at the time but have since been removed.) Pattern A (direct sleep replacement) chosen over Pattern B (refresh-aligned timeout) because `warnings_pane`'s `WARNINGS_POLL_INTERVAL=10s` would otherwise mean up to 10s blocking on input — Pattern B would have made warnings unresponsive.
-
-**BUG (fixed, Session 12):** Rules-Pane and Hooks-Pane showed data from ALL past sessions (old timestamps, closed-worktree rules, 20000+ historical hook events). Root cause: `load_historical_rules()` and `load_historical_hooks()` read `hook_outputs.jsonl` from position 0 with no timestamp filter; `active_rules` only accumulated, never cleared. Fix:
-- `_get_session_start_ts()` reads first `timestamp` from newest main session JSONL → `session_start_ts` global
-- `filter_by_timestamp()` added to `hook_parser.py`: ISO 8601 lexicographic comparison filters entries before session start
-- `load_historical_rules()`: clears `active_rules` + `rules_invokers` before loading, applies `filter_by_timestamp()`
-- `load_historical_hooks()`: applies `filter_by_timestamp()` to suppress pre-session entries
-- `run_rules_loop()` and `run_hooks_loop()`: track `current_main_session` via `_get_newest_main_session()`; on session change: update `session_start_ts`, re-run historical load with new timestamp
-- Token Pane unaffected (reads session JSONL directly, natural session boundary)
-
-*(Rules-Pane Layout removed 2026-04-28 — Window 2 "rules" and all associated M-r/M-h keybinds deleted.)*
+**BUG-CLASS (fixed, 2026-04-25 Performance Session):** All 9 stdin-driven panes were polling at a 50ms floor via `time.sleep(INPUT_POLL_INTERVAL)` at the end of each loop iteration → input latency 0–50ms (~25ms median) for hover/click/scroll/keyboard regardless of how fast the rest of the loop ran. Replaced with `wait_for_input(INPUT_POLL_INTERVAL)` from `src/input/click_handler.py` — a `select.select([_stdin_fd], [], [], timeout)` wrapper with `time.sleep` fallback when stdin not in raw mode. Loop wakes immediately on any byte arriving on stdin (mouse event, keypress) OR after the timeout expires. Smoke test 11.9ms wake-latency on stdin-mid-wait. Affected modules: `panes/{token,warnings}_pane.py`, `workers/worker_pane.py` (two call sites: try body + except handler), `proxy_display/{pane,worker_proxy_pane}.py`. `metadata_pane.py` unchanged — has no stdin handler. Pattern A (direct sleep replacement) chosen over Pattern B (refresh-aligned timeout) because `warnings_pane`'s `WARNINGS_POLL_INTERVAL=10s` would otherwise mean up to 10s blocking on input — Pattern B would have made warnings unresponsive.
 
 ### LONG_OUTPUT_THRESHOLD (Kategorie: Display / UX)
 
@@ -31,13 +15,9 @@ Verwendet in `format_output()` (formatter.py:119-138):
 
 Zentralisiert in constants.py.
 
-### Input Preview Truncation (Kategorie: Display / UX — REMOVED)
-
-`get_input_preview()` war in `src/subagent_ui.py` (mit Subagents-Feature entfernt). Drei Truncation-Schwellen (40, 50, 120 chars) waren hardcoded. Kein Nachfolger — Subagents-Pane ist ersatzlos entfernt.
-
 ### SCORE_PATTERN Regex (Kategorie: Display / UX)
 
-`SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')` in `src/formatter.py:20`.
+`SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')` in `src/format/formatter.py:20`.
 Verwendet in `format_output()` (formatter.py:130-131): Zeilen die matchen werden in `GREEN` coloriert.
 Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
@@ -45,7 +25,7 @@ Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
 Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 11 panes (MAIN, TOKENS, PROXY, METADATA, RULES, HOOKS, WORKERS, WORKER-PROXY, WORKER-METADATA, WARNINGS, WASTE). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
 
-`format_pane_header()` in formatter.py still exists (PASTEL_ORANGE) but is no longer called from any loop. All header print calls removed from monitor.py and ui_mode.py (Session 6).
+`format_pane_header()` in formatter.py still exists (PASTEL_ORANGE) but is no longer called from any loop. All header print calls removed from monitor.py (Session 6).
 
 ### Token-Profiling Pane (Kategorie: Display / Token Visibility)
 
@@ -93,58 +73,10 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 
 ### Screen Clear Escape Sequence (Kategorie: Display / Robustheit)
 
-`\033[2J\033[3J\033[H` an vier Stellen:
-- `src/ui_mode.py`: in `sync_ui_to_screen()`
-- `src/monitor.py`: in `run_rules_loop()`, `run_warnings_loop()`, and `run_tokens_loop()`
+`\033[2J\033[3J\033[H` an folgenden Stellen:
+- `src/core/monitor.py`: in `run_warnings_loop()` and `run_tokens_loop()`
 
 Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H` setzt Cursor auf Position 0,0.
-
-### Hooks-Pane Display Fixes (Session 13)
-
-Three fixes + one enhancement:
-
-**Fix 1 — Full Content on Expand:**
-`session-start-rules.sh` previously logged only summary strings ("injected: opus-xxx.md (108 lines)") to `hook_outputs.jsonl`. Expanded entries showed only metadata, not the rule file content.
-
-Fix:
-- `hook_logger.py`: `log_hook()` gains optional `content` parameter; if present, written as `content` field in JSONL entry. CLI: `sys.argv[6]` = content_file path.
-- `session-start-rules.sh`: passes content_file path per opus file. `output` field retains summary for collapsed [+] view.
-- `formatter.py` `build_hook_display_item()`: passes `content` field from entry into display item dict.
-- `formatter.py` `format_hooks_block()` + `format_hooks_item_lines()`: expanded view uses `item['content']` if non-empty, falls back to `item['detail']`.
-
-**Fix 2 — Remove Summary Hook:**
-Removed redundant summary entry ("source=startup | injected N opus rules") from `session-start-rules.sh`. All 6 files shown individually.
-
-**Fix 3 — Pre-SessionStart Entries:**
-Historical entries from previous session appeared in hooks pane. Root cause: `_get_session_start_ts()` subtracted 60s buffer from first JSONL message timestamp.
-
-Fix:
-- Reduced buffer from 60s → 10s. SessionStart hooks fire within seconds of first message; 10s is safe margin.
-- Added None fallback in `run_hooks_loop()` and `run_rules_loop()`: if `_get_session_start_ts()` returns None, `session_start_ts` is set to current UTC time.
-
-**Enhancement — Per-File Opus Rule Injection:**
-Previously one SessionStart hook assembled all 6 opus-*.md files into one 52.7KB `hookSpecificOutput.additionalContext` blob — exceeding Claude Code's per-hook additionalContext limit, causing truncation to 2KB preview.
-
-Fix: Split into 7 separate SessionStart hooks in `settings.json`:
-- 1x `session-start-rules.sh` (worktree logger only, no injection)
-- 6x `session-start-rule-inject.sh` (one per opus-*.md file, each under 22KB)
-
-Verified: Multiple SessionStart hooks each returning `additionalContext` produce separate `<system-reminder>` tags — they DO merge (contrary to GitHub source analysis which claimed "last one wins").
-
-Verified: `_meta["anthropic/maxResultSizeChars"]` does NOT work for hook outputs (only MCP tool results).
-
-### Hooks-Pane (Kategorie: Hook-Monitoring)
-
-Eigenes tmux Pane (Window 2 "rules", Pane 2.1, rechts 50%) via `--mode hooks`:
-- `run_hooks_loop()` in monitor.py: pollt `process_hook_log_for_display()`
-- `format_hook_event()` in formatter.py: `[timestamp] hook_event | hook_script` + output
-- Scrolling stream (kein Screen-clear) — jeder Hook mit Output wird sofort angezeigt
-- Hooks ohne Output werden gefiltert (`if not output: continue`)
-- M-h Keybinding: Hooks-Pane Content → Clipboard via pbcopy
-- Hook-Routing geändert: `process_hook_log()` nur noch für InstructionsLoaded → Rules-Pane. Kein Buffering mehr (`pending_pretooluse_hooks`, `pending_user_prompt_hook` entfernt).
-- **Universal-logger-Filter (hooks-redesign branch):** `_is_noise_entry()` in monitor.py filtert Einträge mit `hook_script.endswith('universal-logger.sh')` AND `output.startswith('tool=')` heraus — in `load_historical_hooks()` und `process_hook_log_for_display()`.
-- **Persisted additionalContext Loading (hooks-redesign branch):** `_scan_persisted_hook_files()` scannt `tool-results/hook-*-additionalContext.txt` in aktiven Sessions. `_enrich_with_persisted()` matched Dateien zu Hook-Items via Timestamp-Nähe (< 60s). Wenn Match: `item['content']` = Dateiinhalt, `item['was_truncated'] = True`.
-- **Truncation-Threshold (hooks-redesign branch):** `format_hooks_block()` zeigt Warning wenn `len(content) > 10_000` (vorher 50_000). Passt zum live-getesteten Limit von ~10KB.
 
 ### Warnings-Pane (Kategorie: Format-Stabilität)
 
@@ -172,13 +104,9 @@ Eigenes tmux Pane (Window 3 "workers", Pane 3.0, links ~34%) via `--mode workers
 - **Mouse UX:** Mode 1003 (Any Event Tracking) + SGR 1006. Input-Buffer Draining (while-loop). Hover-Highlight. Scroll (button 64/65 → increment/decrement scroll_offset). All reads via `os.read(fd, 1)` (unbuffered).
 - Verifiziert gegen tmux Source Code (`repo/input-keys.c:755-822`): tmux forwarded SGR Mouse Events an App wenn `MODE_MOUSE_ALL` + `MODE_MOUSE_SGR` gesetzt sind. Kein Konflikt mit tmux `mouse on`.
 
-### Subagents-Pane (Window 2, Pane 2.1, Session 10) — REMOVED
-
-Was: `--mode subagents` pane in Window 2 "workers", Pane 2.1 (rechts 50%). Removed along with `src/subagents/` package, `run_subagents_loop()`, `load_historical_subagents()`, `render_subagents_with_tokens()`, `src/subagent_ui.py`, `MODE_SUBAGENT` constant, and all associated state variables (`subagent_metadata`, `tool_calls_by_agent`, `ui_mode_active`, `agent_turns`, `agent_pane_line_map`, `subagent_states`). Historical detail preserved above for reference.
-
 ### Main Pane Session-Reset (Session 11)
 
-`run_main_loop()` (formerly `run_streaming_loop()`) tracks `current_main_session` via `_get_newest_main_session()`. Each poll cycle checks if newest main JSONL changed. On change: resets `file_positions[newest] = 0`, clears screen (`\033[2J\033[3J\033[H`), prints `--- New session detected ---` separator. Replays new session from beginning, old session messages not repeated.
+`run_main_loop()` tracks `current_main_session` via `_get_newest_main_session()`. Each poll cycle checks if newest main JSONL changed. On change: resets `file_positions[newest] = 0`, clears screen (`\033[2J\033[3J\033[H`), prints `--- New session detected ---` separator. Replays new session from beginning, old session messages not repeated.
 
 ### print_session_status Fix (Kategorie: Display / Startup)
 
@@ -186,19 +114,7 @@ Was: `--mode subagents` pane in Window 2 "workers", Pane 2.1 (rechts 50%). Remov
 
 ### Farb-Palette (Kategorie: Architektur — RESOLVED)
 
-Alle Farb-Konstanten zentral in `src/constants.py` definiert (256-color ANSI). Alle Module importieren von dort. Keine Duplikation, keine Konflikte. Siehe Rule: `.claude/rules/tui-standards.md`.
-
-### Logging im Display (Kategorie: Observability)
-
-`format_usage()` und `format_turn_total()` wurden entfernt. `PASTEL_YELLOW` und `SIGNAL_PINK` Farbkonstanten wurden ebenfalls entfernt.
-
-**Stand nach Session 3 (Logging-Entfernung):**
-
-`src/formatter.py`: **0** `log_tagged()`-Aufrufe. Kein `long_output_logger` mehr — `LONG_OUTPUT_THRESHOLD`-Check (formatter.py:107-119) nutzt nur noch `LIGHT_RED_BG` Farb-Highlight, kein File-Logging mehr.
-
-`src/ui_mode.py`: **0** `log_tagged()`-Aufrufe. Alle 4 ehemaligen Calls (`08_ui_rendering.log`) wurden entfernt. Kein `import logging` im Modul.
-
-Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert. (`src/subagent_ui.py` wurde mit dem Subagents-Feature entfernt.)
+Alle Farb-Konstanten zentral in `src/constants.py` definiert (256-color ANSI). Alle Module importieren von dort. Keine Duplikation, keine Konflikte. Siehe Rule: `~/.claude/shared-rules/monitor/worker2/tui-standards.md`.
 
 ### Screenshot-Tool (Kategorie: Dev Tooling / Feedback)
 
@@ -208,53 +124,7 @@ Dependencies: `termshot` (brew), `Pillow` (pip). Auto-detects running `monitor_c
 
 Purpose: Claude reads the PNG per Read-Tool for visual layout verification during development.
 
-### Buddy/Teammate Notifications (buddy-notify branch, 2026-04-05)
-
-**D1 — hook_events in hook_outputs.jsonl (vollständig):**
-
-| hook_event | count |
-|---|---|
-| ConfigChange | 188 |
-| CwdChanged | 1 |
-| InstructionsLoaded | 5692 |
-| Notification | 73 |
-| PermissionRequest | 25 |
-| PostToolUse | 1395 |
-| PostToolUseFailure | 57 |
-| PreToolUse | 7908 |
-| SessionEnd | 2 |
-| SessionStart | 64 |
-| Stop | 233 |
-| SubagentStart | 33 |
-| SubagentStop | 32 |
-| UserPromptSubmit | 12568 |
-
-**Buddy-relevante Events:** Keines vorhanden.
-- `TeammateIdle` ist in `constants.py` als `HOOK_TEAMMATE_IDLE = 'TeammateIdle'` definiert und in `HOOK_EVENT_CATEGORIES` als `'agent'`-Kategorie (BLUE) eingetragen — aber **nie in `hook_outputs.jsonl` gefeuert** (0 Occurrences).
-- `Notification`-Events (73 total): nur `type=idle_prompt` und `type=permission_prompt` — beide nicht buddy-relevant.
-
-**D2 — Designentscheidung (für wenn TeammateIdle auftritt):**
-
-TeammateIdle-Events würden automatisch via bestehenden Hooks-Pane (`run_hooks_loop()` → `build_hook_display_item()` → `format_hooks_block()`) angezeigt werden, da die Kategorie bereits als `'agent'` → BLUE konfiguriert ist.
-
-Für die Workers-Pane-Integration (Window 3) wäre nötig:
-- `process_hook_log_for_display()` erweitern um buddy events zu sammeln
-- Neuer `buddy_events: list` state in `run_workers_loop()`
-- Buddy-Section am Ende von `format_workers_block()`: `[timestamp] TeammateIdle — <buddy_name>` in BLUE, analog zu Worker-Header-Format
-- Filter: nur Events >= `session_start_ts` (gleicher Mechanismus wie Hooks-Pane)
-
-**Status: D3-D5 SKIPPED** — keine buddy events in `hook_outputs.jsonl`. Implementation deferred bis TeammateIdle tatsächlich feuert.
-
 ### Rules Architecture: Hook-based Injection with Target Control (Session 15, 2026-04-05)
-
-#### Old Approach (Static .claude/rules/)
-
-**Problem:** All rules in `Monitor_CC/.claude/rules/` loaded statically for ALL sessions — both Opus and Workers. No target-group control. Rules with `paths: .claude/worktrees/**` frontmatter (scalar string, not array) were likely silently dropped (see GitHub #19377, #33581 — YAML array syntax required for `paths:`). In practice, every rule loaded for every session.
-
-**Files:** `Monitor_CC/.claude/rules/` contained:
-- 7 symlinks → `~/.claude/shared-rules/global/` (code-standards, code-organization, decisions, dev-convention, documentation, project-standards, claude-md-convention)
-- 3 local files with `paths: .claude/worktrees/**` (dev-verification.md, monitor-standards.md, tui-standards.md)
-- Note: hook-limits.md lived in `~/.claude/shared-rules/monitor/` root, injected by existing opus hook pointing to that root
 
 #### New Approach (Hook-based Injection with Target Control)
 
@@ -331,14 +201,14 @@ Bug: when the body print overflows the pane height (terminal line wrap), the ren
 
 Fix: after body print, overdraw the header using `\033[H{header}\033[K` (cursor home + header text + erase-to-EOL). Header always survives body overflow.
 
-Applied: `src/warnings_pane.py`, `src/proxy_display/pane.py` (function `run_worker_proxy_loop`). Pattern is generalizable — any pane that draws its own header on row 1 should use it.
+Applied: `src/panes/warnings_pane.py`, `src/proxy_display/pane.py` (function `run_worker_proxy_loop`). Pattern is generalizable — any pane that draws its own header on row 1 should use it.
 
 #### Warnings Pane — 10s Polling + `r` Key
 
 - Poll interval: 10s (was 0.5s). Warnings are rare and don't need sub-second latency; 0.5s burned CPU for no gain.
 - Manual refresh: `r` key triggers immediate poll outside the 10s cycle.
 - Header: `WARNINGS  [r]efresh · last: HH:MM:SS · polling: 10s`
-- Source: `src/warnings_pane.py`
+- Source: `src/panes/warnings_pane.py`
 
 #### Worker-Proxy Pane — Digit Switch Header
 
@@ -356,7 +226,7 @@ Button codes (post-reversal):
 - `65` (wheel down) → `scroll_offset -= N`   (viewport down, newer content)
 - `scroll_offset` clamped to `[0, max_scroll]`
 
-N is typically 1 or 3 depending on pane density. See `src/token_pane.py` as canonical reference pattern.
+N is typically 1 or 3 depending on pane density. See `src/panes/token_pane.py` as canonical reference pattern.
 
 ## Evidenz
 
@@ -383,19 +253,8 @@ Pending — needs evaluation.
 
 ## Offene Fragen
 
-- Rules-Pane: `active_rules` ist ein Set (nur add, kein remove) — Rules verschwinden nicht wenn sie out-of-scope gehen [RESOLVED Session 12: `load_historical_rules()` clears both sets on session change]
 - InstructionsLoaded Hook feuert nicht nach /clear oder /compact (#30973, #31017) — Monitor kann Reloads nicht tracken
 - Session-JSONL enthält keine Rules/Instructions-Daten (verifiziert via dev/display/jsonl_exploration Scripts)
-
-**BUG (fixed, 2026-04-05 hooks-content branch):** Hooks-Pane expand shows only green summary line — expanded content not visible.
-
-Root cause: Viewport-Bug. Die 6 `SessionStart`-Entries mit injected-Content (opus-communication.md etc.) stehen am Anfang von `hooks_display_items` (erste Items, älteste Timestamps). Beim Expand werden ihre Content-Lines in `all_lines` direkt nach dem Header eingefügt — aber da der Display bottom-anchored ist, springt der Viewport nach unten um genau M Lines (M = Anzahl Content-Lines). Header UND Content landen dadurch ÜBER dem neuen Viewport. Nur der Sticky-Header zeigte den Item-Header.
-
-Fix:
-- `format_hooks_block()` in `formatter.py`: neuer optionaler `item_positions_out: Optional[dict]` Parameter. Wenn übergeben, wird `{item_idx: all_lines_line_idx}` für jeden Item befüllt.
-- `run_hooks_loop()` in `monitor.py`: nach Expand via Click wird `just_expanded_idx` gesetzt. Nach dem ersten `format_hooks_block()`-Aufruf: wenn `item_positions[just_expanded_idx]` UNTER dem Viewport-Start liegt (`item_line < start`), wird `hooks_scroll_offset` so gesetzt dass der Item-Header oben im Viewport erscheint (`max(0, total_lines - viewport_lines - item_line)`). Danach zweiter `format_hooks_block()`-Aufruf mit dem korrigierten Offset.
-
-Deliverable 2 (Truncation Warning): Wenn Content > 50K Zeichen, zeigt `format_hooks_block()` eine Warning-Line direkt nach dem Header: `[content N chars — exceeds 50K limit, Claude Code may have persisted additionalContext to disk]`. Note: Der 50K-Threshold im Code ist zu hoch — live-getestetes Limit ist ~10KB per hook. Threshold sollte auf 10K angepasst werden. Alle 9 aktuellen Entries liegen unter 9.5KB (nach Split von communication in 2, workers in 3 Teile).
 
 ## Quellen
 
