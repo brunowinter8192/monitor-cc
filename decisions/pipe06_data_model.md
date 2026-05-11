@@ -29,7 +29,7 @@ CR:0  CC:36389  D:9  Out:26    ← partial
 CR:0  CC:36389  D:9  Out:159   ← final (highest Out)
 ```
 
-**The Token Pane already deduplicates** — it shows per-request values from `accumulate_tokens()`. But when analyzing raw JSONL manually (dev scripts, debugging), always deduplicate first.
+**The Token Pane already deduplicates** — it shows deduplicated per-request values. But when analyzing raw JSONL manually (dev scripts, debugging), always deduplicate first.
 
 ### Proxy Fields: Logged vs Computed
 

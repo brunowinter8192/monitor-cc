@@ -12,7 +12,7 @@
    - `trimmed_task_notification`: Strippt output-file/tool-use-id Tags aus task-notifications
    - `stripped_rejection_message`: Strippt rejection-Marker aus tool_result.content (eine der wenigen legitimen tool_result-strip-Operationen)
    - `replaced_system_prompt`: Ersetzt system[2] (>5000 chars) mit "." (Logging-Reduktion)
-   - `stripped_sidecar_content` (commit 54d743e, 2026-04-23): Detektiert CC-interne Sidecar-Requests (single-msg plain-string payload, leere system, genau 1 user-msg mit plain-string content) und ersetzt `messages[0].content` durch einen kurzen Marker `[SIDECAR_STRIPPED_N_BYTES]`. Short-circuit early in `apply_modification_rules` um spurious `stripped_all_sr_msg0` auf dem Marker zu vermeiden. Evidence: session 1776956156 REQ#80.1 hatte 49,586c Inhalt und ~24k CC tokens allein für den Sidecar-Injection.
+   - `stripped_sidecar_content` (commit 54d743e, 2026-04-23): Detektiert CC-interne Sidecar-Requests (single-msg plain-string payload, leere system, genau 1 user-msg mit plain-string content) und ersetzt `messages[0].content` durch einen kurzen Marker `[SIDECAR_STRIPPED_<n>_BYTES]`. Short-circuit early in `apply_modification_rules` um spurious `stripped_all_sr_msg0` auf dem Marker zu vermeiden. Evidence: session 1776956156 REQ#80.1 hatte 49,586c Inhalt und ~24k CC tokens allein für den Sidecar-Injection.
 
 2. `_strip_all_cache_control()` — Entfernt ALLE cache_control Marker von Claude Code:
    - system blocks, tools, messages (top-level + content blocks)
@@ -167,7 +167,6 @@ Zweck: Drift in should-be-stable Prefix-Feldern wird automatisch pro Request sic
 
 **Was fixiert wird:**
 - `sys2_text` — Der Text-Content von `system[2]` nach `apply_modification_rules()`. Das ist der Inhalt den `_load_system2_rules()` produziert (global + model-spezifische Rule-Files).
-- `msg0_pr_block` / `msg0_pr_block_str` — Der injizierte `<system-reminder>…</system-reminder>` Block aus `_load_project_rules()`, der als erstes Content-Element in messages[0] eingefügt wird. List-content speichert `msg0_pr_block` (der Block-Text), String-content speichert `msg0_pr_block_str` (Prefix bis `</system-reminder>` inkl.).
 
 **Was NICHT fixiert wird:**
 - sys[0], sys[1], sys[3] — Claude Code kontrolliert, unberührt
@@ -306,7 +305,7 @@ Change: ESC-Abbruch tool_result Messages ("The user doesn't want to proceed with
 
 ### Agent-Tool Trimming
 
-Change: Agent-Tool bleibt im tools-Array, aber Description von ~10k auf ~300 chars getrimmt (nur git-committer Subagent-Type). `AGENT_TRIMMED_DESCRIPTION` Konstante.
+Change: Agent-Tool bleibt im tools-Array, aber Description von ~10k auf ~300 chars getrimmt (nur git-committer Subagent-Type).
 
 ### Session-Guidance Stripping
 
