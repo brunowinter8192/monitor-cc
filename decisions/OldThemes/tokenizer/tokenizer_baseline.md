@@ -25,8 +25,8 @@ This is our best working estimate. Usable for rough proxy-optimization calculati
 ### 1. Thinking Contamination (Opus 4.7 adaptive default)
 
 - Opus 4.7 uses `thinking: adaptive` by default — thinking blocks present in 42/70 requests in live session (60% contamination rate)
-- Per `sources/TokenCounting2.md`: "Thinking blocks from previous assistant turns are ignored and do not count toward your input tokens; Current assistant turn thinking does count"
-- Per `sources/ExtendedThinking3.md:68`: "From the model's perspective, tool use loops are part of the assistant turn" — so thinking inside tool loops remains "current turn" and DOES count as input tokens
+- Per `Monitor_reference/TokenCounting2.md`: "Thinking blocks from previous assistant turns are ignored and do not count toward your input tokens; Current assistant turn thinking does count"
+- Per `Monitor_reference/ExtendedThinking3.md:68`: "From the model's perspective, tool use loops are part of the assistant turn" — so thinking inside tool loops remains "current turn" and DOES count as input tokens
 - Result: CC in tool-loop requests includes thinking-output tokens that have no corresponding chars in our payload → ratio calculations break
 
 ### 2. Filter "no-thinking-in-response" insufficient
@@ -103,9 +103,9 @@ Anthropic's tokenizer differs noticeably across model families (Haiku/Sonnet/Opu
 
 - `dev/session_analysis/06_char_token_ratio.py` — current analyzer (single-session, Opus-only, no-thinking filter)
 - `dev/session_analysis/04_reports/*_token_ratios*.md` — historical reports
-- `sources/TokenCounting1.md`, `TokenCounting2.md` — Anthropic docs on token counting
-- `sources/ExtendedThinking*.md` — thinking blocks, signatures, billing semantics
-- `sources/AdaptiveThinking1.md`, `AdaptiveThinking2.md` — adaptive thinking on Opus 4.7
+- `Monitor_reference/TokenCounting1.md`, `TokenCounting2.md` — Anthropic docs on token counting
+- `Monitor_reference/ExtendedThinking*.md` — thinking blocks, signatures, billing semantics
+- `Monitor_reference/AdaptiveThinking1.md`, `AdaptiveThinking2.md` — adaptive thinking on Opus 4.7
 
 ## Related Bead
 

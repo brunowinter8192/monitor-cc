@@ -77,9 +77,9 @@ If N trigger events arrive while streaming, each causes a fresh abort-and-refire
 
 ## Billing Implication
 
-The streaming API delivers `message_start` as the first SSE event, before any content blocks. This event already contains the final `usage` object with `input_tokens`, `cache_creation_input_tokens`, and `cache_read_input_tokens` set to their billed values — confirmed by the web-search tool-use example at `sources/Streaming_Messages4.md:65` and the basic streaming example at `sources/Streaming_Messages2.md:27` and `:88`.
+The streaming API delivers `message_start` as the first SSE event, before any content blocks. This event already contains the final `usage` object with `input_tokens`, `cache_creation_input_tokens`, and `cache_read_input_tokens` set to their billed values — confirmed by the web-search tool-use example at `Monitor_reference/Streaming_Messages4.md:65` and the basic streaming example at `Monitor_reference/Streaming_Messages2.md:27` and `:88`.
 
-By the pattern documented for refusal billing (`sources/Streaming_Refusals.md:25-28`): "Usage metrics are still provided in the response for billing purposes, even when the response is refused. You will be billed for output tokens up until the refusal." Client-side abort is structurally analogous to a refusal — the billing commitment is made at `message_start` delivery.
+By the pattern documented for refusal billing (`Monitor_reference/Streaming_Refusals.md:25-28`): "Usage metrics are still provided in the response for billing purposes, even when the response is refused. You will be billed for output tokens up until the refusal." Client-side abort is structurally analogous to a refusal — the billing commitment is made at `message_start` delivery.
 
 **Large-context factor:** the Case 1 session had `cache_read_input_tokens=277,469` at REQ D — near the upper end of a long Monitor_CC development session. At this context size, each aborted REQ costs ~$0.08 in cache-read charges alone (277k × $0.30/M). A depth-1 cascade (one background completion mid-stream) that would be negligible at 50k CR tokens becomes meaningfully expensive at 277k. Long-running sessions with large accumulated context are therefore disproportionately vulnerable to cascade overhead. This also means that the most productive time in a session (late, after many context-building REQs) is also the most expensive time to accidentally trigger a cascade.
 
@@ -141,10 +141,10 @@ While an Opus (or any model) stream is in flight or a new REQ is imminent:
 
 - Session JSONL: `~/.claude/projects/-Users-brunowinter2000-Documents-ai-Monitor-CC/c2d68320-69d6-47b9-8c2e-9ddc7e0a5985.jsonl`
 - Proxy log: `src/logs/api_requests_opus_monitor_cc_1776977437.jsonl`
-- `sources/Streaming_Messages4.md:65` — `message_start` event with `cache_creation_input_tokens` and `cache_read_input_tokens` already set in `usage` (web-search streaming example)
-- `sources/Streaming_Messages2.md:27` — basic streaming `message_start` showing `usage` delivered as first event
-- `sources/Streaming_Messages2.md:88` — tool-use streaming `message_start` confirming `usage` pattern
-- `sources/Streaming_Refusals.md:25-28` — billing commitment at stream-open; analog for client-side abort
+- `Monitor_reference/Streaming_Messages4.md:65` — `message_start` event with `cache_creation_input_tokens` and `cache_read_input_tokens` already set in `usage` (web-search streaming example)
+- `Monitor_reference/Streaming_Messages2.md:27` — basic streaming `message_start` showing `usage` delivered as first event
+- `Monitor_reference/Streaming_Messages2.md:88` — tool-use streaming `message_start` confirming `usage` pattern
+- `Monitor_reference/Streaming_Refusals.md:25-28` — billing commitment at stream-open; analog for client-side abort
 - Bead `2lm` (closed) — forensic investigation of session 1776977437 that produced the Case 1 data
 - Related beads: `ds5` (background-task orchestration rules), `p8w` (parallel worker spawn control), `13t` (proxy display cascade marker / same-number collision highlighting)
 - `decisions/pipe05_proxy_cache.md` — proxy cache architecture; cache_read billing context and BP layout
