@@ -63,13 +63,18 @@ class CCMenuBarApp(rumps.App):
         self._displayed_items: dict = {}
         self._toggle_item = None
         self._auto_focus: bool = _load_settings()
+        self._menu_delegate = None   # lazy-init on first _tick when _nsapp is ready
         _register_hotkey(self)
-        delegate = _MenuDelegate.alloc().initWithApp_(self)
-        self._menu_delegate = delegate   # hold ref — ARC would collect otherwise
-        self._nsapp.nsstatusitem.menu().setDelegate_(delegate)
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
+        if self._menu_delegate is None:
+            try:
+                delegate = _MenuDelegate.alloc().initWithApp_(self)
+                self._nsapp.nsstatusitem.menu().setDelegate_(delegate)
+                self._menu_delegate = delegate
+            except AttributeError:
+                pass   # _nsapp not ready yet; retry next tick
         now = time.time()
         try:
             sessions = list_alive_sessions()
