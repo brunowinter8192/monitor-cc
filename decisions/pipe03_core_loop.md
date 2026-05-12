@@ -3,9 +3,9 @@
 ## Status Quo (IST)
 
 - `monitor.py`: `run_main_loop()` ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), trackt `current_main_session` via `_get_newest_main_session()`. Detects session change each poll cycle → clears screen + resets position. Pollt alle 0.5s via `monitor_sessions()` + `_refresh_strip_cache()` + `render_main_buffer()`
-- `monitor.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
-- `monitor.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `format_warnings_block()` bei Änderungen
-- `monitor.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. Expanded Workers zeigen Cache-Tracker Token-View (CR/CC/D per API Call) via `extract_cache_turns()` + `format_cache_tracker()`. Keine Subagent-Rendering mehr (separates Pane).
+- `src/panes/token_pane.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
+- `src/panes/warnings_pane.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `_format_warnings_pane()` (in `src/panes/warnings_render.py`) bei Änderungen
+- `src/workers/worker_pane.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. Expanded Workers zeigen Cache-Tracker Token-View (CR/CC/D per API Call) via `extract_cache_turns()` + `format_cache_tracker()`. Keine Subagent-Rendering mehr (separates Pane).
 - `system_messages` wird als 10. Return-Wert von `parse_new_tool_calls()` zurückgegeben; `process_session_file()` entpackt und rendert via `display_system_message()` / `format_system_message()`
 - Agent tracking: `agent_to_task`, `agent_to_type` maps, `buffered_subagent_calls` für Orphans (Calls ohne bekannten Agent)
 - Session-Browser: `token_cumulative_n: Optional[int]` (monitor.py:48) steuert Modus. Keyboard-Input in `run_tokens_loop()`: Ziffern → buffer, Enter → set/clear n, 'q' → clear. `compute_cumulative_tokens(n)` liest letzte N Main-Sessions von Position 0.

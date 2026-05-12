@@ -42,7 +42,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 
 ## Flow (Main Session)
 
-1. `workflow.py` → `run_monitor(project_filter, mode="all")` → `tmux_launcher.launch_split_screen()` spawns 8 panes each running `workflow.py --mode <X>`.
+1. `workflow.py` → `run_monitor(project_filter, mode="all")` → `tmux_launcher.launch_split_screen()` spawns 9 panes each running `workflow.py --mode <X>`.
 2. The main pane runs `run_main_loop()` (in `core/monitor.py`): every 0.5s discover sessions → for each session read new JSONL lines → classify tool calls → append to `main_event_buffer` (list in `core/monitor_display.py`) → render via `render_main_buffer()` → `print()` to stdout in `run_main_loop()`.
 3. Each dedicated pane runs its own event loop (e.g. `run_tokens_loop()`): poll data source → handle mouse/keyboard → render full screen.
 4. mitmproxy (started by `claude_proxy_start.sh`) intercepts API traffic, strips/modifies payloads, logs to `src/logs/api_requests_<id>.jsonl`.
