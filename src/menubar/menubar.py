@@ -69,6 +69,23 @@ class _MenuDelegate(NSObject):
         except Exception:
             return
         _update_menu_inplace(self._app, sessions)
+        # Auto-focus while menu is open (same debounce as _tick)
+        if self._app._auto_focus:
+            now = time.time()
+            for s in sessions:
+                if s.is_worker or not s.cwd:
+                    self._app._idle_since_ts.pop(s.name, None)
+                    continue
+                if s.status == 'idle' and not s.has_bg:
+                    if s.name not in self._app._idle_since_ts:
+                        if self._app._last_statuses.get(s.name) == 'working':
+                            self._app._idle_since_ts[s.name] = now
+                    elif now - self._app._idle_since_ts[s.name] >= 3.0:
+                        _focus_session(s.cwd)
+                        del self._app._idle_since_ts[s.name]
+                else:
+                    self._app._idle_since_ts.pop(s.name, None)
+        self._app._last_statuses = {s.name: s.status for s in sessions}
 
 # macOS menubar app — polls CC sessions every 1.5s, blinks icon on status change
 class CCMenuBarApp(rumps.App):
