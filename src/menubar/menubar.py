@@ -11,7 +11,7 @@ from itertools import groupby
 import rumps
 from AppKit import (NSAttributedString, NSFont, NSColor,
                     NSFontAttributeName, NSForegroundColorAttributeName)
-from Foundation import NSObject
+from Foundation import NSObject, NSTimer, NSRunLoop, NSRunLoopCommonModes
 
 # From discover.py: Live session discovery + status
 from .discover import list_alive_sessions, get_ghostty_terminal_id, _scan_bg_sleep_timers
@@ -38,20 +38,37 @@ def run() -> None:
 
 # FUNCTIONS
 
-# NSMenuDelegate: sets _menu_open flag to switch _tick between full rebuild and in-place update
+# NSMenuDelegate: _menu_open flag + tracking-mode NSTimer for live update while menu is open
 class _MenuDelegate(NSObject):
     def initWithApp_(self, app):
         self = objc.super(_MenuDelegate, self).init()
         if self is None:
             return None
         self._app = app
+        self._tracking_timer = None
         return self
 
     def menuWillOpen_(self, menu):
         self._app._menu_open = True
+        self._tracking_timer = NSTimer.timerWithTimeInterval_target_selector_userInfo_repeats_(
+            0.5, self, 'fireTrackingTick:', None, True
+        )
+        NSRunLoop.currentRunLoop().addTimer_forMode_(
+            self._tracking_timer, NSRunLoopCommonModes
+        )
 
     def menuDidClose_(self, menu):
         self._app._menu_open = False
+        if self._tracking_timer is not None:
+            self._tracking_timer.invalidate()
+            self._tracking_timer = None
+
+    def fireTrackingTick_(self, timer):
+        try:
+            sessions = list_alive_sessions()
+        except Exception:
+            return
+        _update_menu_inplace(self._app, sessions)
 
 # macOS menubar app — polls CC sessions every 1.5s, blinks icon on status change
 class CCMenuBarApp(rumps.App):
