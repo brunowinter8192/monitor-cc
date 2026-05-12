@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 import ctypes
 import json
+import objc
 import os
 import subprocess
 import threading
@@ -40,7 +41,7 @@ def run() -> None:
 # NSMenuDelegate: sets _menu_open flag to switch _tick between full rebuild and in-place update
 class _MenuDelegate(NSObject):
     def initWithApp_(self, app):
-        self = super().init()
+        self = objc.super(_MenuDelegate, self).init()
         if self is None:
             return None
         self._app = app
