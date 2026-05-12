@@ -11,7 +11,6 @@ from ..session_finder import get_project_directories
 
 ALIVE_WINDOW_SECS      = 3600   # stale threshold for main sessions (1h)
 WORKING_THRESHOLD_SECS = 10     # JSONL-mtime fallback: <= 10s = working
-_TTY_WORKING_THRESHOLD = 3      # TTY mtime: <= 3s since last byte = working
 _WORKER_ACTIVITY_THRESHOLD = 10 # tmux window_activity: <= 10s = working
 _PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
@@ -269,16 +268,6 @@ def get_ghostty_terminal_id(cwd: str) -> Optional[str]:
         return None
     return _ghostty_tty_to_id.get(tty)
 
-# True if TTY for the main session's cwd had output within _TTY_WORKING_THRESHOLD seconds
-def _main_is_working(cwd: str) -> bool:
-    tty = _tty_for_cwd(cwd)
-    if tty is None:
-        return False
-    try:
-        mtime = os.stat(f'/dev/{tty}').st_mtime
-        return (time.time() - mtime) <= _TTY_WORKING_THRESHOLD
-    except OSError:
-        return False
 
 # Build tmux session name from worker JSONL cwd; None if cwd is not a worktree path
 def _worker_tmux_session(cwd: str, worker_name: str) -> Optional[str]:
@@ -358,11 +347,51 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
             return None
         cwd = _cwd_from_jsonl(jsonl)
         name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
-        # Activity: TTY mtime if CC process found, else JSONL-mtime fallback
-        if cwd and _tty_for_cwd(cwd):
-            status = 'working' if _main_is_working(cwd) else 'idle'
-        else:
-            status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
+        # Activity: JSONL mtime only (TTY mtime causes false-working while CC window focused)
+        status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
         return SessionInfo(name=name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
                            is_worker=False, cwd=cwd or '')
+
+# Parse ps etime field to seconds. Formats: SS, MM:SS, HH:MM:SS, D-HH:MM:SS
+def _parse_etime(etime: str) -> Optional[int]:
+    try:
+        days_str, _, rest = etime.partition('-')
+        if not rest:
+            rest, days_str = days_str, '0'
+        parts = rest.split(':')
+        d = int(days_str) * 86400
+        weights = (1, 60, 3600)   # SS weight, MM weight, HH weight
+        return d + sum(int(v) * w for v, w in zip(reversed(parts), weights))
+    except (ValueError, IndexError):
+        pass
+    return None
+
+# Scan for Opus 'sleep N && echo done' background timers; return shortest remaining seconds or None
+def _scan_bg_sleep_timers() -> Optional[int]:
+    try:
+        r = subprocess.run(
+            ['ps', '-A', '-o', 'pid=,ppid=,etime=,args='],
+            capture_output=True, text=True, timeout=3)
+    except Exception:
+        return None
+    pid_info: Dict[str, Tuple[str, str, str]] = {}
+    for line in r.stdout.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) == 4:
+            pid_info[parts[0]] = (parts[1], parts[2], parts[3])
+    remainders = []
+    for pid, (ppid, etime, args) in pid_info.items():
+        tokens = args.strip().split()
+        if len(tokens) != 2 or tokens[0] != 'sleep':
+            continue
+        if not tokens[1].replace('.', '', 1).isdigit():
+            continue
+        parent = pid_info.get(ppid, ('', '', ''))
+        if 'echo done' not in parent[2]:
+            continue
+        elapsed = _parse_etime(etime)
+        if elapsed is None:
+            continue
+        remainders.append(max(0, int(float(tokens[1])) - elapsed))
+    return min(remainders) if remainders else None

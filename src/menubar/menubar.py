@@ -2,6 +2,7 @@
 import ctypes
 import subprocess
 import threading
+import time
 from itertools import groupby
 
 import rumps
@@ -9,7 +10,7 @@ from AppKit import (NSAttributedString, NSFont, NSColor,
                     NSFontAttributeName, NSForegroundColorAttributeName)
 
 # From discover.py: Live session discovery + status
-from .discover import list_alive_sessions, get_ghostty_terminal_id
+from .discover import list_alive_sessions, get_ghostty_terminal_id, _scan_bg_sleep_timers
 
 ICON_NORMAL    = '◉'
 ICON_BLINK     = '●'
@@ -39,19 +40,40 @@ class CCMenuBarApp(rumps.App):
     def __init__(self):
         super().__init__(ICON_NORMAL, quit_button='Quit', menu=['Loading…'])
         self._last_statuses: dict = {}
+        self._normal_title: str = ICON_NORMAL
+        self._idle_since_ts: dict = {}
         _register_hotkey(self)
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
+        now = time.time()
         try:
             sessions = list_alive_sessions()
         except Exception:
             sessions = []
-        if _statuses_changed(sessions, self._last_statuses):
-            self._last_statuses = {s.name: s.status for s in sessions}
+        # Feature 2: debounced auto-focus on working→idle for main sessions
+        for s in sessions:
+            if s.is_worker or not s.cwd:
+                self._idle_since_ts.pop(s.name, None)
+                continue
+            if s.status == 'idle' and not s.has_bg:
+                if s.name not in self._idle_since_ts:
+                    if self._last_statuses.get(s.name) == 'working':
+                        self._idle_since_ts[s.name] = now
+                elif now - self._idle_since_ts[s.name] >= 3.0:
+                    _focus_session(s.cwd)
+                    del self._idle_since_ts[s.name]
+            else:
+                self._idle_since_ts.pop(s.name, None)
+        # Blink on status change, update snapshot
+        changed = _statuses_changed(sessions, self._last_statuses)
+        self._last_statuses = {s.name: s.status for s in sessions}
+        # Feature 1: bar title with sleep countdown
+        self._normal_title = _bar_title()
+        if changed:
             _blink(self)
         else:
-            self._last_statuses = {s.name: s.status for s in sessions}
+            self.title = self._normal_title
         _rebuild_menu(self, sessions)
 
 
@@ -65,9 +87,17 @@ def _blink(app: CCMenuBarApp) -> None:
     app.title = ICON_BLINK
     threading.Timer(BLINK_DURATION, _restore_icon, args=[app]).start()
 
-# Restore normal icon title (called from threading.Timer callback)
+# Restore normal icon title after blink; uses _normal_title to preserve countdown
 def _restore_icon(app: CCMenuBarApp) -> None:
-    app.title = ICON_NORMAL
+    app.title = app._normal_title
+
+# Bar title: icon + sleep countdown when Opus background timers are running, else plain icon
+def _bar_title() -> str:
+    remaining = _scan_bg_sleep_timers()
+    if remaining is None:
+        return ICON_NORMAL
+    mins, secs = divmod(remaining, 60)
+    return f'{ICON_NORMAL} {mins}:{secs:02d}'
 
 # Apply Menlo monospace font (+ optional color) to a rumps MenuItem via NSAttributedString
 def _set_mono(item, text: str, color=None) -> None:

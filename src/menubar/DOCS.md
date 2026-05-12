@@ -11,28 +11,28 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 ## Flow
 
 1. `run()` → sets `LSUIElement=1` env → instantiates `CCMenuBarApp` → `app.run()` starts AppKit runloop.
-2. `CCMenuBarApp._tick()` fires every 1.5s → `list_alive_sessions()` → rebuild menu, blink on change.
+2. `CCMenuBarApp._tick()` fires every 1.5s → `list_alive_sessions()` → check w→i transitions (auto-focus) → rebuild menu, blink on change. Bar title updated each tick: `◉` plain or `◉ M:SS` if Opus background timers are running.
 3. `list_alive_sessions()` → refreshes CC-process cache (ps/lsof, every 10s) → refreshes Ghostty TTY-to-UUID mapping (OSC 2 probe, incremental) → scans `~/.claude/projects/*/` → picks newest JSONL per project → for workers checks tmux session existence; for mains applies 1h alive window → determines working/idle status per session type → checks `/tmp/claude-<uid>/` for in-progress tasks.
 4. Click on a main session → `_focus_session(cwd)` → looks up Ghostty terminal UUID from mapping cache → `focus terminal id "<UUID>"` (Path A) or cwd-match fallback (Path B).
 
 ## Modules
 
-### menubar.py (211 LOC)
+### menubar.py (241 LOC)
 
 **Purpose:** `CCMenuBarApp` rumps subclass + timer + blink logic + `_rebuild_menu` + `_focus_session` + `_register_hotkey` + `run()` entry point.
-**Reads:** `list_alive_sessions()` result on every tick; `get_ghostty_terminal_id(cwd)` on click.
-**Writes:** `app.title` (icon), `app.menu` (dropdown items).
+**Reads:** `list_alive_sessions()` result on every tick; `get_ghostty_terminal_id(cwd)` on click; `_scan_bg_sleep_timers()` on every tick for countdown title.
+**Writes:** `app.title` (icon + optional sleep countdown), `app.menu` (dropdown items).
 **Called by:** `workflow.py` (`--mode menubar` route).
 **Calls out:** `rumps`, `AppKit` (NSAttributedString/NSFont/NSColor), `subprocess` (osascript for click-to-focus), `threading.Timer`, `ctypes` (Carbon hotkey).
 
 ---
 
-### discover.py (368 LOC)
+### discover.py (397 LOC)
 
-**Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker). Provides Ghostty terminal UUID mapping for reliable click-to-focus.
+**Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker). Provides Ghostty terminal UUID mapping for reliable click-to-focus. Provides `_scan_bg_sleep_timers()` for bar countdown.
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; `/tmp/claude-<uid>/` task dirs; `ps`/`lsof` output (CC process cache); tmux session state; `/dev/ttys<NNN>` device files (OSC 2 marker writes for Ghostty mapping).
 **Writes:** `/dev/ttys<NNN>` (transient OSC 2 probe marker + empty-string cleanup). Module-level cache: `_cc_proc_cache`, `_cc_proc_last_refresh`, `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_tmux_state_cache`, `_tmux_state_last_refresh`.
-**Called by:** `menubar.py:CCMenuBarApp._tick` (`list_alive_sessions`), `menubar.py:_focus_session` (`get_ghostty_terminal_id`).
+**Called by:** `menubar.py:CCMenuBarApp._tick` (`list_alive_sessions`, `_scan_bg_sleep_timers`), `menubar.py:_focus_session` (`get_ghostty_terminal_id`).
 **Calls out:** `session_finder.get_project_directories`; `subprocess` (ps, lsof, tmux, osascript).
 
 ---
@@ -42,6 +42,8 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 | Variable | Module | Type | Owner | Description |
 |---|---|---|---|---|
 | `CCMenuBarApp._last_statuses` | menubar.py | `dict` | app instance | `{name: status}` snapshot for blink-on-change detection |
+| `CCMenuBarApp._normal_title` | menubar.py | `str` | app instance | Current non-blink bar title (`◉` or `◉ M:SS`). `_restore_icon` reads this to preserve countdown after blink. |
+| `CCMenuBarApp._idle_since_ts` | menubar.py | `dict` | app instance | `{name: float}` timestamps when each main session first went idle (debounce for auto-focus). Cleared on working or has_bg=True. |
 | `_cc_proc_cache` | discover.py | `Dict[pid, (tty, cwd)]` | module | CC processes. Incremental: `ps -A` every 10s drops gone PIDs; `lsof -d cwd` only for newly seen PIDs (cwd is stable after launch). Steady-state: ~75ms (ps only). |
 | `_cc_proc_last_refresh` | discover.py | `float` | module | Timestamp of last CC cache pass. |
 | `_ghostty_tty_to_id` | discover.py | `Dict[str, str]` | module | tty → Ghostty terminal UUID. Populated incrementally by OSC 2 probe. |
@@ -59,9 +61,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 **Mains** (Ghostty terminals):
 - Alive if JSONL mtime within `ALIVE_WINDOW_SECS=3600` (1h).
-- Status: CC process TTY mtime via `os.stat('/dev/{tty}').st_mtime`; `working` if age ≤ 3s.
-- TTY lookup: `_cc_proc_cache` maps `cwd → tty`. Cache rebuilt every 10s.
-- Fallback (no CC process for cwd): JSONL mtime ≤ 10s = working.
+- Status: JSONL mtime ≤ `WORKING_THRESHOLD_SECS=10s` = working. TTY mtime removed (cursor blinks keep TTY fresh while CC window is focused → stuck-at-working bug).
+- TTY still used for click-to-focus UUID lookup via `_cc_proc_cache`; not used for working detection.
+- Auto-focus: on `working → idle` transition with `has_bg=False`, `_focus_session(cwd)` fires after a 3s debounce (`_idle_since_ts` dict). Prevents spurious focus from short JSONL-mtime gaps during streaming.
 
 ## Title-Marker Mapping (tty → Ghostty terminal UUID)
 
@@ -107,3 +109,5 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 - **tmux exact-match**: `tmux has-session -t name` uses prefix matching; `=name` enforces exact match. `display-message -t name` works correctly once the session is confirmed to exist (no `=` needed there — exact match preferred before prefix by tmux's resolution order).
 - **Badge column alignment**: ASCII badges `[*]/[ ]/[B]` are strictly fixed-width in Menlo. Both mains (prefix `● `) and workers (prefix `  `) use a 2-char prefix → badge column always at position 25.
 - **Global hotkey Cmd+L**: registered in `CCMenuBarApp.__init__` via Carbon `RegisterEventHotKey` (ctypes, no pyobjc-framework-Carbon, no extra permissions). keycode 37 (`kVK_ANSI_L`), modifier `0x0100` (cmdKey). Callback fires on NSApp's CFRunLoop and calls `nsstatusitem.button().performClick_(None)` to open the dropdown. `app._hotkey_cb` and `app._hotkey_ref` are held on the instance to prevent GC of the ctypes callback.
+- **Sleep-countdown detection** (`_scan_bg_sleep_timers`): scans `ps -A -o pid=,ppid=,etime=,args=` every tick (1.5s). Matches child processes with args exactly `sleep N` whose parent args contain `echo done` (the Opus background-timer signature `bash -c "sleep N && echo done"`). Uses `_parse_etime` to decode ps etime format → remaining = max(0, N − elapsed). Returns min across all matches. False-positive risk: another `sh -c "sleep N && echo done"` process — low probability, acceptable.
+- **`_restore_icon` + `_normal_title`**: The blink mechanism fires `threading.Timer(0.2s, _restore_icon)`. `_restore_icon` must restore to `_normal_title` (not hard-coded `ICON_NORMAL`) to preserve the countdown during blinks. `_normal_title` is recomputed on every tick before any blink call.
