@@ -11,19 +11,19 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 ## Flow
 
 1. `run()` → sets `LSUIElement=1` env → instantiates `CCMenuBarApp` → `app.run()` starts AppKit runloop.
-2. `CCMenuBarApp._tick()` fires every 1.5s → `list_alive_sessions()` → check w→i transitions (auto-focus) → rebuild menu, blink on change. Bar title updated each tick: `◉` plain or `◉ M:SS` if Opus background timers are running.
+2. `CCMenuBarApp._tick()` fires every 1.5s → `list_alive_sessions()` → auto-focus debounce → branch on `_menu_open`: if open → `_update_menu_inplace` (in-place `setAttributedTitle_` on existing items); if closed → blink on change + `_rebuild_menu`. Background task badge: `[B M:SS]` when Opus sleep timers running, `[B]` otherwise.
 3. `list_alive_sessions()` → refreshes CC-process cache (ps/lsof, every 10s) → refreshes Ghostty TTY-to-UUID mapping (OSC 2 probe, incremental) → scans `~/.claude/projects/*/` → picks newest JSONL per project → for workers checks tmux session existence; for mains applies 1h alive window → determines working/idle status per session type → checks `/tmp/claude-<uid>/` for in-progress tasks.
 4. Click on a main session → `_focus_session(cwd)` → looks up Ghostty terminal UUID from mapping cache → `focus terminal id "<UUID>"` (Path A) or cwd-match fallback (Path B).
 
 ## Modules
 
-### menubar.py (241 LOC)
+### menubar.py (311 LOC)
 
-**Purpose:** `CCMenuBarApp` rumps subclass + timer + blink logic + `_rebuild_menu` + `_focus_session` + `_register_hotkey` + `run()` entry point.
-**Reads:** `list_alive_sessions()` result on every tick; `get_ghostty_terminal_id(cwd)` on click; `_scan_bg_sleep_timers()` on every tick for countdown title.
-**Writes:** `app.title` (icon + optional sleep countdown), `app.menu` (dropdown items).
+**Purpose:** `CCMenuBarApp` rumps subclass + `_MenuDelegate` (NSMenuDelegate for live-update) + timer + blink + `_rebuild_menu` + `_update_menu_inplace` + `_focus_session` + `_register_hotkey` + settings load/save + Auto-Jump toggle + `run()` entry point.
+**Reads:** `list_alive_sessions()` result on every tick; `get_ghostty_terminal_id(cwd)` on click; `_scan_bg_sleep_timers()` on every tick for `[B M:SS]` badge; `~/.monitor_cc_menubar_settings.json` on launch.
+**Writes:** `app.title` (icon only), `app.menu` (dropdown items via full rebuild or in-place `setAttributedTitle_`); `~/.monitor_cc_menubar_settings.json` on toggle.
 **Called by:** `workflow.py` (`--mode menubar` route).
-**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSFont/NSColor), `subprocess` (osascript for click-to-focus), `threading.Timer`, `ctypes` (Carbon hotkey).
+**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSFont/NSColor), `Foundation` (NSObject for `_MenuDelegate`), `subprocess` (osascript for click-to-focus), `threading.Timer`, `ctypes` (Carbon hotkey).
 
 ---
 
@@ -41,9 +41,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 | Variable | Module | Type | Owner | Description |
 |---|---|---|---|---|
-| `CCMenuBarApp._last_statuses` | menubar.py | `dict` | app instance | `{name: status}` snapshot for blink-on-change detection |
-| `CCMenuBarApp._normal_title` | menubar.py | `str` | app instance | Current non-blink bar title (`◉` or `◉ M:SS`). `_restore_icon` reads this to preserve countdown after blink. |
+| `CCMenuBarApp._last_statuses` | menubar.py | `dict` | app instance | `{name: status}` snapshot for blink-on-change detection; updated every tick (also while menu open) to prevent false blink on re-open. |
 | `CCMenuBarApp._idle_since_ts` | menubar.py | `dict` | app instance | `{name: float}` timestamps when each main session first went idle (debounce for auto-focus). Cleared on working or has_bg=True. |
+| `CCMenuBarApp._menu_open` | menubar.py | `bool` | app instance | True while NSMenu is displayed; set by `_MenuDelegate.menuWillOpen_` / `menuDidClose_`. Gates `_tick` between full rebuild and in-place update. |
+| `CCMenuBarApp._displayed_items` | menubar.py | `dict` | app instance | `{name: rumps.MenuItem}` populated by `_rebuild_menu`; used by `_update_menu_inplace` for O(1) item lookup. Keyed by `s.name` (same caveat as `_last_statuses` for same-name collisions across projects). |
+| `CCMenuBarApp._toggle_item` | menubar.py | `rumps.MenuItem` | app instance | Ref to the Auto-Jump toggle item; kept for potential in-place label update. Refreshed on each full rebuild. |
+| `CCMenuBarApp._auto_focus` | menubar.py | `bool` | app instance | Whether auto-focus is enabled. Loaded from settings JSON on launch; toggled and saved on menu click. Default OFF. |
+| `CCMenuBarApp._menu_delegate` | menubar.py | `_MenuDelegate` | app instance | PyObjC NSObject instance set as NSMenu delegate. Held as instance attr to prevent ARC garbage collection. |
 | `_cc_proc_cache` | discover.py | `Dict[pid, (tty, cwd)]` | module | CC processes. Incremental: `ps -A` every 10s drops gone PIDs; `lsof -d cwd` only for newly seen PIDs (cwd is stable after launch). Steady-state: ~75ms (ps only). |
 | `_cc_proc_last_refresh` | discover.py | `float` | module | Timestamp of last CC cache pass. |
 | `_ghostty_tty_to_id` | discover.py | `Dict[str, str]` | module | tty → Ghostty terminal UUID. Populated incrementally by OSC 2 probe. |
@@ -107,7 +111,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 - **OSC 2 cleanup**: After the probe, `\033]2;\007` (empty-string OSC 2) written to the probed TTYs restores the shell's default title (CWD from PROMPT_COMMAND / precmd hook). Without cleanup, idle shells show `__GHT_XXXXXXXX` until next prompt display.
 - **TTY ownership**: Ghostty children run as `/usr/bin/login` (root) but the `/dev/ttys<NNN>` device files are owned by the logged-in user → write access OK.
 - **tmux exact-match**: `tmux has-session -t name` uses prefix matching; `=name` enforces exact match. `display-message -t name` works correctly once the session is confirmed to exist (no `=` needed there — exact match preferred before prefix by tmux's resolution order).
-- **Badge column alignment**: ASCII badges `[*]/[ ]/[B]` are strictly fixed-width in Menlo. Both mains (prefix `● `) and workers (prefix `  `) use a 2-char prefix → badge column always at position 25.
+- **Badge column alignment**: Status badges `[*]`/`[ ]` are fixed-width (3 chars). Background task badge `[B M:SS]` is variable-width (3–9 chars); `_NO_BG` spacer is 3 chars. Nothing follows the badge, so variable width causes no column misalignment.
 - **Global hotkey Cmd+L**: registered in `CCMenuBarApp.__init__` via Carbon `RegisterEventHotKey` (ctypes, no pyobjc-framework-Carbon, no extra permissions). keycode 37 (`kVK_ANSI_L`), modifier `0x0100` (cmdKey). Callback fires on NSApp's CFRunLoop and calls `nsstatusitem.button().performClick_(None)` to open the dropdown. `app._hotkey_cb` and `app._hotkey_ref` are held on the instance to prevent GC of the ctypes callback.
 - **Sleep-countdown detection** (`_scan_bg_sleep_timers`): scans `ps -A -o pid=,ppid=,etime=,args=` every tick (1.5s). Matches child processes with args exactly `sleep N` whose parent args contain `echo done` (the Opus background-timer signature `bash -c "sleep N && echo done"`). Uses `_parse_etime` to decode ps etime format → remaining = max(0, N − elapsed). Returns min across all matches. False-positive risk: another `sh -c "sleep N && echo done"` process — low probability, acceptable.
-- **`_restore_icon` + `_normal_title`**: The blink mechanism fires `threading.Timer(0.2s, _restore_icon)`. `_restore_icon` must restore to `_normal_title` (not hard-coded `ICON_NORMAL`) to preserve the countdown during blinks. `_normal_title` is recomputed on every tick before any blink call.
+- **NSMenuDelegate bridging**: `_MenuDelegate(NSObject)` with `menuWillOpen_` / `menuDidClose_` (pyobjc underscore-for-colon). pyobjc bridges these automatically via AppKit protocol metadata. If bridging silently fails (delegate methods don't fire), fallback: declare `class _MenuDelegate(NSObject, protocols=[objc.protocolNamed('NSMenuDelegate')])`. The `_menu_delegate` instance attr on CCMenuBarApp is mandatory — without it, ARC collects the delegate immediately after `__init__` returns.
+- **In-place update coverage**: `_update_menu_inplace` only updates sessions already in `_displayed_items` (populated by the last closed-state `_rebuild_menu`). Sessions that appear or disappear while the menu is open are deferred to the next full rebuild after close. The toggle item is not updated in-place (clicking it closes the menu, triggering a full rebuild with new state).
+- **Settings file** (`~/.monitor_cc_menubar_settings.json`): single JSON `{"auto_focus": bool}`. Written atomically via tempfile + `os.replace`. Read on launch; any parse error → default OFF. The `.tmp` suffix is used for the temp file; a crashed write leaves `~/.monitor_cc_menubar_settings.json.tmp` as debris (harmless — overwritten on next save).
