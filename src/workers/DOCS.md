@@ -42,9 +42,9 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 
 ---
 
-### worker_pane.py (275 LOC)
+### worker_pane.py (309 LOC)
 
-**Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, viewport-clipped screen rendering, and IPC selection file write for cross-pane coordination. Mouse wheel 64/65 resolves the worker name from the row under the cursor (`worker_cache_line_map` → `worker_line_map` → `worker_selected_name` fallback) and updates `worker_scroll_offsets[name]` ±3, which `format_cache_tracker` reads to scroll the per-worker REQ view.
+**Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, viewport-clipped screen rendering, and IPC selection file write for cross-pane coordination. Structured as drain-refresh-render: `run_workers_loop` (ORCHESTRATOR, 55 LOC) delegates to four private helpers: `_handle_workers_mouse` (drain mouse events, resolves cache/worker-name line maps, updates scroll offsets ±3 per worker), `_handle_workers_key` (drain keyboard: y-copy, f-freeze, digit-select), `_refresh_workers_data` (tick-boundary `list_workers` + `worker_turns` build; partial-expand branch on input_changed), `_build_workers_output` (format + viewport clip + zebra/hover render loop, updates `worker_line_map`/`worker_cache_line_map`). `_workers_ram_state` is a module-level function (was a closure) registered with `register_ram_dump`.
 **Reads:** `_monitor.active_project_filter` (shared global state); stdin (keyboard/mouse); worker JSONL files via `worker_format`.
 **Writes:** ANSI output to stdout; selected worker name to `/tmp/monitor_cc_selected_worker_<hash>.txt`.
 **Called by:** `src/core/monitor.py` (via `..workers.run_workers_loop`); `src/proxy_display/worker_proxy_pane.py` (imports `get_selection_file_path`, `write_selection`)
@@ -59,7 +59,7 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 - `worker_scroll_offsets: Dict[str, int]` — intra-worker scroll position (for expanded cache-tracker, 15-line view); reset to 0 on expand
 - `worker_scroll_offset: int` — dormant pane-level scroll int; always 0 after wheel routing moved to `worker_scroll_offsets`; kept as bottom-anchor for viewport fail-safe slice cap
 
-Mutated exclusively by `run_workers_loop`. `worker_scroll_offsets` read by `format_workers_block` in the same process.
+Mutated by `run_workers_loop`'s private helpers (`_handle_workers_mouse`, `_handle_workers_key`, `_refresh_workers_data`, `_build_workers_output`) — no external mutators. `worker_scroll_offsets` read by `format_workers_block` in the same process.
 
 ## Gotchas
 
