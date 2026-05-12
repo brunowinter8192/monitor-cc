@@ -22,7 +22,7 @@ Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
 ### Pane Headers (Kategorie: Display / UX)
 
-Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 11 panes (MAIN, TOKENS, PROXY, METADATA, RULES, HOOKS, WORKERS, WORKER-PROXY, WORKER-METADATA, WARNINGS, WASTE). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
+Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 9 panes (MAIN, TOKENS, PROXY, METADATA, WORKERS, WORKER-PROXY, WORKER-METADATA, WARNINGS, GPU). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
 
 
 ### Token-Profiling Pane (Kategorie: Display / Token Visibility)
@@ -59,7 +59,7 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 
 ### Restart Hotkey (Kategorie: Display / UX)
 
-`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` für alle 11 Panes across 5 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 2.1, 3.0, 3.1, 3.2, 4.0, 4.1) via `\;`-Chain. Restarts all monitor processes with their original commands.
+`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` für alle 9 Panes across 5 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 2.1, 2.2, 3.0, 4.0) via `\;`-Chain. Restarts all monitor processes with their original commands.
 
 **BUG (fixed, Session 6):** User reports "Monitor restarted" message appears but panes don't visibly restart.
 - Root cause: `C-r` binding is global (`-T root`) with hardcoded session name via Python f-string (`f"{session_name}:0.0"`). When multiple monitor sessions exist simultaneously, the last `configure_tmux_session()` call wins → C-r respawns panes of the wrong session. User sees "Monitor restarted" display-message but no visual change because the respawn happens in a different (possibly hidden) session.
@@ -75,15 +75,15 @@ Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H
 
 ### Warnings-Pane (Kategorie: Format-Stabilität)
 
-Eigenes tmux Pane (Window 4 "debug", Pane 4.0, links 50%) via `--mode warnings`:
+Eigenes tmux Pane (Window 3 "debug", Pane 3.0, fullscreen) via `--mode warnings`:
 - `run_warnings_loop()` in monitor.py: pollt `monitor_sessions()`, rendert `format_warnings_block()`
 - `format_unknown_type_warning()` in formatter.py (formatter.py:229-230): `[!] Unknown JSONL type: <type> (seen Nx)`
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
-- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 4.0)
+- M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 3.0)
 
 ### Workers-Pane (Kategorie: Worker-Monitoring, Session 3+7+9+10)
 
-Eigenes tmux Pane (Window 3 "workers", Pane 3.0, links ~34%) via `--mode workers`. Window 3 has three panes: Workers (3.0) | Worker-Proxy (3.1) | Worker-Metadata (3.2). Subagents-Pane entfernt.
+Eigenes tmux Pane (Window 2 "workers", Pane 2.0, links ~34%) via `--mode workers`. Window 2 has three panes: Workers (2.0) | Worker-Proxy (2.1) | Worker-Metadata (2.2). Subagents-Pane entfernt.
 - `run_workers_loop()` in monitor.py: pollt `list_workers()`, rendert `format_workers_block()`. Keyboard-Input (Digits 1-9 toggle) + SGR Mouse-Click toggle + Scroll.
 - `list_workers(project_path)` (monitor.py): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
 - `detect_worker_status(session)` (monitor.py): prüft `#{pane_dead}` für exited-Status; analysiert `#{window_activity}` Timestamp für idle-Detection (10s Threshold)
@@ -94,7 +94,7 @@ Eigenes tmux Pane (Window 3 "workers", Pane 3.0, links ~34%) via `--mode workers
 - State: `worker_expand_states: Dict[str, bool]`, `worker_scroll_offsets: Dict[str, int]`, `worker_line_map: Dict[int, str]`, `hover_row: Optional[int]` (monitor.py)
 - Status-Farben: working=GREEN, idle=YELLOW, exited=RED, unknown=WHITE
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
-- M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 3.0)
+- M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 2.0)
 - Dual poll intervals: Input polling at 50ms (`INPUT_POLL_INTERVAL`), data refresh at 500ms (`POLL_INTERVAL`).
 - **Mouse UX:** Mode 1003 (Any Event Tracking) + SGR 1006. Input-Buffer Draining (while-loop). Hover-Highlight. Scroll (button 64/65 → increment/decrement scroll_offset). All reads via `os.read(fd, 1)` (unbuffered).
 - Verifiziert gegen tmux Source Code (`repo/input-keys.c:755-822`): tmux forwarded SGR Mouse Events an App wenn `MODE_MOUSE_ALL` + `MODE_MOUSE_SGR` gesetzt sind. Kein Konflikt mit tmux `mouse on`.
@@ -113,7 +113,7 @@ Alle Farb-Konstanten zentral in `src/constants.py` definiert (256-color ANSI). A
 
 ### Screenshot-Tool (Kategorie: Dev Tooling / Feedback)
 
-`dev/display/screenshot_panes.py`: Captures all 11 tmux panes across 5 windows via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
+`dev/display/screenshot_panes.py`: Captures all 9 tmux panes across 5 windows via `tmux capture-pane -p -e`, renders each to PNG via `termshot --raw-read`, combines with Pillow into single layout image → `/tmp/monitor_cc_screenshot.png`.
 
 Dependencies: `termshot` (brew), `Pillow` (pip). Auto-detects running `monitor_cc_*` session.
 
@@ -170,15 +170,15 @@ Earlier IST sections reference the pre-Session-17 layout (4 windows, 6 panes) an
 
 #### Current tmux Layout (src/tmux_launcher.py:45-66, 131-137)
 
-5 windows, 10 panes. Source of truth: `configure_tmux_session()` `pane_titles` dict.
+5 windows, 9 panes. Source of truth: `configure_tmux_session()` `pane_titles` dict.
 
 | Window | Name | Panes |
 |---|---|---|
 | 0 | main | 0.0 MAIN (70%), 0.1 TOKENS (30%) |
 | 1 | proxy | 1.0 PROXY (70%), 1.1 METADATA (30%) |
-| 2 | rules | 2.0 RULES (50%), 2.1 HOOKS (50%) |
-| 3 | workers | 3.0 WORKERS (34%), 3.1 WORKER-PROXY (33%), 3.2 WORKER-METADATA (33%) |
-| 4 | debug | 4.0 WARNINGS (fullscreen) |
+| 2 | workers | 2.0 WORKERS (34%), 2.1 WORKER-PROXY (33%), 2.2 WORKER-METADATA (33%) |
+| 3 | debug | 3.0 WARNINGS (fullscreen) |
+| 4 | gpu | 4.0 GPU (fullscreen) |
 
 Cross-reference: all earlier IST entries that say e.g. `Window 1 "rules" Pane 1.0` now mean `Window 2 Pane 2.0`. The functional description of each pane is still correct, only the window index shifted.
 

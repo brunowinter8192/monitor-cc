@@ -11,22 +11,21 @@ _worker_prev_values: dict = {}
 # Format metadata display for latest proxy entry — public interface for main metadata pane
 def _format_metadata(entry: dict) -> List[str]:
     global _prev_values
-    new_values: dict = {}
-    result = _format_metadata_with_state(entry, _prev_values, new_values)
+    result, new_values = _format_metadata_with_state(entry, _prev_values)
     _prev_values = new_values
     return result
 
 # Format metadata display for worker proxy entry — uses separate state from main metadata pane
 def _format_worker_metadata(entry: dict) -> List[str]:
     global _worker_prev_values
-    new_values: dict = {}
-    result = _format_metadata_with_state(entry, _worker_prev_values, new_values)
+    result, new_values = _format_metadata_with_state(entry, _worker_prev_values)
     _worker_prev_values = new_values
     return result
 
-# Single implementation of metadata formatting with explicit state dicts
-def _format_metadata_with_state(entry: dict, prev_values: dict, new_values: dict) -> List[str]:
+# Single implementation of metadata formatting with explicit state dicts; returns (lines, new_values)
+def _format_metadata_with_state(entry: dict, prev_values: dict) -> tuple:
     lines: List[str] = []
+    new_values: dict = {}
 
     # SYSTEM section
     sys_blocks = entry.get('system_blocks', [])
@@ -188,4 +187,4 @@ def _format_metadata_with_state(entry: dict, prev_values: dict, new_values: dict
                 mod_parts.append(mod)
         lines.append(f"  {DIM}mods: {', '.join(mod_parts)}{SOFT_RESET}")
 
-    return lines
+    return lines, new_values
