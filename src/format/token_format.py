@@ -38,11 +38,11 @@ def _format_ts(timestamp: str) -> str:
     from ..utils import format_timestamp
     return format_timestamp(timestamp)
 
-# Format cache tracker — returns (visible_lines, visible_keys, sticky_header, viewport_start)
+# Format cache tracker — returns (visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count)
 def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> tuple:
     from .formatter import shorten_tool_name
     if not turns:
-        return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0
+        return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0, 0
 
     if expand_states is None:
         expand_states = {}
