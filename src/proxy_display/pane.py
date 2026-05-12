@@ -35,6 +35,60 @@ _proxy_pane_width: int = 80  # updated each render cycle; used by click handler 
 _proxy_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by format_proxy_block
 _copy_feedback_until: Dict[int, float] = {}  # entry_idx → expiry timestamp for ✓ flash
 _last_full_parse_ts: float = 0.0  # timestamp of last re-init to position 0 (time-triggered reset)
+_proxy_just_expanded = None  # line_map key set by mouse handler on expand; cleared by _build_proxy_output
+_proxy_current_main_session: Optional[str] = None  # tracks session change for full state reset
+_proxy_session_start_ts: Optional[str] = None  # filters new entries to current session window
+
+# ORCHESTRATOR
+
+# Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
+def run_proxy_loop() -> None:
+    from ..core import monitor as _monitor
+    global _proxy_current_main_session, _proxy_session_start_ts, _copy_feedback_until
+
+    register_ram_dump('proxy', _proxy_ram_state)
+    _proxy_current_main_session = _monitor._get_newest_main_session()
+    _proxy_session_start_ts = _monitor._get_session_start_ts()
+    if _proxy_session_start_ts is None:
+        _proxy_session_start_ts = datetime.utcnow().isoformat() + 'Z'
+    last_output = None
+    last_data_refresh = 0.0
+    setup_keyboard_input()
+    enable_mouse()
+    try:
+        while True:
+            input_changed = False
+            while True:
+                char = read_keypress()
+                if char is None:
+                    break
+                if char == '\033':
+                    event = read_mouse_event(char)
+                    if event is not None:
+                        if _handle_proxy_mouse(*event):
+                            input_changed = True
+
+            now = time.time()
+            input_changed, last_data_refresh = _refresh_proxy_data(
+                now, input_changed, last_data_refresh, _monitor
+            )
+
+            _copy_feedback_until = {k: v for k, v in _copy_feedback_until.items() if v > now}
+            if _copy_feedback_until:
+                input_changed = True
+
+            if input_changed:
+                output = _build_proxy_output()
+                if output != last_output:
+                    print("\033[2J\033[3J\033[H", end='', flush=True)
+                    if output:
+                        print(output)
+                    last_output = output
+
+            wait_for_input(INPUT_POLL_INTERVAL)
+    finally:
+        disable_mouse()
+        restore_terminal()
 
 # FUNCTIONS
 
@@ -100,165 +154,150 @@ def _strip_inactive_messages(entries: list, expand_states: dict) -> None:
         if not is_active:
             del e['messages']
 
-# Runs proxy pane display loop — reads api_requests.jsonl, shows expandable entries
-def run_proxy_loop() -> None:
-    from ..core import monitor as _monitor
-    global proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, proxy_scroll_offset, proxy_log_position
-    global _proxy_jsonl_position, _proxy_cache_turns, _proxy_pending_by_rid, _proxy_log_path
-    global _proxy_pane_width, _proxy_copy_rows, _copy_feedback_until, _last_full_parse_ts
+# Return module-level state snapshot for RAM audit
+def _proxy_ram_state() -> list:
+    return [
+        ('proxy_entries',         proxy_entries),
+        ('proxy_expand_states',   proxy_expand_states),
+        ('proxy_line_map',        proxy_line_map),
+        ('_proxy_cache_turns',    _proxy_cache_turns),
+        ('_proxy_pending_by_rid', _proxy_pending_by_rid),
+        ('proxy_hover_row',       str(proxy_hover_row)),
+        ('proxy_scroll_offset',   proxy_scroll_offset),
+        ('proxy_log_position',    proxy_log_position),
+        ('_proxy_jsonl_position', _proxy_jsonl_position),
+    ]
 
-    def _ram_state():
-        return [
-            ('proxy_entries',         proxy_entries),
-            ('proxy_expand_states',   proxy_expand_states),
-            ('proxy_line_map',        proxy_line_map),
-            ('_proxy_cache_turns',    _proxy_cache_turns),
-            ('_proxy_pending_by_rid', _proxy_pending_by_rid),
-            ('proxy_hover_row',       str(proxy_hover_row)),
-            ('proxy_scroll_offset',   proxy_scroll_offset),
-            ('proxy_log_position',    proxy_log_position),
-            ('_proxy_jsonl_position', _proxy_jsonl_position),
-        ]
-    register_ram_dump('proxy', _ram_state)
-    session_start_ts = _monitor._get_session_start_ts()
-    if session_start_ts is None:
-        session_start_ts = datetime.utcnow().isoformat() + 'Z'
-    current_main_session = _monitor._get_newest_main_session()
-    last_output = None
-    last_data_refresh = 0.0
-    setup_keyboard_input()
-    enable_mouse()
+# Process one mouse event; returns True if display should refresh
+def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
+    global proxy_expand_states, proxy_scroll_offset, proxy_hover_row
+    global _proxy_just_expanded, _copy_feedback_until
+    if button == 0:
+        key = proxy_line_map.get(row)
+        if key is None:
+            return False
+        is_req = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
+        if is_req and col >= _proxy_pane_width - 2 and row in _proxy_copy_rows:
+            entry_idx = _entry_idx_from_key(key)
+            if entry_idx is not None and entry_idx < len(proxy_entries) and _proxy_log_path:
+                e = proxy_entries[entry_idx]
+                if e.get('messages') is None:
+                    _lazy_load_messages(e, _proxy_log_path)
+            copy_to_clipboard(_serialize_proxy(key, proxy_entries))
+            if entry_idx is not None:
+                _copy_feedback_until[entry_idx] = time.time() + 1.5
+        else:
+            new_state = not proxy_expand_states.get(key, False)
+            proxy_expand_states[key] = new_state
+            if new_state:
+                entry_idx = _entry_idx_from_key(key)
+                if entry_idx is not None and entry_idx < len(proxy_entries) and _proxy_log_path:
+                    e = proxy_entries[entry_idx]
+                    if e.get('messages') is None:
+                        _lazy_load_messages(e, _proxy_log_path)
+                    prev_idx = _resolve_prev_same(proxy_entries, entry_idx)
+                    if prev_idx is not None:
+                        pe = proxy_entries[prev_idx]
+                        if pe.get('messages') is None:
+                            _lazy_load_messages(pe, _proxy_log_path)
+                _proxy_just_expanded = key
+        return True
+    if button == 64:
+        proxy_scroll_offset = max(0, proxy_scroll_offset + 3)
+        return True
+    if button == 65:
+        proxy_scroll_offset = max(0, proxy_scroll_offset - 3)
+        return True
+    if button >= 32:
+        proxy_hover_row = row
+        return True
+    return False
+
+# Tick-boundary proxy data refresh; returns (input_changed, new_last_data_refresh)
+def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
+    global proxy_entries, proxy_expand_states, proxy_line_map, proxy_scroll_offset, proxy_hover_row
+    global proxy_log_position, _proxy_jsonl_position, _proxy_cache_turns, _proxy_pending_by_rid
+    global _proxy_log_path, _last_full_parse_ts
+    global _proxy_current_main_session, _proxy_session_start_ts
+    if now - last_data_refresh < POLL_INTERVAL:
+        return input_changed, last_data_refresh
+    newest = monitor._get_newest_main_session()
+    if newest != _proxy_current_main_session and newest is not None:
+        _proxy_current_main_session = newest
+        _proxy_session_start_ts = monitor._get_session_start_ts()
+        if _proxy_session_start_ts is None:
+            _proxy_session_start_ts = datetime.utcnow().isoformat() + 'Z'
+        proxy_entries.clear()
+        proxy_expand_states.clear()
+        proxy_line_map.clear()
+        proxy_log_position = 0
+        proxy_scroll_offset = 0
+        proxy_hover_row = None
+        _proxy_jsonl_position = 0
+        _proxy_cache_turns = []
+        _proxy_pending_by_rid.clear()
+        _proxy_log_path = None
+        _last_full_parse_ts = now
+        input_changed = True
+    if _last_full_parse_ts == 0.0:
+        _last_full_parse_ts = now
+    elif now - _last_full_parse_ts >= PROXY_REPARSE_INTERVAL_SECONDS:
+        proxy_entries.clear()
+        proxy_line_map.clear()
+        proxy_log_position = 0
+        _proxy_jsonl_position = 0
+        _proxy_cache_turns = []
+        _proxy_pending_by_rid.clear()
+        _last_full_parse_ts = now
+        input_changed = True
+    new_entries, proxy_log_position = parse_proxy_log_isolated(
+        monitor.active_project_filter, proxy_log_position, _proxy_pending_by_rid
+    )
+    filtered = [e for e in new_entries if e.get('timestamp', '') >= _proxy_session_start_ts]
+    proxy_entries.extend(filtered)
+    _proxy_log_path = find_proxy_log_path(monitor.active_project_filter)
+    _strip_inactive_messages(proxy_entries, proxy_expand_states)
+    main_sessions = monitor.get_main_session_files()
+    if main_sessions:
+        filepath = main_sessions[0]
+        _proxy_cache_turns, _proxy_jsonl_position = build_cache_turns(
+            filepath, _proxy_jsonl_position, _proxy_cache_turns
+        )
+    return True, now
+
+# Build ANSI output for proxy pane; auto-scrolls to just_expanded entry; clears _proxy_just_expanded
+def _build_proxy_output() -> str:
+    global proxy_scroll_offset, _proxy_pane_width, _proxy_copy_rows, _proxy_just_expanded
     try:
-        while True:
-            input_changed = False
-            just_expanded = None
-            while True:
-                char = read_keypress()
-                if char is None:
-                    break
-                if char == '\033':
-                    event = read_mouse_event(char)
-                    if event is not None:
-                        button, col, row = event
-                        if button == 0:
-                            key = proxy_line_map.get(row)
-                            if key is not None:
-                                is_req = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
-                                if is_req and col >= _proxy_pane_width - 2 and row in _proxy_copy_rows:
-                                    # Copy-button click: right-aligned ⎘ in REQ header
-                                    entry_idx = _entry_idx_from_key(key)
-                                    if entry_idx is not None and entry_idx < len(proxy_entries) and _proxy_log_path:
-                                        e = proxy_entries[entry_idx]
-                                        if e.get('messages') is None:
-                                            _lazy_load_messages(e, _proxy_log_path)
-                                    copy_to_clipboard(_serialize_proxy(key, proxy_entries))
-                                    if entry_idx is not None:
-                                        _copy_feedback_until[entry_idx] = time.time() + 1.5
-                                    input_changed = True
-                                else:
-                                    new_state = not proxy_expand_states.get(key, False)
-                                    proxy_expand_states[key] = new_state
-                                    if new_state:
-                                        entry_idx = _entry_idx_from_key(key)
-                                        if entry_idx is not None and entry_idx < len(proxy_entries) and _proxy_log_path:
-                                            e = proxy_entries[entry_idx]
-                                            if e.get('messages') is None:
-                                                _lazy_load_messages(e, _proxy_log_path)
-                                            prev_idx = _resolve_prev_same(proxy_entries, entry_idx)
-                                            if prev_idx is not None:
-                                                pe = proxy_entries[prev_idx]
-                                                if pe.get('messages') is None:
-                                                    _lazy_load_messages(pe, _proxy_log_path)
-                                        just_expanded = key
-                                    input_changed = True
-                        elif button == 64:  # wheel up → older content
-                            proxy_scroll_offset = max(0, proxy_scroll_offset + 3)
-                            input_changed = True
-                        elif button == 65:  # wheel down → newer content
-                            proxy_scroll_offset = max(0, proxy_scroll_offset - 3)
-                            input_changed = True
-                        elif button >= 32:
-                            proxy_hover_row = row
-                            input_changed = True
-
-            now = time.time()
-            if now - last_data_refresh >= POLL_INTERVAL:
-                newest = _monitor._get_newest_main_session()
-                if newest != current_main_session and newest is not None:
-                    current_main_session = newest
-                    session_start_ts = _monitor._get_session_start_ts()
-                    if session_start_ts is None:
-                        session_start_ts = datetime.utcnow().isoformat() + 'Z'
-                    proxy_entries.clear()
-                    proxy_expand_states.clear()
-                    proxy_line_map.clear()
-                    proxy_log_position = 0
-                    proxy_scroll_offset = 0
-                    proxy_hover_row = None
-                    _proxy_jsonl_position = 0
-                    _proxy_cache_turns = []
-                    _proxy_pending_by_rid.clear()
-                    _proxy_log_path = None
-                    _last_full_parse_ts = now
-                    input_changed = True
-                if _last_full_parse_ts == 0.0:
-                    _last_full_parse_ts = now
-                elif now - _last_full_parse_ts >= PROXY_REPARSE_INTERVAL_SECONDS:
-                    proxy_entries.clear()
-                    proxy_line_map.clear()
-                    proxy_log_position = 0
-                    _proxy_jsonl_position = 0
-                    _proxy_cache_turns = []
-                    _proxy_pending_by_rid.clear()
-                    _last_full_parse_ts = now
-                    input_changed = True
-                new_entries, proxy_log_position = parse_proxy_log_isolated(_monitor.active_project_filter, proxy_log_position, _proxy_pending_by_rid)
-                filtered = [e for e in new_entries if e.get('timestamp', '') >= session_start_ts]
-                proxy_entries.extend(filtered)
-                _proxy_log_path = find_proxy_log_path(_monitor.active_project_filter)
-                _strip_inactive_messages(proxy_entries, proxy_expand_states)
-                main_sessions = _monitor.get_main_session_files()
-                if main_sessions:
-                    filepath = main_sessions[0]
-                    _proxy_cache_turns, _proxy_jsonl_position = build_cache_turns(filepath, _proxy_jsonl_position, _proxy_cache_turns)
-                last_data_refresh = now
-                input_changed = True
-
-            # Cleanup expired copy-flash states; refresh display while any flash is active
-            _now_t = time.time()
-            _copy_feedback_until = {k: v for k, v in _copy_feedback_until.items() if v > _now_t}
-            if _copy_feedback_until:
-                input_changed = True
-
-            if input_changed:
-                try:
-                    term = os.get_terminal_size()
-                    pane_height = term.lines - 1
-                    pane_width = term.columns
-                except OSError:
-                    pane_height = 50
-                    pane_width = 80
-                _proxy_pane_width = pane_width
-                _proxy_copy_rows.clear()
-                item_positions: dict = {}
-                output, total_lines = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, pane_height, pane_width, proxy_scroll_offset, turns=_proxy_cache_turns, item_positions_out=item_positions, copy_feedback=_copy_feedback_until, copy_rows_out=_proxy_copy_rows)
-                if just_expanded is not None and just_expanded in item_positions:
-                    item_line = item_positions[just_expanded]
-                    viewport_lines_n = pane_height - 1
-                    max_scroll = max(0, total_lines - viewport_lines_n)
-                    clamped = min(proxy_scroll_offset, max_scroll)
-                    start = max(0, total_lines - viewport_lines_n - clamped)
-                    if item_line < start or item_line >= start + viewport_lines_n:
-                        proxy_scroll_offset = max(0, total_lines - viewport_lines_n - item_line)
-                        _proxy_copy_rows.clear()
-                        output, total_lines = format_proxy_block(proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row, pane_height, pane_width, proxy_scroll_offset, turns=_proxy_cache_turns, copy_feedback=_copy_feedback_until, copy_rows_out=_proxy_copy_rows)
-                just_expanded = None
-                if output != last_output:
-                    print("\033[2J\033[3J\033[H", end='', flush=True)
-                    if output:
-                        print(output)
-                    last_output = output
-            wait_for_input(INPUT_POLL_INTERVAL)
-    finally:
-        disable_mouse()
-        restore_terminal()
+        term = os.get_terminal_size()
+        pane_height = term.lines - 1
+        pane_width = term.columns
+    except OSError:
+        pane_height = 50
+        pane_width = 80
+    _proxy_pane_width = pane_width
+    _proxy_copy_rows.clear()
+    item_positions: dict = {}
+    output, total_lines = format_proxy_block(
+        proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row,
+        pane_height, pane_width, proxy_scroll_offset,
+        turns=_proxy_cache_turns, item_positions_out=item_positions,
+        copy_feedback=_copy_feedback_until, copy_rows_out=_proxy_copy_rows,
+    )
+    if _proxy_just_expanded is not None and _proxy_just_expanded in item_positions:
+        item_line = item_positions[_proxy_just_expanded]
+        viewport_lines_n = pane_height - 1
+        max_scroll = max(0, total_lines - viewport_lines_n)
+        clamped = min(proxy_scroll_offset, max_scroll)
+        start = max(0, total_lines - viewport_lines_n - clamped)
+        if item_line < start or item_line >= start + viewport_lines_n:
+            proxy_scroll_offset = max(0, total_lines - viewport_lines_n - item_line)
+            _proxy_copy_rows.clear()
+            output, total_lines = format_proxy_block(
+                proxy_entries, proxy_expand_states, proxy_line_map, proxy_hover_row,
+                pane_height, pane_width, proxy_scroll_offset,
+                turns=_proxy_cache_turns,
+                copy_feedback=_copy_feedback_until, copy_rows_out=_proxy_copy_rows,
+            )
+    _proxy_just_expanded = None
+    return output

@@ -13,6 +13,8 @@ from .parser import find_worker_proxy_log, _parse_log_file_isolated, _lazy_load_
 from .format import format_proxy_block, _is_standalone_entry
 from ..panes.token_pane import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
+from ..workers.worker_pane import get_selection_file_path
+from ..workers import write_selection
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, parse_digit_key,
@@ -38,6 +40,59 @@ _worker_proxy_pane_width: int = 80  # updated each render cycle; used by click h
 _worker_proxy_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by format_proxy_block
 _worker_copy_feedback_until: Dict[int, float] = {}  # entry_idx → expiry timestamp for ✓ flash
 _worker_proxy_last_full_parse_ts: float = 0.0  # timestamp of last re-init to position 0 (time-triggered reset)
+_wp_just_expanded = None  # line_map key set by mouse handler on expand; cleared by _build_worker_proxy_output
+_worker_proxy_last_worker_name: Optional[str] = None  # tracks worker change for full state reset
+
+# ORCHESTRATOR
+
+# Runs worker-proxy pane — reads selected worker's proxy log and shows expandable entries
+def run_worker_proxy_loop() -> None:
+    from ..core import monitor as _monitor
+    global _worker_copy_feedback_until
+
+    register_ram_dump('worker_proxy', _worker_proxy_ram_state)
+    last_output = None
+    last_data_refresh = 0.0
+    setup_keyboard_input()
+    enable_mouse()
+    try:
+        while True:
+            input_changed = False
+            while True:
+                char = read_keypress()
+                if char is None:
+                    break
+                if char == '\033':
+                    event = read_mouse_event(char)
+                    if event is not None:
+                        if _handle_worker_proxy_mouse(*event):
+                            input_changed = True
+                else:
+                    if _handle_worker_proxy_key(char, _monitor):
+                        input_changed = True
+
+            now = time.time()
+            input_changed, last_data_refresh = _refresh_worker_proxy_data(
+                now, input_changed, last_data_refresh, _monitor
+            )
+
+            _worker_copy_feedback_until = {k: v for k, v in _worker_copy_feedback_until.items() if v > now}
+            if _worker_copy_feedback_until:
+                input_changed = True
+
+            if input_changed:
+                output, header = _build_worker_proxy_output(_monitor)
+                if output != last_output:
+                    print("\033[2J\033[3J\033[H", end='', flush=True)
+                    if output:
+                        print(output, end='', flush=True)
+                        print(f"\033[H{header}\033[K", end='', flush=True)
+                    last_output = output
+
+            wait_for_input(INPUT_POLL_INTERVAL)
+    finally:
+        disable_mouse()
+        restore_terminal()
 
 # FUNCTIONS
 
@@ -118,228 +173,211 @@ def _strip_inactive_wp_messages(entries: list, expand_states: dict) -> None:
         if not is_active:
             del e['messages']
 
-# Runs worker-proxy pane — reads selected worker's proxy log and shows expandable entries
-def run_worker_proxy_loop() -> None:
-    from ..core import monitor as _monitor
-    from ..workers.worker_pane import get_selection_file_path
-    from ..workers import write_selection
-    global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position
-    global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
-    global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_pending_by_rid, _worker_proxy_log_path
-    global _worker_proxy_pane_width, _worker_proxy_copy_rows, _worker_copy_feedback_until, _worker_proxy_last_full_parse_ts
+# Return module-level state snapshot for RAM audit
+def _worker_proxy_ram_state() -> list:
+    return [
+        ('worker_proxy_entries',          worker_proxy_entries),
+        ('worker_proxy_expand_states',    worker_proxy_expand_states),
+        ('worker_proxy_line_map',         worker_proxy_line_map),
+        ('_worker_proxy_cache_turns',     _worker_proxy_cache_turns),
+        ('_worker_proxy_workers',         _worker_proxy_workers),
+        ('_worker_proxy_pending_by_rid',  _worker_proxy_pending_by_rid),
+        ('worker_proxy_hover_row',        str(worker_proxy_hover_row)),
+        ('worker_proxy_scroll_offset',    worker_proxy_scroll_offset),
+        ('worker_proxy_log_position',     worker_proxy_log_position),
+        ('_worker_proxy_jsonl_position',  _worker_proxy_jsonl_position),
+        ('_worker_proxy_force_reload',    _worker_proxy_force_reload),
+    ]
 
-    def _ram_state():
-        return [
-            ('worker_proxy_entries',          worker_proxy_entries),
-            ('worker_proxy_expand_states',    worker_proxy_expand_states),
-            ('worker_proxy_line_map',         worker_proxy_line_map),
-            ('_worker_proxy_cache_turns',     _worker_proxy_cache_turns),
-            ('_worker_proxy_workers',         _worker_proxy_workers),
-            ('_worker_proxy_pending_by_rid',  _worker_proxy_pending_by_rid),
-            ('worker_proxy_hover_row',        str(worker_proxy_hover_row)),
-            ('worker_proxy_scroll_offset',    worker_proxy_scroll_offset),
-            ('worker_proxy_log_position',     worker_proxy_log_position),
-            ('_worker_proxy_jsonl_position',  _worker_proxy_jsonl_position),
-            ('_worker_proxy_force_reload',    _worker_proxy_force_reload),
-        ]
-    register_ram_dump('worker_proxy', _ram_state)
-    last_output = None
-    last_data_refresh = 0.0
-    last_worker_name: Optional[str] = None
-    setup_keyboard_input()
-    enable_mouse()
+# Process one mouse event; returns True if display should refresh
+def _handle_worker_proxy_mouse(button: int, col: int, row: int) -> bool:
+    global worker_proxy_expand_states, worker_proxy_scroll_offset, worker_proxy_hover_row
+    global _wp_just_expanded, _worker_copy_feedback_until
+    if button == 0:
+        key = worker_proxy_line_map.get(row)
+        if key is None:
+            return False
+        is_req = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
+        if is_req and col >= _worker_proxy_pane_width - 2 and row in _worker_proxy_copy_rows:
+            entry_idx = _wp_entry_idx_from_key(key)
+            if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
+                e = worker_proxy_entries[entry_idx]
+                if e.get('messages') is None:
+                    _lazy_load_messages(e, _worker_proxy_log_path)
+            copy_to_clipboard(_serialize_worker_proxy(key))
+            if entry_idx is not None:
+                _worker_copy_feedback_until[entry_idx] = time.time() + 1.5
+        else:
+            new_state = not worker_proxy_expand_states.get(key, False)
+            worker_proxy_expand_states[key] = new_state
+            if new_state:
+                entry_idx = _wp_entry_idx_from_key(key)
+                if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
+                    e = worker_proxy_entries[entry_idx]
+                    if e.get('messages') is None:
+                        _lazy_load_messages(e, _worker_proxy_log_path)
+                    prev_idx = _resolve_prev_same_wp(worker_proxy_entries, entry_idx)
+                    if prev_idx is not None:
+                        pe = worker_proxy_entries[prev_idx]
+                        if pe.get('messages') is None:
+                            _lazy_load_messages(pe, _worker_proxy_log_path)
+                _wp_just_expanded = key
+        return True
+    if button == 64:
+        worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset + 3)
+        return True
+    if button == 65:
+        worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset - 3)
+        return True
+    if button >= 32:
+        worker_proxy_hover_row = row
+        return True
+    return False
+
+# Process one digit-key event; writes worker selection via IPC; returns True if display should refresh
+def _handle_worker_proxy_key(char: str, monitor) -> bool:
+    global _worker_proxy_force_reload
+    idx = parse_digit_key(char)
+    if idx is not None and _worker_proxy_workers:
+        if 1 <= idx <= len(_worker_proxy_workers):
+            write_selection(monitor.active_project_filter, _worker_proxy_workers[idx - 1]['name'])
+            _worker_proxy_force_reload = True
+            return True
+    return False
+
+# Tick-boundary worker-proxy data refresh; returns (input_changed, new_last_data_refresh)
+def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
+    global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map
+    global worker_proxy_scroll_offset, worker_proxy_hover_row, worker_proxy_log_position
+    global _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_pending_by_rid
+    global _worker_proxy_log_path, _worker_proxy_last_full_parse_ts
+    global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_last_worker_name
+    if not _worker_proxy_force_reload and now - last_data_refresh < POLL_INTERVAL:
+        return input_changed, last_data_refresh
+    _worker_proxy_force_reload = False
+    sel_path = get_selection_file_path(monitor.active_project_filter)
+    worker_name: Optional[str] = None
     try:
-        while True:
-            input_changed = False
-            just_expanded = None
-            while True:
-                char = read_keypress()
-                if char is None:
-                    break
-                if char == '\033':
-                    event = read_mouse_event(char)
-                    if event is not None:
-                        button, col, row = event
-                        if button == 0:
-                            key = worker_proxy_line_map.get(row)
-                            if key is not None:
-                                is_req = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
-                                if is_req and col >= _worker_proxy_pane_width - 2 and row in _worker_proxy_copy_rows:
-                                    # Copy-button click: right-aligned ⎘ in REQ header
-                                    entry_idx = _wp_entry_idx_from_key(key)
-                                    if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
-                                        e = worker_proxy_entries[entry_idx]
-                                        if e.get('messages') is None:
-                                            _lazy_load_messages(e, _worker_proxy_log_path)
-                                    copy_to_clipboard(_serialize_worker_proxy(key))
-                                    if entry_idx is not None:
-                                        _worker_copy_feedback_until[entry_idx] = time.time() + 1.5
-                                    input_changed = True
-                                else:
-                                    new_state = not worker_proxy_expand_states.get(key, False)
-                                    worker_proxy_expand_states[key] = new_state
-                                    if new_state:
-                                        entry_idx = _wp_entry_idx_from_key(key)
-                                        if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
-                                            e = worker_proxy_entries[entry_idx]
-                                            if e.get('messages') is None:
-                                                _lazy_load_messages(e, _worker_proxy_log_path)
-                                            prev_idx = _resolve_prev_same_wp(worker_proxy_entries, entry_idx)
-                                            if prev_idx is not None:
-                                                pe = worker_proxy_entries[prev_idx]
-                                                if pe.get('messages') is None:
-                                                    _lazy_load_messages(pe, _worker_proxy_log_path)
-                                        just_expanded = key
-                                    input_changed = True
-                        elif button == 64:  # wheel up → older content
-                            worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset + 3)
-                            input_changed = True
-                        elif button == 65:  # wheel down → newer content
-                            worker_proxy_scroll_offset = max(0, worker_proxy_scroll_offset - 3)
-                            input_changed = True
-                        elif button >= 32:
-                            worker_proxy_hover_row = row
-                            input_changed = True
-                else:
-                    idx = parse_digit_key(char)
-                    if idx is not None and _worker_proxy_workers:
-                        if 1 <= idx <= len(_worker_proxy_workers):
-                            write_selection(_monitor.active_project_filter, _worker_proxy_workers[idx - 1]['name'])
-                            _worker_proxy_force_reload = True
-                            input_changed = True
-
-            now = time.time()
-            if _worker_proxy_force_reload or now - last_data_refresh >= POLL_INTERVAL:
-                _worker_proxy_force_reload = False
-                sel_path = get_selection_file_path(_monitor.active_project_filter)
-                worker_name: Optional[str] = None
-                try:
-                    with open(sel_path, 'r', encoding='utf-8') as f:
-                        worker_name = f.read().strip() or None
-                except OSError:
-                    worker_name = None
-
-                _worker_proxy_workers = list_workers(_monitor.active_project_filter) if _monitor.active_project_filter else []
-
-                # Force worker_name to None when no workers exist or selection is stale
-                if not _worker_proxy_workers:
-                    worker_name = None
-                elif worker_name is not None and worker_name not in {w['name'] for w in _worker_proxy_workers}:
-                    worker_name = None
-
-                if worker_name != last_worker_name:
-                    worker_proxy_entries.clear()
-                    worker_proxy_expand_states.clear()
-                    worker_proxy_line_map.clear()
-                    worker_proxy_scroll_offset = 0
-                    worker_proxy_hover_row = None
-                    worker_proxy_log_position = 0
-                    _worker_proxy_jsonl_position = 0
-                    _worker_proxy_cache_turns = []
-                    _worker_proxy_pending_by_rid.clear()
-                    _worker_proxy_log_path = None
-                    _worker_proxy_last_full_parse_ts = now
-                    last_worker_name = worker_name
-                    input_changed = True
-
-                if _worker_proxy_last_full_parse_ts == 0.0:
-                    _worker_proxy_last_full_parse_ts = now
-                elif now - _worker_proxy_last_full_parse_ts >= PROXY_REPARSE_INTERVAL_SECONDS:
-                    worker_proxy_entries.clear()
-                    worker_proxy_line_map.clear()
-                    worker_proxy_log_position = 0
-                    _worker_proxy_jsonl_position = 0
-                    _worker_proxy_cache_turns = []
-                    _worker_proxy_pending_by_rid.clear()
-                    _worker_proxy_last_full_parse_ts = now
-                    input_changed = True
-
-                if worker_name:
-                    new_entries: list = []
-                    log_path = find_worker_proxy_log(worker_name, _monitor.active_project_filter)
-                    if log_path:
-                        new_entries, worker_proxy_log_position = _parse_log_file_isolated(log_path, worker_proxy_log_position, _worker_proxy_pending_by_rid)
-                        worker_proxy_entries.extend(new_entries)
-                        _worker_proxy_log_path = log_path
-                        _strip_inactive_wp_messages(worker_proxy_entries, worker_proxy_expand_states)
-                        if new_entries:
-                            input_changed = True
-                    worker_session = next((w.get('session', '') for w in _worker_proxy_workers if w.get('name') == worker_name), '')
-                    worker_jsonl = find_worker_jsonl(worker_session) if worker_session else None
-                    if worker_jsonl:
-                        _worker_proxy_cache_turns, _worker_proxy_jsonl_position = build_cache_turns(worker_jsonl, _worker_proxy_jsonl_position, _worker_proxy_cache_turns)
-                last_data_refresh = now
+        with open(sel_path, 'r', encoding='utf-8') as f:
+            worker_name = f.read().strip() or None
+    except OSError:
+        worker_name = None
+    _worker_proxy_workers = list_workers(monitor.active_project_filter) if monitor.active_project_filter else []
+    if not _worker_proxy_workers:
+        worker_name = None
+    elif worker_name is not None and worker_name not in {w['name'] for w in _worker_proxy_workers}:
+        worker_name = None
+    if worker_name != _worker_proxy_last_worker_name:
+        worker_proxy_entries.clear()
+        worker_proxy_expand_states.clear()
+        worker_proxy_line_map.clear()
+        worker_proxy_scroll_offset = 0
+        worker_proxy_hover_row = None
+        worker_proxy_log_position = 0
+        _worker_proxy_jsonl_position = 0
+        _worker_proxy_cache_turns = []
+        _worker_proxy_pending_by_rid.clear()
+        _worker_proxy_log_path = None
+        _worker_proxy_last_full_parse_ts = now
+        _worker_proxy_last_worker_name = worker_name
+        input_changed = True
+    if _worker_proxy_last_full_parse_ts == 0.0:
+        _worker_proxy_last_full_parse_ts = now
+    elif now - _worker_proxy_last_full_parse_ts >= PROXY_REPARSE_INTERVAL_SECONDS:
+        worker_proxy_entries.clear()
+        worker_proxy_line_map.clear()
+        worker_proxy_log_position = 0
+        _worker_proxy_jsonl_position = 0
+        _worker_proxy_cache_turns = []
+        _worker_proxy_pending_by_rid.clear()
+        _worker_proxy_last_full_parse_ts = now
+        input_changed = True
+    if worker_name:
+        log_path = find_worker_proxy_log(worker_name, monitor.active_project_filter)
+        if log_path:
+            new_entries, worker_proxy_log_position = _parse_log_file_isolated(
+                log_path, worker_proxy_log_position, _worker_proxy_pending_by_rid
+            )
+            worker_proxy_entries.extend(new_entries)
+            _worker_proxy_log_path = log_path
+            _strip_inactive_wp_messages(worker_proxy_entries, worker_proxy_expand_states)
+            if new_entries:
                 input_changed = True
+        worker_session = next(
+            (w.get('session', '') for w in _worker_proxy_workers if w.get('name') == worker_name), ''
+        )
+        worker_jsonl = find_worker_jsonl(worker_session) if worker_session else None
+        if worker_jsonl:
+            _worker_proxy_cache_turns, _worker_proxy_jsonl_position = build_cache_turns(
+                worker_jsonl, _worker_proxy_jsonl_position, _worker_proxy_cache_turns
+            )
+    return True, now
 
-            # Cleanup expired copy-flash states; refresh display while any flash is active
-            _now_t_wp = time.time()
-            _worker_copy_feedback_until = {k: v for k, v in _worker_copy_feedback_until.items() if v > _now_t_wp}
-            if _worker_copy_feedback_until:
-                input_changed = True
-
-            if input_changed:
-                sel_path = get_selection_file_path(_monitor.active_project_filter)
-                try:
-                    with open(sel_path, 'r', encoding='utf-8') as f:
-                        current_worker = f.read().strip() or None
-                except OSError:
-                    current_worker = None
-
-                try:
-                    term = os.get_terminal_size()
-                    pane_height = term.lines - 1
-                    pane_width = term.columns
-                except OSError:
-                    pane_height = 50
-                    pane_width = 80
-                _worker_proxy_pane_width = pane_width
-
-                header = _format_worker_proxy_header(_worker_proxy_workers, current_worker)
-                header_lines = visual_line_count(header, pane_width)
-                content_height = max(1, pane_height - header_lines)
-                # Body starts at terminal row header_lines+1 (header may wrap to multiple rows).
-                # Subtract header_lines from hover_row so format_proxy_block sees a 1-indexed body row.
-                body_hover = (worker_proxy_hover_row - header_lines) if worker_proxy_hover_row and worker_proxy_hover_row > header_lines else None
-
-                if not current_worker:
-                    body = f"{DIM}Select a worker with digit keys 1-9{RESET}"
-                elif not worker_proxy_entries:
-                    body = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No proxy data yet — is worker proxy running?{RESET}"
-                else:
-                    worker_item_positions: dict = {}
-                    _worker_proxy_copy_rows.clear()
-                    body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns, item_positions_out=worker_item_positions, copy_feedback=_worker_copy_feedback_until, copy_rows_out=_worker_proxy_copy_rows)
-                    # Shift line_map and copy_rows by header_lines: body row N is at terminal row N+header_lines
-                    shifted = {r + header_lines: k for r, k in worker_proxy_line_map.items()}
-                    worker_proxy_line_map.clear()
-                    worker_proxy_line_map.update(shifted)
-                    shifted_copy = {r + header_lines for r in _worker_proxy_copy_rows}
-                    _worker_proxy_copy_rows.clear()
-                    _worker_proxy_copy_rows.update(shifted_copy)
-                    if just_expanded is not None and just_expanded in worker_item_positions:
-                        item_line = worker_item_positions[just_expanded]
-                        max_scroll = max(0, total_lines - content_height)
-                        clamped = min(worker_proxy_scroll_offset, max_scroll)
-                        start = max(0, total_lines - content_height - clamped)
-                        if item_line < start or item_line >= start + content_height:
-                            worker_proxy_scroll_offset = max(0, total_lines - content_height - item_line)
-                            _worker_proxy_copy_rows.clear()
-                            body, total_lines = format_proxy_block(worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map, body_hover, content_height, pane_width, worker_proxy_scroll_offset, turns=_worker_proxy_cache_turns, copy_feedback=_worker_copy_feedback_until, copy_rows_out=_worker_proxy_copy_rows)
-                            shifted = {r + header_lines: k for r, k in worker_proxy_line_map.items()}
-                            worker_proxy_line_map.clear()
-                            worker_proxy_line_map.update(shifted)
-                            shifted_copy = {r + header_lines for r in _worker_proxy_copy_rows}
-                            _worker_proxy_copy_rows.clear()
-                            _worker_proxy_copy_rows.update(shifted_copy)
-                output = header + '\n' + body
-
-                if output != last_output:
-                    print("\033[2J\033[3J\033[H", end='', flush=True)
-                    if output:
-                        print(output, end='', flush=True)
-                        print(f"\033[H{header}\033[K", end='', flush=True)
-                    last_output = output
-            wait_for_input(INPUT_POLL_INTERVAL)
-    finally:
-        disable_mouse()
-        restore_terminal()
+# Build ANSI output for worker-proxy pane with header+body split; returns (output, header) for overdraw
+def _build_worker_proxy_output(monitor) -> tuple:
+    global worker_proxy_scroll_offset, _worker_proxy_pane_width, _worker_proxy_copy_rows
+    global _wp_just_expanded
+    sel_path = get_selection_file_path(monitor.active_project_filter)
+    current_worker: Optional[str] = None
+    try:
+        with open(sel_path, 'r', encoding='utf-8') as f:
+            current_worker = f.read().strip() or None
+    except OSError:
+        current_worker = None
+    try:
+        term = os.get_terminal_size()
+        pane_height = term.lines - 1
+        pane_width = term.columns
+    except OSError:
+        pane_height = 50
+        pane_width = 80
+    _worker_proxy_pane_width = pane_width
+    header = _format_worker_proxy_header(_worker_proxy_workers, current_worker)
+    header_lines = visual_line_count(header, pane_width)
+    content_height = max(1, pane_height - header_lines)
+    body_hover = (
+        (worker_proxy_hover_row - header_lines)
+        if worker_proxy_hover_row and worker_proxy_hover_row > header_lines
+        else None
+    )
+    if not current_worker:
+        body = f"{DIM}Select a worker with digit keys 1-9{RESET}"
+    elif not worker_proxy_entries:
+        body = f"{YELLOW}Worker: {current_worker}{RESET}\n{DIM}No proxy data yet — is worker proxy running?{RESET}"
+    else:
+        worker_item_positions: dict = {}
+        _worker_proxy_copy_rows.clear()
+        body, total_lines = format_proxy_block(
+            worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map,
+            body_hover, content_height, pane_width, worker_proxy_scroll_offset,
+            turns=_worker_proxy_cache_turns, item_positions_out=worker_item_positions,
+            copy_feedback=_worker_copy_feedback_until, copy_rows_out=_worker_proxy_copy_rows,
+        )
+        shifted = {r + header_lines: k for r, k in worker_proxy_line_map.items()}
+        worker_proxy_line_map.clear()
+        worker_proxy_line_map.update(shifted)
+        shifted_copy = {r + header_lines for r in _worker_proxy_copy_rows}
+        _worker_proxy_copy_rows.clear()
+        _worker_proxy_copy_rows.update(shifted_copy)
+        if _wp_just_expanded is not None and _wp_just_expanded in worker_item_positions:
+            item_line = worker_item_positions[_wp_just_expanded]
+            max_scroll = max(0, total_lines - content_height)
+            clamped = min(worker_proxy_scroll_offset, max_scroll)
+            start = max(0, total_lines - content_height - clamped)
+            if item_line < start or item_line >= start + content_height:
+                worker_proxy_scroll_offset = max(0, total_lines - content_height - item_line)
+                _worker_proxy_copy_rows.clear()
+                body, total_lines = format_proxy_block(
+                    worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map,
+                    body_hover, content_height, pane_width, worker_proxy_scroll_offset,
+                    turns=_worker_proxy_cache_turns,
+                    copy_feedback=_worker_copy_feedback_until, copy_rows_out=_worker_proxy_copy_rows,
+                )
+                shifted = {r + header_lines: k for r, k in worker_proxy_line_map.items()}
+                worker_proxy_line_map.clear()
+                worker_proxy_line_map.update(shifted)
+                shifted_copy = {r + header_lines for r in _worker_proxy_copy_rows}
+                _worker_proxy_copy_rows.clear()
+                _worker_proxy_copy_rows.update(shifted_copy)
+    _wp_just_expanded = None
+    return header + '\n' + body, header
