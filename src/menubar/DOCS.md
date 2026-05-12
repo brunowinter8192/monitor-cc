@@ -11,19 +11,19 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 ## Flow
 
 1. `run()` → sets `LSUIElement=1` env → instantiates `CCMenuBarApp` → `app.run()` starts AppKit runloop.
-2. `CCMenuBarApp._tick()` fires every 1.5s → `list_alive_sessions()` → auto-focus debounce → branch on `_menu_open`: if open → `_update_menu_inplace` (in-place `setAttributedTitle_` on existing items); if closed → blink on change + `_rebuild_menu`. Background task badge: `[B M:SS]` when Opus sleep timers running, `[B]` otherwise.
+2. `CCMenuBarApp._tick()` fires every 1.5s (NSDefaultRunLoopMode) → `list_alive_sessions()` → auto-focus debounce → if menu closed: blink on change + `_rebuild_menu`; if menu open: `_update_menu_inplace`. While menu is open the runloop switches to NSEventTrackingRunLoopMode and `_tick` pauses — `_MenuDelegate.fireTrackingTick_` (tracking-mode NSTimer, 0.5s, NSRunLoopCommonModes) drives `_update_menu_inplace` independently during that window. Background task badge: `[B M:SS]` when Opus sleep timers running, `[B]` otherwise.
 3. `list_alive_sessions()` → refreshes CC-process cache (ps/lsof, every 10s) → refreshes Ghostty TTY-to-UUID mapping (OSC 2 probe, incremental) → scans `~/.claude/projects/*/` → picks newest JSONL per project → for workers checks tmux session existence; for mains applies 1h alive window → determines working/idle status per session type → checks `/tmp/claude-<uid>/` for in-progress tasks.
 4. Click on a main session → `_focus_session(cwd)` → looks up Ghostty terminal UUID from mapping cache → `focus terminal id "<UUID>"` (Path A) or cwd-match fallback (Path B).
 
 ## Modules
 
-### menubar.py (317 LOC)
+### menubar.py (334 LOC)
 
 **Purpose:** `CCMenuBarApp` rumps subclass + `_MenuDelegate` (NSMenuDelegate for live-update) + timer + blink + `_rebuild_menu` + `_update_menu_inplace` + `_focus_session` + `_register_hotkey` + settings load/save + Auto-Jump toggle + `run()` entry point.
 **Reads:** `list_alive_sessions()` result on every tick; `get_ghostty_terminal_id(cwd)` on click; `_scan_bg_sleep_timers()` on every tick for `[B M:SS]` badge; `~/.monitor_cc_menubar_settings.json` on launch.
 **Writes:** `app.title` (icon only), `app.menu` (dropdown items via full rebuild or in-place `setAttributedTitle_`); `~/.monitor_cc_menubar_settings.json` on toggle.
 **Called by:** `workflow.py` (`--mode menubar` route).
-**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSFont/NSColor), `Foundation` (NSObject for `_MenuDelegate`), `subprocess` (osascript for click-to-focus), `threading.Timer`, `ctypes` (Carbon hotkey).
+**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSFont/NSColor), `Foundation` (NSObject/NSTimer/NSRunLoop/NSRunLoopCommonModes for `_MenuDelegate` tracking-mode timer), `subprocess` (osascript for click-to-focus), `threading.Timer`, `ctypes` (Carbon hotkey).
 
 ---
 
@@ -48,6 +48,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 | `CCMenuBarApp._toggle_item` | menubar.py | `rumps.MenuItem` | app instance | Ref to the Auto-Jump toggle item; kept for potential in-place label update. Refreshed on each full rebuild. |
 | `CCMenuBarApp._auto_focus` | menubar.py | `bool` | app instance | Whether auto-focus is enabled. Loaded from settings JSON on launch; toggled and saved on menu click. Default OFF. |
 | `CCMenuBarApp._menu_delegate` | menubar.py | `_MenuDelegate` | app instance | PyObjC NSObject instance set as NSMenu delegate. Held as instance attr to prevent ARC garbage collection. |
+| `_MenuDelegate._tracking_timer` | menubar.py | `NSTimer \| None` | delegate instance | Repeating NSTimer (0.5s, NSRunLoopCommonModes) started in `menuWillOpen_`, invalidated in `menuDidClose_`. Drives `fireTrackingTick_` → `_update_menu_inplace` during NSEventTrackingRunLoopMode when `_tick` is paused. None when menu is closed. |
 | `_cc_proc_cache` | discover.py | `Dict[pid, (tty, cwd)]` | module | CC processes. Incremental: `ps -A` every 10s drops gone PIDs; `lsof -d cwd` only for newly seen PIDs (cwd is stable after launch). Steady-state: ~75ms (ps only). |
 | `_cc_proc_last_refresh` | discover.py | `float` | module | Timestamp of last CC cache pass. |
 | `_ghostty_tty_to_id` | discover.py | `Dict[str, str]` | module | tty → Ghostty terminal UUID. Populated incrementally by OSC 2 probe. |
@@ -117,3 +118,4 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 - **NSMenuDelegate bridging**: `_MenuDelegate(NSObject)` with `menuWillOpen_` / `menuDidClose_` (pyobjc underscore-for-colon). pyobjc bridges these automatically via AppKit protocol metadata. If bridging silently fails (delegate methods don't fire), fallback: declare `class _MenuDelegate(NSObject, protocols=[objc.protocolNamed('NSMenuDelegate')])`. The `_menu_delegate` instance attr on CCMenuBarApp is mandatory — without it, ARC collects the delegate immediately after `__init__` returns. **Lazy-init pattern**: `rumps.App._nsapp` is only populated by `app.run()`, NOT by `__init__` — calling `self._nsapp...` in `__init__` raises `AttributeError`. Delegate setup therefore happens in the first `_tick` call (guarded by `if self._menu_delegate is None`), which fires after the AppKit run-loop starts. `__init__` only sets `self._menu_delegate = None` as a sentinel.
 - **In-place update coverage**: `_update_menu_inplace` only updates sessions already in `_displayed_items` (populated by the last closed-state `_rebuild_menu`). Sessions that appear or disappear while the menu is open are deferred to the next full rebuild after close. The toggle item is not updated in-place (clicking it closes the menu, triggering a full rebuild with new state).
 - **Settings file** (`~/.monitor_cc_menubar_settings.json`): single JSON `{"auto_focus": bool}`. Written atomically via tempfile + `os.replace`. Read on launch; any parse error → default OFF. The `.tmp` suffix is used for the temp file; a crashed write leaves `~/.monitor_cc_menubar_settings.json.tmp` as debris (harmless — overwritten on next save).
+- **RunLoop mode freeze**: `@rumps.timer` schedules NSTimers in `NSDefaultRunLoopMode`. When the NSStatusItem menu opens, AppKit switches the run-loop to `NSEventTrackingRunLoopMode` — NSDefaultRunLoopMode timers stop firing. This means `_tick` (and therefore `_update_menu_inplace`) is never called while the dropdown is open. Fix: `_MenuDelegate` creates a separate NSTimer scheduled in `NSRunLoopCommonModes` (`menuWillOpen_` → `NSRunLoop.currentRunLoop().addTimer_forMode_(..., NSRunLoopCommonModes)`). CommonModes covers both Default and EventTracking, so `fireTrackingTick_` fires at 0.5s even during menu tracking. The timer is invalidated in `menuDidClose_`. Empirically verified: 10-second menu-open window produced zero `_tick` calls; tracking-mode timer restores live updates at 0.5s intervals.
