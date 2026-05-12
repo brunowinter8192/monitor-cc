@@ -25,7 +25,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (358 LOC)
+### addon.py (378 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses, writes `latency_update` records on successful responses.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
@@ -47,9 +47,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (325 LOC)
+### rules.py (375 LOC)
 
-**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported function `apply_modification_rules`. Sidecar branch short-circuits the full pass chain. Remainder is a single monolithic function body — further split requires refactoring.
+**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to 7 private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_system_passes` (system-block pass).
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
@@ -161,7 +161,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### inject_helpers.py (95 LOC)
+### inject_helpers.py (81 LOC)
 
 **Purpose:** Three post-rules payload injections: model override (model/thinking/effort/max_tokens from `proxy_rules.json`), `context_management` block, and post-sleep cap. `_apply_post_sleep_cap` MUST be called after `_inject_model_override` — it re-applies effort=low/max_tokens=2000 for `capped_post_sleep` turns, overriding whatever model_override set.
 **Reads:** Payload dict, model_family string, modifications list; `proxy_rules.json` via `rules_config._load_config()`.
@@ -234,6 +234,6 @@ mitmproxy import errors are silent — the proxy crashes on startup and workers 
 
 **Strip-tracking is guarded per-rule.** In `rules.py` second-pass, each rule (skills / claudemd / pyright) appends to `pass_mods` only if its strip function actually changed the content (`new_content != content`). Without this guard, `_content_contains` could match a marker that `_strip_system_reminder` then fails to strip (e.g. template identifier mismatch) — and `pass_mods` would incorrectly mark the rule as fired, polluting `modifications` and causing `stripped_msg_removed` to capture chunks that still survive in `raw_payload`. See bead Monitor_CC-93l for the original failure case (claudemd `"Contents of "` identifier vs CC's preamble form).
 
-**Pyright-strip lives in the second pass, not the first-pass elif-chain.** `rules.py` has two passes: a first `elif`-chain (exclusive per message — a message that hits one elif cannot trigger another), and a cumulative second pass. Pyright diagnostics SRs can co-occur in the same message with Skills or claudeMd SRs; if pyright lived in the elif-chain it would be silently skipped for those messages. Any new rule that can co-occur with an existing first-pass rule MUST go to the second pass. Comment at `rules.py:181–184` documents this invariant.
+**Pyright-strip lives in the second pass, not the first-pass elif-chain.** `rules.py` has two passes: a first `elif`-chain (exclusive per message — a message that hits one elif cannot trigger another), and a cumulative second pass. Pyright diagnostics SRs can co-occur in the same message with Skills or claudeMd SRs; if pyright lived in the elif-chain it would be silently skipped for those messages. Any new rule that can co-occur with an existing first-pass rule MUST go to the second pass. The structural separation between `_apply_first_pass` and `_apply_cumulative_sr_strips` in `rules.py` enforces this invariant.
 
 **`_PRESERVE_PREAMBLE` guard in strip_sr.py.** `strip_sr.py` has a hard-coded guard that prevents stripping claudeMd-context SR blocks: an SR whose inner text starts with `"As you answer the user's questions, you can use the following context:"` is always preserved verbatim, regardless of template matching. This allows the CLAUDE.md project-context block (injected by CC as a claudeMd SR with preamble) to survive the claudemd-strip rule. Adding new "preserve entire block" logic: mirror this pattern — `startswith` check in the extractor before template dispatch.

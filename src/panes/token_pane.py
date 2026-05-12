@@ -23,6 +23,52 @@ _cache_jsonl_position: int = 0
 _cache_turns: list = []
 _cache_current_filepath = None
 
+# ORCHESTRATOR
+
+# Runs cache tracker display loop (for dedicated tokens tmux pane)
+def run_tokens_loop() -> None:
+    global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
+    global _cache_jsonl_position, _cache_turns, _cache_current_filepath
+
+    register_ram_dump('tokens', _tokens_ram_state)
+    last_output = None
+    last_data_refresh = 0.0
+    setup_keyboard_input()
+    enable_mouse()
+    try:
+        while True:
+            input_changed = False
+            while True:
+                char = read_keypress()
+                if char is None:
+                    break
+                if char == '\033':
+                    event = read_mouse_event(char)
+                    if event is not None:
+                        if _handle_tokens_mouse(*event):
+                            input_changed = True
+                else:
+                    if _handle_tokens_key(char):
+                        input_changed = True
+
+            now = time.time()
+            input_changed, last_data_refresh = _refresh_tokens_data(
+                now, input_changed, last_data_refresh
+            )
+
+            if input_changed:
+                output = _build_tokens_output()
+                if output != last_output:
+                    print("\033[2J\033[3J\033[H", end='', flush=True)
+                    if output:
+                        print(output)
+                    last_output = output
+
+            wait_for_input(INPUT_POLL_INTERVAL)
+    finally:
+        disable_mouse()
+        restore_terminal()
+
 # FUNCTIONS
 
 # Build cache turns incrementally — only reads new lines since last_position
@@ -107,123 +153,107 @@ def _serialize_tokens(key: tuple) -> str:
             parts.append(f"\n--- thinking ({blk.get('chars', 0):,}c) ---")
     return '\n'.join(parts)
 
-# Runs cache tracker display loop (for dedicated tokens tmux pane)
-def run_tokens_loop() -> None:
+# Return module-level state snapshot for RAM audit
+def _tokens_ram_state() -> list:
+    return [
+        ('cache_expand_states',     cache_expand_states),
+        ('cache_line_map',          cache_line_map),
+        ('_cache_turns',            _cache_turns),
+        ('cache_scroll_offset',     cache_scroll_offset),
+        ('cache_hover_row',         str(cache_hover_row)),
+        ('_cache_jsonl_position',   _cache_jsonl_position),
+        ('_cache_current_filepath', str(_cache_current_filepath)),
+    ]
+
+# Process one mouse event; returns True if display should refresh
+def _handle_tokens_mouse(button: int, col: int, row: int) -> bool:
+    global cache_hover_row, cache_scroll_offset, cache_expand_states
+    if button == 0:
+        key = cache_line_map.get(row)
+        if key:
+            cache_expand_states[key] = not cache_expand_states.get(key, False)
+            return True
+        return False
+    if button == 64:
+        cache_scroll_offset = max(0, cache_scroll_offset + 3)
+        return True
+    if button == 65:
+        cache_scroll_offset = max(0, cache_scroll_offset - 3)
+        return True
+    if button >= 32:
+        cache_hover_row = row
+        return True
+    return False
+
+# Process one non-escape key event; returns True if display should refresh
+def _handle_tokens_key(char: str) -> bool:
+    if char == 'y':
+        key = resolve_parent_key(cache_line_map, cache_hover_row)
+        if key is not None:
+            copy_to_clipboard(_serialize_tokens(key))
+        return False
+    return False
+
+# Tick-boundary token data refresh; returns (input_changed, new_last_data_refresh)
+def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
     from ..core import monitor as _monitor
-    global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
-    global _cache_jsonl_position, _cache_turns, _cache_current_filepath
+    global _cache_current_filepath, _cache_jsonl_position, _cache_turns
+    global cache_expand_states, cache_scroll_offset, cache_hover_row
+    if now - last_data_refresh < POLL_INTERVAL:
+        return input_changed, last_data_refresh
+    main_sessions = _monitor.get_main_session_files()
+    filepath = main_sessions[0] if main_sessions else None
+    if filepath != _cache_current_filepath:
+        # Session changed — reset all incremental state
+        _cache_current_filepath = filepath
+        _cache_jsonl_position = 0
+        _cache_turns = []
+        cache_expand_states.clear()
+        cache_scroll_offset = 0
+        cache_hover_row = None
+    if filepath is not None:
+        _cache_turns, _cache_jsonl_position = build_cache_turns(
+            filepath, _cache_jsonl_position, _cache_turns
+        )
+    return True, now
 
-    def _ram_state():
-        return [
-            ('cache_expand_states',    cache_expand_states),
-            ('cache_line_map',         cache_line_map),
-            ('_cache_turns',           _cache_turns),
-            ('cache_scroll_offset',    cache_scroll_offset),
-            ('cache_hover_row',        str(cache_hover_row)),
-            ('_cache_jsonl_position',  _cache_jsonl_position),
-            ('_cache_current_filepath', str(_cache_current_filepath)),
-        ]
-    register_ram_dump('tokens', _ram_state)
-    last_output = None
-    last_data_refresh = 0.0
-    setup_keyboard_input()
-    enable_mouse()
+# Format, clip viewport, and render token turns to ANSI string; updates cache_line_map
+def _build_tokens_output() -> str:
+    global cache_line_map
     try:
-        while True:
-            input_changed = False
-            while True:
-                char = read_keypress()
-                if char is None:
-                    break
-                if char == '\033':
-                    event = read_mouse_event(char)
-                    if event is not None:
-                        button, col, row = event
-                        if button == 0:
-                            key = cache_line_map.get(row)
-                            if key:
-                                cache_expand_states[key] = not cache_expand_states.get(key, False)
-                                input_changed = True
-                        elif button == 64:
-                            cache_scroll_offset = max(0, cache_scroll_offset + 3)
-                            input_changed = True
-                        elif button == 65:
-                            cache_scroll_offset = max(0, cache_scroll_offset - 3)
-                            input_changed = True
-                        elif button >= 32:
-                            cache_hover_row = row
-                            input_changed = True
-                elif char == 'y':
-                    key = resolve_parent_key(cache_line_map, cache_hover_row)
-                    if key is not None:
-                        copy_to_clipboard(_serialize_tokens(key))
-
-            now = time.time()
-            if now - last_data_refresh >= POLL_INTERVAL:
-                main_sessions = _monitor.get_main_session_files()
-                filepath = main_sessions[0] if main_sessions else None
-
-                if filepath != _cache_current_filepath:
-                    # Session changed — reset all incremental state
-                    _cache_current_filepath = filepath
-                    _cache_jsonl_position = 0
-                    _cache_turns = []
-                    cache_expand_states.clear()
-                    cache_scroll_offset = 0
-                    cache_hover_row = None
-
-                if filepath is not None:
-                    _cache_turns, _cache_jsonl_position = build_cache_turns(
-                        filepath, _cache_jsonl_position, _cache_turns
-                    )
-
-                last_data_refresh = now
-                input_changed = True
-
-            if input_changed:
-                try:
-                    term = os.get_terminal_size()
-                    pane_height = term.lines - 1
-                    pane_width = term.columns
-                except OSError:
-                    pane_height = 50
-                    pane_width = 80
-                visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count = format_cache_tracker(
-                    _cache_turns, cache_expand_states, pane_height, pane_width, cache_scroll_offset
-                )
-                result_lines = []
-                if sticky_header is not None:
-                    trunc = truncate_visible(sticky_header, pane_width)
-                    result_lines.append(f"{ZEBRA_BG_A}{trunc}\033[K{RESET}")
-                cache_line_map.clear()
-                phys_row = 1 + (1 if sticky_header is not None else 0)
-                parent_count = initial_parent_count
-                for line, key in zip(visible_lines, visible_keys):
-                    if key is not None:
-                        zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
-                        parent_count += 1
-                    else:
-                        zebra_bg = ZEBRA_BG_A
-                    is_hovered = (key is not None and cache_hover_row is not None
-                                  and phys_row == cache_hover_row)
-                    if is_hovered:
-                        chosen_bg = HOVER_BG
-                    elif line.startswith(LIGHT_RED_BG):
-                        chosen_bg = LIGHT_RED_BG
-                    else:
-                        chosen_bg = zebra_bg
-                    trunc = truncate_visible(line, pane_width)
-                    result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
-                    if key is not None:
-                        cache_line_map[phys_row] = key
-                    phys_row += 1
-                output = '\n'.join(result_lines)
-                if output != last_output:
-                    print("\033[2J\033[3J\033[H", end='', flush=True)
-                    if output:
-                        print(output)
-                    last_output = output
-            wait_for_input(INPUT_POLL_INTERVAL)
-    finally:
-        disable_mouse()
-        restore_terminal()
+        term = os.get_terminal_size()
+        pane_height = term.lines - 1
+        pane_width = term.columns
+    except OSError:
+        pane_height = 50
+        pane_width = 80
+    visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count = format_cache_tracker(
+        _cache_turns, cache_expand_states, pane_height, pane_width, cache_scroll_offset
+    )
+    result_lines = []
+    if sticky_header is not None:
+        trunc = truncate_visible(sticky_header, pane_width)
+        result_lines.append(f"{ZEBRA_BG_A}{trunc}\033[K{RESET}")
+    cache_line_map.clear()
+    phys_row = 1 + (1 if sticky_header is not None else 0)
+    parent_count = initial_parent_count
+    for line, key in zip(visible_lines, visible_keys):
+        if key is not None:
+            zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
+            parent_count += 1
+        else:
+            zebra_bg = ZEBRA_BG_A
+        is_hovered = (key is not None and cache_hover_row is not None
+                      and phys_row == cache_hover_row)
+        if is_hovered:
+            chosen_bg = HOVER_BG
+        elif line.startswith(LIGHT_RED_BG):
+            chosen_bg = LIGHT_RED_BG
+        else:
+            chosen_bg = zebra_bg
+        trunc = truncate_visible(line, pane_width)
+        result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
+        if key is not None:
+            cache_line_map[phys_row] = key
+        phys_row += 1
+    return '\n'.join(result_lines)

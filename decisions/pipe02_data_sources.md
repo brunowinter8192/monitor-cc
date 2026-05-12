@@ -1,20 +1,15 @@
 # Pipe Section: Data Sources
 
-## Status Quo
+## Status Quo (IST)
 
 - `session_finder.py`: `~/.claude/projects/` → glob `*.jsonl` + `*/subagents/agent-*.jsonl`, sorted by mtime
 - `jsonl_parser.py`: tool_use/tool_result correlation via cache, extracts 9 data types (tools, prompts, media, thinking, skills, warnings, usage, unknown_types) via 9-Tuple-Rückgabe
-- `hook_parser.py`: reads `src/logs/hook_outputs.jsonl`, filters by project cwd — generisch, kein Event-Typ-Filter
-- External pipeline: `instructions-loaded-hook.sh` + `session-start-rules.sh` (native hooks in `~/.claude/settings.json`) → `hook_logger.py` → `hook_outputs.jsonl`
 - `constants.py`: `KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}`, `KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode'}`
 - `constants.py`: 25 Hook-Event-Konstanten (`HOOK_SESSION_START`, `HOOK_SESSION_END`, `HOOK_POST_TOOL`, `HOOK_POST_TOOL_FAILURE`, `HOOK_PERMISSION_REQUEST`, `HOOK_PERMISSION_DENIED`, `HOOK_SUBAGENT_START`, `HOOK_SUBAGENT_STOP`, `HOOK_TEAMMATE_IDLE`, `HOOK_TASK_CREATED`, `HOOK_TASK_COMPLETED`, `HOOK_STOP`, `HOOK_STOP_FAILURE`, `HOOK_FILE_CHANGED`, `HOOK_CWD_CHANGED`, `HOOK_CONFIG_CHANGE`, `HOOK_PRE_COMPACT`, `HOOK_POST_COMPACT`, `HOOK_ELICITATION`, `HOOK_ELICITATION_RESULT`, `HOOK_NOTIFICATION`, `HOOK_WORKTREE_CREATE`, `HOOK_WORKTREE_REMOVE` + bestehende 3) und `HOOK_EVENT_CATEGORIES` Dict für Color-Mapping
 - `jsonl_parser.py`: `detect_unknown_types()` scannt Messages gegen `KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES` und gibt unbekannte Types zurück → Warnings-Pane
 - `jsonl_parser.py`: `extract_system_messages()` extrahiert `type=system` Messages und deren Text-Content; Rückgabe als 10. Element des Parse-Tuples
 - `session-start-rules.sh`: liest stdin (JSON mit `source`, `cwd`), logt via `hook_logger.py` mit `source=$SOURCE`; nutzt `$CWD` aus JSON statt `$(pwd)` für Worktree-Check
 
-*(Removed 2026-04-28: hook_parser.py, rules_pane.py, hooks_pane.py, hooks_format.py, hooks_persist.py, ui_mode.py — the entire hook-log pipeline and rules/hooks panes were deleted. Window 2 (rules+hooks) removed; monitor is now 4 windows.)*
-
-## IST — Stellschrauben
 
 ### Session Discovery — Filesystem-Scan pro Poll (Kategorie: Performance)
 
@@ -30,7 +25,7 @@ Kein Caching zwischen Polls. Bei vielen Projekten/Sessions: O(N) Syscalls pro 0.
 
 ### JSONL Parsing — 5 separate Iterationen (Kategorie: Performance)
 
-`parse_new_tool_calls()` in `src/jsonl_parser.py:35-53` iteriert die `messages`-Liste 5x:
+`parse_new_tool_calls()` in `src/jsonl/jsonl_parser.py:35-53` iteriert die `messages`-Liste 5x:
 1. `extract_tool_calls(messages, tool_use_cache)` — tool_use/tool_result Paare (jsonl_parser.py:43)
 2. `extract_user_prompts(messages)` — externe User-Prompts (jsonl_parser.py:44)
 3. `extract_user_media(messages)` — Bilder, Dokumente (jsonl_parser.py:45)
@@ -72,7 +67,7 @@ Nur ein einziger Tool-Name ausgeschlossen. Kein Wildcard-Pattern, kein Category-
 
 ### Byte-Offset Tracking — kein Truncation-Handling (Kategorie: Robustheit)
 
-`read_new_lines()` in `src/jsonl_parser.py:71-91`:
+`read_new_lines()` in `src/jsonl/jsonl_parser.py:71-91`:
 - `f.seek(last_position)` (jsonl_parser.py:77) — springt direkt zum gespeicherten Byte-Offset
 - Neuer Position nach Lesen: `filepath.stat().st_size` (jsonl_parser.py:95)
 - Kein Handling wenn `file_size < last_position` (z.B. bei JSONL-Rotation oder File-Truncation durch Claude Code)
@@ -87,21 +82,46 @@ Zwei Stellen handhaben `content` als String oder Array:
 
 Kein explizites Format-Versioning. `detect_unknown_types(messages)` in jsonl_parser.py scannt Messages gegen KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES (constants.py) und meldet unbekannte Types.
 
-### Logging in Data Sources (Kategorie: Observability)
-
-**Stand nach Session 3 (Logging-Entfernung):**
-
-`src/jsonl_parser.py`: **0** `log_tagged()`-Aufrufe. Alle ~14 ehemaligen Calls (`04_file_reading.log`, `05_jsonl_parsing.log`, `06_tool_extraction.log`) wurden entfernt. Kein `import logging` mehr im Modul.
-
-`src/session_finder.py`: **0** `log_tagged()`-Aufrufe. Alle 4 ehemaligen Calls (`03_session_discovery.log`) wurden entfernt.
-
-`src/hook_parser.py`: **0** `log_tagged()`-Aufrufe. Alle 2 ehemaligen Calls (`11_hook_parsing.log`) wurden entfernt.
-
-Gemäss User-Feedback: 0 dieser Logs wurden je zu Debugging-Zwecken konsultiert.
 
 ## Evidenz
 
-Pending — needs evaluation.
+### Session Discovery I/O (IST-1)
+
+`dev/pipeline/io_profile/01_reports/poll_cycle_20260322_152817.md` (Script: `dev/pipeline/io_profile/01_poll_cycle_cost.py`, Dataset: 70 Projekte, 1479 JSONL-Dateien in `~/.claude/projects/`, 2026-03-22):
+
+- Ohne Project-Filter: Cycle-Duration **9.58ms** (±0.99), **1479 stat()-Calls**, 140 glob()-Calls pro Zyklus
+- Mit Project-Filter (Monitor_CC): **0.25ms** (±0.05), 0 stat()-Calls
+- Filterung reduziert Zyklus-Overhead um 9.33ms (97%)
+
+### JSONL Multi-Pass Parsing (IST-2)
+
+`dev/pipeline/parsing_profile/01_reports/multipass_20260322_152816.md` (Script: `dev/pipeline/parsing_profile/01_multipass_cost.py`, Dataset: Session `35ca8892`, 351 Messages, 10 Messläufe):
+
+| Funktion | Mean (µs) | % |
+|---|---|---|
+| `extract_tool_calls` | 1773.6 | 93.6% |
+| `extract_skill_activations` | 39.9 | 2.1% |
+| `extract_user_prompts` | 37.3 | 2.0% |
+| `extract_thinking_blocks` | 26.9 | 1.4% |
+| `extract_user_media` | 17.8 | 0.9% |
+| **Total (5 Passes)** | **1895.5** | 100% |
+
+Average 5.40 µs/Message. Single-pass savings estimate: 70.2 µs.
+
+### tool_use_cache Orphan-Verhalten (IST-3)
+
+`dev/pipeline/memory_profile/01_reports/cache_growth_20260322_152818.md` (Script: `dev/pipeline/memory_profile/01_cache_growth.py`, Dataset: Session `35ca8892`, 357 Messages):
+- Peak cache entries: 1; Final orphaned: **1** (Bash-Call ohne zugehöriges tool_result)
+- Estimated memory per 1000 messages: 515 bytes
+
+### Format-Stabilität / Unknown Types (IST-7)
+
+`dev/pipeline/format_stability/01_reports/unknown_types_20260322_152802.md` (Script: `dev/pipeline/format_stability/01_unknown_types.py`, Dataset: **1479 JSONL-Dateien**, 222,636 Lines, 52 Parse-Errors, 2026-03-22):
+- Known top-level type coverage: **91.9%**
+- 5 unknown top-level types: `file-history-snapshot`, `queue-operation`, `last-prompt`, `custom-title`, `agent-name`
+- Unknown content-block types: **0** (100% bekannt)
+
+IST-4 (`EXCLUDED_TOOLS`), IST-5 (Truncation-Handling), IST-6 (Content Polymorphism), IST-8 (Logging 0) sind code-read-derived — kein dev/-Benchmark backing.
 
 ## Recommendation (SOLL)
 
@@ -110,8 +130,8 @@ Pending — needs evaluation.
 ## Offene Fragen
 
 - InstructionsLoaded feuert nicht nach compaction (Issue #30973) oder /clear (Issue #31017) — Rules-Pane zeigt nur initial geladene Rules
-- ANNAHME: Skill-Aktivierung triggert InstructionsLoaded NICHT (CHANGELOG definiert Scope als CLAUDE.md und .claude/rules/*.md)
-- Project `.claude/rules/*.md` werden vom Hook nicht erfasst (Bug #33275) — nur Global Rules + CLAUDE.md feuern
+- ANNAHME: Skill-Aktivierung triggert InstructionsLoaded NICHT (CHANGELOG definiert Scope als CLAUDE.md und project-rules-Dateien)
+- Project-rules-Dateien werden vom Hook nicht erfasst (Bug #33275) — nur Global Rules + CLAUDE.md feuern
 - System Prompt (mit "Contents of" Zeilen) wird NICHT ins Session-JSONL geschrieben — alternative Quelle nötig
 
 ## Quellen

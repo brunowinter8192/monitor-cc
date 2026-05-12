@@ -27,7 +27,7 @@ tool_use/tool_result correlation) → `jsonl_extractors` (typed extractions from
 
 ## Modules
 
-### jsonl_parser.py (196 LOC)
+### jsonl_parser.py (258 LOC)
 
 **Purpose:** Core session JSONL parser — reads new lines incrementally by byte offset, correlates tool_use/tool_result pairs, and delegates typed extraction to `jsonl_extractors`.
 **Reads:** Session JSONL file (by `filepath` + `last_position` byte offset); `tool_use_cache` dict for cross-chunk correlation.

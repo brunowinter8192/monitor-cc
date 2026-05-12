@@ -11,7 +11,7 @@
 kill -USR1 $(cat /tmp/.monitor_cc_pid_waste)
 ```
 
-- **PID file:** `/tmp/.monitor_cc_pid_waste` — written by `run_waste_loop()` at startup, removed on exit.
+- **PID file:** `/tmp/.monitor_cc_pid_waste` — written at startup by the waste pane's run loop, removed on exit.
 - **Dumps land in:** `dev/ram_audit/dumps/<YYYYmmdd_HHMMSS>_waste.txt`
 - The handler prints `[ram-dump] wrote <path>` to stderr (visible in the pane's tmux output).
 
