@@ -107,6 +107,9 @@ INSERT
 STRIP
 POSITIVE
 NEGATIVE
+FULL
+SUCCEEDS
+KILL
 
 # --- German ALL_CAPS prose words (decisions/ documents mix DE and EN) ---
 BEIDE
@@ -124,6 +127,8 @@ KEINE
 JEDE
 EINMAL
 KORREKTUR
+NACH
+AUCH
 
 # --- Source-line labels (pipe-docs reference upstream source lines as L<number>) ---
 # Add new entries as line-references appear; whitelist has no regex support.

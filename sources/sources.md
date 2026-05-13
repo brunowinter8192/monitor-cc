@@ -66,6 +66,10 @@ All external sources referenced or indexed during research.
 | wzf1997/claude-code-source | github.com/wzf1997 | Repo | t1i | Referenced |
 | thepono1/claude-code-source | github.com/thepono1 | Repo | t1i | Referenced |
 | @anthropic-ai/claude-code (npm tarball) | npmjs.com | Web | t1i | Referenced |
+| iSapozhnik/Popover | github.com/iSapozhnik | Repo | menubar_nspanel | Referenced |
+| bikekoala/here-macos | github.com/bikekoala | Repo | menubar_nspanel | Referenced |
+| jaredks/rumps | github.com/jaredks | Repo | menubar_nspanel | Referenced |
+| ghostty-org/ghostty | github.com/ghostty-org | Repo | menubar_nspanel | Referenced |
 
 ## Notes
 
