@@ -321,8 +321,7 @@ def _make_header_label(text: str) -> NSTextField:
 # Full panel rebuild (only while panel is closed); populates _displayed_items + _cwd_map
 def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
     for sv in list(app._panel_sv.arrangedSubviews()):
-        app._panel_sv.removeArrangedSubview_(sv)
-        sv.removeFromSuperview()
+        app._panel_sv.removeView_(sv)
     app._displayed_items = {}
     app._cwd_map = {}
     next_tag = [1]
@@ -330,15 +329,15 @@ def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
     toggle_btn = _make_row_button(label)
     toggle_btn.setTarget_(app._panel_controller)
     toggle_btn.setAction_(b'toggleAutoJump:')
-    app._panel_sv.addArrangedSubview_(toggle_btn)
-    app._panel_sv.addArrangedSubview_(_make_header_label('─' * 44))
+    app._panel_sv.addView_inGravity_(toggle_btn, 1)
+    app._panel_sv.addView_inGravity_(_make_header_label('─' * 44), 1)
     min_remaining = _scan_bg_sleep_timers()
     if not sessions:
-        app._panel_sv.addArrangedSubview_(_make_header_label('No active sessions'))
+        app._panel_sv.addView_inGravity_(_make_header_label('No active sessions'), 1)
         return
     sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
     for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
-        app._panel_sv.addArrangedSubview_(_make_header_label(_make_header(project_name)))
+        app._panel_sv.addView_inGravity_(_make_header_label(_make_header(project_name)), 1)
         for s in group_iter:
             dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
             badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
@@ -354,7 +353,7 @@ def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
             else:
                 line = f'  {name_col} {dot} {badge}'
                 btn  = _make_row_button(line)
-            app._panel_sv.addArrangedSubview_(btn)
+            app._panel_sv.addView_inGravity_(btn, 1)
             app._displayed_items[s.name] = btn
 
 # In-place title update while NSPanel is open; preserves widget positions + scroll state
