@@ -285,7 +285,7 @@ def _make_nspanel():
     stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
     stack.setAlignment_(NSLayoutAttributeLeading)
     stack.setSpacing_(1.0)
-    stack.setDistribution_(0)   # NSStackViewDistributionFill
+    stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas — required for addView_inGravity_ to work
     scroll.setDocumentView_(stack)
     panel.contentView().addSubview_(scroll)
     return panel, stack, quit_btn
