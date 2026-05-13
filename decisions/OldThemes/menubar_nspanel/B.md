@@ -61,3 +61,19 @@ Ready for merge + interactive UI verification:
 4. Click on a main session row → Ghostty terminal focus
 5. Auto-Jump toggle updates label in-place
 6. Quit button exits app
+
+## Layout Surprise (Phase B follow-up)
+
+**Discovery:** After Phase B merged and the user ran the interactive UI tests (all 6 behavioral checks passed), the visual layout was wrong. ~150 px of content rendered at the bottom of a 460 px panel; the Auto-Jump toggle appeared mid-screen with ~280 px of empty space above it.
+
+**Root cause:** `NSStackView.addArrangedSubview_` defaults to `NSStackViewGravityBottom` (constant 3) in AppKit's gravity-well model. Items anchor to the bottom of the stack frame and pack upward. With a document view sized to `scroll_h = 430 px` but only ~150 px of rows, the remaining 280 px of whitespace lands above all rows — exactly matching the reported symptom.
+
+**Fix chosen: Option (a) — `addView_inGravity_(view, 1)`**
+
+`NSStackViewGravityTop = 1`. Replace every `addArrangedSubview_` call in `_rebuild_panel` with `addView_inGravity_(view, 1)`. Also replaced the cleanup `removeArrangedSubview_(sv) + sv.removeFromSuperview()` pair with `removeView_(sv)` (the gravity-API removal method, single call).
+
+Option (b) — `isFlipped` override via NSStackView subclass — was rejected: same visual result but requires a new ObjC class definition and PyObjC `objc.objc_method` wiring, adding ~10 lines of boilerplate for no additional benefit.
+
+**Code delta:** 6 call sites changed in `_rebuild_panel`, net -1 LOC (394 from 395).
+
+**Smoke test:** `workflow.py --mode menubar` alive after 5 s, zero stderr. Visual verification (top-anchored layout) after merge with user.

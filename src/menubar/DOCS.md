@@ -17,7 +17,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### menubar.py (395 LOC)
+### menubar.py (394 LOC)
 
 **Purpose:** `CCMenuBarApp` rumps subclass + `_PanelController` (NSObject target for panel toggle/focus/quit) + NSPanel sticky-toggle dropdown + timer + blink + `_rebuild_panel` + `_update_panel_inplace` + `_focus_session` + `_register_hotkey` + settings load/save + Auto-Jump toggle + `run()` entry point.
 **Reads:** `list_alive_sessions()` result on every tick; `get_ghostty_terminal_id(cwd)` on click; `_scan_bg_sleep_timers()` on every tick for `[B M:SS]` badge; `~/.monitor_cc_menubar_settings.json` on launch.
@@ -123,3 +123,4 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 - **NSPanel ObjC attribute constraint**: NSPanel (and all PyObjC-bridged ObjC objects) reject arbitrary Python attribute assignment — `panel.my_attr = x` raises `AttributeError`. `_make_nspanel()` returns `(panel, stack, quit_btn)` as a Python tuple; refs are unpacked onto the Python `CCMenuBarApp` instance.
 - **Button tag → cwd routing**: `_rebuild_panel` assigns each clickable session NSButton an integer tag via `btn.setTag_(tag)` and stores `_cwd_map[tag] = s.cwd`. `_PanelController.focusSession_` reads `sender.tag()` to look up cwd. `_cwd_map` and tags reset at the top of each `_rebuild_panel`.
 - **Settings file** (`~/.monitor_cc_menubar_settings.json`): single JSON `{"auto_focus": bool}`. Written atomically via tempfile + `os.replace`. Read on launch; any parse error → default OFF. The `.tmp` suffix is used for the temp file; a crashed write leaves `~/.monitor_cc_menubar_settings.json.tmp` as debris (harmless — overwritten on next save).
+- **NSStackView gravity — use `addView_inGravity_(view, 1)`, NOT `addArrangedSubview_`**: `addArrangedSubview_` defaults to `NSStackViewGravityBottom` (3) in AppKit, packing rows upward from the bottom of the frame. `addView_inGravity_(view, 1)` (NSStackViewGravityTop = 1) anchors rows at the top. Cleanup uses `removeView_(sv)` (single call, gravity-API counterpart) instead of `removeArrangedSubview_(sv)` + `removeFromSuperview()`.
