@@ -77,3 +77,30 @@ Option (b) — `isFlipped` override via NSStackView subclass — was rejected: s
 **Code delta:** 6 call sites changed in `_rebuild_panel`, net -1 LOC (394 from 395).
 
 **Smoke test:** `workflow.py --mode menubar` alive after 5 s, zero stderr. Visual verification (top-anchored layout) after merge with user.
+
+## Layout Fix Round 2
+
+**Constants verification (run on this worktree's venv):**
+
+```
+GravityTop= 1  GravityCenter= 2  GravityBottom= 3
+DistGravityAreas= -1  DistFill= 0
+```
+
+**Root cause:** `stack.setDistribution_(0)` is `NSStackViewDistributionFill`. In Fill mode, the stack distributes views to fill available space equally — gravity metadata is **completely ignored**. The Round 1 fix correctly changed all `addArrangedSubview_` calls to `addView_inGravity_(view, 1)`, but because the distribution remained `Fill`, `NSStackView` never consulted the gravity at layout time. All views still appeared clustered at the bottom (NSStackView default gravity in Fill mode is bottom-anchoring).
+
+**Fix:** one-line change in `_make_nspanel`:
+
+```python
+# Before (Round 1):
+stack.setDistribution_(0)   # NSStackViewDistributionFill
+
+# After (Round 2):
+stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas — required for addView_inGravity_ to work
+```
+
+`NSStackViewDistributionGravityAreas = -1` is the only distribution mode that uses the gravity passed to `addView_inGravity_`. Without it, all gravity API calls are no-ops.
+
+**Code delta:** 1 line changed in `_make_nspanel` (line 288), no LOC change (395 → 395).
+
+**Smoke test:** `workflow.py --mode menubar` alive after 5 s, zero stderr.
