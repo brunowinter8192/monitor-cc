@@ -27,11 +27,11 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (397 LOC)
+### discover.py (427 LOC)
 
-**Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker). Provides Ghostty terminal UUID mapping for reliable click-to-focus. Provides `_scan_bg_sleep_timers()` for bar countdown.
-**Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; `/tmp/claude-<uid>/` task dirs; `ps`/`lsof` output (CC process cache); tmux session state; `/dev/ttys<NNN>` device files (OSC 2 marker writes for Ghostty mapping).
-**Writes:** `/dev/ttys<NNN>` (transient OSC 2 probe marker + empty-string cleanup). Module-level cache: `_cc_proc_cache`, `_cc_proc_last_refresh`, `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_tmux_state_cache`, `_tmux_state_last_refresh`.
+**Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker). Provides Ghostty terminal UUID mapping for reliable click-to-focus. Provides `_scan_bg_sleep_timers()` for bar countdown. For main sessions: overlays proxy-log mtime as thinking-state signal (JSONL lags during reasoning-only phases).
+**Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; `/tmp/claude-<uid>/` task dirs; `ps`/`lsof` output (CC process cache); tmux session state; `/dev/ttys<NNN>` device files (OSC 2 marker writes for Ghostty mapping); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes (proxy thinking signal).
+**Writes:** `/dev/ttys<NNN>` (transient OSC 2 probe marker + empty-string cleanup). Module-level cache: `_cc_proc_cache`, `_cc_proc_last_refresh`, `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_tmux_state_cache`, `_tmux_state_last_refresh`, `_proxy_log_mtime_cache`.
 **Called by:** `menubar.py:CCMenuBarApp._tick` (`list_alive_sessions`, `_scan_bg_sleep_timers`), `menubar.py:_focus_session` (`get_ghostty_terminal_id`).
 **Calls out:** `session_finder.get_project_directories`; `subprocess` (ps, lsof, tmux, osascript).
 
@@ -61,6 +61,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 | `_ghostty_tty_last_refresh` | discover.py | `float` | module | Timestamp of last probe cycle (updated only when a probe actually ran). |
 | `_tmux_state_cache` | discover.py | `Dict[str, (bool, int)]` | module | session_name → (alive, session_activity unix ts). One `tmux list-sessions` call per 3s replaces per-worker `has-session` + `display-message` pairs. |
 | `_tmux_state_last_refresh` | discover.py | `float` | module | Timestamp of last tmux state refresh. |
+| `_proxy_log_mtime_cache` | discover.py | `Dict[str, Tuple[float, Optional[float]]]` | module | `opus_<project_key>→(checked_at, newest_mtime)`. TTL=`_PROC_REFRESH_INTERVAL` (10s). Used by `_proxy_log_newest_mtime` to avoid per-tick glob. Populated on first main-session idle check per key. |
 
 ## Activity Detection (per session type)
 
@@ -124,6 +125,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 - **Lazy-init timing**: `rumps.App._nsapp` is only populated after `app.run()` starts the AppKit runloop (`initializeStatusBar` at `jaredks/rumps rumps/rumps.py:1350`). `setMenu_(None)` + button target/action wiring + Quit button wiring therefore happen in the first `_tick` call (guarded by `if not self._initialized`), not `__init__`. `_initialized = False` is the sentinel.
 - **Dynamic panel height**: `_resize_panel` runs inside every `_rebuild_panel` (closed-panel path only). If session count changes while the panel is open, the resize is deferred until the panel is closed and the next tick triggers a rebuild. `PANEL_MAX_HEIGHT` is a module-level constant — user adjusts per Edit.
 - **Drag-resize**: `NSWindowStyleMaskResizable` added to styleMask enables left/bottom/right edge drag handles. `_PanelController.windowDidResize_` (NSWindowDelegate) fires after each resize step on the main thread — writes new `_panel_width` + `_panel_max_height` to app instance and persists to settings. Autoresizing masks on footer (`NSViewWidthSizable=2`), restart button (`NSViewMinXMargin=1`), and scroll view (`NSViewWidthSizable|NSViewHeightSizable=18`) keep layout coherent during live drag; row-button frames are corrected to exact width on next `_rebuild_panel`. Delegate set in lazy-init tick (same pattern as button wiring). Min size enforced by `setContentMinSize_((PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))`.
+- **Proxy-log thinking signal** (`_proxy_log_newest_mtime`): when JSONL-derived status is `idle` but the newest `api_requests_opus_<project_key>_*.jsonl` in `_PROXY_LOG_DIR` has mtime < `WORKING_THRESHOLD_SECS` (10s), status is overridden to `working`. Covers the gap where Opus is reasoning (no streaming output yet → JSONL not updated). Workers unaffected (tmux `window_activity` already captures their activity). `_PROXY_LOG_DIR` is hardcoded to `Monitor_CC/src/logs/` — proxy is central and intercepts all machine-wide CC sessions via `ANTHROPIC_BASE_URL`. Missing dir → `None` → silent fallback to JSONL-only.
 - **Settings backwards-compat**: old `{"auto_focus": bool}` files missing `panel_width`/`panel_max_height` keys fall back to module constants `PANEL_WIDTH`/`PANEL_MAX_HEIGHT` via `d.get(key, default)`.
 - **In-place update coverage**: `_update_panel_inplace` only updates sessions already in `_displayed_items` (populated by the last closed-state `_rebuild_panel`). Sessions that appear or disappear while the panel is open are deferred to the next full rebuild after close.
 - **NSPanel ObjC attribute constraint**: NSPanel (and all PyObjC-bridged ObjC objects) reject arbitrary Python attribute assignment — `panel.my_attr = x` raises `AttributeError`. `_make_nspanel()` returns `(panel, stack, quit_btn)` as a Python tuple; refs are unpacked onto the Python `CCMenuBarApp` instance.

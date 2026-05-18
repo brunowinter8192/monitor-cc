@@ -17,6 +17,8 @@ _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
 _GHOSTTY_TTY_REFRESH_INTERVAL = 10.0   # cooldown between new-TTY probe cycles
 _GHOSTTY_MARKER_PREFIX = '__GHT_'      # OSC 2 title marker prefix (not used by CC)
 _TMUX_REFRESH_INTERVAL = 3.0           # seconds between tmux list-sessions polls
+# central log dir — proxy lives in Monitor_CC and intercepts all CC sessions via ANTHROPIC_BASE_URL
+_PROXY_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/Monitor_CC/src/logs')
 
 # pid→(tty, cwd) cache for CC processes; incremental: lsof only on new PIDs
 _cc_proc_cache: Dict[str, Tuple[str, str]] = {}
@@ -29,6 +31,9 @@ _ghostty_tty_last_refresh: float = 0.0
 # session_name→(alive, session_activity_unix_ts); one list-sessions call per 3s
 _tmux_state_cache: Dict[str, Tuple[bool, int]] = {}
 _tmux_state_last_refresh: float = 0.0
+
+# opus_<project_key>→(checked_at: float, mtime: float|None); TTL = _PROC_REFRESH_INTERVAL
+_proxy_log_mtime_cache: Dict[str, Tuple[float, Optional[float]]] = {}
 
 class SessionInfo(NamedTuple):
     name: str          # display name: cwd basename for mains, worktree name for workers
@@ -314,6 +319,25 @@ def _worker_is_working(session_name: str) -> bool:
         return False
     return (time.time() - state[1]) <= _WORKER_ACTIVITY_THRESHOLD
 
+# Return newest mtime of proxy logs matching opus_<project_key>; None if no match or dir missing
+def _proxy_log_newest_mtime(project_key: str, now: float) -> Optional[float]:
+    cached = _proxy_log_mtime_cache.get(project_key)
+    if cached is not None and (now - cached[0]) < _PROC_REFRESH_INTERVAL:
+        return cached[1]
+    result: Optional[float] = None
+    if _PROXY_LOG_DIR.is_dir():
+        needle = f'_opus_{project_key}_'
+        for p in _PROXY_LOG_DIR.glob('api_requests_*.jsonl'):
+            if needle in p.stem:
+                try:
+                    mt = p.stat().st_mtime
+                    if result is None or mt > result:
+                        result = mt
+                except OSError:
+                    pass
+    _proxy_log_mtime_cache[project_key] = (now, result)
+    return result
+
 # Build SessionInfo for one project dir; None if session is gone or unreadable
 def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]:
     jsonl = _newest_jsonl(project_dir)
@@ -349,6 +373,12 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
         name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
         # Activity: JSONL mtime only (TTY mtime causes false-working while CC window focused)
         status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
+        # Thinking override: proxy log fresher than JSONL (reasoning before first streaming token)
+        if status == 'idle':
+            project_key = project_name.lower().replace('-', '_').replace(' ', '_')
+            proxy_mtime = _proxy_log_newest_mtime(project_key, now)
+            if proxy_mtime is not None and (now - proxy_mtime) <= WORKING_THRESHOLD_SECS:
+                status = 'working'
         return SessionInfo(name=name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
                            is_worker=False, cwd=cwd or '')
