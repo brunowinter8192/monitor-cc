@@ -39,6 +39,7 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'SC':  ('stripped_sidecar_content',     []),  # full original stored, no marker substring
     'IR':  ('stripped_idle_recap',          []),  # full original stored, no SR-wrapping
     'PP':  ('stripped_po_preview',          ['Preview (first ']),  # PO wrapper kept, Preview content removed
+    'BGK': ('stripped_bg_exit_notification', ['Background command "']),  # SIGTERM/SIGKILL kill notification from user-aborted sleep timer
 }
 
 # Tag literal codes — 4 raw tags tracked for LEAK/SUSPECT detection
