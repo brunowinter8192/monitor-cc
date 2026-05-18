@@ -12,7 +12,7 @@ import rumps
 from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName,
                     NSButton, NSColor, NSFont,
                     NSFontAttributeName, NSForegroundColorAttributeName,
-                    NSLayoutAttributeLeading, NSPanel, NSScrollView,
+                    NSLayoutAttributeLeading, NSPanel,
                     NSStackView, NSTextField, NSView,
                     NSStatusWindowLevel,
                     NSUserInterfaceLayoutOrientationVertical,
@@ -20,7 +20,7 @@ from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName,
                     NSWindowCollectionBehaviorIgnoresCycle,
                     NSWindowStyleMaskNonactivatingPanel,
                     NSWindowStyleMaskResizable)
-from Foundation import NSMakeRect, NSObject, NSOperationQueue
+from Foundation import NSMakeRect, NSMakeSize, NSObject, NSOperationQueue
 
 # From discover.py: Live session discovery + status
 from .discover import (list_alive_sessions, get_ghostty_terminal_id,
@@ -113,8 +113,8 @@ class _PanelController(NSObject):
     def windowDidResize_(self, notification):
         frame = notification.object().frame()
         app   = self._app
-        app._panel_width      = int(frame.size.width)
-        app._panel_max_height = int(frame.size.height)
+        app._panel_width      = int(max(frame.size.width,  PANEL_MIN_WIDTH))
+        app._panel_max_height = int(max(frame.size.height, PANEL_MIN_HEIGHT))
         _save_settings(app._auto_focus, app._panel_width, app._panel_max_height)
 
     def windowDidEndLiveResize_(self, notification):
@@ -136,7 +136,7 @@ class CCMenuBarApp(rumps.App):
         self._cwd_map: dict = {}
         self._abort_btn = None   # NSButton ref; set by _rebuild_panel when timer running
         self._auto_focus, self._panel_width, self._panel_max_height = _load_settings()
-        self._panel, self._panel_sv, self._panel_quit_btn, self._panel_scroll = _make_nspanel()
+        self._panel, self._panel_sv, self._panel_quit_btn = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
         _register_hotkey(self)
 
@@ -307,8 +307,8 @@ def _register_hotkey(app: 'CCMenuBarApp') -> None:
     app._hotkey_cb  = cb   # keep ctypes objects alive; GC would invalidate callback
     app._hotkey_ref = hk_ref
 
-# Build NSPanel (nonactivatingPanel) + NSScrollView+NSStackView (sessions) + footer Restart button
-# Returns (panel, stack_view, quit_btn, scroll) — stored on app instance; ObjC objects reject Python attrs
+# Build NSPanel (nonactivatingPanel) + NSStackView (sessions, direct subview) + footer Restart button
+# Returns (panel, stack_view, quit_btn) — stored on app instance; ObjC objects reject Python attrs
 def _make_nspanel():
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
@@ -319,7 +319,7 @@ def _make_nspanel():
         NSWindowCollectionBehaviorIgnoresCycle)
     panel.setHasShadow_(True)
     panel.setOpaque_(False)
-    panel.setContentMinSize_((PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
+    panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
     footer.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with window width
     quit_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 70, 4, 62, 22))
@@ -328,24 +328,16 @@ def _make_nspanel():
     quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
     footer.addSubview_(quit_btn)
     panel.contentView().addSubview_(footer)
-    scroll_h = PANEL_HEIGHT - _FOOTER_H
-    scroll = NSScrollView.alloc().initWithFrame_(
-        NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, scroll_h))
-    scroll.setAutoresizingMask_(18)   # NSViewWidthSizable|NSViewHeightSizable — fills content area
-    scroll.setHasVerticalScroller_(True)
-    scroll.setHasHorizontalScroller_(False)
-    scroll.setAutohidesScrollers_(True)
-    scroll.setDrawsBackground_(False)
+    content_h = PANEL_HEIGHT - _FOOTER_H
     stack = NSStackView.alloc().initWithFrame_(
-        NSMakeRect(0, 0, PANEL_WIDTH - 16, scroll_h))
-    stack.setAutoresizingMask_(2)   # NSViewWidthSizable
+        NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, content_h))
+    stack.setAutoresizingMask_(18)   # NSViewWidthSizable|NSViewHeightSizable — auto-fills content area on resize
     stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
     stack.setAlignment_(NSLayoutAttributeLeading)
     stack.setSpacing_(1.0)
     stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas — required for addView_inGravity_ to work
-    scroll.setDocumentView_(stack)
-    panel.contentView().addSubview_(scroll)
-    return panel, stack, quit_btn, scroll
+    panel.contentView().addSubview_(stack)
+    return panel, stack, quit_btn
 
 # Position panel flush below the NSStatusItem button; reads current panel dimensions (set by _resize_panel)
 def _reposition_panel(panel, nsstatusitem) -> None:
@@ -400,12 +392,10 @@ def _truncate_and_height(sorted_sessions, panel_max_height: int, bg_result):
             break                                   # group partially truncated → stop
     return result, h
 
-# Resize NSScrollView, NSStackView, and NSPanel frame to new_h (preserves x/y origin; width from app._panel_width)
+# Resize NSPanel frame to new_h (preserves x/y origin; width from app._panel_width)
+# NSStackView auto-resizes via autoresizingMask=18 (NSViewWidthSizable|NSViewHeightSizable)
 def _resize_panel(app: CCMenuBarApp, new_h: float) -> None:
-    w         = app._panel_width
-    content_h = new_h - _FOOTER_H
-    app._panel_scroll.setFrame_(NSMakeRect(0, _FOOTER_H, w, content_h))
-    app._panel_sv.setFrame_(NSMakeRect(0, 0, w - 16, content_h))
+    w     = app._panel_width
     frame = app._panel.frame()
     app._panel.setFrame_display_(
         NSMakeRect(frame.origin.x, frame.origin.y, w, new_h), False)
@@ -460,7 +450,7 @@ def _rebuild_panel(app: CCMenuBarApp, sessions, bg_result=None) -> None:
             app._panel_sv.addView_inGravity_(btn, 1)
             app._displayed_items[s.name] = btn
 
-# In-place title update while NSPanel is open; preserves widget positions + scroll state
+# In-place title update while NSPanel is open; preserves widget positions
 def _update_panel_inplace(app: CCMenuBarApp, sessions, bg_result) -> None:
     min_remaining = bg_result.min_remaining if bg_result else None
     session_map = {s.name: s for s in sessions}
@@ -482,13 +472,14 @@ def _update_panel_inplace(app: CCMenuBarApp, sessions, bg_result) -> None:
             NSAttributedString.alloc().initWithString_attributes_(line, attrs))
 
 # Load settings; returns (auto_focus, panel_width, panel_max_height); falls back to module defaults on any error
+# panel_width and panel_max_height are clamped to their respective minimums to handle stale/invalid JSON
 def _load_settings():
     try:
         d = json.loads(open(_SETTINGS_PATH).read())
         return (
             bool(d.get('auto_focus', False)),
-            int(d.get('panel_width', PANEL_WIDTH)),
-            int(d.get('panel_max_height', PANEL_MAX_HEIGHT)),
+            max(int(d.get('panel_width',      PANEL_WIDTH)),      PANEL_MIN_WIDTH),
+            max(int(d.get('panel_max_height', PANEL_MAX_HEIGHT)), PANEL_MIN_HEIGHT),
         )
     except Exception:
         return False, PANEL_WIDTH, PANEL_MAX_HEIGHT
