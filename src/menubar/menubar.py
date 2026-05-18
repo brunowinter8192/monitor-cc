@@ -9,7 +9,8 @@ import time
 from itertools import groupby
 
 import rumps
-from AppKit import (NSAttributedString, NSButton, NSColor, NSFont,
+from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName,
+                    NSButton, NSColor, NSFont,
                     NSFontAttributeName, NSForegroundColorAttributeName,
                     NSLayoutAttributeLeading, NSPanel, NSScrollView,
                     NSStackView, NSTextField, NSView,
@@ -19,14 +20,15 @@ from AppKit import (NSAttributedString, NSButton, NSColor, NSFont,
                     NSWindowCollectionBehaviorIgnoresCycle,
                     NSWindowStyleMaskNonactivatingPanel,
                     NSWindowStyleMaskResizable)
-from Foundation import NSMakeRect, NSObject
+from Foundation import NSMakeRect, NSObject, NSOperationQueue
 
 # From discover.py: Live session discovery + status
 from .discover import list_alive_sessions, get_ghostty_terminal_id, _scan_bg_sleep_timers
 
-ICON_NORMAL    = '◉'
-ICON_BLINK     = '●'
-BLINK_DURATION = 0.2   # seconds
+ICON_NORMAL          = '◉'
+ICON_BLINK           = '●'
+ICON_BASELINE_OFFSET = 1.0   # pts — vertical offset applied via NSBaselineOffsetAttributeName; adjust if icon drifts
+BLINK_DURATION       = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
 _NAME_WIDTH    = 22     # chars for left-justified name column
 _MENLO         = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
@@ -136,6 +138,7 @@ class CCMenuBarApp(rumps.App):
                 self._panel_quit_btn.setTarget_(self._panel_controller)
                 self._panel_quit_btn.setAction_(b'restartApp:')
                 self._panel.setDelegate_(self._panel_controller)
+                _set_bar_icon(self, ICON_NORMAL)   # replace setTitle_ with attributed version
                 self._initialized = True
             except AttributeError:
                 return   # _nsapp not ready yet; retry next tick
@@ -174,14 +177,22 @@ def _statuses_changed(sessions, last: dict) -> bool:
     current = {s.name: s.status for s in sessions}
     return current != last
 
-# Flash icon to ICON_BLINK for BLINK_DURATION seconds, then restore
-def _blink(app: CCMenuBarApp) -> None:
-    app.title = ICON_BLINK
-    threading.Timer(BLINK_DURATION, _restore_icon, args=[app]).start()
+# Set bar icon via attributed string with pinned baseline; must be called on main thread
+def _set_bar_icon(app: 'CCMenuBarApp', text: str) -> None:
+    astr = NSAttributedString.alloc().initWithString_attributes_(
+        text, {
+            NSFontAttributeName: NSFont.menuBarFontOfSize_(0),
+            NSBaselineOffsetAttributeName: ICON_BASELINE_OFFSET,
+        })
+    app._nsapp.nsstatusitem.button().setAttributedTitle_(astr)
 
-# Restore normal icon title after blink
-def _restore_icon(app: CCMenuBarApp) -> None:
-    app.title = ICON_NORMAL
+# Flash icon to ICON_BLINK for BLINK_DURATION seconds, then restore on main thread
+def _blink(app: CCMenuBarApp) -> None:
+    _set_bar_icon(app, ICON_BLINK)
+    def _restore():
+        NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _set_bar_icon(app, ICON_NORMAL))
+    threading.Timer(BLINK_DURATION, _restore).start()
 
 # Badge for sessions with active background tasks: [B M:SS] if timer running, [B] otherwise
 def _format_bg_badge(remaining) -> str:
