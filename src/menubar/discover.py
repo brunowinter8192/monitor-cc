@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 import json
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -43,6 +44,10 @@ class SessionInfo(NamedTuple):
     project_name: str  # project this session belongs to (for grouping)
     is_worker: bool    # True if session lives under .claude/worktrees/
     cwd: str           # full working directory (non-empty for mains; '' for workers)
+
+class BgSleepInfo(NamedTuple):
+    min_remaining: int        # shortest remaining seconds across all active sleep timers
+    sleep_pids:    List[int]  # PIDs of matching sleep child processes
 
 # ORCHESTRATOR
 
@@ -397,8 +402,8 @@ def _parse_etime(etime: str) -> Optional[int]:
         pass
     return None
 
-# Scan for Opus 'sleep N && echo done' background timers; return shortest remaining seconds or None
-def _scan_bg_sleep_timers() -> Optional[int]:
+# Scan for Opus 'sleep N && echo done' background timers; return BgSleepInfo or None
+def _scan_bg_sleep_timers() -> Optional[BgSleepInfo]:
     try:
         r = subprocess.run(
             ['ps', '-A', '-o', 'pid=,ppid=,etime=,args='],
@@ -410,7 +415,7 @@ def _scan_bg_sleep_timers() -> Optional[int]:
         parts = line.split(None, 3)
         if len(parts) == 4:
             pid_info[parts[0]] = (parts[1], parts[2], parts[3])
-    remainders = []
+    timer_entries = []   # (remaining_secs, sleep_pid)
     for pid, (ppid, etime, args) in pid_info.items():
         tokens = args.strip().split()
         if len(tokens) != 2 or tokens[0] != 'sleep':
@@ -423,5 +428,39 @@ def _scan_bg_sleep_timers() -> Optional[int]:
         elapsed = _parse_etime(etime)
         if elapsed is None:
             continue
-        remainders.append(max(0, int(float(tokens[1])) - elapsed))
-    return min(remainders) if remainders else None
+        timer_entries.append((max(0, int(float(tokens[1])) - elapsed), int(pid)))
+    if not timer_entries:
+        return None
+    return BgSleepInfo(
+        min_remaining=min(t[0] for t in timer_entries),
+        sleep_pids=[t[1] for t in timer_entries],
+    )
+
+# Kill sleep PIDs for Opus background timers; write 'aborted\n' to all 0-byte task files
+def _abort_bg_sleep_timers(sleep_pids: List[int]) -> int:
+    killed = 0
+    for pid in sleep_pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+        except (ProcessLookupError, OSError):
+            pass
+    try:
+        for encoded_dir in _TASKS_BASE.iterdir():
+            if not encoded_dir.is_dir():
+                continue
+            for session_dir in encoded_dir.iterdir():
+                if not session_dir.is_dir():
+                    continue
+                tasks_dir = session_dir / 'tasks'
+                if not tasks_dir.is_dir():
+                    continue
+                for f in tasks_dir.glob('*.output'):
+                    try:
+                        if f.stat().st_size == 0:
+                            f.write_text('aborted\n')
+                    except OSError:
+                        pass
+    except OSError:
+        pass
+    return killed
