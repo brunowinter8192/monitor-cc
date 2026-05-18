@@ -117,6 +117,12 @@ class _PanelController(NSObject):
         app._panel_max_height = int(frame.size.height)
         _save_settings(app._auto_focus, app._panel_width, app._panel_max_height)
 
+    def windowDidEndLiveResize_(self, notification):
+        app = self._app
+        if app._panel_open:
+            bg_result = _scan_bg_sleep_timers()
+            _rebuild_panel(app, list_alive_sessions(), bg_result)
+
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
 class CCMenuBarApp(rumps.App):
