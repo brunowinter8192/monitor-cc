@@ -38,7 +38,8 @@ _NO_BG         = '   '   # 3-char spacer when no background task
 PANEL_WIDTH  = 380   # pts
 PANEL_HEIGHT = 460   # pts
 PANEL_GAP    = 4     # pts below the status bar button
-_FOOTER_H    = 30    # pts — fixed footer height for Quit button
+_FOOTER_H    = 30    # pts — fixed footer height for Restart button
+_LAUNCHD_LABEL = 'com.brunowinter.monitor_cc_menubar'
 
 # ORCHESTRATOR
 
@@ -50,7 +51,7 @@ def run() -> None:
 
 # FUNCTIONS
 
-# ObjC target for bar-button toggle, session-row click, Auto-Jump toggle, Quit
+# ObjC target for bar-button toggle, session-row click, Auto-Jump toggle, Restart
 class _PanelController(NSObject):
     def initWithApp_(self, app):
         self = objc.super(_PanelController, self).init()
@@ -83,8 +84,17 @@ class _PanelController(NSObject):
             label, {NSFontAttributeName: _MENLO()})
         sender.setAttributedTitle_(astr)
 
-    def quitApp_(self, sender):
-        rumps.quit_application()
+    def restartApp_(self, sender):
+        try:
+            result = subprocess.run(
+                ['launchctl', 'kickstart', '-k',
+                 f'gui/{os.geteuid()}/{_LAUNCHD_LABEL}'],
+                check=False, capture_output=True, timeout=5
+            )
+        except Exception:
+            result = None
+        if result is None or result.returncode != 0:
+            rumps.quit_application()
 
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
@@ -111,7 +121,7 @@ class CCMenuBarApp(rumps.App):
                 btn.setTarget_(self._panel_controller)
                 btn.setAction_(b'togglePanel:')
                 self._panel_quit_btn.setTarget_(self._panel_controller)
-                self._panel_quit_btn.setAction_(b'quitApp:')
+                self._panel_quit_btn.setAction_(b'restartApp:')
                 self._initialized = True
             except AttributeError:
                 return   # _nsapp not ready yet; retry next tick
@@ -269,7 +279,7 @@ def _make_nspanel():
     panel.setOpaque_(False)
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
     quit_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 70, 4, 62, 22))
-    quit_btn.setTitle_('Quit')
+    quit_btn.setTitle_('Restart')
     quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
     footer.addSubview_(quit_btn)
     panel.contentView().addSubview_(footer)
