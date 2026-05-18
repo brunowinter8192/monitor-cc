@@ -47,13 +47,13 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (375 LOC)
+### rules.py (411 LOC)
 
 **Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to 7 private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_system_passes` (system-block pass).
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`.
+**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`, `strip_bg_completed`.
 
 ---
 
@@ -80,6 +80,16 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 ### strip_po.py (72 LOC)
 
 **Purpose:** Strip the `Preview (first NKB):` section from `<persisted-output>` blocks injected by CC when Bash output exceeds its inline limit. Preserves the `<persisted-output>` wrapper and the `Output too large ... Full output saved to:` header line; removes only the Preview section (which biases readers toward 2KB snippets rather than the persisted file). Traverses all 4 content shapes (top-level string, list→text, list→tool_result/string, list→tool_result/list-of-text) mirroring `strip_sr.py`. Malformed PO blocks (missing `Output too large` or `Preview (first` header) are left untouched. Returns `(new_content, removed_chunks)` — caller (`rules.py` PO-Preview pass) appends chunks to `stripped_msg_removed` for `attribute_chunk` PP-rule attribution.
+**Reads:** Message content (string or list of blocks).
+**Writes:** Nothing — returns `(modified_content, list[str])`.
+**Called by:** `src/proxy/rules.py`
+**Calls out:** stdlib only (`re`).
+
+---
+
+### strip_bg_completed.py (75 LOC)
+
+**Purpose:** Strip `Background command "..." failed with exit code 143/137` kill notifications from user-turn content. CC injects these when it detects that a background Bash process was terminated via SIGTERM (143) or SIGKILL (137) — e.g. when the user aborts a sleep timer via the menubar. The failure wording is misleading (user intentionally killed the process) and is noise for Opus. Traverses all 4 content shapes mirroring `strip_po.py`. Regex also covers the `completed (exit code 143/137)` form defensively. Does NOT match exit code 0 (`completed (exit code 0)`) — that is the legitimate timer-done polling signal. Returns `(new_content, removed_chunks)` for BGK-rule attribution via `attribute_chunk`.
 **Reads:** Message content (string or list of blocks).
 **Writes:** Nothing — returns `(modified_content, list[str])`.
 **Called by:** `src/proxy/rules.py`

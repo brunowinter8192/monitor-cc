@@ -35,6 +35,7 @@ from .payload_helpers import (
 )
 from .rules_config import _load_config, _load_system2_rules
 from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
+from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER
 
 _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
@@ -90,6 +91,16 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         changed = True
 
     new_messages, pass_mods, pass_removed, c_idxs = _apply_po_preview_strip(new_messages)
+    modifications.extend(pass_mods)
+    for idx in c_idxs:
+        if idx not in stripped_msg_indices:
+            stripped_msg_indices.append(idx)
+            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
+        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+    if c_idxs:
+        changed = True
+
+    new_messages, pass_mods, pass_removed, c_idxs = _apply_bg_exit_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -336,6 +347,31 @@ def _apply_po_preview_strip(messages: list) -> tuple:
             pass_mods.append("stripped_po_preview")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = po_removed
+        else:
+            result.append(msg)
+    return result, pass_mods, pass_removed_by_idx, changed_indices
+
+
+# BG-exit-notification pass — strips "Background command "..." failed with exit code 143/137" lines from user messages — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+def _apply_bg_exit_strip(messages: list) -> tuple:
+    result = []
+    pass_mods = []
+    pass_removed_by_idx = {}
+    changed_indices = []
+    for idx, msg in enumerate(messages):
+        if msg.get("role") != "user":
+            result.append(msg)
+            continue
+        old_content = msg.get("content", "")
+        if not _content_contains(old_content, _BG_CMD_MARKER):
+            result.append(msg)
+            continue
+        new_content, bg_removed = _strip_bg_exit_notifications(old_content)
+        if bg_removed:
+            result.append({**msg, "content": new_content})
+            pass_mods.append("stripped_bg_exit_notification")
+            changed_indices.append(idx)
+            pass_removed_by_idx[idx] = bg_removed
         else:
             result.append(msg)
     return result, pass_mods, pass_removed_by_idx, changed_indices
