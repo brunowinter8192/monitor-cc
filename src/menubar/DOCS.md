@@ -17,13 +17,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### menubar.py (394 LOC)
+### menubar.py (404 LOC)
 
 **Purpose:** `CCMenuBarApp` rumps subclass + `_PanelController` (NSObject target for panel toggle/focus/quit) + NSPanel sticky-toggle dropdown + timer + blink + `_rebuild_panel` + `_update_panel_inplace` + `_focus_session` + `_register_hotkey` + settings load/save + Auto-Jump toggle + `run()` entry point.
 **Reads:** `list_alive_sessions()` result on every tick; `get_ghostty_terminal_id(cwd)` on click; `_scan_bg_sleep_timers()` on every tick for `[B M:SS]` badge; `~/.monitor_cc_menubar_settings.json` on launch.
 **Writes:** `app.title` (icon only), NSButton attributed titles in NSStackView (full rebuild or in-place `setAttributedTitle_`); `~/.monitor_cc_menubar_settings.json` on toggle.
 **Called by:** `workflow.py` (`--mode menubar` route).
-**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSButton/NSFont/NSColor/NSPanel/NSScrollView/NSStackView/NSTextField/NSView), `Foundation` (NSObject/NSMakeRect for `_PanelController` + panel layout), `subprocess` (osascript for click-to-focus), `threading.Timer`, `ctypes` (Carbon hotkey).
+**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSButton/NSFont/NSColor/NSPanel/NSScrollView/NSStackView/NSTextField/NSView), `Foundation` (NSObject/NSMakeRect for `_PanelController` + panel layout), `subprocess` (osascript for click-to-focus, launchctl for restart), `threading.Timer`, `ctypes` (Carbon hotkey).
 
 ---
 
@@ -49,7 +49,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 | `CCMenuBarApp._cwd_map` | menubar.py | `dict` | app instance | `{tag: cwd}` for click-to-focus routing. NSButton carries an integer tag (set in `_rebuild_panel`); `_PanelController.focusSession_` reads `sender.tag()` to resolve cwd. Reset on each rebuild. |
 | `CCMenuBarApp._panel` | menubar.py | `NSPanel` | app instance | The sticky dropdown panel. Created in `__init__` via `_make_nspanel()`. Stored here because ObjC objects reject Python attrs — (panel, stack, quit_btn) tuple unpacked onto app instance. |
 | `CCMenuBarApp._panel_sv` | menubar.py | `NSStackView` | app instance | Vertical NSStackView (document view of scroll area). Arranged subviews rebuilt on each `_rebuild_panel`. |
-| `CCMenuBarApp._panel_quit_btn` | menubar.py | `NSButton` | app instance | Quit button in fixed footer. Target/action wired in lazy-init tick (not `__init__`) to `_PanelController.quitApp_`. |
+| `CCMenuBarApp._panel_quit_btn` | menubar.py | `NSButton` | app instance | Restart button in fixed footer. Target/action wired in lazy-init tick (not `__init__`) to `_PanelController.restartApp_`. |
 | `CCMenuBarApp._panel_controller` | menubar.py | `_PanelController` | app instance | Single PyObjC NSObject instance as ObjC target for all button actions (toggle, focus, autoJump, quit). Held as instance attr to prevent ARC garbage collection. |
 | `CCMenuBarApp._auto_focus` | menubar.py | `bool` | app instance | Whether auto-focus is enabled. Loaded from settings JSON on launch; toggled and saved via `_PanelController.toggleAutoJump_`. Default OFF. |
 | `_cc_proc_cache` | discover.py | `Dict[pid, (tty, cwd)]` | module | CC processes. Incremental: `ps -A` every 10s drops gone PIDs; `lsof -d cwd` only for newly seen PIDs (cwd is stable after launch). Steady-state: ~75ms (ps only). |
@@ -106,7 +106,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Gotchas
 
-- `quit_button=None` passed to `rumps.App.__init__` — the default rumps quit button is menu-attached and would be orphaned after `setMenu_(None)`. Quit is instead a footer NSButton in the NSPanel wired to `_PanelController.quitApp_`.
+- `quit_button=None` passed to `rumps.App.__init__` — the default rumps quit button is menu-attached and would be orphaned after `setMenu_(None)`. Restart is instead a footer NSButton in the NSPanel wired to `_PanelController.restartApp_`.
 - Background task detection: `/tmp/claude-<uid>/` uses the numeric Unix UID (`os.getuid()`). `*.output` files with `st_size == 0` = in-progress; `done\n` (5 bytes) = completed.
 - `LSUIElement=1` must be set before `app.run()` to suppress the Dock icon. Set in `run()` via `os.environ.setdefault`.
 - Launched via launchd: `KeepAlive=true` auto-restarts on crash. Logs → `/tmp/monitor_cc_menubar.{log,err}`.
