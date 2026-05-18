@@ -10,10 +10,10 @@ from itertools import groupby
 
 import rumps
 from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName,
-                    NSButton, NSColor, NSFont,
+                    NSButton, NSColor, NSCursor, NSFont,
                     NSFontAttributeName, NSForegroundColorAttributeName,
                     NSLayoutAttributeLeading, NSPanel,
-                    NSStackView, NSTextField, NSView,
+                    NSStackView, NSTextField, NSTrackingArea, NSView,
                     NSStatusWindowLevel,
                     NSUserInterfaceLayoutOrientationVertical,
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
@@ -123,6 +123,18 @@ class _PanelController(NSObject):
             bg_result = _scan_bg_sleep_timers()
             _rebuild_panel(app, list_alive_sessions(), bg_result)
 
+    def mouseMoved_(self, event):
+        loc  = event.locationInWindow()
+        x, y = loc.x, loc.y
+        w    = self._app._panel.frame().size.width
+        EDGE = 6
+        if y < EDGE:
+            NSCursor.resizeUpDownCursor().set()
+        elif x < EDGE or x > w - EDGE:
+            NSCursor.resizeLeftRightCursor().set()
+        else:
+            NSCursor.arrowCursor().set()
+
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
 class CCMenuBarApp(rumps.App):
@@ -138,6 +150,7 @@ class CCMenuBarApp(rumps.App):
         self._auto_focus, self._panel_width, self._panel_max_height = _load_settings()
         self._panel, self._panel_sv, self._panel_quit_btn = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
+        _setup_resize_cursors(self._panel, self._panel_controller)
         _register_hotkey(self)
 
     @rumps.timer(POLL_INTERVAL)
@@ -307,6 +320,16 @@ def _register_hotkey(app: 'CCMenuBarApp') -> None:
     app._hotkey_cb  = cb   # keep ctypes objects alive; GC would invalidate callback
     app._hotkey_ref = hk_ref
 
+# Install NSTrackingArea so _PanelController.mouseMoved_ receives edge-hover events for resize cursors
+# options=642: NSTrackingMouseMoved(0x02) | NSTrackingActiveAlways(0x80) | NSTrackingInVisibleRect(0x200)
+# NSTrackingInVisibleRect ignores the rect arg and auto-tracks the full visible rect on resize
+# NSTrackingActiveAlways required — panel is nonactivating (never key window), so ActiveInKeyWindow misses it
+def _setup_resize_cursors(panel, controller) -> None:
+    cv = panel.contentView()
+    ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
+        cv.bounds(), 642, controller, None)
+    cv.addTrackingArea_(ta)
+
 # Build NSPanel (nonactivatingPanel) + NSStackView (sessions, direct subview) + footer Restart button
 # Returns (panel, stack_view, quit_btn) — stored on app instance; ObjC objects reject Python attrs
 def _make_nspanel():
@@ -322,7 +345,7 @@ def _make_nspanel():
     panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
     footer.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with window width
-    quit_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 70, 4, 62, 22))
+    quit_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86, 4, 78, 22))
     quit_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored
     quit_btn.setTitle_('Restart')
     quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
@@ -392,13 +415,14 @@ def _truncate_and_height(sorted_sessions, panel_max_height: int, bg_result):
             break                                   # group partially truncated → stop
     return result, h
 
-# Resize NSPanel frame to new_h (preserves x/y origin; width from app._panel_width)
+# Resize NSPanel frame to new_h; anchors TOP edge (not bottom-left origin) so panel stays flush below bar icon
 # NSStackView auto-resizes via autoresizingMask=18 (NSViewWidthSizable|NSViewHeightSizable)
 def _resize_panel(app: CCMenuBarApp, new_h: float) -> None:
-    w     = app._panel_width
-    frame = app._panel.frame()
+    w         = app._panel_width
+    frame     = app._panel.frame()
+    top_y     = frame.origin.y + frame.size.height   # fix the TOP edge in screen coords
     app._panel.setFrame_display_(
-        NSMakeRect(frame.origin.x, frame.origin.y, w, new_h), False)
+        NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)
 
 # Full panel rebuild; populates _displayed_items + _cwd_map + _abort_btn
 def _rebuild_panel(app: CCMenuBarApp, sessions, bg_result=None) -> None:
