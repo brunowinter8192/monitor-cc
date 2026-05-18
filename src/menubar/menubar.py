@@ -35,11 +35,14 @@ _BADGE_WORKING = '[*]'   # green — ASCII fixed-width, no emoji drift
 _BADGE_IDLE    = '[ ]'   # red
 _NO_BG         = '   '   # 3-char spacer when no background task
 
-PANEL_WIDTH  = 380   # pts
-PANEL_HEIGHT = 460   # pts
-PANEL_GAP    = 4     # pts below the status bar button
-_FOOTER_H    = 30    # pts — fixed footer height for Restart button
-_LAUNCHD_LABEL = 'com.brunowinter.monitor_cc_menubar'
+PANEL_WIDTH      = 380   # pts
+PANEL_HEIGHT     = 460   # pts — initial height; overwritten dynamically after first rebuild
+PANEL_MAX_HEIGHT = 600   # pts — upper cap for dynamic panel height; user adjusts per Edit
+PANEL_GAP        = 4     # pts below the status bar button
+_FOOTER_H        = 30    # pts — fixed footer height for Restart button
+_ROW_H           = 21    # pts — session NSButton row (20) + 1pt NSStackView spacing
+_LABEL_H         = 19    # pts — header/separator NSTextField (18) + 1pt NSStackView spacing
+_LAUNCHD_LABEL   = 'com.brunowinter.monitor_cc_menubar'
 
 # ORCHESTRATOR
 
@@ -108,7 +111,7 @@ class CCMenuBarApp(rumps.App):
         self._displayed_items: dict = {}
         self._cwd_map: dict = {}
         self._auto_focus: bool = _load_settings()
-        self._panel, self._panel_sv, self._panel_quit_btn = _make_nspanel()
+        self._panel, self._panel_sv, self._panel_quit_btn, self._panel_scroll = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
         _register_hotkey(self)
 
@@ -265,8 +268,8 @@ def _register_hotkey(app: 'CCMenuBarApp') -> None:
     app._hotkey_cb  = cb   # keep ctypes objects alive; GC would invalidate callback
     app._hotkey_ref = hk_ref
 
-# Build NSPanel (nonactivatingPanel) + NSScrollView+NSStackView (sessions) + footer Quit button
-# Returns (panel, stack_view, quit_btn) — stored on app instance; ObjC objects reject Python attrs
+# Build NSPanel (nonactivatingPanel) + NSScrollView+NSStackView (sessions) + footer Restart button
+# Returns (panel, stack_view, quit_btn, scroll) — stored on app instance; ObjC objects reject Python attrs
 def _make_nspanel():
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
@@ -298,14 +301,15 @@ def _make_nspanel():
     stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas — required for addView_inGravity_ to work
     scroll.setDocumentView_(stack)
     panel.contentView().addSubview_(scroll)
-    return panel, stack, quit_btn
+    return panel, stack, quit_btn, scroll
 
-# Position panel flush below the NSStatusItem button
+# Position panel flush below the NSStatusItem button; reads current panel height (set by _resize_panel)
 def _reposition_panel(panel, nsstatusitem) -> None:
+    h  = panel.frame().size.height   # dynamic — updated by _resize_panel on each rebuild
     sr = nsstatusitem.button().window().frame()   # button window is already in screen coords
     px = sr.origin.x + sr.size.width / 2.0 - PANEL_WIDTH / 2.0
-    py = sr.origin.y - PANEL_HEIGHT - PANEL_GAP
-    panel.setFrame_display_(NSMakeRect(px, py, PANEL_WIDTH, PANEL_HEIGHT), False)
+    py = sr.origin.y - h - PANEL_GAP
+    panel.setFrame_display_(NSMakeRect(px, py, PANEL_WIDTH, h), False)
 
 # Borderless Menlo-font NSButton row for session / toggle entries
 def _make_row_button(text: str, color=None) -> NSButton:
@@ -328,6 +332,35 @@ def _make_header_label(text: str) -> NSTextField:
             text, {NSFontAttributeName: _MENLO()}))
     return tf
 
+# Compute (truncated_sessions, panel_height) so rendered rows fit within PANEL_MAX_HEIGHT
+def _truncate_and_height(sorted_sessions):
+    fixed_h = _FOOTER_H + _ROW_H + _LABEL_H   # footer + toggle-btn + separator
+    if not sorted_sessions:
+        return sorted_sessions, fixed_h + _LABEL_H   # "No active sessions" label
+    groups    = [(pn, list(g)) for pn, g in groupby(sorted_sessions, key=lambda s: s.project_name)]
+    available = PANEL_MAX_HEIGHT - fixed_h
+    h         = fixed_h
+    result    = []
+    for _project_name, group_list in groups:
+        if available < _LABEL_H + _ROW_H:
+            break                                   # no room for header + at least one row
+        fits      = min(len(group_list), (available - _LABEL_H) // _ROW_H)
+        available -= _LABEL_H + fits * _ROW_H
+        h         += _LABEL_H + fits * _ROW_H
+        result.extend(group_list[:fits])
+        if fits < len(group_list):
+            break                                   # group partially truncated → stop
+    return result, h
+
+# Resize NSScrollView, NSStackView, and NSPanel frame to new_h (preserves x/y origin)
+def _resize_panel(app: CCMenuBarApp, new_h: float) -> None:
+    content_h = new_h - _FOOTER_H
+    app._panel_scroll.setFrame_(NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, content_h))
+    app._panel_sv.setFrame_(NSMakeRect(0, 0, PANEL_WIDTH - 16, content_h))
+    frame = app._panel.frame()
+    app._panel.setFrame_display_(
+        NSMakeRect(frame.origin.x, frame.origin.y, PANEL_WIDTH, new_h), False)
+
 # Full panel rebuild (only while panel is closed); populates _displayed_items + _cwd_map
 def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
     for sv in list(app._panel_sv.arrangedSubviews()):
@@ -335,6 +368,9 @@ def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
     app._displayed_items = {}
     app._cwd_map = {}
     next_tag = [1]
+    sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
+    sorted_sessions, new_h = _truncate_and_height(sorted_sessions)
+    _resize_panel(app, new_h)
     label = f'Auto-Jump: {"ON" if app._auto_focus else "OFF"}'
     toggle_btn = _make_row_button(label)
     toggle_btn.setTarget_(app._panel_controller)
@@ -342,10 +378,9 @@ def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
     app._panel_sv.addView_inGravity_(toggle_btn, 1)
     app._panel_sv.addView_inGravity_(_make_header_label('─' * 44), 1)
     min_remaining = _scan_bg_sleep_timers()
-    if not sessions:
+    if not sorted_sessions:
         app._panel_sv.addView_inGravity_(_make_header_label('No active sessions'), 1)
         return
-    sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
     for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
         app._panel_sv.addView_inGravity_(_make_header_label(_make_header(project_name)), 1)
         for s in group_iter:
