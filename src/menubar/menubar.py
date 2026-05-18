@@ -17,7 +17,8 @@ from AppKit import (NSAttributedString, NSButton, NSColor, NSFont,
                     NSUserInterfaceLayoutOrientationVertical,
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
                     NSWindowCollectionBehaviorIgnoresCycle,
-                    NSWindowStyleMaskNonactivatingPanel)
+                    NSWindowStyleMaskNonactivatingPanel,
+                    NSWindowStyleMaskResizable)
 from Foundation import NSMakeRect, NSObject
 
 # From discover.py: Live session discovery + status
@@ -38,6 +39,8 @@ _NO_BG         = '   '   # 3-char spacer when no background task
 PANEL_WIDTH      = 380   # pts
 PANEL_HEIGHT     = 460   # pts — initial height; overwritten dynamically after first rebuild
 PANEL_MAX_HEIGHT = 600   # pts — upper cap for dynamic panel height; user adjusts per Edit
+PANEL_MIN_WIDTH  = 250   # pts — minimum width enforced by setContentMinSize_
+PANEL_MIN_HEIGHT = 120   # pts — minimum height enforced by setContentMinSize_
 PANEL_GAP        = 4     # pts below the status bar button
 _FOOTER_H        = 30    # pts — fixed footer height for Restart button
 _ROW_H           = 21    # pts — session NSButton row (20) + 1pt NSStackView spacing
@@ -81,7 +84,7 @@ class _PanelController(NSObject):
     def toggleAutoJump_(self, sender):
         app = self._app
         app._auto_focus = not app._auto_focus
-        _save_settings(app._auto_focus)
+        _save_settings(app._auto_focus, app._panel_width, app._panel_max_height)
         label = f'Auto-Jump: {"ON" if app._auto_focus else "OFF"}'
         astr = NSAttributedString.alloc().initWithString_attributes_(
             label, {NSFontAttributeName: _MENLO()})
@@ -99,6 +102,13 @@ class _PanelController(NSObject):
         if result is None or result.returncode != 0:
             rumps.quit_application()
 
+    def windowDidResize_(self, notification):
+        frame = notification.object().frame()
+        app   = self._app
+        app._panel_width      = int(frame.size.width)
+        app._panel_max_height = int(frame.size.height)
+        _save_settings(app._auto_focus, app._panel_width, app._panel_max_height)
+
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
 class CCMenuBarApp(rumps.App):
@@ -110,7 +120,7 @@ class CCMenuBarApp(rumps.App):
         self._initialized: bool = False
         self._displayed_items: dict = {}
         self._cwd_map: dict = {}
-        self._auto_focus: bool = _load_settings()
+        self._auto_focus, self._panel_width, self._panel_max_height = _load_settings()
         self._panel, self._panel_sv, self._panel_quit_btn, self._panel_scroll = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
         _register_hotkey(self)
@@ -125,6 +135,7 @@ class CCMenuBarApp(rumps.App):
                 btn.setAction_(b'togglePanel:')
                 self._panel_quit_btn.setTarget_(self._panel_controller)
                 self._panel_quit_btn.setAction_(b'restartApp:')
+                self._panel.setDelegate_(self._panel_controller)
                 self._initialized = True
             except AttributeError:
                 return   # _nsapp not ready yet; retry next tick
@@ -273,15 +284,18 @@ def _register_hotkey(app: 'CCMenuBarApp') -> None:
 def _make_nspanel():
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
-        NSWindowStyleMaskNonactivatingPanel, 2, True)
+        NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskResizable, 2, True)
     panel.setLevel_(NSStatusWindowLevel)
     panel.setCollectionBehavior_(
         NSWindowCollectionBehaviorCanJoinAllSpaces |
         NSWindowCollectionBehaviorIgnoresCycle)
     panel.setHasShadow_(True)
     panel.setOpaque_(False)
+    panel.setContentMinSize_((PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
+    footer.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with window width
     quit_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 70, 4, 62, 22))
+    quit_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored
     quit_btn.setTitle_('Restart')
     quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
     footer.addSubview_(quit_btn)
@@ -289,12 +303,14 @@ def _make_nspanel():
     scroll_h = PANEL_HEIGHT - _FOOTER_H
     scroll = NSScrollView.alloc().initWithFrame_(
         NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, scroll_h))
+    scroll.setAutoresizingMask_(18)   # NSViewWidthSizable|NSViewHeightSizable — fills content area
     scroll.setHasVerticalScroller_(True)
     scroll.setHasHorizontalScroller_(False)
     scroll.setAutohidesScrollers_(True)
     scroll.setDrawsBackground_(False)
     stack = NSStackView.alloc().initWithFrame_(
         NSMakeRect(0, 0, PANEL_WIDTH - 16, scroll_h))
+    stack.setAutoresizingMask_(2)   # NSViewWidthSizable
     stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
     stack.setAlignment_(NSLayoutAttributeLeading)
     stack.setSpacing_(1.0)
@@ -303,20 +319,21 @@ def _make_nspanel():
     panel.contentView().addSubview_(scroll)
     return panel, stack, quit_btn, scroll
 
-# Position panel flush below the NSStatusItem button; reads current panel height (set by _resize_panel)
+# Position panel flush below the NSStatusItem button; reads current panel dimensions (set by _resize_panel)
 def _reposition_panel(panel, nsstatusitem) -> None:
-    h  = panel.frame().size.height   # dynamic — updated by _resize_panel on each rebuild
+    w  = panel.frame().size.width    # dynamic — updated by _resize_panel on each rebuild
+    h  = panel.frame().size.height
     sr = nsstatusitem.button().window().frame()   # button window is already in screen coords
-    px = sr.origin.x + sr.size.width / 2.0 - PANEL_WIDTH / 2.0
+    px = sr.origin.x + sr.size.width / 2.0 - w / 2.0
     py = sr.origin.y - h - PANEL_GAP
-    panel.setFrame_display_(NSMakeRect(px, py, PANEL_WIDTH, h), False)
+    panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
 
 # Borderless Menlo-font NSButton row for session / toggle entries
-def _make_row_button(text: str, color=None) -> NSButton:
+def _make_row_button(text: str, panel_width: int, color=None) -> NSButton:
     attrs = {NSFontAttributeName: _MENLO()}
     if color is not None:
         attrs[NSForegroundColorAttributeName] = color
-    btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH - 22, 20))
+    btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, panel_width - 22, 20))
     btn.setBordered_(False)
     btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
     btn.setAttributedTitle_(
@@ -324,21 +341,21 @@ def _make_row_button(text: str, color=None) -> NSButton:
     return btn
 
 # Non-interactive Menlo-font NSTextField for project-header lines
-def _make_header_label(text: str) -> NSTextField:
+def _make_header_label(text: str, panel_width: int) -> NSTextField:
     tf = NSTextField.labelWithString_('')
-    tf.setFrame_(NSMakeRect(0, 0, PANEL_WIDTH - 22, 18))
+    tf.setFrame_(NSMakeRect(0, 0, panel_width - 22, 18))
     tf.setAttributedStringValue_(
         NSAttributedString.alloc().initWithString_attributes_(
             text, {NSFontAttributeName: _MENLO()}))
     return tf
 
-# Compute (truncated_sessions, panel_height) so rendered rows fit within PANEL_MAX_HEIGHT
-def _truncate_and_height(sorted_sessions):
+# Compute (truncated_sessions, panel_height) so rendered rows fit within panel_max_height
+def _truncate_and_height(sorted_sessions, panel_max_height: int):
     fixed_h = _FOOTER_H + _ROW_H + _LABEL_H   # footer + toggle-btn + separator
     if not sorted_sessions:
         return sorted_sessions, fixed_h + _LABEL_H   # "No active sessions" label
     groups    = [(pn, list(g)) for pn, g in groupby(sorted_sessions, key=lambda s: s.project_name)]
-    available = PANEL_MAX_HEIGHT - fixed_h
+    available = panel_max_height - fixed_h
     h         = fixed_h
     result    = []
     for _project_name, group_list in groups:
@@ -352,14 +369,15 @@ def _truncate_and_height(sorted_sessions):
             break                                   # group partially truncated → stop
     return result, h
 
-# Resize NSScrollView, NSStackView, and NSPanel frame to new_h (preserves x/y origin)
+# Resize NSScrollView, NSStackView, and NSPanel frame to new_h (preserves x/y origin; width from app._panel_width)
 def _resize_panel(app: CCMenuBarApp, new_h: float) -> None:
+    w         = app._panel_width
     content_h = new_h - _FOOTER_H
-    app._panel_scroll.setFrame_(NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, content_h))
-    app._panel_sv.setFrame_(NSMakeRect(0, 0, PANEL_WIDTH - 16, content_h))
+    app._panel_scroll.setFrame_(NSMakeRect(0, _FOOTER_H, w, content_h))
+    app._panel_sv.setFrame_(NSMakeRect(0, 0, w - 16, content_h))
     frame = app._panel.frame()
     app._panel.setFrame_display_(
-        NSMakeRect(frame.origin.x, frame.origin.y, PANEL_WIDTH, new_h), False)
+        NSMakeRect(frame.origin.x, frame.origin.y, w, new_h), False)
 
 # Full panel rebuild (only while panel is closed); populates _displayed_items + _cwd_map
 def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
@@ -368,28 +386,29 @@ def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
     app._displayed_items = {}
     app._cwd_map = {}
     next_tag = [1]
+    pw = app._panel_width
     sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
-    sorted_sessions, new_h = _truncate_and_height(sorted_sessions)
+    sorted_sessions, new_h = _truncate_and_height(sorted_sessions, app._panel_max_height)
     _resize_panel(app, new_h)
     label = f'Auto-Jump: {"ON" if app._auto_focus else "OFF"}'
-    toggle_btn = _make_row_button(label)
+    toggle_btn = _make_row_button(label, pw)
     toggle_btn.setTarget_(app._panel_controller)
     toggle_btn.setAction_(b'toggleAutoJump:')
     app._panel_sv.addView_inGravity_(toggle_btn, 1)
-    app._panel_sv.addView_inGravity_(_make_header_label('─' * 44), 1)
+    app._panel_sv.addView_inGravity_(_make_header_label('─' * 44, pw), 1)
     min_remaining = _scan_bg_sleep_timers()
     if not sorted_sessions:
-        app._panel_sv.addView_inGravity_(_make_header_label('No active sessions'), 1)
+        app._panel_sv.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
         return
     for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
-        app._panel_sv.addView_inGravity_(_make_header_label(_make_header(project_name)), 1)
+        app._panel_sv.addView_inGravity_(_make_header_label(_make_header(project_name), pw), 1)
         for s in group_iter:
             dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
             badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
             name_col = s.name.ljust(_NAME_WIDTH)
             if not s.is_worker:
                 line = f'● {name_col} {dot} {badge}'
-                btn  = _make_row_button(line, NSColor.systemOrangeColor())
+                btn  = _make_row_button(line, pw, NSColor.systemOrangeColor())
                 tag  = next_tag[0]; next_tag[0] += 1
                 btn.setTag_(tag)
                 btn.setTarget_(app._panel_controller)
@@ -397,7 +416,7 @@ def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
                 app._cwd_map[tag] = s.cwd or ''
             else:
                 line = f'  {name_col} {dot} {badge}'
-                btn  = _make_row_button(line)
+                btn  = _make_row_button(line, pw)
             app._panel_sv.addView_inGravity_(btn, 1)
             app._displayed_items[s.name] = btn
 
@@ -422,18 +441,27 @@ def _update_panel_inplace(app: CCMenuBarApp, sessions) -> None:
         btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(line, attrs))
 
-# Load auto_focus bool from settings JSON; returns False (default OFF) on any error
-def _load_settings() -> bool:
+# Load settings; returns (auto_focus, panel_width, panel_max_height); falls back to module defaults on any error
+def _load_settings():
     try:
-        return bool(json.loads(open(_SETTINGS_PATH).read()).get('auto_focus', False))
+        d = json.loads(open(_SETTINGS_PATH).read())
+        return (
+            bool(d.get('auto_focus', False)),
+            int(d.get('panel_width', PANEL_WIDTH)),
+            int(d.get('panel_max_height', PANEL_MAX_HEIGHT)),
+        )
     except Exception:
-        return False
+        return False, PANEL_WIDTH, PANEL_MAX_HEIGHT
 
 # Atomic settings write: tempfile + os.replace to prevent partial-write corruption
-def _save_settings(auto_focus: bool) -> None:
+def _save_settings(auto_focus: bool, panel_width: int, panel_max_height: int) -> None:
     try:
         tmp = _SETTINGS_PATH + '.tmp'
-        open(tmp, 'w').write(json.dumps({'auto_focus': auto_focus}))
+        open(tmp, 'w').write(json.dumps({
+            'auto_focus': auto_focus,
+            'panel_width': panel_width,
+            'panel_max_height': panel_max_height,
+        }))
         os.replace(tmp, _SETTINGS_PATH)
     except Exception:
         pass
