@@ -11,28 +11,28 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 ## Flow
 
 1. `run()` → sets `LSUIElement=1` env → instantiates `CCMenuBarApp` → `app.run()` starts AppKit runloop.
-2. `CCMenuBarApp._tick()` fires every 1.5s (NSDefaultRunLoopMode, uninterrupted — NSPanel does not trigger NSEventTrackingRunLoopMode) → `list_alive_sessions()` → auto-focus debounce → if panel closed: blink on change + `_rebuild_panel`; if panel open: `_update_panel_inplace` (updates NSButton attributed titles, preserves scroll). Background task badge: `[B M:SS]` when Opus sleep timers running, `[B]` otherwise.
+2. `CCMenuBarApp._tick()` fires every 1.5s (NSDefaultRunLoopMode, uninterrupted — NSPanel does not trigger NSEventTrackingRunLoopMode) → `list_alive_sessions()` → auto-focus debounce → if panel closed: blink on change + `_rebuild_panel`; if panel open: pre-compute `_scan_bg_sleep_timers()` → on None↔Some transition call `_rebuild_panel` (adds/removes abort button), otherwise `_update_panel_inplace` (updates NSButton attributed titles, preserves scroll). Background task badge: `[B M:SS]` when Opus sleep timers running, `[B]` otherwise. `⊗ abort timer` button appears below separator when timers present; click kills sleep PIDs + writes `aborted\n` to 0-byte task files.
 3. `list_alive_sessions()` → refreshes CC-process cache (ps/lsof, every 10s) → refreshes Ghostty TTY-to-UUID mapping (OSC 2 probe, incremental) → scans `~/.claude/projects/*/` → picks newest JSONL per project → for workers checks tmux session existence; for mains applies 1h alive window → determines working/idle status per session type → checks `/tmp/claude-<uid>/` for in-progress tasks.
 4. Click on a main session → `_focus_session(cwd)` → looks up Ghostty terminal UUID from mapping cache → `focus terminal id "<UUID>"` (Path A) or cwd-match fallback (Path B).
 
 ## Modules
 
-### menubar.py (467 LOC)
+### menubar.py (501 LOC)
 
-**Purpose:** `CCMenuBarApp` rumps subclass + `_PanelController` (NSObject target for panel toggle/focus/restart + `windowDidResize_` delegate) + NSPanel sticky-toggle dropdown with dynamic height + drag-resize (left/bottom/right edges) + timer + blink + `_rebuild_panel` + `_update_panel_inplace` + `_truncate_and_height` + `_resize_panel` + `_focus_session` + `_register_hotkey` + settings load/save + Auto-Jump toggle + `run()` entry point.
-**Reads:** `list_alive_sessions()` result on every tick; `get_ghostty_terminal_id(cwd)` on click; `_scan_bg_sleep_timers()` on every tick for `[B M:SS]` badge; `~/.monitor_cc_menubar_settings.json` on launch.
-**Writes:** `app.title` (icon only), NSButton attributed titles in NSStackView (full rebuild or in-place `setAttributedTitle_`); `~/.monitor_cc_menubar_settings.json` on toggle.
+**Purpose:** `CCMenuBarApp` rumps subclass + `_PanelController` (NSObject target for panel toggle/focus/restart/abort + `windowDidResize_` delegate) + NSPanel sticky-toggle dropdown with dynamic height + drag-resize (left/bottom/right edges) + timer + blink + `_rebuild_panel` + `_update_panel_inplace` + `_truncate_and_height` + `_resize_panel` + `_focus_session` + `_register_hotkey` + settings load/save + Auto-Jump toggle + `run()` entry point.
+**Reads:** `list_alive_sessions()` result on every tick; `get_ghostty_terminal_id(cwd)` on click; `_scan_bg_sleep_timers()` on every tick for `[B M:SS]` badge + abort button visibility; `~/.monitor_cc_menubar_settings.json` on launch.
+**Writes:** `app.title` (icon only), NSButton attributed titles in NSStackView (full rebuild or in-place `setAttributedTitle_`); `~/.monitor_cc_menubar_settings.json` on toggle. On abort: `os.kill(SIGTERM)` to sleep PIDs + `'aborted\n'` to 0-byte task files (via `_abort_bg_sleep_timers`).
 **Called by:** `workflow.py` (`--mode menubar` route).
 **Calls out:** `rumps`, `AppKit` (NSAttributedString/NSButton/NSFont/NSColor/NSPanel/NSScrollView/NSStackView/NSTextField/NSView), `Foundation` (NSObject/NSMakeRect for `_PanelController` + panel layout), `subprocess` (osascript for click-to-focus, launchctl for restart), `threading.Timer`, `ctypes` (Carbon hotkey).
 
 ---
 
-### discover.py (427 LOC)
+### discover.py (466 LOC)
 
-**Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker). Provides Ghostty terminal UUID mapping for reliable click-to-focus. Provides `_scan_bg_sleep_timers()` for bar countdown. For main sessions: overlays proxy-log mtime as thinking-state signal (JSONL lags during reasoning-only phases).
+**Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker). Provides Ghostty terminal UUID mapping for reliable click-to-focus. Provides `_scan_bg_sleep_timers()` → `BgSleepInfo` (countdown + sleep PIDs) and `_abort_bg_sleep_timers()` for the abort button. For main sessions: overlays proxy-log mtime as thinking-state signal (JSONL lags during reasoning-only phases).
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; `/tmp/claude-<uid>/` task dirs; `ps`/`lsof` output (CC process cache); tmux session state; `/dev/ttys<NNN>` device files (OSC 2 marker writes for Ghostty mapping); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes (proxy thinking signal).
-**Writes:** `/dev/ttys<NNN>` (transient OSC 2 probe marker + empty-string cleanup). Module-level cache: `_cc_proc_cache`, `_cc_proc_last_refresh`, `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_tmux_state_cache`, `_tmux_state_last_refresh`, `_proxy_log_mtime_cache`.
-**Called by:** `menubar.py:CCMenuBarApp._tick` (`list_alive_sessions`, `_scan_bg_sleep_timers`), `menubar.py:_focus_session` (`get_ghostty_terminal_id`).
+**Writes:** `/dev/ttys<NNN>` (transient OSC 2 probe marker + empty-string cleanup). On abort: `signal.SIGTERM` to sleep PIDs + `'aborted\n'` to all 0-byte `*.output` task files under `_TASKS_BASE`. Module-level cache: `_cc_proc_cache`, `_cc_proc_last_refresh`, `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_tmux_state_cache`, `_tmux_state_last_refresh`, `_proxy_log_mtime_cache`.
+**Called by:** `menubar.py:CCMenuBarApp._tick` (`list_alive_sessions`, `_scan_bg_sleep_timers`), `menubar.py:_PanelController.abortBgTimer_` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`), `menubar.py:_focus_session` (`get_ghostty_terminal_id`).
 **Calls out:** `session_finder.get_project_directories`; `subprocess` (ps, lsof, tmux, osascript).
 
 ---
@@ -47,6 +47,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 | `CCMenuBarApp._initialized` | menubar.py | `bool` | app instance | Lazy-init sentinel: `setMenu_(None)` + button target/action wiring happens in first `_tick` after AppKit runloop starts. Prevents AttributeError on `_nsapp` access in `__init__`. |
 | `CCMenuBarApp._displayed_items` | menubar.py | `dict` | app instance | `{name: NSButton}` populated by `_rebuild_panel`; used by `_update_panel_inplace` for O(1) button lookup. Reset on each rebuild. |
 | `CCMenuBarApp._cwd_map` | menubar.py | `dict` | app instance | `{tag: cwd}` for click-to-focus routing. NSButton carries an integer tag (set in `_rebuild_panel`); `_PanelController.focusSession_` reads `sender.tag()` to resolve cwd. Reset on each rebuild. |
+| `CCMenuBarApp._abort_btn` | menubar.py | `NSButton\|None` | app instance | Abort-timer button reference. `None` when no CC sleep timers running; set to NSButton in `_rebuild_panel` when `bg_result is not None`. Checked by `_tick` to detect None↔Some transition → triggers rebuild. Reset to `None` at top of each `_rebuild_panel`. |
 | `CCMenuBarApp._panel` | menubar.py | `NSPanel` | app instance | The sticky dropdown panel. Created in `__init__` via `_make_nspanel()`. Stored here because ObjC objects reject Python attrs — (panel, stack, quit_btn) tuple unpacked onto app instance. |
 | `CCMenuBarApp._panel_sv` | menubar.py | `NSStackView` | app instance | Vertical NSStackView (document view of scroll area). Arranged subviews rebuilt on each `_rebuild_panel`. |
 | `CCMenuBarApp._panel_quit_btn` | menubar.py | `NSButton` | app instance | Restart button in fixed footer. Target/action wired in lazy-init tick (not `__init__`) to `_PanelController.restartApp_`. |
@@ -112,6 +113,8 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 - `quit_button=None` passed to `rumps.App.__init__` — the default rumps quit button is menu-attached and would be orphaned after `setMenu_(None)`. Restart is instead a footer NSButton in the NSPanel wired to `_PanelController.restartApp_`.
 - Background task detection: `/tmp/claude-<uid>/` uses the numeric Unix UID (`os.getuid()`). `*.output` files with `st_size == 0` = in-progress; `done\n` (5 bytes) = completed.
+- **Abort leaves task file at 0 bytes:** when the sleep child is killed via SIGTERM, the zsh parent exits via `&&` short-circuit (no `echo done` stdout), so CC writes nothing to the task file — it stays 0 bytes indefinitely. `_abort_bg_sleep_timers` explicitly writes `aborted\n` to all 0-byte task files after kill so `_has_active_bg` returns False and the `[B]` badge disappears. CC fires no completion notification for externally killed timers; Opus must be informed manually.
+- **CC uses `zsh -c`, not `bash -c`:** background bash commands are actually `zsh -c "source ... && eval 'cmd' ..."`. `_scan_bg_sleep_timers` correctly matches these because `echo done` appears in the zsh parent's args; the sleep child args are always exactly `sleep N`.
 - `LSUIElement=1` must be set before `app.run()` to suppress the Dock icon. Set in `run()` via `os.environ.setdefault`.
 - Launched via launchd: `KeepAlive=true` auto-restarts on crash. Logs → `/tmp/monitor_cc_menubar.{log,err}`.
 - **Ghostty PID lookup**: `pgrep` is unreliable on macOS for full-path binary names (`pgrep -x ghostty` and `pgrep -f Ghostty.app/Contents/MacOS` both return empty intermittently). Use `ps -A -o pid=,command=` parsed directly: `'Ghostty.app/Contents/MacOS' in line` finds the process robustly.

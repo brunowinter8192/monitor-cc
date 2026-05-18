@@ -23,7 +23,8 @@ from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName,
 from Foundation import NSMakeRect, NSObject, NSOperationQueue
 
 # From discover.py: Live session discovery + status
-from .discover import list_alive_sessions, get_ghostty_terminal_id, _scan_bg_sleep_timers
+from .discover import (list_alive_sessions, get_ghostty_terminal_id,
+                       _scan_bg_sleep_timers, _abort_bg_sleep_timers)
 
 ICON_NORMAL          = '◉'
 ICON_BLINK           = '●'
@@ -104,6 +105,11 @@ class _PanelController(NSObject):
         if result is None or result.returncode != 0:
             rumps.quit_application()
 
+    def abortBgTimer_(self, sender):
+        result = _scan_bg_sleep_timers()
+        if result:
+            _abort_bg_sleep_timers(result.sleep_pids)
+
     def windowDidResize_(self, notification):
         frame = notification.object().frame()
         app   = self._app
@@ -122,6 +128,7 @@ class CCMenuBarApp(rumps.App):
         self._initialized: bool = False
         self._displayed_items: dict = {}
         self._cwd_map: dict = {}
+        self._abort_btn = None   # NSButton ref; set by _rebuild_panel when timer running
         self._auto_focus, self._panel_width, self._panel_max_height = _load_settings()
         self._panel, self._panel_sv, self._panel_quit_btn, self._panel_scroll = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
@@ -162,7 +169,11 @@ class CCMenuBarApp(rumps.App):
                 else:
                     self._idle_since_ts.pop(s.name, None)
         if self._panel_open:
-            _update_panel_inplace(self, sessions)
+            bg_result = _scan_bg_sleep_timers()
+            if (bg_result is not None) != (self._abort_btn is not None):
+                _rebuild_panel(self, sessions, bg_result)
+            else:
+                _update_panel_inplace(self, sessions, bg_result)
             self._last_statuses = {s.name: s.status for s in sessions}
         else:
             changed = _statuses_changed(sessions, self._last_statuses)
@@ -361,8 +372,11 @@ def _make_header_label(text: str, panel_width: int) -> NSTextField:
     return tf
 
 # Compute (truncated_sessions, panel_height) so rendered rows fit within panel_max_height
-def _truncate_and_height(sorted_sessions, panel_max_height: int):
+def _truncate_and_height(sorted_sessions, panel_max_height: int, bg_result):
+    has_timer = bg_result is not None
     fixed_h = _FOOTER_H + _ROW_H + _LABEL_H   # footer + toggle-btn + separator
+    if has_timer:
+        fixed_h += _ROW_H                       # abort timer button
     if not sorted_sessions:
         return sorted_sessions, fixed_h + _LABEL_H   # "No active sessions" label
     groups    = [(pn, list(g)) for pn, g in groupby(sorted_sessions, key=lambda s: s.project_name)]
@@ -390,16 +404,20 @@ def _resize_panel(app: CCMenuBarApp, new_h: float) -> None:
     app._panel.setFrame_display_(
         NSMakeRect(frame.origin.x, frame.origin.y, w, new_h), False)
 
-# Full panel rebuild (only while panel is closed); populates _displayed_items + _cwd_map
-def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
+# Full panel rebuild; populates _displayed_items + _cwd_map + _abort_btn
+def _rebuild_panel(app: CCMenuBarApp, sessions, bg_result=None) -> None:
     for sv in list(app._panel_sv.arrangedSubviews()):
         app._panel_sv.removeView_(sv)
     app._displayed_items = {}
     app._cwd_map = {}
+    app._abort_btn = None
     next_tag = [1]
     pw = app._panel_width
     sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
-    sorted_sessions, new_h = _truncate_and_height(sorted_sessions, app._panel_max_height)
+    if bg_result is None:
+        bg_result = _scan_bg_sleep_timers()
+    min_remaining = bg_result.min_remaining if bg_result else None
+    sorted_sessions, new_h = _truncate_and_height(sorted_sessions, app._panel_max_height, bg_result)
     _resize_panel(app, new_h)
     label = f'Auto-Jump: {"ON" if app._auto_focus else "OFF"}'
     toggle_btn = _make_row_button(label, pw)
@@ -407,7 +425,12 @@ def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
     toggle_btn.setAction_(b'toggleAutoJump:')
     app._panel_sv.addView_inGravity_(toggle_btn, 1)
     app._panel_sv.addView_inGravity_(_make_header_label('─' * 44, pw), 1)
-    min_remaining = _scan_bg_sleep_timers()
+    if bg_result is not None:
+        abort_btn = _make_row_button('  ⊗ abort timer', pw)
+        abort_btn.setTarget_(app._panel_controller)
+        abort_btn.setAction_(b'abortBgTimer:')
+        app._panel_sv.addView_inGravity_(abort_btn, 1)
+        app._abort_btn = abort_btn
     if not sorted_sessions:
         app._panel_sv.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
         return
@@ -432,8 +455,8 @@ def _rebuild_panel(app: CCMenuBarApp, sessions) -> None:
             app._displayed_items[s.name] = btn
 
 # In-place title update while NSPanel is open; preserves widget positions + scroll state
-def _update_panel_inplace(app: CCMenuBarApp, sessions) -> None:
-    min_remaining = _scan_bg_sleep_timers()
+def _update_panel_inplace(app: CCMenuBarApp, sessions, bg_result) -> None:
+    min_remaining = bg_result.min_remaining if bg_result else None
     session_map = {s.name: s for s in sessions}
     for name, btn in app._displayed_items.items():
         s = session_map.get(name)
