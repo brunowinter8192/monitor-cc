@@ -129,6 +129,81 @@ panel.enableCursorRects()
 
 **NOT yet implemented** — user decides after running the `--fix` probe.
 
+## Iteration 6 (2026-05-20) — Leaf-Rect Approach
+
+### API clarification: cursorUpdate_ ≠ cursor-rect signal
+
+`cursorUpdate_` is the NSTrackingArea callback. `addCursorRect_cursor_` dispatches directly at AppKit window level — it does **not** fire `cursorUpdate_`. The Iteration 5 log showing 0 `cursorUpdate_` calls was measuring the wrong thing. The correct signal is the visual cursor shape change, which DID happen (I-Beam→Arrow on panel entry with `--fix`).
+
+### Iteration 5b interactive result
+
+User ran `probe.py --fix` and hovered the left edge:
+
+| Signal | Result |
+|---|---|
+| I-Beam → Arrow on panel entry | ✅ NOW works (broken before --fix) |
+| Resize `↔` at left/right edge | ❌ still missing |
+| `cursorUpdate_` count | 0 — irrelevant metric (see above) |
+
+`enableCursorRects()` was genuinely the missing call — confirmed visually. Arrow cursor in the interior is now correct. The `↔` resize cursor at the edges is still absent → a second blocker exists.
+
+### New hypothesis: subview coverage
+
+The Iteration 4 child-view-race hypothesis is **back on the table**. The reason it appeared refuted (zero `cursorUpdate_`) was a measurement error: we were checking the wrong signal. The underlying geometry is still true: StackView, FooterView, and TopBarView physically cover the edge strips where ContentView's cursor rects were installed. AppKit's deepest-subview-first cursor-rect dispatch means ContentView's rects are shadowed whenever a covering subview does not install its own rects for the same strip.
+
+**Fix approach:** install resize cursor rects directly on each covering leaf subview in its own `resetCursorRects`, in addition to super's rects. Super first, leaf rects after (to let super install its default arrow rect, then override the edge strips with our resize rect).
+
+### --leaf-rects flag (2026-05-20)
+
+`dev/cursor_edges/probe.py --leaf-rects` (requires `--fix`) adds to each subclass's `resetCursorRects`:
+
+| View | Leaf rects |
+|---|---|
+| `_LoggingStackView` (frame.y=30, h=409) | LEFT x=0..8 + RIGHT x=372..380, full local height |
+| `_LoggingFooterView` (frame.y=0, h=30) | LEFT + RIGHT (full height) + BOTTOM y=0..8 (full width) |
+| `_LoggingTopBarView` (frame.y=439, h=21) | LEFT + RIGHT (no top rect) |
+| `_LoggingButton` | LEFT x=0..8 if `frame.origin.x < EDGE` (Auto-Jump, session rows; Kill/Restart excluded) |
+
+Module-level `_LEAF_RECTS_ENABLED` flag set in `main()` before panel construction; all subclasses check it in their `resetCursorRects`.
+
+**Smoke (2026-05-20):** starts clean, `areCursorRectsEnabled=True`, all `[leaf]` lines logged, no AttributeError.
+
+### Verification path
+
+```bash
+venv/bin/python3 dev/cursor_edges/probe.py --fix --leaf-rects
+```
+
+Hover left edge (x < 8), right edge (x > 372), bottom edge (y < 8) slowly. Watch stderr for cursor shape change.
+
+- `↔` appears at left/right → subview-coverage was the blocker → leaf-rect approach confirmed
+- Still Arrow/I-Beam → coverage is NOT the issue; next candidate: `NSPanel.sendEvent_` override or `NSWindowDelegate.windowShouldClose_` -level intercept
+
+### src/ port recipe (pending user verification)
+
+If `--leaf-rects` verifies the hypothesis, the production fix in `src/menubar/panel.py` is:
+
+**Step 1:** Add `panel.enableCursorRects()` after `panel.setContentView_(cv)` in `_make_nspanel()`.
+
+**Step 2:** Add `resetCursorRects` overrides to each production subclass:
+
+- `_PanelContentView(NSView)` — already has 4-zone rects; no change needed
+- Production `stack` → subclass `NSStackView`, add `resetCursorRects`:
+  ```python
+  def resetCursorRects(self):
+      super().resetCursorRects()
+      h = self.bounds().size.height; w = self.bounds().size.width
+      self.addCursorRect_cursor_(NSMakeRect(0, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
+      self.addCursorRect_cursor_(NSMakeRect(w - EDGE, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
+  ```
+- Production `footer` → subclass `NSView`, add `resetCursorRects` with LEFT + RIGHT + BOTTOM
+- Production `top_bar` → subclass `NSView`, add `resetCursorRects` with LEFT + RIGHT
+- Production toggle button (`_toggle_btn`) → if `NSButton` subclass, add LEFT rect guard
+
+All changes in `src/menubar/panel.py`. No other files touched.
+
+**NOT yet implemented** — user decides after running `probe.py --fix --leaf-rects`.
+
 ## launchctl bootstrap I/O Error (Recurring)
 
 **Symptom:** `launchctl bootstrap gui/<uid> <plist>` failed mit `Bootstrap failed: 5: Input/output error` beim ersten Versuch — beim zweiten Versuch direkt nach 1-2s success.
