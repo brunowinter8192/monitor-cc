@@ -27,13 +27,37 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (473 LOC)
+### discover.py (501 LOC)
 
-**Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker). Provides Ghostty terminal UUID mapping for reliable click-to-focus. Provides `_scan_bg_sleep_timers()` → `BgSleepInfo` (countdown + sleep PIDs) and `_abort_bg_sleep_timers()` for the abort button. For main sessions: overlays proxy-log mtime as thinking-state signal (JSONL lags during reasoning-only phases).
-**Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; `/tmp/claude-<uid>/` task dirs; `ps`/`lsof` output (CC process cache); tmux session state; `/dev/ttys<NNN>` device files (OSC 2 marker writes for Ghostty mapping); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes (proxy thinking signal).
-**Writes:** `/dev/ttys<NNN>` (transient OSC 2 probe marker + empty-string cleanup). On abort: `signal.SIGTERM` to sleep PIDs + `'aborted\n'` to all 0-byte `*.output` task files under `_TASKS_BASE`. Module-level cache: `_cc_proc_cache`, `_cc_proc_last_refresh`, `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_tmux_state_cache`, `_tmux_state_last_refresh`, `_proxy_log_mtime_cache`.
+**Purpose:** Session discovery — scans JSONL files, determines working/idle/background status per session type (main vs worker). Provides Ghostty terminal UUID mapping for reliable click-to-focus. Provides `_scan_bg_sleep_timers()` → `BgSleepInfo` (countdown + sleep PIDs) and `_abort_bg_sleep_timers()` for the abort button. For main sessions: primary status from hook state (`~/.monitor_cc_menubar_hooks.json`); fallback to JSONL mtime and proxy-log override when hooks not installed or stale.
+**Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; `/tmp/claude-<uid>/` task dirs; `ps`/`lsof` output (CC process cache); tmux session state; `/dev/ttys<NNN>` device files (OSC 2 marker writes for Ghostty mapping); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes (proxy thinking signal); `~/.monitor_cc_menubar_hooks.json` (hook state, TTL 10s).
+**Writes:** `/dev/ttys<NNN>` (transient OSC 2 probe marker + empty-string cleanup). On abort: `signal.SIGTERM` to sleep PIDs + `'aborted\n'` to all 0-byte `*.output` task files under `_TASKS_BASE`. Module-level cache: `_cc_proc_cache`, `_cc_proc_last_refresh`, `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_tmux_state_cache`, `_tmux_state_last_refresh`, `_proxy_log_mtime_cache`, `_hook_state_cache`, `_hook_state_last_read`.
 **Called by:** `menubar.py:CCMenuBarApp._tick` (`list_alive_sessions`, `_scan_bg_sleep_timers`), `menubar.py:_PanelController.abortBgTimer_` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`), `menubar.py:_focus_session` (`get_ghostty_terminal_id`).
 **Calls out:** `session_finder.get_project_directories`; `subprocess` (ps, lsof, tmux, osascript).
+
+---
+
+### hook_writer.py (73 LOC)
+
+**Purpose:** CC hook handler — reads the JSON payload CC writes to stdin on UserPromptSubmit/Stop/StopFailure, then atomically updates `~/.monitor_cc_menubar_hooks.json` with `{session_id: {status, cwd, updated_ts}}`. Called by CC's hook system (installed via `hook_setup.py`). Prunes entries older than 7200s on each write to prevent unbounded file growth.
+**Reads:** stdin (CC hook JSON payload); `~/.monitor_cc_menubar_hooks.json` (current state, inside exclusive lock).
+**Writes:** `~/.monitor_cc_menubar_hooks.json` (atomic via temp + `os.replace()`); `~/.monitor_cc_menubar_hooks.lock` (flock coordination).
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json`; runs `async: true` so it never blocks CC). Never imported by other modules.
+**Calls out:** stdlib only (`fcntl`, `json`, `os`, `time`).
+
+**Usage:** `python3 src/menubar/hook_writer.py` (stdin = CC hook JSON). Install via `hook_setup.py`.
+
+---
+
+### hook_setup.py (71 LOC)
+
+**Purpose:** One-shot idempotent installer — adds the activity-monitor hooks (UserPromptSubmit → working, Stop/StopFailure → idle) to `~/.claude/settings.json`. Safe to re-run; detects existing entries by command path and skips duplicates.
+**Reads:** `~/.claude/settings.json`.
+**Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`).
+**Called by:** User manually (`python3 src/menubar/hook_setup.py` from Monitor_CC root). Never imported.
+**Calls out:** stdlib only (`json`, `os`, `pathlib`).
+
+**Usage:** `python3 src/menubar/hook_setup.py` — run once after clone or when hooks need reinstalling. Restart CC to activate.
 
 ---
 
@@ -63,6 +87,8 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 | `_tmux_state_cache` | discover.py | `Dict[str, (bool, int)]` | module | session_name → (alive, session_activity unix ts). One `tmux list-sessions` call per 3s replaces per-worker `has-session` + `display-message` pairs. |
 | `_tmux_state_last_refresh` | discover.py | `float` | module | Timestamp of last tmux state refresh. |
 | `_proxy_log_mtime_cache` | discover.py | `Dict[str, Tuple[float, Optional[float]]]` | module | `opus_<project_key>→(checked_at, newest_mtime)`. TTL=`_PROC_REFRESH_INTERVAL` (10s). Used by `_proxy_log_newest_mtime` to avoid per-tick glob. Populated on first main-session idle check per key. |
+| `_hook_state_cache` | discover.py | `Dict[str, dict]` | module | `session_id→{status, cwd, updated_ts}`. Read from `~/.monitor_cc_menubar_hooks.json`. TTL=`_PROC_REFRESH_INTERVAL` (10s). Populated by `_read_hook_state()` once per tick in `list_alive_sessions`. |
+| `_hook_state_last_read` | discover.py | `float` | module | Timestamp of last hook state file read. |
 
 ## Activity Detection (per session type)
 
@@ -74,8 +100,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 **Mains** (Ghostty terminals):
 - Alive if JSONL mtime within `ALIVE_WINDOW_SECS=3600` (1h).
-- Status: JSONL mtime ≤ `WORKING_THRESHOLD_SECS=10s` = working. TTY mtime removed (cursor blinks keep TTY fresh while CC window is focused → stuck-at-working bug).
-- Thinking override: when JSONL status is `idle`, checks proxy log mtime; if `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → override to `working` (request in flight, reasoning phase). See Gotchas.
+- **Priority 1 — Hook state** (`~/.monitor_cc_menubar_hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. `UserPromptSubmit` sets working from T=0 (captures thinking phase); `Stop`/`StopFailure` set idle immediately. No heuristic lag.
+- **Priority 2 — JSONL mtime** (fallback when hooks absent/stale): mtime ≤ `WORKING_THRESHOLD_SECS=10s` = working. TTY mtime removed (cursor blinks cause stuck-at-working).
+- **Priority 3 — Proxy override** (fallback): `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → working. See Gotchas.
 - TTY still used for click-to-focus UUID lookup via `_cc_proc_cache`; not used for working detection.
 - Auto-focus: on `working → idle` transition with `has_bg=False`, `_focus_session(cwd)` fires after a 3s debounce (`_idle_since_ts` dict). Prevents spurious focus from short JSONL-mtime gaps during streaming.
 
@@ -130,6 +157,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 - **Dynamic panel height (grow-only)**: `_rebuild_panel` calls `_compute_required_height(sorted_sessions, bg_result)` → exact pts needed for all sessions with no truncation (`_FOOTER_H + _TOP_BAR_H + _LABEL_H` fixed + per-project `_LABEL_H + N*_ROW_H`), then `_resize_panel(app, max(app._panel_min_height, required_h))`. Panel never shrinks below the user-set floor (`_panel_min_height`); when new sessions appear it grows by `_LABEL_H + _ROW_H` per addition. No sessions are hidden. `NSBoxSeparator` containers in NSStackView require an explicit `heightAnchor().constraintEqualToConstant_(18.0)` — plain `NSView` has no `intrinsicContentSize`, causing NSStackView's Auto Layout to collapse them to 0-height without this constraint.
 - **Resize cursors on panel edges**: NSPanel with `NSWindowStyleMaskNonactivatingPanel` never becomes the key window, so macOS does not automatically show OS-default resize cursors on the resizable edges. Three-part fix: (1) `panel.setAcceptsMouseMovedEvents_(True)` — without it, `NSWindowStyleMaskNonactivatingPanel` suppresses `mouseMoved:` dispatch at the window level even when `NSTrackingActiveAlways` is set; (2) `panel.disableCursorRects()` — NSTextField subviews install I-Beam cursor rects via `resetCursorRects` which are processed AFTER `mouseMoved:` event delivery and override `NSCursor.set()` calls; disabling cursor-rect management for the window eliminates this override (safe because all NSTextFields in the panel are `labelWithString_` display-only, so I-Beam was semantically incorrect anyway); (3) `_PanelContentView(NSView)` is installed as `panel.contentView()` via `setContentView_()`. Its `updateTrackingAreas()` installs an `NSTrackingArea` (options 642 = `NSTrackingMouseMoved|NSTrackingActiveAlways|NSTrackingInVisibleRect`, `owner=self`) and removes any prior tracking areas first. Its `mouseMoved_()` checks `event.locationInWindow()` against an 8pt edge threshold and sets `NSCursor.resizeUpDownCursor()` (bottom), `NSCursor.resizeLeftRightCursor()` (left/right), or `NSCursor.arrowCursor()` (interior). **Critical — owner must be the NSView itself, not an external NSObject:** AppKit only dispatches `mouseMoved:` from an `NSTrackingArea` to owners that are `NSView` subclasses present in the view hierarchy. Using an external `NSObject` (e.g. `_PanelController`) as owner causes the tracking area to install silently but `mouseMoved_` never fires — verified by probe (unconditional crosshair cursor never changed). `NSTrackingInVisibleRect` auto-adjusts the tracked rect on panel resize. `NSTrackingActiveAlways` is required — `NSTrackingActiveInKeyWindow` would never fire on this nonactivating panel.
 - **Drag-resize**: `NSWindowStyleMaskResizable` added to styleMask enables left/bottom/right edge drag handles. `_PanelController.windowDidResize_` (NSWindowDelegate) fires after each resize step on the main thread — writes new `_panel_width` + `_panel_min_height` (each clamped to their respective `PANEL_MIN_*` floors) to app instance and persists to settings. Autoresizing masks: footer `NSViewWidthSizable=2`, restart button `NSViewMinXMargin=1`, top_bar `NSViewWidthSizable|NSViewMinYMargin=10` (stays at top edge), stack view `NSViewWidthSizable|NSViewHeightSizable=18` (fills middle). Row-button frames are corrected to exact width on next `_rebuild_panel`. Delegate set in lazy-init tick (same pattern as button wiring). Min size enforced by `setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))` + manual clamp in `windowDidResize_`. Content beyond the panel's lower edge is hard-clipped by the window — no scrolling possible. `windowDidEndLiveResize_` fires once when the user releases the mouse; if the panel is open it immediately calls `_rebuild_panel` → panel resizes to `max(_panel_min_height, required_h)`. If user dragged the panel smaller than content requires, `required_h` wins and the panel bounces back; `_panel_min_height` records the drag as the new floor for future empty-panel states.
+- **Hook state as primary signal** (`_hook_state_cache`): `session_id` in hook payload == JSONL filename stem (e.g. `37a411d8-...`). Direct lookup, no encoding/decoding. Hook state stale guard uses `ALIVE_WINDOW_SECS=3600s` — if CC is killed without firing `Stop`, state decays within 1h and falls back to JSONL. Worker CC sessions also write to the hook state file (they fire hooks too); their entries are simply not consulted (`is_worker=True` path never calls `_read_hook_state`). `async: true` on hook commands means hook_writer.py runs in background and never blocks CC. Install via `hook_setup.py`; if not installed, `~/.monitor_cc_menubar_hooks.json` doesn't exist → `_read_hook_state` returns `{}` silently → JSONL+proxy path used.
 - **Proxy-log thinking signal** (`_proxy_log_newest_mtime`): when JSONL-derived status is `idle`, checks the newest `api_requests_opus_<project_key>_*.jsonl` in `_PROXY_LOG_DIR`. Override condition: `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → status `working`. The `proxy_mtime > jsonl_mtime` check is the critical signal: the proxy writes a request entry when the request is intercepted (before the response), so `proxy_mtime` advances ahead of `jsonl_mtime` at the START of the reasoning phase and stays ahead for the full thinking duration. After response completion the proxy writes a latency entry ~0.1s BEFORE CC writes JSONL, so `proxy_mtime` drops just below `jsonl_mtime` — no false positive on completed turns. The old condition `(now - proxy_mtime) ≤ 10s` only caught the first 10s of thinking; thinking takes 30–120s, making the override effectively dead. Workers unaffected (tmux `window_activity` already captures their activity). `_PROXY_LOG_DIR` is hardcoded to `Monitor_CC/src/logs/`. Missing dir → `None` → silent fallback to JSONL-only.
 - **Settings backwards-compat**: `_load_settings` reads `panel_min_height` first, falls back to legacy `panel_max_height` key, then to `PANEL_HEIGHT=460`. Old files with only `panel_max_height` migrate transparently — the value is used as the initial floor and rewritten under the new key on next save. Files missing both height keys start at `PANEL_HEIGHT`. Old `auto_focus`-only files fall back to `PANEL_WIDTH`/`PANEL_HEIGHT` for missing numeric keys.
 - **Status-change is panel-no-op**: working↔idle transitions NEVER trigger `_rebuild_panel` or `_resize_panel`. Open panel: status changes go through `_update_panel_inplace` (badge update only). Closed panel: status changes only trigger `_blink`; no rebuild. Only two events trigger `_rebuild_panel`: (1) session-set change (`session_names != set(self._displayed_items)`) — new worker spawned or session disappeared; (2) abort-button None↔Some transition (panel open only).
