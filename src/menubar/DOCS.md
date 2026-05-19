@@ -27,7 +27,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (235 LOC)
+### app.py (245 LOC)
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save.
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `~/.monitor_cc_menubar_settings.json` on launch; `app` instance state throughout.
@@ -57,7 +57,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (179 LOC)
+### discover.py (174 LOC)
 
 **Purpose:** Session discovery entry point — scans JSONL files, classifies sessions (main vs worker), determines working/idle/background status per session type. Orchestrates the per-tick refresh pipeline and delegates to submodules for cache management, Ghostty mapping, and background-task detection.
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; delegates process/tmux/proxy/hook reads to `proc_cache.py`; delegates Ghostty TTY mapping to `ghostty.py`.
@@ -67,7 +67,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### proc_cache.py (145 LOC)
+### proc_cache.py (136 LOC)
 
 **Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader. All caches have TTL-based refresh (10s for proc/proxy/hook, 3s for tmux). Owns `_TASKS_BASE` and `_has_active_bg()` (in-progress task detection).
 **Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `~/.monitor_cc_menubar_hooks.json` (hook state).
@@ -145,9 +145,8 @@ ghostty.py          bg_timer.py
     ↓
 discover.py  ← ghostty.py (_refresh_ghostty_tty_to_id)
              ← proc_cache.py (_refresh_cc_proc_cache, _refresh_tmux_state,
-                               _tmux_state_cache, _tmux_session_exists,
-                               _read_hook_state, _proxy_log_newest_mtime,
-                               _has_active_bg)
+                               _tmux_session_exists, _read_hook_state,
+                               _proxy_log_newest_mtime, _has_active_bg)
 
 hotkey.py   → ctypes only
 panel.py    → AppKit, Foundation, itertools
@@ -184,7 +183,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp._hotkey_ref` | app.py | `ctypes.c_void_p` | app.py | GC anchor for Carbon hotkey handle returned by `register_cmd_l`. |
 | `_cc_proc_cache` | proc_cache.py | `Dict[pid, (tty, cwd)]` | module | CC processes. Incremental: `ps -A` every 10s drops gone PIDs; `lsof -d cwd` only for newly seen PIDs. |
 | `_cc_proc_last_refresh` | proc_cache.py | `float` | module | Timestamp of last CC cache pass. |
-| `_tmux_state_cache` | proc_cache.py | `Dict[str, (bool, int)]` | module | session_name → (alive, session_activity unix ts). One `tmux list-sessions` call per 3s. |
+| `_tmux_state_cache` | proc_cache.py | `set` | module | session_name set (alive check only). One `tmux list-sessions` call per 3s. |
 | `_tmux_state_last_refresh` | proc_cache.py | `float` | module | Timestamp of last tmux state refresh. |
 | `_proxy_log_mtime_cache` | proc_cache.py | `Dict[str, Tuple[float, Optional[float]]]` | module | `opus_<project_key>→(checked_at, newest_mtime)`. TTL=10s. |
 | `_hook_state_cache` | proc_cache.py | `Dict[str, dict]` | module | `session_id→{status, cwd, updated_ts}`. Read from `~/.monitor_cc_menubar_hooks.json`. TTL=10s. |
@@ -197,8 +196,8 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 **Workers** (tmux sessions):
 - Alive iff `tmux has-session -t =worker-{project_basename}-{worker_name}` returns 0. Exact-match `=` prefix prevents prefix-matching false positives.
 - Session name reconstructed from worker JSONL cwd: split on `/.claude/worktrees/`, `basename(left)` = project basename.
-- Status: `tmux display-message -p '#{window_activity}'` → unix timestamp; `working` if age ≤ 10s.
-- Fallback (cwd unreadable): `ALIVE_WINDOW_SECS=3600` JSONL age check + 10s mtime threshold.
+- Alive fallback (cwd unreadable from JSONL): `ALIVE_WINDOW_SECS=3600` JSONL age guard.
+- **Status — Hook only** (`~/.monitor_cc_menubar_hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. No entry or stale → `idle`. No fallback chain. `UserPromptSubmit` sets working from T=0; `Stop`/`StopFailure` set idle immediately.
 
 **Mains** (Ghostty terminals):
 - Alive if JSONL mtime within `ALIVE_WINDOW_SECS=3600` (1h).
@@ -254,7 +253,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **NSStackView gravity**: requires BOTH `addView_inGravity_(view, 1)` AND `setDistribution_(-1)` (`NSStackViewDistributionGravityAreas`). `setDistribution_(0)` ignores gravity entirely. Enum values: `GravityTop=1`, `GravityCenter=2`, `GravityBottom=3`; `DistGravityAreas=-1`, `DistFill=0`.
 - **Badge column alignment**: `[*]`/`[ ]` fixed 3 chars; `_NO_BG` spacer 3 chars; `[B M:SS]` variable 3–9 chars but nothing follows it, so no misalignment.
 - **Settings backwards-compat** (`app.py:_load_settings`): reads `panel_min_height` first, falls back to legacy `panel_max_height`, then `PANEL_HEIGHT=460`. Old files migrate transparently.
-- **Hook state as primary signal** (`proc_cache.py:_hook_state_cache`): `session_id` in hook payload == JSONL filename stem. Direct lookup, no encoding/decoding. Hook state stale guard uses `ALIVE_WINDOW_SECS=3600s`. Workers fire hooks too but their entries are never consulted (`is_worker=True` path skips hook check).
+- **Hook state as primary signal** (`proc_cache.py:_hook_state_cache`): `session_id` in hook payload == JSONL filename stem. Direct lookup, no encoding/decoding. Hook state stale guard uses `ALIVE_WINDOW_SECS=3600s`. Workers fire hooks too; their entries ARE consulted by the worker status branch (hook-only, no fallback).
 - **Proxy-log thinking signal** (`proc_cache.py:_proxy_log_newest_mtime`): override condition: `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → status `working`. The `proxy_mtime > jsonl_mtime` check: proxy writes at the START of the reasoning phase, staying ahead for the full thinking duration. After response completion the proxy latency entry lands ~0.1s BEFORE CC writes JSONL, so `proxy_mtime` drops just below `jsonl_mtime` — no false positive.
 - **_PROXY_LOG_DIR placement**: lives in `proc_cache.py` (not `discover.py`) to avoid an import cycle — `_proxy_log_newest_mtime` is its sole consumer and lives in proc_cache.py.
 

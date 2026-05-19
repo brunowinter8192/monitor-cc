@@ -17,8 +17,8 @@ _PROXY_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/Monitor_CC/src/logs')
 _cc_proc_cache: Dict[str, Tuple[str, str]] = {}
 _cc_proc_last_refresh: float = 0.0
 
-# session_name→(alive, session_activity_unix_ts); one list-sessions call per 3s
-_tmux_state_cache: Dict[str, Tuple[bool, int]] = {}
+# session_name set (alive check only); one list-sessions call per 3s
+_tmux_state_cache: set = set()
 _tmux_state_last_refresh: float = 0.0
 
 # opus_<project_key>→(checked_at: float, mtime: float|None); TTL = _PROC_REFRESH_INTERVAL
@@ -91,23 +91,14 @@ def _refresh_tmux_state(now: float) -> None:
     _tmux_state_last_refresh = now
     try:
         r = subprocess.run(
-            ['tmux', 'list-sessions', '-F', '#{session_name}|#{session_activity}'],
+            ['tmux', 'list-sessions', '-F', '#{session_name}'],
             capture_output=True, text=True, timeout=3)
         if r.returncode != 0:
-            _tmux_state_cache = {}
+            _tmux_state_cache = set()
             return
     except Exception:
         return
-    new_cache: Dict[str, Tuple[bool, int]] = {}
-    for line in r.stdout.strip().split('\n'):
-        if '|' not in line:
-            continue
-        name, _, ts = line.partition('|')
-        name = name.strip()
-        ts = ts.strip()
-        if name and ts.isdigit():
-            new_cache[name] = (True, int(ts))
-    _tmux_state_cache = new_cache
+    _tmux_state_cache = {line.strip() for line in r.stdout.strip().split('\n') if line.strip()}
 
 # True if session_name appears in the tmux state cache (= exists)
 def _tmux_session_exists(session_name: str) -> bool:
