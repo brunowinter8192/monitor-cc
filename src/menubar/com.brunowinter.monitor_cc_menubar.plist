@@ -21,6 +21,14 @@
   <key>KeepAlive</key>
   <true/>
 
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd default PATH is /usr/bin:/bin:/usr/sbin:/sbin — no Homebrew -->
+    <!-- arm64 Homebrew: /opt/homebrew/bin; Intel fallback: /usr/local/bin  -->
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
   <key>StandardOutPath</key>
   <string>/tmp/monitor_cc_menubar.log</string>
 
