@@ -37,7 +37,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (288 LOC)
+### app.py (292 LOC)
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/kill/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check` (per-project 5s-debounce auto-abort of bg timers when all workers idle).
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on launch; `app` instance state throughout.
