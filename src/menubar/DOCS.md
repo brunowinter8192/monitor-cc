@@ -257,3 +257,23 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Hook state as primary signal** (`proc_cache.py:_hook_state_cache`): `session_id` in hook payload == JSONL filename stem. Direct lookup, no encoding/decoding. Hook state stale guard uses `ALIVE_WINDOW_SECS=3600s`. Workers fire hooks too but their entries are never consulted (`is_worker=True` path skips hook check).
 - **Proxy-log thinking signal** (`proc_cache.py:_proxy_log_newest_mtime`): override condition: `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → status `working`. The `proxy_mtime > jsonl_mtime` check: proxy writes at the START of the reasoning phase, staying ahead for the full thinking duration. After response completion the proxy latency entry lands ~0.1s BEFORE CC writes JSONL, so `proxy_mtime` drops just below `jsonl_mtime` — no false positive.
 - **_PROXY_LOG_DIR placement**: lives in `proc_cache.py` (not `discover.py`) to avoid an import cycle — `_proxy_log_newest_mtime` is its sole consumer and lives in proc_cache.py.
+
+## Dev Tools
+
+### dev/menubar_debug.py
+
+Foreground debug runner — boots out the launchd service, starts the menubar app directly via venv Python with `MENUBAR_DIAGNOSTICS=1`, and optionally re-registers launchd on exit.
+
+**Usage:**
+```bash
+# From project root:
+python3 dev/menubar_debug.py               # foreground run; Ctrl-C to stop
+python3 dev/menubar_debug.py --rebootstrap # same + re-registers launchd service on exit
+```
+
+**What it does:**
+1. `launchctl bootout` (ignore failure — service may not be loaded)
+2. Launches `venv/bin/python3 workflow.py --mode menubar` with `MENUBAR_DIAGNOSTICS=1` in env
+3. On Ctrl-C: prints "Stopped"; if `--rebootstrap`: runs `launchctl bootstrap` from the installed plist
+
+Tick log written to `/tmp/menubar-tick.log` while running (gated on `MENUBAR_DIAGNOSTICS=1`). stdout/stderr land in terminal directly. Requires `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist` to exist for `--rebootstrap` — run `src/menubar/setup_menubar.py` first if missing.
