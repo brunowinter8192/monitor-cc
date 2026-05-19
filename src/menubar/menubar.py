@@ -40,6 +40,7 @@ _SETTINGS_PATH = os.path.expanduser('~/.monitor_cc_menubar_settings.json')
 _BADGE_WORKING = '[*]'   # green — ASCII fixed-width, no emoji drift
 _BADGE_IDLE    = '[ ]'   # red
 _NO_BG         = '   '   # 3-char spacer when no background task
+_TICK_LOG      = '/tmp/menubar-tick.log'
 
 PANEL_WIDTH      = 380   # pts
 PANEL_HEIGHT     = 460   # pts — initial height; floor for first-run (no settings)
@@ -194,10 +195,14 @@ class CCMenuBarApp(rumps.App):
         if self._panel_open:
             bg_result = _scan_bg_sleep_timers()
             session_names = {s.name for s in sessions}
-            if (bg_result is not None) != (self._abort_btn is not None) \
-                    or session_names != set(self._displayed_items):
+            abort_flap = (bg_result is not None) != (self._abort_btn is not None)
+            set_change = session_names != set(self._displayed_items)
+            if abort_flap or set_change:
+                reasons = '+'.join(r for r, v in [('abort-flap', abort_flap), ('session-set-change', set_change)] if v)
+                _tick_log(True, sessions, self._displayed_items, reasons)
                 _rebuild_panel(self, sessions, bg_result)
             else:
+                _tick_log(True, sessions, self._displayed_items, 'no-change')
                 _update_panel_inplace(self, sessions, bg_result)
             self._last_statuses = {s.name: s.status for s in sessions}
         else:
@@ -207,13 +212,28 @@ class CCMenuBarApp(rumps.App):
             if changed:
                 _blink(self)
             if session_names != set(self._displayed_items):
+                _tick_log(False, sessions, self._displayed_items, 'session-set-change')
                 _rebuild_panel(self, sessions)
+            else:
+                _tick_log(False, sessions, self._displayed_items, 'no-change')
 
 
 # True if any session's status differs from last tick's snapshot
 def _statuses_changed(sessions, last: dict) -> bool:
     current = {s.name: s.status for s in sessions}
     return current != last
+
+# Append one diagnostic line per tick to _TICK_LOG; action is 'abort-flap', 'session-set-change', 'abort-flap+session-set-change', or 'no-change'
+def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) -> None:
+    try:
+        ts = time.strftime('%Y-%m-%dT%H:%M:%S')
+        line = (f'{ts} open={panel_open} n={len(sessions)} '
+                f'sessions={sorted(s.name for s in sessions)} '
+                f'displayed={sorted(displayed_items)} action={action}\n')
+        with open(_TICK_LOG, 'a') as fh:
+            fh.write(line)
+    except Exception:
+        pass
 
 # Set bar icon via attributed string with pinned baseline; must be called on main thread
 def _set_bar_icon(app: 'CCMenuBarApp', text: str) -> None:
