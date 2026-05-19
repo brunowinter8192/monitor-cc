@@ -2,9 +2,11 @@
 import json
 import objc
 import os
+import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 import rumps
 from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName, NSFont,
@@ -29,6 +31,7 @@ BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
 _SETTINGS_PATH = os.path.expanduser('~/.monitor_cc_menubar_settings.json')
 _TICK_LOG      = '/tmp/menubar-tick.log'
+_SETUP_PY      = Path(__file__).resolve().parent / 'setup_menubar.py'
 
 # FUNCTIONS
 
@@ -66,9 +69,12 @@ class _PanelController(NSObject):
         sender.setAttributedTitle_(astr)
 
     def restartApp_(self, sender):
-        # os.execv replaces current process in-place: same PID, no race condition, no double bar-icon
-        # FD_CLOEXEC on the singleton lock fd ensures it is released before the new process image runs
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        from .setup_menubar import write_plist
+        write_plist()   # resync ~/Library/LaunchAgents plist synchronously before exit
+        # Detached helper: bootout + bootstrap (with retry) after current process exits
+        cmd = f'sleep 0.5 && "{sys.executable}" "{_SETUP_PY}"'
+        subprocess.Popen(['sh', '-c', cmd], start_new_session=True)
+        rumps.quit_application()   # clean status-bar teardown; launchd respawns from fresh plist
 
     def abortBgTimer_(self, sender):
         result = _scan_bg_sleep_timers()
