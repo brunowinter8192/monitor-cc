@@ -148,7 +148,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 ```
 stdlib only
     ↓
-proc_cache.py   (json, os, subprocess, time, pathlib, typing)
+paths.py        (pathlib only — leaf node; triggers migration at import)
+    ↓
+proc_cache.py   (json, os, subprocess, time, pathlib, typing; .paths)
     ↓               ↓
 ghostty.py          bg_timer.py
 (_cc_proc_cache)    (_TASKS_BASE)
@@ -160,10 +162,10 @@ discover.py  ← ghostty.py (_refresh_ghostty_tty_to_id)
 
 hotkey.py   → ctypes only
 panel.py    → AppKit, Foundation, itertools
-system.py   → fcntl, os, subprocess, sys; .ghostty
+system.py   → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
               lazy(.app) inside run() only
 app.py      → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
-              .panel, .hotkey, .system, .discover, .bg_timer
+              .panel, .hotkey, .system, .discover, .bg_timer, .paths (SETTINGS_FILE)
 ```
 
 No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module.
