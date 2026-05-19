@@ -63,8 +63,8 @@ def _format_bg_badge(remaining) -> str:
     mins, secs = divmod(remaining, 60)
     return f'[B {mins}:{secs:02d}]'
 
-# Build NSPanel + fixed footer (Restart) + fixed top_bar (Auto-Jump) + NSStackView (sessions, middle)
-# Returns (panel, stack_view, quit_btn, toggle_btn) — stored on app instance; ObjC objects reject Python attrs
+# Build NSPanel + fixed footer (Kill + Restart) + fixed top_bar (Auto-Jump) + NSStackView (sessions, middle)
+# Returns (panel, stack_view, quit_btn, toggle_btn, kill_btn) — stored on app instance; ObjC objects reject Python attrs
 # Layout (y=0 = bottom of contentView):
 #   [0, 0,                       pw, _FOOTER_H]   footer   mask=2  — widthSizable, bottom-anchored at y=0
 #   [0, _FOOTER_H,               pw, stack_h]     stack    mask=18 — width+height sizable, fills middle
@@ -89,6 +89,11 @@ def _make_nspanel():
     quit_btn.setTitle_('Restart')
     quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
     footer.addSubview_(quit_btn)
+    kill_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86 - 78 - 8, 4, 78, 22))
+    kill_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored, 8pt gap left of Restart
+    kill_btn.setTitle_('Kill')
+    kill_btn.setBezelStyle_(1)   # NSBezelStyleRounded
+    footer.addSubview_(kill_btn)
     cv.addSubview_(footer)
     top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
     top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable(2) | NSViewMinYMargin(8) — bottom margin flexible → stays at top edge on resize
@@ -107,7 +112,7 @@ def _make_nspanel():
     stack.setSpacing_(1.0)
     stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas — required for addView_inGravity_ to work
     cv.addSubview_(stack)
-    return panel, stack, quit_btn, toggle_btn
+    return panel, stack, quit_btn, toggle_btn, kill_btn
 
 # Position panel flush below the NSStatusItem button; reads current panel dimensions (set by _resize_panel)
 def _reposition_panel(panel, nsstatusitem) -> None:
