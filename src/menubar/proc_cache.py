@@ -5,11 +5,12 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+# From paths.py: APP_SUPPORT-relative hook state path
+from .paths import HOOKS_FILE as _HOOK_STATE_FILE
 
 _PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds
 _TMUX_REFRESH_INTERVAL = 3.0    # seconds between tmux list-sessions polls
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
-_HOOK_STATE_FILE = Path("~/.monitor_cc_menubar_hooks.json").expanduser()
 # central log dir — proxy lives in Monitor_CC and intercepts all CC sessions via ANTHROPIC_BASE_URL
 _PROXY_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/Monitor_CC/src/logs')
 

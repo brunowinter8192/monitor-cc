@@ -6,8 +6,9 @@ import sys
 import time
 from pathlib import Path
 
-_HOOK_STATE_FILE = Path("~/.monitor_cc_menubar_hooks.json").expanduser()
-_HOOK_LOCK_FILE  = Path("~/.monitor_cc_menubar_hooks.lock").expanduser()
+_APP_SUPPORT     = Path("~/Library/Application Support/com.brunowinter.monitor_cc_menubar").expanduser()
+_HOOK_STATE_FILE = _APP_SUPPORT / "hooks.json"
+_HOOK_LOCK_FILE  = _APP_SUPPORT / "hooks.lock"
 
 # Events that mark the session as actively working
 _WORKING_EVENTS = {"UserPromptSubmit"}
@@ -43,8 +44,7 @@ def hook_writer_workflow() -> None:
 # Atomically update the hook state file under exclusive file lock
 def _write_state(session_id: str, status: str, cwd: str) -> None:
     now = time.time()
-    _HOOK_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _HOOK_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _APP_SUPPORT.mkdir(parents=True, exist_ok=True)   # defensive: ensures dir exists if hook runs before main app
     try:
         with open(_HOOK_LOCK_FILE, "w") as lock_fh:
             fcntl.flock(lock_fh, fcntl.LOCK_EX)

@@ -26,10 +26,11 @@ from .panel import (ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET,
                     _rebuild_panel, _update_panel_inplace)
 # From system.py: Ghostty terminal focus
 from .system import _focus_session
+# From paths.py: APP_SUPPORT-relative settings path
+from .paths import SETTINGS_FILE as _SETTINGS_PATH
 
 BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
-_SETTINGS_PATH = os.path.expanduser('~/.monitor_cc_menubar_settings.json')
 _TICK_LOG      = '/tmp/menubar-tick.log'
 _SETUP_PY      = Path(__file__).resolve().parent / 'setup_menubar.py'
 
@@ -276,7 +277,7 @@ def _load_settings():
 # Atomic settings write: tempfile + os.replace to prevent partial-write corruption
 def _save_settings(auto_focus: bool, panel_width: int, panel_min_height: int) -> None:
     try:
-        tmp = _SETTINGS_PATH + '.tmp'
+        tmp = _SETTINGS_PATH.with_name(_SETTINGS_PATH.name + '.tmp')
         open(tmp, 'w').write(json.dumps({
             'auto_focus': auto_focus,
             'panel_width': panel_width,

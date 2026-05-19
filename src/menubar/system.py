@@ -6,9 +6,10 @@ import sys
 
 # From ghostty.py: Ghostty terminal UUID lookup for click-to-focus
 from .ghostty import get_ghostty_terminal_id
+# From paths.py: APP_SUPPORT-relative PID lock file
+from .paths import PID_FILE as _LOCK_PATH
 
 _LAUNCHD_LABEL = 'com.brunowinter.monitor_cc_menubar'
-_LOCK_PATH     = os.path.expanduser('~/.monitor_cc_menubar.pid')
 
 # ORCHESTRATOR
 
@@ -25,7 +26,7 @@ def run() -> None:
 
 # FUNCTIONS
 
-# Acquire exclusive fcntl lock on ~/.monitor_cc_menubar.pid; returns open file handle on success, None if locked
+# Acquire exclusive fcntl lock on PID_FILE (APP_SUPPORT/menubar.pid); returns open file handle on success, None if locked
 # Caller must keep the file handle alive (do not close/GC) — fcntl locks are released when the fd is closed
 def _acquire_singleton_lock():
     fh = open(_LOCK_PATH, 'w')
