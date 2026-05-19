@@ -16,7 +16,7 @@ _GUI_TARGET   = f'gui/{os.getuid()}/{_LABEL}'
 
 # Substitute PROJECT_ROOT, write plist to LaunchAgents, bootout + bootstrap launchd service
 def setup_menubar_workflow() -> None:
-    _write_plist()
+    write_plist()
     _bootout()
     ok = _bootstrap()
     if not ok:
@@ -32,7 +32,7 @@ def setup_menubar_workflow() -> None:
 # FUNCTIONS
 
 # Read template, substitute <PROJECT_ROOT>, write to ~/Library/LaunchAgents/
-def _write_plist() -> None:
+def write_plist() -> None:
     content = _PLIST_TMPL.read_text(encoding='utf-8')
     content = content.replace('<PROJECT_ROOT>', str(_PROJECT_ROOT))
     _LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
