@@ -68,6 +68,15 @@ class _PanelController(NSObject):
             f'Auto-Jump: {state}', {NSFontAttributeName: _MENLO()})
         sender.setAttributedTitle_(astr)
 
+    def killApp_(self, sender):
+        # Detached bootout fires after our process exits, unloading the plist so KeepAlive does NOT respawn.
+        # Plist reload happens at next login (RunAtLoad) or via manual `launchctl bootstrap`.
+        uid = os.getuid()
+        label = 'com.brunowinter.monitor_cc_menubar'
+        cmd = f'sleep 0.5 && launchctl bootout gui/{uid}/{label}'
+        subprocess.Popen(['sh', '-c', cmd], start_new_session=True)
+        rumps.quit_application()
+
     def restartApp_(self, sender):
         from .setup_menubar import write_plist
         write_plist()   # resync ~/Library/LaunchAgents plist synchronously before exit
@@ -112,7 +121,7 @@ class CCMenuBarApp(rumps.App):
         self._cwd_map: dict = {}
         self._abort_btn = None   # NSButton ref; set by _rebuild_panel when timer running
         self._auto_focus, self._panel_width, self._panel_min_height = _load_settings()
-        self._panel, self._panel_sv, self._panel_quit_btn, self._toggle_btn = _make_nspanel()
+        self._panel, self._panel_sv, self._panel_quit_btn, self._toggle_btn, self._panel_kill_btn = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
 
         def _on_hotkey():
@@ -133,6 +142,8 @@ class CCMenuBarApp(rumps.App):
                 btn.setAction_(b'togglePanel:')
                 self._panel_quit_btn.setTarget_(self._panel_controller)
                 self._panel_quit_btn.setAction_(b'restartApp:')
+                self._panel_kill_btn.setTarget_(self._panel_controller)
+                self._panel_kill_btn.setAction_(b'killApp:')
                 self._toggle_btn.setTarget_(self._panel_controller)
                 self._toggle_btn.setAction_(b'toggleAutoJump:')
                 self._panel.setDelegate_(self._panel_controller)
