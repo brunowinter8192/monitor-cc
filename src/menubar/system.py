@@ -4,8 +4,8 @@ import os
 import subprocess
 import sys
 
-# From discover.py: Ghostty terminal UUID lookup for click-to-focus
-from .discover import get_ghostty_terminal_id
+# From ghostty.py: Ghostty terminal UUID lookup for click-to-focus
+from .ghostty import get_ghostty_terminal_id
 
 _LAUNCHD_LABEL = 'com.brunowinter.monitor_cc_menubar'
 _LOCK_PATH     = os.path.expanduser('~/.monitor_cc_menubar.pid')

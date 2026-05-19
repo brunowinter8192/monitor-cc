@@ -11,8 +11,10 @@ from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName, NSFont,
                     NSFontAttributeName)
 from Foundation import NSObject, NSOperationQueue
 
-# From discover.py: Live session discovery + background task scanning + abort
-from .discover import list_alive_sessions, _scan_bg_sleep_timers, _abort_bg_sleep_timers
+# From discover.py: Live session discovery
+from .discover import list_alive_sessions
+# From bg_timer.py: Background sleep-timer scanning and abort
+from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
 # From hotkey.py: Carbon Cmd+L registration
 from .hotkey import register_cmd_l
 # From panel.py: NSPanel construction, render, positioning, UI constants
