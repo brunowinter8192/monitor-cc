@@ -8,7 +8,9 @@
 
 **Iteration 5 hypothesis (PARTIALLY CONFIRMED, 2026-05-20):** `NSWindowStyleMaskNonactivatingPanel` blocks cursor-rect dispatch entirely. `enableCursorRects()` was missing — confirmed by visual evidence: I-Beam→Arrow transition on panel entry NOW works with `--fix`. Resize `↔` at edges still does not appear → a second blocker remains.
 
-**Iteration 6 hypothesis (active):** Subview coverage IS the remaining blocker. ContentView's edge cursor-rects are shadowed by StackView/FooterView/TopBarView which cover the same strips. Fix: install resize rects on each covering leaf subview in its own `resetCursorRects`. `--leaf-rects` flag tests this.
+**Iteration 6 hypothesis (REFUTED, 2026-05-20):** Subview coverage IS the remaining blocker — leaf-rects on covering views. Tested with `--leaf-rects` flag. Visual result: still no resize cursors. Subview coverage is NOT the blocker.
+
+**H7 hypothesis (active):** `NSWindowStyleMaskResizable` causes WindowServer to claim the edge regions for native resize handling. For NonactivatingPanel it neither shows resize cursors itself nor allows our cursor rects to fire. Removing the resizable mask should let our rects take effect. `--no-resizable` flag tests this. Trade-off: no native drag-resize if H7 is confirmed and that approach is adopted.
 
 ## Investigation History
 
@@ -50,10 +52,17 @@ venv/bin/python3 dev/cursor_edges/probe.py --fix
 # --fix --leaf-rects — installs resize rects on covering leaf subviews, tests Iteration 6 hypothesis
 venv/bin/python3 dev/cursor_edges/probe.py --fix --leaf-rects
 
+# --fix --no-resizable — panel without NSWindowStyleMaskResizable, tests H7 hypothesis
+venv/bin/python3 dev/cursor_edges/probe.py --fix --no-resizable
+
+# --fix --leaf-rects --no-resizable — combined H6+H7 test
+venv/bin/python3 dev/cursor_edges/probe.py --fix --leaf-rects --no-resizable
+
 # capture session to file
 venv/bin/python3 dev/cursor_edges/probe.py 2>probe_$(date +%H%M%S).log
 venv/bin/python3 dev/cursor_edges/probe.py --fix 2>probe_fix_$(date +%H%M%S).log
 venv/bin/python3 dev/cursor_edges/probe.py --fix --leaf-rects 2>probe_leaf_$(date +%H%M%S).log
+venv/bin/python3 dev/cursor_edges/probe.py --fix --no-resizable 2>probe_noresize_$(date +%H%M%S).log
 ```
 
 Runs in foreground. Panel appears on screen. Quit: **Cmd-Q** or **Ctrl-C**.
@@ -121,17 +130,23 @@ User ran `probe.py --fix` and hovered the left edge. Two results:
 
 The correct visual signal: does the cursor shape change at the edge? It did change (I-Beam→Arrow), confirming cursor-rect dispatch works. The `↔` shape is still missing → ContentView's left-edge rect is shadowed by covering subviews.
 
-### Iteration 6 — Leaf-Rect Test (pending user verification)
+### Iteration 6 — Leaf-Rect Test (REFUTED, 2026-05-20)
 
-`probe.py --fix --leaf-rects` installs resize cursor rects on each leaf subview at their portion of the panel edges (super first, then leaf rects):
+`probe.py --fix --leaf-rects` installed resize cursor rects on each leaf subview at their portion of the panel edges (super first, then leaf rects). User ran interactively and hovered all edges.
 
-| View | Rects installed |
-|---|---|
-| `_LoggingStackView` | LEFT + RIGHT (x=0..8, x=372..380, full local h) |
-| `_LoggingFooterView` | LEFT + RIGHT + BOTTOM (x=0..8, x=372..380, y=0..8 full width) |
-| `_LoggingTopBarView` | LEFT + RIGHT (no top rect per spec) |
-| `_LoggingButton` | LEFT (local x=0..8) if `frame.origin.x < EDGE` — Auto-Jump and session row buttons only; Kill/Restart excluded |
+**Result:** still no `↔`/`↕` resize cursors at edges. Only the I-Beam→Arrow transition (from `enableCursorRects`) remained.
 
-Smoke (2026-05-20): starts clean, all `[leaf]` lines logged in `resetCursorRects` cascade, no AttributeError, `areCursorRectsEnabled=True`.
+**Conclusion:** subview coverage is NOT the blocker. ContentView's edge rects AND the leaf rects on every covering view all failed to show resize cursors. The blocker is upstream of cursor-rect dispatch itself.
 
-**Pending:** user runs `venv/bin/python3 dev/cursor_edges/probe.py --fix --leaf-rects` and hovers left and right edges.
+### Iteration 7 — H7 No-Resizable Test (pending user verification)
+
+**Hypothesis:** `NSWindowStyleMaskResizable` causes WindowServer to intercept edge regions for native resize. For `NSWindowStyleMaskNonactivatingPanel`, WindowServer neither shows its own resize cursors nor allows our `addCursorRect_cursor_` rects to fire there. Removing the resizable mask removes the WindowServer claim.
+
+`probe.py --fix --no-resizable` creates the panel with only `NSWindowStyleMaskNonactivatingPanel` (no resizable mask). `--leaf-rects` also combinable.
+
+Smoke (2026-05-20): all flag combos start clean, `areCursorRectsEnabled=True`, correct MODE line, `[--no-resizable]` log line confirming mask removed.
+
+**Pending:** user runs `venv/bin/python3 dev/cursor_edges/probe.py --fix --no-resizable` and hovers left/right/bottom edges.
+
+- `↔`/`↕` appears → H7 confirmed; trade-off decision (no native resize vs cosmetic cursors) is user's call
+- Still Arrow/I-Beam → H7 refuted; remaining candidates are H8 (custom resize handler) and H9 (`sendEvent_` override) — both expensive, defer

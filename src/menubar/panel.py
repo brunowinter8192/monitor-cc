@@ -82,6 +82,10 @@ def _make_nspanel():
     panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
     cv = _PanelContentView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT))
     panel.setContentView_(cv)
+    # NonactivatingPanel never calls becomeKeyWindow → enableCursorRects() is never invoked
+    # automatically → cursor-rect dispatch is silently disabled (no cursor changes anywhere).
+    # Explicit call here restores dispatch; confirmed via dev/cursor_edges/probe.py --fix.
+    panel.enableCursorRects()
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
     footer.setAutoresizingMask_(2)   # NSViewWidthSizable
     quit_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86, 4, 78, 22))

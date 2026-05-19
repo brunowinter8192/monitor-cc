@@ -17,7 +17,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### panel.py (266 LOC)
+### panel.py (270 LOC)
 
 **Purpose:** NSPanel construction, NSView/NSTextField subclasses for cursor-rect pattern, all UI factory helpers, and the two render functions (`_rebuild_panel`, `_update_panel_inplace`). Footer has two buttons: Kill (left) + Restart (right). Pure UI concern — no rumps, no ctypes, no subprocess.
 **Reads:** `app` instance attrs (`_panel_sv`, `_panel_width`, `_panel_min_height`, `_displayed_items`, `_cwd_map`, `_abort_btn`, `_toggle_btn`, `_panel_controller`, `_auto_focus`, `_panel`) via function parameters; session list from caller.

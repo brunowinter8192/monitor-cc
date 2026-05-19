@@ -25,12 +25,22 @@ Run from project root:
        edge rects — installing rects on the covering views themselves should
        win the dispatch race.
 
+--no-resizable: creates the panel WITHOUT NSWindowStyleMaskResizable (only
+       NSWindowStyleMaskNonactivatingPanel). Combinable with --fix/--leaf-rects.
+       Tests H7: WindowServer reserves edge regions for native resize, which
+       for NonactivatingPanel blocks our cursor rects without showing any
+       resize cursor itself. Without the resizable mask WindowServer should
+       not claim the edges and our rects may fire.
+       Trade-off: no native drag-resize. That is the POINT of this test.
+
 Quit: Cmd-Q or close the window. Ctrl-C also works (SIGINT handler).
 
 All output goes to stderr. Pipe to file to capture a session:
     venv/bin/python3 dev/cursor_edges/probe.py 2>probe_$(date +%H%M%S).log
     venv/bin/python3 dev/cursor_edges/probe.py --fix 2>probe_fix_$(date +%H%M%S).log
     venv/bin/python3 dev/cursor_edges/probe.py --fix --leaf-rects 2>probe_leaf_$(date +%H%M%S).log
+    venv/bin/python3 dev/cursor_edges/probe.py --fix --no-resizable 2>probe_noresize_$(date +%H%M%S).log
+    venv/bin/python3 dev/cursor_edges/probe.py --fix --leaf-rects --no-resizable 2>probe_leaf_noresize_$(date +%H%M%S).log
 """
 
 # INFRASTRUCTURE
@@ -294,11 +304,14 @@ class _LoggingTopBarView(NSView):
         _install_tracking_area(self)
 
 
-def _make_probe_panel(fix: bool = False) -> NSPanel:
+def _make_probe_panel(fix: bool = False, no_resizable: bool = False) -> NSPanel:
     """Build probe NSPanel that mirrors production _make_nspanel() geometry and z-order exactly."""
+    style_mask = NSWindowStyleMaskNonactivatingPanel
+    if not no_resizable:
+        style_mask |= NSWindowStyleMaskResizable
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(300, 300, PANEL_WIDTH, PANEL_HEIGHT),
-        NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskResizable, 2, False)
+        style_mask, 2, False)
     panel.setLevel_(NSStatusWindowLevel)
     panel.setCollectionBehavior_(
         NSWindowCollectionBehaviorCanJoinAllSpaces |
@@ -417,6 +430,9 @@ def main() -> None:
     parser.add_argument(
         '--leaf-rects', action='store_true',
         help='(requires --fix) install resize cursor rects on leaf subviews at their panel-edge portions')
+    parser.add_argument(
+        '--no-resizable', action='store_true',
+        help='create panel WITHOUT NSWindowStyleMaskResizable to test H7 (WindowServer edge-region claim)')
     args = parser.parse_args()
 
     # Leaf rects only make sense with cursor-rect dispatch enabled
@@ -427,19 +443,29 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, lambda *_: app.terminate_(None))
 
-    panel = _make_probe_panel(fix=args.fix)
+    panel = _make_probe_panel(fix=args.fix, no_resizable=args.no_resizable)
 
     _install_global_mouse_monitor()
 
     _log('=' * 60)
     _log('cursor-edges probe  (Monitor_CC/dev/cursor_edges/probe.py)')
-    if _LEAF_RECTS_ENABLED:
-        mode = 'MODE: --fix --leaf-rects (Iteration 6 — subview-coverage hypothesis)'
+    flags = []
+    if args.fix:          flags.append('--fix')
+    if _LEAF_RECTS_ENABLED: flags.append('--leaf-rects')
+    if args.no_resizable: flags.append('--no-resizable')
+    if not flags:         flags.append('baseline')
+    mode_tag = ' '.join(flags)
+    if args.no_resizable:
+        mode = f'MODE: {mode_tag}  (H7 — no-resizable test, WindowServer edge-claim hypothesis)'
+    elif _LEAF_RECTS_ENABLED:
+        mode = f'MODE: {mode_tag}  (Iteration 6 — subview-coverage hypothesis)'
     elif args.fix:
-        mode = 'MODE: --fix (enableCursorRects hypothesis)'
+        mode = f'MODE: {mode_tag}  (enableCursorRects hypothesis)'
     else:
-        mode = 'MODE: baseline (no fix)'
+        mode = f'MODE: {mode_tag}  (no fix)'
     _log(mode)
+    if args.no_resizable:
+        _log('[--no-resizable]  NSWindowStyleMaskResizable REMOVED — panel is non-resizable')
     _log('=' * 60)
     _log(f'Panel geometry: {PANEL_WIDTH}×{PANEL_HEIGHT}  EDGE={EDGE}')
     if _LEAF_RECTS_ENABLED:
@@ -465,7 +491,12 @@ def main() -> None:
     _log('  mouseMoved_      — per-move (tracking area owner)')
     _log('  NSEventMonitor   — pre-dispatch raw event')
     _log('')
-    if _LEAF_RECTS_ENABLED:
+    if args.no_resizable:
+        _log('H7 test: NSWindowStyleMaskResizable removed.')
+        _log('Expected if H7 confirmed: resize cursors (↔/↕) now appear at edges.')
+        _log('If cursor still Arrow/I-Beam → WindowServer edge-claim is NOT the blocker;')
+        _log('next candidates: H8 custom resize handler, H9 sendEvent_ override.')
+    elif _LEAF_RECTS_ENABLED:
         _log('Iteration 6 hypothesis: subview coverage shadows ContentView edge rects.')
         _log('Leaf rects installed on covering views — expected: cursorUpdate_ fires on')
         _log('StackView / FooterView / TopBarView / Button at edge positions.')

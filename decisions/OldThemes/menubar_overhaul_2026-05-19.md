@@ -204,6 +204,67 @@ All changes in `src/menubar/panel.py`. No other files touched.
 
 **NOT yet implemented** — user decides after running `probe.py --fix --leaf-rects`.
 
+## Iteration 7 (2026-05-20) — H7 No-Resizable Test + enableCursorRects Port
+
+### Iteration 6 outcome: leaf-rects approach refuted
+
+User ran `probe.py --fix --leaf-rects` interactively. Result: no `↔`/`↕` resize cursors appeared at any edge. The I-Beam→Arrow transition (from `enableCursorRects`) still worked, but the resize cursors did not.
+
+This refutes the subview-coverage hypothesis. Leaf rects were installed on every covering view (StackView, FooterView, TopBarView, left-edge Buttons) and none produced a visible resize cursor. The blocker is upstream of `addCursorRect_cursor_` dispatch — the rects are installed, cursor-rect dispatch is enabled, but the cursor shape does not change at the edges.
+
+### H7 hypothesis: NSWindowStyleMaskResizable claims edge regions
+
+**Hypothesis:** When `NSWindowStyleMaskResizable` is present on a `NonactivatingPanel`, WindowServer intercepts the edge pixel strips and handles resize drag-start natively. For a normal resizable window this would show OS resize cursors at the edges; for NonactivatingPanel the window never gets key focus so WindowServer neither shows its resize cursors nor yields the edge strips to AppKit's cursor-rect dispatch. Result: edges are a dead zone — no OS resize cursors, no our cursor rects.
+
+**Test:** create the panel with ONLY `NSWindowStyleMaskNonactivatingPanel` (no resizable mask). Without the resizable flag WindowServer has no reason to claim the edge strips, and our cursor rects should fire normally.
+
+**Trade-off:** no native window drag-resize when the resizable mask is absent. This is acceptable for cursor-appearance-only, but it also removes the user's ability to drag-resize the panel. That is a UX regression; whether it's acceptable is a user decision.
+
+### --no-resizable flag (2026-05-20)
+
+`dev/cursor_edges/probe.py --no-resizable` (requires `--fix`) creates the panel with:
+
+```python
+style_mask = NSWindowStyleMaskNonactivatingPanel  # no NSWindowStyleMaskResizable
+```
+
+All other flags (`--leaf-rects`) remain combinable.
+
+**Smoke (2026-05-20):** all combos (`--fix`, `--fix --leaf-rects`, `--fix --no-resizable`, `--fix --leaf-rects --no-resizable`) start clean, correct MODE lines, `areCursorRectsEnabled=True`, no AttributeError.
+
+### enableCursorRects() port to src/menubar/panel.py (2026-05-20)
+
+Independent of H7 outcome: `enableCursorRects()` restores the I-Beam→Arrow cursor transition when entering the panel. This is a real UX improvement — without it, hovering anywhere on the panel keeps the I-Beam cursor from outside. It was missing because NonactivatingPanel never calls `becomeKeyWindow`, which is the normal trigger for `enableCursorRects()` internally.
+
+**Ported:** one line + comment added to `_make_nspanel()` in `src/menubar/panel.py`, immediately after `panel.setContentView_(cv)`:
+
+```python
+# NonactivatingPanel never calls becomeKeyWindow → enableCursorRects() is never invoked
+# automatically → cursor-rect dispatch is silently disabled (no cursor changes anywhere).
+# Explicit call here restores dispatch; confirmed via dev/cursor_edges/probe.py --fix.
+panel.enableCursorRects()
+```
+
+This is the ONLY src/ change. Leaf-rects approach is NOT ported (refuted). `--no-resizable` approach is NOT ported (awaiting H7 verification AND user decision on the drag-resize trade-off).
+
+### Verification path
+
+```bash
+venv/bin/python3 dev/cursor_edges/probe.py --fix --no-resizable
+```
+
+Hover left edge (x < 8), right edge (x > 372), bottom edge (y < 8).
+
+- `↔`/`↕` appears → H7 confirmed; user decides whether no-drag-resize is acceptable for the resize-cursor UX gain
+- Still Arrow/I-Beam → H7 refuted; remaining hypotheses:
+
+| Hypothesis | Description | Cost |
+|---|---|---|
+| H8 custom resize | Intercept `NSWindowDidResizeNotification` + manual drag tracking in `mouseDown_`/`mouseDragged_` | High |
+| H9 `sendEvent_` override | Intercept `NSWindow.sendEvent_` at panel level, inject cursor change before AppKit processes the event | High |
+
+Both H8 and H9 are explicitly deferred until H7 is resolved. If H7 confirms the trade-off is unacceptable (user needs drag-resize), H8 or H9 become the path forward.
+
 ## launchctl bootstrap I/O Error (Recurring)
 
 **Symptom:** `launchctl bootstrap gui/<uid> <plist>` failed mit `Bootstrap failed: 5: Input/output error` beim ersten Versuch — beim zweiten Versuch direkt nach 1-2s success.
