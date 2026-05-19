@@ -18,7 +18,7 @@ def main() -> None:
     elif args.mode == 'restart-panes':
         restart_panes(args.session, args.project, os.path.abspath(__file__))
     elif args.mode == 'menubar':
-        from src.menubar.menubar import run
+        from src.menubar import run
         run()
     elif args.mode == 'gpu':
         from src.gpu_pane.pane import run_gpu_loop
