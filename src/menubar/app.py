@@ -15,8 +15,8 @@ from Foundation import NSObject, NSOperationQueue
 
 # From discover.py: Live session discovery
 from .discover import list_alive_sessions
-# From bg_timer.py: Background sleep-timer scanning and abort
-from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
+# From bg_timer.py: Background sleep-timer scanning, aggregation, and abort
+from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers, _aggregate_bg
 # From hotkey.py: Carbon Cmd+L registration
 from .hotkey import register_cmd_l
 # From panel.py: NSPanel construction, render, positioning, UI constants
@@ -77,9 +77,11 @@ class _PanelController(NSObject):
         rumps.quit_application()   # clean status-bar teardown; launchd respawns from fresh plist
 
     def abortBgTimer_(self, sender):
-        result = _scan_bg_sleep_timers()
-        if result:
-            _abort_bg_sleep_timers(result.sleep_pids)
+        sessions = list_alive_sessions()
+        cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
+        agg = _aggregate_bg(_scan_bg_sleep_timers(cwd_to_project))
+        if agg:
+            _abort_bg_sleep_timers(agg.sleep_pids)
 
     def windowDidResize_(self, notification):
         frame = notification.object().frame()
@@ -91,8 +93,10 @@ class _PanelController(NSObject):
     def windowDidEndLiveResize_(self, notification):
         app = self._app
         if app._panel_open:
-            bg_result = _scan_bg_sleep_timers()
-            _rebuild_panel(app, list_alive_sessions(), bg_result)
+            sessions = list_alive_sessions()
+            cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
+            bg_result = _aggregate_bg(_scan_bg_sleep_timers(cwd_to_project))
+            _rebuild_panel(app, sessions, bg_result)
 
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
@@ -101,6 +105,7 @@ class CCMenuBarApp(rumps.App):
         super().__init__(ICON_NORMAL, quit_button=None, menu=[])
         self._last_statuses: dict = {}
         self._idle_since_ts: dict = {}
+        self._all_workers_idle_since_ts: dict = {}
         self._panel_open: bool = False
         self._initialized: bool = False
         self._displayed_items: dict = {}
@@ -154,8 +159,11 @@ class CCMenuBarApp(rumps.App):
                         del self._idle_since_ts[s.name]
                 else:
                     self._idle_since_ts.pop(s.name, None)
+        cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
+        bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
+        _auto_abort_check(self, sessions, bg_by_project, now)
+        bg_result = _aggregate_bg(bg_by_project)
         if self._panel_open:
-            bg_result = _scan_bg_sleep_timers()
             session_names = {s.name for s in sessions}
             abort_flap = (bg_result is not None) != (self._abort_btn is not None)
             set_change = session_names != set(self._displayed_items)
@@ -175,10 +183,33 @@ class CCMenuBarApp(rumps.App):
                 _blink(self)
             if session_names != set(self._displayed_items):
                 _tick_log(False, sessions, self._displayed_items, 'session-set-change')
-                _rebuild_panel(self, sessions, _scan_bg_sleep_timers())
+                _rebuild_panel(self, sessions, bg_result)
             else:
                 _tick_log(False, sessions, self._displayed_items, 'no-change')
 
+
+# Per-project auto-abort: if all workers idle for ≥5s and project has a bg timer, abort it
+def _auto_abort_check(app: 'CCMenuBarApp', sessions, bg_by_project: dict, now: float) -> None:
+    workers_by_project: dict = {}
+    for s in sessions:
+        if s.is_worker:
+            workers_by_project.setdefault(s.project_name, []).append(s)
+    for proj, proj_bg in bg_by_project.items():
+        if proj == 'unknown':
+            continue
+        workers = workers_by_project.get(proj, [])
+        all_idle = bool(workers) and all(w.status == 'idle' for w in workers)
+        if all_idle:
+            if proj not in app._all_workers_idle_since_ts:
+                app._all_workers_idle_since_ts[proj] = now
+            elif now - app._all_workers_idle_since_ts[proj] >= 5.0:
+                _abort_bg_sleep_timers(proj_bg.sleep_pids)
+                app._all_workers_idle_since_ts.pop(proj, None)
+        else:
+            app._all_workers_idle_since_ts.pop(proj, None)
+    for proj in list(app._all_workers_idle_since_ts):
+        if proj not in bg_by_project:
+            del app._all_workers_idle_since_ts[proj]
 
 # True if any session's status differs from last tick's snapshot
 def _statuses_changed(sessions, last: dict) -> bool:
