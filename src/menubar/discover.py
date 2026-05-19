@@ -7,7 +7,7 @@ from typing import List, NamedTuple, Optional
 from ..session_finder import get_project_directories
 # From proc_cache.py: Process/tmux/proxy/hook caches
 from .proc_cache import (
-    _refresh_cc_proc_cache, _refresh_tmux_state, _tmux_state_cache,
+    _refresh_cc_proc_cache, _refresh_tmux_state,
     _tmux_session_exists, _read_hook_state, _proxy_log_newest_mtime,
     _has_active_bg,
 )
@@ -17,7 +17,6 @@ from .ghostty import _refresh_ghostty_tty_to_id
 ALIVE_WINDOW_SECS      = 3600   # stale threshold for main sessions (1h)
 WORKING_THRESHOLD_SECS = 10     # JSONL-mtime fallback: <= 10s = working
 THINKING_OVERRIDE_MAX_SECS = 300  # max expected thinking duration for proxy-mtime override
-_WORKER_ACTIVITY_THRESHOLD = 10 # tmux window_activity: <= 10s = working
 _WORKTREE_MARKER = '--claude-worktrees-'
 
 class SessionInfo(NamedTuple):
@@ -111,13 +110,6 @@ def _worker_tmux_session(cwd: str, worker_name: str) -> Optional[str]:
     basename = os.path.basename(project_path)
     return f'worker-{basename}-{worker_name}'
 
-# True if cached session_activity for session_name is within _WORKER_ACTIVITY_THRESHOLD
-def _worker_is_working(session_name: str) -> bool:
-    state = _tmux_state_cache.get(session_name)
-    if state is None:
-        return False
-    return (time.time() - state[1]) <= _WORKER_ACTIVITY_THRESHOLD
-
 # Build SessionInfo for one project dir; None if session is gone or unreadable
 def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]:
     jsonl = _newest_jsonl(project_dir)
@@ -128,6 +120,7 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
     project_name, is_worker, worker_name = _classify_encoded_dir(encoded_dir)
     session_id = jsonl.stem
     has_bg = _has_active_bg(encoded_dir, session_id)
+    hook_state = _read_hook_state(now)
 
     if is_worker:
         cwd = _cwd_from_jsonl(jsonl)
@@ -136,12 +129,15 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
             tmux_session = _worker_tmux_session(cwd, worker_name)
             if not tmux_session or not _tmux_session_exists(tmux_session):
                 return None
-            status = 'working' if _worker_is_working(tmux_session) else 'idle'
         else:
-            # cwd unavailable — fall back to JSONL age
+            # cwd unavailable — alive guard via JSONL age
             if now - mtime > ALIVE_WINDOW_SECS:
                 return None
-            status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
+        hook_entry = hook_state.get(session_id)
+        if hook_entry is not None and (now - hook_entry.get('updated_ts', 0)) <= ALIVE_WINDOW_SECS:
+            status = hook_entry['status']
+        else:
+            status = 'idle'
         return SessionInfo(name=worker_name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
                            is_worker=True, cwd='')
@@ -154,7 +150,6 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
         # Priority 1: hook state (real-time signal from CC's UserPromptSubmit/Stop hooks).
         # Covers thinking phase from T=0 and holds 'working' for the full turn duration.
         # Falls back to JSONL+proxy when hook state is absent (hooks not installed) or stale.
-        hook_state  = _read_hook_state(now)
         hook_entry  = hook_state.get(session_id)
         hook_fresh  = (hook_entry is not None
                        and (now - hook_entry.get('updated_ts', 0)) <= ALIVE_WINDOW_SECS)
