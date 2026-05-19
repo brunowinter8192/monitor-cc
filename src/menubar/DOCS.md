@@ -27,11 +27,21 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (287 LOC)
+### paths.py (31 LOC)
+
+**Purpose:** Single source of truth for the 4 APP_SUPPORT file paths (`SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`) under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`. Runs `_migrate_from_dotfiles()` at import — moves any `~/.monitor_cc_menubar_*` dotfiles to APP_SUPPORT atomically; NEW wins if both exist.
+**Reads:** old dotfile paths under `~` on first import (migration); nothing thereafter.
+**Writes:** creates `_APP_SUPPORT` dir; moves old dotfiles to new paths on first import.
+**Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`). `hook_writer.py` derives equivalent paths locally (standalone script, no relative import).
+**Calls out:** `pathlib` only.
+
+---
+
+### app.py (288 LOC)
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/kill/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check` (per-project 5s-debounce auto-abort of bg timers when all workers idle).
-**Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `~/.monitor_cc_menubar_settings.json` on launch; `app` instance state throughout.
-**Writes:** bar icon via attributed NSStatusItem button; `~/.monitor_cc_menubar_settings.json` on toggle/resize.
+**Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on launch; `app` instance state throughout.
+**Writes:** bar icon via attributed NSStatusItem button; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on toggle/resize.
 **Called by:** `system.py:run()` (lazy import).
 **Calls out:** `rumps`, `AppKit` (NSAttributedString/NSBaselineOffsetAttributeName/NSFont/NSFontAttributeName), `Foundation` (NSObject/NSOperationQueue), `objc`, `subprocess`, `threading`, `pathlib`; `.panel`, `.hotkey`, `.system`, `.discover` (`list_alive_sessions`), `.bg_timer` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`, `_aggregate_bg`); `.setup_menubar` (`write_plist`, lazy import inside `restartApp_`).
 
@@ -47,11 +57,11 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### system.py (75 LOC)
+### system.py (76 LOC)
 
 **Purpose:** `run()` entry point + singleton lock (`_acquire_singleton_lock`) + Ghostty click-to-focus (`_focus_session`). Owns the process-lifecycle concerns; no AppKit dependency.
-**Reads:** `~/.monitor_cc_menubar.pid` (lock file); `get_ghostty_terminal_id(cwd)` from `ghostty.py` on click.
-**Writes:** `~/.monitor_cc_menubar.pid` (PID); `/tmp/monitor_cc_menubar_focus.log` (focus results via osascript).
+**Reads:** `PID_FILE` (`APP_SUPPORT/menubar.pid`, lock file); `get_ghostty_terminal_id(cwd)` from `ghostty.py` on click.
+**Writes:** `PID_FILE` (`APP_SUPPORT/menubar.pid`); `/tmp/monitor_cc_menubar_focus.log` (focus results via osascript).
 **Called by:** `workflow.py` (via `from src.menubar import run` → `__init__.py` → `system.run`); `app.py:_PanelController.focusSession_` + `CCMenuBarApp._tick` (`_focus_session`).
 **Calls out:** `fcntl`, `os`, `subprocess` (osascript), `sys`; `.ghostty` (`get_ghostty_terminal_id`); lazy `.app` (`CCMenuBarApp`) inside `run()` only.
 
@@ -67,10 +77,10 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### proc_cache.py (136 LOC)
+### proc_cache.py (137 LOC)
 
 **Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader. All caches have TTL-based refresh (10s for proc/proxy/hook, 3s for tmux). Owns `_TASKS_BASE` and `_has_active_bg()` (in-progress task detection).
-**Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `~/.monitor_cc_menubar_hooks.json` (hook state).
+**Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE` (`APP_SUPPORT/hooks.json`, hook state).
 **Writes:** module-level caches (`_cc_proc_cache`, `_tmux_state_cache`, `_proxy_log_mtime_cache`, `_hook_state_cache`).
 **Called by:** `discover.py:list_alive_sessions` (refresh calls); `discover.py:_process_project_dir` (query calls); `ghostty.py:_tty_for_cwd` (`_cc_proc_cache` import); `bg_timer.py:_scan_bg_sleep_timers` (`_cc_proc_cache` import); `bg_timer.py:_abort_bg_sleep_timers` (`_TASKS_BASE` import).
 **Calls out:** `subprocess` (ps, lsof, tmux).
@@ -99,9 +109,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ### hook_writer.py (73 LOC)
 
-**Purpose:** CC hook handler — reads the JSON payload CC writes to stdin on UserPromptSubmit/Stop/StopFailure, then atomically updates `~/.monitor_cc_menubar_hooks.json` with `{session_id: {status, cwd, updated_ts}}`. Called by CC's hook system (installed via `hook_setup.py`). Prunes entries older than 7200s on each write to prevent unbounded file growth.
-**Reads:** stdin (CC hook JSON payload); `~/.monitor_cc_menubar_hooks.json` (current state, inside exclusive lock).
-**Writes:** `~/.monitor_cc_menubar_hooks.json` (atomic via temp + `os.replace()`); `~/.monitor_cc_menubar_hooks.lock` (flock coordination).
+**Purpose:** CC hook handler — reads the JSON payload CC writes to stdin on UserPromptSubmit/Stop/StopFailure, then atomically updates `APP_SUPPORT/hooks.json` with `{session_id: {status, cwd, updated_ts}}`. Called by CC's hook system (installed via `hook_setup.py`). Prunes entries older than 7200s on each write to prevent unbounded file growth. Standalone script (never imported); defines `_APP_SUPPORT` locally rather than importing `paths.py`.
+**Reads:** stdin (CC hook JSON payload); `APP_SUPPORT/hooks.json` (current state, inside exclusive lock).
+**Writes:** `APP_SUPPORT/hooks.json` (atomic via temp + `os.replace()`); `APP_SUPPORT/hooks.lock` (flock coordination).
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json`; runs `async: true` so it never blocks CC). Never imported by other modules.
 **Calls out:** stdlib only (`fcntl`, `json`, `os`, `time`).
 
@@ -138,7 +148,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 ```
 stdlib only
     ↓
-proc_cache.py   (json, os, subprocess, time, pathlib, typing)
+paths.py        (pathlib only — leaf node; triggers migration at import)
+    ↓
+proc_cache.py   (json, os, subprocess, time, pathlib, typing; .paths)
     ↓               ↓
 ghostty.py          bg_timer.py
 (_cc_proc_cache)    (_TASKS_BASE)
@@ -150,10 +162,10 @@ discover.py  ← ghostty.py (_refresh_ghostty_tty_to_id)
 
 hotkey.py   → ctypes only
 panel.py    → AppKit, Foundation, itertools
-system.py   → fcntl, os, subprocess, sys; .ghostty
+system.py   → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
               lazy(.app) inside run() only
 app.py      → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
-              .panel, .hotkey, .system, .discover, .bg_timer
+              .panel, .hotkey, .system, .discover, .bg_timer, .paths (SETTINGS_FILE)
 ```
 
 No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module.
@@ -188,7 +200,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `_tmux_state_cache` | proc_cache.py | `set` | module | session_name set (alive check only). One `tmux list-sessions` call per 3s. |
 | `_tmux_state_last_refresh` | proc_cache.py | `float` | module | Timestamp of last tmux state refresh. |
 | `_proxy_log_mtime_cache` | proc_cache.py | `Dict[str, Tuple[float, Optional[float]]]` | module | `opus_<project_key>→(checked_at, newest_mtime)`. TTL=10s. |
-| `_hook_state_cache` | proc_cache.py | `Dict[str, dict]` | module | `session_id→{status, cwd, updated_ts}`. Read from `~/.monitor_cc_menubar_hooks.json`. TTL=10s. |
+| `_hook_state_cache` | proc_cache.py | `Dict[str, dict]` | module | `session_id→{status, cwd, updated_ts}`. Read from `APP_SUPPORT/hooks.json` (`HOOKS_FILE`). TTL=10s. |
 | `_hook_state_last_read` | proc_cache.py | `float` | module | Timestamp of last hook state file read. |
 | `_ghostty_tty_to_id` | ghostty.py | `Dict[str, str]` | module | tty → Ghostty terminal UUID. Populated incrementally by OSC 2 probe. |
 | `_ghostty_tty_last_refresh` | ghostty.py | `float` | module | Timestamp of last probe cycle (updated only when a probe actually ran). |
@@ -199,12 +211,12 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - Alive iff `tmux has-session -t =worker-{project_basename}-{worker_name}` returns 0. Exact-match `=` prefix prevents prefix-matching false positives.
 - Session name reconstructed from worker JSONL cwd: split on `/.claude/worktrees/`, `basename(left)` = project basename.
 - Alive fallback (cwd unreadable from JSONL): `ALIVE_WINDOW_SECS=3600` JSONL age guard.
-- **Status — Hook only** (`~/.monitor_cc_menubar_hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. No entry or stale → `idle`. No fallback chain. `UserPromptSubmit` sets working from T=0; `Stop`/`StopFailure` set idle immediately.
+- **Status — Hook only** (`APP_SUPPORT/hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. No entry or stale → `idle`. No fallback chain. `UserPromptSubmit` sets working from T=0; `Stop`/`StopFailure` set idle immediately.
 - **Auto-abort** (`app.py:_auto_abort_check`): every tick, if ALL workers of a project are idle AND that project has an active bg sleep timer → start/keep a 5s debounce (`_all_workers_idle_since_ts[project_name]`). Any worker returning to working resets the debounce. After 5s: `_abort_bg_sleep_timers(proj_bg.sleep_pids)` fires (per-project PIDs only). 'unknown'-attributed timers are excluded from auto-abort. Projects with no workers at all are excluded (bool([]) guard).
 
 **Mains** (Ghostty terminals):
 - Alive if JSONL mtime within `ALIVE_WINDOW_SECS=3600` (1h).
-- **Priority 1 — Hook state** (`~/.monitor_cc_menubar_hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. `UserPromptSubmit` sets working from T=0 (captures thinking phase); `Stop`/`StopFailure` set idle immediately. No heuristic lag.
+- **Priority 1 — Hook state** (`APP_SUPPORT/hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. `UserPromptSubmit` sets working from T=0 (captures thinking phase); `Stop`/`StopFailure` set idle immediately. No heuristic lag.
 - **Priority 2 — JSONL mtime** (fallback when hooks absent/stale): mtime ≤ `WORKING_THRESHOLD_SECS=10s` = working. TTY mtime removed (cursor blinks cause stuck-at-working).
 - **Priority 3 — Proxy override** (fallback): `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → working. See Gotchas.
 - TTY still used for click-to-focus UUID lookup via `_cc_proc_cache`; not used for working detection.
@@ -231,7 +243,8 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 
 ## Gotchas
 
-- **Singleton enforcement via fcntl lock** (`system.py`): `run()` calls `_acquire_singleton_lock()` before constructing `CCMenuBarApp`. On success: sets `FD_CLOEXEC` on the fd (required for clean `os.execv` restart), writes PID, returns open file handle (held on `run()`'s stack frame for the process lifetime). On failure: prints to stderr and calls `sys.exit(0)`. **Exit code 0 is mandatory**: launchd `KeepAlive=true` respawns on non-zero exit only.
+- **Singleton enforcement via fcntl lock** (`system.py`): `run()` calls `_acquire_singleton_lock()` before constructing `CCMenuBarApp`. Lock file: `PID_FILE` = `APP_SUPPORT/menubar.pid`. On success: sets `FD_CLOEXEC` on the fd (required for clean `os.execv` restart), writes PID, returns open file handle (held on `run()`'s stack frame for the process lifetime). On failure: prints to stderr and calls `sys.exit(0)`. **Exit code 0 is mandatory**: launchd `KeepAlive=true` respawns on non-zero exit only.
+- **APP_SUPPORT migration** (`paths.py`): on first import, `_migrate_from_dotfiles()` moves `~/.monitor_cc_menubar_{settings,hooks}.json`, `~/.monitor_cc_menubar_hooks.lock`, and `~/.monitor_cc_menubar.pid` to `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`. `os.rename()` is atomic on APFS/HFS+ (same volume). If both old and new exist (partial prior migration or manual intervention): NEW wins, old silently deleted. `hook_writer.py` derives the same APP_SUPPORT path locally (standalone script; relative import not usable).
 - **Restart via plist-resync + detached relaunch** (`app.py:_PanelController.restartApp_`): three-step flow: (1) `write_plist()` (imported from `setup_menubar.py`) — synchronously substitutes `<PROJECT_ROOT>` and writes the updated plist to `~/Library/LaunchAgents/` so any plist edits take effect immediately, not just on the next launchd cycle; (2) `subprocess.Popen(['sh', '-c', 'sleep 0.5 && python3 setup_menubar.py'], start_new_session=True)` — detached helper (survives parent exit) that runs `setup_menubar_workflow()` after a 0.5s grace period, which does `launchctl bootout` + `launchctl bootstrap` with the existing 1s-retry logic; (3) `rumps.quit_application()` — clean status-bar teardown, launchd sees the process exit and respawns from the freshly-written plist. `start_new_session=True` detaches the helper from the dying process so it is not killed when the parent exits. The `write_plist` import is inside `restartApp_` body (not module-level) as a defensive measure against any future import-order sensitivity.
 - **Kill unloads the plist (`launchctl bootout`)**: `killApp_` (`app.py:_PanelController`) fires `launchctl bootout gui/<uid>/com.brunowinter.monitor_cc_menubar` via a detached `sh -c 'sleep 0.5 && ...'` subprocess (survives parent exit), then calls `rumps.quit_application()`. `bootout` removes the plist from the launchd domain so `KeepAlive=true` no longer respawns the process. Next reload requires login (`RunAtLoad=true`) or manual `launchctl bootstrap gui/<uid> ~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist`.
 - **Lazy import in system.run()**: `from .app import CCMenuBarApp` is inside `run()` to break the `app→system→app` circular import. `app.py` imports `_focus_session` from `system.py` at module level; `system.py` has no module-level import of `app.py`. No circular dependency at module init time.
