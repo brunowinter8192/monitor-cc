@@ -21,8 +21,10 @@ from AppKit import (
 )
 from Foundation import NSMakeRect, NSObject, NSRunLoop
 
-# From discover.py: Live session discovery + background-task timers
-from src.menubar.discover import list_alive_sessions, _scan_bg_sleep_timers
+# From discover.py: Live session discovery
+from src.menubar.discover import list_alive_sessions
+# From bg_timer.py: Background sleep-timer scanning
+from src.menubar.bg_timer import _scan_bg_sleep_timers
 
 ICON_NORMAL    = '◉'
 ICON_BLINK     = '●'
