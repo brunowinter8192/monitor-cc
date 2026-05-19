@@ -10,6 +10,7 @@ hover position.
 Run from project root:
     venv/bin/python3 dev/cursor_edges/probe.py
     venv/bin/python3 dev/cursor_edges/probe.py --fix
+    venv/bin/python3 dev/cursor_edges/probe.py --fix --leaf-rects
 
 --fix: calls panel.enableCursorRects() immediately after setContentView_,
        then logs areCursorRectsEnabled() to confirm the call was accepted.
@@ -17,11 +18,19 @@ Run from project root:
        normally triggers enableCursorRects → cursor rects sit installed but
        are never dispatched. Explicit call should re-enable dispatch.
 
+--leaf-rects (requires --fix): installs resize cursor rects directly on each
+       leaf subview (StackView, FooterView, TopBarView, and left-edge Buttons)
+       at their portion of the panel edges, AFTER super.resetCursorRects.
+       Tests Iteration 6 hypothesis: subview coverage shadows ContentView's
+       edge rects — installing rects on the covering views themselves should
+       win the dispatch race.
+
 Quit: Cmd-Q or close the window. Ctrl-C also works (SIGINT handler).
 
 All output goes to stderr. Pipe to file to capture a session:
     venv/bin/python3 dev/cursor_edges/probe.py 2>probe_$(date +%H%M%S).log
     venv/bin/python3 dev/cursor_edges/probe.py --fix 2>probe_fix_$(date +%H%M%S).log
+    venv/bin/python3 dev/cursor_edges/probe.py --fix --leaf-rects 2>probe_leaf_$(date +%H%M%S).log
 """
 
 # INFRASTRUCTURE
@@ -65,6 +74,11 @@ EDGE         = 8   # cursor-rect edge width in production
 
 # NSTrackingArea option flags
 _TA_OPTS = NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingActiveAlways
+
+# Set to True by argparse (--fix --leaf-rects) before panel construction.
+# Each Logging subclass checks this flag in resetCursorRects to install
+# leaf-level edge rects in addition to super's rects.
+_LEAF_RECTS_ENABLED = False
 
 
 # FUNCTIONS
@@ -144,8 +158,17 @@ class _LoggingStackView(NSStackView):
 
     def resetCursorRects(self):
         b = self.bounds()
-        _log(f'resetCursorRects  StackView  bounds={b.size.width:.0f}×{b.size.height:.0f}')
+        w = b.size.width
+        h = b.size.height
+        _log(f'resetCursorRects  StackView  bounds={w:.0f}×{h:.0f}')
         objc.super(_LoggingStackView, self).resetCursorRects()
+        if _LEAF_RECTS_ENABLED:
+            self.addCursorRect_cursor_(
+                NSMakeRect(0, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
+            self.addCursorRect_cursor_(
+                NSMakeRect(w - EDGE, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
+            _log(f'  [leaf] ↔ left  StackView  (0,0 {EDGE}×{h:.0f})')
+            _log(f'  [leaf] ↔ right StackView  ({w-EDGE:.0f},0 {EDGE}×{h:.0f})')
 
     def cursorUpdate_(self, event):
         pt = event.locationInWindow() if event else None
@@ -170,8 +193,17 @@ class _LoggingButton(NSButton):
     def resetCursorRects(self):
         t = self.title() or '?'
         b = self.bounds()
-        _log(f'resetCursorRects  Button("{t}")  bounds={b.size.width:.0f}×{b.size.height:.0f}')
+        h = b.size.height
+        _log(f'resetCursorRects  Button("{t}")  bounds={b.size.width:.0f}×{h:.0f}')
         objc.super(_LoggingButton, self).resetCursorRects()
+        if _LEAF_RECTS_ENABLED:
+            # Install left-edge rect only when button frame starts at panel left edge
+            # (frame.origin.x < EDGE in parent coords → local x=0 maps to panel x≈0).
+            # Auto-Jump and session-row buttons start at x=0; Kill/Restart do not.
+            if self.frame().origin.x < EDGE:
+                self.addCursorRect_cursor_(
+                    NSMakeRect(0, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
+                _log(f'  [leaf] ↔ left  Button("{t}")  (0,0 {EDGE}×{h:.0f})')
 
     def cursorUpdate_(self, event):
         t  = self.title() or '?'
@@ -196,8 +228,20 @@ class _LoggingFooterView(NSView):
 
     def resetCursorRects(self):
         b = self.bounds()
-        _log(f'resetCursorRects  FooterView  bounds={b.size.width:.0f}×{b.size.height:.0f}')
+        w = b.size.width
+        h = b.size.height
+        _log(f'resetCursorRects  FooterView  bounds={w:.0f}×{h:.0f}')
         objc.super(_LoggingFooterView, self).resetCursorRects()
+        if _LEAF_RECTS_ENABLED:
+            self.addCursorRect_cursor_(
+                NSMakeRect(0, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
+            self.addCursorRect_cursor_(
+                NSMakeRect(w - EDGE, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
+            self.addCursorRect_cursor_(
+                NSMakeRect(0, 0, w, EDGE), NSCursor.resizeUpDownCursor())
+            _log(f'  [leaf] ↔ left   FooterView  (0,0 {EDGE}×{h:.0f})')
+            _log(f'  [leaf] ↔ right  FooterView  ({w-EDGE:.0f},0 {EDGE}×{h:.0f})')
+            _log(f'  [leaf] ↕ bottom FooterView  (0,0 {w:.0f}×{EDGE})')
 
     def cursorUpdate_(self, event):
         pt = event.locationInWindow() if event else None
@@ -221,8 +265,17 @@ class _LoggingTopBarView(NSView):
 
     def resetCursorRects(self):
         b = self.bounds()
-        _log(f'resetCursorRects  TopBarView  bounds={b.size.width:.0f}×{b.size.height:.0f}')
+        w = b.size.width
+        h = b.size.height
+        _log(f'resetCursorRects  TopBarView  bounds={w:.0f}×{h:.0f}')
         objc.super(_LoggingTopBarView, self).resetCursorRects()
+        if _LEAF_RECTS_ENABLED:
+            self.addCursorRect_cursor_(
+                NSMakeRect(0, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
+            self.addCursorRect_cursor_(
+                NSMakeRect(w - EDGE, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
+            _log(f'  [leaf] ↔ left  TopBarView  (0,0 {EDGE}×{h:.0f})')
+            _log(f'  [leaf] ↔ right TopBarView  ({w-EDGE:.0f},0 {EDGE}×{h:.0f})')
 
     def cursorUpdate_(self, event):
         pt = event.locationInWindow() if event else None
@@ -355,11 +408,19 @@ def _install_global_mouse_monitor() -> None:
 # ORCHESTRATOR
 
 def main() -> None:
+    global _LEAF_RECTS_ENABLED
+
     parser = argparse.ArgumentParser(description='cursor-edges probe')
     parser.add_argument(
         '--fix', action='store_true',
         help='call panel.enableCursorRects() after setContentView_ to test NonactivatingPanel hypothesis')
+    parser.add_argument(
+        '--leaf-rects', action='store_true',
+        help='(requires --fix) install resize cursor rects on leaf subviews at their panel-edge portions')
     args = parser.parse_args()
+
+    # Leaf rects only make sense with cursor-rect dispatch enabled
+    _LEAF_RECTS_ENABLED = args.fix and args.leaf_rects
 
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
@@ -372,10 +433,21 @@ def main() -> None:
 
     _log('=' * 60)
     _log('cursor-edges probe  (Monitor_CC/dev/cursor_edges/probe.py)')
-    mode = 'MODE: --fix (enableCursorRects hypothesis)' if args.fix else 'MODE: baseline (no fix)'
+    if _LEAF_RECTS_ENABLED:
+        mode = 'MODE: --fix --leaf-rects (Iteration 6 — subview-coverage hypothesis)'
+    elif args.fix:
+        mode = 'MODE: --fix (enableCursorRects hypothesis)'
+    else:
+        mode = 'MODE: baseline (no fix)'
     _log(mode)
     _log('=' * 60)
     _log(f'Panel geometry: {PANEL_WIDTH}×{PANEL_HEIGHT}  EDGE={EDGE}')
+    if _LEAF_RECTS_ENABLED:
+        _log('Leaf-rects ENABLED — each subview installs edge rects in its resetCursorRects:')
+        _log('  StackView   : LEFT + RIGHT (full local height)')
+        _log('  FooterView  : LEFT + RIGHT (full local height) + BOTTOM (full width)')
+        _log('  TopBarView  : LEFT + RIGHT (full local height, no top)')
+        _log('  Button      : LEFT if frame.origin.x < EDGE (Auto-Jump, session rows)')
     _log('View hierarchy at startup:')
     _dump_hierarchy(panel.contentView())
     _log('')
@@ -388,11 +460,17 @@ def main() -> None:
     _log('Signals to watch:')
     _log('  resetCursorRects — which views install rects (fires on activate + resize)')
     _log('  cursorUpdate_    — which view WINS the cursor race (the one that fires last)')
+    _log('  [leaf] lines     — leaf-rect installation log (--leaf-rects mode only)')
     _log('  mouseEntered_    — tracking area entry')
     _log('  mouseMoved_      — per-move (tracking area owner)')
     _log('  NSEventMonitor   — pre-dispatch raw event')
     _log('')
-    if args.fix:
+    if _LEAF_RECTS_ENABLED:
+        _log('Iteration 6 hypothesis: subview coverage shadows ContentView edge rects.')
+        _log('Leaf rects installed on covering views — expected: cursorUpdate_ fires on')
+        _log('StackView / FooterView / TopBarView / Button at edge positions.')
+        _log('If cursorUpdate_ still 0 → subview-coverage is NOT the blocker; next: sendEvent_ override.')
+    elif args.fix:
         _log('Hypothesis: cursorUpdate_ will now fire on hover → confirms enableCursorRects was the missing call.')
         _log('If cursorUpdate_ STILL fires 0 times → look at window-level event routing next.')
     _log('Hover slowly over each edge and each widget. Quit: Cmd-Q or Ctrl-C.')
