@@ -315,6 +315,7 @@ def _register_hotkey(app: 'CCMenuBarApp') -> None:
 # options=642: NSTrackingMouseMoved(0x02) | NSTrackingActiveAlways(0x80) | NSTrackingInVisibleRect(0x200)
 class _PanelContentView(NSView):
     def updateTrackingAreas(self):
+        open("/tmp/cursor-track.log", "a").write(f"track {time.time()}\n")
         for ta in self.trackingAreas():
             self.removeTrackingArea_(ta)
         ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
@@ -322,6 +323,7 @@ class _PanelContentView(NSView):
         self.addTrackingArea_(ta)
 
     def mouseMoved_(self, event):
+        open("/tmp/cursor-fire.log", "a").write(f"fire {time.time()}\n")
         loc  = event.locationInWindow()
         x, y = loc.x, loc.y
         w    = self.frame().size.width
