@@ -130,12 +130,7 @@ class _PanelController(NSObject):
         x, y = loc.x, loc.y
         w    = self._app._panel.frame().size.width
         EDGE = 8
-        if y < EDGE:
-            NSCursor.resizeUpDownCursor().set()
-        elif x < EDGE or x > w - EDGE:
-            NSCursor.resizeLeftRightCursor().set()
-        else:
-            NSCursor.arrowCursor().set()
+        NSCursor.crosshairCursor().set()
 
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
