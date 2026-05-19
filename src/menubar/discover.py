@@ -37,6 +37,12 @@ _tmux_state_last_refresh: float = 0.0
 # opus_<project_key>→(checked_at: float, mtime: float|None); TTL = _PROC_REFRESH_INTERVAL
 _proxy_log_mtime_cache: Dict[str, Tuple[float, Optional[float]]] = {}
 
+# Hook state file written by hook_writer.py; {session_id → {status, cwd, updated_ts}}
+_HOOK_STATE_FILE = Path("~/.monitor_cc_menubar_hooks.json").expanduser()
+# cached contents + last-read timestamp; TTL = _PROC_REFRESH_INTERVAL
+_hook_state_cache: Dict[str, dict] = {}
+_hook_state_last_read: float = 0.0
+
 class SessionInfo(NamedTuple):
     name: str          # display name: cwd basename for mains, worktree name for workers
     status: str        # 'working' | 'idle'
@@ -58,6 +64,7 @@ def list_alive_sessions() -> List[SessionInfo]:
     _refresh_cc_proc_cache(now)
     _refresh_ghostty_tty_to_id(now)
     _refresh_tmux_state(now)
+    _read_hook_state(now)   # warm cache once per tick; _process_project_dir reads from cache
     results = []
     for project_dir in get_project_directories():
         try:
@@ -344,6 +351,18 @@ def _proxy_log_newest_mtime(project_key: str, now: float) -> Optional[float]:
     _proxy_log_mtime_cache[project_key] = (now, result)
     return result
 
+# Return hook state dict {session_id: {status, cwd, updated_ts}}; cached with _PROC_REFRESH_INTERVAL TTL
+def _read_hook_state(now: float) -> Dict[str, dict]:
+    global _hook_state_cache, _hook_state_last_read
+    if now - _hook_state_last_read < _PROC_REFRESH_INTERVAL:
+        return _hook_state_cache
+    _hook_state_last_read = now
+    try:
+        _hook_state_cache = json.loads(_HOOK_STATE_FILE.read_text(encoding='utf-8'))
+    except Exception:
+        _hook_state_cache = {}
+    return _hook_state_cache
+
 # Build SessionInfo for one project dir; None if session is gone or unreadable
 def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]:
     jsonl = _newest_jsonl(project_dir)
@@ -377,20 +396,29 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
             return None
         cwd = _cwd_from_jsonl(jsonl)
         name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
-        # Activity: JSONL mtime only (TTY mtime causes false-working while CC window focused)
-        status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
-        # Thinking override: proxy log newer than JSONL → request in flight (reasoning phase).
-        # Old condition was (now - proxy_mtime) <= 10s, which only fired for the first 10s of
-        # thinking; thinking takes 30-120s, so the override was effectively dead after 10s.
-        # Correct signal: proxy_mtime > mtime (request sent after last response wrote JSONL).
-        # After response completion the proxy writes its latency entry ~0.1s BEFORE CC writes
-        # JSONL, so proxy_mtime drops just below mtime — no false positive on completed turns.
-        if status == 'idle':
-            project_key = project_name.lower().replace('-', '_').replace(' ', '_')
-            proxy_mtime = _proxy_log_newest_mtime(project_key, now)
-            if (proxy_mtime is not None and proxy_mtime > mtime
-                    and (now - proxy_mtime) <= THINKING_OVERRIDE_MAX_SECS):
-                status = 'working'
+        # Priority 1: hook state (real-time signal from CC's UserPromptSubmit/Stop hooks).
+        # Covers thinking phase from T=0 and holds 'working' for the full turn duration.
+        # Falls back to JSONL+proxy when hook state is absent (hooks not installed) or stale.
+        hook_state  = _read_hook_state(now)
+        hook_entry  = hook_state.get(session_id)
+        hook_fresh  = (hook_entry is not None
+                       and (now - hook_entry.get('updated_ts', 0)) <= ALIVE_WINDOW_SECS)
+        if hook_fresh:
+            status = hook_entry['status']
+        else:
+            # Priority 2: JSONL mtime (TTY mtime removed — cursor blinks cause false-working)
+            status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
+            # Priority 3: proxy log newer than JSONL → request in flight (reasoning phase).
+            # Old condition was (now - proxy_mtime) <= 10s — only fired for first 10s of
+            # thinking. Correct signal: proxy_mtime > mtime (request sent after last JSONL
+            # write). After response the proxy latency entry lands ~0.1s before CC writes
+            # JSONL, so proxy_mtime drops just below mtime → no false positive.
+            if status == 'idle':
+                project_key = project_name.lower().replace('-', '_').replace(' ', '_')
+                proxy_mtime = _proxy_log_newest_mtime(project_key, now)
+                if (proxy_mtime is not None and proxy_mtime > mtime
+                        and (now - proxy_mtime) <= THINKING_OVERRIDE_MAX_SECS):
+                    status = 'working'
         return SessionInfo(name=name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
                            is_worker=False, cwd=cwd or '')
