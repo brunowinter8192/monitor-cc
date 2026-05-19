@@ -15,7 +15,7 @@ from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName,
                     NSBox, NSButton, NSColor, NSCursor, NSFont,
                     NSFontAttributeName, NSForegroundColorAttributeName,
                     NSLayoutAttributeLeading, NSPanel,
-                    NSStackView, NSTextField, NSTrackingArea, NSView,
+                    NSStackView, NSTextField, NSView,
                     NSStatusWindowLevel,
                     NSUserInterfaceLayoutOrientationVertical,
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
@@ -343,37 +343,21 @@ def _register_hotkey(app: 'CCMenuBarApp') -> None:
     app._hotkey_cb  = cb   # keep ctypes objects alive; GC would invalidate callback
     app._hotkey_ref = hk_ref
 
-# NSView subclass as panel contentView — owns the NSTrackingArea for resize cursors
-# owner=self (the view) is required: AppKit only dispatches mouseMoved_ to tracking-area owners
-# that are NSView subclasses in the view hierarchy; an external NSObject as owner never fires
-# options=642: NSTrackingMouseMoved(0x02) | NSTrackingActiveAlways(0x80) | NSTrackingInVisibleRect(0x200)
+# NSView subclass as panel contentView — defines cursor rects for resize edges via resetCursorRects
+# Canonical macOS cursor-zone API: AppKit calls resetCursorRects on window activation and after resize,
+# merges all views' rects in z-order. Child views (NSTextField, NSButton) install their own rects in
+# their resetCursorRects and win over NSCursor.set() calls in mouseMoved_ — that is why the
+# mouseMoved_/NSTrackingArea approach failed (I-Beam from NSTextField labels always overrode our set()).
+# resetCursorRects on the contentView installs rects at the correct z-order level.
 class _PanelContentView(NSView):
-    def updateTrackingAreas(self):
-        open("/tmp/cursor-track.log", "a").write(f"track {time.time()}\n")
-        for ta in self.trackingAreas():
-            self.removeTrackingArea_(ta)
-        ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
-            self.bounds(), 642, self, None)
-        self.addTrackingArea_(ta)
-
-    def mouseMoved_(self, event):
-        loc  = event.locationInWindow()
-        x, y = loc.x, loc.y
-        w    = self.frame().size.width
-        h    = self.frame().size.height
+    def resetCursorRects(self):
+        w    = self.bounds().size.width
+        h    = self.bounds().size.height
         EDGE = 8
-        if y < EDGE:
-            branch = 'up-down'
-            NSCursor.resizeUpDownCursor().set()
-        elif x < EDGE or x > w - EDGE:
-            branch = 'left-right'
-            NSCursor.resizeLeftRightCursor().set()
-        else:
-            branch = 'arrow'
-            NSCursor.arrowCursor().set()
-        open('/tmp/cursor-fire.log', 'a').write(
-            f'fire ts={time.time():.3f} x={x:.1f} y={y:.1f} w={w:.1f} h={h:.1f} branch={branch}\n'
-        )
+        self.addCursorRect_cursor_(NSMakeRect(0,        0,    w,            EDGE),      NSCursor.resizeUpDownCursor())
+        self.addCursorRect_cursor_(NSMakeRect(0,        0,    EDGE,         h),         NSCursor.resizeLeftRightCursor())
+        self.addCursorRect_cursor_(NSMakeRect(w - EDGE, 0,    EDGE,         h),         NSCursor.resizeLeftRightCursor())
+        self.addCursorRect_cursor_(NSMakeRect(EDGE,     EDGE, w - 2 * EDGE, h - EDGE),  NSCursor.arrowCursor())
 
 # Build NSPanel + fixed footer (Restart) + fixed top_bar (Auto-Jump) + NSStackView (sessions, middle)
 # Returns (panel, stack_view, quit_btn, toggle_btn) — stored on app instance; ObjC objects reject Python attrs
@@ -390,8 +374,6 @@ def _make_nspanel():
         NSWindowCollectionBehaviorCanJoinAllSpaces |
         NSWindowCollectionBehaviorIgnoresCycle)
     panel.setHasShadow_(True)
-    panel.setAcceptsMouseMovedEvents_(True)   # required — NSWindowStyleMaskNonactivatingPanel suppresses mouseMoved dispatch even with NSTrackingActiveAlways without this
-    panel.disableCursorRects()   # prevent child-view cursor rects (NSTextField I-Beam) from overriding mouseMoved_ cursor; all NSTextFields are display-only so I-Beam is wrong anyway
     panel.setOpaque_(False)
     panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
     cv = _PanelContentView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT))
@@ -444,9 +426,15 @@ def _make_row_button(text: str, panel_width: int, color=None) -> NSButton:
         NSAttributedString.alloc().initWithString_attributes_(text, attrs))
     return btn
 
+# NSTextField subclass that suppresses the default I-Beam cursor rect installation
+# NSTextField.resetCursorRects installs I-Beam over its full frame; no-op override prevents
+# child-view I-Beam from winning over the panel edge cursors defined in _PanelContentView
+class _CursorlessLabel(NSTextField):
+    def resetCursorRects(self): pass
+
 # Non-interactive Menlo-font NSTextField for plain text labels (e.g. "No active sessions")
 def _make_header_label(text: str, panel_width: int) -> NSTextField:
-    tf = NSTextField.labelWithString_('')
+    tf = _CursorlessLabel.labelWithString_('')
     tf.setFrame_(NSMakeRect(0, 0, panel_width - 22, 18))
     tf.setAttributedStringValue_(
         NSAttributedString.alloc().initWithString_attributes_(
@@ -474,7 +462,7 @@ def _make_separator_view(project_name: str, panel_width: int) -> NSView:
     line.setBoxType_(2)   # NSBoxSeparator
     container.addSubview_(line)
     label_w = min(len(project_name) * 8 + 6, w - 12)
-    tf = NSTextField.labelWithString_(project_name)
+    tf = _CursorlessLabel.labelWithString_(project_name)
     tf.setFrame_(NSMakeRect(12, 0, label_w, 18))
     tf.setFont_(_MENLO())
     tf.setDrawsBackground_(True)
