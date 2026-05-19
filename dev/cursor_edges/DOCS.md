@@ -4,7 +4,9 @@
 
 `_PanelContentView.resetCursorRects` installs 4 cursor zones on the production NSPanel (bottom ↕, left ↔, right ↔, interior →). Bottom-edge I-Beam→Arrow transition worked in Iteration 3. Sides have never shown `↔`. As of 2026-05-20 even the bottom edge may have regressed.
 
-**Root-cause hypothesis from Iteration 4:** Footer, TopBarView, and StackView *cover* the exact pixel strips where cursor rects should fire. AppKit's cursor-rect merge gives the *deepest* child view priority. The session-row `NSButton` subviews call `NSButton.resetCursorRects` (via super) which installs an I-Beam or Arrow over their full bounds — overriding the edge rects installed on the contentView.
+**Iteration 4 hypothesis (REFUTED by probe):** Footer, TopBarView, and StackView *cover* the exact pixel strips where cursor rects should fire. AppKit's cursor-rect merge gives the *deepest* child view priority.
+
+**Iteration 5 hypothesis (active):** `NSWindowStyleMaskNonactivatingPanel` blocks cursor-rect dispatch entirely. The panel never calls `becomeKeyWindow` → `enableCursorRects()` is never invoked → zero `cursorUpdate_` events fired regardless of which view is under the cursor. Explicit `panel.enableCursorRects()` after construction is the fix candidate.
 
 ## Investigation History
 
@@ -37,11 +39,15 @@ Standalone foreground NSPanel that mirrors the production layout exactly (same g
 **Usage:**
 
 ```bash
-# from project root
+# baseline — no fix, confirms 0 cursorUpdate_ (already verified interactively 2026-05-20)
 venv/bin/python3 dev/cursor_edges/probe.py
+
+# --fix — calls enableCursorRects() after setContentView_, tests Iteration 5 hypothesis
+venv/bin/python3 dev/cursor_edges/probe.py --fix
 
 # capture session to file
 venv/bin/python3 dev/cursor_edges/probe.py 2>probe_$(date +%H%M%S).log
+venv/bin/python3 dev/cursor_edges/probe.py --fix 2>probe_fix_$(date +%H%M%S).log
 ```
 
 Runs in foreground. Panel appears on screen. Quit: **Cmd-Q** or **Ctrl-C**.
@@ -74,6 +80,23 @@ Run the probe, hover slowly at each position below, and capture which `cursorUpd
 
 **Key question per position:** which class name appears after `cursorUpdate_` in the log? If it's a Button or StackView rather than ContentView → that view's cursor rect overrides ours.
 
-## Findings (Phase B — fill after interactive session)
+## Findings
 
-*To be filled after user reports hover results.*
+### Iteration 4 baseline (interactive run, 2026-05-20)
+
+| # | Position | mouseMoved_ | cursorUpdate_ | hitTest result |
+|---|---|---|---|---|
+| 1 | Left edge (x < 8) | ~280 fires | **0** | Correct view |
+
+`resetCursorRects` cascade: all 10 subviews, correct order. `areCursorRectsEnabled` not checked in this run (baseline has no explicit call).
+
+**Conclusion:** cursor-rect dispatch is not engaged at all. Iteration 4's child-view-race hypothesis was wrong — the race never runs.
+
+### Iteration 5 --fix smoke (automated, 2026-05-20)
+
+```
+[--fix]  enableCursorRects() called — areCursorRectsEnabled=True
+[--fix]  ✓ cursor-rect dispatch enabled — hover an edge to see cursorUpdate_
+```
+
+`enableCursorRects()` accepted (no AttributeError), panel confirms dispatch enabled. Interactive hover needed to verify `cursorUpdate_` fires.

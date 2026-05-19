@@ -9,13 +9,23 @@ hover position.
 
 Run from project root:
     venv/bin/python3 dev/cursor_edges/probe.py
+    venv/bin/python3 dev/cursor_edges/probe.py --fix
+
+--fix: calls panel.enableCursorRects() immediately after setContentView_,
+       then logs areCursorRectsEnabled() to confirm the call was accepted.
+       Hypothesis: NonactivatingPanel skips the becomeKeyWindow path that
+       normally triggers enableCursorRects → cursor rects sit installed but
+       are never dispatched. Explicit call should re-enable dispatch.
+
 Quit: Cmd-Q or close the window. Ctrl-C also works (SIGINT handler).
 
 All output goes to stderr. Pipe to file to capture a session:
     venv/bin/python3 dev/cursor_edges/probe.py 2>probe_$(date +%H%M%S).log
+    venv/bin/python3 dev/cursor_edges/probe.py --fix 2>probe_fix_$(date +%H%M%S).log
 """
 
 # INFRASTRUCTURE
+import argparse
 import signal
 import sys
 import time
@@ -231,7 +241,7 @@ class _LoggingTopBarView(NSView):
         _install_tracking_area(self)
 
 
-def _make_probe_panel() -> NSPanel:
+def _make_probe_panel(fix: bool = False) -> NSPanel:
     """Build probe NSPanel that mirrors production _make_nspanel() geometry and z-order exactly."""
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(300, 300, PANEL_WIDTH, PANEL_HEIGHT),
@@ -250,6 +260,18 @@ def _make_probe_panel() -> NSPanel:
     cv = _LoggingContentView.alloc().initWithFrame_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT))
     panel.setContentView_(cv)
+
+    if fix:
+        # Hypothesis: NonactivatingPanel never calls becomeKeyWindow → enableCursorRects
+        # never invoked internally → cursor rects installed but dispatch disabled.
+        # Explicit call should re-enable dispatch without requiring key-window status.
+        panel.enableCursorRects()
+        enabled = panel.areCursorRectsEnabled()
+        _log(f'[--fix]  enableCursorRects() called — areCursorRectsEnabled={enabled}')
+        if enabled:
+            _log('[--fix]  ✓ cursor-rect dispatch enabled — hover an edge to see cursorUpdate_')
+        else:
+            _log('[--fix]  ✗ still disabled — hypothesis refuted, look elsewhere')
 
     # footer — bottom bar with Kill + Restart (mirror production layout exactly)
     footer = _LoggingFooterView.alloc().initWithFrame_(
@@ -333,17 +355,25 @@ def _install_global_mouse_monitor() -> None:
 # ORCHESTRATOR
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description='cursor-edges probe')
+    parser.add_argument(
+        '--fix', action='store_true',
+        help='call panel.enableCursorRects() after setContentView_ to test NonactivatingPanel hypothesis')
+    args = parser.parse_args()
+
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 
     signal.signal(signal.SIGINT, lambda *_: app.terminate_(None))
 
-    panel = _make_probe_panel()
+    panel = _make_probe_panel(fix=args.fix)
 
     _install_global_mouse_monitor()
 
     _log('=' * 60)
     _log('cursor-edges probe  (Monitor_CC/dev/cursor_edges/probe.py)')
+    mode = 'MODE: --fix (enableCursorRects hypothesis)' if args.fix else 'MODE: baseline (no fix)'
+    _log(mode)
     _log('=' * 60)
     _log(f'Panel geometry: {PANEL_WIDTH}×{PANEL_HEIGHT}  EDGE={EDGE}')
     _log('View hierarchy at startup:')
@@ -362,6 +392,9 @@ def main() -> None:
     _log('  mouseMoved_      — per-move (tracking area owner)')
     _log('  NSEventMonitor   — pre-dispatch raw event')
     _log('')
+    if args.fix:
+        _log('Hypothesis: cursorUpdate_ will now fire on hover → confirms enableCursorRects was the missing call.')
+        _log('If cursorUpdate_ STILL fires 0 times → look at window-level event routing next.')
     _log('Hover slowly over each edge and each widget. Quit: Cmd-Q or Ctrl-C.')
     _log('=' * 60)
 
