@@ -4,8 +4,8 @@ import signal
 import subprocess
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
-# From proc_cache.py: Tasks base dir for in-progress task detection
-from .proc_cache import _TASKS_BASE
+# From proc_cache.py: Tasks base dir + CC process cache for project attribution
+from .proc_cache import _TASKS_BASE, _cc_proc_cache
 
 # ORCHESTRATOR
 
@@ -32,20 +32,22 @@ def _parse_etime(etime: str) -> Optional[int]:
         pass
     return None
 
-# Scan for Opus 'sleep N && echo done' background timers; return BgSleepInfo or None
-def _scan_bg_sleep_timers() -> Optional[BgSleepInfo]:
+# Scan for Opus 'sleep N && echo done' timers; attribute each to a project via gppid→cwd lookup.
+# cwd_to_project: {session_cwd: project_name} built from list_alive_sessions() mains in caller.
+# Returns {project_name: BgSleepInfo}; 'unknown' key for timers whose CC process is unresolvable.
+def _scan_bg_sleep_timers(cwd_to_project: Dict[str, str]) -> Dict[str, BgSleepInfo]:
     try:
         r = subprocess.run(
             ['ps', '-A', '-o', 'pid=,ppid=,etime=,args='],
             capture_output=True, text=True, timeout=3)
     except Exception:
-        return None
+        return {}
     pid_info: Dict[str, Tuple[str, str, str]] = {}
     for line in r.stdout.splitlines():
         parts = line.split(None, 3)
         if len(parts) == 4:
             pid_info[parts[0]] = (parts[1], parts[2], parts[3])
-    timer_entries = []   # (remaining_secs, sleep_pid)
+    buckets: Dict[str, List[Tuple[int, int]]] = {}   # project_name → [(remaining, sleep_pid)]
     for pid, (ppid, etime, args) in pid_info.items():
         tokens = args.strip().split()
         if len(tokens) != 2 or tokens[0] != 'sleep':
@@ -58,12 +60,25 @@ def _scan_bg_sleep_timers() -> Optional[BgSleepInfo]:
         elapsed = _parse_etime(etime)
         if elapsed is None:
             continue
-        timer_entries.append((max(0, int(float(tokens[1])) - elapsed), int(pid)))
-    if not timer_entries:
+        remaining = max(0, int(float(tokens[1])) - elapsed)
+        gppid = parent[0]   # ppid of the zsh parent = CC process pid
+        cc_entry = _cc_proc_cache.get(gppid)
+        cwd = cc_entry[1] if cc_entry else ''
+        project_name = cwd_to_project.get(cwd, 'unknown')
+        buckets.setdefault(project_name, []).append((remaining, int(pid)))
+    return {
+        proj: BgSleepInfo(min_remaining=min(e[0] for e in entries),
+                          sleep_pids=[e[1] for e in entries])
+        for proj, entries in buckets.items()
+    }
+
+# Collapse per-project scan result to single Optional[BgSleepInfo] for panel/abort callers
+def _aggregate_bg(result: Dict[str, BgSleepInfo]) -> Optional[BgSleepInfo]:
+    if not result:
         return None
     return BgSleepInfo(
-        min_remaining=min(t[0] for t in timer_entries),
-        sleep_pids=[t[1] for t in timer_entries],
+        min_remaining=min(info.min_remaining for info in result.values()),
+        sleep_pids=[p for info in result.values() for p in info.sleep_pids],
     )
 
 # Kill sleep PIDs for Opus background timers; write 'aborted\n' to all 0-byte task files

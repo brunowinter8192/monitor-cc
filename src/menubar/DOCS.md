@@ -11,7 +11,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 ## Flow
 
 1. `run()` (system.py) → sets `LSUIElement=1` env → acquires singleton lock → instantiates `CCMenuBarApp` → `app.run()` starts AppKit runloop.
-2. `CCMenuBarApp._tick()` (app.py) fires every 1.5s → `list_alive_sessions()` → auto-focus debounce → if panel closed: blink on status change; `_rebuild_panel` only on session-set change; if panel open: `_scan_bg_sleep_timers()` → on None↔Some transition or session-set change call `_rebuild_panel` (adds/removes abort button, grows panel), otherwise `_update_panel_inplace` (updates NSButton attributed titles only, no resize).
+2. `CCMenuBarApp._tick()` (app.py) fires every 1.5s → `list_alive_sessions()` → auto-focus debounce → `_scan_bg_sleep_timers(cwd_to_project)` → `_auto_abort_check()` → `_aggregate_bg()` → if panel closed: blink on status change; `_rebuild_panel` only on session-set change; if panel open: on None↔Some transition or session-set change call `_rebuild_panel` (adds/removes abort button, grows panel), otherwise `_update_panel_inplace` (updates NSButton attributed titles only, no resize).
 3. `list_alive_sessions()` (discover.py) → refreshes CC-process cache (proc_cache.py) → refreshes Ghostty TTY-to-UUID mapping (ghostty.py) → scans `~/.claude/projects/*/` → determines working/idle status per session type → checks `/tmp/claude-<uid>/` for in-progress tasks (proc_cache.py).
 4. Click on a main session → `_focus_session(cwd)` (system.py) → looks up Ghostty terminal UUID (ghostty.py) → `focus terminal id "<UUID>"` (Path A) or cwd-match fallback (Path B).
 
@@ -27,13 +27,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (245 LOC)
+### app.py (276 LOC)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save.
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check` (per-project 5s-debounce auto-abort of bg timers when all workers idle).
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `~/.monitor_cc_menubar_settings.json` on launch; `app` instance state throughout.
 **Writes:** bar icon via attributed NSStatusItem button; `~/.monitor_cc_menubar_settings.json` on toggle/resize.
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSBaselineOffsetAttributeName/NSFont/NSFontAttributeName), `Foundation` (NSObject/NSOperationQueue), `objc`, `subprocess`, `threading`, `pathlib`; `.panel`, `.hotkey`, `.system`, `.discover` (`list_alive_sessions`), `.bg_timer` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`); `.setup_menubar` (`write_plist`, lazy import inside `restartApp_`).
+**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSBaselineOffsetAttributeName/NSFont/NSFontAttributeName), `Foundation` (NSObject/NSOperationQueue), `objc`, `subprocess`, `threading`, `pathlib`; `.panel`, `.hotkey`, `.system`, `.discover` (`list_alive_sessions`), `.bg_timer` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`, `_aggregate_bg`); `.setup_menubar` (`write_plist`, lazy import inside `restartApp_`).
 
 ---
 
@@ -72,7 +72,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader. All caches have TTL-based refresh (10s for proc/proxy/hook, 3s for tmux). Owns `_TASKS_BASE` and `_has_active_bg()` (in-progress task detection).
 **Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `~/.monitor_cc_menubar_hooks.json` (hook state).
 **Writes:** module-level caches (`_cc_proc_cache`, `_tmux_state_cache`, `_proxy_log_mtime_cache`, `_hook_state_cache`).
-**Called by:** `discover.py:list_alive_sessions` (refresh calls); `discover.py:_process_project_dir` (query calls); `ghostty.py:_tty_for_cwd` (`_cc_proc_cache` import); `bg_timer.py:_abort_bg_sleep_timers` (`_TASKS_BASE` import).
+**Called by:** `discover.py:list_alive_sessions` (refresh calls); `discover.py:_process_project_dir` (query calls); `ghostty.py:_tty_for_cwd` (`_cc_proc_cache` import); `bg_timer.py:_scan_bg_sleep_timers` (`_cc_proc_cache` import); `bg_timer.py:_abort_bg_sleep_timers` (`_TASKS_BASE` import).
 **Calls out:** `subprocess` (ps, lsof, tmux).
 
 ---
@@ -87,13 +87,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bg_timer.py (96 LOC)
+### bg_timer.py (111 LOC)
 
-**Purpose:** Background sleep-timer scanning and abort. Detects Opus `sleep N && echo done` background timers via `ps`; returns `BgSleepInfo` (min remaining secs + sleep PIDs). `_abort_bg_sleep_timers` kills them via SIGTERM and writes `aborted\n` to in-progress task files.
-**Reads:** `ps -A -o pid=,ppid=,etime=,args=` (timer detection); `_TASKS_BASE` task dirs (for abort file writes).
+**Purpose:** Background sleep-timer scanning, per-project attribution, aggregation, and abort. Detects Opus `sleep N && echo done` background timers via `ps`; attributes each to a project via `gppid → _cc_proc_cache → cwd → cwd_to_project` lookup. Returns `Dict[str, BgSleepInfo]` keyed by project_name ('unknown' bucket for unattributed timers). `_aggregate_bg()` collapses the dict to `Optional[BgSleepInfo]` for panel/abort callers. `_abort_bg_sleep_timers` kills PIDs via SIGTERM and writes `aborted\n` to in-progress task files.
+**Reads:** `ps -A -o pid=,ppid=,etime=,args=` (timer detection); `_cc_proc_cache` (gppid→cwd attribution); `_TASKS_BASE` task dirs (for abort file writes).
 **Writes:** `signal.SIGTERM` to sleep PIDs; `'aborted\n'` to 0-byte `*.output` task files under `_TASKS_BASE`.
-**Called by:** `app.py:CCMenuBarApp._tick` (`_scan_bg_sleep_timers`); `app.py:_PanelController.abortBgTimer_` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`).
-**Calls out:** `subprocess` (ps); `.proc_cache` (`_TASKS_BASE`).
+**Called by:** `app.py:CCMenuBarApp._tick` (`_scan_bg_sleep_timers`, `_aggregate_bg`); `app.py:_PanelController.abortBgTimer_` (`_scan_bg_sleep_timers`, `_aggregate_bg`, `_abort_bg_sleep_timers`); `app.py:_PanelController.windowDidEndLiveResize_` (`_scan_bg_sleep_timers`, `_aggregate_bg`); `app.py:_auto_abort_check` (`_abort_bg_sleep_timers`).
+**Calls out:** `subprocess` (ps); `.proc_cache` (`_TASKS_BASE`, `_cc_proc_cache`).
 
 ---
 
@@ -166,6 +166,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 |---|---|---|---|---|
 | `CCMenuBarApp._last_statuses` | app.py | `dict` | app instance | `{name: status}` snapshot for blink-on-change detection; updated every tick. |
 | `CCMenuBarApp._idle_since_ts` | app.py | `dict` | app instance | `{name: float}` timestamps when each main session first went idle (debounce for auto-focus). Cleared on working or has_bg=True. |
+| `CCMenuBarApp._all_workers_idle_since_ts` | app.py | `dict` | app instance | `{project_name: float}` timestamps when ALL workers of a project first went simultaneously idle while a bg timer was running. Cleared when any worker returns to working or the timer disappears. Auto-abort fires after 5s. |
 | `CCMenuBarApp._panel_open` | app.py | `bool` | app instance | True while NSPanel is visible. Gates `_tick` between `_rebuild_panel` (closed) and `_update_panel_inplace` (open). Set/cleared by `_PanelController.togglePanel_`. |
 | `CCMenuBarApp._initialized` | app.py | `bool` | app instance | Lazy-init sentinel: `setMenu_(None)` + button target/action wiring happens in first `_tick` after AppKit runloop starts. |
 | `CCMenuBarApp._displayed_items` | panel.py | `dict` | panel.py (`_rebuild_panel`) | `{name: NSButton}` populated by `_rebuild_panel`; used by `_update_panel_inplace` for O(1) button lookup. Reset on each rebuild. |
@@ -198,6 +199,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - Session name reconstructed from worker JSONL cwd: split on `/.claude/worktrees/`, `basename(left)` = project basename.
 - Alive fallback (cwd unreadable from JSONL): `ALIVE_WINDOW_SECS=3600` JSONL age guard.
 - **Status — Hook only** (`~/.monitor_cc_menubar_hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. No entry or stale → `idle`. No fallback chain. `UserPromptSubmit` sets working from T=0; `Stop`/`StopFailure` set idle immediately.
+- **Auto-abort** (`app.py:_auto_abort_check`): every tick, if ALL workers of a project are idle AND that project has an active bg sleep timer → start/keep a 5s debounce (`_all_workers_idle_since_ts[project_name]`). Any worker returning to working resets the debounce. After 5s: `_abort_bg_sleep_timers(proj_bg.sleep_pids)` fires (per-project PIDs only). 'unknown'-attributed timers are excluded from auto-abort. Projects with no workers at all are excluded (bool([]) guard).
 
 **Mains** (Ghostty terminals):
 - Alive if JSONL mtime within `ALIVE_WINDOW_SECS=3600` (1h).
@@ -231,7 +233,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Singleton enforcement via fcntl lock** (`system.py`): `run()` calls `_acquire_singleton_lock()` before constructing `CCMenuBarApp`. On success: sets `FD_CLOEXEC` on the fd (required for clean `os.execv` restart), writes PID, returns open file handle (held on `run()`'s stack frame for the process lifetime). On failure: prints to stderr and calls `sys.exit(0)`. **Exit code 0 is mandatory**: launchd `KeepAlive=true` respawns on non-zero exit only.
 - **Restart via plist-resync + detached relaunch** (`app.py:_PanelController.restartApp_`): three-step flow: (1) `write_plist()` (imported from `setup_menubar.py`) — synchronously substitutes `<PROJECT_ROOT>` and writes the updated plist to `~/Library/LaunchAgents/` so any plist edits take effect immediately, not just on the next launchd cycle; (2) `subprocess.Popen(['sh', '-c', 'sleep 0.5 && python3 setup_menubar.py'], start_new_session=True)` — detached helper (survives parent exit) that runs `setup_menubar_workflow()` after a 0.5s grace period, which does `launchctl bootout` + `launchctl bootstrap` with the existing 1s-retry logic; (3) `rumps.quit_application()` — clean status-bar teardown, launchd sees the process exit and respawns from the freshly-written plist. `start_new_session=True` detaches the helper from the dying process so it is not killed when the parent exits. The `write_plist` import is inside `restartApp_` body (not module-level) as a defensive measure against any future import-order sensitivity.
 - **Lazy import in system.run()**: `from .app import CCMenuBarApp` is inside `run()` to break the `app→system→app` circular import. `app.py` imports `_focus_session` from `system.py` at module level; `system.py` has no module-level import of `app.py`. No circular dependency at module init time.
-- **bg_result always passed explicitly to `_rebuild_panel`**: the `_rebuild_panel` fallback scan was removed from panel.py (to keep panel.py free of discover/bg_timer dependency). `app.py:_tick` passes `_scan_bg_sleep_timers()` explicitly on the panel-closed session-set-change path.
+- **bg_result always passed explicitly to `_rebuild_panel`**: the `_rebuild_panel` fallback scan was removed from panel.py (to keep panel.py free of discover/bg_timer dependency). `app.py:_tick` computes `bg_result = _aggregate_bg(_scan_bg_sleep_timers(cwd_to_project))` once per tick and passes it explicitly to all panel calls.
 - **Global hotkey Cmd+L** (`hotkey.py`): `register_cmd_l(callback)` wraps the callback in a ctypes `CFUNCTYPE` and registers via Carbon `RegisterEventHotKey`. Returns `(cb_handle, hk_handle)` — caller (`CCMenuBarApp.__init__`) stores both on `self._hotkey_cb` / `self._hotkey_ref` to prevent GC of the C callback.
 - `quit_button=None` passed to `rumps.App.__init__` — default rumps quit button is menu-attached and would be orphaned after `setMenu_(None)`. Restart is a footer NSButton wired to `_PanelController.restartApp_`.
 - **Lazy-init timing** (`app.py`): `rumps.App._nsapp` is only populated after `app.run()` starts the AppKit runloop. `setMenu_(None)` + button wiring happens in the first `_tick` call (guarded by `if not self._initialized`).
@@ -253,6 +255,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **NSStackView gravity**: requires BOTH `addView_inGravity_(view, 1)` AND `setDistribution_(-1)` (`NSStackViewDistributionGravityAreas`). `setDistribution_(0)` ignores gravity entirely. Enum values: `GravityTop=1`, `GravityCenter=2`, `GravityBottom=3`; `DistGravityAreas=-1`, `DistFill=0`.
 - **Badge column alignment**: `[*]`/`[ ]` fixed 3 chars; `_NO_BG` spacer 3 chars; `[B M:SS]` variable 3–9 chars but nothing follows it, so no misalignment.
 - **Settings backwards-compat** (`app.py:_load_settings`): reads `panel_min_height` first, falls back to legacy `panel_max_height`, then `PANEL_HEIGHT=460`. Old files migrate transparently.
+- **Auto-abort task-file write is global** (`bg_timer.py:_abort_bg_sleep_timers`): after killing sleep PIDs, writes `aborted\n` to ALL 0-byte `*.output` task files under `_TASKS_BASE`, not just those belonging to the aborted project. Pre-existing behavior shared with manual abort. If project B has live 0-byte task files when project A is auto-aborted, B's `[B]` badge may transiently disappear. In practice rare (requires simultaneous multi-project bg tasks).
 - **Hook state as primary signal** (`proc_cache.py:_hook_state_cache`): `session_id` in hook payload == JSONL filename stem. Direct lookup, no encoding/decoding. Hook state stale guard uses `ALIVE_WINDOW_SECS=3600s`. Workers fire hooks too; their entries ARE consulted by the worker status branch (hook-only, no fallback).
 - **Proxy-log thinking signal** (`proc_cache.py:_proxy_log_newest_mtime`): override condition: `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → status `working`. The `proxy_mtime > jsonl_mtime` check: proxy writes at the START of the reasoning phase, staying ahead for the full thinking duration. After response completion the proxy latency entry lands ~0.1s BEFORE CC writes JSONL, so `proxy_mtime` drops just below `jsonl_mtime` — no false positive.
 - **_PROXY_LOG_DIR placement**: lives in `proc_cache.py` (not `discover.py`) to avoid an import cycle — `_proxy_log_newest_mtime` is its sole consumer and lives in proc_cache.py.
