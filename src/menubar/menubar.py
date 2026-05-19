@@ -46,6 +46,7 @@ PANEL_MIN_WIDTH  = 250   # pts — minimum width enforced by setContentMinSize_
 PANEL_MIN_HEIGHT = 120   # pts — minimum height enforced by setContentMinSize_
 PANEL_GAP        = 4     # pts below the status bar button
 _FOOTER_H        = 30    # pts — fixed footer height for Restart button
+_TOP_BAR_H       = 21    # pts — fixed top-bar height for Auto-Jump button (analog to footer, at top edge)
 _ROW_H           = 21    # pts — session NSButton row (20) + 1pt NSStackView spacing
 _LABEL_H         = 19    # pts — header/separator NSTextField (18) + 1pt NSStackView spacing
 _LAUNCHD_LABEL   = 'com.brunowinter.monitor_cc_menubar'
@@ -150,7 +151,7 @@ class CCMenuBarApp(rumps.App):
         self._abort_btn = None   # NSButton ref; set by _rebuild_panel when timer running
         self._hidden_count = 0   # sessions hidden by _truncate_and_height; shown in Auto-Jump label
         self._auto_focus, self._panel_width, self._panel_max_height = _load_settings()
-        self._panel, self._panel_sv, self._panel_quit_btn = _make_nspanel()
+        self._panel, self._panel_sv, self._panel_quit_btn, self._toggle_btn = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
         _setup_resize_cursors(self._panel, self._panel_controller)
         _register_hotkey(self)
@@ -165,6 +166,8 @@ class CCMenuBarApp(rumps.App):
                 btn.setAction_(b'togglePanel:')
                 self._panel_quit_btn.setTarget_(self._panel_controller)
                 self._panel_quit_btn.setAction_(b'restartApp:')
+                self._toggle_btn.setTarget_(self._panel_controller)
+                self._toggle_btn.setAction_(b'toggleAutoJump:')
                 self._panel.setDelegate_(self._panel_controller)
                 _set_bar_icon(self, ICON_NORMAL)   # replace setTitle_ with attributed version
                 self._initialized = True
@@ -191,7 +194,9 @@ class CCMenuBarApp(rumps.App):
                     self._idle_since_ts.pop(s.name, None)
         if self._panel_open:
             bg_result = _scan_bg_sleep_timers()
-            if (bg_result is not None) != (self._abort_btn is not None):
+            session_names = {s.name for s in sessions}
+            if (bg_result is not None) != (self._abort_btn is not None) \
+                    or session_names != set(self._displayed_items):
                 _rebuild_panel(self, sessions, bg_result)
             else:
                 _update_panel_inplace(self, sessions, bg_result)
@@ -327,8 +332,12 @@ def _setup_resize_cursors(panel, controller) -> None:
         cv.bounds(), 642, controller, None)
     cv.addTrackingArea_(ta)
 
-# Build NSPanel (nonactivatingPanel) + NSStackView (sessions, direct subview) + footer Restart button
-# Returns (panel, stack_view, quit_btn) — stored on app instance; ObjC objects reject Python attrs
+# Build NSPanel + fixed footer (Restart) + fixed top_bar (Auto-Jump) + NSStackView (sessions, middle)
+# Returns (panel, stack_view, quit_btn, toggle_btn) — stored on app instance; ObjC objects reject Python attrs
+# Layout (y=0 = bottom of contentView):
+#   [0, 0,                       pw, _FOOTER_H]   footer   mask=2  — widthSizable, bottom-anchored at y=0
+#   [0, _FOOTER_H,               pw, stack_h]     stack    mask=18 — width+height sizable, fills middle
+#   [0, PANEL_HEIGHT-_TOP_BAR_H, pw, _TOP_BAR_H]  top_bar  mask=10 — widthSizable|minYMargin, top-anchored
 def _make_nspanel():
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
@@ -339,26 +348,35 @@ def _make_nspanel():
         NSWindowCollectionBehaviorIgnoresCycle)
     panel.setHasShadow_(True)
     panel.setAcceptsMouseMovedEvents_(True)   # required — NSWindowStyleMaskNonactivatingPanel suppresses mouseMoved dispatch even with NSTrackingActiveAlways without this
+    panel.disableCursorRects()   # prevent child-view cursor rects (NSTextField I-Beam) from overriding mouseMoved_ cursor; all NSTextFields are display-only so I-Beam is wrong anyway
     panel.setOpaque_(False)
     panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
-    footer.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with window width
+    footer.setAutoresizingMask_(2)   # NSViewWidthSizable
     quit_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86, 4, 78, 22))
     quit_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored
     quit_btn.setTitle_('Restart')
     quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
     footer.addSubview_(quit_btn)
     panel.contentView().addSubview_(footer)
-    content_h = PANEL_HEIGHT - _FOOTER_H
+    top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
+    top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable(2) | NSViewMinYMargin(8) — bottom margin flexible → stays at top edge on resize
+    toggle_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
+    toggle_btn.setBordered_(False)
+    toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+    toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with top_bar
+    top_bar.addSubview_(toggle_btn)
+    panel.contentView().addSubview_(top_bar)
+    stack_h = PANEL_HEIGHT - _FOOTER_H - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(
-        NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, content_h))
-    stack.setAutoresizingMask_(18)   # NSViewWidthSizable|NSViewHeightSizable — auto-fills content area on resize
+        NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, stack_h))
+    stack.setAutoresizingMask_(18)   # NSViewWidthSizable|NSViewHeightSizable — auto-fills middle on resize
     stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
     stack.setAlignment_(NSLayoutAttributeLeading)
     stack.setSpacing_(1.0)
     stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas — required for addView_inGravity_ to work
     panel.contentView().addSubview_(stack)
-    return panel, stack, quit_btn
+    return panel, stack, quit_btn, toggle_btn
 
 # Position panel flush below the NSStatusItem button; reads current panel dimensions (set by _resize_panel)
 def _reposition_panel(panel, nsstatusitem) -> None:
@@ -395,6 +413,7 @@ def _make_header_label(text: str, panel_width: int) -> NSTextField:
 def _make_line_separator(panel_width: int) -> NSView:
     w = panel_width - 22
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, 18))
+    container.heightAnchor().constraintEqualToConstant_(18.0).setActive_(True)   # explicit height — NSView has no intrinsicContentSize; without this NSStackView collapses it to 0 under Auto Layout
     line = NSBox.alloc().initWithFrame_(NSMakeRect(0, 9, w, 1))
     line.setBoxType_(2)   # NSBoxSeparator — 1pt system-colored horizontal rule
     container.addSubview_(line)
@@ -405,6 +424,7 @@ def _make_line_separator(panel_width: int) -> NSView:
 def _make_separator_view(project_name: str, panel_width: int) -> NSView:
     w = panel_width - 22
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, 18))
+    container.heightAnchor().constraintEqualToConstant_(18.0).setActive_(True)   # explicit height — same reason as _make_line_separator
     line = NSBox.alloc().initWithFrame_(NSMakeRect(0, 9, w, 1))
     line.setBoxType_(2)   # NSBoxSeparator
     container.addSubview_(line)
@@ -418,11 +438,12 @@ def _make_separator_view(project_name: str, panel_width: int) -> NSView:
     return container
 
 # Compute (truncated_sessions, panel_height, hidden_count) so rendered rows fit within panel_max_height
+# Projects are atomic units: a project is shown ALL sessions or NONE (no partial group display)
 def _truncate_and_height(sorted_sessions, panel_max_height: int, bg_result):
     has_timer = bg_result is not None
-    fixed_h = _FOOTER_H + _ROW_H + _LABEL_H   # footer + toggle-btn + separator
+    fixed_h = _FOOTER_H + _TOP_BAR_H + _LABEL_H   # footer + top-bar (Auto-Jump) + separator-in-stack
     if has_timer:
-        fixed_h += _ROW_H                       # abort timer button
+        fixed_h += _ROW_H                           # abort timer button
     if not sorted_sessions:
         return sorted_sessions, fixed_h + _LABEL_H, 0   # "No active sessions" label
     groups    = [(pn, list(g)) for pn, g in groupby(sorted_sessions, key=lambda s: s.project_name)]
@@ -430,14 +451,12 @@ def _truncate_and_height(sorted_sessions, panel_max_height: int, bg_result):
     h         = fixed_h
     result    = []
     for _project_name, group_list in groups:
-        if available < _LABEL_H + _ROW_H:
-            break                                   # no room for header + at least one row
-        fits      = min(len(group_list), (available - _LABEL_H) // _ROW_H)
-        available -= _LABEL_H + fits * _ROW_H
-        h         += _LABEL_H + fits * _ROW_H
-        result.extend(group_list[:fits])
-        if fits < len(group_list):
-            break                                   # group partially truncated → stop
+        needed = _LABEL_H + len(group_list) * _ROW_H
+        if available < needed:
+            continue                                # skip project entirely — all-or-nothing per project
+        available -= needed
+        h         += needed
+        result.extend(group_list)
     return result, h, len(sorted_sessions) - len(result)
 
 # Resize NSPanel frame to new_h; anchors TOP edge (not bottom-left origin) so panel stays flush below bar icon
@@ -467,10 +486,8 @@ def _rebuild_panel(app: CCMenuBarApp, sessions, bg_result=None) -> None:
     _resize_panel(app, new_h)
     state = 'ON' if app._auto_focus else 'OFF'
     label = f'Auto-Jump: {state}' if hidden_count == 0 else f'Auto-Jump: {state} · {hidden_count} hidden'
-    toggle_btn = _make_row_button(label, pw)
-    toggle_btn.setTarget_(app._panel_controller)
-    toggle_btn.setAction_(b'toggleAutoJump:')
-    app._panel_sv.addView_inGravity_(toggle_btn, 1)
+    app._toggle_btn.setAttributedTitle_(
+        NSAttributedString.alloc().initWithString_attributes_(label, {NSFontAttributeName: _MENLO()}))
     app._panel_sv.addView_inGravity_(_make_line_separator(pw), 1)
     if bg_result is not None:
         abort_btn = _make_row_button('  ⊗ abort timer', pw)
