@@ -1,9 +1,11 @@
 # INFRASTRUCTURE
 import ctypes
+import fcntl
 import json
 import objc
 import os
 import subprocess
+import sys
 import threading
 import time
 from itertools import groupby
@@ -52,13 +54,32 @@ _LAUNCHD_LABEL   = 'com.brunowinter.monitor_cc_menubar'
 
 # ORCHESTRATOR
 
-# Entry point: set LSUIElement env (no Dock icon), create app, start run loop
+# Entry point: set LSUIElement env (no Dock icon), acquire singleton lock, create app, start run loop
 def run() -> None:
     os.environ.setdefault('LSUIElement', '1')
+    _lock_fh = _acquire_singleton_lock()
+    if _lock_fh is None:
+        print('Another menubar instance is already running, exiting.', file=sys.stderr)
+        sys.exit(0)   # exit 0 — launchd KeepAlive only respawns on non-zero exit
     app = CCMenuBarApp()
     app.run()
 
 # FUNCTIONS
+
+# Acquire exclusive fcntl lock on ~/.monitor_cc_menubar.pid; returns open file handle on success, None if locked
+# Caller must keep the file handle alive (do not close/GC) — fcntl locks are released when the fd is closed
+_LOCK_PATH = os.path.expanduser('~/.monitor_cc_menubar.pid')
+
+def _acquire_singleton_lock():
+    fh = open(_LOCK_PATH, 'w')
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    fh.write(str(os.getpid()))
+    fh.flush()
+    return fh
 
 # ObjC target for bar-button toggle, session-row click, Auto-Jump toggle, Restart
 class _PanelController(NSObject):
