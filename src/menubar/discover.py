@@ -12,6 +12,7 @@ from ..session_finder import get_project_directories
 
 ALIVE_WINDOW_SECS      = 3600   # stale threshold for main sessions (1h)
 WORKING_THRESHOLD_SECS = 10     # JSONL-mtime fallback: <= 10s = working
+THINKING_OVERRIDE_MAX_SECS = 300  # max expected thinking duration for proxy-mtime override
 _WORKER_ACTIVITY_THRESHOLD = 10 # tmux window_activity: <= 10s = working
 _PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
@@ -378,11 +379,17 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
         name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
         # Activity: JSONL mtime only (TTY mtime causes false-working while CC window focused)
         status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
-        # Thinking override: proxy log fresher than JSONL (reasoning before first streaming token)
+        # Thinking override: proxy log newer than JSONL → request in flight (reasoning phase).
+        # Old condition was (now - proxy_mtime) <= 10s, which only fired for the first 10s of
+        # thinking; thinking takes 30-120s, so the override was effectively dead after 10s.
+        # Correct signal: proxy_mtime > mtime (request sent after last response wrote JSONL).
+        # After response completion the proxy writes its latency entry ~0.1s BEFORE CC writes
+        # JSONL, so proxy_mtime drops just below mtime — no false positive on completed turns.
         if status == 'idle':
             project_key = project_name.lower().replace('-', '_').replace(' ', '_')
             proxy_mtime = _proxy_log_newest_mtime(project_key, now)
-            if proxy_mtime is not None and (now - proxy_mtime) <= WORKING_THRESHOLD_SECS:
+            if (proxy_mtime is not None and proxy_mtime > mtime
+                    and (now - proxy_mtime) <= THINKING_OVERRIDE_MAX_SECS):
                 status = 'working'
         return SessionInfo(name=name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
