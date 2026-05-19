@@ -125,13 +125,6 @@ class _PanelController(NSObject):
             bg_result = _scan_bg_sleep_timers()
             _rebuild_panel(app, list_alive_sessions(), bg_result)
 
-    def mouseMoved_(self, event):
-        loc  = event.locationInWindow()
-        x, y = loc.x, loc.y
-        w    = self._app._panel.frame().size.width
-        EDGE = 8
-        NSCursor.crosshairCursor().set()
-
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
 class CCMenuBarApp(rumps.App):
@@ -148,7 +141,6 @@ class CCMenuBarApp(rumps.App):
         self._auto_focus, self._panel_width, self._panel_max_height = _load_settings()
         self._panel, self._panel_sv, self._panel_quit_btn, self._toggle_btn = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
-        _setup_resize_cursors(self._panel, self._panel_controller)
         _register_hotkey(self)
 
     @rumps.timer(POLL_INTERVAL)
@@ -317,15 +309,29 @@ def _register_hotkey(app: 'CCMenuBarApp') -> None:
     app._hotkey_cb  = cb   # keep ctypes objects alive; GC would invalidate callback
     app._hotkey_ref = hk_ref
 
-# Install NSTrackingArea so _PanelController.mouseMoved_ receives edge-hover events for resize cursors
+# NSView subclass as panel contentView — owns the NSTrackingArea for resize cursors
+# owner=self (the view) is required: AppKit only dispatches mouseMoved_ to tracking-area owners
+# that are NSView subclasses in the view hierarchy; an external NSObject as owner never fires
 # options=642: NSTrackingMouseMoved(0x02) | NSTrackingActiveAlways(0x80) | NSTrackingInVisibleRect(0x200)
-# NSTrackingInVisibleRect ignores the rect arg and auto-tracks the full visible rect on resize
-# NSTrackingActiveAlways required — panel is nonactivating (never key window), so ActiveInKeyWindow misses it
-def _setup_resize_cursors(panel, controller) -> None:
-    cv = panel.contentView()
-    ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
-        cv.bounds(), 642, controller, None)
-    cv.addTrackingArea_(ta)
+class _PanelContentView(NSView):
+    def updateTrackingAreas(self):
+        for ta in self.trackingAreas():
+            self.removeTrackingArea_(ta)
+        ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
+            self.bounds(), 642, self, None)
+        self.addTrackingArea_(ta)
+
+    def mouseMoved_(self, event):
+        loc  = event.locationInWindow()
+        x, y = loc.x, loc.y
+        w    = self.frame().size.width
+        EDGE = 8
+        if y < EDGE:
+            NSCursor.resizeUpDownCursor().set()
+        elif x < EDGE or x > w - EDGE:
+            NSCursor.resizeLeftRightCursor().set()
+        else:
+            NSCursor.arrowCursor().set()
 
 # Build NSPanel + fixed footer (Restart) + fixed top_bar (Auto-Jump) + NSStackView (sessions, middle)
 # Returns (panel, stack_view, quit_btn, toggle_btn) — stored on app instance; ObjC objects reject Python attrs
@@ -346,6 +352,8 @@ def _make_nspanel():
     panel.disableCursorRects()   # prevent child-view cursor rects (NSTextField I-Beam) from overriding mouseMoved_ cursor; all NSTextFields are display-only so I-Beam is wrong anyway
     panel.setOpaque_(False)
     panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
+    cv = _PanelContentView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT))
+    panel.setContentView_(cv)
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
     footer.setAutoresizingMask_(2)   # NSViewWidthSizable
     quit_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86, 4, 78, 22))
@@ -353,7 +361,7 @@ def _make_nspanel():
     quit_btn.setTitle_('Restart')
     quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
     footer.addSubview_(quit_btn)
-    panel.contentView().addSubview_(footer)
+    cv.addSubview_(footer)
     top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
     top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable(2) | NSViewMinYMargin(8) — bottom margin flexible → stays at top edge on resize
     toggle_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
@@ -361,7 +369,7 @@ def _make_nspanel():
     toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
     toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with top_bar
     top_bar.addSubview_(toggle_btn)
-    panel.contentView().addSubview_(top_bar)
+    cv.addSubview_(top_bar)
     stack_h = PANEL_HEIGHT - _FOOTER_H - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(
         NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, stack_h))
@@ -370,7 +378,7 @@ def _make_nspanel():
     stack.setAlignment_(NSLayoutAttributeLeading)
     stack.setSpacing_(1.0)
     stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas — required for addView_inGravity_ to work
-    panel.contentView().addSubview_(stack)
+    cv.addSubview_(stack)
     return panel, stack, quit_btn, toggle_btn
 
 # Position panel flush below the NSStatusItem button; reads current panel dimensions (set by _resize_panel)
