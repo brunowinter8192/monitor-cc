@@ -121,6 +121,18 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
+### setup_menubar.py (63 LOC)
+
+**Purpose:** One-shot launchd bootstrap script — substitutes `<PROJECT_ROOT>` in the bundled plist template, writes it to `~/Library/LaunchAgents/`, then runs `launchctl bootout` (idempotent) + `launchctl bootstrap`. Includes a 1s-retry on "Input/output error" (intermittent on first install). Analog to `hook_setup.py`.
+**Reads:** `src/menubar/com.brunowinter.monitor_cc_menubar.plist` (template).
+**Writes:** `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist` (substituted).
+**Called by:** User manually. Never imported.
+**Calls out:** `subprocess` (launchctl); stdlib (`os`, `pathlib`, `time`).
+
+**Usage:** `python3 src/menubar/setup_menubar.py` — run once after clone or when reinstalling the launchd service.
+
+---
+
 ## Module Import Graph
 
 ```
@@ -145,7 +157,7 @@ app.py      → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
               .panel, .hotkey, .system, .discover, .bg_timer
 ```
 
-No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node).
+No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module.
 
 ---
 
@@ -224,6 +236,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Global hotkey Cmd+L** (`hotkey.py`): `register_cmd_l(callback)` wraps the callback in a ctypes `CFUNCTYPE` and registers via Carbon `RegisterEventHotKey`. Returns `(cb_handle, hk_handle)` — caller (`CCMenuBarApp.__init__`) stores both on `self._hotkey_cb` / `self._hotkey_ref` to prevent GC of the C callback.
 - `quit_button=None` passed to `rumps.App.__init__` — default rumps quit button is menu-attached and would be orphaned after `setMenu_(None)`. Restart is a footer NSButton wired to `_PanelController.restartApp_`.
 - **Lazy-init timing** (`app.py`): `rumps.App._nsapp` is only populated after `app.run()` starts the AppKit runloop. `setMenu_(None)` + button wiring happens in the first `_tick` call (guarded by `if not self._initialized`).
+- **Diagnostics gating** (`app.py:_tick_log`): tick logging is gated on `MENUBAR_DIAGNOSTICS=1` env var — default OFF. Without the var, `_tick_log` returns immediately (no file I/O). Enable by launching via `dev/menubar_debug.py` (sets the var automatically) or `launchctl setenv MENUBAR_DIAGNOSTICS 1` for the running launchd service. Log path: `_TICK_LOG = '/tmp/menubar-tick.log'`.
 - Background task detection: `/tmp/claude-<uid>/` uses the numeric Unix UID (`os.getuid()`). `*.output` files with `st_size == 0` = in-progress; `done\n` (5 bytes) = completed.
 - **Abort leaves task file at 0 bytes:** when the sleep child is killed via SIGTERM, the zsh parent exits via `&&` short-circuit (no `echo done` stdout), so CC writes nothing to the task file — it stays 0 bytes indefinitely. `_abort_bg_sleep_timers` (bg_timer.py) explicitly writes `aborted\n` to all 0-byte task files after kill so `_has_active_bg` returns False and the `[B]` badge disappears.
 - **CC uses `zsh -c`, not `bash -c`:** background bash commands are actually `zsh -c "source ... && eval 'cmd' ..."`. `_scan_bg_sleep_timers` correctly matches these because `echo done` appears in the zsh parent's args; the sleep child args are always exactly `sleep N`.
@@ -244,3 +257,23 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Hook state as primary signal** (`proc_cache.py:_hook_state_cache`): `session_id` in hook payload == JSONL filename stem. Direct lookup, no encoding/decoding. Hook state stale guard uses `ALIVE_WINDOW_SECS=3600s`. Workers fire hooks too but their entries are never consulted (`is_worker=True` path skips hook check).
 - **Proxy-log thinking signal** (`proc_cache.py:_proxy_log_newest_mtime`): override condition: `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → status `working`. The `proxy_mtime > jsonl_mtime` check: proxy writes at the START of the reasoning phase, staying ahead for the full thinking duration. After response completion the proxy latency entry lands ~0.1s BEFORE CC writes JSONL, so `proxy_mtime` drops just below `jsonl_mtime` — no false positive.
 - **_PROXY_LOG_DIR placement**: lives in `proc_cache.py` (not `discover.py`) to avoid an import cycle — `_proxy_log_newest_mtime` is its sole consumer and lives in proc_cache.py.
+
+## Dev Tools
+
+### dev/menubar_debug.py
+
+Foreground debug runner — boots out the launchd service, starts the menubar app directly via venv Python with `MENUBAR_DIAGNOSTICS=1`, and optionally re-registers launchd on exit.
+
+**Usage:**
+```bash
+# From project root:
+python3 dev/menubar_debug.py               # foreground run; Ctrl-C to stop
+python3 dev/menubar_debug.py --rebootstrap # same + re-registers launchd service on exit
+```
+
+**What it does:**
+1. `launchctl bootout` (ignore failure — service may not be loaded)
+2. Launches `venv/bin/python3 workflow.py --mode menubar` with `MENUBAR_DIAGNOSTICS=1` in env
+3. On Ctrl-C: prints "Stopped"; if `--rebootstrap`: runs `launchctl bootstrap` from the installed plist
+
+Tick log written to `/tmp/menubar-tick.log` while running (gated on `MENUBAR_DIAGNOSTICS=1`). stdout/stderr land in terminal directly. Requires `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist` to exist for `--rebootstrap` — run `src/menubar/setup_menubar.py` first if missing.

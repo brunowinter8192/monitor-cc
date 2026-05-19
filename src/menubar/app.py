@@ -179,8 +179,10 @@ def _statuses_changed(sessions, last: dict) -> bool:
     current = {s.name: s.status for s in sessions}
     return current != last
 
-# Append one diagnostic line per tick to _TICK_LOG; action is 'abort-flap', 'session-set-change', 'abort-flap+session-set-change', or 'no-change'
+# Append one diagnostic line per tick to _TICK_LOG; gated on MENUBAR_DIAGNOSTICS=1 env var (default OFF)
 def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) -> None:
+    if os.getenv('MENUBAR_DIAGNOSTICS') != '1':
+        return
     try:
         ts = time.strftime('%Y-%m-%dT%H:%M:%S')
         line = (f'{ts} open={panel_open} n={len(sessions)} '

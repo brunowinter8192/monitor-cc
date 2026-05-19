@@ -201,6 +201,7 @@ def _rebuild_panel(app, sessions, bg_result=None) -> None:
     pw = app._panel_width
     sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
     min_remaining = bg_result.min_remaining if bg_result else None
+    name_width = max((len(s.name) for s in sorted_sessions), default=_NAME_WIDTH)
     required_h = _compute_required_height(sorted_sessions, bg_result)
     _resize_panel(app, max(app._panel_min_height, required_h))
     state = 'ON' if app._auto_focus else 'OFF'
@@ -222,7 +223,7 @@ def _rebuild_panel(app, sessions, bg_result=None) -> None:
         for s in group_iter:
             dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
             badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
-            name_col = s.name.ljust(_NAME_WIDTH)
+            name_col = s.name.ljust(name_width)
             if not s.is_worker:
                 line = f'● {name_col} {dot} {badge}'
                 btn  = _make_row_button(line, pw, NSColor.systemOrangeColor())
@@ -240,6 +241,7 @@ def _rebuild_panel(app, sessions, bg_result=None) -> None:
 # In-place title update while NSPanel is open; preserves widget positions
 def _update_panel_inplace(app, sessions, bg_result) -> None:
     min_remaining = bg_result.min_remaining if bg_result else None
+    name_width = max((len(s.name) for s in sessions), default=_NAME_WIDTH)
     session_map = {s.name: s for s in sessions}
     for name, btn in app._displayed_items.items():
         s = session_map.get(name)
@@ -247,7 +249,7 @@ def _update_panel_inplace(app, sessions, bg_result) -> None:
             continue
         dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
         badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
-        name_col = name.ljust(_NAME_WIDTH)
+        name_col = name.ljust(name_width)
         if not s.is_worker:
             line, color = f'● {name_col} {dot} {badge}', NSColor.systemOrangeColor()
         else:
