@@ -27,7 +27,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (235 LOC)
+### app.py (245 LOC)
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save.
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `~/.monitor_cc_menubar_settings.json` on launch; `app` instance state throughout.
@@ -145,9 +145,8 @@ ghostty.py          bg_timer.py
     ↓
 discover.py  ← ghostty.py (_refresh_ghostty_tty_to_id)
              ← proc_cache.py (_refresh_cc_proc_cache, _refresh_tmux_state,
-                               _tmux_state_cache, _tmux_session_exists,
-                               _read_hook_state, _proxy_log_newest_mtime,
-                               _has_active_bg)
+                               _tmux_session_exists, _read_hook_state,
+                               _proxy_log_newest_mtime, _has_active_bg)
 
 hotkey.py   → ctypes only
 panel.py    → AppKit, Foundation, itertools
