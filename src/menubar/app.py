@@ -53,6 +53,10 @@ class _PanelController(NSObject):
         else:
             _reposition_panel(app._panel, app._nsapp.nsstatusitem)
             app._panel.orderFrontRegardless()
+            # orderFrontRegardless doesn't activate the app → cursor-rect dispatch gets
+            # re-disabled on each show; re-enable explicitly (initial call in panel.py
+            # _make_nspanel covers first show only; this covers every subsequent open).
+            app._panel.enableCursorRects()
             app._panel_open = True
 
     def focusSession_(self, sender):

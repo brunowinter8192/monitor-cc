@@ -265,6 +265,25 @@ Hover left edge (x < 8), right edge (x > 372), bottom edge (y < 8).
 
 Both H8 and H9 are explicitly deferred until H7 is resolved. If H7 confirms the trade-off is unacceptable (user needs drag-resize), H8 or H9 become the path forward.
 
+### Iteration 7b — Production test result + H10 fix (2026-05-20)
+
+**Production test result:** restarted production menubar with `enableCursorRects()` in `_make_nspanel()` (panel.py). I-Beam→Arrow transition does NOT appear on panel open. Probe with `--fix` DID show it.
+
+**Asymmetry:** probe calls `panel.orderFront_(None)` (normal window show). Production calls `panel.orderFrontRegardless()` at toggle-open time (LSUIElement=1, no app activation). The two differ in AppKit's internal window-activation path.
+
+**H10 hypothesis:** `orderFrontRegardless()` does not activate the app → AppKit re-disables cursor-rect dispatch on each show → `enableCursorRects()` called once at panel-create is not enough. Must be re-called after every `orderFrontRegardless()`.
+
+**Fix:** one line added to `_PanelController.togglePanel_` in `src/menubar/app.py`, immediately after `orderFrontRegardless()`:
+
+```python
+app._panel.enableCursorRects()
+# orderFrontRegardless doesn't activate the app → cursor-rect dispatch gets
+# re-disabled on each show; re-enable explicitly (initial call in panel.py
+# _make_nspanel covers first show only; this covers every subsequent open).
+```
+
+**Status:** committed; user tests by restarting production menubar via `launchctl kickstart` and hovering panel on open.
+
 ## launchctl bootstrap I/O Error (Recurring)
 
 **Symptom:** `launchctl bootstrap gui/<uid> <plist>` failed mit `Bootstrap failed: 5: Input/output error` beim ersten Versuch — beim zweiten Versuch direkt nach 1-2s success.
