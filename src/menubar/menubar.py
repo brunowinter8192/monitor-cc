@@ -40,8 +40,7 @@ _BADGE_IDLE    = '[ ]'   # red
 _NO_BG         = '   '   # 3-char spacer when no background task
 
 PANEL_WIDTH      = 380   # pts
-PANEL_HEIGHT     = 460   # pts — initial height; overwritten dynamically after first rebuild
-PANEL_MAX_HEIGHT = 600   # pts — upper cap for dynamic panel height; user adjusts per Edit
+PANEL_HEIGHT     = 460   # pts — initial height; floor for first-run (no settings)
 PANEL_MIN_WIDTH  = 250   # pts — minimum width enforced by setContentMinSize_
 PANEL_MIN_HEIGHT = 120   # pts — minimum height enforced by setContentMinSize_
 PANEL_GAP        = 4     # pts below the status bar button
@@ -88,11 +87,10 @@ class _PanelController(NSObject):
     def toggleAutoJump_(self, sender):
         app = self._app
         app._auto_focus = not app._auto_focus
-        _save_settings(app._auto_focus, app._panel_width, app._panel_max_height)
+        _save_settings(app._auto_focus, app._panel_width, app._panel_min_height)
         state = 'ON' if app._auto_focus else 'OFF'
-        label = f'Auto-Jump: {state}' if app._hidden_count == 0 else f'Auto-Jump: {state} · {app._hidden_count} hidden'
         astr = NSAttributedString.alloc().initWithString_attributes_(
-            label, {NSFontAttributeName: _MENLO()})
+            f'Auto-Jump: {state}', {NSFontAttributeName: _MENLO()})
         sender.setAttributedTitle_(astr)
 
     def restartApp_(self, sender):
@@ -116,8 +114,8 @@ class _PanelController(NSObject):
         frame = notification.object().frame()
         app   = self._app
         app._panel_width      = int(max(frame.size.width,  PANEL_MIN_WIDTH))
-        app._panel_max_height = int(max(frame.size.height, PANEL_MIN_HEIGHT))
-        _save_settings(app._auto_focus, app._panel_width, app._panel_max_height)
+        app._panel_min_height = int(max(frame.size.height, PANEL_MIN_HEIGHT))
+        _save_settings(app._auto_focus, app._panel_width, app._panel_min_height)
 
     def windowDidEndLiveResize_(self, notification):
         app = self._app
@@ -137,8 +135,7 @@ class CCMenuBarApp(rumps.App):
         self._displayed_items: dict = {}
         self._cwd_map: dict = {}
         self._abort_btn = None   # NSButton ref; set by _rebuild_panel when timer running
-        self._hidden_count = 0   # sessions hidden by _truncate_and_height; shown in Auto-Jump label
-        self._auto_focus, self._panel_width, self._panel_max_height = _load_settings()
+        self._auto_focus, self._panel_width, self._panel_min_height = _load_settings()
         self._panel, self._panel_sv, self._panel_quit_btn, self._toggle_btn = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
         _register_hotkey(self)
@@ -189,11 +186,13 @@ class CCMenuBarApp(rumps.App):
                 _update_panel_inplace(self, sessions, bg_result)
             self._last_statuses = {s.name: s.status for s in sessions}
         else:
+            session_names = {s.name for s in sessions}
             changed = _statuses_changed(sessions, self._last_statuses)
             self._last_statuses = {s.name: s.status for s in sessions}
             if changed:
                 _blink(self)
-            _rebuild_panel(self, sessions)
+            if session_names != set(self._displayed_items):
+                _rebuild_panel(self, sessions)
 
 
 # True if any session's status differs from last tick's snapshot
@@ -440,27 +439,17 @@ def _make_separator_view(project_name: str, panel_width: int) -> NSView:
     container.addSubview_(tf)
     return container
 
-# Compute (truncated_sessions, panel_height, hidden_count) so rendered rows fit within panel_max_height
-# Projects are atomic units: a project is shown ALL sessions or NONE (no partial group display)
-def _truncate_and_height(sorted_sessions, panel_max_height: int, bg_result):
-    has_timer = bg_result is not None
-    fixed_h = _FOOTER_H + _TOP_BAR_H + _LABEL_H   # footer + top-bar (Auto-Jump) + separator-in-stack
-    if has_timer:
-        fixed_h += _ROW_H                           # abort timer button
+# Compute exact panel height needed to display all sessions; no truncation
+def _compute_required_height(sorted_sessions, bg_result) -> int:
+    h = _FOOTER_H + _TOP_BAR_H + _LABEL_H   # footer + top-bar (Auto-Jump) + separator-in-stack
+    if bg_result is not None:
+        h += _ROW_H                           # abort timer button
     if not sorted_sessions:
-        return sorted_sessions, fixed_h + _LABEL_H, 0   # "No active sessions" label
-    groups    = [(pn, list(g)) for pn, g in groupby(sorted_sessions, key=lambda s: s.project_name)]
-    available = panel_max_height - fixed_h
-    h         = fixed_h
-    result    = []
-    for _project_name, group_list in groups:
-        needed = _LABEL_H + len(group_list) * _ROW_H
-        if available < needed:
-            continue                                # skip project entirely — all-or-nothing per project
-        available -= needed
-        h         += needed
-        result.extend(group_list)
-    return result, h, len(sorted_sessions) - len(result)
+        return h + _LABEL_H                   # "No active sessions" label
+    for _, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
+        group_list = list(group_iter)
+        h += _LABEL_H + len(group_list) * _ROW_H
+    return h
 
 # Resize NSPanel frame to new_h; anchors TOP edge (not bottom-left origin) so panel stays flush below bar icon
 # NSStackView auto-resizes via autoresizingMask=18 (NSViewWidthSizable|NSViewHeightSizable)
@@ -484,13 +473,12 @@ def _rebuild_panel(app: CCMenuBarApp, sessions, bg_result=None) -> None:
     if bg_result is None:
         bg_result = _scan_bg_sleep_timers()
     min_remaining = bg_result.min_remaining if bg_result else None
-    sorted_sessions, new_h, hidden_count = _truncate_and_height(sorted_sessions, app._panel_max_height, bg_result)
-    app._hidden_count = hidden_count
-    _resize_panel(app, new_h)
+    required_h = _compute_required_height(sorted_sessions, bg_result)
+    _resize_panel(app, max(app._panel_min_height, required_h))
     state = 'ON' if app._auto_focus else 'OFF'
-    label = f'Auto-Jump: {state}' if hidden_count == 0 else f'Auto-Jump: {state} · {hidden_count} hidden'
     app._toggle_btn.setAttributedTitle_(
-        NSAttributedString.alloc().initWithString_attributes_(label, {NSFontAttributeName: _MENLO()}))
+        NSAttributedString.alloc().initWithString_attributes_(
+            f'Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
     app._panel_sv.addView_inGravity_(_make_line_separator(pw), 1)
     if bg_result is not None:
         abort_btn = _make_row_button('  ⊗ abort timer', pw)
@@ -542,27 +530,29 @@ def _update_panel_inplace(app: CCMenuBarApp, sessions, bg_result) -> None:
         btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(line, attrs))
 
-# Load settings; returns (auto_focus, panel_width, panel_max_height); falls back to module defaults on any error
-# panel_width and panel_max_height are clamped to their respective minimums to handle stale/invalid JSON
+# Load settings; returns (auto_focus, panel_width, panel_min_height); falls back to module defaults on any error
+# panel_min_height: reads 'panel_min_height' first, falls back to legacy 'panel_max_height', then PANEL_HEIGHT
+# panel_width and panel_min_height clamped to PANEL_MIN_* floors to handle stale/invalid JSON
 def _load_settings():
     try:
         d = json.loads(open(_SETTINGS_PATH).read())
+        raw_h = d.get('panel_min_height', d.get('panel_max_height', PANEL_HEIGHT))
         return (
             bool(d.get('auto_focus', False)),
-            max(int(d.get('panel_width',      PANEL_WIDTH)),      PANEL_MIN_WIDTH),
-            max(int(d.get('panel_max_height', PANEL_MAX_HEIGHT)), PANEL_MIN_HEIGHT),
+            max(int(d.get('panel_width', PANEL_WIDTH)), PANEL_MIN_WIDTH),
+            max(int(raw_h),                             PANEL_MIN_HEIGHT),
         )
     except Exception:
-        return False, PANEL_WIDTH, PANEL_MAX_HEIGHT
+        return False, PANEL_WIDTH, PANEL_HEIGHT
 
 # Atomic settings write: tempfile + os.replace to prevent partial-write corruption
-def _save_settings(auto_focus: bool, panel_width: int, panel_max_height: int) -> None:
+def _save_settings(auto_focus: bool, panel_width: int, panel_min_height: int) -> None:
     try:
         tmp = _SETTINGS_PATH + '.tmp'
         open(tmp, 'w').write(json.dumps({
             'auto_focus': auto_focus,
             'panel_width': panel_width,
-            'panel_max_height': panel_max_height,
+            'panel_min_height': panel_min_height,
         }))
         os.replace(tmp, _SETTINGS_PATH)
     except Exception:
