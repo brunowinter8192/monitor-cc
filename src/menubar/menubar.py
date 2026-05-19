@@ -77,6 +77,7 @@ def _acquire_singleton_lock():
     except OSError:
         fh.close()
         return None
+    fcntl.fcntl(fh, fcntl.F_SETFD, fcntl.FD_CLOEXEC)   # auto-release on os.execv restart
     fh.write(str(os.getpid()))
     fh.flush()
     return fh
@@ -115,16 +116,9 @@ class _PanelController(NSObject):
         sender.setAttributedTitle_(astr)
 
     def restartApp_(self, sender):
-        try:
-            result = subprocess.run(
-                ['launchctl', 'kickstart', '-k',
-                 f'gui/{os.geteuid()}/{_LAUNCHD_LABEL}'],
-                check=False, capture_output=True, timeout=5
-            )
-        except Exception:
-            result = None
-        if result is None or result.returncode != 0:
-            rumps.quit_application()
+        # os.execv replaces current process in-place: same PID, no race condition, no double bar-icon
+        # FD_CLOEXEC on the singleton lock fd ensures it is released before the new process image runs
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
     def abortBgTimer_(self, sender):
         result = _scan_bg_sleep_timers()
