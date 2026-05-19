@@ -12,7 +12,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ## Modules
 
-### block_dangerous_kill.py (53 LOC)
+### block_dangerous_kill.py (56 LOC)
 
 **Purpose:** PreToolUse hook — blocks `pkill -f <pattern>` and `ps|grep|kill` pipe chains. Both patterns target processes via text substring matching against the full cmdline, which routinely kills unintended processes (CC worker sessions whose prompt text contains the matched string). Exits 2 + stderr with concrete safer alternatives. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -28,7 +28,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### hook_setup.py (55 LOC)
+### hook_setup.py (63 LOC)
 
 **Purpose:** One-shot idempotent installer — adds a `PreToolUse` / matcher=`Bash` entry to `~/.claude/settings.json` pointing at the absolute path of `block_dangerous_kill.py`. Safe to re-run; detects existing entry by exact command string and skips duplicate. Atomic write via temp + `os.replace`.
 **Reads:** `~/.claude/settings.json`.
