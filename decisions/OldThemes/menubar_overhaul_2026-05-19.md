@@ -70,6 +70,65 @@ Iteration history und Process-Findings der Session in der die 5 verbleibenden zv
 
 **Status:** DEFERRED (NICHT accepted). Nächste Session nach Refactor: NSPanel-sendEvent-Override-Pattern probieren ODER cursor-rects auf jeden Leaf-Subview installieren. Aktuell drag-resize funktioniert weiterhin — nur visuelle Anzeige fehlt.
 
+## Iteration 5 (2026-05-20) — Probe-based Diagnosis
+
+### What the probe showed
+
+Worker `cursor-edges` built `dev/cursor_edges/probe.py` — foreground NSPanel mirroring production layout exactly. User ran it interactively (2026-05-20). Key observations:
+
+| Signal | Count | Interpretation |
+|---|---|---|
+| `NSEventMonitor mouseMoved_` | ~280 | Mouse events reach the window normally |
+| `mouseMoved_` on ContentView | ~280 | Tracking area delivers events correctly |
+| `hitTest_` on left edge | Correct view | View hierarchy resolves the edge position |
+| `cursorUpdate_` on ANY view | **0** | AppKit never dispatched a cursor-rect event |
+| `resetCursorRects` cascade | 10 views | All rects installed correctly at startup |
+
+### Why Iteration 4's hypothesis was wrong
+
+Iteration 4 concluded "child views win the cursor-rect race because they cover the edge strips". This is refuted: the race never happens. `cursorUpdate_` fired **zero times** on every view, including ContentView over uncovered regions. The rects are installed, tracking areas fire, but AppKit's cursor-rect dispatch mechanism is not engaged at all.
+
+### New root-cause hypothesis
+
+`NSWindowStyleMaskNonactivatingPanel` blocks cursor-rect dispatching at the window level.
+
+Normal NSWindow path: `becomeKeyWindow → enableCursorRects()` — this activates the cursor-rect dispatch mechanism. NonactivatingPanel never becomes key → `enableCursorRects()` is never called internally → cursor rects sit installed but are not dispatched when the mouse enters them.
+
+### Probe `--fix` flag
+
+`dev/cursor_edges/probe.py --fix` adds one call after `setContentView_`:
+
+```python
+panel.enableCursorRects()
+enabled = panel.areCursorRectsEnabled()
+_log(f'[--fix]  enableCursorRects() called — areCursorRectsEnabled={enabled}')
+```
+
+Startup smoke (2026-05-20): `areCursorRectsEnabled=True` — the call was accepted, no AttributeError, panel confirms dispatch is now enabled.
+
+### Verification path
+
+User runs:
+
+```bash
+venv/bin/python3 dev/cursor_edges/probe.py --fix
+```
+
+Then hovers slowly over the left edge (x < 8) and right edge (x > 372). Watch for `cursorUpdate_` in stderr.
+
+- `cursorUpdate_` fires → hypothesis confirmed, `enableCursorRects()` was the missing call
+- `cursorUpdate_` still fires 0 times → dispatch blocked at a lower level; next candidates: NSApp-level cursor-rect enable, window-server event routing, or the NonactivatingPanel style-mask overriding our call
+
+### Recommended src/ port (pending verification)
+
+If verified: one-line addition to `_make_nspanel()` in `src/menubar/panel.py`, after the `panel.setContentView_(...)` call:
+
+```python
+panel.enableCursorRects()
+```
+
+**NOT yet implemented** — user decides after running the `--fix` probe.
+
 ## launchctl bootstrap I/O Error (Recurring)
 
 **Symptom:** `launchctl bootstrap gui/<uid> <plist>` failed mit `Bootstrap failed: 5: Input/output error` beim ersten Versuch — beim zweiten Versuch direkt nach 1-2s success.
