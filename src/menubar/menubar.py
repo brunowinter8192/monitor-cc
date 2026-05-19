@@ -357,17 +357,23 @@ class _PanelContentView(NSView):
         self.addTrackingArea_(ta)
 
     def mouseMoved_(self, event):
-        open("/tmp/cursor-fire.log", "a").write(f"fire {time.time()}\n")
         loc  = event.locationInWindow()
         x, y = loc.x, loc.y
         w    = self.frame().size.width
+        h    = self.frame().size.height
         EDGE = 8
         if y < EDGE:
+            branch = 'up-down'
             NSCursor.resizeUpDownCursor().set()
         elif x < EDGE or x > w - EDGE:
+            branch = 'left-right'
             NSCursor.resizeLeftRightCursor().set()
         else:
+            branch = 'arrow'
             NSCursor.arrowCursor().set()
+        open('/tmp/cursor-fire.log', 'a').write(
+            f'fire ts={time.time():.3f} x={x:.1f} y={y:.1f} w={w:.1f} h={h:.1f} branch={branch}\n'
+        )
 
 # Build NSPanel + fixed footer (Restart) + fixed top_bar (Auto-Jump) + NSStackView (sessions, middle)
 # Returns (panel, stack_view, quit_btn, toggle_btn) — stored on app instance; ObjC objects reject Python attrs
