@@ -10,7 +10,7 @@ from itertools import groupby
 
 import rumps
 from AppKit import (NSAttributedString, NSBaselineOffsetAttributeName,
-                    NSButton, NSColor, NSCursor, NSFont,
+                    NSBox, NSButton, NSColor, NSCursor, NSFont,
                     NSFontAttributeName, NSForegroundColorAttributeName,
                     NSLayoutAttributeLeading, NSPanel,
                     NSStackView, NSTextField, NSTrackingArea, NSView,
@@ -88,7 +88,8 @@ class _PanelController(NSObject):
         app = self._app
         app._auto_focus = not app._auto_focus
         _save_settings(app._auto_focus, app._panel_width, app._panel_max_height)
-        label = f'Auto-Jump: {"ON" if app._auto_focus else "OFF"}'
+        state = 'ON' if app._auto_focus else 'OFF'
+        label = f'Auto-Jump: {state}' if app._hidden_count == 0 else f'Auto-Jump: {state} · {app._hidden_count} hidden'
         astr = NSAttributedString.alloc().initWithString_attributes_(
             label, {NSFontAttributeName: _MENLO()})
         sender.setAttributedTitle_(astr)
@@ -127,7 +128,7 @@ class _PanelController(NSObject):
         loc  = event.locationInWindow()
         x, y = loc.x, loc.y
         w    = self._app._panel.frame().size.width
-        EDGE = 6
+        EDGE = 8
         if y < EDGE:
             NSCursor.resizeUpDownCursor().set()
         elif x < EDGE or x > w - EDGE:
@@ -147,6 +148,7 @@ class CCMenuBarApp(rumps.App):
         self._displayed_items: dict = {}
         self._cwd_map: dict = {}
         self._abort_btn = None   # NSButton ref; set by _rebuild_panel when timer running
+        self._hidden_count = 0   # sessions hidden by _truncate_and_height; shown in Auto-Jump label
         self._auto_focus, self._panel_width, self._panel_max_height = _load_settings()
         self._panel, self._panel_sv, self._panel_quit_btn = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
@@ -230,11 +232,6 @@ def _format_bg_badge(remaining) -> str:
         return '[B]'
     mins, secs = divmod(remaining, 60)
     return f'[B {mins}:{secs:02d}]'
-
-# Section header line: ─── ProjectName ──────────
-def _make_header(project_name: str) -> str:
-    fill = '─' * max(2, 30 - len(project_name))
-    return f'─── {project_name} {fill}'
 
 # Focus Ghostty terminal for cwd; prefers UUID-based focus, falls back to cwd-match
 def _focus_session(cwd: str) -> None:
@@ -341,6 +338,7 @@ def _make_nspanel():
         NSWindowCollectionBehaviorCanJoinAllSpaces |
         NSWindowCollectionBehaviorIgnoresCycle)
     panel.setHasShadow_(True)
+    panel.setAcceptsMouseMovedEvents_(True)   # required — NSWindowStyleMaskNonactivatingPanel suppresses mouseMoved dispatch even with NSTrackingActiveAlways without this
     panel.setOpaque_(False)
     panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
@@ -383,7 +381,7 @@ def _make_row_button(text: str, panel_width: int, color=None) -> NSButton:
         NSAttributedString.alloc().initWithString_attributes_(text, attrs))
     return btn
 
-# Non-interactive Menlo-font NSTextField for project-header lines
+# Non-interactive Menlo-font NSTextField for plain text labels (e.g. "No active sessions")
 def _make_header_label(text: str, panel_width: int) -> NSTextField:
     tf = NSTextField.labelWithString_('')
     tf.setFrame_(NSMakeRect(0, 0, panel_width - 22, 18))
@@ -392,14 +390,41 @@ def _make_header_label(text: str, panel_width: int) -> NSTextField:
             text, {NSFontAttributeName: _MENLO()}))
     return tf
 
-# Compute (truncated_sessions, panel_height) so rendered rows fit within panel_max_height
+# NSBox (1pt horizontal rule) spanning content width; used as top-level separator between toggle and sessions
+# panel_width - 22: 22pt total horizontal margin matches row-button and label frames (consistent inset across all stack items)
+def _make_line_separator(panel_width: int) -> NSView:
+    w = panel_width - 22
+    container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, 18))
+    line = NSBox.alloc().initWithFrame_(NSMakeRect(0, 9, w, 1))
+    line.setBoxType_(2)   # NSBoxSeparator — 1pt system-colored horizontal rule
+    container.addSubview_(line)
+    return container
+
+# NSBox (1pt horizontal rule) with NSTextField label overlay — project name masks the line behind it
+# label background = NSColor.windowBackgroundColor() to opaquely cover the NSBox behind the text
+def _make_separator_view(project_name: str, panel_width: int) -> NSView:
+    w = panel_width - 22
+    container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, 18))
+    line = NSBox.alloc().initWithFrame_(NSMakeRect(0, 9, w, 1))
+    line.setBoxType_(2)   # NSBoxSeparator
+    container.addSubview_(line)
+    label_w = min(len(project_name) * 8 + 6, w - 12)
+    tf = NSTextField.labelWithString_(project_name)
+    tf.setFrame_(NSMakeRect(12, 0, label_w, 18))
+    tf.setFont_(_MENLO())
+    tf.setDrawsBackground_(True)
+    tf.setBackgroundColor_(NSColor.windowBackgroundColor())
+    container.addSubview_(tf)
+    return container
+
+# Compute (truncated_sessions, panel_height, hidden_count) so rendered rows fit within panel_max_height
 def _truncate_and_height(sorted_sessions, panel_max_height: int, bg_result):
     has_timer = bg_result is not None
     fixed_h = _FOOTER_H + _ROW_H + _LABEL_H   # footer + toggle-btn + separator
     if has_timer:
         fixed_h += _ROW_H                       # abort timer button
     if not sorted_sessions:
-        return sorted_sessions, fixed_h + _LABEL_H   # "No active sessions" label
+        return sorted_sessions, fixed_h + _LABEL_H, 0   # "No active sessions" label
     groups    = [(pn, list(g)) for pn, g in groupby(sorted_sessions, key=lambda s: s.project_name)]
     available = panel_max_height - fixed_h
     h         = fixed_h
@@ -413,7 +438,7 @@ def _truncate_and_height(sorted_sessions, panel_max_height: int, bg_result):
         result.extend(group_list[:fits])
         if fits < len(group_list):
             break                                   # group partially truncated → stop
-    return result, h
+    return result, h, len(sorted_sessions) - len(result)
 
 # Resize NSPanel frame to new_h; anchors TOP edge (not bottom-left origin) so panel stays flush below bar icon
 # NSStackView auto-resizes via autoresizingMask=18 (NSViewWidthSizable|NSViewHeightSizable)
@@ -437,14 +462,16 @@ def _rebuild_panel(app: CCMenuBarApp, sessions, bg_result=None) -> None:
     if bg_result is None:
         bg_result = _scan_bg_sleep_timers()
     min_remaining = bg_result.min_remaining if bg_result else None
-    sorted_sessions, new_h = _truncate_and_height(sorted_sessions, app._panel_max_height, bg_result)
+    sorted_sessions, new_h, hidden_count = _truncate_and_height(sorted_sessions, app._panel_max_height, bg_result)
+    app._hidden_count = hidden_count
     _resize_panel(app, new_h)
-    label = f'Auto-Jump: {"ON" if app._auto_focus else "OFF"}'
+    state = 'ON' if app._auto_focus else 'OFF'
+    label = f'Auto-Jump: {state}' if hidden_count == 0 else f'Auto-Jump: {state} · {hidden_count} hidden'
     toggle_btn = _make_row_button(label, pw)
     toggle_btn.setTarget_(app._panel_controller)
     toggle_btn.setAction_(b'toggleAutoJump:')
     app._panel_sv.addView_inGravity_(toggle_btn, 1)
-    app._panel_sv.addView_inGravity_(_make_header_label('─' * 44, pw), 1)
+    app._panel_sv.addView_inGravity_(_make_line_separator(pw), 1)
     if bg_result is not None:
         abort_btn = _make_row_button('  ⊗ abort timer', pw)
         abort_btn.setTarget_(app._panel_controller)
@@ -455,7 +482,7 @@ def _rebuild_panel(app: CCMenuBarApp, sessions, bg_result=None) -> None:
         app._panel_sv.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
         return
     for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
-        app._panel_sv.addView_inGravity_(_make_header_label(_make_header(project_name), pw), 1)
+        app._panel_sv.addView_inGravity_(_make_separator_view(project_name, pw), 1)
         for s in group_iter:
             dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
             badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
