@@ -341,8 +341,6 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
     abort_tag = 1000   # abort button tags start above session row tags (1..N)
     pw = app._panel_width
     sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
-    min_remaining = (min(info.min_remaining for info in bg_by_project.values())
-                     if bg_by_project else None)
     name_width = max((len(s.name) for s in sorted_sessions), default=_NAME_WIDTH)
     required_h = _compute_required_height(sorted_sessions)
     _resize_panel(app, max(app._panel_min_height, required_h))
@@ -370,7 +368,7 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
             abort_tag += 1
         for s in group_iter:
             dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
-            badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
+            badge    = _format_bg_badge(proj_bg.min_remaining) if proj_bg else _NO_BG
             name_col = s.name.ljust(name_width)
             if not s.is_worker:
                 main_slot += 1
@@ -391,8 +389,6 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
 # In-place title update while NSPanel is open; preserves widget positions.
 # Updates session row titles AND per-project abort button countdowns.
 def _update_panel_inplace(app, sessions, bg_by_project) -> None:
-    min_remaining = (min(info.min_remaining for info in bg_by_project.values())
-                     if bg_by_project else None)
     name_width = max((len(s.name) for s in sessions), default=_NAME_WIDTH)
     session_map = {s.name: s for s in sessions}
     main_slot = 0
@@ -400,8 +396,9 @@ def _update_panel_inplace(app, sessions, bg_by_project) -> None:
         s = session_map.get(name)
         if s is None:
             continue
+        proj_bg  = (bg_by_project or {}).get(s.project_name)
         dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
-        badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
+        badge    = _format_bg_badge(proj_bg.min_remaining) if proj_bg else _NO_BG
         name_col = name.ljust(name_width)
         if not s.is_worker:
             main_slot += 1
