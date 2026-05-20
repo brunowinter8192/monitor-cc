@@ -6,20 +6,29 @@ import sys
 # pkill with -f flag — anchored to command start or after shell separator
 # (prevents false-positives when "pkill -f" appears inside a quoted argument)
 _PKILL_F = re.compile(r'(?:^|[;&|\n])\s*pkill\s+(-[^\s]*\s+)*-f\b')
+# pgrep -f piped into kill / xargs kill — same collateral risk as pkill -f
+# Matches: pgrep -f X | xargs kill, pgrep -f X | xargs -r kill, etc.
+_PGREP_F_KILL_PIPE = re.compile(r'(?:^|[;&|\n])\s*pgrep\s+(?:-[^\s]*\s+)*-f\b[^|]*\|.*\bkill\b', re.DOTALL)
+# kill $(pgrep -f X) — command substitution variant
+_KILL_PGREP_F_SUBST = re.compile(r'\bkill\s+(?:-[^\s]*\s+)*\$\(\s*pgrep\s+(?:-[^\s]*\s+)*-f\b')
 # ps … | … grep … | … kill pipe chain — same anchor
 _PS_GREP_KILL = re.compile(r'(?:^|[;&|\n])\s*ps\b[^|]*\|[^|]*\bgrep\b[^|]*\|.*\bkill\b', re.DOTALL)
 
-_BLOCKED_PATTERNS = [_PKILL_F, _PS_GREP_KILL]
+_BLOCKED_PATTERNS = [_PKILL_F, _PGREP_F_KILL_PIPE, _KILL_PGREP_F_SUBST, _PS_GREP_KILL]
 
 _BLOCK_MESSAGE = (
-    "BLOCKED: `pkill -f <pattern>` matches arbitrary cmdline substrings and frequently kills the wrong\n"
-    "process (e.g., Claude Code worker sessions whose prompts contain the pattern as text).\n"
+    "BLOCKED: `pkill -f` and `pgrep -f | kill` chains match arbitrary cmdline substrings and kill\n"
+    "the wrong process. Claude Code worker sessions are spawned via `claude \"$(cat prompt.md)\"` —\n"
+    "the ENTIRE prompt content lives in the claude process argv. Any file path or substring you grep\n"
+    "for that also appears in a worker prompt will match (and kill) that worker's claude process.\n"
+    "Path-like patterns (containing `/`) are NOT safer — they are the most common kill-the-worker case.\n"
     "\n"
     "Safer alternatives:\n"
-    "  - `pgrep -f <pattern>` first to see what would match, then `kill <pid>` on the specific PID\n"
-    "  - `pkill -x <exact_name>` (exact process name match, no substring)\n"
+    "  - `pgrep -f <pattern>` as a STANDALONE command, inspect output, then `kill <pid>` on the\n"
+    "    specific PID after confirming the match is not a claude / tmux / worker process\n"
+    "  - `pkill -x <exact_name>` (exact process name match, no argv substring)\n"
     "  - For worker management: `worker-cli kill <name>`\n"
-    "  - For a known script: kill via PID from a PID file or `pgrep -f` output\n"
+    "  - For your own background job: kill via PID from `Bash run_in_background=true` task ID\n"
 )
 
 # ORCHESTRATOR
