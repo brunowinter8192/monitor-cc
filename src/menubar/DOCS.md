@@ -13,15 +13,15 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 1. `run()` (system.py) → sets `LSUIElement=1` env → acquires singleton lock → instantiates `CCMenuBarApp` → `app.run()` starts AppKit runloop.
 2. `CCMenuBarApp._tick()` (app.py) fires every 1.5s → `list_alive_sessions()` → auto-focus debounce → `_scan_bg_sleep_timers(cwd_to_project)` → `_auto_abort_check()` → `_aggregate_bg()` → if panel closed: blink on status change; `_rebuild_panel` only on session-set change; if panel open: on None↔Some transition or session-set change call `_rebuild_panel` (adds/removes abort button, grows panel), otherwise `_update_panel_inplace` (updates NSButton attributed titles only, no resize).
 3. `list_alive_sessions()` (discover.py) → refreshes CC-process cache (proc_cache.py) → refreshes Ghostty TTY-to-UUID mapping (ghostty.py) → scans `~/.claude/projects/*/` → determines working/idle status per session type → checks `/tmp/claude-<uid>/` for in-progress tasks (proc_cache.py).
-4. Click on a main session → `_focus_session(cwd)` (system.py) → looks up Ghostty terminal UUID (ghostty.py) → `focus terminal id "<UUID>"` (Path A) or cwd-match fallback (Path B).
+4. Click on a main session → `_focus_session(cwd)` (system.py) → looks up Ghostty terminal UUID (ghostty.py) → `focus terminal id "<UUID>"` (Path A) or cwd-match fallback (Path B). Same path triggered by Cmd+1..9 when panel is open (see hotkey.py + app.py lifecycle).
 
 ## Modules
 
-### panel.py (383 LOC)
+### panel.py (389 LOC)
 
-**Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and the two render functions (`_rebuild_panel`, `_update_panel_inplace`). Footer has two buttons: Kill (left) + Restart (right). Pure UI concern — no rumps, no ctypes, no subprocess.
+**Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and the two render functions (`_rebuild_panel`, `_update_panel_inplace`). Footer has two buttons: Kill (left) + Restart (right). Main session rows carry an inline `[N] ` prefix (slots 1..9) for Cmd+N hotkey reference; workers and slots >9 carry no prefix. Pure UI concern — no rumps, no ctypes, no subprocess.
 **Reads:** `app` instance attrs (`_panel_sv`, `_panel_width`, `_panel_min_height`, `_displayed_items`, `_cwd_map`, `_abort_btn`, `_toggle_btn`, `_panel_controller`, `_auto_focus`, `_panel`) via function parameters; session list from caller.
-**Writes:** `app._displayed_items`, `app._cwd_map`, `app._abort_btn` (reset + populate on each rebuild); NSButton attributed titles (inplace update); NSPanel frame (via `_resize_panel`).
+**Writes:** `app._displayed_items`, `app._cwd_map` (= slot→cwd map for mains, sequential from 1), `app._abort_btn` (reset + populate on each rebuild); NSButton attributed titles with `[N] ` prefix on main rows (inplace update); NSPanel frame (via `_resize_panel`).
 **Called by:** `app.py` (`CCMenuBarApp.__init__`, `_PanelController.togglePanel_`, `_PanelController.windowDidEndLiveResize_`, `CCMenuBarApp._tick`).
 **Calls out:** `AppKit`, `Foundation`, `itertools`.
 
@@ -37,22 +37,22 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (292 LOC)
+### app.py (313 LOC)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/kill/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check` (per-project 5s-debounce auto-abort of bg timers when all workers idle).
-**Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on launch; `app` instance state throughout.
-**Writes:** bar icon via attributed NSStatusItem button; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on toggle/resize.
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/kill/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check` (per-project 5s-debounce auto-abort of bg timers when all workers idle) + `_reregister_digit_hotkeys` helper (builds slot→focus callback map from `_cwd_map`, calls `register_cmd_digits`). Lifecycle hooks for Cmd+1..9: registered in `togglePanel_` open branch + after `_rebuild_panel` calls during open (in `_tick` open branch + `windowDidEndLiveResize_`); unregistered in `togglePanel_` close branch.
+**Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on launch; `app` instance state throughout (incl. `_cwd_map` for digit-hotkey callback build).
+**Writes:** bar icon via attributed NSStatusItem button; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on toggle/resize; `_hotkey_digits_cb` / `_hotkey_digits_refs` GC anchors (legacy — module-level handler now anchored in hotkey.py).
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSBaselineOffsetAttributeName/NSFont/NSFontAttributeName), `Foundation` (NSObject/NSOperationQueue), `objc`, `subprocess`, `threading`, `pathlib`; `.panel`, `.hotkey`, `.system`, `.discover` (`list_alive_sessions`), `.bg_timer` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`, `_aggregate_bg`); `.setup_menubar` (`write_plist`, lazy import inside `restartApp_`).
+**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSBaselineOffsetAttributeName/NSFont/NSFontAttributeName), `Foundation` (NSObject/NSOperationQueue), `objc`, `subprocess`, `threading`, `pathlib`; `.panel`, `.hotkey` (`register_cmd_l`, `register_cmd_digits`, `unregister_hotkeys`), `.system`, `.discover` (`list_alive_sessions`), `.bg_timer` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`, `_aggregate_bg`); `.setup_menubar` (`write_plist`, lazy import inside `restartApp_`).
 
 ---
 
-### hotkey.py (54 LOC)
+### hotkey.py (154 LOC)
 
-**Purpose:** Standalone Carbon Cmd+L global hotkey registration. Zero project dependencies — only `ctypes`.
+**Purpose:** Carbon global hotkey registration. Two public APIs: `register_cmd_l(callback)` — installs the Cmd+L panel-toggle hotkey at app start, kept alive for process lifetime by caller (`app._hotkey_cb`, `app._hotkey_ref`). `register_cmd_digits(callback_map)` / `unregister_hotkeys(refs)` — installs Cmd+1..9 hotkeys lazily on first panel-open, unregisters on panel-close. Module-level state: `_DIGIT_HANDLER_CB` / `_DIGIT_HANDLER_REF` persist the InstallEventHandler across register/unregister cycles (CRITICAL: GC'ing the CFUNCTYPE while the handler is still in Carbon's dispatch chain crashes with SIGSEGV on the next hotkey event); `_DIGIT_CALLBACKS` is the mutable slot→callback map the handler reads. Both `register_cmd_l._handler` and the digit handler filter via `GetEventParameter(kEventParamDirectObject, typeEventHotKeyID)` and return `eventNotHandledErr (-9874)` for unknown IDs so the other handler receives its event unswallowed.
 **Reads:** nothing.
-**Writes:** Carbon event handler + hotkey registration via CDLL.
-**Called by:** `app.py:CCMenuBarApp.__init__` (`register_cmd_l`).
+**Writes:** Carbon event handlers + hotkey registrations via CDLL; mutates module-level `_DIGIT_CALLBACKS` dict.
+**Called by:** `app.py:CCMenuBarApp.__init__` (`register_cmd_l`); `app.py:_reregister_digit_hotkeys` (`register_cmd_digits`, `unregister_hotkeys`).
 **Calls out:** `ctypes` (Carbon framework CDLL).
 
 ---
