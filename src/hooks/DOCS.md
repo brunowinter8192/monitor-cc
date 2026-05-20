@@ -12,7 +12,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ## Modules
 
-### block_dangerous_kill.py (77 LOC)
+### block_dangerous_kill.py (86 LOC)
 
 **Purpose:** PreToolUse hook — blocks `pkill -f <pattern>` and `ps|grep|kill` pipe chains. Both patterns target processes via text substring matching against the full cmdline, which routinely kills unintended processes (CC worker sessions whose prompt text contains the matched string). Exits 2 + stderr with concrete safer alternatives. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
