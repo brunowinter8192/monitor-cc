@@ -157,6 +157,7 @@ def _make_nspanel():
         NSWindowCollectionBehaviorIgnoresCycle)
     panel.setHasShadow_(True)
     panel.setOpaque_(False)
+    panel.setAcceptsMouseMovedEvents_(True)   # required — without this NSWindow suppresses mouseMoved dispatch → _hovered_edge never updates → no resize cursors
     panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
     cv = _PanelContentView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT))
     panel.setContentView_(cv)
