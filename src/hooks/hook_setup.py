@@ -13,6 +13,7 @@ _HOOK_TIMEOUT  = 5
 _HOOK_SCRIPTS = [
     "block_dangerous_kill.py",
     "block_chained_sleep.py",
+    "block_unauthorized_background.py",
 ]
 _HOOK_COMMANDS = [f"python3 {_HOOKS_DIR / s}" for s in _HOOK_SCRIPTS]
 

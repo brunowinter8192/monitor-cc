@@ -50,9 +50,29 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
+### block_unauthorized_background.py (51 LOC)
+
+**Purpose:** PreToolUse hook — blocks any Bash command dispatched with `run_in_background=true` that is NOT the exact canonical orchestration timer `sleep N && echo done`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable. Exits 2 + stderr with the canonical form and reason. Exits 0 on any parse/internal error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
+**Writes:** stderr (block message with canonical form) on violation only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:**
+- Any command with `run_in_background=true` that is NOT `sleep N && echo done`
+- Examples: `rag-cli update_docs .`, `python3 script.py`, build commands, test runners
+
+**Allowed patterns:**
+- `sleep N && echo done` (optional leading/trailing whitespace, optional float N) with `run_in_background=true`
+- Any command with `run_in_background=false` or field absent (foreground — no restriction)
+
+**No quote-stripping.** Checks only the `run_in_background` bool field and the canonical regex — no command-text scanning for partial patterns.
+
+---
+
 ### hook_setup.py (75 LOC)
 
-**Purpose:** One-shot idempotent installer — adds `PreToolUse` / matcher=`Bash` entries to `~/.claude/settings.json` for each hook script (`block_dangerous_kill.py`, `block_chained_sleep.py`). Loops over `_HOOK_COMMANDS`; skips any entry already present by exact command string. Atomic write via temp + `os.replace`.
+**Purpose:** One-shot idempotent installer — adds `PreToolUse` / matcher=`Bash` entries to `~/.claude/settings.json` for each hook script (`block_dangerous_kill.py`, `block_chained_sleep.py`, `block_unauthorized_background.py`). Loops over `_HOOK_COMMANDS`; skips any entry already present by exact command string. Atomic write via temp + `os.replace`.
 **Reads:** `~/.claude/settings.json`.
 **Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`).
 **Called by:** User manually (`python3 src/hooks/hook_setup.py` from Monitor_CC root). Never imported.
@@ -64,8 +84,8 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ## Gotchas
 
-- **Fail-open is mandatory.** Both hooks exit 0 on any parse error or missing field — a hook must never block a legitimate tool call due to its own failure. A broken hook that blocks everything is a footgun.
-- **Global registration.** Both hooks fire for every Bash tool call in every CC session on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
+- **Fail-open is mandatory.** All hooks exit 0 on any parse error or missing field — a hook must never block a legitimate tool call due to its own failure. A broken hook that blocks everything is a footgun.
+- **Global registration.** All hooks fire for every Bash tool call in every CC session on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
 - **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths.
 - **`block_chained_sleep.py` has no quote-stripping.** The word-boundary regex avoids `overslept`-style substrings but does not strip quoted arguments before matching. `echo "sleep 5 ..."` (number inside a quoted arg) would fire. Acceptable — no realistic CC workflow hits this.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.

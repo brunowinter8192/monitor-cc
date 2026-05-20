@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-Two safety hooks registered globally in `~/.claude/settings.json`:
+Three safety hooks registered globally in `~/.claude/settings.json`:
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -38,6 +38,25 @@ Two safety hooks registered globally in `~/.claude/settings.json`:
 
 **Fail-open:** both hooks exit 0 on any parse/internal error — never block on hook failure.
 
+### Hook 3 — `block_unauthorized_background.py` (`src/hooks/block_unauthorized_background.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1 and 2
+- **Command:** `python3 <absolute-path>/src/hooks/block_unauthorized_background.py`
+- **Timeout:** 5s
+
+**Detection:** `tool_input.run_in_background == true`
+
+**Allowlist:** full command must match `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$`
+
+**Blocked patterns:**
+- Any `run_in_background=true` command that is NOT the canonical timer — e.g. `rag-cli update_docs .`, `python3 script.py`, builds, test runners
+
+**Allowed:** `sleep N && echo done` with `run_in_background=true` — the one canonical orchestration timer form; any command with `run_in_background=false` or field absent
+
+**Rationale:** background mode hides stdout/stderr until completion, making long-running tools unmonitorable. `rag-cli update_docs .` with `run_in_background=true` ran 2m36s with no live output — the triggering incident. Enforces Rule 12 from `~/.claude/shared-rules/global/tool-use.md`.
+
+**Fail-open:** exits 0 on any parse/internal error; `(None, False)` default on exception means missing/invalid fields are treated as foreground — never blocks on hook failure.
+
 ## Evidenz
 
 From `decisions/OldThemes/tool_use_safety/2026-05-12_session_findings.md` (quantification over 67 proxy logs, 2026-05-06 → 2026-05-12):
@@ -56,13 +75,13 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current two hooks (no change needed). Pending evaluation after rollout:
-- Do both hooks intercept violations in live sessions without false positives?
+Keep current three hooks (no change needed). Pending evaluation after rollout:
+- Do all three hooks intercept violations in live sessions without false positives?
 - Next candidate: broad recursive `grep -rn` without `--include` scope (Rule 3, tool-use.md) — appeared 2× in the 2026-05-12 compliance report; needs regex that avoids false-positive on legitimate tree scans.
 
 ## Offene Fragen
 
-- **Next antipattern:** Rule-3 violations (broad recursive grep without `--include` scope) appear 2× in the 2026-05-12 compliance report — candidate for hook #2.
+- **Next antipattern:** Rule-3 violations (broad recursive grep without `--include` scope) appear 2× in the 2026-05-12 compliance report — candidate for hook #4.
 - **Migration threshold:** when is a negative rule in `tool-use.md` mature enough to be retired in favour of a hook? Proposed criterion: pattern fires ≥3× in a 7-day window AND can be reliably regex-captured without false positives.
 - **Worker-local suppression:** should workers running in worktrees be able to suppress specific hooks? Currently no mechanism — global registration means all hooks fire everywhere.
 
