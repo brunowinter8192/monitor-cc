@@ -50,7 +50,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_unauthorized_background.py (51 LOC)
+### block_unauthorized_background.py (56 LOC)
 
 **Purpose:** PreToolUse hook — blocks any Bash command dispatched with `run_in_background=true` that is NOT the exact canonical orchestration timer `sleep N && echo done`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable. Exits 2 + stderr with the canonical form and reason. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
@@ -70,7 +70,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_broad_grep.py (72 LOC)
+### block_broad_grep.py (82 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks recursive `grep -r`/`-R` calls on directories when no `--include=` scope is present. Unrestricted recursive grep matches JSONL logs, node_modules, and vendored content, producing 10MB+ output that floods the context window. Exits 2 + stderr with fix options. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
