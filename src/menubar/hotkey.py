@@ -49,6 +49,13 @@ _kEventParamDirect   = 0x2D2D2D2D   # kEventParamDirectObject ('----')
 _typeEventHotKeyID   = 0x686B6964   # typeEventHotKeyID ('hkid')
 _eventNotHandledErr  = -9874
 
+# Persistent module-level state for the digit handler.
+# CFUNCTYPE installed ONCE via _ensure_digit_handler(); never dropped → no SEGV from GC.
+# register/unregister only manage hotkey registrations + this dict.
+_DIGIT_CALLBACKS    = {}     # mutable slot→callable map; mutated by register/unregister
+_DIGIT_HANDLER_CB   = None   # persistent CFUNCTYPE — module-anchored, never reassigned to None
+_DIGIT_HANDLER_REF  = None   # handler_ref from InstallEventHandler
+
 # FUNCTIONS
 
 # Extract EventHotKeyID from a Carbon hotkey event
@@ -58,6 +65,33 @@ def _get_hkid(carbon, event) -> _EventHotKeyID:
         event, _kEventParamDirect, _typeEventHotKeyID, None, 8, None,
         ctypes.byref(hkid))
     return hkid
+
+# Install the digit handler exactly once; subsequent calls are no-ops
+def _ensure_digit_handler():
+    global _DIGIT_HANDLER_CB, _DIGIT_HANDLER_REF
+    if _DIGIT_HANDLER_CB is not None:
+        return
+    carbon = _load_carbon()
+    target = carbon.GetApplicationEventTarget()
+
+    def _handler(handler_ref, event, user_data):
+        try:
+            hkid = _get_hkid(carbon, event)
+            slot = hkid.id - 1   # ids 2..10 → slots 1..9
+            fn = _DIGIT_CALLBACKS.get(slot)
+            if fn is None:
+                return _eventNotHandledErr
+            fn()
+        except Exception:
+            pass
+        return 0
+
+    _DIGIT_HANDLER_CB = _EventHandlerProcPtr(_handler)
+    handler_ref = ctypes.c_void_p()
+    carbon.InstallEventHandler(
+        target, _DIGIT_HANDLER_CB, 1, ctypes.byref(_HOTKEY_EVENT_SPEC),
+        None, ctypes.byref(handler_ref))
+    _DIGIT_HANDLER_REF = handler_ref
 
 # Register Cmd+L (keycode 37, modifier 0x0100) as global hotkey via Carbon
 # Filters via EventHotKeyID (id=1) — returns eventNotHandledErr for all other hotkey events
@@ -89,45 +123,32 @@ def register_cmd_l(callback) -> tuple:
         target, 0, ctypes.byref(hk_ref))
     return cb, hk_ref
 
-# Register Cmd+1..9 hotkeys (panel-open only); one InstallEventHandler dispatches all via GetEventParameter
-# Filters via EventHotKeyID: returns eventNotHandledErr for events with unknown ids (e.g. Cmd+L id=1)
-# so the Cmd+L handler receives its own event unimpeded.
-# callback_map: {slot_1..9: zero-arg callable}; slots > 9 are ignored
-# Returns (cb_handle, [hk_ref_1, ..., hk_ref_N]) — caller MUST keep both alive
+# Register Cmd+1..9 hotkeys (panel-open only).
+# Uses the persistent module-level handler (_ensure_digit_handler); only hotkey registrations
+# are created/destroyed on each open/close cycle — the CFUNCTYPE is never GC'd.
+# callback_map: {slot_1..9: zero-arg callable}
+# Returns (None, [hk_ref_list]) — cb-slot is None (module holds the anchor); tuple kept for caller compat
 def register_cmd_digits(callback_map: dict) -> tuple:
+    _ensure_digit_handler()
+    _DIGIT_CALLBACKS.clear()
+    _DIGIT_CALLBACKS.update({s: cb for s, cb in callback_map.items() if s in _DIGIT_KEYCODES})
     carbon = _load_carbon()
     target = carbon.GetApplicationEventTarget()
-
-    def _handler(handler_ref, event, user_data):
-        try:
-            hkid = _get_hkid(carbon, event)
-            slot = hkid.id - 1   # ids 2..10 → slots 1..9
-            fn = callback_map.get(slot)
-            if fn is None:
-                return _eventNotHandledErr
-            fn()
-        except Exception:
-            pass
-        return 0
-
-    cb = _EventHandlerProcPtr(_handler)
-    handler_ref = ctypes.c_void_p()
-    carbon.InstallEventHandler(
-        target, cb, 1, ctypes.byref(_HOTKEY_EVENT_SPEC), None, ctypes.byref(handler_ref))
     hk_refs = []
     for slot, keycode in _DIGIT_KEYCODES.items():
-        if slot not in callback_map:
+        if slot not in _DIGIT_CALLBACKS:
             continue
         hk_ref = ctypes.c_void_p()
         carbon.RegisterEventHotKey(
-            keycode, 0x0100,                                    # digit keycode, cmdKey
-            _EventHotKeyID(_MBAR_SIG, slot + 1),               # signature 'MBAR', ids 2..10
+            keycode, 0x0100,                        # digit keycode, cmdKey
+            _EventHotKeyID(_MBAR_SIG, slot + 1),    # signature 'MBAR', ids 2..10
             target, 0, ctypes.byref(hk_ref))
         hk_refs.append(hk_ref)
-    return cb, hk_refs
+    return None, hk_refs
 
-# Unregister a list of hotkey refs previously returned by register_cmd_digits
+# Unregister a list of hotkey refs previously returned by register_cmd_digits; clears dispatch table
 def unregister_hotkeys(refs: list) -> None:
     carbon = _load_carbon()
     for ref in refs:
         carbon.UnregisterEventHotKey(ref)
+    _DIGIT_CALLBACKS.clear()
