@@ -377,3 +377,50 @@ The `--no-resizable` result refutes the "drop NSWindowStyleMaskResizable" branch
 
 - `sw33tLie/macshot` — `RecordingHUDPanel.swift` — GitHub: https://github.com/sw33tLie/macshot
 - `lifedever/PasteMemo-app` — `RelayFloatingWindowController.swift` — GitHub: https://github.com/lifedever/PasteMemo-app
+
+## Iteration 9 (2026-05-20) — FINAL: Accessory-App Cursor-Rect Dispatch Blocked
+
+### Migration outcome
+
+Tracking-area pattern, `hitTest_`, state-driven `resetCursorRects` + `invalidateCursorRectsForView_`, `_CursorlessButton` — alle implementiert und mechanisch korrekt. Events feuern perfekt in production:
+
+| Signal | Count | Interpretation |
+|---|---|---|
+| `mouseMoved_` | 236 / session | Tracking area delivers correctly |
+| `mouseEntered_`/`mouseExited_` | balanced | Area install correct |
+| `_set_hovered_edge` transitions | 30 in 15s hovering | Edge detection working |
+| `invalidateCursorRectsForView_` | 30 calls | Triggered on every state change |
+| `resetCursorRects` | **3** — only at view creation / bounds-change | NOT triggered by invalidate calls |
+| `cursorUpdate_` | **0** | Despite NSTrackingCursorUpdate option |
+
+AppKit silently ignores dynamic cursor updates (both `invalidateCursorRectsForView_` and `cursorUpdate_` dispatch) in production context.
+
+### Root cause: app activation policy
+
+AppKit cursor-rect dispatch + `cursorUpdate_` fire when EITHER (a) `NSApp.activationPolicy = .regular` AND app active, OR (b) window is key. Production misses both: `LSUIElement=1` in plist → `.accessory`, `NonactivatingPanel` → never key.
+
+| Factor | Probe | Production |
+|---|---|---|
+| Panel type | NonactivatingPanel | NonactivatingPanel |
+| Launch | Terminal (`python3`) | `launchctl` |
+| Info.plist | none | `LSUIElement=1` |
+| `activationPolicy` | `.regular` (default) | `.accessory` |
+| App active at start | Yes | Never |
+
+GitHub refs (`sw33tLie/macshot`, `lifedever/PasteMemo-app`) provide the correct tracking pattern, but both are `.regular` apps — the pattern works there. In `.accessory` context, cursor-rect dispatch is fundamentally blocked at the AppKit level.
+
+### Probe design lesson
+
+Probe mirrored production **panel geometry** exactly but not **app activation context**. A faithful probe would have been launched as an `.app` bundle with `LSUIElement=1` via `launchctl` — the dispatch block would have surfaced immediately instead of after full production migration. Panel-faithfulness ≠ context-faithfulness.
+
+### Status
+
+Migration stands — no regression. Native `NSWindowStyleMaskResizable` drag-resize works as before. Cursor visual feedback at panel edges is not achievable in `LSUIElement` context without `NSApp.activateIgnoringOtherApps_(True)` (rejected: defeats `LSUIElement` semantics).
+
+`_cursor_log` helper retained in `src/menubar/panel.py`, gated behind `MENUBAR_CURSOR_DEBUG=1` env var.
+
+### Sources
+
+- `rust-windowing/winit` — `winit-appkit/src/window_delegate.rs` line 1250 — `invalidateCursorRectsForView_` pattern (battle-tested for `.regular` apps)
+- `rohanrhu/MacsyZones` — `MacsyZones/Layout.swift` line 648 — `areCursorRectsEnabled` override
+- `/tmp/menubar-cursor.log` diagnostic data — 3 `resetCursorRects` vs 30 `invalidate` calls confirmed dispatch block

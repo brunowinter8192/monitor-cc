@@ -46,6 +46,8 @@ _TA_CURSOR_OPTS   = NSTrackingCursorUpdate | NSTrackingActiveAlways | NSTracking
 # FUNCTIONS
 
 def _cursor_log(msg: str) -> None:
+    if not os.environ.get('MENUBAR_CURSOR_DEBUG'):
+        return
     with open('/tmp/menubar-cursor.log', 'a') as f:
         f.write(f'{datetime.now().strftime("%H:%M:%S.%f")[:-3]} {msg}\n')
 
