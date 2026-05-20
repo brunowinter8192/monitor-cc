@@ -291,7 +291,7 @@ def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining
         abort_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(w - btn_w, 0, btn_w, 18))
         abort_btn.setBordered_(False)
         abort_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
-        abort_btn.setDrawsBackground_(True)
+        abort_btn.setWantsLayer_(True)
         abort_btn.setBackgroundColor_(NSColor.windowBackgroundColor())
         abort_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
