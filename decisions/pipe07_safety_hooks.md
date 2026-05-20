@@ -2,9 +2,10 @@
 
 ## Status Quo (IST)
 
-One safety hook registered globally in `~/.claude/settings.json`:
+Two safety hooks registered globally in `~/.claude/settings.json`:
 
-- **Hook:** `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
+### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
+
 - **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call in every CC session on this machine
 - **Command:** `python3 <absolute-path>/src/hooks/block_dangerous_kill.py` (absolute path written at install time by `hook_setup.py`)
 - **Timeout:** 5s
@@ -16,7 +17,26 @@ One safety hook registered globally in `~/.claude/settings.json`:
 
 **Allowed patterns (not blocked):** `pkill -x <name>`, `pkill <name>` (no `-f`), `kill <numeric_pid>`, `kill -<signal> <numeric_pid>`, `worker-cli kill <name>`, `launchctl` operations.
 
-**Fail-open:** hook exits 0 on any parse/internal error — never blocks on hook failure.
+### Hook 2 — `block_chained_sleep.py` (`src/hooks/block_chained_sleep.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hook 1
+- **Command:** `python3 <absolute-path>/src/hooks/block_chained_sleep.py`
+- **Timeout:** 5s
+
+**Detection:** `\bsleep\s+\d+(?:\.\d+)?\b` anywhere in `tool_input.command`
+
+**Allowlist:** full command must match `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$`
+
+**Blocked patterns:**
+- `cmd_before; sleep N && echo done` — commands chained before the sleep
+- `sleep N && other_cmd` — non-`echo done` continuation after sleep
+- Poll loops: `until ...; do sleep N; done`, `while ...; do sleep N; done`
+
+**Allowed:** `sleep N && echo done` (bare, optional whitespace/float) — the one canonical orchestration timer form
+
+**Rationale:** when the menubar auto-abort fires SIGTERM on the sleep PID, the entire chained shell exits 143 and pre-sleep output is lost. This enforces Rule 12 from `~/.claude/shared-rules/global/tool-use.md`.
+
+**Fail-open:** both hooks exit 0 on any parse/internal error — never block on hook failure.
 
 ## Evidenz
 
@@ -36,10 +56,9 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Pending — needs evaluation after rollout:
-- Does the hook actually intercept attempts in live sessions?
-- Does it produce false positives on legitimate process management?
-- Which antipattern to add next (candidates: broad recursive `grep -rn` over large trees, `sleep` in non-timer positions)?
+Keep current two hooks (no change needed). Pending evaluation after rollout:
+- Do both hooks intercept violations in live sessions without false positives?
+- Next candidate: broad recursive `grep -rn` without `--include` scope (Rule 3, tool-use.md) — appeared 2× in the 2026-05-12 compliance report; needs regex that avoids false-positive on legitimate tree scans.
 
 ## Offene Fragen
 
