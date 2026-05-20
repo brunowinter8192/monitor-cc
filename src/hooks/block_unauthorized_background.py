@@ -25,7 +25,9 @@ def block_unauthorized_background_workflow() -> None:
     command, run_in_background = _parse_input()
     if not run_in_background:
         sys.exit(0)
-    if command is None or not _is_canonical(command):
+    if command is None:
+        sys.exit(0)
+    if not _is_canonical(command):
         print(_BLOCK_MESSAGE, file=sys.stderr, end="")
         sys.exit(2)
     sys.exit(0)
