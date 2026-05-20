@@ -340,6 +340,7 @@ def _rebuild_panel(app, sessions, bg_result=None) -> None:
     if not sorted_sessions:
         app._panel_sv.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
         return
+    main_slot = 0
     for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
         app._panel_sv.addView_inGravity_(_make_separator_view(project_name, pw), 1)
         for s in group_iter:
@@ -347,7 +348,9 @@ def _rebuild_panel(app, sessions, bg_result=None) -> None:
             badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
             name_col = s.name.ljust(name_width)
             if not s.is_worker:
-                line = f'● {name_col} {dot} {badge}'
+                main_slot += 1
+                prefix = f'[{main_slot}] ' if main_slot <= 9 else ''
+                line = f'{prefix}● {name_col} {dot} {badge}'
                 btn  = _make_row_button(line, pw, NSColor.systemOrangeColor())
                 tag  = next_tag[0]; next_tag[0] += 1
                 btn.setTag_(tag)
@@ -365,6 +368,7 @@ def _update_panel_inplace(app, sessions, bg_result) -> None:
     min_remaining = bg_result.min_remaining if bg_result else None
     name_width = max((len(s.name) for s in sessions), default=_NAME_WIDTH)
     session_map = {s.name: s for s in sessions}
+    main_slot = 0
     for name, btn in app._displayed_items.items():
         s = session_map.get(name)
         if s is None:
@@ -373,7 +377,9 @@ def _update_panel_inplace(app, sessions, bg_result) -> None:
         badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
         name_col = name.ljust(name_width)
         if not s.is_worker:
-            line, color = f'● {name_col} {dot} {badge}', NSColor.systemOrangeColor()
+            main_slot += 1
+            prefix = f'[{main_slot}] ' if main_slot <= 9 else ''
+            line, color = f'{prefix}● {name_col} {dot} {badge}', NSColor.systemOrangeColor()
         else:
             line, color = f'  {name_col} {dot} {badge}', None
         attrs = {NSFontAttributeName: _MENLO()}

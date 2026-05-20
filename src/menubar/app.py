@@ -17,8 +17,8 @@ from Foundation import NSObject, NSOperationQueue
 from .discover import list_alive_sessions
 # From bg_timer.py: Background sleep-timer scanning, aggregation, and abort
 from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers, _aggregate_bg
-# From hotkey.py: Carbon Cmd+L registration
-from .hotkey import register_cmd_l
+# From hotkey.py: Carbon Cmd+L and Cmd+1..9 registration
+from .hotkey import register_cmd_l, register_cmd_digits, unregister_hotkeys
 # From panel.py: NSPanel construction, render, positioning, UI constants
 from .panel import (ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET,
                     PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
@@ -50,6 +50,10 @@ class _PanelController(NSObject):
         if app._panel_open:
             app._panel.orderOut_(None)
             app._panel_open = False
+            if app._hotkey_digits_refs:
+                unregister_hotkeys(app._hotkey_digits_refs)
+                app._hotkey_digits_refs = []
+                app._hotkey_digits_cb   = None
         else:
             _reposition_panel(app._panel, app._nsapp.nsstatusitem)
             app._panel.orderFrontRegardless()
@@ -58,6 +62,7 @@ class _PanelController(NSObject):
             # _make_nspanel covers first show only; this covers every subsequent open).
             app._panel.enableCursorRects()
             app._panel_open = True
+            _reregister_digit_hotkeys(app)
 
     def focusSession_(self, sender):
         cwd = self._app._cwd_map.get(sender.tag())
@@ -111,6 +116,7 @@ class _PanelController(NSObject):
             cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
             bg_result = _aggregate_bg(_scan_bg_sleep_timers(cwd_to_project))
             _rebuild_panel(app, sessions, bg_result)
+            _reregister_digit_hotkeys(app)
 
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
@@ -136,6 +142,8 @@ class CCMenuBarApp(rumps.App):
                 pass
 
         self._hotkey_cb, self._hotkey_ref = register_cmd_l(_on_hotkey)
+        self._hotkey_digits_cb   = None   # GC anchor for Cmd+1..9 CFUNCTYPE
+        self._hotkey_digits_refs = []     # GC anchor for Cmd+1..9 hk_refs
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
@@ -187,6 +195,7 @@ class CCMenuBarApp(rumps.App):
                 reasons = '+'.join(r for r, v in [('abort-flap', abort_flap), ('session-set-change', set_change)] if v)
                 _tick_log(True, sessions, self._displayed_items, reasons)
                 _rebuild_panel(self, sessions, bg_result)
+                _reregister_digit_hotkeys(self)
             else:
                 _tick_log(True, sessions, self._displayed_items, 'no-change')
                 _update_panel_inplace(self, sessions, bg_result)
@@ -262,6 +271,18 @@ def _blink(app: 'CCMenuBarApp') -> None:
         NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _set_bar_icon(app, ICON_NORMAL))
     threading.Timer(BLINK_DURATION, _restore).start()
+
+# Register (or re-register) Cmd+1..9 hotkeys from current _cwd_map (slots 1..9); unregisters previous refs first
+def _reregister_digit_hotkeys(app: 'CCMenuBarApp') -> None:
+    if app._hotkey_digits_refs:
+        unregister_hotkeys(app._hotkey_digits_refs)
+        app._hotkey_digits_refs = []
+        app._hotkey_digits_cb   = None
+    slots = {slot: cwd for slot, cwd in app._cwd_map.items() if slot <= 9 and cwd}
+    if not slots:
+        return
+    cb_map = {slot: (lambda cwd=cwd: _focus_session(cwd)) for slot, cwd in slots.items()}
+    app._hotkey_digits_cb, app._hotkey_digits_refs = register_cmd_digits(cb_map)
 
 # Load settings; returns (auto_focus, panel_width, panel_min_height); falls back to module defaults on any error
 # panel_min_height: reads 'panel_min_height' first, falls back to legacy 'panel_max_height', then PANEL_HEIGHT
