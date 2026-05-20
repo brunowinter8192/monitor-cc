@@ -17,11 +17,12 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### panel.py (389 LOC)
+### panel.py (428 LOC)
 
-**Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and the two render functions (`_rebuild_panel`, `_update_panel_inplace`). Footer has two buttons: Kill (left) + Restart (right). Main session rows carry an inline `[N] ` prefix (slots 1..9) for Cmd+N hotkey reference; workers and slots >9 carry no prefix. Pure UI concern — no rumps, no ctypes, no subprocess.
-**Reads:** `app` instance attrs (`_panel_sv`, `_panel_width`, `_panel_min_height`, `_displayed_items`, `_cwd_map`, `_abort_btn`, `_toggle_btn`, `_panel_controller`, `_auto_focus`, `_panel`) via function parameters; session list from caller.
-**Writes:** `app._displayed_items`, `app._cwd_map` (= slot→cwd map for mains, sequential from 1), `app._abort_btn` (reset + populate on each rebuild); NSButton attributed titles with `[N] ` prefix on main rows (inplace update); NSPanel frame (via `_resize_panel`).
+**Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and the two render functions (`_rebuild_panel`, `_update_panel_inplace`). Footer has two buttons: Kill (left) + Restart (right). Main session rows carry an inline `[N] ` prefix (slots 1..9) for Cmd+N hotkey reference; workers and slots >9 carry no prefix. Per-project abort buttons (Option B) are embedded inline in the project separator rows — `_make_separator_view` returns `(NSView, Optional[NSButton])`. Pure UI concern — no rumps, no ctypes, no subprocess.
+**Reads:** `app` instance attrs (`_panel_sv`, `_panel_width`, `_panel_min_height`, `_displayed_items`, `_cwd_map`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_toggle_btn`, `_panel_controller`, `_auto_focus`, `_panel`) via function parameters; session list and `bg_by_project` dict from caller.
+**Writes:** `app._displayed_items`, `app._cwd_map` (= slot→cwd map for mains, sequential from 1), `app._abort_btns_by_project` (reset + populate on each rebuild), `app._abort_project_for_tag`; NSButton attributed titles on main rows + abort button countdowns (inplace update); NSPanel frame (via `_resize_panel`).
+**Key signatures:** `_rebuild_panel(app, sessions, bg_by_project=None)`, `_update_panel_inplace(app, sessions, bg_by_project)`, `_compute_required_height(sorted_sessions)` (no bg arg — Option B abort buttons are zero height cost).
 **Called by:** `app.py` (`CCMenuBarApp.__init__`, `_PanelController.togglePanel_`, `_PanelController.windowDidEndLiveResize_`, `CCMenuBarApp._tick`).
 **Calls out:** `AppKit`, `Foundation`, `itertools`.
 
@@ -37,9 +38,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (313 LOC)
+### app.py (318 LOC)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/kill/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check` (per-project 5s-debounce auto-abort of bg timers when all workers idle) + `_reregister_digit_hotkeys` helper (builds slot→focus callback map from `_cwd_map`, calls `register_cmd_digits`). Lifecycle hooks for Cmd+1..9: registered in `togglePanel_` open branch + after `_rebuild_panel` calls during open (in `_tick` open branch + `windowDidEndLiveResize_`); unregistered in `togglePanel_` close branch.
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/kill/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check` (per-project 5s-debounce auto-abort of bg timers when all workers idle) + `_reregister_digit_hotkeys` helper (builds slot→focus callback map from `_cwd_map`, calls `register_cmd_digits`). `abortBgTimer_` is per-project: uses `sender.tag()` → `_abort_project_for_tag` dict to identify which project's timer to kill. Lifecycle hooks for Cmd+1..9: registered in `togglePanel_` open branch + after `_rebuild_panel` calls during open (in `_tick` open branch + `windowDidEndLiveResize_`); unregistered in `togglePanel_` close branch.
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on launch; `app` instance state throughout (incl. `_cwd_map` for digit-hotkey callback build).
 **Writes:** bar icon via attributed NSStatusItem button; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on toggle/resize; `_hotkey_digits_cb` / `_hotkey_digits_refs` GC anchors (legacy — module-level handler now anchored in hotkey.py).
 **Called by:** `system.py:run()` (lazy import).
@@ -97,12 +98,12 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bg_timer.py (111 LOC)
+### bg_timer.py (122 LOC)
 
-**Purpose:** Background sleep-timer scanning, per-project attribution, aggregation, and abort. Detects Opus `sleep N && echo done` background timers via `ps`; attributes each to a project via `gppid → _cc_proc_cache → cwd → cwd_to_project` lookup. Returns `Dict[str, BgSleepInfo]` keyed by project_name ('unknown' bucket for unattributed timers). `_aggregate_bg()` collapses the dict to `Optional[BgSleepInfo]` for panel/abort callers. `_abort_bg_sleep_timers` kills PIDs via SIGTERM and writes `aborted\n` to in-progress task files.
-**Reads:** `ps -A -o pid=,ppid=,etime=,args=` (timer detection); `_cc_proc_cache` (gppid→cwd attribution); `_TASKS_BASE` task dirs (for abort file writes).
+**Purpose:** Background sleep-timer scanning, per-project attribution, and abort. Detects Opus `sleep N && echo done` background timers via `ps`; attributes each to a project via ancestry-chain walk → `_cc_proc_cache → cwd → cwd_to_project` lookup (walks up to 5 levels from the zsh parent to handle intermediate shell layers between CC and zsh). Returns `Dict[str, BgSleepInfo]` keyed by project_name ('unknown' bucket for unattributed timers). `_abort_bg_sleep_timers` kills PIDs via SIGTERM and writes `aborted\n` to in-progress task files.
+**Reads:** `ps -A -o pid=,ppid=,etime=,args=` (timer detection); `_cc_proc_cache` (ancestry→cwd attribution); `_TASKS_BASE` task dirs (for abort file writes).
 **Writes:** `signal.SIGTERM` to sleep PIDs; `'aborted\n'` to 0-byte `*.output` task files under `_TASKS_BASE`.
-**Called by:** `app.py:CCMenuBarApp._tick` (`_scan_bg_sleep_timers`, `_aggregate_bg`); `app.py:_PanelController.abortBgTimer_` (`_scan_bg_sleep_timers`, `_aggregate_bg`, `_abort_bg_sleep_timers`); `app.py:_PanelController.windowDidEndLiveResize_` (`_scan_bg_sleep_timers`, `_aggregate_bg`); `app.py:_auto_abort_check` (`_abort_bg_sleep_timers`).
+**Called by:** `app.py:CCMenuBarApp._tick` (`_scan_bg_sleep_timers`); `app.py:_PanelController.abortBgTimer_` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`); `app.py:_PanelController.windowDidEndLiveResize_` (`_scan_bg_sleep_timers`); `app.py:_auto_abort_check` (`_abort_bg_sleep_timers`).
 **Calls out:** `subprocess` (ps); `.proc_cache` (`_TASKS_BASE`, `_cc_proc_cache`).
 
 ---
@@ -183,7 +184,8 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp._initialized` | app.py | `bool` | app instance | Lazy-init sentinel: `setMenu_(None)` + button target/action wiring happens in first `_tick` after AppKit runloop starts. |
 | `CCMenuBarApp._displayed_items` | panel.py | `dict` | panel.py (`_rebuild_panel`) | `{name: NSButton}` populated by `_rebuild_panel`; used by `_update_panel_inplace` for O(1) button lookup. Reset on each rebuild. |
 | `CCMenuBarApp._cwd_map` | panel.py | `dict` | panel.py (`_rebuild_panel`) | `{tag: cwd}` for click-to-focus routing. NSButton carries integer tag; `focusSession_` reads `sender.tag()`. Reset on each rebuild. |
-| `CCMenuBarApp._abort_btn` | panel.py | `NSButton\|None` | panel.py (`_rebuild_panel`) | Abort-timer button reference. `None` when no CC sleep timers running. Checked by `_tick` to detect None↔Some transition. |
+| `CCMenuBarApp._abort_btns_by_project` | panel.py | `Dict[str, NSButton]` | panel.py (`_rebuild_panel`) | Per-project abort button references. `{}` when no CC sleep timers running. Checked by `_tick` to detect set-change (`new_abort_projs != set(_abort_btns_by_project)`). |
+| `CCMenuBarApp._abort_project_for_tag` | app.py | `Dict[int, str]` | panel.py (`_rebuild_panel`) | Maps NSButton integer tag → project_name for `abortBgTimer_` dispatch. Tags start at 1000 (above session row tags 1..N). |
 | `CCMenuBarApp._toggle_btn` | panel.py | `NSButton` | panel.py (`_make_nspanel`) | Auto-Jump toggle button in fixed top_bar. Created by `_make_nspanel()`; target/action wired in lazy-init tick; title updated by `_rebuild_panel` and `toggleAutoJump_`. |
 | `CCMenuBarApp._panel` | panel.py | `NSPanel` | panel.py (`_make_nspanel`) | The sticky dropdown panel. Created in `__init__`. Resized by `_resize_panel`. |
 | `CCMenuBarApp._panel_sv` | panel.py | `NSStackView` | panel.py (`_make_nspanel`) | Vertical NSStackView filling content area. Arranged subviews rebuilt on each `_rebuild_panel`. |
@@ -271,6 +273,9 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Badge column alignment**: `[*]`/`[ ]` fixed 3 chars; `_NO_BG` spacer 3 chars; `[B M:SS]` variable 3–9 chars but nothing follows it, so no misalignment.
 - **Settings backwards-compat** (`app.py:_load_settings`): reads `panel_min_height` first, falls back to legacy `panel_max_height`, then `PANEL_HEIGHT=460`. Old files migrate transparently.
 - **Auto-abort task-file write is global** (`bg_timer.py:_abort_bg_sleep_timers`): after killing sleep PIDs, writes `aborted\n` to ALL 0-byte `*.output` task files under `_TASKS_BASE`, not just those belonging to the aborted project. Pre-existing behavior shared with manual abort. If project B has live 0-byte task files when project A is auto-aborted, B's `[B]` badge may transiently disappear. In practice rare (requires simultaneous multi-project bg tasks).
+- **Per-project abort button (Option B):** abort button is embedded inline in the project's separator row via `_make_separator_view(project_name, pw, proj_min_remaining)`. Returns `(NSView, Optional[NSButton])`. Zero height cost — no extra `_ROW_H` row. Button styled in `systemRedColor` Menlo font `⊗ M:SS`. Target/action wired in `_rebuild_panel`; countdown updated every tick by `_update_panel_inplace`. Tag range: 1000+ (above session row tags starting at 1).
+- **Ancestry-chain walk** (`bg_timer.py:_scan_bg_sleep_timers`): attribution now walks up to 5 levels from the zsh's parent to find a CC process in `_cc_proc_cache`, instead of a single `gppid = parent[0]` lookup. Handles intermediate shell layers between CC and the zsh (e.g., `CC → sh → zsh → sleep`). Does NOT fix PID-recycling cross-project attribution (narrow timing window; deferred).
+- **`_aggregate_bg` removed from `app.py` import:** `_tick` now passes `bg_by_project` directly to panel functions. Session row badge countdown (`min_remaining`) is computed inside panel functions from `bg_by_project.values()`. Manual `abortBgTimer_` uses `_scan_bg_sleep_timers` directly scoped to the clicked project.
 - **Hook state as primary signal** (`proc_cache.py:_hook_state_cache`): `session_id` in hook payload == JSONL filename stem. Direct lookup, no encoding/decoding. Hook state stale guard uses `ALIVE_WINDOW_SECS=3600s`. Workers fire hooks too; their entries ARE consulted by the worker status branch (hook-only, no fallback).
 - **Proxy-log thinking signal** (`proc_cache.py:_proxy_log_newest_mtime`): override condition: `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → status `working`. The `proxy_mtime > jsonl_mtime` check: proxy writes at the START of the reasoning phase, staying ahead for the full thinking duration. After response completion the proxy latency entry lands ~0.1s BEFORE CC writes JSONL, so `proxy_mtime` drops just below `jsonl_mtime` — no false positive.
 - **_PROXY_LOG_DIR placement**: lives in `proc_cache.py` (not `discover.py`) to avoid an import cycle — `_proxy_log_newest_mtime` is its sole consumer and lives in proc_cache.py.
