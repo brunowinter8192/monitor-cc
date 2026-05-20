@@ -30,7 +30,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_chained_sleep.py (57 LOC)
+### block_chained_sleep.py (228 LOC)
 
 **Purpose:** PreToolUse hook — blocks any `sleep <N>` token in a Bash command that is NOT the exact canonical orchestration timer form `sleep N && echo done`. Chained forms (`cmd; sleep N && echo done`, `sleep N && other_cmd`, poll loops) are rejected because the menubar auto-abort sends SIGTERM to the sleep PID, which exits the entire chained shell with code 143 and destroys pre-sleep output. Exits 2 + stderr with the canonical form and reason. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -46,7 +46,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Allowed patterns:**
 - `sleep N && echo done` (optional leading/trailing whitespace, optional float N) — the one canonical timer form
 
-**No quote-stripping.** Unlike `block_dangerous_kill.py`, this hook does not strip quoted substrings before matching. The word-boundary regex (`\bsleep\s+\d+(?:\.\d+)?\b`) avoids false positives on substrings like `overslept`, but `echo "sleep 5 ..."` where the number appears inside a quoted argument would technically fire. No realistic CC workflow echoes a sleep command with a number inside a string argument, so this is an acceptable simplification.
+**Quote/heredoc stripping.** Before `_SLEEP_TOKEN` matching, `_strip_non_shell_active()` runs a single-pass character scanner that replaces heredoc bodies, single-quoted strings, double-quoted strings, and ANSI-C `$'...'` quotes with spaces. Command substitutions `$(...)` and backtick expressions are kept shell-active so `sleep` inside them still triggers a block. Fail-open: any parse error (unclosed quote, heredoc without terminator) returns the original string unmodified. Smoke: `dev/hook_smoke/test_block_chained_sleep.py` (13 cases).
 
 ---
 
@@ -151,6 +151,6 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - **Fail-open is mandatory.** All hooks exit 0 on any parse error or missing field — a hook must never block a legitimate tool call due to its own failure. A broken hook that blocks everything is a footgun.
 - **Global registration.** Bash hooks fire for every Bash call; Edit hooks for every Edit call; Read hooks for every Read call — across all CC sessions on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
 - **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths.
-- **`block_chained_sleep.py` has no quote-stripping.** The word-boundary regex avoids `overslept`-style substrings but does not strip quoted arguments before matching. `echo "sleep 5 ..."` (number inside a quoted arg) would fire. Acceptable — no realistic CC workflow hits this.
+- **`block_chained_sleep.py` strips non-shell-active regions before matching.** Heredoc bodies, single/double-quoted strings, and ANSI-C quotes are replaced with spaces before the `_SLEEP_TOKEN` regex runs. `$(...)` and backtick expressions are kept active. False-positive on `echo "sleep 5"` or heredoc-body sleeps no longer fires.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
