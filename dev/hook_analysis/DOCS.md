@@ -6,7 +6,7 @@ Offline analysis suite for CC hook-block events. Reads `~/.claude/projects/*/*.j
 
 ## Modules
 
-### analyze_blocks.py (182 LOC)
+### analyze_blocks.py (234 LOC)
 
 **Purpose:** Walk all CC session JSONL files, extract hook-block events in a date window, write a structured MD report (summary-by-hook, by-project×hook, timeline, raw events).
 **Reads:** `~/.claude/projects/*/*.jsonl` (CC session logs).
