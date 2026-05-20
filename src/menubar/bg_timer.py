@@ -32,7 +32,9 @@ def _parse_etime(etime: str) -> Optional[int]:
         pass
     return None
 
-# Scan for Opus 'sleep N && echo done' timers; attribute each to a project via gppid→cwd lookup.
+# Scan for Opus 'sleep N && echo done' timers; attribute each to a project via ancestry→cwd lookup.
+# Walks up to 5 levels of process ancestry to find the CC process in _cc_proc_cache (handles
+# intermediate shell layers between CC and the zsh that runs the sleep command).
 # cwd_to_project: {session_cwd: project_name} built from list_alive_sessions() mains in caller.
 # Returns {project_name: BgSleepInfo}; 'unknown' key for timers whose CC process is unresolvable.
 def _scan_bg_sleep_timers(cwd_to_project: Dict[str, str]) -> Dict[str, BgSleepInfo]:
@@ -61,8 +63,17 @@ def _scan_bg_sleep_timers(cwd_to_project: Dict[str, str]) -> Dict[str, BgSleepIn
         if elapsed is None:
             continue
         remaining = max(0, int(float(tokens[1])) - elapsed)
-        gppid = parent[0]   # ppid of the zsh parent = CC process pid
-        cc_entry = _cc_proc_cache.get(gppid)
+        # Walk ancestry chain upward from zsh's parent — handles depth > 2 (intermediate
+        # shell layers between CC and zsh). Stops when a CC process is found in the cache.
+        ancestor_pid = parent[0]
+        for _ in range(5):
+            if ancestor_pid in _cc_proc_cache:
+                break
+            ancestor_info = pid_info.get(ancestor_pid)
+            if ancestor_info is None:
+                break
+            ancestor_pid = ancestor_info[0]
+        cc_entry = _cc_proc_cache.get(ancestor_pid)
         cwd = cc_entry[1] if cc_entry else ''
         project_name = cwd_to_project.get(cwd, 'unknown')
         buckets.setdefault(project_name, []).append((remaining, int(pid)))
