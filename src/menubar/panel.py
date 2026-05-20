@@ -1,9 +1,13 @@
 # INFRASTRUCTURE
+import objc
 from itertools import groupby
 
 from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSCursor, NSFont,
                     NSFontAttributeName, NSForegroundColorAttributeName,
                     NSLayoutAttributeLeading, NSPanel, NSStackView, NSTextField,
+                    NSTrackingActiveAlways, NSTrackingArea, NSTrackingCursorUpdate,
+                    NSTrackingInVisibleRect, NSTrackingMouseEnteredAndExited,
+                    NSTrackingMouseMoved,
                     NSView, NSStatusWindowLevel,
                     NSUserInterfaceLayoutOrientationVertical,
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
@@ -31,24 +35,98 @@ _FOOTER_H        = 30    # pts — fixed footer height for Restart button
 _TOP_BAR_H       = 21    # pts — fixed top-bar height for Auto-Jump button (analog to footer, at top edge)
 _ROW_H           = 21    # pts — session NSButton row (20) + 1pt NSStackView spacing
 _LABEL_H         = 19    # pts — header/separator NSTextField (18) + 1pt NSStackView spacing
+EDGE             = 8     # pts — cursor-zone width at L/R/bottom edges
+_TA_TRACKING_OPTS = (NSTrackingCursorUpdate | NSTrackingMouseMoved |
+                     NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways |
+                     NSTrackingInVisibleRect)
 
 # FUNCTIONS
 
-# NSView subclass as panel contentView — defines cursor rects for resize edges via resetCursorRects
-# Canonical macOS cursor-zone API: AppKit calls resetCursorRects on window activation and after resize,
-# merges all views' rects in z-order. Child views (NSTextField, NSButton) install their own rects in
-# their resetCursorRects and win over NSCursor.set() calls in mouseMoved_ — that is why the
-# mouseMoved_/NSTrackingArea approach failed (I-Beam from NSTextField labels always overrode our set()).
-# resetCursorRects on the contentView installs rects at the correct z-order level.
+# NSView contentView — NSTrackingArea + cursorUpdate pattern (Iteration 8)
+# Uses NSTrackingCursorUpdate + NSTrackingActiveAlways so cursorUpdate_ fires on mouse
+# movement regardless of key-window status (NonactivatingPanel never becomes key).
+# hitTest_ claims L/R/bottom edge zones so child NSButton/NSTextField don't intercept
+# events there. NSCursor.push()/pop() maintains cursor against child views that call
+# super.cursorUpdate_ and would reset it. enableCursorRects() (called in _make_nspanel
+# and after every orderFrontRegardless in togglePanel_) is still required — verified by
+# probe --tracking --no-resizable: cursorUpdate_ does not fire without it.
 class _PanelContentView(NSView):
-    def resetCursorRects(self):
-        w    = self.bounds().size.width
-        h    = self.bounds().size.height
-        EDGE = 8
-        self.addCursorRect_cursor_(NSMakeRect(0,        0,    w,            EDGE),      NSCursor.resizeUpDownCursor())
-        self.addCursorRect_cursor_(NSMakeRect(0,        0,    EDGE,         h),         NSCursor.resizeLeftRightCursor())
-        self.addCursorRect_cursor_(NSMakeRect(w - EDGE, 0,    EDGE,         h),         NSCursor.resizeLeftRightCursor())
-        self.addCursorRect_cursor_(NSMakeRect(EDGE,     EDGE, w - 2 * EDGE, h - EDGE),  NSCursor.arrowCursor())
+
+    def initWithFrame_(self, frame):
+        self = objc.super(_PanelContentView, self).initWithFrame_(frame)
+        if self is None:
+            return None
+        self._hovered_edge  = None
+        self._tracking_area = None
+        return self
+
+    def updateTrackingAreas(self):
+        objc.super(_PanelContentView, self).updateTrackingAreas()
+        if self._tracking_area is not None:
+            self.removeTrackingArea_(self._tracking_area)
+        ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
+            self.bounds(), _TA_TRACKING_OPTS, self, None)
+        self.addTrackingArea_(ta)
+        self._tracking_area = ta
+
+    @objc.python_method
+    def _cursor_for_edge(self, edge):
+        if edge == 'bottom':
+            return NSCursor.resizeUpDownCursor()
+        return NSCursor.resizeLeftRightCursor()
+
+    @objc.python_method
+    def _set_hovered_edge(self, edge):
+        old = self._hovered_edge
+        if edge == old:
+            return
+        if edge is not None and old is None:
+            self._cursor_for_edge(edge).push()
+        elif edge is None and old is not None:
+            NSCursor.pop()
+        else:
+            NSCursor.pop()
+            self._cursor_for_edge(edge).push()
+        self._hovered_edge = edge
+        if edge is not None:
+            self._cursor_for_edge(edge).set()
+        else:
+            NSCursor.arrowCursor().set()
+
+    @objc.python_method
+    def _edge_for_point(self, local):
+        w = self.bounds().size.width
+        if local.x < EDGE:
+            return 'left'
+        if local.x > w - EDGE:
+            return 'right'
+        if local.y < EDGE:
+            return 'bottom'
+        return None
+
+    def cursorUpdate_(self, event):
+        if self._hovered_edge is not None:
+            self._cursor_for_edge(self._hovered_edge).set()
+        else:
+            objc.super(_PanelContentView, self).cursorUpdate_(event)
+
+    def mouseMoved_(self, event):
+        local = self.convertPoint_fromView_(event.locationInWindow(), None)
+        self._set_hovered_edge(self._edge_for_point(local))
+
+    def mouseExited_(self, event):
+        self._set_hovered_edge(None)
+
+    # Claim L/R/bottom edge zones for self; interior falls through to child views
+    def hitTest_(self, point):
+        local = self.convertPoint_fromView_(point, self.superview())
+        w = self.bounds().size.width
+        h = self.bounds().size.height
+        if local.x < 0 or local.y < 0 or local.x > w or local.y > h:
+            return objc.super(_PanelContentView, self).hitTest_(point)
+        if local.x < EDGE or local.x > w - EDGE or local.y < EDGE:
+            return self
+        return objc.super(_PanelContentView, self).hitTest_(point)
 
 # NSTextField subclass that suppresses the default I-Beam cursor rect installation
 # NSTextField.resetCursorRects installs I-Beam over its full frame; no-op override prevents
