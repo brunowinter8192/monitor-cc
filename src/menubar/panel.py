@@ -46,19 +46,15 @@ _TA_CURSOR_OPTS   = NSTrackingCursorUpdate | NSTrackingActiveAlways | NSTracking
 # FUNCTIONS
 
 def _cursor_log(msg: str) -> None:
-    if not os.environ.get('MENUBAR_DIAGNOSTICS'):
-        return
     with open('/tmp/menubar-cursor.log', 'a') as f:
         f.write(f'{datetime.now().strftime("%H:%M:%S.%f")[:-3]} {msg}\n')
 
-# NSView contentView — NSTrackingArea + cursorUpdate pattern (Iteration 8)
-# Uses NSTrackingCursorUpdate + NSTrackingActiveAlways so cursorUpdate_ fires on mouse
-# movement regardless of key-window status (NonactivatingPanel never becomes key).
-# hitTest_ claims L/R/bottom edge zones so child NSButton/NSTextField don't intercept
-# events there. NSCursor.push()/pop() maintains cursor against child views that call
-# super.cursorUpdate_ and would reset it. enableCursorRects() (called in _make_nspanel
-# and after every orderFrontRegardless in togglePanel_) is still required — verified by
-# probe --tracking --no-resizable: cursorUpdate_ does not fire without it.
+# NSView contentView — tracking-area event detection + state-driven cursor rects (winit pattern)
+# mouseMoved_ (via NSTrackingArea) detects edge and calls _set_hovered_edge, which calls
+# invalidateCursorRectsForView_ on the window. AppKit then calls resetCursorRects which
+# installs a single full-bounds rect with the cursor for the current edge state.
+# _CursorlessButton/Label suppress child-view resetCursorRects so they cannot override ours.
+# areCursorRectsEnabled override keeps cursor-rect dispatch active for non-key windows.
 class _PanelContentView(NSView):
 
     def initWithFrame_(self, frame):
@@ -81,6 +77,14 @@ class _PanelContentView(NSView):
         self._tracking_area = ta
         _cursor_log(f'updateTrackingAreas  bounds={self.bounds().size.width:.0f}x{self.bounds().size.height:.0f}  had_area={had_area}')
 
+    def areCursorRectsEnabled(self):
+        return True
+
+    def resetCursorRects(self):
+        cursor = self._cursor_for_edge(self._hovered_edge) if self._hovered_edge else NSCursor.arrowCursor()
+        self.addCursorRect_cursor_(self.bounds(), cursor)
+        _cursor_log(f'resetCursorRects  edge={self._hovered_edge}  → installed {cursor}')
+
     @objc.python_method
     def _cursor_for_edge(self, edge):
         if edge == 'bottom':
@@ -89,24 +93,13 @@ class _PanelContentView(NSView):
 
     @objc.python_method
     def _set_hovered_edge(self, edge):
-        old = self._hovered_edge
-        if edge == old:
+        if edge == self._hovered_edge:
             return
-        if edge is not None and old is None:
-            _cursor_log(f'_set_hovered_edge  {old}→{edge}  PUSH')
-            self._cursor_for_edge(edge).push()
-        elif edge is None and old is not None:
-            _cursor_log(f'_set_hovered_edge  {old}→{edge}  POP')
-            NSCursor.pop()
-        else:
-            _cursor_log(f'_set_hovered_edge  {old}→{edge}  POP+PUSH')
-            NSCursor.pop()
-            self._cursor_for_edge(edge).push()
+        _cursor_log(f'_set_hovered_edge  {self._hovered_edge}→{edge}  invalidate')
         self._hovered_edge = edge
-        if edge is not None:
-            self._cursor_for_edge(edge).set()
-        else:
-            NSCursor.arrowCursor().set()
+        win = self.window()
+        if win is not None:
+            win.invalidateCursorRectsForView_(self)
 
     @objc.python_method
     def _edge_for_point(self, local):
@@ -160,6 +153,11 @@ class _PanelContentView(NSView):
 class _CursorlessLabel(NSTextField):
     def resetCursorRects(self): pass
 
+# NSButton subclass that suppresses default cursor rect installation
+# NSButton.resetCursorRects would install rects that override ContentView edge cursors at edges
+class _CursorlessButton(NSButton):
+    def resetCursorRects(self): pass
+
 # Badge for sessions with active background tasks: [B M:SS] if timer running, [B] otherwise
 def _format_bg_badge(remaining) -> str:
     if remaining is None:
@@ -193,12 +191,12 @@ def _make_nspanel():
     panel.enableCursorRects()
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
     footer.setAutoresizingMask_(2)   # NSViewWidthSizable
-    quit_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86, 4, 78, 22))
+    quit_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86, 4, 78, 22))
     quit_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored
     quit_btn.setTitle_('Restart')
     quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
     footer.addSubview_(quit_btn)
-    kill_btn = NSButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86 - 78 - 8, 4, 78, 22))
+    kill_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86 - 78 - 8, 4, 78, 22))
     kill_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored, 8pt gap left of Restart
     kill_btn.setTitle_('Kill')
     kill_btn.setBezelStyle_(1)   # NSBezelStyleRounded
@@ -206,7 +204,7 @@ def _make_nspanel():
     cv.addSubview_(footer)
     top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
     top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable(2) | NSViewMinYMargin(8) — bottom margin flexible → stays at top edge on resize
-    toggle_btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
+    toggle_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
     toggle_btn.setBordered_(False)
     toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
     toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with top_bar
@@ -245,7 +243,7 @@ def _make_row_button(text: str, panel_width: int, color=None) -> NSButton:
     attrs = {NSFontAttributeName: _MENLO()}
     if color is not None:
         attrs[NSForegroundColorAttributeName] = color
-    btn = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, panel_width - 22, 20))
+    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, panel_width - 22, 20))
     btn.setBordered_(False)
     btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
     btn.setAttributedTitle_(
