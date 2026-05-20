@@ -274,13 +274,30 @@ def _make_line_separator(panel_width: int) -> NSView:
 
 # NSBox (1pt horizontal rule) with NSTextField label overlay — project name masks the line behind it
 # label background = NSColor.windowBackgroundColor() to opaquely cover the NSBox behind the text
-def _make_separator_view(project_name: str, panel_width: int) -> NSView:
+# If proj_min_remaining is not None, adds an inline abort button at the right end (Option B).
+# Returns (container_view, abort_NSButton_or_None); caller sets target/action on the button.
+def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining=None):
     w = panel_width - 22
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, 18))
     container.heightAnchor().constraintEqualToConstant_(18.0).setActive_(True)   # explicit height — same reason as _make_line_separator
     line = NSBox.alloc().initWithFrame_(NSMakeRect(0, 9, w, 1))
     line.setBoxType_(2)   # NSBoxSeparator
     container.addSubview_(line)
+    abort_btn = None
+    if proj_min_remaining is not None:
+        mins, secs = divmod(proj_min_remaining, 60)
+        btn_text = f'⊗ {mins}:{secs:02d}'
+        btn_w = len(btn_text) * 8 + 8   # approx Menlo char width; right-anchored
+        abort_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(w - btn_w, 0, btn_w, 18))
+        abort_btn.setBordered_(False)
+        abort_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+        abort_btn.setDrawsBackground_(True)
+        abort_btn.setBackgroundColor_(NSColor.windowBackgroundColor())
+        abort_btn.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                btn_text, {NSFontAttributeName: _MENLO(),
+                           NSForegroundColorAttributeName: NSColor.systemRedColor()}))
+        container.addSubview_(abort_btn)
     label_w = min(len(project_name) * 8 + 6, w - 12)
     tf = _CursorlessLabel.labelWithString_(project_name)
     tf.setFrame_(NSMakeRect(12, 0, label_w, 18))
@@ -288,13 +305,12 @@ def _make_separator_view(project_name: str, panel_width: int) -> NSView:
     tf.setDrawsBackground_(True)
     tf.setBackgroundColor_(NSColor.windowBackgroundColor())
     container.addSubview_(tf)
-    return container
+    return container, abort_btn
 
-# Compute exact panel height needed to display all sessions; no truncation
-def _compute_required_height(sorted_sessions, bg_result) -> int:
+# Compute exact panel height needed to display all sessions; no truncation.
+# Abort buttons (Option B) are embedded in separator views — zero height cost.
+def _compute_required_height(sorted_sessions) -> int:
     h = _FOOTER_H + _TOP_BAR_H + _LABEL_H   # footer + top-bar (Auto-Jump) + separator-in-stack
-    if bg_result is not None:
-        h += _ROW_H                           # abort timer button
     if not sorted_sessions:
         return h + _LABEL_H                   # "No active sessions" label
     for _, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
@@ -311,38 +327,47 @@ def _resize_panel(app, new_h: float) -> None:
     app._panel.setFrame_display_(
         NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)
 
-# Full panel rebuild; populates _displayed_items + _cwd_map + _abort_btn
-# bg_result: BgSleepInfo from _scan_bg_sleep_timers(), or None — callers always provide explicitly
-def _rebuild_panel(app, sessions, bg_result=None) -> None:
+# Full panel rebuild; populates _displayed_items + _cwd_map + _abort_btns_by_project + _abort_project_for_tag
+# bg_by_project: Dict[project_name, BgSleepInfo] from _scan_bg_sleep_timers(); None = no timers.
+# Abort buttons (Option B) are embedded inline in per-project separator rows — zero height delta.
+def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
     for sv in list(app._panel_sv.arrangedSubviews()):
         app._panel_sv.removeView_(sv)
     app._displayed_items = {}
     app._cwd_map = {}
-    app._abort_btn = None
+    app._abort_btns_by_project = {}
+    app._abort_project_for_tag = {}
     next_tag = [1]
+    abort_tag = 1000   # abort button tags start above session row tags (1..N)
     pw = app._panel_width
     sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
-    min_remaining = bg_result.min_remaining if bg_result else None
+    min_remaining = (min(info.min_remaining for info in bg_by_project.values())
+                     if bg_by_project else None)
     name_width = max((len(s.name) for s in sorted_sessions), default=_NAME_WIDTH)
-    required_h = _compute_required_height(sorted_sessions, bg_result)
+    required_h = _compute_required_height(sorted_sessions)
     _resize_panel(app, max(app._panel_min_height, required_h))
     state = 'ON' if app._auto_focus else 'OFF'
     app._toggle_btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(
             f'Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
     app._panel_sv.addView_inGravity_(_make_line_separator(pw), 1)
-    if bg_result is not None:
-        abort_btn = _make_row_button('  ⊗ abort timer', pw)
-        abort_btn.setTarget_(app._panel_controller)
-        abort_btn.setAction_(b'abortBgTimer:')
-        app._panel_sv.addView_inGravity_(abort_btn, 1)
-        app._abort_btn = abort_btn
     if not sorted_sessions:
         app._panel_sv.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
         return
     main_slot = 0
     for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
-        app._panel_sv.addView_inGravity_(_make_separator_view(project_name, pw), 1)
+        proj_bg = (bg_by_project or {}).get(project_name)
+        sep_view, abort_btn = _make_separator_view(
+            project_name, pw,
+            proj_bg.min_remaining if proj_bg else None)
+        app._panel_sv.addView_inGravity_(sep_view, 1)
+        if abort_btn is not None:
+            abort_btn.setTag_(abort_tag)
+            abort_btn.setTarget_(app._panel_controller)
+            abort_btn.setAction_(b'abortBgTimer:')
+            app._abort_btns_by_project[project_name] = abort_btn
+            app._abort_project_for_tag[abort_tag] = project_name
+            abort_tag += 1
         for s in group_iter:
             dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
             badge    = _format_bg_badge(min_remaining) if s.has_bg else _NO_BG
@@ -363,9 +388,11 @@ def _rebuild_panel(app, sessions, bg_result=None) -> None:
             app._panel_sv.addView_inGravity_(btn, 1)
             app._displayed_items[s.name] = btn
 
-# In-place title update while NSPanel is open; preserves widget positions
-def _update_panel_inplace(app, sessions, bg_result) -> None:
-    min_remaining = bg_result.min_remaining if bg_result else None
+# In-place title update while NSPanel is open; preserves widget positions.
+# Updates session row titles AND per-project abort button countdowns.
+def _update_panel_inplace(app, sessions, bg_by_project) -> None:
+    min_remaining = (min(info.min_remaining for info in bg_by_project.values())
+                     if bg_by_project else None)
     name_width = max((len(s.name) for s in sessions), default=_NAME_WIDTH)
     session_map = {s.name: s for s in sessions}
     main_slot = 0
@@ -387,3 +414,15 @@ def _update_panel_inplace(app, sessions, bg_result) -> None:
             attrs[NSForegroundColorAttributeName] = color
         btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(line, attrs))
+    # Update per-project abort button countdowns inline (no layout change needed)
+    if bg_by_project:
+        for proj_name, abort_btn in app._abort_btns_by_project.items():
+            proj_bg = bg_by_project.get(proj_name)
+            if proj_bg is None:
+                continue
+            mins, secs = divmod(proj_bg.min_remaining, 60)
+            abort_btn.setAttributedTitle_(
+                NSAttributedString.alloc().initWithString_attributes_(
+                    f'⊗ {mins}:{secs:02d}',
+                    {NSFontAttributeName: _MENLO(),
+                     NSForegroundColorAttributeName: NSColor.systemRedColor()}))

@@ -15,8 +15,8 @@ from Foundation import NSObject, NSOperationQueue
 
 # From discover.py: Live session discovery
 from .discover import list_alive_sessions
-# From bg_timer.py: Background sleep-timer scanning, aggregation, and abort
-from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers, _aggregate_bg
+# From bg_timer.py: Background sleep-timer scanning and abort
+from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
 # From hotkey.py: Carbon Cmd+L and Cmd+1..9 registration
 from .hotkey import register_cmd_l, register_cmd_digits, unregister_hotkeys
 # From panel.py: NSPanel construction, render, positioning, UI constants
@@ -96,11 +96,15 @@ class _PanelController(NSObject):
         rumps.quit_application()   # clean status-bar teardown; launchd respawns from fresh plist
 
     def abortBgTimer_(self, sender):
+        # Per-project abort: only kill timers for the project whose button was clicked
+        project_name = self._app._abort_project_for_tag.get(sender.tag())
+        if project_name is None:
+            return
         sessions = list_alive_sessions()
         cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
-        agg = _aggregate_bg(_scan_bg_sleep_timers(cwd_to_project))
-        if agg:
-            _abort_bg_sleep_timers(agg.sleep_pids)
+        proj_bg = _scan_bg_sleep_timers(cwd_to_project).get(project_name)
+        if proj_bg:
+            _abort_bg_sleep_timers(proj_bg.sleep_pids)
 
     def windowDidResize_(self, notification):
         frame = notification.object().frame()
@@ -114,8 +118,8 @@ class _PanelController(NSObject):
         if app._panel_open:
             sessions = list_alive_sessions()
             cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
-            bg_result = _aggregate_bg(_scan_bg_sleep_timers(cwd_to_project))
-            _rebuild_panel(app, sessions, bg_result)
+            bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
+            _rebuild_panel(app, sessions, bg_by_project)
             _reregister_digit_hotkeys(app)
 
 
@@ -130,7 +134,8 @@ class CCMenuBarApp(rumps.App):
         self._initialized: bool = False
         self._displayed_items: dict = {}
         self._cwd_map: dict = {}
-        self._abort_btn = None   # NSButton ref; set by _rebuild_panel when timer running
+        self._abort_btns_by_project: dict = {}   # {project_name: NSButton}; per-project abort buttons
+        self._abort_project_for_tag: dict = {}   # {tag_int: project_name}; for abortBgTimer_ dispatch
         self._auto_focus, self._panel_width, self._panel_min_height = _load_settings()
         self._panel, self._panel_sv, self._panel_quit_btn, self._toggle_btn, self._panel_kill_btn = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
@@ -186,19 +191,19 @@ class CCMenuBarApp(rumps.App):
         cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
         bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
         _auto_abort_check(self, sessions, bg_by_project, now)
-        bg_result = _aggregate_bg(bg_by_project)
         if self._panel_open:
             session_names = {s.name for s in sessions}
-            abort_flap = (bg_result is not None) != (self._abort_btn is not None)
+            new_abort_projs = {p for p in bg_by_project if p != 'unknown'}
+            abort_flap = new_abort_projs != set(self._abort_btns_by_project)
             set_change = session_names != set(self._displayed_items)
             if abort_flap or set_change:
                 reasons = '+'.join(r for r, v in [('abort-flap', abort_flap), ('session-set-change', set_change)] if v)
                 _tick_log(True, sessions, self._displayed_items, reasons)
-                _rebuild_panel(self, sessions, bg_result)
+                _rebuild_panel(self, sessions, bg_by_project)
                 _reregister_digit_hotkeys(self)
             else:
                 _tick_log(True, sessions, self._displayed_items, 'no-change')
-                _update_panel_inplace(self, sessions, bg_result)
+                _update_panel_inplace(self, sessions, bg_by_project)
             self._last_statuses = {s.name: s.status for s in sessions}
         else:
             session_names = {s.name for s in sessions}
@@ -208,7 +213,7 @@ class CCMenuBarApp(rumps.App):
                 _blink(self)
             if session_names != set(self._displayed_items):
                 _tick_log(False, sessions, self._displayed_items, 'session-set-change')
-                _rebuild_panel(self, sessions, bg_result)
+                _rebuild_panel(self, sessions, bg_by_project)
             else:
                 _tick_log(False, sessions, self._displayed_items, 'no-change')
 
