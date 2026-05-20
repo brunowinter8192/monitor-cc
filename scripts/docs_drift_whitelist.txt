@@ -55,6 +55,7 @@ TTY
 PID
 PNG
 MITM
+APFS
 
 # --- Doc status / section markers ---
 DEPRECATED
@@ -69,6 +70,8 @@ SKIPPED
 VERIFIED
 SOURCE
 STATUS
+REFUTED
+PARTIALLY
 
 # --- Common English ALL_CAPS prose words used as emphasis ---
 MUST
@@ -82,6 +85,7 @@ LABEL
 PATH
 SKILL
 STARTED
+START
 README
 NULL
 DEAD
