@@ -44,6 +44,7 @@ _EventHandlerProcPtr = ctypes.CFUNCTYPE(
 
 _MBAR_SIG            = 0x4D424152   # OSType 'MBAR'
 _CMD_L_ID            = 1            # EventHotKeyID.id for Cmd+L
+_CMD_K_ID            = 2            # EventHotKeyID.id for Cmd+K
 _CMD_RIGHT_ID        = 20           # EventHotKeyID.id for Cmd+→ (kVK_RightArrow = 0x7C)
 _CMD_LEFT_ID         = 21           # EventHotKeyID.id for Cmd+← (kVK_LeftArrow = 0x7B)
 _HOTKEY_EVENT_SPEC   = _EventTypeSpec(0x6B657962, 6)   # kEventClassKeyboard, kEventHotKeyPressed
@@ -228,3 +229,31 @@ def unregister_cmd_arrow_left(hk_ref) -> None:
     _ARROW_CALLBACKS.pop(_CMD_LEFT_ID, None)
     if hk_ref is not None:
         _load_carbon().UnregisterEventHotKey(hk_ref)
+
+# Register Cmd+K (kVK_ANSI_K = 0x28) as global hotkey via Carbon.
+# Always-active (same lifetime as Cmd+L): registered once, never unregistered.
+# Returns (cb_handle, hk_handle) — caller MUST keep both alive to prevent GC of C callback.
+def register_cmd_k(callback) -> tuple:
+    carbon = _load_carbon()
+    target = carbon.GetApplicationEventTarget()
+
+    def _handler(handler_ref, event, user_data):
+        try:
+            hkid = _get_hkid(carbon, event)
+            if hkid.id != _CMD_K_ID:
+                return _eventNotHandledErr
+            callback()
+        except Exception:
+            pass
+        return 0
+
+    cb = _EventHandlerProcPtr(_handler)
+    handler_ref = ctypes.c_void_p()
+    carbon.InstallEventHandler(
+        target, cb, 1, ctypes.byref(_HOTKEY_EVENT_SPEC), None, ctypes.byref(handler_ref))
+    hk_ref = ctypes.c_void_p()
+    carbon.RegisterEventHotKey(
+        0x28, 0x0100,                              # kVK_ANSI_K, cmdKey
+        _EventHotKeyID(_MBAR_SIG, _CMD_K_ID),
+        target, 0, ctypes.byref(hk_ref))
+    return cb, hk_ref

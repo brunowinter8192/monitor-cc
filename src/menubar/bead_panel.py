@@ -66,30 +66,46 @@ def _reposition_bead_panel(panel, nsstatusitem) -> None:
     py = sr.origin.y - h - PANEL_GAP
     panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
 
-# NSView row container: expand button (most width) + × untrack button (right edge)
+# Compute wrapped pixel height for a bead row expand button in Menlo 13pt at btn_w pixels wide.
+# Uses NSAttributedString.boundingRectWithSize_options_context_ (option 1 =
+# NSStringDrawingUsesLineFragmentOrigin) for accurate multi-line measurement.
+def _bead_row_height(row_text: str, btn_w: int) -> int:
+    astr = NSAttributedString.alloc().initWithString_attributes_(
+        row_text, {NSFontAttributeName: _MENLO()})
+    bounds = astr.boundingRectWithSize_options_context_(
+        NSMakeSize(float(btn_w), 10000.0), 1, None)
+    return max(_ROW_H - 1, int(bounds.size.height) + 4)
+
+# NSView row container: expand button (most width, wrapping) + × untrack button (right edge, top-aligned)
 # Returns (container, expand_btn, x_btn) — caller sets tag + wires target/action
+# Alignment: widthAnchor + heightAnchor constraints ensure consistent x-offset in NSStackView.
+# expand_btn indented 16pt from container left (signals "child of project header").
+# x_btn top-aligned so it stays level with the bead ID line when title wraps to multiple lines.
 def _make_bead_row(bead: dict, panel_width: int, is_expanded: bool):
     pw        = panel_width - 22
-    container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw, _ROW_H - 1))
-    container.heightAnchor().constraintEqualToConstant_(float(_ROW_H - 1)).setActive_(True)
-    bead_id = bead.get('id', '')
-    title   = bead.get('title', '')
-    btn_w   = pw - _UNTRACK_W - 4
-    # Approximate title chars that fit; Menlo ~7px/char
-    max_ch      = max(0, (btn_w - len(bead_id) * 7 - 24) // 7)
-    short_title = title if len(title) <= max_ch else title[:max_ch - 1] + '…'
-    indicator   = '▾' if is_expanded else '▸'
-    row_text    = f'{indicator} {bead_id}  {short_title}'
-    expand_btn  = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, btn_w, _ROW_H - 1))
+    bead_id   = bead.get('id', '')
+    title     = bead.get('title', '')
+    indicator = '▾' if is_expanded else '▸'
+    row_text  = f'{indicator} {bead_id}  {title}'
+    indent    = 16   # pts — visual indent under project header
+    btn_w     = pw - _UNTRACK_W - 4 - indent
+    row_h     = _bead_row_height(row_text, btn_w)
+    container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw, row_h))
+    container.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
+    container.heightAnchor().constraintEqualToConstant_(float(row_h)).setActive_(True)
+    expand_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(indent, 0, btn_w, row_h))
     expand_btn.setBordered_(False)
     expand_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+    expand_btn.cell().setWraps_(True)
+    expand_btn.cell().setLineBreakMode_(0)   # NSLineBreakByWordWrapping
     expand_btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(
             row_text, {NSFontAttributeName: _MENLO(),
                        NSForegroundColorAttributeName: NSColor.systemBlueColor()}))
     container.addSubview_(expand_btn)
+    x_btn_y = row_h - (_ROW_H - 1)   # top-aligned — level with bead ID on first line
     x_btn = _CursorlessButton.alloc().initWithFrame_(
-        NSMakeRect(pw - _UNTRACK_W, 0, _UNTRACK_W, _ROW_H - 1))
+        NSMakeRect(pw - _UNTRACK_W, x_btn_y, _UNTRACK_W, _ROW_H - 1))
     x_btn.setBordered_(False)
     x_btn.setButtonType_(7)
     x_btn.setAttributedTitle_(
@@ -108,6 +124,7 @@ def _make_expand_view(text: str, panel_width: int) -> NSView:
     row_h   = _ROW_H - 1
     total   = len(lines) * row_h
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, total))
+    container.widthAnchor().constraintEqualToConstant_(float(w)).setActive_(True)
     container.heightAnchor().constraintEqualToConstant_(float(total)).setActive_(True)
     y = total - row_h   # first line at top (NSView y=0 is bottom)
     for line in lines:
@@ -122,17 +139,25 @@ def _make_expand_view(text: str, panel_width: int) -> NSView:
     return container
 
 # Compute required height for the bead tracker panel
+# Bead row heights are variable (title wraps) — mirrors _make_bead_row height logic via _bead_row_height.
 def _compute_bead_height(app) -> int:
     h = _TOP_BAR_H + _LABEL_H   # top-bar + line separator
     if not any(app._bead_data.values()):
         return h + _LABEL_H      # "No tracked beads" label
+    pw     = app._panel_width - 22
+    indent = 16
+    btn_w  = pw - _UNTRACK_W - 4 - indent
     for project_name, beads in app._bead_data.items():
         if not beads:
             continue
         h += _LABEL_H            # project header label
         for bead in beads:
-            h += _ROW_H          # bead row
-            bead_id = bead.get('id', '')
+            bead_id    = bead.get('id', '')
+            title      = bead.get('title', '')
+            is_expanded = bead_id in app._bead_expanded
+            indicator  = '▾' if is_expanded else '▸'
+            row_text   = f'{indicator} {bead_id}  {title}'
+            h += _bead_row_height(row_text, btn_w)
             if bead_id in app._bead_expanded:
                 h += len(app._bead_expanded[bead_id].split('\n')) * (_ROW_H - 1)
     return h
