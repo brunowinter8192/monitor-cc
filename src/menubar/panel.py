@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import objc
+from datetime import datetime
 from itertools import groupby
 
 from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSCursor, NSFont,
@@ -42,6 +43,10 @@ _TA_TRACKING_OPTS = (NSTrackingCursorUpdate | NSTrackingMouseMoved |
 
 # FUNCTIONS
 
+def _cursor_log(msg: str) -> None:
+    with open('/tmp/menubar-cursor.log', 'a') as f:
+        f.write(f'{datetime.now().strftime("%H:%M:%S.%f")[:-3]} {msg}\n')
+
 # NSView contentView — NSTrackingArea + cursorUpdate pattern (Iteration 8)
 # Uses NSTrackingCursorUpdate + NSTrackingActiveAlways so cursorUpdate_ fires on mouse
 # movement regardless of key-window status (NonactivatingPanel never becomes key).
@@ -58,16 +63,19 @@ class _PanelContentView(NSView):
             return None
         self._hovered_edge  = None
         self._tracking_area = None
+        _cursor_log(f'initWithFrame_  bounds={frame.size.width:.0f}x{frame.size.height:.0f}')
         return self
 
     def updateTrackingAreas(self):
         objc.super(_PanelContentView, self).updateTrackingAreas()
-        if self._tracking_area is not None:
+        had_area = self._tracking_area is not None
+        if had_area:
             self.removeTrackingArea_(self._tracking_area)
         ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
             self.bounds(), _TA_TRACKING_OPTS, self, None)
         self.addTrackingArea_(ta)
         self._tracking_area = ta
+        _cursor_log(f'updateTrackingAreas  bounds={self.bounds().size.width:.0f}x{self.bounds().size.height:.0f}  had_area={had_area}')
 
     @objc.python_method
     def _cursor_for_edge(self, edge):
@@ -81,10 +89,13 @@ class _PanelContentView(NSView):
         if edge == old:
             return
         if edge is not None and old is None:
+            _cursor_log(f'_set_hovered_edge  {old}→{edge}  PUSH')
             self._cursor_for_edge(edge).push()
         elif edge is None and old is not None:
+            _cursor_log(f'_set_hovered_edge  {old}→{edge}  POP')
             NSCursor.pop()
         else:
+            _cursor_log(f'_set_hovered_edge  {old}→{edge}  POP+PUSH')
             NSCursor.pop()
             self._cursor_for_edge(edge).push()
         self._hovered_edge = edge
@@ -106,15 +117,24 @@ class _PanelContentView(NSView):
 
     def cursorUpdate_(self, event):
         if self._hovered_edge is not None:
+            _cursor_log(f'cursorUpdate_  edge={self._hovered_edge}  → set()')
             self._cursor_for_edge(self._hovered_edge).set()
         else:
+            _cursor_log('cursorUpdate_  edge=None  → super')
             objc.super(_PanelContentView, self).cursorUpdate_(event)
+
+    def mouseEntered_(self, event):
+        loc = event.locationInWindow()
+        _cursor_log(f'mouseEntered_  loc=({loc.x:.1f},{loc.y:.1f})')
 
     def mouseMoved_(self, event):
         local = self.convertPoint_fromView_(event.locationInWindow(), None)
-        self._set_hovered_edge(self._edge_for_point(local))
+        edge  = self._edge_for_point(local)
+        _cursor_log(f'mouseMoved_  loc=({local.x:.1f},{local.y:.1f})  edge={edge}')
+        self._set_hovered_edge(edge)
 
     def mouseExited_(self, event):
+        _cursor_log('mouseExited_  → clear edge')
         self._set_hovered_edge(None)
 
     # Claim L/R/bottom edge zones for self; interior falls through to child views
@@ -125,7 +145,9 @@ class _PanelContentView(NSView):
         if local.x < 0 or local.y < 0 or local.x > w or local.y > h:
             return objc.super(_PanelContentView, self).hitTest_(point)
         if local.x < EDGE or local.x > w - EDGE or local.y < EDGE:
+            _cursor_log(f'hitTest_  loc=({local.x:.1f},{local.y:.1f})  → self (edge zone)')
             return self
+        _cursor_log(f'hitTest_  loc=({local.x:.1f},{local.y:.1f})  → super (interior)')
         return objc.super(_PanelContentView, self).hitTest_(point)
 
 # NSTextField subclass that suppresses the default I-Beam cursor rect installation
