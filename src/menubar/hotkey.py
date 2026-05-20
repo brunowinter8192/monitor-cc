@@ -44,6 +44,8 @@ _EventHandlerProcPtr = ctypes.CFUNCTYPE(
 
 _MBAR_SIG            = 0x4D424152   # OSType 'MBAR'
 _CMD_L_ID            = 1            # EventHotKeyID.id for Cmd+L
+_CMD_RIGHT_ID        = 20           # EventHotKeyID.id for Cmd+→ (kVK_RightArrow = 0x7C)
+_CMD_LEFT_ID         = 21           # EventHotKeyID.id for Cmd+← (kVK_LeftArrow = 0x7B)
 _HOTKEY_EVENT_SPEC   = _EventTypeSpec(0x6B657962, 6)   # kEventClassKeyboard, kEventHotKeyPressed
 _kEventParamDirect   = 0x2D2D2D2D   # kEventParamDirectObject ('----')
 _typeEventHotKeyID   = 0x686B6964   # typeEventHotKeyID ('hkid')
@@ -152,3 +154,64 @@ def unregister_hotkeys(refs: list) -> None:
     for ref in refs:
         carbon.UnregisterEventHotKey(ref)
     _DIGIT_CALLBACKS.clear()
+
+# Register Cmd+→ (kVK_RightArrow = 0x7C) as global hotkey; same pattern as register_cmd_l
+# Returns (cb_handle, hk_handle) — caller MUST keep both alive to prevent GC crash
+def register_cmd_arrow_right(callback) -> tuple:
+    carbon = _load_carbon()
+    target = carbon.GetApplicationEventTarget()
+
+    def _handler(handler_ref, event, user_data):
+        try:
+            hkid = _get_hkid(carbon, event)
+            if hkid.id != _CMD_RIGHT_ID:
+                return _eventNotHandledErr
+            callback()
+        except Exception:
+            return _eventNotHandledErr
+        return 0
+
+    cb = _EventHandlerProcPtr(_handler)
+    handler_ref = ctypes.c_void_p()
+    carbon.InstallEventHandler(
+        target, cb, 1, ctypes.byref(_HOTKEY_EVENT_SPEC), None, ctypes.byref(handler_ref))
+    hk_ref = ctypes.c_void_p()
+    carbon.RegisterEventHotKey(
+        0x7C, 0x0100,
+        _EventHotKeyID(_MBAR_SIG, _CMD_RIGHT_ID),
+        target, 0, ctypes.byref(hk_ref))
+    return cb, hk_ref
+
+# Register Cmd+← (kVK_LeftArrow = 0x7B) as global hotkey; same pattern as register_cmd_l
+# Returns (cb_handle, hk_handle) — caller MUST keep both alive to prevent GC crash
+def register_cmd_arrow_left(callback) -> tuple:
+    carbon = _load_carbon()
+    target = carbon.GetApplicationEventTarget()
+
+    def _handler(handler_ref, event, user_data):
+        try:
+            hkid = _get_hkid(carbon, event)
+            if hkid.id != _CMD_LEFT_ID:
+                return _eventNotHandledErr
+            callback()
+        except Exception:
+            return _eventNotHandledErr
+        return 0
+
+    cb = _EventHandlerProcPtr(_handler)
+    handler_ref = ctypes.c_void_p()
+    carbon.InstallEventHandler(
+        target, cb, 1, ctypes.byref(_HOTKEY_EVENT_SPEC), None, ctypes.byref(handler_ref))
+    hk_ref = ctypes.c_void_p()
+    carbon.RegisterEventHotKey(
+        0x7B, 0x0100,
+        _EventHotKeyID(_MBAR_SIG, _CMD_LEFT_ID),
+        target, 0, ctypes.byref(hk_ref))
+    return cb, hk_ref
+
+# Unregister a single hotkey ref; does NOT clear _DIGIT_CALLBACKS (unlike unregister_hotkeys)
+def unregister_single_hotkey(ref) -> None:
+    if ref is None:
+        return
+    carbon = _load_carbon()
+    carbon.UnregisterEventHotKey(ref)

@@ -17,8 +17,15 @@ from Foundation import NSObject, NSOperationQueue
 from .discover import list_alive_sessions
 # From bg_timer.py: Background sleep-timer scanning and abort
 from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
-# From hotkey.py: Carbon Cmd+L and Cmd+1..9 registration
-from .hotkey import register_cmd_l, register_cmd_digits, unregister_hotkeys
+# From hotkey.py: Carbon Cmd+L, Cmd+1..9, Cmd+arrows registration
+from .hotkey import (register_cmd_l, register_cmd_digits, unregister_hotkeys,
+                     register_cmd_arrow_right, register_cmd_arrow_left,
+                     unregister_single_hotkey)
+# From bead_data.py: bd subprocess wrappers for tracker panel
+from .bead_data import project_db_map, load_tracked_beads
+# From bead_panel.py: NSPanel + render for bead tracker
+from .bead_panel import (_make_bead_nspanel, _rebuild_bead_panel, _reposition_bead_panel,
+                          _handle_expand_bead, _handle_untrack_bead)
 # From panel.py: NSPanel construction, render, positioning, UI constants
 from .panel import (ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET,
                     PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
@@ -47,22 +54,29 @@ class _PanelController(NSObject):
 
     def togglePanel_(self, sender):
         app = self._app
+        # Cmd+L closes whichever panel is open; if neither is open → open main
+        if app._tracker_open:
+            _close_tracker_panel(app)
+            return
         if app._panel_open:
-            app._panel.orderOut_(None)
-            app._panel_open = False
-            if app._hotkey_digits_refs:
-                unregister_hotkeys(app._hotkey_digits_refs)
-                app._hotkey_digits_refs = []
-                app._hotkey_digits_cb   = None
+            _close_main_panel(app)
         else:
-            _reposition_panel(app._panel, app._nsapp.nsstatusitem)
-            app._panel.orderFrontRegardless()
-            # orderFrontRegardless doesn't activate the app → cursor-rect dispatch gets
-            # re-disabled on each show; re-enable explicitly (initial call in panel.py
-            # _make_nspanel covers first show only; this covers every subsequent open).
-            app._panel.enableCursorRects()
-            app._panel_open = True
-            _reregister_digit_hotkeys(app)
+            _open_main_panel(app)
+
+    def toggleBeadTracker_(self, sender):
+        app = self._app
+        if app._tracker_open:
+            _close_tracker_panel(app)
+        else:
+            if app._panel_open:
+                _close_main_panel(app)
+            _open_tracker_panel(app)
+
+    def expandBead_(self, sender):
+        _handle_expand_bead(self._app, sender.tag())
+
+    def untrackBead_(self, sender):
+        _handle_untrack_bead(self._app, sender.tag())
 
     def focusSession_(self, sender):
         cwd = self._app._cwd_map.get(sender.tag())
@@ -115,7 +129,9 @@ class _PanelController(NSObject):
 
     def windowDidEndLiveResize_(self, notification):
         app = self._app
-        if app._panel_open:
+        if app._tracker_open:
+            _rebuild_bead_panel(app)
+        elif app._panel_open:
             sessions = list_alive_sessions()
             cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
             bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
@@ -149,6 +165,17 @@ class CCMenuBarApp(rumps.App):
         self._hotkey_cb, self._hotkey_ref = register_cmd_l(_on_hotkey)
         self._hotkey_digits_cb   = None   # GC anchor for Cmd+1..9 CFUNCTYPE
         self._hotkey_digits_refs = []     # GC anchor for Cmd+1..9 hk_refs
+        self._tracker_open: bool     = False
+        self._bead_data: dict        = {}   # {project_name: [bead_dict, ...]}
+        self._bead_db_paths: dict    = {}   # {project_name: Path}
+        self._bead_expanded: dict    = {}   # {bead_id: expand_text_str}
+        self._bead_displayed: dict   = {}   # {bead_id: NSButton} expand buttons
+        self._bead_expand_tags: dict = {}   # {tag: bead_id}
+        self._bead_untrack_tags: dict = {}  # {tag: (bead_id, project_name)}
+        self._bead_tick_counter: int = 4    # starts at 4 → first tick fires refresh
+        self._tracker_panel, self._tracker_sv = _make_bead_nspanel()
+        self._hotkey_arr_right_cb = self._hotkey_arr_right_ref = None   # GC anchors Cmd+→
+        self._hotkey_arr_left_cb  = self._hotkey_arr_left_ref  = None   # GC anchors Cmd+←
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
@@ -165,6 +192,7 @@ class CCMenuBarApp(rumps.App):
                 self._toggle_btn.setTarget_(self._panel_controller)
                 self._toggle_btn.setAction_(b'toggleAutoJump:')
                 self._panel.setDelegate_(self._panel_controller)
+                self._tracker_panel.setDelegate_(self._panel_controller)
                 _set_bar_icon(self, ICON_NORMAL)   # replace setTitle_ with attributed version
                 self._initialized = True
             except AttributeError:
@@ -191,6 +219,9 @@ class CCMenuBarApp(rumps.App):
         cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
         bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
         _auto_abort_check(self, sessions, bg_by_project, now)
+        self._bead_tick_counter += 1
+        if self._bead_tick_counter % 5 == 0 or self._tracker_open:
+            _refresh_bead_data(self, sessions)
         if self._panel_open:
             session_names = {s.name for s in sessions}
             new_abort_projs = {p for p in bg_by_project if p != 'unknown'}
@@ -303,6 +334,57 @@ def _load_settings():
         )
     except Exception:
         return False, PANEL_WIDTH, PANEL_HEIGHT
+
+# Open main panel: reposition + show + register Cmd+→ + Cmd+1..9
+def _open_main_panel(app: 'CCMenuBarApp') -> None:
+    _reposition_panel(app._panel, app._nsapp.nsstatusitem)
+    app._panel.orderFrontRegardless()
+    app._panel.enableCursorRects()
+    app._panel_open = True
+    _reregister_digit_hotkeys(app)
+    app._hotkey_arr_right_cb, app._hotkey_arr_right_ref = register_cmd_arrow_right(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: [_close_main_panel(app), _open_tracker_panel(app)]))
+
+# Close main panel: hide + unregister Cmd+→ + Cmd+1..9
+def _close_main_panel(app: 'CCMenuBarApp') -> None:
+    app._panel.orderOut_(None)
+    app._panel_open = False
+    if app._hotkey_digits_refs:
+        unregister_hotkeys(app._hotkey_digits_refs)
+        app._hotkey_digits_refs = []
+        app._hotkey_digits_cb   = None
+    if app._hotkey_arr_right_ref:
+        unregister_single_hotkey(app._hotkey_arr_right_ref)
+        app._hotkey_arr_right_cb = app._hotkey_arr_right_ref = None
+
+# Open tracker panel: rebuild → reposition → show + register Cmd+←
+def _open_tracker_panel(app: 'CCMenuBarApp') -> None:
+    _rebuild_bead_panel(app)
+    _reposition_bead_panel(app._tracker_panel, app._nsapp.nsstatusitem)
+    app._tracker_panel.orderFrontRegardless()
+    app._tracker_panel.enableCursorRects()
+    app._tracker_open = True
+    app._hotkey_arr_left_cb, app._hotkey_arr_left_ref = register_cmd_arrow_left(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: [_close_tracker_panel(app), _open_main_panel(app)]))
+
+# Close tracker panel: hide + unregister Cmd+←
+def _close_tracker_panel(app: 'CCMenuBarApp') -> None:
+    app._tracker_panel.orderOut_(None)
+    app._tracker_open = False
+    if app._hotkey_arr_left_ref:
+        unregister_single_hotkey(app._hotkey_arr_left_ref)
+        app._hotkey_arr_left_cb = app._hotkey_arr_left_ref = None
+
+# Refresh bead data from sessions; rebuild tracker panel if open and bead set changed
+def _refresh_bead_data(app: 'CCMenuBarApp', sessions) -> None:
+    pdb      = project_db_map(sessions)
+    new_data = load_tracked_beads(pdb)
+    changed  = new_data != app._bead_data
+    app._bead_db_paths, app._bead_data = pdb, new_data
+    if changed and app._tracker_open:
+        _rebuild_bead_panel(app)
 
 # Atomic settings write: tempfile + os.replace to prevent partial-write corruption
 def _save_settings(auto_focus: bool, panel_width: int, panel_min_height: int) -> None:
