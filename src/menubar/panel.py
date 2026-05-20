@@ -347,7 +347,7 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
     state = 'ON' if app._auto_focus else 'OFF'
     app._toggle_btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(
-            f'Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
+            f'[Sessions] · Beads     Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
     app._panel_sv.addView_inGravity_(_make_line_separator(pw), 1)
     if not sorted_sessions:
         app._panel_sv.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
