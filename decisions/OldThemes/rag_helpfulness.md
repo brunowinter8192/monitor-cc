@@ -67,7 +67,54 @@ Ziel: Regelverfeinerung "RAG-First wenn ..., direct wenn ..." mit empirischer Ba
 - Muss als dev/-script orchestriert werden (nicht ad-hoc) um reproduzierbar zu sein. Output: report-MD mit per-session Inventar.
 - Ist die RAG-First-Regel für workers genauso sinnvoll wie für Opus? Workers haben engeren task-scope — möglicherweise dominiert dort "bekannte Dateiposition" stärker.
 
+## Phase B — Auto-Metrics Run (2026-05-20)
+
+### Implementation
+
+`dev/tool_use_analysis/rag_query_audit.py` (350 LOC, commit `36b2c54`) — extracts all `rag-cli search_hybrid/search/search_keyword` calls from proxy logs, clusters per session via greedy chain-link (token-Jaccard ≥ 0.20, stopwords excluded), computes auto-metrics, writes report-MD mit manual annotation columns left as `_`.
+
+Auto-metrics: `query_count`, `follow_up` (bool: count > 1), `result_chars`, `chunk_count` (per query, from tool_result content), `top_k`, `collection`, `truncated` (CC 5k/5k split signature).
+
+Manual columns für Review: `hit_quality` (Brauchbar / Zu-eng / Zu-breit / Miss) per query, `classification` (WIN-RAG / WIN-Direct / Tie) per topic.
+
+CLI: `--jaccard T` (default 0.20) — User kann bei Review mit anderen Thresholds re-runnen.
+
+### Run-Output Snapshot
+
+Report: `dev/tool_use_analysis/20260520_rag_query_audit.md`.
+
+| Metric | Value |
+|---|---|
+| Sessions analyzed | 15 (10 mit rag-cli usage, 5 mit 0 calls) |
+| Total events | 2957 |
+| Unique rag-cli calls | 44 |
+| Unique topics (jaccard ≥ 0.20) | 36 |
+| Single-query topics | 31 |
+| Multi-query (follow-up) topics | 5 |
+| Calls in follow-up rounds | 13 / 44 (29%) |
+| Misses (chunk_count = 0) | 8 |
+| Truncated results | 1 |
+| Calls ohne tool_result | 13 (data gap — vermutlich Bash compound calls verlieren tool_use_id pairing) |
+| Collections | Monitor_CC-meta (30), Monitor_CC-features (12), RAG-meta (2) |
+
+Sampling-Bias: alle 44 calls sind `search_hybrid`. `search_keyword` / `search_dense` wurde nie genutzt. RAG-Multi-Model nicht.
+
+### Was direkt sichtbar (vor Manual-Annotation)
+
+- Spitzenreiter Follow-up: **T024** mit 4 queries (cursor rects/edges) — wahrscheinlichstes "RAG couldn't find" Signal
+- **T028** (DOCS pattern audit, 3 queries, alle 0 chunks) — strong WIN-Direct candidate
+- Echte Misses (kleine result_chars + 0 chunks): T001, T002, T013, T015, T020, T028 (3 queries)
+
+### Was noch offen
+
+- Manual annotation der `hit_quality` + `classification` Spalten in `20260520_rag_query_audit.md` — Folge-Session
+- Daraus Regelverfeinerung "RAG-First wenn X, direct wenn Y" in `workers-1.md` § RAG-First on Code Exploration
+- Daten-Gap-Investigation: 13/44 (30%) calls ohne tool_result — bei Re-Run prüfen ob Extractor Bug (Bash compound mit mehreren rag-cli's) oder echtes "result missing in log"
+
 ## Sources
 
-- `src/logs/api_requests_*.jsonl` — Proxy-Log Datenquelle für rag-cli Aufruf-Extraktion
+- `src/logs/api_requests_opus_monitor_cc_*.jsonl` — Proxy-Log Datenquelle für rag-cli Aufruf-Extraktion
+- `dev/tool_use_analysis/rag_query_audit.py` — extraction + clustering + metrics + report writer
+- `dev/tool_use_analysis/20260520_rag_query_audit.md` — run-output (auto-metrics + leere manual columns)
 - `~/.claude/shared-rules/opus/workers-1.md` § RAG-First on Code Exploration — aktuelle Hard Rule
+- Bead `Monitor_CC-3d7y` — tracker (offen für manual annotation)

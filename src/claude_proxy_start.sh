@@ -146,6 +146,36 @@ _janitor_cleanup_live_copies() {
 }
 _janitor_cleanup_live_copies
 
+# Janitor: rotate JSONL logs (keep 30 newest per type) and delete all proxy_errors logs.
+_janitor_cleanup_jsonl_logs() {
+    local keep=30
+    local rotated_opus=0 rotated_worker=0 deleted_errors=0 f
+
+    # Rotate opus JSONL: keep 30 newest, delete older
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        rm -f "$f"
+        rotated_opus=$((rotated_opus + 1))
+    done < <(ls -t "$LOG_DIR"/api_requests_opus_*.jsonl 2>/dev/null | tail -n +$((keep + 1)))
+
+    # Rotate worker JSONL: keep 30 newest, delete older
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        rm -f "$f"
+        rotated_worker=$((rotated_worker + 1))
+    done < <(ls -t "$LOG_DIR"/api_requests_worker_*.jsonl 2>/dev/null | tail -n +$((keep + 1)))
+
+    # Delete ALL proxy_errors logs (companion disabled, files are dead weight)
+    for f in "$LOG_DIR"/proxy_errors_*.log; do
+        [ -f "$f" ] || continue
+        rm -f "$f"
+        deleted_errors=$((deleted_errors + 1))
+    done
+
+    echo "Janitor: rotated $rotated_opus opus jsonl, $rotated_worker worker jsonl, deleted $deleted_errors proxy_errors"
+}
+_janitor_cleanup_jsonl_logs
+
 cp "$SCRIPT_DIR/proxy_addon.py" "$LIVE_ADDON"
 mkdir -p "$LIVE_DIR"
 cp -r "$SCRIPT_DIR/proxy" "$LIVE_DIR/"
@@ -162,14 +192,8 @@ export PROXY_PROJECT_PATH="$PROJECT"
 mitmdump -p $PROXY_PORT -s "$LIVE_ADDON" --set flow_detail=0 -q 2>"$LOG_DIR/proxy_errors_$LOG_ID.log" &
 PROXY_PID=$!
 
-# Log rotation: independent buckets so opus/worker JSONLs never compete for the 30-file limit
-(cd "$LOG_DIR" && {
-    ls -t api_requests_opus_*.jsonl   2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f "$f"; done
-    ls -t api_requests_worker_*.jsonl 2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f "$f"; done
-    ls -t proxy_errors_*.log          2>/dev/null | tail -n +31 | while IFS= read -r f; do rm -f "$f"; done
-    find . -maxdepth 1 -type f -name 'proxy_errors_*.log'       -size 0  -delete 2>/dev/null
-    find . -maxdepth 1 -type f -name 'api_error_payload_*.json' -mtime +7 -delete 2>/dev/null
-})
+# Delete api_error_payload dumps older than 7 days
+find "$LOG_DIR" -maxdepth 1 -type f -name 'api_error_payload_*.json' -mtime +7 -delete 2>/dev/null
 
 # Cleanup on exit: kill proxy, remove per-session live-copies, and conditionally the per-project marker
 cleanup() {
