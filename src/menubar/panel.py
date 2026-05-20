@@ -28,6 +28,10 @@ _BADGE_WORKING = '[*]'   # green — ASCII fixed-width, no emoji drift
 _BADGE_IDLE    = '[ ]'   # red
 _NO_BG         = '   '   # 3-char spacer when no background task
 
+_COL_SLOT_W  = 4    # chars — "[N] " slot or "    " worker indent (≈28pt Menlo 13pt)
+_COL_NAME_W  = 23   # chars — name column, ljust + truncate at end   (≈180pt Menlo 13pt)
+_COL_TIMER_W = 9    # chars — "[B M:SS]" badge max = "[B 99:59]"=9ch (≈70pt Menlo 13pt)
+
 PANEL_WIDTH      = 380   # pts
 PANEL_HEIGHT     = 460   # pts — initial height; floor for first-run (no settings)
 PANEL_MIN_WIDTH  = 250   # pts — minimum width enforced by setContentMinSize_
@@ -341,7 +345,6 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
     abort_tag = 1000   # abort button tags start above session row tags (1..N)
     pw = app._panel_width
     sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
-    name_width = max((len(s.name) for s in sorted_sessions), default=_NAME_WIDTH)
     required_h = _compute_required_height(sorted_sessions)
     _resize_panel(app, max(app._panel_min_height, required_h))
     state = 'ON' if app._auto_focus else 'OFF'
@@ -369,11 +372,11 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
         for s in group_iter:
             dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
             badge    = _format_bg_badge(proj_bg.min_remaining) if proj_bg else _NO_BG
-            name_col = s.name.ljust(name_width)
+            name_col = s.name[:_COL_NAME_W].ljust(_COL_NAME_W)
             if not s.is_worker:
                 main_slot += 1
-                prefix = f'[{main_slot}] ' if main_slot <= 9 else ''
-                line = f'{prefix}● {name_col} {dot} {badge}'
+                slot_str = f'[{main_slot}] ' if main_slot <= 9 else '    '
+                line = f'{slot_str}● {name_col} {dot} {badge.ljust(_COL_TIMER_W)}'
                 btn  = _make_row_button(line, pw, NSColor.systemOrangeColor())
                 tag  = next_tag[0]; next_tag[0] += 1
                 btn.setTag_(tag)
@@ -381,7 +384,7 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
                 btn.setAction_(b'focusSession:')
                 app._cwd_map[tag] = s.cwd or ''
             else:
-                line = f'  {name_col} {dot} {badge}'
+                line = f'      {name_col} {dot} {badge.ljust(_COL_TIMER_W)}'
                 btn  = _make_row_button(line, pw)
             app._panel_sv.addView_inGravity_(btn, 1)
             app._displayed_items[s.name] = btn
@@ -389,7 +392,6 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
 # In-place title update while NSPanel is open; preserves widget positions.
 # Updates session row titles AND per-project abort button countdowns.
 def _update_panel_inplace(app, sessions, bg_by_project) -> None:
-    name_width = max((len(s.name) for s in sessions), default=_NAME_WIDTH)
     session_map = {s.name: s for s in sessions}
     main_slot = 0
     for name, btn in app._displayed_items.items():
@@ -399,13 +401,13 @@ def _update_panel_inplace(app, sessions, bg_by_project) -> None:
         proj_bg  = (bg_by_project or {}).get(s.project_name)
         dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
         badge    = _format_bg_badge(proj_bg.min_remaining) if proj_bg else _NO_BG
-        name_col = name.ljust(name_width)
+        name_col = name[:_COL_NAME_W].ljust(_COL_NAME_W)
         if not s.is_worker:
             main_slot += 1
-            prefix = f'[{main_slot}] ' if main_slot <= 9 else ''
-            line, color = f'{prefix}● {name_col} {dot} {badge}', NSColor.systemOrangeColor()
+            slot_str = f'[{main_slot}] ' if main_slot <= 9 else '    '
+            line, color = f'{slot_str}● {name_col} {dot} {badge.ljust(_COL_TIMER_W)}', NSColor.systemOrangeColor()
         else:
-            line, color = f'  {name_col} {dot} {badge}', None
+            line, color = f'      {name_col} {dot} {badge.ljust(_COL_TIMER_W)}', None
         attrs = {NSFontAttributeName: _MENLO()}
         if color is not None:
             attrs[NSForegroundColorAttributeName] = color

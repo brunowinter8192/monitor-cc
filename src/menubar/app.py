@@ -17,10 +17,11 @@ from Foundation import NSObject, NSOperationQueue
 from .discover import list_alive_sessions
 # From bg_timer.py: Background sleep-timer scanning and abort
 from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
-# From hotkey.py: Carbon Cmd+L, Cmd+1..9, Cmd+arrows registration
+# From hotkey.py: Carbon Cmd+L, Cmd+1..9, Cmd+arrows, Cmd+K registration
 from .hotkey import (register_cmd_l, register_cmd_digits, unregister_hotkeys,
                      register_cmd_arrow_right, register_cmd_arrow_left,
-                     unregister_cmd_arrow_right, unregister_cmd_arrow_left)
+                     unregister_cmd_arrow_right, unregister_cmd_arrow_left,
+                     register_cmd_k)
 # From bead_data.py: bd subprocess wrappers for tracker panel
 from .bead_data import project_db_map, load_tracked_beads
 # From bead_panel.py: NSPanel + render for bead tracker
@@ -54,6 +55,14 @@ class _PanelController(NSObject):
 
     def togglePanel_(self, sender):
         app = self._app
+        # Panel backgrounded (Cmd+K): Cmd+L / bar-click brings it back to front, does NOT close
+        if app._panel_backgrounded:
+            if app._panel_open:
+                app._panel.orderFrontRegardless()
+            elif app._tracker_open:
+                app._tracker_panel.orderFrontRegardless()
+            app._panel_backgrounded = False
+            return
         # Cmd+L closes whichever panel is open; if neither is open → open main
         if app._tracker_open:
             _close_tracker_panel(app)
@@ -166,6 +175,9 @@ class CCMenuBarApp(rumps.App):
                 pass
 
         self._hotkey_cb, self._hotkey_ref = register_cmd_l(_on_hotkey)
+        self._hotkey_k_cb, self._hotkey_k_ref = register_cmd_k(
+            lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+                lambda: _background_panel(self)))
         self._hotkey_digits_cb   = None   # GC anchor for Cmd+1..9 CFUNCTYPE
         self._hotkey_digits_refs = []     # GC anchor for Cmd+1..9 hk_refs
         self._tracker_open: bool     = False
@@ -179,6 +191,7 @@ class CCMenuBarApp(rumps.App):
         self._tracker_panel, self._tracker_sv, self._tracker_toggle_btn = _make_bead_nspanel()
         self._hotkey_arr_right_ref = None   # hk_ref for Cmd+→ (module holds CFUNCTYPE anchor)
         self._hotkey_arr_left_ref  = None   # hk_ref for Cmd+← (module holds CFUNCTYPE anchor)
+        self._panel_backgrounded: bool = False   # True while active panel is orderBack_'d behind other windows
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
@@ -357,6 +370,26 @@ def _deferred_switch_to_main(app: 'CCMenuBarApp') -> None:
     except Exception as e:
         print(f'[menubar] Cmd+← deferred-block error: {e}', file=sys.stderr)
 
+# Cmd+K handler: toggle active panel between foreground and background (orderBack_/orderFrontRegardless).
+# Does NOT close the panel — _panel_open / _tracker_open stay True.
+# Cycling (Cmd+→/←) resets _panel_backgrounded via _close_main/tracker_panel before opening the other.
+def _background_panel(app: 'CCMenuBarApp') -> None:
+    try:
+        if app._panel_backgrounded:
+            if app._panel_open:
+                app._panel.orderFrontRegardless()
+            elif app._tracker_open:
+                app._tracker_panel.orderFrontRegardless()
+            app._panel_backgrounded = False
+        elif app._panel_open:
+            app._panel.orderBack_(None)
+            app._panel_backgrounded = True
+        elif app._tracker_open:
+            app._tracker_panel.orderBack_(None)
+            app._panel_backgrounded = True
+    except Exception as e:
+        print(f'[menubar] Cmd+K deferred-block error: {e}', file=sys.stderr)
+
 # Open main panel: reposition + show + register Cmd+→ + Cmd+1..9
 def _open_main_panel(app: 'CCMenuBarApp') -> None:
     _reposition_panel(app._panel, app._nsapp.nsstatusitem)
@@ -372,6 +405,7 @@ def _open_main_panel(app: 'CCMenuBarApp') -> None:
 def _close_main_panel(app: 'CCMenuBarApp') -> None:
     app._panel.orderOut_(None)
     app._panel_open = False
+    app._panel_backgrounded = False
     if app._hotkey_digits_refs:
         unregister_hotkeys(app._hotkey_digits_refs)
         app._hotkey_digits_refs = []
@@ -394,6 +428,7 @@ def _open_tracker_panel(app: 'CCMenuBarApp') -> None:
 def _close_tracker_panel(app: 'CCMenuBarApp') -> None:
     app._tracker_panel.orderOut_(None)
     app._tracker_open = False
+    app._panel_backgrounded = False
     unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
     app._hotkey_arr_left_ref = None
 
