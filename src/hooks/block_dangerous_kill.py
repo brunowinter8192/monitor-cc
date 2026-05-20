@@ -3,10 +3,11 @@ import json
 import re
 import sys
 
-# pkill with -f flag anywhere in the argument list
-_PKILL_F = re.compile(r'\bpkill\s+(-[^\s]*\s+)*-f\b')
-# ps ... | ... grep ... | ... kill pipe chain (targets process via text match)
-_PS_GREP_KILL = re.compile(r'\bps\b.+\|.+\bgrep\b.+\|.+\bkill\b', re.DOTALL)
+# pkill with -f flag — anchored to command start or after shell separator
+# (prevents false-positives when "pkill -f" appears inside a quoted argument)
+_PKILL_F = re.compile(r'(?:^|[;&|\n])\s*pkill\s+(-[^\s]*\s+)*-f\b')
+# ps … | … grep … | … kill pipe chain — same anchor
+_PS_GREP_KILL = re.compile(r'(?:^|[;&|\n])\s*ps\b[^|]*\|[^|]*\bgrep\b[^|]*\|.*\bkill\b', re.DOTALL)
 
 _BLOCKED_PATTERNS = [_PKILL_F, _PS_GREP_KILL]
 
@@ -44,10 +45,30 @@ def _parse_command():
     except Exception:
         return None
 
-# Return True if command matches any blocked process-kill pattern
+# Strip content inside single/double quotes so quoted text cannot trigger pattern matches.
+# Not a full shell parser — handles balanced quotes with simple backslash-escape.
+def _strip_quoted(s: str) -> str:
+    out, i, n = [], 0, len(s)
+    while i < n:
+        c = s[i]
+        if c in ("'", '"'):
+            quote, i = c, i + 1
+            while i < n and s[i] != quote:
+                if s[i] == "\\" and i + 1 < n:
+                    i += 2
+                else:
+                    i += 1
+            i += 1   # skip closing quote (or step past end if unbalanced)
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+# Return True if command matches any blocked process-kill pattern (outside quoted regions)
 def _is_blocked(command: str) -> bool:
+    stripped = _strip_quoted(command)
     for pattern in _BLOCKED_PATTERNS:
-        if pattern.search(command):
+        if pattern.search(stripped):
             return True
     return False
 

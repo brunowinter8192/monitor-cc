@@ -12,7 +12,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ## Modules
 
-### block_dangerous_kill.py (56 LOC)
+### block_dangerous_kill.py (77 LOC)
 
 **Purpose:** PreToolUse hook — blocks `pkill -f <pattern>` and `ps|grep|kill` pipe chains. Both patterns target processes via text substring matching against the full cmdline, which routinely kills unintended processes (CC worker sessions whose prompt text contains the matched string). Exits 2 + stderr with concrete safer alternatives. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -25,6 +25,8 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - `ps ... | ... grep ... | ... kill ...` — same problem via pipe chain
 
 **Allowed patterns (not blocked):** `pkill -x <name>` (exact), `pkill <name>` (name-only), `kill <numeric_pid>`, `kill -<signal> <numeric_pid>`, `worker-cli kill <name>`, `launchctl bootout/kickstart`.
+
+**Quote-aware matching.** Patterns must appear at command start OR after a shell separator (`;`, `&`, `|`, newline) — substrings inside `"..."` or `'...'` quoted arguments are stripped before regex match (`_strip_quoted` helper). Prevents the false-positive where a `bd comments add "...pkill -f..."` command (writing the pattern as text into a bead) gets blocked. Not a full shell parser; handles balanced quotes with simple backslash-escape.
 
 ---
 
