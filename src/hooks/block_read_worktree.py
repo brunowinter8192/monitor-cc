@@ -1,0 +1,46 @@
+# INFRASTRUCTURE
+import json
+import sys
+
+_WORKTREE_FRAGMENT = '.claude/worktrees/'
+
+_BLOCK_MESSAGE = (
+    "BLOCKED: Read on a worktree path silently re-injects CLAUDE.md into context.\n"
+    "Reading any file under `.claude/worktrees/...` via the Read tool injects the\n"
+    "auto-loaded CLAUDE.md system-reminder again, bloating the context window and\n"
+    "potentially duplicating the system prompt.\n"
+    "\n"
+    "Use Bash instead:\n"
+    "    cat <worktree>/path/to/file              # full content\n"
+    "    head -50 <worktree>/path/to/file         # first N lines\n"
+    "    git -C <worktree> show HEAD:<relpath>    # specific revision\n"
+    "    git -C <worktree> diff dev               # code review diff\n"
+    "workers-2.md \u00a7 Code Review.\n"
+)
+
+# ORCHESTRATOR
+
+# Read Read tool_input from stdin; exit 2 + stderr if file_path is inside a worktree directory
+def block_read_worktree_workflow() -> None:
+    path = _parse_path()
+    if path is None:
+        sys.exit(0)
+    if _WORKTREE_FRAGMENT in path:
+        print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+        sys.exit(2)
+    sys.exit(0)
+
+# FUNCTIONS
+
+# Parse stdin JSON and return tool_input.file_path; return None on any error (fail-open)
+def _parse_path():
+    try:
+        payload = json.loads(sys.stdin.read())
+        path = payload.get("tool_input", {}).get("file_path")
+        return path if isinstance(path, str) else None
+    except Exception:
+        return None
+
+
+if __name__ == "__main__":
+    block_read_worktree_workflow()

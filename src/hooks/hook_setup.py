@@ -9,14 +9,31 @@ _HOOKS_DIR     = Path(__file__).resolve().parent
 _HOOK_TIMEOUT  = 5
 
 # Hook scripts to install: (script_filename, PreToolUse matcher)
+# block_path_typo registers under Bash + Read + Write + Edit — the same hook script
+# inspects tool_name internally to pick the right field (command vs file_path).
 _HOOK_SCRIPTS = [
     ("block_dangerous_kill.py",          "Bash"),
     ("block_chained_sleep.py",           "Bash"),
     ("block_unauthorized_background.py", "Bash"),
     ("block_broad_grep.py",              "Bash"),
+    ("block_git_destructive.py",         "Bash"),
+    ("block_venv_no_redirect.py",        "Bash"),
+    ("block_cd_drift.py",                "Bash"),
+    ("block_path_typo.py",               "Bash"),
+    ("block_path_typo.py",               "Read"),
+    ("block_path_typo.py",               "Write"),
+    ("block_path_typo.py",               "Edit"),
     ("block_noop_edit.py",               "Edit"),
     ("block_read_directory.py",          "Read"),
     ("block_read_oversize.py",           "Read"),
+    ("block_read_worktree.py",           "Read"),
+    ("block_worker_spawn_opus.py",       "Bash"),
+    ("block_bd_cli_worker.py",           "Bash"),
+    ("block_git_add_deps.py",            "Bash"),
+    ("block_dev_imports_src.py",         "Write"),
+    ("block_dev_imports_src.py",         "Edit"),
+    ("block_except_pass.py",             "Write"),
+    ("block_except_pass.py",             "Edit"),
 ]
 _HOOK_ENTRIES = [(f"python3 {_HOOKS_DIR / s}", m) for s, m in _HOOK_SCRIPTS]
 
@@ -29,8 +46,8 @@ def hook_setup_workflow() -> None:
     pre = hooks.setdefault("PreToolUse", [])
     installed = 0
     for command, matcher in _HOOK_ENTRIES:
-        if _already_installed(pre, command):
-            print(f"Already installed — skipped: {command}")
+        if _already_installed(pre, command, matcher):
+            print(f"Already installed — skipped: {command} [{matcher}]")
         else:
             _add_hook(pre, command, matcher)
             installed += 1
@@ -43,9 +60,11 @@ def hook_setup_workflow() -> None:
 
 # FUNCTIONS
 
-# True if a hook entry with the given command already exists under PreToolUse
-def _already_installed(pre_tool_use: list, command: str) -> bool:
+# True if a hook entry with the given (command, matcher) pair already exists under PreToolUse
+def _already_installed(pre_tool_use: list, command: str, matcher: str) -> bool:
     for group in pre_tool_use:
+        if group.get("matcher") != matcher:
+            continue
         for h in group.get("hooks", []):
             if h.get("command") == command:
                 return True
