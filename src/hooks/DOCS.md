@@ -30,22 +30,43 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### hook_setup.py (63 LOC)
+### block_chained_sleep.py (57 LOC)
 
-**Purpose:** One-shot idempotent installer — adds a `PreToolUse` / matcher=`Bash` entry to `~/.claude/settings.json` pointing at the absolute path of `block_dangerous_kill.py`. Safe to re-run; detects existing entry by exact command string and skips duplicate. Atomic write via temp + `os.replace`.
+**Purpose:** PreToolUse hook — blocks any `sleep <N>` token in a Bash command that is NOT the exact canonical orchestration timer form `sleep N && echo done`. Chained forms (`cmd; sleep N && echo done`, `sleep N && other_cmd`, poll loops) are rejected because the menubar auto-abort sends SIGTERM to the sleep PID, which exits the entire chained shell with code 143 and destroys pre-sleep output. Exits 2 + stderr with the canonical form and reason. Exits 0 on any parse/internal error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message with canonical form) on violation only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:**
+- `cmd_before; sleep N && echo done` — commands chained BEFORE the sleep
+- `sleep N && other_cmd` — commands chained AFTER the sleep (non-`echo done` continuation)
+- `until ...; do sleep N; done` and other loop forms
+
+**Allowed patterns:**
+- `sleep N && echo done` (optional leading/trailing whitespace, optional float N) — the one canonical timer form
+
+**No quote-stripping.** Unlike `block_dangerous_kill.py`, this hook does not strip quoted substrings before matching. The word-boundary regex (`\bsleep\s+\d+(?:\.\d+)?\b`) avoids false positives on substrings like `overslept`, but `echo "sleep 5 ..."` where the number appears inside a quoted argument would technically fire. No realistic CC workflow echoes a sleep command with a number inside a string argument, so this is an acceptable simplification.
+
+---
+
+### hook_setup.py (75 LOC)
+
+**Purpose:** One-shot idempotent installer — adds `PreToolUse` / matcher=`Bash` entries to `~/.claude/settings.json` for each hook script (`block_dangerous_kill.py`, `block_chained_sleep.py`). Loops over `_HOOK_COMMANDS`; skips any entry already present by exact command string. Atomic write via temp + `os.replace`.
 **Reads:** `~/.claude/settings.json`.
 **Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`).
 **Called by:** User manually (`python3 src/hooks/hook_setup.py` from Monitor_CC root). Never imported.
 **Calls out:** stdlib only (`json`, `os`, `pathlib`).
 
-**Usage:** `python3 src/hooks/hook_setup.py` — run once after clone or reinstall. Restart CC to activate.
+**Usage:** `python3 src/hooks/hook_setup.py` — run once after clone or reinstall. Installs all hooks in `_HOOK_SCRIPTS`. Restart CC to activate.
 
 ---
 
 ## Gotchas
 
-- **Fail-open is mandatory.** `block_dangerous_kill.py` exits 0 on any parse error or missing field — the hook must never block a legitimate tool call due to its own failure. A broken hook that blocks everything is a footgun.
-- **Global registration.** The hook fires for every Bash tool call in every CC session on this machine (main sessions and workers). Keep the hook fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
-- **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of `block_dangerous_kill.py` at install time. If the repo is moved, re-run `hook_setup.py` to update the path.
+- **Fail-open is mandatory.** Both hooks exit 0 on any parse error or missing field — a hook must never block a legitimate tool call due to its own failure. A broken hook that blocks everything is a footgun.
+- **Global registration.** Both hooks fire for every Bash tool call in every CC session on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
+- **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths.
+- **`block_chained_sleep.py` has no quote-stripping.** The word-boundary regex avoids `overslept`-style substrings but does not strip quoted arguments before matching. `echo "sleep 5 ..."` (number inside a quoted arg) would fire. Acceptable — no realistic CC workflow hits this.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
