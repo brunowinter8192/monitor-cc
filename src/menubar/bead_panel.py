@@ -15,11 +15,11 @@ from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
                     _make_line_separator, _make_header_label)
 
 _UNTRACK_W     = 22   # pts — width of × untrack button at right edge of each row
-_TRACKER_TITLE = 'Bead Tracker'
 
 # FUNCTIONS
 
-# Build NSPanel for bead tracker; returns (panel, stack) — ObjC rejects arbitrary Python attrs
+# Build NSPanel for bead tracker; returns (panel, stack, toggle_btn)
+# toggle_btn: top-bar button wired to toggleAutoJump: — same style as main panel's toggle_btn
 def _make_bead_nspanel():
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
@@ -37,11 +37,12 @@ def _make_bead_nspanel():
     top_bar = NSView.alloc().initWithFrame_(
         NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
     top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable | NSViewMinYMargin — stays at top edge
-    title_tf = _CursorlessLabel.labelWithString_(_TRACKER_TITLE)
-    title_tf.setFrame_(NSMakeRect(4, 0, PANEL_WIDTH - 8, _TOP_BAR_H - 1))
-    title_tf.setFont_(_MENLO())
-    title_tf.setAutoresizingMask_(2)   # NSViewWidthSizable
-    top_bar.addSubview_(title_tf)
+    toggle_btn = _CursorlessButton.alloc().initWithFrame_(
+        NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
+    toggle_btn.setBordered_(False)
+    toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+    toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable
+    top_bar.addSubview_(toggle_btn)
     cv.addSubview_(top_bar)
     stack_h = PANEL_HEIGHT - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, stack_h))
@@ -51,13 +52,16 @@ def _make_bead_nspanel():
     stack.setSpacing_(1.0)
     stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas
     cv.addSubview_(stack)
-    return panel, stack
+    return panel, stack, toggle_btn
 
 # Position bead tracker panel flush below the NSStatusItem button (same logic as main panel)
 def _reposition_bead_panel(panel, nsstatusitem) -> None:
+    btn_win = nsstatusitem.button().window()
+    if btn_win is None:
+        return
     w  = panel.frame().size.width
     h  = panel.frame().size.height
-    sr = nsstatusitem.button().window().frame()
+    sr = btn_win.frame()
     px = sr.origin.x + sr.size.width / 2.0 - w / 2.0
     py = sr.origin.y - h - PANEL_GAP
     panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
@@ -148,6 +152,10 @@ def _rebuild_bead_panel(app) -> None:
     app._bead_displayed.clear()
     app._bead_expand_tags.clear()
     app._bead_untrack_tags.clear()
+    state = 'ON' if app._auto_focus else 'OFF'
+    app._tracker_toggle_btn.setAttributedTitle_(
+        NSAttributedString.alloc().initWithString_attributes_(
+            f'Sessions \u00b7 [Beads]     Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
     pw         = app._panel_width
     required_h = _compute_bead_height(app)
     _resize_tracker_panel(app, max(app._panel_min_height, required_h))

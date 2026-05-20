@@ -20,7 +20,7 @@ from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
 # From hotkey.py: Carbon Cmd+L, Cmd+1..9, Cmd+arrows registration
 from .hotkey import (register_cmd_l, register_cmd_digits, unregister_hotkeys,
                      register_cmd_arrow_right, register_cmd_arrow_left,
-                     unregister_single_hotkey)
+                     unregister_cmd_arrow_right, unregister_cmd_arrow_left)
 # From bead_data.py: bd subprocess wrappers for tracker panel
 from .bead_data import project_db_map, load_tracked_beads
 # From bead_panel.py: NSPanel + render for bead tracker
@@ -88,9 +88,12 @@ class _PanelController(NSObject):
         app._auto_focus = not app._auto_focus
         _save_settings(app._auto_focus, app._panel_width, app._panel_min_height)
         state = 'ON' if app._auto_focus else 'OFF'
-        astr = NSAttributedString.alloc().initWithString_attributes_(
-            f'Auto-Jump: {state}', {NSFontAttributeName: _MENLO()})
-        sender.setAttributedTitle_(astr)
+        app._toggle_btn.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'[Sessions] · Beads     Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
+        app._tracker_toggle_btn.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'Sessions · [Beads]     Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
 
     def killApp_(self, sender):
         # Detached bootout fires after our process exits, unloading the plist so KeepAlive does NOT respawn.
@@ -173,9 +176,9 @@ class CCMenuBarApp(rumps.App):
         self._bead_expand_tags: dict = {}   # {tag: bead_id}
         self._bead_untrack_tags: dict = {}  # {tag: (bead_id, project_name)}
         self._bead_tick_counter: int = 4    # starts at 4 → first tick fires refresh
-        self._tracker_panel, self._tracker_sv = _make_bead_nspanel()
-        self._hotkey_arr_right_cb = self._hotkey_arr_right_ref = None   # GC anchors Cmd+→
-        self._hotkey_arr_left_cb  = self._hotkey_arr_left_ref  = None   # GC anchors Cmd+←
+        self._tracker_panel, self._tracker_sv, self._tracker_toggle_btn = _make_bead_nspanel()
+        self._hotkey_arr_right_ref = None   # hk_ref for Cmd+→ (module holds CFUNCTYPE anchor)
+        self._hotkey_arr_left_ref  = None   # hk_ref for Cmd+← (module holds CFUNCTYPE anchor)
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
@@ -191,6 +194,8 @@ class CCMenuBarApp(rumps.App):
                 self._panel_kill_btn.setAction_(b'killApp:')
                 self._toggle_btn.setTarget_(self._panel_controller)
                 self._toggle_btn.setAction_(b'toggleAutoJump:')
+                self._tracker_toggle_btn.setTarget_(self._panel_controller)
+                self._tracker_toggle_btn.setAction_(b'toggleAutoJump:')
                 self._panel.setDelegate_(self._panel_controller)
                 self._tracker_panel.setDelegate_(self._panel_controller)
                 _set_bar_icon(self, ICON_NORMAL)   # replace setTitle_ with attributed version
@@ -335,6 +340,23 @@ def _load_settings():
     except Exception:
         return False, PANEL_WIDTH, PANEL_HEIGHT
 
+
+# Safety-net for deferred NSBlockOperation blocks: exceptions must not propagate to ObjC.
+# NSBlockOperation has no Python exception bridge -> unhandled exception -> SIGABRT.
+def _deferred_switch_to_tracker(app: 'CCMenuBarApp') -> None:
+    try:
+        _close_main_panel(app)
+        _open_tracker_panel(app)
+    except Exception as e:
+        print(f'[menubar] Cmd+→ deferred-block error: {e}', file=sys.stderr)
+
+def _deferred_switch_to_main(app: 'CCMenuBarApp') -> None:
+    try:
+        _close_tracker_panel(app)
+        _open_main_panel(app)
+    except Exception as e:
+        print(f'[menubar] Cmd+← deferred-block error: {e}', file=sys.stderr)
+
 # Open main panel: reposition + show + register Cmd+→ + Cmd+1..9
 def _open_main_panel(app: 'CCMenuBarApp') -> None:
     _reposition_panel(app._panel, app._nsapp.nsstatusitem)
@@ -342,9 +364,9 @@ def _open_main_panel(app: 'CCMenuBarApp') -> None:
     app._panel.enableCursorRects()
     app._panel_open = True
     _reregister_digit_hotkeys(app)
-    app._hotkey_arr_right_cb, app._hotkey_arr_right_ref = register_cmd_arrow_right(
+    _, app._hotkey_arr_right_ref = register_cmd_arrow_right(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: [_close_main_panel(app), _open_tracker_panel(app)]))
+            lambda: _deferred_switch_to_tracker(app)))
 
 # Close main panel: hide + unregister Cmd+→ + Cmd+1..9
 def _close_main_panel(app: 'CCMenuBarApp') -> None:
@@ -354,9 +376,8 @@ def _close_main_panel(app: 'CCMenuBarApp') -> None:
         unregister_hotkeys(app._hotkey_digits_refs)
         app._hotkey_digits_refs = []
         app._hotkey_digits_cb   = None
-    if app._hotkey_arr_right_ref:
-        unregister_single_hotkey(app._hotkey_arr_right_ref)
-        app._hotkey_arr_right_cb = app._hotkey_arr_right_ref = None
+    unregister_cmd_arrow_right(app._hotkey_arr_right_ref)
+    app._hotkey_arr_right_ref = None
 
 # Open tracker panel: rebuild → reposition → show + register Cmd+←
 def _open_tracker_panel(app: 'CCMenuBarApp') -> None:
@@ -365,17 +386,16 @@ def _open_tracker_panel(app: 'CCMenuBarApp') -> None:
     app._tracker_panel.orderFrontRegardless()
     app._tracker_panel.enableCursorRects()
     app._tracker_open = True
-    app._hotkey_arr_left_cb, app._hotkey_arr_left_ref = register_cmd_arrow_left(
+    _, app._hotkey_arr_left_ref = register_cmd_arrow_left(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: [_close_tracker_panel(app), _open_main_panel(app)]))
+            lambda: _deferred_switch_to_main(app)))
 
 # Close tracker panel: hide + unregister Cmd+←
 def _close_tracker_panel(app: 'CCMenuBarApp') -> None:
     app._tracker_panel.orderOut_(None)
     app._tracker_open = False
-    if app._hotkey_arr_left_ref:
-        unregister_single_hotkey(app._hotkey_arr_left_ref)
-        app._hotkey_arr_left_cb = app._hotkey_arr_left_ref = None
+    unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
+    app._hotkey_arr_left_ref = None
 
 # Refresh bead data from sessions; rebuild tracker panel if open and bead set changed
 def _refresh_bead_data(app: 'CCMenuBarApp', sessions) -> None:
