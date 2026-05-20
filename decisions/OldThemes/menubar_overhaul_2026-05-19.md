@@ -323,3 +323,57 @@ Phase 3 Severity-Tabelle entsprechend ergänzt. Abstract formuliert — keine Mo
 `Monitor_CC-zv6s` (3 remaining issues from 2026-05-12) → CLOSED. Alle 6 Issues addressed (4-5 done in dieser Session, 6 als carryover).
 
 `Monitor_CC-q6e5` (NEW): Follow-ups inklusive Cursor-Edges (deferred), Kill-Button (Issue 6 carryover), Refactor-Cleanup (worker C aktiv beim Session-Ende), Column-Alignment, Operational-Hygiene findings.
+
+## Iteration 8 (2026-05-20) — NSTrackingArea cursorUpdate Pattern (FINAL)
+
+### The breakthrough
+
+GitHub search via skill (`sw33tLie/macshot` + `lifedever/PasteMemo-app`) found two converged references for cursor handling in non-key NSPanel windows:
+
+| Ref | File | Pattern |
+|---|---|---|
+| `sw33tLie/macshot` | `RecordingHUDPanel.swift` | `.nonactivatingPanel + .borderless`, NSTrackingArea + `.cursorUpdate` + `.activeAlways` |
+| `lifedever/PasteMemo-app` | `RelayFloatingWindowController.swift` | Same setup; adds `NSCursor.push()/.pop()` pattern |
+
+Both repos use `.nonactivatingPanel + .borderless` (non-key windows), both use NSTrackingArea with `.cursorUpdate` + `.activeAlways`. PasteMemo adds `NSCursor.push()/.pop()` — essential because NSHostingView / NSTextField / NSButton call `super.cursorUpdate_` in their own mouse handlers and reset the cursor. `push()` on edge-enter + `pop()` on edge-exit maintains our cursor against child views that would otherwise override it.
+
+Key insight: the tracking-area `.cursorUpdate` option fires `cursorUpdate_` regardless of key-window status when combined with `.activeAlways`. This is why the earlier `mouseMoved_` + `NSCursor.set()` approach failed — NSTextField/NSButton's `cursorUpdate_` (dispatched after the view hierarchy resolves) overwrote every `set()` call. The push/pop stack has higher precedence than `set()`.
+
+### dev/ probe verification
+
+`_TrackingContentView` added to `dev/cursor_edges/probe.py` under `--tracking` flag. Uses `NSTrackingCursorUpdate | NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect`. `hitTest_` override claims L/R/bottom edge zones so child views don't intercept events at the edges.
+
+Live tests (user-confirmed 2026-05-20):
+
+| Command | Result | Interpretation |
+|---|---|---|
+| `probe.py --fix --tracking` | ✅ cursor `↔`/`↕` at L/R/Bottom edges | Pattern confirmed — push/pop + cursorUpdate_ works |
+| `probe.py --tracking --no-resizable` | ❌ no cursor switch (only I-Beam→Arrow) | `enableCursorRects()` is the dispatch enabler even for the tracking pattern; without it, `cursorUpdate_` does not fire |
+
+The `--no-resizable` result refutes the "drop NSWindowStyleMaskResizable" branch (Iteration 7 H7). We keep `NSWindowStyleMaskResizable` and `enableCursorRects()`. Custom drag-resize (`mouseDown_`/`mouseDragged_` in the probe) is NOT ported to production.
+
+### src/ migration
+
+**File changed:** `src/menubar/panel.py` — single file, 92 insertions / 14 deletions.
+
+**What was replaced (cursor-rects path):**
+- `resetCursorRects` method with its 4 `addCursorRect_cursor_` calls — deleted entirely
+- Inline `EDGE = 8` inside `resetCursorRects` — promoted to module-level constant
+
+**What was added (tracking pattern):**
+- `import objc` (new top-level import)
+- `NSTrackingActiveAlways`, `NSTrackingArea`, `NSTrackingCursorUpdate`, `NSTrackingInVisibleRect`, `NSTrackingMouseEnteredAndExited`, `NSTrackingMouseMoved` (AppKit imports)
+- Module-level `EDGE = 8` and `_TA_TRACKING_OPTS` constant
+- `_PanelContentView` methods: `initWithFrame_` (state init), `updateTrackingAreas`, `_cursor_for_edge`, `_set_hovered_edge` (push/pop), `_edge_for_point`, `cursorUpdate_`, `mouseMoved_`, `mouseExited_`, `hitTest_`
+
+**What stayed unchanged (no src/ surgery needed):**
+- `NSWindowStyleMaskResizable` in `_make_nspanel()` — kept
+- `panel.enableCursorRects()` in `_make_nspanel()` — kept (required for tracking pattern too)
+- `app._panel.enableCursorRects()` in `togglePanel_` (`src/menubar/app.py`) — kept (H10 fix, still required)
+
+**Commit:** `c1f497d` on branch `cursor-migrate`
+
+### Sources
+
+- `sw33tLie/macshot` — `RecordingHUDPanel.swift` — GitHub: https://github.com/sw33tLie/macshot
+- `lifedever/PasteMemo-app` — `RelayFloatingWindowController.swift` — GitHub: https://github.com/lifedever/PasteMemo-app
