@@ -44,7 +44,7 @@ _EventHandlerProcPtr = ctypes.CFUNCTYPE(
 
 _MBAR_SIG            = 0x4D424152   # OSType 'MBAR'
 _CMD_L_ID            = 1            # EventHotKeyID.id for Cmd+L
-_CMD_K_ID            = 2            # EventHotKeyID.id for Cmd+K
+_CMD_K_ID            = 30           # EventHotKeyID.id for Cmd+K (30 avoids collision: L=1, digits=2-10, arrows=20-21)
 _CMD_RIGHT_ID        = 20           # EventHotKeyID.id for Cmd+→ (kVK_RightArrow = 0x7C)
 _CMD_LEFT_ID         = 21           # EventHotKeyID.id for Cmd+← (kVK_LeftArrow = 0x7B)
 _HOTKEY_EVENT_SPEC   = _EventTypeSpec(0x6B657962, 6)   # kEventClassKeyboard, kEventHotKeyPressed

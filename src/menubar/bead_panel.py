@@ -98,6 +98,7 @@ def _make_bead_row(bead: dict, panel_width: int, is_expanded: bool):
     expand_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
     expand_btn.cell().setWraps_(True)
     expand_btn.cell().setLineBreakMode_(0)   # NSLineBreakByWordWrapping
+    expand_btn.cell().setAlignment_(0)   # NSTextAlignmentLeft — prevent default centering
     expand_btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(
             row_text, {NSFontAttributeName: _MENLO(),
@@ -120,22 +121,25 @@ def _make_expand_view(text: str, panel_width: int) -> NSView:
     w       = panel_width - 22          # matches standard stack item width
     inner_x = 16                        # inset to visually nest under bead row
     inner_w = w - inner_x
-    lines   = text.split('\n')
-    row_h   = _ROW_H - 1
-    total   = len(lines) * row_h
+    lines        = text.split('\n')
+    line_heights = [_bead_row_height(line or ' ', inner_w) for line in lines]
+    total        = sum(line_heights)
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, total))
     container.widthAnchor().constraintEqualToConstant_(float(w)).setActive_(True)
     container.heightAnchor().constraintEqualToConstant_(float(total)).setActive_(True)
-    y = total - row_h   # first line at top (NSView y=0 is bottom)
-    for line in lines:
+    y = total   # NSView y=0 is bottom; subtract each lh before placing
+    for line, lh in zip(lines, line_heights):
+        y -= lh
         tf = _CursorlessLabel.labelWithString_('')
-        tf.setFrame_(NSMakeRect(inner_x, y, inner_w, row_h))
+        tf.setFrame_(NSMakeRect(inner_x, y, inner_w, lh))
+        tf.cell().setWraps_(True)
+        tf.cell().setLineBreakMode_(0)   # NSLineBreakByWordWrapping
+        tf.setUsesSingleLineMode_(False)
         tf.setAttributedStringValue_(
             NSAttributedString.alloc().initWithString_attributes_(
                 line or ' ', {NSFontAttributeName: _MENLO(),
                               NSForegroundColorAttributeName: NSColor.secondaryLabelColor()}))
         container.addSubview_(tf)
-        y -= row_h
     return container
 
 # Compute required height for the bead tracker panel
@@ -159,7 +163,9 @@ def _compute_bead_height(app) -> int:
             row_text   = f'{indicator} {bead_id}  {title}'
             h += _bead_row_height(row_text, btn_w)
             if bead_id in app._bead_expanded:
-                h += len(app._bead_expanded[bead_id].split('\n')) * (_ROW_H - 1)
+                expand_inner_w = pw - 16   # mirrors _make_expand_view: inner_w = (panel_width-22) - 16
+                h += sum(_bead_row_height(line or ' ', expand_inner_w)
+                         for line in app._bead_expanded[bead_id].split('\n'))
     return h
 
 # Resize tracker NSPanel anchored at top edge (same logic as _resize_panel for main panel)
