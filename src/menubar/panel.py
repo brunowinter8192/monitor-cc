@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import objc
+import os
 from datetime import datetime
 from itertools import groupby
 
@@ -40,10 +41,13 @@ EDGE             = 8     # pts — cursor-zone width at L/R/bottom edges
 _TA_TRACKING_OPTS = (NSTrackingCursorUpdate | NSTrackingMouseMoved |
                      NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways |
                      NSTrackingInVisibleRect)
+_TA_CURSOR_OPTS   = NSTrackingCursorUpdate | NSTrackingActiveAlways | NSTrackingInVisibleRect
 
 # FUNCTIONS
 
 def _cursor_log(msg: str) -> None:
+    if not os.environ.get('MENUBAR_DIAGNOSTICS'):
+        return
     with open('/tmp/menubar-cursor.log', 'a') as f:
         f.write(f'{datetime.now().strftime("%H:%M:%S.%f")[:-3]} {msg}\n')
 
@@ -217,6 +221,14 @@ def _make_nspanel():
     stack.setSpacing_(1.0)
     stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas — required for addView_inGravity_ to work
     cv.addSubview_(stack)
+    # Child views (NSView/NSStackView) have no cursorUpdate_ handler — AppKit dispatches
+    # cursorUpdate_ only to the topmost view with a handler, skipping our ContentView.
+    # Fix: install a tracking area on each child with owner=cv so AppKit fires cursorUpdate_
+    # on cv regardless of which child the cursor is over.
+    for child in (footer, top_bar, stack):
+        ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
+            child.bounds(), _TA_CURSOR_OPTS, cv, None)
+        child.addTrackingArea_(ta)
     return panel, stack, quit_btn, toggle_btn, kill_btn
 
 # Position panel flush below the NSStatusItem button; reads current panel dimensions (set by _resize_panel)
