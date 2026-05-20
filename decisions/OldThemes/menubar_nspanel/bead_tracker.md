@@ -22,3 +22,52 @@ Titles (both updated on every `toggleAutoJump_` call and on panel rebuild):
 - Tracker panel: `Sessions · [Beads]     Auto-Jump: {state}`
 
 `_make_bead_nspanel` now returns `(panel, stack, toggle_btn)`. `app._tracker_toggle_btn` stored on `CCMenuBarApp`. Wired in `_tick` init block alongside `_toggle_btn`. `toggleAutoJump_` updates both buttons directly (not via `sender`).
+
+---
+
+## Layout-Fixes (2026-05-21)
+
+Four UI fixes across bead_panel.py, panel.py, hotkey.py, app.py.
+
+### D1 — Bead-Panel Linksbündige Bead-Zeilen
+
+Root cause: `_make_bead_row` NSView containers had `heightAnchor` constraint but no `widthAnchor` constraint. NSStackView with `NSLayoutAttributeLeading` alignment resolves item widths from `intrinsicContentSize`. NSTextField (project header) has `intrinsicContentSize.width` = text width; NSView container has `{-1, -1}`. Under Auto Layout, NSStackView position each item type differently → inconsistent x-offsets for bead rows.
+
+Fix:
+- `container.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)` added to `_make_bead_row` and `_make_expand_view`
+- `expand_btn` x-offset changed from `0` to `indent=16` (16pt visual indent under project header, signals "child" relationship)
+- `btn_w` reduced by 16 to compensate
+- `x_btn` x-position stays at `pw - _UNTRACK_W` (right container edge, unchanged)
+
+### D2 — Bead-Panel Titel Wrapping
+
+Root cause: `_make_bead_row` used manual char-count truncation (`title[:max_ch - 1] + '…'`) with no AppKit text measurement. Container height was fixed to `_ROW_H - 1 = 20`.
+
+Fix:
+- New helper `_bead_row_height(row_text, btn_w) -> int`: measures wrapped height via `NSAttributedString.boundingRectWithSize_options_context_(NSMakeSize(btn_w, 10000), 1, None)` (option 1 = `NSStringDrawingUsesLineFragmentOrigin`). Returns `max(_ROW_H - 1, int(height) + 4)`.
+- `_make_bead_row`: removed truncation, uses full title, enables `expand_btn.cell().setWraps_(True)` + `setLineBreakMode_(0)` (word-wrap). Container height set to `row_h = _bead_row_height(row_text, btn_w)`.
+- `x_btn` y-position: `row_h - (_ROW_H - 1)` — top-aligned to stay level with bead ID line on wrapping rows.
+- `_compute_bead_height`: replaces `h += _ROW_H` with `_bead_row_height(row_text, btn_w)` call, reconstructing `row_text` per bead (same format as `_make_bead_row`).
+
+### D3 — Sessions-Panel Fixed-Width Columns
+
+Root cause: `_rebuild_panel` and `_update_panel_inplace` used `name_width = max(len(s.name) for s in sessions)` — dynamic per-rebuild. All other columns floated with name column width, causing session rows to drift on rebuild when session set changed.
+
+Fix: removed dynamic `name_width`. Added fixed column constants (Menlo 13pt ≈ 7.8pt/char):
+- `_COL_SLOT_W = 4` chars ≈ 28pt — `[N] ` or `    ` (worker indent)
+- `_COL_NAME_W = 23` chars ≈ 180pt — name, ljust + right-truncate
+- `_COL_TIMER_W = 9` chars ≈ 70pt — `[B M:SS]` badge (max `[B 99:59]` = 9 chars), ljust-padded
+
+Name column now starts at string position 6 for both main sessions (`[N] ● ` = 4+2) and workers (`      ` = 6 spaces). Status column at position 30. Timer column at 35. Column positions are immutable across rebuilds.
+
+### D4 — Cmd+K Panel Background
+
+New global hotkey Cmd+K (`kVK_ANSI_K = 0x28`, id `_CMD_K_ID = 2`) following identical pattern to Cmd+L (`register_cmd_l`). Always-active (registered once in `__init__`, never unregistered).
+
+State: `app._panel_backgrounded: bool = False`.
+
+Handler (`_background_panel`): dispatched via `NSOperationQueue.mainQueue().addOperationWithBlock_` (main-thread safety, same as Cmd+→/←). Logic: if backgrounded → `orderFrontRegardless()` + clear flag; elif panel open → `orderBack_(None)` + set flag; else no-op.
+
+`togglePanel_` (`_PanelController`): if `_panel_backgrounded` → bring to front + clear flag + return early (Cmd+L / bar-click → foreground, not close). This handles the "Cmd+L on backgrounded panel brings it to front" edge case.
+
+`_close_main_panel` + `_close_tracker_panel`: both reset `_panel_backgrounded = False`. Handles Cmd+→/← cycling: close resets backgrounded state before opening the other panel in foreground.
