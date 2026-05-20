@@ -6,34 +6,37 @@ from pathlib import Path
 
 _SETTINGS_FILE = Path("~/.claude/settings.json").expanduser()
 _HOOKS_DIR     = Path(__file__).resolve().parent
-_HOOK_MATCHER  = "Bash"
 _HOOK_TIMEOUT  = 5
 
-# Hook scripts to install, in order
+# Hook scripts to install: (script_filename, PreToolUse matcher)
 _HOOK_SCRIPTS = [
-    "block_dangerous_kill.py",
-    "block_chained_sleep.py",
-    "block_unauthorized_background.py",
+    ("block_dangerous_kill.py",          "Bash"),
+    ("block_chained_sleep.py",           "Bash"),
+    ("block_unauthorized_background.py", "Bash"),
+    ("block_broad_grep.py",              "Bash"),
+    ("block_noop_edit.py",               "Edit"),
+    ("block_read_directory.py",          "Read"),
+    ("block_read_oversize.py",           "Read"),
 ]
-_HOOK_COMMANDS = [f"python3 {_HOOKS_DIR / s}" for s in _HOOK_SCRIPTS]
+_HOOK_ENTRIES = [(f"python3 {_HOOKS_DIR / s}", m) for s, m in _HOOK_SCRIPTS]
 
 # ORCHESTRATOR
 
-# Install PreToolUse safety hooks into ~/.claude/settings.json; idempotent
+# Install PreToolUse safety hooks into ~/.claude/settings.json; idempotent; supports mixed matchers (Bash/Edit/Read)
 def hook_setup_workflow() -> None:
     settings = _load_settings()
     hooks = settings.setdefault("hooks", {})
     pre = hooks.setdefault("PreToolUse", [])
     installed = 0
-    for command in _HOOK_COMMANDS:
+    for command, matcher in _HOOK_ENTRIES:
         if _already_installed(pre, command):
             print(f"Already installed — skipped: {command}")
         else:
-            _add_hook(pre, command)
+            _add_hook(pre, command, matcher)
             installed += 1
     if installed:
         _save_settings(settings)
-        print(f"Installed {installed} PreToolUse/Bash safety hook(s) → {_SETTINGS_FILE}")
+        print(f"Installed {installed} PreToolUse safety hook(s) → {_SETTINGS_FILE}")
         print("Restart Claude Code to activate the new hook(s).")
     else:
         print("All safety hooks already installed — nothing changed.")
@@ -48,10 +51,10 @@ def _already_installed(pre_tool_use: list, command: str) -> bool:
                 return True
     return False
 
-# Append a new Bash matcher group to the PreToolUse list
-def _add_hook(pre_tool_use: list, command: str) -> None:
+# Append a new matcher group to the PreToolUse list with the given matcher
+def _add_hook(pre_tool_use: list, command: str, matcher: str) -> None:
     pre_tool_use.append({
-        "matcher": _HOOK_MATCHER,
+        "matcher": matcher,
         "hooks": [{"type": "command", "command": command, "timeout": _HOOK_TIMEOUT}],
     })
 

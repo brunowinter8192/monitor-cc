@@ -2,7 +2,7 @@
 
 ## Role
 
-Global CC safety hooks — PreToolUse scripts that intercept Bash tool calls and block known-destructive patterns before execution. Registered in `~/.claude/settings.json` (global, fires for ALL projects on this machine, not just Monitor_CC). Each hook script reads CC's JSON payload from stdin and exits 0 (allow) or 2 (block, stderr shown to user).
+Global CC safety hooks — PreToolUse scripts that intercept Bash, Edit, and Read tool calls and block known-destructive patterns before execution. Registered in `~/.claude/settings.json` (global, fires for ALL projects on this machine, not just Monitor_CC). Each hook script reads CC's JSON payload from stdin and exits 0 (allow) or 2 (block, stderr shown to user).
 
 Design rationale and statistics: `decisions/OldThemes/tool_use_safety/2026-05-12_session_findings.md`.
 
@@ -70,9 +70,73 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### hook_setup.py (75 LOC)
+### block_broad_grep.py (72 LOC)
 
-**Purpose:** One-shot idempotent installer — adds `PreToolUse` / matcher=`Bash` entries to `~/.claude/settings.json` for each hook script (`block_dangerous_kill.py`, `block_chained_sleep.py`, `block_unauthorized_background.py`). Loops over `_HOOK_COMMANDS`; skips any entry already present by exact command string. Atomic write via temp + `os.replace`.
+**Purpose:** PreToolUse hook (Bash) — blocks recursive `grep -r`/`-R` calls on directories when no `--include=` scope is present. Unrestricted recursive grep matches JSONL logs, node_modules, and vendored content, producing 10MB+ output that floods the context window. Exits 2 + stderr with fix options. Exits 0 on any parse/internal error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message with fix options) on violation only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:**
+- `grep -rn <pattern> <dir>` without `--include=` where last arg is not a specific file
+- `grep -R <pattern> .` and similar broad recursive scans
+
+**Allowed patterns:**
+- `grep -rn pattern src/ --include='*.py'` — has `--include` scope
+- `grep -rn pattern workflow.py` — last arg is a specific file (ends in known extension)
+- `grep -n pattern file.py` — no recursive flag
+- `git grep -r ...` — git grep uses gitignore, exempted
+
+**No quote-stripping.** Extracts the grep segment up to the first pipe/chain operator; skips `git grep`. False-positive risk near zero for the scoped forms above.
+
+---
+
+### block_noop_edit.py (42 LOC)
+
+**Purpose:** PreToolUse hook (Edit) — blocks Edit calls where `old_string == new_string`. CC rejects these with "No changes to make: old_string and new_string are exactly the same" — the hook surfaces this before the round-trip. Exits 2 + stderr. Exits 0 on any parse/internal error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {old_string, new_string}}`).
+**Writes:** stderr (block message with re-read advice) on violation only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Edit entry). Never imported.
+**Calls out:** stdlib only (`json`).
+
+**Blocked patterns:** any Edit where `old_string` and `new_string` are identical non-None strings.
+
+**Allowed patterns:** any Edit with different strings; missing/non-string fields (fail-open).
+
+---
+
+### block_read_directory.py (45 LOC)
+
+**Purpose:** PreToolUse hook (Read) — blocks Read calls where `file_path` points to a directory. CC rejects these with "Read tool cannot read directories" — the hook surfaces this before the round-trip and suggests `ls` instead. Exits 2 + stderr. Exits 0 on any parse/internal error or nonexistent path (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {file_path}}`).
+**Writes:** stderr (block message with `ls` alternative) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Read entry). Never imported.
+**Calls out:** stdlib only (`json`, `os`).
+
+**Blocked patterns:** `file_path` resolves to an existing directory (`os.path.isdir`).
+
+**Allowed patterns:** file paths, nonexistent paths, missing/non-string field (all fail-open).
+
+---
+
+### block_read_oversize.py (57 LOC)
+
+**Purpose:** PreToolUse hook (Read) — blocks Read calls on files >256KB when no `offset`, `limit`, or `pages` parameter is provided. CC rejects reads above 256KB with a size error — the hook surfaces this before the round-trip and suggests `grep` + targeted Read. Exits 2 + stderr with file size and fix. Exits 0 on any parse/stat error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {file_path, offset?, limit?, pages?}}`).
+**Writes:** stderr (block message with grep + offset/limit fix) on violation only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Read entry). Never imported.
+**Calls out:** stdlib only (`json`, `os`).
+
+**Blocked patterns:** `file_path` is an existing file >256KB AND none of `offset`/`limit`/`pages` present in `tool_input`.
+
+**Allowed patterns:** file ≤256KB; offset/limit/pages present (user already scoped); nonexistent file; stat error (all fail-open).
+
+---
+
+### hook_setup.py (80 LOC)
+
+**Purpose:** One-shot idempotent installer — adds `PreToolUse` entries to `~/.claude/settings.json` for each hook script, with per-hook matcher (`Bash`, `Edit`, or `Read`). Loops over `_HOOK_ENTRIES` (tuples of command + matcher); skips any entry already present by exact command string. Atomic write via temp + `os.replace`. Supports all 7 current hooks across 3 matchers.
 **Reads:** `~/.claude/settings.json`.
 **Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`).
 **Called by:** User manually (`python3 src/hooks/hook_setup.py` from Monitor_CC root). Never imported.
@@ -85,7 +149,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 ## Gotchas
 
 - **Fail-open is mandatory.** All hooks exit 0 on any parse error or missing field — a hook must never block a legitimate tool call due to its own failure. A broken hook that blocks everything is a footgun.
-- **Global registration.** All hooks fire for every Bash tool call in every CC session on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
+- **Global registration.** Bash hooks fire for every Bash call; Edit hooks for every Edit call; Read hooks for every Read call — across all CC sessions on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
 - **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths.
 - **`block_chained_sleep.py` has no quote-stripping.** The word-boundary regex avoids `overslept`-style substrings but does not strip quoted arguments before matching. `echo "sleep 5 ..."` (number inside a quoted arg) would fire. Acceptable — no realistic CC workflow hits this.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
