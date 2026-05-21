@@ -40,7 +40,7 @@ from .system import _focus_session
 # From paths.py: APP_SUPPORT-relative settings path
 from .paths import SETTINGS_FILE as _SETTINGS_PATH
 # From queue.py: message queue storage
-from .queue import load_queue, save_queue
+from .queue import load_queue, save_queue, deliver_message
 
 BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
@@ -98,6 +98,18 @@ class _PanelController(NSObject):
 
     def untrackBead_(self, sender):
         _handle_untrack_bead(self._app, sender.tag())
+
+    def queryBeadStatus_(self, sender):
+        app  = self._app
+        info = app._bead_query_tags.get(sender.tag())
+        if not info:
+            return
+        bead_id, project_name = info
+        cwd = next((s.cwd for s in app._last_sessions
+                    if not s.is_worker and s.project_name == project_name), None)
+        if not cwd:
+            return
+        deliver_message(cwd, f'{bead_id} wie lautet der status was wurde getan was ist offen')
 
     def focusSession_(self, sender):
         cwd = self._app._cwd_map.get(sender.tag())
@@ -309,6 +321,7 @@ class CCMenuBarApp(rumps.App):
         self._bead_displayed: dict   = {}   # {bead_id: NSButton} expand buttons
         self._bead_expand_tags: dict = {}   # {tag: bead_id}
         self._bead_untrack_tags: dict = {}  # {tag: (bead_id, project_name)}
+        self._bead_query_tags: dict  = {}   # {tag: (bead_id, project_name)}
         self._bead_tick_counter: int = 4    # starts at 4 → first tick fires refresh
         self._tracker_panel, self._tracker_sv, self._tracker_toggle_btn = _make_bead_nspanel()
         self._hotkey_arr_right_ref = None   # hk_ref for Cmd+→ (module holds CFUNCTYPE anchor)
