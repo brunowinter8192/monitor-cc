@@ -19,10 +19,17 @@ _BLOCK_RE = re.compile(
 FRICTION_THRESHOLD = 3
 FRICTION_WINDOW_MIN = 30
 
+# FP heuristics — per hook
+_LOOP_RE = re.compile(r'\b(until|while|for)\b')
+_SIDE_EFFECT_RE = re.compile(
+    r'\b(pkill|launchctl|kickstart|bootout|worker-cli\s+kill|systemctl)\b|kill\s+-\d'
+)
+_content = lambda obj: [c for c in (obj.get("message", {}).get("content") or []) if isinstance(c, dict)]
+
 
 # ORCHESTRATOR
 
-# Collect hook-block events from ~/.claude/projects, aggregate, write MD report to output path
+# Collect hook-block events from ~/.claude/projects, apply FP heuristics, write MD report
 def analyze_blocks_workflow() -> None:
     args = _parse_args()
     since_dt = _parse_since(args.since)
@@ -42,7 +49,7 @@ def _parse_args():
     p.add_argument("--since", default=None, help="YYYY-MM-DD (default: 7 days ago)")
     p.add_argument("--project", default=None, help="Project filter (case-insensitive substring)")
     p.add_argument("--hook", default=None, help="Hook name filter (case-insensitive substring)")
-    p.add_argument("--output", default=None, help="Output path (default: dev/hook_analysis/reports/<ts>.md)")
+    p.add_argument("--output", default=None, help="Output path (default: dev/hook_firing/reports/<ts>.md)")
     return p.parse_args()
 
 # Parse --since string or return default 7 days ago
@@ -56,23 +63,23 @@ def _resolve_output(output: str | None) -> str:
     if output:
         return output
     ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    return f"dev/hook_analysis/reports/{ts}.md"
+    return f"dev/hook_firing/reports/{ts}.md"
 
 # Walk all JSONL files in ~/.claude/projects, extract matching block events
 def _collect_events(since_dt: datetime, project_filter: str | None, hook_filter: str | None) -> list:
     events = []
-    cutoff = since_dt - timedelta(hours=1)  # 1h buffer for mtime imprecision
+    cutoff = since_dt - timedelta(hours=1)
     for jsonl_path in sorted(PROJECTS_DIR.glob("*/*.jsonl")):
         try:
             mtime = datetime.fromtimestamp(jsonl_path.stat().st_mtime, tz=timezone.utc)
         except OSError:
-            mtime = None  # can't stat → don't skip
+            mtime = None
         if mtime is not None and mtime < cutoff:
             continue
         events.extend(_parse_jsonl(jsonl_path, since_dt, project_filter, hook_filter))
     return events
 
-# Parse one JSONL file and return block events with trigger commands
+# Parse one JSONL file and return block events; builds uuid_map and tool_use_map for lookup
 def _parse_jsonl(path: Path, since_dt: datetime, project_filter, hook_filter) -> list:
     events = []
     try:
@@ -81,18 +88,30 @@ def _parse_jsonl(path: Path, since_dt: datetime, project_filter, hook_filter) ->
         print(f"Warning: could not read {path}: {e}", file=sys.stderr)
         return events
 
-    # Pass 1: build uuid→entry index for parentUuid lookup
+    # Pass 1: build uuid→entry index + tool_use_id→input dict
     uuid_map: dict = {}
+    tu_map: dict = {}  # tool_use_id → {command, run_in_background, tool_name}
     for line in lines:
-        if '"uuid"' not in line:
+        if '"uuid"' not in line and '"tool_use"' not in line:
             continue
         try:
             obj = json.loads(line)
-            uid = obj.get("uuid")
-            if uid:
-                uuid_map[uid] = obj
         except json.JSONDecodeError:
             continue
+        uid = obj.get("uuid")
+        if uid:
+            uuid_map[uid] = obj
+        # Index all tool_use blocks by their id for exact trigger lookup
+        for mc in _content(obj):
+            if mc.get("type") == "tool_use":
+                tid = mc.get("id")
+                if tid and tid not in tu_map:
+                    inp = mc.get("input", {})
+                    tu_map[tid] = {
+                        "command": inp.get("command") or inp.get("file_path") or "",
+                        "run_in_background": bool(inp.get("run_in_background", False)),
+                        "tool_name": mc.get("name", ""),
+                    }
 
     # Pass 2: extract block events
     for line in lines:
@@ -102,13 +121,14 @@ def _parse_jsonl(path: Path, since_dt: datetime, project_filter, hook_filter) ->
             obj = json.loads(line)
         except json.JSONDecodeError:
             continue
-        ev = _extract_event(obj, since_dt, project_filter, hook_filter, uuid_map)
+        ev = _extract_event(obj, since_dt, project_filter, hook_filter, uuid_map, tu_map)
         if ev:
             events.append(ev)
     return events
 
 # Extract a block event dict from one JSONL entry; return None if not a match
-def _extract_event(obj: dict, since_dt: datetime, project_filter, hook_filter, uuid_map: dict) -> dict | None:
+def _extract_event(obj: dict, since_dt: datetime, project_filter, hook_filter,
+                   uuid_map: dict, tu_map: dict) -> dict | None:
     if obj.get("type") != "user":
         return None
     ts_str = obj.get("timestamp", "")
@@ -126,18 +146,13 @@ def _extract_event(obj: dict, since_dt: datetime, project_filter, hook_filter, u
     if project_filter and project_filter.lower() not in project.lower():
         return None
 
-    content = obj.get("message", {}).get("content", [])
-    if not isinstance(content, list):
-        return None
-
-    for c in content:
-        if not isinstance(c, dict) or c.get("type") != "tool_result":
+    for c in _content(obj):
+        if c.get("type") != "tool_result":
             continue
         raw = c.get("content") or ""
         text = (
             " ".join(x.get("text", "") for x in raw if isinstance(x, dict))
-            if isinstance(raw, list)
-            else raw
+            if isinstance(raw, list) else raw
         )
         m = _BLOCK_RE.search(text)
         if not m:
@@ -146,7 +161,11 @@ def _extract_event(obj: dict, since_dt: datetime, project_filter, hook_filter, u
         if hook_filter and hook_filter.lower() not in hook_name.lower():
             continue
 
-        trigger_cmd = _find_trigger_cmd(obj, uuid_map)
+        # Exact trigger lookup via tool_use_id, fallback to parentUuid
+        tool_use_id = c.get("tool_use_id", "")
+        trigger_cmd, run_in_bg, _ = _find_trigger(tool_use_id, obj, uuid_map, tu_map)
+        fp_verdict, fp_heuristic = _classify_fp(hook_name, trigger_cmd, run_in_bg, session_type)
+
         return {
             "timestamp": ts,
             "date": ts.strftime("%Y-%m-%d"),
@@ -155,29 +174,90 @@ def _extract_event(obj: dict, since_dt: datetime, project_filter, hook_filter, u
             "session_type": session_type,
             "branch": obj.get("gitBranch", ""),
             "blocked_msg": m.group(2).strip()[:80],
-            "trigger_cmd": trigger_cmd,
+            "trigger_cmd": trigger_cmd,             # full command, no truncation
             "trigger_pattern": _pattern_key(trigger_cmd),
+            "run_in_background": run_in_bg,
+            "fp_verdict": fp_verdict,
+            "fp_heuristic": fp_heuristic,
         }
     return None
 
-# Find the tool_use command that preceded this block via parentUuid lookup
-def _find_trigger_cmd(block_entry: dict, uuid_map: dict) -> str:
+# Look up trigger command: try exact tool_use_id first, fall back to first tool_use in parent
+def _find_trigger(tool_use_id: str, block_entry: dict, uuid_map: dict, tu_map: dict) -> tuple:
+    # Exact match via tool_use_id
+    if tool_use_id and tool_use_id in tu_map:
+        t = tu_map[tool_use_id]
+        return t["command"], t["run_in_background"], t["tool_name"]
+    # Fallback: first tool_use in parent message
     parent_uuid = block_entry.get("parentUuid")
-    if not parent_uuid:
-        return ""
-    parent = uuid_map.get(parent_uuid)
-    if not parent:
-        return ""
-    content = parent.get("message", {}).get("content", [])
-    if not isinstance(content, list):
-        return ""
-    for c in content:
-        if not isinstance(c, dict) or c.get("type") != "tool_use":
-            continue
-        inp = c.get("input", {})
-        cmd = inp.get("command") or inp.get("file_path") or ""
-        return cmd
-    return ""
+    if parent_uuid and parent_uuid in uuid_map:
+        for c in _content(uuid_map[parent_uuid]):
+            if c.get("type") == "tool_use":
+                inp = c.get("input", {})
+                cmd = inp.get("command") or inp.get("file_path") or ""
+                return cmd, bool(inp.get("run_in_background", False)), c.get("name", "")
+    return "", False, ""
+
+# FP/TP/uncertain classifier — returns (verdict, heuristic_note)
+def _classify_fp(hook: str, cmd: str, run_in_bg: bool, session_type: str) -> tuple:
+    if not cmd or cmd == "(unknown)":
+        return "uncertain", "no trigger"
+
+    if hook == "block_chained_sleep":
+        if "$(cat <<" in cmd or "$( cat <<" in cmd:
+            return "fp", "heredoc-in-$() scanner gap: sleep in $(...) body not stripped"
+        m = re.search(r"\bsleep\s+(\d+(?:\.\d+)?)\b", cmd)
+        if not m:
+            return "uncertain", "sleep not visible in trigger (likely TP)"
+        n = float(m.group(1))
+        if _LOOP_RE.search(cmd):
+            return "tp", f"sleep in loop body (N={n}), real polling"
+        if run_in_bg:
+            return "tp", f"run_in_background + non-canonical sleep (N={n})"
+        if n > 10:
+            return "tp", f"sleep N={n} > 10 in foreground (intentional wait)"
+        se = _SIDE_EFFECT_RE.search(cmd)
+        if n <= 5 and se:
+            return "fp", f"sleep N={n} ≤ 5 after side-effect ({se.group()!r}): settling-time, rule-too-strict"
+        return "uncertain", f"sleep N={n} ≤ 10, context ambiguous"
+
+    if hook == "block_dangerous_kill":
+        if "$(cat <<" in cmd:
+            return "fp", "heredoc-in-$() scanner gap"
+        if re.search(r"\bpkill\s+(-[^\s]*\s+)*-f\b", cmd):
+            return "tp", "pkill -f in active command"
+        return "uncertain", "pkill pattern not visible in trigger"
+
+    if hook == "block_cd_drift":
+        if ".claude/worktrees/" in cmd:
+            return "tp", "cd into worktree without cd-back"
+        return "uncertain", "worktree path not visible in trigger"
+
+    if hook == "block_read_worktree":
+        if session_type == "main":
+            return "tp", "main-session read of worktree path"
+        return "uncertain", "worker reading worktree (own vs cross unclear)"
+
+    if hook == "block_broad_grep":
+        if "git grep" in cmd:
+            return "fp", "git grep is exempted by hook"
+        if "--include=" in cmd:
+            return "fp", "--include= present (hook should not block)"
+        return "tp", "recursive grep without --include= scope"
+
+    if hook == "block_unauthorized_background":
+        if re.match(r"\s*(worker-cli\s+send|echo|true|pwd)\b", cmd):
+            return "fp", "fast-returning command unnecessarily run in background"
+        return "tp", "non-canonical command with run_in_background=true"
+
+    if hook == "block_venv_no_redirect":
+        if re.search(r"venv/bin/python\s+\S+\.py\b", cmd):
+            if re.search(r">\s*\S+", cmd) or "| tee " in cmd:
+                return "fp", "redirect/tee present in trigger"
+            return "tp", "venv script without file redirect"
+        return "uncertain", "venv python not visible in trigger"
+
+    return "uncertain", "no heuristic for this hook"
 
 # Derive project name from cwd (strips worktree suffix if present)
 def _project_from_cwd(cwd: str) -> str:
@@ -189,10 +269,8 @@ def _project_from_cwd(cwd: str) -> str:
 def _pattern_key(cmd: str) -> str:
     if not cmd:
         return "(unknown)"
-    # Take first non-empty line, strip leading variable assignments (VAR=val)
     first_line = cmd.split('\n')[0].strip()
     first_line = re.sub(r'^[A-Z_]+=\S+\s*', '', first_line).strip()
-    # Truncate to 70 chars for display
     return first_line[:70] or "(empty)"
 
 # Detect friction clusters: (hook, project, branch) groups with ≥ threshold blocks in window
@@ -205,7 +283,6 @@ def _find_friction_clusters(events: list) -> list:
     clusters = []
     for (hook, proj, branch), timestamps in groups.items():
         timestamps_sorted = sorted(timestamps)
-        # Sliding window: find any consecutive sub-sequence within FRICTION_WINDOW_MIN
         for i in range(len(timestamps_sorted)):
             window_end = timestamps_sorted[i] + timedelta(minutes=FRICTION_WINDOW_MIN)
             in_window = [t for t in timestamps_sorted[i:] if t <= window_end]
@@ -216,7 +293,7 @@ def _find_friction_clusters(events: list) -> list:
                     "window_start": timestamps_sorted[i].strftime("%Y-%m-%d %H:%M"),
                     "window_end": in_window[-1].strftime("%H:%M"),
                 })
-                break  # one cluster report per group
+                break
     return sorted(clusters, key=lambda x: -x["count"])
 
 # Build the full MD report string from aggregated events
@@ -230,31 +307,35 @@ def _build_report(events: list, since_dt: datetime, project_filter, hook_filter)
         f"Period: {since_str} → today  ",
         f"Total blocks: {len(events)}  ",
     ]
-    if project_filter:
-        lines.append(f"Project filter: `{project_filter}`  ")
-    if hook_filter:
-        lines.append(f"Hook filter: `{hook_filter}`  ")
+    if project_filter: lines.append(f"Project filter: `{project_filter}`  ")
+    if hook_filter: lines.append(f"Hook filter: `{hook_filter}`  ")
     lines.append("")
 
     if not events:
         lines.append("_No hook blocks found in the specified period._")
         return "\n".join(lines) + "\n"
 
-    # --- Summary by hook ---
-    hook_counts: dict = defaultdict(lambda: {"total": 0, "main": 0, "worker": 0})
+    # --- Summary by hook with FP/TP/uncertain counts ---
+    hook_counts: dict = defaultdict(lambda: {"total": 0, "main": 0, "worker": 0,
+                                              "tp": 0, "fp": 0, "uncertain": 0})
     for ev in events:
         d = hook_counts[ev["hook_name"]]
         d["total"] += 1
         d[ev["session_type"]] += 1
+        d[ev["fp_verdict"]] += 1
 
     lines += [
         "## Summary by Hook",
         "",
-        "| Hook | Total | Main | Worker |",
-        "|---|---|---|---|",
+        "| Hook | Total | Main | Worker | TP | FP | Uncertain | FP rate |",
+        "|---|---|---|---|---|---|---|---|",
     ]
-    for hook_name, counts in sorted(hook_counts.items(), key=lambda x: -x[1]["total"]):
-        lines.append(f"| {hook_name} | {counts['total']} | {counts['main']} | {counts['worker']} |")
+    for hook_name, c in sorted(hook_counts.items(), key=lambda x: -x[1]["total"]):
+        fp_rate = f"{c['fp'] / c['total']:.0%}" if c["total"] else "—"
+        lines.append(
+            f"| {hook_name} | {c['total']} | {c['main']} | {c['worker']} "
+            f"| {c['tp']} | {c['fp']} | {c['uncertain']} | {fp_rate} |"
+        )
 
     # --- Friction candidates ---
     friction = _find_friction_clusters(events)
@@ -273,71 +354,42 @@ def _build_report(events: list, since_dt: datetime, project_filter, hook_filter)
             )
 
     # --- Top trigger patterns per hook ---
-    hook_patterns: dict = defaultdict(lambda: defaultdict(lambda: {"count": 0, "session_types": set()}))
+    hook_patterns: dict = defaultdict(lambda: defaultdict(lambda: {"count": 0, "fp": 0, "tp": 0,
+                                                                    "session_types": set()}))
     for ev in events:
         d = hook_patterns[ev["hook_name"]][ev["trigger_pattern"]]
         d["count"] += 1
         d["session_types"].add(ev["session_type"])
+        if ev["fp_verdict"] in ("fp", "tp"):
+            d[ev["fp_verdict"]] += 1
 
     lines += ["", "## Top Trigger Patterns by Hook", ""]
     for hook_name in sorted(hook_counts.keys(), key=lambda h: -hook_counts[h]["total"]):
         patterns = hook_patterns[hook_name]
         top = sorted(patterns.items(), key=lambda x: -x[1]["count"])[:5]
         lines.append(f"### {hook_name}")
-        lines += ["", "| Pattern | Count | Session Types |", "|---|---|---|"]
+        lines += ["", "| Pattern | Count | FP | TP | Session Types |", "|---|---|---|---|---|"]
         for pat, info in top:
             st = ", ".join(sorted(info["session_types"]))
-            lines.append(f"| `{pat[:68]}` | {info['count']} | {st} |")
+            lines.append(
+                f"| `{pat[:65]}` | {info['count']} | {info['fp']} | {info['tp']} | {st} |"
+            )
         lines.append("")
 
-    # --- By project × hook ---
-    proj_hook: dict = defaultdict(lambda: {"total": 0, "main": 0, "worker": 0})
-    for ev in events:
-        d = proj_hook[(ev["project"], ev["hook_name"])]
-        d["total"] += 1
-        d[ev["session_type"]] += 1
-
-    lines += [
-        "## By Project × Hook",
-        "",
-        "| Project | Hook | Total | Main | Worker |",
-        "|---|---|---|---|---|",
-    ]
-    for (proj, hook_name), counts in sorted(proj_hook.items(), key=lambda x: (-x[1]["total"], x[0])):
-        lines.append(f"| {proj} | {hook_name} | {counts['total']} | {counts['main']} | {counts['worker']} |")
-
-    # --- Timeline by date ---
-    date_counts: dict = defaultdict(lambda: defaultdict(int))
-    for ev in events:
-        date_counts[ev["date"]][ev["hook_name"]] += 1
-
+    # --- Raw events (newest first, max 40) with FP verdict ---
     lines += [
         "",
-        "## Timeline",
+        "## Events (newest first, max 40)",
         "",
-        "| Date | Hook | Count |",
-        "|---|---|---|",
+        "| Timestamp | Hook | Project | Type | Branch | Trigger | FP? | Heuristic |",
+        "|---|---|---|---|---|---|---|---|",
     ]
-    for date in sorted(date_counts.keys()):
-        for hook_name, count in sorted(date_counts[date].items(), key=lambda x: -x[1]):
-            lines.append(f"| {date} | {hook_name} | {count} |")
-
-    # --- Raw events (newest first, max 50) ---
-    lines += [
-        "",
-        "## Events (newest first, max 50)",
-        "",
-        "| Timestamp | Hook | Project | Type | Branch | Trigger | Message |",
-        "|---|---|---|---|---|---|---|",
-    ]
-    for ev in sorted(events, key=lambda x: x["timestamp"], reverse=True)[:50]:
+    for ev in sorted(events, key=lambda x: x["timestamp"], reverse=True)[:40]:
         ts = ev["timestamp"].strftime("%Y-%m-%d %H:%M")
-        msg = ev["blocked_msg"].replace("|", "\\|")
-        pat = ev["trigger_pattern"][:40].replace("|", "\\|")
-        lines.append(
-            f"| {ts} | {ev['hook_name']} | {ev['project']} | {ev['session_type']} "
-            f"| {ev['branch']} | `{pat}` | {msg} |"
-        )
+        pat = ev["trigger_pattern"][:35].replace("|", "\\|")
+        heur = ev["fp_heuristic"][:45].replace("|", "\\|")
+        lines.append(f"| {ts} | {ev['hook_name']} | {ev['project']} | {ev['session_type']} "
+                     f"| {ev['branch']} | `{pat}` | {ev['fp_verdict']} | {heur} |")
 
     return "\n".join(lines) + "\n"
 
