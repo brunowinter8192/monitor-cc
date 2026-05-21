@@ -49,6 +49,7 @@ _TA_TRACKING_OPTS = (NSTrackingCursorUpdate | NSTrackingMouseMoved |
                      NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways |
                      NSTrackingInVisibleRect)
 _TA_CURSOR_OPTS   = NSTrackingCursorUpdate | NSTrackingActiveAlways | NSTrackingInVisibleRect
+_rebuild_panel_in_progress = False   # re-entry guard: defensive mirror of queue_panel guard
 
 # FUNCTIONS
 
@@ -348,6 +349,16 @@ def _resize_panel(app, new_h: float) -> None:
 # ONE NSGridView holds all project-separator + session/worker rows; added to _panel_sv after the
 # line separator. Separator rows are merged across all 5 columns; worker rows leave cols 0/1/4 empty.
 def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
+    global _rebuild_panel_in_progress
+    if _rebuild_panel_in_progress:
+        return
+    _rebuild_panel_in_progress = True
+    try:
+        _rebuild_panel_inner(app, sessions, bg_by_project)
+    finally:
+        _rebuild_panel_in_progress = False
+
+def _rebuild_panel_inner(app, sessions, bg_by_project=None) -> None:
     for sv in list(app._panel_sv.arrangedSubviews()):
         app._panel_sv.removeView_(sv)
         sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this

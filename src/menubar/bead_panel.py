@@ -18,6 +18,7 @@ from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
 
 _UNTRACK_W             = 22   # pts — col 1 width: × untrack button
 _BEAD_EXPAND_MAX_LINES = 20   # max visible lines in expand view; content beyond scrolls
+_rebuild_bead_in_progress = False   # re-entry guard: defensive mirror of queue_panel guard
 
 # FUNCTIONS
 
@@ -193,6 +194,16 @@ def _resize_tracker_panel(app, new_h: float) -> None:
 # ONE NSGridView (2 cols): col 0 = expand button (flexible), col 1 = × untrack (22pt fixed).
 # Project header rows and expand content rows are merged across both columns.
 def _rebuild_bead_panel(app) -> None:
+    global _rebuild_bead_in_progress
+    if _rebuild_bead_in_progress:
+        return
+    _rebuild_bead_in_progress = True
+    try:
+        _rebuild_bead_panel_inner(app)
+    finally:
+        _rebuild_bead_in_progress = False
+
+def _rebuild_bead_panel_inner(app) -> None:
     for sv in list(app._tracker_sv.arrangedSubviews()):
         app._tracker_sv.removeView_(sv)
         sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
