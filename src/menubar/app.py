@@ -26,7 +26,7 @@ from .hotkey import (register_cmd_l, register_cmd_digits, unregister_hotkeys,
 from .bead_data import project_db_map, load_tracked_beads
 # From bead_panel.py: NSPanel + render for bead tracker
 from .bead_panel import (_make_bead_nspanel, _rebuild_bead_panel, _reposition_bead_panel,
-                          _handle_expand_bead, _handle_untrack_bead)
+                          _handle_expand_bead, _handle_untrack_bead, _resize_tracker_panel)
 # From panel.py: NSPanel construction, render, positioning, UI constants
 from .panel import (ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET,
                     PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
@@ -57,6 +57,8 @@ class _PanelController(NSObject):
 
     def togglePanel_(self, sender):
         app = self._app
+        now = time.time()
+        is_double_tap = (now - app._last_cmd_l_ts) < 0.3
         # Panel backgrounded (Cmd+K): Cmd+L / bar-click brings it back to front, does NOT close
         if app._panel_backgrounded:
             if app._panel_open:
@@ -64,7 +66,14 @@ class _PanelController(NSObject):
             elif app._tracker_open:
                 app._tracker_panel.orderFrontRegardless()
             app._panel_backgrounded = False
+            app._last_cmd_l_ts = now   # second press within 300ms → hits double-tap reset branch
             return
+        if is_double_tap:
+            if app._tracker_open or app._panel_open:
+                _reset_panel_to_default(app)
+            app._last_cmd_l_ts = 0.0   # sentinel → triple-press: 3rd is single (now−0≫0.3)
+            return
+        app._last_cmd_l_ts = now
         # Cmd+L closes whichever panel is open; if neither is open → open main
         if app._tracker_open:
             _close_tracker_panel(app)
@@ -271,6 +280,7 @@ class CCMenuBarApp(rumps.App):
         self._queue_add_tags: dict = {}          # {+ button tag → session_id}; reset on each rebuild
         self._queue_remove_tags: dict = {}       # {− button tag → (session_id, msg_index)}; reset each rebuild
         self._committed_queue_tags: set = set()  # NSTextField tags committed via Enter; checked in controlTextDidEndEditing_
+        self._last_cmd_l_ts: float = 0.0         # timestamp of last Cmd+L press for double-tap detection
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
@@ -476,6 +486,15 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
             app._panel_backgrounded = True
     except Exception as e:
         print(f'[menubar] Cmd+K deferred-block error: {e}', file=sys.stderr)
+
+# Double-tap Cmd+L: reset open panel to default dimensions; no _save_settings (default = code constant)
+def _reset_panel_to_default(app: 'CCMenuBarApp') -> None:
+    app._panel_width = PANEL_WIDTH
+    app._panel_min_height = PANEL_HEIGHT
+    if app._tracker_open:
+        _resize_tracker_panel(app, PANEL_HEIGHT)
+    elif app._panel_open:
+        _resize_panel(app, PANEL_HEIGHT)
 
 # Open main panel: rebuild with fresh data → reposition → show → register Cmd+→ + Cmd+1..9
 # Rebuild on open ensures queue rows reflect current queue file (not last closed-panel tick state)
