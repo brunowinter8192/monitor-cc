@@ -62,17 +62,13 @@ def _get_terminal_uuid(cwd: str) -> Optional[str]:
 def _esc(s: str) -> str:
     return s.replace('"', '\\"')
 
-# Deliver via Ghostty terminal UUID: focus terminal id → System Events keystroke + Return
+# Deliver via Ghostty terminal UUID: input text + send enter via Ghostty native API (no System Events)
 def _deliver_via_uuid(uuid: str, message: str) -> bool:
     script = (
         f'tell application "Ghostty"\n'
-        f'  activate\n'
-        f'  focus terminal id "{_esc(uuid)}"\n'
-        f'end tell\n'
-        f'delay 0.1\n'
-        f'tell application "System Events"\n'
-        f'  keystroke "{_esc(message)}"\n'
-        f'  key code 36\n'
+        f'  set t to first terminal whose id is "{_esc(uuid)}"\n'
+        f'  input text "{_esc(message)}" to t\n'
+        f'  send key "enter" to t\n'
         f'end tell'
     )
     try:
@@ -83,26 +79,24 @@ def _deliver_via_uuid(uuid: str, message: str) -> bool:
         print(f"queue: osascript(uuid) exception: {exc}", file=sys.stderr)
         return False
 
-# Deliver via cwd-based focus fallback (when UUID unknown; limited: uses PTY initial cwd)
+# Deliver via cwd-match fallback (when UUID unknown): input text + send enter via Ghostty native API
 def _deliver_via_cwd(cwd: str, message: str) -> bool:
     script = (
         f'tell application "Ghostty"\n'
-        f'  activate\n'
-        f'  try\n'
-        f'    focus (first terminal whose working directory is "{_esc(cwd)}")\n'
-        f'  on error\n'
-        f'  end try\n'
-        f'end tell\n'
-        f'delay 0.1\n'
-        f'tell application "System Events"\n'
-        f'  keystroke "{_esc(message)}"\n'
-        f'  key code 36\n'
+        f'  set targets to (every terminal whose working directory is "{_esc(cwd)}")\n'
+        f'  if (count of targets) > 0 then\n'
+        f'    set t to item 1 of targets\n'
+        f'    input text "{_esc(message)}" to t\n'
+        f'    send key "enter" to t\n'
+        f'    return true\n'
+        f'  end if\n'
+        f'  return false\n'
         f'end tell'
     )
     try:
         r = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
         print(f"queue: osascript(cwd) rc={r.returncode} stderr={r.stderr.decode(errors='replace')!r}", file=sys.stderr)
-        return r.returncode == 0
+        return r.returncode == 0 and b'true' in r.stdout
     except Exception as exc:
         print(f"queue: osascript(cwd) exception: {exc}", file=sys.stderr)
         return False
