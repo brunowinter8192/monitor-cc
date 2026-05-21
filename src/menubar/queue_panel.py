@@ -11,7 +11,7 @@ from Foundation import NSMakeRect, NSMakeSize, NSRange
 
 from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
                     PANEL_GAP, _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO,
-                    _CursorlessButton, _CursorlessLabel,
+                    _CursorlessButton, _CursorlessLabel, _KeyablePanel,
                     _make_line_separator, _make_header_label,
                     _GRID_COL_SPC)
 from .queue import load_queue, save_queue
@@ -22,7 +22,7 @@ _QUEUE_MINUS_W = 18   # pts — col 1 fixed width: − remove button
 
 # Build NSPanel for queue panel; returns (panel, stack, toggle_btn) — same structure as _make_bead_nspanel
 def _make_queue_nspanel():
-    panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+    panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
         NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskResizable, 2, True)
     panel.setLevel_(NSStatusWindowLevel)
@@ -150,6 +150,7 @@ def _make_queue_input_field(grid_w: int, tag: int):
 def _rebuild_queue_panel(app, sessions) -> None:
     for sv in list(app._queue_sv.arrangedSubviews()):
         app._queue_sv.removeView_(sv)
+        sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
     app._queue_add_tags.clear()
     app._queue_remove_tags.clear()
     app._pending_queue_tags.clear()

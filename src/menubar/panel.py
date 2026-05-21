@@ -167,6 +167,14 @@ class _CursorlessLabel(NSTextField):
 class _CursorlessButton(NSButton):
     def resetCursorRects(self): pass
 
+# NSPanel subclass that allows the panel to become key window while keeping NSWindowStyleMaskNonactivatingPanel.
+# The mask prevents the APPLICATION from activating (Ghostty stays foreground); canBecomeKeyWindow is a separate
+# gate that controls whether the PANEL can receive keyboard events. Without this override the default ObjC
+# implementation returns False for NonactivatingPanel masks, silently making makeFirstResponder_ a no-op.
+class _KeyablePanel(NSPanel):
+    def canBecomeKeyWindow(self):
+        return True
+
 # Badge for sessions with active background tasks: [B M:SS] if timer running, [B] otherwise
 def _format_bg_badge(remaining) -> str:
     if remaining is None:
@@ -181,7 +189,7 @@ def _format_bg_badge(remaining) -> str:
 #   [0, _FOOTER_H,               pw, stack_h]     stack    mask=18 — width+height sizable, fills middle
 #   [0, PANEL_HEIGHT-_TOP_BAR_H, pw, _TOP_BAR_H]  top_bar  mask=10 — widthSizable|minYMargin, top-anchored
 def _make_nspanel():
-    panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+    panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
         NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskResizable, 2, True)
     panel.setLevel_(NSStatusWindowLevel)
@@ -342,6 +350,7 @@ def _resize_panel(app, new_h: float) -> None:
 def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
     for sv in list(app._panel_sv.arrangedSubviews()):
         app._panel_sv.removeView_(sv)
+        sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
     app._displayed_items = {}
     app._cwd_map = {}
     app._abort_btns_by_project = {}
