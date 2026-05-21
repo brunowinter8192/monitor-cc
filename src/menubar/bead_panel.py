@@ -113,16 +113,19 @@ def _make_bead_x_btn() -> NSView:
     return btn
 
 # NSView container with per-line NSTextFields for a bead expand block (col 0, merged with col 1).
-# heightAnchor required — NSGridView turns off TAMIC on content views; without it height=0 → bleed.
+# heightAnchor + widthAnchor required — NSGridView disables TAMIC on content views; without
+# explicit constraints height=0 → bleed, and width=0 → container doesn't fill merged cell.
+# w = panel_width (full merged-cell width); inner_w = w - 16 (16pt left indent).
 def _make_expand_view(text: str, panel_width: int) -> NSView:
-    w       = panel_width - 22   # grid width = pw
-    inner_x = 16                 # inset to visually nest under bead row
+    w       = panel_width         # merged cell spans full grid width
+    inner_x = 16                  # inset to visually nest under bead row
     inner_w = w - inner_x
     lines        = text.split('\n')
     line_heights = [_bead_row_height(line or ' ', inner_w) for line in lines]
     total        = sum(line_heights)
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, total))
-    container.heightAnchor().constraintEqualToConstant_(float(total)).setActive_(True)   # explicit height — NSGridView turns off TAMIC on content views; without this height=0 → subviews bleed into row above
+    container.heightAnchor().constraintEqualToConstant_(float(total)).setActive_(True)   # explicit height — NSGridView disables TAMIC on content views; without this height=0 → subviews bleed into row above
+    container.widthAnchor().constraintEqualToConstant_(float(w)).setActive_(True)        # explicit width — without this AutoLayout assigns w=0; merged cell appears empty
     y = total   # NSView y=0 is bottom; subtract each lh before placing
     for line, lh in zip(lines, line_heights):
         y -= lh
@@ -157,7 +160,7 @@ def _compute_bead_height(app) -> int:
             row_text   = f'  {indicator} {bead_id}  {title}'   # 2-space indent prefix
             h += _bead_row_height(row_text, btn_w) + 1          # +1 for rowSpacing
             if bead_id in app._bead_expanded:
-                expand_inner_w = pw - 16   # mirrors _make_expand_view inner_w
+                expand_inner_w = app._panel_width - 16   # mirrors _make_expand_view: w=panel_width, inner_w=w-16
                 h += sum(_bead_row_height(line or ' ', expand_inner_w)
                          for line in app._bead_expanded[bead_id].split('\n')) + 1
     return h
