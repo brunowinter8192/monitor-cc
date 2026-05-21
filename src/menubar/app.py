@@ -155,18 +155,45 @@ class _PanelController(NSObject):
         session_id = app._queue_add_tags.get(sender.tag())
         if not session_id:
             return
-        app._pending_queue_count[session_id] = app._pending_queue_count.get(session_id, 0) + 1
+        q       = load_queue()
+        entries = q.get(session_id, [])
+        # Do nothing if the last entry is already an empty draft (prevent stacking blanks)
+        if entries and entries[-1].get("state") == "draft" and not entries[-1].get("text", "").strip():
+            return
+        entries.append({"text": "", "state": "draft", "sent_at": None})
+        q[session_id] = entries
+        save_queue(q)
+        app._queue_data = q
         sessions = list_alive_sessions()
         app._last_sessions = sessions
         _rebuild_queue_panel(app, sessions)
 
-    def removeQueueMsg_(self, sender):
-        app = self._app
+    def toggleQueueEntry_(self, sender):
+        app  = self._app
+        info = app._queue_toggle_tags.get(sender.tag())
+        if not info:
+            return
+        session_id, idx = info
+        q       = load_queue()
+        entries = q.get(session_id, [])
+        if 0 <= idx < len(entries):
+            e = entries[idx]
+            new_state = "draft" if e.get("state") == "queued" else "queued"
+            entries[idx] = {**e, "state": new_state}
+            q[session_id] = entries
+            save_queue(q)
+            app._queue_data = q
+        sessions = list_alive_sessions()
+        app._last_sessions = sessions
+        _rebuild_queue_panel(app, sessions)
+
+    def removeQueueEntry_(self, sender):
+        app  = self._app
         info = app._queue_remove_tags.get(sender.tag())
         if not info:
             return
         session_id, idx = info
-        q = load_queue()
+        q    = load_queue()
         msgs = q.get(session_id, [])
         if 0 <= idx < len(msgs):
             del msgs[idx]
@@ -181,44 +208,37 @@ class _PanelController(NSObject):
         _rebuild_queue_panel(app, sessions)
 
     def commitQueueField_(self, sender):
-        app = self._app
-        tag        = sender.tag()
-        text       = str(sender.stringValue()).strip()
-        session_id = app._pending_queue_tags.get(tag)
-        app._committed_queue_tags.add(tag)   # suppress controlTextDidEndEditing_ cancel path
-        if text and session_id:
-            q = load_queue()
-            q.setdefault(session_id, []).append({"text": text, "sent_at": None})
+        # Enter key in a draft NSTextField: save text in-place (same as blur path)
+        app  = self._app
+        info = app._pending_queue_tags.get(sender.tag())
+        if not info:
+            return
+        session_id, idx = info
+        text = str(sender.stringValue())
+        q       = load_queue()
+        entries = q.get(session_id, [])
+        if 0 <= idx < len(entries) and entries[idx].get("state") == "draft":
+            entries[idx] = {**entries[idx], "text": text}
+            q[session_id] = entries
             save_queue(q)
             app._queue_data = q
-        if session_id:
-            count = app._pending_queue_count.get(session_id, 1) - 1
-            if count > 0:
-                app._pending_queue_count[session_id] = count
-            else:
-                app._pending_queue_count.pop(session_id, None)
-        sessions = list_alive_sessions()
-        app._last_sessions = sessions
-        _rebuild_queue_panel(app, sessions)
 
     def controlTextDidEndEditing_(self, notification):
-        app = self._app
-        tag = notification.object().tag()
-        if tag in app._committed_queue_tags:
-            app._committed_queue_tags.discard(tag)
-            return   # already committed via Enter — don't cancel
-        # Focus lost without Enter → decrement pending count for this row
-        session_id = app._pending_queue_tags.get(tag)
-        if session_id:
-            count = app._pending_queue_count.get(session_id, 1) - 1
-            if count > 0:
-                app._pending_queue_count[session_id] = count
-            else:
-                app._pending_queue_count.pop(session_id, None)
-        if app._queue_open:
-            sessions = list_alive_sessions()
-            app._last_sessions = sessions
-            _rebuild_queue_panel(app, sessions)
+        # Focus loss on a draft NSTextField: save current text in-place, no rebuild
+        app  = self._app
+        tf   = notification.object()
+        info = app._pending_queue_tags.get(tf.tag())
+        if not info:
+            return
+        session_id, idx = info
+        text = str(tf.stringValue())
+        q       = load_queue()
+        entries = q.get(session_id, [])
+        if 0 <= idx < len(entries) and entries[idx].get("state") == "draft":
+            entries[idx] = {**entries[idx], "text": text}
+            q[session_id] = entries
+            save_queue(q)
+            app._queue_data = q
 
     def windowDidResize_(self, notification):
         frame = notification.object().frame()
@@ -288,12 +308,11 @@ class CCMenuBarApp(rumps.App):
         self._queue_open: bool = False
         self._queue_panel, self._queue_sv, self._queue_toggle_btn = _make_queue_nspanel()
         self._queue_displayed_names: set = set()   # session names currently shown in queue panel
-        self._queue_data: dict = {}                # {session_id: [msgs]} — refreshed each tick from msg_queue.json
-        self._pending_queue_count: dict = {}       # {session_id: int} — count of active inline NSTextField rows per session
-        self._pending_queue_tags: dict = {}        # {NSTextField tag → session_id}; reset on each rebuild
+        self._queue_data: dict = {}                # {session_id: [{text,state,sent_at}]} — refreshed each tick from msg_queue.json
+        self._pending_queue_tags: dict = {}        # {NSTextField tag → (session_id, idx)}; reset on each rebuild
         self._queue_add_tags: dict = {}            # {+ button tag → session_id}; reset on each rebuild
-        self._queue_remove_tags: dict = {}         # {− button tag → (session_id, msg_index)}; reset each rebuild
-        self._committed_queue_tags: set = set()    # NSTextField tags committed via Enter; prevent cancel in controlTextDidEndEditing_
+        self._queue_remove_tags: dict = {}         # {× button tag → (session_id, idx)}; reset each rebuild
+        self._queue_toggle_tags: dict = {}         # {↑/↓ button tag → (session_id, idx)}; reset each rebuild
         self._last_sessions: list = []             # last live sessions snapshot; used by queue panel rebuild
 
     @rumps.timer(POLL_INTERVAL)
