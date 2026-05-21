@@ -6,6 +6,7 @@ from itertools import groupby
 
 from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSCursor, NSFont,
                     NSFontAttributeName, NSForegroundColorAttributeName,
+                    NSGridCell, NSGridCellPlacementLeading, NSGridView,
                     NSLayoutAttributeLeading, NSPanel, NSStackView, NSTextField,
                     NSTrackingActiveAlways, NSTrackingArea, NSTrackingCursorUpdate,
                     NSTrackingInVisibleRect, NSTrackingMouseEnteredAndExited,
@@ -16,7 +17,7 @@ from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSCursor, NSFo
                     NSWindowCollectionBehaviorIgnoresCycle,
                     NSWindowStyleMaskNonactivatingPanel,
                     NSWindowStyleMaskResizable)
-from Foundation import NSMakeRect, NSMakeSize
+from Foundation import NSMakeRect, NSMakeSize, NSRange
 
 ICON_NORMAL          = '◉'
 ICON_BLINK           = '●'
@@ -26,11 +27,13 @@ _MENLO         = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
 
 _BADGE_WORKING = '[*]'   # green — ASCII fixed-width, no emoji drift
 _BADGE_IDLE    = '[ ]'   # red
-_NO_BG         = '   '   # 3-char spacer when no background task
 
-_COL_SLOT_W  = 4    # chars — "[N] " slot or "    " worker indent (≈28pt Menlo 13pt)
-_COL_NAME_W  = 23   # chars — name column, ljust + truncate at end   (≈180pt Menlo 13pt)
-_COL_TIMER_W = 9    # chars — "[B M:SS]" badge max = "[B 99:59]"=9ch (≈70pt Menlo 13pt)
+# Grid column widths (pts) — 5-column main-panel layout, measured from Menlo 13pt char widths
+_GRID_COL0_W  = 33   # slot "[N]" (3 chars × 7.8pt + buffer)
+_GRID_COL1_W  = 17   # star "* " (2 chars × 7.8pt + buffer)
+_GRID_COL3_W  = 25   # dot "[ ]"/"[*]" (3 chars × 7.8pt + buffer)
+_GRID_COL4_W  = 72   # badge "[B M:SS]" max 9 chars × 7.8pt + buffer
+_GRID_COL_SPC = 2    # column spacing (pts between adjacent columns)
 
 PANEL_WIDTH      = 380   # pts
 PANEL_HEIGHT     = 460   # pts — initial height; floor for first-run (no settings)
@@ -244,12 +247,12 @@ def _reposition_panel(panel, nsstatusitem) -> None:
     py = sr.origin.y - h - PANEL_GAP
     panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
 
-# Borderless Menlo-font NSButton row for session / toggle entries
-def _make_row_button(text: str, panel_width: int, color=None) -> NSButton:
+# Borderless Menlo-font NSButton for a single NSGridView cell
+def _make_grid_cell_btn(text: str, color=None) -> NSButton:
     attrs = {NSFontAttributeName: _MENLO()}
     if color is not None:
         attrs[NSForegroundColorAttributeName] = color
-    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, panel_width - 22, 20))
+    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, 60, _ROW_H - 1))
     btn.setBordered_(False)
     btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
     btn.setAttributedTitle_(
@@ -283,7 +286,7 @@ def _make_line_separator(panel_width: int) -> NSView:
 def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining=None):
     w = panel_width - 22
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, 18))
-    container.heightAnchor().constraintEqualToConstant_(18.0).setActive_(True)   # explicit height — same reason as _make_line_separator
+    # No heightAnchor constraint — NSGridRow.setHeight_ owns row height in grid context
     line = NSBox.alloc().initWithFrame_(NSMakeRect(0, 9, w, 1))
     line.setBoxType_(2)   # NSBoxSeparator
     container.addSubview_(line)
@@ -331,9 +334,11 @@ def _resize_panel(app, new_h: float) -> None:
     app._panel.setFrame_display_(
         NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)
 
-# Full panel rebuild; populates _displayed_items + _cwd_map + _abort_btns_by_project + _abort_project_for_tag
+# Full panel rebuild; populates _displayed_items + _cwd_map + _abort_btns_by_project + _abort_project_for_tag.
+# _displayed_items[name] = (dot_btn, badge_btn_or_None) — only the two cells that change per-tick.
 # bg_by_project: Dict[project_name, BgSleepInfo] from _scan_bg_sleep_timers(); None = no timers.
-# Abort buttons (Option B) are embedded inline in per-project separator rows — zero height delta.
+# ONE NSGridView holds all project-separator + session/worker rows; added to _panel_sv after the
+# line separator. Separator rows are merged across all 5 columns; worker rows leave cols 0/1/4 empty.
 def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
     for sv in list(app._panel_sv.arrangedSubviews()):
         app._panel_sv.removeView_(sv)
@@ -356,13 +361,27 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
     if not sorted_sessions:
         app._panel_sv.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
         return
+    empty = NSGridCell.emptyContentView()
+    grid  = NSGridView.gridViewWithNumberOfColumns_rows_(5, 0)
+    grid.setColumnSpacing_(float(_GRID_COL_SPC))
+    grid.setRowSpacing_(1.0)
+    for i in range(5):
+        grid.columnAtIndex_(i).setXPlacement_(NSGridCellPlacementLeading)
+    grid.columnAtIndex_(0).setWidth_(float(_GRID_COL0_W))
+    grid.columnAtIndex_(1).setWidth_(float(_GRID_COL1_W))
+    grid.columnAtIndex_(3).setWidth_(float(_GRID_COL3_W))
+    grid.columnAtIndex_(4).setWidth_(float(_GRID_COL4_W))
+    grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
+    row_idx   = 0
     main_slot = 0
     for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
         proj_bg = (bg_by_project or {}).get(project_name)
         sep_view, abort_btn = _make_separator_view(
-            project_name, pw,
-            proj_bg.min_remaining if proj_bg else None)
-        app._panel_sv.addView_inGravity_(sep_view, 1)
+            project_name, pw, proj_bg.min_remaining if proj_bg else None)
+        grid.addRowWithViews_([sep_view, empty, empty, empty, empty])
+        grid.rowAtIndex_(row_idx).setHeight_(float(_LABEL_H - 1))
+        grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 5), NSRange(row_idx, 1))
+        row_idx += 1
         if abort_btn is not None:
             abort_btn.setTag_(abort_tag)
             abort_btn.setTarget_(app._panel_controller)
@@ -371,48 +390,64 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
             app._abort_project_for_tag[abort_tag] = project_name
             abort_tag += 1
         for s in group_iter:
-            dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
-            badge    = _format_bg_badge(proj_bg.min_remaining) if proj_bg else _NO_BG
-            name_col = s.name[:_COL_NAME_W].ljust(_COL_NAME_W)
+            dot   = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
+            color = NSColor.systemOrangeColor()
             if not s.is_worker:
                 main_slot += 1
-                slot_str = f'[{main_slot}] ' if main_slot <= 9 else '    '
-                line = f'{slot_str}* {name_col} {dot} {badge.ljust(_COL_TIMER_W)}'
-                btn  = _make_row_button(line, pw, NSColor.systemOrangeColor())
-                tag  = next_tag[0]; next_tag[0] += 1
-                btn.setTag_(tag)
-                btn.setTarget_(app._panel_controller)
-                btn.setAction_(b'focusSession:')
+                slot_str = f'[{main_slot}]' if main_slot <= 9 else ''
+                tag      = next_tag[0]; next_tag[0] += 1
+                slot_btn = _make_grid_cell_btn(slot_str, color)
+                star_btn = _make_grid_cell_btn('*', color)
+                name_btn = _make_grid_cell_btn(s.name, color)
+                dot_btn  = _make_grid_cell_btn(dot, color)
+                for btn in (slot_btn, star_btn, name_btn, dot_btn):
+                    btn.setTag_(tag)
+                    btn.setTarget_(app._panel_controller)
+                    btn.setAction_(b'focusSession:')
                 app._cwd_map[tag] = s.cwd or ''
-                app._panel_sv.addView_inGravity_(btn, 1)
-                app._displayed_items[s.name] = btn
+                if proj_bg is not None:
+                    badge_btn = _make_grid_cell_btn(
+                        _format_bg_badge(proj_bg.min_remaining), color)
+                    badge_btn.setTag_(tag)
+                    badge_btn.setTarget_(app._panel_controller)
+                    badge_btn.setAction_(b'focusSession:')
+                    views = [slot_btn, star_btn, name_btn, dot_btn, badge_btn]
+                else:
+                    badge_btn = None
+                    views     = [slot_btn, star_btn, name_btn, dot_btn, empty]
+                grid.addRowWithViews_(views)
+                grid.rowAtIndex_(row_idx).setHeight_(float(_ROW_H - 1))
+                row_idx += 1
+                app._displayed_items[s.name] = (dot_btn, badge_btn)
             else:
-                line = f'      {name_col} {dot}'
-                btn  = _make_row_button(line, pw)
-                app._panel_sv.addView_inGravity_(btn, 1)
-                app._displayed_items[s.name] = btn
+                name_btn = _make_grid_cell_btn(s.name)
+                dot_btn  = _make_grid_cell_btn(dot)
+                grid.addRowWithViews_([empty, empty, name_btn, dot_btn, empty])
+                grid.rowAtIndex_(row_idx).setHeight_(float(_ROW_H - 1))
+                row_idx += 1
+                app._displayed_items[s.name] = (dot_btn, None)
+    app._panel_sv.addView_inGravity_(grid, 1)
+    grid.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
 
-# In-place title update while NSPanel is open; preserves widget positions.
-# Updates session row titles only (abort button label is static 'abort', no per-tick update).
+# In-place dot + badge update while NSPanel is open; preserves grid layout.
+# Only dot (col 3) and badge (col 4, sessions with active bg timer) change per-tick.
+# Slot (col 0), star (col 1), name (col 2) are static between rebuilds.
 def _update_panel_inplace(app, sessions, bg_by_project) -> None:
     session_map = {s.name: s for s in sessions}
-    main_slot = 0
-    for name, btn in app._displayed_items.items():
+    for name, (dot_btn, badge_btn) in app._displayed_items.items():
         s = session_map.get(name)
         if s is None:
             continue
-        proj_bg  = (bg_by_project or {}).get(s.project_name)
-        dot      = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
-        badge    = _format_bg_badge(proj_bg.min_remaining) if proj_bg else _NO_BG
-        name_col = name[:_COL_NAME_W].ljust(_COL_NAME_W)
+        proj_bg = (bg_by_project or {}).get(s.project_name)
+        dot     = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
+        attrs   = {NSFontAttributeName: _MENLO()}
         if not s.is_worker:
-            main_slot += 1
-            slot_str = f'[{main_slot}] ' if main_slot <= 9 else '    '
-            line, color = f'{slot_str}* {name_col} {dot} {badge.ljust(_COL_TIMER_W)}', NSColor.systemOrangeColor()
-        else:
-            line, color = f'      {name_col} {dot}', None
-        attrs = {NSFontAttributeName: _MENLO()}
-        if color is not None:
-            attrs[NSForegroundColorAttributeName] = color
-        btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(line, attrs))
+            attrs[NSForegroundColorAttributeName] = NSColor.systemOrangeColor()
+        dot_btn.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(dot, attrs))
+        if badge_btn is not None and proj_bg is not None:
+            badge_btn.setAttributedTitle_(
+                NSAttributedString.alloc().initWithString_attributes_(
+                    _format_bg_badge(proj_bg.min_remaining),
+                    {NSFontAttributeName: _MENLO(),
+                     NSForegroundColorAttributeName: NSColor.systemOrangeColor()}))

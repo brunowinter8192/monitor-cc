@@ -1,20 +1,22 @@
 # INFRASTRUCTURE
 from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
-                    NSForegroundColorAttributeName, NSLayoutAttributeLeading,
+                    NSForegroundColorAttributeName, NSGridCell, NSGridCellPlacementLeading,
+                    NSGridView, NSLayoutAttributeLeading,
                     NSPanel, NSStackView, NSView, NSStatusWindowLevel,
                     NSUserInterfaceLayoutOrientationVertical,
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
                     NSWindowCollectionBehaviorIgnoresCycle,
                     NSWindowStyleMaskNonactivatingPanel, NSWindowStyleMaskResizable)
-from Foundation import NSMakeRect, NSMakeSize
+from Foundation import NSMakeRect, NSMakeSize, NSRange
 
 from .bead_data import bd_show_text, bd_label_remove
 from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
                     PANEL_GAP, _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO,
                     _CursorlessButton, _CursorlessLabel,
-                    _make_line_separator, _make_header_label)
+                    _make_line_separator, _make_header_label,
+                    _GRID_COL_SPC)
 
-_UNTRACK_W     = 22   # pts — width of × untrack button at right edge of each row
+_UNTRACK_W     = 22   # pts — col 1 width: × untrack button
 
 # FUNCTIONS
 
@@ -76,57 +78,50 @@ def _bead_row_height(row_text: str, btn_w: int) -> int:
         NSMakeSize(float(btn_w), 10000.0), 1, None)
     return max(_ROW_H - 1, int(bounds.size.height) + 4)
 
-# NSView row container: expand button (most width, wrapping) + × untrack button (right edge, top-aligned)
-# Returns (container, expand_btn, x_btn) — caller sets tag + wires target/action
-# Alignment: widthAnchor + heightAnchor constraints ensure consistent x-offset in NSStackView.
-# expand_btn indented 16pt from container left (signals "child of project header").
-# x_btn top-aligned so it stays level with the bead ID line when title wraps to multiple lines.
-def _make_bead_row(bead: dict, panel_width: int, is_expanded: bool):
-    pw        = panel_width - 22
-    bead_id   = bead.get('id', '')
-    title     = bead.get('title', '')
+# Wrapping expand NSButton for col 0 of the bead grid row.
+# Text prefix "  " (2 spaces ≈ 16pt) provides visual indent under project header.
+# Returns (btn, row_h) — caller sets tag/target/action; row_h used for NSGridRow.setHeight_.
+def _make_bead_expand_btn(bead: dict, panel_width: int, is_expanded: bool):
+    pw       = panel_width - 22
+    btn_w    = pw - _UNTRACK_W - _GRID_COL_SPC
+    bead_id  = bead.get('id', '')
+    title    = bead.get('title', '')
     indicator = '▾' if is_expanded else '▸'
-    row_text  = f'{indicator} {bead_id}  {title}'
-    indent    = 16   # pts — visual indent under project header
-    btn_w     = pw - _UNTRACK_W - 4 - indent
+    row_text  = f'  {indicator} {bead_id}  {title}'   # 2 leading spaces ≈ 16pt indent
     row_h     = _bead_row_height(row_text, btn_w)
-    container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw, row_h))
-    container.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
-    container.heightAnchor().constraintEqualToConstant_(float(row_h)).setActive_(True)
-    expand_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(indent, 0, btn_w, row_h))
-    expand_btn.setBordered_(False)
-    expand_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
-    expand_btn.cell().setWraps_(True)
-    expand_btn.cell().setLineBreakMode_(0)   # NSLineBreakByWordWrapping
-    expand_btn.cell().setAlignment_(0)   # NSTextAlignmentLeft — prevent default centering
-    expand_btn.setAttributedTitle_(
+    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, btn_w, row_h))
+    btn.setBordered_(False)
+    btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+    btn.cell().setWraps_(True)
+    btn.cell().setLineBreakMode_(0)   # NSLineBreakByWordWrapping
+    btn.cell().setAlignment_(0)       # NSTextAlignmentLeft — prevent default centering
+    btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(
             row_text, {NSFontAttributeName: _MENLO(),
                        NSForegroundColorAttributeName: NSColor.systemBlueColor()}))
-    container.addSubview_(expand_btn)
-    x_btn_y = row_h - (_ROW_H - 1)   # top-aligned — level with bead ID on first line
-    x_btn = _CursorlessButton.alloc().initWithFrame_(
-        NSMakeRect(pw - _UNTRACK_W, x_btn_y, _UNTRACK_W, _ROW_H - 1))
-    x_btn.setBordered_(False)
-    x_btn.setButtonType_(7)
-    x_btn.setAttributedTitle_(
+    return btn, row_h
+
+# × untrack button for col 1 of the bead grid row; caller sets tag/target/action
+def _make_bead_x_btn() -> NSView:
+    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, _UNTRACK_W, _ROW_H - 1))
+    btn.setBordered_(False)
+    btn.setButtonType_(7)
+    btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(
             '×', {NSFontAttributeName: _MENLO(),
                   NSForegroundColorAttributeName: NSColor.systemGrayColor()}))
-    container.addSubview_(x_btn)
-    return container, expand_btn, x_btn
+    return btn
 
-# NSView container with one NSTextField per expand-text line; indented under bead row
+# NSView container with per-line NSTextFields for a bead expand block (col 0, merged with col 1).
+# No widthAnchor/heightAnchor — NSGridRow.setHeight_ owns row height; grid owns width.
 def _make_expand_view(text: str, panel_width: int) -> NSView:
-    w       = panel_width - 22          # matches standard stack item width
-    inner_x = 16                        # inset to visually nest under bead row
+    w       = panel_width - 22   # grid width = pw
+    inner_x = 16                 # inset to visually nest under bead row
     inner_w = w - inner_x
     lines        = text.split('\n')
     line_heights = [_bead_row_height(line or ' ', inner_w) for line in lines]
     total        = sum(line_heights)
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, total))
-    container.widthAnchor().constraintEqualToConstant_(float(w)).setActive_(True)
-    container.heightAnchor().constraintEqualToConstant_(float(total)).setActive_(True)
     y = total   # NSView y=0 is bottom; subtract each lh before placing
     for line, lh in zip(lines, line_heights):
         y -= lh
@@ -140,32 +135,30 @@ def _make_expand_view(text: str, panel_width: int) -> NSView:
                 line or ' ', {NSFontAttributeName: _MENLO(),
                               NSForegroundColorAttributeName: NSColor.secondaryLabelColor()}))
         container.addSubview_(tf)
-    return container
+    return container, total
 
-# Compute required height for the bead tracker panel
-# Bead row heights are variable (title wraps) — mirrors _make_bead_row height logic via _bead_row_height.
+# Compute required height for the bead tracker panel (mirrors _rebuild_bead_panel row heights)
 def _compute_bead_height(app) -> int:
     h = _TOP_BAR_H + _LABEL_H   # top-bar + line separator
     if not any(app._bead_data.values()):
         return h + _LABEL_H      # "No tracked beads" label
-    pw     = app._panel_width - 22
-    indent = 16
-    btn_w  = pw - _UNTRACK_W - 4 - indent
+    pw    = app._panel_width - 22
+    btn_w = pw - _UNTRACK_W - _GRID_COL_SPC   # col-0 expand button width
     for project_name, beads in app._bead_data.items():
         if not beads:
             continue
-        h += _LABEL_H            # project header label
+        h += _LABEL_H            # project header row
         for bead in beads:
             bead_id    = bead.get('id', '')
             title      = bead.get('title', '')
             is_expanded = bead_id in app._bead_expanded
             indicator  = '▾' if is_expanded else '▸'
-            row_text   = f'{indicator} {bead_id}  {title}'
-            h += _bead_row_height(row_text, btn_w)
+            row_text   = f'  {indicator} {bead_id}  {title}'   # 2-space indent prefix
+            h += _bead_row_height(row_text, btn_w) + 1          # +1 for rowSpacing
             if bead_id in app._bead_expanded:
-                expand_inner_w = pw - 16   # mirrors _make_expand_view: inner_w = (panel_width-22) - 16
+                expand_inner_w = pw - 16   # mirrors _make_expand_view inner_w
                 h += sum(_bead_row_height(line or ' ', expand_inner_w)
-                         for line in app._bead_expanded[bead_id].split('\n'))
+                         for line in app._bead_expanded[bead_id].split('\n')) + 1
     return h
 
 # Resize tracker NSPanel anchored at top edge (same logic as _resize_panel for main panel)
@@ -176,7 +169,9 @@ def _resize_tracker_panel(app, new_h: float) -> None:
     app._tracker_panel.setFrame_display_(
         NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)
 
-# Full rebuild of tracker panel from app._bead_data + _bead_expanded; resets tag maps
+# Full rebuild of tracker panel from app._bead_data + _bead_expanded; resets tag maps.
+# ONE NSGridView (2 cols): col 0 = expand button (flexible), col 1 = × untrack (22pt fixed).
+# Project header rows and expand content rows are merged across both columns.
 def _rebuild_bead_panel(app) -> None:
     for sv in list(app._tracker_sv.arrangedSubviews()):
         app._tracker_sv.removeView_(sv)
@@ -195,31 +190,52 @@ def _rebuild_bead_panel(app) -> None:
     if not any(app._bead_data.values()):
         app._tracker_sv.addView_inGravity_(_make_header_label('No tracked beads', pw), 1)
         return
+    empty = NSGridCell.emptyContentView()
+    grid  = NSGridView.gridViewWithNumberOfColumns_rows_(2, 0)
+    grid.setColumnSpacing_(float(_GRID_COL_SPC))
+    grid.setRowSpacing_(1.0)
+    for i in range(2):
+        grid.columnAtIndex_(i).setXPlacement_(NSGridCellPlacementLeading)
+    grid.columnAtIndex_(1).setWidth_(float(_UNTRACK_W))   # col 1 fixed; col 0 flexible
+    grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
+    row_idx = 0
     exp_tag = 100
     utr_tag = 200
     for project_name, beads in app._bead_data.items():
         if not beads:
             continue
-        app._tracker_sv.addView_inGravity_(_make_header_label(project_name, pw), 1)
+        hdr = _make_header_label(project_name, pw)
+        grid.addRowWithViews_([hdr, empty])
+        grid.rowAtIndex_(row_idx).setHeight_(float(_LABEL_H - 1))
+        grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 2), NSRange(row_idx, 1))
+        row_idx += 1
         for bead in beads:
             bead_id    = bead.get('id', '')
             is_expanded = bead_id in app._bead_expanded
-            row, expand_btn, x_btn = _make_bead_row(bead, pw, is_expanded)
+            expand_btn, row_h = _make_bead_expand_btn(bead, pw, is_expanded)
             expand_btn.setTag_(exp_tag)
             expand_btn.setTarget_(app._panel_controller)
             expand_btn.setAction_(b'expandBead:')
+            x_btn = _make_bead_x_btn()
             x_btn.setTag_(utr_tag)
             x_btn.setTarget_(app._panel_controller)
             x_btn.setAction_(b'untrackBead:')
+            grid.addRowWithViews_([expand_btn, x_btn])
+            grid.rowAtIndex_(row_idx).setHeight_(float(row_h))
+            row_idx += 1
             app._bead_expand_tags[exp_tag]  = bead_id
             app._bead_untrack_tags[utr_tag] = (bead_id, project_name)
             app._bead_displayed[bead_id]    = expand_btn
-            app._tracker_sv.addView_inGravity_(row, 1)
             exp_tag += 1
             utr_tag += 1
             if is_expanded:
-                app._tracker_sv.addView_inGravity_(
-                    _make_expand_view(app._bead_expanded[bead_id], pw), 1)
+                exp_view, exp_h = _make_expand_view(app._bead_expanded[bead_id], pw)
+                grid.addRowWithViews_([exp_view, empty])
+                grid.rowAtIndex_(row_idx).setHeight_(float(exp_h))
+                grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 2), NSRange(row_idx, 1))
+                row_idx += 1
+    app._tracker_sv.addView_inGravity_(grid, 1)
+    grid.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
 
 # Handle expand/collapse click from expandBead_ controller method
 def _handle_expand_bead(app, tag: int) -> None:
