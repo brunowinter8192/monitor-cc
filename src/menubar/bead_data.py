@@ -1,12 +1,12 @@
 # INFRASTRUCTURE
 import json
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-_BD               = '/opt/homebrew/bin/bd'
-_BD_TIMEOUT       = 5
-_MAX_EXPAND_LINES = 20   # cap expand text height to avoid enormous panels
+_BD         = '/opt/homebrew/bin/bd'
+_BD_TIMEOUT = 5
 
 # FUNCTIONS
 
@@ -30,7 +30,7 @@ def load_tracked_beads(pdb_map: Dict[str, Path]) -> Dict[str, List[dict]]:
         result[project_name] = beads if beads is not None else []
     return result
 
-# Run bd show --json; returns formatted expand text (description, sources, comment count)
+# Run bd show --json; returns formatted expand text (description, sources, comments)
 def bd_show_text(bead_id: str, db_path: Path) -> str:
     try:
         r = subprocess.run(
@@ -42,7 +42,7 @@ def bd_show_text(bead_id: str, db_path: Path) -> str:
         bead  = data[0] if isinstance(data, list) and data else data
         if not isinstance(bead, dict):
             return '[no data]'
-        return _format_expand_text(bead)
+        return _format_expand_text(bead, bead_id, db_path)
     except Exception as e:
         return f'[error: {e}]'
 
@@ -75,8 +75,8 @@ def _bd_list_tracked(db_path: Path) -> Optional[List[dict]]:
     except Exception:
         return None   # distinguish subprocess/parse failure from empty list
 
-# Format bead JSON: description body (≤300 chars), Sources block (full), comment count
-def _format_expand_text(bead: dict) -> str:
+# Format bead JSON: description body (≤300 chars), Sources block (full), then all comments
+def _format_expand_text(bead: dict, bead_id: str, db_path: Path) -> str:
     lines: List[str] = []
     desc = (bead.get('description') or '').strip()
     if desc:
@@ -98,11 +98,35 @@ def _format_expand_text(bead: dict) -> str:
         else:
             truncated = desc if len(desc) <= 300 else desc[:300] + '…'
             lines.extend(truncated.split('\n'))
-    comments = bead.get('comment_count', 0) or 0
-    if comments:
-        lines.append(f'Comments: {comments}')
     if not lines:
         lines = ['(no description)']
-    if len(lines) > _MAX_EXPAND_LINES:
-        lines = lines[:_MAX_EXPAND_LINES] + ['…']
+    comments = _bd_fetch_comments(bead_id, db_path)
+    for c in comments:
+        ts     = _format_comment_ts(c.get('created_at', ''))
+        author = c.get('author') or 'unknown'
+        text   = (c.get('text') or '').strip()
+        lines.append(f'[{ts} by {author}]')
+        for tl in (text.split('\n') if text else ['(empty)']):
+            lines.append(f'  {tl}')
     return '\n'.join(lines)
+
+# Run bd comments <bead_id> --json --db <path>; returns list of comment dicts (empty on any error)
+def _bd_fetch_comments(bead_id: str, db_path: Path) -> List[dict]:
+    try:
+        r = subprocess.run(
+            [_BD, 'comments', bead_id, '--json', '--db', str(db_path)],
+            capture_output=True, text=True, timeout=_BD_TIMEOUT)
+        if r.returncode != 0 or not r.stdout.strip():
+            return []
+        data = json.loads(r.stdout)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+# Parse ISO8601 timestamp (e.g. '2026-05-21T01:44:54Z') → 'YYYY-MM-DD HH:MM'
+def _format_comment_ts(ts: str) -> str:
+    try:
+        dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        return dt.astimezone(tz=None).strftime('%Y-%m-%d %H:%M')
+    except Exception:
+        return ts[:16] if len(ts) >= 16 else ts
