@@ -186,7 +186,8 @@ def _rebuild_bead_panel(app) -> None:
     state = 'ON' if app._auto_focus else 'OFF'
     app._tracker_toggle_btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(
-            f'Sessions \u00b7 [Beads]     Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
+            f'Sessions \u00b7 [Beads] \u00b7 Queue     Auto-Jump: {state}',
+            {NSFontAttributeName: _MENLO()}))
     pw         = app._panel_width
     required_h = _compute_bead_height(app)
     _resize_tracker_panel(app, max(app._panel_min_height, required_h))

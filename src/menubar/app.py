@@ -32,6 +32,9 @@ from .panel import (ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET,
                     PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
                     _MENLO, _make_nspanel, _reposition_panel,
                     _rebuild_panel, _update_panel_inplace)
+# From queue_panel.py: standalone queue NSPanel + render
+from .queue_panel import (_make_queue_nspanel, _rebuild_queue_panel, _reposition_queue_panel,
+                           _resize_queue_panel)
 # From system.py: Ghostty terminal focus
 from .system import _focus_session
 # From paths.py: APP_SUPPORT-relative settings path
@@ -65,18 +68,23 @@ class _PanelController(NSObject):
                 app._panel.orderFrontRegardless()
             elif app._tracker_open:
                 app._tracker_panel.orderFrontRegardless()
+            elif app._queue_open:
+                app._queue_panel.orderFrontRegardless()
             app._panel_backgrounded = False
             app._last_cmd_l_ts = now   # second press within 300ms → hits double-tap reset branch
             return
         if is_double_tap:
-            if app._tracker_open or app._panel_open:
+            if app._tracker_open or app._panel_open or app._queue_open:
                 _reset_panel_to_default(app)
             app._last_cmd_l_ts = 0.0   # sentinel → triple-press: 3rd is single (now−0≫0.3)
             return
         app._last_cmd_l_ts = now
-        # Cmd+L closes whichever panel is open; if neither is open → open main
+        # Cmd+L closes whichever panel is open; if none → open main
         if app._tracker_open:
             _close_tracker_panel(app)
+            return
+        if app._queue_open:
+            _close_queue_panel(app)
             return
         if app._panel_open:
             _close_main_panel(app)
@@ -110,10 +118,16 @@ class _PanelController(NSObject):
         state = 'ON' if app._auto_focus else 'OFF'
         app._toggle_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
-                f'[Sessions] · Beads     Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
+                f'[Sessions] \u00b7 Beads \u00b7 Queue     Auto-Jump: {state}',
+                {NSFontAttributeName: _MENLO()}))
         app._tracker_toggle_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
-                f'Sessions · [Beads]     Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
+                f'Sessions \u00b7 [Beads] \u00b7 Queue     Auto-Jump: {state}',
+                {NSFontAttributeName: _MENLO()}))
+        app._queue_toggle_btn.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'Sessions \u00b7 Beads \u00b7 [Queue]     Auto-Jump: {state}',
+                {NSFontAttributeName: _MENLO()}))
 
     def killApp_(self, sender):
         # Detached bootout fires after our process exits, unloading the plist so KeepAlive does NOT respawn.
@@ -150,10 +164,8 @@ class _PanelController(NSObject):
             return
         app._pending_queue_sessions.add(session_id)
         sessions = list_alive_sessions()
-        cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
-        bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
-        _rebuild_panel(app, sessions, bg_by_project)
-        _reregister_digit_hotkeys(app)
+        app._last_sessions = sessions
+        _rebuild_queue_panel(app, sessions)
 
     def removeQueueMsg_(self, sender):
         app = self._app
@@ -172,10 +184,8 @@ class _PanelController(NSObject):
             save_queue(q)
             app._queue_data = q
         sessions = list_alive_sessions()
-        cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
-        bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
-        _rebuild_panel(app, sessions, bg_by_project)
-        _reregister_digit_hotkeys(app)
+        app._last_sessions = sessions
+        _rebuild_queue_panel(app, sessions)
 
     def commitQueueField_(self, sender):
         app = self._app
@@ -191,10 +201,8 @@ class _PanelController(NSObject):
         if session_id:
             app._pending_queue_sessions.discard(session_id)
         sessions = list_alive_sessions()
-        cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
-        bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
-        _rebuild_panel(app, sessions, bg_by_project)
-        _reregister_digit_hotkeys(app)
+        app._last_sessions = sessions
+        _rebuild_queue_panel(app, sessions)
 
     def controlTextDidEndEditing_(self, notification):
         app = self._app
@@ -206,12 +214,10 @@ class _PanelController(NSObject):
         session_id = app._pending_queue_tags.get(tag)
         if session_id:
             app._pending_queue_sessions.discard(session_id)
-        if app._panel_open:
+        if app._queue_open:
             sessions = list_alive_sessions()
-            cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
-            bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
-            _rebuild_panel(app, sessions, bg_by_project)
-            _reregister_digit_hotkeys(app)
+            app._last_sessions = sessions
+            _rebuild_queue_panel(app, sessions)
 
     def windowDidResize_(self, notification):
         frame = notification.object().frame()
@@ -230,6 +236,10 @@ class _PanelController(NSObject):
             bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
             _rebuild_panel(app, sessions, bg_by_project)
             _reregister_digit_hotkeys(app)
+        elif app._queue_open:
+            sessions = list_alive_sessions()
+            app._last_sessions = sessions
+            _rebuild_queue_panel(app, sessions)
 
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
@@ -273,14 +283,18 @@ class CCMenuBarApp(rumps.App):
         self._hotkey_arr_right_ref = None   # hk_ref for Cmd+→ (module holds CFUNCTYPE anchor)
         self._hotkey_arr_left_ref  = None   # hk_ref for Cmd+← (module holds CFUNCTYPE anchor)
         self._panel_backgrounded: bool = False   # True while active panel is orderBack_'d behind other windows
-        # Queue state
-        self._queue_data: dict = {}              # {session_id: [msgs]} — refreshed each tick from msg_queue.json
+        # Queue panel state
+        self._queue_open: bool = False
+        self._queue_panel, self._queue_sv, self._queue_toggle_btn = _make_queue_nspanel()
+        self._queue_displayed_names: set = set()   # session names currently shown in queue panel
+        self._queue_data: dict = {}                # {session_id: [msgs]} — refreshed each tick from msg_queue.json
         self._pending_queue_sessions: set = set()  # session_ids with active inline NSTextField
-        self._pending_queue_tags: dict = {}      # {NSTextField tag → session_id}; reset on each rebuild
-        self._queue_add_tags: dict = {}          # {+ button tag → session_id}; reset on each rebuild
-        self._queue_remove_tags: dict = {}       # {− button tag → (session_id, msg_index)}; reset each rebuild
-        self._committed_queue_tags: set = set()  # NSTextField tags committed via Enter; checked in controlTextDidEndEditing_
-        self._last_cmd_l_ts: float = 0.0         # timestamp of last Cmd+L press for double-tap detection
+        self._pending_queue_tags: dict = {}        # {NSTextField tag → session_id}; reset on each rebuild
+        self._queue_add_tags: dict = {}            # {+ button tag → session_id}; reset on each rebuild
+        self._queue_remove_tags: dict = {}         # {− button tag → (session_id, msg_index)}; reset each rebuild
+        self._committed_queue_tags: set = set()    # NSTextField tags committed via Enter; prevent cancel in controlTextDidEndEditing_
+        self._last_sessions: list = []             # last live sessions snapshot; used by queue panel rebuild
+        self._last_cmd_l_ts: float = 0.0           # timestamp of last Cmd+L press for double-tap detection
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
@@ -300,6 +314,9 @@ class CCMenuBarApp(rumps.App):
                 self._tracker_toggle_btn.setAction_(b'toggleAutoJump:')
                 self._panel.setDelegate_(self._panel_controller)
                 self._tracker_panel.setDelegate_(self._panel_controller)
+                self._queue_panel.setDelegate_(self._panel_controller)
+                self._queue_toggle_btn.setTarget_(self._panel_controller)
+                self._queue_toggle_btn.setAction_(b'toggleAutoJump:')
                 _set_bar_icon(self, ICON_NORMAL)   # replace setTitle_ with attributed version
                 self._initialized = True
             except AttributeError:
@@ -309,6 +326,7 @@ class CCMenuBarApp(rumps.App):
             sessions = list_alive_sessions()
         except Exception:
             sessions = []
+        self._last_sessions = sessions
         if self._auto_focus:
             for s in sessions:
                 if s.is_worker or not s.cwd:
@@ -333,13 +351,17 @@ class CCMenuBarApp(rumps.App):
         new_queue = load_queue()
         queue_changed = new_queue != self._queue_data
         self._queue_data = new_queue
+        if self._queue_open:
+            q_names = {s.name for s in sessions if not s.is_worker}
+            if queue_changed or q_names != self._queue_displayed_names:
+                _rebuild_queue_panel(self, sessions)
         if self._panel_open:
             session_names = {s.name for s in sessions}
             new_abort_projs = {p for p in bg_by_project if p != 'unknown'}
             abort_flap = new_abort_projs != set(self._abort_btns_by_project)
             set_change = session_names != set(self._displayed_items)
-            if abort_flap or set_change or queue_changed:
-                reasons = '+'.join(r for r, v in [('abort-flap', abort_flap), ('session-set-change', set_change), ('queue-change', queue_changed)] if v)
+            if abort_flap or set_change:
+                reasons = '+'.join(r for r, v in [('abort-flap', abort_flap), ('session-set-change', set_change)] if v)
                 _tick_log(True, sessions, self._displayed_items, reasons)
                 _rebuild_panel(self, sessions, bg_by_project)
                 _reregister_digit_hotkeys(self)
@@ -447,21 +469,19 @@ def _load_settings():
         return False, PANEL_WIDTH, PANEL_HEIGHT
 
 
-# Safety-net for deferred NSBlockOperation blocks: exceptions must not propagate to ObjC.
-# NSBlockOperation has no Python exception bridge -> unhandled exception -> SIGABRT.
-def _deferred_switch_to_tracker(app: 'CCMenuBarApp') -> None:
+# Generic deferred panel switch for Cmd+→/← cycling.
+# Safety-net: exceptions must not propagate to ObjC (NSBlockOperation has no Python bridge → SIGABRT).
+# Cycling order: Sessions → Beads → Queue → Sessions (Cmd+→); reverse for Cmd+←.
+def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) -> None:
     try:
-        _close_main_panel(app)
-        _open_tracker_panel(app)
+        if from_panel == 'main':      _close_main_panel(app)
+        elif from_panel == 'tracker': _close_tracker_panel(app)
+        elif from_panel == 'queue':   _close_queue_panel(app)
+        if to_panel == 'main':        _open_main_panel(app)
+        elif to_panel == 'tracker':   _open_tracker_panel(app)
+        elif to_panel == 'queue':     _open_queue_panel(app)
     except Exception as e:
-        print(f'[menubar] Cmd+→ deferred-block error: {e}', file=sys.stderr)
-
-def _deferred_switch_to_main(app: 'CCMenuBarApp') -> None:
-    try:
-        _close_tracker_panel(app)
-        _open_main_panel(app)
-    except Exception as e:
-        print(f'[menubar] Cmd+← deferred-block error: {e}', file=sys.stderr)
+        print(f'[menubar] cycling {from_panel}→{to_panel} error: {e}', file=sys.stderr)
 
 # Cmd+K handler: toggle active panel between foreground and background (orderBack_/orderFrontRegardless).
 # Does NOT close the panel — _panel_open / _tracker_open stay True.
@@ -475,6 +495,9 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
             elif app._tracker_open:
                 app._tracker_panel.setLevel_(25)   # NSStatusWindowLevel
                 app._tracker_panel.orderFrontRegardless()
+            elif app._queue_open:
+                app._queue_panel.setLevel_(25)   # NSStatusWindowLevel
+                app._queue_panel.orderFrontRegardless()
             app._panel_backgrounded = False
         elif app._panel_open:
             app._panel.setLevel_(0)   # NSNormalWindowLevel — allows orderBack_ to work
@@ -483,6 +506,10 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
         elif app._tracker_open:
             app._tracker_panel.setLevel_(0)   # NSNormalWindowLevel
             app._tracker_panel.orderBack_(None)
+            app._panel_backgrounded = True
+        elif app._queue_open:
+            app._queue_panel.setLevel_(0)   # NSNormalWindowLevel
+            app._queue_panel.orderBack_(None)
             app._panel_backgrounded = True
     except Exception as e:
         print(f'[menubar] Cmd+K deferred-block error: {e}', file=sys.stderr)
@@ -495,14 +522,15 @@ def _reset_panel_to_default(app: 'CCMenuBarApp') -> None:
         _resize_tracker_panel(app, PANEL_HEIGHT)
     elif app._panel_open:
         _resize_panel(app, PANEL_HEIGHT)
+    elif app._queue_open:
+        _resize_queue_panel(app, PANEL_HEIGHT)
 
-# Open main panel: rebuild with fresh data → reposition → show → register Cmd+→ + Cmd+1..9
-# Rebuild on open ensures queue rows reflect current queue file (not last closed-panel tick state)
+# Open main panel: rebuild → reposition → show → register Cmd+→ (→Beads) + Cmd+← (→Queue wrap) + Cmd+1..9
 def _open_main_panel(app: 'CCMenuBarApp') -> None:
     sessions = list_alive_sessions()
+    app._last_sessions = sessions
     cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
     bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
-    app._queue_data = load_queue()
     _rebuild_panel(app, sessions, bg_by_project)
     _reposition_panel(app._panel, app._nsapp.nsstatusitem)
     app._panel.orderFrontRegardless()
@@ -511,9 +539,12 @@ def _open_main_panel(app: 'CCMenuBarApp') -> None:
     _reregister_digit_hotkeys(app)
     _, app._hotkey_arr_right_ref = register_cmd_arrow_right(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_switch_to_tracker(app)))
+            lambda: _deferred_close_open(app, 'main', 'tracker')))
+    _, app._hotkey_arr_left_ref = register_cmd_arrow_left(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _deferred_close_open(app, 'main', 'queue')))
 
-# Close main panel: hide + unregister Cmd+→ + Cmd+1..9
+# Close main panel: hide + unregister Cmd+→ + Cmd+← + Cmd+1..9
 def _close_main_panel(app: 'CCMenuBarApp') -> None:
     app._panel.orderOut_(None)
     app._panel_open = False
@@ -524,23 +555,57 @@ def _close_main_panel(app: 'CCMenuBarApp') -> None:
         app._hotkey_digits_cb   = None
     unregister_cmd_arrow_right(app._hotkey_arr_right_ref)
     app._hotkey_arr_right_ref = None
+    unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
+    app._hotkey_arr_left_ref = None
 
-# Open tracker panel: rebuild → reposition → show + register Cmd+←
+# Open tracker panel: rebuild → reposition → show + register Cmd+→ (→Queue) + Cmd+← (→Sessions)
 def _open_tracker_panel(app: 'CCMenuBarApp') -> None:
     _rebuild_bead_panel(app)
     _reposition_bead_panel(app._tracker_panel, app._nsapp.nsstatusitem)
     app._tracker_panel.orderFrontRegardless()
     app._tracker_panel.enableCursorRects()
     app._tracker_open = True
+    _, app._hotkey_arr_right_ref = register_cmd_arrow_right(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _deferred_close_open(app, 'tracker', 'queue')))
     _, app._hotkey_arr_left_ref = register_cmd_arrow_left(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: _deferred_switch_to_main(app)))
+            lambda: _deferred_close_open(app, 'tracker', 'main')))
 
-# Close tracker panel: hide + unregister Cmd+←
+# Close tracker panel: hide + unregister Cmd+→ + Cmd+←
 def _close_tracker_panel(app: 'CCMenuBarApp') -> None:
     app._tracker_panel.orderOut_(None)
     app._tracker_open = False
     app._panel_backgrounded = False
+    unregister_cmd_arrow_right(app._hotkey_arr_right_ref)
+    app._hotkey_arr_right_ref = None
+    unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
+    app._hotkey_arr_left_ref = None
+
+# Open queue panel: rebuild → reposition → show + register Cmd+→ (→Sessions wrap) + Cmd+← (→Beads)
+def _open_queue_panel(app: 'CCMenuBarApp') -> None:
+    sessions = list_alive_sessions()
+    app._last_sessions = sessions
+    app._queue_data = load_queue()
+    _rebuild_queue_panel(app, sessions)
+    _reposition_queue_panel(app._queue_panel, app._nsapp.nsstatusitem)
+    app._queue_panel.orderFrontRegardless()
+    app._queue_panel.enableCursorRects()
+    app._queue_open = True
+    _, app._hotkey_arr_right_ref = register_cmd_arrow_right(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _deferred_close_open(app, 'queue', 'main')))
+    _, app._hotkey_arr_left_ref = register_cmd_arrow_left(
+        lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: _deferred_close_open(app, 'queue', 'tracker')))
+
+# Close queue panel: hide + unregister Cmd+→ + Cmd+←
+def _close_queue_panel(app: 'CCMenuBarApp') -> None:
+    app._queue_panel.orderOut_(None)
+    app._queue_open = False
+    app._panel_backgrounded = False
+    unregister_cmd_arrow_right(app._hotkey_arr_right_ref)
+    app._hotkey_arr_right_ref = None
     unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
     app._hotkey_arr_left_ref = None
 

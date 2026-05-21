@@ -311,110 +311,16 @@ def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining
     container.addSubview_(tf)
     return container, abort_btn
 
-# NSView container: "  [N] <msg>  −" for one queued message
-# Returns (container, minus_btn); caller wires minus_btn tag/target/action
-def _make_queue_msg_row(msg: str, idx: int, panel_width: int):
-    pw    = panel_width - 22
-    row_h = _ROW_H - 1
-    minus_w = 18
-    text_w  = pw - minus_w - 2
-    container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw, row_h))
-    container.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
-    container.heightAnchor().constraintEqualToConstant_(float(row_h)).setActive_(True)
-    prefix = f'  [{idx}] '
-    label  = _CursorlessLabel.labelWithString_('')
-    label.setFrame_(NSMakeRect(0, 0, text_w, row_h))
-    label.cell().setLineBreakMode_(4)   # NSLineBreakByTruncatingTail
-    label.setAttributedStringValue_(
-        NSAttributedString.alloc().initWithString_attributes_(
-            prefix + msg, {NSFontAttributeName: _MENLO()}))
-    container.addSubview_(label)
-    minus_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(pw - minus_w, 0, minus_w, row_h))
-    minus_btn.setBordered_(False)
-    minus_btn.setButtonType_(7)
-    minus_btn.setAttributedTitle_(
-        NSAttributedString.alloc().initWithString_attributes_(
-            '−', {NSFontAttributeName: _MENLO(),
-                  NSForegroundColorAttributeName: NSColor.systemGrayColor()}))
-    container.addSubview_(minus_btn)
-    return container, minus_btn
-
-# Plain NSButton "  +" row for adding a new queue message; caller wires tag/target/action
-def _make_queue_add_btn(panel_width: int) -> 'NSButton':
-    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, panel_width - 22, _ROW_H - 1))
-    btn.setBordered_(False)
-    btn.setButtonType_(7)
-    btn.setAttributedTitle_(
-        NSAttributedString.alloc().initWithString_attributes_(
-            '  +', {NSFontAttributeName: _MENLO(),
-                    NSForegroundColorAttributeName: NSColor.systemGrayColor()}))
-    return btn
-
-# NSView container holding an editable NSTextField for inline queue message input
-# Returns (container, NSTextField); caller wires tf tag/target/action/delegate
-def _make_queue_input_field(panel_width: int, tag: int):
-    pw    = panel_width - 22
-    row_h = _ROW_H - 1
-    container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw, row_h))
-    container.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
-    container.heightAnchor().constraintEqualToConstant_(float(row_h)).setActive_(True)
-    tf = NSTextField.alloc().initWithFrame_(NSMakeRect(2, 2, pw - 4, row_h - 4))
-    tf.setFont_(_MENLO())
-    tf.setEditable_(True)
-    tf.setSelectable_(True)
-    tf.setBezeled_(True)
-    tf.setDrawsBackground_(True)
-    tf.setTag_(tag)
-    tf.setPlaceholderString_('message…')
-    container.addSubview_(tf)
-    return container, tf
-
-# Add queue block rows to panel_sv for one main session (messages + add-btn or input field)
-# Modifies app._queue_add_tags, app._queue_remove_tags, app._pending_queue_tags in place
-def _add_queue_block(app, s, pw: int, q_add_tag: list, q_rmv_tag: list, q_tf_tag: list) -> None:
-    msgs       = app._queue_data.get(s.session_id, [])
-    is_pending = s.session_id in app._pending_queue_sessions
-    for i, msg in enumerate(msgs):
-        row, minus_btn = _make_queue_msg_row(msg, i + 1, pw)
-        rmv_tag = q_rmv_tag[0]; q_rmv_tag[0] += 1
-        minus_btn.setTag_(rmv_tag)
-        minus_btn.setTarget_(app._panel_controller)
-        minus_btn.setAction_(b'removeQueueMsg:')
-        app._queue_remove_tags[rmv_tag] = (s.session_id, i)
-        app._panel_sv.addView_inGravity_(row, 1)
-    if is_pending:
-        tf_tag = q_tf_tag[0]; q_tf_tag[0] += 1
-        cont, tf = _make_queue_input_field(pw, tf_tag)
-        tf.setTarget_(app._panel_controller)
-        tf.setAction_(b'commitQueueField:')
-        tf.setDelegate_(app._panel_controller)
-        app._pending_queue_tags[tf_tag] = s.session_id
-        app._panel_sv.addView_inGravity_(cont, 1)
-        app._panel.makeFirstResponder_(tf)
-    else:
-        add_tag = q_add_tag[0]; q_add_tag[0] += 1
-        add_btn = _make_queue_add_btn(pw)
-        add_btn.setTag_(add_tag)
-        add_btn.setTarget_(app._panel_controller)
-        add_btn.setAction_(b'addQueueRow:')
-        app._queue_add_tags[add_tag] = s.session_id
-        app._panel_sv.addView_inGravity_(add_btn, 1)
-
 # Compute exact panel height needed to display all sessions; no truncation.
-# queue_data: {session_id: [msgs]} for computing queue block heights per main session.
 # Abort buttons (Option B) are embedded in separator views — zero height cost.
-def _compute_required_height(sorted_sessions, queue_data=None) -> int:
+def _compute_required_height(sorted_sessions) -> int:
     h = _FOOTER_H + _TOP_BAR_H + _LABEL_H   # footer + top-bar (Auto-Jump) + separator-in-stack
     if not sorted_sessions:
         return h + _LABEL_H                   # "No active sessions" label
     for _, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
-        group_list = list(group_iter)
         h += _LABEL_H
-        for s in group_list:
+        for s in group_iter:
             h += _ROW_H   # session row
-            if not s.is_worker:
-                msgs_count = len((queue_data or {}).get(s.session_id, []))
-                h += (msgs_count + 1) * _ROW_H   # N message rows + 1 add/input row
     return h
 
 # Resize NSPanel frame to new_h; anchors TOP edge (not bottom-left origin) so panel stays flush below bar icon
@@ -436,22 +342,17 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
     app._cwd_map = {}
     app._abort_btns_by_project = {}
     app._abort_project_for_tag = {}
-    app._queue_add_tags = {}
-    app._queue_remove_tags = {}
-    app._pending_queue_tags = {}
     next_tag  = [1]
     abort_tag = 1000   # abort button tags start above session row tags (1..N)
-    q_add_tag = [2000]
-    q_rmv_tag = [3000]
-    q_tf_tag  = [4000]
     pw = app._panel_width
     sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
-    required_h = _compute_required_height(sorted_sessions, app._queue_data)
+    required_h = _compute_required_height(sorted_sessions)
     _resize_panel(app, max(app._panel_min_height, required_h))
     state = 'ON' if app._auto_focus else 'OFF'
     app._toggle_btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(
-            f'[Sessions] · Beads     Auto-Jump: {state}', {NSFontAttributeName: _MENLO()}))
+            f'[Sessions] \u00b7 Beads \u00b7 Queue     Auto-Jump: {state}',
+            {NSFontAttributeName: _MENLO()}))
     app._panel_sv.addView_inGravity_(_make_line_separator(pw), 1)
     if not sorted_sessions:
         app._panel_sv.addView_inGravity_(_make_header_label('No active sessions', pw), 1)
@@ -486,7 +387,6 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
                 app._cwd_map[tag] = s.cwd or ''
                 app._panel_sv.addView_inGravity_(btn, 1)
                 app._displayed_items[s.name] = btn
-                _add_queue_block(app, s, pw, q_add_tag, q_rmv_tag, q_tf_tag)
             else:
                 line = f'      {name_col} {dot} {badge.ljust(_COL_TIMER_W)}'
                 btn  = _make_row_button(line, pw)

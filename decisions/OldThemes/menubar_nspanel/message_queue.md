@@ -51,5 +51,46 @@ Written correctly on first tick. Change-detection (`_ghostty_cwd_uuid_last`) pre
 
 ## Pending
 
-- Panel UI visual verification (queue rows under session rows, + button, inline NSTextField editing) — to be verified by user post-merge
-- panel.py (531 LOC) and app.py (548 LOC) both exceed 400 LOC ceiling; split-refactor tracked separately
+- app.py (632 LOC) exceeds 400 LOC ceiling; split-refactor tracked separately
+
+---
+
+## Architecture Pivot — Standalone Queue Panel
+
+### Problem
+
+The inline queue UI added in the mlpb merge had two hard failures:
+
+1. **NSTextField not clickable.** Sessions panel uses `NSWindowStyleMaskNonactivatingPanel`. The panel never becomes the key window, so NSTextField can never become first responder. `app._panel.makeFirstResponder_(tf)` (called at end of `_add_queue_block`) silently fails. User cannot click the + row to type.
+
+2. **Layout mix.** Queue rows interspersed between session rows created a confusing compound panel. The inline layout also pushed `_compute_required_height` to track queue row counts per session, coupling session height to queue state.
+
+### Decision
+
+Migrate queue UI to a standalone 3rd NSPanel (`queue_panel.py`) analogous to `bead_panel.py`. Sessions panel reverts to pure session listing.
+
+### Architecture
+
+**New file: `src/menubar/queue_panel.py`** — `_make_queue_nspanel()` returns `(panel, stack, toggle_btn)` with no footer. `_rebuild_queue_panel(app, sessions)` builds per-main-session blocks: `project › session` header + N message rows + add-button or NSTextField. Functions `_make_queue_msg_row`, `_make_queue_add_btn`, `_make_queue_input_field` moved verbatim from `panel.py`.
+
+**Input-fix:** `NSWindowStyleMaskNonactivatingPanel` prevents app activation but does NOT prevent the panel from becoming the key window. `makeKeyAndOrderFront_(None)` called programmatically (after + button click triggers rebuild with pending mode) gives the panel keyboard focus without activating the app. Ghostty stays frontmost app; only the queue panel's NSTextField receives keystrokes. `makeFirstResponder_(tf)` then routes input to the text field.
+
+**panel.py revert:** removed `_make_queue_msg_row`, `_make_queue_add_btn`, `_make_queue_input_field`, `_add_queue_block`. `_compute_required_height` reverted — no `queue_data` parameter, no per-session queue row counting. Header updated: `[Sessions] · Beads` → `[Sessions] · Beads · Queue`.
+
+**3-panel cycling (Cmd+→/←):** Sessions → Beads → Queue → Sessions (right); reverse (left). Each `_open_*_panel` registers BOTH arrow directions; each `_close_*_panel` unregisters both. Generic `_deferred_close_open(app, from, to)` replaces the two old deferred functions.
+
+**Header indicators:** all 3 panels show `[Active] · Other · Other` pattern. Updated in each `_rebuild_*` function and in `toggleAutoJump_`.
+
+**Cmd+K:** `_background_panel` extended with `elif app._queue_open:` branch (setLevel 0 + orderBack).
+
+**State added:** `_queue_open`, `_queue_panel`, `_queue_sv`, `_queue_toggle_btn`, `_queue_displayed_names`, `_last_sessions` — all on `app`. Queue UI state (`_pending_queue_sessions`, `_queue_add_tags`, etc.) retained on app, now managed by `_rebuild_queue_panel` instead of `_rebuild_panel`.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `src/menubar/queue_panel.py` | NEW — 211 LOC |
+| `src/menubar/panel.py` | Reverted queue UI; 531 → 431 LOC |
+| `src/menubar/app.py` | New state + queue panel lifecycle + 3-panel cycling; 548 → 632 LOC |
+| `src/menubar/bead_panel.py` | Header text updated to include Queue |
+| `src/menubar/DOCS.md` | queue_panel.py entry added; panel.py + app.py entries updated |
