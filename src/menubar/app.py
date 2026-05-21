@@ -80,6 +80,8 @@ class _PanelController(NSObject):
         if app._panel_open:
             _close_main_panel(app)
         else:
+            app._panel_width = PANEL_WIDTH       # reset on user-initiated fresh open; no _save_settings
+            app._panel_min_height = PANEL_HEIGHT
             _open_main_panel(app)
 
     def toggleBeadTracker_(self, sender):
@@ -504,10 +506,8 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
     except Exception as e:
         print(f'[menubar] Cmd+K deferred-block error: {e}', file=sys.stderr)
 
-# Open main panel: reset to defaults → rebuild → reposition → show → register Cmd+→ (→Beads) + Cmd+← (→Queue wrap) + Cmd+1..9
+# Open main panel: rebuild → reposition → show → register Cmd+→ (→Beads) + Cmd+← (→Queue wrap) + Cmd+1..9
 def _open_main_panel(app: 'CCMenuBarApp') -> None:
-    app._panel_width = PANEL_WIDTH       # reset to defaults on every open; no _save_settings
-    app._panel_min_height = PANEL_HEIGHT
     sessions = list_alive_sessions()
     app._last_sessions = sessions
     cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
@@ -539,10 +539,8 @@ def _close_main_panel(app: 'CCMenuBarApp') -> None:
     unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
     app._hotkey_arr_left_ref = None
 
-# Open tracker panel: reset to defaults → rebuild → reposition → show + register Cmd+→ (→Queue) + Cmd+← (→Sessions)
+# Open tracker panel: rebuild → reposition → show + register Cmd+→ (→Queue) + Cmd+← (→Sessions)
 def _open_tracker_panel(app: 'CCMenuBarApp') -> None:
-    app._panel_width = PANEL_WIDTH       # reset to defaults on every open; no _save_settings
-    app._panel_min_height = PANEL_HEIGHT
     _rebuild_bead_panel(app)
     _reposition_bead_panel(app._tracker_panel, app._nsapp.nsstatusitem)
     app._tracker_panel.orderFrontRegardless()
@@ -565,10 +563,8 @@ def _close_tracker_panel(app: 'CCMenuBarApp') -> None:
     unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
     app._hotkey_arr_left_ref = None
 
-# Open queue panel: reset to defaults → rebuild → reposition → show + register Cmd+→ (→Sessions wrap) + Cmd+← (→Beads)
+# Open queue panel: rebuild → reposition → show + register Cmd+→ (→Sessions wrap) + Cmd+← (→Beads)
 def _open_queue_panel(app: 'CCMenuBarApp') -> None:
-    app._panel_width = PANEL_WIDTH       # reset to defaults on every open; no _save_settings
-    app._panel_min_height = PANEL_HEIGHT
     sessions = list_alive_sessions()
     app._last_sessions = sessions
     app._queue_data = load_queue()
