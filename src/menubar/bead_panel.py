@@ -12,7 +12,7 @@ from Foundation import NSMakeRect, NSMakeSize, NSRange
 from .bead_data import bd_show_text, bd_label_remove
 from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
                     PANEL_GAP, _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO,
-                    _CursorlessButton, _CursorlessLabel,
+                    _CursorlessButton, _CursorlessLabel, _KeyablePanel,
                     _make_line_separator, _make_header_label,
                     _GRID_COL_SPC)
 
@@ -24,7 +24,7 @@ _BEAD_EXPAND_MAX_LINES = 20   # max visible lines in expand view; content beyond
 # Build NSPanel for bead tracker; returns (panel, stack, toggle_btn)
 # toggle_btn: top-bar button wired to toggleAutoJump: — same style as main panel's toggle_btn
 def _make_bead_nspanel():
-    panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+    panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
         NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskResizable, 2, True)
     panel.setLevel_(NSStatusWindowLevel)
