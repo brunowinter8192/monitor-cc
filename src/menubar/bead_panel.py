@@ -16,7 +16,8 @@ from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
                     _make_line_separator, _make_header_label,
                     _GRID_COL_SPC)
 
-_UNTRACK_W             = 22   # pts — col 1 width: × untrack button
+_STATUS_W              = 22   # pts — col 1 width: ? status-query button
+_UNTRACK_W             = 22   # pts — col 2 width: × untrack button
 _BEAD_EXPAND_MAX_LINES = 20   # max visible lines in expand view; content beyond scrolls
 _rebuild_bead_in_progress = False   # re-entry guard: defensive mirror of queue_panel guard
 
@@ -85,7 +86,7 @@ def _bead_row_height(row_text: str, btn_w: int) -> int:
 # Returns (btn, row_h) — caller sets tag/target/action; row_h used for NSGridRow.setHeight_.
 def _make_bead_expand_btn(bead: dict, panel_width: int, is_expanded: bool):
     pw       = panel_width - 22
-    btn_w    = pw - _UNTRACK_W - _GRID_COL_SPC
+    btn_w    = pw - _STATUS_W - _UNTRACK_W - 2 * _GRID_COL_SPC
     bead_id  = bead.get('id', '')
     title    = bead.get('title', '')
     indicator = '▾' if is_expanded else '▸'
@@ -103,7 +104,18 @@ def _make_bead_expand_btn(bead: dict, panel_width: int, is_expanded: bool):
                        NSForegroundColorAttributeName: NSColor.systemBlueColor()}))
     return btn, row_h
 
-# × untrack button for col 1 of the bead grid row; caller sets tag/target/action
+# ? status-query button for col 1 of the bead grid row; caller sets tag/target/action
+def _make_bead_status_btn():
+    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, _STATUS_W, _ROW_H - 1))
+    btn.setBordered_(False)
+    btn.setButtonType_(7)
+    btn.setAttributedTitle_(
+        NSAttributedString.alloc().initWithString_attributes_(
+            '?', {NSFontAttributeName: _MENLO(),
+                  NSForegroundColorAttributeName: NSColor.systemBlueColor()}))
+    return btn
+
+# × untrack button for col 2 of the bead grid row; caller sets tag/target/action
 def _make_bead_x_btn() -> NSView:
     btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, _UNTRACK_W, _ROW_H - 1))
     btn.setBordered_(False)
@@ -163,7 +175,7 @@ def _compute_bead_height(app) -> int:
     if not any(app._bead_data.values()):
         return h + _LABEL_H      # "No tracked beads" label
     pw    = app._panel_width - 22
-    btn_w = pw - _UNTRACK_W - _GRID_COL_SPC   # col-0 expand button width
+    btn_w = pw - _STATUS_W - _UNTRACK_W - 2 * _GRID_COL_SPC   # col-0 expand button width
     for project_name, beads in app._bead_data.items():
         if not beads:
             continue
@@ -210,6 +222,7 @@ def _rebuild_bead_panel_inner(app) -> None:
     app._bead_displayed.clear()
     app._bead_expand_tags.clear()
     app._bead_untrack_tags.clear()
+    app._bead_query_tags.clear()
     state = 'ON' if app._auto_focus else 'OFF'
     app._tracker_toggle_btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(
@@ -223,23 +236,25 @@ def _rebuild_bead_panel_inner(app) -> None:
         app._tracker_sv.addView_inGravity_(_make_header_label('No tracked beads', pw), 1)
         return
     empty = NSGridCell.emptyContentView()
-    grid  = NSGridView.gridViewWithNumberOfColumns_rows_(2, 0)
+    grid  = NSGridView.gridViewWithNumberOfColumns_rows_(3, 0)
     grid.setColumnSpacing_(float(_GRID_COL_SPC))
     grid.setRowSpacing_(1.0)
-    for i in range(2):
+    for i in range(3):
         grid.columnAtIndex_(i).setXPlacement_(NSGridCellPlacementLeading)
-    grid.columnAtIndex_(1).setWidth_(float(_UNTRACK_W))   # col 1 fixed; col 0 flexible
+    grid.columnAtIndex_(1).setWidth_(float(_STATUS_W))    # col 1 fixed: ? status button
+    grid.columnAtIndex_(2).setWidth_(float(_UNTRACK_W))   # col 2 fixed: × untrack button
     grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
     row_idx = 0
     exp_tag = 100
     utr_tag = 200
+    qry_tag = 300
     for project_name, beads in app._bead_data.items():
         if not beads:
             continue
         hdr = _make_header_label(project_name, pw)
-        grid.addRowWithViews_([hdr, empty])
+        grid.addRowWithViews_([hdr, empty, empty])
         grid.rowAtIndex_(row_idx).setHeight_(float(_LABEL_H - 1))
-        grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 2), NSRange(row_idx, 1))
+        grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 3), NSRange(row_idx, 1))
         row_idx += 1
         for bead in beads:
             bead_id    = bead.get('id', '')
@@ -248,23 +263,29 @@ def _rebuild_bead_panel_inner(app) -> None:
             expand_btn.setTag_(exp_tag)
             expand_btn.setTarget_(app._panel_controller)
             expand_btn.setAction_(b'expandBead:')
+            status_btn = _make_bead_status_btn()
+            status_btn.setTag_(qry_tag)
+            status_btn.setTarget_(app._panel_controller)
+            status_btn.setAction_(b'queryBeadStatus:')
             x_btn = _make_bead_x_btn()
             x_btn.setTag_(utr_tag)
             x_btn.setTarget_(app._panel_controller)
             x_btn.setAction_(b'untrackBead:')
-            grid.addRowWithViews_([expand_btn, x_btn])
+            grid.addRowWithViews_([expand_btn, status_btn, x_btn])
             grid.rowAtIndex_(row_idx).setHeight_(float(row_h))
             row_idx += 1
             app._bead_expand_tags[exp_tag]  = bead_id
             app._bead_untrack_tags[utr_tag] = (bead_id, project_name)
+            app._bead_query_tags[qry_tag]   = (bead_id, project_name)
             app._bead_displayed[bead_id]    = expand_btn
             exp_tag += 1
             utr_tag += 1
+            qry_tag += 1
             if is_expanded:
                 exp_view, exp_h = _make_expand_view(app._bead_expanded[bead_id], pw)
-                grid.addRowWithViews_([exp_view, empty])
+                grid.addRowWithViews_([exp_view, empty, empty])
                 grid.rowAtIndex_(row_idx).setHeight_(float(exp_h))
-                grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 2), NSRange(row_idx, 1))
+                grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 3), NSRange(row_idx, 1))
                 row_idx += 1
     app._tracker_sv.addView_inGravity_(grid, 1)
     grid.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)

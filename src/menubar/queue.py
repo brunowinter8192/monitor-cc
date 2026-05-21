@@ -9,13 +9,16 @@ from .paths import QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE
 # FUNCTIONS
 
 # Normalize a single queue entry to the three-state format.
-# bare string → queued (legacy semantic); dict missing state: sent_at non-null → sent, else → queued.
+# bare string → queued; dict missing state: sent_at set → sent, else → queued.
+# Stale inconsistency guard: state=queued + sent_at set → treat as sent (old code wrote sent_at without flipping state).
 def _normalize_entry(e) -> dict:
     if isinstance(e, str):
         return {"text": e, "state": "queued", "sent_at": None}
     d = dict(e)
     if "state" not in d:
         d["state"] = "sent" if d.get("sent_at") else "queued"
+    elif d["state"] == "queued" and d.get("sent_at") is not None:
+        d["state"] = "sent"
     return d
 
 # Load msg_queue.json; normalizes bare-string entries to dict form for backward compat.
