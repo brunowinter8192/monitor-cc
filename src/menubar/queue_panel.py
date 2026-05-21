@@ -77,7 +77,8 @@ def _compute_queue_height(app, sessions) -> int:
         h += _LABEL_H           # project › session header label
         msgs = app._queue_data.get(s.session_id, [])
         h += len(msgs) * (_ROW_H - 1)   # message rows
-        h += _ROW_H - 1                 # add-btn or input field row
+        pending = app._pending_queue_count.get(s.session_id, 0)
+        h += (_ROW_H - 1) * (1 + pending)   # always one + btn row + N input rows
     return h
 
 # Resize queue NSPanel anchored at top edge (same logic as _resize_tracker_panel)
@@ -89,13 +90,17 @@ def _resize_queue_panel(app, new_h: float) -> None:
         NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)
 
 # NSTextField label for col 0 of a message row ("  [N] msg", truncated at tail)
-def _make_queue_msg_label(msg: str, idx: int, col0_w: int) -> NSTextField:
+# sent=True renders label in systemGreenColor to mark a successfully delivered message
+def _make_queue_msg_label(msg: str, idx: int, col0_w: int, sent: bool = False) -> NSTextField:
     label = _CursorlessLabel.labelWithString_('')
     label.setFrame_(NSMakeRect(0, 0, col0_w, _ROW_H - 1))
     label.cell().setLineBreakMode_(4)   # NSLineBreakByTruncatingTail
+    attrs = {NSFontAttributeName: _MENLO()}
+    if sent:
+        attrs[NSForegroundColorAttributeName] = NSColor.systemGreenColor()
     label.setAttributedStringValue_(
-        NSAttributedString.alloc().initWithString_attributes_(
-            f'  [{idx}] {msg}', {NSFontAttributeName: _MENLO()}))
+        NSAttributedString.alloc().initWithString_attributes_(f'  [{idx}] {msg}', attrs))
+    label.heightAnchor().constraintEqualToConstant_(float(_ROW_H - 1)).setActive_(True)   # NSGridView turns off TAMIC; explicit height prevents auto-layout misalignment
     return label
 
 # − remove button for col 1 of a message row; caller wires tag/target/action
@@ -107,6 +112,8 @@ def _make_queue_minus_btn():
         NSAttributedString.alloc().initWithString_attributes_(
             '−', {NSFontAttributeName: _MENLO(),
                   NSForegroundColorAttributeName: NSColor.systemGrayColor()}))
+    btn.widthAnchor().constraintEqualToConstant_(float(_QUEUE_MINUS_W)).setActive_(True)   # TAMIC off: borderless NSButton intrinsic width may be ~0, leaving no hit area
+    btn.heightAnchor().constraintEqualToConstant_(float(_ROW_H - 1)).setActive_(True)
     return btn
 
 # + add button spanning full merged row (cols 0+1); caller wires tag/target/action
@@ -118,6 +125,7 @@ def _make_queue_add_btn(grid_w: int):
         NSAttributedString.alloc().initWithString_attributes_(
             '  +', {NSFontAttributeName: _MENLO(),
                     NSForegroundColorAttributeName: NSColor.systemGrayColor()}))
+    btn.heightAnchor().constraintEqualToConstant_(float(_ROW_H - 1)).setActive_(True)   # NSGridView turns off TAMIC; height constraint prevents row compression
     return btn
 
 # Editable NSTextField for inline queue message input (merged row); caller wires tag/target/delegate
@@ -183,8 +191,10 @@ def _rebuild_queue_panel(app, sessions) -> None:
         grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 2), NSRange(row_idx, 1))
         row_idx += 1
         msgs = app._queue_data.get(s.session_id, [])
-        for i, msg in enumerate(msgs):
-            lbl   = _make_queue_msg_label(msg, i + 1, col0_w)
+        for i, entry in enumerate(msgs):
+            text  = entry["text"] if isinstance(entry, dict) else entry
+            sent  = bool(entry.get("sent_at")) if isinstance(entry, dict) else False
+            lbl   = _make_queue_msg_label(text, i + 1, col0_w, sent=sent)
             minus = _make_queue_minus_btn()
             rmv_tag = q_rmv_tag[0]; q_rmv_tag[0] += 1
             minus.setTag_(rmv_tag)
@@ -194,8 +204,8 @@ def _rebuild_queue_panel(app, sessions) -> None:
             grid.addRowWithViews_([lbl, minus])
             grid.rowAtIndex_(row_idx).setHeight_(float(_ROW_H - 1))
             row_idx += 1
-        is_pending = s.session_id in app._pending_queue_sessions
-        if is_pending:
+        pending_count = app._pending_queue_count.get(s.session_id, 0)
+        for _ in range(pending_count):
             tf_tag = q_tf_tag[0]; q_tf_tag[0] += 1
             tf = _make_queue_input_field(pw, tf_tag)
             tf.setTarget_(app._panel_controller)
@@ -206,18 +216,17 @@ def _rebuild_queue_panel(app, sessions) -> None:
             grid.rowAtIndex_(row_idx).setHeight_(float(_ROW_H - 1))
             grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 2), NSRange(row_idx, 1))
             row_idx += 1
-            pending_tf = tf
-        else:
-            add_tag = q_add_tag[0]; q_add_tag[0] += 1
-            add_btn = _make_queue_add_btn(pw)
-            add_btn.setTag_(add_tag)
-            add_btn.setTarget_(app._panel_controller)
-            add_btn.setAction_(b'addQueueRow:')
-            app._queue_add_tags[add_tag] = s.session_id
-            grid.addRowWithViews_([add_btn, empty])
-            grid.rowAtIndex_(row_idx).setHeight_(float(_ROW_H - 1))
-            grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 2), NSRange(row_idx, 1))
-            row_idx += 1
+            pending_tf = tf   # track last input for makeFirstResponder_
+        add_tag = q_add_tag[0]; q_add_tag[0] += 1
+        add_btn = _make_queue_add_btn(pw)
+        add_btn.setTag_(add_tag)
+        add_btn.setTarget_(app._panel_controller)
+        add_btn.setAction_(b'addQueueRow:')
+        app._queue_add_tags[add_tag] = s.session_id
+        grid.addRowWithViews_([add_btn, empty])
+        grid.rowAtIndex_(row_idx).setHeight_(float(_ROW_H - 1))
+        grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 2), NSRange(row_idx, 1))
+        row_idx += 1
     app._queue_sv.addView_inGravity_(grid, 1)
     grid.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
     app._queue_displayed_names = {s.name for s in main_sessions}

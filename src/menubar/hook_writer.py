@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 _APP_SUPPORT          = Path("~/Library/Application Support/com.brunowinter.monitor_cc_menubar").expanduser()
@@ -74,46 +75,49 @@ def _load_state() -> dict:
     except Exception:
         return {}
 
-# Pop head message from session queue and deliver via AppleScript; re-enqueue on failure
+# Find first unsent message for session and deliver; on success mark sent_at in-place.
+# On failure: leave sent_at=null so next Stop retries. Messages are never removed by the hook.
 def _maybe_deliver_queue(session_id: str, cwd: str) -> None:
-    msg = _queue_pop_head(session_id)
-    if msg is None:
+    msg_text, msg_idx = _queue_get_first_unsent(session_id)
+    if msg_text is None:
         return
-    success = _deliver_message(cwd, msg)
-    if not success:
-        _queue_push_head(session_id, msg)
+    success = _deliver_message(cwd, msg_text)
+    if success:
+        _queue_mark_sent(session_id, msg_idx)
+    else:
         print(f"queue: delivery failed for session {session_id[:12]}", file=sys.stderr)
 
-# Atomically pop head message for session_id; returns the message or None if queue empty
-def _queue_pop_head(session_id: str):
-    try:
-        with open(_QUEUE_LOCK_FILE, "w") as lock_fh:
-            fcntl.flock(lock_fh, fcntl.LOCK_EX)
-            q    = _load_queue()
-            msgs = q.get(session_id, [])
-            if not msgs:
-                return None
-            msg, remaining = msgs[0], msgs[1:]
-            if remaining:
-                q[session_id] = remaining
-            else:
-                q.pop(session_id, None)
-            _save_queue(q)
-            return msg
-    except Exception:
-        return None
+# Normalize a single queue entry: bare string → {text, sent_at: None}; dict passthrough
+def _normalize_entry(e) -> dict:
+    return e if isinstance(e, dict) else {"text": e, "sent_at": None}
 
-# Atomically push message back to head of session queue (re-enqueue on delivery failure)
-def _queue_push_head(session_id: str, msg: str) -> None:
+# Atomically find first unsent entry for session_id; returns (text, idx) or (None, -1)
+def _queue_get_first_unsent(session_id: str):
     try:
         with open(_QUEUE_LOCK_FILE, "w") as lock_fh:
             fcntl.flock(lock_fh, fcntl.LOCK_EX)
-            q    = _load_queue()
-            msgs = q.get(session_id, [])
-            q[session_id] = [msg] + msgs
-            _save_queue(q)
-    except Exception:
-        return
+            q = _load_queue()
+            for idx, entry in enumerate([_normalize_entry(e) for e in q.get(session_id, [])]):
+                if entry.get("sent_at") is None:
+                    return entry["text"], idx
+    except Exception as e:
+        print(f"queue: get_first_unsent error: {e}", file=sys.stderr)
+    return None, -1
+
+# Atomically set sent_at=now (UTC ISO) on msgs[idx] for session_id (in-place update)
+def _queue_mark_sent(session_id: str, idx: int) -> None:
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        with open(_QUEUE_LOCK_FILE, "w") as lock_fh:
+            fcntl.flock(lock_fh, fcntl.LOCK_EX)
+            q = _load_queue()
+            msgs = [_normalize_entry(e) for e in q.get(session_id, [])]
+            if 0 <= idx < len(msgs):
+                msgs[idx] = {**msgs[idx], "sent_at": now_iso}
+                q[session_id] = msgs
+                _save_queue(q)
+    except Exception as e:
+        print(f"queue: mark_sent error: {e}", file=sys.stderr)
 
 # Focus Ghostty terminal for cwd and type message+Return via AppleScript
 # Reads ghostty_cwd_uuid.json for UUID; falls back to cwd-based focus

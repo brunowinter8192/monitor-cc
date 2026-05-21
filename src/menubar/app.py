@@ -153,9 +153,9 @@ class _PanelController(NSObject):
     def addQueueRow_(self, sender):
         app = self._app
         session_id = app._queue_add_tags.get(sender.tag())
-        if not session_id or session_id in app._pending_queue_sessions:
+        if not session_id:
             return
-        app._pending_queue_sessions.add(session_id)
+        app._pending_queue_count[session_id] = app._pending_queue_count.get(session_id, 0) + 1
         sessions = list_alive_sessions()
         app._last_sessions = sessions
         _rebuild_queue_panel(app, sessions)
@@ -188,11 +188,15 @@ class _PanelController(NSObject):
         app._committed_queue_tags.add(tag)   # suppress controlTextDidEndEditing_ cancel path
         if text and session_id:
             q = load_queue()
-            q.setdefault(session_id, []).append(text)
+            q.setdefault(session_id, []).append({"text": text, "sent_at": None})
             save_queue(q)
             app._queue_data = q
         if session_id:
-            app._pending_queue_sessions.discard(session_id)
+            count = app._pending_queue_count.get(session_id, 1) - 1
+            if count > 0:
+                app._pending_queue_count[session_id] = count
+            else:
+                app._pending_queue_count.pop(session_id, None)
         sessions = list_alive_sessions()
         app._last_sessions = sessions
         _rebuild_queue_panel(app, sessions)
@@ -203,10 +207,14 @@ class _PanelController(NSObject):
         if tag in app._committed_queue_tags:
             app._committed_queue_tags.discard(tag)
             return   # already committed via Enter — don't cancel
-        # Focus lost without Enter → discard pending row
+        # Focus lost without Enter → decrement pending count for this row
         session_id = app._pending_queue_tags.get(tag)
         if session_id:
-            app._pending_queue_sessions.discard(session_id)
+            count = app._pending_queue_count.get(session_id, 1) - 1
+            if count > 0:
+                app._pending_queue_count[session_id] = count
+            else:
+                app._pending_queue_count.pop(session_id, None)
         if app._queue_open:
             sessions = list_alive_sessions()
             app._last_sessions = sessions
@@ -281,7 +289,7 @@ class CCMenuBarApp(rumps.App):
         self._queue_panel, self._queue_sv, self._queue_toggle_btn = _make_queue_nspanel()
         self._queue_displayed_names: set = set()   # session names currently shown in queue panel
         self._queue_data: dict = {}                # {session_id: [msgs]} — refreshed each tick from msg_queue.json
-        self._pending_queue_sessions: set = set()  # session_ids with active inline NSTextField
+        self._pending_queue_count: dict = {}       # {session_id: int} — count of active inline NSTextField rows per session
         self._pending_queue_tags: dict = {}        # {NSTextField tag → session_id}; reset on each rebuild
         self._queue_add_tags: dict = {}            # {+ button tag → session_id}; reset on each rebuild
         self._queue_remove_tags: dict = {}         # {− button tag → (session_id, msg_index)}; reset each rebuild
