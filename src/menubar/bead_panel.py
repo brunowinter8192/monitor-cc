@@ -2,7 +2,7 @@
 from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSForegroundColorAttributeName, NSGridCell, NSGridCellPlacementLeading,
                     NSGridView, NSLayoutAttributeLeading,
-                    NSPanel, NSStackView, NSView, NSStatusWindowLevel,
+                    NSPanel, NSScrollView, NSStackView, NSView, NSStatusWindowLevel,
                     NSUserInterfaceLayoutOrientationVertical,
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
                     NSWindowCollectionBehaviorIgnoresCycle,
@@ -16,7 +16,8 @@ from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
                     _make_line_separator, _make_header_label,
                     _GRID_COL_SPC)
 
-_UNTRACK_W     = 22   # pts — col 1 width: × untrack button
+_UNTRACK_W             = 22   # pts — col 1 width: × untrack button
+_BEAD_EXPAND_MAX_LINES = 20   # max visible lines in expand view; content beyond scrolls
 
 # FUNCTIONS
 
@@ -116,7 +117,9 @@ def _make_bead_x_btn() -> NSView:
 # heightAnchor + widthAnchor required — NSGridView disables TAMIC on content views; without
 # explicit constraints height=0 → bleed, and width=0 → container doesn't fill merged cell.
 # w = panel_width (full merged-cell width); inner_w = w - 16 (16pt left indent).
-def _make_expand_view(text: str, panel_width: int) -> NSView:
+# When total > _BEAD_EXPAND_MAX_LINES * _ROW_H, returns NSScrollView wrapper at fixed max_h;
+# container.widthAnchor is anchored to scrollView.contentView so text wraps to sv width.
+def _make_expand_view(text: str, panel_width: int):
     w       = panel_width         # merged cell spans full grid width
     inner_x = 16                  # inset to visually nest under bead row
     inner_w = w - inner_x
@@ -125,7 +128,6 @@ def _make_expand_view(text: str, panel_width: int) -> NSView:
     total        = sum(line_heights)
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, total))
     container.heightAnchor().constraintEqualToConstant_(float(total)).setActive_(True)   # explicit height — NSGridView disables TAMIC on content views; without this height=0 → subviews bleed into row above
-    container.widthAnchor().constraintEqualToConstant_(float(w)).setActive_(True)        # explicit width — without this AutoLayout assigns w=0; merged cell appears empty
     y = total   # NSView y=0 is bottom; subtract each lh before placing
     for line, lh in zip(lines, line_heights):
         y -= lh
@@ -139,6 +141,19 @@ def _make_expand_view(text: str, panel_width: int) -> NSView:
                 line or ' ', {NSFontAttributeName: _MENLO(),
                               NSForegroundColorAttributeName: NSColor.secondaryLabelColor()}))
         container.addSubview_(tf)
+    max_h = float(_BEAD_EXPAND_MAX_LINES * _ROW_H)
+    if total > max_h:
+        sv = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, w, max_h))
+        sv.setHasVerticalScroller_(True)
+        sv.setHasHorizontalScroller_(False)
+        sv.setAutohidesScrollers_(False)
+        sv.setDocumentView_(container)
+        # anchor container width to sv contentView so text wraps at sv interior width
+        container.widthAnchor().constraintEqualToAnchor_(sv.contentView().widthAnchor()).setActive_(True)
+        sv.heightAnchor().constraintEqualToConstant_(max_h).setActive_(True)
+        sv.widthAnchor().constraintEqualToConstant_(float(w)).setActive_(True)
+        return sv, int(max_h)
+    container.widthAnchor().constraintEqualToConstant_(float(w)).setActive_(True)
     return container, total
 
 # Compute required height for the bead tracker panel (mirrors _rebuild_bead_panel row heights)
@@ -161,8 +176,9 @@ def _compute_bead_height(app) -> int:
             h += _bead_row_height(row_text, btn_w) + 1          # +1 for rowSpacing
             if bead_id in app._bead_expanded:
                 expand_inner_w = app._panel_width - 16   # mirrors _make_expand_view: w=panel_width, inner_w=w-16
-                h += sum(_bead_row_height(line or ' ', expand_inner_w)
-                         for line in app._bead_expanded[bead_id].split('\n')) + 1
+                raw_exp_h = sum(_bead_row_height(line or ' ', expand_inner_w)
+                                for line in app._bead_expanded[bead_id].split('\n'))
+                h += min(raw_exp_h, _BEAD_EXPAND_MAX_LINES * _ROW_H) + 1   # capped by scrollview
     return h
 
 # Resize tracker NSPanel anchored at top edge (same logic as _resize_panel for main panel)
