@@ -96,6 +96,7 @@ def _make_queue_msg_label(msg: str, idx: int, col0_w: int) -> NSTextField:
     label.setAttributedStringValue_(
         NSAttributedString.alloc().initWithString_attributes_(
             f'  [{idx}] {msg}', {NSFontAttributeName: _MENLO()}))
+    label.heightAnchor().constraintEqualToConstant_(float(_ROW_H - 1)).setActive_(True)   # NSGridView turns off TAMIC; explicit height prevents auto-layout misalignment
     return label
 
 # − remove button for col 1 of a message row; caller wires tag/target/action
@@ -107,6 +108,8 @@ def _make_queue_minus_btn():
         NSAttributedString.alloc().initWithString_attributes_(
             '−', {NSFontAttributeName: _MENLO(),
                   NSForegroundColorAttributeName: NSColor.systemGrayColor()}))
+    btn.widthAnchor().constraintEqualToConstant_(float(_QUEUE_MINUS_W)).setActive_(True)   # TAMIC off: borderless NSButton intrinsic width may be ~0, leaving no hit area
+    btn.heightAnchor().constraintEqualToConstant_(float(_ROW_H - 1)).setActive_(True)
     return btn
 
 # + add button spanning full merged row (cols 0+1); caller wires tag/target/action
@@ -118,6 +121,7 @@ def _make_queue_add_btn(grid_w: int):
         NSAttributedString.alloc().initWithString_attributes_(
             '  +', {NSFontAttributeName: _MENLO(),
                     NSForegroundColorAttributeName: NSColor.systemGrayColor()}))
+    btn.heightAnchor().constraintEqualToConstant_(float(_ROW_H - 1)).setActive_(True)   # NSGridView turns off TAMIC; height constraint prevents row compression
     return btn
 
 # Editable NSTextField for inline queue message input (merged row); caller wires tag/target/delegate
