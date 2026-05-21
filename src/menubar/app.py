@@ -60,8 +60,6 @@ class _PanelController(NSObject):
 
     def togglePanel_(self, sender):
         app = self._app
-        now = time.time()
-        is_double_tap = (now - app._last_cmd_l_ts) < 0.3
         # Panel backgrounded (Cmd+K): Cmd+L / bar-click brings it back to front, does NOT close
         if app._panel_backgrounded:
             if app._panel_open:
@@ -71,14 +69,7 @@ class _PanelController(NSObject):
             elif app._queue_open:
                 app._queue_panel.orderFrontRegardless()
             app._panel_backgrounded = False
-            app._last_cmd_l_ts = now   # second press within 300ms → hits double-tap reset branch
             return
-        if is_double_tap:
-            if app._tracker_open or app._panel_open or app._queue_open:
-                _reset_panel_to_default(app)
-            app._last_cmd_l_ts = 0.0   # sentinel → triple-press: 3rd is single (now−0≫0.3)
-            return
-        app._last_cmd_l_ts = now
         # Cmd+L closes whichever panel is open; if none → open main
         if app._tracker_open:
             _close_tracker_panel(app)
@@ -294,7 +285,6 @@ class CCMenuBarApp(rumps.App):
         self._queue_remove_tags: dict = {}         # {− button tag → (session_id, msg_index)}; reset each rebuild
         self._committed_queue_tags: set = set()    # NSTextField tags committed via Enter; prevent cancel in controlTextDidEndEditing_
         self._last_sessions: list = []             # last live sessions snapshot; used by queue panel rebuild
-        self._last_cmd_l_ts: float = 0.0           # timestamp of last Cmd+L press for double-tap detection
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
@@ -514,19 +504,10 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
     except Exception as e:
         print(f'[menubar] Cmd+K deferred-block error: {e}', file=sys.stderr)
 
-# Double-tap Cmd+L: reset open panel to default dimensions; no _save_settings (default = code constant)
-def _reset_panel_to_default(app: 'CCMenuBarApp') -> None:
-    app._panel_width = PANEL_WIDTH
-    app._panel_min_height = PANEL_HEIGHT
-    if app._tracker_open:
-        _resize_tracker_panel(app, PANEL_HEIGHT)
-    elif app._panel_open:
-        _resize_panel(app, PANEL_HEIGHT)
-    elif app._queue_open:
-        _resize_queue_panel(app, PANEL_HEIGHT)
-
-# Open main panel: rebuild → reposition → show → register Cmd+→ (→Beads) + Cmd+← (→Queue wrap) + Cmd+1..9
+# Open main panel: reset to defaults → rebuild → reposition → show → register Cmd+→ (→Beads) + Cmd+← (→Queue wrap) + Cmd+1..9
 def _open_main_panel(app: 'CCMenuBarApp') -> None:
+    app._panel_width = PANEL_WIDTH       # reset to defaults on every open; no _save_settings
+    app._panel_min_height = PANEL_HEIGHT
     sessions = list_alive_sessions()
     app._last_sessions = sessions
     cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
@@ -558,8 +539,10 @@ def _close_main_panel(app: 'CCMenuBarApp') -> None:
     unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
     app._hotkey_arr_left_ref = None
 
-# Open tracker panel: rebuild → reposition → show + register Cmd+→ (→Queue) + Cmd+← (→Sessions)
+# Open tracker panel: reset to defaults → rebuild → reposition → show + register Cmd+→ (→Queue) + Cmd+← (→Sessions)
 def _open_tracker_panel(app: 'CCMenuBarApp') -> None:
+    app._panel_width = PANEL_WIDTH       # reset to defaults on every open; no _save_settings
+    app._panel_min_height = PANEL_HEIGHT
     _rebuild_bead_panel(app)
     _reposition_bead_panel(app._tracker_panel, app._nsapp.nsstatusitem)
     app._tracker_panel.orderFrontRegardless()
@@ -582,8 +565,10 @@ def _close_tracker_panel(app: 'CCMenuBarApp') -> None:
     unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
     app._hotkey_arr_left_ref = None
 
-# Open queue panel: rebuild → reposition → show + register Cmd+→ (→Sessions wrap) + Cmd+← (→Beads)
+# Open queue panel: reset to defaults → rebuild → reposition → show + register Cmd+→ (→Sessions wrap) + Cmd+← (→Beads)
 def _open_queue_panel(app: 'CCMenuBarApp') -> None:
+    app._panel_width = PANEL_WIDTH       # reset to defaults on every open; no _save_settings
+    app._panel_min_height = PANEL_HEIGHT
     sessions = list_alive_sessions()
     app._last_sessions = sessions
     app._queue_data = load_queue()

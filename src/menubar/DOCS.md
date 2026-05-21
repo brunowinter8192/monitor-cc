@@ -217,8 +217,8 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp._panel_kill_btn` | app.py | `NSButton` | panel.py creates, app.py wires | Kill button in fixed footer (left of Restart, 8pt gap). Wired to `killApp_` in lazy-init tick. |
 | `CCMenuBarApp._panel_controller` | app.py | `_PanelController` | app.py | Single PyObjC NSObject as ObjC target for all button actions. Held to prevent ARC GC. |
 | `CCMenuBarApp._auto_focus` | app.py | `bool` | app.py | Whether auto-focus is enabled. Loaded from settings; toggled by `toggleAutoJump_`. |
-| `CCMenuBarApp._panel_width` | app.py | `int` | app.py owns, panel.py uses | Current panel width in pts. Loaded from settings (fallback: `PANEL_WIDTH=380`). Updated by `windowDidResize_`. |
-| `CCMenuBarApp._panel_min_height` | app.py | `int` | app.py owns, panel.py uses | Grow-only floor for panel height. Updated by `windowDidResize_`. `_rebuild_panel` sizes to `max(_panel_min_height, required_h)`. |
+| `CCMenuBarApp._panel_width` | app.py | `int` | app.py owns, panel.py uses | Current panel width in pts. Loaded from settings (fallback: `PANEL_WIDTH=380`). Reset to `PANEL_WIDTH` on each `_open_*` call (runtime only, no save). Updated by `windowDidResize_` on user drag. |
+| `CCMenuBarApp._panel_min_height` | app.py | `int` | app.py owns, panel.py uses | Height floor for panel. Reset to `PANEL_HEIGHT` on each `_open_*` call (runtime only, no save). `_rebuild_panel` sizes to `max(_panel_min_height, required_h)`. Updated by `windowDidResize_` on user drag. |
 | `CCMenuBarApp._hotkey_cb` | app.py | `ctypes CFUNCTYPE` | app.py | GC anchor for ctypes callback returned by `register_cmd_l`. |
 | `CCMenuBarApp._hotkey_ref` | app.py | `ctypes.c_void_p` | app.py | GC anchor for Carbon hotkey handle returned by `register_cmd_l`. |
 | `_cc_proc_cache` | proc_cache.py | `Dict[pid, (tty, cwd)]` | module | CC processes. Incremental: `ps -A` every 10s drops gone PIDs; `lsof -d cwd` only for newly seen PIDs. |
