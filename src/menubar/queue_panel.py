@@ -90,13 +90,16 @@ def _resize_queue_panel(app, new_h: float) -> None:
         NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)
 
 # NSTextField label for col 0 of a message row ("  [N] msg", truncated at tail)
-def _make_queue_msg_label(msg: str, idx: int, col0_w: int) -> NSTextField:
+# sent=True renders label in systemGreenColor to mark a successfully delivered message
+def _make_queue_msg_label(msg: str, idx: int, col0_w: int, sent: bool = False) -> NSTextField:
     label = _CursorlessLabel.labelWithString_('')
     label.setFrame_(NSMakeRect(0, 0, col0_w, _ROW_H - 1))
     label.cell().setLineBreakMode_(4)   # NSLineBreakByTruncatingTail
+    attrs = {NSFontAttributeName: _MENLO()}
+    if sent:
+        attrs[NSForegroundColorAttributeName] = NSColor.systemGreenColor()
     label.setAttributedStringValue_(
-        NSAttributedString.alloc().initWithString_attributes_(
-            f'  [{idx}] {msg}', {NSFontAttributeName: _MENLO()}))
+        NSAttributedString.alloc().initWithString_attributes_(f'  [{idx}] {msg}', attrs))
     label.heightAnchor().constraintEqualToConstant_(float(_ROW_H - 1)).setActive_(True)   # NSGridView turns off TAMIC; explicit height prevents auto-layout misalignment
     return label
 
@@ -188,8 +191,10 @@ def _rebuild_queue_panel(app, sessions) -> None:
         grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 2), NSRange(row_idx, 1))
         row_idx += 1
         msgs = app._queue_data.get(s.session_id, [])
-        for i, msg in enumerate(msgs):
-            lbl   = _make_queue_msg_label(msg, i + 1, col0_w)
+        for i, entry in enumerate(msgs):
+            text  = entry["text"] if isinstance(entry, dict) else entry
+            sent  = bool(entry.get("sent_at")) if isinstance(entry, dict) else False
+            lbl   = _make_queue_msg_label(text, i + 1, col0_w, sent=sent)
             minus = _make_queue_minus_btn()
             rmv_tag = q_rmv_tag[0]; q_rmv_tag[0] += 1
             minus.setTag_(rmv_tag)

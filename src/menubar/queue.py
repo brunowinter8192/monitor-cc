@@ -8,10 +8,16 @@ from .paths import QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE
 
 # FUNCTIONS
 
-# Load msg_queue.json; returns {} on any error (missing file, parse error, corrupt)
+# Normalize a single queue entry: bare string → {text, sent_at: None}; dict passthrough
+def _normalize_entry(e) -> dict:
+    return e if isinstance(e, dict) else {"text": e, "sent_at": None}
+
+# Load msg_queue.json; normalizes bare-string entries to dict form for backward compat.
+# Returns {} on any error (missing file, parse error, corrupt).
 def load_queue() -> dict:
     try:
-        return json.loads(QUEUE_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(QUEUE_FILE.read_text(encoding="utf-8"))
+        return {sid: [_normalize_entry(e) for e in msgs] for sid, msgs in raw.items()}
     except Exception:
         return {}
 

@@ -188,7 +188,7 @@ class _PanelController(NSObject):
         app._committed_queue_tags.add(tag)   # suppress controlTextDidEndEditing_ cancel path
         if text and session_id:
             q = load_queue()
-            q.setdefault(session_id, []).append(text)
+            q.setdefault(session_id, []).append({"text": text, "sent_at": None})
             save_queue(q)
             app._queue_data = q
         if session_id:
