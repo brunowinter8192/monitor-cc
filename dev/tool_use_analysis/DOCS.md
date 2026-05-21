@@ -1,6 +1,6 @@
 # dev/tool_use_analysis/
 
-Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `extract_long_calls.py` for full Markdown reports; `extract_zeros.py` for zero-result search detection; `extract_failed.py` for is_error tool_result detection classified by failure type. Each script is standalone (no shared library — helpers inlined per script).
+Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `extract_long_calls.py` for full Markdown reports; `extract_zeros.py` for zero-result search detection. Each script is standalone (no shared library — helpers inlined per script). Error/failure analysis and rule-compliance scoring have moved to `dev/tool_use_errors/`.
 
 ## extract_long_calls.py
 
@@ -76,35 +76,6 @@ Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `
 - Read: result contains `"File does not exist"` or `"does not exist"` AND does not start with a line-number prefix (`\d+\t`)
 
 **Preceding text extraction:** walks the `parentUuid` chain from the tool_use event back to the nearest preceding assistant text block — gives context for what Opus was trying to accomplish.
-
-## extract_failed.py
-
-**Purpose:** Reads one or more Proxy JSONL files from `src/logs/`, pairs each `tool_use` block with its matching `tool_result`, detects failures via `is_error: true` at the tool_result block level, classifies failure type, and outputs a Markdown report with per-tool / per-type aggregations plus concrete examples.
-
-**Input:** One or more Proxy JSONL paths under `src/logs/` (positional, variadic). Entries with `raw_payload == null` are skipped.
-
-**Output:** Markdown report to stdout by default, or a file via `--output`. Sections: per-source failure counts, per-tool breakdown, per-failure-type breakdown, 5 concrete failure examples with input preview and error text.
-
-**Usage:**
-```bash
-./venv/bin/python3 dev/tool_use_analysis/extract_failed.py \
-  src/logs/api_requests_opus_monitor_cc_1776797402.jsonl \
-  --output dev/tool_use_analysis/20260421_session_failed.md
-```
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `proxy_jsonl` | *(positional, variadic)* Proxy JSONL path(s) under `src/logs/` | required |
-| `--output FILE` | Output markdown file path (default: stdout) | stdout |
-
-**Failure classification logic:**
-- `parallel-cancel` — `<tool_use_error>Cancelled: parallel tool call ...</tool_use_error>` marker
-- `tool-unavailable` — `<tool_use_error>Error: No such tool available: ...</tool_use_error>` marker
-- `edit-string-not-found` — `String to replace not found in file` marker
-- `validation-error` — validation-related error text
-- `bash-exit-nonzero` — `is_error: true` without specific `<tool_use_error>` tag (raw shell exit)
-
-Only counts failures where the tool_result block itself has `is_error: true` — guards against false positives from file content that happens to contain error-marker strings.
 
 ## extract_patterns.py
 
@@ -325,54 +296,6 @@ Only counts failures where the tool_result block itself has `is_error: true` —
 **CC version extraction:** session JSONL entries carry top-level `version` field (e.g. `"2.1.114"`). Per-bucket `versions` set tracks all distinct CC versions where the SR appeared. Entries lacking `version` field are recorded as `unknown`.
 
 ---
-
-## rule_compliance.py
-
-**Purpose:** Reads one or more Proxy JSONL files, pairs every `tool_use` block with its `tool_result`, matches each pair against mechanical signatures for the Hard-Rules in `tool-use.md`, and outputs a Markdown compliance report. Covers all pairs (not just failures) — input-based rules (2, 3, 12, 14) fire on successful calls too. An uncategorized-failures bucket collects `is_error=True` calls that matched no rule signature.
-
-**Input:** One or more Proxy JSONL paths under `src/logs/` (positional, variadic). Entries with `raw_payload == null` are skipped.
-
-**Output:** Markdown report to stdout by default, or a file via `--output`. Sections: Source JSONLs, Summary (total tool_use, failures, rules violated), Per-Rule Compliance table (all 16 rules, status ✅/⚠/—), Violations Detail (per-rule with evidence), Uncategorized Failures, Recommendations.
-
-**Usage:**
-```bash
-./venv/bin/python3 dev/tool_use_analysis/rule_compliance.py \
-  src/logs/api_requests_opus_monitor_cc_1778596205.jsonl \
-  --output dev/tool_use_analysis/20260512_rule_compliance.md
-
-# Multiple logs
-./venv/bin/python3 dev/tool_use_analysis/rule_compliance.py \
-  src/logs/api_requests_opus_monitor_cc_*.jsonl \
-  src/logs/api_requests_worker_*.jsonl
-
-# Custom rules path
-./venv/bin/python3 dev/tool_use_analysis/rule_compliance.py \
-  src/logs/api_requests_opus_monitor_cc_1778596205.jsonl \
-  --rules ~/.claude/shared-rules/global/tool-use.md
-```
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `proxy_jsonl` | *(positional, variadic)* Proxy JSONL path(s) under `src/logs/` | required |
-| `--rules PATH` | Path to `tool-use.md` Hard-Rules file | `~/.claude/shared-rules/global/tool-use.md` |
-| `--output FILE` | Output markdown file path (default: stdout) | stdout |
-
-**Mechanical signatures (v1 — 8 of 16 rules):**
-- **Rule 2** (No heredoc file creation): Bash command matches `cat\s*(?!>)>\s*\S+\s*<<\s*['"]?EOF`. Fires on any call (success or failure).
-- **Rule 3** (Grep scope hygiene): Bash command has recursive `-r` flag AND no `--include=` AND last non-flag token has no known file extension. Fires on any call.
-- **Rule 6** (No parallel Bash): `is_error=True` AND `Cancelled: parallel tool call` in error text.
-- **Rule 9** (Read before Edit/Write): `is_error=True` AND `File has not been read yet` in error text.
-- **Rule 10** (Branch ambiguity): `is_error=True` AND `fatal: ambiguous argument` in error text (Bash only).
-- **Rule 12** (No sleep): Bash command matches `\bsleep\s+\d`. Exception: exact form `sleep N && echo done` with `run_in_background=True`. Fires on any call.
-- **Rule 13** (.claire/ typo): `is_error=True` AND `.claire/` in error text OR `.claire/` in `file_path` field for Read/Write/Edit tools.
-- **Rule 14** (Background Bash trivial): Bash with `run_in_background=True` AND command starts with `grep|cat|ls|wc|git status|head|tail`. Fires on any call.
-
-Rules 1, 4, 5, 7, 8, 11, 15, 16 have no mechanical signature in v1 — reported as `(no signature)` in the compliance table.
-
-**False-positive guards:**
-- Rule 3: last non-flag token with extension in `{.py, .md, .sh, .json, .ts, .jsonl, .txt, .yaml, .yml, .toml, .cfg, .ini, .js, .go, .rs}` → skip (explicit file target, not broad-scope).
-- Rule 12: `re.fullmatch(r'sleep\s+\d+\s*&&\s*echo done', cmd.strip())` + `run_in_background=True` → canonical worker-polling form, skip.
-- Rule 13: requires `is_error=True`; checks error text and `file_path` field only — never full JSON dump (avoids FP from tool inputs that discuss the typo in documentation text).
 
 ## Generated Reports
 
