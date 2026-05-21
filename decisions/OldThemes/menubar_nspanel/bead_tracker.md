@@ -71,3 +71,51 @@ Handler (`_background_panel`): dispatched via `NSOperationQueue.mainQueue().addO
 `togglePanel_` (`_PanelController`): if `_panel_backgrounded` → bring to front + clear flag + return early (Cmd+L / bar-click → foreground, not close). This handles the "Cmd+L on backgrounded panel brings it to front" edge case.
 
 `_close_main_panel` + `_close_tracker_panel`: both reset `_panel_backgrounded = False`. Handles Cmd+→/← cycling: close resets backgrounded state before opening the other panel in foreground.
+
+## UI-Fixes Runde 2 + Cmd+K Debug
+
+### D1 — Bead-Titel linksbündig
+
+Root cause: `_make_bead_row` setzte kein `setAlignment_` auf `expand_btn.cell()`. NSButtonCell zentriert Text defaultmäßig in der vollen Cell-Breite (`btn_w` ≈ 340pt) — Text landete bei ca. x=indent+btn_w/2 statt bündig am indent-Offset.
+
+Fix: `expand_btn.cell().setAlignment_(0)` (NSTextAlignmentLeft = 0) nach den bestehenden `setWraps_` + `setLineBreakMode_` Aufrufen. Funktioniert mit `NSButtonTypeMomentaryPushIn` + `setBordered_(False)` ohne Cell-Type-Wechsel.
+
+### D2 — Expand-Inhalt gewrappt
+
+Root cause: `_make_expand_view` verwendete fixed `row_h = _ROW_H - 1` pro Zeile ohne Wrapping-Aktivierung → lange Zeilen abgeschnitten. `_compute_bead_height` rechnete identisch mit fixed `(_ROW_H - 1)` → Panel zu niedrig für gewrappte Expand-Views.
+
+Fix in `_make_expand_view`:
+- `line_heights = [_bead_row_height(line or ' ', inner_w) for line in lines]` — per-Zeile Höhe via AppKit-Messung (analog `_make_bead_row`)
+- `total = sum(line_heights)`, Frame und Constraints damit gesetzt
+- Pro tf: `cell().setWraps_(True)` + `cell().setLineBreakMode_(0)` + `setUsesSingleLineMode_(False)` — gleiche Behandlung wie expand_btn in `_make_bead_row`
+- y-Akkumulation: `y = total; y -= lh` vor jedem tf statt fixed step
+
+Fix in `_compute_bead_height`: `expand_inner_w = pw - 16` + `sum(_bead_row_height(...) for line in ...)` statt `len(lines) * (_ROW_H - 1)`. Spiegelt `_make_expand_view`-Geometrie exakt wider.
+
+### D3 — Cmd+K ID-Kollision
+
+Root cause: `_CMD_K_ID = 2` kollidierte mit Cmd+1-Digit (Digit-IDs = `slot + 1`, Slot 1 → ID 2). Digit-Handler (`_ensure_digit_handler`) wird beim Panel-Öffnen installiert — Carbon ruft ihn zuerst auf. Für Cmd+K-Event (id=2): `slot = 2-1 = 1`, `_DIGIT_CALLBACKS.get(1)` findet Cmd+1-Callback (falls ≥1 Session aktiv) → führt ihn aus → `return 0` (consumed). Cmd+K-Handler bekommt das Event nie zu sehen.
+
+ID-Belegung: L=1, Digits=2-10 (`slot+1`), Arrow-Right=20, Arrow-Left=21. Freier Slot: 30.
+
+Fix: `_CMD_K_ID = 30`. Einzige Änderung in `hotkey.py` — Konstante, nicht `RegisterEventHotKey`-Keycode. Import-Check bestätigt keine Kollision mehr.
+
+Debug-Prints wurden nicht eingebaut — ID-Kollision war durch statische Code-Analyse eindeutig identifizierbar (slot-Mapping `hkid.id - 1` + ID-Tabelle aller registrierten Hotkeys).
+
+## Cmd+K orderBack + Sessions-Alignment (Runde 2 Follow-up)
+
+### Cmd+K — orderBack_ auf NSStatusWindowLevel wirkungslos
+
+Debug-Prints bestätigten: Registration OK (hk_ref non-null), `kEventHotKeyPressed` feuert (`hkid.id=30`), `_background_panel` wird aufgerufen, State flippt korrekt (`_panel_backgrounded` True↔False). Einziges Problem: `orderBack_(None)` auf einem Panel mit `setLevel_(NSStatusWindowLevel)` (Level ≈ 25) ist visuell wirkungslos. `orderBack_` ordnet das Fenster hinter andere Fenster AUF DEMSELBEN ODER HÖHEREM Level — kein normales App-Fenster liegt bei Level ≥ 25, daher bleibt das Panel sichtbar vorne.
+
+Fix: Level temporär absenken vor `orderBack_`, beim Foregrounding wiederherstellen:
+- Background: `panel.setLevel_(0)` (NSNormalWindowLevel) → `panel.orderBack_(None)`
+- Foreground: `panel.setLevel_(25)` (NSStatusWindowLevel) → `panel.orderFrontRegardless()`
+
+Gilt für beide Panels (`_panel` + `_tracker_panel`) symmetrisch.
+
+`NSStatusWindowLevel` nicht als Konstante in `app.py` importiert — Integer `25` direkt verwendet (entspricht AppKit-Enum-Wert).
+
+### Bug 5 — Sessions-Spalten-Drift (● vs ASCII)
+
+`●` (U+25CF, BLACK CIRCLE) rendert in Menlo 13pt mit breiterer Advance-Width als eine Monospace-Zelle → Spalten nach dem Bullet driften je nach Projekt-Kontext leicht. Fix: `●` → `*` (ASCII 0x2A) in beiden Format-Strings in `panel.py` (main-row `_rebuild_panel` + `_update_panel_inplace`). Worker-Prefix (`"      "` 6 Spaces) unverändert. Beide Prefixe jetzt rein ASCII → exakte Menlo-Ausrichtung garantiert.

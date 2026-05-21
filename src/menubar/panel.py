@@ -376,7 +376,7 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
             if not s.is_worker:
                 main_slot += 1
                 slot_str = f'[{main_slot}] ' if main_slot <= 9 else '    '
-                line = f'{slot_str}● {name_col} {dot} {badge.ljust(_COL_TIMER_W)}'
+                line = f'{slot_str}* {name_col} {dot} {badge.ljust(_COL_TIMER_W)}'
                 btn  = _make_row_button(line, pw, NSColor.systemOrangeColor())
                 tag  = next_tag[0]; next_tag[0] += 1
                 btn.setTag_(tag)
@@ -405,7 +405,7 @@ def _update_panel_inplace(app, sessions, bg_by_project) -> None:
         if not s.is_worker:
             main_slot += 1
             slot_str = f'[{main_slot}] ' if main_slot <= 9 else '    '
-            line, color = f'{slot_str}● {name_col} {dot} {badge.ljust(_COL_TIMER_W)}', NSColor.systemOrangeColor()
+            line, color = f'{slot_str}* {name_col} {dot} {badge.ljust(_COL_TIMER_W)}', NSColor.systemOrangeColor()
         else:
             line, color = f'      {name_col} {dot} {badge.ljust(_COL_TIMER_W)}', None
         attrs = {NSFontAttributeName: _MENLO()}

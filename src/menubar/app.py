@@ -377,14 +377,18 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
     try:
         if app._panel_backgrounded:
             if app._panel_open:
+                app._panel.setLevel_(25)   # NSStatusWindowLevel — restore before foregrounding
                 app._panel.orderFrontRegardless()
             elif app._tracker_open:
+                app._tracker_panel.setLevel_(25)   # NSStatusWindowLevel
                 app._tracker_panel.orderFrontRegardless()
             app._panel_backgrounded = False
         elif app._panel_open:
+            app._panel.setLevel_(0)   # NSNormalWindowLevel — allows orderBack_ to work
             app._panel.orderBack_(None)
             app._panel_backgrounded = True
         elif app._tracker_open:
+            app._tracker_panel.setLevel_(0)   # NSNormalWindowLevel
             app._tracker_panel.orderBack_(None)
             app._panel_backgrounded = True
     except Exception as e:
