@@ -103,13 +103,16 @@ class _PanelController(NSObject):
     def queryBeadStatus_(self, sender):
         app  = self._app
         info = app._bead_query_tags.get(sender.tag())
+        print(f"queue: queryBeadStatus_ tag={sender.tag()} info={info}", file=sys.stderr)
         if not info:
             return
         bead_id, project_name = info
         cwd = next((s.cwd for s in app._last_sessions
                     if not s.is_worker and s.project_name == project_name), None)
         if not cwd:
+            print(f"queue: queryBeadStatus_ no cwd for project={project_name}", file=sys.stderr)
             return
+        print(f"queue: queryBeadStatus_ delivering bead_id={bead_id} cwd={cwd}", file=sys.stderr)
         deliver_message(cwd, f'{bead_id} wie lautet der status was wurde getan was ist offen')
 
     def focusSession_(self, sender):
@@ -690,12 +693,16 @@ def _try_deliver_now(app: 'CCMenuBarApp', session_id: str, text: str, idx: int) 
         print(f"queue: _try_deliver_now read hooks.json failed: {exc}", file=sys.stderr)
         return
     entry = hook_state.get(session_id, {})
+    print(f"queue: _try_deliver_now session={session_id[:12]} status={entry.get('status')!r} cwd={entry.get('cwd', '')!r}", file=sys.stderr)
     if entry.get("status") != "idle":
+        print(f"queue: _try_deliver_now returning, not idle", file=sys.stderr)
         return
     cwd = entry.get("cwd", "")
     if not cwd or not text:
         return
-    if not deliver_message(cwd, text):
+    success = deliver_message(cwd, text)
+    print(f"queue: _try_deliver_now delivered, success={success}", file=sys.stderr)
+    if not success:
         return
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     q       = load_queue()

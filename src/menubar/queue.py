@@ -2,6 +2,7 @@
 import json
 import os
 import subprocess
+import sys
 from typing import Optional
 
 from .paths import QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE
@@ -45,6 +46,7 @@ def save_queue(q: dict) -> None:
 # Returns True on successful osascript call (not a delivery confirmation)
 def deliver_message(cwd: str, message: str) -> bool:
     uuid = _get_terminal_uuid(cwd)
+    print(f"queue: deliver_message cwd={cwd!r} uuid={uuid!r}", file=sys.stderr)
     if uuid:
         return _deliver_via_uuid(uuid, message)
     return _deliver_via_cwd(cwd, message)
@@ -74,8 +76,10 @@ def _deliver_via_uuid(uuid: str, message: str) -> bool:
     )
     try:
         r = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
+        print(f"queue: osascript(uuid) rc={r.returncode} stderr={r.stderr.decode(errors='replace')!r}", file=sys.stderr)
         return r.returncode == 0
-    except Exception:
+    except Exception as exc:
+        print(f"queue: osascript(uuid) exception: {exc}", file=sys.stderr)
         return False
 
 # Deliver via cwd-based focus fallback (when UUID unknown; limited: uses PTY initial cwd)
@@ -96,6 +100,8 @@ def _deliver_via_cwd(cwd: str, message: str) -> bool:
     )
     try:
         r = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
+        print(f"queue: osascript(cwd) rc={r.returncode} stderr={r.stderr.decode(errors='replace')!r}", file=sys.stderr)
         return r.returncode == 0
-    except Exception:
+    except Exception as exc:
+        print(f"queue: osascript(cwd) exception: {exc}", file=sys.stderr)
         return False
