@@ -28,14 +28,14 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### queue_panel.py (236 LOC)
+### queue_panel.py (269 LOC)
 
-**Purpose:** Standalone NSPanel (3rd panel) for the per-session message queue. Analogous to `bead_panel.py`. `_make_queue_nspanel()` returns `(panel, stack, toggle_btn)` — no footer. `_rebuild_queue_panel(app, sessions)` renders per-main-session blocks via ONE NSGridView (2-col): col 0 = message label (fill, for truncation) OR merged content; col 1 = `−` button (`_QUEUE_MINUS_W = 18`pt fixed). Session headers, input rows, and `+` add-btn are merged across both cols. `+` button is ALWAYS rendered below all input rows per session — never hidden. NSTextField input-fix: `makeKeyAndOrderFront_(None)` + `makeFirstResponder_(tf)` give the nonactivating panel keyboard focus. All grid-cell views have explicit `widthAnchor`/`heightAnchor` (NSGridView disables TAMIC; without constraints borderless NSButton hit area collapses to ~0). Grid cell refs: `_make_queue_msg_label` (col 0, `sent=True` → `systemGreenColor`), `_make_queue_minus_btn` (col 1, widthAnchor+heightAnchor), `_make_queue_add_btn` (merged, heightAnchor), `_make_queue_input_field` (merged, heightAnchor).
-**Reads:** `app._queue_sv`, `app._queue_panel`, `app._queue_toggle_btn`, `app._queue_data`, `app._pending_queue_count`, `app._panel_width`, `app._panel_min_height`, `app._auto_focus`, `app._panel_controller`; `sessions` list from caller.
-**Writes:** `app._queue_add_tags`, `app._queue_remove_tags`, `app._pending_queue_tags`, `app._queue_displayed_names` (reset on each rebuild); NSPanel frame.
+**Purpose:** Standalone NSPanel (3rd panel) for the per-session message queue. Analogous to `bead_panel.py`. `_make_queue_nspanel()` returns `(panel, stack, toggle_btn)` — no footer. `_rebuild_queue_panel(app, sessions)` renders per-main-session blocks via ONE NSGridView (1-col): every row is a full-width container `NSView` (`wantsLayer=True`). Three-state rows: **draft** (no background, editable NSTextField, `↑` toggle button, `×` delete), **queued** (red bg tint via `layer.backgroundColor = systemRedColor α0.18`, read-only label, `↓` toggle, `×` delete), **sent** (green bg tint, read-only label, no toggle, `×` delete). Session headers and `+` add-btn are also full-width views. Container background pattern: `view.setWantsLayer_(True)` + `view.layer().setBackgroundColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.18).CGColor())` — no Quartz import needed (AppKit bridging exposes `.CGColor()`). All NSGridView direct content views carry explicit `widthAnchor` + `heightAnchor` constraints (TAMIC disabled by NSGridView). NSTextField first-responder fix: `makeKeyAndOrderFront_(None)` + `makeFirstResponder_(tf)` on first draft field after rebuild. Constants: `_QUEUE_TOGGLE_W = 22` (toggle btn), `_QUEUE_MINUS_W = 22` (× btn). Column layout inside container (frame-based, not AutoLayout): `[0..col0_w) text | [col0_w..col0_w+TOGGLE_W) toggle | [col0_w+TOGGLE_W..pw) ×`.
+**Reads:** `app._queue_sv`, `app._queue_panel`, `app._queue_toggle_btn`, `app._queue_data`, `app._panel_width`, `app._panel_min_height`, `app._auto_focus`, `app._panel_controller`; `sessions` list from caller.
+**Writes:** `app._queue_add_tags`, `app._queue_remove_tags`, `app._pending_queue_tags`, `app._queue_toggle_tags`, `app._queue_displayed_names` (reset on each rebuild); NSPanel frame.
 **Key signatures:** `_make_queue_nspanel()`, `_rebuild_queue_panel(app, sessions)`, `_reposition_queue_panel(panel, nsstatusitem)`, `_resize_queue_panel(app, new_h)`.
 **Called by:** `app.py` (`_open_queue_panel`, `_PanelController.*Queue*`, `CCMenuBarApp._tick`, `_PanelController.windowDidEndLiveResize_`).
-**Calls out:** `AppKit`, `Foundation`, `NSRange`; `.panel` (constants + helpers, incl. `_GRID_COL_SPC`); `.queue` (`load_queue`, `save_queue`).
+**Calls out:** `AppKit`, `Foundation`; `.panel` (constants + helpers); `.queue` (`load_queue`, `save_queue`).
 
 ---
 
@@ -70,9 +70,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### queue.py (92 LOC)
+### queue.py (96 LOC)
 
-**Purpose:** Message queue storage + Ghostty delivery for the menubar app side. `load_queue()` / `save_queue(q)` — atomic read/write of `APP_SUPPORT/msg_queue.json` (schema: `{session_id: [{text: str, sent_at: str|null}]}`). `load_queue` normalizes bare-string entries (old format) to dict form via `_normalize_entry` on read — migration is transparent on next save. `deliver_message(cwd, message)` — reads `ghostty_cwd_uuid.json` for terminal UUID, then `focus terminal id UUID` + System Events `keystroke + Return`; falls back to cwd-based focus. Used by `app.py` for UI-side queue operations. Hook delivery uses inline equivalents in `hook_writer.py` (standalone, can't import from package).
+**Purpose:** Message queue storage + Ghostty delivery for the menubar app side. `load_queue()` / `save_queue(q)` — atomic read/write of `APP_SUPPORT/msg_queue.json` (schema: `{session_id: [{text: str, state: "draft"|"queued"|"sent", sent_at: str|null}]}`). `load_queue` normalizes all legacy formats via `_normalize_entry` on read — migration is transparent on next save. Migration rules: bare string → `{state:"queued"}`; dict missing `state`: `sent_at` non-null → `state:"sent"`, else → `state:"queued"`. Drafts are only created via the + button, never from migration. `deliver_message(cwd, message)` — reads `ghostty_cwd_uuid.json` for terminal UUID, then `focus terminal id UUID` + System Events `keystroke + Return`; falls back to cwd-based focus. Hook delivery uses inline equivalents in `hook_writer.py` (standalone, can't import from package).
 **Reads:** `QUEUE_FILE` (`msg_queue.json`); `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`).
 **Writes:** `QUEUE_FILE` (atomic via temp + `os.replace()`); osascript delivery to Ghostty.
 **Called by:** `app.py:_PanelController` (`load_queue`, `save_queue`); `app.py:CCMenuBarApp._tick` and `_open_main_panel` (`load_queue`).
@@ -80,11 +80,11 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (632 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
+### app.py (651 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_`, `removeQueueMsg_`, `commitQueueField_`, `controlTextDidEndEditing_`. `_tick` caches sessions in `app._last_sessions`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open.
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_` (append empty draft; guard against stacking blanks), `toggleQueueEntry_` (draft↔queued flip), `removeQueueEntry_` (× delete), `commitQueueField_` (Enter → save draft text in-place), `controlTextDidEndEditing_` (blur → save draft text in-place). `_tick` caches sessions in `app._last_sessions`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open.
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch; `QUEUE_FILE` (via `load_queue()`) on every tick + on `_open_queue_panel`.
-**Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove; `_queue_data`, `_pending_queue_count`, `_committed_queue_tags`, `_queue_add_tags`, `_queue_remove_tags`, `_pending_queue_tags`, `_last_sessions`, `_queue_displayed_names`.
+**Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove/toggle/edit; `_queue_data`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_pending_queue_tags`, `_last_sessions`, `_queue_displayed_names`.
 **Called by:** `system.py:run()` (lazy import).
 **Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.panel`, `.bead_panel`, `.queue_panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`load_queue`, `save_queue`); `.setup_menubar` (lazy).
 
@@ -152,7 +152,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ### hook_writer.py (182 LOC)
 
-**Purpose:** CC hook handler — reads JSON payload on stdin; updates `hooks.json`; on Stop/StopFailure additionally delivers the first unsent message from `msg_queue.json` for the session. Delivery path: `_queue_get_first_unsent` (flock `queue.lock` → find first entry with `sent_at=None`) → `_deliver_message` (UUID focus + System Events keystroke; cwd fallback) → on success: `_queue_mark_sent` (flock → set `sent_at=utc-iso` in-place). On delivery failure: entry left unchanged (`sent_at=None`), next Stop retries. Messages are never removed by the hook — only the panel's `−` button removes entries. `_normalize_entry` handles bare-string legacy format inline. Standalone script; defines all 3 APP_SUPPORT paths inline.
+**Purpose:** CC hook handler — reads JSON payload on stdin; updates `hooks.json`; on Stop/StopFailure additionally delivers the first `state="queued"` entry from `msg_queue.json` for the session. Skips `state="draft"` and `state="sent"` entries. Delivery path: `_queue_get_first_unsent` (flock `queue.lock` → find first entry where `state=="queued"`) → `_deliver_message` (UUID focus + System Events keystroke; cwd fallback) → on success: `_queue_mark_sent` (flock → set `state="sent"` + `sent_at=utc-iso` in-place). On delivery failure: entry left unchanged, next Stop retries. Messages are never removed by the hook — only the panel's `×` button removes entries. `_normalize_entry` handles all legacy formats inline (mirrors `queue.py`). Standalone script; defines all 3 APP_SUPPORT paths inline.
 **Reads:** stdin (CC hook JSON); `APP_SUPPORT/hooks.json` (inside flock); `APP_SUPPORT/msg_queue.json` (inside flock); `APP_SUPPORT/ghostty_cwd_uuid.json` (UUID lookup).
 **Writes:** `APP_SUPPORT/hooks.json` (atomic); `APP_SUPPORT/msg_queue.json` (atomic, inside flock — mark `sent_at` in-place, never removes entries); `APP_SUPPORT/queue.lock`; osascript delivery to Ghostty terminal.
 **Called by:** CC hook system (`async: true`). Never imported.
@@ -258,12 +258,11 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp._queue_toggle_btn` | queue_panel.py | `NSButton` | `_make_queue_nspanel` | Auto-Jump toggle button in queue panel top_bar. Wired to `toggleAutoJump_` in lazy-init tick. |
 | `CCMenuBarApp._queue_displayed_names` | app.py | `set` | queue_panel.py (`_rebuild_queue_panel`) | Set of main session names currently displayed in queue panel. Used by `_tick` to detect session-set changes. |
 | `CCMenuBarApp._last_sessions` | app.py | `list` | app.py (`_tick`) | Last `list_alive_sessions()` result. Updated each tick. Used by queue panel rebuild in controller methods. |
-| `CCMenuBarApp._queue_data` | app.py | `dict` | app.py | `{session_id: [{text: str, sent_at: str\|null}]}` refreshed from `msg_queue.json` on every tick and on `_open_queue_panel`. |
-| `CCMenuBarApp._pending_queue_count` | app.py | `dict` | app.py | `{session_id: int}` — count of active input rows per session. Incremented by `addQueueRow_`; decremented by `commitQueueField_` and `controlTextDidEndEditing_` (cancel). Persists across rebuilds. |
-| `CCMenuBarApp._pending_queue_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{NSTextField_tag → session_id}`. Reset on each rebuild. |
+| `CCMenuBarApp._queue_data` | app.py | `dict` | app.py | `{session_id: [{text: str, state: "draft"\|"queued"\|"sent", sent_at: str\|null}]}` refreshed from `msg_queue.json` on every tick and on `_open_queue_panel`. |
+| `CCMenuBarApp._pending_queue_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{NSTextField_tag → (session_id, idx)}`. Reset on each rebuild. Used by `commitQueueField_` and `controlTextDidEndEditing_` to locate the draft entry to update. |
 | `CCMenuBarApp._queue_add_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{+ button tag → session_id}`. Tags 2000+. Reset on each rebuild. |
-| `CCMenuBarApp._queue_remove_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{− button tag → (session_id, msg_index)}`. Tags 3000+. Reset on each rebuild. |
-| `CCMenuBarApp._committed_queue_tags` | app.py | `set` | app.py | NSTextField tags committed via Enter; prevents `controlTextDidEndEditing_` from also cancelling. Cleared per-tag after use. |
+| `CCMenuBarApp._queue_remove_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{× button tag → (session_id, idx)}`. Tags 3000+. Reset on each rebuild. |
+| `CCMenuBarApp._queue_toggle_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{↑/↓ button tag → (session_id, idx)}`. Tags 5000+. Reset on each rebuild. Used by `toggleQueueEntry_`. Only draft and queued entries have a toggle button; sent entries have none. |
 
 ## Activity Detection (per session type)
 
