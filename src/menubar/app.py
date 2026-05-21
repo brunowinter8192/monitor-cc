@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import rumps
@@ -38,7 +39,7 @@ from .queue_panel import (_make_queue_nspanel, _rebuild_queue_panel, _reposition
 # From system.py: Ghostty terminal focus
 from .system import _focus_session
 # From paths.py: APP_SUPPORT-relative settings path
-from .paths import SETTINGS_FILE as _SETTINGS_PATH
+from .paths import SETTINGS_FILE as _SETTINGS_PATH, HOOKS_FILE as _HOOKS_FILE
 # From queue.py: message queue storage
 from .queue import load_queue, save_queue, deliver_message
 
@@ -202,6 +203,8 @@ class _PanelController(NSObject):
             q[session_id] = entries
             save_queue(q)
             app._queue_data = q
+            if new_state == "queued":
+                _try_deliver_now(app, session_id, updated.get("text", ""), idx)
         sessions = list_alive_sessions()
         app._last_sessions = sessions
         _rebuild_queue_panel(app, sessions)
@@ -241,6 +244,7 @@ class _PanelController(NSObject):
             q[session_id] = entries
             save_queue(q)
             app._queue_data = q
+            _try_deliver_now(app, session_id, text, idx)
             sessions = list_alive_sessions()
             app._last_sessions = sessions
             _rebuild_queue_panel(app, sessions)
@@ -673,3 +677,31 @@ def _save_settings(auto_focus: bool, panel_width: int, panel_min_height: int) ->
         os.replace(tmp, _SETTINGS_PATH)
     except Exception:
         pass
+
+
+# If the target session is currently idle, deliver the just-queued message immediately
+# and mark it sent in the queue file. Called after committing a draft to queued state.
+# Acceptable race with hook_writer: concurrent Stop + panel-queue both deliver → double-send;
+# second mark_sent is a no-op because state check guards against already-sent entries.
+def _try_deliver_now(app: 'CCMenuBarApp', session_id: str, text: str, idx: int) -> None:
+    try:
+        hook_state = json.loads(_HOOKS_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"queue: _try_deliver_now read hooks.json failed: {exc}", file=sys.stderr)
+        return
+    entry = hook_state.get(session_id, {})
+    if entry.get("status") != "idle":
+        return
+    cwd = entry.get("cwd", "")
+    if not cwd or not text:
+        return
+    if not deliver_message(cwd, text):
+        return
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    q       = load_queue()
+    entries = q.get(session_id, [])
+    if 0 <= idx < len(entries) and entries[idx].get("state") == "queued":
+        entries[idx] = {**entries[idx], "state": "sent", "sent_at": now_iso}
+        q[session_id] = entries
+        save_queue(q)
+        app._queue_data = q
