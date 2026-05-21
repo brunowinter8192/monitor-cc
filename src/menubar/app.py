@@ -215,7 +215,7 @@ class _PanelController(NSObject):
         _rebuild_queue_panel(app, sessions)
 
     def commitQueueField_(self, sender):
-        # Enter key in a draft NSTextField: save text in-place (same as blur path)
+        # Enter on a draft NSTextField: save text AND queue it (draft → queued)
         app  = self._app
         info = app._pending_queue_tags.get(sender.tag())
         if not info:
@@ -225,10 +225,13 @@ class _PanelController(NSObject):
         q       = load_queue()
         entries = q.get(session_id, [])
         if 0 <= idx < len(entries) and entries[idx].get("state") == "draft":
-            entries[idx] = {**entries[idx], "text": text}
+            entries[idx] = {**entries[idx], "text": text, "state": "queued"}
             q[session_id] = entries
             save_queue(q)
             app._queue_data = q
+            sessions = list_alive_sessions()
+            app._last_sessions = sessions
+            _rebuild_queue_panel(app, sessions)
 
     def controlTextDidEndEditing_(self, notification):
         # Focus loss on a draft NSTextField: save current text in-place, no rebuild
