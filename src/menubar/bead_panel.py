@@ -113,7 +113,7 @@ def _make_bead_x_btn() -> NSView:
     return btn
 
 # NSView container with per-line NSTextFields for a bead expand block (col 0, merged with col 1).
-# No widthAnchor/heightAnchor — NSGridRow.setHeight_ owns row height; grid owns width.
+# heightAnchor required — NSGridView turns off TAMIC on content views; without it height=0 → bleed.
 def _make_expand_view(text: str, panel_width: int) -> NSView:
     w       = panel_width - 22   # grid width = pw
     inner_x = 16                 # inset to visually nest under bead row
@@ -122,6 +122,7 @@ def _make_expand_view(text: str, panel_width: int) -> NSView:
     line_heights = [_bead_row_height(line or ' ', inner_w) for line in lines]
     total        = sum(line_heights)
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, total))
+    container.heightAnchor().constraintEqualToConstant_(float(total)).setActive_(True)   # explicit height — NSGridView turns off TAMIC on content views; without this height=0 → subviews bleed into row above
     y = total   # NSView y=0 is bottom; subtract each lh before placing
     for line, lh in zip(lines, line_heights):
         y -= lh
