@@ -28,10 +28,10 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### queue_panel.py (226 LOC)
+### queue_panel.py (235 LOC)
 
-**Purpose:** Standalone NSPanel (3rd panel) for the per-session message queue. Analogous to `bead_panel.py`. `_make_queue_nspanel()` returns `(panel, stack, toggle_btn)` — no footer. `_rebuild_queue_panel(app, sessions)` renders per-main-session blocks via ONE NSGridView (2-col): col 0 = message label (fill, for truncation) OR merged content; col 1 = `−` button (`_QUEUE_MINUS_W = 18`pt fixed). Session headers, `+` add-btn, and NSTextField input rows are merged across both cols. NSTextField input-fix: `makeKeyAndOrderFront_(None)` + `makeFirstResponder_(tf)` give the nonactivating panel keyboard focus without activating the app. Grid cell refs: `_make_queue_msg_label` (col 0), `_make_queue_minus_btn` (col 1), `_make_queue_add_btn` (merged), `_make_queue_input_field` (merged, heightAnchor=`_ROW_H-1` to constrain bezeled NSTextField in grid context).
-**Reads:** `app._queue_sv`, `app._queue_panel`, `app._queue_toggle_btn`, `app._queue_data`, `app._pending_queue_sessions`, `app._panel_width`, `app._panel_min_height`, `app._auto_focus`, `app._panel_controller`; `sessions` list from caller.
+**Purpose:** Standalone NSPanel (3rd panel) for the per-session message queue. Analogous to `bead_panel.py`. `_make_queue_nspanel()` returns `(panel, stack, toggle_btn)` — no footer. `_rebuild_queue_panel(app, sessions)` renders per-main-session blocks via ONE NSGridView (2-col): col 0 = message label (fill, for truncation) OR merged content; col 1 = `−` button (`_QUEUE_MINUS_W = 18`pt fixed). Session headers, input rows, and `+` add-btn are merged across both cols. `+` button is ALWAYS rendered below all input rows per session — never hidden. NSTextField input-fix: `makeKeyAndOrderFront_(None)` + `makeFirstResponder_(tf)` give the nonactivating panel keyboard focus. All grid-cell views have explicit `widthAnchor`/`heightAnchor` (NSGridView disables TAMIC; without constraints borderless NSButton hit area collapses to ~0). Grid cell refs: `_make_queue_msg_label` (col 0, `sent=True` → `systemGreenColor`), `_make_queue_minus_btn` (col 1, widthAnchor+heightAnchor), `_make_queue_add_btn` (merged, heightAnchor), `_make_queue_input_field` (merged, heightAnchor).
+**Reads:** `app._queue_sv`, `app._queue_panel`, `app._queue_toggle_btn`, `app._queue_data`, `app._pending_queue_count`, `app._panel_width`, `app._panel_min_height`, `app._auto_focus`, `app._panel_controller`; `sessions` list from caller.
 **Writes:** `app._queue_add_tags`, `app._queue_remove_tags`, `app._pending_queue_tags`, `app._queue_displayed_names` (reset on each rebuild); NSPanel frame.
 **Key signatures:** `_make_queue_nspanel()`, `_rebuild_queue_panel(app, sessions)`, `_reposition_queue_panel(panel, nsstatusitem)`, `_resize_queue_panel(app, new_h)`.
 **Called by:** `app.py` (`_open_queue_panel`, `_PanelController.*Queue*`, `CCMenuBarApp._tick`, `_PanelController.windowDidEndLiveResize_`).
@@ -70,9 +70,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### queue.py (86 LOC)
+### queue.py (92 LOC)
 
-**Purpose:** Message queue storage + Ghostty delivery for the menubar app side. `load_queue()` / `save_queue(q)` — atomic read/write of `APP_SUPPORT/msg_queue.json` (schema: `{session_id: [msg, ...]}`). `deliver_message(cwd, message)` — reads `ghostty_cwd_uuid.json` for terminal UUID, then `focus terminal id UUID` + System Events `keystroke + Return`; falls back to cwd-based focus. Used by `app.py` for UI-side queue operations. Hook delivery uses inline equivalents in `hook_writer.py` (standalone, can't import from package).
+**Purpose:** Message queue storage + Ghostty delivery for the menubar app side. `load_queue()` / `save_queue(q)` — atomic read/write of `APP_SUPPORT/msg_queue.json` (schema: `{session_id: [{text: str, sent_at: str|null}]}`). `load_queue` normalizes bare-string entries (old format) to dict form via `_normalize_entry` on read — migration is transparent on next save. `deliver_message(cwd, message)` — reads `ghostty_cwd_uuid.json` for terminal UUID, then `focus terminal id UUID` + System Events `keystroke + Return`; falls back to cwd-based focus. Used by `app.py` for UI-side queue operations. Hook delivery uses inline equivalents in `hook_writer.py` (standalone, can't import from package).
 **Reads:** `QUEUE_FILE` (`msg_queue.json`); `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`).
 **Writes:** `QUEUE_FILE` (atomic via temp + `os.replace()`); osascript delivery to Ghostty.
 **Called by:** `app.py:_PanelController` (`load_queue`, `save_queue`); `app.py:CCMenuBarApp._tick` and `_open_main_panel` (`load_queue`).
@@ -84,7 +84,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_`, `removeQueueMsg_`, `commitQueueField_`, `controlTextDidEndEditing_`. `_tick` caches sessions in `app._last_sessions`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open.
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch; `QUEUE_FILE` (via `load_queue()`) on every tick + on `_open_queue_panel`.
-**Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove; `_queue_data`, `_pending_queue_sessions`, `_committed_queue_tags`, `_queue_add_tags`, `_queue_remove_tags`, `_pending_queue_tags`, `_last_sessions`, `_queue_displayed_names`.
+**Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove; `_queue_data`, `_pending_queue_count`, `_committed_queue_tags`, `_queue_add_tags`, `_queue_remove_tags`, `_pending_queue_tags`, `_last_sessions`, `_queue_displayed_names`.
 **Called by:** `system.py:run()` (lazy import).
 **Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.panel`, `.bead_panel`, `.queue_panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`load_queue`, `save_queue`); `.setup_menubar` (lazy).
 
@@ -150,13 +150,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### hook_writer.py (178 LOC)
+### hook_writer.py (182 LOC)
 
-**Purpose:** CC hook handler — reads JSON payload on stdin; updates `hooks.json`; on Stop/StopFailure additionally pops and delivers the head message from `msg_queue.json` for the session. Delivery path: `_queue_pop_head` (flock `queue.lock` → load → pop → save), then `_deliver_message` (reads `ghostty_cwd_uuid.json` for UUID → `focus terminal id UUID` + System Events `keystroke + key code 36`; falls back to cwd-based focus). On delivery failure: `_queue_push_head` re-enqueues at head, logs to stderr. Standalone script; defines all 3 APP_SUPPORT paths inline.
+**Purpose:** CC hook handler — reads JSON payload on stdin; updates `hooks.json`; on Stop/StopFailure additionally delivers the first unsent message from `msg_queue.json` for the session. Delivery path: `_queue_get_first_unsent` (flock `queue.lock` → find first entry with `sent_at=None`) → `_deliver_message` (UUID focus + System Events keystroke; cwd fallback) → on success: `_queue_mark_sent` (flock → set `sent_at=utc-iso` in-place). On delivery failure: entry left unchanged (`sent_at=None`), next Stop retries. Messages are never removed by the hook — only the panel's `−` button removes entries. `_normalize_entry` handles bare-string legacy format inline. Standalone script; defines all 3 APP_SUPPORT paths inline.
 **Reads:** stdin (CC hook JSON); `APP_SUPPORT/hooks.json` (inside flock); `APP_SUPPORT/msg_queue.json` (inside flock); `APP_SUPPORT/ghostty_cwd_uuid.json` (UUID lookup).
-**Writes:** `APP_SUPPORT/hooks.json` (atomic); `APP_SUPPORT/msg_queue.json` (atomic, inside flock); `APP_SUPPORT/queue.lock`; osascript delivery to Ghostty terminal.
+**Writes:** `APP_SUPPORT/hooks.json` (atomic); `APP_SUPPORT/msg_queue.json` (atomic, inside flock — mark `sent_at` in-place, never removes entries); `APP_SUPPORT/queue.lock`; osascript delivery to Ghostty terminal.
 **Called by:** CC hook system (`async: true`). Never imported.
-**Calls out:** stdlib (`fcntl`, `json`, `os`, `subprocess`, `time`).
+**Calls out:** stdlib (`datetime`, `fcntl`, `json`, `os`, `subprocess`, `time`).
 
 **Usage:** `python3 src/menubar/hook_writer.py` (stdin = CC hook JSON). Install via `hook_setup.py`.
 
@@ -258,8 +258,8 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp._queue_toggle_btn` | queue_panel.py | `NSButton` | `_make_queue_nspanel` | Auto-Jump toggle button in queue panel top_bar. Wired to `toggleAutoJump_` in lazy-init tick. |
 | `CCMenuBarApp._queue_displayed_names` | app.py | `set` | queue_panel.py (`_rebuild_queue_panel`) | Set of main session names currently displayed in queue panel. Used by `_tick` to detect session-set changes. |
 | `CCMenuBarApp._last_sessions` | app.py | `list` | app.py (`_tick`) | Last `list_alive_sessions()` result. Updated each tick. Used by queue panel rebuild in controller methods. |
-| `CCMenuBarApp._queue_data` | app.py | `dict` | app.py | `{session_id: [msgs]}` refreshed from `msg_queue.json` on every tick and on `_open_queue_panel`. |
-| `CCMenuBarApp._pending_queue_sessions` | app.py | `set` | app.py | Session IDs with an active inline NSTextField in queue panel (editing mode). Persists across rebuilds. |
+| `CCMenuBarApp._queue_data` | app.py | `dict` | app.py | `{session_id: [{text: str, sent_at: str\|null}]}` refreshed from `msg_queue.json` on every tick and on `_open_queue_panel`. |
+| `CCMenuBarApp._pending_queue_count` | app.py | `dict` | app.py | `{session_id: int}` — count of active input rows per session. Incremented by `addQueueRow_`; decremented by `commitQueueField_` and `controlTextDidEndEditing_` (cancel). Persists across rebuilds. |
 | `CCMenuBarApp._pending_queue_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{NSTextField_tag → session_id}`. Reset on each rebuild. |
 | `CCMenuBarApp._queue_add_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{+ button tag → session_id}`. Tags 2000+. Reset on each rebuild. |
 | `CCMenuBarApp._queue_remove_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{− button tag → (session_id, msg_index)}`. Tags 3000+. Reset on each rebuild. |
