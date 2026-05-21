@@ -8,9 +8,15 @@ from .paths import QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE
 
 # FUNCTIONS
 
-# Normalize a single queue entry: bare string → {text, sent_at: None}; dict passthrough
+# Normalize a single queue entry to the three-state format.
+# bare string → queued (legacy semantic); dict missing state: sent_at non-null → sent, else → queued.
 def _normalize_entry(e) -> dict:
-    return e if isinstance(e, dict) else {"text": e, "sent_at": None}
+    if isinstance(e, str):
+        return {"text": e, "state": "queued", "sent_at": None}
+    d = dict(e)
+    if "state" not in d:
+        d["state"] = "sent" if d.get("sent_at") else "queued"
+    return d
 
 # Load msg_queue.json; normalizes bare-string entries to dict form for backward compat.
 # Returns {} on any error (missing file, parse error, corrupt).
