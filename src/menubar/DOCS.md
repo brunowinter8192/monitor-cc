@@ -39,6 +39,27 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
+### bead_panel.py (288 LOC)
+
+**Purpose:** Bead-tracker NSPanel (2nd panel). ONE NSGridView (2-col): col 0 = expand button (flexible), col 1 = × untrack button (22pt fixed). Expand rows merged across both columns. `_make_expand_view` builds a per-line NSTextField container for the expanded bead content; when content exceeds `_BEAD_EXPAND_MAX_LINES = 20` rows, wraps in NSScrollView with fixed-height viewport (`20 × _ROW_H` ≈ 420pt), vertical scroller always visible, no horizontal scroll. Container `widthAnchor` anchored to `sv.contentView().widthAnchor()` (scrolled) or set to `panel_width` directly (non-scrolled) — required because NSGridView disables TAMIC on content views; without explicit width constraint AutoLayout assigns `w=0`.
+**Reads:** `app._bead_data`, `app._bead_expanded`, `app._bead_expand_tags`, `app._bead_untrack_tags`, `app._bead_displayed`, `app._bead_db_paths`, `app._panel_width`, `app._panel_min_height`, `app._tracker_sv`, `app._tracker_panel`, `app._tracker_toggle_btn`, `app._panel_controller`.
+**Writes:** `app._bead_expanded` (clear or set expand text); `app._bead_displayed`, `app._bead_expand_tags`, `app._bead_untrack_tags` (reset each rebuild); NSPanel frame.
+**Key signatures:** `_make_bead_nspanel()`, `_rebuild_bead_panel(app)`, `_reposition_bead_panel(panel, nsstatusitem)`, `_compute_bead_height(app)`, `_handle_expand_bead(app, tag)`, `_handle_untrack_bead(app, tag)`.
+**Called by:** `app.py` (`_open_tracker_panel`, `_PanelController.expandBead_`, `_PanelController.untrackBead_`, `CCMenuBarApp._tick`, `_PanelController.windowDidEndLiveResize_`).
+**Calls out:** `AppKit` (incl. `NSScrollView`), `Foundation`; `.bead_data` (`bd_show_text`, `bd_label_remove`); `.panel` (constants + helpers).
+
+---
+
+### bead_data.py (132 LOC)
+
+**Purpose:** All `bd` CLI interactions for the bead panel. `bd_show_text(bead_id, db_path)` runs `bd show --json` (description) then `bd comments --json` (separate call; show does NOT include comments) and returns a formatted string: description body (≤300 chars before Sources block), Sources block (full), then per-comment blocks `[YYYY-MM-DD HH:MM by Author]\n  text`. `bd_label_remove` untracks a bead. Helper functions: `project_db_map`, `load_tracked_beads`, `_bd_list_tracked`, `_bd_fetch_comments`, `_format_expand_text`, `_format_comment_ts`. Comment JSON schema: `{id, issue_id, author, text, created_at}` — field is `text` (not `body`). Timestamps parsed via `datetime.fromisoformat` with Z→+00:00 substitution, displayed in local timezone.
+**Reads:** `bd` CLI output via subprocess; nothing from app state.
+**Writes:** nothing (read-only toward bd).
+**Called by:** `bead_panel.py` (`bd_show_text`, `bd_label_remove`); `app.py` (`project_db_map`, `load_tracked_beads` via `bead_panel` import chain).
+**Calls out:** `subprocess` (`bd`); stdlib (`json`, `datetime`, `pathlib`).
+
+---
+
 ### paths.py (34 LOC)
 
 **Purpose:** Single source of truth for 7 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`). Runs `_migrate_from_dotfiles()` at import.
@@ -302,7 +323,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Ghostty AppleScript**: Ghostty.sdef exposes `id` (UUID, stable), `name` (current title), `working directory` per `terminal`. `focus` command takes a specifier: `focus terminal id "<UUID>"`. Does NOT expose `tty` or `pid`.
 - **OSC 2 cleanup**: After the probe, `\033]2;\007` (empty-string OSC 2) written to the probed TTYs restores the shell's default title. Without cleanup, idle shells show `__GHT_XXXXXXXX` until next prompt display.
 - **TTY ownership**: Ghostty children run as `/usr/bin/login` (root) but the `/dev/ttys<NNN>` device files are owned by the logged-in user → write access OK.
-- **Dynamic panel height (grow-only)** (`panel.py`): `_rebuild_panel` calls `_compute_required_height` → `_resize_panel(app, max(app._panel_min_height, required_h))`. Panel never shrinks below user-set floor. `NSBoxSeparator` containers require explicit `heightAnchor().constraintEqualToConstant_(18.0)` — plain `NSView` has no `intrinsicContentSize`. NSGridView additionally turns off TAMIC on ALL content views (via `addRowWithViews_`), so any `NSView` placed in a grid cell MUST carry a `heightAnchor` constraint; without it Auto Layout gives it `height=0`, `yPlacement=top` pins origin to the row's top edge, and subviews bleed into the row above. Applies to `_make_separator_view` (panel.py) and `_make_expand_view` (bead_panel.py).
+- **Dynamic panel height (grow-only)** (`panel.py`): `_rebuild_panel` calls `_compute_required_height` → `_resize_panel(app, max(app._panel_min_height, required_h))`. Panel never shrinks below user-set floor. `NSBoxSeparator` containers require explicit `heightAnchor().constraintEqualToConstant_(18.0)` — plain `NSView` has no `intrinsicContentSize`. NSGridView additionally turns off TAMIC on ALL content views (via `addRowWithViews_`), so any `NSView` placed in a grid cell MUST carry a `heightAnchor` AND `widthAnchor` constraint; without height: `height=0`, `yPlacement=top` pins origin to row top, subviews bleed up; without width: AutoLayout assigns `w=0`, merged-cell content is invisible. `_make_separator_view` (panel.py) sets only `heightAnchor`. `_make_expand_view` (bead_panel.py) sets both: `heightAnchor = total`, `widthAnchor = panel_width` (non-scroll path) or `widthAnchor = sv.contentView().widthAnchor()` (NSScrollView path).
 - **Cursor handling on panel edges** (`panel.py`): `_PanelContentView(NSView)` uses NSTrackingArea + `mouseMoved_` for edge detection; `_set_hovered_edge` calls `invalidateCursorRectsForView_` on state change; `resetCursorRects` installs a single full-bounds rect for the current edge state (state-driven, winit pattern). `_CursorlessLabel(NSTextField)` and `_CursorlessButton(NSButton)` suppress child-view `resetCursorRects` to prevent override of edge cursors. Note: `LSUIElement=1` accessory-app context blocks cursor-rect dispatch in practice (cursor change not visible to user); implementation is mechanically correct but AppKit dispatch is suppressed — see `decisions/OldThemes/menubar_overhaul_2026-05-19.md` Iteration 9.
 - **Status-change is panel-no-op**: working↔idle transitions NEVER trigger `_rebuild_panel` or `_resize_panel`. Open panel: status changes go through `_update_panel_inplace`. Closed panel: only trigger `_blink`. Only two events trigger `_rebuild_panel`: (1) session-set change; (2) abort-button None↔Some transition (panel open only). Queue panel has no in-place update path — any change triggers full `_rebuild_queue_panel`.
 - **Three-panel cycling** (`app.py`): Sessions → Beads → Queue → Sessions (Cmd+→); reverse (Cmd+←). Each `_open_*_panel` registers BOTH Cmd+→ and Cmd+←; each `_close_*_panel` unregisters both. Generic `_deferred_close_open(app, from, to)` handles all 6 transition combinations dispatched via `NSOperationQueue.mainQueue()`. `unregister_cmd_arrow_*(None)` is a no-op — safe when opposite direction was not registered.
