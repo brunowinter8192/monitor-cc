@@ -286,7 +286,7 @@ def _make_line_separator(panel_width: int) -> NSView:
 def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining=None):
     w = panel_width - 22
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, 18))
-    # No heightAnchor constraint — NSGridRow.setHeight_ owns row height in grid context
+    container.heightAnchor().constraintEqualToConstant_(18.0).setActive_(True)   # explicit height — NSGridView turns off TAMIC on content views; without this height=0 → subviews bleed into row above
     line = NSBox.alloc().initWithFrame_(NSMakeRect(0, 9, w, 1))
     line.setBoxType_(2)   # NSBoxSeparator
     container.addSubview_(line)
