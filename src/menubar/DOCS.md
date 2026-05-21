@@ -17,34 +17,44 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### panel.py (428 LOC)
+### panel.py (531 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred (separate bead)
 
-**Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and the two render functions (`_rebuild_panel`, `_update_panel_inplace`). Footer has two buttons: Kill (left) + Restart (right). Main session rows carry an inline `[N] ` prefix (slots 1..9) for Cmd+N hotkey reference; workers and slots >9 carry no prefix. Per-project abort buttons (Option B) are embedded inline in the project separator rows — `_make_separator_view` returns `(NSView, Optional[NSButton])`. Pure UI concern — no rumps, no ctypes, no subprocess.
-**Reads:** `app` instance attrs (`_panel_sv`, `_panel_width`, `_panel_min_height`, `_displayed_items`, `_cwd_map`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_toggle_btn`, `_panel_controller`, `_auto_focus`, `_panel`) via function parameters; session list and `bg_by_project` dict from caller.
-**Writes:** `app._displayed_items`, `app._cwd_map` (= slot→cwd map for mains, sequential from 1), `app._abort_btns_by_project` (reset + populate on each rebuild), `app._abort_project_for_tag`; NSButton attributed titles on main rows + abort button countdowns (inplace update); NSPanel frame (via `_resize_panel`).
-**Key signatures:** `_rebuild_panel(app, sessions, bg_by_project=None)`, `_update_panel_inplace(app, sessions, bg_by_project)`, `_compute_required_height(sorted_sessions)` (no bg arg — Option B abort buttons are zero height cost).
-**Called by:** `app.py` (`CCMenuBarApp.__init__`, `_PanelController.togglePanel_`, `_PanelController.windowDidEndLiveResize_`, `CCMenuBarApp._tick`).
+**Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and the two render functions (`_rebuild_panel`, `_update_panel_inplace`). Footer has two buttons: Kill (left) + Restart (right). Main session rows carry an inline `[N] ` prefix (slots 1..9) for Cmd+N hotkey reference; workers and slots >9 carry no prefix. Per-project abort buttons (Option B) are embedded inline in the project separator rows — `_make_separator_view` returns `(NSView, Optional[NSButton])`. Each main session row is followed by a queue block: N message rows (`_make_queue_msg_row`) + 1 add-button (`_make_queue_add_btn`) or pending input field (`_make_queue_input_field`); assembled by `_add_queue_block`. Pure UI concern — no rumps, no ctypes, no subprocess.
+**Reads:** `app` instance attrs (`_panel_sv`, `_panel_width`, `_panel_min_height`, `_displayed_items`, `_cwd_map`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_toggle_btn`, `_panel_controller`, `_auto_focus`, `_panel`, `_queue_data`, `_pending_queue_sessions`, `_queue_add_tags`, `_queue_remove_tags`, `_pending_queue_tags`) via function parameters; session list and `bg_by_project` dict from caller.
+**Writes:** `app._displayed_items`, `app._cwd_map`, `app._abort_btns_by_project`, `app._abort_project_for_tag`, `app._queue_add_tags`, `app._queue_remove_tags`, `app._pending_queue_tags` (all reset on each rebuild); NSPanel frame.
+**Key signatures:** `_rebuild_panel(app, sessions, bg_by_project=None)`, `_update_panel_inplace(app, sessions, bg_by_project)`, `_compute_required_height(sorted_sessions, queue_data=None)`.
+**Called by:** `app.py` (`_open_main_panel`, `_PanelController.*`, `CCMenuBarApp._tick`, `_PanelController.windowDidEndLiveResize_`).
 **Calls out:** `AppKit`, `Foundation`, `itertools`.
 
 ---
 
-### paths.py (31 LOC)
+### paths.py (34 LOC)
 
-**Purpose:** Single source of truth for the 4 APP_SUPPORT file paths (`SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`) under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`. Runs `_migrate_from_dotfiles()` at import — moves any `~/.monitor_cc_menubar_*` dotfiles to APP_SUPPORT atomically; NEW wins if both exist.
+**Purpose:** Single source of truth for 7 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`). Runs `_migrate_from_dotfiles()` at import.
 **Reads:** old dotfile paths under `~` on first import (migration); nothing thereafter.
 **Writes:** creates `_APP_SUPPORT` dir; moves old dotfiles to new paths on first import.
-**Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`). `hook_writer.py` derives equivalent paths locally (standalone script, no relative import).
+**Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`); `queue.py` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`). `hook_writer.py` and `ghostty.py` define equivalent paths inline (standalone / cycle-avoidance).
 **Calls out:** `pathlib` only.
 
 ---
 
-### app.py (318 LOC)
+### queue.py (86 LOC)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for panel toggle/focus/kill/restart/abort/resize delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check` (per-project 5s-debounce auto-abort of bg timers when all workers idle) + `_reregister_digit_hotkeys` helper (builds slot→focus callback map from `_cwd_map`, calls `register_cmd_digits`). `abortBgTimer_` is per-project: uses `sender.tag()` → `_abort_project_for_tag` dict to identify which project's timer to kill. Lifecycle hooks for Cmd+1..9: registered in `togglePanel_` open branch + after `_rebuild_panel` calls during open (in `_tick` open branch + `windowDidEndLiveResize_`); unregistered in `togglePanel_` close branch.
-**Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on launch; `app` instance state throughout (incl. `_cwd_map` for digit-hotkey callback build).
-**Writes:** bar icon via attributed NSStatusItem button; `SETTINGS_FILE` (`APP_SUPPORT/settings.json`) on toggle/resize; `_hotkey_digits_cb` / `_hotkey_digits_refs` GC anchors (legacy — module-level handler now anchored in hotkey.py).
+**Purpose:** Message queue storage + Ghostty delivery for the menubar app side. `load_queue()` / `save_queue(q)` — atomic read/write of `APP_SUPPORT/msg_queue.json` (schema: `{session_id: [msg, ...]}`). `deliver_message(cwd, message)` — reads `ghostty_cwd_uuid.json` for terminal UUID, then `focus terminal id UUID` + System Events `keystroke + Return`; falls back to cwd-based focus. Used by `app.py` for UI-side queue operations. Hook delivery uses inline equivalents in `hook_writer.py` (standalone, can't import from package).
+**Reads:** `QUEUE_FILE` (`msg_queue.json`); `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`).
+**Writes:** `QUEUE_FILE` (atomic via temp + `os.replace()`); osascript delivery to Ghostty.
+**Called by:** `app.py:_PanelController` (`load_queue`, `save_queue`); `app.py:CCMenuBarApp._tick` and `_open_main_panel` (`load_queue`).
+**Calls out:** `json`, `os`, `subprocess`; `.paths` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`).
+
+---
+
+### app.py (548 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
+
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Queue controller methods: `addQueueRow_` (mark session pending → rebuild), `removeQueueMsg_` (pop at index → save → rebuild), `commitQueueField_` (NSTextField Enter → save text → rebuild), `controlTextDidEndEditing_` (focus-lost without commit → cancel pending row → rebuild). `_open_main_panel` now calls `list_alive_sessions()` + `_rebuild_panel` before showing (ensures queue rows are current). `_tick` refreshes `_queue_data = load_queue()` each tick; `queue_changed` detection triggers rebuild when panel is open.
+**Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch; `QUEUE_FILE` (via `load_queue()`) on every tick.
+**Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove; `_queue_data`, `_pending_queue_sessions`, `_committed_queue_tags`, `_queue_add_tags`, `_queue_remove_tags`, `_pending_queue_tags`.
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit` (NSAttributedString/NSBaselineOffsetAttributeName/NSFont/NSFontAttributeName), `Foundation` (NSObject/NSOperationQueue), `objc`, `subprocess`, `threading`, `pathlib`; `.panel`, `.hotkey` (`register_cmd_l`, `register_cmd_digits`, `unregister_hotkeys`), `.system`, `.discover` (`list_alive_sessions`), `.bg_timer` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`, `_aggregate_bg`); `.setup_menubar` (`write_plist`, lazy import inside `restartApp_`).
+**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`load_queue`, `save_queue`); `.setup_menubar` (lazy).
 
 ---
 
@@ -68,13 +78,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (174 LOC)
+### discover.py (176 LOC)
 
-**Purpose:** Session discovery entry point — scans JSONL files, classifies sessions (main vs worker), determines working/idle/background status per session type. Orchestrates the per-tick refresh pipeline and delegates to submodules for cache management, Ghostty mapping, and background-task detection.
-**Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; delegates process/tmux/proxy/hook reads to `proc_cache.py`; delegates Ghostty TTY mapping to `ghostty.py`.
-**Writes:** nothing directly. Delegates all writes to submodules.
-**Called by:** `app.py:CCMenuBarApp._tick` + `app.py:_PanelController.windowDidEndLiveResize_` (`list_alive_sessions`).
-**Calls out:** `session_finder.get_project_directories`; `.proc_cache`; `.ghostty`.
+**Purpose:** Session discovery entry point. `SessionInfo` now includes `session_id: str` (JSONL stem = CC session identifier; key for `msg_queue.json` queue). `list_alive_sessions` calls `_write_cwd_uuid_map()` after each tick so `APP_SUPPORT/ghostty_cwd_uuid.json` stays current for hook delivery.
+**Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; delegates to `proc_cache.py`; Ghostty mapping via `ghostty.py`.
+**Writes:** nothing directly. Delegates writes to submodules (incl. `_write_cwd_uuid_map`).
+**Called by:** `app.py:CCMenuBarApp._tick`, `app.py:_open_main_panel`, `app.py:_PanelController.*Queue*` methods.
+**Calls out:** `session_finder.get_project_directories`; `.proc_cache`; `.ghostty` (`_refresh_ghostty_tty_to_id`, `_write_cwd_uuid_map`).
 
 ---
 
@@ -88,13 +98,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### ghostty.py (125 LOC)
+### ghostty.py (152 LOC)
 
-**Purpose:** Ghostty terminal UUID mapping via OSC 2 title-marker probe. Maintains `_ghostty_tty_to_id` (tty → UUID) populated incrementally. Exposes `get_ghostty_terminal_id(cwd)` for click-to-focus routing in `system.py`.
-**Reads:** `ps -A` (Ghostty PID + child TTYs); `/dev/ttys<NNN>` (OSC 2 marker writes); `osascript` (Ghostty terminal id|||name pairs); `_cc_proc_cache` from `proc_cache.py` (tty lookup for a given cwd).
-**Writes:** `/dev/ttys<NNN>` (transient OSC 2 probe marker + empty-string cleanup); `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh` (module state).
-**Called by:** `discover.py:list_alive_sessions` (`_refresh_ghostty_tty_to_id`); `system.py:_focus_session` (`get_ghostty_terminal_id`).
-**Calls out:** `subprocess` (ps, osascript); `.proc_cache` (`_cc_proc_cache`).
+**Purpose:** Ghostty terminal UUID mapping via OSC 2 title-marker probe. Maintains `_ghostty_tty_to_id` (tty → UUID) populated incrementally. Exposes `get_ghostty_terminal_id(cwd)` for click-to-focus routing in `system.py`. Also writes `APP_SUPPORT/ghostty_cwd_uuid.json` = `{cwd: uuid}` via `_write_cwd_uuid_map()` (called from `discover.py:list_alive_sessions` after each tick); used by `hook_writer.py` for queue delivery. `_APP_SUPPORT` defined inline (can't import `paths.py` — would create import cycle).
+**Reads:** `ps -A` (Ghostty PID + child TTYs); `/dev/ttys<NNN>` (OSC 2 marker writes); `osascript` (terminal id|||name pairs); `_cc_proc_cache`.
+**Writes:** `/dev/ttys<NNN>` (probe + cleanup); `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_ghostty_cwd_uuid_last` (module state); `APP_SUPPORT/ghostty_cwd_uuid.json` (atomic, change-detected).
+**Called by:** `discover.py:list_alive_sessions` (`_refresh_ghostty_tty_to_id`, `_write_cwd_uuid_map`); `system.py:_focus_session` (`get_ghostty_terminal_id`).
+**Calls out:** `json`, `subprocess`, `time`; `.proc_cache` (`_cc_proc_cache`).
 
 ---
 
@@ -108,13 +118,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### hook_writer.py (73 LOC)
+### hook_writer.py (178 LOC)
 
-**Purpose:** CC hook handler — reads the JSON payload CC writes to stdin on UserPromptSubmit/Stop/StopFailure, then atomically updates `APP_SUPPORT/hooks.json` with `{session_id: {status, cwd, updated_ts}}`. Called by CC's hook system (installed via `hook_setup.py`). Prunes entries older than 7200s on each write to prevent unbounded file growth. Standalone script (never imported); defines `_APP_SUPPORT` locally rather than importing `paths.py`.
-**Reads:** stdin (CC hook JSON payload); `APP_SUPPORT/hooks.json` (current state, inside exclusive lock).
-**Writes:** `APP_SUPPORT/hooks.json` (atomic via temp + `os.replace()`); `APP_SUPPORT/hooks.lock` (flock coordination).
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json`; runs `async: true` so it never blocks CC). Never imported by other modules.
-**Calls out:** stdlib only (`fcntl`, `json`, `os`, `time`).
+**Purpose:** CC hook handler — reads JSON payload on stdin; updates `hooks.json`; on Stop/StopFailure additionally pops and delivers the head message from `msg_queue.json` for the session. Delivery path: `_queue_pop_head` (flock `queue.lock` → load → pop → save), then `_deliver_message` (reads `ghostty_cwd_uuid.json` for UUID → `focus terminal id UUID` + System Events `keystroke + key code 36`; falls back to cwd-based focus). On delivery failure: `_queue_push_head` re-enqueues at head, logs to stderr. Standalone script; defines all 3 APP_SUPPORT paths inline.
+**Reads:** stdin (CC hook JSON); `APP_SUPPORT/hooks.json` (inside flock); `APP_SUPPORT/msg_queue.json` (inside flock); `APP_SUPPORT/ghostty_cwd_uuid.json` (UUID lookup).
+**Writes:** `APP_SUPPORT/hooks.json` (atomic); `APP_SUPPORT/msg_queue.json` (atomic, inside flock); `APP_SUPPORT/queue.lock`; osascript delivery to Ghostty terminal.
+**Called by:** CC hook system (`async: true`). Never imported.
+**Calls out:** stdlib (`fcntl`, `json`, `os`, `subprocess`, `time`).
 
 **Usage:** `python3 src/menubar/hook_writer.py` (stdin = CC hook JSON). Install via `hook_setup.py`.
 
@@ -165,8 +175,9 @@ hotkey.py   → ctypes only
 panel.py    → AppKit, Foundation, itertools
 system.py   → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
               lazy(.app) inside run() only
+queue.py    → json, os, subprocess; .paths (QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE)
 app.py      → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
-              .panel, .hotkey, .system, .discover, .bg_timer, .paths (SETTINGS_FILE)
+              .panel, .hotkey, .system, .discover, .bg_timer, .paths (SETTINGS_FILE), .queue
 ```
 
 No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module.
@@ -206,6 +217,13 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `_hook_state_last_read` | proc_cache.py | `float` | module | Timestamp of last hook state file read. |
 | `_ghostty_tty_to_id` | ghostty.py | `Dict[str, str]` | module | tty → Ghostty terminal UUID. Populated incrementally by OSC 2 probe. |
 | `_ghostty_tty_last_refresh` | ghostty.py | `float` | module | Timestamp of last probe cycle (updated only when a probe actually ran). |
+| `_ghostty_cwd_uuid_last` | ghostty.py | `dict` | module | Previous write state for `ghostty_cwd_uuid.json` change-detection (skip write if unchanged). |
+| `CCMenuBarApp._queue_data` | app.py | `dict` | app.py | `{session_id: [msgs]}` refreshed from `msg_queue.json` on every tick and on panel open. |
+| `CCMenuBarApp._pending_queue_sessions` | app.py | `set` | app.py | Session IDs with an active inline NSTextField (editing mode). Persists across rebuilds. |
+| `CCMenuBarApp._pending_queue_tags` | app.py | `dict` | panel.py (`_rebuild_panel`) | `{NSTextField_tag → session_id}`. Reset on each rebuild. |
+| `CCMenuBarApp._queue_add_tags` | app.py | `dict` | panel.py (`_rebuild_panel`) | `{+ button tag → session_id}`. Tags 2000+. Reset on each rebuild. |
+| `CCMenuBarApp._queue_remove_tags` | app.py | `dict` | panel.py (`_rebuild_panel`) | `{− button tag → (session_id, msg_index)}`. Tags 3000+. Reset on each rebuild. |
+| `CCMenuBarApp._committed_queue_tags` | app.py | `set` | app.py | NSTextField tags committed via Enter; prevents `controlTextDidEndEditing_` from also cancelling. Cleared per-tag after use. |
 
 ## Activity Detection (per session type)
 

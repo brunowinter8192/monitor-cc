@@ -3,10 +3,13 @@ from pathlib import Path
 
 _APP_SUPPORT = Path("~/Library/Application Support/com.brunowinter.monitor_cc_menubar").expanduser()
 
-SETTINGS_FILE = _APP_SUPPORT / "settings.json"
-HOOKS_FILE    = _APP_SUPPORT / "hooks.json"
-HOOKS_LOCK    = _APP_SUPPORT / "hooks.lock"
-PID_FILE      = _APP_SUPPORT / "menubar.pid"
+SETTINGS_FILE         = _APP_SUPPORT / "settings.json"
+HOOKS_FILE            = _APP_SUPPORT / "hooks.json"
+HOOKS_LOCK            = _APP_SUPPORT / "hooks.lock"
+PID_FILE              = _APP_SUPPORT / "menubar.pid"
+QUEUE_FILE            = _APP_SUPPORT / "msg_queue.json"
+QUEUE_LOCK            = _APP_SUPPORT / "queue.lock"
+GHOSTTY_CWD_UUID_FILE = _APP_SUPPORT / "ghostty_cwd_uuid.json"
 
 # FUNCTIONS
 

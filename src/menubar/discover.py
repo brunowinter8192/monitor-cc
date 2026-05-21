@@ -11,8 +11,8 @@ from .proc_cache import (
     _tmux_session_exists, _read_hook_state, _proxy_log_newest_mtime,
     _has_active_bg,
 )
-# From ghostty.py: Ghostty TTY-to-UUID mapping
-from .ghostty import _refresh_ghostty_tty_to_id
+# From ghostty.py: Ghostty TTY-to-UUID mapping + cwd-UUID file write for hook delivery
+from .ghostty import _refresh_ghostty_tty_to_id, _write_cwd_uuid_map
 
 ALIVE_WINDOW_SECS      = 3600   # stale threshold for main sessions (1h)
 WORKING_THRESHOLD_SECS = 10     # JSONL-mtime fallback: <= 10s = working
@@ -27,6 +27,7 @@ class SessionInfo(NamedTuple):
     project_name: str  # project this session belongs to (for grouping)
     is_worker: bool    # True if session lives under .claude/worktrees/
     cwd: str           # full working directory (non-empty for mains; '' for workers)
+    session_id: str    # JSONL stem = CC session identifier (key for msg_queue.json)
 
 # ORCHESTRATOR
 
@@ -37,6 +38,7 @@ def list_alive_sessions() -> List[SessionInfo]:
     _refresh_ghostty_tty_to_id(now)
     _refresh_tmux_state(now)
     _read_hook_state(now)   # warm cache once per tick; _process_project_dir reads from cache
+    _write_cwd_uuid_map()   # refresh {cwd: uuid} file for hook_writer.py delivery (change-detected)
     results = []
     for project_dir in get_project_directories():
         try:
@@ -140,7 +142,7 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
             status = 'idle'
         return SessionInfo(name=worker_name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
-                           is_worker=True, cwd='')
+                           is_worker=True, cwd='', session_id=session_id)
     else:
         # Main session: stale if JSONL > 1h
         if now - mtime > ALIVE_WINDOW_SECS:
@@ -171,4 +173,4 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
                     status = 'working'
         return SessionInfo(name=name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
-                           is_worker=False, cwd=cwd or '')
+                           is_worker=False, cwd=cwd or '', session_id=session_id)
