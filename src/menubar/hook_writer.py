@@ -75,8 +75,8 @@ def _load_state() -> dict:
     except Exception:
         return {}
 
-# Find first unsent message for session and deliver; on success mark sent_at in-place.
-# On failure: leave sent_at=null so next Stop retries. Messages are never removed by the hook.
+# Find first queued entry for session and deliver; on success set state="sent"+sent_at in-place.
+# On failure: entry left unchanged so next Stop retries. Messages are never removed by the hook.
 def _maybe_deliver_queue(session_id: str, cwd: str) -> None:
     msg_text, msg_idx = _queue_get_first_unsent(session_id)
     if msg_text is None:
@@ -87,24 +87,30 @@ def _maybe_deliver_queue(session_id: str, cwd: str) -> None:
     else:
         print(f"queue: delivery failed for session {session_id[:12]}", file=sys.stderr)
 
-# Normalize a single queue entry: bare string → {text, sent_at: None}; dict passthrough
+# Normalize a single queue entry to the three-state format (mirrors queue.py).
 def _normalize_entry(e) -> dict:
-    return e if isinstance(e, dict) else {"text": e, "sent_at": None}
+    if isinstance(e, str):
+        return {"text": e, "state": "queued", "sent_at": None}
+    d = dict(e)
+    if "state" not in d:
+        d["state"] = "sent" if d.get("sent_at") else "queued"
+    return d
 
-# Atomically find first unsent entry for session_id; returns (text, idx) or (None, -1)
+# Atomically find first queued entry for session_id; returns (text, idx) or (None, -1).
+# Skips drafts (state="draft") and already-sent entries (state="sent").
 def _queue_get_first_unsent(session_id: str):
     try:
         with open(_QUEUE_LOCK_FILE, "w") as lock_fh:
             fcntl.flock(lock_fh, fcntl.LOCK_EX)
             q = _load_queue()
             for idx, entry in enumerate([_normalize_entry(e) for e in q.get(session_id, [])]):
-                if entry.get("sent_at") is None:
+                if entry.get("state") == "queued":
                     return entry["text"], idx
     except Exception as e:
         print(f"queue: get_first_unsent error: {e}", file=sys.stderr)
     return None, -1
 
-# Atomically set sent_at=now (UTC ISO) on msgs[idx] for session_id (in-place update)
+# Atomically set state="sent" + sent_at=now (UTC ISO) on msgs[idx] for session_id (in-place update)
 def _queue_mark_sent(session_id: str, idx: int) -> None:
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
@@ -113,7 +119,7 @@ def _queue_mark_sent(session_id: str, idx: int) -> None:
             q = _load_queue()
             msgs = [_normalize_entry(e) for e in q.get(session_id, [])]
             if 0 <= idx < len(msgs):
-                msgs[idx] = {**msgs[idx], "sent_at": now_iso}
+                msgs[idx] = {**msgs[idx], "state": "sent", "sent_at": now_iso}
                 q[session_id] = msgs
                 _save_queue(q)
     except Exception as e:
