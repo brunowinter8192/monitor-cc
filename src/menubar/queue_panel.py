@@ -17,6 +17,7 @@ from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
 from .queue import load_queue, save_queue
 
 _QUEUE_MINUS_W = 18   # pts — col 1 fixed width: − remove button
+_rebuild_queue_in_progress = False   # re-entry guard: removeFromSuperview on focused NSTextField fires nested end-editing → recursive rebuild
 
 # FUNCTIONS
 
@@ -148,6 +149,16 @@ def _make_queue_input_field(grid_w: int, tag: int):
 # NSWindowStyleMaskNonactivatingPanel prevents app activation but allows makeKeyAndOrderFront_
 # to give the panel keyboard focus for NSTextField input without stealing app activation.
 def _rebuild_queue_panel(app, sessions) -> None:
+    global _rebuild_queue_in_progress
+    if _rebuild_queue_in_progress:
+        return
+    _rebuild_queue_in_progress = True
+    try:
+        _rebuild_queue_panel_inner(app, sessions)
+    finally:
+        _rebuild_queue_in_progress = False
+
+def _rebuild_queue_panel_inner(app, sessions) -> None:
     for sv in list(app._queue_sv.arrangedSubviews()):
         app._queue_sv.removeView_(sv)
         sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
