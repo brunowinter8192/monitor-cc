@@ -101,3 +101,21 @@ ID-Belegung: L=1, Digits=2-10 (`slot+1`), Arrow-Right=20, Arrow-Left=21. Freier 
 Fix: `_CMD_K_ID = 30`. Einzige Änderung in `hotkey.py` — Konstante, nicht `RegisterEventHotKey`-Keycode. Import-Check bestätigt keine Kollision mehr.
 
 Debug-Prints wurden nicht eingebaut — ID-Kollision war durch statische Code-Analyse eindeutig identifizierbar (slot-Mapping `hkid.id - 1` + ID-Tabelle aller registrierten Hotkeys).
+
+## Cmd+K orderBack + Sessions-Alignment (Runde 2 Follow-up)
+
+### Cmd+K — orderBack_ auf NSStatusWindowLevel wirkungslos
+
+Debug-Prints bestätigten: Registration OK (hk_ref non-null), `kEventHotKeyPressed` feuert (`hkid.id=30`), `_background_panel` wird aufgerufen, State flippt korrekt (`_panel_backgrounded` True↔False). Einziges Problem: `orderBack_(None)` auf einem Panel mit `setLevel_(NSStatusWindowLevel)` (Level ≈ 25) ist visuell wirkungslos. `orderBack_` ordnet das Fenster hinter andere Fenster AUF DEMSELBEN ODER HÖHEREM Level — kein normales App-Fenster liegt bei Level ≥ 25, daher bleibt das Panel sichtbar vorne.
+
+Fix: Level temporär absenken vor `orderBack_`, beim Foregrounding wiederherstellen:
+- Background: `panel.setLevel_(0)` (NSNormalWindowLevel) → `panel.orderBack_(None)`
+- Foreground: `panel.setLevel_(25)` (NSStatusWindowLevel) → `panel.orderFrontRegardless()`
+
+Gilt für beide Panels (`_panel` + `_tracker_panel`) symmetrisch.
+
+`NSStatusWindowLevel` nicht als Konstante in `app.py` importiert — Integer `25` direkt verwendet (entspricht AppKit-Enum-Wert).
+
+### Bug 5 — Sessions-Spalten-Drift (● vs ASCII)
+
+`●` (U+25CF, BLACK CIRCLE) rendert in Menlo 13pt mit breiterer Advance-Width als eine Monospace-Zelle → Spalten nach dem Bullet driften je nach Projekt-Kontext leicht. Fix: `●` → `*` (ASCII 0x2A) in beiden Format-Strings in `panel.py` (main-row `_rebuild_panel` + `_update_panel_inplace`). Worker-Prefix (`"      "` 6 Spaces) unverändert. Beide Prefixe jetzt rein ASCII → exakte Menlo-Ausrichtung garantiert.
