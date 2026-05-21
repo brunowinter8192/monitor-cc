@@ -150,9 +150,142 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
+### block_bd_cli_worker.py (69 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks `bd` CLI invocations from inside a worker session (worktree CWD). Workers running `bd` commands write bead data to the worktree's `.beads/` copy, silently corrupting main-repo bead state on merge or worktree removal. Exits 2 + stderr. Exits 0 when not running from a worktree or on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`, `os`).
+
+**Blocked patterns:** any Bash command containing `bd <subcommand|flag>` when `os.getcwd()` contains `.claude/worktrees/`.
+
+**Allowed patterns:** any `bd` call from outside a worktree (main session); quoted `bd` examples in strings; non-`bd` commands; parse errors (fail-open).
+
+---
+
+### block_cd_drift.py (77 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks Bash commands that `cd` into a `.claude/worktrees/` path without `cd`-ing back at the end of the chain. Bash tool calls share CWD across invocations; a dangling worktree `cd` causes the next call to write to the wrong tree. Exits 2 + stderr with the fix. Exits 0 when the last `cd` target is not a worktree path, or on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message with fix alternatives) on violation only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`, `os`).
+
+**Blocked patterns:** command contains a `cd .claude/worktrees/...` target AND that worktree path is the LAST `cd` target (no cd-back).
+
+**Allowed patterns:** `cd <worktree> && ... && cd <main-repo>` (cd-back at end); commands with no worktree `cd`; calls from inside a worktree (workers live there — hook skips entirely); parse errors (fail-open).
+
+---
+
+### block_dev_imports_src.py (62 LOC)
+
+**Purpose:** PreToolUse hook (Write + Edit) — blocks dev/ scripts that import from `src/`. dev/ modules are self-contained pipeline probes; importing from `src/` breaks isolation and makes dev/ non-runnable without the full production tree. Fires on Write and Edit for files under a `dev/` path. Exits 2 + stderr. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {file_path, content|new_string}}`).
+**Writes:** stderr (block message with fix) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Write and PreToolUse/Edit entries). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:** Write or Edit where `file_path` matches `/dev/` AND the written content contains `^from src\.` or `^import src\.`.
+
+**Allowed patterns:** files outside `dev/`; dev/ files without `src/` imports; parse errors (fail-open).
+
+---
+
+### block_except_pass.py (60 LOC)
+
+**Purpose:** PreToolUse hook (Write + Edit) — blocks code that contains bare `except ...: pass` (silent exception swallow). Silently swallowing exceptions is prohibited — scripts must fail visibly when they cannot fulfill their purpose. Fires on Write and Edit for any file. Exits 2 + stderr with allowed alternatives. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {content|new_string}}`).
+**Writes:** stderr (block message with alternatives) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Write and PreToolUse/Edit entries). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:** `except [OptionalType]:\n    pass` — any bare exception-swallow block in written content.
+
+**Allowed patterns:** `except ... : raise`; `except ... as e: logger...; raise`; `finally: resource.close()`; parse errors (fail-open).
+
+---
+
+### block_git_add_deps.py (66 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks `git add` commands that target dependency directories (`venv/`, `.venv/`, `node_modules/`). In worktrees these directories are symlinks pointing to the main repo; staging them creates circular self-references on merge. Exits 2 + stderr. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:** `git add` (with optional `-C path`) where command also contains `venv/`, `.venv/`, or `node_modules/` as a target.
+
+**Allowed patterns:** `git add` targeting specific files; `git add .` without a dependency directory in scope (no explicit dep target in the command); parse errors (fail-open).
+
+---
+
+### block_git_destructive.py (96 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks destructive git operations: `git commit --amend`, `git push --force`/`-f`/`--force-with-lease`, `git commit/push --no-verify`, `git commit --allow-empty`, and `git config` modifications (read-only config variants allowed). Enforces the Git Safety Protocol from `tool-use.md`. Exits 2 + stderr with the specific violation and a suggestion. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message with label + suggestion) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:**
+- `git commit --amend`
+- `git push --force` / `--force-with-lease` / `-f`
+- `git commit|push --no-verify`
+- `git commit --allow-empty`
+- `git config` (modify — write operations); read-only flags (`--list`, `--get`, `--show-origin`, etc.) are exempt
+
+**Allowed patterns:** `git commit` (without `--amend`/`--no-verify`/`--allow-empty`); `git push` (without force flags); `git config --list|--get|...` (read-only); parse errors (fail-open).
+
+---
+
+### block_path_typo.py (82 LOC)
+
+**Purpose:** PreToolUse hook (Bash + Read + Write + Edit) — blocks commands or file paths containing known path typos: `.claire/` (tokenizer misspelling of `.claude/`) and `..letter` (double-dot immediately followed by a lowercase letter, e.g. `..claude/`, `..src/`). Fires for all four tool types, inspecting `command` (Bash) or `file_path` (Read/Write/Edit). Exits 2 + stderr with the specific typo class. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command|file_path}}`).
+**Writes:** stderr (typo-specific block message) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash, PreToolUse/Read, PreToolUse/Write, and PreToolUse/Edit entries). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:**
+- `.claire/` anywhere in command or file_path (after quote-stripping)
+- `..letter` — two dots immediately followed by a lowercase letter in a path context (`^`, `/`, whitespace, `=` prefix)
+
+**Allowed patterns:** `.claude/` (correct spelling); `../` (valid parent traversal); quoted strings containing the typo pattern; parse errors (fail-open).
+
+---
+
+### block_venv_no_redirect.py (53 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks `./venv/bin/python <script>.py` calls that have no file redirect (`> file`) or `| tee`. Dev scripts produce verbose output that floods the context window; redirecting to `/tmp/` is mandatory (Rule 4, `tool-use.md`). Exits 2 + stderr with the required form. Exits 0 when redirect/tee present, or on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message with required form) on violation only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:** `./venv/bin/python <anything>.py` (or `venv/bin/python ...`) without `> <file>` or `| tee` in the command.
+
+**Allowed patterns:** command includes `> /tmp/file.md` or `| tee /tmp/file.md`; commands not matching the venv-python-script pattern; parse errors (fail-open).
+
+---
+
+### block_worker_spawn_opus.py (47 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks `worker-cli spawn` calls that specify `opus` as the model argument. Workers are always Sonnet; using Opus as a worker burns ~20–40× billing per token and eliminates the cross-model verification benefit. Exits 2 + stderr with the correct form. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message with correct model form) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked patterns:** `worker-cli spawn ... opus` — `opus` appearing anywhere after the `spawn` subcommand.
+
+**Allowed patterns:** `worker-cli spawn <name> <prompt> <path> sonnet`; `worker-cli spawn` with no model (default = sonnet); parse errors (fail-open).
+
+---
+
 ### hook_setup.py (98 LOC)
 
-**Purpose:** One-shot idempotent installer — adds `PreToolUse` entries to `~/.claude/settings.json` for each hook script, with per-hook matcher (`Bash`, `Edit`, or `Read`). Loops over `_HOOK_ENTRIES` (tuples of command + matcher); skips any entry already present by exact command string. Atomic write via temp + `os.replace`. Supports all 7 current hooks across 3 matchers.
+**Purpose:** One-shot idempotent installer — adds `PreToolUse` entries to `~/.claude/settings.json` for each hook script, with per-hook matcher (`Bash`, `Edit`, or `Read`). Loops over `_HOOK_ENTRIES` (tuples of command + matcher); skips any entry already present by exact command string. Atomic write via temp + `os.replace`. Supports all 17 current hooks across 3 matchers.
 **Reads:** `~/.claude/settings.json`.
 **Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`).
 **Called by:** User manually (`python3 src/hooks/hook_setup.py` from Monitor_CC root). Never imported.
