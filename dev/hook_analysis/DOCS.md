@@ -6,9 +6,9 @@ Offline analysis suite for CC hook-block events. Reads `~/.claude/projects/*/*.j
 
 ## Modules
 
-### analyze_blocks.py (234 LOC)
+### analyze_blocks.py (346 LOC)
 
-**Purpose:** Walk all CC session JSONL files, extract hook-block events in a date window, write a structured MD report (summary-by-hook, by-project×hook, timeline, raw events).
+**Purpose:** Walk all CC session JSONL files, extract hook-block events in a date window, write a structured MD report. Sections: summary-by-hook, friction candidates (same hook+branch with ≥3 blocks in 30 min — likely false-positive loop), top trigger patterns per hook (from parentUuid lookup of the preceding tool_use call), by-project×hook, timeline, raw events with trigger command.
 **Reads:** `~/.claude/projects/*/*.jsonl` (CC session logs).
 **Writes:** `dev/hook_analysis/reports/<timestamp>.md` (or `--output` path).
 **Called by:** user (CLI). Never imported.
@@ -44,6 +44,8 @@ python3 dev/hook_analysis/analyze_blocks.py --output /tmp/blocks.md
 ## Report Sections
 
 1. **Summary by Hook** — total / main-session / worker-session counts per hook
-2. **By Project × Hook** — cross-tabulation, sorted by total desc
-3. **Timeline** — blocks per date per hook
-4. **Events (newest first, max 50)** — raw event table with timestamp, hook, project, type, branch, message prefix
+2. **Friction Candidates** — (hook, branch, project) groups with ≥3 blocks in 30 min; signals stuck workers
+3. **Top Trigger Patterns by Hook** — top-5 trigger commands per hook (from parentUuid lookup); reveals which commands repeatedly hit each hook
+4. **By Project × Hook** — cross-tabulation, sorted by total desc
+5. **Timeline** — blocks per date per hook
+6. **Events (newest first, max 50)** — raw event table with timestamp, hook, project, type, branch, trigger pattern, message prefix
