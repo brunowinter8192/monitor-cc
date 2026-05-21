@@ -47,13 +47,7 @@ Beyond `"allow"` (exit 0 equivalent) and `"deny"` (exit 2 equivalent), the JSON 
 }
 ```
 
-With `"ask"`, CC surfaces the `systemMessage` to the user and awaits explicit confirmation before proceeding. Useful for patterns that are dangerous BUT sometimes intentional — the current exit-2 blocks unconditionally and forces the user to retype.
-
-**Candidate patterns for "ask" instead of block:**
-- `block_dangerous_kill`: `pkill -f` targeting the menubar process is sometimes intentional (after confirming PID). Currently always blocks.
-- `block_chained_sleep` with N ≤ 5 settling-time: identified as FP class in this session. Current hook blocks unconditionally; "ask" would surface the rule and let the user confirm.
-
-**Note:** "ask" adds user friction. Only worth it for patterns where (a) blocking is too strict, and (b) the user has enough context to make the right call in 2 seconds.
+With `"ask"`, CC surfaces the `systemMessage` to the user and awaits explicit confirmation before proceeding. Not used in Monitor_CC by design — every confirmation flow becomes a workflow tax. Hard-allow refinements + updatedInput rewrites are preferred over `ask`.
 
 ---
 
@@ -77,24 +71,21 @@ An alternative hook type where the hook definition is a SHORT PROMPT rather than
 
 ---
 
-## Finding 4 — Worker idle wake-up via Stop hook (candidate pattern)
+## Finding 4 — Watchdog message injection on worker-idle (Monitor_CC enhancement)
 
-**Context:** Workers signal completion by going idle (pane stops outputting). Opus currently polls via `worker-cli response <name>` after a `sleep N && echo done` timer. This is reactive polling — Opus wakes after N seconds regardless of whether the worker finished in 10s or 5 minutes.
+**Context:** When a worker goes idle, Monitor_CC's menubar/watchdog component already detects the transition and SIGTERMs Opus's background `sleep N && echo done` process. This causes Opus's background job to "complete" early (exit code 0). But the wake-up is blind — Opus receives only a generic "Background command completed (exit code 0)" notification with no information about which worker went idle. Opus must then run `worker-cli list` from scratch to determine what happened.
 
-**Candidate mechanism (CC Stop hook → tmux send-keys → Opus auto-receives prompt):**
+**Mechanism:** The SIGTERM is already issued at the correct code site in the watchdog. The enhancement is to add a `tmux send-keys` call at that SAME site — immediately after the SIGTERM — to inject a message into Opus's tmux pane:
 
-CC fires a `Stop` hook when a session is about to produce a final response and go idle. A worker-side Stop hook could:
-1. Detect the session is idle (hook fires when worker's own response cycle ends)
-2. Run `tmux send-keys -t worker-Monitor_CC-<opus_session> "" Enter` to inject an empty prompt into the Opus pane
-3. Opus receives the injected prompt, wakes, and polls the now-idle worker
+```
+tmux send-keys -t <opus-session> "worker <name> idle" Enter
+```
 
-This eliminates the timer entirely: worker signals done → Opus wakes immediately.
+Opus then wakes WITH context: it knows which worker finished and can proceed directly to `worker-cli response <name>` without a `list` round-trip.
 
-**What we know:** Stop hook fires at session response completion. The hook has access to CWD, which contains the worker name (via `.claude/worktrees/<name>`). The Opus session name is `worker-Monitor_CC-opus` or similar (discoverable via `tmux list-sessions`).
+**Status:** Monitor_CC-side change, not a CC hook API capability per se. Included here because it addresses the same problem class — reducing Opus's reactive polling discipline by making the signal self-describing. Implementation deferred; no code change in this session.
 
-**What we don't know:** Whether `tmux send-keys` from inside a hook subprocess reliably lands in the Opus pane across session boundaries. Whether the Stop hook fires when the worker is blocked (tool call pending) vs only on clean idle. Whether Opus's session name is stable enough to target.
-
-**Status:** candidate only. No implementation. Next step: build a dev/ probe in a worker session that fires a Stop hook and verifies the Opus pane receives the keys.
+**Migration path:** once injection is live and verified over a real window, delete the "Timer wakes → `worker-cli status <name>`" discipline line from `~/.claude/shared-rules/opus/workers-2.md § Timer & Polling Flow`. The injected message replaces the rule: structural signal eliminates the need for self-discipline. Same pattern as the `pkill -f` → `block_dangerous_kill.py` migration.
 
 ---
 
@@ -103,8 +94,8 @@ This eliminates the timer entirely: worker signals done → Opus wakes immediate
 | Capability | Status | Candidate use |
 |---|---|---|
 | `updatedInput` rewrite | Not used by any hook | `git-ambiguous` fix (add ` --`) |
-| `permissionDecision: ask` | Not used | `block_chained_sleep` settling-FP; `block_dangerous_kill` |
+| `permissionDecision: ask` | Not used — rejected by design | — (hard-allow refinements + updatedInput preferred) |
 | Prompt-based hooks | Not used | `diag-chain-and` (Rule 11), `edit-string-not-found` |
-| Stop hook → worker wake-up | Candidate (unverified) | Replace sleep-based polling |
+| Watchdog message injection on worker-idle | Not implemented | Replace blind wake + Opus polling-discipline rule |
 
-All four capabilities are part of the official CC hook API. None are implemented in Monitor_CC yet. Decision on which to migrate to is deferred until `dev/hook_firing/` and `dev/tool_use_errors/` have produced empirical FP + coverage-gap data over a real window.
+`updatedInput`, `ask`, and prompt-based hooks are part of the official CC hook API. Watchdog injection is a Monitor_CC-side change independent of the CC hook API. Decision on which hook-API capabilities to migrate to is deferred until `dev/hook_firing/` and `dev/tool_use_errors/` have produced empirical FP + coverage-gap data over a real window.
