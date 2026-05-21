@@ -132,38 +132,38 @@ def _queue_mark_sent(session_id: str, idx: int) -> None:
     except Exception as e:
         print(f"queue: mark_sent error: {e}", file=sys.stderr)
 
-# Focus Ghostty terminal for cwd and type message+Return via AppleScript
-# Reads ghostty_cwd_uuid.json for UUID; falls back to cwd-based focus
+# Deliver message to Ghostty terminal via native API (no System Events)
+# UUID path: input text + send enter to terminal by id
+# cwd fallback: find terminal by working directory, input text + send enter
 def _deliver_message(cwd: str, msg: str) -> bool:
     uuid = _get_terminal_uuid(cwd)
-    script = (
-        f'tell application "Ghostty"\n'
-        f'  activate\n'
-        f'  focus terminal id "{_esc(uuid)}"\n'
-        f'end tell\n'
-        f'delay 0.1\n'
-        f'tell application "System Events"\n'
-        f'  keystroke "{_esc(msg)}"\n'
-        f'  key code 36\n'
-        f'end tell'
-    ) if uuid else (
-        f'tell application "Ghostty"\n'
-        f'  activate\n'
-        f'  try\n'
-        f'    focus (first terminal whose working directory is "{_esc(cwd)}")\n'
-        f'  on error\n'
-        f'  end try\n'
-        f'end tell\n'
-        f'delay 0.1\n'
-        f'tell application "System Events"\n'
-        f'  keystroke "{_esc(msg)}"\n'
-        f'  key code 36\n'
-        f'end tell'
-    )
+    if uuid:
+        script = (
+            f'tell application "Ghostty"\n'
+            f'  set t to first terminal whose id is "{_esc(uuid)}"\n'
+            f'  input text "{_esc(msg)}" to t\n'
+            f'  send key "enter" to t\n'
+            f'end tell'
+        )
+    else:
+        script = (
+            f'tell application "Ghostty"\n'
+            f'  set targets to (every terminal whose working directory is "{_esc(cwd)}")\n'
+            f'  if (count of targets) > 0 then\n'
+            f'    set t to item 1 of targets\n'
+            f'    input text "{_esc(msg)}" to t\n'
+            f'    send key "enter" to t\n'
+            f'    return true\n'
+            f'  end if\n'
+            f'  return false\n'
+            f'end tell'
+        )
     try:
         r = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
         print(f"queue: osascript rc={r.returncode} stdout={r.stdout.decode(errors='replace')!r} stderr={r.stderr.decode(errors='replace')!r}", file=sys.stderr)
-        return r.returncode == 0
+        if uuid:
+            return r.returncode == 0
+        return r.returncode == 0 and b'true' in r.stdout
     except Exception as exc:
         print(f"queue: osascript exception: {exc}", file=sys.stderr)
         return False
