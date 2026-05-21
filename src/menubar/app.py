@@ -36,6 +36,8 @@ from .panel import (ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET,
 from .system import _focus_session
 # From paths.py: APP_SUPPORT-relative settings path
 from .paths import SETTINGS_FILE as _SETTINGS_PATH
+# From queue.py: message queue storage
+from .queue import load_queue, save_queue
 
 BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
@@ -141,6 +143,76 @@ class _PanelController(NSObject):
         if proj_bg:
             _abort_bg_sleep_timers(proj_bg.sleep_pids)
 
+    def addQueueRow_(self, sender):
+        app = self._app
+        session_id = app._queue_add_tags.get(sender.tag())
+        if not session_id or session_id in app._pending_queue_sessions:
+            return
+        app._pending_queue_sessions.add(session_id)
+        sessions = list_alive_sessions()
+        cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
+        bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
+        _rebuild_panel(app, sessions, bg_by_project)
+        _reregister_digit_hotkeys(app)
+
+    def removeQueueMsg_(self, sender):
+        app = self._app
+        info = app._queue_remove_tags.get(sender.tag())
+        if not info:
+            return
+        session_id, idx = info
+        q = load_queue()
+        msgs = q.get(session_id, [])
+        if 0 <= idx < len(msgs):
+            del msgs[idx]
+            if msgs:
+                q[session_id] = msgs
+            else:
+                q.pop(session_id, None)
+            save_queue(q)
+            app._queue_data = q
+        sessions = list_alive_sessions()
+        cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
+        bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
+        _rebuild_panel(app, sessions, bg_by_project)
+        _reregister_digit_hotkeys(app)
+
+    def commitQueueField_(self, sender):
+        app = self._app
+        tag        = sender.tag()
+        text       = str(sender.stringValue()).strip()
+        session_id = app._pending_queue_tags.get(tag)
+        app._committed_queue_tags.add(tag)   # suppress controlTextDidEndEditing_ cancel path
+        if text and session_id:
+            q = load_queue()
+            q.setdefault(session_id, []).append(text)
+            save_queue(q)
+            app._queue_data = q
+        if session_id:
+            app._pending_queue_sessions.discard(session_id)
+        sessions = list_alive_sessions()
+        cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
+        bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
+        _rebuild_panel(app, sessions, bg_by_project)
+        _reregister_digit_hotkeys(app)
+
+    def controlTextDidEndEditing_(self, notification):
+        app = self._app
+        tag = notification.object().tag()
+        if tag in app._committed_queue_tags:
+            app._committed_queue_tags.discard(tag)
+            return   # already committed via Enter — don't cancel
+        # Focus lost without Enter → discard pending row
+        session_id = app._pending_queue_tags.get(tag)
+        if session_id:
+            app._pending_queue_sessions.discard(session_id)
+        if app._panel_open:
+            sessions = list_alive_sessions()
+            cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
+            bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
+            _rebuild_panel(app, sessions, bg_by_project)
+            _reregister_digit_hotkeys(app)
+
     def windowDidResize_(self, notification):
         frame = notification.object().frame()
         app   = self._app
@@ -201,6 +273,13 @@ class CCMenuBarApp(rumps.App):
         self._hotkey_arr_right_ref = None   # hk_ref for Cmd+→ (module holds CFUNCTYPE anchor)
         self._hotkey_arr_left_ref  = None   # hk_ref for Cmd+← (module holds CFUNCTYPE anchor)
         self._panel_backgrounded: bool = False   # True while active panel is orderBack_'d behind other windows
+        # Queue state
+        self._queue_data: dict = {}              # {session_id: [msgs]} — refreshed each tick from msg_queue.json
+        self._pending_queue_sessions: set = set()  # session_ids with active inline NSTextField
+        self._pending_queue_tags: dict = {}      # {NSTextField tag → session_id}; reset on each rebuild
+        self._queue_add_tags: dict = {}          # {+ button tag → session_id}; reset on each rebuild
+        self._queue_remove_tags: dict = {}       # {− button tag → (session_id, msg_index)}; reset each rebuild
+        self._committed_queue_tags: set = set()  # NSTextField tags committed via Enter; checked in controlTextDidEndEditing_
         self._last_cmd_l_ts: float = 0.0         # timestamp of last Cmd+L press for double-tap detection
 
     @rumps.timer(POLL_INTERVAL)
@@ -250,13 +329,17 @@ class CCMenuBarApp(rumps.App):
         self._bead_tick_counter += 1
         if self._bead_tick_counter % 5 == 0 or self._tracker_open:
             _refresh_bead_data(self, sessions)
+        # Refresh queue data; detect changes to trigger panel rebuild if open
+        new_queue = load_queue()
+        queue_changed = new_queue != self._queue_data
+        self._queue_data = new_queue
         if self._panel_open:
             session_names = {s.name for s in sessions}
             new_abort_projs = {p for p in bg_by_project if p != 'unknown'}
             abort_flap = new_abort_projs != set(self._abort_btns_by_project)
             set_change = session_names != set(self._displayed_items)
-            if abort_flap or set_change:
-                reasons = '+'.join(r for r, v in [('abort-flap', abort_flap), ('session-set-change', set_change)] if v)
+            if abort_flap or set_change or queue_changed:
+                reasons = '+'.join(r for r, v in [('abort-flap', abort_flap), ('session-set-change', set_change), ('queue-change', queue_changed)] if v)
                 _tick_log(True, sessions, self._displayed_items, reasons)
                 _rebuild_panel(self, sessions, bg_by_project)
                 _reregister_digit_hotkeys(self)
@@ -413,8 +496,14 @@ def _reset_panel_to_default(app: 'CCMenuBarApp') -> None:
     elif app._panel_open:
         _resize_panel(app, PANEL_HEIGHT)
 
-# Open main panel: reposition + show + register Cmd+→ + Cmd+1..9
+# Open main panel: rebuild with fresh data → reposition → show → register Cmd+→ + Cmd+1..9
+# Rebuild on open ensures queue rows reflect current queue file (not last closed-panel tick state)
 def _open_main_panel(app: 'CCMenuBarApp') -> None:
+    sessions = list_alive_sessions()
+    cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
+    bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
+    app._queue_data = load_queue()
+    _rebuild_panel(app, sessions, bg_by_project)
     _reposition_panel(app._panel, app._nsapp.nsstatusitem)
     app._panel.orderFrontRegardless()
     app._panel.enableCursorRects()
