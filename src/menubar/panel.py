@@ -289,8 +289,7 @@ def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining
     container.addSubview_(line)
     abort_btn = None
     if proj_min_remaining is not None:
-        mins, secs = divmod(proj_min_remaining, 60)
-        btn_text = f'⊗ {mins}:{secs:02d}'
+        btn_text = 'abort'
         btn_w = len(btn_text) * 8 + 8   # approx Menlo char width; right-anchored
         abort_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(w - btn_w, 0, btn_w, 18))
         abort_btn.setBordered_(False)
@@ -388,13 +387,13 @@ def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
                 app._panel_sv.addView_inGravity_(btn, 1)
                 app._displayed_items[s.name] = btn
             else:
-                line = f'      {name_col} {dot} {badge.ljust(_COL_TIMER_W)}'
+                line = f'      {name_col} {dot}'
                 btn  = _make_row_button(line, pw)
                 app._panel_sv.addView_inGravity_(btn, 1)
                 app._displayed_items[s.name] = btn
 
 # In-place title update while NSPanel is open; preserves widget positions.
-# Updates session row titles AND per-project abort button countdowns.
+# Updates session row titles only (abort button label is static 'abort', no per-tick update).
 def _update_panel_inplace(app, sessions, bg_by_project) -> None:
     session_map = {s.name: s for s in sessions}
     main_slot = 0
@@ -411,21 +410,9 @@ def _update_panel_inplace(app, sessions, bg_by_project) -> None:
             slot_str = f'[{main_slot}] ' if main_slot <= 9 else '    '
             line, color = f'{slot_str}* {name_col} {dot} {badge.ljust(_COL_TIMER_W)}', NSColor.systemOrangeColor()
         else:
-            line, color = f'      {name_col} {dot} {badge.ljust(_COL_TIMER_W)}', None
+            line, color = f'      {name_col} {dot}', None
         attrs = {NSFontAttributeName: _MENLO()}
         if color is not None:
             attrs[NSForegroundColorAttributeName] = color
         btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(line, attrs))
-    # Update per-project abort button countdowns inline (no layout change needed)
-    if bg_by_project:
-        for proj_name, abort_btn in app._abort_btns_by_project.items():
-            proj_bg = bg_by_project.get(proj_name)
-            if proj_bg is None:
-                continue
-            mins, secs = divmod(proj_bg.min_remaining, 60)
-            abort_btn.setAttributedTitle_(
-                NSAttributedString.alloc().initWithString_attributes_(
-                    f'⊗ {mins}:{secs:02d}',
-                    {NSFontAttributeName: _MENLO(),
-                     NSForegroundColorAttributeName: NSColor.systemRedColor()}))
