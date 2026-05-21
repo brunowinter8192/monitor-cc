@@ -119,3 +119,26 @@ Gilt für beide Panels (`_panel` + `_tracker_panel`) symmetrisch.
 ### Bug 5 — Sessions-Spalten-Drift (● vs ASCII)
 
 `●` (U+25CF, BLACK CIRCLE) rendert in Menlo 13pt mit breiterer Advance-Width als eine Monospace-Zelle → Spalten nach dem Bullet driften je nach Projekt-Kontext leicht. Fix: `●` → `*` (ASCII 0x2A) in beiden Format-Strings in `panel.py` (main-row `_rebuild_panel` + `_update_panel_inplace`). Worker-Prefix (`"      "` 6 Spaces) unverändert. Beide Prefixe jetzt rein ASCII → exakte Menlo-Ausrichtung garantiert.
+
+## Cmd+L Double-Tap Reset (2026-05-21)
+
+**Feature:** Doppel-Tap Cmd+L (zwei Presses < 300ms) setzt das aktive Panel auf Standardgröße zurück (PANEL_WIDTH=380, PANEL_HEIGHT=460). Single-Cmd+L bleibt Toggle.
+
+**Implementation in `togglePanel_` (`app.py`):**
+- State: `app._last_cmd_l_ts: float = 0.0` (init in `CCMenuBarApp.__init__`)
+- Detection: `is_double_tap = (now - app._last_cmd_l_ts) < 0.3` am Methoden-Einstieg
+- Double-tap-Pfad: `_reset_panel_to_default(app)` + `app._last_cmd_l_ts = 0.0` (Sentinel), dann `return`
+- Single-Pfad: `app._last_cmd_l_ts = now`, dann normales Toggle-Verhalten unverändert
+
+**`_reset_panel_to_default(app)` (neue Funktion in `app.py`):**
+1. `app._panel_width = PANEL_WIDTH`
+2. `app._panel_min_height = PANEL_HEIGHT`
+3. Tracker offen → `_resize_tracker_panel(app, PANEL_HEIGHT)` (importiert aus `bead_panel.py`)
+4. Main offen → `_resize_panel(app, PANEL_HEIGHT)` (aus `panel.py`)
+5. Kein `_save_settings` — Default ist Code-Konstante, kein User-Setting
+
+**Sentinel-Pattern:** Nach Reset wird `_last_cmd_l_ts = 0.0` gesetzt. `now - 0.0 = now ≈ 1.7e9` → weit über 0.3 → nächster Cmd+L ist garantiert kein Double-Tap (triple-press: open+reset+close).
+
+**Backgrounded-Panel:** Erster Press restauriert (`orderFrontRegardless`, setzt `_last_cmd_l_ts = now`, return). Zweiter Press findet Panel offen und nicht backgrounded → trifft normal auf Double-Tap-Branch.
+
+**Edge case: keins offen + Double-Tap:** `_reset_panel_to_default` wird nicht aufgerufen (Guard `if _tracker_open or _panel_open`), `_last_cmd_l_ts = 0.0`, return — kein Open, kein Resize.
