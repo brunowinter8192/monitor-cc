@@ -138,6 +138,7 @@ def _deliver_message(cwd: str, msg: str) -> bool:
     uuid = _get_terminal_uuid(cwd)
     script = (
         f'tell application "Ghostty"\n'
+        f'  activate\n'
         f'  focus terminal id "{_esc(uuid)}"\n'
         f'end tell\n'
         f'delay 0.1\n'

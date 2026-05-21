@@ -66,6 +66,7 @@ def _esc(s: str) -> str:
 def _deliver_via_uuid(uuid: str, message: str) -> bool:
     script = (
         f'tell application "Ghostty"\n'
+        f'  activate\n'
         f'  focus terminal id "{_esc(uuid)}"\n'
         f'end tell\n'
         f'delay 0.1\n'
