@@ -174,12 +174,19 @@ class _PanelController(NSObject):
         if not info:
             return
         session_id, idx = info
+        # Borderless button click does NOT cause NSTextField to lose focus, so
+        # controlTextDidEndEditing_ is never called. Capture live text directly here.
+        tf        = app._pending_queue_views.get((session_id, idx))
+        live_text = str(tf.stringValue()) if tf is not None else None
         q       = load_queue()
         entries = q.get(session_id, [])
         if 0 <= idx < len(entries):
-            e = entries[idx]
+            e         = entries[idx]
             new_state = "draft" if e.get("state") == "queued" else "queued"
-            entries[idx] = {**e, "state": new_state}
+            updated   = {**e, "state": new_state}
+            if live_text is not None:
+                updated["text"] = live_text
+            entries[idx] = updated
             q[session_id] = entries
             save_queue(q)
             app._queue_data = q
@@ -310,6 +317,7 @@ class CCMenuBarApp(rumps.App):
         self._queue_displayed_names: set = set()   # session names currently shown in queue panel
         self._queue_data: dict = {}                # {session_id: [{text,state,sent_at}]} — refreshed each tick from msg_queue.json
         self._pending_queue_tags: dict = {}        # {NSTextField tag → (session_id, idx)}; reset on each rebuild
+        self._pending_queue_views: dict = {}       # {(session_id, idx) → NSTextField}; reset on each rebuild; used by toggleQueueEntry_ to capture live text
         self._queue_add_tags: dict = {}            # {+ button tag → session_id}; reset on each rebuild
         self._queue_remove_tags: dict = {}         # {× button tag → (session_id, idx)}; reset each rebuild
         self._queue_toggle_tags: dict = {}         # {↑/↓ button tag → (session_id, idx)}; reset each rebuild

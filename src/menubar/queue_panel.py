@@ -125,6 +125,7 @@ def _rebuild_queue_panel_inner(app, sessions) -> None:
     app._queue_add_tags.clear()
     app._queue_remove_tags.clear()
     app._pending_queue_tags.clear()
+    app._pending_queue_views.clear()
     app._queue_toggle_tags.clear()
     state = 'ON' if app._auto_focus else 'OFF'
     app._queue_toggle_btn.setAttributedTitle_(
@@ -200,6 +201,7 @@ def _rebuild_queue_panel_inner(app, sessions) -> None:
                 tf.setAction_(b'commitQueueField:')
                 tf.setDelegate_(app._panel_controller)
                 app._pending_queue_tags[tf_tag] = (s.session_id, i)
+                app._pending_queue_views[(s.session_id, i)] = tf
                 container.addSubview_(tf)
                 if first_draft_tf is None:
                     first_draft_tf = tf
@@ -209,7 +211,9 @@ def _rebuild_queue_panel_inner(app, sessions) -> None:
                 lbl.cell().setLineBreakMode_(4)   # NSLineBreakByTruncatingTail
                 lbl.setAttributedStringValue_(
                     NSAttributedString.alloc().initWithString_attributes_(
-                        f'  [{i + 1}] {text}', {NSFontAttributeName: _MENLO()}))
+                        f'  [{i + 1}] {text}',
+                        {NSFontAttributeName: _MENLO(),
+                         NSForegroundColorAttributeName: NSColor.labelColor()}))
                 container.addSubview_(lbl)
 
             # Col 1: toggle button (↑ draft→queued, ↓ queued→draft); sent has no toggle
