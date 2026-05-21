@@ -81,19 +81,26 @@ def _maybe_deliver_queue(session_id: str, cwd: str) -> None:
     msg_text, msg_idx = _queue_get_first_unsent(session_id)
     if msg_text is None:
         return
+    uuid = _get_terminal_uuid(cwd)
+    print(f"queue: delivering text={msg_text!r} cwd={cwd!r} uuid={uuid!r}", file=sys.stderr)
     success = _deliver_message(cwd, msg_text)
+    print(f"queue: deliver returned success={success}", file=sys.stderr)
     if success:
+        print(f"queue: mark_sent idx={msg_idx}", file=sys.stderr)
         _queue_mark_sent(session_id, msg_idx)
     else:
         print(f"queue: delivery failed for session {session_id[:12]}", file=sys.stderr)
 
 # Normalize a single queue entry to the three-state format (mirrors queue.py).
+# Stale guard: state=queued + sent_at set → treat as sent.
 def _normalize_entry(e) -> dict:
     if isinstance(e, str):
         return {"text": e, "state": "queued", "sent_at": None}
     d = dict(e)
     if "state" not in d:
         d["state"] = "sent" if d.get("sent_at") else "queued"
+    elif d["state"] == "queued" and d.get("sent_at") is not None:
+        d["state"] = "sent"
     return d
 
 # Atomically find first queued entry for session_id; returns (text, idx) or (None, -1).
@@ -154,8 +161,10 @@ def _deliver_message(cwd: str, msg: str) -> bool:
     )
     try:
         r = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
+        print(f"queue: osascript rc={r.returncode} stdout={r.stdout.decode(errors='replace')!r} stderr={r.stderr.decode(errors='replace')!r}", file=sys.stderr)
         return r.returncode == 0
-    except Exception:
+    except Exception as exc:
+        print(f"queue: osascript exception: {exc}", file=sys.stderr)
         return False
 
 # Read ghostty_cwd_uuid.json and return UUID for cwd; None on any error
