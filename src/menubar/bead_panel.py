@@ -195,6 +195,7 @@ def _resize_tracker_panel(app, new_h: float) -> None:
 def _rebuild_bead_panel(app) -> None:
     for sv in list(app._tracker_sv.arrangedSubviews()):
         app._tracker_sv.removeView_(sv)
+        sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
     app._bead_displayed.clear()
     app._bead_expand_tags.clear()
     app._bead_untrack_tags.clear()

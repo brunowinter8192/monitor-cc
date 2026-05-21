@@ -342,6 +342,7 @@ def _resize_panel(app, new_h: float) -> None:
 def _rebuild_panel(app, sessions, bg_by_project=None) -> None:
     for sv in list(app._panel_sv.arrangedSubviews()):
         app._panel_sv.removeView_(sv)
+        sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
     app._displayed_items = {}
     app._cwd_map = {}
     app._abort_btns_by_project = {}

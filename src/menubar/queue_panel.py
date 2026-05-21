@@ -150,6 +150,7 @@ def _make_queue_input_field(grid_w: int, tag: int):
 def _rebuild_queue_panel(app, sessions) -> None:
     for sv in list(app._queue_sv.arrangedSubviews()):
         app._queue_sv.removeView_(sv)
+        sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
     app._queue_add_tags.clear()
     app._queue_remove_tags.clear()
     app._pending_queue_tags.clear()
