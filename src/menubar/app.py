@@ -464,14 +464,25 @@ def _load_settings():
 # Generic deferred panel switch for Cmd+→/← cycling.
 # Safety-net: exceptions must not propagate to ObjC (NSBlockOperation has no Python bridge → SIGABRT).
 # Cycling order: Sessions → Beads → Queue → Sessions (Cmd+→); reverse for Cmd+←.
+# Captures outgoing panel frame before close; restores position+size to incoming panel after open,
+# so user-dragged position and width are preserved across cycles (the _open_* _reposition_* calls
+# would otherwise re-center the panel under the status bar icon on every cycle).
 def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) -> None:
     try:
+        if from_panel == 'main':      from_obj = app._panel
+        elif from_panel == 'tracker': from_obj = app._tracker_panel
+        else:                         from_obj = app._queue_panel
+        from_frame = from_obj.frame()   # capture before close
         if from_panel == 'main':      _close_main_panel(app)
         elif from_panel == 'tracker': _close_tracker_panel(app)
         elif from_panel == 'queue':   _close_queue_panel(app)
         if to_panel == 'main':        _open_main_panel(app)
         elif to_panel == 'tracker':   _open_tracker_panel(app)
         elif to_panel == 'queue':     _open_queue_panel(app)
+        if to_panel == 'main':        to_obj = app._panel
+        elif to_panel == 'tracker':   to_obj = app._tracker_panel
+        else:                         to_obj = app._queue_panel
+        to_obj.setFrame_display_(from_frame, True)   # restore position; display:True flushes immediately
     except Exception as e:
         print(f'[menubar] cycling {from_panel}→{to_panel} error: {e}', file=sys.stderr)
 
