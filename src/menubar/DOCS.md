@@ -58,7 +58,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### hotkey.py (154 LOC)
+### hotkey.py (259 LOC)
 
 **Purpose:** Carbon global hotkey registration. Two public APIs: `register_cmd_l(callback)` — installs the Cmd+L panel-toggle hotkey at app start, kept alive for process lifetime by caller (`app._hotkey_cb`, `app._hotkey_ref`). `register_cmd_digits(callback_map)` / `unregister_hotkeys(refs)` — installs Cmd+1..9 hotkeys lazily on first panel-open, unregisters on panel-close. Module-level state: `_DIGIT_HANDLER_CB` / `_DIGIT_HANDLER_REF` persist the InstallEventHandler across register/unregister cycles (CRITICAL: GC'ing the CFUNCTYPE while the handler is still in Carbon's dispatch chain crashes with SIGSEGV on the next hotkey event); `_DIGIT_CALLBACKS` is the mutable slot→callback map the handler reads. Both `register_cmd_l._handler` and the digit handler filter via `GetEventParameter(kEventParamDirectObject, typeEventHotKeyID)` and return `eventNotHandledErr (-9874)` for unknown IDs so the other handler receives its event unswallowed.
 **Reads:** nothing.
@@ -130,7 +130,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### hook_setup.py (71 LOC)
+### hook_setup.py (97 LOC)
 
 **Purpose:** One-shot idempotent installer — adds the activity-monitor hooks (UserPromptSubmit → working, Stop/StopFailure → idle) to `~/.claude/settings.json`. Safe to re-run; detects existing entries by command path and skips duplicates.
 **Reads:** `~/.claude/settings.json`.
