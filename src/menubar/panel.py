@@ -5,6 +5,8 @@ from datetime import datetime
 from itertools import groupby
 
 from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSCursor, NSFont,
+                    NSEventModifierFlagCommand, NSEventModifierFlagDeviceIndependentFlagsMask,
+                    NSEventModifierFlagShift,
                     NSFontAttributeName, NSForegroundColorAttributeName,
                     NSGridCell, NSGridCellPlacementLeading, NSGridView,
                     NSLayoutAttributeLeading, NSPanel, NSStackView, NSTextField,
@@ -175,6 +177,30 @@ class _CursorlessButton(NSButton):
 class _KeyablePanel(NSPanel):
     def canBecomeKeyWindow(self):
         return True
+
+    def performKeyEquivalent_(self, event):
+        # Cmd-only: route clipboard/edit key equivalents to first responder.
+        # rumps.App has no main menu Edit items so Cmd+V/C/X/A/Z would fall through otherwise.
+        flags = event.modifierFlags() & NSEventModifierFlagDeviceIndependentFlagsMask
+        if flags == NSEventModifierFlagCommand:
+            ch = (event.charactersIgnoringModifiers() or "").lower()
+            responder = self.firstResponder()
+            if responder is not None:
+                sel_map = {"v": "paste:", "c": "copy:", "x": "cut:",
+                           "a": "selectAll:", "z": "undo:"}
+                sel = sel_map.get(ch)
+                if sel and responder.respondsToSelector_(sel):
+                    responder.performSelector_withObject_(sel, None)
+                    return True
+        # Shift+Cmd+Z → redo
+        if flags == (NSEventModifierFlagCommand | NSEventModifierFlagShift):
+            ch = (event.charactersIgnoringModifiers() or "").lower()
+            if ch == "z":
+                responder = self.firstResponder()
+                if responder is not None and responder.respondsToSelector_("redo:"):
+                    responder.performSelector_withObject_("redo:", None)
+                    return True
+        return objc.super(_KeyablePanel, self).performKeyEquivalent_(event)
 
 # Badge for sessions with active background tasks: [B M:SS] if timer running, [B] otherwise
 def _format_bg_badge(remaining) -> str:
