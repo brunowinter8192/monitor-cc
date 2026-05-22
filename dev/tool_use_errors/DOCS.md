@@ -6,7 +6,7 @@ Analysis of tool-use failures and rule violations from Proxy JSONL logs. Consoli
 
 ## Modules
 
-### analyze.py (384 LOC)
+### analyze.py (397 LOC)
 
 **Purpose:** Load one or more Proxy JSONL files, pair tool_use + tool_result blocks, classify each pair against mechanical failure patterns and rule-violation signatures, assign a hookability bucket per pattern, and write a structured MD report. Covers 18 distinct failure/violation patterns across 6 hookability buckets.
 **Reads:** `src/logs/api_requests_*.jsonl` (Proxy JSONL, `raw_payload` field).
@@ -76,6 +76,16 @@ Analysis of tool-use failures and rule violations from Proxy JSONL logs. Consoli
 | `--output FILE` | Output MD file path | stdout |
 
 ## Report Sections
+
+Header (lines 1–2 of every report):
+```
+# Tool-Use Error Analysis — <YYYY-MM-DD HH:MM:SS>
+Audit cutoff: <max_session_unix_ts> (<ISO-UTC>) — next delta-audit starts AFTER this
+```
+`max_session_unix_ts` = largest Unix timestamp embedded in the audited JSONL filenames
+(pattern `_(\d{10,})\.jsonl$`). Use this value as the exclusive lower bound when
+selecting logs for the next delta-audit. Fallback if no timestamp is extractable:
+`Audit cutoff: <not-extractable> — see Source JSONLs list for delta computation`.
 
 1. **Source JSONLs** — files analyzed, event + tool_use counts per file
 2. **Hookability Overview** — all 18 patterns sorted by hookability bucket with violation counts
