@@ -176,13 +176,33 @@ def run_main_loop() -> None:
                     event = read_mouse_event(char)
                     if event is not None:
                         button, col, row = event
-                        if button == 0:  # left click — check for ⎘ copy-button hit
-                            entry = _display._main_copy_rows.get(row)
-                            if entry is not None and col >= _display._main_pane_width - 2:
-                                event_idx, part = entry
-                                copy_to_clipboard(_display.serialize_main_event(event_idx, part))
-                                _display._main_copy_feedback_until[(event_idx, part)] = time.time() + 1.5
-                                input_changed = True
+                        pw = _display._main_pane_width
+                        if button == 0:  # left click
+                            if row == 1:  # search bar row
+                                if col >= pw - 2:  # [→] next match
+                                    if _display._search_matches:
+                                        _display._search_current_idx = (_display._search_current_idx + 1) % len(_display._search_matches)
+                                        _display.ensure_match_visible()
+                                        input_changed = True
+                                elif col >= pw - 6:  # [←] prev match
+                                    if _display._search_matches:
+                                        _display._search_current_idx = (_display._search_current_idx - 1) % len(_display._search_matches)
+                                        _display.ensure_match_visible()
+                                        input_changed = True
+                                else:  # search text area → focus
+                                    _display._search_focused = True
+                                    input_changed = True
+                            else:  # buffer area (row >= 2)
+                                if _display._search_focused:
+                                    _display._search_focused = False
+                                    input_changed = True
+                                else:
+                                    entry = _display._main_copy_rows.get(row)
+                                    if entry is not None and col >= pw - 2:
+                                        event_idx, part = entry
+                                        copy_to_clipboard(_display.serialize_main_event(event_idx, part))
+                                        _display._main_copy_feedback_until[(event_idx, part)] = time.time() + 1.5
+                                        input_changed = True
                         elif button == 64:  # WheelUp → older events
                             _display.main_scroll_offset = max(0, _display.main_scroll_offset + 3)
                             input_changed = True
@@ -191,6 +211,20 @@ def run_main_loop() -> None:
                             input_changed = True
                         elif button >= 32:  # motion/hover
                             _display.main_hover_row = row
+                            input_changed = True
+                    elif _display._search_focused:  # bare ESC → unfocus search
+                        _display._search_focused = False
+                        input_changed = True
+                elif _display._search_focused:  # search input mode
+                    if char in ('\x7f', '\x08'):  # backspace (DEL or BS)
+                        _display._search_query = _display._search_query[:-1]
+                        input_changed = True
+                    elif char in ('\r', '\n'):  # enter → unfocus
+                        _display._search_focused = False
+                        input_changed = True
+                    elif char.isprintable():
+                        if len(_display._search_query) < 200:
+                            _display._search_query += char
                             input_changed = True
                 elif char == 'y':
                     key = resolve_parent_key(_display.main_line_map, _display.main_hover_row)
