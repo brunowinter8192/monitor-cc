@@ -31,7 +31,7 @@ from src.input import wait_for_input         # block until stdin readable OR tim
 **Purpose:** Low-level stdin handling — sets terminal to raw mode, reads unbuffered keypresses and multi-byte SGR mouse sequences, enables/disables mouse tracking modes. Also provides `resolve_parent_key(line_map, hover_row)` (walk hover_row down to nearest mapped key), `copy_to_clipboard(text)` (pipe to pbcopy) used by every pane's `y`-hotkey handler, and `wait_for_input(timeout)` (block on `select.select` for stdin or timeout, fallback to `time.sleep` if stdin not raw) — used in every pane's main loop instead of fixed `time.sleep` so input wakes the loop immediately.
 **Reads:** stdin file descriptor via `os.read(fd, 1)` (unbuffered, bypasses Python IO layer); `select.select` for both `read_keypress` (timeout=0) and `wait_for_input` (caller-provided timeout).
 **Writes:** stdout (escape sequences for mouse mode enable/disable only); terminal mode via `termios`; clipboard via `pbcopy` subprocess.
-**Called by:** `core/monitor.py`, `panes/token_pane.py`, `panes/warnings_pane.py` (lazy), `panes/waste_pane.py`, `workers/worker_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`.
+**Called by:** `core/monitor.py`, `panes/token_pane.py`, `panes/warnings_pane.py` (lazy), `workers/worker_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`.
 **Calls out:** nothing external (stdlib only: `os`, `select`, `subprocess`, `sys`, `termios`, `tty`).
 
 ## Gotchas

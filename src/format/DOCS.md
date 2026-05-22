@@ -10,7 +10,7 @@ ANSI-colored string rendering — tool call pairs, user events, and the token/ca
 # Strip highlighting (strip_marker.py)
 from src.format.strip_marker import highlight_stripped        # inline DIM_YELLOW_BG chunk highlight
 from src.format.strip_marker import get_stripped_data         # (pre_strip_text, chunks) from proxy entry
-from src.format.strip_marker import build_tool_result_strip_lookup  # for waste_pane (raw events)
+from src.format.strip_marker import build_tool_result_strip_lookup
 from src.format.strip_marker import build_tool_id_strip_lookup      # for main-pane (parsed entries)
 
 # Tool call formatting (formatter.py)
@@ -33,10 +33,10 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ### strip_marker.py (85 LOC)
 
-**Purpose:** Proxy-strip content highlighting helper — `highlight_stripped` wraps found chunks in `DIM_YELLOW_BG`/`SOFT_RESET` inline; `get_stripped_data` extracts pre-strip text + removed chunks from a proxy entry for a given message index; `build_tool_result_strip_lookup` / `build_tool_id_strip_lookup` build `tool_use_id → (pre_strip_text, chunks)` maps for waste_pane and main-pane respectively.
+**Purpose:** Proxy-strip content highlighting helper — `highlight_stripped` wraps found chunks in `DIM_YELLOW_BG`/`SOFT_RESET` inline; `get_stripped_data` extracts pre-strip text + removed chunks from a proxy entry for a given message index; `build_tool_result_strip_lookup` / `build_tool_id_strip_lookup` build `tool_use_id → (pre_strip_text, chunks)` maps for main-pane.
 **Reads:** Proxy entry dicts passed as arguments. No I/O, no shared state.
 **Writes:** Returns strings / dicts. No stdout, no file writes.
-**Called by:** `panes.warnings_pane`, `panes.waste_pane`, `core.monitor_display`.
+**Called by:** `panes.warnings_pane`, `core.monitor_display`.
 **Calls out:** `constants` only.
 
 ---
@@ -71,7 +71,7 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ## Gotchas
 
-- `highlight_stripped` wraps each **line** of a chunk individually (`DIM_YELLOW_BG{line}SOFT_RESET` per `\n`-separated segment) rather than wrapping the whole chunk as a single unit. Downstream renderers (`warnings_pane`, `waste_pane`) split the result on `\n` and apply a per-line zebra BG; a single wrap around the whole chunk would leave lines 2..N without `DIM_YELLOW_BG`, causing the zebra selector to miss them. `outer_bg` is appended once after the final highlighted line to restore the caller's row background.
+- `highlight_stripped` wraps each **line** of a chunk individually (`DIM_YELLOW_BG{line}SOFT_RESET` per `\n`-separated segment) rather than wrapping the whole chunk as a single unit. Downstream renderers (`warnings_pane`) split the result on `\n` and apply a per-line zebra BG; a single wrap around the whole chunk would leave lines 2..N without `DIM_YELLOW_BG`, causing the zebra selector to miss them. `outer_bg` is appended once after the final highlighted line to restore the caller's row background.
 - `token_format.py` lazy-imports `formatter.shorten_tool_name` inside `format_cache_tracker()` — both are in the same package so the import is `from .formatter import shorten_tool_name`. Do NOT change to `..formatter`.
 - `_format_k` and `_format_cache_call` use leading underscores but are exported and used by 4 external callers — they are effectively public despite the naming convention.
 - `format_cache_tracker` returns a **5-tuple** `(visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count)` — NOT a string. The render loop (zebra/hover/truncation) lives in `token_pane.py`. `initial_parent_count` counts collapsed parent rows before the viewport start; callers that don't need it unpack with `_, _, _, _, _`.

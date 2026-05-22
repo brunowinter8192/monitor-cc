@@ -6,8 +6,7 @@ Proxy pane TUI package. Reads mitmproxy log entries from `src/logs/api_requests_
 groups them by session turn, and renders an interactive expand/collapse display showing API
 request structure (model, message counts, cache breakpoints, system/tools/messages detail).
 Runs two event loops — one for the main session proxy log, one for the selected worker's proxy
-log. Also exports `parse_proxy_log` and path helpers used by `metadata`, `panes.waste_pane`,
-and `panes.warnings_pane`. Touch this package when changing proxy pane display logic or the
+log. Also exports `parse_proxy_log` and path helpers used by `metadata` and `panes.warnings_pane`. Touch this package when changing proxy pane display logic or the
 parser field extraction. Do NOT touch for the proxy modification pipeline — that lives in `src/proxy/`.
 
 ## Public Interface
