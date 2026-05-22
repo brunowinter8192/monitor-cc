@@ -327,7 +327,7 @@ def render_main_buffer(pane_height: int, pane_width: int, scroll_offset: int) ->
                 _main_copy_rows[phys_row] = (eidx, part)
 
         trunc = truncate_visible(line, pane_width)
-        result_lines.append(f"{trunc}\033[K{RESET}")
+        result_lines.append(f"{trunc}\033[49m\033[K{RESET}")
         if eidx >= 0:
             main_line_map[phys_row] = eidx
 
