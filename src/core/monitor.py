@@ -176,7 +176,14 @@ def run_main_loop() -> None:
                     event = read_mouse_event(char)
                     if event is not None:
                         button, col, row = event
-                        if button == 64:  # WheelUp → older events
+                        if button == 0:  # left click — check for ⎘ copy-button hit
+                            entry = _display._main_copy_rows.get(row)
+                            if entry is not None and col >= _display._main_pane_width - 2:
+                                event_idx, part = entry
+                                copy_to_clipboard(_display.serialize_main_event(event_idx, part))
+                                _display._main_copy_feedback_until[(event_idx, part)] = time.time() + 1.5
+                                input_changed = True
+                        elif button == 64:  # WheelUp → older events
                             _display.main_scroll_offset = max(0, _display.main_scroll_offset + 3)
                             input_changed = True
                         elif button == 65:  # WheelDown → newer events
@@ -191,6 +198,11 @@ def run_main_loop() -> None:
                         copy_to_clipboard(_display.serialize_main_event(key))
 
             now = time.time()
+            _display._main_copy_feedback_until = {
+                k: v for k, v in _display._main_copy_feedback_until.items() if v > now
+            }
+            if _display._main_copy_feedback_until:
+                input_changed = True
             if now - last_data_refresh >= POLL_INTERVAL:
                 newest = _get_newest_main_session()
                 if newest != current_main_session and newest is not None:
