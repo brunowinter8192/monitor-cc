@@ -110,6 +110,8 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     if c_idxs:
         changed = True
 
+    new_messages = _dedup_wakeup_blocks(new_messages)
+
     new_system, original_system2_text, sys_mods, sys_changed = _apply_system_passes(
         payload.get("system", []), system_rules
     )
@@ -177,6 +179,37 @@ def _append_wakeup_text_to_content(content):
     return content
 
 
+# Remove duplicate _WAKEUP_TEXT injections from messages — keeps first occurrence per message.
+# TN path appends {text: _WAKEUP_TEXT} with trailing \n; BGK path inlines via _strip_bg_from_text
+# which calls result.strip(), producing _WAKEUP_TEXT.rstrip('\n'). Both forms count as one wake-up.
+# Comparison uses rstrip('\n') so both variants are matched as duplicates of each other.
+def _dedup_wakeup_blocks(messages: list) -> list:
+    _wakeup_core = _WAKEUP_TEXT.rstrip('\n')
+    result = []
+    for msg in messages:
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            seen = False
+            new_content = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text" and block.get("text", "").rstrip('\n') == _wakeup_core:
+                    if not seen:
+                        seen = True
+                        new_content.append(block)
+                else:
+                    new_content.append(block)
+            result.append({**msg, "content": new_content} if len(new_content) != len(content) else msg)
+        elif isinstance(content, str) and content.count(_wakeup_core) > 1:
+            first = content.index(_wakeup_core)
+            end = first + len(_wakeup_core)
+            if end < len(content) and content[end] == '\n':
+                end += 1
+            result.append({**msg, "content": content[:end]})
+        else:
+            result.append(msg)
+    return result
+
+
 # First-pass message loop — elif-chain strips plan-mode, task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
 def _apply_first_pass(messages: list) -> tuple:
     result = []
@@ -210,8 +243,7 @@ def _apply_first_pass(messages: list) -> tuple:
                 new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
                 pass_mods.append("stripped_task_tools_nag")
                 also_stripped_nag = True
-            if is_failed_bg:
-                new_msg["content"] = _append_wakeup_text_to_content(new_msg["content"])
+            new_msg["content"] = _append_wakeup_text_to_content(new_msg["content"])
             result.append(new_msg)
             if new_msg["content"] != old_content:
                 changed_indices.append(idx)
