@@ -264,23 +264,6 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp._queue_remove_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{× button tag → (session_id, idx)}`. Tags 3000+. Reset on each rebuild. |
 | `CCMenuBarApp._queue_toggle_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{↑/↓ button tag → (session_id, idx)}`. Tags 5000+. Reset on each rebuild. Used by `toggleQueueEntry_`. Only draft and queued entries have a toggle button; sent entries have none. |
 
-## Activity Detection (per session type)
-
-**Workers** (tmux sessions):
-- Alive iff `tmux has-session -t =worker-{project_basename}-{worker_name}` returns 0. Exact-match `=` prefix prevents prefix-matching false positives.
-- Session name reconstructed from worker JSONL cwd: split on `/.claude/worktrees/`, `basename(left)` = project basename.
-- Alive fallback (cwd unreadable from JSONL): `ALIVE_WINDOW_SECS=3600` JSONL age guard.
-- **Status — Hook only** (`APP_SUPPORT/hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. No entry or stale → `idle`. No fallback chain. `UserPromptSubmit` sets working from T=0; `Stop`/`StopFailure` set idle immediately.
-- **Auto-abort** (`app.py:_auto_abort_check`): every tick, if ALL workers of a project are idle AND that project has an active bg sleep timer → start/keep a 5s debounce (`_all_workers_idle_since_ts[project_name]`). Any worker returning to working resets the debounce. After 5s: `_abort_bg_sleep_timers(proj_bg.sleep_pids)` fires (per-project PIDs only). 'unknown'-attributed timers are excluded from auto-abort. Projects with no workers at all are excluded (bool([]) guard).
-
-**Mains** (Ghostty terminals):
-- Alive if JSONL mtime within `ALIVE_WINDOW_SECS=3600` (1h).
-- **Priority 1 — Hook state** (`APP_SUPPORT/hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. `UserPromptSubmit` sets working from T=0 (captures thinking phase); `Stop`/`StopFailure` set idle immediately. No heuristic lag.
-- **Priority 2 — JSONL mtime** (fallback when hooks absent/stale): mtime ≤ `WORKING_THRESHOLD_SECS=10s` = working. TTY mtime removed (cursor blinks cause stuck-at-working).
-- **Priority 3 — Proxy override** (fallback): `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → working. See Gotchas.
-- TTY still used for click-to-focus UUID lookup via `_cc_proc_cache`; not used for working detection.
-- Auto-focus: on `working → idle` transition with `has_bg=False`, `_focus_session(cwd)` fires after a 3s debounce (`_idle_since_ts` dict).
-
 ## Title-Marker Mapping (tty → Ghostty terminal UUID)
 
 **Problem:** Ghostty's AppleScript `working directory` property reflects the PTY's initial cwd, not the shell's current cwd. `focus (first terminal whose working directory is "...")` fails for sessions where the shell ran `cd X && python3 workflow.py --project Y`. Ghostty does NOT expose `tty` or `pid` via AppleScript.
@@ -302,6 +285,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 
 ## Gotchas
 
+- **Session status detection** (Workers + Mains): Priority-1/2/3 fallback chain with threshold values — see `decisions/menubar_session_status.md` for full IST chain.
 - **Singleton enforcement via fcntl lock** (`system.py`): `run()` calls `_acquire_singleton_lock()` before constructing `CCMenuBarApp`. Lock file: `PID_FILE` = `APP_SUPPORT/menubar.pid`. On success: sets `FD_CLOEXEC` on the fd (required for clean `os.execv` restart), writes PID, returns open file handle (held on `run()`'s stack frame for the process lifetime). On failure: prints to stderr and calls `sys.exit(0)`. **Exit code 0 is mandatory**: launchd `KeepAlive=true` respawns on non-zero exit only.
 - **APP_SUPPORT migration** (`paths.py`): on first import, `_migrate_from_dotfiles()` moves `~/.monitor_cc_menubar_{settings,hooks}.json`, `~/.monitor_cc_menubar_hooks.lock`, and `~/.monitor_cc_menubar.pid` to `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`. `os.rename()` is atomic on APFS/HFS+ (same volume). If both old and new exist (partial prior migration or manual intervention): NEW wins, old silently deleted. `hook_writer.py` derives the same APP_SUPPORT path locally (standalone script; relative import not usable).
 - **Restart via plist-resync + detached relaunch** (`app.py:_PanelController.restartApp_`): three-step flow: (1) `write_plist()` (imported from `setup_menubar.py`) — synchronously substitutes `<PROJECT_ROOT>` and writes the updated plist to `~/Library/LaunchAgents/` so any plist edits take effect immediately, not just on the next launchd cycle; (2) `subprocess.Popen(['sh', '-c', 'sleep 0.5 && python3 setup_menubar.py'], start_new_session=True)` — detached helper (survives parent exit) that runs `setup_menubar_workflow()` after a 0.5s grace period, which does `launchctl bootout` + `launchctl bootstrap` with the existing 1s-retry logic; (3) `rumps.quit_application()` — clean status-bar teardown, launchd sees the process exit and respawns from the freshly-written plist. `start_new_session=True` detaches the helper from the dying process so it is not killed when the parent exits. The `write_plist` import is inside `restartApp_` body (not module-level) as a defensive measure against any future import-order sensitivity.
