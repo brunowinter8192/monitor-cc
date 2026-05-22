@@ -6,7 +6,7 @@ import os
 import re
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 INPUT_PREV  = 120   # chars for input preview
@@ -273,12 +273,24 @@ def _check_broad_grep(pair: dict) -> tuple:
         return True, seg.strip()[:INPUT_PREV]
     return False, None
 
+# Emit audit-cutoff header line from max session-ID unix timestamp across JSONL filenames
+def _audit_cutoff_line(proxy_paths: list) -> str:
+    ts_re = re.compile(r'_(\d{10,})\.jsonl$')
+    timestamps = [int(m.group(1)) for p in proxy_paths
+                  if (m := ts_re.search(os.path.basename(p)))]
+    if not timestamps:
+        return 'Audit cutoff: <not-extractable> — see Source JSONLs list for delta computation'
+    max_ts = max(timestamps)
+    iso = datetime.fromtimestamp(max_ts, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    return f'Audit cutoff: {max_ts} ({iso}) — next delta-audit starts AFTER this'
+
 # Build the Markdown report
 def _build_report(proxy_paths, events_by_log, tool_uses, pairs, violations, uncategorized) -> str:
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     total_tu = len(tool_uses)
     total_fail = sum(1 for p in pairs if p['is_error'])
-    L = [f'# Tool-Use Error Analysis — {now}', '', '## Source JSONLs', '']
+    cutoff_line = _audit_cutoff_line(proxy_paths)
+    L = [f'# Tool-Use Error Analysis — {now}', cutoff_line, '', '## Source JSONLs', '']
     for path in proxy_paths:
         label = _log_label(path)
         tu_cnt = sum(1 for tu in tool_uses.values() if tu['label'] == label)
