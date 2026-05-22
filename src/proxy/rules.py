@@ -35,7 +35,7 @@ from .payload_helpers import (
 )
 from .rules_config import _load_config, _load_system2_rules
 from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
-from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER
+from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER, _WAKEUP_SR
 
 _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
@@ -167,6 +167,16 @@ def _check_sidecar(payload: dict) -> tuple:
     )
 
 
+# Append _WAKEUP_SR to content (str or list) as wake-up reminder for failed bg-task signals
+def _append_wakeup_sr_to_content(content):
+    if isinstance(content, str):
+        sep = '' if not content or content.endswith('\n') else '\n'
+        return content + sep + _WAKEUP_SR + '\n'
+    if isinstance(content, list):
+        return list(content) + [{'type': 'text', 'text': _WAKEUP_SR}]
+    return content
+
+
 # First-pass message loop — elif-chain strips plan-mode, task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
 def _apply_first_pass(messages: list) -> tuple:
     result = []
@@ -194,15 +204,19 @@ def _apply_first_pass(messages: list) -> tuple:
             old_content = msg.get("content", "")
             new_msg = dict(msg)
             new_msg["content"] = _strip_task_notification_tags(old_content)
+            is_failed_bg = _content_contains(old_content, "<status>failed</status>")
             also_stripped_nag = False
             if _content_contains(new_msg["content"], "task tools haven"):
                 new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
                 pass_mods.append("stripped_task_tools_nag")
                 also_stripped_nag = True
+            if is_failed_bg:
+                new_msg["content"] = _append_wakeup_sr_to_content(new_msg["content"])
             result.append(new_msg)
             if new_msg["content"] != old_content:
                 changed_indices.append(idx)
-                pass_mods.append("trimmed_task_notification")
+                mod_name = "replaced_task_notification" if is_failed_bg else "trimmed_task_notification"
+                pass_mods.append(mod_name)
                 removed = _find_task_notification_blocks(old_content)
                 if also_stripped_nag:
                     removed = removed + _find_system_reminder_blocks(old_content, "task tools haven")
@@ -369,7 +383,7 @@ def _apply_bg_exit_strip(messages: list) -> tuple:
         new_content, bg_removed = _strip_bg_exit_notifications(old_content)
         if bg_removed:
             result.append({**msg, "content": new_content})
-            pass_mods.append("stripped_bg_exit_notification")
+            pass_mods.append("replaced_bg_completed_text")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = bg_removed
         else:
