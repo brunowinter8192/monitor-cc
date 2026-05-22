@@ -1,7 +1,10 @@
 # INFRASTRUCTURE
 import json
+import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _shell_strip import _strip_non_shell_active
 
 # git diff/log/show with ..-range token (e.g. dev..HEAD, main..feature)
 _GIT_SUBCMD       = re.compile(r'\bgit\b.*?(?<!-)\b(diff|log|show)\b', re.DOTALL)
@@ -24,11 +27,12 @@ def rewrite_git_ambiguous_workflow() -> None:
     command = _parse_command()
     if command is None:
         sys.exit(0)
-    if not _is_git_diff_log(command):
+    stripped = _strip_non_shell_active(command)
+    if not _is_git_diff_log(stripped):
         sys.exit(0)
-    if _has_path_separator(command):
+    if _has_path_separator(stripped):
         sys.exit(0)
-    if not (_has_range_token(command) or _has_bare_ref_token(command)):
+    if not (_has_range_token(stripped) or _has_bare_ref_token(stripped)):
         sys.exit(0)
     _emit_block_hint(command)
     sys.exit(2)

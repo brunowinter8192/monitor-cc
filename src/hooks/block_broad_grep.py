@@ -1,7 +1,10 @@
 # INFRASTRUCTURE
 import json
+import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _shell_strip import _strip_non_shell_active
 
 # Recursive grep: -r or -R flag in combined or standalone short options
 _RECURSIVE_FLAG = re.compile(r'(?:^|\s)-[a-zA-Z]*[rR][a-zA-Z]*(?:\s|$)')
@@ -31,7 +34,8 @@ def block_broad_grep_workflow() -> None:
     command = _parse_command()
     if command is None:
         sys.exit(0)
-    segment = _grep_segment(command)
+    stripped = _strip_non_shell_active(command)
+    segment = _grep_segment(stripped)
     if segment is None:
         sys.exit(0)
     if not _is_recursive(segment):

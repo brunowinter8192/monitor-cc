@@ -1,7 +1,10 @@
 # INFRASTRUCTURE
 import json
+import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _shell_strip import _strip_non_shell_active
 
 # worker-cli spawn with 'opus' anywhere after the spawn subcommand (including as model arg)
 _SPAWN_OPUS = re.compile(r'\bworker-cli\s+spawn\b.*\bopus\b', re.DOTALL)
@@ -26,7 +29,8 @@ def block_worker_spawn_opus_workflow() -> None:
     command = _parse_command()
     if command is None:
         sys.exit(0)
-    if _SPAWN_OPUS.search(command):
+    stripped = _strip_non_shell_active(command)
+    if _SPAWN_OPUS.search(stripped):
         print(_BLOCK_MESSAGE, file=sys.stderr, end="")
         sys.exit(2)
     sys.exit(0)

@@ -1,7 +1,10 @@
 # INFRASTRUCTURE
 import json
+import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _shell_strip import _strip_non_shell_active
 
 # Match: optional `cd && ` prefix, then `./venv/bin/python <X>.py` or `venv/bin/python <X>.py`
 _VENV_SCRIPT = re.compile(r'\.?\.?/?venv/bin/python\s+\S+\.py\b')
@@ -30,9 +33,10 @@ def block_venv_no_redirect_workflow() -> None:
     command = _parse_command()
     if command is None:
         sys.exit(0)
-    if not _VENV_SCRIPT.search(command):
+    stripped = _strip_non_shell_active(command)
+    if not _VENV_SCRIPT.search(stripped):
         sys.exit(0)
-    if _REDIRECT.search(command) or _TEE.search(command):
+    if _REDIRECT.search(stripped) or _TEE.search(stripped):
         sys.exit(0)
     print(_BLOCK_MESSAGE, file=sys.stderr, end="")
     sys.exit(2)
