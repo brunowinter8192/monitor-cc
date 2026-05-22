@@ -20,7 +20,11 @@ _BEAD_HOOK_COMMAND = f"python3 {_BEAD_HOOK_WRITER}"
 
 # Install activity-monitor + bead-tracker hooks into ~/.claude/settings.json; idempotent
 def hook_setup_workflow() -> None:
+    _guard_not_worktree()
     settings = _load_settings()
+    swept = _sweep_stale_hooks(settings)
+    if swept:
+        _save_settings(settings)
     hooks = settings.setdefault("hooks", {})
     added = []
     for event in _HOOK_EVENTS:
@@ -36,14 +40,54 @@ def hook_setup_workflow() -> None:
         _add_bead_hook(hooks)
         added.append("PostToolUse/bead-tracker")
         print("  added PostToolUse/bead-tracker")
-    if not added:
+    if added:
+        _save_settings(settings)
+        print(f"Done. Installed {len(added)} hook(s) into {_SETTINGS_FILE}")
+        print("Restart Claude Code to activate the new hooks.")
+    elif not swept:
         print("All hooks already installed — nothing changed.")
-        return
-    _save_settings(settings)
-    print(f"Done. Installed {len(added)} hook(s) into {_SETTINGS_FILE}")
-    print("Restart Claude Code to activate the new hooks.")
 
 # FUNCTIONS
+
+# Refuse to run if this script is executing from inside a worktree path
+def _guard_not_worktree() -> None:
+    parts = Path(__file__).resolve().parts
+    for i in range(len(parts) - 1):
+        if parts[i] == '.claude' and parts[i + 1] == 'worktrees':
+            print(
+                f"ERROR: This script must be run from the main repo root, not from a worktree at "
+                f"{Path(__file__).resolve()}.\n"
+                "Wechsel in den Main-Repo-Root und rufe das Skript dort auf.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+# Remove hook entries whose python3 script path no longer exists; drop now-empty groups
+def _sweep_stale_hooks(settings: dict) -> int:
+    hooks = settings.get("hooks", {})
+    swept = 0
+    for event, groups in list(hooks.items()):
+        new_groups = []
+        for group in groups:
+            new_hooks = []
+            for h in group.get("hooks", []):
+                cmd = h.get("command", "")
+                if cmd.startswith("python3 "):
+                    tokens = cmd.split()
+                    if len(tokens) >= 2 and not os.path.exists(tokens[1]):
+                        matcher_label = group.get("matcher", "<no matcher>")
+                        print(f"Swept stale: {event} [{matcher_label}] {cmd}")
+                        swept += 1
+                        continue
+                new_hooks.append(h)
+            if new_hooks:
+                new_groups.append({**group, "hooks": new_hooks})
+        hooks[event] = new_groups
+    if swept:
+        print(f"Swept {swept} stale hook(s)")
+    else:
+        print("Sweep clean — no stale hooks found")
+    return swept
 
 # True if a hook entry for _HOOK_COMMAND already exists under event
 def _already_installed(hooks: dict, event: str) -> bool:

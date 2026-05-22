@@ -312,17 +312,17 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### hook_setup.py (99 LOC)
+### hook_setup.py (143 LOC)
 
-**Purpose:** One-shot idempotent installer — adds `PreToolUse` entries to `~/.claude/settings.json` for each hook script, with per-hook matcher (`Bash`, `Edit`, or `Read`). Loops over `_HOOK_ENTRIES` (tuples of command + matcher); skips any entry already present by exact command string. Atomic write via temp + `os.replace`. Supports all 18 current hooks across 3 matchers.
+**Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message if the script is running from a worktree path — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]` (not only `PreToolUse`), checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source (worktree accident, repo move, etc.).
 **Reads:** `~/.claude/settings.json`.
-**Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`).
+**Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`; up to two saves per run — one after sweep if stale entries found, one after add-loop if new entries installed).
 **Called by:** User manually (`python3 src/hooks/hook_setup.py` from Monitor_CC root). Never imported.
-**Calls out:** stdlib only (`json`, `os`, `pathlib`).
+**Calls out:** stdlib only (`json`, `os`, `pathlib`, `sys`).
 
-**Usage:** `python3 src/hooks/hook_setup.py` — run once after clone or reinstall. Installs all hooks in `_HOOK_SCRIPTS`. Restart CC to activate.
+**Usage:** `python3 src/hooks/hook_setup.py` — run once after clone or reinstall. Re-run any time to heal stale hook entries. Restart CC to activate new hooks.
 
-**IMPORTANT:** Must be run from the MAIN REPO root (not a worktree). `_HOOKS_DIR = Path(__file__).resolve().parent` resolves to the script's location — running from a worktree registers worktree-path entries that become dead after the worktree is removed. Idempotency check uses exact path string match, so worktree-path ≠ main-repo-path → running from a worktree re-registers all hooks with wrong paths.
+**Note:** Must be run from the MAIN REPO root, not a worktree. The guard now enforces this — attempting to run from a worktree exits with exit code 2 and a clear message before touching settings.json.
 
 ---
 
@@ -330,7 +330,8 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 - **Fail-open is mandatory.** All hooks exit 0 on any parse error or missing field — a hook must never block a legitimate tool call due to its own failure. A broken hook that blocks everything is a footgun.
 - **Global registration.** Bash hooks fire for every Bash call; Edit hooks for every Edit call; Read hooks for every Read call — across all CC sessions on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
-- **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths.
+- **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths. The sweep pass removes the old stale paths automatically on re-run.
+- **Stale hooks block all Bash calls.** A stale `python3 <missing>.py` hook exits 2 (Python interpreter error for missing file), which CC treats as a block — every Bash command in every session fails globally. Recovery: re-run `hook_setup.py` from the main repo root (from a real terminal, not CC's Bash tool, since Bash is blocked). The sweep removes dead entries before the add-loop runs.
 - **`block_chained_sleep.py` strips non-shell-active regions before matching.** Heredoc bodies, single/double-quoted strings, and ANSI-C quotes are replaced with spaces before the `_SLEEP_TOKEN` regex runs. `$(...)` and backtick expressions are kept active. False-positive on `echo "sleep 5"` or heredoc-body sleeps no longer fires.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
