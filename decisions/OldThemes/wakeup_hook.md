@@ -98,3 +98,47 @@ Production wake-up path: `strip_bg_completed.py` (`replaced_bg_completed_text`) 
 ## Iteration 5 — Generalized wake-up text (2026-05-22)
 
 `_WAKEUP_TEXT` changed from `'worker idle\n'` to `'background done — check worker or other process\n'`. Rationale: the proxy replace-path fires for ALL `<task-notification>` (failed) and ALL `Background command "…" failed/completed (exit code 143/137)` — both worker timers AND non-worker background tasks (rag-cli, builds, etc.). The old text was misleading for the non-worker case. Generic wording keeps the hint accurate regardless of background-task source.
+
+---
+
+## Iteration 6 — Dedup + Universal Non-Failed Wake-Up (2026-05-22, later same day, commit `fcfe6c1`)
+
+### Problems identified live
+
+Two bugs discovered via proxy log inspection during a session debugging "Punkt im Proxy-Pane statt Wake-Up-Text":
+
+1. **Double-Inject:** when CC delivers BOTH notification shapes for the same background-task termination (routine case — CC fires `<task-notification status=failed>` AND the plain-text `Background command "..." exit code 143` in the same user-turn), both replace-paths fire independently on the SAME message. Each appends a wake-up text block. Result: the message has TWO identical `_WAKEUP_TEXT` blocks back-to-back. Proxy-pane screenshot showed msg[74] with both `EFF:TN` and `EFF:BGK` strip-labels followed by two text-blocks `[0] 47c background done — check worker or other process` and `[1] 48c background done — check worker or other process`.
+
+2. **Non-failed TN gets no wake-up:** `_apply_first_pass` gated `_append_wakeup_text_to_content` behind `is_failed_bg = "<status>failed</status>" in old_content`. Non-failed TNs (normal task completion, e.g. `<status>done</status>`) got their XML stripped down to a `"."` placeholder (from `payload_helpers.py::_strip_task_notification_tags` line 167 — empty content becomes `"."` to avoid empty-block API errors) without any wake-up indication.
+
+### Fix (commit `fcfe6c1`)
+
+**Bug 1 — Dedup:** new helper `_dedup_wakeup_blocks(messages) → messages` runs as final message-side pass in `apply_modification_rules` (after `_apply_bg_exit_strip`, before `_apply_system_passes`). Per user-message: collapses multiple `_WAKEUP_TEXT` text-blocks to one (keep first, drop subsequent duplicates). Comparison uses `rstrip('\n')` to treat TN-path (with trailing `\n`) and BGK-path (without `\n`) as duplicates. Operates ONLY on `msg["content"]` — never touches `stripped_msg_removed` (display invariant: wake-up text is INJECTED into outgoing payload, NOT stripped from it; proxy-pane shows wake-up blocks as normal text, never as dim-yellow strip chunks).
+
+**Bug 2 — Universal Wake-Up:** removed the `if is_failed_bg:` guard around `_append_wakeup_text_to_content` in `_apply_first_pass`. Wake-up now appended to ALL `<task-notification>` blocks regardless of status. Mod-name semantics preserved: `replaced_task_notification` still indicates failed TN, `trimmed_task_notification` now means "non-failed TN stripped + wake-up appended".
+
+### Smoke (7/7 PASS in `/tmp/wakeup_dedup_smoke.py`)
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | Failed TN + BGK in SAME text block | 1 wakeup block |
+| 2 | Non-failed TN only | 1 wakeup block (new behavior) |
+| 3 | Non-failed TN + BGK | 1 wakeup block |
+| 4 | Failed TN only (regression) | 1 wakeup block |
+| 5 | BGK only (regression) | 1 wakeup block |
+| 6 | Failed TN + BGK in SEPARATE blocks (live `[0] 47c` + `[1] 48c` screenshot scenario) | 1 wakeup block |
+| 7 | Display invariant: `_WAKEUP_TEXT` absent from `stripped_msg_removed` across T1/T2/T3/T6 | all pass |
+
+### Architecture status post-Iteration-6
+
+1. **Detection:** any of {`<task-notification>` block, plain-text BGK exit notification} present in user-turn.
+2. **Injection:** `_append_wakeup_text_to_content` (any TN, via `_apply_first_pass`) OR `_strip_bg_from_text` inline replacement (BGK, via `_apply_bg_exit_strip`). Both fire independently.
+3. **Dedup:** `_dedup_wakeup_blocks` final pass guarantees ≤ 1 wake-up block per user-message regardless of how many injectors fired.
+4. **Display invariant:** wake-up text never enters `stripped_msg_removed`; proxy-pane renders it as normal content.
+
+### Quellen
+
+- decisions/pipe05_proxy_cache.md (IST reflects `fcfe6c1`).
+- src/proxy/rules.py `_dedup_wakeup_blocks`, `_apply_first_pass`.
+- src/proxy/payload_helpers.py `_strip_task_notification_tags` line 167 (the `"."` placeholder source).
+- src/proxy/strip_bg_completed.py (BGK path, unchanged).

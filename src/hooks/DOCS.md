@@ -2,9 +2,14 @@
 
 ## Role
 
-Global CC safety hooks — PreToolUse scripts that intercept Bash, Edit, and Read tool calls and block known-destructive patterns before execution. Registered in `~/.claude/settings.json` (global, fires for ALL projects on this machine, not just Monitor_CC). Each hook script reads CC's JSON payload from stdin and exits 0 (allow) or 2 (block, stderr shown to user).
+Global CC safety hooks — PreToolUse scripts that intercept Bash, Edit, and Read tool calls and either **block** known-destructive patterns or **silently rewrite** known-broken patterns before execution. Registered in `~/.claude/settings.json` (global, fires for ALL projects on this machine, not just Monitor_CC). Each hook script reads CC's JSON payload from stdin and either exits 0 (allow / silent-rewrite via `hookSpecificOutput.updatedInput` JSON to stdout) or 2 (block, stderr shown to user).
 
-Design rationale and statistics: `decisions/OldThemes/tool_use_safety/2026-05-12_session_findings.md`.
+**Two hook classes:**
+
+- **Block hooks** (`block_*.py`) — exit 2 + stderr when detecting damage patterns (irreversible commands, context-flooding outputs). Damage-prevention only.
+- **Rewrite hooks** (`rewrite_*.py` plus the recently-upgraded `block_path_typo.py`) — exit 0 + JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command|file_path}` containing the corrected input. Pattern-class: a broken input has a unique computable corrected form. CC v2.1+ supports this for Bash + Read + Write under `acceptEdits` mode (Issue [#47853](https://github.com/anthropics/claude-code/issues/47853) OP). Edit-Matcher exhibits an anomaly under investigation — see `decisions/OldThemes/tool_use_safety/2026-05-22_block_path_typo_edit_no_fire.md`.
+
+Design rationale and statistics: `decisions/OldThemes/tool_use_safety/2026-05-12_session_findings.md`. Hook API capabilities and auto-rewrite conversion: `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_auto_rewrite_works.md`.
 
 ## Public Interface
 
@@ -251,48 +256,77 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### rewrite_git_ambiguous.py (96 LOC)
+### rewrite_git_ambiguous.py (104 LOC)
 
-**Purpose:** PreToolUse hook (Bash) — detects `git diff/log/show` commands with an ambiguous argument (branch/commit ref without a `--` path separator) and BLOCKS with a one-line stderr hint. Originally designed as `updatedInput` rewrite (per anthropics SKILL.md), but empirically refuted 2026-05-22: CC does NOT apply `allow + updatedInput` on general PreToolUse Bash (only on `AskUserQuestion`, per CC CHANGELOG line 1324). Block-with-hint is the fallback — model retries with `--` appended manually. See `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_capabilities.md` Finding 1.
+**Purpose:** PreToolUse hook (Bash) — detects `git diff/log/show` commands with an ambiguous argument (branch/commit ref without a `--` path separator) and **auto-rewrites** by inserting `--` at the correct position. Upgraded 2026-05-22 commit `1dbae5d` from block-and-hint to auto-rewrite — the 2026-05-22 earlier "refuted" finding on `updatedInput` for Bash was incorrect (see `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_auto_rewrite_works.md`).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
-**Writes:** stderr (one-line block hint) on match; nothing on passthrough.
+**Writes:** stdout (single-line JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command` + `systemMessage`) on match; nothing on passthrough.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** stdlib only (`json`, `re`).
+**Calls out:** stdlib only (`json`, `re`); imports `_strip_non_shell_active` from `_shell_strip.py`.
 
-**Detection (blocks when ALL true):**
+**Detection (rewrites when ALL true):**
 1. Command contains `git ... diff|log|show` pattern
 2. No standalone ` -- ` path separator already present (excludes `--stat`, `--format`, etc.)
 3. Either: a range token (`<name>..<name>`, `<name>..`, `..<name>`) OR a bare ref name (first non-flag token after the subcommand matches `[a-zA-Z0-9][a-zA-Z0-9_/\-]*`)
 
-**Block hint (stderr):** "BLOCKED: git diff/log/show with bare ref or ..-range — append ` -- ` after the git subcommand args (before any pipe or redirect) to disambiguate branch/ref from path."
+**Rewrite logic:** `_insert_path_separator(command, stripped)` finds the first chain operator (`&&`, `||`, `|`, `>`, `<`, `;`) in the position-preserving stripped command, backs up over whitespace, and splices `' --'` into the ORIGINAL command at the matching position. If no chain operator: appends ` --` at end (after rstrip). `_strip_non_shell_active` length-preservation is the key invariant that lets the splice work on the original command without re-tokenizing.
 
 **Allowed (passthrough):** command already has ` -- ` separator; no range token and no bare ref; non-git commands; parse errors (fail-open).
 
-**Coverage:** addresses both real violation forms from 2026-05-22 data: `git diff dev --stat` (bare-name) and `git diff dev..HEAD` (range-form). Bare-ref detection: first non-flag token after subcommand; stops at first non-flag token (does not scan all args).
+**Coverage:** addresses both real violation forms from 2026-05-22 data: `git diff dev --stat` (bare-name) and `git diff dev..HEAD` (range-form). Bare-ref detection: first non-flag token after subcommand; stops at first non-flag token.
 
 **Edge case (multi-git chain):** when a Bash invocation chains multiple git diff/log/show calls with one having ` -- ` and another not, `_has_path_separator=True` for the whole chain masks the missing `--` in the second call. Recommend single-git-call Bash invocations.
 
-**Limitation:** bare-ref pattern `[a-zA-Z0-9][a-zA-Z0-9_/\-]*` matches paths with `/` (e.g., `src/module`); a block on `git log src/module` is technically a false positive (no ambiguity for path-only logs), but appending ` -- ` is still semantically correct so the manual retry remains valid.
+**Limitation:** bare-ref pattern `[a-zA-Z0-9][a-zA-Z0-9_/\-]*` matches paths with `/` (e.g., `src/module`); a rewrite on `git log src/module` to `git log src/module --` is technically a false positive (no ambiguity for path-only logs), but the rewritten form is still semantically correct.
 
-**Future:** the `updatedInput` JSON dict is preserved as a comment in `_emit_block_hint` for the future if Anthropic extends the API to support `allow + updatedInput` on general PreToolUse Bash. Swap to `_emit_rewrite` + `exit 0` if/when that lands.
-
-**Quote/heredoc stripping.** Before all pattern checks, `_strip_non_shell_active()` (from `_shell_strip.py`) removes heredoc bodies and quoted regions. Prevents false-positives when a `git diff dev..HEAD` example appears inside a `worker-cli send` message body.
+**Quote/heredoc stripping.** Before all pattern checks, `_strip_non_shell_active()` (from `_shell_strip.py`) removes heredoc bodies and quoted regions while preserving positions. Prevents false-positives when a `git diff dev..HEAD` example appears inside a `worker-cli send` message body.
 
 ---
 
-### block_path_typo.py (82 LOC)
+### rewrite_bd_invalid_repo.py (125 LOC)
 
-**Purpose:** PreToolUse hook (Bash + Read + Write + Edit) — blocks commands or file paths containing known path typos: `.claire/` (tokenizer misspelling of `.claude/`) and `..letter` (double-dot immediately followed by a lowercase letter, e.g. `..claude/`, `..src/`). Fires for all four tool types, inspecting `command` (Bash) or `file_path` (Read/Write/Edit). Exits 2 + stderr with the specific typo class. Exits 0 on any parse error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command|file_path}}`).
-**Writes:** stderr (typo-specific block message) on match only.
+**Purpose:** PreToolUse hook (Bash) — detects `bd --repo <path>` invocations where `<path>` does not exist OR does not contain a `.beads/` subdirectory, and **auto-rewrites** by stripping the invalid `--repo <path>` token from the command. Created 2026-05-22 commit `6b37e94` after a real incident: `bd --repo /Users/brunowinter2000/Monitor_CC create ...` (typo — actual project is under `Documents/ai/`) auto-initialized an unwanted `.beads/dolt/` at the wrong path and triggered a dolt-server port collision. The hook strips invalid `--repo` flags so bd defaults to cwd (which has `.beads/`).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stdout (single-line JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command` + `systemMessage`) on match; nothing on passthrough.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `os`, `re`).
+
+**Detection:** regex `_REPO_TOKEN_RE` matches `--repo /path`, `--repo=/path`, `--repo "/path with spaces"`, `--repo '/path'`. Multiple `--repo` flags in one command and chained bd commands all detected in a single regex pass.
+
+**Path validation (per detected `--repo` arg):**
+1. Skip if path contains shell metachars (`$`, `` ` ``, `\`, `*`, `?`, `{`) — unresolvable at hook time, let through.
+2. Resolve `~` and absolute via `os.path.expanduser` + `os.path.abspath`.
+3. Validate: `os.path.isdir(resolved)` AND `os.path.isdir(resolved + '/.beads')`. Both required — either failure marks the `--repo` invalid.
+
+**Rewrite logic:** span-based substitution removes only the matched `--repo <path>` spans from the original command (no regex-replace, no quoting complexity). Other args, flags, redirections, pipes preserved exactly. At most a double-space remains where the token was — harmless for shell.
+
+**Allowed (passthrough):** `bd` calls without `--repo` (uses cwd default); `bd --repo <valid-path-with-beads>`; non-bd commands; shell-meta paths (`$PROJ_ROOT` etc.); parse errors (fail-open).
+
+**Live verification (2026-05-22):** `bd --repo /Users/brunowinter2000/Wrong/Path create --title "test" --type task` produced bead `Monitor_CC-ggh6` (correct project prefix from cwd-default), `/Users/brunowinter2000/Wrong/` not auto-initialized.
+
+---
+
+### block_path_typo.py (94 LOC)
+
+**Purpose:** PreToolUse hook (Bash + Read + Write + Edit) — detects path typos `.claire/` (tokenizer typo of `.claude/`) and `..letter` (double-dot immediately followed by lowercase letter, e.g. `..claude/`, `..src/`) and **auto-rewrites** them to `.claude/` and `../letter` respectively. Upgraded 2026-05-22 commit `ce8d220` from block-and-hint to auto-rewrite. File name preserved (`block_path_typo.py`) for `~/.claude/settings.json` compatibility; internal semantics are now rewrite.
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command|file_path[+old_string,new_string,replace_all for Edit]}}`).
+**Writes:** stdout (single-line JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command|file_path[+all 4 Edit fields]}` + `systemMessage`) on match; nothing on passthrough.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash, PreToolUse/Read, PreToolUse/Write, and PreToolUse/Edit entries). Never imported.
 **Calls out:** stdlib only (`json`, `re`).
 
-**Blocked patterns:**
-- `.claire/` anywhere in command or file_path (after quote-stripping)
-- `..letter` — two dots immediately followed by a lowercase letter in a path context (`^`, `/`, whitespace, `=` prefix)
+**Detected patterns:**
+- `.claire/` anywhere in command (Bash) or file_path (Read/Write/Edit), after quote-stripping
+- `..letter` — two dots followed by lowercase letter in path context (boundary char `^`, `/`, whitespace, `=`)
 
-**Allowed patterns:** `.claude/` (correct spelling); `../` (valid parent traversal); quoted strings containing the typo pattern; parse errors (fail-open).
+**Rewrites:**
+- `.claire/` → `.claude/` (literal `str.replace`)
+- `..<letter>` → `../<letter>` (regex `(^|[/\s=])(\.\.)([a-z])` → `\1\2/\3`, preserves the boundary char and letter)
+
+**Edit-specific:** `updatedInput` for Edit carries ALL 4 fields (`file_path`, `old_string`, `new_string`, `replace_all`) per Issue #47853 OP requirements — only `file_path` is rewritten, the other three are passed through unchanged from `tool_input`.
+
+**Edit-Matcher anomaly:** the hook is registered for Edit but evidence suggests it doesn't fire on Edit tool calls (bash + Read confirmed working in same session). See `decisions/OldThemes/tool_use_safety/2026-05-22_block_path_typo_edit_no_fire.md`. The auto-rewrite form is correct; the issue is on the CC-side firing pipeline for Edit.
+
+**Allowed (passthrough):** `.claude/` (correct spelling); `../` (valid parent traversal); quoted strings containing typo patterns (stripped before matching); parse errors (fail-open).
 
 ---
 
