@@ -38,6 +38,7 @@ _search_matches: list = []           # [event_idx, ...] ordered by position in b
 _search_match_set: set = set()       # set(_search_matches) for O(1) membership
 _search_current_idx: int = 0         # index into _search_matches for current match
 _search_cached_query: str = ''       # query used to build current _search_matches
+_search_match_line_offsets: dict = {}  # event_idx → line_offset within event where query first appears
 _search_all_line_offsets: dict = {}  # event_idx → first_line_idx in all_lines (for scroll)
 _search_total_lines: int = 0         # len(all_lines) from last render (for scroll)
 
@@ -182,6 +183,27 @@ def _highlight_query_in_line(line: str, query: str, match_bg: str) -> str:
     return result
 
 
+# For each matched event: find the first rendered line containing query; returns {event_idx → line_offset}
+# Fallback 0 when query is in serialized text but not in rendered lines (e.g. truncated output section)
+def _compute_match_line_offsets(query: str, matches: list) -> dict:
+    if not query or not matches:
+        return {}
+    q = query.lower()
+    result = {}
+    for event_idx in matches:
+        if event_idx < 0 or event_idx >= len(main_event_buffer):
+            result[event_idx] = 0
+            continue
+        lines = _format_event_to_lines(main_event_buffer[event_idx])
+        found = 0
+        for offset, line in enumerate(lines):
+            if q in _ANSI_ESCAPE_RE.sub('', line).lower():
+                found = offset
+                break
+        result[event_idx] = found
+    return result
+
+
 # Case-insensitive substring match against serialized event text; returns (matches, match_set)
 def _compute_search_matches(query: str) -> tuple:
     if not query:
@@ -242,9 +264,10 @@ def ensure_match_visible() -> None:
     if not _search_matches or _search_current_idx >= len(_search_matches):
         return
     target_eidx = _search_matches[_search_current_idx]
-    target_line = _search_all_line_offsets.get(target_eidx)
-    if target_line is None:
+    event_start = _search_all_line_offsets.get(target_eidx)
+    if event_start is None:
         return
+    target_line = event_start + _search_match_line_offsets.get(target_eidx, 0)
     try:
         term = os.get_terminal_size()
         buffer_height = term.lines - 2  # terminal -1 for safety, -1 for search bar row
