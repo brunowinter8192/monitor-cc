@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-17 safety hooks registered globally in `~/.claude/settings.json`:
+18 safety hooks registered globally in `~/.claude/settings.json`:
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -23,20 +23,30 @@
 - **Command:** `python3 <absolute-path>/src/hooks/block_chained_sleep.py`
 - **Timeout:** 5s
 
-**Detection:** `\bsleep\s+\d+(?:\.\d+)?\b` anywhere in `tool_input.command`
+**Detection:** `_SLEEP_TOKEN = \bsleep\s+\d+(?:\.\d+)?\b` anywhere in shell-active portion of command (after heredoc/quote stripping). Also reads `tool_input.run_in_background`.
 
-**Allowlist:** full command must match `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$`
+**Allowlist:**
+- Full command matches `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$` (canonical timer) — always allowed
+- OR: `_is_settling_time_allow()` returns True: foreground (`run_in_background=False`), no loop keyword, N ≤ 5, side-effect command present in stripped text
+
+**Side-effect commands** (`_SIDE_EFFECT_RE`, mirrored from `dev/hook_firing/analyze.py`):
+`pkill`, `launchctl`, `kickstart`, `bootout`, `worker-cli kill`, `systemctl`, `kill -<digit>`
 
 **Blocked patterns:**
 - `cmd_before; sleep N && echo done` — commands chained before the sleep
 - `sleep N && other_cmd` — non-`echo done` continuation after sleep
 - Poll loops: `until ...; do sleep N; done`, `while ...; do sleep N; done`
+- Non-canonical `sleep N` with `run_in_background=true`
+- Non-canonical `sleep N > 10` in any chain
 
-**Allowed:** `sleep N && echo done` (bare, optional whitespace/float) — the one canonical orchestration timer form
+**Allowed patterns:**
+- `sleep N && echo done` (bare, optional whitespace/float) — the one canonical orchestration timer form
+- `launchctl bootout ... ; sleep 1 ; echo done` — settling-time after side-effect, N ≤ 5
+- `pkill -x menubar && sleep 2 ; echo restarted` — same class
 
-**Rationale:** when the menubar auto-abort fires SIGTERM on the sleep PID, the entire chained shell exits 143 and pre-sleep output is lost. This enforces Rule 12 from `~/.claude/shared-rules/global/tool-use.md`.
+**Rationale:** 45% FP rate (13/29 blocks) measured 2026-05-22 (`dev/hook_firing/reports/2026-05-22_012326.md`). All 13 FPs were `sleep N ≤ 5` after a side-effect command — legitimate restart/kill settling waits. Core protection (SIGTERM/menubar abort path) unaffected: orchestration timer (`run_in_background=True`) and polling loops remain blocked.
 
-**Fail-open:** both hooks exit 0 on any parse/internal error — never block on hook failure.
+**Fail-open:** exits 0 on any parse/internal error — never block on hook failure.
 
 ### Hook 3 — `block_unauthorized_background.py` (`src/hooks/block_unauthorized_background.py`)
 
@@ -295,7 +305,58 @@
 
 **Fail-open:** exits 0 on any parse error.
 
+### Hook 18 — `rewrite_git_ambiguous.py` (`src/hooks/rewrite_git_ambiguous.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_git_ambiguous.py`
+- **Timeout:** 5s
+- **Hook type:** `updatedInput` rewrite (first rewrite hook in Monitor_CC) — exits 0 + stdout JSON, does NOT exit 2
+
+**Detection (rewrites when ALL true):**
+1. Command matches `\bgit\b.*?\b(diff|log|show)\b` (DOTALL)
+2. No standalone ` -- ` path separator present (regex: `(?:^|\s)--(?:\s|$)`)
+3. Either a range token (`[\w./:-]+\.\.[\w./:-]*`) OR a bare ref name (first non-flag token after subcommand matches `^[a-zA-Z0-9][a-zA-Z0-9_/\-]*$`)
+
+**Rewrite:** appends ` --` to the command (stripped trailing whitespace + ` --`).
+
+**Blocked patterns (rewritten):**
+- `git diff dev --stat` — bare ref name `dev`, no `--` separator → `git diff dev --stat --`
+- `git log dev..HEAD` — range token `dev..HEAD`, no `--` separator → `git log dev..HEAD --`
+- `git -C /path diff dev` → `git -C /path diff dev --`
+
+**Passthrough (no rewrite):**
+- `git log dev..HEAD -- src/foo.py` — already has ` -- ` separator
+- `git diff --stat` — no range token, no bare ref
+- `git commit -m "fix"` — not diff/log/show
+
+**Coverage note:** addresses both violation forms from 2026-05-22 data (`dev/tool_use_errors/reports/2026-05-22_opus.md`): bare-name form (`git diff dev --stat`) and range form (`git diff dev..HEAD`). 2 violations in 672 tool_use blocks from 3 Opus JSONL files.
+
+**Fail-open:** exits 0 with no output (passthrough) on any parse/internal error.
+
 ## Evidenz
+
+**2026-05-22 hook-block analysis** (`dev/hook_firing/analyze.py`, `dev/hook_firing/reports/2026-05-22_012326.md`, 7 days of CC sessions across all projects):
+
+| Hook | Total blocks | FP | FP rate |
+|---|---|---|---|
+| `block_chained_sleep` | 29 | 13 | 45% |
+| `block_dangerous_kill` | 16 | 0 | 0% |
+| `block_read_worktree` | 11 | 0 | 0% |
+| `block_broad_grep` | 7 | 0 | 0% |
+
+All 13 FPs for `block_chained_sleep` were `sleep N ≤ 5` after side-effect command (`launchctl`, `pkill`, `worker-cli kill`, `kill -0`). Settling-time allowance added in Hook 2 (2026-05-22).
+
+**2026-05-22 tool-use error analysis** (`dev/tool_use_errors/reports/2026-05-22_opus.md`, 3 Opus JSONL files, 672 tool_use blocks, 25 failures):
+
+| Pattern | Violations | Hookability |
+|---|---|---|
+| `git diff/log` with bare branch name, missing `--` | 2 | pre-rewritable → Hook 18 |
+| Diagnostic `&&` chain (Rule 11) | 10 | prompt-hook-candidate |
+| Hook-blocked (existing hooks) | 14 | already handled |
+
+Hook 18 (`rewrite_git_ambiguous`) covers the 2 `git-ambiguous` violations.
+
+---
 
 **2026-05-20 compliance run** (`dev/tool_use_analysis/rule_compliance.py`, 5 recent monitor_cc logs, 900 tool_use blocks):
 
@@ -327,9 +388,11 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current 17 hooks (no change needed). Pending evaluation after rollout:
-- Do hooks #9–17 (2026-05-22 batch) intercept violations without false positives in live sessions?
-- Next candidate: Rule-9 violations (Read before Edit) — 1 violation in 5-log sample, low frequency, but the hook would be simple (check tool_input.file_path was recently read — requires session state, not statically detectable from a single payload → likely NOT hookable).
+Keep current 18 hooks (no change needed). Pending evaluation after rollout:
+- Do hooks #9–18 (2026-05-22 batch) intercept violations without false positives in live sessions?
+- `block_chained_sleep` settling-time allowance: verify 45% FP rate drops after rollout (baseline: 13/29 blocks were FP per `dev/hook_firing/reports/2026-05-22_012326.md`).
+- `rewrite_git_ambiguous` `updatedInput` path: verify CC runtime applies the rewrite (live test in session showed the hook fired + produced correct JSON but the command used the original input — may be CC version-dependent or hook ordering dependent).
+- Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.
 
 ## Offene Fragen
 
