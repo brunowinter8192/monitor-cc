@@ -47,9 +47,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (411 LOC)
+### rules.py (425 LOC)
 
-**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to 7 private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_system_passes` (system-block pass).
+**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip or replace system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to 7 private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_system_passes` (system-block pass). `_apply_first_pass` injects `_WAKEUP_SR` (via `_append_wakeup_sr_to_content`) when a TN block contains `<status>failed</status>`; `_apply_bg_exit_strip` emits `replaced_bg_completed_text` (was `stripped_bg_exit_notification`) — both paths replace rather than strip.
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
@@ -69,12 +69,11 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ### strip_sr.py (173 LOC)
 
-**Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 10 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, plan-mode); each template has one or more identifier strings. `claudemd-contents` uses a list of identifiers (`"As you answer the user's questions"` for CC's preamble form, `"Contents of "` for the bare form) — `_match_template` iterates the list with OR semantics. Strip uses `startswith` against extracted SR-block inner text — no greedy regex across code literals.
+**Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 10 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, plan-mode); each template has one or more identifier strings. `claudemd-contents` uses a list of identifiers (`"As you answer the user's questions"` for CC's preamble form, `"Contents of "` for the bare form) — `_match_template` iterates the list with OR semantics. Strip uses `startswith` against extracted SR-block inner text — no greedy regex across code literals. `<task-notification>` blocks do NOT go through this module — they are handled separately by `_apply_first_pass` in `rules.py`. The injected `_WAKEUP_SR` ("Workers may be idle.…") does not match any of the 10 template identifiers and is therefore preserved by all SR-strip passes.
 **Reads:** Message content (string or list of blocks); template catalog (module-local).
 **Writes:** Nothing — returns modified content.
 **Called by:** `src/proxy/rules.py`
 **Calls out:** stdlib only (`re`).
-
 ---
 
 ### strip_po.py (72 LOC)
@@ -87,14 +86,15 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_bg_completed.py (75 LOC)
+### strip_bg_completed.py (93 LOC)
 
-**Purpose:** Strip `Background command "..." failed with exit code 143/137` kill notifications from user-turn content. CC injects these when it detects that a background Bash process was terminated via SIGTERM (143) or SIGKILL (137) — e.g. when the user aborts a sleep timer via the menubar. The failure wording is misleading (user intentionally killed the process) and is noise for Opus. Traverses all 4 content shapes mirroring `strip_po.py`. Regex also covers the `completed (exit code 143/137)` form defensively. Does NOT match exit code 0 (`completed (exit code 0)`) — that is the legitimate timer-done polling signal. Returns `(new_content, removed_chunks)` for BGK-rule attribution via `attribute_chunk`.
+**Purpose:** Replace the first background-Bash kill notification in user-turn content with a wake-up SR; strip any further ones. CC injects `Background command "…" failed/completed (exit code 143/137)` when a background Bash process is terminated via SIGTERM (143) or SIGKILL (137). Instead of silently removing this, the proxy repurposes it as a meaningful Opus wake-up: the first match is replaced with `_WAKEUP_SR` (“Workers may be idle…”), subsequent duplicates in the same traversal are stripped. Traverses all 4 content shapes mirroring `strip_po.py`. Does NOT match exit code 0 — that is the legitimate timer-done polling signal. Returns `(new_content, removed_chunks)` for `replaced_bg_completed_text` mod attribution.
+
+**Wake-up architecture:** CC natively injects bg-task-completion signals when a background bash timer ends or is killed. Rather than discarding them (leaving Opus with an empty wake-up turn and no context), the proxy replaces the first signal with a fixed SR that tells Opus to check workers. `_WAKEUP_SR` starts with “Workers may be idle.” — matches no SR-strip template identifier, so it survives `_apply_final_sr_pass` unchanged.
 **Reads:** Message content (string or list of blocks).
 **Writes:** Nothing — returns `(modified_content, list[str])`.
 **Called by:** `src/proxy/rules.py`
 **Calls out:** stdlib only (`re`).
-
 ---
 
 ### content_strip.py (167 LOC)
@@ -245,5 +245,8 @@ mitmproxy import errors are silent — the proxy crashes on startup and workers 
 **Strip-tracking is guarded per-rule.** In `rules.py` second-pass, each rule (skills / claudemd / pyright) appends to `pass_mods` only if its strip function actually changed the content (`new_content != content`). Without this guard, `_content_contains` could match a marker that `_strip_system_reminder` then fails to strip (e.g. template identifier mismatch) — and `pass_mods` would incorrectly mark the rule as fired, polluting `modifications` and causing `stripped_msg_removed` to capture chunks that still survive in `raw_payload`. See bead Monitor_CC-93l for the original failure case (claudemd `"Contents of "` identifier vs CC's preamble form).
 
 **Pyright-strip lives in the second pass, not the first-pass elif-chain.** `rules.py` has two passes: a first `elif`-chain (exclusive per message — a message that hits one elif cannot trigger another), and a cumulative second pass. Pyright diagnostics SRs can co-occur in the same message with Skills or claudeMd SRs; if pyright lived in the elif-chain it would be silently skipped for those messages. Any new rule that can co-occur with an existing first-pass rule MUST go to the second pass. The structural separation between `_apply_first_pass` and `_apply_cumulative_sr_strips` in `rules.py` enforces this invariant.
+
+
+**Wake-up SR mod names not in strip_vocab.py.** `replaced_bg_completed_text` and `replaced_task_notification` (new mod names emitted when `_WAKEUP_SR` is injected) are NOT yet registered in `strip_vocab.py`’s `RULES` dict. Until updated, `code_for_rule()` returns `None` for both — the monitor emits `SUS:<SR>` (injected SR seen in content, no matching strip-rule attributed to it) and the new rules appear as unrecognised in `INERT` bucket tallies. Functional impact: zero. Cosmetic monitor noise only. Follow-up: add both entries to `strip_vocab.py` RULES and update `classify_tags` to exclude injected SRs from SUS detection.
 
 **`_PRESERVE_PREAMBLE` guard in strip_sr.py.** `strip_sr.py` has a hard-coded guard that prevents stripping claudeMd-context SR blocks: an SR whose inner text starts with `"As you answer the user's questions, you can use the following context:"` is always preserved verbatim, regardless of template matching. This allows the CLAUDE.md project-context block (injected by CC as a claudeMd SR with preamble) to survive the claudemd-strip rule. Adding new "preserve entire block" logic: mirror this pattern — `startswith` check in the extractor before template dispatch.
