@@ -2,11 +2,14 @@
 import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+_WORKTREE_SIGNAL_RE = re.compile(r'/.claude/worktrees/([^/]+)')
 
 _APP_SUPPORT          = Path("~/Library/Application Support/com.brunowinter.monitor_cc_menubar").expanduser()
 _HOOK_STATE_FILE      = _APP_SUPPORT / "hooks.json"
@@ -44,6 +47,7 @@ def hook_writer_workflow() -> None:
         return
     _write_state(session_id, status, cwd)
     if status == "idle":
+        _emit_worker_idle_signal(cwd)
         _maybe_deliver_queue(session_id, cwd)
 
 # FUNCTIONS
@@ -74,6 +78,21 @@ def _load_state() -> dict:
         return json.loads(_HOOK_STATE_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+# Write /tmp/worker-idle-<name>.signal when cwd is inside a worktree; best-effort, never blocks bar-icon update
+def _emit_worker_idle_signal(cwd: str) -> None:
+    match = _WORKTREE_SIGNAL_RE.search(cwd)
+    if not match:
+        return
+    worker_name = match.group(1)
+    try:
+        signal_data = json.dumps({
+            "worker_name": worker_name,
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+        Path(f"/tmp/worker-idle-{worker_name}.signal").write_text(signal_data, encoding="utf-8")
+    except Exception as e:
+        print(f"worker-idle signal: write failed for {worker_name!r}: {e}", file=sys.stderr)
 
 # Find first queued entry for session and deliver; on success set state="sent"+sent_at in-place.
 # On failure: entry left unchanged so next Stop retries. Messages are never removed by the hook.
