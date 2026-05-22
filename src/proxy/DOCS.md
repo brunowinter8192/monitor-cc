@@ -217,6 +217,16 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
+### tool_error_log.py (182 LOC)
+
+**Purpose:** Persistent append-only log of tool_use errors across all projects/sessions. `log_tool_errors(modified_payload, entry)` scans the request payload for `tool_result` blocks with error content, extracts exit code and summary, and appends structured records to `src/logs/tool_use_errors.jsonl`. Read side: `read_all()`, `read_today()`, `read_filtered()` for CLI consumption. `write()` is O_APPEND (POSIX-atomic for writes < PIPE_BUF).
+**Reads:** Modified payload dict (tool_results); `src/logs/tool_use_errors.jsonl` (read functions).
+**Writes:** `src/logs/tool_use_errors.jsonl` (append-only via `O_APPEND`).
+**Called by:** `src/proxy/addon.py` (`log_tool_errors`); `src/cc_errors_cli.py` (`read_all`, `read_today`, `read_filtered`).
+**Calls out:** stdlib only (`json`, `os`, `re`, `datetime`, `pathlib`).
+
+---
+
 ## State
 
 `tool_injection.py` holds four module-level caches (set once per mitmproxy process):

@@ -162,6 +162,18 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
+### bead_tracker_hook.py (73 LOC)
+
+**Purpose:** CC PostToolUse hook — auto-tracks bead IDs referenced in `bd show` / `bd comments [add]` tool calls. Scans Bash tool_result output for bead ID patterns, walks up the project directory tree to find `.beads/dolt` (up to 5 levels), then calls `bd label add` to register the bead as tracked. Standalone script; never imported. Installed by `hook_setup.py`.
+**Reads:** stdin (CC PostToolUse JSON payload); `.beads/dolt` discovery via directory walk; `_BD_TRACK_RE` / `_HAS_DB_FLAG` patterns on `tool_input.command`.
+**Writes:** nothing directly — spawns `bd label add` via subprocess.
+**Called by:** CC hook system (PostToolUse/Bash). Never imported.
+**Calls out:** `subprocess` (`bd`); stdlib (`json`, `re`, `sys`, `pathlib`).
+
+**Usage:** `python3 src/menubar/bead_tracker_hook.py` (stdin = CC hook JSON). Install via `hook_setup.py`.
+
+---
+
 ### hook_setup.py (141 LOC)
 
 **Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message if the script is running from a worktree path — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]`, checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source.
