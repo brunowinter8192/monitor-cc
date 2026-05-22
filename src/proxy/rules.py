@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-import json
 import os
 import re
 import sys
@@ -54,12 +53,8 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     if result is not None:
         return result
 
-    payload, _wakeup_names = _inject_worker_wakeup(payload, model_family)
-
     messages_to_process = list(payload.get("messages", []))
     modifications = []
-    if _wakeup_names:
-        modifications.append("injected_worker_wakeup")
     changed = False
     stripped_msg_indices = []
     stripped_msg_originals = {}
@@ -170,56 +165,6 @@ def _check_sidecar(payload: dict) -> tuple:
         {0: orig_content},
         {0: [orig_content]},
     )
-
-
-# Glob /tmp/worker-idle-*.signal; for opus inject SR block into last user message — returns (modified_payload, injected_names)
-def _inject_worker_wakeup(payload: dict, model_family: str) -> tuple:
-    if model_family != "opus":
-        return payload, []
-    signal_files = list(Path("/tmp").glob("worker-idle-*.signal"))
-    if not signal_files:
-        return payload, []
-    worker_names = []
-    consumed = []
-    for sf in signal_files:
-        try:
-            data = json.loads(sf.read_text(encoding="utf-8"))
-            name = data.get("worker_name", "")
-            if name:
-                worker_names.append(name)
-                consumed.append(sf)
-        except Exception as e:
-            sys.stderr.write(f"inject_worker_wakeup: failed to read {sf}: {e}\n")
-    if not worker_names:
-        return payload, []
-    names_lines = "".join(f"- {n}\n" for n in worker_names)
-    sr_block = (
-        "<system-reminder>\n"
-        "[WORKER-IDLE EVENT]\n"
-        "The following worker(s) just went idle:\n"
-        f"{names_lines}"
-        "Run `worker-cli status` to confirm, then `worker-cli response <name>` "
-        "to read each one's completion checklist.\n"
-        "</system-reminder>"
-    )
-    messages = list(payload.get("messages", []))
-    if not messages or messages[-1].get("role") != "user":
-        return payload, []
-    last_msg = messages[-1]
-    content = last_msg.get("content", "")
-    if isinstance(content, str):
-        new_content = content + "\n\n" + sr_block
-    elif isinstance(content, list):
-        new_content = list(content) + [{"type": "text", "text": sr_block}]
-    else:
-        return payload, []
-    messages[-1] = {**last_msg, "content": new_content}
-    for sf in consumed:
-        try:
-            os.unlink(sf)
-        except Exception as e:
-            sys.stderr.write(f"inject_worker_wakeup: unlink {sf} failed: {e}\n")
-    return {**payload, "messages": messages}, worker_names
 
 
 # First-pass message loop — elif-chain strips plan-mode, task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
