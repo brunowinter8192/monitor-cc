@@ -4,7 +4,7 @@ import re
 import sys
 
 # git diff/log/show with ..-range token (e.g. dev..HEAD, main..feature)
-_GIT_SUBCMD       = re.compile(r'\bgit\b.*?\b(diff|log|show)\b', re.DOTALL)
+_GIT_SUBCMD       = re.compile(r'\bgit\b.*?(?<!-)\b(diff|log|show)\b', re.DOTALL)
 # Range token: <name>..<name> or <name>.. or ..<name>
 _RANGE_TOKEN      = re.compile(r'[\w./:-]+\.\.[\w./:-]*|\.\.[\w./:-]+')
 # Capture text after the subcommand for bare-ref inspection
