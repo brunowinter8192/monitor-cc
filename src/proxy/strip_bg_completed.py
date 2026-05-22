@@ -14,27 +14,20 @@ _BG_EXIT_RE = re.compile(
     r'(?:failed with exit code (?:143|137)|completed \(exit code (?:143|137)\))\n?'
 )
 
-# Wake-up reminder injected in place of the first matched kill notification.
-# Starts with "Workers may be idle." — does NOT match any of the 10 known SR-strip template
-# identifiers, so it survives all subsequent SR-strip passes unchanged.
-_WAKEUP_SR = (
-    '<system-reminder>\n'
-    'Workers may be idle. Run `worker-cli status` to check which ones, '
-    "then `worker-cli response <name>` to read each idle worker's "
-    'completion checklist before deciding next action.\n'
-    '</system-reminder>'
-)
+# Plain-text wake-up hint injected in place of the first matched kill notification.
+# Trailing newline keeps it cleanly separated in multi-line content.
+_WAKEUP_TEXT = 'worker idle\n'
 
 
 # ORCHESTRATOR
 
-# Replace the first Background-command kill notification with _WAKEUP_SR; strip any further ones.
+# Replace the first Background-command kill notification with _WAKEUP_TEXT; strip any further ones.
 # Traverses all 4 content shapes. Returns (new_content, removed_chunks) — removed_chunks is a list
 # of the original notification strings (each starting with 'Background command "') for BGK rule
 # attribution via attribute_chunk. Interface unchanged from the pure-strip version.
 def _strip_bg_exit_notifications(content):
     removed = []
-    injected = [False]  # mutable flag: True after first kill-notification has been replaced with SR
+    injected = [False]  # mutable flag: True after first kill-notification has been replaced
     if isinstance(content, str):
         return _strip_bg_from_text(content, removed, injected), removed
     if isinstance(content, list):
@@ -71,9 +64,9 @@ def _strip_bg_exit_notifications(content):
 
 # FUNCTIONS
 
-# Replace the first BG-exit kill notification in text with _WAKEUP_SR; strip subsequent ones.
+# Replace the first BG-exit kill notification in text with _WAKEUP_TEXT; strip subsequent ones.
 # injected_holder is a [False] list — shared across all _strip_bg_from_text calls in one traversal
-# so the SR is injected at most once per _strip_bg_exit_notifications call.
+# so the wake-up text is injected at most once per _strip_bg_exit_notifications call.
 # Returns text unchanged if no match fires (avoids touching unrelated BG-cmd lines).
 def _strip_bg_from_text(text, out_removed, injected_holder):
     if _BG_CMD_MARKER not in text:
@@ -84,7 +77,7 @@ def _strip_bg_from_text(text, out_removed, injected_holder):
         out_removed.append(m.group(0).rstrip('\n'))
         if not injected_holder[0]:
             injected_holder[0] = True
-            return _WAKEUP_SR
+            return _WAKEUP_TEXT
         return ''
 
     result = _BG_EXIT_RE.sub(_replace, text)
