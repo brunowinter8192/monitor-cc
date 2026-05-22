@@ -133,7 +133,8 @@ def read_mouse_event(first_char: str) -> Optional[Tuple[int, int, int]]:
         seq += ch
 
     if terminator != 'M':
-        return None
+        # 'm' = SGR release event — return sentinel to distinguish from bare ESC (None)
+        return (-1, -1, -1) if terminator == 'm' else None
 
     if not seq.startswith('[<'):
         return None
