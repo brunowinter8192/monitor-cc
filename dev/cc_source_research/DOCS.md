@@ -2,7 +2,7 @@
 
 ## Role
 
-Research artifacts from Claude Code binary + source analysis, anchored to bead Monitor_CC-t1i (Sub-Frage 1: Env-Var-Inventur). Contains env-var inventories extracted from npm binaries and cross-referenced against community decompile repos. Touch this directory when adding new binary extracts or updating the env-var inventory.
+Research artifacts from Claude Code binary + source analysis (env-var inventory). Contains env-var inventories extracted from npm binaries and cross-referenced against community decompile repos. Touch this directory when adding new binary extracts or updating the env-var inventory.
 
 ## Files
 
