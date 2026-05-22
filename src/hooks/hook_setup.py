@@ -18,6 +18,7 @@ _HOOK_SCRIPTS = [
     ("block_broad_grep.py",              "Bash"),
     ("block_git_destructive.py",         "Bash"),
     ("rewrite_git_ambiguous.py",         "Bash"),
+    ("rewrite_bd_invalid_repo.py",       "Bash"),
     ("block_venv_no_redirect.py",        "Bash"),
     ("block_cd_drift.py",                "Bash"),
     ("block_path_typo.py",               "Bash"),
