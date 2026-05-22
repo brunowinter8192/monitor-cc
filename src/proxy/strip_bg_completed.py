@@ -14,9 +14,9 @@ _BG_EXIT_RE = re.compile(
     r'(?:failed with exit code (?:143|137)|completed \(exit code (?:143|137)\))\n?'
 )
 
-# Plain-text wake-up hint injected in place of the first matched kill notification.
-# Trailing newline keeps it cleanly separated in multi-line content.
-_WAKEUP_TEXT = 'worker idle\n'
+# Plain-text wake-up hint for any backgrounded task completion or kill, injected in
+# place of the first matched notification. Trailing newline keeps it cleanly separated.
+_WAKEUP_TEXT = 'background done — check worker or other process\n'
 
 
 # ORCHESTRATOR

@@ -92,3 +92,9 @@ User decision: **proxy only**. The watchdog approach was architecturally invasiv
 ### Final architecture
 
 Production wake-up path: `strip_bg_completed.py` (`replaced_bg_completed_text`) + `rules.py` `_apply_first_pass` (`replaced_task_notification`). Auto-abort (`_abort_bg_sleep_timers`) remains in the menubar tick loop — it is the trigger that causes the timer to terminate early, which in turn causes CC to deliver the notification that the proxy replaces. The two halves are complementary: menubar kills the timer, proxy delivers the signal.
+
+---
+
+## Iteration 5 — Generalized wake-up text (2026-05-22)
+
+`_WAKEUP_TEXT` changed from `'worker idle\n'` to `'background done — check worker or other process\n'`. Rationale: the proxy replace-path fires for ALL `<task-notification>` (failed) and ALL `Background command "…" failed/completed (exit code 143/137)` — both worker timers AND non-worker background tasks (rag-cli, builds, etc.). The old text was misleading for the non-worker case. Generic wording keeps the hint accurate regardless of background-task source.
