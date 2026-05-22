@@ -47,13 +47,15 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (411 LOC)
+### rules.py (466 LOC)
 
-**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to 7 private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_system_passes` (system-block pass).
-**Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
-**Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
+**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`; inject worker-idle wakeup SR for opus. Single exported orchestrator `apply_modification_rules` delegates to 8 private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_inject_worker_wakeup` (opus-only pre-pass), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_system_passes` (system-block pass).
+**Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`; `/tmp/worker-idle-*.signal` files (consumed on read).
+**Writes:** Deletes consumed `/tmp/worker-idle-*.signal` files via `os.unlink` — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
 **Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`, `strip_bg_completed`.
+
+**`_inject_worker_wakeup(payload, model_family)`:** Runs after `_check_sidecar` short-circuit, before all message passes. Opus only: globs `/tmp/worker-idle-*.signal`, reads each JSON (`{worker_name, timestamp}`), builds a `<system-reminder>[WORKER-IDLE EVENT]…</system-reminder>` block listing idle worker names, appends it to the last user message (string → `\n\n` + block; list → new `{type:text}` entry), unlinks consumed signal files, returns `(modified_payload, worker_names)`. Survives `_apply_final_sr_pass` — `[WORKER-IDLE EVENT]` does not match any known strip template, so `_apply_sr_strip` preserves it as-is.
 
 ---
 

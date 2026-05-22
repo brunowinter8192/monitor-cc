@@ -150,13 +150,15 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### hook_writer.py (182 LOC)
+### hook_writer.py (202 LOC)
 
-**Purpose:** CC hook handler — reads JSON payload on stdin; updates `hooks.json`; on Stop/StopFailure additionally delivers the first `state="queued"` entry from `msg_queue.json` for the session. Skips `state="draft"` and `state="sent"` entries. Delivery path: `_queue_get_first_unsent` (flock `queue.lock` → find first entry where `state=="queued"`) → `_deliver_message` (UUID focus + System Events keystroke; cwd fallback) → on success: `_queue_mark_sent` (flock → set `state="sent"` + `sent_at=utc-iso` in-place). On delivery failure: entry left unchanged, next Stop retries. Messages are never removed by the hook — only the panel's `×` button removes entries. `_normalize_entry` handles all legacy formats inline (mirrors `queue.py`). Standalone script; defines all 3 APP_SUPPORT paths inline.
+**Purpose:** CC hook handler — reads JSON payload on stdin; updates `hooks.json`; on Stop/StopFailure emits a worker-idle signal file (if session is inside a worktree) and delivers the first `state="queued"` entry from `msg_queue.json` for the session. Skips `state="draft"` and `state="sent"` entries. Delivery path: `_queue_get_first_unsent` (flock `queue.lock` → find first entry where `state=="queued"`) → `_deliver_message` (UUID focus + System Events keystroke; cwd fallback) → on success: `_queue_mark_sent` (flock → set `state="sent"` + `sent_at=utc-iso` in-place). On delivery failure: entry left unchanged, next Stop retries. Messages are never removed by the hook — only the panel's `×` button removes entries. `_normalize_entry` handles all legacy formats inline (mirrors `queue.py`). Standalone script; defines all 3 APP_SUPPORT paths inline.
 **Reads:** stdin (CC hook JSON); `APP_SUPPORT/hooks.json` (inside flock); `APP_SUPPORT/msg_queue.json` (inside flock); `APP_SUPPORT/ghostty_cwd_uuid.json` (UUID lookup).
-**Writes:** `APP_SUPPORT/hooks.json` (atomic); `APP_SUPPORT/msg_queue.json` (atomic, inside flock — mark `sent_at` in-place, never removes entries); `APP_SUPPORT/queue.lock`; osascript delivery to Ghostty terminal.
+**Writes:** `APP_SUPPORT/hooks.json` (atomic); `APP_SUPPORT/msg_queue.json` (atomic, inside flock — mark `sent_at` in-place, never removes entries); `APP_SUPPORT/queue.lock`; `/tmp/worker-idle-<name>.signal` (best-effort, swallowed on failure); osascript delivery to Ghostty terminal.
 **Called by:** CC hook system (`async: true`). Never imported.
-**Calls out:** stdlib (`datetime`, `fcntl`, `json`, `os`, `subprocess`, `time`).
+**Calls out:** stdlib (`datetime`, `fcntl`, `json`, `os`, `re`, `subprocess`, `time`).
+
+**Worker-idle signal emit (`_emit_worker_idle_signal`):** Called on every Stop/StopFailure. Checks `payload["cwd"]` against `_WORKTREE_SIGNAL_RE = re.compile(r'/.claude/worktrees/([^/]+)')`. If cwd is inside a worktree, writes `/tmp/worker-idle-<name>.signal` with `{worker_name, timestamp}` JSON. If cwd is NOT a worktree path (main CC session), does nothing. IO failures are logged to stderr but never propagate — bar-icon update path is never blocked.
 
 **Usage:** `python3 src/menubar/hook_writer.py` (stdin = CC hook JSON). Install via `hook_setup.py`.
 
