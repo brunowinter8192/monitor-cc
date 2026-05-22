@@ -33,6 +33,7 @@ _main_pane_width: int = 80          # updated each render cycle; read by click h
 # Search state
 _search_query: str = ''
 _search_focused: bool = False
+_search_committed: bool = False      # True after Enter; False during editing → no highlights
 _search_matches: list = []           # [event_idx, ...] ordered by position in buffer
 _search_match_set: set = set()       # set(_search_matches) for O(1) membership
 _search_current_idx: int = 0         # index into _search_matches for current match
@@ -152,6 +153,35 @@ def _format_event_to_lines(event: dict) -> list:
         return []
     return formatted.split('\n')
 
+# Inject match_bg around each occurrence of query in line (case-insensitive, ANSI-safe)
+# Strategy: strip ANSI to find literal matched substrings → split ANSI-bearing line on each chunk
+# → join with bg+chunk+\033[49m. Silently skips when query straddles an ANSI code boundary.
+def _highlight_query_in_line(line: str, query: str, match_bg: str) -> str:
+    if not query or not line:
+        return line
+    stripped = _ANSI_ESCAPE_RE.sub('', line)
+    q_lower = query.lower()
+    s_lower = stripped.lower()
+    if q_lower not in s_lower:
+        return line
+    # Collect distinct literal chunks (preserving original case) from stripped text
+    seen: set = set()
+    pos = 0
+    while True:
+        p = s_lower.find(q_lower, pos)
+        if p == -1:
+            break
+        seen.add(stripped[p:p + len(query)])
+        pos = p + 1
+    result = line
+    for chunk in seen:
+        parts = result.split(chunk)
+        if len(parts) < 2:
+            continue  # chunk not found in ANSI-bearing string (straddled escape code)
+        result = f"{match_bg}{chunk}\033[49m".join(parts)
+    return result
+
+
 # Case-insensitive substring match against serialized event text; returns (matches, match_set)
 def _compute_search_matches(query: str) -> tuple:
     if not query:
@@ -227,7 +257,7 @@ def ensure_match_visible() -> None:
 # Row 1 is the persistent search bar; buffer events render from row 2 onward.
 def render_main_buffer(pane_height: int, pane_width: int, scroll_offset: int) -> str:
     global main_line_map, _main_copy_rows, _main_pane_width
-    global _search_matches, _search_match_set, _search_cached_query, _search_current_idx
+    global _search_current_idx
     global _search_all_line_offsets, _search_total_lines
 
     _main_pane_width = pane_width
@@ -247,12 +277,8 @@ def render_main_buffer(pane_height: int, pane_width: int, scroll_offset: int) ->
 
     _search_total_lines = len(all_lines)
 
-    # Recompute matches when query changes; clamp current_idx on buffer shrink
-    if _search_query != _search_cached_query:
-        _search_matches, _search_match_set = _compute_search_matches(_search_query)
-        _search_cached_query = _search_query
-        _search_current_idx = 0
-    elif _search_matches:
+    # Clamp current_idx on buffer shrink (matches only populated on Enter commit)
+    if _search_matches:
         _search_current_idx = min(_search_current_idx, len(_search_matches) - 1)
 
     current_match_eidx = (
@@ -274,12 +300,12 @@ def render_main_buffer(pane_height: int, pane_width: int, scroll_offset: int) ->
     for phys_idx, (line, eidx) in enumerate(zip(visible, visible_event_indices)):
         phys_row = phys_idx + 2  # row 1 is search bar; buffer starts at row 2
 
-        # Search highlight: prepend BG code (ANSI-safe — zero visible width)
-        if eidx >= 0 and _search_match_set:
+        # Search highlight: inject BG only around matched substring (per line, ANSI-safe)
+        if eidx >= 0 and _search_match_set and _search_query:
             if eidx == current_match_eidx:
-                line = SEARCH_CURRENT_BG + line
+                line = _highlight_query_in_line(line, _search_query, SEARCH_CURRENT_BG)
             elif eidx in _search_match_set:
-                line = SEARCH_MATCH_BG + line
+                line = _highlight_query_in_line(line, _search_query, SEARCH_MATCH_BG)
 
         # ⎘ copy-button injection (existing — ANSI strip accounts for prepended BG)
         if eidx >= 0 and main_event_buffer[eidx]['type'] == 'tool_call':

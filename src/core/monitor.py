@@ -192,17 +192,13 @@ def run_main_loop() -> None:
                                 else:  # search text area → focus
                                     _display._search_focused = True
                                     input_changed = True
-                            else:  # buffer area (row >= 2)
-                                if _display._search_focused:
-                                    _display._search_focused = False
+                            else:  # buffer area (row >= 2) — never unfocus; always check copy
+                                entry = _display._main_copy_rows.get(row)
+                                if entry is not None and col >= pw - 2:
+                                    event_idx, part = entry
+                                    copy_to_clipboard(_display.serialize_main_event(event_idx, part))
+                                    _display._main_copy_feedback_until[(event_idx, part)] = time.time() + 1.5
                                     input_changed = True
-                                else:
-                                    entry = _display._main_copy_rows.get(row)
-                                    if entry is not None and col >= pw - 2:
-                                        event_idx, part = entry
-                                        copy_to_clipboard(_display.serialize_main_event(event_idx, part))
-                                        _display._main_copy_feedback_until[(event_idx, part)] = time.time() + 1.5
-                                        input_changed = True
                         elif button == 64:  # WheelUp → older events
                             _display.main_scroll_offset = max(0, _display.main_scroll_offset + 3)
                             input_changed = True
@@ -212,19 +208,35 @@ def run_main_loop() -> None:
                         elif button >= 32:  # motion/hover
                             _display.main_hover_row = row
                             input_changed = True
-                    elif _display._search_focused:  # bare ESC → unfocus search
+                    elif _display._search_focused:  # bare ESC → cancel search
                         _display._search_focused = False
+                        _display._search_query = ''
+                        _display._search_committed = False
+                        _display._search_matches = []
+                        _display._search_match_set = set()
                         input_changed = True
                 elif _display._search_focused:  # search input mode
                     if char in ('\x7f', '\x08'):  # backspace (DEL or BS)
                         _display._search_query = _display._search_query[:-1]
+                        _display._search_committed = False
+                        _display._search_matches = []
+                        _display._search_match_set = set()
                         input_changed = True
-                    elif char in ('\r', '\n'):  # enter → unfocus
+                    elif char in ('\r', '\n'):  # enter → commit search, unfocus
+                        if _display._search_query != _display._search_cached_query:
+                            _display._search_matches, _display._search_match_set = _display._compute_search_matches(_display._search_query)
+                            _display._search_cached_query = _display._search_query
+                            _display._search_current_idx = 0
+                        _display._search_committed = True
                         _display._search_focused = False
+                        _display.ensure_match_visible()
                         input_changed = True
                     elif char.isprintable():
                         if len(_display._search_query) < 200:
                             _display._search_query += char
+                            _display._search_committed = False
+                            _display._search_matches = []
+                            _display._search_match_set = set()
                             input_changed = True
                 elif char == 'y':
                     key = resolve_parent_key(_display.main_line_map, _display.main_hover_row)
