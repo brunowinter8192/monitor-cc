@@ -1,12 +1,13 @@
 # INFRASTRUCTURE
 from datetime import datetime
+import time
 from typing import Optional
 
 from ..constants import RESET, GREEN, YELLOW, CYAN, DIM_YELLOW_BG, MODE_ALL, MODE_MAIN, MAIN_EVENT_BUFFER_CAP
 from ..format.formatter import format_tool_call
 from ..format.formatter_events import format_user_prompt, format_user_media, format_thinking, format_skill_activation, format_system_message
 from ..format.strip_marker import highlight_stripped, build_tool_id_strip_lookup
-from ..utils import truncate_visible
+from ..utils import truncate_visible, _ANSI_ESCAPE_RE, _cell_width
 
 INDENT = '  '
 
@@ -16,6 +17,9 @@ main_hover_row: Optional[int] = None
 main_line_map: dict = {}            # phys_row → event_idx into main_event_buffer
 _strip_by_tool_id: dict = {}        # tool_use_id → (pre_strip_text, removed_chunks)
 _strip_prompt_ts_set: set = set()   # proxy-entry timestamps where msg[0] was stripped
+_main_copy_rows: dict = {}          # phys_row → (event_idx, part)  part ∈ {'request','response'}
+_main_copy_feedback_until: dict = {}  # (event_idx, part) → expiry float
+_main_pane_width: int = 80          # updated each render cycle; read by click handler
 
 # FUNCTIONS
 
@@ -131,7 +135,8 @@ def _format_event_to_lines(event: dict) -> list:
 
 # Render event buffer to screen-sized string with zebra shading + truncation; fills main_line_map
 def render_main_buffer(pane_height: int, pane_width: int, scroll_offset: int) -> str:
-    global main_line_map
+    global main_line_map, _main_copy_rows, _main_pane_width
+    _main_pane_width = pane_width
     all_lines = []
     all_event_indices = []  # parallel list: event_idx for each line, or -1 for blanks
     for event_idx, event in enumerate(main_event_buffer):
@@ -149,16 +154,36 @@ def render_main_buffer(pane_height: int, pane_width: int, scroll_offset: int) ->
     visible_event_indices = all_event_indices[start:start + pane_height]
 
     main_line_map.clear()
+    _main_copy_rows.clear()
     result_lines = []
     for phys_idx, (line, eidx) in enumerate(zip(visible, visible_event_indices)):
+        phys_row = phys_idx + 1  # 1-indexed
+        if eidx >= 0 and main_event_buffer[eidx]['type'] == 'tool_call':
+            stripped = _ANSI_ESCAPE_RE.sub('', line)
+            if '] REQUEST #' in stripped:
+                part = 'request'
+            elif '] RESPONSE #' in stripped:
+                part = 'response'
+            else:
+                part = None
+            if part is not None:
+                is_flash = _main_copy_feedback_until.get((eidx, part), 0) > time.time()
+                copy_sym = '✓' if is_flash else '⎘'
+                sym_cells = _cell_width(copy_sym)
+                visible_len = sum(_cell_width(ch) for ch in stripped)
+                pad = pane_width - 1 - sym_cells - visible_len  # 1 space gap + sym_cells
+                if pad >= 0:
+                    line = line + ' ' * pad + ' ' + copy_sym
+                _main_copy_rows[phys_row] = (eidx, part)
         trunc = truncate_visible(line, pane_width)
         result_lines.append(f"{trunc}\033[K{RESET}")
         if eidx >= 0:
-            main_line_map[phys_idx + 1] = eidx  # phys_row is 1-indexed
+            main_line_map[phys_row] = eidx
     return '\n'.join(result_lines)
 
 # Serialize a main-pane event to full untruncated text for clipboard
-def serialize_main_event(event_idx: int) -> str:
+# part='all' → header+INPUT+OUTPUT (y-hotkey); 'request' → header+INPUT; 'response' → header+OUTPUT
+def serialize_main_event(event_idx: int, part: str = 'all') -> str:
     import json
     if event_idx < 0 or event_idx >= len(main_event_buffer):
         return ''
@@ -169,12 +194,15 @@ def serialize_main_event(event_idx: int) -> str:
         tool_name = d.get('tool_name', '?')
         inp = d.get('input', {})
         out = d.get('output', '') or ''
-        parts = [f"{tool_name}  call#{event.get('call_number', '?')}  [{d.get('timestamp', '')}]"]
-        parts.append("---INPUT---")
-        parts.append(json.dumps(inp, ensure_ascii=False, indent=2) if isinstance(inp, dict) else str(inp))
-        parts.append("---OUTPUT---")
-        parts.append(out)
-        return '\n'.join(parts)
+        header = f"{tool_name}  call#{event.get('call_number', '?')}  [{d.get('timestamp', '')}]"
+        inp_text = json.dumps(inp, ensure_ascii=False, indent=2) if isinstance(inp, dict) else str(inp)
+        if part == 'request':
+            sections = [header, "---INPUT---", inp_text]
+        elif part == 'response':
+            sections = [header, "---OUTPUT---", out]
+        else:
+            sections = [header, "---INPUT---", inp_text, "---OUTPUT---", out]
+        return '\n'.join(sections)
     elif t == 'user_prompt':
         return f"[user_prompt] {d.get('timestamp', '')}"
     elif t == 'thinking':
