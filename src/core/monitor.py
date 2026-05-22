@@ -174,7 +174,7 @@ def run_main_loop() -> None:
                     break
                 if char == '\033':
                     event = read_mouse_event(char)
-                    if event is not None:
+                    if event is not None and event[0] != -1:
                         button, col, row = event
                         pw = _display._main_pane_width
                         if button == 0:  # left click
@@ -208,7 +208,9 @@ def run_main_loop() -> None:
                         elif button >= 32:  # motion/hover
                             _display.main_hover_row = row
                             input_changed = True
-                    elif _display._search_focused:  # bare ESC → cancel search
+                    elif event is not None:  # (-1,-1,-1) sentinel → release event, ignore
+                        pass
+                    elif _display._search_focused:  # event is None: bare ESC → cancel search
                         _display._search_focused = False
                         _display._search_query = ''
                         _display._search_committed = False
