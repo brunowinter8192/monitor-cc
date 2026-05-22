@@ -30,21 +30,23 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_chained_sleep.py (228 LOC)
+### block_chained_sleep.py (253 LOC)
 
-**Purpose:** PreToolUse hook — blocks any `sleep <N>` token in a Bash command that is NOT the exact canonical orchestration timer form `sleep N && echo done`. Chained forms (`cmd; sleep N && echo done`, `sleep N && other_cmd`, poll loops) are rejected because the menubar auto-abort sends SIGTERM to the sleep PID, which exits the entire chained shell with code 143 and destroys pre-sleep output. Exits 2 + stderr with the canonical form and reason. Exits 0 on any parse/internal error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Purpose:** PreToolUse hook — blocks any `sleep <N>` token in a Bash command that is NOT the exact canonical orchestration timer form `sleep N && echo done`, with one allowance: `sleep N ≤ 5` immediately after a side-effect command (pkill, launchctl, bootout, kickstart, worker-cli kill, systemctl, kill -N) in foreground non-loop context is treated as legitimate settling-time and allowed. All other chained forms are rejected because the menubar auto-abort sends SIGTERM to the sleep PID, which exits the entire chained shell with code 143 and destroys pre-sleep output. Exits 2 + stderr with the canonical form and reason. Exits 0 on any parse/internal error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
 **Writes:** stderr (block message with canonical form) on violation only.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** stdlib only (`json`, `re`).
 
 **Blocked patterns:**
-- `cmd_before; sleep N && echo done` — commands chained BEFORE the sleep
-- `sleep N && other_cmd` — commands chained AFTER the sleep (non-`echo done` continuation)
-- `until ...; do sleep N; done` and other loop forms
+- `until ...; do sleep N; done` and other loop forms — real polling
+- Any non-canonical sleep with `run_in_background=true`
+- `sleep N` with N > 10 in any non-canonical chain
+- Non-canonical `sleep N ≤ 5` without a recognized side-effect command
 
 **Allowed patterns:**
-- `sleep N && echo done` (optional leading/trailing whitespace, optional float N) — the one canonical timer form
+- `sleep N && echo done` (optional leading/trailing whitespace, optional float N) with `run_in_background=true` — canonical orchestration timer
+- `sleep N ≤ 5` after a side-effect command (pkill, launchctl, bootout, kickstart, worker-cli kill, systemctl, kill -N) in foreground non-loop context — settling-time allowance (45% FP fix, 2026-05-22)
 
 **Quote/heredoc stripping.** Before `_SLEEP_TOKEN` matching, `_strip_non_shell_active()` runs a single-pass character scanner that replaces heredoc bodies, single-quoted strings, double-quoted strings, and ANSI-C `$'...'` quotes with spaces. Command substitutions `$(...)` and backtick expressions are kept shell-active so `sleep` inside them still triggers a block. Fail-open: any parse error (unclosed quote, heredoc without terminator) returns the original string unmodified. Smoke: `dev/hook_smoke/test_block_chained_sleep.py` (13 cases).
 
@@ -239,6 +241,29 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
+### rewrite_git_ambiguous.py (87 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — detects `git diff/log/show` commands with an ambiguous argument (branch/commit ref without a `--` path separator) and REWRITES the command to append ` --` at the end. First `updatedInput` hook in Monitor_CC. Exits 0 with rewrite JSON on match; exits 0 with no output (allow passthrough) when no ambiguity detected. Exits 0 on any parse/internal error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stdout — `{"hookSpecificOutput": {"permissionDecision": "allow", "updatedInput": {"command": "<rewritten>"}}, "systemMessage": "..."}` on rewrite; nothing on passthrough.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Detection (rewrites when ALL true):**
+1. Command contains `git ... diff|log|show` pattern
+2. No standalone ` -- ` path separator already present (excludes `--stat`, `--format`, etc.)
+3. Either: a range token (`<name>..<name>`, `<name>..`, `..<name>`) OR a bare ref name (first non-flag token after the subcommand matches `[a-zA-Z0-9][a-zA-Z0-9_/\-]*`)
+
+**Rewrite:** appends ` --` to the command. `git diff dev --stat` → `git diff dev --stat --`. Safe even for already-unambiguous calls.
+
+**Allowed (no rewrite):** command already has ` -- ` separator; no range token and no bare ref; non-git commands; parse errors (fail-open).
+
+**Coverage:** addresses both real violation forms from 2026-05-22 data: `git diff dev --stat` (bare-name) and `git diff dev..HEAD` (range-form). Bare-ref detection: first non-flag token after subcommand; stops at first non-flag token (does not scan all args).
+
+**Limitation:** bare-ref pattern `[a-zA-Z0-9][a-zA-Z0-9_/\-]*` matches paths with `/` (e.g., `src/module`); rewrite of `git log src/module` to `git log src/module --` changes semantics from "path filter" to "ref name" (fails if not a branch). Use ` -- ` explicitly for path-filtered git log calls.
+
+---
+
 ### block_path_typo.py (82 LOC)
 
 **Purpose:** PreToolUse hook (Bash + Read + Write + Edit) — blocks commands or file paths containing known path typos: `.claire/` (tokenizer misspelling of `.claude/`) and `..letter` (double-dot immediately followed by a lowercase letter, e.g. `..claude/`, `..src/`). Fires for all four tool types, inspecting `command` (Bash) or `file_path` (Read/Write/Edit). Exits 2 + stderr with the specific typo class. Exits 0 on any parse error (fail-open).
@@ -283,15 +308,17 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### hook_setup.py (98 LOC)
+### hook_setup.py (99 LOC)
 
-**Purpose:** One-shot idempotent installer — adds `PreToolUse` entries to `~/.claude/settings.json` for each hook script, with per-hook matcher (`Bash`, `Edit`, or `Read`). Loops over `_HOOK_ENTRIES` (tuples of command + matcher); skips any entry already present by exact command string. Atomic write via temp + `os.replace`. Supports all 17 current hooks across 3 matchers.
+**Purpose:** One-shot idempotent installer — adds `PreToolUse` entries to `~/.claude/settings.json` for each hook script, with per-hook matcher (`Bash`, `Edit`, or `Read`). Loops over `_HOOK_ENTRIES` (tuples of command + matcher); skips any entry already present by exact command string. Atomic write via temp + `os.replace`. Supports all 18 current hooks across 3 matchers.
 **Reads:** `~/.claude/settings.json`.
 **Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`).
 **Called by:** User manually (`python3 src/hooks/hook_setup.py` from Monitor_CC root). Never imported.
 **Calls out:** stdlib only (`json`, `os`, `pathlib`).
 
 **Usage:** `python3 src/hooks/hook_setup.py` — run once after clone or reinstall. Installs all hooks in `_HOOK_SCRIPTS`. Restart CC to activate.
+
+**IMPORTANT:** Must be run from the MAIN REPO root (not a worktree). `_HOOKS_DIR = Path(__file__).resolve().parent` resolves to the script's location — running from a worktree registers worktree-path entries that become dead after the worktree is removed. Idempotency check uses exact path string match, so worktree-path ≠ main-repo-path → running from a worktree re-registers all hooks with wrong paths.
 
 ---
 

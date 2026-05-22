@@ -120,3 +120,51 @@ def _abort_bg_sleep_timers(sleep_pids: List[int]) -> int:
     except OSError:
         pass
     return killed
+
+
+# Inject 'worker <names> idle' into Opus's tmux pane via TTY lookup; fail-silent on any error.
+# Finds the main (non-worker) CC session CWD for the project, looks up its process TTY in
+# _cc_proc_cache, maps that TTY to a tmux pane via list-panes, then send-keys to that pane.
+def _notify_opus_workers_idle(sessions, proj: str, workers) -> None:
+    try:
+        # Find main (non-worker) session CWD for this project
+        main_cwd = next(
+            (s.cwd for s in sessions if not s.is_worker and s.project_name == proj and s.cwd),
+            None
+        )
+        if not main_cwd:
+            return
+        # Find CC process TTY matching the main session CWD — _cc_proc_cache: {pid: (tty, cwd)}
+        # ps -o tty returns short form e.g. 's003'; tmux pane_tty is full '/dev/ttys003'
+        tty = next(
+            (info[0] for info in _cc_proc_cache.values()
+             if info[1] == main_cwd and info[0] and info[0] != '??'),
+            None
+        )
+        if not tty:
+            return
+        tty_dev = f'/dev/tty{tty}'
+        # Map TTY to tmux pane reference
+        r = subprocess.run(
+            ['tmux', 'list-panes', '-a', '-F',
+             '#{pane_tty} #{session_name}:#{window_index}.#{pane_index}'],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode != 0:
+            return
+        pane_ref = None
+        for line in r.stdout.strip().split('\n'):
+            parts = line.split(' ', 1)
+            if len(parts) == 2 and parts[0] == tty_dev:
+                pane_ref = parts[1].strip()
+                break
+        if not pane_ref:
+            return
+        names = ' '.join(w.name for w in workers)
+        msg = f'worker {names} idle'
+        subprocess.run(
+            ['tmux', 'send-keys', '-t', pane_ref, msg, 'Enter'],
+            capture_output=True, timeout=2,
+        )
+    except Exception:
+        return
