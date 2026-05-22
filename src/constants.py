@@ -29,6 +29,8 @@ COLLISION_BG = '\033[48;2;80;30;40m'
 ZEBRA_BG_A = ''
 ZEBRA_BG_B = '\033[48;2;49;50;68m'
 SOFT_RESET = '\033[39m'
+SEARCH_MATCH_BG   = '\033[48;2;62;55;0m'    # dark amber — search match row BG
+SEARCH_CURRENT_BG = '\033[48;2;130;95;0m'   # warm amber — current search match row BG
 
 # Config values
 POLL_INTERVAL = 0.5
