@@ -30,8 +30,8 @@ def rewrite_git_ambiguous_workflow() -> None:
         sys.exit(0)
     if not (_has_range_token(command) or _has_bare_ref_token(command)):
         sys.exit(0)
-    _emit_rewrite(command)
-    sys.exit(0)
+    _emit_block_hint(command)
+    sys.exit(2)
 
 
 # FUNCTIONS
@@ -68,19 +68,24 @@ def _has_bare_ref_token(command: str) -> bool:
 def _has_path_separator(command: str) -> bool:
     return bool(_HAS_PATH_SEP.search(command))
 
-# Print updatedInput JSON rewrite: append ' --' to disambiguate branch/ref from path
-def _emit_rewrite(command: str) -> None:
-    rewritten = command.rstrip() + " --"
-    result = {
-        "hookSpecificOutput": {
-            "permissionDecision": "allow",
-            "updatedInput": {
-                "command": rewritten,
-            },
-        },
-        "systemMessage": _SYSTEM_MESSAGE,
-    }
-    print(json.dumps(result))
+# Print block hint: detection found but auto-rewrite path not supported by CC API.
+# Surface a one-line stderr so the model retries with -- appended manually.
+# For piped commands the `--` belongs BEFORE the pipe/redirect (right after the
+# git subcommand args), not at the very end of the chain.
+def _emit_block_hint(command: str) -> None:
+    print(
+        "BLOCKED: git diff/log/show with bare ref or ..-range — append ' -- ' "
+        "after the git subcommand args (before any pipe or redirect) to "
+        "disambiguate branch/ref from path.",
+        file=sys.stderr,
+        end="",
+    )
+    # Originally designed as `hookSpecificOutput.updatedInput` auto-rewrite (per
+    # anthropics/claude-code SKILL.md). Empirically refuted (2026-05-22): per CC
+    # CHANGELOG line 1324, allow+updatedInput in PreToolUse only satisfies the
+    # AskUserQuestion tool, not Bash. For general Bash rewrite, only `ask`
+    # decision works (CHANGELOG line 2629) — rejected by user as workflow tax.
+    # Fallback: exit 2 + one-line hint, model retries with -- appended.
 
 
 if __name__ == "__main__":

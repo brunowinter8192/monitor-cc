@@ -310,26 +310,33 @@
 - **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
 - **Command:** `python3 <absolute-path>/src/hooks/rewrite_git_ambiguous.py`
 - **Timeout:** 5s
-- **Hook type:** `updatedInput` rewrite (first rewrite hook in Monitor_CC) — exits 0 + stdout JSON, does NOT exit 2
+- **Hook type:** block-with-hint (exit 2 + one-line stderr). Originally designed as `updatedInput` rewrite (allow + JSON), but live testing 2026-05-22 confirmed CC does NOT apply `updatedInput` for general PreToolUse + `allow` decisions on Bash — that path is restricted to the `AskUserQuestion` tool (per CC CHANGELOG line 1324). General Bash rewrite would require `permissionDecision: "ask"` (CHANGELOG line 2629), which adds confirmation friction — rejected by design. Hook detects the same patterns and surfaces a one-line stderr hint; the model retries with `--` appended manually.
 
-**Detection (rewrites when ALL true):**
+**Detection (blocks when ALL true):**
 1. Command matches `\bgit\b.*?\b(diff|log|show)\b` (DOTALL)
 2. No standalone ` -- ` path separator present (regex: `(?:^|\s)--(?:\s|$)`)
 3. Either a range token (`[\w./:-]+\.\.[\w./:-]*`) OR a bare ref name (first non-flag token after subcommand matches `^[a-zA-Z0-9][a-zA-Z0-9_/\-]*$`)
 
-**Rewrite:** appends ` --` to the command (stripped trailing whitespace + ` --`).
+**Stderr message:** "BLOCKED: git diff/log/show with bare ref or ..-range — append ` -- ` after the git subcommand args (before any pipe or redirect) to disambiguate branch/ref from path."
 
-**Blocked patterns (rewritten):**
-- `git diff dev --stat` — bare ref name `dev`, no `--` separator → `git diff dev --stat --`
-- `git log dev..HEAD` — range token `dev..HEAD`, no `--` separator → `git log dev..HEAD --`
-- `git -C /path diff dev` → `git -C /path diff dev --`
+**Blocked patterns:**
+- `git diff dev --stat` — bare ref name `dev`, no `--` separator
+- `git log dev..HEAD` — range token `dev..HEAD`, no `--` separator
+- `git -C /path diff dev` — bare ref name `dev`
 
-**Passthrough (no rewrite):**
+**Retry forms (user/model appends ` -- ` after subcommand args):**
+- `git diff dev --stat --`
+- `git log dev..HEAD --`
+- `git -C /path diff dev --`
+
+**Passthrough (no block):**
 - `git log dev..HEAD -- src/foo.py` — already has ` -- ` separator
 - `git diff --stat` — no range token, no bare ref
 - `git commit -m "fix"` — not diff/log/show
 
 **Coverage note:** addresses both violation forms from 2026-05-22 data (`dev/tool_use_errors/reports/2026-05-22_opus.md`): bare-name form (`git diff dev --stat`) and range form (`git diff dev..HEAD`). 2 violations in 672 tool_use blocks from 3 Opus JSONL files.
+
+**Edge case (multi-git chain):** when a single Bash invocation chains multiple git commands with one having ` -- ` and another not (e.g. `git diff dev -- --stat ; git diff main`), the second command's missing `--` is masked by the first's presence — hook sees `_has_path_separator=True` for the whole chain. Rare in practice. Recommend not chaining git diff/log/show calls in one Bash invocation.
 
 **Fail-open:** exits 0 with no output (passthrough) on any parse/internal error.
 
@@ -391,7 +398,7 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 Keep current 18 hooks (no change needed). Pending evaluation after rollout:
 - Do hooks #9–18 (2026-05-22 batch) intercept violations without false positives in live sessions?
 - `block_chained_sleep` settling-time allowance: verify 45% FP rate drops after rollout (baseline: 13/29 blocks were FP per `dev/hook_firing/reports/2026-05-22_012326.md`).
-- `rewrite_git_ambiguous` `updatedInput` path: verify CC runtime applies the rewrite (live test in session showed the hook fired + produced correct JSON but the command used the original input — may be CC version-dependent or hook ordering dependent).
+- `rewrite_git_ambiguous` original `updatedInput` plan: REFUTED 2026-05-22 — CC PreToolUse + `allow` + `updatedInput` does NOT apply on Bash (per CHANGELOG line 1324, this path is `AskUserQuestion`-tool-specific). Hook converted to block-with-hint (exit 2 + stderr). See `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_capabilities.md` Finding 1 for the empirical correction. Future option: re-enable `updatedInput` if Anthropic extends the API to cover general PreToolUse.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.
 
 ## Offene Fragen

@@ -241,26 +241,30 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### rewrite_git_ambiguous.py (87 LOC)
+### rewrite_git_ambiguous.py (92 LOC)
 
-**Purpose:** PreToolUse hook (Bash) — detects `git diff/log/show` commands with an ambiguous argument (branch/commit ref without a `--` path separator) and REWRITES the command to append ` --` at the end. First `updatedInput` hook in Monitor_CC. Exits 0 with rewrite JSON on match; exits 0 with no output (allow passthrough) when no ambiguity detected. Exits 0 on any parse/internal error (fail-open).
+**Purpose:** PreToolUse hook (Bash) — detects `git diff/log/show` commands with an ambiguous argument (branch/commit ref without a `--` path separator) and BLOCKS with a one-line stderr hint. Originally designed as `updatedInput` rewrite (per anthropics SKILL.md), but empirically refuted 2026-05-22: CC does NOT apply `allow + updatedInput` on general PreToolUse Bash (only on `AskUserQuestion`, per CC CHANGELOG line 1324). Block-with-hint is the fallback — model retries with `--` appended manually. See `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_capabilities.md` Finding 1.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
-**Writes:** stdout — `{"hookSpecificOutput": {"permissionDecision": "allow", "updatedInput": {"command": "<rewritten>"}}, "systemMessage": "..."}` on rewrite; nothing on passthrough.
+**Writes:** stderr (one-line block hint) on match; nothing on passthrough.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** stdlib only (`json`, `re`).
 
-**Detection (rewrites when ALL true):**
+**Detection (blocks when ALL true):**
 1. Command contains `git ... diff|log|show` pattern
 2. No standalone ` -- ` path separator already present (excludes `--stat`, `--format`, etc.)
 3. Either: a range token (`<name>..<name>`, `<name>..`, `..<name>`) OR a bare ref name (first non-flag token after the subcommand matches `[a-zA-Z0-9][a-zA-Z0-9_/\-]*`)
 
-**Rewrite:** appends ` --` to the command. `git diff dev --stat` → `git diff dev --stat --`. Safe even for already-unambiguous calls.
+**Block hint (stderr):** "BLOCKED: git diff/log/show with bare ref or ..-range — append ` -- ` after the git subcommand args (before any pipe or redirect) to disambiguate branch/ref from path."
 
-**Allowed (no rewrite):** command already has ` -- ` separator; no range token and no bare ref; non-git commands; parse errors (fail-open).
+**Allowed (passthrough):** command already has ` -- ` separator; no range token and no bare ref; non-git commands; parse errors (fail-open).
 
 **Coverage:** addresses both real violation forms from 2026-05-22 data: `git diff dev --stat` (bare-name) and `git diff dev..HEAD` (range-form). Bare-ref detection: first non-flag token after subcommand; stops at first non-flag token (does not scan all args).
 
-**Limitation:** bare-ref pattern `[a-zA-Z0-9][a-zA-Z0-9_/\-]*` matches paths with `/` (e.g., `src/module`); rewrite of `git log src/module` to `git log src/module --` changes semantics from "path filter" to "ref name" (fails if not a branch). Use ` -- ` explicitly for path-filtered git log calls.
+**Edge case (multi-git chain):** when a Bash invocation chains multiple git diff/log/show calls with one having ` -- ` and another not, `_has_path_separator=True` for the whole chain masks the missing `--` in the second call. Recommend single-git-call Bash invocations.
+
+**Limitation:** bare-ref pattern `[a-zA-Z0-9][a-zA-Z0-9_/\-]*` matches paths with `/` (e.g., `src/module`); a block on `git log src/module` is technically a false positive (no ambiguity for path-only logs), but appending ` -- ` is still semantically correct so the manual retry remains valid.
+
+**Future:** the `updatedInput` JSON dict is preserved as a comment in `_emit_block_hint` for the future if Anthropic extends the API to support `allow + updatedInput` on general PreToolUse Bash. Swap to `_emit_rewrite` + `exit 0` if/when that lands.
 
 ---
 

@@ -8,29 +8,38 @@ Sources read: `plugins/plugin-dev/skills/hook-development/SKILL.md` and `plugins
 
 ---
 
-## Finding 1 — `updatedInput`: hooks can rewrite tool inputs
+## Finding 1 — `updatedInput`: hypothesis REFUTED for general PreToolUse Bash
 
-PreToolUse hooks can return a JSON body that rewrites the tool input BEFORE execution:
+**Original hypothesis (from anthropics SKILL.md):** PreToolUse hooks can return a JSON body that silently rewrites the tool input BEFORE execution, using `hookSpecificOutput.updatedInput` with `permissionDecision: "allow"`. Shape:
 
 ```json
 {
   "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
     "permissionDecision": "allow",
-    "updatedInput": {
-      "command": "git diff dev..HEAD --"
-    }
+    "updatedInput": {"command": "git diff dev --"}
   },
-  "systemMessage": "Added -- separator to disambiguate branch name from path."
+  "systemMessage": "..."
 }
 ```
 
-The `updatedInput` object is merged into `tool_input` — only keys present in `updatedInput` are overwritten, others pass through unchanged. This is the **auto-correction path**: detect a known-bad input pattern AND emit the corrected form, so execution proceeds with the fix applied silently.
+**Empirical refutation (2026-05-22):** built `src/hooks/rewrite_git_ambiguous.py` following the SKILL.md format (with the `hookEventName` field that mpsuesser/effect-claudecode TS schema clarified — SKILL.md omits it). Live-tested: hook fires correctly, emits valid JSON to stdout, exits 0. CC executes the ORIGINAL command anyway. No rewrite applied.
 
-**Current state:** all 17 hooks use exit-0 (allow) or exit-2 (block). NONE use `updatedInput`. This leaves `pre-rewritable` patterns (currently classified as unhooked) without tooling.
+**Root cause (from anthropics/claude-code CHANGELOG):**
+- Line 1324 (in the release that added `updatedInput` to PreToolUse): "PreToolUse hooks can now satisfy `AskUserQuestion` by returning `updatedInput` alongside `permissionDecision: 'allow'`, enabling headless integrations that collect answers via their own UI." → the `allow + updatedInput` path is **scoped to the `AskUserQuestion` tool**, not to general PreToolUse on Bash/Edit/Write/etc.
+- Line 2629 (later release): "Fixed PreToolUse hooks to allow `updatedInput` when returning `ask` permission decision, enabling hooks to act as middleware while still requesting user consent." → general PreToolUse rewrite requires `permissionDecision: "ask"`, which surfaces a confirmation prompt — rejected by design (see Finding 2).
+- Line 891: `PermissionRequest` is a separate event class with its own `updatedInput` semantics, not PreToolUse.
 
-**Migration path:** rewrite hooks that currently exit-2 on fixable inputs to instead emit `updatedInput` + exit-0. The `git-ambiguous` pattern (`fatal: ambiguous argument 'dev'`) is the clearest candidate: detect `git (diff|log|show) [^-]*\bdev\b.*\.\.HEAD` without `--`, return `updatedInput: {command: <cmd> + " --"}`.
+**Verdict:** the auto-correction path described in SKILL.md does not exist for Bash in CC v2.1.114 (and likely no current version). The SKILL.md is either incomplete or describes a roadmap state.
 
-**Implementation note:** returning a JSON body requires the hook to print JSON to stdout (not stderr) and exit 0. The hook cannot both block (exit 2) AND rewrite — the two paths are mutually exclusive. Hooks that want "rewrite if fixable, block if not" must implement the rewrite path and only fall back to exit-2 for unfixable cases.
+**What this means in practice:**
+- Hooks can ONLY block (exit 2) or allow (exit 0) for general PreToolUse on Bash. No silent rewrite.
+- For pre-rewritable patterns (like git-ambiguous), the best we can do is block-with-hint: exit 2 with a one-line stderr that tells the model how to fix the input. The model retries with the fix applied — one extra tool call per occurrence, no user confirmation.
+- `src/hooks/rewrite_git_ambiguous.py` was converted to this block-with-hint form 2026-05-22. The `updatedInput` JSON shape is preserved as a comment in the script for the future if the API expands.
+
+**Current state:** all 18 hooks use exit-0 (allow) or exit-2 (block). NONE use `updatedInput`. This is structurally final until Anthropic extends the API.
+
+**Implementation note for future updates:** if `allow + updatedInput` ever gains general PreToolUse Bash support, the `_emit_block_hint` function in `rewrite_git_ambiguous.py` can be swapped to `_emit_rewrite` (the documented JSON dict at the bottom of the function). Test with a fresh CC version when CHANGELOG indicates the extension.
 
 ---
 
@@ -47,7 +56,7 @@ Beyond `"allow"` (exit 0 equivalent) and `"deny"` (exit 2 equivalent), the JSON 
 }
 ```
 
-With `"ask"`, CC surfaces the `systemMessage` to the user and awaits explicit confirmation before proceeding. Not used in Monitor_CC by design — every confirmation flow becomes a workflow tax. Hard-allow refinements + updatedInput rewrites are preferred over `ask`.
+With `"ask"`, CC surfaces the `systemMessage` to the user and awaits explicit confirmation before proceeding. Not used in Monitor_CC by design — every confirmation flow becomes a workflow tax. Per Finding 1's empirical refutation, `ask + updatedInput` is the ONLY supported rewrite path for general PreToolUse Bash. Since `ask` is rejected, the practical fallback for `pre-rewritable` patterns is block-with-hint (exit 2 + stderr) — the model retries with the fix applied.
 
 ---
 
@@ -91,11 +100,13 @@ Opus then wakes WITH context: it knows which worker finished and can proceed dir
 
 ## Summary
 
-| Capability | Status | Candidate use |
+| Capability | Status | Note |
 |---|---|---|
-| `updatedInput` rewrite | Not used by any hook | `git-ambiguous` fix (add ` --`) |
-| `permissionDecision: ask` | Not used — rejected by design | — (hard-allow refinements + updatedInput preferred) |
-| Prompt-based hooks | Not used | `diag-chain-and` (Rule 11), `edit-string-not-found` |
-| Watchdog message injection on worker-idle | Not implemented | Replace blind wake + Opus polling-discipline rule |
+| `updatedInput` rewrite (allow + JSON) | NOT supported for general PreToolUse Bash | Scoped to `AskUserQuestion` tool only (CHANGELOG line 1324). SKILL.md is misleading on this. |
+| `updatedInput` rewrite (ask + JSON) | Supported but rejected by design | Requires user confirmation each call — workflow tax. |
+| `permissionDecision: ask` | Not used — rejected by design | Same workflow-tax reason. |
+| Block-with-hint (exit 2 + stderr) | Used for `rewrite_git_ambiguous` (Hook 18) | Fallback when rewrite path is unavailable. Model retries with fix. |
+| Prompt-based hooks | Not used | `diag-chain-and` (Rule 11), `edit-string-not-found` candidates. 30s LLM latency tradeoff per matching call. |
+| Watchdog message injection on worker-idle | Implemented 2026-05-22 in `src/menubar/bg_timer.py` | Replaces blind wake + Opus polling-discipline rule. Requires menubar restart to activate. |
 
-`updatedInput`, `ask`, and prompt-based hooks are part of the official CC hook API. Watchdog injection is a Monitor_CC-side change independent of the CC hook API. Decision on which hook-API capabilities to migrate to is deferred until `dev/hook_firing/` and `dev/tool_use_errors/` have produced empirical FP + coverage-gap data over a real window.
+**Bottom line:** auto-correction without user friction is NOT achievable via the current CC hook API on Bash. The structural prevention pattern (Hooks > Rules > Discipline) maxes out at block-with-hint for fixable patterns and full block for unfixable ones. Watchdog message injection is the only mechanism in this session that genuinely eliminates a discipline rule (the wake-up rule from `workers-2.md`).
