@@ -4,59 +4,91 @@ import re
 import sys
 
 # Two typo classes from Rule 13 (tool-use.md):
-#   `.claire/`   — tokenizer typo of `.claude/`
-#   `..letter`   — double-dot immediately followed by lowercase letter (in path context)
+#   `.claire/`  — tokenizer typo of `.claude/`
+#   `..letter`  — double-dot immediately followed by lowercase letter (in path context)
 _CLAIRE_PATTERN = re.compile(r'\.claire/')
 _DOTDOT_PATTERN = re.compile(r'(?:^|/|\s|=)\.\.[a-z]')
-
-_BLOCK_MESSAGE_CLAIRE = (
-    "BLOCKED: path contains `.claire/` — tokenizer typo of `.claude/`.\n"
-    "Worktrees and config live under `.claude/worktrees/...` and `~/.claude/`. There is no\n"
-    "`.claire/` directory anywhere. Rewrite the path with `.claude/` and retry.\n"
-    "Rule 13, tool-use.md.\n"
-)
-_BLOCK_MESSAGE_DOTDOT = (
-    "BLOCKED: path contains `..<letter>` (two dots immediately followed by a lowercase letter).\n"
-    "Valid relative-parent traversal is `../` (two dots + slash). Forms like `..claude/`,\n"
-    "`..bin/`, `..src/` are typos with overwhelming probability. Rewrite the path correctly.\n"
-    "Rule 13 same-class, tool-use.md.\n"
-)
+# Rewrite: capture (prefix-char | ^) + .. + letter; replace with same + ../ + letter
+_DOTDOT_FIX_RE  = re.compile(r'(^|[/\s=])(\.\.)([a-z])', re.MULTILINE)
 
 
 # ORCHESTRATOR
 
-# Read tool_input from stdin; exit 2 + stderr if a path-typo pattern fires; exit 0 otherwise.
-def block_path_typo_workflow() -> None:
-    targets = _parse_targets()
-    for s in targets:
-        stripped = _strip_quoted(s)
-        if _CLAIRE_PATTERN.search(stripped):
-            print(_BLOCK_MESSAGE_CLAIRE, file=sys.stderr, end="")
-            sys.exit(2)
-        if _DOTDOT_PATTERN.search(stripped):
-            print(_BLOCK_MESSAGE_DOTDOT, file=sys.stderr, end="")
-            sys.exit(2)
+# Read tool_input from stdin; rewrite path typos via updatedInput; exit 0 always (fail-open rewriter)
+def rewrite_path_typo_workflow() -> None:
+    parsed = _parse_payload()
+    if parsed is None:
+        sys.exit(0)
+    tool_name, inp, target = parsed
+    stripped = _strip_quoted(target)
+    has_claire = bool(_CLAIRE_PATTERN.search(stripped))
+    has_dotdot = bool(_DOTDOT_PATTERN.search(stripped))
+    if not (has_claire or has_dotdot):
+        sys.exit(0)
+    rewritten = _rewrite_typos(target, has_claire, has_dotdot)
+    _emit_rewrite(tool_name, inp, target, rewritten, has_claire, has_dotdot)
     sys.exit(0)
 
 
 # FUNCTIONS
 
-# Parse stdin JSON; return list of strings to check (command or file_path); [] on any error.
-def _parse_targets():
+# Parse stdin JSON; return (tool_name, inp, target_str) or None on any error (fail-open)
+def _parse_payload():
     try:
         payload = json.loads(sys.stdin.read())
     except Exception:
-        return []
+        return None
     tool_name = payload.get("tool_name", "")
     inp = payload.get("tool_input", {})
     if tool_name == "Bash":
         cmd = inp.get("command")
-        return [cmd] if isinstance(cmd, str) else []
+        return (tool_name, inp, cmd) if isinstance(cmd, str) else None
     if tool_name in ("Read", "Write", "Edit"):
         fp = inp.get("file_path")
-        return [fp] if isinstance(fp, str) else []
-    return []
+        return (tool_name, inp, fp) if isinstance(fp, str) else None
+    return None
 
+# Apply claire and dotdot rewrites to the original (unstripped) string
+def _rewrite_typos(s: str, has_claire: bool, has_dotdot: bool) -> str:
+    if has_claire:
+        s = s.replace('.claire/', '.claude/')
+    if has_dotdot:
+        s = _DOTDOT_FIX_RE.sub(r'\1\2/\3', s)
+    return s
+
+# Build updatedInput for the tool; Edit carries all four fields per CC hook spec
+def _build_updated_input(tool_name: str, inp: dict, rewritten: str) -> dict:
+    if tool_name == "Bash":
+        return {"command": rewritten}
+    if tool_name == "Edit":
+        return {
+            "file_path":  rewritten,
+            "old_string":  inp.get("old_string",  ""),
+            "new_string":  inp.get("new_string",  ""),
+            "replace_all": inp.get("replace_all", False),
+        }
+    return {"file_path": rewritten}  # Read, Write
+
+# Print hookSpecificOutput + systemMessage JSON to stdout
+def _emit_rewrite(tool_name: str, inp: dict, original: str, rewritten: str,
+                  has_claire: bool, has_dotdot: bool) -> None:
+    parts = []
+    if has_claire:
+        parts.append("`.claire/` → `.claude/`")
+    if has_dotdot:
+        parts.append("`..<letter>` → `../<letter>`")
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": _build_updated_input(tool_name, inp, rewritten),
+        },
+        "systemMessage": (
+            f"Hook rewrote path typo: {' and '.join(parts)}. "
+            f"Original: `{original}`. Rewritten: `{rewritten}`."
+        ),
+    }
+    print(json.dumps(output))
 
 # Strip content inside single/double quotes so quoted regex/text cannot trigger pattern matches.
 # Not a full shell parser — handles balanced quotes with simple backslash-escape.
@@ -79,4 +111,4 @@ def _strip_quoted(s: str) -> str:
 
 
 if __name__ == "__main__":
-    block_path_typo_workflow()
+    rewrite_path_typo_workflow()
