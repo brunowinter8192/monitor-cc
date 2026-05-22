@@ -216,6 +216,7 @@ def run_main_loop() -> None:
                         _display._search_committed = False
                         _display._search_matches = []
                         _display._search_match_set = set()
+                        _display._search_match_line_offsets = {}
                         input_changed = True
                 elif _display._search_focused:  # search input mode
                     if char in ('\x7f', '\x08'):  # backspace (DEL or BS)
@@ -223,12 +224,16 @@ def run_main_loop() -> None:
                         _display._search_committed = False
                         _display._search_matches = []
                         _display._search_match_set = set()
+                        _display._search_match_line_offsets = {}
                         input_changed = True
                     elif char in ('\r', '\n'):  # enter → commit search, unfocus
                         if _display._search_query != _display._search_cached_query:
                             _display._search_matches, _display._search_match_set = _display._compute_search_matches(_display._search_query)
                             _display._search_cached_query = _display._search_query
                             _display._search_current_idx = 0
+                        _display._search_match_line_offsets = _display._compute_match_line_offsets(
+                            _display._search_query, _display._search_matches
+                        )
                         _display._search_committed = True
                         _display._search_focused = False
                         _display.ensure_match_visible()
@@ -239,6 +244,7 @@ def run_main_loop() -> None:
                             _display._search_committed = False
                             _display._search_matches = []
                             _display._search_match_set = set()
+                            _display._search_match_line_offsets = {}
                             input_changed = True
                 elif char == 'y':
                     key = resolve_parent_key(_display.main_line_map, _display.main_hover_row)
