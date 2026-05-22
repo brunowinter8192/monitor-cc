@@ -35,7 +35,7 @@ from .payload_helpers import (
 )
 from .rules_config import _load_config, _load_system2_rules
 from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
-from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER, _WAKEUP_SR
+from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER, _WAKEUP_TEXT
 
 _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
@@ -167,13 +167,13 @@ def _check_sidecar(payload: dict) -> tuple:
     )
 
 
-# Append _WAKEUP_SR to content (str or list) as wake-up reminder for failed bg-task signals
-def _append_wakeup_sr_to_content(content):
+# Append _WAKEUP_TEXT to content (str or list) as wake-up hint for failed bg-task signals
+def _append_wakeup_text_to_content(content):
     if isinstance(content, str):
         sep = '' if not content or content.endswith('\n') else '\n'
-        return content + sep + _WAKEUP_SR + '\n'
+        return content + sep + _WAKEUP_TEXT
     if isinstance(content, list):
-        return list(content) + [{'type': 'text', 'text': _WAKEUP_SR}]
+        return list(content) + [{'type': 'text', 'text': _WAKEUP_TEXT}]
     return content
 
 
@@ -211,7 +211,7 @@ def _apply_first_pass(messages: list) -> tuple:
                 pass_mods.append("stripped_task_tools_nag")
                 also_stripped_nag = True
             if is_failed_bg:
-                new_msg["content"] = _append_wakeup_sr_to_content(new_msg["content"])
+                new_msg["content"] = _append_wakeup_text_to_content(new_msg["content"])
             result.append(new_msg)
             if new_msg["content"] != old_content:
                 changed_indices.append(idx)
