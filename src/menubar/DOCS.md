@@ -162,15 +162,15 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### hook_setup.py (97 LOC)
+### hook_setup.py (141 LOC)
 
-**Purpose:** One-shot idempotent installer — adds the activity-monitor hooks (UserPromptSubmit → working, Stop/StopFailure → idle) to `~/.claude/settings.json`. Safe to re-run; detects existing entries by command path and skips duplicates.
+**Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message if the script is running from a worktree path — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]`, checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source.
 **Reads:** `~/.claude/settings.json`.
-**Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`).
+**Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`; up to two saves per run — one after sweep if stale entries found, one after add-loop if new entries installed).
 **Called by:** User manually (`python3 src/menubar/hook_setup.py` from Monitor_CC root). Never imported.
-**Calls out:** stdlib only (`json`, `os`, `pathlib`).
+**Calls out:** stdlib only (`json`, `os`, `pathlib`, `sys`).
 
-**Usage:** `python3 src/menubar/hook_setup.py` — run once after clone or when hooks need reinstalling. Restart CC to activate.
+**Usage:** `python3 src/menubar/hook_setup.py` — run once after clone or when hooks need reinstalling. Re-run any time to heal stale hook entries. Restart CC to activate.
 
 ---
 
