@@ -16,13 +16,13 @@ _SUBCOMMAND_AFTER = re.compile(r'\b(?:diff|log|show)\b(.+)', re.DOTALL)
 _BARE_REF         = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_/\-]*$')
 # Standalone -- path separator surrounded by whitespace/boundary (excludes --flag like --stat)
 _HAS_PATH_SEP     = re.compile(r'(?:^|\s)--(?:\s|$)')
-
-_SYSTEM_MESSAGE = "Added -- separator to disambiguate branch name from path."
+# Unquoted chain operators / redirects that end the git subcommand arg scope
+_CHAIN_OP_RE      = re.compile(r'&&|\|\||[|><;]')
 
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; emit updatedInput JSON if git diff/log/show ambiguity detected
+# Read Bash tool_input from stdin; auto-rewrite git command with -- if ambiguity detected
 def rewrite_git_ambiguous_workflow() -> None:
     command = _parse_command()
     if command is None:
@@ -34,8 +34,8 @@ def rewrite_git_ambiguous_workflow() -> None:
         sys.exit(0)
     if not (_has_range_token(stripped) or _has_bare_ref_token(stripped)):
         sys.exit(0)
-    _emit_block_hint(command)
-    sys.exit(2)
+    _emit_rewrite(command, stripped)
+    sys.exit(0)
 
 
 # FUNCTIONS
@@ -72,24 +72,31 @@ def _has_bare_ref_token(command: str) -> bool:
 def _has_path_separator(command: str) -> bool:
     return bool(_HAS_PATH_SEP.search(command))
 
-# Print block hint: detection found but auto-rewrite path not supported by CC API.
-# Surface a one-line stderr so the model retries with -- appended manually.
-# For piped commands the `--` belongs BEFORE the pipe/redirect (right after the
-# git subcommand args), not at the very end of the chain.
-def _emit_block_hint(command: str) -> None:
-    print(
-        "BLOCKED: git diff/log/show with bare ref or ..-range — append ' -- ' "
-        "after the git subcommand args (before any pipe or redirect) to "
-        "disambiguate branch/ref from path.",
-        file=sys.stderr,
-        end="",
-    )
-    # Originally designed as `hookSpecificOutput.updatedInput` auto-rewrite (per
-    # anthropics/claude-code SKILL.md). Empirically refuted (2026-05-22): per CC
-    # CHANGELOG line 1324, allow+updatedInput in PreToolUse only satisfies the
-    # AskUserQuestion tool, not Bash. For general Bash rewrite, only `ask`
-    # decision works (CHANGELOG line 2629) — rejected by user as workflow tax.
-    # Fallback: exit 2 + one-line hint, model retries with -- appended.
+# Insert ' -- ' before the first unquoted chain operator / redirect, or append at end
+def _insert_path_separator(command: str, stripped: str) -> str:
+    m = _CHAIN_OP_RE.search(stripped)
+    if m:
+        pos = m.start()
+        while pos > 0 and stripped[pos - 1] in (' ', '\t'):
+            pos -= 1
+        return command[:pos] + ' --' + command[pos:]
+    return command.rstrip() + ' --'
+
+# Emit allow+updatedInput JSON to rewrite the command in-place
+def _emit_rewrite(command: str, stripped: str) -> None:
+    rewritten = _insert_path_separator(command, stripped)
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {"command": rewritten},
+        },
+        "systemMessage": (
+            f"Hook rewrote git command: inserted -- to disambiguate ref/range from path. "
+            f"Original: `{command}`. Rewritten: `{rewritten}`."
+        ),
+    }
+    print(json.dumps(output))
 
 
 if __name__ == "__main__":
