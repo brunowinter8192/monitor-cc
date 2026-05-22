@@ -92,9 +92,7 @@ tmux send-keys -t <opus-session> "worker <name> idle" Enter
 
 Opus then wakes WITH context: it knows which worker finished and can proceed directly to `worker-cli response <name>` without a `list` round-trip.
 
-**Status:** Monitor_CC-side change, not a CC hook API capability per se. Included here because it addresses the same problem class — reducing Opus's reactive polling discipline by making the signal self-describing. Implementation deferred; no code change in this session.
-
-**Migration path:** once injection is live and verified over a real window, delete the "Timer wakes → `worker-cli status <name>`" discipline line from `~/.claude/shared-rules/opus/workers-2.md § Timer & Polling Flow`. The injected message replaces the rule: structural signal eliminates the need for self-discipline. Same pattern as the `pkill -f` → `block_dangerous_kill.py` migration.
+**Status:** **ROLLED BACK 2026-05-22.** `_notify_opus_workers_idle` was built and committed but removed in the same session. Decision: proxy replace-in-strip (`strip_bg_completed.py` + `rules.py`) is the production path. Watchdog tmux injection rejected as invasive (writes unsolicited text directly into the Opus pane). Migration path and discipline-rule deletion no longer applicable — proxy plain-text replacement is the structural signal.
 
 ---
 
@@ -107,6 +105,6 @@ Opus then wakes WITH context: it knows which worker finished and can proceed dir
 | `permissionDecision: ask` | Not used — rejected by design | Same workflow-tax reason. |
 | Block-with-hint (exit 2 + stderr) | Used for `rewrite_git_ambiguous` (Hook 18) | Fallback when rewrite path is unavailable. Model retries with fix. |
 | Prompt-based hooks | Not used | `diag-chain-and` (Rule 11), `edit-string-not-found` candidates. 30s LLM latency tradeoff per matching call. |
-| Watchdog message injection on worker-idle | Implemented 2026-05-22 in `src/menubar/bg_timer.py` | Replaces blind wake + Opus polling-discipline rule. Requires menubar restart to activate. |
+| Watchdog message injection on worker-idle | **ROLLED BACK 2026-05-22** — `_notify_opus_workers_idle` removed from `src/menubar/bg_timer.py`. Production wake-up path is proxy-only: `strip_bg_completed.py` (`replaced_bg_completed_text`) + `rules.py` (`replaced_task_notification`). | Watchdog was invasive (tmux send-keys into Opus pane); proxy replace-in-strip is non-invasive and sufficient. |
 
-**Bottom line:** auto-correction without user friction is NOT achievable via the current CC hook API on Bash. The structural prevention pattern (Hooks > Rules > Discipline) maxes out at block-with-hint for fixable patterns and full block for unfixable ones. Watchdog message injection is the only mechanism in this session that genuinely eliminates a discipline rule (the wake-up rule from `workers-2.md`).
+**Bottom line:** auto-correction without user friction is NOT achievable via the current CC hook API on Bash. The structural prevention pattern (Hooks > Rules > Discipline) maxes out at block-with-hint for fixable patterns and full block for unfixable ones. The proxy replace-in-strip path (`strip_bg_completed.py` + `rules.py`) is the final architecture for worker-idle wake-up — no menubar watchdog component.

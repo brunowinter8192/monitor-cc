@@ -17,7 +17,7 @@ from Foundation import NSObject, NSOperationQueue
 # From discover.py: Live session discovery
 from .discover import list_alive_sessions
 # From bg_timer.py: Background sleep-timer scanning and abort
-from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers, _notify_opus_workers_idle
+from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
 # From hotkey.py: Carbon Cmd+L, Cmd+1..9, Cmd+arrows, Cmd+K registration
 from .hotkey import (register_cmd_l, register_cmd_digits, unregister_hotkeys,
                      register_cmd_arrow_right, register_cmd_arrow_left,
@@ -448,7 +448,6 @@ def _auto_abort_check(app: 'CCMenuBarApp', sessions, bg_by_project: dict, now: f
                 app._all_workers_idle_since_ts[proj] = now
             elif now - app._all_workers_idle_since_ts[proj] >= 5.0:
                 _abort_bg_sleep_timers(proj_bg.sleep_pids)
-                _notify_opus_workers_idle(sessions, proj, workers)
                 app._all_workers_idle_since_ts.pop(proj, None)
         else:
             app._all_workers_idle_since_ts.pop(proj, None)

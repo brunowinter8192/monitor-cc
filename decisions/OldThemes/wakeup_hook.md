@@ -76,3 +76,19 @@ Opus sees `worker idle` on the wake-up turn — sufficient to trigger `worker-cl
 ### Status
 
 Live verification deferred to next session (proxy frozen at session start, does not see code from 903c605 until proxy restart).
+
+---
+
+## Iteration 4 — Menubar Watchdog Removal (2026-05-22)
+
+### What was built (and removed)
+
+Parallel to Iteration 3 (same session): `_notify_opus_workers_idle` added to `src/menubar/bg_timer.py`. Called from `_auto_abort_check` in `app.py` immediately after `_abort_bg_sleep_timers`. Mechanism: on all-workers-idle + active bg timer (5s debounce), after killing the sleep child via SIGTERM, inject `worker <names> idle\nEnter` directly into Opus's tmux pane via `tmux send-keys`. TTY looked up from `_cc_proc_cache` → pane_ref from `tmux list-panes -a`.
+
+### Why removed
+
+User decision: **proxy only**. The watchdog approach was architecturally invasive — it types unsolicited text into the Opus pane as a side-effect of the timer-kill path. The proxy replace-in-strip approach (Iteration 3) achieves the same outcome non-invasively: CC's own `strip_bg_completed.py` replaces the kill-notification with `worker idle\n` before Opus sees it, giving Opus the wake-up context in the normal message stream without any out-of-band pane injection.
+
+### Final architecture
+
+Production wake-up path: `strip_bg_completed.py` (`replaced_bg_completed_text`) + `rules.py` `_apply_first_pass` (`replaced_task_notification`). Auto-abort (`_abort_bg_sleep_timers`) remains in the menubar tick loop — it is the trigger that causes the timer to terminate early, which in turn causes CC to deliver the notification that the proxy replaces. The two halves are complementary: menubar kills the timer, proxy delivers the signal.
