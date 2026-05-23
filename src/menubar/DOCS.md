@@ -110,7 +110,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (176 LOC)
+### discover.py (182 LOC)
 
 **Purpose:** Session discovery entry point. `SessionInfo` now includes `session_id: str` (JSONL stem = CC session identifier; key for `msg_queue.json` queue). `list_alive_sessions` calls `_write_cwd_uuid_map()` after each tick so `APP_SUPPORT/ghostty_cwd_uuid.json` stays current for hook delivery.
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; delegates to `proc_cache.py`; Ghostty mapping via `ghostty.py`.
@@ -331,7 +331,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Per-project abort button (Option B):** abort button is embedded inline in the project's separator row via `_make_separator_view(project_name, pw, proj_min_remaining)`. Returns `(NSView, Optional[NSButton])`. Zero height cost — no extra `_ROW_H` row. Button styled in `systemRedColor` Menlo font, static label `abort`. Target/action wired in `_rebuild_panel`; label is static so no per-tick update. Tag range: 1000+ (above session row tags starting at 1).
 - **Ancestry-chain walk** (`bg_timer.py:_scan_bg_sleep_timers`): attribution now walks up to 5 levels from the zsh's parent to find a CC process in `_cc_proc_cache`, instead of a single `gppid = parent[0]` lookup. Handles intermediate shell layers between CC and the zsh (e.g., `CC → sh → zsh → sleep`). Does NOT fix PID-recycling cross-project attribution (narrow timing window; deferred).
 - **`_aggregate_bg` removed from `app.py` import:** `_tick` now passes `bg_by_project` directly to panel functions. Session row badge countdown (`min_remaining`) is computed inside panel functions from `bg_by_project.values()`. Manual `abortBgTimer_` uses `_scan_bg_sleep_timers` directly scoped to the clicked project.
-- **Hook state as primary signal** (`proc_cache.py:_hook_state_cache`): `session_id` in hook payload == JSONL filename stem. Direct lookup, no encoding/decoding. Hook state stale guard uses `ALIVE_WINDOW_SECS=3600s`. Workers fire hooks too; their entries ARE consulted by the worker status branch (hook-only, no fallback).
+- **Hook state as primary signal** (`proc_cache.py:_hook_state_cache`): `session_id` in hook payload == JSONL filename stem. Direct lookup, no encoding/decoding. Hook state stale guard uses `ALIVE_WINDOW_SECS=3600s`. Workers fire hooks too; their entries ARE consulted by the worker status branch. Crash-safety override: if hook says `'working'` but JSONL mtime exceeds `WORKING_THRESHOLD_SECS=10s`, status is demoted to `'idle'` (CC crashed before Stop-hook fired — JSONL writes stop at crash time). Parallel to the main-branch pattern but inverted: main uses JSONL-mtime to lift idle→working; worker branch uses it to demote stale working→idle.
 - **Proxy-log thinking signal** (`proc_cache.py:_proxy_log_newest_mtime`): override condition: `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → status `working`. The `proxy_mtime > jsonl_mtime` check: proxy writes at the START of the reasoning phase, staying ahead for the full thinking duration. After response completion the proxy latency entry lands ~0.1s BEFORE CC writes JSONL, so `proxy_mtime` drops just below `jsonl_mtime` — no false positive.
 - **_PROXY_LOG_DIR placement**: lives in `proc_cache.py` (not `discover.py`) to avoid an import cycle — `_proxy_log_newest_mtime` is its sole consumer and lives in proc_cache.py.
 

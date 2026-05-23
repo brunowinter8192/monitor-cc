@@ -136,8 +136,14 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
             if now - mtime > ALIVE_WINDOW_SECS:
                 return None
         hook_entry = hook_state.get(session_id)
-        if hook_entry is not None and (now - hook_entry.get('updated_ts', 0)) <= ALIVE_WINDOW_SECS:
+        hook_fresh = (hook_entry is not None
+                      and (now - hook_entry.get('updated_ts', 0)) <= ALIVE_WINDOW_SECS)
+        if hook_fresh:
             status = hook_entry['status']
+            # Crash-safety: 'working' hook + stale JSONL = CC crashed before Stop-hook fired.
+            # Demote to 'idle' so the menubar doesn't show false-working for up to 1h.
+            if status == 'working' and (now - mtime) > WORKING_THRESHOLD_SECS:
+                status = 'idle'
         else:
             status = 'idle'
         return SessionInfo(name=worker_name, status=status, has_bg=has_bg,
