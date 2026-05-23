@@ -80,7 +80,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (732 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
+### app.py (735 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_` (append empty draft; guard against stacking blanks), `toggleQueueEntry_` (draft↔queued flip), `removeQueueEntry_` (× delete), `commitQueueField_` (Enter → save draft text in-place), `controlTextDidEndEditing_` (blur → save draft text in-place). `_tick` caches sessions in `app._last_sessions`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open.
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch; `QUEUE_FILE` (via `load_queue()`) on every tick + on `_open_queue_panel`.
@@ -110,9 +110,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (182 LOC)
+### discover.py (186 LOC)
 
-**Purpose:** Session discovery entry point. `SessionInfo` now includes `session_id: str` (JSONL stem = CC session identifier; key for `msg_queue.json` queue). `list_alive_sessions` calls `_write_cwd_uuid_map()` after each tick so `APP_SUPPORT/ghostty_cwd_uuid.json` stays current for hook delivery.
+**Purpose:** Session discovery entry point. `SessionInfo` includes `session_id: str` (JSONL stem = CC session identifier; key for `msg_queue.json` queue) and `tmux_session_name: str` (worker-`basename(project_path)`-`worker_name` for workers, `''` for mains; used by `app.py:_has_recent_send_signal` for orchestrator-signal lookup — DO NOT reconstruct from `project_name` since the decoded-path heuristic diverges from the iterative-dev tmux convention, e.g. `MCP-RAG` vs `RAG`). `list_alive_sessions` calls `_write_cwd_uuid_map()` after each tick so `APP_SUPPORT/ghostty_cwd_uuid.json` stays current for hook delivery.
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; delegates to `proc_cache.py`; Ghostty mapping via `ghostty.py`.
 **Writes:** nothing directly. Delegates writes to submodules (incl. `_write_cwd_uuid_map`).
 **Called by:** `app.py:CCMenuBarApp._tick`, `app.py:_open_main_panel`, `app.py:_PanelController.*Queue*` methods.

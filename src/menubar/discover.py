@@ -20,14 +20,15 @@ THINKING_OVERRIDE_MAX_SECS = 300  # max expected thinking duration for proxy-mti
 _WORKTREE_MARKER = '--claude-worktrees-'
 
 class SessionInfo(NamedTuple):
-    name: str          # display name: cwd basename for mains, worktree name for workers
-    status: str        # 'working' | 'idle'
-    has_bg: bool       # True if any in-progress background task exists
-    encoded_dir: str   # ~/.claude/projects/ dir name, e.g. '-Users-.../Monitor_CC'
-    project_name: str  # project this session belongs to (for grouping)
-    is_worker: bool    # True if session lives under .claude/worktrees/
-    cwd: str           # full working directory (non-empty for mains; '' for workers)
-    session_id: str    # JSONL stem = CC session identifier (key for msg_queue.json)
+    name: str                # display name: cwd basename for mains, worktree name for workers
+    status: str              # 'working' | 'idle'
+    has_bg: bool             # True if any in-progress background task exists
+    encoded_dir: str         # ~/.claude/projects/ dir name, e.g. '-Users-.../Monitor_CC'
+    project_name: str        # project this session belongs to (for grouping); decoded-path heuristic — may not equal worker_tmux_session basename for nested paths like Meta/ClaudeCode/MCP/RAG (project_name='MCP-RAG', basename='RAG')
+    is_worker: bool          # True if session lives under .claude/worktrees/
+    cwd: str                 # full working directory (non-empty for mains; '' for workers)
+    session_id: str          # JSONL stem = CC session identifier (key for msg_queue.json)
+    tmux_session_name: str   # worker-{basename(project_path)}-{worker_name} per iterative-dev convention; '' for mains. Used for orchestrator-signal lookup in app.py:_has_recent_send_signal — DO NOT reconstruct from project_name (decode heuristic mismatch).
 
 # ORCHESTRATOR
 
@@ -126,9 +127,10 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
 
     if is_worker:
         cwd = _cwd_from_jsonl(jsonl)
+        tmux_session = ''
         if cwd and '/.claude/worktrees/' in cwd:
             # Worker alive iff its tmux session exists (consistent with worker-cli)
-            tmux_session = _worker_tmux_session(cwd, worker_name)
+            tmux_session = _worker_tmux_session(cwd, worker_name) or ''
             if not tmux_session or not _tmux_session_exists(tmux_session):
                 return None
         else:
@@ -148,7 +150,8 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
             status = 'idle'
         return SessionInfo(name=worker_name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
-                           is_worker=True, cwd='', session_id=session_id)
+                           is_worker=True, cwd='', session_id=session_id,
+                           tmux_session_name=tmux_session)
     else:
         # Main session: stale if JSONL > 1h
         if now - mtime > ALIVE_WINDOW_SECS:
@@ -179,4 +182,5 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
                     status = 'working'
         return SessionInfo(name=name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
-                           is_worker=False, cwd=cwd or '', session_id=session_id)
+                           is_worker=False, cwd=cwd or '', session_id=session_id,
+                           tmux_session_name='')

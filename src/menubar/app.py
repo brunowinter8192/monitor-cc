@@ -467,10 +467,13 @@ def _auto_abort_check(app: 'CCMenuBarApp', sessions, bg_by_project: dict, now: f
             del app._all_workers_idle_since_ts[proj]
 
 
-# True if worker-cli has signalled a send to this worker's tmux session in the last buffer window
+# True if worker-cli has signalled a send to this worker's tmux session in the last buffer window.
+# Uses worker.tmux_session_name (carries the iterative-dev tmux convention basename(project_path));
+# NEVER reconstruct from project_name — that's a different decoded-path heuristic (MCP-RAG vs RAG).
 def _has_recent_send_signal(worker, signals: dict, now: float) -> bool:
-    tmux_session = f"worker-{worker.project_name}-{worker.name}"
-    ts = signals.get(tmux_session)
+    if not worker.tmux_session_name:
+        return False
+    ts = signals.get(worker.tmux_session_name)
     return ts is not None and (now - ts) < ORCHESTRATOR_SIGNAL_BUFFER_SECS
 
 # True if any session's status differs from last tick's snapshot
