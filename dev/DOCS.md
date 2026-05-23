@@ -24,6 +24,7 @@ cd Monitor_CC/
 - [cc_source_research/DOCS.md](cc_source_research/DOCS.md) — CC binary + source research artifacts — env-var inventory from npm binaries, cross-referenced against community decompiles
 - [ram_audit/DOCS.md](ram_audit/DOCS.md) — Pane RAM snapshot investigation — SIGUSR1 dump handler + `dump_all.sh` for live RSS/allocator capture across all panes
 - `hook_smoke/` — Hook blocking rule smoke tests (chained_sleep, dangerous_kill, read_worktree); no own DOCS.md
+- `bead_tracker_chain/` — `smoke.py`: end-to-end smoke for `bead_tracker_hook` per-subcommand processing (4 cases: single, chained `;`, cross-project skip, pipe non-split); creates/deletes real test beads; no own DOCS.md
 
 ## session_analysis/
 

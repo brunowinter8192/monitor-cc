@@ -16,10 +16,12 @@ _BD_TRACK_RE = re.compile(r'\bbd\s+(?:show|comments\s+(?:add\s+)?)\s+([A-Za-z]\w
 _HAS_DB_FLAG = re.compile(r'--(?:db|repo)\b')
 # Valid bead-id: ProjectName-suffix (alphanumeric + underscore)
 _BEAD_ID_RE  = re.compile(r'^[A-Za-z]\w*-\w+$')
+# Shell statement separators — split chained calls; NOT pipe (|)
+_SEP_RE      = re.compile(r'(?:;|&&|\|\|)')
 
 # ORCHESTRATOR
 
-# Read PostToolUse payload; label matching bead as 'tracked' if conditions met
+# Read PostToolUse payload; per-subcommand: label matching bead as 'tracked'
 def bead_tracker_hook_workflow() -> None:
     try:
         payload = json.loads(sys.stdin.read())
@@ -28,21 +30,27 @@ def bead_tracker_hook_workflow() -> None:
     if payload.get('tool_name') != 'Bash':
         return
     cmd = payload.get('tool_input', {}).get('command', '')
-    if not cmd or _HAS_DB_FLAG.search(cmd):
-        return   # cross-project call — ignore per spec
-    m = _BD_TRACK_RE.search(cmd)
-    if not m:
+    if not cmd:
         return
-    bead_id = m.group(1)
-    if not _BEAD_ID_RE.match(bead_id):
-        return   # false match (e.g. "add") — validation exits cleanly
     cwd = payload.get('cwd', '')
     if not cwd:
         return
     db_path = _find_db_path(Path(cwd))
     if db_path is None:
         return
-    _bd_label_add(bead_id, db_path)
+    for subcmd in _SEP_RE.split(cmd):
+        subcmd = subcmd.strip()
+        if not subcmd:
+            continue   # empty segment (e.g. trailing ;)
+        if _HAS_DB_FLAG.search(subcmd):
+            continue   # cross-project subcommand — skip
+        m = _BD_TRACK_RE.search(subcmd)
+        if not m:
+            continue
+        bead_id = m.group(1)
+        if not _BEAD_ID_RE.match(bead_id):
+            continue   # false match — validation exits cleanly
+        _bd_label_add(bead_id, db_path)
 
 # FUNCTIONS
 
