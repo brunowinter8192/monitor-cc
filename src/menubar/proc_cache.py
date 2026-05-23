@@ -5,11 +5,13 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-# From paths.py: APP_SUPPORT-relative hook state path
-from .paths import HOOKS_FILE as _HOOK_STATE_FILE
+# From paths.py: APP_SUPPORT-relative hook state path + orchestrator signal file
+from .paths import HOOKS_FILE as _HOOK_STATE_FILE, ORCHESTRATOR_SIGNALS_FILE as _ORCHESTRATOR_SIGNALS_FILE
 
-_PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds
+_PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds (expensive: ps -A + lsof)
+_HOOK_REFRESH_INTERVAL = 1.0    # seconds between hooks.json reads (cheap: 1KB JSON; MUST be < POLL_INTERVAL=1.5s for tick-freshness; see decisions/OldThemes/menubar_signal_grace/initial_design.md)
 _TMUX_REFRESH_INTERVAL = 3.0    # seconds between tmux list-sessions polls
+ORCHESTRATOR_SIGNAL_BUFFER_SECS = 5.0   # workers with orchestrator_signals.json timestamp newer than this are treated as 'working' for auto-abort (covers send → UserPromptSubmit-hook latency)
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
 # central log dir — proxy lives in Monitor_CC and intercepts all CC sessions via ANTHROPIC_BASE_URL
 _PROXY_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/Monitor_CC/src/logs')
@@ -26,9 +28,14 @@ _tmux_state_last_refresh: float = 0.0
 _proxy_log_mtime_cache: Dict[str, Tuple[float, Optional[float]]] = {}
 
 # Hook state file written by hook_writer.py; {session_id → {status, cwd, updated_ts}}
-# cached contents + last-read timestamp; TTL = _PROC_REFRESH_INTERVAL
+# cached contents + last-read timestamp; TTL = _HOOK_REFRESH_INTERVAL (1s, not coupled to proc cache)
 _hook_state_cache: Dict[str, dict] = {}
 _hook_state_last_read: float = 0.0
+
+# Orchestrator-signal file written by worker-cli send; {tmux_session_name → send_unix_ts}
+# cached contents + last-read timestamp; TTL = _HOOK_REFRESH_INTERVAL (same urgency as hook state)
+_orchestrator_signal_cache: Dict[str, float] = {}
+_orchestrator_signal_last_read: float = 0.0
 
 # ORCHESTRATOR
 
@@ -124,10 +131,10 @@ def _proxy_log_newest_mtime(project_key: str, now: float) -> Optional[float]:
     _proxy_log_mtime_cache[project_key] = (now, result)
     return result
 
-# Return hook state dict {session_id: {status, cwd, updated_ts}}; cached with _PROC_REFRESH_INTERVAL TTL
+# Return hook state dict {session_id: {status, cwd, updated_ts}}; cached with _HOOK_REFRESH_INTERVAL TTL
 def _read_hook_state(now: float) -> Dict[str, dict]:
     global _hook_state_cache, _hook_state_last_read
-    if now - _hook_state_last_read < _PROC_REFRESH_INTERVAL:
+    if now - _hook_state_last_read < _HOOK_REFRESH_INTERVAL:
         return _hook_state_cache
     _hook_state_last_read = now
     try:
@@ -135,3 +142,20 @@ def _read_hook_state(now: float) -> Dict[str, dict]:
     except Exception:
         _hook_state_cache = {}
     return _hook_state_cache
+
+
+# Return orchestrator-signal dict {tmux_session_name: send_unix_ts}; cached with _HOOK_REFRESH_INTERVAL TTL.
+# Written by worker-cli (iterative-dev plugin) BEFORE each tmux send-keys. The menubar treats workers
+# with `now - signal_ts < ORCHESTRATOR_SIGNAL_BUFFER_SECS` as 'working' for auto-abort decisions,
+# eliminating the prompt-send → hook-fire race that previously killed Opus background timers.
+def _read_orchestrator_signals(now: float) -> Dict[str, float]:
+    global _orchestrator_signal_cache, _orchestrator_signal_last_read
+    if now - _orchestrator_signal_last_read < _HOOK_REFRESH_INTERVAL:
+        return _orchestrator_signal_cache
+    _orchestrator_signal_last_read = now
+    try:
+        raw = json.loads(_ORCHESTRATOR_SIGNALS_FILE.read_text(encoding='utf-8'))
+        _orchestrator_signal_cache = {k: float(v) for k, v in raw.items()}
+    except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
+        _orchestrator_signal_cache = {}
+    return _orchestrator_signal_cache
