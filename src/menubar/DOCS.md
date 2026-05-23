@@ -60,9 +60,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### paths.py (34 LOC)
+### paths.py (35 LOC)
 
-**Purpose:** Single source of truth for 7 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`). Runs `_migrate_from_dotfiles()` at import.
+**Purpose:** Single source of truth for 8 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`), `ORCHESTRATOR_SIGNALS_FILE` (`orchestrator_signals.json` — written by worker-cli send, read by menubar for auto-abort grace). Runs `_migrate_from_dotfiles()` at import.
 **Reads:** old dotfile paths under `~` on first import (migration); nothing thereafter.
 **Writes:** creates `_APP_SUPPORT` dir; moves old dotfiles to new paths on first import.
 **Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`); `queue.py` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`). `hook_writer.py` and `ghostty.py` define equivalent paths inline (standalone / cycle-avoidance).
@@ -80,7 +80,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (714 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
+### app.py (732 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_` (append empty draft; guard against stacking blanks), `toggleQueueEntry_` (draft↔queued flip), `removeQueueEntry_` (× delete), `commitQueueField_` (Enter → save draft text in-place), `controlTextDidEndEditing_` (blur → save draft text in-place). `_tick` caches sessions in `app._last_sessions`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open.
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch; `QUEUE_FILE` (via `load_queue()`) on every tick + on `_open_queue_panel`.
@@ -120,11 +120,11 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### proc_cache.py (137 LOC)
+### proc_cache.py (161 LOC)
 
-**Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader. All caches have TTL-based refresh (10s for proc/proxy/hook, 3s for tmux). Owns `_TASKS_BASE` and `_has_active_bg()` (in-progress task detection).
-**Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE` (`APP_SUPPORT/hooks.json`, hook state).
-**Writes:** module-level caches (`_cc_proc_cache`, `_tmux_state_cache`, `_proxy_log_mtime_cache`, `_hook_state_cache`).
+**Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader, orchestrator-signal reader. Two TTL classes: `_PROC_REFRESH_INTERVAL` = 10s for the expensive `ps -A` / `lsof` caches; `_HOOK_REFRESH_INTERVAL` = 1s for the cheap hooks.json + orchestrator_signals.json reads (must be < POLL_INTERVAL=1.5s so each menubar tick gets a fresh snapshot while intra-tick consumers still see consistency). `_TMUX_REFRESH_INTERVAL` = 3s for `tmux list-sessions`. Exports `ORCHESTRATOR_SIGNAL_BUFFER_SECS = 5s` consumed by `app.py:_auto_abort_check`. Owns `_TASKS_BASE` and `_has_active_bg()`.
+**Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE` (`APP_SUPPORT/hooks.json`); `ORCHESTRATOR_SIGNALS_FILE` (`APP_SUPPORT/orchestrator_signals.json`, written by worker-cli).
+**Writes:** module-level caches (`_cc_proc_cache`, `_tmux_state_cache`, `_proxy_log_mtime_cache`, `_hook_state_cache`, `_orchestrator_signal_cache`).
 **Called by:** `discover.py:list_alive_sessions` (refresh calls); `discover.py:_process_project_dir` (query calls); `ghostty.py:_tty_for_cwd` (`_cc_proc_cache` import); `bg_timer.py:_scan_bg_sleep_timers` (`_cc_proc_cache` import); `bg_timer.py:_abort_bg_sleep_timers` (`_TASKS_BASE` import).
 **Calls out:** `subprocess` (ps, lsof, tmux).
 

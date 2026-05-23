@@ -18,6 +18,8 @@ from Foundation import NSObject, NSOperationQueue
 from .discover import list_alive_sessions
 # From bg_timer.py: Background sleep-timer scanning and abort
 from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
+# From proc_cache.py: orchestrator-signal file read + buffer constant for send-event grace
+from .proc_cache import _read_orchestrator_signals, ORCHESTRATOR_SIGNAL_BUFFER_SECS
 # From hotkey.py: Carbon Cmd+L, Cmd+1..9, Cmd+arrows, Cmd+K registration
 from .hotkey import (register_cmd_l, register_cmd_digits, unregister_hotkeys,
                      register_cmd_arrow_right, register_cmd_arrow_left,
@@ -432,8 +434,14 @@ class CCMenuBarApp(rumps.App):
                 _tick_log(False, sessions, self._displayed_items, 'no-change')
 
 
-# Per-project auto-abort: if all workers idle for ≥5s and project has a bg timer, abort it
+# Per-project auto-abort: if all workers idle for >=5s and project has a bg timer, abort it.
+# A worker is treated as 'working' when either (a) its hook status is working, OR (b) worker-cli
+# wrote an orchestrator signal for its tmux session within ORCHESTRATOR_SIGNAL_BUFFER_SECS.
+# Rationale: the prompt-send event is the orchestrator's intent. Trusting that signal directly
+# avoids the send -> UserPromptSubmit-hook latency race that previously killed Opus bg timers.
+# See decisions/OldThemes/menubar_signal_grace/initial_design.md.
 def _auto_abort_check(app: 'CCMenuBarApp', sessions, bg_by_project: dict, now: float) -> None:
+    signals = _read_orchestrator_signals(now)
     workers_by_project: dict = {}
     for s in sessions:
         if s.is_worker:
@@ -442,7 +450,10 @@ def _auto_abort_check(app: 'CCMenuBarApp', sessions, bg_by_project: dict, now: f
         if proj == 'unknown':
             continue
         workers = workers_by_project.get(proj, [])
-        all_idle = bool(workers) and all(w.status == 'idle' for w in workers)
+        all_idle = bool(workers) and all(
+            w.status == 'idle' and not _has_recent_send_signal(w, signals, now)
+            for w in workers
+        )
         if all_idle:
             if proj not in app._all_workers_idle_since_ts:
                 app._all_workers_idle_since_ts[proj] = now
@@ -454,6 +465,13 @@ def _auto_abort_check(app: 'CCMenuBarApp', sessions, bg_by_project: dict, now: f
     for proj in list(app._all_workers_idle_since_ts):
         if proj not in bg_by_project:
             del app._all_workers_idle_since_ts[proj]
+
+
+# True if worker-cli has signalled a send to this worker's tmux session in the last buffer window
+def _has_recent_send_signal(worker, signals: dict, now: float) -> bool:
+    tmux_session = f"worker-{worker.project_name}-{worker.name}"
+    ts = signals.get(tmux_session)
+    return ts is not None and (now - ts) < ORCHESTRATOR_SIGNAL_BUFFER_SECS
 
 # True if any session's status differs from last tick's snapshot
 def _statuses_changed(sessions, last: dict) -> bool:
