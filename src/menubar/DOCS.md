@@ -162,9 +162,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bead_tracker_hook.py (73 LOC)
+### bead_tracker_hook.py (81 LOC)
 
-**Purpose:** CC PostToolUse hook — auto-tracks bead IDs referenced in `bd show` / `bd comments [add]` tool calls. Scans Bash tool_result output for bead ID patterns, walks up the project directory tree to find `.beads/dolt` (up to 5 levels), then calls `bd label add` to register the bead as tracked. Standalone script; never imported. Installed by `hook_setup.py`.
+**Purpose:** CC PostToolUse hook — auto-tracks bead IDs referenced in `bd show` / `bd comments [add]` tool calls. Splits chained Bash calls on `;`/`&&`/`||` and processes each subcommand independently: skips subcommands containing `--db`/`--repo` (cross-project), matches bead IDs via `_BD_TRACK_RE`, walks up the project directory tree to find `.beads/dolt` (up to 5 levels, resolved once per hook invocation), then calls `bd label add` to register matched beads as tracked. Standalone script; never imported. Installed by `hook_setup.py`.
 **Reads:** stdin (CC PostToolUse JSON payload); `.beads/dolt` discovery via directory walk; `_BD_TRACK_RE` / `_HAS_DB_FLAG` patterns on `tool_input.command`.
 **Writes:** nothing directly — spawns `bd label add` via subprocess.
 **Called by:** CC hook system (PostToolUse/Bash). Never imported.
