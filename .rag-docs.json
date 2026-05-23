@@ -1,23 +1,14 @@
 {
-  "collections": [
-    {
-      "name": "Monitor_CC-meta",
-      "include": [
-        "src/DOCS.md",
-        "src/*/DOCS.md",
-        "dev/DOCS.md",
-        "dev/*/DOCS.md",
-        "dev/*/*/DOCS.md",
-        "decisions/*.md",
-        "sources/sources.md"
-      ]
-    },
-    {
-      "name": "Monitor_CC-features",
-      "include": [
-        "decisions/OldThemes/*.md",
-        "decisions/OldThemes/**/*.md"
-      ]
-    }
+  "collection": "Monitor_CC-docs",
+  "include": [
+    "src/DOCS.md",
+    "src/*/DOCS.md",
+    "dev/DOCS.md",
+    "dev/*/DOCS.md",
+    "dev/*/*/DOCS.md",
+    "decisions/*.md",
+    "decisions/OldThemes/*.md",
+    "decisions/OldThemes/**/*.md",
+    "sources/sources.md"
   ]
 }
