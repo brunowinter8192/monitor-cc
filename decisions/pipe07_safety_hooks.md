@@ -365,7 +365,7 @@ Hook 18 (`rewrite_git_ambiguous`) covers the 2 `git-ambiguous` violations.
 
 ---
 
-**2026-05-20 compliance run** (`dev/tool_use_analysis/rule_compliance.py`, 5 recent monitor_cc logs, 900 tool_use blocks):
+**2026-05-20 compliance run** (`dev/tool_use_errors/analyze.py`, 5 recent monitor_cc logs, 900 tool_use blocks):
 
 | Rule | Violations | Hook status |
 |---|---|---|
@@ -375,7 +375,7 @@ Hook 18 (`rewrite_git_ambiguous`) covers the 2 `git-ambiguous` violations.
 | Rule 10 (git dev ambiguity) | 1 | Not hookable (reliable detection requires dir check + repo path parsing) |
 | Uncategorized | 19 | Launchctl/menubar errors — not rule violations |
 
-Script: `dev/tool_use_analysis/rule_compliance.py`; logs: 5 most recent `api_requests_opus_monitor_cc_*.jsonl`.
+Script: `dev/tool_use_errors/analyze.py`; logs: 5 most recent `api_requests_opus_monitor_cc_*.jsonl`.
 
 ---
 

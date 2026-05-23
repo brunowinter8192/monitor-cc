@@ -17,7 +17,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### panel.py (462 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
+### panel.py (499 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
 
 **Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and the two render functions (`_rebuild_panel`, `_update_panel_inplace`). Footer has two buttons: Kill (left) + Restart (right). Main session rows carry an inline `[N] ` prefix (slots 1..9) for Cmd+N hotkey reference; workers and slots >9 carry no prefix. Per-project abort buttons (Option B) are embedded inline in the project separator rows — `_make_separator_view` returns `(NSView, Optional[NSButton])`. Queue UI removed — moved to `queue_panel.py`. Defines `_KeyablePanel(NSPanel)` — overrides `canBecomeKeyWindow` to return True so all three panels can receive keyboard events despite `NSWindowStyleMaskNonactivatingPanel`; imported by bead_panel.py and queue_panel.py. Also overrides `performKeyEquivalent_` to route Cmd+{V,C,X,A,Z} and Shift+Cmd+Z to the first responder via `respondsToSelector_`/`performSelector_withObject_` — `rumps.App` has no main menu Edit items, so these key equivalents would otherwise fall through silently. Rebuild: `sv.removeFromSuperview()` called after `removeView_` — NSStackView.removeView_ removes from arrangedSubviews only, not from view hierarchy. Pure UI concern — no rumps, no ctypes, no subprocess.
 **Reads:** `app` instance attrs (`_panel_sv`, `_panel_width`, `_panel_min_height`, `_displayed_items`, `_cwd_map`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_toggle_btn`, `_panel_controller`, `_auto_focus`, `_panel`) via function parameters; session list and `bg_by_project` dict from caller.
@@ -30,7 +30,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ### queue_panel.py (269 LOC)
 
-**Purpose:** Standalone NSPanel (3rd panel) for the per-session message queue. Analogous to `bead_panel.py`. `_make_queue_nspanel()` returns `(panel, stack, toggle_btn)` — no footer. `_rebuild_queue_panel(app, sessions)` renders per-main-session blocks via ONE NSGridView (1-col): every row is a full-width container `NSView` (`wantsLayer=True`). Three-state rows: **draft** (no background, editable NSTextField, `↑` toggle button, `×` delete), **queued** (red bg tint via `layer.backgroundColor = systemRedColor α0.18`, read-only label, `↓` toggle, `×` delete), **sent** (green bg tint, read-only label, no toggle, `×` delete). Session headers and `+` add-btn are also full-width views. Container background pattern: `view.setWantsLayer_(True)` + `view.layer().setBackgroundColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.18).CGColor())` — no Quartz import needed (AppKit bridging exposes `.CGColor()`). All NSGridView direct content views carry explicit `widthAnchor` + `heightAnchor` constraints (TAMIC disabled by NSGridView). NSTextField first-responder fix: `makeKeyAndOrderFront_(None)` + `makeFirstResponder_(tf)` on first draft field after rebuild. Constants: `_QUEUE_TOGGLE_W = 22` (toggle btn), `_QUEUE_MINUS_W = 22` (× btn). Column layout inside container (frame-based, not AutoLayout): `[0..col0_w) text | [col0_w..col0_w+TOGGLE_W) toggle | [col0_w+TOGGLE_W..pw) ×`.
+**Purpose:** Standalone NSPanel (3rd panel) for the per-session message queue. Analogous to `bead_panel.py`. `_make_queue_nspanel()` returns `(panel, stack, toggle_btn)` — no footer. `_rebuild_queue_panel(app, sessions)` renders per-main-session blocks via ONE NSGridView (1-col): every row is a full-width container `NSView` (`wantsLayer=True`). Three-state rows: **draft** (no background, editable NSTextField, `↑` toggle button, `×` delete), **queued** (red bg tint via `layer.backgroundColor = systemRedColor α0.18`, read-only label, `↓` toggle, `×` delete), **sent** (green bg tint, read-only label, no toggle, `×` delete). Session headers and `+` add-btn are also full-width views. Container background pattern: `view.setWantsLayer_(True)` + `view.layer().setBackgroundColor_(NSColor.systemRedColor().colorWithAlphaComponent_(0.18).CGColor())` — no Quartz import needed (AppKit bridging exposes `.CGColor()`). All NSGridView direct content views carry explicit `widthAnchor` + `heightAnchor` constraints (TAMIC disabled by NSGridView). NSTextField first-responder fix: `makeKeyAndOrderFront_(None)` + `makeFirstResponder_(tf)` on first draft field after rebuild. Constants: `_QUEUE_TOGGLE_W = 22` (toggle btn), `_QUEUE_MINUS_W = 22` (× btn). Column layout inside container (frame-based, not AutoLayout): `[0..col0_w) text | [col0_w..col0_w+_QUEUE_TOGGLE_W) toggle | [col0_w+_QUEUE_TOGGLE_W..pw) ×`.
 **Reads:** `app._queue_sv`, `app._queue_panel`, `app._queue_toggle_btn`, `app._queue_data`, `app._panel_width`, `app._panel_min_height`, `app._auto_focus`, `app._panel_controller`; `sessions` list from caller.
 **Writes:** `app._queue_add_tags`, `app._queue_remove_tags`, `app._pending_queue_tags`, `app._queue_toggle_tags`, `app._queue_displayed_names` (reset on each rebuild); NSPanel frame.
 **Key signatures:** `_make_queue_nspanel()`, `_rebuild_queue_panel(app, sessions)`, `_reposition_queue_panel(panel, nsstatusitem)`, `_resize_queue_panel(app, new_h)`.
@@ -39,7 +39,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bead_panel.py (289 LOC)
+### bead_panel.py (321 LOC)
 
 **Purpose:** Bead-tracker NSPanel (2nd panel). ONE NSGridView (2-col): col 0 = expand button (flexible), col 1 = × untrack button (22pt fixed). Expand rows merged across both columns. `_make_expand_view` builds a per-line NSTextField container for the expanded bead content; when content exceeds `_BEAD_EXPAND_MAX_LINES = 20` rows, wraps in NSScrollView with fixed-height viewport (`20 × _ROW_H` ≈ 420pt), vertical scroller always visible, no horizontal scroll. Container `widthAnchor` anchored to `sv.contentView().widthAnchor()` (scrolled) or set to `panel_width` directly (non-scrolled) — required because NSGridView disables TAMIC on content views; without explicit width constraint AutoLayout assigns `w=0`.
 **Reads:** `app._bead_data`, `app._bead_expanded`, `app._bead_expand_tags`, `app._bead_untrack_tags`, `app._bead_displayed`, `app._bead_db_paths`, `app._panel_width`, `app._panel_min_height`, `app._tracker_sv`, `app._tracker_panel`, `app._tracker_toggle_btn`, `app._panel_controller`.
@@ -70,7 +70,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### queue.py (96 LOC)
+### queue.py (102 LOC)
 
 **Purpose:** Message queue storage + Ghostty delivery for the menubar app side. `load_queue()` / `save_queue(q)` — atomic read/write of `APP_SUPPORT/msg_queue.json` (schema: `{session_id: [{text: str, state: "draft"|"queued"|"sent", sent_at: str|null}]}`). `load_queue` normalizes all legacy formats via `_normalize_entry` on read — migration is transparent on next save. Migration rules: bare string → `{state:"queued"}`; dict missing `state`: `sent_at` non-null → `state:"sent"`, else → `state:"queued"`. Drafts are only created via the + button, never from migration. `deliver_message(cwd, message)` — reads `ghostty_cwd_uuid.json` for terminal UUID, then `focus terminal id UUID` + System Events `keystroke + Return`; falls back to cwd-based focus. Hook delivery uses inline equivalents in `hook_writer.py` (standalone, can't import from package).
 **Reads:** `QUEUE_FILE` (`msg_queue.json`); `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`).
@@ -150,7 +150,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### hook_writer.py (182 LOC)
+### hook_writer.py (198 LOC)
 
 **Purpose:** CC hook handler — reads JSON payload on stdin; updates `hooks.json`; on Stop/StopFailure additionally delivers the first `state="queued"` entry from `msg_queue.json` for the session. Skips `state="draft"` and `state="sent"` entries. Delivery path: `_queue_get_first_unsent` (flock `queue.lock` → find first entry where `state=="queued"`) → `_deliver_message` (UUID focus + System Events keystroke; cwd fallback) → on success: `_queue_mark_sent` (flock → set `state="sent"` + `sent_at=utc-iso` in-place). On delivery failure: entry left unchanged, next Stop retries. Messages are never removed by the hook — only the panel's `×` button removes entries. `_normalize_entry` handles all legacy formats inline (mirrors `queue.py`). Standalone script; defines all 3 APP_SUPPORT paths inline.
 **Reads:** stdin (CC hook JSON); `APP_SUPPORT/hooks.json` (inside flock); `APP_SUPPORT/msg_queue.json` (inside flock); `APP_SUPPORT/ghostty_cwd_uuid.json` (UUID lookup).
