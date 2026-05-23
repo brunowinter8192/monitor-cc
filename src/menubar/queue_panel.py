@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import objc
 from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSForegroundColorAttributeName, NSGridCellPlacementFill,
                     NSGridView, NSLayoutAttributeLeading,
@@ -18,12 +19,28 @@ from .queue import load_queue, save_queue
 _QUEUE_TOGGLE_W = 22   # pts — ↑/↓ toggle button width
 _QUEUE_MINUS_W  = 22   # pts — × delete button width
 _rebuild_queue_in_progress = False   # re-entry guard: removeFromSuperview on focused NSTextField fires nested end-editing → recursive rebuild
+_NSEventTypeKeyDown = 10         # NSEventTypeKeyDown
+_MODIFIER_MASK      = 0xFFFF0000  # NSEventModifierFlagDeviceIndependentFlagsMask
+
+# Plain 'q' mid-text in a queue draft field: jump cursor to end; 'q' at end/empty → insert normally
+class _QueuePanel(_KeyablePanel):
+    def sendEvent_(self, event):
+        if (event.type() == _NSEventTypeKeyDown
+                and event.modifierFlags() & _MODIFIER_MASK == 0
+                and (event.characters() or '').lower() == 'q'):
+            fr = self.firstResponder()
+            if fr is not None and hasattr(fr, 'string'):
+                text_len = len(fr.string())
+                if fr.selectedRange().location < text_len:
+                    fr.setSelectedRange_((text_len, 0))
+                    return
+        objc.super(_QueuePanel, self).sendEvent_(event)
 
 # FUNCTIONS
 
 # Build NSPanel for queue panel; returns (panel, stack, toggle_btn)
 def _make_queue_nspanel():
-    panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
+    panel = _QueuePanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
         NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskResizable, 2, True)
     panel.setLevel_(NSStatusWindowLevel)
