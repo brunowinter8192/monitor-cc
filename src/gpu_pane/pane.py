@@ -169,11 +169,11 @@ def _strip_ansi(s: str) -> str:
     return _ANSI_RE.sub('', s)
 
 
-# Return countdown string from status dict; "" if stopped/no-log, "?" if log file missing
+# Return countdown string from status dict; "" if stopped, "?" if state file missing
 def _format_countdown(s: dict) -> str:
     if not s['running']:
         return ""
-    if s.get('idle_log_missing'):
+    if s.get('idle_state_missing'):
         return "?"
     idle_seconds = s.get('idle_seconds')
     if idle_seconds is None:

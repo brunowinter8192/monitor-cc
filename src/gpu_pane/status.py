@@ -114,10 +114,12 @@ def _status_for_state(state: dict, kind: str = 'arbitrary') -> dict:
     pid = state.get('pid')
     log_path = state.get('log_path')
 
-    idle_seconds = _log_idle(log_path)
-    log_missing = bool(log_path and idle_seconds is None)
-    if log_missing:
-        _warn('missing_log', f'log file missing: {log_path}', str(log_path))
+    idle_seconds = _state_file_idle(port)
+    state_missing = bool(port is not None and idle_seconds is None)
+    if state_missing:
+        _warn('missing_state_file',
+              f'state file missing for port {port}',
+              f'server-port-{port}.json')
 
     return {
         'name': state.get('name') or f'port-{port}',
@@ -128,18 +130,23 @@ def _status_for_state(state: dict, kind: str = 'arbitrary') -> dict:
         'rss_mb': _read_rss_mb(pid),
         'healthy': _check_health_port(port),
         'idle_seconds': idle_seconds,
-        'idle_log_missing': log_missing,
+        'idle_state_missing': state_missing,
         'log_path': log_path,
         'model_name': state.get('model_name'),
     }
 
 
-# Seconds since log mtime; None if log_path empty or file not found
-def _log_idle(log_path: str | None) -> float | None:
-    if not log_path:
+# Seconds since state-file mtime; None if port unknown or file unreachable.
+# The state file at ~/.rag-locks/server-port-{port}.json is the canonical "last used"
+# anchor: server start writes it, real client requests (embedder/sparse_embedder/reranker)
+# touch its mtime, /health probes do NOT touch it. Replaces the previous log-mtime
+# source which was broken by (a) splade uvicorn logging /health probes and
+# (b) worktree-stale log_path entries.
+def _state_file_idle(port: int | None) -> float | None:
+    if port is None:
         return None
     try:
-        return time.time() - Path(log_path).stat().st_mtime
+        return time.time() - (RAG_LOCKS_DIR / f'server-port-{port}.json').stat().st_mtime
     except (FileNotFoundError, OSError):
         return None
 
