@@ -118,3 +118,68 @@ Sampling-Bias: alle 44 calls sind `search_hybrid`. `search_keyword` / `search_de
 - `dev/tool_use_analysis/20260520_rag_query_audit.md` — run-output (auto-metrics + leere manual columns)
 - `~/.claude/shared-rules/opus/workers-1.md` § RAG-First on Code Exploration — aktuelle Hard Rule
 - Bead `Monitor_CC-3d7y` — tracker (offen für manual annotation)
+
+## Session 2026-05-23 — Tool Inventory + Use-Case Audit
+
+### CLI-Tool-Inventur (post-reduction)
+
+`rag-cli` auf 9 Subcommands reduziert (war 11). `search` (pure semantic) und `search_keyword` (BM25) entfernt — in 44 Calls über 15 Sessions nie genutzt.
+
+| Subcommand | Purpose |
+|---|---|
+| `search_hybrid` | Dense + sparse Fusion; default für alle Queries |
+| `list_collections` | Collections auflisten mit `--filter` |
+| `list_documents` | Dokumente in Collection auflisten (`--filter`, `--document`) |
+| `progress` | Indexierungs-Fortschritt |
+| `read_document` | Chunk-Kontext lesen (`--before N`, `--after N`) |
+| `delete` | Collection oder Dokument löschen |
+| `status` | Server-Health (Embedding/Reranker/Splade) |
+| `update_docs` | Re-Indexierung aus `.rag-docs.json` |
+| `server` | Server-Presets verwalten (start/stop/restart/list/status) |
+| ~~`search`~~ | REMOVED — pure semantic, 0/44 Calls |
+| ~~`search_keyword`~~ | REMOVED — BM25-only, 0/44 Calls |
+
+### Standard-Use-Case-Profil
+
+Befunde aus Phase-B-Auswertung (44 Calls, 15 Sessions, 36 Topics):
+
+- **100 % hybrid** — alle 44 Calls `search_hybrid`; Removal von `search`/`search_keyword` datengetrieben
+- **86 % single-query** (31/36 Topics) — Opus reformuliert selten; Recall-Lücken durch fehlende Follow-ups
+- **14 % multi-query** (5/36 Topics, 13 der 44 Calls) — Follow-up-Rate als Recall-Proxy-Signal
+- **8 echte Misses** (chunk_count = 0): T001, T002, T013, T015, T020, T028
+- **Collection-Split:** Monitor_CC-meta 30 Calls (68 %), Monitor_CC-features 12 Calls (27 %), RAG-meta 2 Calls (5 %)
+- **13 Calls ohne tool_result** (29 %) — Data-Gap, wahrscheinlich Bash-compound-ID-Mismatch im Extractor
+
+### Collection-Inhalts-Mapping
+
+| Collection | Inhalt | Usage (44 Calls) |
+|---|---|---|
+| `Monitor_CC-meta` | decisions/, DOCS.md-Dateien, CLAUDE.md, sources/sources.md | 30 (68 %) |
+| `Monitor_CC-features` | decisions/OldThemes/ | 12 (27 %) |
+| `Monitor_reference` | 337 Chunks Anthropic API Docs (s.u.) | 0 (0 %) |
+
+### Reference-Collection als Hebel
+
+`Monitor_reference` enthält 337 Chunks Anthropic API Docs: AdaptiveThinking, PromptCaching, ExtendedThinking, ContextEditing, ProgToolCalling, Citations, Files, ContextWindow, Compaction, FastMode, FineGrained, Effort, Msgs, PDF_support u.a. In keinem der 44 Calls je befragt — 0 % Nutzungsrate.
+
+Use-Case-Beispiele für Misses die dort Treffer hätten ergeben können: T001/T002 (Prompt-Caching-Verhalten → `PromptCaching`-Chunks vorhanden), T015/T020 (Context-Window-Verhalten → `ContextWindow`/`Compaction`-Chunks). Die Collection ist indexiert und bereit — fehlend ist die Rule, sie aktiv bei API-Docs-Fragen zu befragen.
+
+### Naming-Drift
+
+`Monitor_reference` weicht vom Konsistenz-Pattern ab: `RAG_reference`, `searxng_reference` → korrekte Form wäre `Monitor_CC_reference`. `_CC` beim initialen Reindex weggelassen. Fix: beim nächsten Reindex Collection umbenennen → `Monitor_CC_reference`.
+
+### Best-prod-Config (aus RAG-Projekt-Eval)
+
+| Parameter | Wert | Evidenz |
+|---|---|---|
+| Fusion | CC α=0.8 | +3 pp Snippet Recall vs RRF — `decisions/retrieval03_fusion.md (RAG)` |
+| Reranking | False (default off) | Technische Docs: −8.5 pp NDCG@3; Doc Recall +4 pp, Snippet −1 pp + ~2 s Latenz — trade-off rejected — `decisions/retrieval04_reranking.md (RAG)` |
+| HYBRID_CANDIDATES | 50 dense + 50 sparse | — |
+| top-k Default | 12 | Korrigiert von "20 (10–50 valid)" in shared-rule |
+
+### Pending (Folge-Session)
+
+- **Manual Annotation** — 36 Topics in `dev/tool_use_analysis/20260520_rag_query_audit.md`; `hit_quality` + `classification` Spalten ausfüllen → Regelverfeinerung "RAG-First wenn X, direct wenn Y"
+- **Audit-Script Bug-Fix** — 13/44 Calls (29 %) ohne tool_result in `dev/tool_use_analysis/rag_query_audit.py` klären (Bash-compound-ID-Mismatch?)
+- **Replay-Probe der 8 Misses** — dieselben Queries gegen `Monitor_reference` feuern; prüfen ob Anthropic-Docs-Chunks die Lücken schließen
+- **Collection Rename** — `Monitor_reference` → `Monitor_CC_reference` beim nächsten Reindex
