@@ -44,9 +44,9 @@ Standalone tmux Window 4 pane that monitors RAG GPU servers cross-project. Reads
 
 ---
 
-### errors.py (43 LOC)
+### errors.py (56 LOC)
 
-**Purpose:** Read and filter today's errors from RAG's `errors.jsonl`.
+**Purpose:** Read RAG's `errors.jsonl`, filter to (a) anomaly codes in `ERROR_CODES` (single_instance_alive_replaced / busy / watchdog_unlinked_dead / watchdog_killed_orphan) AND (b) >= local midnight. Lifecycle events (start_*/stop_*/state_unlinked) are excluded — the file mixes both and only the anomalies are surfaced to the GPU pane. `ERROR_CODES` mirrors src/rag/error_log.py (RAG) ERROR_CODES — keep in sync on writer-side additions.
 **Reads:** `/Users/brunowinter2000/.../RAG/src/rag/logs/errors.jsonl` (hard-coded path).
 **Writes:** nothing.
 **Called by:** `pane.py`.
