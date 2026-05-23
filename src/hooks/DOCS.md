@@ -306,7 +306,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_path_typo.py (94 LOC)
+### block_path_typo.py (114 LOC)
 
 **Purpose:** PreToolUse hook (Bash + Read + Write + Edit) — detects path typos `.claire/` (tokenizer typo of `.claude/`) and `..letter` (double-dot immediately followed by lowercase letter, e.g. `..claude/`, `..src/`) and **auto-rewrites** them to `.claude/` and `../letter` respectively. Upgraded 2026-05-22 commit `ce8d220` from block-and-hint to auto-rewrite. File name preserved (`block_path_typo.py`) for `~/.claude/settings.json` compatibility; internal semantics are now rewrite.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command|file_path[+old_string,new_string,replace_all for Edit]}}`).
