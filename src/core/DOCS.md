@@ -40,7 +40,7 @@ Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buf
 
 ## Modules
 
-### monitor.py (326 LOC)
+### monitor.py (343 LOC)
 
 **Purpose:** Polling orchestrator — discovers sessions, drives the streaming loop, dispatches to pane event loops by mode, and owns all shared state dicts. `run_main_loop()` also scans proxy JSONL each poll cycle via `_refresh_strip_cache()` to feed strip data into `monitor_display`. Mouse-event handler now has three branches for `button == 0` (left-click): row 1 (search-bar text-area focuses, `[←]`/`[→]` arrow regions navigate matches), row ≥ 2 (⎘ copy-button hit on tool_call REQUEST/RESPONSE headers via `_main_copy_rows` lookup). `read_mouse_event` returns `(-1,-1,-1)` sentinel for SGR release events — handled as no-op in a dedicated `event[0] != -1` branch BEFORE the bare-ESC handler so releases don't trigger search-cancel. Keyboard input has search-focus branch (Enter commits matches + calls `ensure_match_visible`; Esc clears query/matches/focus; Backspace edits; printable chars append while focused — y-hotkey only reachable when not focused).
 **Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`; proxy JSONL via `proxy_display.parser` (for strip cache); lazy reads from `panes`, `workers`, `proxy_display`, `metadata`; module-level `monitor_display._main_copy_rows`, `_main_pane_width`, `_search_focused`, `_search_query`, `_search_matches`.
@@ -60,7 +60,7 @@ Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buf
 
 ---
 
-### monitor_display.py (406 LOC)
+### monitor_display.py (413 LOC)
 
 **Purpose:** Terminal output + event buffer for the main streaming pane. Buffers all events (tool calls, user prompts, system messages, etc.) in `main_event_buffer`. On each render cycle: applies proxy strip highlights (tool_call output replaced with pre-strip content + `highlight_stripped()`; user prompts get `[~]` badge); renders the persistent search bar on row 1; injects ⎘ copy-buttons on REQUEST and RESPONSE header lines of tool_calls with click-region tracking via `_main_copy_rows: dict[phys_row → (event_idx, 'request'|'response')]`; applies per-line substring highlight for search matches via `_highlight_query_in_line` (ANSI-safe split-and-inject pattern from `highlight_stripped`); buffer renders from row 2 (row 1 reserved for search bar). `serialize_main_event(event_idx, part='all'|'request'|'response')` converts a buffer entry to clipboard text for the y-hotkey ('all') or ⎘ click ('request' / 'response').
 
@@ -75,7 +75,7 @@ Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buf
 
 **Reads:** Tool call dicts, event dicts passed as arguments; module-level `_strip_by_tool_id`, `_strip_prompt_ts_set`, `main_hover_row`, `_search_*` state, `_main_copy_rows`, `_main_copy_feedback_until`, `_main_pane_width`, `_search_all_line_offsets`, `_search_match_line_offsets`, `_search_total_lines`.
 **Writes:** stdout via `print()` (via `render_main_buffer`); mutates `main_event_buffer`, `main_scroll_offset`, `main_hover_row`, `main_line_map`, `_strip_by_tool_id`, `_strip_prompt_ts_set`, `_main_copy_rows`, `_main_copy_feedback_until` (expiry cleanup), `_main_pane_width`, `_search_all_line_offsets`, `_search_total_lines`, `_search_current_idx` (clamp on buffer shrink).
-**Called by:** `monitor.py` (`print_session_status`, `ingest_proxy_strip_data`, `render_main_buffer`, `serialize_main_event`, `ensure_match_visible`, `_compute_search_matches`, `_compute_match_line_offsets`); `monitor_session.py` (all display functions).
+**Called by:** `monitor.py` (`print_session_status`, `ingest_proxy_strip_data`, `render_main_buffer`, `serialize_main_event`, `ensure_match_visible`, `_compute_search_matches`, `_compute_match_line_offsets`, `_count_buffer_lines`); `monitor_session.py` (all display functions).
 **Calls out:** `format.formatter`, `format.formatter_events`, `format.strip_marker`, `utils` (`truncate_visible`, `_ANSI_ESCAPE_RE`, `_cell_width`).
 
 ---
