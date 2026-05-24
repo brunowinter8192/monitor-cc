@@ -10,18 +10,7 @@ from _fire_log import log_fire
 # worker-cli spawn with 'opus' anywhere after the spawn subcommand (including as model arg)
 _SPAWN_OPUS = re.compile(r'\bworker-cli\s+spawn\b.*\bopus\b', re.DOTALL)
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: `worker-cli spawn` with model=opus.\n"
-    "Workers are ALWAYS Sonnet, NEVER Opus. Opus context is reserved for orchestration\n"
-    "only. Using Opus as a worker burns ~20-40\u00d7 billing per token versus Sonnet and\n"
-    "defeats the cross-model verification model (both sides would share the same\n"
-    "architecture, eliminating the independent second perspective).\n"
-    "\n"
-    "Fix: use `sonnet` as the model argument, or omit it (default is sonnet):\n"
-    "    worker-cli spawn <name> <prompt_file> <project_path> sonnet\n"
-    "    worker-cli spawn <name> <prompt_file> <project_path>       # same as sonnet\n"
-    "workers-1.md \u00a7 Worker Model.\n"
-)
+_BLOCK_MESSAGE = "worker model must be sonnet, not opus: `worker-cli spawn <name> <prompt> <path> sonnet`\n"
 
 # ORCHESTRATOR
 

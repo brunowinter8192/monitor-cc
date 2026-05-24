@@ -14,17 +14,7 @@ _REDIRECT = re.compile(r'>\s*\S+')
 # `| tee FILE` also captures output to disk — treat as compliant
 _TEE = re.compile(r'\|\s*tee\b')
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: `./venv/bin/python <script>.py` without file redirect.\n"
-    "Dev scripts are noisy — verbose output floods the context window.\n"
-    "Required form:\n"
-    "\n"
-    "    ./venv/bin/python dev/<area>/<script>.py > /tmp/<name>.md 2>&1\n"
-    "    tail -20 /tmp/<name>.md\n"
-    "\n"
-    "Alternative: pipe through `| tee /tmp/<name>.md` if you need live + file output.\n"
-    "Rule 4, tool-use.md.\n"
-)
+_BLOCK_MESSAGE = "add redirect: `./venv/bin/python script.py > /tmp/name.md 2>&1`\n"
 
 
 # ORCHESTRATOR

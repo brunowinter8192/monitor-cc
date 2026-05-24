@@ -9,17 +9,7 @@ from _fire_log import log_fire
 _CD_TARGET = re.compile(r'\bcd\s+(\S+)')
 _WORKTREE_FRAGMENT = '.claude/worktrees/'
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: `cd` into `.claude/worktrees/...` without a cd-back at the end of the chain.\n"
-    "Bash tool calls share cwd across invocations — the next Bash call will inherit the\n"
-    "worktree cwd and may write to the wrong tree.\n"
-    "\n"
-    "Required: the LAST statement must cd back to the main cwd, e.g.\n"
-    "    cd <worktree> && git diff && cd <main-repo>\n"
-    "OR avoid cd entirely:\n"
-    "    git -C <worktree> diff      (and absolute paths throughout)\n"
-    "Rule 16, tool-use.md.\n"
-)
+_BLOCK_MESSAGE = "use `git -C <worktree> diff` instead of `cd <worktree>`\n"
 
 
 # ORCHESTRATOR

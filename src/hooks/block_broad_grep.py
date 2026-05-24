@@ -17,16 +17,7 @@ _FILE_EXT_SAFE  = re.compile(
     re.IGNORECASE,
 )
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: recursive grep without --include scope (Rule 3, tool-use.md).\n"
-    "Unrestricted `-r` grep over a directory matches JSONL logs, node_modules, and\n"
-    "vendored content — output can explode to 10MB+ and floods the context window.\n"
-    "\n"
-    "Fix options:\n"
-    "  1. Add --include='*.py' (or the appropriate extension)\n"
-    "  2. Use the Grep tool — it has safe scoping defaults\n"
-    "  3. Target a specific file: grep -n <pattern> <specific_file.py>\n"
-)
+_BLOCK_MESSAGE = "add --include='*.py' scope | use the Grep tool | grep -n <pattern> <file.py>\n"
 
 # ORCHESTRATOR
 

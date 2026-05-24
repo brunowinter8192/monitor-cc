@@ -10,23 +10,7 @@ from _fire_log import log_fire
 # Covers: except: pass, except Exception: pass, except SomeError: pass
 _EXCEPT_PASS = re.compile(r'except\s*(?:\w+\s*)?:\s*[\r\n]+\s*pass\b', re.MULTILINE)
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: silent exception swallow (`except ...: pass`) detected in written code.\n"
-    "Silently swallowing exceptions is PROHIBITED. The script must fail visibly when it\n"
-    "cannot fulfill its purpose — hiding exceptions produces invisible bugs that produce\n"
-    "wrong outputs without any error signal.\n"
-    "\n"
-    "Allowed alternatives:\n"
-    "  except SomeError:                # re-raise (preserve traceback)\n"
-    "      raise\n"
-    "  except SomeError as e:           # log + re-raise\n"
-    "      logger.error(e); raise\n"
-    "  except SomeError as e:           # explicit fallback with logging\n"
-    "      logger.warning(e); return default_value\n"
-    "  finally:                         # resource cleanup (no pass needed)\n"
-    "      resource.close()\n"
-    "code-standards.md \u00a7 Error Handling.\n"
-)
+_BLOCK_MESSAGE = "replace `except ...: pass` with `raise` or `logger.error(e); raise`\n"
 
 # ORCHESTRATOR
 

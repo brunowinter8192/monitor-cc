@@ -20,24 +20,7 @@ _PS_GREP_KILL = re.compile(r'(?:^|[;&|\n])\s*ps\b[^|]*\|[^|]*\bgrep\b[^|]*\|.*\b
 
 _BLOCKED_PATTERNS = [_PKILL_F, _PGREP_F_KILL_PIPE, _KILL_PGREP_F_SUBST, _PS_GREP_KILL]
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: `pkill -f` and `pgrep -f | kill` chains match arbitrary cmdline substrings and kill\n"
-    "the wrong process. Claude Code worker sessions are spawned via `claude \"$(cat prompt.md)\"` —\n"
-    "the ENTIRE prompt content lives in the claude process argv. Any file path or substring you grep\n"
-    "for that also appears in a worker prompt will match (and kill) that worker's claude process.\n"
-    "Path-like patterns (containing `/`) are NOT safer — they are the most common kill-the-worker case.\n"
-    "\n"
-    "Safer alternatives:\n"
-    "  - `pgrep -f <pattern>` as a STANDALONE command, inspect output, then `kill <pid>` on the\n"
-    "    specific PID after confirming the match is not a claude / tmux / worker process\n"
-    "  - `pkill -x <exact_name>` (exact process name match, no argv substring)\n"
-    "  - For worker management: `worker-cli kill <name>`\n"
-    "  - For Monitor_CC menubar restart — capture PID at launch and kill directly:\n"
-    "      ./venv/bin/python -m src.menubar.workflow --mode menubar &\n"
-    "      echo $! > /tmp/monitor_cc_menubar.pid\n"
-    "      # later: kill $(cat /tmp/monitor_cc_menubar.pid)\n"
-    "  - For your own background job: kill via PID from `Bash run_in_background=true` task ID\n"
-)
+_BLOCK_MESSAGE = "pkill -f / pgrep -f|kill risk killing worker sessions — use `worker-cli kill <name>` or inspect PID first: `pgrep -f <pat>` then `kill <pid>`\n"
 
 
 # ORCHESTRATOR
