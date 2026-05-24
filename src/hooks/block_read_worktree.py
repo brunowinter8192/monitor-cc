@@ -7,19 +7,7 @@ from _fire_log import log_fire
 
 _WORKTREE_FRAGMENT = '.claude/worktrees/'
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: Read on a worktree path silently re-injects CLAUDE.md into context.\n"
-    "Reading any file under `.claude/worktrees/...` via the Read tool injects the\n"
-    "auto-loaded CLAUDE.md system-reminder again, bloating the context window and\n"
-    "potentially duplicating the system prompt.\n"
-    "\n"
-    "Use Bash instead:\n"
-    "    cat <worktree>/path/to/file              # full content\n"
-    "    head -50 <worktree>/path/to/file         # first N lines\n"
-    "    git -C <worktree> show HEAD:<relpath>    # specific revision\n"
-    "    git -C <worktree> diff dev               # code review diff\n"
-    "workers-2.md § Code Review.\n"
-)
+_BLOCK_MESSAGE = "worktree Read re-injects CLAUDE.md — use `cat` / `head` / `git -C <wt> show HEAD:<relpath>`\n"
 
 
 # ORCHESTRATOR

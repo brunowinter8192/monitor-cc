@@ -7,7 +7,7 @@ import tempfile
 
 HOOK_DIR = "src/hooks"
 BLOCK_HOOK = f"{HOOK_DIR}/block_noop_edit.py"
-REWRITE_HOOK = f"{HOOK_DIR}/rewrite_git_ambiguous.py"
+REWRITE_HOOK = f"{HOOK_DIR}/rewrite_bd_invalid_repo.py"
 
 
 # ORCHESTRATOR
@@ -93,7 +93,7 @@ def _test_block_fire() -> list:
     return failures
 
 
-# Rewrite fire test: rewrite_git_ambiguous with 'git diff dev' → decision=rewrite, both fields present
+# Rewrite fire test: rewrite_bd_invalid_repo with invalid --repo path → decision=rewrite, both fields present
 def _test_rewrite_fire() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
@@ -102,7 +102,7 @@ def _test_rewrite_fire() -> list:
         payload = {
             "session_id": "test-sess-002",
             "tool_name": "Bash",
-            "tool_input": {"command": "git diff dev"},
+            "tool_input": {"command": "bd --repo /nonexistent/invalid/path list"},
         }
         exit_code, rec = _run_hook(REWRITE_HOOK, payload, tmp)
         if exit_code != 0:
@@ -112,10 +112,10 @@ def _test_rewrite_fire() -> list:
         else:
             if rec.get("decision") != "rewrite":
                 failures.append(f"rewrite fire: expected decision=rewrite, got {rec.get('decision')}")
-            if rec.get("hook") != "rewrite_git_ambiguous":
-                failures.append(f"rewrite fire: expected hook=rewrite_git_ambiguous, got {rec.get('hook')}")
-            if rec.get("command") != "git diff dev":
-                failures.append(f"rewrite fire: expected command='git diff dev', got {rec.get('command')}")
+            if rec.get("hook") != "rewrite_bd_invalid_repo":
+                failures.append(f"rewrite fire: expected hook=rewrite_bd_invalid_repo, got {rec.get('hook')}")
+            if rec.get("command") != "bd --repo /nonexistent/invalid/path list":
+                failures.append(f"rewrite fire: expected original command, got {rec.get('command')}")
             if not rec.get("rewritten"):
                 failures.append("rewrite fire: missing or empty 'rewritten' field")
             if "reason" in rec:
@@ -142,7 +142,7 @@ def _test_env_var_override() -> list:
         payload = {
             "session_id": "test-sess-003",
             "tool_name": "Bash",
-            "tool_input": {"command": "git diff dev"},
+            "tool_input": {"command": "bd --repo /nonexistent/invalid/path list"},
         }
         subprocess.run(
             ["python3", REWRITE_HOOK],

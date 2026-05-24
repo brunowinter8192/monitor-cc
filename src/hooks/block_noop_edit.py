@@ -5,12 +5,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _fire_log import log_fire
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: old_string and new_string are identical — this Edit is a no-op.\n"
-    "CC will reject it with 'No changes to make: old_string and new_string are exactly the same.'\n"
-    "Re-read the file first to confirm what's actually there before retrying.\n"
-    "Common cause: file was modified externally, or assumed indentation/whitespace differs.\n"
-)
+_BLOCK_MESSAGE = "old_string == new_string — re-read the file first before retrying (content may have changed)\n"
 
 # ORCHESTRATOR
 

@@ -7,15 +7,7 @@ from _fire_log import log_fire
 
 _SIZE_LIMIT_BYTES = 256 * 1024  # 256 KB — CC Read tool hard limit
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: {path} is {size_kb:.0f}KB — exceeds the 256KB Read tool limit.\n"
-    "Use grep to locate the target section first, then Read with offset + limit:\n"
-    "\n"
-    "    grep -n '<pattern>' {path}               # find the line number\n"
-    "    Read(file_path='{path}', offset=N, limit=200)\n"
-    "\n"
-    "Or use `wc -l`, `head`, `tail` to orient before a targeted Read.\n"
-)
+_BLOCK_MESSAGE = "{path} is {size_kb:.0f}KB — `grep -n '<pat>' {path}` first, then `Read(offset=N, limit=200)`\n"
 
 # ORCHESTRATOR
 

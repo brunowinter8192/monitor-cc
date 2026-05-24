@@ -11,16 +11,7 @@ _GIT_ADD = re.compile(r'\bgit\s+(?:-C\s+\S+\s+)?add\b')
 # Dependency directory names as explicit targets (with or without trailing slash)
 _DEP_TARGET = re.compile(r'\b(?:venv|\.venv|node_modules)/?(?:\s|$)')
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: `git add` targeting a dependency directory (venv/, .venv/, node_modules/).\n"
-    "Worktrees contain symlinked dependency directories that point to the main repo's\n"
-    "real directories. Staging these symlinks creates circular self-references when the\n"
-    "branch is merged back — the symlinks in the merged result point at themselves.\n"
-    "\n"
-    "These directories must NEVER be staged or committed, even when `git status` shows\n"
-    "them as untracked. Add them to .gitignore if they are not already excluded.\n"
-    "worker-rules.md \u00a7 Never Commit Dependency Directories.\n"
-)
+_BLOCK_MESSAGE = "venv/, .venv/, node_modules/ must never be staged — add to .gitignore if not already there\n"
 
 # ORCHESTRATOR
 

@@ -10,17 +10,7 @@ _WORKTREE_FRAGMENT = '.claude/worktrees/'
 # Any bd invocation: `bd <subcommand|flag>` at statement start or after a chain operator
 _BD_INVOCATION = re.compile(r'(?:^|[;&|\n])\s*bd\s+(?:--?\w|\w)', re.MULTILINE)
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: `bd` CLI command from inside a worker session.\n"
-    "Bead operations are Opus's responsibility exclusively. Workers MUST NOT run bd\n"
-    "commands — worktrees contain a copy of `.beads/` state, and bd writes from inside\n"
-    "a worktree go to the worktree copy, NOT the main repo, silently corrupting bead\n"
-    "data when the branch is later merged or the worktree is removed.\n"
-    "\n"
-    "Do NOT: bd create / bd close / bd comments add / bd export\n"
-    "Do: report the needed bead operation in your Completion Checklist; Opus handles it.\n"
-    "worker-rules.md \u00a7 What NOT to Do.\n"
-)
+_BLOCK_MESSAGE = "bd from worker is forbidden — report bead ops in Completion Checklist, Opus handles them\n"
 
 # ORCHESTRATOR
 

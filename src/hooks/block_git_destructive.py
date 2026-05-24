@@ -31,11 +31,7 @@ _GIT_CONFIG_READONLY = re.compile(
     r'\s--(?:list|get|get-all|get-regexp|show-origin|show-scope|show-keys|help)\b'
 )
 
-_BLOCK_TEMPLATE = (
-    "BLOCKED: `{label}` is forbidden by the Git Safety Protocol.\n"
-    "{suggestion}\n"
-    "tool-use.md § Git CLI § Safety Protocol.\n"
-)
+_BLOCK_TEMPLATE = "`{label}` — {suggestion}\n"
 
 
 # ORCHESTRATOR

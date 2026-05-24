@@ -11,19 +11,7 @@ _DEV_PATH = re.compile(r'/dev/')
 # Any line starting with `from src.` or `import src.` (the only ways to import the src package)
 _SRC_IMPORT = re.compile(r'^(?:from\s+src\.|import\s+src\.)', re.MULTILINE)
 
-_BLOCK_MESSAGE = (
-    "BLOCKED: dev/ module importing from `src/`.\n"
-    "dev/ scripts are self-contained — they do NOT import from src/. The purpose of\n"
-    "dev/ is to be a migration candidate: a proven dev/ probe gets ported into src/ as\n"
-    "a clean rewrite. Importing from src/ breaks this isolation: the probe no longer\n"
-    "tests an alternative implementation, it extends the production code path.\n"
-    "It also makes the dev/ script non-runnable in isolation (fails on any host without\n"
-    "the full src/ tree installed).\n"
-    "\n"
-    "Fix: copy the needed logic directly into the dev/ module, or import from another\n"
-    "pN_ module in the same dev/ pipeline stage.\n"
-    "dev-convention.md Rule 5.\n"
-)
+_BLOCK_MESSAGE = "dev/ scripts may not import from src/ — copy the logic into the dev/ module or import from another pN_ module\n"
 
 # ORCHESTRATOR
 
