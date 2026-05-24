@@ -22,7 +22,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `workers/` | Workers pane (tmux session discovery + status display) | 572 | 3 |
 | `metadata/` | Metadata pane (API config state from proxy log) | 334 | 2 |
 | `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering, subprocess-parse, copy-button) | 2118 | 8 |
-| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 2940 | 17 |
+| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 3074 | 18 |
 | `ram_audit/` | SIGUSR1 RAM-dump helper, gated by MONITOR_CC_RAM_AUDIT env | 101 | 1 |
 | `menubar/` | macOS status-bar app showing live CC sessions (rumps/AppKit) | 3481 | 18 |
 | `gpu_pane/` | GPU server monitor pane (cross-project, reads RAG state) | 204 | 3 |
@@ -71,7 +71,7 @@ Most runtime state lives in `core/monitor.py` as module-level variables; display
 - [workers/DOCS.md](workers/DOCS.md) — worker_pane, worker_format, worker_tmux
 - [metadata/DOCS.md](metadata/DOCS.md) — metadata_pane, metadata_format
 - [proxy_display/DOCS.md](proxy_display/DOCS.md) — proxy pane TUI (8 modules)
-- [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (17 modules)
+- [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (18 modules)
 - [ram_audit/DOCS.md](ram_audit/DOCS.md) — SIGUSR1 RAM-dump helper (env-gated tracemalloc)
 - [menubar/DOCS.md](menubar/DOCS.md) — macOS menubar app (rumps, session discovery, background-task badge)
 - [gpu_pane/DOCS.md](gpu_pane/DOCS.md) — GPU monitor pane (status, errors, toggle)

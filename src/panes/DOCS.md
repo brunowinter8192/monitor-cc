@@ -74,7 +74,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_render.py (169 LOC)
+### warnings_render.py (168 LOC)
 
 **Purpose:** Pure rendering helpers — formats the warnings pane from caller-supplied state. `_format_warnings_pane` returns `(rendered_str, new_error_line_map, new_zero_result_line_map)` as a tuple; no globals written. Reads `unknown_type_counts` from `warnings_parse` (its owner module). `_serialize_warnings` formats clipboard output given explicit tool_errors/zero_results lists.
 **Reads:** All pane state passed as function arguments; `unknown_type_counts` imported from `warnings_parse` (read-only).
