@@ -11,6 +11,13 @@ INDENT = '  '
 
 SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')
 
+# CC wraps every hook stderr as: PreToolUse:<Tool> hook error: [python3 <path>]: <msg>
+# Strip this prefix from display (logs keep originals via warnings_scan/warnings_persist)
+_HOOK_ERROR_PREFIX = re.compile(
+    r'^PreToolUse:\w+ hook error: \[python3 [^\]]+\]:\s*',
+    re.MULTILINE,
+)
+
 # ORCHESTRATOR
 def format_tool_call(tool_name: str, input_data: dict, output_data: str, tool_use_id: str, timestamp: str, call_number: int, is_subagent: bool = False, system_reminders: list = None, is_error: bool = False) -> str:
     request = format_request(tool_name, input_data, tool_use_id, timestamp, call_number, is_subagent)
@@ -116,11 +123,16 @@ def format_output(content: str) -> str:
         return f"{LIGHT_RED_BG}{result}{RESET}"
     return result
 
+# Strip CC hook-error wrapper prefix for display; leave originals in logs untouched
+def _strip_hook_error_prefix(text: str) -> str:
+    return _HOOK_ERROR_PREFIX.sub('', text, count=1)
+
 # Format error output content in red
 def format_error_output(content: str) -> str:
     if not content:
         return f"{INDENT}{RED}(empty){RESET}"
 
+    content = _strip_hook_error_prefix(content)
     lines = content.split('\n')
     formatted_lines = '\n'.join(f"{INDENT}{RED}{line.expandtabs(8)}{RESET}" for line in lines)
     return formatted_lines

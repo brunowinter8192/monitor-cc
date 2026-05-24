@@ -8,6 +8,7 @@ from ..constants import (
 )
 from ..utils import truncate_visible, first_word_of_call, format_worker_prefix
 from ..format.strip_marker import highlight_stripped
+from ..format.formatter import _strip_hook_error_prefix
 from .warnings_parse import unknown_type_counts, format_unknown_type_warning
 
 INDENT = '  '
@@ -101,7 +102,8 @@ def _format_warnings_pane(
                     all_keys.append(None)
                 pre_strip = err.get('_pre_strip_text')
                 chunks = err.get('_stripped_chunks', [])
-                display_text = highlight_stripped(pre_strip, chunks) if pre_strip else err['full_text']
+                raw_text = _strip_hook_error_prefix(err['full_text'])
+                display_text = highlight_stripped(pre_strip, chunks) if pre_strip else raw_text
                 for raw_line in display_text.split('\n'):
                     raw_line = raw_line.expandtabs(8)
                     all_lines.append(f"    {DIM}{raw_line}{SOFT_RESET}" if raw_line else '')
