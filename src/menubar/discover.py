@@ -15,7 +15,7 @@ from .proc_cache import (
 from .ghostty import _refresh_ghostty_tty_to_id, _write_cwd_uuid_map
 
 ALIVE_WINDOW_SECS      = 3600   # stale threshold for main sessions (1h)
-WORKING_THRESHOLD_SECS = 10     # window_activity age threshold: > 10s without pane activity → demote to idle
+WORKING_THRESHOLD_SECS = 10     # stale threshold: workers = window_activity age, mains = JSONL mtime
 THINKING_OVERRIDE_MAX_SECS = 300  # max expected thinking duration for proxy-mtime override
 _WORKTREE_MARKER = '--claude-worktrees-'
 
