@@ -38,8 +38,6 @@ from .tool_injection import inject_mcp_tools
 from .fixation import _capture_fixation, _apply_fixation
 from .hash_meta import _build_sent_meta
 from .schema_check import _check_payload_schema
-from .tool_error_log import log_tool_errors
-
 ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
 DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
@@ -141,7 +139,6 @@ class ProxyAddon:
             if deferred_tool_names:
                 entry['deferred_tools_names'] = deferred_tool_names
             _write_entry(self.log_file, entry)
-            log_tool_errors(modified_payload, entry)
             # Store timing/id for latency hooks (responseheaders + response)
             flow.metadata["mc_request_at"] = datetime.now(timezone.utc)
             flow.metadata["mc_request_id"] = entry.get("request_id", "")
