@@ -3,6 +3,15 @@ import datetime
 import json
 import os
 
+# log_fire decision enum — controls which optional field is included and the API-impact class:
+#   "block"    — hook exited 2 + wrote stderr. Agent sees the error and may retry differently.
+#                Record includes: reason (stderr text). No rewritten field.
+#   "rewrite"  — hook exited 0 + emitted updatedInput JSON. Agent runs the modified input silently.
+#                Record includes: rewritten (description of change). No reason field.
+#   "ui-notice" — RESERVED for future hooks that only produce a UI side-effect (e.g. Monitor annotation).
+#                NO API impact — agent sees neither an error nor a modified input.
+#                Filter from FP analysis: jq 'select(.decision != "ui-notice")' hook_firing.jsonl
+
 
 # FUNCTIONS
 
