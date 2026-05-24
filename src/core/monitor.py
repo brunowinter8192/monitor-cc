@@ -268,8 +268,25 @@ def run_main_loop() -> None:
                     _display.main_event_buffer.append(
                         {'type': 'session_banner', 'data': {}, 'call_number': None}
                     )
+                # sticky-scroll: snapshot rendered line count before new events arrive
+                _sticky_pre = None
+                if _display.main_scroll_offset > 0:
+                    try:
+                        _sticky_pw = os.get_terminal_size().columns
+                    except OSError:
+                        _sticky_pw = 80
+                    _sticky_pre = _display._count_buffer_lines(_sticky_pw)
                 monitor_sessions()
                 _refresh_strip_cache()
+                # sticky-scroll: offset grows by line delta so absolute viewport stays pinned
+                if _sticky_pre is not None and _display.main_scroll_offset > 0:
+                    try:
+                        _sticky_pw = os.get_terminal_size().columns
+                    except OSError:
+                        _sticky_pw = 80
+                    _sticky_delta = _display._count_buffer_lines(_sticky_pw) - _sticky_pre
+                    if _sticky_delta != 0:
+                        _display.main_scroll_offset = max(0, _display.main_scroll_offset + _sticky_delta)
                 last_data_refresh = now
                 input_changed = True
 

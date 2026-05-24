@@ -276,6 +276,13 @@ def ensure_match_visible() -> None:
     new_start = max(0, target_line - 2)  # 2 lines context above match
     main_scroll_offset = max(0, _search_total_lines - buffer_height - new_start)
 
+# Count total rendered lines in main_event_buffer at given pane_width (used by sticky-scroll delta)
+def _count_buffer_lines(pane_width: int) -> int:
+    total = 0
+    for event in main_event_buffer:
+        total += len(_format_event_to_lines(event)) + 1  # +1 for blank separator between events
+    return total
+
 # Render event buffer to screen-sized string with zebra shading + truncation; fills main_line_map
 # Row 1 is the persistent search bar; buffer events render from row 2 onward.
 def render_main_buffer(pane_height: int, pane_width: int, scroll_offset: int) -> str:
