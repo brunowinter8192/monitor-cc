@@ -8,9 +8,9 @@ Session status detection in `src/menubar/` uses separate logic for Workers vs Ma
 - Alive iff `tmux has-session -t =worker-{project_basename}-{worker_name}` returns 0. Exact-match `=` prevents prefix false positives.
 - Session name reconstructed from worker JSONL cwd: split on `/.claude/worktrees/`, `basename(left)` = project basename.
 - Alive fallback (cwd unreadable from JSONL): `ALIVE_WINDOW_SECS=3600s` JSONL age guard.
-- **Status — Hook-based with stale-demote** (`APP_SUPPORT/hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. No entry or stale → `idle`. If `status == working` AND `(now - jsonl_mtime) > WORKING_THRESHOLD_SECS (10s)` → demote to `idle` (covers context-limit-hit workers and crashed workers where Stop-hook never fired). `UserPromptSubmit` sets working from T=0; `Stop`/`StopFailure` set idle immediately.
+- **Status — Hook-based with window_activity stale-demote** (`APP_SUPPORT/hooks.json`): `session_id` maps directly to JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. No entry or stale → `idle`. If `status == working` AND `tmux_session` is non-empty: query `tmux display-message -t {session}:^ -p '#{window_activity}'` → `wa_age = now - window_activity`. If `wa == 0` or `wa_age > WORKING_THRESHOLD_SECS (10s)` → demote to `idle`. Rationale: CC writes JSONL only on assistant-message completion; long thinking phases (Caramelizing/Concocting) keep JSONL mtime stale for minutes. `window_activity` is bumped by every pane byte-write (spinner ticks ~1/sec, streaming chunks) → stays fresh through thinking phases. Empirically: 98.3% detection on working sessions, 0% false positives on idle (see Evidenz). If `tmux_session` is empty (cwd-unavailable fallback), demote is skipped. `UserPromptSubmit` sets working from T=0; `Stop`/`StopFailure` set idle immediately.
 - **Auto-abort** (`app.py:_auto_abort_check`): every tick, if ALL workers of a project are idle (post-demote AND signal-grace not active) AND that project has an active bg sleep timer → 5s debounce (`_all_workers_idle_since_ts[project_name]`) → `_abort_bg_sleep_timers`. A worker is treated as working (blocking the all_idle check) when either (a) hook status is working post-demote OR (b) iterative-dev wrote an orchestrator-signal for its `tmux_session_name` within `ORCHESTRATOR_SIGNAL_BUFFER_SECS` (60s). Signal-grace covers send-event AND spawn-event (Fix A). Any worker returning to working resets the debounce. `'unknown'`-attributed timers excluded. Projects with no workers excluded (`bool([])` guard). All abort decisions logged to `/tmp/menubar-abort.log` (always-on, no env-var gate).
-- worker-cli status detection (`iterative-dev/src/spawn/tmux_spawn.sh:_worker_detect_status`) reads the same hooks.json with the same demote rule — single source of truth for worker status across menubar and CLI.
+- worker-cli status detection (`iterative-dev/src/spawn/tmux_spawn.sh:_worker_detect_status`) uses the identical sensor and threshold — single source of truth for worker status across menubar and CLI.
 
 **Mains** (Ghostty terminals, `discover.py` + `proc_cache.py`):
 - Alive if JSONL mtime within `ALIVE_WINDOW_SECS=3600s`.
@@ -33,7 +33,18 @@ Session status detection in `src/menubar/` uses separate logic for Workers vs Ma
 
 ## Evidenz
 
-No measurement eval. IST is the production behavioral specification derived from code inspection.
+Worker stale-demote sensor selection — three-option probe (`window_activity` vs JSONL mtime vs TTY mtime):
+- Script: `dev/worker_status_probes/` suite
+- Report: `dev/worker_status_probes/01_reports/comparison_20260524_183937.md`
+- Dataset: ccwrap-phase1 worker session (idle) + status-probe worker session (idle); manually-observed working phases
+
+| Sensor | Working detection | False-positive rate (idle) | Notes |
+|---|---|---|---|
+| `window_activity` | 98.3% | 0% (300+ idle-session-secs) | Spinner ticks keep it fresh during thinking phases |
+| JSONL mtime | ~60% | 0% | Stale during long thinking (CC writes JSONL only on message completion) |
+| TTY mtime | 100% | ~30% | Cursor blinks bump TTY mtime → stuck-at-working on idle sessions |
+
+Decision: `window_activity` wins on both axes. Empirically refuted the prior "cursor blinks bump window_activity" concern — cursor blinks do NOT touch window_activity. `window_activity` is updated only on actual pane output (byte writes to the PTY), not on cursor rendering.
 
 ## Recommendation (SOLL)
 

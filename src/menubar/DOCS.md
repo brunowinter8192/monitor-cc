@@ -120,12 +120,12 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### proc_cache.py (161 LOC)
+### proc_cache.py (173 LOC)
 
-**Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader, orchestrator-signal reader. Two TTL classes: `_PROC_REFRESH_INTERVAL` = 10s for the expensive `ps -A` / `lsof` caches; `_HOOK_REFRESH_INTERVAL` = 1s for the cheap hooks.json + orchestrator_signals.json reads (must be < POLL_INTERVAL=1.5s so each menubar tick gets a fresh snapshot while intra-tick consumers still see consistency). `_TMUX_REFRESH_INTERVAL` = 3s for `tmux list-sessions`. Exports `ORCHESTRATOR_SIGNAL_BUFFER_SECS = 60s` consumed by `app.py:_auto_abort_check`. Owns `_TASKS_BASE` and `_has_active_bg()`.
-**Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE` (`APP_SUPPORT/hooks.json`); `ORCHESTRATOR_SIGNALS_FILE` (`APP_SUPPORT/orchestrator_signals.json`, written by worker-cli).
+**Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader, orchestrator-signal reader. Two TTL classes: `_PROC_REFRESH_INTERVAL` = 10s for the expensive `ps -A` / `lsof` caches; `_HOOK_REFRESH_INTERVAL` = 1s for the cheap hooks.json + orchestrator_signals.json reads (must be < POLL_INTERVAL=1.5s so each menubar tick gets a fresh snapshot while intra-tick consumers still see consistency). `_TMUX_REFRESH_INTERVAL` = 3s for `tmux list-sessions`. Exports `ORCHESTRATOR_SIGNAL_BUFFER_SECS = 60s` consumed by `app.py:_auto_abort_check`. Owns `_TASKS_BASE` and `_has_active_bg()`. `_tmux_window_activity(session)` returns unix timestamp of last pane byte-write via `tmux display-message #{window_activity}`; used by `discover.py` for worker stale-demote (replaces JSONL mtime check).
+**Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `tmux display-message #{window_activity}` (per-session, on-demand); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE` (`APP_SUPPORT/hooks.json`); `ORCHESTRATOR_SIGNALS_FILE` (`APP_SUPPORT/orchestrator_signals.json`, written by worker-cli).
 **Writes:** module-level caches (`_cc_proc_cache`, `_tmux_state_cache`, `_proxy_log_mtime_cache`, `_hook_state_cache`, `_orchestrator_signal_cache`).
-**Called by:** `discover.py:list_alive_sessions` (refresh calls); `discover.py:_process_project_dir` (query calls); `ghostty.py:_tty_for_cwd` (`_cc_proc_cache` import); `bg_timer.py:_scan_bg_sleep_timers` (`_cc_proc_cache` import); `bg_timer.py:_abort_bg_sleep_timers` (`_TASKS_BASE` import).
+**Called by:** `discover.py:list_alive_sessions` (refresh calls); `discover.py:_process_project_dir` (query calls + `_tmux_window_activity`); `ghostty.py:_tty_for_cwd` (`_cc_proc_cache` import); `bg_timer.py:_scan_bg_sleep_timers` (`_cc_proc_cache` import); `bg_timer.py:_abort_bg_sleep_timers` (`_TASKS_BASE` import).
 **Calls out:** `subprocess` (ps, lsof, tmux).
 
 ---

@@ -112,6 +112,18 @@ def _refresh_tmux_state(now: float) -> None:
 def _tmux_session_exists(session_name: str) -> bool:
     return session_name in _tmux_state_cache
 
+# Return unix timestamp of last pane byte-write for session; 0 if query fails
+def _tmux_window_activity(session: str) -> int:
+    try:
+        result = subprocess.run(
+            ['tmux', 'display-message', '-t', f'{session}:^', '-p', '#{window_activity}'],
+            capture_output=True, text=True, timeout=2)
+        if result.returncode != 0:
+            return 0
+        return int(result.stdout.strip())
+    except Exception:
+        return 0
+
 # Return newest mtime of proxy logs matching opus_<project_key>; None if no match or dir missing
 def _proxy_log_newest_mtime(project_key: str, now: float) -> Optional[float]:
     cached = _proxy_log_mtime_cache.get(project_key)
