@@ -83,21 +83,20 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_unauthorized_background.py (60 LOC)
+### block_unauthorized_background.py (63 LOC)
 
-**Purpose:** PreToolUse hook — blocks any Bash command dispatched with `run_in_background=true` that is NOT the exact canonical orchestration timer `sleep N && echo done`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable. Exits 2 + stderr with the canonical form and reason. Exits 0 on any parse/internal error (fail-open).
+**Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT the exact canonical orchestration timer `sleep N && echo done`, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
-**Writes:** stderr (block message with canonical form) on violation only.
+**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command, run_in_background: false}`) on non-canonical bg; nothing on passthrough.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** stdlib only (`json`, `re`).
 
-**Blocked patterns:**
-- Any command with `run_in_background=true` that is NOT `sleep N && echo done`
-- Examples: `rag-cli update_docs .`, `python3 script.py`, build commands, test runners
+**Rewrite condition:** `run_in_background=true` AND command does NOT match `_CANONICAL` (the `sleep N && echo done` timer form).
 
-**Allowed patterns:**
-- `sleep N && echo done` (optional leading/trailing whitespace, optional float N) with `run_in_background=true`
+**Passthrough (no output):**
+- `sleep N && echo done` (optional whitespace, optional float N) with `run_in_background=true`
 - Any command with `run_in_background=false` or field absent (foreground — no restriction)
+- Parse errors (fail-open)
 
 **No quote-stripping.** Checks only the `run_in_background` bool field and the canonical regex — no command-text scanning for partial patterns.
 
