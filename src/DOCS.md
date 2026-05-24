@@ -26,7 +26,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `ram_audit/` | SIGUSR1 RAM-dump helper, gated by MONITOR_CC_RAM_AUDIT env | 101 | 1 |
 | `menubar/` | macOS status-bar app showing live CC sessions (rumps/AppKit) | 3481 | 18 |
 | `gpu_pane/` | GPU server monitor pane (cross-project, reads RAG state) | 204 | 3 |
-| `hooks/` | Global CC safety hooks (PreToolUse scripts + hook_setup) | 1546 | 20 |
+| `hooks/` | Global CC safety hooks (PreToolUse scripts + hook_setup) | 1674 | 22 |
 | `ccwrap/` | Standalone PTY wrapper with diagnostic ANSI logging for CC (Phase 1 diagnostic tool) | 254 | 4 |
 
 ## Root-Level Files
