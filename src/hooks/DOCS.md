@@ -366,6 +366,12 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ## Gotchas
 
+- **Auto-deploy via `.githooks/` (per-clone setup required).** The repo ships `.githooks/post-merge` and `.githooks/post-commit` — both fire `python3 src/hooks/hook_setup.py` automatically when a commit (merge or direct) touches `src/hooks/*`. This keeps `~/.claude/settings.json` in sync with the filesystem, preventing the stale-hook disaster class. Each clone must activate the hooks once:
+  ```bash
+  git config core.hooksPath .githooks
+  ```
+  This is a local config (not committed). Workers committing from worktrees are unaffected — `hook_setup.py`'s worktree guard (`_guard_not_worktree()`) exits 2, which the hook script swallows silently; settings.json is only updated when the hook fires from the main repo context (merge onto main, direct commit on main). Verification: after a commit touching `src/hooks/`, check `stat ~/.claude/settings.json` mtime is fresher than the commit timestamp.
+
 - **`log_fire` decision enum and API-impact semantics.** Three values are defined — only `"block"` and `"rewrite"` are live today; `"ui-notice"` is reserved for future hooks with no API impact:
 
   | decision | Mechanism | API impact | Record field |

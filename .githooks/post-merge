@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Auto-run hook_setup.py when src/hooks/* files change on merge.
+# Fail-silent — git merge must not fail due to this hook.
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+
+if git diff --name-only ORIG_HEAD HEAD 2>/dev/null | grep -q '^src/hooks/'; then
+    echo "[post-merge] src/hooks/ changed — running hook_setup.py" >&2
+    (cd "$REPO_ROOT" && python3 src/hooks/hook_setup.py) 2>&1 || true
+fi
