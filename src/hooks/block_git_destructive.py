@@ -1,7 +1,10 @@
 # INFRASTRUCTURE
 import json
+import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fire_log import log_fire
 
 # Each entry: (compiled pattern, label, suggestion). Patterns matched against quote-stripped command.
 _PATTERNS = [
@@ -39,36 +42,38 @@ _BLOCK_TEMPLATE = (
 
 # Read Bash tool_input from stdin; exit 2 + stderr if command matches a destructive git pattern.
 def block_git_destructive_workflow() -> None:
-    command = _parse_command()
+    command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
     stripped = _strip_quoted(command)
     for pat, label, suggestion in _PATTERNS:
         if pat.search(stripped):
-            print(_BLOCK_TEMPLATE.format(label=label, suggestion=suggestion),
-                  file=sys.stderr, end="")
+            reason = _BLOCK_TEMPLATE.format(label=label, suggestion=suggestion)
+            print(reason, file=sys.stderr, end="")
+            log_fire("block_git_destructive", "block", "Bash", command, reason=reason, session_id=session_id)
             sys.exit(2)
     m = _GIT_CONFIG_RE.search(stripped)
     if m and not _GIT_CONFIG_READONLY.search(m.group(1)):
-        print(_BLOCK_TEMPLATE.format(
+        reason = _BLOCK_TEMPLATE.format(
             label="git config (modify)",
             suggestion="Never modify git config — config changes are deliberate user decisions, "
-                       "not Opus-driven."),
-              file=sys.stderr, end="")
+                       "not Opus-driven.")
+        print(reason, file=sys.stderr, end="")
+        log_fire("block_git_destructive", "block", "Bash", command, reason=reason, session_id=session_id)
         sys.exit(2)
     sys.exit(0)
 
 
 # FUNCTIONS
 
-# Parse stdin JSON and return tool_input.command; return None on any error or missing field.
+# Parse stdin JSON; return (command, session_id); (None, None) on any error or missing field (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
-        return cmd if isinstance(cmd, str) else None
+        return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
     except Exception:
-        return None
+        return None, None
 
 
 # Strip content inside single/double quotes so quoted text (commit messages, descriptions) cannot

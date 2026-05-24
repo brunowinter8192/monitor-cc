@@ -1,7 +1,10 @@
 # INFRASTRUCTURE
 import json
+import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fire_log import log_fire
 
 # canonical allowed background form: sleep N && echo done (optional whitespace/float)
 _CANONICAL = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$')
@@ -22,19 +25,20 @@ _BLOCK_MESSAGE = (
 
 # Read Bash tool_input from stdin; exit 2 + stderr if run_in_background=true on non-canonical command
 def block_unauthorized_background_workflow() -> None:
-    command, run_in_background = _parse_input()
+    command, run_in_background, session_id = _parse_input()
     if not run_in_background:
         sys.exit(0)
     if command is None:
         sys.exit(0)
     if not _is_canonical(command):
         print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+        log_fire("block_unauthorized_background", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
         sys.exit(2)
     sys.exit(0)
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, run_in_background); default (None, False) on any error (fail-open)
+# Parse stdin JSON; return (command, run_in_background, session_id); (None, False, None) on error (fail-open)
 def _parse_input():
     try:
         payload = json.loads(sys.stdin.read())
@@ -43,9 +47,9 @@ def _parse_input():
         bg = tool_input.get("run_in_background", False)
         cmd = cmd if isinstance(cmd, str) else None
         bg = bg if isinstance(bg, bool) else False
-        return cmd, bg
+        return cmd, bg, payload.get("session_id")
     except Exception:
-        return None, False
+        return None, False, None
 
 # True if command is exactly the canonical background timer form and nothing else
 def _is_canonical(command: str) -> bool:

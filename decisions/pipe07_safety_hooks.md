@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-18 safety hooks registered globally in `~/.claude/settings.json`:
+19 safety hooks registered globally in `~/.claude/settings.json`. All 19 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 15 block hooks (exit 2) + 4 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_git_ambiguous`, `block_path_typo` (legacy name, rewrite semantics).
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -388,7 +388,7 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current 18 hooks (no change needed). Pending evaluation after rollout:
+Keep current 19 hooks + audit logging (no change needed). Pending evaluation after rollout:
 - Do hooks #9–18 (2026-05-22 batch) intercept violations without false positives in live sessions?
 - `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
 - `rewrite_git_ambiguous` original `updatedInput` plan: REFUTED 2026-05-22 — CC PreToolUse + `allow` + `updatedInput` does NOT apply on Bash (per CHANGELOG line 1324, this path is `AskUserQuestion`-tool-specific). Hook converted to block-with-hint (exit 2 + stderr). See `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_capabilities.md` Finding 1 for the empirical correction. Future option: re-enable `updatedInput` if Anthropic extends the API to cover general PreToolUse.

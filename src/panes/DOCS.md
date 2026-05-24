@@ -44,23 +44,33 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_pane.py (296 LOC)
+### warnings_pane.py (298 LOC)
 
-**Purpose:** Warnings pane event loop and module-level state owner. Owns all mutable globals (`tool_errors`, `zero_results`, `schema_warnings`, dedup sets, scroll/hover state). Delegates scanning to `warnings_scan`, rendering to `warnings_render`. Processes schema-warning entries inline (no scan helper needed — simpler pattern). Loop follows drain-refresh-render pattern; private helpers `_warnings_ram_state`, `_handle_warnings_mouse`, `_handle_warnings_key`, `_refresh_warnings_data`, `_build_warnings_output` extracted from loop body.
+**Purpose:** Warnings pane event loop and module-level state owner. Owns all mutable globals (`tool_errors`, `zero_results`, `schema_warnings`, dedup sets, scroll/hover state). Delegates scanning to `warnings_scan`, rendering to `warnings_render`, persistence to `warnings_persist`. Processes schema-warning entries inline (no scan helper needed — simpler pattern). Loop follows drain-refresh-render pattern; private helpers `_warnings_ram_state`, `_handle_warnings_mouse`, `_handle_warnings_key`, `_refresh_warnings_data`, `_build_warnings_output` extracted from loop body.
 **Reads:** Proxy JSONL (incremental via `_proxy_log_position`); worker log files; shared state `monitor.active_project_filter`.
-**Writes:** stdout (ANSI screen); rebinds `error_line_map`, `zero_result_line_map` from render return tuple; extends `tool_errors`, `zero_results`, `schema_warnings`.
+**Writes:** stdout (ANSI screen); rebinds `error_line_map`, `zero_result_line_map` from render return tuple; extends `tool_errors`, `zero_results`, `schema_warnings`; appends new tool errors to `src/logs/tool_errors.jsonl` via `warnings_persist.append_tool_errors` (parallel persistent-write, fail-silent, forward-only from monitor start).
 **Called by:** `core/monitor.py` (mode dispatch).
-**Calls out:** `input.click_handler` (module-level), `core.monitor` (lazy, inside `_refresh_warnings_data`), `proxy_display.parser` (lazy, inside `_refresh_warnings_data`), `panes.warnings_parse` (`_iso_to_float`), `panes.warnings_scan`, `panes.warnings_render`.
+**Calls out:** `input.click_handler` (module-level), `core.monitor` (lazy, inside `_refresh_warnings_data`), `proxy_display.parser` (lazy, inside `_refresh_warnings_data`), `panes.warnings_parse` (`_iso_to_float`), `panes.warnings_scan`, `panes.warnings_render`, `panes.warnings_persist`.
 
 ---
 
-### warnings_scan.py (103 LOC)
+### warnings_scan.py (107 LOC)
 
-**Purpose:** Pure scanning helpers — reads proxy/worker log entry dicts, classifies tool errors and zero-result blocks, deduplicates via caller-supplied seen-key sets. No UI concerns, no module-level state. Returns `(items_list, new_dedup_keys)` tuples; caller extends its own lists and updates its own seen sets.
+**Purpose:** Pure scanning helpers — reads proxy/worker log entry dicts, classifies tool errors and zero-result blocks, deduplicates via caller-supplied seen-key sets. No UI concerns, no module-level state. Returns `(items_list, new_dedup_keys)` tuples; caller extends its own lists and updates its own seen sets. Tool error dicts include persistence fields `_ts_raw`, `_tool_use_id`, `_proxy_file`, `_request_id` for use by `warnings_persist`.
 **Reads:** Entry dicts passed as `entries` list; `seen_error_keys` / `seen_zero_keys` sets read-only for dedup check.
 **Writes:** Nothing — returns new lists and sets; no mutation of arguments.
 **Called by:** `panes.warnings_pane` (`run_warnings_loop`).
 **Calls out:** `panes.warnings_parse` (`_iso_to_float`, `_is_tool_error`, `_is_zero_result_block`, `_build_tool_use_id_map`, `_resolve_tool_call`), `utils.format_timestamp`, `format.strip_marker` (`get_stripped_data`).
+
+---
+
+### warnings_persist.py (38 LOC)
+
+**Purpose:** Persistent-write helper for tool error events — appends each new tool error detected by `warnings_pane` to `src/logs/tool_errors.jsonl` (append-forever, no rotation). Schema per line: `{ts, session_id, worker, tool_name, tool_use_id, error_full, proxy_file, request_id}`. Worker attribution: `_worker_name` from entry → `"main"` (empty) or `"worker:<name>"`. Session_id: proxy session hash (md5 of project_path). Fail-silent on any write exception. Log path overridable via `MONITOR_CC_TOOL_ERROR_LOG` env var. Forward-only: populated from first warnings_pane refresh after monitor start; no historical backfill.
+**Reads:** error dicts from `_scan_proxy_entries_for_errors`; `project_filter` from `warnings_pane` module-level state.
+**Writes:** `src/logs/tool_errors.jsonl` (appends one line per new error; path resolved from `__file__` relative to project root).
+**Called by:** `panes.warnings_pane` (`_refresh_warnings_data`) after `tool_errors.extend(new_errors)`.
+**Calls out:** `proxy_display.parser` (`proxy_session_id_for_project`).
 
 ---
 

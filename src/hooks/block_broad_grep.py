@@ -5,6 +5,7 @@ import re
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
+from _fire_log import log_fire
 
 # Recursive grep: -r or -R flag in combined or standalone short options
 _RECURSIVE_FLAG = re.compile(r'(?:^|\s)-[a-zA-Z]*[rR][a-zA-Z]*(?:\s|$)')
@@ -31,7 +32,7 @@ _BLOCK_MESSAGE = (
 
 # Read Bash tool_input from stdin; exit 2 + stderr if recursive grep lacks --include and is not file-targeted
 def block_broad_grep_workflow() -> None:
-    command = _parse_command()
+    command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
     stripped = _strip_non_shell_active(command)
@@ -45,18 +46,19 @@ def block_broad_grep_workflow() -> None:
     if _is_file_targeted(segment):
         sys.exit(0)
     print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+    log_fire("block_broad_grep", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
     sys.exit(2)
 
 # FUNCTIONS
 
-# Parse stdin JSON and return tool_input.command; return None on any error or missing field (fail-open)
+# Parse stdin JSON; return (command, session_id); (None, None) on any error or missing field (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
-        return cmd if isinstance(cmd, str) else None
+        return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
     except Exception:
-        return None
+        return None, None
 
 # Extract first standalone grep invocation up to first pipe or chain operator; skip 'git grep'
 def _grep_segment(command: str):

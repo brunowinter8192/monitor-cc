@@ -219,7 +219,10 @@ def parse_proxy_log(project_filter: Optional[str], last_position: int, pending_b
         if len(lines) >= 2 and lines[1].strip():
             log_id = lines[1].strip()
     log_file = Path(root) / "src" / "logs" / f"api_requests_{log_id}.jsonl"
-    return _parse_log_file(log_file, last_position, pending_by_rid)
+    entries, new_pos = _parse_log_file(log_file, last_position, pending_by_rid)
+    for entry in entries:
+        entry['_source_file'] = log_file.name
+    return entries, new_pos
 
 # Find the most recent worker proxy log for the given worker name
 def find_worker_proxy_log(worker_name: str, project_filter: Optional[str] = None) -> Optional[Path]:
@@ -315,6 +318,7 @@ def scan_worker_logs(last_positions: dict, project_session_id: str = '',
         entries, new_pos = _parse_log_file(log_path, pos)
         for entry in entries:
             entry['_worker_name'] = worker_name
+            entry['_source_file'] = log_path.name
         all_entries.extend(entries)
         updated_positions[str(log_path)] = new_pos
     return all_entries, updated_positions

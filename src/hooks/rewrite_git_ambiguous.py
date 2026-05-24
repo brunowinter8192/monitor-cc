@@ -5,6 +5,7 @@ import re
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
+from _fire_log import log_fire
 
 # git diff/log/show with ..-range token (e.g. dev..HEAD, main..feature)
 _GIT_SUBCMD       = re.compile(r'\bgit\b.*?(?<!-)\b(diff|log|show)\b', re.DOTALL)
@@ -24,7 +25,7 @@ _CHAIN_OP_RE      = re.compile(r'&&|\|\||[|><;]')
 
 # Read Bash tool_input from stdin; auto-rewrite git command with -- if ambiguity detected
 def rewrite_git_ambiguous_workflow() -> None:
-    command = _parse_command()
+    command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
     stripped = _strip_non_shell_active(command)
@@ -34,20 +35,22 @@ def rewrite_git_ambiguous_workflow() -> None:
         sys.exit(0)
     if not (_has_range_token(stripped) or _has_bare_ref_token(stripped)):
         sys.exit(0)
-    _emit_rewrite(command, stripped)
+    output, rewritten = _emit_rewrite(command, stripped)
+    log_fire("rewrite_git_ambiguous", "rewrite", "Bash", command, rewritten=rewritten, session_id=session_id)
+    print(json.dumps(output))
     sys.exit(0)
 
 
 # FUNCTIONS
 
-# Parse stdin JSON and return tool_input.command; return None on any error or missing field (fail-open)
+# Parse stdin JSON; return (command, session_id); (None, None) on any error or missing field (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
-        return cmd if isinstance(cmd, str) else None
+        return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
     except Exception:
-        return None
+        return None, None
 
 # True if command contains 'git' followed (anywhere) by diff, log, or show
 def _is_git_diff_log(command: str) -> bool:
@@ -82,8 +85,8 @@ def _insert_path_separator(command: str, stripped: str) -> str:
         return command[:pos] + ' --' + command[pos:]
     return command.rstrip() + ' --'
 
-# Emit allow+updatedInput JSON to rewrite the command in-place
-def _emit_rewrite(command: str, stripped: str) -> None:
+# Build allow+updatedInput dict; return (output_dict, rewritten) — caller handles print
+def _emit_rewrite(command: str, stripped: str) -> tuple:
     rewritten = _insert_path_separator(command, stripped)
     output = {
         "hookSpecificOutput": {
@@ -96,7 +99,7 @@ def _emit_rewrite(command: str, stripped: str) -> None:
             f"Original: `{command}`. Rewritten: `{rewritten}`."
         ),
     }
-    print(json.dumps(output))
+    return output, rewritten
 
 
 if __name__ == "__main__":
