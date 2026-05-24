@@ -23,6 +23,7 @@ cd Monitor_CC/
 - [menubar_nspanel/DOCS.md](menubar_nspanel/DOCS.md) — NSPanel sticky-toggle probe suite — persistent menubar panel replacing NSMenu auto-dismiss behavior
 - [cc_source_research/DOCS.md](cc_source_research/DOCS.md) — CC binary + source research artifacts — env-var inventory from npm binaries, cross-referenced against community decompiles
 - [ram_audit/DOCS.md](ram_audit/DOCS.md) — Pane RAM snapshot investigation — SIGUSR1 dump handler + `dump_all.sh` for live RSS/allocator capture across all panes
+- [sleep_pattern_analysis/DOCS.md](sleep_pattern_analysis/DOCS.md) — Empirical audit of `block_chained_sleep` firing events; classifies cmd_before tokens as trivial-sync / load-bearing / mixed to inform `rewrite_chained_sleep.py` design
 - `hook_smoke/` — Hook blocking rule smoke tests (chained_sleep, dangerous_kill, read_worktree); no own DOCS.md
 - `bead_tracker_chain/` — `smoke.py`: end-to-end smoke for `bead_tracker_hook` per-subcommand processing (4 cases: single, chained `;`, cross-project skip, pipe non-split); creates/deletes real test beads; no own DOCS.md
 
