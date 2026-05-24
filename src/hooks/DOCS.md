@@ -22,7 +22,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by six Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure).
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** n/a.
-**Called by:** `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `rewrite_git_ambiguous.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
 **Calls out:** stdlib only (no imports).
 
 ---
@@ -269,33 +269,6 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - `git config` (modify — write operations); read-only flags (`--list`, `--get`, `--show-origin`, etc.) are exempt
 
 **Allowed patterns:** `git commit` (without `--amend`/`--no-verify`/`--allow-empty`); `git push` (without force flags); `git config --list|--get|...` (read-only); parse errors (fail-open).
-
----
-
-### rewrite_git_ambiguous.py (106 LOC)
-
-**Purpose:** PreToolUse hook (Bash) — detects `git diff/log/show` commands with an ambiguous argument (branch/commit ref without a `--` path separator) and **auto-rewrites** by inserting `--` at the correct position. Upgraded 2026-05-22 commit `1dbae5d` from block-and-hint to auto-rewrite — the 2026-05-22 earlier "refuted" finding on `updatedInput` for Bash was incorrect (see `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_auto_rewrite_works.md`).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
-**Writes:** stdout (single-line JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command` + `systemMessage`) on match; nothing on passthrough.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** stdlib only (`json`, `re`); imports `_strip_non_shell_active` from `_shell_strip.py`.
-
-**Detection (rewrites when ALL true):**
-1. Command contains `git ... diff|log|show` pattern
-2. No standalone ` -- ` path separator already present (excludes `--stat`, `--format`, etc.)
-3. Either: a range token (`<name>..<name>`, `<name>..`, `..<name>`) OR a bare ref name (first non-flag token after the subcommand matches `[a-zA-Z0-9][a-zA-Z0-9_/\-]*`)
-
-**Rewrite logic:** `_insert_path_separator(command, stripped)` finds the first chain operator (`&&`, `||`, `|`, `>`, `<`, `;`) in the position-preserving stripped command, backs up over whitespace, and splices `' --'` into the ORIGINAL command at the matching position. If no chain operator: appends ` --` at end (after rstrip). `_strip_non_shell_active` length-preservation is the key invariant that lets the splice work on the original command without re-tokenizing.
-
-**Allowed (passthrough):** command already has ` -- ` separator; no range token and no bare ref; non-git commands; parse errors (fail-open).
-
-**Coverage:** addresses both real violation forms from 2026-05-22 data: `git diff dev --stat` (bare-name) and `git diff dev..HEAD` (range-form). Bare-ref detection: first non-flag token after subcommand; stops at first non-flag token.
-
-**Edge case (multi-git chain):** when a Bash invocation chains multiple git diff/log/show calls with one having ` -- ` and another not, `_has_path_separator=True` for the whole chain masks the missing `--` in the second call. Recommend single-git-call Bash invocations.
-
-**Limitation:** bare-ref pattern `[a-zA-Z0-9][a-zA-Z0-9_/\-]*` matches paths with `/` (e.g., `src/module`); a rewrite on `git log src/module` to `git log src/module --` is technically a false positive (no ambiguity for path-only logs), but the rewritten form is still semantically correct.
-
-**Quote/heredoc stripping.** Before all pattern checks, `_strip_non_shell_active()` (from `_shell_strip.py`) removes heredoc bodies and quoted regions while preserving positions. Prevents false-positives when a `git diff dev..HEAD` example appears inside a `worker-cli send` message body.
 
 ---
 
