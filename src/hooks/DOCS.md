@@ -22,7 +22,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by six Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure).
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** n/a.
-**Called by:** `block_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `rewrite_git_ambiguous.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `rewrite_git_ambiguous.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
 **Calls out:** stdlib only (no imports).
 
 ---
@@ -45,25 +45,31 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_chained_sleep.py (88 LOC)
+### block_chained_sleep.py.disabled
 
-**Purpose:** PreToolUse hook — blocks any `sleep <N>` token in a Bash command that is NOT the exact canonical orchestration timer form `sleep N && echo done`, with one allowance: `sleep N ≤ 5` immediately after a side-effect command (pkill, launchctl, bootout, kickstart, worker-cli kill, systemctl, kill -N) in foreground non-loop context is treated as legitimate settling-time and allowed. All other chained forms are rejected because the menubar auto-abort sends SIGTERM to the sleep PID, which exits the entire chained shell with code 143 and destroys pre-sleep output. Exits 2 + stderr with the canonical form and reason. Exits 0 on any parse/internal error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
-**Writes:** stderr (block message with canonical form) on violation only.
+**Disabled 2026-05-24** — superseded by `rewrite_chained_sleep.py`. Renamed via `git mv` (file still in repo for history). Previously blocked all non-canonical `sleep N` chains. Replaced by a rewrite hook that strips trivial-sync sleeps (`echo`, `true` cmd_before) and passes load-bearing patterns through. See `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md` for audit rationale.
+
+---
+
+### rewrite_chained_sleep.py (128 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — **rewrites** chained `sleep N` by stripping it when the immediately-preceding command is trivial-sync (`echo`, `true`). Sleep-first chains, load-bearing predecessors (`kill`, `pkill`, `launchctl`, `tmux`, etc.) and loop-body sleeps are passed through unchanged (no-op). Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command`) when sleep(s) were stripped; nothing when no-op.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** stdlib only (`json`, `re`).
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert).
 
-**Blocked patterns:**
-- `until ...; do sleep N; done` and other loop forms — real polling
-- Any non-canonical sleep with `run_in_background=true`
-- `sleep N` with N > 10 in any non-canonical chain
-- Non-canonical `sleep N ≤ 5` without a recognized side-effect command
+**Strip condition (ALL must hold):**
+1. A chain operator (`&&`, `||`, `;`) immediately precedes `sleep N` (only whitespace between op and sleep)
+2. First token of the segment before that operator is in `_TRIVIAL = {'echo', 'true'}`
+3. Sleep is NOT inside a `for|while|until ... done` span
 
-**Allowed patterns:**
-- `sleep N && echo done` (optional leading/trailing whitespace, optional float N) with `run_in_background=true` — canonical orchestration timer
-- `sleep N ≤ 5` after a side-effect command (pkill, launchctl, bootout, kickstart, worker-cli kill, systemctl, kill -N) in foreground non-loop context — settling-time allowance (45% FP fix, 2026-05-22)
+**Pass-through (no-op) conditions:**
+- Sleep-first chain (no preceding chain op) — intent is timing
+- `cmd_before` not in `_TRIVIAL`
+- Sleep inside loop body
 
-**Quote/heredoc stripping.** Before `_SLEEP_TOKEN` matching, `_strip_non_shell_active()` (imported from `_shell_strip.py`) replaces heredoc bodies, single-quoted strings, double-quoted strings, and ANSI-C `$'...'` quotes with spaces. Command substitutions `$(...)` and backtick expressions are kept shell-active so `sleep` inside them still triggers a block. Fail-open: any parse error (unclosed quote, heredoc without terminator) returns the original string unmodified. Smoke: `dev/hook_smoke/test_block_chained_sleep.py` (13 cases).
+**Smoke:** `dev/hook_smoke/test_rewrite_chained_sleep.py` (8 cases: 3 positive strip, 5 negative no-op).
 
 ---
 
@@ -362,7 +368,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### hook_setup.py (143 LOC)
+### hook_setup.py (144 LOC)
 
 **Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message if the script is running from a worktree path — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]` (not only `PreToolUse`), checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source (worktree accident, repo move, etc.).
 **Reads:** `~/.claude/settings.json`.
@@ -382,7 +388,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - **Global registration.** Bash hooks fire for every Bash call; Edit hooks for every Edit call; Read hooks for every Read call — across all CC sessions on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
 - **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths. The sweep pass removes the old stale paths automatically on re-run.
 - **Stale hooks block all Bash calls.** A stale `python3 <missing>.py` hook exits 2 (Python interpreter error for missing file), which CC treats as a block — every Bash command in every session fails globally. Recovery: re-run `hook_setup.py` from the main repo root (from a real terminal, not CC's Bash tool, since Bash is blocked). The sweep removes dead entries before the add-loop runs.
-- **Six hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `block_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `rewrite_git_ambiguous.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
+- **Six hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `rewrite_git_ambiguous.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **`block_read_worktree.py` allows own-worktree reads.** Workers reading files in their own worktree via absolute path are now allowed. Cross-worktree reads (worker→other-worker) and main-session→worktree reads remain blocked.

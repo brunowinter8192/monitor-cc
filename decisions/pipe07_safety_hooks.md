@@ -17,36 +17,29 @@
 
 **Allowed patterns (not blocked):** `pkill -x <name>`, `pkill <name>` (no `-f`), `kill <numeric_pid>`, `kill -<signal> <numeric_pid>`, `worker-cli kill <name>`, `launchctl` operations.
 
-### Hook 2 — `block_chained_sleep.py` (`src/hooks/block_chained_sleep.py`)
+### Hook 2 — `rewrite_chained_sleep.py` (`src/hooks/rewrite_chained_sleep.py`)
 
 - **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hook 1
-- **Command:** `python3 <absolute-path>/src/hooks/block_chained_sleep.py`
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_chained_sleep.py`
 - **Timeout:** 5s
+- **Replaced:** `block_chained_sleep.py` disabled 2026-05-24 (renamed → `.disabled`) after sleep-pattern audit showed trivial-sync pattern was 30.4% of violations.
 
-**Detection:** `_SLEEP_TOKEN = \bsleep\s+\d+(?:\.\d+)?\b` anywhere in shell-active portion of command (after heredoc/quote stripping). Also reads `tool_input.run_in_background`.
+**Behavior:** REWRITE hook (exits 0 always, never blocks). Strips `sleep N` when the immediately-preceding command token is in `_TRIVIAL = frozenset({'echo', 'true'})`. Pass-through (no-op) for all other patterns.
 
-**Allowlist:**
-- Full command matches `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$` (canonical timer) — always allowed
-- OR: `_is_settling_time_allow()` returns True: foreground (`run_in_background=False`), no loop keyword, N ≤ 5, side-effect command present in stripped text
+**Strip condition (ALL must hold):**
+1. A chain operator (`&&`, `||`, `;`) immediately precedes `sleep N`
+2. First token of the preceding segment is `echo` or `true`
+3. Sleep is NOT inside a `for|while|until ... done` span
 
-**Side-effect commands** (`_SIDE_EFFECT_RE`, mirrored from `dev/hook_firing/analyze.py`):
-`pkill`, `launchctl`, `kickstart`, `bootout`, `worker-cli kill`, `systemctl`, `kill -<digit>`
+**Pass-through (no-op) — sleep preserved as-is:**
+- Sleep-first chain (no preceding op) — timer intent
+- cmd_before not in `_TRIVIAL` (load-bearing: `kill`, `launchctl`, `pkill`, `tmux`, etc.)
+- Loop body sleep
+- Any parse/internal error (fail-open)
 
-**Blocked patterns:**
-- `cmd_before; sleep N && echo done` — commands chained before the sleep
-- `sleep N && other_cmd` — non-`echo done` continuation after sleep
-- Poll loops: `until ...; do sleep N; done`, `while ...; do sleep N; done`
-- Non-canonical `sleep N` with `run_in_background=true`
-- Non-canonical `sleep N > 10` in any chain
+**Shell-region stripping:** uses `_shell_strip._strip_non_shell_active` (same-dir import) before tokenizing — heredoc bodies and quoted strings replaced with spaces of equal length. Prevents false-positive on `sleep` inside heredoc/string literals.
 
-**Allowed patterns:**
-- `sleep N && echo done` (bare, optional whitespace/float) — the one canonical orchestration timer form
-- `launchctl bootout ... ; sleep 1 ; echo done` — settling-time after side-effect, N ≤ 5
-- `pkill -x menubar && sleep 2 ; echo restarted` — same class
-
-**Rationale:** 45% FP rate (13/29 blocks) measured 2026-05-22 (`dev/hook_firing/reports/2026-05-22_012326.md`). All 13 FPs were `sleep N ≤ 5` after a side-effect command — legitimate restart/kill settling waits. Core protection (SIGTERM/menubar abort path) unaffected: orchestration timer (`run_in_background=True`) and polling loops remain blocked.
-
-**Fail-open:** exits 0 on any parse/internal error — never block on hook failure.
+**Smoke:** `dev/hook_smoke/test_rewrite_chained_sleep.py` (8 cases, 3 strip / 5 pass-through).
 
 ### Hook 3 — `block_unauthorized_background.py` (`src/hooks/block_unauthorized_background.py`)
 
@@ -369,7 +362,7 @@ Hook 18 (`rewrite_git_ambiguous`) covers the 2 `git-ambiguous` violations.
 
 | Rule | Violations | Hook status |
 |---|---|---|
-| Rule 12 (sleep) | 54 | Blocked by hook #2 (block_chained_sleep) going forward |
+| Rule 12 (sleep) | 54 | Rewritten by hook #2 (rewrite_chained_sleep) for trivial-sync patterns; load-bearing pass-through |
 | Rule 3 (grep scope) | 23 | Blocked by hook #4 (block_broad_grep) going forward |
 | Rule 9 (Read before Edit) | 1 | Not hookable (requires session state) |
 | Rule 10 (git dev ambiguity) | 1 | Not hookable (reliable detection requires dir check + repo path parsing) |
@@ -397,7 +390,7 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 Keep current 18 hooks (no change needed). Pending evaluation after rollout:
 - Do hooks #9–18 (2026-05-22 batch) intercept violations without false positives in live sessions?
-- `block_chained_sleep` settling-time allowance: verify 45% FP rate drops after rollout (baseline: 13/29 blocks were FP per `dev/hook_firing/reports/2026-05-22_012326.md`).
+- `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
 - `rewrite_git_ambiguous` original `updatedInput` plan: REFUTED 2026-05-22 — CC PreToolUse + `allow` + `updatedInput` does NOT apply on Bash (per CHANGELOG line 1324, this path is `AskUserQuestion`-tool-specific). Hook converted to block-with-hint (exit 2 + stderr). See `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_capabilities.md` Finding 1 for the empirical correction. Future option: re-enable `updatedInput` if Anthropic extends the API to cover general PreToolUse.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.
 
