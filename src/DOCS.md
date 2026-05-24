@@ -27,6 +27,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `menubar/` | macOS status-bar app showing live CC sessions (rumps/AppKit) | 3481 | 18 |
 | `gpu_pane/` | GPU server monitor pane (cross-project, reads RAG state) | 204 | 3 |
 | `hooks/` | Global CC safety hooks (PreToolUse scripts + hook_setup) | 1546 | 20 |
+| `ccwrap/` | Standalone PTY wrapper with diagnostic ANSI logging for CC (Phase 1 diagnostic tool) | 254 | 4 |
 
 ## Root-Level Files
 
@@ -76,3 +77,4 @@ Most runtime state lives in `core/monitor.py` as module-level variables; display
 - [menubar/DOCS.md](menubar/DOCS.md) — macOS menubar app (rumps, session discovery, background-task badge)
 - [gpu_pane/DOCS.md](gpu_pane/DOCS.md) — GPU monitor pane (status, errors, toggle)
 - [hooks/DOCS.md](hooks/DOCS.md) — Global CC PreToolUse safety hooks (block scripts + hook_setup)
+- [ccwrap/DOCS.md](ccwrap/DOCS.md) — PTY wrapper with diagnostic ANSI logging (Phase 1 diagnostic tool)
