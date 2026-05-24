@@ -3,6 +3,8 @@ import json
 import os
 import re
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fire_log import log_fire
 
 # Matches --repo= or --repo<spaces> followed by: double-quoted, single-quoted, or unquoted path.
 # Unquoted path terminates at shell metachars (space, quote, ; & | < > ( ) ` $ \).
@@ -27,7 +29,7 @@ _BD_PRESENT_RE = re.compile(r'\bbd\b')
 # Read Bash tool_input; strip invalid --repo <path> tokens; emit updatedInput JSON if any stripped
 def rewrite_bd_invalid_repo_workflow() -> None:
     try:
-        command = _parse_command()
+        command, session_id = _parse_command()
         if command is None or not _BD_PRESENT_RE.search(command):
             sys.exit(0)
 
@@ -51,7 +53,9 @@ def rewrite_bd_invalid_repo_workflow() -> None:
             sys.exit(0)
 
         rewritten = _rewrite_command(command, invalid_spans)
-        _emit_rewrite(rewritten, invalid_paths)
+        output = _emit_rewrite(rewritten, invalid_paths)
+        log_fire("rewrite_bd_invalid_repo", "rewrite", "Bash", command, rewritten=rewritten, session_id=session_id)
+        print(json.dumps(output))
     except Exception:
         sys.exit(0)  # fail-open — never block the command
     sys.exit(0)
@@ -59,14 +63,14 @@ def rewrite_bd_invalid_repo_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON and return tool_input.command; return None on any error (fail-open)
+# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
-        return cmd if isinstance(cmd, str) else None
+        return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
     except Exception:
-        return None
+        return None, None
 
 # Extract the bare path string from a --repo token (strip --repo= / --repo<spaces> and quotes)
 def _extract_path(token: str):
@@ -99,8 +103,8 @@ def _rewrite_command(command: str, spans: list) -> str:
     parts.append(command[prev:])
     return ''.join(parts)
 
-# Print the hookSpecificOutput + systemMessage JSON to stdout
-def _emit_rewrite(rewritten: str, invalid_paths: list) -> None:
+# Build hookSpecificOutput + systemMessage dict; return it (caller handles print)
+def _emit_rewrite(rewritten: str, invalid_paths: list) -> dict:
     cwd = os.getcwd()
     paths_str = ', '.join(f'`{p}`' for p in invalid_paths)
     message = (
@@ -110,7 +114,7 @@ def _emit_rewrite(rewritten: str, invalid_paths: list) -> None:
         f"If you meant a different project, supply the correct --repo path. "
         f"Use --repo only when targeting a project OTHER than cwd."
     )
-    output = {
+    return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
@@ -118,7 +122,6 @@ def _emit_rewrite(rewritten: str, invalid_paths: list) -> None:
         },
         "systemMessage": message,
     }
-    print(json.dumps(output))
 
 
 if __name__ == "__main__":

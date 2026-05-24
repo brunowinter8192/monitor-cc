@@ -2,6 +2,8 @@
 import json
 import os
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fire_log import log_fire
 
 _SIZE_LIMIT_BYTES = 256 * 1024  # 256 KB — CC Read tool hard limit
 
@@ -19,7 +21,7 @@ _BLOCK_MESSAGE = (
 
 # Read Read tool_input from stdin; exit 2 + stderr if file exceeds 256KB and no offset/limit/pages given
 def block_read_oversize_workflow() -> None:
-    path, already_scoped = _parse_input()
+    path, already_scoped, session_id = _parse_input()
     if path is None or already_scoped:
         sys.exit(0)
     size = _file_size(path)
@@ -28,12 +30,13 @@ def block_read_oversize_workflow() -> None:
     if size > _SIZE_LIMIT_BYTES:
         msg = _BLOCK_MESSAGE.format(path=path, size_kb=size / 1024)
         print(msg, file=sys.stderr, end="")
+        log_fire("block_read_oversize", "block", "Read", path, reason=msg, session_id=session_id)
         sys.exit(2)
     sys.exit(0)
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (file_path, already_scoped); default (None, False) on any error (fail-open)
+# Parse stdin JSON; return (file_path, already_scoped, session_id); (None, False, None) on error (fail-open)
 def _parse_input():
     try:
         payload = json.loads(sys.stdin.read())
@@ -42,9 +45,9 @@ def _parse_input():
         path = path if isinstance(path, str) else None
         # User already scoped the read — offset, limit, or pages present
         already_scoped = any(k in tool_input for k in ("offset", "limit", "pages"))
-        return path, already_scoped
+        return path, already_scoped, payload.get("session_id")
     except Exception:
-        return None, False
+        return None, False, None
 
 # Return file size in bytes; return None on any filesystem error (fail-open)
 def _file_size(path: str):

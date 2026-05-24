@@ -15,6 +15,7 @@ from ..input.click_handler import (
 from .warnings_parse import _iso_to_float
 from .warnings_scan import _scan_proxy_entries_for_errors, _scan_proxy_entries_for_zero_results
 from .warnings_render import _format_warnings_pane, _format_warnings_header, _serialize_warnings
+from .warnings_persist import append_tool_errors
 
 tool_errors: list = []
 error_expand_states: Dict[int, bool] = {}
@@ -257,6 +258,7 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
         all_new_entries, _monitor_start_ts, _seen_error_keys)
     _seen_error_keys.update(new_error_keys)
     tool_errors.extend(new_errors)
+    append_tool_errors(new_errors, _last_project_filter or '')
 
     new_zero, new_zero_keys = _scan_proxy_entries_for_zero_results(
         all_new_entries, _monitor_start_ts, _seen_zero_keys)

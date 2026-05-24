@@ -54,6 +54,10 @@ def _scan_proxy_entries_for_errors(entries: list, monitor_start_ts: float, seen_
                     'worker_name': worker_name,
                     '_pre_strip_text': pre_strip_text,
                     '_stripped_chunks': stripped_chunks,
+                    '_ts_raw': ts_raw,
+                    '_tool_use_id': blk.get('tool_use_id', ''),
+                    '_proxy_file': entry.get('_source_file', ''),
+                    '_request_id': entry.get('request_id', ''),
                 })
     return errors, new_keys
 

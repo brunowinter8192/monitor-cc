@@ -6,6 +6,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
+from _fire_log import log_fire
 
 _SLEEP_RE = re.compile(r'\bsleep\s+\d+(?:\.\d+)?\b')
 _CHAIN_RE = re.compile(r';|&&|\|\|')
@@ -18,7 +19,7 @@ _TRIVIAL  = frozenset({'echo', 'true'})
 
 # Read Bash tool_input from stdin; strip trivial-sync sleeps; emit allow+updatedInput if any stripped
 def rewrite_chained_sleep_workflow() -> None:
-    command = _parse_command()
+    command, session_id = _parse_command()
     if command is None:
         sys.exit(0)
     stripped = _strip_non_shell_active(command)
@@ -30,20 +31,22 @@ def rewrite_chained_sleep_workflow() -> None:
     rewritten = _apply_ranges(command, ranges)
     if rewritten == command:
         sys.exit(0)
-    _emit_rewrite(rewritten)
+    output = _emit_rewrite(rewritten)
+    log_fire("rewrite_chained_sleep", "rewrite", "Bash", command, rewritten=rewritten, session_id=session_id)
+    print(json.dumps(output))
     sys.exit(0)
 
 
 # FUNCTIONS
 
-# Parse stdin JSON and return tool_input.command; return None on any error (fail-open)
+# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
-        return cmd if isinstance(cmd, str) else None
+        return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
     except Exception:
-        return None
+        return None, None
 
 # Return list of (start, end) spans in command to remove (trivial-sync sleep + preceding chain op)
 def _find_strip_ranges(command: str, stripped: str) -> list:
@@ -113,15 +116,15 @@ def _apply_ranges(command: str, ranges: list) -> str:
     parts.append(command[pos:])
     return ''.join(parts)
 
-# Emit allow+updatedInput JSON to perform the silent rewrite
-def _emit_rewrite(rewritten: str) -> None:
-    print(json.dumps({
+# Build allow+updatedInput dict; return it (caller handles print)
+def _emit_rewrite(rewritten: str) -> dict:
+    return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
             "updatedInput": {"command": rewritten},
         },
-    }))
+    }
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@
 import json
 import os
 import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fire_log import log_fire
 
 _WORKTREE_FRAGMENT = '.claude/worktrees/'
 
@@ -25,25 +27,26 @@ _BLOCK_MESSAGE = (
 # Read Read tool_input from stdin; exit 2 + stderr if file_path is a foreign worktree path.
 # Workers reading files inside their OWN worktree are allowed.
 def block_read_worktree_workflow() -> None:
-    path = _parse_path()
+    path, session_id = _parse_path()
     if path is None:
         sys.exit(0)
     if _WORKTREE_FRAGMENT in path and not _is_own_worktree(path):
         print(_BLOCK_MESSAGE, file=sys.stderr, end="")
+        log_fire("block_read_worktree", "block", "Read", path, reason=_BLOCK_MESSAGE, session_id=session_id)
         sys.exit(2)
     sys.exit(0)
 
 
 # FUNCTIONS
 
-# Parse stdin JSON and return tool_input.file_path; return None on any error (fail-open)
+# Parse stdin JSON; return (file_path, session_id); (None, None) on any error (fail-open)
 def _parse_path():
     try:
         payload = json.loads(sys.stdin.read())
         path = payload.get("tool_input", {}).get("file_path")
-        return path if isinstance(path, str) else None
+        return (path if isinstance(path, str) else None), payload.get("session_id")
     except Exception:
-        return None
+        return None, None
 
 # True if file_path is inside the same worktree as the current session CWD.
 # Hook subprocesses inherit the spawning CC session's CWD, so os.getcwd() is the session root.
