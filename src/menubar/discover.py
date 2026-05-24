@@ -8,14 +8,14 @@ from ..session_finder import get_project_directories
 # From proc_cache.py: Process/tmux/proxy/hook caches
 from .proc_cache import (
     _refresh_cc_proc_cache, _refresh_tmux_state,
-    _tmux_session_exists, _read_hook_state, _proxy_log_newest_mtime,
+    _tmux_session_exists, _tmux_window_activity, _read_hook_state, _proxy_log_newest_mtime,
     _has_active_bg,
 )
 # From ghostty.py: Ghostty TTY-to-UUID mapping + cwd-UUID file write for hook delivery
 from .ghostty import _refresh_ghostty_tty_to_id, _write_cwd_uuid_map
 
 ALIVE_WINDOW_SECS      = 3600   # stale threshold for main sessions (1h)
-WORKING_THRESHOLD_SECS = 10     # JSONL-mtime fallback: <= 10s = working
+WORKING_THRESHOLD_SECS = 10     # window_activity age threshold: > 10s without pane activity → demote to idle
 THINKING_OVERRIDE_MAX_SECS = 300  # max expected thinking duration for proxy-mtime override
 _WORKTREE_MARKER = '--claude-worktrees-'
 
@@ -142,10 +142,14 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
                       and (now - hook_entry.get('updated_ts', 0)) <= ALIVE_WINDOW_SECS)
         if hook_fresh:
             status = hook_entry['status']
-            # Crash-safety: 'working' hook + stale JSONL = CC crashed before Stop-hook fired.
-            # Demote to 'idle' so the menubar doesn't show false-working for up to 1h.
-            if status == 'working' and (now - mtime) > WORKING_THRESHOLD_SECS:
-                status = 'idle'
+            # Crash-safety: 'working' hook + no recent pane activity = CC crashed or context-limited
+            # before Stop-hook fired. window_activity tracks spinner ticks → stays fresh through
+            # thinking phases (unlike JSONL mtime which only updates on message completion).
+            # Skip demote when tmux_session is empty (cwd-unavailable fallback — no activity signal).
+            if status == 'working' and tmux_session:
+                wa = _tmux_window_activity(tmux_session)
+                if wa == 0 or (now - wa) > WORKING_THRESHOLD_SECS:
+                    status = 'idle'
         else:
             status = 'idle'
         return SessionInfo(name=worker_name, status=status, has_bg=has_bg,
