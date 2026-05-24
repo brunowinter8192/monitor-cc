@@ -164,3 +164,41 @@ be auto-rewritten. Load-bearing tokens (23.9%) correctly pass through. The remai
 (mixed + unclassifiable + sleep-first) need either per-subcommand logic or remain blocked.
 
 Do NOT implement the hook here — this audit is input to Opus + user design review.
+
+---
+
+## Implementation (2026-05-24)
+
+**Hook built:** `src/hooks/rewrite_chained_sleep.py` (128 LOC). Implements the trivial-sync
+strip path only — `_TRIVIAL = frozenset({'echo', 'true'})`. Covers 30.4% of audit violations.
+
+**Design choices vs audit recommendation:**
+
+| Audit recommendation | Implemented |
+|---|---|
+| Strip `echo` + `true` cmd_before | ✅ Yes — `_TRIVIAL` set |
+| Allow load-bearing (`kill`, `launchctl`, etc.) | ✅ Yes — pass-through (no-op, no block) |
+| Mixed tokens per-subcommand | ❌ Deferred — re-audit in ~5–7 days |
+| Unclassifiable tail → BLOCK | ❌ Deferred — hook is fail-open (no block) |
+| Sleep-first chains → allow | ✅ Yes — prec is None → continue |
+| Loop-body sleeps → pass-through | ✅ Yes — `_in_loop()` check |
+
+**`block_chained_sleep.py` disabled via filename rename** (`git mv` → `.disabled` suffix).
+Previously fired on ALL non-canonical sleep patterns; now replaced by the rewrite hook.
+`hook_setup.py` updated: `block_chained_sleep.py` removed from `_HOOK_SCRIPTS`, replaced by
+`rewrite_chained_sleep.py`. Registered under `PreToolUse / Bash` with the same 5s timeout.
+
+**`block_chained_sleep_new.py`:** did not exist at migration time — no action needed.
+
+**Position-aware tokenization approach:** `rewrite_chained_sleep.py` uses `_shell_strip._strip_non_shell_active`
+for length-preserving heredoc + quote removal before scanning. This is the same approach as
+`rewrite_git_ambiguous.py` — avoids the false-positive class where `sleep` appears inside a
+heredoc body or double-quoted string. The stripped string is used for all token parsing; span
+offsets in the stripped string are then applied to the original command for the actual rewrite.
+
+**Smoke test:** `dev/hook_smoke/test_rewrite_chained_sleep.py`, 8 cases, all passed (exit 0).
+
+**Expansion plan:** re-audit in ~5–7 days once `rewrite_chained_sleep.py` has fired in
+production. Add tokens from the mixed/unclassifiable tail if evidence shows they're
+safe to strip. `rag-cli server restart` and `bd dolt start` remain load-bearing regardless;
+the per-subcommand path can be added to `_TRIVIAL`-like logic by inspecting the second token.

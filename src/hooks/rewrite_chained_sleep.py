@@ -1,0 +1,128 @@
+# INFRASTRUCTURE
+import json
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _shell_strip import _strip_non_shell_active
+
+_SLEEP_RE = re.compile(r'\bsleep\s+\d+(?:\.\d+)?\b')
+_CHAIN_RE = re.compile(r';|&&|\|\|')
+_LOOP_RE  = re.compile(r'\b(for|while|until)\b')
+_DONE_RE  = re.compile(r'\bdone\b')
+_TRIVIAL  = frozenset({'echo', 'true'})
+
+
+# ORCHESTRATOR
+
+# Read Bash tool_input from stdin; strip trivial-sync sleeps; emit allow+updatedInput if any stripped
+def rewrite_chained_sleep_workflow() -> None:
+    command = _parse_command()
+    if command is None:
+        sys.exit(0)
+    stripped = _strip_non_shell_active(command)
+    if not _SLEEP_RE.search(stripped):
+        sys.exit(0)
+    ranges = _find_strip_ranges(command, stripped)
+    if not ranges:
+        sys.exit(0)
+    rewritten = _apply_ranges(command, ranges)
+    if rewritten == command:
+        sys.exit(0)
+    _emit_rewrite(rewritten)
+    sys.exit(0)
+
+
+# FUNCTIONS
+
+# Parse stdin JSON and return tool_input.command; return None on any error (fail-open)
+def _parse_command():
+    try:
+        payload = json.loads(sys.stdin.read())
+        cmd = payload.get("tool_input", {}).get("command")
+        return cmd if isinstance(cmd, str) else None
+    except Exception:
+        return None
+
+# Return list of (start, end) spans in command to remove (trivial-sync sleep + preceding chain op)
+def _find_strip_ranges(command: str, stripped: str) -> list:
+    ops    = list(_CHAIN_RE.finditer(stripped))
+    ranges = []
+
+    for sleep_m in _SLEEP_RE.finditer(stripped):
+        s_start = sleep_m.start()
+        s_end   = sleep_m.end()
+
+        # Find the chain op immediately before this sleep (only whitespace between op and sleep)
+        prec = None
+        for op in reversed(ops):
+            if op.end() <= s_start and not stripped[op.end():s_start].strip():
+                prec = op
+                break
+        if prec is None:
+            continue  # sleep-first chain — intent is timing, not sync; do not strip
+
+        # cmd_before: first token of the segment immediately preceding prec
+        seg_start = 0
+        for op in reversed(ops):
+            if op.end() <= prec.start():
+                seg_start = op.end()
+                break
+        seg = stripped[seg_start:prec.start()].strip()
+        if not seg:
+            continue
+        cmd_before = seg.split()[0]
+        if cmd_before not in _TRIVIAL:
+            continue
+
+        # Skip when sleep is inside a loop body
+        if _in_loop(stripped, s_start):
+            continue
+
+        # Removal span: preceding op through end of sleep (+ trailing whitespace)
+        r_end = s_end
+        while r_end < len(command) and command[r_end] in ' \t':
+            r_end += 1
+        ranges.append((prec.start(), r_end))
+
+    return ranges
+
+# True if pos falls inside a for/while/until...done span in stripped
+def _in_loop(stripped: str, pos: int) -> bool:
+    for lm in _LOOP_RE.finditer(stripped):
+        if lm.start() > pos:
+            break
+        dm = _DONE_RE.search(stripped, lm.start())
+        if dm and lm.start() < pos < dm.end():
+            return True
+    return False
+
+# Remove non-overlapping (merged) ranges from command and return result
+def _apply_ranges(command: str, ranges: list) -> str:
+    merged: list = []
+    for s, e in sorted(ranges):
+        if merged and s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    parts, pos = [], 0
+    for s, e in merged:
+        parts.append(command[pos:s])
+        pos = e
+    parts.append(command[pos:])
+    return ''.join(parts)
+
+# Emit allow+updatedInput JSON to perform the silent rewrite
+def _emit_rewrite(rewritten: str) -> None:
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {"command": rewritten},
+        },
+    }))
+
+
+if __name__ == "__main__":
+    rewrite_chained_sleep_workflow()
