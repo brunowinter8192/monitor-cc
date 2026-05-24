@@ -11,7 +11,7 @@ from .paths import HOOKS_FILE as _HOOK_STATE_FILE, ORCHESTRATOR_SIGNALS_FILE as 
 _PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds (expensive: ps -A + lsof)
 _HOOK_REFRESH_INTERVAL = 1.0    # seconds between hooks.json reads (cheap: 1KB JSON; MUST be < POLL_INTERVAL=1.5s for tick-freshness; see decisions/OldThemes/menubar_signal_grace/initial_design.md)
 _TMUX_REFRESH_INTERVAL = 3.0    # seconds between tmux list-sessions polls
-ORCHESTRATOR_SIGNAL_BUFFER_SECS = 5.0   # workers with orchestrator_signals.json timestamp newer than this are treated as 'working' for auto-abort (covers send → UserPromptSubmit-hook latency)
+ORCHESTRATOR_SIGNAL_BUFFER_SECS = 60.0  # 60s = empirical floor for worker producing first JSONL write after signal (covers spawn-initial-thinking and long send-thinking phases). Prevents stale-JSONL demote from killing Opus bg timers during legitimate working state. Tradeoff: dead-worker wakeup delayed ~55s — acceptable vs orchestration poll cadence.
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")
 # central log dir — proxy lives in Monitor_CC and intercepts all CC sessions via ANTHROPIC_BASE_URL
 _PROXY_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/Monitor_CC/src/logs')

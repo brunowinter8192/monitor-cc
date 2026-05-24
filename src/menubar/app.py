@@ -48,6 +48,7 @@ from .queue import load_queue, save_queue, deliver_message
 BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
 _TICK_LOG      = '/tmp/menubar-tick.log'
+_ABORT_LOG     = '/tmp/menubar-abort.log'
 _SETUP_PY      = Path(__file__).resolve().parent / 'setup_menubar.py'
 
 # FUNCTIONS
@@ -454,6 +455,23 @@ def _auto_abort_check(app: 'CCMenuBarApp', sessions, bg_by_project: dict, now: f
             w.status == 'idle' and not _has_recent_send_signal(w, signals, now)
             for w in workers
         )
+        # Build log fields before mutating _all_workers_idle_since_ts
+        since_idle_ts = app._all_workers_idle_since_ts.get(proj)
+        since_idle_str = f'{now - since_idle_ts:.1f}' if (all_idle and since_idle_ts is not None) else '-'
+        worker_tokens = []
+        for w in workers:
+            sig_ts = signals.get(w.tmux_session_name) if w.tmux_session_name else None
+            sig_part = f'sig_age={now - sig_ts:.1f}' if sig_ts is not None else 'sig=none'
+            worker_tokens.append(f'{w.name}:{w.status}:{sig_part}')
+        will_abort = (all_idle and since_idle_ts is not None and (now - since_idle_ts) >= 5.0)
+        ts_str = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f')[:23]
+        _abort_log_write(
+            f'{ts_str} abort_check project={proj} '
+            f'bg_pids=[{",".join(str(p) for p in proj_bg.sleep_pids)}] '
+            f'workers=[{",".join(worker_tokens)}] '
+            f'all_idle={all_idle} since_idle={since_idle_str} '
+            f'decision={"ABORT" if will_abort else "hold"}\n'
+        )
         if all_idle:
             if proj not in app._all_workers_idle_since_ts:
                 app._all_workers_idle_since_ts[proj] = now
@@ -494,6 +512,14 @@ def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) ->
             fh.write(line)
     except Exception:
         pass
+
+# Append one line to _ABORT_LOG; always-on (no env-var gate); failures print to stderr but don't raise
+def _abort_log_write(line: str) -> None:
+    try:
+        with open(_ABORT_LOG, 'a') as fh:
+            fh.write(line)
+    except Exception as e:
+        print(f'[abort-log] write error: {e}', file=sys.stderr)
 
 # Set bar icon via attributed string with pinned baseline; must be called on main thread
 def _set_bar_icon(app: 'CCMenuBarApp', text: str) -> None:

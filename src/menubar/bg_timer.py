@@ -2,6 +2,8 @@
 import os
 import signal
 import subprocess
+import sys
+from datetime import datetime
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
 # From proc_cache.py: Tasks base dir + CC process cache for project attribution
@@ -95,12 +97,24 @@ def _aggregate_bg(result: Dict[str, BgSleepInfo]) -> Optional[BgSleepInfo]:
 # Kill sleep PIDs for Opus background timers; write 'aborted\n' to all 0-byte task files
 def _abort_bg_sleep_timers(sleep_pids: List[int]) -> int:
     killed = 0
+    errors = 0
+    last_err = None
     for pid in sleep_pids:
         try:
             os.kill(pid, signal.SIGTERM)
             killed += 1
-        except (ProcessLookupError, OSError):
-            pass
+        except (ProcessLookupError, OSError) as e:
+            errors += 1
+            last_err = e
+    try:
+        ts = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f')[:23]
+        pids_str = ','.join(str(p) for p in sleep_pids)
+        err_extra = f' last_err={repr(last_err)}' if last_err else ''
+        line = f'{ts} abort_action pids=[{pids_str}] killed={killed} errors={errors}{err_extra}\n'
+        with open('/tmp/menubar-abort.log', 'a') as fh:
+            fh.write(line)
+    except Exception as e:
+        print(f'[abort-log] abort_action write error: {e}', file=sys.stderr)
     try:
         for encoded_dir in _TASKS_BASE.iterdir():
             if not encoded_dir.is_dir():
