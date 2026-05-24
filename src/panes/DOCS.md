@@ -54,7 +54,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_scan.py (115 LOC)
+### warnings_scan.py (107 LOC)
 
 **Purpose:** Pure scanning helpers — reads proxy/worker log entry dicts, classifies tool errors and zero-result blocks, deduplicates via caller-supplied seen-key sets. No UI concerns, no module-level state. Returns `(items_list, new_dedup_keys)` tuples; caller extends its own lists and updates its own seen sets. Tool error dicts include persistence fields `_ts_raw`, `_tool_use_id`, `_proxy_file`, `_request_id` for use by `warnings_persist`.
 **Reads:** Entry dicts passed as `entries` list; `seen_error_keys` / `seen_zero_keys` sets read-only for dedup check.
@@ -64,7 +64,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_persist.py (40 LOC)
+### warnings_persist.py (38 LOC)
 
 **Purpose:** Persistent-write helper for tool error events — appends each new tool error detected by `warnings_pane` to `src/logs/tool_errors.jsonl` (append-forever, no rotation). Schema per line: `{ts, session_id, worker, tool_name, tool_use_id, error_full, proxy_file, request_id}`. Worker attribution: `_worker_name` from entry → `"main"` (empty) or `"worker:<name>"`. Session_id: proxy session hash (md5 of project_path). Fail-silent on any write exception. Log path overridable via `MONITOR_CC_TOOL_ERROR_LOG` env var. Forward-only: populated from first warnings_pane refresh after monitor start; no historical backfill.
 **Reads:** error dicts from `_scan_proxy_entries_for_errors`; `project_filter` from `warnings_pane` module-level state.
