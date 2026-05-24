@@ -34,6 +34,12 @@ This opens a tmux session with 4 windows and 7 panes. Switch windows with `Ctrl-
 
 No external dependencies required for the core monitor — stdlib only. Just clone and run.
 
+**Per-clone (one-time):** activate the auto-deploy git hooks that keep `~/.claude/settings.json` in sync when `src/hooks/` changes:
+```bash
+git config core.hooksPath .githooks
+```
+See `src/hooks/DOCS.md` § Gotchas for details (worktree guard behavior, verification).
+
 For the screenshot dev tool:
 ```bash
 python3 -m venv venv

@@ -25,7 +25,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (378 LOC)
+### addon.py (375 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses, writes `latency_update` records on successful responses.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
@@ -47,13 +47,13 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (457 LOC)
+### rules.py (493 LOC)
 
-**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip or replace system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_bg_exit_strip` (BGK plain-text path), `_dedup_wakeup_blocks` (final pass), `_apply_system_passes` (system-block pass). `_apply_first_pass` ALWAYS appends `_WAKEUP_TEXT` via `_append_wakeup_text_to_content` to ANY `<task-notification>` block (commit `fcfe6c1`, 2026-05-22 — `is_failed_bg` gate removed; mod-name still differentiates `replaced_task_notification` for failed vs `trimmed_task_notification` for non-failed for log-filter utility). `_apply_bg_exit_strip` replaces first BGK plain-text notification with `_WAKEUP_TEXT` (mod: `replaced_bg_completed_text`). `_dedup_wakeup_blocks` runs as the final message-side pass: collapses multiple consecutive `_WAKEUP_TEXT` blocks within a single user-message to one (TN path and BGK path firing on the same message both inject independently → dedup ensures max 1 wake-up block per message). Comparison via `rstrip('\n')` handles both TN-path (`_WAKEUP_TEXT` with `\n`) and BGK-path (inline form, `\n`-stripped). Dedup touches only `msg["content"]`, NEVER `stripped_msg_removed` — display invariant: wake-up text is INJECTED into outgoing payload, not stripped from it.
+**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip or replace system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_bg_exit_strip` (BGK plain-text path), `_apply_hook_prefix_strip` (hook-error-prefix strip), `_dedup_wakeup_blocks` (final pass), `_apply_system_passes` (system-block pass). `_apply_first_pass` ALWAYS appends `_WAKEUP_TEXT` via `_append_wakeup_text_to_content` to ANY `<task-notification>` block (commit `fcfe6c1`, 2026-05-22 — `is_failed_bg` gate removed; mod-name still differentiates `replaced_task_notification` for failed vs `trimmed_task_notification` for non-failed for log-filter utility). `_apply_bg_exit_strip` replaces first BGK plain-text notification with `_WAKEUP_TEXT` (mod: `replaced_bg_completed_text`). `_apply_hook_prefix_strip` strips `PreToolUse:<Tool> hook error: [python3 <path>]:` prefix from tool_result content before the payload reaches Anthropic (mod: `stripped_hook_error_prefix`). `_dedup_wakeup_blocks` runs as the final message-side pass: collapses multiple consecutive `_WAKEUP_TEXT` blocks within a single user-message to one (TN path and BGK path firing on the same message both inject independently → dedup ensures max 1 wake-up block per message). Comparison via `rstrip('\n')` handles both TN-path (`_WAKEUP_TEXT` with `\n`) and BGK-path (inline form, `\n`-stripped). Dedup touches only `msg["content"]`, NEVER `stripped_msg_removed` — display invariant: wake-up text is INJECTED into outgoing payload, not stripped from it.
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`, `strip_bg_completed`.
+**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`, `strip_bg_completed`, `strip_hook_prefix`.
 
 ---
 
@@ -95,6 +95,16 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Writes:** Nothing — returns `(modified_content, list[str])`.
 **Called by:** `src/proxy/rules.py`
 **Calls out:** stdlib only (`re`).
+---
+
+### strip_hook_prefix.py (68 LOC)
+
+**Purpose:** Strip CC's hook-error wrapper prefix (`PreToolUse:<Tool> hook error: [python3 <path>]:`) from user-turn `tool_result` content before forwarding to Anthropic. CC wraps every hook stderr in this prefix; the actual user-visible error message follows it. Stripping at proxy level means Anthropic receives the clean message, and `_build_entry` logs the stripped version — downstream display (warnings pane) reads clean `full_text` with no further transformation needed. Returns `(new_content, removed_chunks)` for `stripped_hook_error_prefix` mod attribution. Fast-path guard `_HOOK_PREFIX_MARKER = 'PreToolUse:'` skips non-matching messages cheaply. Traverses all 4 content shapes mirroring `strip_po.py`.
+**Reads:** Message content (string or list of blocks).
+**Writes:** Nothing — returns `(modified_content, list[str])`.
+**Called by:** `src/proxy/rules.py` (`_apply_hook_prefix_strip` pass).
+**Calls out:** stdlib only (`re`).
+
 ---
 
 ### content_strip.py (167 LOC)
@@ -214,16 +224,6 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Writes:** Nothing — returns list of warning strings (empty = no drift).
 **Called by:** `src/proxy/addon.py`
 **Calls out:** —
-
----
-
-### tool_error_log.py (182 LOC)
-
-**Purpose:** Persistent append-only log of tool_use errors across all projects/sessions. `log_tool_errors(modified_payload, entry)` scans the request payload for `tool_result` blocks with error content, extracts exit code and summary, and appends structured records to `src/logs/tool_use_errors.jsonl`. Read side: `read_all()`, `read_today()`, `read_filtered()` for CLI consumption. `write()` is O_APPEND (POSIX-atomic for writes < PIPE_BUF).
-**Reads:** Modified payload dict (tool_results); `src/logs/tool_use_errors.jsonl` (read functions).
-**Writes:** `src/logs/tool_use_errors.jsonl` (append-only via `O_APPEND`).
-**Called by:** `src/proxy/addon.py` (`log_tool_errors`); `src/cc_errors_cli.py` (`read_all`, `read_today`, `read_filtered`).
-**Calls out:** stdlib only (`json`, `os`, `re`, `datetime`, `pathlib`).
 
 ---
 

@@ -13,6 +13,7 @@ _HOOK_TIMEOUT  = 5
 # inspects tool_name internally to pick the right field (command vs file_path).
 _HOOK_SCRIPTS = [
     ("block_dangerous_kill.py",          "Bash"),
+    ("block_polling_loop.py",            "Bash"),
     ("rewrite_chained_sleep.py",         "Bash"),
     ("block_unauthorized_background.py", "Bash"),
     ("block_broad_grep.py",              "Bash"),

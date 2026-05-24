@@ -55,6 +55,24 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
+### block_polling_loop.py (50 LOC)
+
+**Purpose:** PreToolUse hook — blocks the polling-loop antipattern: repeated short Bash calls combining `ps -p <PID>` (process-existence check) and `tail -<N> <file>` (log read) in the same command. Detected when both patterns co-occur in a single tool_input.command — the smoking-gun signature of a worker polling a shell-backgrounded process in a tight loop. Exits 2 + stderr. Exits 0 on any parse/internal error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (one-line block message with `wait`-based alternative) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `re`).
+
+**Blocked pattern:** command contains BOTH `ps -p <literal-PID>` AND `tail -<N> <file>` outside non-shell-active regions.
+
+**Allowed patterns:** `ps -p <PID>` alone (legitimate one-off check); `tail -N file` alone (legitimate log read); either pattern appearing only in heredoc body or quoted string.
+
+**Antipattern context:** `block_unauthorized_background` blocks CC's `run_in_background=true` flag, but workers can circumvent by using shell `cmd &` (shell-level background). This hook catches the resulting polling loop regardless of how the background process was started. Alternatives: foreground Bash with long timeout, `wait $PID` + single tail, or a single long `sleep` before reading. Design rationale: `decisions/OldThemes/tool_use_safety/2026-05-25_block_polling_loop_design.md`.
+
+**Quote/heredoc stripping.** `_strip_non_shell_active()` removes heredoc bodies and quoted regions before pattern matching — prevents false-positives when `ps -p` or `tail -N` appear as example text in a `worker-cli send` message or heredoc body.
+
+---
+
 ### block_chained_sleep.py.disabled
 
 **Disabled 2026-05-24** — superseded by `rewrite_chained_sleep.py`. Renamed via `git mv` (file still in repo for history). Previously blocked all non-canonical `sleep N` chains. Replaced by a rewrite hook that strips trivial-sync sleeps (`echo`, `true` cmd_before) and passes load-bearing patterns through. See `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md` for audit rationale.
@@ -350,7 +368,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### hook_setup.py (143 LOC)
+### hook_setup.py (144 LOC)
 
 **Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message if the script is running from a worktree path — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]` (not only `PreToolUse`), checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source (worktree accident, repo move, etc.).
 **Reads:** `~/.claude/settings.json`.
@@ -365,6 +383,12 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 ---
 
 ## Gotchas
+
+- **Auto-deploy via `.githooks/` (per-clone setup required).** The repo ships `.githooks/post-merge` and `.githooks/post-commit` — both fire `python3 src/hooks/hook_setup.py` automatically when a commit (merge or direct) touches `src/hooks/*`. This keeps `~/.claude/settings.json` in sync with the filesystem, preventing the stale-hook disaster class. Each clone must activate the hooks once:
+  ```bash
+  git config core.hooksPath .githooks
+  ```
+  This is a local config (not committed). Workers committing from worktrees are unaffected — `hook_setup.py`'s worktree guard (`_guard_not_worktree()`) exits 2, which the hook script swallows silently; settings.json is only updated when the hook fires from the main repo context (merge onto main, direct commit on main). Verification: after a commit touching `src/hooks/`, check `stat ~/.claude/settings.json` mtime is fresher than the commit timestamp.
 
 - **`log_fire` decision enum and API-impact semantics.** Three values are defined — only `"block"` and `"rewrite"` are live today; `"ui-notice"` is reserved for future hooks with no API impact:
 
@@ -384,4 +408,4 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **`block_read_worktree.py` allows own-worktree reads.** Workers reading files in their own worktree via absolute path are now allowed. Cross-worktree reads (worker→other-worker) and main-session→worktree reads remain blocked.
-- **All 18 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
+- **All 19 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
