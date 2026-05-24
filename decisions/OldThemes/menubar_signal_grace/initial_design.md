@@ -84,6 +84,8 @@ This split is architecturally separate from the signal mechanism — it would ha
 
 ## Buffer Tuning
 
+**Note: this 5s analysis is the initial design. The buffer was bumped to 60s — see buffer_60s_bump.md in this folder.**
+
 `ORCHESTRATOR_SIGNAL_BUFFER_SECS = 5.0` chosen against:
 
 | Latency component | Typical | Worst-case |
@@ -104,8 +106,8 @@ Both repos move in lockstep:
 
 Plugin-publish required for iterative-dev (cache stays stale otherwise). See `~/.claude/shared-rules/global/tool-use.md` § Push (PLUGIN repo).
 
-## Bug 1 — Deferred
+## Bug 1 — Resolved (2026-05-24)
 
-Worker-cli false-working (tmux window_activity unreliable) is NOT fixed in this iteration. The clean fix is to have worker-cli read hooks.json directly — same source as menubar, divergence eliminated by design. That requires session_id discovery from worktree path in bash, more complex than the signal addition. Deferred as a separate bead.
-
-For now, after Bug 2 fix lands, the menubar is the authoritative status display. When `worker-cli status` disagrees with menubar, **menubar is correct.**
+Resolved via Fix 6 — worker-cli `_worker_detect_status` now reads hooks.json with the same
+demote rule as menubar (see worker_cli_alignment.md). Iterative-dev commit 02efcdb,
+plugin-published. menubar and worker-cli now share the same truth source.
