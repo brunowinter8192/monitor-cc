@@ -1,6 +1,8 @@
-# Block Parallel Bash Timer — Hook Design Rationale (2026-05-25)
+# Parallel Bash + Sleep-Timer — Empirical Investigation (2026-05-25)
 
-**Topic:** Neuer Hook `block_parallel_bash_timer.py` der den Silent-SIGTERM-Fail verhindert wenn Opus in derselben Response einen Sleep-Timer UND einen weiteren Bash-Call dispatched.
+**Status:** Hook NOT implemented. Investigation produced an empirical finding that made the proposed hook redundant. Document preserved as decision record.
+
+**Outcome:** strict canonical timer form in workers-1.md + existing `block_unauthorized_background.py` are sufficient. No new hook needed.
 
 ---
 
@@ -10,120 +12,106 @@ RAG-Session 2026-05-25 ~20:46. Opus dispatched in EINER Assistant-Response zwei 
 
 ```
 Block 1 (foreground): worker-cli send eval-sweep2 "<Go Phase B prompt>"
-Block 2 (background, run_in_background=true): sleep 480 && echo "8min check eval-sweep2 Phase B"
+Block 2 (run_in_background=true): sleep 480 && echo "8min check eval-sweep2 Phase B"
 ```
 
-Beobachtetes Verhalten: erster Block lief durch (worker-cli send committete sauber), zweiter Block kam mit Exit 143 (SIGTERM) zurück. Der Timer wurde stumm gekillt bevor er starten konnte.
+Beobachtetes Verhalten: erster Block lief durch, zweiter Block kam mit Exit 143 (SIGTERM) zurück. Opus interpretierte die exit-143-Return als "Timer gestartet" und ging in Idle — tatsächlich war kein Timer aktiv, kein Wake-Up kam. Reine Observability-Lücke.
 
-Konsequenz im Workflow: Opus dachte "Timer läuft, ich warte" und ging in Idle. Tatsächlich gab es keinen wartenden Timer — der Worker arbeitete weiter, aber Opus hatte keine Wake-Up-Quelle. Der User merkte irgendwann manuell dass der Worker schon idle ist, und musste "idle" tippen um Opus zu wecken. Reiner Observability-Verlust.
-
-Bestehende Hooks katchten das Problem NICHT:
-- `block_unauthorized_background.py` sieht nur einzelne tool_input-Commands — kann die Beziehung zwischen mehreren Bash-tool_uses in derselben Response nicht erkennen
-- `rewrite_chained_sleep.py` operiert auf einem einzelnen Command-String und strippt nur triviale Sync-Sleeps innerhalb desselben Commands
-- Beide Hook-Klassen waren strukturell unfähig für cross-tool_use Detection
-
-`hook_firing.jsonl` bestätigt die Vorgeschichte: vor dem SIGTERM-Event wurde der Timer-Command von `block_unauthorized_background` rewritten (`run_in_background: true → false`), weil mein typisches Timer-Format `sleep N && echo "<quoted-string>"` nicht der strikten Canonical-Regex `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$` entspricht. Der Timer lief also bereits als Foreground-Block. Aber da er der zweite Bash-tool_use in der Response war, kassierte er bei Dispatch das SIGTERM.
+Erster Eindruck: "two parallel Bash tool_uses → CC dispatcher killt den zweiten mit SIGTERM, egal ob BG oder FG". Geplanter Hook: erkennen wenn ≥2 Bash + ≥1 Timer-Form, blocken mit klarer Stderr.
 
 ---
 
-## The Real Failure Mode
+## Tieferes Investigation — Was Wirklich Passierte
 
-CC's tool_use-Dispatcher kann pro Assistant-Response nur EINEN Bash-tool_use parallel verarbeiten. Werden zwei Bash-tool_use-Blocks in derselben Response gefunden, wird der zweite mit SIGTERM gekillt. Der Mechanismus existiert wahrscheinlich um Race-Conditions zu verhindern (cwd-shared state, sequential dependency).
+User-Frage in der Session: "war dann das problem vllt doch das die sleeps foregrounded wurden?"
 
-Für die meisten Bash-Pairs ist das Verhalten LAUT: zweiter Block returnt exit 143, Opus sieht den Failure im Tool-Result, kann reagieren. Damage gering — Opus retried oder splittet.
+`hook_firing.jsonl` Eintrag aus genau diesem Zeitstempel:
 
-Bei Sleep-Timern ist das Verhalten STUMM in der Wirkung: Opus erwartet von einem Background-Timer keinen sofortigen Return (er soll ja warten und später echo'en). Der SIGTERM-Kill produziert zwar denselben exit 143, aber semantisch verarbeitet Opus das als "Timer wurde gestartet" und geht in Idle. Erst beim ausbleibenden Wake-Up wird der Fehler offensichtlich — oft viele Minuten später wenn der User selbst nachfragt.
+```json
+{"ts": "2026-05-25T19:02:50Z", "hook": "block_unauthorized_background",
+ "decision": "rewrite", "tool": "Bash",
+ "command": "sleep 480 && echo \"8min check eval-sweep2 Phase B\"",
+ "rewritten": "run_in_background: true → false"}
+```
 
-Das ist die eigentliche Damage-Klasse: **stumme Beobachtungs-Lücke statt lautem Fehler**.
+Der Timer-Command matched NICHT die strikte canonical Regex `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$` weil mein typisches Echo-Pattern `echo "<descriptive text>"` benutzt — nicht das literale `echo done`. `block_unauthorized_background.py` rewriter den Timer also silent von Background zu Foreground.
 
----
-
-## Detection Strategy
-
-Strukturell anders als alle bestehenden Bash-Hooks: nicht Pattern-Match im einzelnen Command, sondern Cross-Tool_use Counting in der laufenden Assistant-Message.
-
-Der PreToolUse-Hook bekommt im Payload den `transcript_path` — den Pfad zum JSONL-Transcript der aktuellen CC-Session. Beim Feuern des Hooks ist die aktuelle Assistant-Message bereits vollständig in das JSONL geschrieben (sonst würden die anderen Hooks die ebenfalls den Transcript brauchen könnten nicht funktionieren — wobei tatsächlich keiner der existierenden Hooks bislang `transcript_path` nutzt, dieser Hook ist der erste).
-
-Workflow:
-
-1. Parse stdin-Payload → tool_input.command, transcript_path
-2. Lade JSONL, suche von hinten die jüngste `type: "assistant"` Entry
-3. In deren `message.content` Array filter alle `type: "tool_use"` mit `name: "Bash"`
-4. Wenn Count < 2 → allow (single Bash, kein Konflikt)
-5. Wenn Count ≥ 2: check ob mindestens einer der Bashes der Timer-Form entspricht
-6. Wenn ja → block (exit 2 + Stderr), sonst allow
-
-Timer-Form-Regex: `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+\S.*$`. Loser als die strikte Canonical-Regex aus `block_unauthorized_background` (welche `echo done` literal verlangt) — matcht alle realistischen Timer-Formen die Opus tatsächlich emittiert, inklusive `echo "8min check"` mit gequoteten String-Argumenten. Anchor `^...$` schließt false-positives auf zitierten Timer-Text in anderen Commands aus: `echo 'sleep 60 && echo done'` matcht nicht weil `^` auf `echo` triggert nicht auf `sleep`.
+Damit war die tatsächliche Lage zum Dispatch-Zeitpunkt: zwei FOREGROUND-Bash-tool_uses in derselben Response. Nicht "BG-Timer + FG-Bash" wie ursprünglich gedacht.
 
 ---
 
-## Why Narrow
+## Rules-Inconsistency Discovered
 
-Erste Vorüberlegung war: "blocke jedes Pair von 2+ Bash-tool_uses in einer Response, weil das gegen Rule 6 in tool-use.md verstößt". User hat das verworfen: das wäre ein viel zu breiter Hook der die echte Damage-Klasse mit unzähligen harmlosen Cases mischt.
+Drei Rule-Dateien hatten drei verschiedene canonical-Forms:
 
-Konkret harmlos (nicht zu blocken):
-- Zwei worker-cli-Calls in derselben Response: einer kriegt SIGTERM, aber lautes Feedback, Opus reagiert sofort
-- Ein git-Call + ein Status-Check parallel: zweiter failed laut, kein Information-Loss
-- Read + Edit auf demselben File parallel: völlig legitim (verschiedene Tools, kein Bash-Konflikt)
-
-Das einzige stille Damage-Pattern ist Timer + Other. Genau das blockt der Hook, sonst nichts.
-
-False-Positive-Oberfläche durch die Anchor-Regex praktisch null: der Timer muss als STANDALONE-Command in einem eigenen tool_use-Block stehen. Chained Sleeps in größeren Commands (`worker-cli send X done && sleep 5 && worker-cli status X`) matchen nicht, weil das Command nicht mit `sleep` beginnt.
-
----
-
-## Implementation Notes
-
-**No `_shell_strip` needed.** Andere Hooks nutzen `_strip_non_shell_active` um quoted-Regions vor Pattern-Match zu maskieren. Hier nicht nötig — die Timer-Regex matched die GANZE Command-String (`^...$`), nicht eine Subregion. Ein quoted `sleep ... && echo` innerhalb eines anderen Commands kann den Anchor strukturell nicht aktivieren.
-
-**No state file needed.** Cross-Response-State wäre fragil (wie kennt der Hook die Response-Boundary?). Stattdessen lebt die gesamte benötigte Information in einer einzigen JSONL-Datei zur Hook-Feuer-Zeit: das ganze content-Array der aktuellen Assistant-Message ist da. Stateless, idempotent, race-frei.
-
-**Fail-open auf allen Levels.** Wenn transcript_path fehlt, das JSONL unlesbar ist, kein Assistant-Eintrag existiert, oder das content-Array malformed ist → exit 0. Konsistent mit allen anderen Hooks.
-
-**Erster Hook der `transcript_path` nutzt.** Alle bisherigen Hooks operieren auf tool_input alleine. Damit ist dieser Hook eine neue Pattern-Familie — Cross-Tool_use Detection. Wenn künftig weitere strukturelle Antipatterns gefunden werden die nicht in einem einzelnen Command sichtbar sind (z.B. wiederholter Read auf denselben File über N Tool_uses), folgt das gleiche Schema.
-
----
-
-## Interaction mit block_unauthorized_background
-
-Beide Hooks treffen Timer-Commands, aber operieren in verschiedenen Dimensionen:
-
-| Hook | Scope | Action |
+| Datei | Zeile | Form |
 |---|---|---|
-| `block_unauthorized_background` | Einzelner Bash-Call: matcht non-canonical Timer (z.B. `echo "text"` statt `echo done`) → rewrites `run_in_background=true` zu `false` | Rewrite |
-| `block_parallel_bash_timer` | Cross-Tool_use: erkennt Timer-Form als einen von ≥2 Bash-Blocks in derselben Response | Block |
+| `workers-1.md` | 331 | `sleep N && echo 'check'` (gequoteter deskriptiver Text) |
+| `workers-2.md` | 68 | `sleep 600 && echo done` (literal `done`) |
+| `tool-use.md` | 162 | `sleep N && echo done` (literal `done`) |
 
-Hook-Order in `hook_setup.py`: `block_parallel_bash_timer` direkt nach `block_unauthorized_background`. Hooks feuern nach Ansicht der CC-Dokumentation sequenziell pro tool_use; der Cross-Tool_use-Hook sieht das Original-Command im Transcript (rewrites passieren am Dispatch-Point, das JSONL hat den Original-State). Damit ist die Erkennung robust gegen Rewrite-Order: auch ein zu Foreground-rewriteter Timer würde noch als Timer-Form erkannt weil die Command-String selbst unverändert bleibt.
+Der Hook `block_unauthorized_background._CANONICAL` matched nur Form 2/3 strikt. Opus drifted zu Form 1's Pattern und darüber hinaus zu noch deskriptiveren Echos. Resultat: jeder Timer wurde silently rewritten zu FG.
 
----
-
-## Test Coverage
-
-`dev/hook_smoke/test_block_parallel_bash_timer.py` — 11 Cases:
-
-**True positives (5, expected exit 2):**
-- Strict canonical timer (`sleep 600 && echo done`) + foreground Bash
-- Loose timer (`sleep 480 && echo "8min check"`) + foreground Bash
-- Three Bashes one is timer
-- Thinking + tool_use mix with timer
-- Float-second timer (`sleep 1.5`)
-
-**False-positive fixes (6, expected exit 0):**
-- Single Bash (no timer in response)
-- Single Bash IS timer (no parallel partner)
-- Two non-timer Bashes parallel (laut-fail-class, nicht zu blocken)
-- Timer-text inside quoted argument of another command
-- Sleep chained in middle of larger command (not standalone)
-- Missing transcript_path (fail-open)
-
-Smoke-Test schreibt temp JSONL pro Case mit fingiertem assistant-message-content, ruft Hook als Subprocess, vergleicht exit code. Pattern identisch zu `test_block_polling_loop.py`. Test-Run schreibt fire-events in `/tmp/test_block_parallel_bash_timer_fire.jsonl` via `MONITOR_CC_HOOK_FIRING_LOG` env override, vermeidet Pollution des produktiven `src/logs/hook_firing.jsonl`.
+**Fix:** `workers-1.md:331` auf strict canonical `echo done` literal angeglichen. Alle drei Rule-Dateien jetzt konsistent. User-Direktive: "einfach die fehlerquellen und variablem immer klein halten."
 
 ---
 
-## Future Extension
+## Empirical Test — CC Dispatcher BG vs FG Behavior
 
-Wenn `hook_firing.jsonl` zeigt dass andere stille Damage-Klassen real auftreten (z.B. Background-Process via shell `&` + zweiter Bash-tool_use), könnte derselbe Cross-Tool_use-Detection-Mechanismus erweitert werden. Die Pattern-Familie ist generalisierbar:
+Vor Hook-Bau die offene Frage: ist die parallel-Bash-SIGTERM ein generischer Mechanismus oder gilt sie nur für FG+FG?
 
-> "Block Bash-tool_use N wenn in derselben Response Bash-tool_use M existiert das eine Async-Operation initiiert deren Damage stumm ist."
+Test-Setup (mit temporär entferntem block_parallel_bash_timer aus settings.json):
 
-Aber: erst empirisch belegen, dann erweitern. Vorerst eine einzige Trigger-Klasse — der Sleep-Timer.
+```python
+# Bash 1 (foreground)
+echo "FG test marker" && date +%H:%M:%S.%N
+
+# Bash 2 (background, strict canonical)
+sleep 5 && echo done   # run_in_background=true
+```
+
+Beide in derselben Assistant-Response dispatched.
+
+**Resultat:**
+
+```
+Bash 1: "FG test marker\n22:08:18.257674000"           — exit 0, returned sofort
+Bash 2: "Command running in background with ID: blbwa5clw" — bg_id assigned, NO SIGTERM
+```
+
+Der BG-Timer überlebte. Nach 5s schrieb er sein `done` in die bg-output Datei. Kein exit 143.
+
+**Schlussfolgerung:** CC's Dispatcher unterscheidet sehr wohl BG von FG. Die SIGTERM-Kollision passiert nur bei FG+FG in derselben Response. BG+FG ist sicher. Der ursprüngliche Schaden war also NICHT die parallel-tool_use Mechanik generell — es war konkret dass der nicht-canonical Timer von block_unauthorized_background silent zu FG umgeschrieben worden war, wodurch FG+FG entstand.
+
+---
+
+## Why No Hook
+
+Die geplante `block_parallel_bash_timer.py` hätte gefeuert wenn ≥2 Bash + ≥1 strict canonical Timer in einer Response stehen. Aber genau dieses Pattern ist empirisch SICHER — BG+FG funktioniert. Der Hook würde einen False-Positive auf eine nachweislich harmlose Konstellation produzieren.
+
+Die existierende Schutzkette reicht:
+
+1. **Rule** (workers-1, workers-2, tool-use jetzt konsistent): Timer ist immer `sleep N && echo done` literal
+2. **block_unauthorized_background**: rewriter jeden non-canonical Background-Call zu Foreground — das ist ein lautes Signal (visible exit 143 wenn er gegen anderen FG-Bash kollidiert) dass die Rule verletzt wurde
+3. **tool-use Rule 6**: "one Bash tool_use BLOCK per assistant response" — generelle Disziplin
+
+Discipline + bestehender Rewrite-Hook deckt die Damage-Klasse ab. Ein zusätzlicher Hook der den canonical Fall blockiert wäre ein klassisches "viel zu breit" — genau das was in dieser Session der User über False-Positives anmerkte.
+
+---
+
+## Was Wir Behalten
+
+- **workers-1.md:331 strict-canonical Update** — produktivste Änderung dieser Session. Eliminiert das Drift-Pattern an der Quelle.
+- **Diese Investigation-Aufzeichnung** als Decision-Record: warum der Hook NICHT gebaut wurde, was die empirische Evidence war.
+- **`block_unauthorized_background.py` unverändert** — macht den Job richtig, war nie das Problem.
+
+## Was Wir Verworfen
+
+- `src/hooks/block_parallel_bash_timer.py` — gelöscht (war kurz committet, dann verworfen)
+- `dev/hook_smoke/test_block_parallel_bash_timer.py` — gelöscht
+- Hook-Registrierung in `hook_setup.py` — entfernt
+- Einträge in `src/hooks/DOCS.md` und `dev/hook_smoke/DOCS.md` — entfernt
+
+## Lehre für künftige Hook-Vorschläge
+
+Vor jedem Hook-Bau: empirisch verifizieren dass das Damage-Pattern tatsächlich auftritt UND dass die geplante Detection-Region exakt mit der Damage-Region zusammenfällt. Wenn die existierende Schutzkette das echte Problem schon abdeckt — Schweigen ist besser als ein redundanter Hook der False-Positives erzeugen kann.

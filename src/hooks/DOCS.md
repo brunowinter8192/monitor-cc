@@ -120,24 +120,6 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_parallel_bash_timer.py (95 LOC)
-
-**Purpose:** PreToolUse hook (Bash) — blocks Bash dispatch when the latest assistant message contains ≥2 Bash tool_uses AND at least one matches the loose timer form `sleep N && echo <anything>`. CC's tool_use dispatcher cancels the second parallel Bash with SIGTERM, which surfaces as a silent observability loss for sleep timers (Opus expects no immediate return, processes the SIGTERM-exit as "timer started", goes idle without a wake-up source). Exits 2 + stderr. Exits 0 on any parse/internal error or fail-open conditions.
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}, transcript_path, session_id}`). Reads the JSONL transcript at `transcript_path` to enumerate Bash tool_use blocks in the latest assistant message.
-**Writes:** stderr (block message: "two-Bash-in-one-response with sleep-timer detected — second Bash gets SIGTERM'd silently") on match only.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** stdlib only (`json`, `os`, `re`).
-
-**Blocked pattern:** latest assistant message in `transcript_path` JSONL has ≥2 Bash tool_use content blocks, AND at least one block's command matches `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+\S.*$` (looser than `block_unauthorized_background`'s strict canonical — matches the `echo "<quoted-string>"` variants Opus actually emits).
-
-**Allowed patterns:** single Bash tool_use (no parallel partner); ≥2 Bash tool_uses with NO timer-form among them (laut-fail class — second Bash exit 143 visible to Opus, no silent damage); timer-text inside quoted argument of another command (regex `^...$` anchor prevents match on quoted timer); sleep chained inside a larger command (not standalone); missing transcript_path or unreadable JSONL (fail-open); no assistant message found in transcript (fail-open).
-
-**First hook to use `transcript_path`.** All prior hooks operated on `tool_input` alone. This hook introduces the Cross-Tool_use Detection pattern family: structural antipatterns visible only across multiple tool_uses in the same assistant message. Stateless — the JSONL itself encodes the response boundary. Design rationale: `decisions/OldThemes/tool_use_safety/2026-05-25_block_parallel_bash_timer.md`.
-
-**Hook order in `hook_setup.py`:** directly after `block_unauthorized_background`. Hooks fire sequentially per tool_use; this hook reads the original command from the transcript JSONL (rewrites happen at dispatch-point, not in the recorded transcript), so detection is robust regardless of fire-order interactions with rewrite hooks.
-
----
-
 ### block_broad_grep.py (79 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks recursive `grep -r`/`-R` calls on directories when no `--include=` scope is present. Unrestricted recursive grep matches JSONL logs, node_modules, and vendored content, producing 10MB+ output that floods the context window. Exits 2 + stderr with fix options. Exits 0 on any parse/internal error (fail-open).

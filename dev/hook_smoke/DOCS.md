@@ -60,27 +60,3 @@ python3 dev/hook_smoke/test_rewrite_chained_sleep.py
 
 **Expected output:** `All 8 tests passed.` (exit 0). HOOK path in the script is relative
 (`src/hooks/rewrite_chained_sleep.py`) — must be run from project root.
-
----
-
-### test_block_parallel_bash_timer.py (118 LOC)
-
-**Purpose:** 11-case smoke for `block_parallel_bash_timer.py`. Verifies 5 true-positive blocks
-(strict canonical timer + foreground Bash; loose `echo "<quoted>"` timer + foreground;
-three Bashes one is timer; thinking + tool_use mix with timer; float-second timer) and 6
-false-positive passes (single Bash no timer; single Bash IS timer no partner; two non-timer Bashes;
-quoted timer-text inside other command; chained sleep in larger command; missing transcript_path
-fail-open).
-
-Each case writes a temporary JSONL transcript with a fingierter assistant-message content array,
-invokes the hook with `transcript_path` pointing at the temp file, compares exit code. Test isolation
-via `MONITOR_CC_HOOK_FIRING_LOG=/tmp/test_block_parallel_bash_timer_fire.jsonl` env var — avoids
-polluting the production `src/logs/hook_firing.jsonl`.
-
-**Usage (from project root):**
-```bash
-python3 dev/hook_smoke/test_block_parallel_bash_timer.py
-```
-
-**Expected output:** `All 11 tests passed.` (exit 0). HOOK path is relative
-(`src/hooks/block_parallel_bash_timer.py`) — must be run from project root.
