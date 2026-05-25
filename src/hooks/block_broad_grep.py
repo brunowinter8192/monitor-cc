@@ -16,6 +16,11 @@ _FILE_EXT_SAFE  = re.compile(
     r'\S+\.(?:py|sh|md|json|jsonl|yaml|yml|toml|ts|js|go|rs|txt|cfg|ini|sql|html|css)\s*$',
     re.IGNORECASE,
 )
+# Trailing shell redirection forms to strip before file-extension check:
+#   2>&1, 1>&2, &>file, &>>file, >file, >>file, 2>file, 2>>file, <file, 2>/dev/null
+_TRAILING_REDIRECT = re.compile(
+    r'\s+(?:\d?>>?\s*&\s*\d|\d?>>?\s*\S+|&>>?\s*\S+|\d?<\s*\S+)\s*$'
+)
 
 _BLOCK_MESSAGE = "add --include='*.py' scope | use the Grep tool | grep -n <pattern> <file.py>\n"
 
@@ -70,9 +75,17 @@ def _is_recursive(segment: str) -> bool:
 def _has_include_scope(segment: str) -> bool:
     return bool(_INCLUDE_SCOPE.search(segment))
 
-# True if the last non-whitespace token ends with a known code/text file extension
+# True if the last non-whitespace token ends with a known code/text file extension.
+# Strips trailing shell redirections (2>&1, >file, etc.) iteratively before the check
+# so commands like `grep -rn pat file.py 2>&1` correctly resolve to file-targeted.
 def _is_file_targeted(segment: str) -> bool:
-    return bool(_FILE_EXT_SAFE.search(segment))
+    cleaned = segment
+    while True:
+        new = _TRAILING_REDIRECT.sub('', cleaned)
+        if new == cleaned:
+            break
+        cleaned = new
+    return bool(_FILE_EXT_SAFE.search(cleaned))
 
 
 if __name__ == "__main__":
