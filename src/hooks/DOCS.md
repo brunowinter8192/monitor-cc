@@ -101,6 +101,29 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
+### rewrite_rag_cli_search_noise.py (~95 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — **rewrites** `rag-cli search_hybrid` invocations by stripping downstream noise inside the logical command segment: pipes (`| head`, `| tail`, `| grep`, etc.), redirects (`>`, `>>`, `&>`, `<`, `2>&1`, `2>`), and single backgrounding `&`. Chains around the segment (`cd && rag-cli ...`, `rag-cli ... ; bd list`, `rag-cli ... || echo fail`) are preserved — only the rag-cli segment is cleaned. Scope is `search_hybrid` only; `read_document`, `list_collections`, `server`, etc. pass through unchanged. Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command`) when noise was stripped; nothing when no-op.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert).
+
+**Strip mechanic:**
+1. Find `\brag-cli\s+search_hybrid\b` matches in the shell-stripped command.
+2. For each match, determine its segment-end by scanning forward for `;`, `&&`, `||`, `)`, `\n`, or single `&` (not part of `&&`, `&>`, or `2>&1`).
+3. Within `[match_end, segment_end)`, find the first noise marker (`|` excluding `||`, any redirect, or `2>&1`).
+4. Strip from the noise marker through segment-end. If segment-end equals end-of-command, also eat leading whitespace before the noise (avoids trailing-space artifact); otherwise preserve it as separator to the trailing chain.
+
+**Pass-through (no-op) conditions:**
+- `rag-cli search_hybrid` invocation has no pipe/redirect inside its segment
+- `rag-cli` subcommand is not `search_hybrid` (out of scope)
+- `rag-cli search_hybrid` token appears inside a quoted string (blanked by `_strip_non_shell_active`)
+
+**Smoke:** `dev/hook_smoke/test_rewrite_rag_cli_search_noise.py` (15 cases: 9 positive strip, 6 negative no-op).
+
+---
+
 ### block_unauthorized_background.py (63 LOC)
 
 **Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT the exact canonical orchestration timer `sleep N && echo done`, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
