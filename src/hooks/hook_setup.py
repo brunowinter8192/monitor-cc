@@ -16,6 +16,7 @@ _HOOK_SCRIPTS = [
     ("block_polling_loop.py",            "Bash"),
     ("rewrite_chained_sleep.py",         "Bash"),
     ("block_unauthorized_background.py", "Bash"),
+    ("block_parallel_bash_timer.py",     "Bash"),
     ("block_broad_grep.py",              "Bash"),
     ("block_git_destructive.py",         "Bash"),
     ("rewrite_bd_invalid_repo.py",       "Bash"),
