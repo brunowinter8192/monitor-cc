@@ -3,8 +3,8 @@ import json, os, time
 from pathlib import Path
 from typing import List, NamedTuple, Optional
 
-# From session_finder.py: Scan ~/.claude/projects directories
-from ..session_finder import get_project_directories
+# From session_finder.py: Scan ~/.claude/projects directories + encode project path
+from ..session_finder import get_project_directories, encode_project_path
 # From proc_cache.py: Process/tmux/proxy/hook caches
 from .proc_cache import (
     _refresh_cc_proc_cache, _refresh_tmux_state,
@@ -105,6 +105,15 @@ def _classify_encoded_dir(encoded_dir: str) -> tuple:
         return _decode_dir_name(left), True, worker_name
     return _decode_dir_name(encoded_dir), False, ''
 
+# Find launch cwd for a main session by matching encode(proc_cwd) against encoded_dir.
+# proc_cwd never changes during a session (user `cd` runs in Bash subprocess, exits);
+# JSONL cwd drifts with each Bash `cd`. Returns None if proc cache has no match (stale).
+def _proc_cwd_for_encoded_dir(encoded_dir: str) -> Optional[str]:
+    for _pid, (tty, proc_cwd) in _cc_proc_cache.items():
+        if encode_project_path(proc_cwd) == encoded_dir:
+            return proc_cwd
+    return None
+
 # Build tmux session name from worker JSONL cwd; None if cwd is not a worktree path
 def _worker_tmux_session(cwd: str, worker_name: str) -> Optional[str]:
     if '/.claude/worktrees/' not in cwd:
@@ -160,7 +169,9 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
         # Main session: stale if JSONL > 1h
         if now - mtime > ALIVE_WINDOW_SECS:
             return None
-        cwd = _cwd_from_jsonl(jsonl)
+        # Prefer proc-cwd (launch cwd, stable) over JSONL cwd (drifts when user `cd`s in chat).
+        # Falls back to JSONL only if proc cache has no matching entry (stale process).
+        cwd = _proc_cwd_for_encoded_dir(encoded_dir) or _cwd_from_jsonl(jsonl)
         name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
         # Priority 1: hook state (real-time signal from CC's UserPromptSubmit/Stop hooks).
         # Covers thinking phase from T=0 and holds 'working' for the full turn duration.

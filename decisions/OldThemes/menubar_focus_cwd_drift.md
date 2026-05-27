@@ -61,6 +61,39 @@ Heißt: für jede Main-Session können wir das Mapping `encoded_dir → launch_c
 - Hook-Writer Queue-Delivery (auch Konsument von `get_ghostty_terminal_id`) profitiert transparent — der Bug hat dort vermutlich unentdeckte Edge-Cases erzeugt
 - Workers bleiben unverändert: ihr JSONL-cwd wandert in der Praxis nicht außerhalb der Worktree-Pfade, und `_worker_tmux_session()` (`src/menubar/discover.py` L109) partitioniert auf `/.claude/worktrees/` und bleibt damit robust
 
+## Phase B — Implementation (2026-05-27)
+
+### Was implementiert wurde
+
+**Fix 1 — `src/menubar/discover.py`:**
+- Added `encode_project_path` to top-level import from `..session_finder`
+- New helper `_proc_cwd_for_encoded_dir(encoded_dir)`: iterates `_cc_proc_cache`, calls `encode_project_path(proc_cwd)` per entry, returns `proc_cwd` on match, `None` if no running CC process matches
+- `_process_project_dir()` Main-branch: replaced `cwd = _cwd_from_jsonl(jsonl)` with `cwd = _proc_cwd_for_encoded_dir(encoded_dir) or _cwd_from_jsonl(jsonl)`
+- Workers unverändert (is_worker branch stays on JSONL cwd)
+
+**Fix 2 — `src/menubar/system.py`:**
+- Path B AppleScript: added `return "MATCH"` on success + `on error errMsg number errNum → return "MISS:" & errNum & ":" & errMsg` instead of silent `end try`
+- Result parsing: `out.startswith('MISS:')` → logs `MISS {label} reason={...}`; `r.returncode != 0` → logs `ERR`; else `OK`
+- Path A unverändert (no try/on error, no MATCH token) — `elif out.startswith('MISS:')` hits only Path B
+
+**Import smoke-test:**
+```
+./venv/bin/python -c "from src.menubar.discover import _proc_cwd_for_encoded_dir; print('OK')"
+# → OK
+```
+
+### Verifikation (user-seitig nach Menubar-Restart)
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.brunowinter.monitor_cc_menubar
+```
+
+1. Menubar öffnen → `[2]` sollte `Reddit` heißen, `[3]` sollte `Trading` heißen (statt Subdir-Namen)
+2. Cmd+2 drücken → Reddit-Terminal sollte focusen
+3. Cmd+3 drücken → Trading-Terminal sollte focusen
+4. `tail src/logs/menubar.log` nach Press → cwd in `[hotkey] cmd+N → focus <cwd>` sollte Project-Root sein, nicht Subdir
+5. `/tmp/monitor_cc_menubar_focus.log` → Path A Entries (`OK id=<UUID>`) für alle Mains die im proc-cache sind; Path B Entries nur im Edge-Case (stale process), dann `MISS` statt false `OK`
+
 ## Quellen
 
 - `src/menubar/discover.py:_cwd_from_jsonl`, `_process_project_dir`, `_classify_encoded_dir`

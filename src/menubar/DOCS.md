@@ -110,7 +110,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### system.py (76 LOC)
+### system.py (83 LOC)
 
 **Purpose:** `run()` entry point + singleton lock (`_acquire_singleton_lock`) + Ghostty click-to-focus (`_focus_session`). Owns the process-lifecycle concerns; no AppKit dependency.
 **Reads:** `PID_FILE` (`APP_SUPPORT/menubar.pid`, lock file); `get_ghostty_terminal_id(cwd)` from `ghostty.py` on click.
@@ -120,13 +120,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (186 LOC)
+### discover.py (201 LOC)
 
 **Purpose:** Session discovery entry point. `SessionInfo` includes `session_id: str` (JSONL stem = CC session identifier; key for `msg_queue.json` queue) and `tmux_session_name: str` (worker-`basename(project_path)`-`worker_name` for workers, `''` for mains; used by `app.py:_has_recent_send_signal` for orchestrator-signal lookup — DO NOT reconstruct from `project_name` since the decoded-path heuristic diverges from the iterative-dev tmux convention, e.g. `MCP-RAG` vs `RAG`). `list_alive_sessions` calls `_write_cwd_uuid_map()` after each tick so `APP_SUPPORT/ghostty_cwd_uuid.json` stays current for hook delivery.
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; delegates to `proc_cache.py`; Ghostty mapping via `ghostty.py`.
 **Writes:** nothing directly. Delegates writes to submodules (incl. `_write_cwd_uuid_map`).
 **Called by:** `app.py:CCMenuBarApp._tick`, `app.py:_open_main_panel`, `app.py:_PanelController.*Queue*` methods.
-**Calls out:** `session_finder.get_project_directories`; `.proc_cache`; `.ghostty` (`_refresh_ghostty_tty_to_id`, `_write_cwd_uuid_map`).
+**Calls out:** `session_finder.get_project_directories`, `session_finder.encode_project_path`; `.proc_cache`; `.ghostty` (`_refresh_ghostty_tty_to_id`, `_write_cwd_uuid_map`).
 
 ---
 
