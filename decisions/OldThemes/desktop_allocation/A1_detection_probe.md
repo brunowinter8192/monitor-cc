@@ -118,6 +118,14 @@ Trading matched via `osc2-injection` in run 1 (CC tab was NOT focused in its Gho
 3. **`kCGWindowListOptionAll=1`**: Maps to `kCGWindowListOptionOnScreenOnly` (only 26 of 279 windows visible). Option=0 is the correct "all windows" flag.
 4. **Bounds uniqueness**: All Ghostty windows have identical bounds `(0,38,1728,998)` on this single-display fullscreen setup. Bounds-based matching would not disambiguate.
 5. **`tab-group-XXXXXX` → CGWindowNumber**: No direct mapping. The hex in Ghostty's window id is a Swift object pointer, not a CGWindowNumber.
+6. **OSC-2 title propagation latency**: original probe used 150ms wait between OSC-2 inject and
+   kCGWindowName re-read. Empirisch verifiziert (2026-05-28, live menubar test):
+   150ms zu kurz — Ghostty's title propagation ans Window-Server braucht typisch 300-400ms.
+   Bumped to 500ms in `src/menubar/desktop_detection.py:_osc2_inject_match`.
+7. **OSC-2 only works for focused tabs**: Ghostty's kCGWindowName reflects the focused tab's
+   title only. Injecting OSC-2 into a background tab's tty updates that tab's title but does
+   NOT propagate to the Window's kCGWindowName. Mitigation: if detection returns None for a
+   main session, user can briefly focus the CC tab in its Ghostty window to fix.
 
 ### Dict-Keys Populated
 

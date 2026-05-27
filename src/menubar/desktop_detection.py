@@ -231,13 +231,16 @@ def _spaces_for_wid(cid: int, wid: int) -> List[int]:
             spaces.append(sid)
     return spaces
 
-# Inject unique OSC-2 marker to tty, re-check kCGWindowName after 150ms; effective when CC tab is focused
+# Inject unique OSC-2 marker to tty, re-check kCGWindowName after 500ms (Ghostty's title→
+# window-server propagation latency); effective ONLY when the CC tab is the currently
+# focused tab in its Ghostty window — background tabs do not propagate OSC-2 to kCGWindowName,
+# their session remains unresolvable until user briefly focuses the tab.
 def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int]) -> Optional[int]:
     marker = f'{_GHOSTTY_DET_PREFIX}{os.urandom(4).hex()}'
     try:
         with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
             fh.write(f'\033]2;{marker}\007'.encode())
-        time.sleep(0.15)
+        time.sleep(0.5)
         by_name = _cgwindow_list_ghostty(ghostty_pid_int)
         matched = by_name.get(marker, [])
         with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
