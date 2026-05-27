@@ -126,6 +126,12 @@ Trading matched via `osc2-injection` in run 1 (CC tab was NOT focused in its Gho
    title only. Injecting OSC-2 into a background tab's tty updates that tab's title but does
    NOT propagate to the Window's kCGWindowName. Mitigation: if detection returns None for a
    main session, user can briefly focus the CC tab in its Ghostty window to fix.
+8. **kCGWindowName TCC-gated für launchd-spawned Processes**: Screen-Recording-Permission-
+   Grant im System-Settings hilft für ad-hoc signed Python (Homebrew) NICHT zuverlässig
+   wenn Caller via launchd gespawnt wird. Workaround: `CGSCopyWindowProperty(cid, wid,
+   "kCGSWindowTitle", ...)` — private SkyLight-API die Titles ohne TCC-Gate liefert.
+   Pattern bestätigt durch alt-tab-macos (`src/macos/api-wrappers/CGWindowID.swift`) und
+   DockDoor (`DockDoor/Utilities/PrivateApis.swift`).
 
 ### Dict-Keys Populated
 

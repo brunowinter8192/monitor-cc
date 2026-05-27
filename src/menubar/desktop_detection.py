@@ -41,6 +41,10 @@ _CG.CGSCopySpacesForWindows.argtypes       = [ctypes.c_int32, ctypes.c_int32, ct
 _CG.CGSCopySpacesForWindows.restype        = ctypes.c_void_p
 _CG.CGWindowListCopyWindowInfo.argtypes    = [ctypes.c_uint32, ctypes.c_uint32]
 _CG.CGWindowListCopyWindowInfo.restype     = ctypes.c_void_p
+_CG.CGSCopyWindowProperty.argtypes        = [ctypes.c_int32, ctypes.c_uint32,
+                                              ctypes.c_void_p,
+                                              ctypes.POINTER(ctypes.c_void_p)]
+_CG.CGSCopyWindowProperty.restype         = ctypes.c_int32
 
 _det_cache: Dict[str, Optional[int]] = {}
 _det_cache_ts: float = 0.0
@@ -66,8 +70,8 @@ def detect_main_desktop_numbers(
         ghostty_pid_int = _ghostty_pid_int()
         if ghostty_pid_int is not None:
             uuid_to_win, win_to_name = _applescript_uuid_window_map()
-            cgwindow_by_name         = _cgwindow_list_ghostty(ghostty_pid_int)
-            cid       = _CG.CGSMainConnectionID()
+            cid              = _CG.CGSMainConnectionID()
+            cgwindow_by_name = _cgwindow_list_ghostty(ghostty_pid_int, cid)
             space_map = _build_space_map(cid)
             claimed: Set[int] = set()
             for cwd, uuid in sorted(cwd_uuid_map.items()):
@@ -177,20 +181,34 @@ def _applescript_uuid_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
             win_to_name[win_id] = win_name
     return uuid_to_win, win_to_name
 
+# Read window title via private SkyLight API CGSCopyWindowProperty (key=kCGSWindowTitle).
+# Bypasses TCC Screen Recording gate that affects kCGWindowName for other-app windows
+# in launchd-spawned processes (alt-tab-macos / DockDoor pattern).
+def _cgwindow_title(cid: int, wid: int) -> Optional[str]:
+    out_ref = ctypes.c_void_p(0)
+    key_ns  = _nsstr("kCGSWindowTitle")
+    rc = _CG.CGSCopyWindowProperty(cid, wid, key_ns, ctypes.byref(out_ref))
+    if rc != 0 or not out_ref.value:
+        return None
+    s = _msgp(out_ref.value, "UTF8String")
+    return s.decode() if s else None
+
 # Return {window_name: [wid, ...]} for all layer-0 named Ghostty-owned CGWindows across all spaces
-def _cgwindow_list_ghostty(ghostty_pid_int: int) -> Dict[str, List[int]]:
+def _cgwindow_list_ghostty(ghostty_pid_int: int, cid: int) -> Dict[str, List[int]]:
     arr   = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
     count = _cf_count(arr)
     by_name: Dict[str, List[int]] = {}
     for i in range(count):
-        d    = _cf_at(arr, i)
+        d = _cf_at(arr, i)
         if _dict_long(d, "kCGWindowOwnerPID") != ghostty_pid_int:
             continue
         if _dict_long(d, "kCGWindowLayer") != 0:
             continue
-        wid  = _dict_long(d, "kCGWindowNumber")
-        name = _dict_str(d, "kCGWindowName")
-        if name is None or wid is None:
+        wid = _dict_long(d, "kCGWindowNumber")
+        if wid is None:
+            continue
+        name = _cgwindow_title(cid, wid)   # via SkyLight private API (TCC-bypass)
+        if name is None:
             continue
         by_name.setdefault(name, []).append(wid)
     return by_name
@@ -231,11 +249,11 @@ def _spaces_for_wid(cid: int, wid: int) -> List[int]:
             spaces.append(sid)
     return spaces
 
-# Inject unique OSC-2 marker to tty, re-check kCGWindowName after 500ms (Ghostty's title→
-# window-server propagation latency); effective ONLY when the CC tab is the currently
-# focused tab in its Ghostty window — background tabs do not propagate OSC-2 to kCGWindowName,
-# their session remains unresolvable until user briefly focuses the tab.
-def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int]) -> Optional[int]:
+# Inject unique OSC-2 marker to tty, re-check kCGSWindowTitle via SkyLight after 500ms
+# (Ghostty's title→window-server propagation latency); effective ONLY when the CC tab is
+# the currently focused tab in its Ghostty window — background tabs do not propagate
+# OSC-2 to kCGSWindowTitle, their session remains unresolvable until user focuses the tab.
+def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int], cid: int) -> Optional[int]:
     marker = f'{_GHOSTTY_DET_PREFIX}{os.urandom(4).hex()}'
     try:
         with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
@@ -244,7 +262,7 @@ def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int]) ->
         log_menubar('detection', f'osc2_write_failed tty={tty} err={repr(e)[:80]}')
         return None
     time.sleep(0.5)
-    by_name = _cgwindow_list_ghostty(ghostty_pid_int)
+    by_name = _cgwindow_list_ghostty(ghostty_pid_int, cid)
     matched = by_name.get(marker, [])
     try:
         with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
@@ -287,6 +305,6 @@ def _resolve_cgwindow_id(
     if len(unclaimed) == 1:
         return unclaimed[0]
     if tty:
-        return _osc2_inject_match(tty, ghostty_pid_int, candidates)
+        return _osc2_inject_match(tty, ghostty_pid_int, candidates, cid)
     log_menubar('detection', f'resolve_no_tty candidates={len(candidates)} unclaimed={len(unclaimed)}')
     return None
