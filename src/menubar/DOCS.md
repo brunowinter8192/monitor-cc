@@ -17,14 +17,14 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### panel.py (499 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
+### panel.py (500 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
 
 **Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and the two render functions (`_rebuild_panel`, `_update_panel_inplace`). Footer has two buttons: Kill (left) + Restart (right). Main session rows carry an inline `[N] ` prefix (slots 1..9) for Cmd+N hotkey reference; workers and slots >9 carry no prefix. Per-project abort buttons (Option B) are embedded inline in the project separator rows — `_make_separator_view` returns `(NSView, Optional[NSButton])`. Queue UI removed — moved to `queue_panel.py`. Defines `_KeyablePanel(NSPanel)` — overrides `canBecomeKeyWindow` to return True so all three panels can receive keyboard events despite `NSWindowStyleMaskNonactivatingPanel`; imported by bead_panel.py and queue_panel.py. Also overrides `performKeyEquivalent_` to route Cmd+{V,C,X,A,Z} and Shift+Cmd+Z to the first responder via `respondsToSelector_`/`performSelector_withObject_` — `rumps.App` has no main menu Edit items, so these key equivalents would otherwise fall through silently. Rebuild: `sv.removeFromSuperview()` called after `removeView_` — NSStackView.removeView_ removes from arrangedSubviews only, not from view hierarchy. Pure UI concern — no rumps, no ctypes, no subprocess.
 **Reads:** `app` instance attrs (`_panel_sv`, `_panel_width`, `_panel_min_height`, `_displayed_items`, `_cwd_map`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_toggle_btn`, `_panel_controller`, `_auto_focus`, `_panel`) via function parameters; session list and `bg_by_project` dict from caller.
 **Writes:** `app._displayed_items`, `app._cwd_map`, `app._abort_btns_by_project`, `app._abort_project_for_tag` (reset on each rebuild); NSPanel frame.
 **Key signatures:** `_rebuild_panel(app, sessions, bg_by_project=None)`, `_update_panel_inplace(app, sessions, bg_by_project)`, `_compute_required_height(sorted_sessions)`.
 **Called by:** `app.py` (`_open_main_panel`, `_PanelController.abortBgTimer_`, `CCMenuBarApp._tick`, `_PanelController.windowDidEndLiveResize_`).
-**Calls out:** `AppKit`, `Foundation`, `itertools`.
+**Calls out:** `AppKit`, `Foundation`, `itertools`; `.menubar_log` (`log_menubar`).
 
 ---
 
@@ -80,23 +80,33 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (761 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
+### app.py (766 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_` (append empty draft; guard against stacking blanks), `toggleQueueEntry_` (draft↔queued flip), `removeQueueEntry_` (× delete), `commitQueueField_` (Enter → save draft text in-place), `controlTextDidEndEditing_` (blur → save draft text in-place). `_tick` caches sessions in `app._last_sessions`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open.
 **Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch; `QUEUE_FILE` (via `load_queue()`) on every tick + on `_open_queue_panel`.
-**Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove/toggle/edit; `/tmp/menubar-abort.log` (one line per project per tick when a bg timer exists, via `_abort_log_write`); `_queue_data`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_pending_queue_tags`, `_last_sessions`, `_queue_displayed_names`.
+**Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove/toggle/edit; `src/logs/menubar.log` ([abort] category via `_abort_log_write`; [tick] category when `MENUBAR_DIAGNOSTICS=1`; [hotkey] category for Cmd+1..9 app-level focus dispatch); `_queue_data`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_pending_queue_tags`, `_last_sessions`, `_queue_displayed_names`.
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.panel`, `.bead_panel`, `.queue_panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`load_queue`, `save_queue`); `.setup_menubar` (lazy).
+**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.panel`, `.bead_panel`, `.queue_panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`load_queue`, `save_queue`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
 
 ---
 
-### hotkey.py (259 LOC)
+### hotkey.py (265 LOC)
 
-**Purpose:** Carbon global hotkey registration. Two public APIs: `register_cmd_l(callback)` — installs the Cmd+L panel-toggle hotkey at app start, kept alive for process lifetime by caller (`app._hotkey_cb`, `app._hotkey_ref`). `register_cmd_digits(callback_map)` / `unregister_hotkeys(refs)` — installs Cmd+1..9 hotkeys lazily on first panel-open, unregisters on panel-close. Module-level state: `_DIGIT_HANDLER_CB` / `_DIGIT_HANDLER_REF` persist the InstallEventHandler across register/unregister cycles (CRITICAL: GC'ing the CFUNCTYPE while the handler is still in Carbon's dispatch chain crashes with SIGSEGV on the next hotkey event); `_DIGIT_CALLBACKS` is the mutable slot→callback map the handler reads. Both `register_cmd_l._handler` and the digit handler filter via `GetEventParameter(kEventParamDirectObject, typeEventHotKeyID)` and return `eventNotHandledErr (-9874)` for unknown IDs so the other handler receives its event unswallowed.
+**Purpose:** Carbon global hotkey registration. Two public APIs: `register_cmd_l(callback)` — installs the Cmd+L panel-toggle hotkey at app start, kept alive for process lifetime by caller (`app._hotkey_cb`, `app._hotkey_ref`). `register_cmd_digits(callback_map)` / `unregister_hotkeys(refs)` — installs Cmd+1..9 hotkeys lazily on first panel-open, unregisters on panel-close. Module-level state: `_DIGIT_HANDLER_CB` / `_DIGIT_HANDLER_REF` persist the InstallEventHandler across register/unregister cycles (CRITICAL: GC'ing the CFUNCTYPE while the handler is still in Carbon's dispatch chain crashes with SIGSEGV on the next hotkey event); `_DIGIT_CALLBACKS` is the mutable slot→callback map the handler reads. Both `register_cmd_l._handler` and the digit handler filter via `GetEventParameter(kEventParamDirectObject, typeEventHotKeyID)` and return `eventNotHandledErr (-9874)` for unknown IDs so the other handler receives its event unswallowed. Every successful hotkey dispatch calls `log_menubar('hotkey', ...)` → `src/logs/menubar.log` (after the `fn is None` / ID-mismatch guard, so only real dispatches are logged).
 **Reads:** nothing.
-**Writes:** Carbon event handlers + hotkey registrations via CDLL; mutates module-level `_DIGIT_CALLBACKS` dict.
+**Writes:** Carbon event handlers + hotkey registrations via CDLL; mutates module-level `_DIGIT_CALLBACKS` dict; appends to `src/logs/menubar.log` on each hotkey press.
 **Called by:** `app.py:CCMenuBarApp.__init__` (`register_cmd_l`); `app.py:_reregister_digit_hotkeys` (`register_cmd_digits`, `unregister_hotkeys`).
-**Calls out:** `ctypes` (Carbon framework CDLL).
+**Calls out:** `ctypes` (Carbon framework CDLL); `.menubar_log` (`log_menubar`).
+
+---
+
+### menubar_log.py (38 LOC)
+
+**Purpose:** Unified log sink for all menubar diagnostic categories. All output goes to `src/logs/menubar.log` (ISO-second timestamp + `[category]` prefix per line). `log_menubar(category, message)` appends one line; creates `src/logs/` on first write. `cleanup_old_lines()` drops lines older than 7 days and rewrites the file. Both functions are fully exception-safe (Carbon/AppKit callbacks must never raise). Categories in use: `hotkey` (every press), `abort` (auto-abort decisions + actions), `tick` (diagnostic, gated on `MENUBAR_DIAGNOSTICS=1`), `cursor` (gated on `MENUBAR_CURSOR_DEBUG`).
+**Reads:** `src/logs/menubar.log` (`cleanup_old_lines` only).
+**Writes:** `src/logs/menubar.log` (append on each `log_menubar` call; creates dir + file on first write).
+**Called by:** `hotkey.py` (`log_menubar`); `app.py` (`log_menubar`, lazy `cleanup_old_lines` via import inside `_tick`); `bg_timer.py` (`log_menubar`); `panel.py` (`log_menubar`).
+**Calls out:** stdlib (`datetime`, `pathlib`) only.
 
 ---
 
@@ -140,13 +150,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bg_timer.py (136 LOC)
+### bg_timer.py (137 LOC)
 
 **Purpose:** Background sleep-timer scanning, per-project attribution, and abort. Detects Opus `sleep N && echo done` background timers via `ps`; attributes each to a project via ancestry-chain walk → `_cc_proc_cache → cwd → cwd_to_project` lookup (walks up to 5 levels from the zsh parent to handle intermediate shell layers between CC and zsh). Returns `Dict[str, BgSleepInfo]` keyed by project_name ('unknown' bucket for unattributed timers). `_abort_bg_sleep_timers` kills PIDs via SIGTERM, writes `aborted\n` to in-progress task files, and appends one line to `/tmp/menubar-abort.log` (killed count, error count, last_err if any).
 **Reads:** `ps -A -o pid=,ppid=,etime=,args=` (timer detection); `_cc_proc_cache` (ancestry→cwd attribution); `_TASKS_BASE` task dirs (for abort file writes).
-**Writes:** `signal.SIGTERM` to sleep PIDs; `'aborted\n'` to 0-byte `*.output` task files under `_TASKS_BASE`; `/tmp/menubar-abort.log` (abort_action log line).
+**Writes:** `signal.SIGTERM` to sleep PIDs; `'aborted\n'` to 0-byte `*.output` task files under `_TASKS_BASE`; `src/logs/menubar.log` ([abort] category via `log_menubar`).
 **Called by:** `app.py:CCMenuBarApp._tick` (`_scan_bg_sleep_timers`); `app.py:_PanelController.abortBgTimer_` (`_scan_bg_sleep_timers`, `_abort_bg_sleep_timers`); `app.py:_PanelController.windowDidEndLiveResize_` (`_scan_bg_sleep_timers`); `app.py:_auto_abort_check` (`_abort_bg_sleep_timers`).
-**Calls out:** `subprocess` (ps); `datetime`; `.proc_cache` (`_TASKS_BASE`, `_cc_proc_cache`).
+**Calls out:** `subprocess` (ps); `datetime`; `.proc_cache` (`_TASKS_BASE`, `_cc_proc_cache`); `.menubar_log` (`log_menubar`).
 
 ---
 
@@ -208,22 +218,23 @@ paths.py        (pathlib only — leaf node; triggers migration at import)
 proc_cache.py   (json, os, subprocess, time, pathlib, typing; .paths)
     ↓               ↓
 ghostty.py          bg_timer.py
-(_cc_proc_cache)    (_TASKS_BASE)
+(_cc_proc_cache)    (_TASKS_BASE; .menubar_log log_menubar)
     ↓
 discover.py  ← ghostty.py (_refresh_ghostty_tty_to_id)
              ← proc_cache.py (_refresh_cc_proc_cache, _refresh_tmux_state,
                                _tmux_session_exists, _read_hook_state,
                                _proxy_log_newest_mtime, _has_active_bg)
 
-hotkey.py      → ctypes only
-panel.py       → AppKit, Foundation, itertools
+menubar_log.py → datetime, pathlib only (leaf node)
+hotkey.py      → ctypes; .menubar_log (log_menubar)
+panel.py       → AppKit, Foundation, itertools; .menubar_log (log_menubar)
 queue_panel.py → AppKit, Foundation; .panel (constants + helpers); .queue (load_queue, save_queue)
 system.py      → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
                  lazy(.app) inside run() only
 queue.py       → json, os, subprocess; .paths (QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE)
 app.py         → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
                  .panel, .bead_panel, .queue_panel, .hotkey, .system, .discover,
-                 .bg_timer, .paths (SETTINGS_FILE), .queue
+                 .bg_timer, .paths (SETTINGS_FILE), .queue, .menubar_log (log_menubar)
 ```
 
 No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module.

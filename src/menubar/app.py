@@ -25,6 +25,8 @@ from .hotkey import (register_cmd_l, register_cmd_digits, unregister_hotkeys,
                      register_cmd_arrow_right, register_cmd_arrow_left,
                      unregister_cmd_arrow_right, unregister_cmd_arrow_left,
                      register_cmd_k)
+# From menubar_log.py: unified log sink for all menubar diagnostic categories
+from .menubar_log import log_menubar
 # From bead_data.py: bd subprocess wrappers for tracker panel
 from .bead_data import project_db_map, load_tracked_beads
 # From bead_panel.py: NSPanel + render for bead tracker
@@ -47,8 +49,6 @@ from .queue import load_queue, save_queue, deliver_message
 
 BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
-_TICK_LOG      = '/tmp/menubar-tick.log'
-_ABORT_LOG     = '/tmp/menubar-abort.log'
 _SETUP_PY      = Path(__file__).resolve().parent / 'setup_menubar.py'
 
 # FUNCTIONS
@@ -348,9 +348,15 @@ class CCMenuBarApp(rumps.App):
         self._queue_remove_tags: dict = {}         # {× button tag → (session_id, idx)}; reset each rebuild
         self._queue_toggle_tags: dict = {}         # {↑/↓ button tag → (session_id, idx)}; reset each rebuild
         self._last_sessions: list = []             # last live sessions snapshot; used by queue panel rebuild
+        self._last_log_cleanup_ts: float = 0.0    # monotonic ts of last cleanup_old_lines run (0 → fires on first tick)
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
+        _t = time.monotonic()
+        if _t - self._last_log_cleanup_ts > 86400:    # 24h
+            from .menubar_log import cleanup_old_lines
+            cleanup_old_lines()
+            self._last_log_cleanup_ts = _t
         if not self._initialized:
             try:
                 self._nsapp.nsstatusitem.setMenu_(None)   # detach NSMenu; performClick_ → action
@@ -499,25 +505,19 @@ def _statuses_changed(sessions, last: dict) -> bool:
     current = {s.name: s.status for s in sessions}
     return current != last
 
-# Append one diagnostic line per tick to _TICK_LOG; gated on MENUBAR_DIAGNOSTICS=1 env var (default OFF)
+# Append one diagnostic line per tick to menubar.log; gated on MENUBAR_DIAGNOSTICS=1 env var (default OFF)
 def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) -> None:
     if os.getenv('MENUBAR_DIAGNOSTICS') != '1':
         return
-    try:
-        ts = time.strftime('%Y-%m-%dT%H:%M:%S')
-        line = (f'{ts} open={panel_open} n={len(sessions)} '
-                f'sessions={sorted(s.name for s in sessions)} '
-                f'displayed={sorted(displayed_items)} action={action}\n')
-        with open(_TICK_LOG, 'a') as fh:
-            fh.write(line)
-    except Exception:
-        pass
+    line = (f'open={panel_open} n={len(sessions)} '
+            f'sessions={sorted(s.name for s in sessions)} '
+            f'displayed={sorted(displayed_items)} action={action}')
+    log_menubar('tick', line)
 
-# Append one line to _ABORT_LOG; always-on (no env-var gate); failures print to stderr but don't raise
+# Append one line to menubar.log ([abort] category); always-on (no env-var gate)
 def _abort_log_write(line: str) -> None:
     try:
-        with open(_ABORT_LOG, 'a') as fh:
-            fh.write(line)
+        log_menubar('abort', line.rstrip('\n'))
     except Exception as e:
         print(f'[abort-log] write error: {e}', file=sys.stderr)
 
@@ -547,7 +547,12 @@ def _reregister_digit_hotkeys(app: 'CCMenuBarApp') -> None:
     slots = {slot: cwd for slot, cwd in app._cwd_map.items() if slot <= 9 and cwd}
     if not slots:
         return
-    cb_map = {slot: (lambda cwd=cwd: _focus_session(cwd)) for slot, cwd in slots.items()}
+    def _make_digit_cb(slot, cwd):
+        def _cb():
+            log_menubar('hotkey', f'cmd+{slot} → focus {cwd}')
+            _focus_session(cwd)
+        return _cb
+    cb_map = {slot: _make_digit_cb(slot, cwd) for slot, cwd in slots.items()}
     app._hotkey_digits_cb, app._hotkey_digits_refs = register_cmd_digits(cb_map)
 
 # Load settings; returns (auto_focus, panel_width, panel_min_height); falls back to module defaults on any error
