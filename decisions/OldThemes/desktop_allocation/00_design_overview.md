@@ -53,10 +53,39 @@ Phase A des Probe-Workers entdeckte dass AppleScript `bounds of (window of termi
 3. **Etappe 3 — Worker-Placement auf Caller-Desktop** (`Meta/blank/src/spawn/tmux_spawn.sh:open_tmux_viewer`, commit `cfd0d14`): ✅ DONE. Nach osascript-Window-Spawn wird `python3 desktop_targeting.py wait-and-move "$PPID" "Ghostty" 5` im Hintergrund aufgerufen. Pending Live-Verifikation nach `plugin-publish`.
 4. **Etappe 4 — File-Open-Placement** (`Meta/blank/bin/show`, commit `cfd0d14`): ✅ DONE. Identische Pattern: nach `open` Helper-Call mit `app_name` (CotEditor für md/txt, leer für andere → cross-app Polling). Siehe `file_open_routing.md` für Details. Pending Live-Verifikation nach `plugin-publish` (Helper liegt im selben Commit).
 
+## Etappe 2 — Phase B Implementation (2026-05-28)
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `src/menubar/desktop_detection.py` | NEW (275 LOC) — port of `dev/desktop_detection/01_probe.py` detection pipeline into importable library |
+| `src/menubar/discover.py` | `SessionInfo.desktop_no: Optional[int] = None` added; `list_alive_sessions()` runs batch detection post-loop |
+| `src/menubar/panel.py` | `_GRID_COL0_W` 33→40; `main_slot` counter removed; slot prefix driven by `desktop_no`; conflict set pre-computed via `Counter`; `app._desktop_to_cwd` populated |
+| `src/menubar/app.py` | `_desktop_to_cwd: dict = {}` in `__init__`; `_reregister_digit_hotkeys` uses `_desktop_to_cwd` instead of `_cwd_map` |
+| `src/menubar/DOCS.md` | New module entry, LOC updates, import graph + state table |
+
+### Architecture decisions vs Plan
+
+- **Performance**: 10s TTL cache at module level; force-invalidated on cwd-set change; runs on main thread (same pattern as existing ghostty TTY probe). Detection blocked inside outer `try/except` — any error (AppleScript failure, CGS error, Ghostty down) logs once and returns all-None for the cache TTL period.
+- **Conflict UX**: `[!N]` in `NSColor.systemRedColor()` for slot cell; star/name/dot remain orange. `_desktop_to_cwd` excludes conflicted desktops → no Cmd+N hotkey registered for them.
+- **All-fail log**: `log_menubar('detection', f'all_failed n_mains=N reason=...')` fires only when ALL mains return None (3 possible reasons: `ghostty_not_running`, `all_no_match`, `error:<repr>`). Partial failures (some mains detected, some not) produce no log entry.
+- **SessionInfo backward compat**: `desktop_no: Optional[int] = None` as final field with default — all existing `SessionInfo(name=..., ..., tmux_session_name=...)` call sites unchanged.
+
+### Smoke test result
+
+```
+Mains found: 2
+  desktop=3  name=Monitor_CC       cwd=.../Monitor_CC
+  desktop=2  name=searxng          cwd=.../Meta/ClaudeCode/MCP/searxng
+```
+
+Detection successful, 100%, strategy-breakdown expected to be `name-unique:2` or `osc2-injection:1` depending on focused tab state.
+
 ## Status (2026-05-27)
 
 - **Etappe 1**: ✅ Done + verifiziert (probe lief 2× sauber, 100% Erfolg)
-- **Etappe 2**: pending — nächste Implementierungs-Etappe (User-Priorität offen)
+- **Etappe 2**: ✅ Done — `desktop_detection.py` + `SessionInfo.desktop_no` + panel prefix + hotkey mapping, commit on branch `cwd-exit-fix`
 - **Etappe 3 + 4**: code-complete in blank/ commit `cfd0d14`, pending `plugin-publish` + Live-Test
 - **Cwd-Drift-Bug (Nebenstrang)**: ✅ Done + gemerged, pending User Live-Verify (Menubar-Restart + Cmd+2/3)
 

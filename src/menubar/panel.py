@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 import objc
 import os
+from collections import Counter
 from datetime import datetime
 from itertools import groupby
 
@@ -33,7 +34,7 @@ _BADGE_WORKING = '[*]'   # green — ASCII fixed-width, no emoji drift
 _BADGE_IDLE    = '[ ]'   # red
 
 # Grid column widths (pts) — 5-column main-panel layout, measured from Menlo 13pt char widths
-_GRID_COL0_W  = 33   # slot "[N]" (3 chars × 7.8pt + buffer)
+_GRID_COL0_W  = 40   # slot "[N]"/conflict "[!N]" (up to 4 chars × 7.8pt + buffer)
 _GRID_COL1_W  = 17   # star "* " (2 chars × 7.8pt + buffer)
 _GRID_COL3_W  = 25   # dot "[ ]"/"[*]" (3 chars × 7.8pt + buffer)
 _GRID_COL4_W  = 72   # badge "[B M:SS]" max 9 chars × 7.8pt + buffer
@@ -391,6 +392,7 @@ def _rebuild_panel_inner(app, sessions, bg_by_project=None) -> None:
         sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
     app._displayed_items = {}
     app._cwd_map = {}
+    app._desktop_to_cwd = {}
     app._abort_btns_by_project = {}
     app._abort_project_for_tag = {}
     next_tag  = [1]
@@ -419,8 +421,10 @@ def _rebuild_panel_inner(app, sessions, bg_by_project=None) -> None:
     grid.columnAtIndex_(3).setWidth_(float(_GRID_COL3_W))
     grid.columnAtIndex_(4).setWidth_(float(_GRID_COL4_W))
     grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
-    row_idx   = 0
-    main_slot = 0
+    dno_counts   = Counter(s.desktop_no for s in sorted_sessions
+                           if not s.is_worker and s.desktop_no is not None)
+    conflict_set = {dn for dn, c in dno_counts.items() if c > 1}
+    row_idx      = 0
     for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
         proj_bg = (bg_by_project or {}).get(project_name)
         sep_view, abort_btn = _make_separator_view(
@@ -440,10 +444,18 @@ def _rebuild_panel_inner(app, sessions, bg_by_project=None) -> None:
             dot   = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
             color = NSColor.systemOrangeColor()
             if not s.is_worker:
-                main_slot += 1
-                slot_str = f'[{main_slot}]' if main_slot <= 9 else ''
+                dno = s.desktop_no
+                if dno is None:
+                    slot_str   = ''
+                    slot_color = color
+                elif dno in conflict_set:
+                    slot_str   = f'[!{dno}]'
+                    slot_color = NSColor.systemRedColor()
+                else:
+                    slot_str   = f'[{dno}]'
+                    slot_color = color
                 tag      = next_tag[0]; next_tag[0] += 1
-                slot_btn = _make_grid_cell_btn(slot_str, color)
+                slot_btn = _make_grid_cell_btn(slot_str, slot_color)
                 star_btn = _make_grid_cell_btn('*', color)
                 name_btn = _make_grid_cell_btn(s.name, color)
                 dot_btn  = _make_grid_cell_btn(dot, color)
@@ -452,6 +464,8 @@ def _rebuild_panel_inner(app, sessions, bg_by_project=None) -> None:
                     btn.setTarget_(app._panel_controller)
                     btn.setAction_(b'focusSession:')
                 app._cwd_map[tag] = s.cwd or ''
+                if dno is not None and dno not in conflict_set:
+                    app._desktop_to_cwd[dno] = s.cwd or ''
                 if proj_bg is not None:
                     badge_btn = _make_grid_cell_btn(
                         _format_bg_badge(proj_bg.min_remaining), color)

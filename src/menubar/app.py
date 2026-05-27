@@ -306,6 +306,7 @@ class CCMenuBarApp(rumps.App):
         self._initialized: bool = False
         self._displayed_items: dict = {}
         self._cwd_map: dict = {}
+        self._desktop_to_cwd: dict = {}          # {desktop_no: cwd} for conflict-free mains; used by _reregister_digit_hotkeys
         self._abort_btns_by_project: dict = {}   # {project_name: NSButton}; per-project abort buttons
         self._abort_project_for_tag: dict = {}   # {tag_int: project_name}; for abortBgTimer_ dispatch
         self._auto_focus, self._panel_width, self._panel_min_height = _load_settings()
@@ -538,13 +539,13 @@ def _blink(app: 'CCMenuBarApp') -> None:
             lambda: _set_bar_icon(app, ICON_NORMAL))
     threading.Timer(BLINK_DURATION, _restore).start()
 
-# Register (or re-register) Cmd+1..9 hotkeys from current _cwd_map (slots 1..9); unregisters previous refs first
+# Register (or re-register) Cmd+1..9 hotkeys mapped by desktop_no (conflict-free mains only)
 def _reregister_digit_hotkeys(app: 'CCMenuBarApp') -> None:
     if app._hotkey_digits_refs:
         unregister_hotkeys(app._hotkey_digits_refs)
         app._hotkey_digits_refs = []
         app._hotkey_digits_cb   = None
-    slots = {slot: cwd for slot, cwd in app._cwd_map.items() if slot <= 9 and cwd}
+    slots = {dn: cwd for dn, cwd in app._desktop_to_cwd.items() if dn <= 9 and cwd}
     if not slots:
         return
     def _make_digit_cb(slot, cwd):
