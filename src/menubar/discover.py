@@ -169,9 +169,13 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
         # Main session: stale if JSONL > 1h
         if now - mtime > ALIVE_WINDOW_SECS:
             return None
-        # Prefer proc-cwd (launch cwd, stable) over JSONL cwd (drifts when user `cd`s in chat).
-        # Falls back to JSONL only if proc cache has no matching entry (stale process).
-        cwd = _proc_cwd_for_encoded_dir(encoded_dir) or _cwd_from_jsonl(jsonl)
+        # Main session alive ONLY if a live claude process exists for it.
+        # Without this, exited mains stay visible until JSONL > 1h (ALIVE_WINDOW_SECS).
+        proc_cwd = _proc_cwd_for_encoded_dir(encoded_dir)
+        if proc_cwd is None:
+            return None
+        # proc-cwd is launch cwd (stable); JSONL cwd drifts when user `cd`s in chat.
+        cwd = proc_cwd
         name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
         # Priority 1: hook state (real-time signal from CC's UserPromptSubmit/Stop hooks).
         # Covers thinking phase from T=0 and holds 'working' for the full turn duration.
