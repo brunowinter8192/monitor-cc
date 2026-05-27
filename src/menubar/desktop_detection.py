@@ -49,6 +49,7 @@ _CG.CGSCopyWindowProperty.restype         = ctypes.c_int32
 _det_cache: Dict[str, Optional[int]] = {}
 _det_cache_ts: float = 0.0
 _det_cache_cwds: frozenset = frozenset()
+_cgw_title_diag_logged: bool = False
 
 # ORCHESTRATOR
 
@@ -61,7 +62,8 @@ def detect_main_desktop_numbers(
     cwd_tty_map:  Dict[str, str],
     now: float,
 ) -> Dict[str, Optional[int]]:
-    global _det_cache, _det_cache_ts, _det_cache_cwds
+    global _det_cache, _det_cache_ts, _det_cache_cwds, _cgw_title_diag_logged
+    _cgw_title_diag_logged = False
     cwds = frozenset(cwd_uuid_map.keys())
     if cwds == _det_cache_cwds and (now - _det_cache_ts) < _DET_CACHE_TTL:
         return _det_cache
@@ -195,10 +197,15 @@ def _applescript_uuid_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
 # Bypasses TCC Screen Recording gate that affects kCGWindowName for other-app windows
 # in launchd-spawned processes (alt-tab-macos / DockDoor pattern).
 def _cgwindow_title(cid: int, wid: int) -> Optional[str]:
+    global _cgw_title_diag_logged
     out_ref = ctypes.c_void_p(0)
     key_ns  = _nsstr("kCGSWindowTitle")
     rc = _CG.CGSCopyWindowProperty(cid, wid, key_ns, ctypes.byref(out_ref))
     if rc != 0 or not out_ref.value:
+        if not _cgw_title_diag_logged:
+            log_menubar('detection', f'cgw_title_first_fail wid={wid} rc={rc} '
+                                     f'out_ptr={out_ref.value}')
+            _cgw_title_diag_logged = True
         return None
     s = _msgp(out_ref.value, "UTF8String")
     return s.decode() if s else None
@@ -221,6 +228,9 @@ def _cgwindow_list_ghostty(ghostty_pid_int: int, cid: int) -> Dict[str, List[int
         if name is None:
             continue
         by_name.setdefault(name, []).append(wid)
+    if not by_name:
+        log_menubar('detection', f'cgw_list_empty pid={ghostty_pid_int} iterated={count} '
+                                 f'no_names_returned')
     return by_name
 
 # Build {space_id: (display_id_abbrev, desktop_no_1based)} for all managed display spaces
