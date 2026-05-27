@@ -33,25 +33,32 @@ Python-Anbindung über `ctypes.CDLL('/System/Library/Frameworks/CoreGraphics.fra
 
 Unser `src/menubar/ghostty.py` mappt cwd → Ghostty-internes Terminal-UUID via OSC-2-Title-Probe. Diese UUID ist NICHT die macOS CGWindowID die `CGSCopySpacesForWindows` benötigt.
 
-**Pre-approved Mapping-Strategie** (aus Phase A des verstorbenen Worker `menubar-hotkey-log`):
+**Aktuelle (post-Probe) Mapping-Strategie:**
 
-**Primär**: AppleScript `bounds of (window 1 of (terminal id "<UUID>"))` liefert NSRect der Ghostty-Window. Dann `CGWindowListCopyWindowInfo(kCGWindowListOptionAll, kCGNullWindowID)` filtern auf `kCGWindowOwnerPID == ghostty_pid`, und Bounds matchen mit ±2px Toleranz pro Dimension. Hit → `kCGWindowNumber` = die gesuchte CGWindowID.
+Phase A des Probe-Workers entdeckte dass AppleScript `bounds of (window of terminal)` für Ghostty NICHT existiert (`-1728` Error). Stattdessen funktioniert: AppleScript `id of terminal of tab of window` liefert UUID per Tab, und `kCGWindowName` der CGWindow korrespondiert zu Ghostty's `name`-Property des Window (= aktiver Tab-Titel).
 
-**Fallback**: OSC-2-Re-Injection mit Marker-Präfix `__DET_`, dann `CGWindowListCopyWindowInfo` Match via `kCGWindowName`. Bekannte Limitation: reflektiert nur den aktiven Tab pro Ghostty-Fenster (Background-Tabs würden hier nicht matchen, sind aber via Primär abgedeckt).
+**Drei-Strategie-Resolver** (in dieser Reihenfolge):
+1. **Name-unique**: `kCGWindowName` = window_name in genau einem CGWindow → Hit
+2. **Space-elimination**: bei mehreren Kandidaten, query `CGSCopySpacesForWindows` pro Kandidat, eliminiere die auf bereits-claimed Spaces (progressive Akkumulation in Worker-Iteration) → falls einer übrig → Hit
+3. **OSC-2 Injection**: Marker `__DET_<hex>` per OSC-2 in den tty injecten, 150ms warten, `kCGWindowName` neu matchen → effektiv wenn CC-Tab der focused Tab im Window ist
 
-**Ausgeschlossen**: Korrelation via `kCGWindowNumber` (no semantic link), AXUIElement (zu fragiles Permission-Setup).
+**Detection-Rate empirisch:** 100% in beiden Probe-Runs (4/4, 3/3). Reference-Implementation: `dev/desktop_detection/01_probe.py`. Cross-Project Production-Variante: `Meta/blank/src/desktop/desktop_targeting.py`.
+
+**Negativ-Befund von Bedeutung:** AppleScript `working directory of terminal` returnt für ALLE Ghostty-Terminals den App-Launch-Pfad (Monitor_CC) statt der echten Terminal-cwd — ein Ghostty-Bug. Erklärt rückwirkend warum das Menubar `_focus_session()` Path-B-Fallback (`focus first terminal whose working directory is "..."`) strukturell broken war. Fix dafür landed in commit `1725bfb` (proc_cwd preference + Path B MISS detection).
 
 ## Etappen
 
-1. **Etappe 1 — Detection-Probe** (`dev/desktop_detection/01_probe.py`): proves die Pipeline `cwd → Ghostty-UUID → CGWindowID → SpaceID → Desktop-Nr` funktioniert. Read-only, kein src/-Touch. Output: Tabelle pro Main + Spaces-per-Display-Diagnostik + Mismatch-Block. Status: Worker dispatched, Predecessor starb mit "Prompt is too long" mid-implementation (zero commits), Successor wird mit pre-approved Plan gespawnt.
-2. **Etappe 2 — Menubar-Display**: SessionInfo bekommt `desktop_no` Feld, `panel.py` zeigt es als `[N]` Prefix. Konflikt-Detection (2 Mains auf einem Desktop) → roter Marker am Slot-Number. Hängt von Etappe 1 erfolgreich.
-3. **Etappe 3 — Worker-Placement**: Hook in `iterative-dev` Plugin (`Meta/blank/src/spawn/tmux_spawn.sh:open_tmux_viewer()`) der nach Ghostty-Window-Spawn die neue CGWindowID identifiziert und auf den Desktop der spawning-Main via `CGSMoveWindowsToManagedSpace` schiebt. Touches Plugin-Source.
-4. **Etappe 4 — File-Open-Placement**: integriert mit `file_open_routing` (separate OldTheme). Nach `open <file>` polling auf neue Window, dann move zum Ziel-Desktop.
+1. **Etappe 1 — Detection-Probe** (`dev/desktop_detection/01_probe.py`, commit `fee6566`): ✅ DONE. 100% Detection-Erfolg, proven. Cwd-Drift-Bug aufgedeckt + gefixt in `1725bfb`. Phase A/B Log in `A1_detection_probe.md`.
+2. **Etappe 2 — Menubar-Display Desktop-Nr**: PENDING. SessionInfo bekommt `desktop_no` Feld, `panel.py` zeigt es als `[N]` Prefix. Konflikt-Detection (2 Mains auf einem Desktop) → Error-Marker. Hängt strukturell von Etappe 1 ab, jetzt unblocked.
+3. **Etappe 3 — Worker-Placement auf Caller-Desktop** (`Meta/blank/src/spawn/tmux_spawn.sh:open_tmux_viewer`, commit `cfd0d14`): ✅ DONE. Nach osascript-Window-Spawn wird `python3 desktop_targeting.py wait-and-move "$PPID" "Ghostty" 5` im Hintergrund aufgerufen. Pending Live-Verifikation nach `plugin-publish`.
+4. **Etappe 4 — File-Open-Placement** (`Meta/blank/bin/show`, commit `cfd0d14`): ✅ DONE. Identische Pattern: nach `open` Helper-Call mit `app_name` (CotEditor für md/txt, leer für andere → cross-app Polling). Siehe `file_open_routing.md` für Details. Pending Live-Verifikation nach `plugin-publish` (Helper liegt im selben Commit).
 
 ## Status (2026-05-27)
 
-- **Etappe 1**: in flight — Successor-Worker wird gerade gespawnt
-- **Etappe 2-4**: pending Etappe 1 Verifikation
+- **Etappe 1**: ✅ Done + verifiziert (probe lief 2× sauber, 100% Erfolg)
+- **Etappe 2**: pending — nächste Implementierungs-Etappe (User-Priorität offen)
+- **Etappe 3 + 4**: code-complete in blank/ commit `cfd0d14`, pending `plugin-publish` + Live-Test
+- **Cwd-Drift-Bug (Nebenstrang)**: ✅ Done + gemerged, pending User Live-Verify (Menubar-Restart + Cmd+2/3)
 
 ## Anhang — Worker-Death Notiz
 
