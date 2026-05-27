@@ -9,7 +9,7 @@ from ..session_finder import get_project_directories, encode_project_path
 from .proc_cache import (
     _refresh_cc_proc_cache, _refresh_tmux_state,
     _tmux_session_exists, _tmux_window_activity, _read_hook_state, _proxy_log_newest_mtime,
-    _has_active_bg,
+    _has_active_bg, _cc_proc_cache,
 )
 # From ghostty.py: Ghostty TTY-to-UUID mapping + cwd-UUID file write for hook delivery
 from .ghostty import _refresh_ghostty_tty_to_id, _write_cwd_uuid_map
