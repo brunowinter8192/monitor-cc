@@ -132,6 +132,12 @@ Trading matched via `osc2-injection` in run 1 (CC tab was NOT focused in its Gho
    "kCGSWindowTitle", ...)` — private SkyLight-API die Titles ohne TCC-Gate liefert.
    Pattern bestätigt durch alt-tab-macos (`src/macos/api-wrappers/CGWindowID.swift`) und
    DockDoor (`DockDoor/Utilities/PrivateApis.swift`).
+9. **Spinner-Glyph Race zwischen AppleScript und CGSCopyWindowProperty**: CC schreibt
+   einen rotierenden Spinner-Glyph am Anfang des Terminal-Titles (`⠂` `⠐` `✻` `✳` etc,
+   Cycle ~250ms). Zwischen AppleScript-Call und CGSCopyWindowProperty-Calls vergehen
+   Millisekunden — Glyph kann wechseln, Equality-Match scheitert. Fix:
+   `_normalize_window_title()` strippt das erste Glyph+Space wenn das Glyph kein ASCII
+   ist. Beide Match-Sides normalisieren.
 
 ### Dict-Keys Populated
 

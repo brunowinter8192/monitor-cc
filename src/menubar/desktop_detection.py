@@ -114,6 +114,16 @@ def _nsstr(s: str):
     cls = _OBJ.objc_getClass(b"NSString")
     return _msg1cp(cls, "stringWithUTF8String:", s.encode())
 
+# Strip Claude Code spinner glyph (single non-ASCII char + space) from start of title;
+# spinner cycles ~250ms (✻ ⠂ ⠐ ✳ etc) and creates false-mismatch between AppleScript-
+# returned name and CGSCopyWindowProperty-returned title even with sub-second delta.
+def _normalize_window_title(t: Optional[str]) -> Optional[str]:
+    if t is None or len(t) < 2:
+        return t
+    if t[1] == ' ' and not (t[0].isascii() and (t[0].isalnum() or t[0] in '/-_.')):
+        return t[2:]
+    return t
+
 def _cf_count(arr) -> int:         return _msgl(arr, "count")
 def _cf_at(arr, i: int):           return _msg1l(arr, "objectAtIndex:", i)
 def _dict_val(d, key: str):        return _msg1v(d, "objectForKey:", _nsstr(key))
@@ -178,7 +188,7 @@ def _applescript_uuid_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
         if len(parts) == 3:
             win_id, win_name, uuid = parts
             uuid_to_win[uuid] = win_id
-            win_to_name[win_id] = win_name
+            win_to_name[win_id] = _normalize_window_title(win_name)
     return uuid_to_win, win_to_name
 
 # Read window title via private SkyLight API CGSCopyWindowProperty (key=kCGSWindowTitle).
@@ -207,7 +217,7 @@ def _cgwindow_list_ghostty(ghostty_pid_int: int, cid: int) -> Dict[str, List[int
         wid = _dict_long(d, "kCGWindowNumber")
         if wid is None:
             continue
-        name = _cgwindow_title(cid, wid)   # via SkyLight private API (TCC-bypass)
+        name = _normalize_window_title(_cgwindow_title(cid, wid))   # via SkyLight (TCC-bypass) + spinner-strip
         if name is None:
             continue
         by_name.setdefault(name, []).append(wid)
