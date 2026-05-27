@@ -240,17 +240,29 @@ def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int]) ->
     try:
         with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
             fh.write(f'\033]2;{marker}\007'.encode())
-        time.sleep(0.5)
-        by_name = _cgwindow_list_ghostty(ghostty_pid_int)
-        matched = by_name.get(marker, [])
-        with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
-            fh.write(b'\033]2;\007')   # restore shell-default title
-        if len(matched) == 1:
-            return matched[0]
-        overlap = [w for w in matched if w in candidates]
-        return overlap[0] if len(overlap) == 1 else None
-    except OSError:
+    except OSError as e:
+        log_menubar('detection', f'osc2_write_failed tty={tty} err={repr(e)[:80]}')
         return None
+    time.sleep(0.5)
+    by_name = _cgwindow_list_ghostty(ghostty_pid_int)
+    matched = by_name.get(marker, [])
+    try:
+        with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
+            fh.write(b'\033]2;\007')   # restore shell-default title (best-effort)
+    except OSError as e:
+        log_menubar('detection', f'osc2_restore_failed tty={tty} err={repr(e)[:80]}')
+    if not matched:
+        log_menubar('detection', f'osc2_no_marker tty={tty} (write may have been ignored, or tab not focused)')
+        return None
+    if len(matched) == 1:
+        log_menubar('detection', f'osc2_match tty={tty} wid={matched[0]}')
+        return matched[0]
+    overlap = [w for w in matched if w in candidates]
+    if len(overlap) == 1:
+        log_menubar('detection', f'osc2_overlap tty={tty} wid={overlap[0]}')
+        return overlap[0]
+    log_menubar('detection', f'osc2_ambiguous tty={tty} matched={matched} overlap={overlap}')
+    return None
 
 # Resolve CGWindowID via three strategies: name-unique → space-elimination → OSC-2 injection
 def _resolve_cgwindow_id(
@@ -263,6 +275,7 @@ def _resolve_cgwindow_id(
 ) -> Optional[int]:
     candidates = cgwindow_by_name.get(window_name, [])
     if not candidates:
+        log_menubar('detection', f'resolve_no_name_match window_name={repr(window_name)[:60]}')
         return None
     if len(candidates) == 1:
         return candidates[0]
@@ -275,4 +288,5 @@ def _resolve_cgwindow_id(
         return unclaimed[0]
     if tty:
         return _osc2_inject_match(tty, ghostty_pid_int, candidates)
+    log_menubar('detection', f'resolve_no_tty candidates={len(candidates)} unclaimed={len(unclaimed)}')
     return None
