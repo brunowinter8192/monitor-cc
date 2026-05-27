@@ -76,6 +76,12 @@ Heißt: für jede Main-Session können wir das Mapping `encoded_dir → launch_c
 - Result parsing: `out.startswith('MISS:')` → logs `MISS {label} reason={...}`; `r.returncode != 0` → logs `ERR`; else `OK`
 - Path A unverändert (no try/on error, no MATCH token) — `elif out.startswith('MISS:')` hits only Path B
 
+**Fix 3 — `src/menubar/discover.py` Main-Branch Exit Detection (2026-05-28):**
+- `_proc_cwd_for_encoded_dir()` originally used only as cwd-resolver (proc_cwd preferred over JSONL cwd). Now doubles as exit-detection signal: `None` return means no live CC process → `return None` immediately.
+- Eliminates the up-to-1h visibility window for exited Main-sessions that existed when only the JSONL-stale check was present.
+- JSONL-stale check (`now - mtime > ALIVE_WINDOW_SECS`) remains as safety-net; in normal flow proc-check catches exits first (within next tick, ~1.5s).
+- `_cwd_from_jsonl(jsonl)` fallback removed from Main-branch — redundant once proc-check gates entry.
+
 **Import smoke-test:**
 ```
 ./venv/bin/python -c "from src.menubar.discover import _proc_cwd_for_encoded_dir; print('OK')"
