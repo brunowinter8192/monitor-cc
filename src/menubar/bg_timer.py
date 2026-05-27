@@ -8,6 +8,8 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 
 # From proc_cache.py: Tasks base dir + CC process cache for project attribution
 from .proc_cache import _TASKS_BASE, _cc_proc_cache
+# From menubar_log.py: unified log sink for abort action events
+from .menubar_log import log_menubar
 
 # ORCHESTRATOR
 
@@ -110,9 +112,8 @@ def _abort_bg_sleep_timers(sleep_pids: List[int]) -> int:
         ts = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f')[:23]
         pids_str = ','.join(str(p) for p in sleep_pids)
         err_extra = f' last_err={repr(last_err)}' if last_err else ''
-        line = f'{ts} abort_action pids=[{pids_str}] killed={killed} errors={errors}{err_extra}\n'
-        with open('/tmp/menubar-abort.log', 'a') as fh:
-            fh.write(line)
+        line = f'{ts} abort_action pids=[{pids_str}] killed={killed} errors={errors}{err_extra}'
+        log_menubar('abort', line)
     except Exception as e:
         print(f'[abort-log] abort_action write error: {e}', file=sys.stderr)
     try:

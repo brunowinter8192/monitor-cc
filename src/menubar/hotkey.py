@@ -1,6 +1,8 @@
 # INFRASTRUCTURE
 import ctypes
 
+from .menubar_log import log_menubar
+
 # Digit keycodes: kVK_ANSI_1..9 — NOT sequential; order confirmed from IOKit/hid/IOLLEvent.h
 _DIGIT_KEYCODES = {1: 18, 2: 19, 3: 20, 4: 21, 5: 23, 6: 22, 7: 26, 8: 28, 9: 25}
 
@@ -92,8 +94,9 @@ def _ensure_digit_handler():
             fn = _DIGIT_CALLBACKS.get(slot)
             if fn is None:
                 return _eventNotHandledErr
+            log_menubar('hotkey', f'cmd+{slot}')
             fn()
-        except Exception:
+        except Exception:  # log-safe: Carbon handler must not raise
             pass
         return 0
 
@@ -118,8 +121,9 @@ def _ensure_arrow_handler():
             fn = _ARROW_CALLBACKS.get(hkid.id)
             if fn is None:
                 return _eventNotHandledErr
+            log_menubar('hotkey', 'cmd+right' if hkid.id == _CMD_RIGHT_ID else 'cmd+left')
             fn()
-        except Exception:
+        except Exception:  # log-safe: Carbon handler must not raise
             pass
         return 0
 
@@ -144,8 +148,9 @@ def register_cmd_l(callback) -> tuple:
             hkid = _get_hkid(carbon, event)
             if hkid.id != _CMD_L_ID:
                 return _eventNotHandledErr
+            log_menubar('hotkey', 'cmd+l')
             callback()
-        except Exception:
+        except Exception:  # log-safe: Carbon handler must not raise
             pass
         return 0
 
@@ -242,8 +247,9 @@ def register_cmd_k(callback) -> tuple:
             hkid = _get_hkid(carbon, event)
             if hkid.id != _CMD_K_ID:
                 return _eventNotHandledErr
+            log_menubar('hotkey', 'cmd+k')
             callback()
-        except Exception:
+        except Exception:  # log-safe: Carbon handler must not raise
             pass
         return 0
 

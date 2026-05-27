@@ -21,6 +21,8 @@ from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSCursor, NSFo
                     NSWindowStyleMaskResizable)
 from Foundation import NSMakeRect, NSMakeSize, NSRange
 
+from .menubar_log import log_menubar
+
 ICON_NORMAL          = '◉'
 ICON_BLINK           = '●'
 ICON_BASELINE_OFFSET = 1.0   # pts — vertical offset applied via NSBaselineOffsetAttributeName; adjust if icon drifts
@@ -58,8 +60,7 @@ _rebuild_panel_in_progress = False   # re-entry guard: defensive mirror of queue
 def _cursor_log(msg: str) -> None:
     if not os.environ.get('MENUBAR_CURSOR_DEBUG'):
         return
-    with open('/tmp/menubar-cursor.log', 'a') as f:
-        f.write(f'{datetime.now().strftime("%H:%M:%S.%f")[:-3]} {msg}\n')
+    log_menubar('cursor', msg)
 
 # NSView contentView — tracking-area event detection + state-driven cursor rects (winit pattern)
 # mouseMoved_ (via NSTrackingArea) detects edge and calls _set_hovered_edge, which calls
