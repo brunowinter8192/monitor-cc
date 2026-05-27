@@ -1,0 +1,67 @@
+# dev/desktop_detection/
+
+## Problem
+
+**What happens:** Monitor_CC Menubar displays arbitrary slot-numbers `[1]` `[2]` `[3]` instead of user-visible Mission Control Desktop numbers for each Main CC session. Worker windows spawn on random desktops. `show <file>` opens apps on wrong desktops.
+
+**Manifestation:** No production impact yet (Menubar shows slot-based order, not spatial order). Detection pipeline missing — this investigation builds it.
+
+**Production code status:** No changes yet. Detection probe only. See `decisions/OldThemes/desktop_allocation/` for design and iteration history.
+
+## Investigation
+
+### Code Analysis
+
+Existing production code relevant to the pipeline:
+
+| File | What it provides |
+|---|---|
+| `src/menubar/ghostty.py` | cwd → UUID via OSC-2 title-probe; writes `ghostty_cwd_uuid.json` |
+| `src/menubar/proc_cache.py:_cc_proc_cache` | pid → (tty, cwd) cache for CC processes |
+| `src/menubar/discover.py:list_alive_sessions()` | returns `SessionInfo` including cwd for Mains |
+| `~/Library/.../ghostty_cwd_uuid.json` | live {cwd: uuid} map written by Menubar at 1.5s cadence |
+
+Pipeline gap: UUID is Ghostty-internal; macOS CGS APIs need `CGWindowID` (kCGWindowNumber). No direct Ghostty → CGWindowID link exposed.
+
+### External Research
+
+| Source | Result | Relevance |
+|---|---|---|
+| Ghostty AppleScript: `bounds of terminal id "UUID"` | -1728 error ❌ | Primary strategy (bounds-match) not available |
+| Ghostty AppleScript: `window of terminal id "UUID"` | -1728 error ❌ | Direct UUID→window nav not exposed |
+| Ghostty AppleScript: `working directory of terminal` | Returns Monitor_CC for ALL terminals ❌ | Bug in Ghostty AS dictionary — always reflects app launch dir, not tab cwd |
+| Ghostty AppleScript: `id of terminal of tab of window` | Works ✅ | Gives UUID per tab → UUID→window_id mapping |
+| `CGWindowListCopyWindowInfo(0, 0)` (option=0) | 279 windows incl. off-screen ✅ | `kCGWindowListOptionAll=0` = all spaces; `1` = OnScreenOnly |
+| `CGWindowListCopyWindowInfo(1, 0)` (option=1) | 26 windows (on-screen only) | NOT "all" — maps to `kCGWindowListOptionOnScreenOnly` |
+| `CGSCopyManagedDisplaySpaces` dict keys | `Display Identifier`, `Spaces`, `ManagedSpaceID` ✅ | Not `DisplayIdentifier` or `id` |
+| `CGSCopySpacesForWindows(cid, 0x7, arr)` | Returns [space_id] per WID ✅ | mask=0x7 works; returns [] for invalid WIDs |
+
+### Hypotheses
+
+| Hypothesis | Status | Evidence |
+|---|---|---|
+| AppleScript bounds → bounds-match → CGWindowID | **Excluded** | `-1728` on `bounds of terminal id "UUID"` and `bounds of window` |
+| AppleScript tab traversal → UUID→window_id → kCGWindowName match | **Confirmed** ✅ | `id of terminal of tab` works; kCGWindowName = focused tab title |
+| CGS space detection pipeline (CGSCopyManagedDisplaySpaces + CGSCopySpacesForWindows) | **Confirmed** ✅ | Returns correct desktop_no for all tested WIDs |
+| OSC-2 injection required for ambiguous window names | **Active** | Fires when CC tab is not the focused tab in its Ghostty window |
+
+## Scripts
+
+### `01_probe.py` (389 LOC)
+
+Proves the full pipeline: `cwd → UUID → CGWindowID → SpaceID → Desktop-No`. Read-only. No src/ changes.
+
+**Usage:**
+```bash
+cd /Users/brunowinter2000/Documents/ai/Monitor_CC
+./venv/bin/python dev/desktop_detection/01_probe.py
+```
+
+**Requires:** Menubar running (writes `ghostty_cwd_uuid.json`), Ghostty running.
+
+**Output:** Per-main-session table with session_name / cwd / tty / uuid / cgwindow_id / space_id / display / desktop_no, then active-space diagnostics, spaces-per-display summary, detection rate, strategy breakdown.
+
+**Three-strategy resolution (in order):**
+1. `name-unique` — Ghostty AppleScript `name of window` for the UUID's window matches exactly one CGWindow's `kCGWindowName`
+2. `space-elimination` — multiple candidates with same name; eliminate those whose space is already claimed by a matched main; fires when main sessions share a window name (e.g., all showing `/Users/.../cwd`)
+3. `osc2-injection` — inject OSC-2 marker to CC process tty, 150ms wait, re-match kCGWindowName; fires when both above fail (CC tab is background tab in its Ghostty window)
