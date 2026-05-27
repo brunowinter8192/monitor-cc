@@ -61,15 +61,22 @@ def _focus_session(cwd: str) -> None:
             '  activate\n'
             '  try\n'
             f'    focus (first terminal whose working directory is "{safe_cwd}")\n'
-            '  on error\n'
+            '    return "MATCH"\n'
+            '  on error errMsg number errNum\n'
+            '    return "MISS:" & errNum & ":" & errMsg\n'
             '  end try\n'
             'end tell'
         )
         label = f'cwd={cwd}'
     try:
         r = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=3)
-        msg = (f'{ts} OK {label}\n' if r.returncode == 0 else
-               f'{ts} ERR rc={r.returncode} {label} stderr={r.stderr.decode(errors="replace").strip()}\n')
+        out = r.stdout.decode(errors='replace').strip()
+        if r.returncode != 0:
+            msg = f'{ts} ERR rc={r.returncode} {label} stderr={r.stderr.decode(errors="replace").strip()}\n'
+        elif out.startswith('MISS:'):
+            msg = f'{ts} MISS {label} reason={out[5:]}\n'
+        else:
+            msg = f'{ts} OK {label}\n'
     except subprocess.TimeoutExpired:
         msg = f'{ts} TIMEOUT {label}\n'
     with open('/tmp/monitor_cc_menubar_focus.log', 'a') as fh:
