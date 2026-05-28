@@ -20,6 +20,8 @@
 
 **Log path** (`src/menubar/menubar_log.py`): `MENUBAR_LOG = _APP_SUPPORT / 'menubar.log'` — consistent with all other APP_SUPPORT files. Both dev (venv) and bundle write to `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/menubar.log`.
 
+**Subprocess encoding** (2026-05-28): all 13 `subprocess.run(..., text=True)` calls in `src/menubar/` now carry `encoding='utf-8', errors='replace'`. Root cause: launchd sets no locale → Python defaults to ASCII → `ps -A -o command=` output containing CC worker spawn-prompts (emoji, umlauts) → `UnicodeDecodeError` → `detect_main_desktop_numbers` catch → `all_failed` → desktop number lost for all mains while any worker is running. Confirmed by live log: crash at 22:39 (ps, `b'...\xe2\xa0\x90 Offene Tasks...'`), crash at 22:40:59 (osascript, `'⠐ Offene Tasks'`). LaunchAgent plist template also gains `PYTHONUTF8=1` as belt-and-suspenders for launchd context.
+
 **Display** (`src/menubar/panel.py` + `src/menubar/discover.py`): mains show `[N]` slot prefix where N = macOS Mission Control desktop number. Conflict (2+ mains on same desktop) shows `[!N]` in red. `app._desktop_to_cwd` populated conflict-free → `_reregister_digit_hotkeys()` maps Cmd+N to the correct Main session.
 
 **Launch**: via launchd LaunchAgent (`RunAtLoad=true`) or manually via `open ~/Applications/Monitor_CC_Menubar.app`. **Restart**: Restart-Button ruft `write_plist_py2app()` (schreibt `ProgramArguments = [.../Monitor_CC_Menubar]`) dann reinen launchctl bootout+bootstrap — kein Bundle-Rebuild, TCC-Grant bleibt erhalten. `sys.frozen`-Gate in `restartApp_` trennt py2app-Pfad von dev/venv-Pfad.

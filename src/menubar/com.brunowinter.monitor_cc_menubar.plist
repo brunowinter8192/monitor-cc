@@ -24,6 +24,12 @@
     <!-- arm64 Homebrew: /opt/homebrew/bin; Intel fallback: /usr/local/bin  -->
     <key>PATH</key>
     <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <!-- launchd sets no locale → Python defaults to ascii → UnicodeDecodeError on non-ASCII
+         process names (e.g. worker spawn-prompts with emoji/umlauts in ps -A -o command= output).
+         PYTHONUTF8=1 forces UTF-8 for all text=True subprocess calls + open() in this process.
+         Belt-and-suspenders: per-call encoding='utf-8',errors='replace' is the primary fix. -->
+    <key>PYTHONUTF8</key>
+    <string>1</string>
   </dict>
 
   <key>StandardOutPath</key>

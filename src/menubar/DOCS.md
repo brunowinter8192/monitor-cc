@@ -17,7 +17,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### desktop_detection.py (343 LOC)
+### desktop_detection.py (345 LOC)
 
 **Purpose:** Batch detection of macOS Mission Control desktop numbers for all Main sessions via private CoreGraphics Services (CGS) APIs + one AppleScript round-trip. Ported from `dev/desktop_detection/01_probe.py`. Three-strategy resolver per window: name-unique → space-elimination → OSC-2 injection. Results cached for `_DET_CACHE_TTL=10s`; force-invalidated when cwd set changes (session add/remove). All errors (Ghostty down, AppleScript failure, CGS error) are caught by the orchestrator, logged as `[detection] all_failed n_mains=N reason=...` (only when ALL mains fail, not on partial), and return all-None. **Transition logging** (`_last_result` module state + `_cwd_ctx` per-cycle dict): on desktop-number change per cwd logs `[detection] transition <project>/<repo> <old>-><new> win=<ghostty_window_name> n_cand=<candidates>` — transition-gated, no per-cycle spam; `n_cand=0` = CGWindowList mismatch (confirmed trigger: worker-spawn/send immediately sets `n_cand=0`). Module-level CFUNCTYPE refs (`_FT_vv`, `_FT_vvv`, etc.) must remain module-level — GC'ing them corrupts the IMP pointer table and causes SIGSEGV.
 **Reads:** `ps -A` (Ghostty PID); `osascript` (Ghostty window/tab/UUID traversal); `CGWindowListCopyWindowInfo` (all spaces, all windows); `CGSCopyManagedDisplaySpaces` (space→desktop-no mapping); `CGSCopySpacesForWindows` (per-window space query); `/dev/ttys<NNN>` (OSC-2 injection for space-elimination fallback).
@@ -60,7 +60,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bead_data.py (132 LOC)
+### bead_data.py (135 LOC)
 
 **Purpose:** All `bd` CLI interactions for the bead panel. `bd_show_text(bead_id, db_path)` runs `bd show --json` (description) then `bd comments --json` (separate call; show does NOT include comments) and returns a formatted string: description body (≤300 chars before Sources block), Sources block (full), then per-comment blocks `[YYYY-MM-DD HH:MM by Author]\n  text`. `bd_label_remove` untracks a bead. Helper functions: `project_db_map`, `load_tracked_beads`, `_bd_list_tracked`, `_bd_fetch_comments`, `_format_expand_text`, `_format_comment_ts`. Comment JSON schema: `{id, issue_id, author, text, created_at}` — field is `text` (not `body`). Timestamps parsed via `datetime.fromisoformat` with Z→+00:00 substitution, displayed in local timezone.
 **Reads:** `bd` CLI output via subprocess; nothing from app state.
@@ -150,7 +150,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### proc_cache.py (173 LOC)
+### proc_cache.py (177 LOC)
 
 **Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader, orchestrator-signal reader. Two TTL classes: `_PROC_REFRESH_INTERVAL` = 10s for the expensive `ps -A` / `lsof` caches; `_HOOK_REFRESH_INTERVAL` = 1s for the cheap hooks.json + orchestrator_signals.json reads (must be < POLL_INTERVAL=1.5s so each menubar tick gets a fresh snapshot while intra-tick consumers still see consistency). `_TMUX_REFRESH_INTERVAL` = 3s for `tmux list-sessions`. Exports `ORCHESTRATOR_SIGNAL_BUFFER_SECS = 60s` consumed by `app.py:_auto_abort_check`. Owns `_TASKS_BASE` and `_has_active_bg()`. `_tmux_window_activity(session)` returns unix timestamp of last pane byte-write via `tmux display-message #{window_activity}`; used by `discover.py` for worker stale-demote (replaces JSONL mtime check).
 **Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `tmux display-message #{window_activity}` (per-session, on-demand); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE` (`APP_SUPPORT/hooks.json`); `ORCHESTRATOR_SIGNALS_FILE` (`APP_SUPPORT/orchestrator_signals.json`, written by worker-cli).
@@ -160,7 +160,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### ghostty.py (152 LOC)
+### ghostty.py (155 LOC)
 
 **Purpose:** Ghostty terminal UUID mapping via OSC 2 title-marker probe. Maintains `_ghostty_tty_to_id` (tty → UUID) populated incrementally. Exposes `get_ghostty_terminal_id(cwd)` for click-to-focus routing in `system.py`. Also writes `APP_SUPPORT/ghostty_cwd_uuid.json` = `{cwd: uuid}` via `_write_cwd_uuid_map()` (called from `discover.py:list_alive_sessions` after each tick); used by `hook_writer.py` for queue delivery. `_APP_SUPPORT` defined inline (can't import `paths.py` — would create import cycle).
 **Reads:** `ps -A` (Ghostty PID + child TTYs); `/dev/ttys<NNN>` (OSC 2 marker writes); `osascript` (terminal id|||name pairs); `_cc_proc_cache`.
@@ -170,7 +170,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bg_timer.py (137 LOC)
+### bg_timer.py (138 LOC)
 
 **Purpose:** Background sleep-timer scanning, per-project attribution, and abort. Detects Opus `sleep N && echo done` background timers via `ps`; attributes each to a project via ancestry-chain walk → `_cc_proc_cache → cwd → cwd_to_project` lookup (walks up to 5 levels from the zsh parent to handle intermediate shell layers between CC and zsh). Returns `Dict[str, BgSleepInfo]` keyed by project_name ('unknown' bucket for unattributed timers). `_abort_bg_sleep_timers` kills PIDs via SIGTERM, writes `aborted\n` to in-progress task files, and appends one line to `/tmp/menubar-abort.log` (killed count, error count, last_err if any).
 **Reads:** `ps -A -o pid=,ppid=,etime=,args=` (timer detection); `_cc_proc_cache` (ancestry→cwd attribution); `_TASKS_BASE` task dirs (for abort file writes).
@@ -375,6 +375,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - `LSUIElement=1` must be set before `app.run()` to suppress the Dock icon. Set in `run()` via `os.environ.setdefault`.
 - Launched via launchd: `KeepAlive=true` auto-restarts on crash. Logs → `/tmp/monitor_cc_menubar.{log,err}`.
 - **launchd PATH inheritance**: `EnvironmentVariables/PATH` in the plist must prepend `/opt/homebrew/bin` — launchd's default PATH lacks Homebrew, making `tmux` unavailable for proc_cache.py worker-alive checks.
+- **launchd ASCII locale — all `text=True` subprocess calls need `encoding='utf-8', errors='replace'`**: launchd sets no locale → `locale.getpreferredencoding()` = `'ascii'` → any `subprocess.run(..., text=True)` without explicit encoding crashes on non-ASCII bytes. Confirmed: `ps -A -o command=` and `osascript` output containing CC worker spawn-prompts (emoji, umlauts) caused `UnicodeDecodeError` → `detect_main_desktop_numbers` returned `all_failed` → desktop number lost while any worker was running. All 13 `text=True` calls in the package now carry `encoding='utf-8', errors='replace'`. LaunchAgent plist template also sets `PYTHONUTF8=1` as belt-and-suspenders. Any NEW `subprocess.run(..., text=True)` added to this package MUST include `encoding='utf-8', errors='replace'`.
 - **Ghostty PID lookup** (`ghostty.py:_ghostty_pid`): `pgrep` is unreliable on macOS for full-path binary names. Use `ps -A -o pid=,command=` parsed directly: `'Ghostty.app/Contents/MacOS' in line` finds the process robustly.
 - **Ghostty AppleScript**: Ghostty.sdef exposes `id` (UUID, stable), `name` (current title), `working directory` per `terminal`. `focus` command takes a specifier: `focus terminal id "<UUID>"`. Does NOT expose `tty` or `pid`.
 - **OSC 2 cleanup**: After the probe, `\033]2;\007` (empty-string OSC 2) written to the probed TTYs restores the shell's default title. Without cleanup, idle shells show `__GHT_XXXXXXXX` until next prompt display.
