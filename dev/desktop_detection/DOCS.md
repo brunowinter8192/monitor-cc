@@ -44,6 +44,8 @@ Pipeline gap: UUID is Ghostty-internal; macOS CGS APIs need `CGWindowID` (kCGWin
 | AppleScript tab traversal → UUID→window_id → kCGWindowName match | **Confirmed** ✅ | `id of terminal of tab` works; kCGWindowName = focused tab title |
 | CGS space detection pipeline (CGSCopyManagedDisplaySpaces + CGSCopySpacesForWindows) | **Confirmed** ✅ | Returns correct desktop_no for all tested WIDs |
 | OSC-2 injection required for ambiguous window names | **Active** | Fires when CC tab is not the focused tab in its Ghostty window |
+| TCC blocks window enumeration (kCGWindowOwnerPID) in launchd/bundle context | **Excluded** ❌ | 02_context_comparison_probe: all 3 contexts return 17 Ghostty windows with correct PID |
+| TCC strips kCGWindowName in launchd/bundle context | **Confirmed** ✅ | kCGWindowName=null for all Ghostty+Finder windows in launchd/bundle; CC-Bash has full titles |
 
 ## Scripts
 
@@ -65,3 +67,28 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 1. `name-unique` — Ghostty AppleScript `name of window` for the UUID's window matches exactly one CGWindow's `kCGWindowName`
 2. `space-elimination` — multiple candidates with same name; eliminate those whose space is already claimed by a matched main; fires when main sessions share a window name (e.g., all showing `/Users/.../cwd`)
 3. `osc2-injection` — inject OSC-2 marker to CC process tty, 150ms wait, re-match kCGWindowName; fires when both above fail (CC tab is background tab in its Ghostty window)
+
+### `02_context_comparison_probe.py` (347 LOC)
+
+Measures which CGS API fields are accessible across three execution contexts to empirically determine TCC boundary for Etappe 2. Read-only on macOS state.
+
+**Usage:**
+```bash
+cd /Users/brunowinter2000/Documents/ai/Monitor_CC
+# Context 1 — CC-Bash (direct):
+.claude/worktrees/probe02-context/venv/bin/python \
+  .claude/worktrees/probe02-context/dev/desktop_detection/02_context_comparison_probe.py --tag=ccbash
+
+# Context 2 — launchd (one-shot LaunchAgent plist, see B2_context_comparison_probe.md)
+# Context 3 — bundle (open -n 02_bundle_stub.app/, see B2_context_comparison_probe.md)
+```
+
+**Requires:** Menubar running (for detection pipeline), Ghostty running.
+
+**Output:** JSON report in `02_reports/<tag>_<YYYYMMDD_HHMMSS>.json` with context_diagnostics, tcc_state, detection_result, raw_windows.
+
+**Key finding:** `kCGWindowOwnerPID`, `kCGWindowNumber`, `CGSCopySpacesForWindows` work in ALL contexts. `kCGWindowName` returns null without Screen Recording. See `decisions/OldThemes/desktop_allocation/B2_context_comparison_probe.md`.
+
+### `02_bundle_stub.app/`
+
+Minimal `.app` bundle (CFBundleIdentifier=`com.brunowinter.monitor_cc_menubar`, ad-hoc signed) used to run the probe in bundle-exec context (same exec chain as production menubar). Launcher: `Contents/MacOS/launcher` → `exec venv/python3 02_context_comparison_probe.py --tag=bundle`.
