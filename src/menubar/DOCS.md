@@ -228,17 +228,19 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### setup_py2app.py (88 LOC) — at project root, NOT in src/menubar/
+### setup_py2app.py (117 LOC) — at project root, NOT in src/menubar/
 
-**Purpose:** py2app build script producing `dist/Monitor_CC_Menubar.app/` — a native Mach-O bundle with embedded Python 3.14 framework. Replaces the Bash-exec chain with a native launcher so the audit token at `CGWindowListCopyWindowInfo` is `com.brunowinter.monitor_cc_menubar` (not Python.app), making the Screen Recording TCC grant effective. Builds to `dist/` in the working directory; does NOT install to `~/Applications/`. Placed at project root (not `src/menubar/`) to avoid stdlib `queue` shadowing by `src/menubar/queue.py` when setuptools is loaded.
+**Purpose:** py2app build script producing `dist/Monitor_CC_Menubar.app/` — a native Mach-O bundle with embedded Python 3.14 framework. Replaces the Bash-exec chain with a native launcher so the audit token at `CGWindowListCopyWindowInfo` is `com.brunowinter.monitor_cc_menubar` (not Python.app), making the Screen Recording TCC grant effective. Builds to `dist/` in the working directory; does NOT install to `~/Applications/`. Placed at project root (not `src/menubar/`) to avoid stdlib `queue` shadowing by `src/menubar/queue.py` when setuptools is loaded. After `setup()`: `_prune_bundle_bloat()` whitelist-prunes the bundle's `src/` to `{menubar, session_finder.py, constants.py, __init__.py, __pycache__}` — prevents `copy_package_data()` from sweeping `src/logs/` (runtime proxy logs, no `__init__.py`, ≥15 GB in main repo).
 **Reads:** `src/menubar/menubar_main.py` (entry point); `src/menubar/com.brunowinter.monitor_cc_menubar.plist` (bundled as data file).
 **Writes:** `dist/Monitor_CC_Menubar.app/` — full py2app bundle.
 **Called by:** User manually (one-time build + after Python upgrade).
-**Calls out:** `py2app`, `setuptools`.
+**Calls out:** `py2app`, `setuptools`, `shutil`, `pathlib`.
 
 **Usage:** `./venv/bin/pip install py2app && ./venv/bin/python setup_py2app.py py2app` from project root. Install step: `cp -R dist/Monitor_CC_Menubar.app ~/Applications/Monitor_CC_Menubar.app`.
 
 **Post-install TCC step (required once):** System Settings → Privacy & Security → Screen Recording → find or add `Monitor_CC_Menubar` → toggle ON. If already listed from the ad-hoc bundle, toggle OFF then ON to force re-evaluation of the new binary identity. Without this, `kCGWindowName` is stripped and desktop detection returns all-None.
+
+**Gotcha — copy_package_data sweeps src/logs/:** `src/__init__.py` makes `src` a Package node in py2app's modulegraph. `copy_package_data(src)` then copies every subdirectory of `src/` that has NO `__init__.py` wholesale into the bundle — including `src/logs/` (runtime proxy logs, gitignored). In the main repo this grows to 15 GB+. `_prune_bundle_bloat()` runs post-`setup()` and removes everything from the bundle's `src/` not in `_BUNDLE_SRC_KEEP`. Whitelist must be updated if new cross-package `src.X` imports are added to `src/menubar/`.
 
 ---
 

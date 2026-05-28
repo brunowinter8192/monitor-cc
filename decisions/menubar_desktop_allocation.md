@@ -68,11 +68,18 @@ CFBundleIdentifier                                          → com.brunowinter.
 LSUIElement                                                 → true
 file Contents/MacOS/Monitor_CC_Menubar                      → Mach-O 64-bit executable arm64
 Functional smoke test (singleton lock exit)                 → exit=0, all imports resolved
-Bundle size                                                 → 39MB
+Bundle size                                                 → 38–39 MB
 Python.framework (embedded)                                 → 5.1MB stripped
 ```
 
-Script: `setup_py2app.py` (project root). Built from worktree `py2app-build`.
+Script: `setup_py2app.py` (project root). Built from worktrees `py2app-build` (initial) and `bloat-fix` (post-prune).
+
+**Build bloat fix (2026-05-28):** `_prune_bundle_bloat()` runs after `setup()` when `py2app` in
+`sys.argv`. Whitelist-prunes the bundle's `src/` to `{menubar, session_finder.py, constants.py,
+__init__.py, __pycache__}`. Prevents `copy_package_data()` from sweeping `src/logs/` (runtime
+proxy logs, no `__init__.py`, ≥15 GB in main repo). Build-from-main-repo is now safe — sentinel
+test confirms 38 MB bundle with 50 MB fake `src/logs/` fully pruned. See
+`decisions/OldThemes/desktop_allocation/C2_build_bloat.md`.
 
 ## Recommendation (SOLL)
 
