@@ -6,7 +6,7 @@
   <key>Label</key>
   <string>com.brunowinter.monitor_cc_menubar</string>
 
-  <!-- Replaced at setup time: points to Monitor_CC_Menubar.app/Contents/MacOS/menubar launcher -->
+  <!-- Replaced at setup time: points to Monitor_CC_Menubar.app/Contents/MacOS/Monitor_CC_Menubar (py2app native binary) -->
   <key>ProgramArguments</key>
   <array>
     <string><BUNDLE_LAUNCHER></string>

@@ -12,7 +12,7 @@ _DEST            = _LAUNCH_AGENTS / f'{_LABEL}.plist'
 _PROJECT_ROOT    = Path(__file__).resolve().parent.parent.parent
 _GUI_TARGET      = f'gui/{os.getuid()}/{_LABEL}'
 _BUNDLE          = Path.home() / 'Applications' / 'Monitor_CC_Menubar.app'
-_BUNDLE_LAUNCHER = _BUNDLE / 'Contents' / 'MacOS' / 'menubar'
+_BUNDLE_LAUNCHER = _BUNDLE / 'Contents' / 'MacOS' / 'Monitor_CC_Menubar'
 
 # ORCHESTRATOR
 
