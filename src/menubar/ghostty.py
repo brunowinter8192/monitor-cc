@@ -63,7 +63,8 @@ def _refresh_ghostty_tty_to_id(now: float) -> None:
     )
     try:
         r3 = subprocess.run(['osascript', '-e', osa],
-                            capture_output=True, text=True, timeout=3)
+                            capture_output=True, text=True,
+                            encoding='utf-8', errors='replace', timeout=3)
     except Exception:
         r3 = None
     # Cleanup: restore shell-default title on all probed TTYs
@@ -92,7 +93,8 @@ def _refresh_ghostty_tty_to_id(now: float) -> None:
 def _ghostty_pid() -> Optional[str]:
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
-                           capture_output=True, text=True, timeout=2)
+                           capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=2)
         for line in r.stdout.splitlines():
             if 'Ghostty.app/Contents/MacOS' in line:
                 pid = line.split(None, 1)[0].strip()
@@ -106,7 +108,8 @@ def _ghostty_pid() -> Optional[str]:
 def _ghostty_child_ttys(ghostty_pid: str) -> List[str]:
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,ppid=,tty='],
-                           capture_output=True, text=True, timeout=3)
+                           capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=3)
         ttys = []
         for line in r.stdout.strip().split('\n'):
             parts = line.split()

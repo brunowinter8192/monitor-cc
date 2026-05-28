@@ -45,7 +45,8 @@ def _scan_bg_sleep_timers(cwd_to_project: Dict[str, str]) -> Dict[str, BgSleepIn
     try:
         r = subprocess.run(
             ['ps', '-A', '-o', 'pid=,ppid=,etime=,args='],
-            capture_output=True, text=True, timeout=3)
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=3)
     except Exception:
         return {}
     pid_info: Dict[str, Tuple[str, str, str]] = {}

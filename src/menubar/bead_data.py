@@ -35,7 +35,8 @@ def bd_show_text(bead_id: str, db_path: Path) -> str:
     try:
         r = subprocess.run(
             [_BD, 'show', bead_id, '--json', '--db', str(db_path)],
-            capture_output=True, text=True, timeout=_BD_TIMEOUT)
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=_BD_TIMEOUT)
         if r.returncode != 0:
             return f'[error: {r.stderr.strip()[:60]}]'
         data  = json.loads(r.stdout)
@@ -67,7 +68,8 @@ def _bd_list_tracked(db_path: Path) -> Optional[List[dict]]:
     try:
         r = subprocess.run(
             [_BD, 'list', '-l', 'tracked', '--json', '--db', str(db_path)],
-            capture_output=True, text=True, timeout=_BD_TIMEOUT)
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=_BD_TIMEOUT)
         if r.returncode != 0:
             return []
         data = json.loads(r.stdout)
@@ -115,7 +117,8 @@ def _bd_fetch_comments(bead_id: str, db_path: Path) -> List[dict]:
     try:
         r = subprocess.run(
             [_BD, 'comments', bead_id, '--json', '--db', str(db_path)],
-            capture_output=True, text=True, timeout=_BD_TIMEOUT)
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=_BD_TIMEOUT)
         if r.returncode != 0 or not r.stdout.strip():
             return []
         data = json.loads(r.stdout)

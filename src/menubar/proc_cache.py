@@ -61,7 +61,8 @@ def _refresh_cc_proc_cache(now: float) -> None:
     _cc_proc_last_refresh = now
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid,tty,comm'],
-                           capture_output=True, text=True, timeout=3)
+                           capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=3)
     except Exception:
         return
     # Build {pid: tty} for active CC processes with valid TTY
@@ -80,7 +81,8 @@ def _refresh_cc_proc_cache(now: float) -> None:
             continue
         try:
             r2 = subprocess.run(['lsof', '-a', '-d', 'cwd', '-p', pid],
-                                 capture_output=True, text=True, timeout=2)
+                                 capture_output=True, text=True,
+                                 encoding='utf-8', errors='replace', timeout=2)
             for line in r2.stdout.strip().split('\n'):
                 if line.startswith('COMMAND') or not line:
                     continue
@@ -100,7 +102,8 @@ def _refresh_tmux_state(now: float) -> None:
     try:
         r = subprocess.run(
             ['tmux', 'list-sessions', '-F', '#{session_name}'],
-            capture_output=True, text=True, timeout=3)
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=3)
         if r.returncode != 0:
             _tmux_state_cache = set()
             return
@@ -117,7 +120,8 @@ def _tmux_window_activity(session: str) -> int:
     try:
         result = subprocess.run(
             ['tmux', 'display-message', '-t', f'{session}:^', '-p', '#{window_activity}'],
-            capture_output=True, text=True, timeout=2)
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=2)
         if result.returncode != 0:
             return 0
         return int(result.stdout.strip())

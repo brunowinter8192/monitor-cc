@@ -167,7 +167,8 @@ def _make_uint_array(values: List[int]):
 # Return int PID of running Ghostty.app process, or None
 def _ghostty_pid_int() -> Optional[int]:
     r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
-                       capture_output=True, text=True, timeout=2)
+                       capture_output=True, text=True,
+                       encoding='utf-8', errors='replace', timeout=2)
     for line in r.stdout.splitlines():
         if 'Ghostty.app/Contents/MacOS' in line:
             pid_str = line.split(None, 1)[0].strip()
@@ -193,7 +194,8 @@ def _applescript_uuid_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
         '  return out\n'
         'end tell'
     )
-    r = subprocess.run(['osascript', '-e', osa], capture_output=True, text=True, timeout=6)
+    r = subprocess.run(['osascript', '-e', osa], capture_output=True, text=True,
+                       encoding='utf-8', errors='replace', timeout=6)
     if r.returncode != 0:
         raise RuntimeError(f'osascript rc={r.returncode} {r.stderr.strip()!r:.80}')
     uuid_to_win: Dict[str, str] = {}
