@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+from logging.handlers import TimedRotatingFileHandler
 import subprocess
 import time
 import urllib.request
@@ -37,7 +38,7 @@ if not _logger.handlers:
     _LOG_DIR = Path(__file__).parent / 'logs'
     try:
         _LOG_DIR.mkdir(parents=True, exist_ok=True)
-        _fh = logging.FileHandler(_LOG_DIR / 'gpu_pane.log')
+        _fh = TimedRotatingFileHandler(_LOG_DIR / 'gpu_pane.log', when='d', interval=1, backupCount=7)
         _fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
         _logger.addHandler(_fh)
     except OSError:

@@ -163,6 +163,7 @@ def run_main_loop() -> None:
     current_main_session = _get_newest_main_session()
     last_output = None
     last_data_refresh = 0.0
+    _last_janitor_ts = 0.0
     setup_keyboard_input()
     enable_mouse()
     try:
@@ -289,6 +290,12 @@ def run_main_loop() -> None:
                         _display.main_scroll_offset = max(0, _display.main_scroll_offset + _sticky_delta)
                 last_data_refresh = now
                 input_changed = True
+                if now - _last_janitor_ts >= 86400:
+                    from ..log_janitor import cleanup_old_jsonl
+                    _logs = Path(__file__).parent.parent / 'logs'
+                    cleanup_old_jsonl(_logs / 'tool_errors.jsonl')
+                    cleanup_old_jsonl(_logs / 'hook_firing.jsonl')
+                    _last_janitor_ts = now
 
             if input_changed:
                 try:

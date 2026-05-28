@@ -34,9 +34,9 @@ Standalone tmux Window 4 pane that monitors RAG GPU servers cross-project. Reads
 
 ---
 
-### status.py (205 LOC)
+### status.py (206 LOC)
 
-**Purpose:** State-file registry reader. Globs `~/.rag-locks/server-port-*.json`; builds preset + arbitrary status lists; detects six anomaly classes; logs to `src/gpu_pane/logs/gpu_pane.log`. `PRESET_NAMES` list discovered at module-import-time via `subprocess.run(['rag-cli', 'server', 'presets', '--json'])` with 3s timeout; falls back to legacy `['embedding', 'reranker', 'splade']` if the call fails (rag-cli missing, timeout, malformed JSON).
+**Purpose:** State-file registry reader. Globs `~/.rag-locks/server-port-*.json`; builds preset + arbitrary status lists; detects six anomaly classes; logs to `src/gpu_pane/logs/gpu_pane.log` via `TimedRotatingFileHandler(when='d', backupCount=7)` — rotates daily, 7-day retention. `PRESET_NAMES` list discovered at module-import-time via `subprocess.run(['rag-cli', 'server', 'presets', '--json'])` with 3s timeout; falls back to legacy `['embedding', 'reranker', 'splade']` if the call fails (rag-cli missing, timeout, malformed JSON).
 **Reads:** `~/.rag-locks/server-port-*.json` JSON (content + mtime — mtime is the idle source: RAG client modules touch it on every real request, /health probes do not); `http://localhost:<port>/health`; `ps -o rss=`; `rag-cli server presets --json` (once per process at import).
 **Writes:** nothing (read-only); anomalies appended to module-level `_last_anomalies`; logging to `gpu_pane.log`.
 **Called by:** `pane.py`.
