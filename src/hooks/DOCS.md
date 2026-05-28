@@ -29,10 +29,10 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ### _fire_log.py (44 LOC)
 
-**Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all 19 active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"`: includes `reason` field (stderr text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
+**Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all 20 active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"`: includes `reason` field (stderr text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** `src/logs/hook_firing.jsonl` (appends one line per fire; path resolved from `__file__` relative to `src/`).
-**Called by:** all 19 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
+**Called by:** all 20 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
 **Calls out:** stdlib only (`json`, `os`, `datetime`).
 
 ---
@@ -124,22 +124,41 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_unauthorized_background.py (63 LOC)
+### rewrite_reddit_index_background.py (67 LOC)
 
-**Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT the exact canonical orchestration timer `sleep N && echo done`, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
+**Purpose:** PreToolUse hook (Bash) — **silently rewrites** invocations of the reddit RAG-indexer CLI (`reddit-cli index_subreddits` or `python cli.py index_subreddits`) by flipping `run_in_background` to `true` via `hookSpecificOutput.updatedInput`. The indexer takes ~75-100s wallclock per typical query (4 subs × 5 posts × ~1.1s/chunk Embedding-Latenz) which is too long for blocking Bash. Pairs with the `_INDEXER_CANONICAL` whitelist in `block_unauthorized_background.py` so the bg-flip survives the round-trip. Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before pattern matching.
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
+**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command, run_in_background: true}`) when indexer CLI detected and rb not already true; nothing on passthrough.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert).
+
+**Rewrite condition:** `run_in_background != true` AND command contains `\b(reddit-cli|cli\.py)\s+index_subreddits\b` after quote-stripping.
+
+**Passthrough (no output):**
+- Command already has `run_in_background=true` (nothing to do)
+- Command does not match the indexer pattern
+- Indexer pattern appears only in a quoted region (e.g. inside a `worker-cli send` message)
+- Parse errors (fail-open)
+
+---
+
+### block_unauthorized_background.py (67 LOC)
+
+**Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT the canonical orchestration timer `sleep N && echo done` AND NOT a whitelisted long-running tool, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable — but legitimately-long tools (reddit-cli indexer) are exempted via the whitelist. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
 **Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command, run_in_background: false}`) on non-canonical bg; nothing on passthrough.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** stdlib only (`json`, `re`).
 
-**Rewrite condition:** `run_in_background=true` AND command does NOT match `_CANONICAL` (the `sleep N && echo done` timer form).
+**Rewrite condition:** `run_in_background=true` AND command does NOT match `_CANONICAL` (the `sleep N && echo done` timer form) AND does NOT match `_INDEXER_CANONICAL` (`\b(reddit-cli|cli\.py)\s+index_subreddits\b`).
 
 **Passthrough (no output):**
 - `sleep N && echo done` (optional whitespace, optional float N) with `run_in_background=true`
+- `reddit-cli index_subreddits ...` / `cli.py index_subreddits ...` with `run_in_background=true` (long-running RAG-indexer, ~75-100s; paired with `rewrite_reddit_index_background.py`)
 - Any command with `run_in_background=false` or field absent (foreground — no restriction)
 - Parse errors (fail-open)
 
-**No quote-stripping.** Checks only the `run_in_background` bool field and the canonical regex — no command-text scanning for partial patterns.
+**No quote-stripping.** Checks the `run_in_background` bool field and the two whitelisted regexes — no general command-text scanning. The `_INDEXER_CANONICAL` regex uses word-boundaries (`\b`) which match the indexer pattern even mid-command (e.g. `cd /path && reddit-cli index_subreddits ...`). Indexer pattern appearing in a quoted region of an unrelated command would also match (rare false-positive — accepted trade-off vs adding quote-stripping cost).
 
 ---
 
@@ -431,4 +450,4 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **`block_read_worktree.py` allows own-worktree reads.** Workers reading files in their own worktree via absolute path are now allowed. Cross-worktree reads (worker→other-worker) and main-session→worktree reads remain blocked.
-- **All 19 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
+- **All 20 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.

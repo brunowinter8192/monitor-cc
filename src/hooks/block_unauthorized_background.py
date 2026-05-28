@@ -9,6 +9,10 @@ from _fire_log import log_fire
 # canonical allowed background form: sleep N && echo done (optional whitespace/float)
 _CANONICAL = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$')
 
+# additional whitelist: reddit-cli index_subreddits (long-running RAG-indexer, ~75-100s)
+# paired with rewrite_reddit_index_background.py which auto-sets rb=true for this command
+_INDEXER_CANONICAL = re.compile(r'\b(reddit-cli|cli\.py)\s+index_subreddits\b')
+
 # ORCHESTRATOR
 
 # Read Bash tool_input from stdin; silently rewrite run_in_background=true → false for non-canonical commands
@@ -41,9 +45,9 @@ def _parse_input():
     except Exception:
         return None, False, None
 
-# True if command is exactly the canonical background timer form and nothing else
+# True if command is the canonical background timer OR the reddit indexer (both whitelisted)
 def _is_canonical(command: str) -> bool:
-    return bool(_CANONICAL.match(command))
+    return bool(_CANONICAL.match(command) or _INDEXER_CANONICAL.search(command))
 
 # Build allow+updatedInput dict flipping run_in_background to false; return it (caller handles print)
 def _emit_rewrite(command: str) -> dict:

@@ -17,6 +17,7 @@ _HOOK_SCRIPTS = [
     ("rewrite_chained_sleep.py",         "Bash"),
     ("rewrite_rag_cli_search_noise.py",  "Bash"),
     ("block_unauthorized_background.py", "Bash"),
+    ("rewrite_reddit_index_background.py", "Bash"),
     ("block_broad_grep.py",              "Bash"),
     ("block_git_destructive.py",         "Bash"),
     ("rewrite_bd_invalid_repo.py",       "Bash"),
