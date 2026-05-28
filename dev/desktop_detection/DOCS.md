@@ -40,12 +40,14 @@ Pipeline gap: UUID is Ghostty-internal; macOS CGS APIs need `CGWindowID` (kCGWin
 
 | Hypothesis | Status | Evidence |
 |---|---|---|
-| AppleScript bounds → bounds-match → CGWindowID | **Excluded** | `-1728` on `bounds of terminal id "UUID"` and `bounds of window` |
+| AppleScript bounds → bounds-match → CGWindowID | **Excluded** | `-1728` on `bounds of terminal id "UUID"`, `bounds of window 1`, `position of window 1` — AS has zero geometry at any level |
 | AppleScript tab traversal → UUID→window_id → kCGWindowName match | **Confirmed** ✅ | `id of terminal of tab` works; kCGWindowName = focused tab title |
 | CGS space detection pipeline (CGSCopyManagedDisplaySpaces + CGSCopySpacesForWindows) | **Confirmed** ✅ | Returns correct desktop_no for all tested WIDs |
 | OSC-2 injection required for ambiguous window names | **Active** | Fires when CC tab is not the focused tab in its Ghostty window |
 | TCC blocks window enumeration (kCGWindowOwnerPID) in launchd/bundle context | **Excluded** ❌ | 02_context_comparison_probe: all 3 contexts return 17 Ghostty windows with correct PID |
 | TCC strips kCGWindowName in launchd/bundle context | **Confirmed** ✅ | kCGWindowName=null for all Ghostty+Finder windows in launchd/bundle; CC-Bash has full titles |
+| kCGWindowBounds available without Screen Recording | **Confirmed** ✅ | 03_field_availability_probe: 280/280 populated in launchd and bundle contexts |
+| AX/_AXUIElementGetWindow viable in launchd context | **Pending** | Next probe — different TCC surface (Accessibility vs Screen Recording) |
 
 ## Scripts
 
@@ -92,3 +94,28 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 ### `02_bundle_stub.app/`
 
 Minimal `.app` bundle (CFBundleIdentifier=`com.brunowinter.monitor_cc_menubar`, ad-hoc signed) used to run the probe in bundle-exec context (same exec chain as production menubar). Launcher: `Contents/MacOS/launcher` → `exec venv/python3 02_context_comparison_probe.py --tag=bundle`.
+
+### `03_field_availability_probe.py` (260 LOC)
+
+Dumps ALL CGWindow dict fields across all windows in three contexts to determine which fields survive TCC stripping. Adds AS geometry query documentation. Builds on probe02's ObjC bridge; adds `_dict_all_keys()` + `_cf_describe()` helpers for full-dict enumeration.
+
+**Usage:**
+```bash
+cd /Users/brunowinter2000/Documents/ai/Monitor_CC
+# Context 1 — CC-Bash (direct):
+.claude/worktrees/probe03-fields/venv/bin/python \
+  .claude/worktrees/probe03-fields/dev/desktop_detection/03_field_availability_probe.py --tag=ccbash
+
+# Context 2 — launchd (one-shot LaunchAgent plist, see B3_field_availability_probe.md)
+# Context 3 — bundle (open -n 03_bundle_stub.app/, see B3_field_availability_probe.md)
+```
+
+**Requires:** Ghostty running.
+
+**Output:** JSON report in `03_reports/<tag>_<YYYYMMDD_HHMMSS>.json` with context_diagnostics, tcc_state, all_field_keys_observed, field_availability_summary, ghostty_windows_detailed, ghostty_as_window_properties.
+
+**Key findings:** `kCGWindowBounds` fully populated (280/280) in all three contexts including launchd — TCC-unblocked. AS returns `-1728` for `bounds of window N` in all contexts regardless of Screen Recording status — not a TCC issue, simply not implemented in Ghostty's AS dictionary. `kCGWindowBackingLocationVideoMemory` not returned by the API on macOS 15.7.7. See `decisions/OldThemes/desktop_allocation/B3_field_availability_probe.md`.
+
+### `03_bundle_stub.app/`
+
+Minimal `.app` bundle (CFBundleIdentifier=`com.brunowinter.monitor_cc_menubar`, ad-hoc signed) for probe03 bundle-context run. Launcher points to probe03-fields worktree venv + `03_field_availability_probe.py --tag=bundle`. Separate from `02_bundle_stub.app/` because each stub hardcodes its worktree path.

@@ -1,0 +1,701 @@
+{
+  "tag": "launchd",
+  "timestamp": "2026-05-28T17:58:57.962441",
+  "context_diagnostics": {
+    "own_pid": 38321,
+    "executable_path": "/Users/brunowinter2000/Documents/ai/Monitor_CC/venv/bin/python3",
+    "parent_pid": 1,
+    "parent_name": "/sbin/launchd",
+    "env_tcc_relevant": {
+      "__CFBundleIdentifier": null,
+      "XPC_SERVICE_NAME": "com.brunowinter.probe03ctx",
+      "LAUNCHD_SOCKET": null
+    },
+    "codesign_identity": "python3-5555494434e6a87c70583191829b196978832c1c",
+    "codesign_raw": "Executable=/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/bin/python3.14\nIdentifier=python3-5555494434e6a87c70583191829b196978832c1c\nFormat=Mach-O thin (arm64)\nCodeDirectory v=20400 size=489 flags=0x2(adhoc) hashes=9+2 location=embedded\nHash type=sha256 size=32\nCandidateCDHash sha256=9dcce43a52958c321242adc77d5c23a46a4f941c\nCandidateCDHashFull sha256=9dcce43a52958c321242adc77d5c23a46a4f941c6b60ff46aa40cd532855e189\nHash choices=sha256\nCMSDigest=9dcce43a52958c321242adc77d5c23a46a4f941c6b60ff46aa40cd532855e189\nCMSDigestType=2\nCDHash=9dcce43a52958c321242adc77d5c23a46a4f941c\nSignature=adhoc\nInfo.plist=not bound\nTeamIdentifier=not set\nSealed Resources=none\nInternal requirements count=0 size=12",
+    "bundle_id_nsbundle": "org.python.python",
+    "responsible_pid": null,
+    "responsible_name": null
+  },
+  "tcc_state": {
+    "db_path": "/Users/brunowinter2000/Library/Application Support/com.apple.TCC/TCC.db",
+    "readable": false,
+    "screen_capture_rows": [],
+    "note": "unreadable: unable to open database file"
+  },
+  "ghostty_pid": 1250,
+  "all_field_keys_observed": [
+    "kCGWindowLayer",
+    "kCGWindowMemoryUsage",
+    "kCGWindowSharingState",
+    "kCGWindowOwnerPID",
+    "kCGWindowNumber",
+    "kCGWindowOwnerName",
+    "kCGWindowStoreType",
+    "kCGWindowBounds",
+    "kCGWindowAlpha",
+    "kCGWindowIsOnscreen",
+    "kCGWindowName"
+  ],
+  "field_availability_summary": {
+    "kCGWindowLayer": {
+      "populated_count": 280,
+      "null_count": 0,
+      "sample_value": 0
+    },
+    "kCGWindowMemoryUsage": {
+      "populated_count": 280,
+      "null_count": 0,
+      "sample_value": 2288
+    },
+    "kCGWindowSharingState": {
+      "populated_count": 280,
+      "null_count": 0,
+      "sample_value": 0
+    },
+    "kCGWindowOwnerPID": {
+      "populated_count": 280,
+      "null_count": 0,
+      "sample_value": 1246
+    },
+    "kCGWindowNumber": {
+      "populated_count": 280,
+      "null_count": 0,
+      "sample_value": 9417
+    },
+    "kCGWindowOwnerName": {
+      "populated_count": 280,
+      "null_count": 0,
+      "sample_value": "CursorUIViewService"
+    },
+    "kCGWindowStoreType": {
+      "populated_count": 280,
+      "null_count": 0,
+      "sample_value": 1
+    },
+    "kCGWindowBounds": {
+      "populated_count": 280,
+      "null_count": 0,
+      "sample_value": {
+        "X": 0,
+        "Y": 1063,
+        "Width": 54,
+        "Height": 54
+      }
+    },
+    "kCGWindowAlpha": {
+      "populated_count": 280,
+      "null_count": 0,
+      "sample_value": 1
+    },
+    "kCGWindowIsOnscreen": {
+      "populated_count": 23,
+      "null_count": 257,
+      "sample_value": 1
+    },
+    "kCGWindowName": {
+      "populated_count": 10,
+      "null_count": 270,
+      "sample_value": "Menubar"
+    }
+  },
+  "ghostty_windows_detailed": [
+    {
+      "window_id": 5637,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 1,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 5637,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 1,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 1 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "30:36: execution error: \u201eGhostty\u201c hat einen Fehler erhalten: \u201ebounds of window 1\u201c kann nicht gelesen werden. (-1728)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 5582,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 5582,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 2 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "30:36: execution error: \u201eGhostty\u201c hat einen Fehler erhalten: \u201ebounds of window 2\u201c kann nicht gelesen werden. (-1728)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 3596,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 3596,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 3 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 674,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 674,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 4 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 431,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 431,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 5 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 365,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 617,
+        "Width": 54,
+        "Height": 54
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 365,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 617,
+          "Width": 54,
+          "Height": 54
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 6 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 364,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 364,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 7 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 721,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 721,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 8 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 9369,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowIsOnscreen": 1,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowNumber": 9369,
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 9 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 582,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowIsOnscreen": 1,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowNumber": 582,
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 10 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 580,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowIsOnscreen": 1,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowNumber": 580,
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 11 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 3702,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 3702,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 12 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 3656,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 3656,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 13 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 68,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 0,
+        "Width": 1728,
+        "Height": 37
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 68,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 0,
+          "Width": 1728,
+          "Height": 37
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 14 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 67,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 0,
+        "Width": 1728,
+        "Height": 37
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 67,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 0,
+          "Width": 1728,
+          "Height": 37
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 15 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 66,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 0,
+        "Width": 1728,
+        "Height": 37
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 66,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 0,
+          "Width": 1728,
+          "Height": 37
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 16 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 63,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 0,
+        "Width": 1728,
+        "Height": 37
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 63,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 0,
+          "Width": 1728,
+          "Height": 37
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 17 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    },
+    {
+      "window_id": 9547,
+      "owner_pid": 1250,
+      "cg_window_name": null,
+      "cg_window_bounds": {
+        "X": 0,
+        "Y": 38,
+        "Width": 1728,
+        "Height": 998
+      },
+      "cg_window_all_fields": {
+        "kCGWindowLayer": 0,
+        "kCGWindowMemoryUsage": 2288,
+        "kCGWindowSharingState": 0,
+        "kCGWindowOwnerPID": 1250,
+        "kCGWindowNumber": 9547,
+        "kCGWindowOwnerName": "Ghostty",
+        "kCGWindowStoreType": 1,
+        "kCGWindowBounds": {
+          "X": 0,
+          "Y": 38,
+          "Width": 1728,
+          "Height": 998
+        },
+        "kCGWindowAlpha": 1
+      },
+      "as_bounds_method": "bounds of window 18 of application \"Ghostty\"",
+      "as_bounds_result": null,
+      "as_bounds_error": "skipped (only first two windows queried)",
+      "rect_match": null,
+      "rect_diff": null
+    }
+  ],
+  "ghostty_as_window_properties": {
+    "window_property_query": "properties of window 1 of application \"Ghostty\"",
+    "window_property_raw": "id:tab-group-600002a28510, name:\u2733 Next-Session-Scope: Crosspost Dedup + Indexing Performance Measurement, selected tab:tab id tab-10d80e080 of window id tab-group-600002a28510, class:window",
+    "window_property_error": null,
+    "discovered_keys": [
+      "id",
+      "name",
+      "selected tab",
+      "class"
+    ],
+    "bounds_query_tested": "bounds of window 1 of application \"Ghostty\"",
+    "bounds_result": null,
+    "bounds_error": "30:36: execution error: \u201eGhostty\u201c hat einen Fehler erhalten: \u201ebounds of window 1\u201c kann nicht gelesen werden. (-1728)",
+    "position_query_tested": "position of window 1 of application \"Ghostty\"",
+    "position_result": null,
+    "position_error": "30:38: execution error: \u201eGhostty\u201c hat einen Fehler erhalten: position of window 1 kann nicht in Typ specifier umgewandelt werden. (-1700)",
+    "geometry_verdict": "AS_NOT_EXPOSED"
+  }
+}

@@ -1,0 +1,4 @@
+#!/bin/bash
+exec "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/probe03-fields/venv/bin/python3" \
+     "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/probe03-fields/dev/desktop_detection/03_field_availability_probe.py" \
+     --tag=bundle
