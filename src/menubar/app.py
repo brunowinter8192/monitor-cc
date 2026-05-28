@@ -153,19 +153,21 @@ class _PanelController(NSObject):
         rumps.quit_application()
 
     def restartApp_(self, sender):
-        from .setup_menubar import write_plist
-        write_plist()   # resync ~/Library/LaunchAgents plist (points to Monitor_CC_Menubar for py2app)
         uid = os.getuid()
         label = 'com.brunowinter.monitor_cc_menubar'
         if getattr(sys, 'frozen', False):
-            # py2app bundle mode: pure launchctl cycle — NO bundle rebuild, no Python invocation
+            # py2app bundle mode: write plist pointing to native binary, pure launchctl cycle
+            from .setup_menubar import write_plist_py2app
+            write_plist_py2app()
             dest = str(Path.home() / 'Library' / 'LaunchAgents' / f'{label}.plist')
             cmd = (
                 f'sleep 0.5 && launchctl bootout gui/{uid}/{label} 2>/dev/null ; '
                 f'launchctl bootstrap gui/{uid} "{dest}"'
             )
         else:
-            # Dev/venv mode: run setup_menubar.py to rebuild Bash bundle + rebootstrap
+            # Dev/venv mode: write plist pointing to Bash launcher, run setup_menubar.py to rebootstrap
+            from .setup_menubar import write_plist
+            write_plist()
             cmd = f'sleep 0.5 && "{sys.executable}" "{_SETUP_PY}"'
         subprocess.Popen(['sh', '-c', cmd], start_new_session=True)
         rumps.quit_application()   # clean status-bar teardown; launchd starts new instance
