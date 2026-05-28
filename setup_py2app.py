@@ -17,7 +17,9 @@
 #
 # Does NOT install to ~/Applications/ — user copies manually after review.
 
+import shutil
 import sys
+from pathlib import Path
 from setuptools import setup
 
 _PYTHON_VER = f'{sys.version_info.major}.{sys.version_info.minor}'
@@ -79,6 +81,30 @@ OPTIONS = {
     },
 }
 
+
+# Whitelist: every src.X the menubar imports directly or transitively outside src.menubar.
+# discover.py: from ..session_finder → session_finder.py
+# session_finder.py: from .constants → constants.py
+# NO other cross-package src imports exist (verified via grep).
+_BUNDLE_SRC_KEEP = {'menubar', 'session_finder.py', 'constants.py', '__init__.py', '__pycache__'}
+
+
+# Prune the bundle's src/ to whitelist only — prevents copy_package_data() from
+# copying src/logs/ (15 GB runtime proxy logs, no __init__.py → swept wholesale by py2app).
+def _prune_bundle_bloat() -> None:
+    src_lib = (Path('dist/Monitor_CC_Menubar.app/Contents/Resources')
+               / f'lib/python{_PYTHON_VER}/src')
+    if not src_lib.exists():
+        return
+    removed = []
+    for entry in src_lib.iterdir():
+        if entry.name not in _BUNDLE_SRC_KEEP:
+            shutil.rmtree(entry) if entry.is_dir() else entry.unlink()
+            removed.append(entry.name)
+    if removed:
+        print(f'  pruned from bundle src/: {", ".join(sorted(removed))}')
+
+
 setup(
     name='Monitor_CC_Menubar',
     app=APP,
@@ -86,3 +112,6 @@ setup(
     options={'py2app': OPTIONS},
     setup_requires=['py2app'],
 )
+
+if 'py2app' in sys.argv:
+    _prune_bundle_bloat()
