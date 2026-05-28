@@ -50,6 +50,7 @@ _det_cache: Dict[str, Optional[int]] = {}
 _det_cache_ts: float = 0.0
 _det_cache_cwds: frozenset = frozenset()
 _cgw_title_diag_logged: bool = False
+_last_result: Dict[str, Optional[int]] = {}  # previous cycle result for transition detection
 
 # ORCHESTRATOR
 
@@ -62,12 +63,13 @@ def detect_main_desktop_numbers(
     cwd_tty_map:  Dict[str, str],
     now: float,
 ) -> Dict[str, Optional[int]]:
-    global _det_cache, _det_cache_ts, _det_cache_cwds, _cgw_title_diag_logged
+    global _det_cache, _det_cache_ts, _det_cache_cwds, _cgw_title_diag_logged, _last_result
     _cgw_title_diag_logged = False
     cwds = frozenset(cwd_uuid_map.keys())
     if cwds == _det_cache_cwds and (now - _det_cache_ts) < _DET_CACHE_TTL:
         return _det_cache
     result: Dict[str, Optional[int]] = {cwd: None for cwd in cwds}
+    _cwd_ctx: Dict[str, dict] = {}
     try:
         ghostty_pid_int = _ghostty_pid_int()
         if ghostty_pid_int is not None:
@@ -82,6 +84,8 @@ def detect_main_desktop_numbers(
                 tty            = cwd_tty_map.get(cwd)
                 cgwindow_id    = _resolve_cgwindow_id(win_name, cgwindow_by_name, claimed,
                                                       cid, tty, ghostty_pid_int)
+                _cwd_ctx[cwd]  = {'win': win_name,
+                                   'n_cand': len(cgwindow_by_name.get(win_name, []))}
                 if cgwindow_id is not None:
                     spaces = _spaces_for_wid(cid, cgwindow_id)
                     if spaces:
@@ -98,6 +102,15 @@ def detect_main_desktop_numbers(
     except Exception as exc:
         reason = repr(exc)[:80].replace('\n', ' ')
         log_menubar('detection', f'all_failed n_mains={len(cwds)} reason=error:{reason}')
+    for cwd, new_no in result.items():
+        old_no = _last_result.get(cwd)
+        if new_no == old_no:
+            continue
+        label  = os.path.basename(os.path.dirname(cwd)) + '/' + os.path.basename(cwd)
+        ctx    = _cwd_ctx.get(cwd, {})
+        detail = f'win={repr(ctx.get("win", ""))[:40]} n_cand={ctx.get("n_cand", "?")}'
+        log_menubar('detection', f'transition {label} {old_no}->{new_no} {detail}')
+    _last_result = dict(result)
     _det_cache = result
     _det_cache_ts = now
     _det_cache_cwds = cwds

@@ -17,9 +17,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### desktop_detection.py (330 LOC)
+### desktop_detection.py (343 LOC)
 
-**Purpose:** Batch detection of macOS Mission Control desktop numbers for all Main sessions via private CoreGraphics Services (CGS) APIs + one AppleScript round-trip. Ported from `dev/desktop_detection/01_probe.py`. Three-strategy resolver per window: name-unique → space-elimination → OSC-2 injection. Results cached for `_DET_CACHE_TTL=10s`; force-invalidated when cwd set changes (session add/remove). All errors (Ghostty down, AppleScript failure, CGS error) are caught by the orchestrator, logged as `[detection] all_failed n_mains=N reason=...` (only when ALL mains fail, not on partial), and return all-None. Module-level CFUNCTYPE refs (`_FT_vv`, `_FT_vvv`, etc.) must remain module-level — GC'ing them corrupts the IMP pointer table and causes SIGSEGV.
+**Purpose:** Batch detection of macOS Mission Control desktop numbers for all Main sessions via private CoreGraphics Services (CGS) APIs + one AppleScript round-trip. Ported from `dev/desktop_detection/01_probe.py`. Three-strategy resolver per window: name-unique → space-elimination → OSC-2 injection. Results cached for `_DET_CACHE_TTL=10s`; force-invalidated when cwd set changes (session add/remove). All errors (Ghostty down, AppleScript failure, CGS error) are caught by the orchestrator, logged as `[detection] all_failed n_mains=N reason=...` (only when ALL mains fail, not on partial), and return all-None. **Transition logging** (`_last_result` module state + `_cwd_ctx` per-cycle dict): on desktop-number change per cwd logs `[detection] transition <project>/<repo> <old>-><new> win=<ghostty_window_name> n_cand=<candidates>` — transition-gated, no per-cycle spam; `n_cand=0` = CGWindowList mismatch (confirmed trigger: worker-spawn/send immediately sets `n_cand=0`). Module-level CFUNCTYPE refs (`_FT_vv`, `_FT_vvv`, etc.) must remain module-level — GC'ing them corrupts the IMP pointer table and causes SIGSEGV.
 **Reads:** `ps -A` (Ghostty PID); `osascript` (Ghostty window/tab/UUID traversal); `CGWindowListCopyWindowInfo` (all spaces, all windows); `CGSCopyManagedDisplaySpaces` (space→desktop-no mapping); `CGSCopySpacesForWindows` (per-window space query); `/dev/ttys<NNN>` (OSC-2 injection for space-elimination fallback).
 **Writes:** `/dev/ttys<NNN>` (OSC-2 marker + cleanup); `_det_cache`, `_det_cache_ts`, `_det_cache_cwds` (module state); `src/logs/menubar.log` ([detection] category on all-fail only).
 **Called by:** `discover.py:list_alive_sessions` (`detect_main_desktop_numbers`).
@@ -120,13 +120,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### menubar_log.py (38 LOC)
+### menubar_log.py (39 LOC)
 
-**Purpose:** Unified log sink for all menubar diagnostic categories. All output goes to `src/logs/menubar.log` (ISO-second timestamp + `[category]` prefix per line). `log_menubar(category, message)` appends one line; creates `src/logs/` on first write. `cleanup_old_lines()` drops lines older than 7 days and rewrites the file. Both functions are fully exception-safe (Carbon/AppKit callbacks must never raise). Categories in use: `hotkey` (every press), `abort` (auto-abort decisions + actions), `tick` (diagnostic, gated on `MENUBAR_DIAGNOSTICS=1`), `cursor` (gated on `MENUBAR_CURSOR_DEBUG`).
-**Reads:** `src/logs/menubar.log` (`cleanup_old_lines` only).
-**Writes:** `src/logs/menubar.log` (append on each `log_menubar` call; creates dir + file on first write).
-**Called by:** `hotkey.py` (`log_menubar`); `app.py` (`log_menubar`, lazy `cleanup_old_lines` via import inside `_tick`); `bg_timer.py` (`log_menubar`); `panel.py` (`log_menubar`).
-**Calls out:** stdlib (`datetime`, `pathlib`) only.
+**Purpose:** Unified log sink for all menubar diagnostic categories. All output goes to `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/menubar.log` (ISO-second timestamp + `[category]` prefix per line). `log_menubar(category, message)` appends one line. `cleanup_old_lines()` drops lines older than 7 days and rewrites the file. Both functions are fully exception-safe (Carbon/AppKit callbacks must never raise). Categories in use: `hotkey` (every press), `abort` (auto-abort decisions + actions), `detection` (desktop-number transition + failures), `tick` (diagnostic, gated on `MENUBAR_DIAGNOSTICS=1`), `cursor` (gated on `MENUBAR_CURSOR_DEBUG`).
+**Reads:** `_APP_SUPPORT/menubar.log` (`cleanup_old_lines` only).
+**Writes:** `_APP_SUPPORT/menubar.log` (append on each `log_menubar` call).
+**Called by:** `hotkey.py` (`log_menubar`); `app.py` (`log_menubar`, lazy `cleanup_old_lines` via import inside `_tick`); `bg_timer.py` (`log_menubar`); `panel.py` (`log_menubar`); `desktop_detection.py` (`log_menubar`).
+**Calls out:** `datetime` (stdlib); `.paths` (`_APP_SUPPORT`).
 
 ---
 
