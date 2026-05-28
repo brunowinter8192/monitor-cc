@@ -49,9 +49,9 @@ Phase A des Probe-Workers entdeckte dass AppleScript `bounds of (window of termi
 ## Etappen
 
 1. **Etappe 1 — Detection-Probe** (`dev/desktop_detection/01_probe.py`, commit `fee6566`): ✅ DONE. 100% Detection-Erfolg, proven. Cwd-Drift-Bug aufgedeckt + gefixt in `1725bfb`. Phase A/B Log in `A1_detection_probe.md`.
-2. **Etappe 2 — Menubar-Display Desktop-Nr**: PENDING. SessionInfo bekommt `desktop_no` Feld, `panel.py` zeigt es als `[N]` Prefix. Konflikt-Detection (2 Mains auf einem Desktop) → Error-Marker. Hängt strukturell von Etappe 1 ab, jetzt unblocked.
-3. **Etappe 3 — Worker-Placement auf Caller-Desktop** (`Meta/blank/src/spawn/tmux_spawn.sh:open_tmux_viewer`, commit `cfd0d14`): ✅ DONE. Nach osascript-Window-Spawn wird `python3 desktop_targeting.py wait-and-move "$PPID" "Ghostty" 5` im Hintergrund aufgerufen. Pending Live-Verifikation nach `plugin-publish`.
-4. **Etappe 4 — File-Open-Placement** (`Meta/blank/bin/show`, commit `cfd0d14`): ✅ DONE. Identische Pattern: nach `open` Helper-Call mit `app_name` (CotEditor für md/txt, leer für andere → cross-app Polling). Siehe `file_open_routing.md` für Details. Pending Live-Verifikation nach `plugin-publish` (Helper liegt im selben Commit).
+2. **Etappe 2 — Menubar-Display Desktop-Nr**: ⏸ ON ICE (2026-05-28). Code-complete in commit-chain `15c0319` → `5507c89` → `a719139` → `19986b9` → `3f0f0c7` (Spinner-normalize + CGSCopyWindowProperty + .app-Bundle-Wrapper). Detection-Pipeline architectural sauber implementiert und funktional bewiesen — aber TCC-Restriction für launchd-spawned Python verhindert dass die Menubar Owner-PIDs für Ghostty-Windows sieht. Volle Investigation + Future-Refactor-Pfade in `B1_tcc_responsibility_chain.md`. Nächste Session: py2app oder nuitka Refactor.
+3. **Etappe 3 — Worker-Placement auf Caller-Desktop** (`Meta/blank/src/spawn/tmux_spawn.sh:open_tmux_viewer`, commit `cfd0d14`): ✅ DONE. Nach osascript-Window-Spawn wird `python3 desktop_targeting.py wait-and-move "$PPID" "Ghostty" 5` im Hintergrund aufgerufen. Funktional verifiziert — TCC unbetroffen weil Helper aus CC-Bash-Subprocess-Kontext läuft (Screen-Recording von CC vererbt via Responsibility-Chain).
+4. **Etappe 4 — File-Open-Placement** (`Meta/blank/bin/show`, commit `cfd0d14`): ✅ DONE. Identische Pattern: nach `open` Helper-Call mit `app_name` (CotEditor für md/txt, leer für andere → cross-app Polling). Siehe `file_open_routing.md` für Details. Funktional verifiziert via Helper-Aufruf aus CC-Kontext. Caveat: aus Terminal.app ohne Screen-Recording würde auch dort failen — User-spezifischer Use-Case betrifft das nicht.
 
 ## Etappe 2 — Phase B Implementation (2026-05-28)
 
@@ -82,19 +82,28 @@ Mains found: 2
 
 Detection successful, 100%, strategy-breakdown expected to be `name-unique:2` or `osc2-injection:1` depending on focused tab state.
 
-## Status (2026-05-28)
+## Status (2026-05-28 — Session End)
 
-- **Etappe 1**: ✅ Done + verifiziert (probe lief 2× sauber, 100% Erfolg)
-- **Etappe 2**: ✅ Done — `desktop_detection.py` + `SessionInfo.desktop_no` + panel prefix + hotkey mapping, commit on branch `cwd-exit-fix`
-- **Etappe 3 + 4**: code-complete in blank/ commit `cfd0d14`, pending `plugin-publish` + Live-Test
-- **Cwd-Drift-Bug (Nebenstrang)**: ✅ Done + gemerged, pending User Live-Verify (Menubar-Restart + Cmd+2/3)
-- **TCC-Identity-Fix (Nebenstrang)**: ✅ Done — `setup_menubar.py` baut jetzt `~/Applications/Monitor_CC_Menubar.app` Bundle + ad-hoc Codesign; launchd-plist auf Bundle-Launcher umgestellt. Pending: User-TCC-Grant in System Settings (Screen Recording → `Monitor_CC_Menubar.app` → ON). Ohne Grant: `CGSCopyWindowProperty` liefert keine Titles im launchd-Kontext → `all_failed`. Mit Grant: Detection sollte zuverlässig auf `osc2_match`/`name-unique` umschalten.
+- **Etappe 1** ✅: Detection-Probe `dev/desktop_detection/01_probe.py` — 100% Erfolg im Shell-Kontext, proven
+- **Etappe 2** ⏸ ON ICE: Code-complete, aber TCC-Restriction blockiert Detection im launchd-spawned Menubar-Process. User-Grant für die `Monitor_CC_Menubar.app` Bundle aktiviert, trotzdem blockiert — root cause empirisch identifiziert: `exec` von Bash-Launcher zu Python verliert Bundle-Identity (Audit Token bei API-Call ist Python.app, nicht unser Bundle). Volle Investigation + drei Refactor-Pfade (py2app / nuitka / shell-helper) dokumentiert in `B1_tcc_responsibility_chain.md`. **Resume next session via Bead.**
+- **Etappe 3** ✅: Worker-Spawn-Placement — verifiziert dass Helper aus CC-Bash-Subprocess space_id korrekt detektiert (TCC-Inheritance von CC funktional)
+- **Etappe 4** ✅: show-File-Open-Placement — identische Pattern, gleich verifiziert
+- **Cwd-Drift-Bug**: ✅ Done — Mains zeigen Project-Root-Name (nicht mehr drift via JSONL-cwd), Cmd+digit-Focus funktional
+- **Hotkey-Logging**: ✅ Done — alle Carbon-Hotkeys loggen nach `src/logs/menubar.log`
+- **Main-Exit-Detection**: ✅ Done — exited Mains verschwinden binnen ~1.5s aus Panel (statt 1h JSONL-Stale-Wait)
+- **TCC-Identity-Architecture**: Bundle-Wrapper unter `~/Applications/Monitor_CC_Menubar.app` ad-hoc-signed; launchd-plist auf Bundle-Launcher umgestellt. Foundation für py2app-Refactor, kostet im aktuellen State nichts (menubar läuft genau wie vorher).
 
-### TCC-Bypass Architektur (Zusammenfassung)
+### TCC-Investigation Zusammenfassung (warum Etappe 2 stuck ist)
 
-Root-cause der `all_failed`-Loops war eine vierstufige Permission-Kette: `kCGWindowName` (TCC-gated) durch `CGSCopyWindowProperty` ersetzt ✅ → Spinner-Glyph-Race durch `_normalize_window_title()` gefixed ✅ → Process-Identity (launchd hat keine User-Permissions) durch Bundle-Wrapper gefixed ✅ → User-TCC-Grant ausstehend (manueller Schritt, kein Code).
+Sequenz der Fix-Attempts und warum jeder gefailed:
+1. Screen-Recording-Grant für Homebrew `Python.app` → User-Shell-Kontext funktional, launchd-Kontext nicht (Responsibility-Chain wurzelt bei launchd ohne Grant)
+2. `CGSCopyWindowProperty` private SkyLight-API statt `kCGWindowName` → identisches Failure-Pattern (TCC-Gate ist nicht API-bound sondern Process-Visibility-bound)
+3. Spinner-Glyph-Normalisierung → orthogonaler Fix der bleibt; löst nicht TCC sondern Title-Matching-Edge-Case
+4. `.app` Bundle wrap mit ad-hoc Codesign → Bundle-Identity korrekt registriert in TCC, User grant ON → **trotzdem blockiert**, weil Bash-Launcher exec'd zu Python und Audit-Token nach exec = Python.app
 
-Helper-Process-Ansatz (daemon-Process der Screen-Recording-Permission hält) wurde bewusst NICHT gewählt — Bundle-Wrapper ist sauberer, keine Race-Conditions, keine IPC.
+**Root cause final:** TCC-Audit-Token wird per Process zur API-Call-Zeit ermittelt. `exec` replaced den Process — Bundle-Identity geht verloren. Nur native-Mach-O-Bundle (py2app oder nuitka) löst das sauber.
+
+**Helper-Process-Alternative**: separater Detection-Helper aus User-Shell-Kontext (Auto-Start via Login Items) der per JSON-File mit Menubar IPC'd — wäre Workaround ohne Refactor. Aufwand vs py2app vergleichbar. Beide Optionen offen für nächste Session.
 
 ## Anhang — Worker-Death Notiz
 
