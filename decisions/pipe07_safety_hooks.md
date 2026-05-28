@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-19 safety hooks registered globally in `~/.claude/settings.json`. All 19 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 15 block hooks (exit 2) + 4 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_git_ambiguous`, `block_path_typo` (legacy name, rewrite semantics).
+17 safety hooks registered globally in `~/.claude/settings.json`. All 17 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 14 block hooks (exit 2) + 3 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `block_path_typo` (legacy name, rewrite semantics).
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -128,22 +128,6 @@
 **Rationale:** CC rejects reads above 256KB with a size error — hook surfaces the error before the round-trip and provides the `grep` + offset/limit fix path inline.
 
 **Fail-open:** exits 0 when `file_path` absent, not a string, file doesn't exist, or `getsize()` raises.
-
-### Hook 8 — `block_read_worktree.py` (`src/hooks/block_read_worktree.py`)
-
-- **Registration:** `PreToolUse` / `matcher: "Read"` — fires for every Read tool call
-- **Command:** `python3 <absolute-path>/src/hooks/block_read_worktree.py`
-- **Timeout:** 5s
-
-**Detection:** `tool_input.file_path` contains `.claude/worktrees/` AND the path is NOT under the calling session's own worktree root (derived from `os.getcwd()`)
-
-**Blocked patterns:** Read on a foreign worktree path (main session reading a worker's file, or one worker reading another worker's file) — triggers CLAUDE.md re-injection into context
-
-**Allowed patterns:** file_path outside any worktree; file_path inside the calling session's own worktree; parse errors (fail-open)
-
-**Rationale:** Reading any file under `.claude/worktrees/...` via the Read tool re-injects CLAUDE.md as a system-reminder, bloating the context window and potentially duplicating the system prompt. Added 2026-05-21 during friction-reduction pass.
-
-**Fail-open:** exits 0 on any parse error; `_is_own_worktree()` returns False on any `os.getcwd()` exception → conservative block rather than silent allow for unknown CWD.
 
 ### Hook 9 — `block_bd_cli_worker.py` (`src/hooks/block_bd_cli_worker.py`)
 
@@ -298,44 +282,9 @@
 
 **Fail-open:** exits 0 on any parse error.
 
-### Hook 18 — `rewrite_git_ambiguous.py` (`src/hooks/rewrite_git_ambiguous.py`)
-
-- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
-- **Command:** `python3 <absolute-path>/src/hooks/rewrite_git_ambiguous.py`
-- **Timeout:** 5s
-- **Hook type:** block-with-hint (exit 2 + one-line stderr). Originally designed as `updatedInput` rewrite (allow + JSON), but live testing 2026-05-22 confirmed CC does NOT apply `updatedInput` for general PreToolUse + `allow` decisions on Bash — that path is restricted to the `AskUserQuestion` tool (per CC CHANGELOG line 1324). General Bash rewrite would require `permissionDecision: "ask"` (CHANGELOG line 2629), which adds confirmation friction — rejected by design. Hook detects the same patterns and surfaces a one-line stderr hint; the model retries with `--` appended manually.
-
-**Detection (blocks when ALL true):**
-1. Command matches `\bgit\b.*?\b(diff|log|show)\b` (DOTALL)
-2. No standalone ` -- ` path separator present (regex: `(?:^|\s)--(?:\s|$)`)
-3. Either a range token (`[\w./:-]+\.\.[\w./:-]*`) OR a bare ref name (first non-flag token after subcommand matches `^[a-zA-Z0-9][a-zA-Z0-9_/\-]*$`)
-
-**Stderr message:** "BLOCKED: git diff/log/show with bare ref or ..-range — append ` -- ` after the git subcommand args (before any pipe or redirect) to disambiguate branch/ref from path."
-
-**Blocked patterns:**
-- `git diff dev --stat` — bare ref name `dev`, no `--` separator
-- `git log dev..HEAD` — range token `dev..HEAD`, no `--` separator
-- `git -C /path diff dev` — bare ref name `dev`
-
-**Retry forms (user/model appends ` -- ` after subcommand args):**
-- `git diff dev --stat --`
-- `git log dev..HEAD --`
-- `git -C /path diff dev --`
-
-**Passthrough (no block):**
-- `git log dev..HEAD -- src/foo.py` — already has ` -- ` separator
-- `git diff --stat` — no range token, no bare ref
-- `git commit -m "fix"` — not diff/log/show
-
-**Coverage note:** addresses both violation forms from 2026-05-22 data (`dev/tool_use_errors/reports/2026-05-22_opus.md`): bare-name form (`git diff dev --stat`) and range form (`git diff dev..HEAD`). 2 violations in 672 tool_use blocks from 3 Opus JSONL files.
-
-**Edge case (multi-git chain):** when a single Bash invocation chains multiple git commands with one having ` -- ` and another not (e.g. `git diff dev -- --stat ; git diff main`), the second command's missing `--` is masked by the first's presence — hook sees `_has_path_separator=True` for the whole chain. Rare in practice. Recommend not chaining git diff/log/show calls in one Bash invocation.
-
-**Fail-open:** exits 0 with no output (passthrough) on any parse/internal error.
-
 ## Evidenz
 
-**2026-05-22 hook-block analysis** (`dev/hook_firing/analyze.py`, `dev/hook_firing/reports/2026-05-22_012326.md`, 7 days of CC sessions across all projects):
+**2026-05-22 hook-block analysis** (`dev/hook_firing/reports/2026-05-22_012326.md`, 7 days of CC sessions across all projects):
 
 | Hook | Total blocks | FP | FP rate |
 |---|---|---|---|
@@ -354,11 +303,7 @@ All 13 FPs for `block_chained_sleep` were `sleep N ≤ 5` after side-effect comm
 | Diagnostic `&&` chain (Rule 11) | 10 | prompt-hook-candidate |
 | Hook-blocked (existing hooks) | 14 | already handled |
 
-Hook 18 (`rewrite_git_ambiguous`) covers the 2 `git-ambiguous` violations.
-
----
-
-**2026-05-20 compliance run** (`dev/tool_use_errors/analyze.py`, 5 recent monitor_cc logs, 900 tool_use blocks):
+**2026-05-20 compliance run** (5 recent monitor_cc logs, 900 tool_use blocks):
 
 | Rule | Violations | Hook status |
 |---|---|---|
@@ -368,7 +313,7 @@ Hook 18 (`rewrite_git_ambiguous`) covers the 2 `git-ambiguous` violations.
 | Rule 10 (git dev ambiguity) | 1 | Not hookable (reliable detection requires dir check + repo path parsing) |
 | Uncategorized | 19 | Launchctl/menubar errors — not rule violations |
 
-Script: `dev/tool_use_errors/analyze.py`; logs: 5 most recent `api_requests_opus_monitor_cc_*.jsonl`.
+Logs: 5 most recent `api_requests_opus_monitor_cc_*.jsonl` (script superseded by persistent `src/logs/tool_errors.jsonl`, 2026-05-24).
 
 ---
 
@@ -388,10 +333,9 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current 19 hooks + audit logging (no change needed). Pending evaluation after rollout:
-- Do hooks #9–18 (2026-05-22 batch) intercept violations without false positives in live sessions?
+Keep current 17 hooks + audit logging (no change needed). Pending evaluation after rollout:
+- Do hooks #9–17 (2026-05-22 batch) intercept violations without false positives in live sessions?
 - `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
-- `rewrite_git_ambiguous` original `updatedInput` plan: REFUTED 2026-05-22 — CC PreToolUse + `allow` + `updatedInput` does NOT apply on Bash (per CHANGELOG line 1324, this path is `AskUserQuestion`-tool-specific). Hook converted to block-with-hint (exit 2 + stderr). See `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_capabilities.md` Finding 1 for the empirical correction. Future option: re-enable `updatedInput` if Anthropic extends the API to cover general PreToolUse.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.
 
 ## Offene Fragen
