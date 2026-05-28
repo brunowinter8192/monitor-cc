@@ -2,6 +2,7 @@
 import ctypes
 
 from .menubar_log import log_menubar
+from .system import _focus_session
 
 # Digit keycodes: kVK_ANSI_1..9 — NOT sequential; order confirmed from IOKit/hid/IOLLEvent.h
 _DIGIT_KEYCODES = {1: 18, 2: 19, 3: 20, 4: 21, 5: 23, 6: 22, 7: 26, 8: 28, 9: 25}
@@ -263,3 +264,57 @@ def register_cmd_k(callback) -> tuple:
         _EventHotKeyID(_MBAR_SIG, _CMD_K_ID),
         target, 0, ctypes.byref(hk_ref))
     return cb, hk_ref
+
+
+# ORCHESTRATOR
+
+# Per-concern controller for digit (Cmd+1..9) and arrow (Cmd+→/←) hotkey lifecycle (Step 6/6)
+class HotkeyController:
+    def __init__(self, app) -> None:
+        self.app = app
+        self._hotkey_digits_cb   = None   # GC anchor for Cmd+1..9 CFUNCTYPE (module holds; kept for compat)
+        self._hotkey_digits_refs = []     # hk_refs for active Cmd+1..9 registrations
+        self._hotkey_arr_right_ref = None   # hk_ref for active Cmd+→ registration
+        self._hotkey_arr_left_ref  = None   # hk_ref for active Cmd+← registration
+
+    # Register (or re-register) Cmd+1..9 hotkeys mapped by desktop slot → cwd
+    def reregister_digits(self, desktop_to_cwd: dict) -> None:
+        if self._hotkey_digits_refs:
+            unregister_hotkeys(self._hotkey_digits_refs)
+            self._hotkey_digits_refs = []
+            self._hotkey_digits_cb   = None
+        slots = {dn: cwd for dn, cwd in desktop_to_cwd.items() if dn <= 9 and cwd}
+        if not slots:
+            return
+        def _make_digit_cb(slot, cwd):
+            def _cb():
+                log_menubar('hotkey', f'cmd+{slot} → focus {cwd}')
+                _focus_session(cwd)
+            return _cb
+        cb_map = {slot: _make_digit_cb(slot, cwd) for slot, cwd in slots.items()}
+        self._hotkey_digits_cb, self._hotkey_digits_refs = register_cmd_digits(cb_map)
+
+    # Register Cmd+→; stores hk_ref for later unregister
+    def register_arrow_right(self, callback) -> None:
+        _, self._hotkey_arr_right_ref = register_cmd_arrow_right(callback)
+
+    # Register Cmd+←; stores hk_ref for later unregister
+    def register_arrow_left(self, callback) -> None:
+        _, self._hotkey_arr_left_ref = register_cmd_arrow_left(callback)
+
+    # Unregister Cmd+→ and clear stored ref
+    def unregister_arrow_right(self) -> None:
+        unregister_cmd_arrow_right(self._hotkey_arr_right_ref)
+        self._hotkey_arr_right_ref = None
+
+    # Unregister Cmd+← and clear stored ref
+    def unregister_arrow_left(self) -> None:
+        unregister_cmd_arrow_left(self._hotkey_arr_left_ref)
+        self._hotkey_arr_left_ref = None
+
+    # Unregister all Cmd+1..9 hotkeys and clear state
+    def unregister_digits(self) -> None:
+        if self._hotkey_digits_refs:
+            unregister_hotkeys(self._hotkey_digits_refs)
+            self._hotkey_digits_refs = []
+            self._hotkey_digits_cb   = None
