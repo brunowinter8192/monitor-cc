@@ -350,6 +350,13 @@ def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining
     container.addSubview_(tf)
     return container, abort_btn
 
+# Effective desktop number for a project: min desktop_no across its mains, None if all-None.
+def _project_desktop_no(sessions, project_name: str):
+    vals = [s.desktop_no for s in sessions
+            if not s.is_worker and s.project_name == project_name
+            and s.desktop_no is not None]
+    return min(vals) if vals else None
+
 # Compute exact panel height needed to display all sessions; no truncation.
 # Abort buttons (Option B) are embedded in separator views — zero height cost.
 def _compute_required_height(sorted_sessions) -> int:
@@ -398,7 +405,18 @@ def _rebuild_panel_inner(app, sessions, bg_by_project=None) -> None:
     next_tag  = [1]
     abort_tag = 1000   # abort button tags start above session row tags (1..N)
     pw = app._panel_width
-    sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
+    _pdn = {pn: _project_desktop_no(sessions, pn)
+            for pn in {s.project_name for s in sessions}}
+    _INF = float('inf')
+    sorted_sessions = sorted(
+        sessions,
+        key=lambda s: (
+            _pdn[s.project_name] if _pdn[s.project_name] is not None else _INF,
+            s.project_name,   # tie-break on conflict [!N]; keeps None-group order stable
+            s.is_worker,      # mains (False) before workers (True) within project
+            s.name,           # alphabetical within same type
+        )
+    )
     required_h = _compute_required_height(sorted_sessions)
     _resize_panel(app, max(app._panel_min_height, required_h))
     state = 'ON' if app._auto_focus else 'OFF'
