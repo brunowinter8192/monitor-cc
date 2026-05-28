@@ -1,9 +1,10 @@
 # INFRASTRUCTURE
 from datetime import datetime, timedelta
-from pathlib import Path
 
-PROJECT_ROOT   = Path(__file__).resolve().parents[2]
-MENUBAR_LOG    = PROJECT_ROOT / 'src' / 'logs' / 'menubar.log'
+# From paths.py: APP_SUPPORT dir (~/.../com.brunowinter.monitor_cc_menubar/)
+from .paths import _APP_SUPPORT
+
+MENUBAR_LOG    = _APP_SUPPORT / 'menubar.log'
 RETENTION_SECS = 7 * 86400
 
 # FUNCTIONS
