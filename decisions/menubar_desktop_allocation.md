@@ -13,12 +13,14 @@
 | Embedded Python | `Python.framework/Versions/3.14/Python` (5.1MB stripped) |
 | TCC permission required | Screen Recording → `com.brunowinter.monitor_cc_menubar` |
 | Audit token at CGWindowList call | `com.brunowinter.monitor_cc_menubar` (native launcher, no exec chain) |
+| LaunchAgent | `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist` → `ProgramArguments = [.../Monitor_CC_Menubar]` |
+| Restart mechanism | `restartApp_` → `write_plist_py2app()` + `launchctl bootout` + `launchctl bootstrap`; no bundle rebuild |
 
 **Detection pipeline** (`src/menubar/desktop_detection.py`, 330 LOC, unchanged): three-strategy resolver per Main session window — (1) name-unique: `kCGWindowName` match in exactly one CGWindow → Hit; (2) space-elimination: multiple candidates, query `CGSCopySpacesForWindows` per candidate, eliminate already-claimed spaces → Hit; (3) OSC-2 injection: write `__DET_<hex>` marker to tty, re-match `kCGWindowName` → Hit. Results cached for 10s TTL, force-invalidated on cwd set change.
 
 **Display** (`src/menubar/panel.py` + `src/menubar/discover.py`): mains show `[N]` slot prefix where N = macOS Mission Control desktop number. Conflict (2+ mains on same desktop) shows `[!N]` in red. `app._desktop_to_cwd` populated conflict-free → `_reregister_digit_hotkeys()` maps Cmd+N to the correct Main session.
 
-**Launch**: via `open ~/Applications/Monitor_CC_Menubar.app`. No launchd LaunchAgent active in current production.
+**Launch**: via launchd LaunchAgent (`RunAtLoad=true`) or manually via `open ~/Applications/Monitor_CC_Menubar.app`. **Restart**: Restart-Button ruft `write_plist_py2app()` (schreibt `ProgramArguments = [.../Monitor_CC_Menubar]`) dann reinen launchctl bootout+bootstrap — kein Bundle-Rebuild, TCC-Grant bleibt erhalten. `sys.frozen`-Gate in `restartApp_` trennt py2app-Pfad von dev/venv-Pfad.
 
 ## Evidenz
 
@@ -84,7 +86,7 @@ Keep (no change needed) — this IS the SOLL. py2app native bundle solves the TC
 
 3. **Python upgrade breaks the bundle**: if Homebrew upgrades Python 3.14 to a new patch release, the embedded framework stays on 3.14.3 (the build-time version). The bundle remains functional — the embedded Python is self-contained and not affected by Homebrew upgrades. A fresh `py2app` build would pick up the newer Python. This is intentional (`semi_standalone=False`).
 
-4. **Restart button is broken in py2app bundle**: `restartApp_` in `app.py` invokes `sys.executable` + `_SETUP_PY` — both point to bundle-internal paths in the py2app context. The Restart button exits the app but does not re-bootstrap. Fix is a follow-on task.
+4. **Restart button — fixed** (2026-05-28): `restartApp_` gates on `sys.frozen`; py2app branch calls `write_plist_py2app()` (writes `ProgramArguments = [.../Monitor_CC_Menubar]`) then pure launchctl bootout+bootstrap — no bundle rebuild, no Python invocation in helper. See `decisions/OldThemes/menubar_restart_broken/A2_fix.md`. Residual open: dev-mode restart (`sys.frozen=False`) calls `setup_menubar_workflow()` which overwrites an installed py2app bundle — Refactor-Scope, not fixed here.
 
 ## Quellen
 

@@ -13,6 +13,7 @@ _PROJECT_ROOT    = Path(__file__).resolve().parent.parent.parent
 _GUI_TARGET      = f'gui/{os.getuid()}/{_LABEL}'
 _BUNDLE          = Path.home() / 'Applications' / 'Monitor_CC_Menubar.app'
 _BUNDLE_LAUNCHER = _BUNDLE / 'Contents' / 'MacOS' / 'menubar'
+_BUNDLE_EXE      = _BUNDLE / 'Contents' / 'MacOS' / 'Monitor_CC_Menubar'
 
 # ORCHESTRATOR
 
@@ -35,7 +36,7 @@ def setup_menubar_workflow() -> None:
 
 # FUNCTIONS
 
-# Read template, substitute tokens, write to ~/Library/LaunchAgents/
+# Read template, substitute tokens with Bash-launcher path, write to ~/Library/LaunchAgents/
 def write_plist() -> None:
     content = _PLIST_TMPL.read_text(encoding='utf-8')
     content = content.replace('<PROJECT_ROOT>', str(_PROJECT_ROOT))
@@ -43,6 +44,14 @@ def write_plist() -> None:
     _LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
     _DEST.write_text(content, encoding='utf-8')
     print(f'  wrote {_DEST}')
+
+# Read template, substitute tokens with py2app native binary path, write to ~/Library/LaunchAgents/
+def write_plist_py2app() -> None:
+    content = _PLIST_TMPL.read_text(encoding='utf-8')
+    content = content.replace('<PROJECT_ROOT>', str(_PROJECT_ROOT))
+    content = content.replace('<BUNDLE_LAUNCHER>', str(_BUNDLE_EXE))
+    _LAUNCH_AGENTS.mkdir(parents=True, exist_ok=True)
+    _DEST.write_text(content, encoding='utf-8')
 
 # Write Info.plist into bundle Contents/
 def _write_info_plist(contents: Path) -> None:
