@@ -1,0 +1,4 @@
+#!/bin/bash
+exec "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/probe02-context/venv/bin/python3" \
+     "/Users/brunowinter2000/Documents/ai/Monitor_CC/.claude/worktrees/probe02-context/dev/desktop_detection/02_context_comparison_probe.py" \
+     --tag=bundle
