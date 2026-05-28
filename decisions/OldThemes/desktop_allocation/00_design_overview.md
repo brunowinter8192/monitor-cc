@@ -82,12 +82,19 @@ Mains found: 2
 
 Detection successful, 100%, strategy-breakdown expected to be `name-unique:2` or `osc2-injection:1` depending on focused tab state.
 
-## Status (2026-05-27)
+## Status (2026-05-28)
 
 - **Etappe 1**: ✅ Done + verifiziert (probe lief 2× sauber, 100% Erfolg)
 - **Etappe 2**: ✅ Done — `desktop_detection.py` + `SessionInfo.desktop_no` + panel prefix + hotkey mapping, commit on branch `cwd-exit-fix`
 - **Etappe 3 + 4**: code-complete in blank/ commit `cfd0d14`, pending `plugin-publish` + Live-Test
 - **Cwd-Drift-Bug (Nebenstrang)**: ✅ Done + gemerged, pending User Live-Verify (Menubar-Restart + Cmd+2/3)
+- **TCC-Identity-Fix (Nebenstrang)**: ✅ Done — `setup_menubar.py` baut jetzt `~/Applications/Monitor_CC_Menubar.app` Bundle + ad-hoc Codesign; launchd-plist auf Bundle-Launcher umgestellt. Pending: User-TCC-Grant in System Settings (Screen Recording → `Monitor_CC_Menubar.app` → ON). Ohne Grant: `CGSCopyWindowProperty` liefert keine Titles im launchd-Kontext → `all_failed`. Mit Grant: Detection sollte zuverlässig auf `osc2_match`/`name-unique` umschalten.
+
+### TCC-Bypass Architektur (Zusammenfassung)
+
+Root-cause der `all_failed`-Loops war eine vierstufige Permission-Kette: `kCGWindowName` (TCC-gated) durch `CGSCopyWindowProperty` ersetzt ✅ → Spinner-Glyph-Race durch `_normalize_window_title()` gefixed ✅ → Process-Identity (launchd hat keine User-Permissions) durch Bundle-Wrapper gefixed ✅ → User-TCC-Grant ausstehend (manueller Schritt, kein Code).
+
+Helper-Process-Ansatz (daemon-Process der Screen-Recording-Permission hält) wurde bewusst NICHT gewählt — Bundle-Wrapper ist sauberer, keine Race-Conditions, keine IPC.
 
 ## Anhang — Worker-Death Notiz
 

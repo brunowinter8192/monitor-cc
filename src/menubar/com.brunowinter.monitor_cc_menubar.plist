@@ -6,13 +6,10 @@
   <key>Label</key>
   <string>com.brunowinter.monitor_cc_menubar</string>
 
-  <!-- Replace <PROJECT_ROOT> with the absolute path to your Monitor_CC checkout -->
+  <!-- Replaced at setup time: points to Monitor_CC_Menubar.app/Contents/MacOS/menubar launcher -->
   <key>ProgramArguments</key>
   <array>
-    <string><PROJECT_ROOT>/venv/bin/python3</string>
-    <string><PROJECT_ROOT>/workflow.py</string>
-    <string>--mode</string>
-    <string>menubar</string>
+    <string><BUNDLE_LAUNCHER></string>
   </array>
 
   <key>RunAtLoad</key>
