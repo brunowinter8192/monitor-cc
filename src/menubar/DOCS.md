@@ -11,7 +11,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 ## Flow
 
 1. `run()` (system.py) → sets `LSUIElement=1` env → acquires singleton lock → instantiates `CCMenuBarApp` → `app.run()` starts AppKit runloop.
-2. `CCMenuBarApp._tick()` (app.py) fires every 1.5s → `list_alive_sessions()` → auto-focus debounce → `_scan_bg_sleep_timers(cwd_to_project)` → `_auto_abort_check()` → `_aggregate_bg()` → if panel closed: blink on status change; `_rebuild_panel` only on session-set change; if panel open: on None↔Some transition or session-set change call `_rebuild_panel` (adds/removes abort button, grows panel), otherwise `_update_panel_inplace` (updates NSButton attributed titles only, no resize).
+2. `CCMenuBarApp._tick()` (app.py) fires every 1.5s → `list_alive_sessions()` → `_scan_bg_sleep_timers(cwd_to_project)` → `focus.tick()` (auto-focus debounce + auto-abort check) → if panel closed: blink on status change; `panel.rebuild()` only on session-set change; if panel open: on None↔Some transition or session-set change call `panel.rebuild()` (adds/removes abort button, grows panel), otherwise `panel.update_inplace()` (updates NSButton attributed titles only, no resize).
 3. `list_alive_sessions()` (discover.py) → refreshes CC-process cache (proc_cache.py) → refreshes Ghostty TTY-to-UUID mapping (ghostty.py) → scans `~/.claude/projects/*/` → determines working/idle status per session type → checks `/tmp/claude-<uid>/` for in-progress tasks (proc_cache.py).
 4. Click on a main session → `_focus_session(cwd)` (system.py) → looks up Ghostty terminal UUID (ghostty.py) → `focus terminal id "<UUID>"` (Path A) or cwd-match fallback (Path B). Same path triggered by Cmd+1..9 when panel is open (see hotkey.py + app.py lifecycle).
 
@@ -101,13 +101,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (621 LOC) ⚠ over 400 LOC ceiling — split-refactor in progress (Step 3/6 done)
+### app.py (527 LOC) ⚠ over 400 LOC ceiling — split-refactor in progress (Step 5/6 done)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue action handlers (`addQueueRow_`, `toggleQueueEntry_`, `removeQueueEntry_`, `commitQueueField_`, `controlTextDidEndEditing_`) are 1-line delegates to `self._app.queue.handle_*` methods. `_tick` delegates session snapshot to `self.sessions.refresh()`, bead refresh to `self.bead.tick(sessions)`, and queue refresh + conditional rebuild to `self.queue.tick(sessions)`. `_reregister_digit_hotkeys` maps Cmd+N to the Main with `desktop_no=N` (conflict-free only; populated from `_desktop_to_cwd`).
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue action handlers (`addQueueRow_`, `toggleQueueEntry_`, `removeQueueEntry_`, `commitQueueField_`, `controlTextDidEndEditing_`) are 1-line delegates to `self._app.queue.handle_*` methods. `_tick` delegates session snapshot to `self.sessions.refresh()`, focus+abort logic to `self.focus.tick(sessions, bg_by_project, now)`, bead refresh to `self.bead.tick(sessions)`, queue refresh + conditional rebuild to `self.queue.tick(sessions)`, and panel rebuild/update to `self.panel.rebuild()` / `self.panel.update_inplace()`; status snapshot updated via `self.focus.update_statuses(sessions)` at tick-end. `_reregister_digit_hotkeys` maps Cmd+N to the Main with `desktop_no=N` (conflict-free only; populated from `panel._desktop_to_cwd`).
 **Reads:** `self.sessions.refresh()` (via `SessionsController`) + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch.
 **Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `src/logs/menubar.log` ([abort] category via `_abort_log_write`; [tick] category when `MENUBAR_DIAGNOSTICS=1`; [hotkey] category for Cmd+1..9 app-level focus dispatch).
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.bead_controller`, `.queue_controller`, `.panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`deliver_message`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
+**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.focus_controller`, `.bead_controller`, `.queue_controller`, `.panel_manager`, `.panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`deliver_message`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
 
 ---
 
@@ -118,6 +118,17 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Writes:** `self._last_sessions` on each `refresh()` call.
 **Called by:** `app.py:CCMenuBarApp.__init__` (construction); `app.py:CCMenuBarApp._tick`, `app.py:_open_main_panel`, `app.py:_open_queue_panel` (`refresh()`); `queue_controller.py:QueueController.handle_add_row/handle_toggle_entry/handle_remove_entry/handle_commit_field` (`self.app.sessions.refresh()`); `app.py:_PanelController.queryBeadStatus_` (`.data`).
 **Calls out:** `.discover` (`list_alive_sessions`).
+
+---
+
+### focus_controller.py (110 LOC)
+
+**Purpose:** Per-concern controller for auto-focus debounce and auto-abort idle-workers logic (Step 5/6 of CCMenuBarApp composition refactor). `FocusController(app)` owns `_idle_since_ts` (working→idle debounce per main session), `_all_workers_idle_since_ts` (per-project idle timestamp for auto-abort), `_last_statuses` (status snapshot for blink-on-change and auto-focus transition detection). `tick(sessions, bg_by_project, now)` absorbs both the inline auto-focus block and `_auto_abort_check` from `app.py`: auto-focus fires `_focus_session(cwd)` after 3s debounce (gated on `app._auto_focus`; detects working→idle via `self._last_statuses`); auto-abort fires `_abort_bg_sleep_timers` when all workers of a project are idle for ≥5s while a bg timer is running (orchestrator-signal grace window via `ORCHESTRATOR_SIGNAL_BUFFER_SECS`). `statuses_changed(sessions)` replaces `_statuses_changed(sessions, last)` from `app.py`; `update_statuses(sessions)` replaces the two tick-end `_last_statuses = {name: status}` assignments. Module-level helpers `_abort_log_write` and `_has_recent_send_signal` moved verbatim from `app.py`. Settings `_auto_focus` remains on `app` (read by bead/queue/panel controllers); FocusController reads `self.app._auto_focus`.
+**Reads:** `self._idle_since_ts`, `self._all_workers_idle_since_ts`, `self._last_statuses`; `self.app._auto_focus`; `sessions` and `bg_by_project` from callers.
+**Writes:** `self._idle_since_ts` (per-main debounce timestamps); `self._all_workers_idle_since_ts` (per-project idle timestamps); `self._last_statuses` (via `update_statuses`); `src/logs/menubar.log` ([abort] category via `_abort_log_write`).
+**Key signatures:** `FocusController.__init__(app)`, `tick(sessions, bg_by_project, now)`, `statuses_changed(sessions) -> bool`, `update_statuses(sessions) -> None`; module-level: `_abort_log_write(line)`, `_has_recent_send_signal(worker, signals, now)`.
+**Called by:** `app.py:CCMenuBarApp.__init__` (construction); `app.py:CCMenuBarApp._tick` (`focus.tick`, `focus.statuses_changed`, `focus.update_statuses`).
+**Calls out:** `.bg_timer` (`_abort_bg_sleep_timers`); `.menubar_log` (`log_menubar`); `.proc_cache` (`_read_orchestrator_signals`, `ORCHESTRATOR_SIGNAL_BUFFER_SECS`); `.system` (`_focus_session`); `sys`, `datetime`.
 
 ---
 
@@ -136,7 +147,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Purpose:** Unified log sink for all menubar diagnostic categories. All output goes to `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/menubar.log` (ISO-second timestamp + `[category]` prefix per line). `log_menubar(category, message)` appends one line. `cleanup_old_lines()` drops lines older than 7 days and rewrites the file. Both functions are fully exception-safe (Carbon/AppKit callbacks must never raise). Categories in use: `hotkey` (every press), `abort` (auto-abort decisions + actions), `detection` (desktop-number transition + failures), `tick` (diagnostic, gated on `MENUBAR_DIAGNOSTICS=1`), `cursor` (gated on `MENUBAR_CURSOR_DEBUG`).
 **Reads:** `_APP_SUPPORT/menubar.log` (`cleanup_old_lines` only).
 **Writes:** `_APP_SUPPORT/menubar.log` (append on each `log_menubar` call).
-**Called by:** `hotkey.py` (`log_menubar`); `app.py` (`log_menubar`, lazy `cleanup_old_lines` via import inside `_tick`); `bg_timer.py` (`log_menubar`); `panel.py` (`log_menubar`); `desktop_detection.py` (`log_menubar`).
+**Called by:** `hotkey.py` (`log_menubar`); `app.py` (`log_menubar`, lazy `cleanup_old_lines` via import inside `_tick`); `focus_controller.py` (`log_menubar` via `_abort_log_write`); `bg_timer.py` (`log_menubar`); `panel.py` (`log_menubar`); `desktop_detection.py` (`log_menubar`).
 **Calls out:** `datetime` (stdlib); `.paths` (`_APP_SUPPORT`).
 
 ---
@@ -146,7 +157,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Purpose:** `run()` entry point + singleton lock (`_acquire_singleton_lock`) + Ghostty click-to-focus (`_focus_session`). Owns the process-lifecycle concerns; no AppKit dependency.
 **Reads:** `PID_FILE` (`APP_SUPPORT/menubar.pid`, lock file); `get_ghostty_terminal_id(cwd)` from `ghostty.py` on click.
 **Writes:** `PID_FILE` (`APP_SUPPORT/menubar.pid`); `/tmp/monitor_cc_menubar_focus.log` (focus results via osascript).
-**Called by:** `workflow.py` (via `from src.menubar import run` → `__init__.py` → `system.run`); `app.py:_PanelController.focusSession_` + `CCMenuBarApp._tick` (`_focus_session`).
+**Called by:** `workflow.py` (via `from src.menubar import run` → `__init__.py` → `system.run`); `app.py:_PanelController.focusSession_` + `_open_main_panel` + `_reregister_digit_hotkeys` (`_focus_session`); `focus_controller.py:FocusController.tick` (`_focus_session`).
 **Calls out:** `fcntl`, `os`, `subprocess` (osascript), `sys`; `.ghostty` (`get_ghostty_terminal_id`); lazy `.app` (`CCMenuBarApp`) inside `run()` only.
 
 ---
@@ -163,10 +174,10 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ### proc_cache.py (177 LOC)
 
-**Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader, orchestrator-signal reader. Two TTL classes: `_PROC_REFRESH_INTERVAL` = 10s for the expensive `ps -A` / `lsof` caches; `_HOOK_REFRESH_INTERVAL` = 1s for the cheap hooks.json + orchestrator_signals.json reads (must be < POLL_INTERVAL=1.5s so each menubar tick gets a fresh snapshot while intra-tick consumers still see consistency). `_TMUX_REFRESH_INTERVAL` = 3s for `tmux list-sessions`. Exports `ORCHESTRATOR_SIGNAL_BUFFER_SECS = 60s` consumed by `app.py:_auto_abort_check`. Owns `_TASKS_BASE` and `_has_active_bg()`. `_tmux_window_activity(session)` returns unix timestamp of last pane byte-write via `tmux display-message #{window_activity}`; used by `discover.py` for worker stale-demote (replaces JSONL mtime check).
+**Purpose:** Process and state caches — CC process pid→(tty,cwd) mapping, tmux session state, proxy log mtime lookup, hook state reader, orchestrator-signal reader. Two TTL classes: `_PROC_REFRESH_INTERVAL` = 10s for the expensive `ps -A` / `lsof` caches; `_HOOK_REFRESH_INTERVAL` = 1s for the cheap hooks.json + orchestrator_signals.json reads (must be < POLL_INTERVAL=1.5s so each menubar tick gets a fresh snapshot while intra-tick consumers still see consistency). `_TMUX_REFRESH_INTERVAL` = 3s for `tmux list-sessions`. Exports `ORCHESTRATOR_SIGNAL_BUFFER_SECS = 60s` consumed by `focus_controller.py:FocusController.tick`. Owns `_TASKS_BASE` and `_has_active_bg()`. `_tmux_window_activity(session)` returns unix timestamp of last pane byte-write via `tmux display-message #{window_activity}`; used by `discover.py` for worker stale-demote (replaces JSONL mtime check).
 **Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `tmux list-sessions` (tmux state); `tmux display-message #{window_activity}` (per-session, on-demand); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE` (`APP_SUPPORT/hooks.json`); `ORCHESTRATOR_SIGNALS_FILE` (`APP_SUPPORT/orchestrator_signals.json`, written by worker-cli).
 **Writes:** module-level caches (`_cc_proc_cache`, `_tmux_state_cache`, `_proxy_log_mtime_cache`, `_hook_state_cache`, `_orchestrator_signal_cache`).
-**Called by:** `discover.py:list_alive_sessions` (refresh calls); `discover.py:_process_project_dir` (query calls + `_tmux_window_activity`); `ghostty.py:_tty_for_cwd` (`_cc_proc_cache` import); `bg_timer.py:_scan_bg_sleep_timers` (`_cc_proc_cache` import); `bg_timer.py:_abort_bg_sleep_timers` (`_TASKS_BASE` import).
+**Called by:** `discover.py:list_alive_sessions` (refresh calls); `discover.py:_process_project_dir` (query calls + `_tmux_window_activity`); `ghostty.py:_tty_for_cwd` (`_cc_proc_cache` import); `bg_timer.py:_scan_bg_sleep_timers` (`_cc_proc_cache` import); `bg_timer.py:_abort_bg_sleep_timers` (`_TASKS_BASE` import); `focus_controller.py:FocusController.tick` (`_read_orchestrator_signals`, `ORCHESTRATOR_SIGNAL_BUFFER_SECS`).
 **Calls out:** `subprocess` (ps, lsof, tmux).
 
 ---
@@ -286,17 +297,21 @@ discover.py  ← ghostty.py (_refresh_ghostty_tty_to_id, _ghostty_tty_to_id)
 desktop_detection.py → ctypes (CoreGraphics + libobjc); subprocess; .menubar_log
 
 menubar_log.py    → datetime, pathlib only (leaf node)
+focus_controller.py → sys, datetime; .bg_timer (_abort_bg_sleep_timers); .menubar_log (log_menubar);
+                      .proc_cache (_read_orchestrator_signals, ORCHESTRATOR_SIGNAL_BUFFER_SECS);
+                      .system (_focus_session)
 hotkey.py         → ctypes; .menubar_log (log_menubar)
 panel.py          → AppKit, Foundation, itertools; .menubar_log (log_menubar)
+panel_manager.py  → AppKit, Foundation, collections.Counter, itertools.groupby; .panel (constants + factories)
 queue_controller.py → AppKit, Foundation, objc, json, datetime; .panel (constants + helpers);
                       .queue (load_queue, save_queue, deliver_message); .paths (HOOKS_FILE)
 system.py         → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
                     lazy(.app) inside run() only
 queue.py          → json, os, subprocess; .paths (QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE)
 app.py            → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
-                    .sessions_controller, .bead_controller, .queue_controller, .panel,
-                    .hotkey, .system, .discover, .bg_timer, .paths (SETTINGS_FILE),
-                    .queue (deliver_message), .menubar_log (log_menubar)
+                    .sessions_controller, .focus_controller, .bead_controller, .queue_controller,
+                    .panel_manager, .panel, .hotkey, .system, .discover, .bg_timer,
+                    .paths (SETTINGS_FILE), .queue (deliver_message), .menubar_log (log_menubar)
 ```
 
 No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module (exception: `write_plist()` or `write_plist_py2app()` from `setup_menubar.py` are lazy-imported in `app.py:restartApp_` — branch-specific, never both). `menubar_main.py` is the py2app entry point — only imported by the native launcher, not by any module in the package.
@@ -307,21 +322,6 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 
 | Variable | Module | Type | Owner | Description |
 |---|---|---|---|---|
-| `CCMenuBarApp._last_statuses` | app.py | `dict` | app instance | `{name: status}` snapshot for blink-on-change detection; updated every tick. |
-| `CCMenuBarApp._idle_since_ts` | app.py | `dict` | app instance | `{name: float}` timestamps when each main session first went idle (debounce for auto-focus). Cleared on working or has_bg=True. |
-| `CCMenuBarApp._all_workers_idle_since_ts` | app.py | `dict` | app instance | `{project_name: float}` timestamps when ALL workers of a project first went simultaneously idle while a bg timer was running. Cleared when any worker returns to working or the timer disappears. Auto-abort fires after 5s. |
-| `CCMenuBarApp._panel_open` | app.py | `bool` | app instance | True while NSPanel is visible. Gates `_tick` between `_rebuild_panel` (closed) and `_update_panel_inplace` (open). Set/cleared by `_PanelController.togglePanel_`. |
-| `CCMenuBarApp._initialized` | app.py | `bool` | app instance | Lazy-init sentinel: `setMenu_(None)` + button target/action wiring happens in first `_tick` after AppKit runloop starts. |
-| `CCMenuBarApp._displayed_items` | panel.py | `dict` | panel.py (`_rebuild_panel`) | `{name: NSButton}` populated by `_rebuild_panel`; used by `_update_panel_inplace` for O(1) button lookup. Reset on each rebuild. |
-| `CCMenuBarApp._cwd_map` | panel.py | `dict` | panel.py (`_rebuild_panel`) | `{tag: cwd}` for click-to-focus routing. NSButton carries integer tag; `focusSession_` reads `sender.tag()`. Reset on each rebuild. |
-| `CCMenuBarApp._desktop_to_cwd` | panel.py | `Dict[int, str]` | panel.py (`_rebuild_panel`) | `{desktop_no: cwd}` for conflict-free mains only. Populated alongside `_cwd_map` during rebuild; consumed by `_reregister_digit_hotkeys` for Cmd+N mapping. Conflicts (2+ mains on same desktop) excluded. Reset on each rebuild. |
-| `CCMenuBarApp._abort_btns_by_project` | panel.py | `Dict[str, NSButton]` | panel.py (`_rebuild_panel`) | Per-project abort button references. `{}` when no CC sleep timers running. Checked by `_tick` to detect set-change (`new_abort_projs != set(_abort_btns_by_project)`). |
-| `CCMenuBarApp._abort_project_for_tag` | app.py | `Dict[int, str]` | panel.py (`_rebuild_panel`) | Maps NSButton integer tag → project_name for `abortBgTimer_` dispatch. Tags start at 1000 (above session row tags 1..N). |
-| `CCMenuBarApp._toggle_btn` | panel.py | `NSButton` | panel.py (`_make_nspanel`) | Auto-Jump toggle button in fixed top_bar. Created by `_make_nspanel()`; target/action wired in lazy-init tick; title updated by `_rebuild_panel` and `toggleAutoJump_`. |
-| `CCMenuBarApp._panel` | panel.py | `NSPanel` | panel.py (`_make_nspanel`) | The sticky dropdown panel. Created in `__init__`. Resized by `_resize_panel`. |
-| `CCMenuBarApp._panel_sv` | panel.py | `NSStackView` | panel.py (`_make_nspanel`) | Vertical NSStackView filling content area. Arranged subviews rebuilt on each `_rebuild_panel`. |
-| `CCMenuBarApp._panel_quit_btn` | app.py | `NSButton` | panel.py creates, app.py wires | Restart button in fixed footer (right). Target/action wired in lazy-init tick. |
-| `CCMenuBarApp._panel_kill_btn` | app.py | `NSButton` | panel.py creates, app.py wires | Kill button in fixed footer (left of Restart, 8pt gap). Wired to `killApp_` in lazy-init tick. |
 | `CCMenuBarApp._panel_controller` | app.py | `_PanelController` | app.py | Single PyObjC NSObject as ObjC target for all button actions. Held to prevent ARC GC. |
 | `CCMenuBarApp._auto_focus` | app.py | `bool` | app.py | Whether auto-focus is enabled. Loaded from settings; toggled by `toggleAutoJump_`. |
 | `CCMenuBarApp._panel_width` | app.py | `int` | app.py owns, panel.py uses | Current panel width in pts. Loaded from settings (fallback: `PANEL_WIDTH=380`). Reset to `PANEL_WIDTH` on user-initiated fresh open via `togglePanel_` (runtime only, no save). Updated by `windowDidResize_` on user drag. Cycling (`_deferred_close_open`) preserves current value. |
@@ -341,6 +341,8 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp.sessions` | app.py | `SessionsController` | sessions_controller.py | Session snapshot cache. `sessions.refresh()` calls `list_alive_sessions()` and caches result; `sessions.data` returns cached snapshot. Replaces bare `_last_sessions` attr. |
 | `CCMenuBarApp.bead` | app.py | `BeadController` | bead_controller.py | Bead tracker controller. Owns `_bead_data`, `_bead_db_paths`, `_bead_expanded`, `_bead_displayed`, `_bead_expand_tags`, `_bead_untrack_tags`, `_bead_query_tags`, `_bead_tick_counter`. `bead.tick(sessions)` drives counter + refresh; `bead.rebuild()` re-renders NSPanel. |
 | `CCMenuBarApp.queue` | app.py | `QueueController` | queue_controller.py | Queue panel controller. Owns all 11 `_queue_*` attrs (incl. `_queue_open`, `_queue_panel`, `_queue_sv`, `_queue_toggle_btn`, `_queue_data`, `_pending_queue_tags`, `_pending_queue_views`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_queue_displayed_names`). `queue.tick(sessions)` drives data reload + conditional rebuild; `queue.open(sessions)` used on panel-open (forced rebuild). Action handlers: `handle_add_row`, `handle_toggle_entry`, `handle_remove_entry`, `handle_commit_field`, `handle_text_end_editing`, `handle_try_deliver`. |
+| `CCMenuBarApp.panel` | app.py | `PanelManager` | panel_manager.py | Main-session panel controller (Step 4/6). Owns `_panel_open`, `_initialized`, `_displayed_items`, `_cwd_map`, `_desktop_to_cwd`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_rebuild_in_progress`, and NSPanel refs `_panel`, `_panel_sv`, `_panel_quit_btn`, `_toggle_btn`, `_panel_kill_btn`. `panel.rebuild(sessions, bg_by_project)` drives full panel rebuild; `panel.update_inplace(sessions, bg_by_project)` drives in-place dot+badge update. Settings `_auto_focus`, `_panel_width`, `_panel_min_height` remain on `app` (cross-controller shared preferences). |
+| `CCMenuBarApp.focus` | app.py | `FocusController` | focus_controller.py | Auto-focus + auto-abort controller (Step 5/6). Owns `_idle_since_ts` (per-main working→idle debounce timestamps), `_all_workers_idle_since_ts` (per-project idle-since timestamps for auto-abort), `_last_statuses` ({name: status} snapshot for blink-on-change and focus-transition detection). `focus.tick(sessions, bg_by_project, now)` drives both auto-focus and auto-abort per tick. `focus.statuses_changed(sessions)` / `focus.update_statuses(sessions)` replace the two `_last_statuses` update sites in `_tick`. Settings `_auto_focus` remains on `app` (read by all four panel controllers). |
 
 ## Title-Marker Mapping (tty → Ghostty terminal UUID)
 

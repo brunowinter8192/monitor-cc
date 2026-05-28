@@ -6,7 +6,6 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import rumps
@@ -18,8 +17,8 @@ from Foundation import NSObject, NSOperationQueue
 from .discover import list_alive_sessions
 # From bg_timer.py: Background sleep-timer scanning and abort
 from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
-# From proc_cache.py: orchestrator-signal file read + buffer constant for send-event grace
-from .proc_cache import _read_orchestrator_signals, ORCHESTRATOR_SIGNAL_BUFFER_SECS
+# From focus_controller.py: FocusController — auto-focus debounce + auto-abort idle-workers
+from .focus_controller import FocusController
 # From hotkey.py: Carbon Cmd+L, Cmd+1..9, Cmd+arrows, Cmd+K registration
 from .hotkey import (register_cmd_l, register_cmd_digits, unregister_hotkeys,
                      register_cmd_arrow_right, register_cmd_arrow_left,
@@ -92,7 +91,7 @@ class _PanelController(NSObject):
         if app._tracker_open:
             _close_tracker_panel(app)
         else:
-            if app._panel_open:
+            if app.panel._panel_open:
                 _close_main_panel(app)
             _open_tracker_panel(app)
 
@@ -127,7 +126,7 @@ class _PanelController(NSObject):
         app._auto_focus = not app._auto_focus
         _save_settings(app._auto_focus, app._panel_width, app._panel_min_height)
         state = 'ON' if app._auto_focus else 'OFF'
-        app._toggle_btn.setAttributedTitle_(
+        app.panel._toggle_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
                 f'[Sessions] \u00b7 Beads \u00b7 Queue     Auto-Jump: {state}',
                 {NSFontAttributeName: _MENLO()}))
@@ -222,10 +221,8 @@ class _PanelController(NSObject):
 class CCMenuBarApp(rumps.App):
     def __init__(self):
         super().__init__(ICON_NORMAL, quit_button=None, menu=[])
-        self._last_statuses: dict = {}
-        self._idle_since_ts: dict = {}
-        self._all_workers_idle_since_ts: dict = {}
         self._auto_focus, self._panel_width, self._panel_min_height = _load_settings()
+        self.focus = FocusController(self)
         self.panel = PanelManager(self)
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
 
@@ -286,23 +283,9 @@ class CCMenuBarApp(rumps.App):
             sessions = self.sessions.refresh()
         except Exception:
             sessions = []
-        if self._auto_focus:
-            for s in sessions:
-                if s.is_worker or not s.cwd:
-                    self._idle_since_ts.pop(s.name, None)
-                    continue
-                if s.status == 'idle' and not s.has_bg:
-                    if s.name not in self._idle_since_ts:
-                        if self._last_statuses.get(s.name) == 'working':
-                            self._idle_since_ts[s.name] = now
-                    elif now - self._idle_since_ts[s.name] >= 3.0:
-                        _focus_session(s.cwd)
-                        del self._idle_since_ts[s.name]
-                else:
-                    self._idle_since_ts.pop(s.name, None)
         cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
         bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
-        _auto_abort_check(self, sessions, bg_by_project, now)
+        self.focus.tick(sessions, bg_by_project, now)
         self.bead.tick(sessions)
         self.queue.tick(sessions)
         if self.panel._panel_open:
@@ -318,11 +301,11 @@ class CCMenuBarApp(rumps.App):
             else:
                 _tick_log(True, sessions, self.panel._displayed_items, 'no-change')
                 self.panel.update_inplace(sessions, bg_by_project)
-            self._last_statuses = {s.name: s.status for s in sessions}
+            self.focus.update_statuses(sessions)
         else:
             session_names = {s.name for s in sessions}
-            changed = _statuses_changed(sessions, self._last_statuses)
-            self._last_statuses = {s.name: s.status for s in sessions}
+            changed = self.focus.statuses_changed(sessions)
+            self.focus.update_statuses(sessions)
             if changed:
                 _blink(self)
             if session_names != set(self.panel._displayed_items):
@@ -332,70 +315,6 @@ class CCMenuBarApp(rumps.App):
                 _tick_log(False, sessions, self.panel._displayed_items, 'no-change')
 
 
-# Per-project auto-abort: if all workers idle for >=5s and project has a bg timer, abort it.
-# A worker is treated as 'working' when either (a) its hook status is working, OR (b) worker-cli
-# wrote an orchestrator signal for its tmux session within ORCHESTRATOR_SIGNAL_BUFFER_SECS.
-# Rationale: the prompt-send event is the orchestrator's intent. Trusting that signal directly
-# avoids the send -> UserPromptSubmit-hook latency race that previously killed Opus bg timers.
-# See decisions/OldThemes/menubar_signal_grace/initial_design.md.
-def _auto_abort_check(app: 'CCMenuBarApp', sessions, bg_by_project: dict, now: float) -> None:
-    signals = _read_orchestrator_signals(now)
-    workers_by_project: dict = {}
-    for s in sessions:
-        if s.is_worker:
-            workers_by_project.setdefault(s.project_name, []).append(s)
-    for proj, proj_bg in bg_by_project.items():
-        if proj == 'unknown':
-            continue
-        workers = workers_by_project.get(proj, [])
-        all_idle = bool(workers) and all(
-            w.status == 'idle' and not _has_recent_send_signal(w, signals, now)
-            for w in workers
-        )
-        # Build log fields before mutating _all_workers_idle_since_ts
-        since_idle_ts = app._all_workers_idle_since_ts.get(proj)
-        since_idle_str = f'{now - since_idle_ts:.1f}' if (all_idle and since_idle_ts is not None) else '-'
-        worker_tokens = []
-        for w in workers:
-            sig_ts = signals.get(w.tmux_session_name) if w.tmux_session_name else None
-            sig_part = f'sig_age={now - sig_ts:.1f}' if sig_ts is not None else 'sig=none'
-            worker_tokens.append(f'{w.name}:{w.status}:{sig_part}')
-        will_abort = (all_idle and since_idle_ts is not None and (now - since_idle_ts) >= 5.0)
-        ts_str = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f')[:23]
-        _abort_log_write(
-            f'{ts_str} abort_check project={proj} '
-            f'bg_pids=[{",".join(str(p) for p in proj_bg.sleep_pids)}] '
-            f'workers=[{",".join(worker_tokens)}] '
-            f'all_idle={all_idle} since_idle={since_idle_str} '
-            f'decision={"ABORT" if will_abort else "hold"}\n'
-        )
-        if all_idle:
-            if proj not in app._all_workers_idle_since_ts:
-                app._all_workers_idle_since_ts[proj] = now
-            elif now - app._all_workers_idle_since_ts[proj] >= 5.0:
-                _abort_bg_sleep_timers(proj_bg.sleep_pids)
-                app._all_workers_idle_since_ts.pop(proj, None)
-        else:
-            app._all_workers_idle_since_ts.pop(proj, None)
-    for proj in list(app._all_workers_idle_since_ts):
-        if proj not in bg_by_project:
-            del app._all_workers_idle_since_ts[proj]
-
-
-# True if worker-cli has signalled a send to this worker's tmux session in the last buffer window.
-# Uses worker.tmux_session_name (carries the iterative-dev tmux convention basename(project_path));
-# NEVER reconstruct from project_name — that's a different decoded-path heuristic (MCP-RAG vs RAG).
-def _has_recent_send_signal(worker, signals: dict, now: float) -> bool:
-    if not worker.tmux_session_name:
-        return False
-    ts = signals.get(worker.tmux_session_name)
-    return ts is not None and (now - ts) < ORCHESTRATOR_SIGNAL_BUFFER_SECS
-
-# True if any session's status differs from last tick's snapshot
-def _statuses_changed(sessions, last: dict) -> bool:
-    current = {s.name: s.status for s in sessions}
-    return current != last
-
 # Append one diagnostic line per tick to menubar.log; gated on MENUBAR_DIAGNOSTICS=1 env var (default OFF)
 def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) -> None:
     if os.getenv('MENUBAR_DIAGNOSTICS') != '1':
@@ -404,13 +323,6 @@ def _tick_log(panel_open: bool, sessions, displayed_items: dict, action: str) ->
             f'sessions={sorted(s.name for s in sessions)} '
             f'displayed={sorted(displayed_items)} action={action}')
     log_menubar('tick', line)
-
-# Append one line to menubar.log ([abort] category); always-on (no env-var gate)
-def _abort_log_write(line: str) -> None:
-    try:
-        log_menubar('abort', line.rstrip('\n'))
-    except Exception as e:
-        print(f'[abort-log] write error: {e}', file=sys.stderr)
 
 # Set bar icon via attributed string with pinned baseline; must be called on main thread
 def _set_bar_icon(app: 'CCMenuBarApp', text: str) -> None:
