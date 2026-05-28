@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-17 safety hooks registered globally in `~/.claude/settings.json`. All 17 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 14 block hooks (exit 2) + 3 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `block_path_typo` (legacy name, rewrite semantics).
+18 safety hooks registered globally in `~/.claude/settings.json`. All 18 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 14 block hooks (exit 2) + 4 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_background_sleep`, `block_path_typo` (legacy name, rewrite semantics).
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -281,6 +281,28 @@
 **Rationale:** Workers are always Sonnet (workers-1.md § Worker Model). Opus as a worker burns ~20–40× billing per token and eliminates the independent cross-model verification perspective (both sides share the same architecture). The hook prevents accidental or copy-paste spawns with the wrong model.
 
 **Fail-open:** exits 0 on any parse error.
+
+### Hook 18 — `rewrite_background_sleep.py` (`src/hooks/rewrite_background_sleep.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–17
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_background_sleep.py`
+- **Timeout:** 5s
+
+**Detection:** `tool_input.run_in_background == true` AND command matches `^\s*sleep\s+(\d+(?:\.\d+)?)\s*&&\s*echo\s+done\s*$` AND captured N ≠ 600
+
+**Rewrite:** entire command replaced with `sleep 600 && echo done`
+
+**Passthrough (no output):**
+- `run_in_background=false` or field absent — foreground, any form allowed
+- `sleep 600 && echo done` with `run_in_background=true` — already canonical value
+- Any non-canonical command — form guard already handled by `block_unauthorized_background` (Hook 3)
+- Parse errors (fail-open)
+
+**Rationale:** `tool-use.md` specifies Opus timers MUST always be 600s. `block_unauthorized_background` (Hook 3) enforces the FORM (`sleep N && echo done` only); this hook enforces the VALUE (N = 600). Complementary layer — no overlap: Hook 3 passes canonical form through; Hook 18 normalizes any remaining N ≠ 600. Hooks are independent: Hook 3 produces no output for canonical forms so only Hook 18's rewrite reaches CC.
+
+**Fail-open:** exits 0 on any parse/internal error; missing `run_in_background` defaults to `False` → immediate passthrough.
+
+**Smoke:** `dev/hook_smoke/test_rewrite_background_sleep.py` (8 cases: 3 positive rewrite, 5 negative no-op).
 
 ## Evidenz
 

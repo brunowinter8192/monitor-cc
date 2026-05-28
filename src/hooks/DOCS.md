@@ -32,7 +32,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all 20 active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"`: includes `reason` field (stderr text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** `src/logs/hook_firing.jsonl` (appends one line per fire; path resolved from `__file__` relative to `src/`).
-**Called by:** all 20 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
+**Called by:** all 21 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
 **Calls out:** stdlib only (`json`, `os`, `datetime`).
 
 ---
@@ -159,6 +159,29 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - Parse errors (fail-open)
 
 **No quote-stripping.** Checks the `run_in_background` bool field and the two whitelisted regexes — no general command-text scanning. The `_INDEXER_CANONICAL` regex uses word-boundaries (`\b`) which match the indexer pattern even mid-command (e.g. `cd /path && reddit-cli index_subreddits ...`). Indexer pattern appearing in a quoted region of an unrelated command would also match (rare false-positive — accepted trade-off vs adding quote-stripping cost).
+
+---
+
+### rewrite_background_sleep.py (61 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — **rewrites** background timer commands `sleep N && echo done` where N ≠ 600 to `sleep 600 && echo done`. Pairs with `block_unauthorized_background.py` which enforces the canonical timer FORM (only `sleep N && echo done` passes the background check); this hook enforces the canonical timer VALUE (N must be 600 per `tool-use.md`). Exits 0 in all cases (fail-open rewrite hook — never blocks). No quote-stripping needed: the canonical form is fully anchored and cannot contain quoted regions.
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
+**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command`) when N ≠ 600; nothing on passthrough.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `os`, `re`, `sys`).
+
+**Rewrite condition (ALL must hold):**
+1. `run_in_background == True`
+2. Command matches `^\s*sleep\s+(\d+(?:\.\d+)?)\s*&&\s*echo\s+done\s*$`
+3. Captured N: `float(N) != 600`
+
+**Passthrough (no output):**
+- `run_in_background=false` or field absent — foreground, any sleep form allowed
+- `sleep 600 && echo done` with `run_in_background=true` — already canonical value
+- Any non-canonical command — form guard already handled by `block_unauthorized_background.py`
+- Parse errors (fail-open)
+
+**Smoke:** `dev/hook_smoke/test_rewrite_background_sleep.py` (8 cases: 3 positive rewrite, 5 negative no-op).
 
 ---
 
@@ -450,4 +473,4 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **`block_read_worktree.py` allows own-worktree reads.** Workers reading files in their own worktree via absolute path are now allowed. Cross-worktree reads (worker→other-worker) and main-session→worktree reads remain blocked.
-- **All 20 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
+- **All 21 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.

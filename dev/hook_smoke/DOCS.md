@@ -47,6 +47,22 @@ python3 dev/hook_smoke/test_block_read_worktree.py
 
 ---
 
+### test_rewrite_background_sleep.py (117 LOC)
+
+**Purpose:** 8-case smoke for `rewrite_background_sleep.py`. Verifies 3 positive-rewrite cases
+(`sleep 300`, `sleep 5`, `sleep 1200` with `run_in_background=true` → rewritten to
+`sleep 600 && echo done`) and 5 negative no-op cases (foreground flag; already 600; non-canonical
+command; wrong chain target; bare sleep without `&& echo done`).
+
+**Usage (from project root):**
+```bash
+python3 dev/hook_smoke/test_rewrite_background_sleep.py
+```
+
+**Expected output:** `All 8 tests passed.` (exit 0). HOOK path is relative — must be run from project root.
+
+---
+
 ### test_rewrite_chained_sleep.py (104 LOC)
 
 **Purpose:** 8-case smoke for `rewrite_chained_sleep.py`. Verifies 3 positive-strip cases (`echo`
