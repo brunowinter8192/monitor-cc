@@ -17,7 +17,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### desktop_detection.py (275 LOC)
+### desktop_detection.py (330 LOC)
 
 **Purpose:** Batch detection of macOS Mission Control desktop numbers for all Main sessions via private CoreGraphics Services (CGS) APIs + one AppleScript round-trip. Ported from `dev/desktop_detection/01_probe.py`. Three-strategy resolver per window: name-unique → space-elimination → OSC-2 injection. Results cached for `_DET_CACHE_TTL=10s`; force-invalidated when cwd set changes (session add/remove). All errors (Ghostty down, AppleScript failure, CGS error) are caught by the orchestrator, logged as `[detection] all_failed n_mains=N reason=...` (only when ALL mains fail, not on partial), and return all-None. Module-level CFUNCTYPE refs (`_FT_vv`, `_FT_vvv`, etc.) must remain module-level — GC'ing them corrupts the IMP pointer table and causes SIGSEGV.
 **Reads:** `ps -A` (Ghostty PID); `osascript` (Ghostty window/tab/UUID traversal); `CGWindowListCopyWindowInfo` (all spaces, all windows); `CGSCopyManagedDisplaySpaces` (space→desktop-no mapping); `CGSCopySpacesForWindows` (per-window space query); `/dev/ttys<NNN>` (OSC-2 injection for space-elimination fallback).
@@ -218,7 +218,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### setup_py2app.py (65 LOC) — at project root, NOT in src/menubar/
+### setup_py2app.py (88 LOC) — at project root, NOT in src/menubar/
 
 **Purpose:** py2app build script producing `dist/Monitor_CC_Menubar.app/` — a native Mach-O bundle with embedded Python 3.14 framework. Replaces the Bash-exec chain with a native launcher so the audit token at `CGWindowListCopyWindowInfo` is `com.brunowinter.monitor_cc_menubar` (not Python.app), making the Screen Recording TCC grant effective. Builds to `dist/` in the working directory; does NOT install to `~/Applications/`. Placed at project root (not `src/menubar/`) to avoid stdlib `queue` shadowing by `src/menubar/queue.py` when setuptools is loaded.
 **Reads:** `src/menubar/menubar_main.py` (entry point); `src/menubar/com.brunowinter.monitor_cc_menubar.plist` (bundled as data file).
@@ -232,7 +232,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### menubar_main.py (5 LOC)
+### menubar_main.py (7 LOC)
 
 **Purpose:** py2app entry wrapper. `from src.menubar import run; run()`. Avoids argparse dispatch in `workflow.py` and prevents heavy non-menubar modules (`src.core`, `src.proxy`, etc.) from entering modulegraph's import trace. No logic beyond the delegation.
 **Reads:** nothing.
