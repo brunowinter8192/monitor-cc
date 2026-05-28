@@ -49,14 +49,14 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bead_panel.py (321 LOC)
+### bead_controller.py (350 LOC)
 
-**Purpose:** Bead-tracker NSPanel (2nd panel). ONE NSGridView (2-col): col 0 = expand button (flexible), col 1 = × untrack button (22pt fixed). Expand rows merged across both columns. `_make_expand_view` builds a per-line NSTextField container for the expanded bead content; when content exceeds `_BEAD_EXPAND_MAX_LINES = 20` rows, wraps in NSScrollView with fixed-height viewport (`20 × _ROW_H` ≈ 420pt), vertical scroller always visible, no horizontal scroll. Container `widthAnchor` anchored to `sv.contentView().widthAnchor()` (scrolled) or set to `panel_width` directly (non-scrolled) — required because NSGridView disables TAMIC on content views; without explicit width constraint AutoLayout assigns `w=0`.
-**Reads:** `app._bead_data`, `app._bead_expanded`, `app._bead_expand_tags`, `app._bead_untrack_tags`, `app._bead_displayed`, `app._bead_db_paths`, `app._panel_width`, `app._panel_min_height`, `app._tracker_sv`, `app._tracker_panel`, `app._tracker_toggle_btn`, `app._panel_controller`.
-**Writes:** `app._bead_expanded` (clear or set expand text); `app._bead_displayed`, `app._bead_expand_tags`, `app._bead_untrack_tags` (reset each rebuild); NSPanel frame.
-**Key signatures:** `_make_bead_nspanel()`, `_rebuild_bead_panel(app)`, `_reposition_bead_panel(panel, nsstatusitem)`, `_compute_bead_height(app)`, `_handle_expand_bead(app, tag)`, `_handle_untrack_bead(app, tag)`.
-**Called by:** `app.py` (`_open_tracker_panel`, `_PanelController.expandBead_`, `_PanelController.untrackBead_`, `CCMenuBarApp._tick`, `_PanelController.windowDidEndLiveResize_`).
-**Calls out:** `AppKit` (incl. `NSScrollView`), `Foundation`; `.bead_data` (`bd_show_text`, `bd_label_remove`); `.panel` (constants + helpers).
+**Purpose:** Per-concern controller for the bead tracker panel (Step 2/6 of CCMenuBarApp composition refactor). `BeadController(app)` owns all bead state (`_bead_data`, `_bead_db_paths`, `_bead_expanded`, `_bead_displayed`, `_bead_expand_tags`, `_bead_untrack_tags`, `_bead_query_tags`, `_bead_tick_counter`, `_rebuild_in_progress`) and exposes `tick(sessions)` (owns counter + condition + data fetch), `rebuild()` + `_rebuild_inner()` (re-entry guarded full panel rebuild), `compute_height()`, `handle_expand(tag)`, `handle_untrack(tag)`. ONE NSGridView (3 cols): col 0 = expand button (flexible), col 1 = ? status button (22pt), col 2 = × untrack button (22pt). Module-level pure helpers (`_make_bead_nspanel`, `_reposition_bead_panel`, `_resize_tracker_panel`, UI factories) stay module-level because they access only `app._tracker_*` / `app._panel_*` attrs that remain on app. `_make_expand_view` builds a per-line NSTextField container; when content exceeds `_BEAD_EXPAND_MAX_LINES=20` rows wraps in NSScrollView, container `widthAnchor` anchored to `sv.contentView().widthAnchor()` (scrolled) or `panel_width` directly (non-scrolled).
+**Reads:** `self._bead_data`, `self._bead_expanded`, `self._bead_expand_tags`, `self._bead_untrack_tags`, `self._bead_displayed`, `self._bead_db_paths`, `self._bead_query_tags`; `self.app._panel_width`, `self.app._panel_min_height`, `self.app._tracker_sv`, `self.app._tracker_panel`, `self.app._tracker_toggle_btn`, `self.app._panel_controller`, `self.app._auto_focus`, `self.app._tracker_open`.
+**Writes:** `self._bead_expanded` (clear or set expand text); `self._bead_displayed`, `self._bead_expand_tags`, `self._bead_untrack_tags`, `self._bead_query_tags` (reset each rebuild); `app._tracker_panel` frame (via `_resize_tracker_panel`).
+**Key signatures:** `BeadController.__init__(app)`, `tick(sessions)`, `rebuild()`, `compute_height()`, `handle_expand(tag)`, `handle_untrack(tag)`; module-level: `_make_bead_nspanel()`, `_reposition_bead_panel(panel, nsstatusitem)`.
+**Called by:** `app.py:CCMenuBarApp.__init__` (construction + `_make_bead_nspanel`); `app.py:CCMenuBarApp._tick` (`tick`); `app.py:_open_tracker_panel` (`app.bead.rebuild()`, `_reposition_bead_panel`); `app.py:_PanelController.expandBead_` (`handle_expand`); `app.py:_PanelController.untrackBead_` (`handle_untrack`); `app.py:_PanelController.queryBeadStatus_` (`_bead_query_tags` access); `app.py:_PanelController.windowDidEndLiveResize_` (`rebuild`).
+**Calls out:** `AppKit` (incl. `NSScrollView`), `Foundation`; `.bead_data` (`bd_show_text`, `bd_label_remove`, `project_db_map`, `load_tracked_beads`); `.panel` (constants + helpers).
 
 ---
 
@@ -65,7 +65,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Purpose:** All `bd` CLI interactions for the bead panel. `bd_show_text(bead_id, db_path)` runs `bd show --json` (description) then `bd comments --json` (separate call; show does NOT include comments) and returns a formatted string: description body (≤300 chars before Sources block), Sources block (full), then per-comment blocks `[YYYY-MM-DD HH:MM by Author]\n  text`. `bd_label_remove` untracks a bead. Helper functions: `project_db_map`, `load_tracked_beads`, `_bd_list_tracked`, `_bd_fetch_comments`, `_format_expand_text`, `_format_comment_ts`. Comment JSON schema: `{id, issue_id, author, text, created_at}` — field is `text` (not `body`). Timestamps parsed via `datetime.fromisoformat` with Z→+00:00 substitution, displayed in local timezone.
 **Reads:** `bd` CLI output via subprocess; nothing from app state.
 **Writes:** nothing (read-only toward bd).
-**Called by:** `bead_panel.py` (`bd_show_text`, `bd_label_remove`); `app.py` (`project_db_map`, `load_tracked_beads` via `bead_panel` import chain).
+**Called by:** `bead_controller.py` (`bd_show_text`, `bd_label_remove`, `project_db_map`, `load_tracked_beads`).
 **Calls out:** `subprocess` (`bd`); stdlib (`json`, `datetime`, `pathlib`).
 
 ---
@@ -90,13 +90,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (773 LOC) ⚠ over 400 LOC ceiling — split-refactor in progress (Step 1/6 done)
+### app.py (752 LOC) ⚠ over 400 LOC ceiling — split-refactor in progress (Step 2/6 done)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_` (append empty draft; guard against stacking blanks), `toggleQueueEntry_` (draft↔queued flip), `removeQueueEntry_` (× delete), `commitQueueField_` (Enter → save draft text in-place), `controlTextDidEndEditing_` (blur → save draft text in-place). `_tick` delegates session snapshot to `self.sessions.refresh()`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open. `_reregister_digit_hotkeys` maps Cmd+N to the Main with `desktop_no=N` (conflict-free only; populated from `_desktop_to_cwd`).
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_` (append empty draft; guard against stacking blanks), `toggleQueueEntry_` (draft↔queued flip), `removeQueueEntry_` (× delete), `commitQueueField_` (Enter → save draft text in-place), `controlTextDidEndEditing_` (blur → save draft text in-place). `_tick` delegates session snapshot to `self.sessions.refresh()` and bead refresh to `self.bead.tick(sessions)`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open. `_reregister_digit_hotkeys` maps Cmd+N to the Main with `desktop_no=N` (conflict-free only; populated from `_desktop_to_cwd`).
 **Reads:** `self.sessions.refresh()` (via `SessionsController`) + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch; `QUEUE_FILE` (via `load_queue()`) on every tick + on `_open_queue_panel`.
 **Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove/toggle/edit; `src/logs/menubar.log` ([abort] category via `_abort_log_write`; [tick] category when `MENUBAR_DIAGNOSTICS=1`; [hotkey] category for Cmd+1..9 app-level focus dispatch); `_queue_data`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_pending_queue_tags`, `_queue_displayed_names`.
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.panel`, `.bead_panel`, `.queue_panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`load_queue`, `save_queue`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
+**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.bead_controller`, `.panel`, `.queue_panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`load_queue`, `save_queue`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
 
 ---
 
@@ -282,8 +282,9 @@ system.py      → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
                  lazy(.app) inside run() only
 queue.py       → json, os, subprocess; .paths (QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE)
 app.py         → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
-                 .panel, .bead_panel, .queue_panel, .hotkey, .system, .discover,
-                 .bg_timer, .paths (SETTINGS_FILE), .queue, .menubar_log (log_menubar)
+                 .sessions_controller, .bead_controller, .panel, .queue_panel,
+                 .hotkey, .system, .discover, .bg_timer, .paths (SETTINGS_FILE),
+                 .queue, .menubar_log (log_menubar)
 ```
 
 No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module (exception: `write_plist()` or `write_plist_py2app()` from `setup_menubar.py` are lazy-imported in `app.py:restartApp_` — branch-specific, never both). `menubar_main.py` is the py2app entry point — only imported by the native launcher, not by any module in the package.
@@ -336,6 +337,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp._queue_remove_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{× button tag → (session_id, idx)}`. Tags 3000+. Reset on each rebuild. |
 | `CCMenuBarApp._queue_toggle_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{↑/↓ button tag → (session_id, idx)}`. Tags 5000+. Reset on each rebuild. Used by `toggleQueueEntry_`. Only draft and queued entries have a toggle button; sent entries have none. |
 | `CCMenuBarApp.sessions` | app.py | `SessionsController` | sessions_controller.py | Session snapshot cache. `sessions.refresh()` calls `list_alive_sessions()` and caches result; `sessions.data` returns cached snapshot. Replaces bare `_last_sessions` attr. |
+| `CCMenuBarApp.bead` | app.py | `BeadController` | bead_controller.py | Bead tracker controller. Owns `_bead_data`, `_bead_db_paths`, `_bead_expanded`, `_bead_displayed`, `_bead_expand_tags`, `_bead_untrack_tags`, `_bead_query_tags`, `_bead_tick_counter`. `bead.tick(sessions)` drives counter + refresh; `bead.rebuild()` re-renders NSPanel. |
 
 ## Title-Marker Mapping (tty → Ghostty terminal UUID)
 

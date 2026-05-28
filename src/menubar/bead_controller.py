@@ -9,7 +9,9 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
                     NSWindowStyleMaskNonactivatingPanel, NSWindowStyleMaskResizable)
 from Foundation import NSMakeRect, NSMakeSize, NSRange
 
-from .bead_data import bd_show_text, bd_label_remove
+# From bead_data.py: bd subprocess wrappers + session-db discovery
+from .bead_data import bd_show_text, bd_label_remove, project_db_map, load_tracked_beads
+# From panel.py: UI constants, factories, helpers shared across panels
 from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
                     PANEL_GAP, _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO,
                     _CursorlessButton, _CursorlessLabel, _KeyablePanel,
@@ -19,7 +21,6 @@ from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
 _STATUS_W              = 22   # pts — col 1 width: ? status-query button
 _UNTRACK_W             = 22   # pts — col 2 width: × untrack button
 _BEAD_EXPAND_MAX_LINES = 20   # max visible lines in expand view; content beyond scrolls
-_rebuild_bead_in_progress = False   # re-entry guard: defensive mirror of queue_panel guard
 
 # FUNCTIONS
 
@@ -169,32 +170,7 @@ def _make_expand_view(text: str, panel_width: int):
     container.widthAnchor().constraintEqualToConstant_(float(w)).setActive_(True)
     return container, total
 
-# Compute required height for the bead tracker panel (mirrors _rebuild_bead_panel row heights)
-def _compute_bead_height(app) -> int:
-    h = _TOP_BAR_H + _LABEL_H   # top-bar + line separator
-    if not any(app._bead_data.values()):
-        return h + _LABEL_H      # "No tracked beads" label
-    pw    = app._panel_width - 22
-    btn_w = pw - _STATUS_W - _UNTRACK_W - 2 * _GRID_COL_SPC   # col-0 expand button width
-    for project_name, beads in app._bead_data.items():
-        if not beads:
-            continue
-        h += _LABEL_H            # project header row
-        for bead in beads:
-            bead_id    = bead.get('id', '')
-            title      = bead.get('title', '')
-            is_expanded = bead_id in app._bead_expanded
-            indicator  = '▾' if is_expanded else '▸'
-            row_text   = f'  {indicator} {bead_id}  {title}'   # 2-space indent prefix
-            h += _bead_row_height(row_text, btn_w) + 1          # +1 for rowSpacing
-            if bead_id in app._bead_expanded:
-                expand_inner_w = app._panel_width - 16   # mirrors _make_expand_view: w=panel_width, inner_w=w-16
-                raw_exp_h = sum(_bead_row_height(line or ' ', expand_inner_w)
-                                for line in app._bead_expanded[bead_id].split('\n'))
-                h += min(raw_exp_h, _BEAD_EXPAND_MAX_LINES * _ROW_H) + 1   # capped by scrollview
-    return h
-
-# Resize tracker NSPanel anchored at top edge (same logic as _resize_panel for main panel)
+# Resize tracker NSPanel anchored at top edge; accesses app._panel_width + app._tracker_panel (both stay on app)
 def _resize_tracker_panel(app, new_h: float) -> None:
     w     = app._panel_width
     frame = app._tracker_panel.frame()
@@ -202,120 +178,173 @@ def _resize_tracker_panel(app, new_h: float) -> None:
     app._tracker_panel.setFrame_display_(
         NSMakeRect(frame.origin.x, top_y - new_h, w, new_h), False)
 
-# Full rebuild of tracker panel from app._bead_data + _bead_expanded; resets tag maps.
-# ONE NSGridView (2 cols): col 0 = expand button (flexible), col 1 = × untrack (22pt fixed).
-# Project header rows and expand content rows are merged across both columns.
-def _rebuild_bead_panel(app) -> None:
-    global _rebuild_bead_in_progress
-    if _rebuild_bead_in_progress:
-        return
-    _rebuild_bead_in_progress = True
-    try:
-        _rebuild_bead_panel_inner(app)
-    finally:
-        _rebuild_bead_in_progress = False
+# Per-concern controller for bead tracker: state ownership, tick refresh, panel render, action dispatch
+class BeadController:
+    def __init__(self, app) -> None:
+        self.app = app
+        self._bead_data: dict         = {}
+        self._bead_db_paths: dict     = {}
+        self._bead_expanded: dict     = {}
+        self._bead_displayed: dict    = {}
+        self._bead_expand_tags: dict  = {}
+        self._bead_untrack_tags: dict = {}
+        self._bead_query_tags: dict   = {}
+        self._bead_tick_counter: int  = 4   # starts at 4 → first tick fires refresh
+        self._rebuild_in_progress: bool = False
 
-def _rebuild_bead_panel_inner(app) -> None:
-    for sv in list(app._tracker_sv.arrangedSubviews()):
-        app._tracker_sv.removeView_(sv)
-        sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
-    app._bead_displayed.clear()
-    app._bead_expand_tags.clear()
-    app._bead_untrack_tags.clear()
-    app._bead_query_tags.clear()
-    state = 'ON' if app._auto_focus else 'OFF'
-    app._tracker_toggle_btn.setAttributedTitle_(
-        NSAttributedString.alloc().initWithString_attributes_(
-            f'Sessions \u00b7 [Beads] \u00b7 Queue     Auto-Jump: {state}',
-            {NSFontAttributeName: _MENLO()}))
-    pw         = app._panel_width
-    required_h = _compute_bead_height(app)
-    _resize_tracker_panel(app, max(app._panel_min_height, required_h))
-    app._tracker_sv.addView_inGravity_(_make_line_separator(pw), 1)
-    if not any(app._bead_data.values()):
-        app._tracker_sv.addView_inGravity_(_make_header_label('No tracked beads', pw), 1)
-        return
-    empty = NSGridCell.emptyContentView()
-    grid  = NSGridView.gridViewWithNumberOfColumns_rows_(3, 0)
-    grid.setColumnSpacing_(float(_GRID_COL_SPC))
-    grid.setRowSpacing_(1.0)
-    for i in range(3):
-        grid.columnAtIndex_(i).setXPlacement_(NSGridCellPlacementLeading)
-    grid.columnAtIndex_(1).setWidth_(float(_STATUS_W))    # col 1 fixed: ? status button
-    grid.columnAtIndex_(2).setWidth_(float(_UNTRACK_W))   # col 2 fixed: × untrack button
-    grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
-    row_idx = 0
-    exp_tag = 100
-    utr_tag = 200
-    qry_tag = 300
-    for project_name, beads in app._bead_data.items():
-        if not beads:
-            continue
-        hdr = _make_header_label(project_name, pw)
-        grid.addRowWithViews_([hdr, empty, empty])
-        grid.rowAtIndex_(row_idx).setHeight_(float(_LABEL_H - 1))
-        grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 3), NSRange(row_idx, 1))
-        row_idx += 1
-        for bead in beads:
-            bead_id    = bead.get('id', '')
-            is_expanded = bead_id in app._bead_expanded
-            expand_btn, row_h = _make_bead_expand_btn(bead, pw, is_expanded)
-            expand_btn.setTag_(exp_tag)
-            expand_btn.setTarget_(app._panel_controller)
-            expand_btn.setAction_(b'expandBead:')
-            status_btn = _make_bead_status_btn()
-            status_btn.setTag_(qry_tag)
-            status_btn.setTarget_(app._panel_controller)
-            status_btn.setAction_(b'queryBeadStatus:')
-            x_btn = _make_bead_x_btn()
-            x_btn.setTag_(utr_tag)
-            x_btn.setTarget_(app._panel_controller)
-            x_btn.setAction_(b'untrackBead:')
-            grid.addRowWithViews_([expand_btn, status_btn, x_btn])
-            grid.rowAtIndex_(row_idx).setHeight_(float(row_h))
+    # Called from CCMenuBarApp._tick; owns counter + condition + refresh
+    def tick(self, sessions) -> None:
+        self._bead_tick_counter += 1
+        if self._bead_tick_counter % 5 == 0 or self.app._tracker_open:
+            self._do_refresh(sessions)
+
+    # Fetch fresh bead data from sessions; rebuild tracker panel on change if open
+    def _do_refresh(self, sessions) -> None:
+        pdb      = project_db_map(sessions)
+        new_data = load_tracked_beads(pdb)
+        changed  = new_data != self._bead_data
+        self._bead_db_paths, self._bead_data = pdb, new_data
+        if changed and self.app._tracker_open:
+            self.rebuild()
+
+    # Compute required pixel height for the tracker panel (mirrors _rebuild_inner row heights)
+    def compute_height(self) -> int:
+        h = _TOP_BAR_H + _LABEL_H   # top-bar + line separator
+        if not any(self._bead_data.values()):
+            return h + _LABEL_H      # "No tracked beads" label
+        pw    = self.app._panel_width - 22
+        btn_w = pw - _STATUS_W - _UNTRACK_W - 2 * _GRID_COL_SPC
+        for project_name, beads in self._bead_data.items():
+            if not beads:
+                continue
+            h += _LABEL_H            # project header row
+            for bead in beads:
+                bead_id     = bead.get('id', '')
+                title       = bead.get('title', '')
+                is_expanded = bead_id in self._bead_expanded
+                indicator   = '▾' if is_expanded else '▸'
+                row_text    = f'  {indicator} {bead_id}  {title}'   # 2-space indent prefix
+                h += _bead_row_height(row_text, btn_w) + 1          # +1 for rowSpacing
+                if bead_id in self._bead_expanded:
+                    expand_inner_w = self.app._panel_width - 16   # mirrors _make_expand_view: w=panel_width, inner_w=w-16
+                    raw_exp_h = sum(_bead_row_height(line or ' ', expand_inner_w)
+                                    for line in self._bead_expanded[bead_id].split('\n'))
+                    h += min(raw_exp_h, _BEAD_EXPAND_MAX_LINES * _ROW_H) + 1   # capped by scrollview
+        return h
+
+    # Full rebuild of tracker panel from self._bead_data + _bead_expanded; re-entry guard
+    def rebuild(self) -> None:
+        if self._rebuild_in_progress:
+            return
+        self._rebuild_in_progress = True
+        try:
+            self._rebuild_inner()
+        finally:
+            self._rebuild_in_progress = False
+
+    # ONE NSGridView (3 cols): col 0 expand button, col 1 ? status, col 2 × untrack; resets tag maps
+    def _rebuild_inner(self) -> None:
+        app = self.app
+        for sv in list(app._tracker_sv.arrangedSubviews()):
+            app._tracker_sv.removeView_(sv)
+            sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists as regular subview without this
+        self._bead_displayed.clear()
+        self._bead_expand_tags.clear()
+        self._bead_untrack_tags.clear()
+        self._bead_query_tags.clear()
+        state = 'ON' if app._auto_focus else 'OFF'
+        app._tracker_toggle_btn.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'Sessions \u00b7 [Beads] \u00b7 Queue     Auto-Jump: {state}',
+                {NSFontAttributeName: _MENLO()}))
+        pw         = app._panel_width
+        required_h = self.compute_height()
+        _resize_tracker_panel(app, max(app._panel_min_height, required_h))
+        app._tracker_sv.addView_inGravity_(_make_line_separator(pw), 1)
+        if not any(self._bead_data.values()):
+            app._tracker_sv.addView_inGravity_(_make_header_label('No tracked beads', pw), 1)
+            return
+        empty = NSGridCell.emptyContentView()
+        grid  = NSGridView.gridViewWithNumberOfColumns_rows_(3, 0)
+        grid.setColumnSpacing_(float(_GRID_COL_SPC))
+        grid.setRowSpacing_(1.0)
+        for i in range(3):
+            grid.columnAtIndex_(i).setXPlacement_(NSGridCellPlacementLeading)
+        grid.columnAtIndex_(1).setWidth_(float(_STATUS_W))    # col 1 fixed: ? status button
+        grid.columnAtIndex_(2).setWidth_(float(_UNTRACK_W))   # col 2 fixed: × untrack button
+        grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        row_idx = 0
+        exp_tag = 100
+        utr_tag = 200
+        qry_tag = 300
+        for project_name, beads in self._bead_data.items():
+            if not beads:
+                continue
+            hdr = _make_header_label(project_name, pw)
+            grid.addRowWithViews_([hdr, empty, empty])
+            grid.rowAtIndex_(row_idx).setHeight_(float(_LABEL_H - 1))
+            grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 3), NSRange(row_idx, 1))
             row_idx += 1
-            app._bead_expand_tags[exp_tag]  = bead_id
-            app._bead_untrack_tags[utr_tag] = (bead_id, project_name)
-            app._bead_query_tags[qry_tag]   = (bead_id, project_name)
-            app._bead_displayed[bead_id]    = expand_btn
-            exp_tag += 1
-            utr_tag += 1
-            qry_tag += 1
-            if is_expanded:
-                exp_view, exp_h = _make_expand_view(app._bead_expanded[bead_id], pw)
-                grid.addRowWithViews_([exp_view, empty, empty])
-                grid.rowAtIndex_(row_idx).setHeight_(float(exp_h))
-                grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 3), NSRange(row_idx, 1))
+            for bead in beads:
+                bead_id     = bead.get('id', '')
+                is_expanded = bead_id in self._bead_expanded
+                expand_btn, row_h = _make_bead_expand_btn(bead, pw, is_expanded)
+                expand_btn.setTag_(exp_tag)
+                expand_btn.setTarget_(app._panel_controller)
+                expand_btn.setAction_(b'expandBead:')
+                status_btn = _make_bead_status_btn()
+                status_btn.setTag_(qry_tag)
+                status_btn.setTarget_(app._panel_controller)
+                status_btn.setAction_(b'queryBeadStatus:')
+                x_btn = _make_bead_x_btn()
+                x_btn.setTag_(utr_tag)
+                x_btn.setTarget_(app._panel_controller)
+                x_btn.setAction_(b'untrackBead:')
+                grid.addRowWithViews_([expand_btn, status_btn, x_btn])
+                grid.rowAtIndex_(row_idx).setHeight_(float(row_h))
                 row_idx += 1
-    app._tracker_sv.addView_inGravity_(grid, 1)
-    grid.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
+                self._bead_expand_tags[exp_tag]  = bead_id
+                self._bead_untrack_tags[utr_tag] = (bead_id, project_name)
+                self._bead_query_tags[qry_tag]   = (bead_id, project_name)
+                self._bead_displayed[bead_id]    = expand_btn
+                exp_tag += 1
+                utr_tag += 1
+                qry_tag += 1
+                if is_expanded:
+                    exp_view, exp_h = _make_expand_view(self._bead_expanded[bead_id], pw)
+                    grid.addRowWithViews_([exp_view, empty, empty])
+                    grid.rowAtIndex_(row_idx).setHeight_(float(exp_h))
+                    grid.mergeCellsInHorizontalRange_verticalRange_(NSRange(0, 3), NSRange(row_idx, 1))
+                    row_idx += 1
+        app._tracker_sv.addView_inGravity_(grid, 1)
+        grid.widthAnchor().constraintEqualToConstant_(float(pw)).setActive_(True)
 
-# Handle expand/collapse click from expandBead_ controller method
-def _handle_expand_bead(app, tag: int) -> None:
-    bead_id = app._bead_expand_tags.get(tag)
-    if not bead_id:
-        return
-    if bead_id in app._bead_expanded:
-        del app._bead_expanded[bead_id]
-    else:
-        project_name = next(
-            (pn for pn, beads in app._bead_data.items()
-             if any(b.get('id') == bead_id for b in (beads or []))), None)
-        db_path = app._bead_db_paths.get(project_name) if project_name else None
+    # Handle expand/collapse click from expandBead_ action handler
+    def handle_expand(self, tag: int) -> None:
+        bead_id = self._bead_expand_tags.get(tag)
+        if not bead_id:
+            return
+        if bead_id in self._bead_expanded:
+            del self._bead_expanded[bead_id]
+        else:
+            project_name = next(
+                (pn for pn, beads in self._bead_data.items()
+                 if any(b.get('id') == bead_id for b in (beads or []))), None)
+            db_path = self._bead_db_paths.get(project_name) if project_name else None
+            if db_path:
+                self._bead_expanded[bead_id] = bd_show_text(bead_id, db_path)
+        self.rebuild()
+
+    # Handle untrack click from untrackBead_ action handler
+    def handle_untrack(self, tag: int) -> None:
+        info = self._bead_untrack_tags.get(tag)
+        if not info:
+            return
+        bead_id, project_name = info
+        db_path = self._bead_db_paths.get(project_name)
         if db_path:
-            app._bead_expanded[bead_id] = bd_show_text(bead_id, db_path)
-    _rebuild_bead_panel(app)
-
-# Handle untrack click from untrackBead_ controller method
-def _handle_untrack_bead(app, tag: int) -> None:
-    info = app._bead_untrack_tags.get(tag)
-    if not info:
-        return
-    bead_id, project_name = info
-    db_path = app._bead_db_paths.get(project_name)
-    if db_path:
-        bd_label_remove(bead_id, db_path)
-    app._bead_expanded.pop(bead_id, None)
-    app._bead_data[project_name] = [
-        b for b in app._bead_data.get(project_name, []) if b.get('id') != bead_id]
-    _rebuild_bead_panel(app)
+            bd_label_remove(bead_id, db_path)
+        self._bead_expanded.pop(bead_id, None)
+        self._bead_data[project_name] = [
+            b for b in self._bead_data.get(project_name, []) if b.get('id') != bead_id]
+        self.rebuild()
