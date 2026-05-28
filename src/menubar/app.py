@@ -34,15 +34,14 @@ from .panel import (ICON_NORMAL, ICON_BLINK, ICON_BASELINE_OFFSET,
                     PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
                     _MENLO, _make_nspanel, _reposition_panel,
                     _rebuild_panel, _update_panel_inplace)
-# From queue_panel.py: standalone queue NSPanel + render
-from .queue_panel import (_make_queue_nspanel, _rebuild_queue_panel, _reposition_queue_panel,
-                           _resize_queue_panel)
+# From queue_controller.py: QueueController + queue panel repositioning
+from .queue_controller import QueueController, _reposition_queue_panel
 # From system.py: Ghostty terminal focus
 from .system import _focus_session
 # From paths.py: APP_SUPPORT-relative settings path
-from .paths import SETTINGS_FILE as _SETTINGS_PATH, HOOKS_FILE as _HOOKS_FILE
-# From queue.py: message queue storage
-from .queue import load_queue, save_queue, deliver_message
+from .paths import SETTINGS_FILE as _SETTINGS_PATH
+# From queue.py: deliver_message used by queryBeadStatus_
+from .queue import deliver_message
 # From sessions_controller.py: session snapshot cache
 from .sessions_controller import SessionsController
 
@@ -69,15 +68,15 @@ class _PanelController(NSObject):
                 app._panel.orderFrontRegardless()
             elif app._tracker_open:
                 app._tracker_panel.orderFrontRegardless()
-            elif app._queue_open:
-                app._queue_panel.orderFrontRegardless()
+            elif app.queue._queue_open:
+                app.queue._queue_panel.orderFrontRegardless()
             app._panel_backgrounded = False
             return
         # Cmd+L closes whichever panel is open; if none → open main
         if app._tracker_open:
             _close_tracker_panel(app)
             return
-        if app._queue_open:
+        if app.queue._queue_open:
             _close_queue_panel(app)
             return
         if app._panel_open:
@@ -135,7 +134,7 @@ class _PanelController(NSObject):
             NSAttributedString.alloc().initWithString_attributes_(
                 f'Sessions \u00b7 [Beads] \u00b7 Queue     Auto-Jump: {state}',
                 {NSFontAttributeName: _MENLO()}))
-        app._queue_toggle_btn.setAttributedTitle_(
+        app.queue._queue_toggle_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
                 f'Sessions \u00b7 Beads \u00b7 [Queue]     Auto-Jump: {state}',
                 {NSFontAttributeName: _MENLO()}))
@@ -181,103 +180,20 @@ class _PanelController(NSObject):
             _abort_bg_sleep_timers(proj_bg.sleep_pids)
 
     def addQueueRow_(self, sender):
-        app = self._app
-        session_id = app._queue_add_tags.get(sender.tag())
-        if not session_id:
-            return
-        q       = load_queue()
-        entries = q.get(session_id, [])
-        # Do nothing if the last entry is already an empty draft (prevent stacking blanks)
-        if entries and entries[-1].get("state") == "draft" and not entries[-1].get("text", "").strip():
-            return
-        entries.append({"text": "", "state": "draft", "sent_at": None})
-        q[session_id] = entries
-        save_queue(q)
-        app._queue_data = q
-        sessions = app.sessions.refresh()
-        _rebuild_queue_panel(app, sessions)
+        self._app.queue.handle_add_row(sender.tag())
 
     def toggleQueueEntry_(self, sender):
-        app  = self._app
-        info = app._queue_toggle_tags.get(sender.tag())
-        if not info:
-            return
-        session_id, idx = info
-        # Borderless button click does NOT cause NSTextField to lose focus, so
-        # controlTextDidEndEditing_ is never called. Capture live text directly here.
-        tf        = app._pending_queue_views.get((session_id, idx))
-        live_text = str(tf.stringValue()) if tf is not None else None
-        q       = load_queue()
-        entries = q.get(session_id, [])
-        if 0 <= idx < len(entries):
-            e         = entries[idx]
-            new_state = "draft" if e.get("state") == "queued" else "queued"
-            updated   = {**e, "state": new_state}
-            if live_text is not None:
-                updated["text"] = live_text
-            entries[idx] = updated
-            q[session_id] = entries
-            save_queue(q)
-            app._queue_data = q
-            if new_state == "queued":
-                _try_deliver_now(app, session_id, updated.get("text", ""), idx)
-        sessions = app.sessions.refresh()
-        _rebuild_queue_panel(app, sessions)
+        self._app.queue.handle_toggle_entry(sender.tag())
 
     def removeQueueEntry_(self, sender):
-        app  = self._app
-        info = app._queue_remove_tags.get(sender.tag())
-        if not info:
-            return
-        session_id, idx = info
-        q    = load_queue()
-        msgs = q.get(session_id, [])
-        if 0 <= idx < len(msgs):
-            del msgs[idx]
-            if msgs:
-                q[session_id] = msgs
-            else:
-                q.pop(session_id, None)
-            save_queue(q)
-            app._queue_data = q
-        sessions = app.sessions.refresh()
-        _rebuild_queue_panel(app, sessions)
+        self._app.queue.handle_remove_entry(sender.tag())
 
     def commitQueueField_(self, sender):
-        # Enter on a draft NSTextField: save text AND queue it (draft → queued)
-        app  = self._app
-        info = app._pending_queue_tags.get(sender.tag())
-        if not info:
-            return
-        session_id, idx = info
-        text = str(sender.stringValue())
-        q       = load_queue()
-        entries = q.get(session_id, [])
-        if 0 <= idx < len(entries) and entries[idx].get("state") == "draft":
-            entries[idx] = {**entries[idx], "text": text, "state": "queued"}
-            q[session_id] = entries
-            save_queue(q)
-            app._queue_data = q
-            _try_deliver_now(app, session_id, text, idx)
-            sessions = app.sessions.refresh()
-            _rebuild_queue_panel(app, sessions)
+        self._app.queue.handle_commit_field(sender.tag(), str(sender.stringValue()))
 
     def controlTextDidEndEditing_(self, notification):
-        # Focus loss on a draft NSTextField: save current text in-place, no rebuild
-        app  = self._app
-        tf   = notification.object()
-        info = app._pending_queue_tags.get(tf.tag())
-        if not info:
-            return
-        session_id, idx = info
-        text = str(tf.stringValue())
-        q       = load_queue()
-        entries = q.get(session_id, [])
-        if 0 <= idx < len(entries) and entries[idx].get("state") == "draft":
-            entries[idx] = {**entries[idx], "text": text}
-            q[session_id] = entries
-            save_queue(q)
-            app._queue_data = q
+        tf = notification.object()
+        self._app.queue.handle_text_end_editing(tf.tag(), str(tf.stringValue()))
 
     def windowDidResize_(self, notification):
         frame = notification.object().frame()
@@ -296,9 +212,9 @@ class _PanelController(NSObject):
             bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
             _rebuild_panel(app, sessions, bg_by_project)
             _reregister_digit_hotkeys(app)
-        elif app._queue_open:
+        elif app.queue._queue_open:
             sessions = app.sessions.refresh()
-            _rebuild_queue_panel(app, sessions)
+            app.queue.rebuild(sessions)
 
 
 # macOS menubar app — polls CC sessions every 1.5s, NSPanel sticky-toggle via Cmd+L / bar click
@@ -337,16 +253,7 @@ class CCMenuBarApp(rumps.App):
         self._hotkey_arr_right_ref = None   # hk_ref for Cmd+→ (module holds CFUNCTYPE anchor)
         self._hotkey_arr_left_ref  = None   # hk_ref for Cmd+← (module holds CFUNCTYPE anchor)
         self._panel_backgrounded: bool = False   # True while active panel is orderBack_'d behind other windows
-        # Queue panel state
-        self._queue_open: bool = False
-        self._queue_panel, self._queue_sv, self._queue_toggle_btn = _make_queue_nspanel()
-        self._queue_displayed_names: set = set()   # session names currently shown in queue panel
-        self._queue_data: dict = {}                # {session_id: [{text,state,sent_at}]} — refreshed each tick from msg_queue.json
-        self._pending_queue_tags: dict = {}        # {NSTextField tag → (session_id, idx)}; reset on each rebuild
-        self._pending_queue_views: dict = {}       # {(session_id, idx) → NSTextField}; reset on each rebuild; used by toggleQueueEntry_ to capture live text
-        self._queue_add_tags: dict = {}            # {+ button tag → session_id}; reset on each rebuild
-        self._queue_remove_tags: dict = {}         # {× button tag → (session_id, idx)}; reset each rebuild
-        self._queue_toggle_tags: dict = {}         # {↑/↓ button tag → (session_id, idx)}; reset each rebuild
+        self.queue = QueueController(self)         # queue panel controller; owns all _queue_* state
         self.sessions = SessionsController(self)   # session snapshot cache; refresh() + .data property
         self._last_log_cleanup_ts: float = 0.0    # monotonic ts of last cleanup_old_lines run (0 → fires on first tick)
 
@@ -373,9 +280,9 @@ class CCMenuBarApp(rumps.App):
                 self._tracker_toggle_btn.setAction_(b'toggleAutoJump:')
                 self._panel.setDelegate_(self._panel_controller)
                 self._tracker_panel.setDelegate_(self._panel_controller)
-                self._queue_panel.setDelegate_(self._panel_controller)
-                self._queue_toggle_btn.setTarget_(self._panel_controller)
-                self._queue_toggle_btn.setAction_(b'toggleAutoJump:')
+                self.queue._queue_panel.setDelegate_(self._panel_controller)
+                self.queue._queue_toggle_btn.setTarget_(self._panel_controller)
+                self.queue._queue_toggle_btn.setAction_(b'toggleAutoJump:')
                 _set_bar_icon(self, ICON_NORMAL)   # replace setTitle_ with attributed version
                 self._initialized = True
             except AttributeError:
@@ -403,14 +310,7 @@ class CCMenuBarApp(rumps.App):
         bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
         _auto_abort_check(self, sessions, bg_by_project, now)
         self.bead.tick(sessions)
-        # Refresh queue data; detect changes to trigger panel rebuild if open
-        new_queue = load_queue()
-        queue_changed = new_queue != self._queue_data
-        self._queue_data = new_queue
-        if self._queue_open:
-            q_names = {s.name for s in sessions if not s.is_worker}
-            if queue_changed or q_names != self._queue_displayed_names:
-                _rebuild_queue_panel(self, sessions)
+        self.queue.tick(sessions)
         if self._panel_open:
             session_names = {s.name for s in sessions}
             new_abort_projs = {p for p in bg_by_project if p != 'unknown'}
@@ -578,7 +478,7 @@ def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) ->
     try:
         if from_panel == 'main':      from_obj = app._panel
         elif from_panel == 'tracker': from_obj = app._tracker_panel
-        else:                         from_obj = app._queue_panel
+        else:                         from_obj = app.queue._queue_panel
         from_frame = from_obj.frame()   # capture before close
         if from_panel == 'main':      _close_main_panel(app)
         elif from_panel == 'tracker': _close_tracker_panel(app)
@@ -588,7 +488,7 @@ def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) ->
         elif to_panel == 'queue':     _open_queue_panel(app)
         if to_panel == 'main':        to_obj = app._panel
         elif to_panel == 'tracker':   to_obj = app._tracker_panel
-        else:                         to_obj = app._queue_panel
+        else:                         to_obj = app.queue._queue_panel
         to_obj.setFrame_display_(from_frame, True)   # restore position; display:True flushes immediately
     except Exception as e:
         print(f'[menubar] cycling {from_panel}→{to_panel} error: {e}', file=sys.stderr)
@@ -605,9 +505,9 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
             elif app._tracker_open:
                 app._tracker_panel.setLevel_(25)   # NSStatusWindowLevel
                 app._tracker_panel.orderFrontRegardless()
-            elif app._queue_open:
-                app._queue_panel.setLevel_(25)   # NSStatusWindowLevel
-                app._queue_panel.orderFrontRegardless()
+            elif app.queue._queue_open:
+                app.queue._queue_panel.setLevel_(25)   # NSStatusWindowLevel
+                app.queue._queue_panel.orderFrontRegardless()
             app._panel_backgrounded = False
         elif app._panel_open:
             app._panel.setLevel_(0)   # NSNormalWindowLevel — allows orderBack_ to work
@@ -617,9 +517,9 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
             app._tracker_panel.setLevel_(0)   # NSNormalWindowLevel
             app._tracker_panel.orderBack_(None)
             app._panel_backgrounded = True
-        elif app._queue_open:
-            app._queue_panel.setLevel_(0)   # NSNormalWindowLevel
-            app._queue_panel.orderBack_(None)
+        elif app.queue._queue_open:
+            app.queue._queue_panel.setLevel_(0)   # NSNormalWindowLevel
+            app.queue._queue_panel.orderBack_(None)
             app._panel_backgrounded = True
     except Exception as e:
         print(f'[menubar] Cmd+K deferred-block error: {e}', file=sys.stderr)
@@ -680,15 +580,14 @@ def _close_tracker_panel(app: 'CCMenuBarApp') -> None:
     unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
     app._hotkey_arr_left_ref = None
 
-# Open queue panel: rebuild → reposition → show + register Cmd+→ (→Sessions wrap) + Cmd+← (→Beads)
+# Open queue panel: load data + rebuild → reposition → show + register Cmd+→ (→Sessions wrap) + Cmd+← (→Beads)
 def _open_queue_panel(app: 'CCMenuBarApp') -> None:
     sessions = app.sessions.refresh()
-    app._queue_data = load_queue()
-    _rebuild_queue_panel(app, sessions)
-    _reposition_queue_panel(app._queue_panel, app._nsapp.nsstatusitem)
-    app._queue_panel.orderFrontRegardless()
-    app._queue_panel.enableCursorRects()
-    app._queue_open = True
+    app.queue.open(sessions)
+    _reposition_queue_panel(app.queue._queue_panel, app._nsapp.nsstatusitem)
+    app.queue._queue_panel.orderFrontRegardless()
+    app.queue._queue_panel.enableCursorRects()
+    app.queue._queue_open = True
     _, app._hotkey_arr_right_ref = register_cmd_arrow_right(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _deferred_close_open(app, 'queue', 'main')))
@@ -698,8 +597,8 @@ def _open_queue_panel(app: 'CCMenuBarApp') -> None:
 
 # Close queue panel: hide + unregister Cmd+→ + Cmd+←
 def _close_queue_panel(app: 'CCMenuBarApp') -> None:
-    app._queue_panel.orderOut_(None)
-    app._queue_open = False
+    app.queue._queue_panel.orderOut_(None)
+    app.queue._queue_open = False
     app._panel_backgrounded = False
     unregister_cmd_arrow_right(app._hotkey_arr_right_ref)
     app._hotkey_arr_right_ref = None
@@ -720,33 +619,3 @@ def _save_settings(auto_focus: bool, panel_width: int, panel_min_height: int) ->
         pass
 
 
-# If the target session is currently idle, deliver the just-queued message immediately
-# and mark it sent in the queue file. Called after committing a draft to queued state.
-# Acceptable race with hook_writer: concurrent Stop + panel-queue both deliver → double-send;
-# second mark_sent is a no-op because state check guards against already-sent entries.
-def _try_deliver_now(app: 'CCMenuBarApp', session_id: str, text: str, idx: int) -> None:
-    try:
-        hook_state = json.loads(_HOOKS_FILE.read_text(encoding="utf-8"))
-    except Exception as exc:
-        print(f"queue: _try_deliver_now read hooks.json failed: {exc}", file=sys.stderr)
-        return
-    entry = hook_state.get(session_id, {})
-    print(f"queue: _try_deliver_now session={session_id[:12]} status={entry.get('status')!r} cwd={entry.get('cwd', '')!r}", file=sys.stderr)
-    if entry.get("status") != "idle":
-        print(f"queue: _try_deliver_now returning, not idle", file=sys.stderr)
-        return
-    cwd = entry.get("cwd", "")
-    if not cwd or not text:
-        return
-    success = deliver_message(cwd, text)
-    print(f"queue: _try_deliver_now delivered, success={success}", file=sys.stderr)
-    if not success:
-        return
-    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    q       = load_queue()
-    entries = q.get(session_id, [])
-    if 0 <= idx < len(entries) and entries[idx].get("state") == "queued":
-        entries[idx] = {**entries[idx], "state": "sent", "sent_at": now_iso}
-        q[session_id] = entries
-        save_queue(q)
-        app._queue_data = q
