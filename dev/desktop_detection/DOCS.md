@@ -93,7 +93,7 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 
 ### `02_bundle_stub.app/`
 
-Minimal `.app` bundle (CFBundleIdentifier=`com.brunowinter.monitor_cc_menubar`, ad-hoc signed) used to run the probe in bundle-exec context (same exec chain as production menubar). Launcher: `Contents/MacOS/launcher` → `exec venv/python3 02_context_comparison_probe.py --tag=bundle`.
+Minimal `.app` bundle (CFBundleIdentifier=`com.brunowinter.monitor_cc_menubar`, ad-hoc signed) used to run the probe in bundle-exec context (same exec chain as production menubar). Launcher: `Contents/MacOS/launcher` → `exec venv/bin/python3 02_context_comparison_probe.py --tag=bundle`.
 
 ### `03_field_availability_probe.py` (260 LOC)
 

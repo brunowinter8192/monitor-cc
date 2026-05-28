@@ -1,7 +1,7 @@
 # dev/worker_status_probes/
 
 Probe suite for empirically evaluating three candidate tmux activity sensors as replacements
-for the JSONL-mtime demote rule in `_worker_detect_status()`. Produces raw CSVs and a
+for the JSONL-mtime demote rule in `_worker_detect_status` (iterative-dev plugin: `tmux_spawn.sh`, bash — not in `src/`). Produces raw CSVs and a
 side-by-side comparison report.
 
 ## Usage

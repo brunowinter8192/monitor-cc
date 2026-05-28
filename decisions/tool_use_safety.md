@@ -6,7 +6,7 @@ Tool-Use-Disziplin wird auf zwei Wegen erzwungen:
 
 1. **`~/.claude/shared-rules/global/tool-use.md`** — 16 Hard Rules + Soft Rules. Text-basiert, prompt-injected via `SessionStart` hooks in `~/.claude/scripts/session-start-rule-inject.sh`. Werden auf jedem REQ-Prefix mitgesendet (kostet Input-Tokens, gecached). Mischung aus positiven Anleitungen ("Verwende X") und negativen Verboten ("Tu nicht Y").
 
-2. **`dev/tool_use_errors/analyze.py`** (Monitor_CC) — Konsolidierte Detection-Pipeline (successor zu `rule_compliance.py` + `extract_failed.py`). Klassifiziert tool-use-Fehler nach Typ (hook-blocked, git-ambig, parallel, unavailable, string-not-found, oversize u.a.), scannt auf Rule-Violations (Rule 3, 9, 11, 12 u.a.), ordnet jeden Fund einem Hookability-Bucket zu (pre-blockable / pre-rewritable / prompt-hook-candidate / not-statically-hookable / runtime-only / already-hooked). **Nur Detection, keine Prevention.** Output: Markdown-Report pro Run.
+2. **Persistent audit logs** (seit 2026-05-24) — `src/logs/tool_errors.jsonl` (tool-use Fehler pro Session, appended by `warnings_persist.py`) + `src/logs/hook_firing.jsonl` (hook fire-events via `_fire_log.py`). Supersede die gelöschten analyze.py-Skripte aus `dev/tool_use_errors/` und `dev/hook_firing/`. **Nur Detection/Audit, keine Prevention.**
 
 3. **Keine PreToolUse-Hooks** aktuell aktiv. `~/.claude/settings.json` hat `"hooks": {}` (leer). Frühere Hook-Konfiguration im Backup-File (`settings.json.hooks-backup`) zeigt working format für PreToolUse/SubagentStop/SessionStart/InstructionsLoaded.
 
@@ -64,5 +64,4 @@ Konkret in nächster Session:
 - `decisions/OldThemes/tool_use_safety/2026-05-12_session_findings.md` — Discussion-Trail dieser Session
 - `~/.claude/shared-rules/global/tool-use.md` — Quelle der aktuellen Hard Rules
 - `~/.claude/settings.json.hooks-backup` — funktionierende Hook-Format-Referenz
-- `dev/tool_use_errors/analyze.py` — Detection-Tool (successor zu rule_compliance.py + extract_failed.py, 2026-05-22)
 - `dev/tool_use_analysis/20260512_rule_compliance.md` — heutiger Compliance-Run-Output
