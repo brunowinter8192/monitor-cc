@@ -90,13 +90,23 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (767 LOC) ⚠ over 400 LOC ceiling — split-refactor deferred
+### app.py (761 LOC) ⚠ over 400 LOC ceiling — split-refactor in progress (Step 1/6 done)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_` (append empty draft; guard against stacking blanks), `toggleQueueEntry_` (draft↔queued flip), `removeQueueEntry_` (× delete), `commitQueueField_` (Enter → save draft text in-place), `controlTextDidEndEditing_` (blur → save draft text in-place). `_tick` caches sessions in `app._last_sessions`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open. `_reregister_digit_hotkeys` maps Cmd+N to the Main with `desktop_no=N` (conflict-free only; populated from `_desktop_to_cwd`).
-**Reads:** `list_alive_sessions()` + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch; `QUEUE_FILE` (via `load_queue()`) on every tick + on `_open_queue_panel`.
-**Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove/toggle/edit; `src/logs/menubar.log` ([abort] category via `_abort_log_write`; [tick] category when `MENUBAR_DIAGNOSTICS=1`; [hotkey] category for Cmd+1..9 app-level focus dispatch); `_queue_data`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_pending_queue_tags`, `_last_sessions`, `_queue_displayed_names`.
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue controller methods wired to queue panel: `addQueueRow_` (append empty draft; guard against stacking blanks), `toggleQueueEntry_` (draft↔queued flip), `removeQueueEntry_` (× delete), `commitQueueField_` (Enter → save draft text in-place), `controlTextDidEndEditing_` (blur → save draft text in-place). `_tick` delegates session snapshot to `self.sessions.refresh()`; `queue_changed` triggers `_rebuild_queue_panel` if queue panel is open. `_reregister_digit_hotkeys` maps Cmd+N to the Main with `desktop_no=N` (conflict-free only; populated from `_desktop_to_cwd`).
+**Reads:** `self.sessions.refresh()` (via `SessionsController`) + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch; `QUEUE_FILE` (via `load_queue()`) on every tick + on `_open_queue_panel`.
+**Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `QUEUE_FILE` (via `save_queue()`) on queue UI add/remove/toggle/edit; `src/logs/menubar.log` ([abort] category via `_abort_log_write`; [tick] category when `MENUBAR_DIAGNOSTICS=1`; [hotkey] category for Cmd+1..9 app-level focus dispatch); `_queue_data`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_pending_queue_tags`, `_queue_displayed_names`.
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.panel`, `.bead_panel`, `.queue_panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`load_queue`, `save_queue`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
+**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.panel`, `.bead_panel`, `.queue_panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`load_queue`, `save_queue`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
+
+---
+
+### sessions_controller.py (22 LOC)
+
+**Purpose:** Session snapshot cache. `SessionsController` wraps `list_alive_sessions()` with a one-value cache (`_last_sessions`) so all consumers within a tick read the same snapshot without re-calling discovery. First controller in the Step 1/6 CCMenuBarApp composition refactor.
+**Reads:** nothing directly; delegates to `discover.py:list_alive_sessions()`.
+**Writes:** `self._last_sessions` on each `refresh()` call.
+**Called by:** `app.py:CCMenuBarApp.__init__` (construction); `app.py:CCMenuBarApp._tick`, `app.py:_open_main_panel`, `app.py:_open_queue_panel`, `app.py:_PanelController.addQueueRow_/toggleQueueEntry_/removeQueueEntry_/commitQueueField_/windowDidEndLiveResize_` (`refresh()`); `app.py:_PanelController.queryBeadStatus_` (`.data`).
+**Calls out:** `.discover` (`list_alive_sessions`).
 
 ---
 
@@ -318,12 +328,12 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp._queue_sv` | queue_panel.py | `NSStackView` | `_make_queue_nspanel` | Vertical NSStackView for queue panel content. |
 | `CCMenuBarApp._queue_toggle_btn` | queue_panel.py | `NSButton` | `_make_queue_nspanel` | Auto-Jump toggle button in queue panel top_bar. Wired to `toggleAutoJump_` in lazy-init tick. |
 | `CCMenuBarApp._queue_displayed_names` | app.py | `set` | queue_panel.py (`_rebuild_queue_panel`) | Set of main session names currently displayed in queue panel. Used by `_tick` to detect session-set changes. |
-| `CCMenuBarApp._last_sessions` | app.py | `list` | app.py (`_tick`) | Last `list_alive_sessions()` result. Updated each tick. Used by queue panel rebuild in controller methods. |
 | `CCMenuBarApp._queue_data` | app.py | `dict` | app.py | `{session_id: [{text: str, state: "draft"\|"queued"\|"sent", sent_at: str\|null}]}` refreshed from `msg_queue.json` on every tick and on `_open_queue_panel`. |
 | `CCMenuBarApp._pending_queue_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{NSTextField_tag → (session_id, idx)}`. Reset on each rebuild. Used by `commitQueueField_` and `controlTextDidEndEditing_` to locate the draft entry to update. |
 | `CCMenuBarApp._queue_add_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{+ button tag → session_id}`. Tags 2000+. Reset on each rebuild. |
 | `CCMenuBarApp._queue_remove_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{× button tag → (session_id, idx)}`. Tags 3000+. Reset on each rebuild. |
 | `CCMenuBarApp._queue_toggle_tags` | app.py | `dict` | queue_panel.py (`_rebuild_queue_panel`) | `{↑/↓ button tag → (session_id, idx)}`. Tags 5000+. Reset on each rebuild. Used by `toggleQueueEntry_`. Only draft and queued entries have a toggle button; sent entries have none. |
+| `CCMenuBarApp.sessions` | app.py | `SessionsController` | sessions_controller.py | Session snapshot cache. `sessions.refresh()` calls `list_alive_sessions()` and caches result; `sessions.data` returns cached snapshot. Replaces bare `_last_sessions` attr. |
 
 ## Title-Marker Mapping (tty → Ghostty terminal UUID)
 

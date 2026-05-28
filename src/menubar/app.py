@@ -46,6 +46,8 @@ from .system import _focus_session
 from .paths import SETTINGS_FILE as _SETTINGS_PATH, HOOKS_FILE as _HOOKS_FILE
 # From queue.py: message queue storage
 from .queue import load_queue, save_queue, deliver_message
+# From sessions_controller.py: session snapshot cache
+from .sessions_controller import SessionsController
 
 BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
@@ -110,7 +112,7 @@ class _PanelController(NSObject):
         if not info:
             return
         bead_id, project_name = info
-        cwd = next((s.cwd for s in app._last_sessions
+        cwd = next((s.cwd for s in app.sessions.data
                     if not s.is_worker and s.project_name == project_name), None)
         if not cwd:
             print(f"queue: queryBeadStatus_ no cwd for project={project_name}", file=sys.stderr)
@@ -183,8 +185,7 @@ class _PanelController(NSObject):
         q[session_id] = entries
         save_queue(q)
         app._queue_data = q
-        sessions = list_alive_sessions()
-        app._last_sessions = sessions
+        sessions = app.sessions.refresh()
         _rebuild_queue_panel(app, sessions)
 
     def toggleQueueEntry_(self, sender):
@@ -211,8 +212,7 @@ class _PanelController(NSObject):
             app._queue_data = q
             if new_state == "queued":
                 _try_deliver_now(app, session_id, updated.get("text", ""), idx)
-        sessions = list_alive_sessions()
-        app._last_sessions = sessions
+        sessions = app.sessions.refresh()
         _rebuild_queue_panel(app, sessions)
 
     def removeQueueEntry_(self, sender):
@@ -231,8 +231,7 @@ class _PanelController(NSObject):
                 q.pop(session_id, None)
             save_queue(q)
             app._queue_data = q
-        sessions = list_alive_sessions()
-        app._last_sessions = sessions
+        sessions = app.sessions.refresh()
         _rebuild_queue_panel(app, sessions)
 
     def commitQueueField_(self, sender):
@@ -251,8 +250,7 @@ class _PanelController(NSObject):
             save_queue(q)
             app._queue_data = q
             _try_deliver_now(app, session_id, text, idx)
-            sessions = list_alive_sessions()
-            app._last_sessions = sessions
+            sessions = app.sessions.refresh()
             _rebuild_queue_panel(app, sessions)
 
     def controlTextDidEndEditing_(self, notification):
@@ -290,8 +288,7 @@ class _PanelController(NSObject):
             _rebuild_panel(app, sessions, bg_by_project)
             _reregister_digit_hotkeys(app)
         elif app._queue_open:
-            sessions = list_alive_sessions()
-            app._last_sessions = sessions
+            sessions = app.sessions.refresh()
             _rebuild_queue_panel(app, sessions)
 
 
@@ -348,7 +345,7 @@ class CCMenuBarApp(rumps.App):
         self._queue_add_tags: dict = {}            # {+ button tag → session_id}; reset on each rebuild
         self._queue_remove_tags: dict = {}         # {× button tag → (session_id, idx)}; reset each rebuild
         self._queue_toggle_tags: dict = {}         # {↑/↓ button tag → (session_id, idx)}; reset each rebuild
-        self._last_sessions: list = []             # last live sessions snapshot; used by queue panel rebuild
+        self.sessions = SessionsController(self)   # session snapshot cache; refresh() + .data property
         self._last_log_cleanup_ts: float = 0.0    # monotonic ts of last cleanup_old_lines run (0 → fires on first tick)
 
     @rumps.timer(POLL_INTERVAL)
@@ -383,10 +380,9 @@ class CCMenuBarApp(rumps.App):
                 return   # _nsapp not ready yet; retry next tick
         now = time.time()
         try:
-            sessions = list_alive_sessions()
+            sessions = self.sessions.refresh()
         except Exception:
             sessions = []
-        self._last_sessions = sessions
         if self._auto_focus:
             for s in sessions:
                 if s.is_worker or not s.cwd:
@@ -630,8 +626,7 @@ def _background_panel(app: 'CCMenuBarApp') -> None:
 
 # Open main panel: rebuild → reposition → show → register Cmd+→ (→Beads) + Cmd+← (→Queue wrap) + Cmd+1..9
 def _open_main_panel(app: 'CCMenuBarApp') -> None:
-    sessions = list_alive_sessions()
-    app._last_sessions = sessions
+    sessions = app.sessions.refresh()
     cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
     bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
     _rebuild_panel(app, sessions, bg_by_project)
@@ -687,8 +682,7 @@ def _close_tracker_panel(app: 'CCMenuBarApp') -> None:
 
 # Open queue panel: rebuild → reposition → show + register Cmd+→ (→Sessions wrap) + Cmd+← (→Beads)
 def _open_queue_panel(app: 'CCMenuBarApp') -> None:
-    sessions = list_alive_sessions()
-    app._last_sessions = sessions
+    sessions = app.sessions.refresh()
     app._queue_data = load_queue()
     _rebuild_queue_panel(app, sessions)
     _reposition_queue_panel(app._queue_panel, app._nsapp.nsstatusitem)
