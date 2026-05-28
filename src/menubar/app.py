@@ -19,11 +19,8 @@ from .discover import list_alive_sessions
 from .bg_timer import _scan_bg_sleep_timers, _abort_bg_sleep_timers
 # From focus_controller.py: FocusController — auto-focus debounce + auto-abort idle-workers
 from .focus_controller import FocusController
-# From hotkey.py: Carbon Cmd+L, Cmd+1..9, Cmd+arrows, Cmd+K registration
-from .hotkey import (register_cmd_l, register_cmd_digits, unregister_hotkeys,
-                     register_cmd_arrow_right, register_cmd_arrow_left,
-                     unregister_cmd_arrow_right, unregister_cmd_arrow_left,
-                     register_cmd_k)
+# From hotkey_controller.py: HotkeyController + Carbon Cmd+L / Cmd+K registration
+from .hotkey_controller import HotkeyController, register_cmd_l, register_cmd_k
 # From menubar_log.py: unified log sink for all menubar diagnostic categories
 from .menubar_log import log_menubar
 # From bead_controller.py: BeadController + NSPanel factory + panel repositioning
@@ -211,7 +208,7 @@ class _PanelController(NSObject):
             cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
             bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
             app.panel.rebuild(sessions, bg_by_project)
-            _reregister_digit_hotkeys(app)
+            app.hotkey.reregister_digits(app.panel._desktop_to_cwd)
         elif app.queue._queue_open:
             sessions = app.sessions.refresh()
             app.queue.rebuild(sessions)
@@ -236,13 +233,10 @@ class CCMenuBarApp(rumps.App):
         self._hotkey_k_cb, self._hotkey_k_ref = register_cmd_k(
             lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
                 lambda: _background_panel(self)))
-        self._hotkey_digits_cb   = None   # GC anchor for Cmd+1..9 CFUNCTYPE
-        self._hotkey_digits_refs = []     # GC anchor for Cmd+1..9 hk_refs
+        self.hotkey = HotkeyController(self)
         self._tracker_open: bool     = False
         self.bead = BeadController(self)
         self._tracker_panel, self._tracker_sv, self._tracker_toggle_btn = _make_bead_nspanel()
-        self._hotkey_arr_right_ref = None   # hk_ref for Cmd+→ (module holds CFUNCTYPE anchor)
-        self._hotkey_arr_left_ref  = None   # hk_ref for Cmd+← (module holds CFUNCTYPE anchor)
         self._panel_backgrounded: bool = False   # True while active panel is orderBack_'d behind other windows
         self.queue = QueueController(self)         # queue panel controller; owns all _queue_* state
         self.sessions = SessionsController(self)   # session snapshot cache; refresh() + .data property
@@ -297,7 +291,7 @@ class CCMenuBarApp(rumps.App):
                 reasons = '+'.join(r for r, v in [('abort-flap', abort_flap), ('session-set-change', set_change)] if v)
                 _tick_log(True, sessions, self.panel._displayed_items, reasons)
                 self.panel.rebuild(sessions, bg_by_project)
-                _reregister_digit_hotkeys(self)
+                self.hotkey.reregister_digits(self.panel._desktop_to_cwd)
             else:
                 _tick_log(True, sessions, self.panel._displayed_items, 'no-change')
                 self.panel.update_inplace(sessions, bg_by_project)
@@ -340,23 +334,6 @@ def _blink(app: 'CCMenuBarApp') -> None:
         NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _set_bar_icon(app, ICON_NORMAL))
     threading.Timer(BLINK_DURATION, _restore).start()
-
-# Register (or re-register) Cmd+1..9 hotkeys mapped by desktop_no (conflict-free mains only)
-def _reregister_digit_hotkeys(app: 'CCMenuBarApp') -> None:
-    if app._hotkey_digits_refs:
-        unregister_hotkeys(app._hotkey_digits_refs)
-        app._hotkey_digits_refs = []
-        app._hotkey_digits_cb   = None
-    slots = {dn: cwd for dn, cwd in app.panel._desktop_to_cwd.items() if dn <= 9 and cwd}
-    if not slots:
-        return
-    def _make_digit_cb(slot, cwd):
-        def _cb():
-            log_menubar('hotkey', f'cmd+{slot} → focus {cwd}')
-            _focus_session(cwd)
-        return _cb
-    cb_map = {slot: _make_digit_cb(slot, cwd) for slot, cwd in slots.items()}
-    app._hotkey_digits_cb, app._hotkey_digits_refs = register_cmd_digits(cb_map)
 
 # Load settings; returns (auto_focus, panel_width, panel_min_height); falls back to module defaults on any error
 # panel_min_height: reads 'panel_min_height' first, falls back to legacy 'panel_max_height', then PANEL_HEIGHT
@@ -440,11 +417,11 @@ def _open_main_panel(app: 'CCMenuBarApp') -> None:
     app.panel._panel.orderFrontRegardless()
     app.panel._panel.enableCursorRects()
     app.panel._panel_open = True
-    _reregister_digit_hotkeys(app)
-    _, app._hotkey_arr_right_ref = register_cmd_arrow_right(
+    app.hotkey.reregister_digits(app.panel._desktop_to_cwd)
+    app.hotkey.register_arrow_right(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _deferred_close_open(app, 'main', 'tracker')))
-    _, app._hotkey_arr_left_ref = register_cmd_arrow_left(
+    app.hotkey.register_arrow_left(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _deferred_close_open(app, 'main', 'queue')))
 
@@ -453,14 +430,9 @@ def _close_main_panel(app: 'CCMenuBarApp') -> None:
     app.panel._panel.orderOut_(None)
     app.panel._panel_open = False
     app._panel_backgrounded = False
-    if app._hotkey_digits_refs:
-        unregister_hotkeys(app._hotkey_digits_refs)
-        app._hotkey_digits_refs = []
-        app._hotkey_digits_cb   = None
-    unregister_cmd_arrow_right(app._hotkey_arr_right_ref)
-    app._hotkey_arr_right_ref = None
-    unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
-    app._hotkey_arr_left_ref = None
+    app.hotkey.unregister_digits()
+    app.hotkey.unregister_arrow_right()
+    app.hotkey.unregister_arrow_left()
 
 # Open tracker panel: rebuild → reposition → show + register Cmd+→ (→Queue) + Cmd+← (→Sessions)
 def _open_tracker_panel(app: 'CCMenuBarApp') -> None:
@@ -469,10 +441,10 @@ def _open_tracker_panel(app: 'CCMenuBarApp') -> None:
     app._tracker_panel.orderFrontRegardless()
     app._tracker_panel.enableCursorRects()
     app._tracker_open = True
-    _, app._hotkey_arr_right_ref = register_cmd_arrow_right(
+    app.hotkey.register_arrow_right(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _deferred_close_open(app, 'tracker', 'queue')))
-    _, app._hotkey_arr_left_ref = register_cmd_arrow_left(
+    app.hotkey.register_arrow_left(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _deferred_close_open(app, 'tracker', 'main')))
 
@@ -481,10 +453,8 @@ def _close_tracker_panel(app: 'CCMenuBarApp') -> None:
     app._tracker_panel.orderOut_(None)
     app._tracker_open = False
     app._panel_backgrounded = False
-    unregister_cmd_arrow_right(app._hotkey_arr_right_ref)
-    app._hotkey_arr_right_ref = None
-    unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
-    app._hotkey_arr_left_ref = None
+    app.hotkey.unregister_arrow_right()
+    app.hotkey.unregister_arrow_left()
 
 # Open queue panel: load data + rebuild → reposition → show + register Cmd+→ (→Sessions wrap) + Cmd+← (→Beads)
 def _open_queue_panel(app: 'CCMenuBarApp') -> None:
@@ -494,10 +464,10 @@ def _open_queue_panel(app: 'CCMenuBarApp') -> None:
     app.queue._queue_panel.orderFrontRegardless()
     app.queue._queue_panel.enableCursorRects()
     app.queue._queue_open = True
-    _, app._hotkey_arr_right_ref = register_cmd_arrow_right(
+    app.hotkey.register_arrow_right(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _deferred_close_open(app, 'queue', 'main')))
-    _, app._hotkey_arr_left_ref = register_cmd_arrow_left(
+    app.hotkey.register_arrow_left(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _deferred_close_open(app, 'queue', 'tracker')))
 
@@ -506,10 +476,8 @@ def _close_queue_panel(app: 'CCMenuBarApp') -> None:
     app.queue._queue_panel.orderOut_(None)
     app.queue._queue_open = False
     app._panel_backgrounded = False
-    unregister_cmd_arrow_right(app._hotkey_arr_right_ref)
-    app._hotkey_arr_right_ref = None
-    unregister_cmd_arrow_left(app._hotkey_arr_left_ref)
-    app._hotkey_arr_left_ref = None
+    app.hotkey.unregister_arrow_right()
+    app.hotkey.unregister_arrow_left()
 
 # Atomic settings write: tempfile + os.replace to prevent partial-write corruption
 def _save_settings(auto_focus: bool, panel_width: int, panel_min_height: int) -> None:
