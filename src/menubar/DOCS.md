@@ -17,7 +17,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### desktop_detection.py (275 LOC)
+### desktop_detection.py (330 LOC)
 
 **Purpose:** Batch detection of macOS Mission Control desktop numbers for all Main sessions via private CoreGraphics Services (CGS) APIs + one AppleScript round-trip. Ported from `dev/desktop_detection/01_probe.py`. Three-strategy resolver per window: name-unique → space-elimination → OSC-2 injection. Results cached for `_DET_CACHE_TTL=10s`; force-invalidated when cwd set changes (session add/remove). All errors (Ghostty down, AppleScript failure, CGS error) are caught by the orchestrator, logged as `[detection] all_failed n_mains=N reason=...` (only when ALL mains fail, not on partial), and return all-None. Module-level CFUNCTYPE refs (`_FT_vv`, `_FT_vvv`, etc.) must remain module-level — GC'ing them corrupts the IMP pointer table and causes SIGSEGV.
 **Reads:** `ps -A` (Ghostty PID); `osascript` (Ghostty window/tab/UUID traversal); `CGWindowListCopyWindowInfo` (all spaces, all windows); `CGSCopyManagedDisplaySpaces` (space→desktop-no mapping); `CGSCopySpacesForWindows` (per-window space query); `/dev/ttys<NNN>` (OSC-2 injection for space-elimination fallback).
@@ -208,15 +208,37 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ### setup_menubar.py (134 LOC)
 
-**Purpose:** One-shot launchd bootstrap script. Builds `~/Applications/Monitor_CC_Menubar.app` bundle (Info.plist + bash launcher), ad-hoc codesigns it, writes the launchd plist to `~/Library/LaunchAgents/`, then runs `launchctl bootout` + `launchctl bootstrap`. Bundle gives the process a stable CFBundleIdentifier (`com.brunowinter.monitor_cc_menubar`) so TCC Screen-Recording grants survive restarts. Includes 1s-retry on "Input/output error" (intermittent on first install). Analog to `hook_setup.py`.
+**Purpose:** Legacy ad-hoc bundle builder (Bash-launcher approach). Builds `~/Applications/Monitor_CC_Menubar.app` with a Bash launcher that `exec`s into venv Python — superseded by `setup_py2app.py` for production use. Still active in the restart flow: `app.py:restartApp_` lazy-imports `write_plist()` from here to resync the LaunchAgent plist before respawn. Preserved as fallback during transition.
 **Reads:** `src/menubar/com.brunowinter.monitor_cc_menubar.plist` (template with `<BUNDLE_LAUNCHER>` token).
 **Writes:** `~/Applications/Monitor_CC_Menubar.app/Contents/{Info.plist,MacOS/menubar}`; `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist`.
-**Called by:** User manually. Also called via detached subprocess in `app.py:restartApp_`.
+**Called by:** User manually (legacy). `app.py:restartApp_` (lazy import of `write_plist` only).
 **Calls out:** `subprocess` (launchctl, codesign); stdlib (`os`, `pathlib`, `time`).
 
-**Usage:** `python3 src/menubar/setup_menubar.py` — run once after clone, or any time PROJECT_ROOT changes (launcher path is baked in at build time). Must be run from the main project root (not a worktree) so the launcher points to the correct venv.
+**Usage (legacy):** `python3 src/menubar/setup_menubar.py` from project root.
 
-**Post-install TCC step (required once):** System Settings → Privacy & Security → Screen Recording → add `~/Applications/Monitor_CC_Menubar.app` → toggle ON. Without this grant, `CGSCopyWindowProperty` returns no titles for Ghostty windows and desktop detection fails.
+---
+
+### setup_py2app.py (88 LOC) — at project root, NOT in src/menubar/
+
+**Purpose:** py2app build script producing `dist/Monitor_CC_Menubar.app/` — a native Mach-O bundle with embedded Python 3.14 framework. Replaces the Bash-exec chain with a native launcher so the audit token at `CGWindowListCopyWindowInfo` is `com.brunowinter.monitor_cc_menubar` (not Python.app), making the Screen Recording TCC grant effective. Builds to `dist/` in the working directory; does NOT install to `~/Applications/`. Placed at project root (not `src/menubar/`) to avoid stdlib `queue` shadowing by `src/menubar/queue.py` when setuptools is loaded.
+**Reads:** `src/menubar/menubar_main.py` (entry point); `src/menubar/com.brunowinter.monitor_cc_menubar.plist` (bundled as data file).
+**Writes:** `dist/Monitor_CC_Menubar.app/` — full py2app bundle.
+**Called by:** User manually (one-time build + after Python upgrade).
+**Calls out:** `py2app`, `setuptools`.
+
+**Usage:** `./venv/bin/pip install py2app && ./venv/bin/python setup_py2app.py py2app` from project root. Install step: `cp -R dist/Monitor_CC_Menubar.app ~/Applications/Monitor_CC_Menubar.app`.
+
+**Post-install TCC step (required once):** System Settings → Privacy & Security → Screen Recording → find or add `Monitor_CC_Menubar` → toggle ON. If already listed from the ad-hoc bundle, toggle OFF then ON to force re-evaluation of the new binary identity. Without this, `kCGWindowName` is stripped and desktop detection returns all-None.
+
+---
+
+### menubar_main.py (7 LOC)
+
+**Purpose:** py2app entry wrapper. `from src.menubar import run; run()`. Avoids argparse dispatch in `workflow.py` and prevents heavy non-menubar modules (`src.core`, `src.proxy`, etc.) from entering modulegraph's import trace. No logic beyond the delegation.
+**Reads:** nothing.
+**Writes:** nothing (delegates entirely to `system.py:run()`).
+**Called by:** py2app native launcher at bundle start (via `Contents/MacOS/Monitor_CC_Menubar`).
+**Calls out:** `.system` (via `src.menubar.__init__` which re-exports `run`).
 
 ---
 
@@ -252,7 +274,7 @@ app.py         → rumps, objc, AppKit, Foundation, time, threading, json, os, s
                  .bg_timer, .paths (SETTINGS_FILE), .queue, .menubar_log (log_menubar)
 ```
 
-No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module.
+No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module (exception: `write_plist()` from `setup_menubar.py` is lazy-imported in `app.py:restartApp_`). `menubar_main.py` is the py2app entry point — only imported by the native launcher, not by any module in the package.
 
 ---
 
