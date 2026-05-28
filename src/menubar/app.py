@@ -91,7 +91,7 @@ class _PanelController(NSObject):
         if app._tracker_open:
             _close_tracker_panel(app)
         else:
-            if app._panel_open:
+            if app.panel._panel_open:
                 _close_main_panel(app)
             _open_tracker_panel(app)
 
@@ -126,7 +126,7 @@ class _PanelController(NSObject):
         app._auto_focus = not app._auto_focus
         _save_settings(app._auto_focus, app._panel_width, app._panel_min_height)
         state = 'ON' if app._auto_focus else 'OFF'
-        app._toggle_btn.setAttributedTitle_(
+        app.panel._toggle_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
                 f'[Sessions] \u00b7 Beads \u00b7 Queue     Auto-Jump: {state}',
                 {NSFontAttributeName: _MENLO()}))
