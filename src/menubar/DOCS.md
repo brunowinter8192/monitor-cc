@@ -206,15 +206,17 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### setup_menubar.py (63 LOC)
+### setup_menubar.py (134 LOC)
 
-**Purpose:** One-shot launchd bootstrap script — substitutes `<PROJECT_ROOT>` in the bundled plist template, writes it to `~/Library/LaunchAgents/`, then runs `launchctl bootout` (idempotent) + `launchctl bootstrap`. Includes a 1s-retry on "Input/output error" (intermittent on first install). Analog to `hook_setup.py`.
-**Reads:** `src/menubar/com.brunowinter.monitor_cc_menubar.plist` (template).
-**Writes:** `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist` (substituted).
-**Called by:** User manually. Never imported.
-**Calls out:** `subprocess` (launchctl); stdlib (`os`, `pathlib`, `time`).
+**Purpose:** One-shot launchd bootstrap script. Builds `~/Applications/Monitor_CC_Menubar.app` bundle (Info.plist + bash launcher), ad-hoc codesigns it, writes the launchd plist to `~/Library/LaunchAgents/`, then runs `launchctl bootout` + `launchctl bootstrap`. Bundle gives the process a stable CFBundleIdentifier (`com.brunowinter.monitor_cc_menubar`) so TCC Screen-Recording grants survive restarts. Includes 1s-retry on "Input/output error" (intermittent on first install). Analog to `hook_setup.py`.
+**Reads:** `src/menubar/com.brunowinter.monitor_cc_menubar.plist` (template with `<BUNDLE_LAUNCHER>` token).
+**Writes:** `~/Applications/Monitor_CC_Menubar.app/Contents/{Info.plist,MacOS/menubar}`; `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist`.
+**Called by:** User manually. Also called via detached subprocess in `app.py:restartApp_`.
+**Calls out:** `subprocess` (launchctl, codesign); stdlib (`os`, `pathlib`, `time`).
 
-**Usage:** `python3 src/menubar/setup_menubar.py` — run once after clone or when reinstalling the launchd service.
+**Usage:** `python3 src/menubar/setup_menubar.py` — run once after clone, or any time PROJECT_ROOT changes (launcher path is baked in at build time). Must be run from the main project root (not a worktree) so the launcher points to the correct venv.
+
+**Post-install TCC step (required once):** System Settings → Privacy & Security → Screen Recording → add `~/Applications/Monitor_CC_Menubar.app` → toggle ON. Without this grant, `CGSCopyWindowProperty` returns no titles for Ghostty windows and desktop detection fails.
 
 ---
 
