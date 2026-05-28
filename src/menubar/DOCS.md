@@ -101,13 +101,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (621 LOC) ⚠ over 400 LOC ceiling — split-refactor in progress (Step 3/6 done)
+### app.py (615 LOC) ⚠ over 400 LOC ceiling — split-refactor in progress (Step 4/6 done)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue action handlers (`addQueueRow_`, `toggleQueueEntry_`, `removeQueueEntry_`, `commitQueueField_`, `controlTextDidEndEditing_`) are 1-line delegates to `self._app.queue.handle_*` methods. `_tick` delegates session snapshot to `self.sessions.refresh()`, bead refresh to `self.bead.tick(sessions)`, and queue refresh + conditional rebuild to `self.queue.tick(sessions)`. `_reregister_digit_hotkeys` maps Cmd+N to the Main with `desktop_no=N` (conflict-free only; populated from `_desktop_to_cwd`).
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save + `_auto_abort_check`. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue action handlers (`addQueueRow_`, `toggleQueueEntry_`, `removeQueueEntry_`, `commitQueueField_`, `controlTextDidEndEditing_`) are 1-line delegates to `self._app.queue.handle_*` methods. `_tick` delegates session snapshot to `self.sessions.refresh()`, bead refresh to `self.bead.tick(sessions)`, queue refresh + conditional rebuild to `self.queue.tick(sessions)`, and panel rebuild/update to `self.panel.rebuild()` / `self.panel.update_inplace()`. `_reregister_digit_hotkeys` maps Cmd+N to the Main with `desktop_no=N` (conflict-free only; populated from `panel._desktop_to_cwd`).
 **Reads:** `self.sessions.refresh()` (via `SessionsController`) + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch.
 **Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `src/logs/menubar.log` ([abort] category via `_abort_log_write`; [tick] category when `MENUBAR_DIAGNOSTICS=1`; [hotkey] category for Cmd+1..9 app-level focus dispatch).
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.bead_controller`, `.queue_controller`, `.panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`deliver_message`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
+**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.bead_controller`, `.queue_controller`, `.panel_manager`, `.panel`, `.hotkey`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`deliver_message`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
 
 ---
 
@@ -288,14 +288,15 @@ desktop_detection.py → ctypes (CoreGraphics + libobjc); subprocess; .menubar_l
 menubar_log.py    → datetime, pathlib only (leaf node)
 hotkey.py         → ctypes; .menubar_log (log_menubar)
 panel.py          → AppKit, Foundation, itertools; .menubar_log (log_menubar)
+panel_manager.py  → AppKit, Foundation, collections.Counter, itertools.groupby; .panel (constants + factories)
 queue_controller.py → AppKit, Foundation, objc, json, datetime; .panel (constants + helpers);
                       .queue (load_queue, save_queue, deliver_message); .paths (HOOKS_FILE)
 system.py         → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
                     lazy(.app) inside run() only
 queue.py          → json, os, subprocess; .paths (QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE)
 app.py            → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
-                    .sessions_controller, .bead_controller, .queue_controller, .panel,
-                    .hotkey, .system, .discover, .bg_timer, .paths (SETTINGS_FILE),
+                    .sessions_controller, .bead_controller, .queue_controller, .panel_manager,
+                    .panel, .hotkey, .system, .discover, .bg_timer, .paths (SETTINGS_FILE),
                     .queue (deliver_message), .menubar_log (log_menubar)
 ```
 
@@ -310,18 +311,6 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp._last_statuses` | app.py | `dict` | app instance | `{name: status}` snapshot for blink-on-change detection; updated every tick. |
 | `CCMenuBarApp._idle_since_ts` | app.py | `dict` | app instance | `{name: float}` timestamps when each main session first went idle (debounce for auto-focus). Cleared on working or has_bg=True. |
 | `CCMenuBarApp._all_workers_idle_since_ts` | app.py | `dict` | app instance | `{project_name: float}` timestamps when ALL workers of a project first went simultaneously idle while a bg timer was running. Cleared when any worker returns to working or the timer disappears. Auto-abort fires after 5s. |
-| `CCMenuBarApp._panel_open` | app.py | `bool` | app instance | True while NSPanel is visible. Gates `_tick` between `_rebuild_panel` (closed) and `_update_panel_inplace` (open). Set/cleared by `_PanelController.togglePanel_`. |
-| `CCMenuBarApp._initialized` | app.py | `bool` | app instance | Lazy-init sentinel: `setMenu_(None)` + button target/action wiring happens in first `_tick` after AppKit runloop starts. |
-| `CCMenuBarApp._displayed_items` | panel.py | `dict` | panel.py (`_rebuild_panel`) | `{name: NSButton}` populated by `_rebuild_panel`; used by `_update_panel_inplace` for O(1) button lookup. Reset on each rebuild. |
-| `CCMenuBarApp._cwd_map` | panel.py | `dict` | panel.py (`_rebuild_panel`) | `{tag: cwd}` for click-to-focus routing. NSButton carries integer tag; `focusSession_` reads `sender.tag()`. Reset on each rebuild. |
-| `CCMenuBarApp._desktop_to_cwd` | panel.py | `Dict[int, str]` | panel.py (`_rebuild_panel`) | `{desktop_no: cwd}` for conflict-free mains only. Populated alongside `_cwd_map` during rebuild; consumed by `_reregister_digit_hotkeys` for Cmd+N mapping. Conflicts (2+ mains on same desktop) excluded. Reset on each rebuild. |
-| `CCMenuBarApp._abort_btns_by_project` | panel.py | `Dict[str, NSButton]` | panel.py (`_rebuild_panel`) | Per-project abort button references. `{}` when no CC sleep timers running. Checked by `_tick` to detect set-change (`new_abort_projs != set(_abort_btns_by_project)`). |
-| `CCMenuBarApp._abort_project_for_tag` | app.py | `Dict[int, str]` | panel.py (`_rebuild_panel`) | Maps NSButton integer tag → project_name for `abortBgTimer_` dispatch. Tags start at 1000 (above session row tags 1..N). |
-| `CCMenuBarApp._toggle_btn` | panel.py | `NSButton` | panel.py (`_make_nspanel`) | Auto-Jump toggle button in fixed top_bar. Created by `_make_nspanel()`; target/action wired in lazy-init tick; title updated by `_rebuild_panel` and `toggleAutoJump_`. |
-| `CCMenuBarApp._panel` | panel.py | `NSPanel` | panel.py (`_make_nspanel`) | The sticky dropdown panel. Created in `__init__`. Resized by `_resize_panel`. |
-| `CCMenuBarApp._panel_sv` | panel.py | `NSStackView` | panel.py (`_make_nspanel`) | Vertical NSStackView filling content area. Arranged subviews rebuilt on each `_rebuild_panel`. |
-| `CCMenuBarApp._panel_quit_btn` | app.py | `NSButton` | panel.py creates, app.py wires | Restart button in fixed footer (right). Target/action wired in lazy-init tick. |
-| `CCMenuBarApp._panel_kill_btn` | app.py | `NSButton` | panel.py creates, app.py wires | Kill button in fixed footer (left of Restart, 8pt gap). Wired to `killApp_` in lazy-init tick. |
 | `CCMenuBarApp._panel_controller` | app.py | `_PanelController` | app.py | Single PyObjC NSObject as ObjC target for all button actions. Held to prevent ARC GC. |
 | `CCMenuBarApp._auto_focus` | app.py | `bool` | app.py | Whether auto-focus is enabled. Loaded from settings; toggled by `toggleAutoJump_`. |
 | `CCMenuBarApp._panel_width` | app.py | `int` | app.py owns, panel.py uses | Current panel width in pts. Loaded from settings (fallback: `PANEL_WIDTH=380`). Reset to `PANEL_WIDTH` on user-initiated fresh open via `togglePanel_` (runtime only, no save). Updated by `windowDidResize_` on user drag. Cycling (`_deferred_close_open`) preserves current value. |
@@ -341,6 +330,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `CCMenuBarApp.sessions` | app.py | `SessionsController` | sessions_controller.py | Session snapshot cache. `sessions.refresh()` calls `list_alive_sessions()` and caches result; `sessions.data` returns cached snapshot. Replaces bare `_last_sessions` attr. |
 | `CCMenuBarApp.bead` | app.py | `BeadController` | bead_controller.py | Bead tracker controller. Owns `_bead_data`, `_bead_db_paths`, `_bead_expanded`, `_bead_displayed`, `_bead_expand_tags`, `_bead_untrack_tags`, `_bead_query_tags`, `_bead_tick_counter`. `bead.tick(sessions)` drives counter + refresh; `bead.rebuild()` re-renders NSPanel. |
 | `CCMenuBarApp.queue` | app.py | `QueueController` | queue_controller.py | Queue panel controller. Owns all 11 `_queue_*` attrs (incl. `_queue_open`, `_queue_panel`, `_queue_sv`, `_queue_toggle_btn`, `_queue_data`, `_pending_queue_tags`, `_pending_queue_views`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_queue_displayed_names`). `queue.tick(sessions)` drives data reload + conditional rebuild; `queue.open(sessions)` used on panel-open (forced rebuild). Action handlers: `handle_add_row`, `handle_toggle_entry`, `handle_remove_entry`, `handle_commit_field`, `handle_text_end_editing`, `handle_try_deliver`. |
+| `CCMenuBarApp.panel` | app.py | `PanelManager` | panel_manager.py | Main-session panel controller (Step 4/6). Owns `_panel_open`, `_initialized`, `_displayed_items`, `_cwd_map`, `_desktop_to_cwd`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_rebuild_in_progress`, and NSPanel refs `_panel`, `_panel_sv`, `_panel_quit_btn`, `_toggle_btn`, `_panel_kill_btn`. `panel.rebuild(sessions, bg_by_project)` drives full panel rebuild; `panel.update_inplace(sessions, bg_by_project)` drives in-place dot+badge update. Settings `_auto_focus`, `_panel_width`, `_panel_min_height` remain on `app` (cross-controller shared preferences). |
 
 ## Title-Marker Mapping (tty → Ghostty terminal UUID)
 
