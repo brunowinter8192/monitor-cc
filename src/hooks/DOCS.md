@@ -153,21 +153,22 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ### block_unauthorized_background.py (67 LOC)
 
-**Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT the canonical orchestration timer `sleep N && echo done` AND NOT a whitelisted long-running tool, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable — but legitimately-long tools (reddit-cli indexer) are exempted via the whitelist. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
+**Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT the canonical orchestration timer `sleep N && echo done` AND NOT a whitelisted long-running tool, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable — but legitimately-long tools (reddit-cli indexer, RAG `workflow.py index-dir`) are exempted via the whitelist. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
 **Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command, run_in_background: false}`) on non-canonical bg; nothing on passthrough.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** stdlib only (`json`, `re`).
 
-**Rewrite condition:** `run_in_background=true` AND command does NOT match `_CANONICAL` (the `sleep N && echo done` timer form) AND does NOT match `_INDEXER_CANONICAL` (`\b(reddit-cli|cli\.py)\s+index_subreddits\b`).
+**Rewrite condition:** `run_in_background=true` AND command does NOT match `_CANONICAL` (the `sleep N && echo done` timer form) AND does NOT match `_INDEXER_CANONICAL` (`\b(reddit-cli|cli\.py)\s+index_subreddits\b`) AND does NOT match `_RAG_INDEXER_CANONICAL` (`\bworkflow\.py\s+index-dir\b`).
 
 **Passthrough (no output):**
 - `sleep N && echo done` (optional whitespace, optional float N) with `run_in_background=true`
 - `reddit-cli index_subreddits ...` / `cli.py index_subreddits ...` with `run_in_background=true` (long-running RAG-indexer, ~75-100s; paired with `rewrite_reddit_index_background.py`)
+- `workflow.py index-dir ...` with `run_in_background=true` (RAG indexer — embedding-bound, minutes; NOT auto-backgrounded, explicit per-call choice; no rewrite-pair)
 - Any command with `run_in_background=false` or field absent (foreground — no restriction)
 - Parse errors (fail-open)
 
-**No quote-stripping.** Checks the `run_in_background` bool field and the two whitelisted regexes — no general command-text scanning. The `_INDEXER_CANONICAL` regex uses word-boundaries (`\b`) which match the indexer pattern even mid-command (e.g. `cd /path && reddit-cli index_subreddits ...`). Indexer pattern appearing in a quoted region of an unrelated command would also match (rare false-positive — accepted trade-off vs adding quote-stripping cost).
+**No quote-stripping.** Checks the `run_in_background` bool field and the three whitelisted regexes — no general command-text scanning. The `_INDEXER_CANONICAL` regex uses word-boundaries (`\b`) which match the indexer pattern even mid-command (e.g. `cd /path && reddit-cli index_subreddits ...`). Indexer pattern appearing in a quoted region of an unrelated command would also match (rare false-positive — accepted trade-off vs adding quote-stripping cost).
 
 ---
 

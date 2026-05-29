@@ -13,6 +13,10 @@ _CANONICAL = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$')
 # paired with rewrite_reddit_index_background.py which auto-sets rb=true for this command
 _INDEXER_CANONICAL = re.compile(r'\b(reddit-cli|cli\.py)\s+index_subreddits\b')
 
+# additional whitelist: RAG workflow.py index-dir (long-running, embedding-bound — minutes)
+# NOT paired with an auto-background rewrite — backgrounding stays an explicit per-call choice
+_RAG_INDEXER_CANONICAL = re.compile(r'\bworkflow\.py\s+index-dir\b')
+
 # ORCHESTRATOR
 
 # Read Bash tool_input from stdin; silently rewrite run_in_background=true → false for non-canonical commands
@@ -45,9 +49,13 @@ def _parse_input():
     except Exception:
         return None, False, None
 
-# True if command is the canonical background timer OR the reddit indexer (both whitelisted)
+# True if command is the canonical background timer OR the reddit/RAG indexer (all whitelisted)
 def _is_canonical(command: str) -> bool:
-    return bool(_CANONICAL.match(command) or _INDEXER_CANONICAL.search(command))
+    return bool(
+        _CANONICAL.match(command)
+        or _INDEXER_CANONICAL.search(command)
+        or _RAG_INDEXER_CANONICAL.search(command)
+    )
 
 # Build allow+updatedInput dict flipping run_in_background to false; return it (caller handles print)
 def _emit_rewrite(command: str) -> dict:
