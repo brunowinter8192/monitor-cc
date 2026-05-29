@@ -17,6 +17,9 @@
 
 **Allowed patterns (not blocked):** `pkill -x <name>`, `pkill <name>` (no `-f`), `kill <numeric_pid>`, `kill -<signal> <numeric_pid>`, `worker-cli kill <name>`, `launchctl` operations.
 
+**Allowlist (`_PKILL_F_ALLOWLIST`):** explicit literal arguments to `pkill -f` that are safe to pass through. Current entries:
+- `"dolt sql-server"` — bd Beads SQL backend forced restart. bd's own orphan-cleanup SIGKILLs any process whose cmdline contains this string, so no worker can carry it in its prompt. Checked against original command (not shell-stripped, since stripping blanks quoted args). Conservative: any non-allowlisted `pkill -f` in the same command still blocks.
+
 ### Hook 2 — `rewrite_chained_sleep.py` (`src/hooks/rewrite_chained_sleep.py`)
 
 - **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hook 1
@@ -68,14 +71,16 @@
 
 **Detection:** `\bgrep\b` with recursive flag (`-r`/`-R`, combined or standalone) AND no `--include=` present AND last arg doesn't end in a known file extension
 
-**Allowlist:** `--include=` present; last arg ends in `.py`/`.md`/`.sh`/`.json`/`.jsonl`/`.yaml`/`.yml`/`.toml`/`.ts`/`.js`/`.go`/`.rs`/`.txt`/`.cfg`/`.ini`/`.sql`/`.html`/`.css`; `git grep` (exempted)
+**Allowlist:** `--include=` present; last arg ends in `.py`/`.md`/`.sh`/`.json`/`.jsonl`/`.yaml`/`.yml`/`.toml`/`.ts`/`.js`/`.go`/`.rs`/`.txt`/`.cfg`/`.ini`/`.sql`/`.html`/`.css`; `git grep` (exempted); output piped immediately to `head` (head-bounded, no context-flood risk)
 
 **Blocked patterns:**
 - `grep -rn <pattern> src/` — directory target, no scope
 - `grep -rn <pattern> .` — dot, no scope
 - `grep -rnl <pattern> ~/.claude/` — any broad tree
 
-**Allowed:** `grep -rn pattern src/ --include='*.py'`; `grep -rn pattern workflow.py`; `grep -n pattern file.py` (no `-r`)
+**Allowed:** `grep -rn pattern src/ --include='*.py'`; `grep -rn pattern workflow.py`; `grep -n pattern file.py` (no `-r`); `grep -r foo . | head -N` (head-bounded)
+
+**Head-bounded exemption:** `_grep_segment()` returns `(segment, after_segment)`. If `after_segment` starts with `| head` (direct next pipe), the output is bounded → no context flood → passes. `_is_head_bounded(after)` checks `^\s*\|\s*head\b` on `after_segment` only, ensuring the head belongs to this grep's output, not a head earlier in the chain.
 
 **Rationale:** 23 Rule-3 violations in 5 recent monitor_cc logs (900 tool_use blocks, 2026-05-20 compliance run). Highest non-hooked violation count.
 
@@ -128,6 +133,31 @@
 **Rationale:** CC rejects reads above 256KB with a size error — hook surfaces the error before the round-trip and provides the `grep` + offset/limit fix path inline.
 
 **Fail-open:** exits 0 when `file_path` absent, not a string, file doesn't exist, or `getsize()` raises.
+
+### Hook 8 — `block_polling_loop.py` (`src/hooks/block_polling_loop.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_polling_loop.py`
+- **Timeout:** 5s
+
+**Detection:** stateful frequency check — blocks when ≥ `_THRESHOLD` (3) polls to the SAME target occur within `_WINDOW_SECS` (30 s) in the SAME session. One-off and second polls always pass. Third poll in the window blocks.
+
+**Target fingerprinting:**
+- `ps -p <N>` → `"pid:<N>"` — process-existence check
+- `tail -<N> <file>` (BSD/POSIX short numeric form only; `tail -n N` long form NOT detected) → `"file:<path>"`
+- First match in command wins; no target extracted → pass through
+
+**State file:** `src/logs/polling_state.jsonl` — one JSONL line per poll: `{ts, session_id, target}`. Self-pruning on every invocation (entries older than 30 s pruned before counting). Backup cleanup via `log_janitor`'s monitor-24h sweep. Path overridable via `MONITOR_CC_POLLING_STATE` env var (used for test isolation).
+
+**Concurrency:** concurrent sessions share the file. A simultaneous write can cause one entry to be lost (under-count only — never over-count). Acceptable: per-session counting means session B's polls don't affect session A's block threshold.
+
+**Blocked patterns:** `ps -p <PID>` repeated ≥ 3× on the same PID within 30 s / session; `tail -<N> <file>` repeated ≥ 3× on the same file within 30 s / session
+
+**Allowed patterns:** any single or double poll; different PIDs/files in the same session; `tail -n N` long form (not detected); commands with neither pattern; patterns inside quoted strings or heredoc (stripped by `_strip_non_shell_active`)
+
+**Fail-open:** exits 0 on any parse or I/O error; `_record_and_count()` returns 0 on exception.
+
+**Smoke:** `dev/hook_smoke/test_block_polling_loop.py` (15 cases: frequency sequence, different-target, single-check, no-target, session-isolation groups).
 
 ### Hook 9 — `block_bd_cli_worker.py` (`src/hooks/block_bd_cli_worker.py`)
 
