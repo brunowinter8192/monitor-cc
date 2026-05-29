@@ -40,6 +40,14 @@ CASES = [
      "worker-cli kill my-worker", 0),
     ("no kill at all PASS",
      "ls -la && git status", 0),
+    # --- allowlist: must pass ---
+    ("pkill -9 -f dolt sql-server double-quoted PASS",
+     'pkill -9 -f "dolt sql-server"', 0),
+    ("pkill -f dolt sql-server single-quoted PASS",
+     "pkill -f 'dolt sql-server'", 0),
+    # --- allowlist conservative: non-allowlisted still blocks ---
+    ("mixed allowlisted + generic pkill -f BLOCK",
+     'pkill -9 -f "dolt sql-server"; pkill -f "workflow.py"', 2),
 ]
 
 
