@@ -35,7 +35,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 |---|---|---|
 | `constants.py` | 164 | Imported by ~all subpackages — shallow path avoids deep `...constants` chains |
 | `utils.py` | 91 | Same — `format_timestamp` + `visual_line_count` used everywhere |
-| `log_janitor.py` | 33 | `cleanup_old_jsonl(path)` — 7-day JSONL retention; triggered from `core/monitor.py` every 24h |
+| `log_janitor.py` | 130 | `LogSpec` registry (7 entries) + `sweep_eligible_specs()` + `cleanup_old_jsonl(path)` — authoritative log inventory; 7-day JSONL sweep triggered from `core/monitor.py` every 24h |
 | `session_finder.py` | 85 | Single module, no subpackage warranted |
 | `startup.py` | 48 | Single module; only called by `workflow.py` |
 | `tmux_launcher.py` | 283 | Single module; only called by `workflow.py` (mode `all` → `launch_split_screen`; mode `restart-panes` → `restart_panes`, the Ctrl+R self-heal handler) |

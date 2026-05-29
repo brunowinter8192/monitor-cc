@@ -146,7 +146,7 @@ _janitor_cleanup_live_copies() {
 }
 _janitor_cleanup_live_copies
 
-# Janitor: rotate JSONL logs (keep 30 newest per type) and delete all proxy_errors logs.
+# Janitor: rotate JSONL logs (keep 30 newest per type) + one-time orphan cleanup.
 _janitor_cleanup_jsonl_logs() {
     local keep=30
     local rotated_opus=0 rotated_worker=0 f
@@ -164,6 +164,15 @@ _janitor_cleanup_jsonl_logs() {
         rm -f "$f"
         rotated_worker=$((rotated_worker + 1))
     done < <(ls -t "$LOG_DIR"/api_requests_worker_*.jsonl 2>/dev/null | tail -n +$((keep + 1)))
+
+    # Remove legacy api_error_payload_*.json files (writer switched to api_errors.jsonl)
+    find "$LOG_DIR" -maxdepth 1 -type f -name 'api_error_payload_*.json' -delete 2>/dev/null
+
+    # Remove legacy proxy_errors_*.log files (mitmdump uses 2>/dev/null since 2026-05-28)
+    find "$LOG_DIR" -maxdepth 1 -type f -name 'proxy_errors_*.log' -delete 2>/dev/null
+
+    # Remove legacy tool_use_errors.jsonl (no writer; superseded by tool_errors.jsonl)
+    rm -f "$LOG_DIR/tool_use_errors.jsonl"
 
     echo "Janitor: rotated $rotated_opus opus jsonl, $rotated_worker worker jsonl"
 }
@@ -184,9 +193,6 @@ export PROXY_LOG_ID="$LOG_ID"
 export PROXY_PROJECT_PATH="$PROJECT"
 mitmdump -p $PROXY_PORT -s "$LIVE_ADDON" --set flow_detail=0 -q 2>/dev/null &
 PROXY_PID=$!
-
-# Delete api_error_payload dumps older than 7 days
-find "$LOG_DIR" -maxdepth 1 -type f -name 'api_error_payload_*.json' -mtime +7 -delete 2>/dev/null
 
 # Cleanup on exit: kill proxy, remove per-session live-copies, and conditionally the per-project marker
 cleanup() {

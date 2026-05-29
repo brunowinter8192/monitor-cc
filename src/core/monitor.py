@@ -291,10 +291,10 @@ def run_main_loop() -> None:
                 last_data_refresh = now
                 input_changed = True
                 if now - _last_janitor_ts >= 86400:
-                    from ..log_janitor import cleanup_old_jsonl
+                    from ..log_janitor import cleanup_old_jsonl, sweep_eligible_specs
                     _logs = Path(__file__).parent.parent / 'logs'
-                    cleanup_old_jsonl(_logs / 'tool_errors.jsonl')
-                    cleanup_old_jsonl(_logs / 'hook_firing.jsonl')
+                    for _, _path in sweep_eligible_specs(_logs):
+                        cleanup_old_jsonl(_path)
                     _last_janitor_ts = now
 
             if input_changed:

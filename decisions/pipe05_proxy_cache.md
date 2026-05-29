@@ -101,14 +101,27 @@ Jeder Worker in einem Worktree bekommt einen eigenen mitmproxy-Prozess auf eigen
 - Eigene Log-Datei: `api_requests_<worker_session_id>.jsonl`
 - Cross-Project-Worker (anderes Projekt als Main) bekommen keinen Proxy — Marker existiert nur für das Main-Projekt
 
+### count_tokens Passthrough
+
+`_is_messages_request()` in `src/proxy/addon.py` matched per 2026-05-29 exakt auf `/v1/messages` + optionalen Query-String:
+```python
+path == MESSAGES_PATH or path.startswith(MESSAGES_PATH + "?")
+```
+Zuvor: `path.startswith(MESSAGES_PATH)` — matcht auch `/v1/messages/count_tokens?beta=true` → `_inject_model_override` injizierte `max_tokens` → API 400. Jetzt: count_tokens-Requests laufen KOMPLETT unmodifiziert durch. Kein Stripping, kein Inject, kein Log-Entry in `api_requests_*.jsonl`.
+
+### 4xx Error Logging
+
+`ProxyAddon.response()` schreibt 4xx-Fehler als einzelne JSONL-Zeile in `src/logs/api_errors.jsonl` (rollend, 7-Tage-Retention via `cleanup_old_jsonl`). Felder: `ts`, `status_code`, `error_response`, `request_url`, `request_payload`. Davor: eine Einzeldatei `api_error_payload_<ts>.json` pro Fehler.
+
 ### Log Pipeline
 
 ```
-Main Session → mitmdump :8084 → proxy_addon.py → api_requests_<session_id>_<timestamp>.jsonl
-Worker (Worktree) → mitmdump :8085 → proxy_addon.py → api_requests_<worker_hash>.jsonl
+Main Session → mitmdump :8084 → proxy_addon.py → api_requests_opus_<project>_<timestamp>.jsonl
+Worker (Worktree) → mitmdump :8085 → proxy_addon.py → api_requests_worker_<name>_<timestamp>.jsonl
+4xx Errors (beide) → api_errors.jsonl (rollend, 7d-Retention)
 ```
 
-Beide schreiben nach `$MONITOR_CC_ROOT/src/logs/`. Monitor liest per `session_id` das richtige Log.
+Alle schreiben nach `$MONITOR_CC_ROOT/src/logs/`. Monitor liest per `session_id` das richtige Log.
 
 ### Tool Stripping (TOOL_BLOCKLIST)
 

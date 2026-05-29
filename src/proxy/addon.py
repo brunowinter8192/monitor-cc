@@ -224,25 +224,23 @@ class ProxyAddon:
                 resp_body = ""
                 try:
                     resp_body = flow.response.content.decode("utf-8", errors="replace")[:2000]
-                except Exception:
-                    pass
+                except Exception:  # decode failure — log empty string, never crash
+                    resp_body = ""
                 req_payload = None
                 try:
                     req_payload = json.loads(flow.request.content.decode("utf-8", errors="replace"))
-                except Exception:
-                    pass
-                log_dir = os.path.dirname(self.log_file)
-                error_file = os.path.join(log_dir, f"api_error_payload_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json")
+                except Exception:  # body not valid JSON — log None, never crash
+                    req_payload = None
                 error_data = {
-                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                    "ts": datetime.now(timezone.utc).isoformat() + "Z",
                     "status_code": flow.response.status_code,
                     "error_response": resp_body,
                     "request_url": flow.request.pretty_url,
                     "request_payload": req_payload,
                 }
-                with open(error_file, "w", encoding="utf-8") as f:
-                    json.dump(error_data, f, indent=2, ensure_ascii=False)
-                print(f"[proxy_addon] API {flow.response.status_code} error — payload saved to {error_file}", file=sys.stderr)
+                errors_log = self.log_file.parent / "api_errors.jsonl"
+                _write_entry(errors_log, error_data)
+                print(f"[proxy_addon] API {flow.response.status_code} error — logged to api_errors.jsonl", file=sys.stderr)
                 return
             # Success path — compute and log latency metrics
             if flow.response and flow.response.status_code < 400:
@@ -335,12 +333,13 @@ def _resolve_log_file() -> Path:
     return Path("/tmp") / filename
 
 
-# Check if flow is a POST to /v1/messages on api.anthropic.com
+# Check if flow is a POST to exactly /v1/messages (with optional query string) on api.anthropic.com — excludes /v1/messages/count_tokens and other sub-paths
 def _is_messages_request(flow: http.HTTPFlow) -> bool:
+    path = flow.request.path
     return (
         flow.request.method == "POST"
         and flow.request.pretty_host == ANTHROPIC_API_HOST
-        and flow.request.path.startswith(MESSAGES_PATH)
+        and (path == MESSAGES_PATH or path.startswith(MESSAGES_PATH + "?"))
     )
 
 
