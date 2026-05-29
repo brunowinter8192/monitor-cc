@@ -42,3 +42,7 @@ Vier Refactor/Fix-Themen laufen SEQUENTIELL, nicht parallel. Reihenfolge:
 - Root-Cause (Befund 2026-05-28): KEIN Dolt-Crash (Log sauber, kein panic/signal/OOM), KEIN Idle-Shutdown (idle-timeout=0 in `.beads/config.yaml`). Mechanismus: TIME_WAIT-Stau auf fixem Port 53351 (Menubar 7s-Polling + Worker + Opus = Connection-Churn) + Orphan-Dolt-Prozesse (2x live beobachtet, einer auf globaler Homebrew-Config) + bd lazy Auto-Start re-bindet den verstopften Port im engen 10s-Timeout → Bind-Fail → client-seitiger bd Circuit-Breaker öffnet. Verwandt: blank-Repo Bead-Thema "bd/Dolt auto-start fragility" (port collisions + 10s timeout + no fallback).
 - Observability: Dolt-Bash-Fehler liegen bereits in `tool_errors.jsonl` + Warnings-Pane.
 - Scope: Hook-basierte Koordination (Single-Owner / Health-Detect + Recover, z.B. `.port`-Datei löschen damit bd frischen Port statt TIME_WAIT-Port nimmt). Fix-Design pending.
+
+## Follow-up (nach Dolt)
+
+- **Opus-Worker-Rules-Cleanup:** in `~/.claude/shared-rules/opus` die `<20%`-Context-Kill-Schwelle entfernen. Einzige Policy: Worker bis zum Tod nutzen, dann Successor-Handoff (recap-after-stage sichert sauberen committeten State). Kein präemptives Kill bei niedrigem Context — die letzten paar Prozent reichen oft weiter als gedacht. Opus editiert Rule-Files direkt; cross-project, kein Projekt-Bead.
