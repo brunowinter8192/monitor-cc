@@ -40,7 +40,16 @@ Caveat: Rebuild+Reinstall (rm+cp) erzeugt eine frische py2app-Code-Signatur. Der
 
 ## Status
 
-Vertagt in die Folge-Session (zusammen mit janitor+proxy, Bead bodz). Diagnose hier vollständig festgehalten; Fix steht aus.
+**RESOLVED (2026-05-29).** Der per-call Encoding-Fix (C4: alle 13 `subprocess.run(text=True)`-Calls mit `encoding='utf-8', errors='replace'` + `PYTHONUTF8=1` in der Plist) war zum Zeitpunkt der E2-Diagnose bereits im `src/`-Code — das damals beobachtete crashende Bundle war stale (vor C4 gebaut). Inzwischen wurde neu gebaut/installiert:
+
+- Laufendes Bundle: executable mtime **02:30** (nach C4), PID 96325 seit 02:45.
+- Letzter `UnicodeDecodeError` **2026-05-28T22:54:59** — alle 87 Crashes historisch, seit Start der aktuellen PID keiner mehr.
+- `cwd_desktop.json` füllt sich: `Monitor_CC → space_id 780, desktop_no 2`.
+- User hat dem 02:30-Bundle die Screen-Recording-TCC-Permission neu erteilt (adressiert die separate `cgw_list_empty`-Schwäche).
+
+Ein in dieser Session gebauter Rebuild (03:18) wurde **NICHT deployed** — identischer Code zum laufenden 02:30-Bundle; ein Redeploy hätte nur das TCC-Signatur-Bruch-Risiko ohne Mehrwert gebracht.
+
+**Verbleibend (separates Thema, nicht ftpu):** intermittierende `all_no_match` / `cgw_list_empty no_names_returned` in der Detection — TCC/CGWindowList-Sichtbarkeit, nicht Encoding. Der Sidecar funktioniert trotzdem über den `osc2_match`-Pfad. Falls die Detection unzuverlässig wird → eigener Bead.
 
 ## Quellen
 
