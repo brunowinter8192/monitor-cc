@@ -52,7 +52,7 @@ def _emit_rewrite() -> dict:
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
-            "updatedInput": {"command": _TARGET},
+            "updatedInput": {"command": _TARGET, "run_in_background": True},
         },
     }
 

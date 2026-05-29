@@ -19,7 +19,7 @@ _TRIVIAL  = frozenset({'echo', 'true'})
 
 # Read Bash tool_input from stdin; strip trivial-sync sleeps; emit allow+updatedInput if any stripped
 def rewrite_chained_sleep_workflow() -> None:
-    command, session_id = _parse_command()
+    command, run_in_background, session_id = _parse_command()
     if command is None:
         sys.exit(0)
     stripped = _strip_non_shell_active(command)
@@ -31,7 +31,7 @@ def rewrite_chained_sleep_workflow() -> None:
     rewritten = _apply_ranges(command, ranges)
     if rewritten == command:
         sys.exit(0)
-    output = _emit_rewrite(rewritten)
+    output = _emit_rewrite(rewritten, run_in_background)
     log_fire("rewrite_chained_sleep", "rewrite", "Bash", command, rewritten=rewritten, session_id=session_id)
     print(json.dumps(output))
     sys.exit(0)
@@ -43,10 +43,12 @@ def rewrite_chained_sleep_workflow() -> None:
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
-        cmd = payload.get("tool_input", {}).get("command")
-        return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
+        ti  = payload.get("tool_input", {})
+        cmd = ti.get("command")
+        bg  = ti.get("run_in_background", False)
+        return (cmd if isinstance(cmd, str) else None), (bg if isinstance(bg, bool) else False), payload.get("session_id")
     except Exception:
-        return None, None
+        return None, False, None
 
 # Return list of (start, end) spans in command to remove (trivial-sync sleep + preceding chain op)
 def _find_strip_ranges(command: str, stripped: str) -> list:
@@ -117,12 +119,12 @@ def _apply_ranges(command: str, ranges: list) -> str:
     return ''.join(parts)
 
 # Build allow+updatedInput dict; return it (caller handles print)
-def _emit_rewrite(rewritten: str) -> dict:
+def _emit_rewrite(rewritten: str, run_in_background: bool) -> dict:
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
-            "updatedInput": {"command": rewritten},
+            "updatedInput": {"command": rewritten, "run_in_background": run_in_background},
         },
     }
 
