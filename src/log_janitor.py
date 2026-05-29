@@ -93,6 +93,16 @@ _LOG_REGISTRY: tuple = (
         janitor_trigger="ccwrap-caller",
         sweep_eligible=False,
     ),
+    LogSpec(
+        name="polling_state",
+        path_pattern="polling_state.jsonl",
+        writer="hooks/block_polling_loop.py:_record_and_count",
+        purpose="Polling-frequency state for block_polling_loop hook (session×target counters, self-pruned at 30 s window)",
+        fmt="jsonl",
+        retention="1d-ts-records",
+        janitor_trigger="monitor-24h",
+        sweep_eligible=True,
+    ),
 )
 
 

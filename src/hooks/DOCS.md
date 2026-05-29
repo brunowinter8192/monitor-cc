@@ -22,7 +22,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by six Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure).
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** n/a.
-**Called by:** `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `block_polling_loop.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
 **Calls out:** stdlib only (no imports).
 
 ---
@@ -37,7 +37,8 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_dangerous_kill.py (61 LOC)
+### block_dangerous_kill.py (91 LOC)
+
 
 **Purpose:** PreToolUse hook — blocks `pkill -f <pattern>` and `ps|grep|kill` pipe chains. Both patterns target processes via text substring matching against the full cmdline, which routinely kills unintended processes (CC worker sessions whose prompt text contains the matched string). Exits 2 + stderr with concrete safer alternatives. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -51,25 +52,33 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 **Allowed patterns (not blocked):** `pkill -x <name>` (exact), `pkill <name>` (name-only), `kill <numeric_pid>`, `kill -<signal> <numeric_pid>`, `worker-cli kill <name>`, `launchctl bootout/kickstart`.
 
+**Allowlist (`_PKILL_F_ALLOWLIST`):** explicit literal strings for `pkill -f` arguments that are safe to pass through. Checked against original (un-stripped) command via `_PKILL_F_ARG_RE` (handles single-quoted, double-quoted, unquoted). Conservative: any non-allowlisted `pkill -f` in the same command still blocks. Current entries: `"dolt sql-server"` (bd Beads SQL backend — bd's orphan-cleanup SIGKILLs any process with this cmdline string, making it impossible for a worker to carry it).
+
 **Quote/heredoc stripping.** Before regex matching, `_strip_non_shell_active()` (imported from `_shell_strip.py`) removes heredoc bodies, single-quoted, double-quoted, and ANSI-C `$'...'` regions from the command string. Command substitutions `$(...)` and backtick expressions are kept shell-active. Eliminates false-positives where `pkill -f` appears as literal text inside heredoc bodies (test scaffolding, `bd comments add` session notes, Python string literals).
 
 ---
 
-### block_polling_loop.py (50 LOC)
+### block_polling_loop.py (132 LOC)
 
-**Purpose:** PreToolUse hook — blocks the polling-loop antipattern: repeated short Bash calls combining `ps -p <PID>` (process-existence check) and `tail -<N> <file>` (log read) in the same command. Detected when both patterns co-occur in a single tool_input.command — the smoking-gun signature of a worker polling a shell-backgrounded process in a tight loop. Exits 2 + stderr. Exits 0 on any parse/internal error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
-**Writes:** stderr (one-line block message with `wait`-based alternative) on match only.
+**Purpose:** PreToolUse hook — stateful frequency-based polling loop detector. Extracts a target fingerprint from each Bash command (`ps -p <N>` → `"pid:N"`, `tail -<N> <file>` → `"file:path"`), records it with timestamp and session_id in `src/logs/polling_state.jsonl`, and blocks when ≥ 3 polls hit the SAME target within 30 s in the SAME session. First and second polls always pass. Third poll in 30 s blocks. Different targets, different sessions, and one-off checks are never blocked. Exits 2 + stderr on threshold. Exits 0 on any parse or I/O error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`); `src/logs/polling_state.jsonl` (state).
+**Writes:** stderr (one-line block message) on threshold; `src/logs/polling_state.jsonl` (appends + rewrites for self-pruning).
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** stdlib only (`json`, `re`).
+**Calls out:** stdlib only (`json`, `re`, `os`, `datetime`).
 
-**Blocked pattern:** command contains BOTH `ps -p <literal-PID>` AND `tail -<N> <file>` outside non-shell-active regions.
+**Fingerprint forms:** `"pid:<N>"` from `ps -p <N>`; `"file:<path>"` from `tail -<N> <path>` (BSD short numeric form only; `tail -n N` long form not detected). First match wins.
 
-**Allowed patterns:** `ps -p <PID>` alone (legitimate one-off check); `tail -N file` alone (legitimate log read); either pattern appearing only in heredoc body or quoted string.
+**State schema:** `{ts: "2026-05-29T12:34:56Z", session_id: str, target: str}` — one JSONL line per poll invocation. Self-pruning: on each call, entries older than 30 s are pruned before writing back. monitor-24h backup sweep via `log_janitor` (`sweep_eligible=True`). Path overridable via `MONITOR_CC_POLLING_STATE` env var for test isolation.
 
-**Antipattern context:** `block_unauthorized_background` blocks CC's `run_in_background=true` flag, but workers can circumvent by using shell `cmd &` (shell-level background). This hook catches the resulting polling loop regardless of how the background process was started. Alternatives: foreground Bash with long timeout, `wait $PID` + single tail, or a single long `sleep` before reading. Design rationale: `decisions/OldThemes/tool_use_safety/2026-05-25_block_polling_loop_design.md`.
+**Concurrency note:** concurrent sessions writing simultaneously can cause one entry to be lost (under-count — never over-count). Acceptable: per-session keying means session B's polls never inflate session A's count. Documented in code.
 
-**Quote/heredoc stripping.** `_strip_non_shell_active()` removes heredoc bodies and quoted regions before pattern matching — prevents false-positives when `ps -p` or `tail -N` appear as example text in a `worker-cli send` message or heredoc body.
+**Allowed patterns:** `ps -p <PID>` alone (one-off); `tail -<N> file` alone (one-off); either appearing once or twice in 30 s; `tail -n N` long form; patterns in quoted strings or heredoc body.
+
+**Antipattern context:** `block_unauthorized_background` blocks `run_in_background=true`, but workers can circumvent via shell `cmd &`. This hook catches the repeated-check pattern regardless of how the background was started.
+
+**Quote/heredoc stripping.** `_strip_non_shell_active()` removes heredoc bodies and quoted regions before fingerprint extraction — prevents counting a `ps -p` example in a `worker-cli send` message.
+
+**Smoke:** `dev/hook_smoke/test_block_polling_loop.py` (15 cases: frequency 3-poll sequence, different-target, single-check, no-target, session-isolation groups).
 
 ---
 
@@ -185,7 +194,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_broad_grep.py (92 LOC)
+### block_broad_grep.py (104 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks recursive `grep -r`/`-R` calls on directories when no `--include=` scope is present. Unrestricted recursive grep matches JSONL logs, node_modules, and vendored content, producing 10MB+ output that floods the context window. Exits 2 + stderr with fix options. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -202,6 +211,9 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - `grep -rn pattern workflow.py` — last arg is a specific file (ends in known extension)
 - `grep -n pattern file.py` — no recursive flag
 - `git grep -r ...` — git grep uses gitignore, exempted
+- `grep -r foo . | head -N` — output immediately piped to `head` (bounded, no context-flood risk)
+
+**Head-bounded exemption.** `_grep_segment()` returns `(segment, after_segment)` where `after_segment` is everything from the pipe separator onward. `_is_head_bounded(after)` checks `^\s*\|\s*head\b` — true only when `head` is the DIRECT next pipe after the grep segment, not a head elsewhere in the chain.
 
 **Quote/heredoc stripping.** Before segment extraction, `_strip_non_shell_active()` (from `_shell_strip.py`) removes heredoc bodies and quoted regions. Prevents false-positives when a `grep -r` example appears as a literal string inside a `worker-cli send` message or `bd create` description.
 
@@ -469,7 +481,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - **Global registration.** Bash hooks fire for every Bash call; Edit hooks for every Edit call; Read hooks for every Read call — across all CC sessions on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
 - **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths. The sweep pass removes the old stale paths automatically on re-run.
 - **Stale hooks block all Bash calls.** A stale `python3 <missing>.py` hook exits 2 (Python interpreter error for missing file), which CC treats as a block — every Bash command in every session fails globally. Recovery: re-run `hook_setup.py` from the main repo root (from a real terminal, not CC's Bash tool, since Bash is blocked). The sweep removes dead entries before the add-loop runs.
-- **Six hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `rewrite_git_ambiguous.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
+- **Seven hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `block_polling_loop.py`, `rewrite_git_ambiguous.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **`block_read_worktree.py` allows own-worktree reads.** Workers reading files in their own worktree via absolute path are now allowed. Cross-worktree reads (worker→other-worker) and main-session→worktree reads remain blocked.

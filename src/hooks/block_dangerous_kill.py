@@ -20,6 +20,21 @@ _PS_GREP_KILL = re.compile(r'(?:^|[;&|\n])\s*ps\b[^|]*\|[^|]*\bgrep\b[^|]*\|.*\b
 
 _BLOCKED_PATTERNS = [_PKILL_F, _PGREP_F_KILL_PIPE, _KILL_PGREP_F_SUBST, _PS_GREP_KILL]
 
+# Explicit literal allowlist for pkill -f arguments that are safe to pass through.
+# Safe = this string can never appear in a claude-worker process cmdline.
+# Rationale per entry:
+#   "dolt sql-server" — bd Beads SQL backend forced restart. bd's own orphan-cleanup
+#     SIGKILLs any process whose cmdline contains this string, so no worker prompt can
+#     safely carry it (carrying it = the worker gets killed by bd cleanup). Therefore
+#     pkill -f with exactly this pattern cannot collaterally kill any worker session.
+_PKILL_F_ALLOWLIST: tuple = (
+    "dolt sql-server",
+)
+# Extract pkill -f <arg> from original command (handles single-quoted, double-quoted, unquoted)
+_PKILL_F_ARG_RE = re.compile(
+    r'(?:^|[;&|\n])\s*pkill\b[^|&;\n]*?-f\s+(?:\'([^\']+)\'|"([^"]+)"|(\S+))'
+)
+
 _BLOCK_MESSAGE = "pkill -f / pgrep -f|kill risk killing worker sessions — use `worker-cli kill <name>` or inspect PID first: `pgrep -f <pat>` then `kill <pid>`\n"
 
 
@@ -53,8 +68,23 @@ def _is_blocked(command: str) -> bool:
     stripped = _strip_non_shell_active(command)
     for pattern in _BLOCKED_PATTERNS:
         if pattern.search(stripped):
+            if pattern is _PKILL_F and _pkill_f_is_allowlisted(command):
+                continue
             return True
     return False
+
+# Return True if every pkill -f occurrence in command targets only an allowlisted pattern.
+# Checked against original (un-stripped) command — stripped form blanks quoted args.
+# Conservative: any unrecognised argument or no argument found → False (block).
+def _pkill_f_is_allowlisted(command: str) -> bool:
+    found = _PKILL_F_ARG_RE.findall(command)
+    if not found:
+        return False
+    for sq, dq, uq in found:
+        arg = sq or dq or uq
+        if arg not in _PKILL_F_ALLOWLIST:
+            return False
+    return True
 
 
 if __name__ == "__main__":
