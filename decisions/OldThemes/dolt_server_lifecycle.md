@@ -16,6 +16,13 @@ bd-interne Server-Lifecycle-Instabilität, **projektübergreifend** (Monitor_CC,
 - **B: Auto-Start aus + persistenter Server pro Projekt** (`dolt.auto-start: false` / `BEADS_DOLT_AUTO_START=0`). Kein per-Command-Churn; bd verbindet zum stehenden Server. Kein bd-Upgrade nötig; Server muss zuverlässig oben gehalten werden.
 - **C: Menubar-Polling entschärfen** (unser Code, der Trigger). Mildert die Frequenz, behebt die Wurzel nicht.
 
+### Nächste Session — vor dem Upgrade KLÄREN (sonst upgraden wir blind)
+Zwei Verifikationsschritte, bevor Option A (Upgrade) ausgeführt wird:
+1. **Tatsächlichen 8s-Trigger festnageln.** Läuft der Restart-Loop weiter, wenn KEINE bd-Calls kommen? Test: Menubar-bd-Polling kurz aussetzen (oder `dolt-server.log`-Restart-Timing bei null bd-Aufrufen beobachten). Loop hört auf → per-Command-Lifecycle (= #2636-Mechanismus, Upgrade trifft die Ursache). Loop läuft weiter → anderer Treiber (bd-Daemon / Health-Checker / Menubar-Seite), Upgrade trifft evtl. NICHT. **Offener Widerspruch:** 5 schnelle `bd list` erzeugten 0 Zusatz-Restarts → deutet darauf, dass bd-Lesen den Server in v0.60.0 NICHT stoppt (also evtl. NICHT der #2636-Mechanismus).
+2. **bd-Changelog/Releases v0.60.0 → aktuell lesen.** Was liegt real zwischen unserer Version und dem #2636/#2655-Fix; welche Breaking Changes (Historie ruppig: v0.49→v0.58 entfernte SQLite).
+
+**Gate:** nur upgraden, wenn der unter (1) festgenagelte Trigger dem entspricht, was der Upgrade behebt — sonst ist es ein Blind-Upgrade.
+
 ### Recovery (temporär)
 Breaker-Files `/tmp/beads-dolt-circuit-*.json` löschen + dolt-Prozesse killen + stale LOCK/pid/port-Files weg + sauberer Neustart. Hält nicht, solange Trigger (Polling) + Lifecycle-Churn bestehen.
 
