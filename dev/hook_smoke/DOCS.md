@@ -24,7 +24,7 @@ python3 dev/hook_smoke/test_block_chained_sleep.py
 
 ---
 
-### test_block_broad_grep.py (65 LOC)
+### test_block_broad_grep.py (84 LOC)
 
 **Purpose:** 16-case smoke for `block_broad_grep.py`. Verifies 5 blocked cases (broad recursive, piped to non-head), 5 head-bounded exemptions (piped to `head`/`head -N`, with redirect before head, further pipe after head), and 6 existing-exemption passes (--include, file-targeted, non-recursive, git grep, quoted, heredoc).
 
@@ -35,7 +35,7 @@ python3 dev/hook_smoke/test_block_broad_grep.py
 
 ---
 
-### test_block_dangerous_kill.py (83 LOC)
+### test_block_dangerous_kill.py (90 LOC)
 
 **Purpose:** 18-case smoke for `block_dangerous_kill.py` — pkill -f patterns, pipe-kill chains, heredoc/quote exemptions, and allowlist cases.
 
@@ -58,7 +58,7 @@ python3 dev/hook_smoke/test_block_read_worktree.py
 
 ---
 
-### test_block_polling_loop.py (120 LOC)
+### test_block_polling_loop.py (140 LOC)
 
 **Purpose:** 15-case stateful smoke for `block_polling_loop.py`. Uses a temp state file (env var `MONITOR_CC_POLLING_STATE`) to isolate test runs. Five test groups: frequency (ps-p and tail each reach block on 3rd call), different-target (new target passes after saturation), single-check (one-off always passes), no-target (tail -n long form, ps aux, git status, quoted patterns), session-isolation (session B saturation does not affect session A's count).
 

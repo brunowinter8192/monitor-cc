@@ -39,6 +39,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ### block_dangerous_kill.py (91 LOC)
 
+
 **Purpose:** PreToolUse hook — blocks `pkill -f <pattern>` and `ps|grep|kill` pipe chains. Both patterns target processes via text substring matching against the full cmdline, which routinely kills unintended processes (CC worker sessions whose prompt text contains the matched string). Exits 2 + stderr with concrete safer alternatives. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
 **Writes:** stderr (block message with alternatives) on match only.
@@ -57,7 +58,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_polling_loop.py (105 LOC)
+### block_polling_loop.py (132 LOC)
 
 **Purpose:** PreToolUse hook — stateful frequency-based polling loop detector. Extracts a target fingerprint from each Bash command (`ps -p <N>` → `"pid:N"`, `tail -<N> <file>` → `"file:path"`), records it with timestamp and session_id in `src/logs/polling_state.jsonl`, and blocks when ≥ 3 polls hit the SAME target within 30 s in the SAME session. First and second polls always pass. Third poll in 30 s blocks. Different targets, different sessions, and one-off checks are never blocked. Exits 2 + stderr on threshold. Exits 0 on any parse or I/O error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`); `src/logs/polling_state.jsonl` (state).
@@ -67,7 +68,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 **Fingerprint forms:** `"pid:<N>"` from `ps -p <N>`; `"file:<path>"` from `tail -<N> <path>` (BSD short numeric form only; `tail -n N` long form not detected). First match wins.
 
-**State schema:** `{ts: ISO8601Z, session_id: str, target: str}` — one JSONL line per poll invocation. Self-pruning: on each call, entries older than 30 s are pruned before writing back. monitor-24h backup sweep via `log_janitor` (`sweep_eligible=True`). Path overridable via `MONITOR_CC_POLLING_STATE` env var for test isolation.
+**State schema:** `{ts: "2026-05-29T12:34:56Z", session_id: str, target: str}` — one JSONL line per poll invocation. Self-pruning: on each call, entries older than 30 s are pruned before writing back. monitor-24h backup sweep via `log_janitor` (`sweep_eligible=True`). Path overridable via `MONITOR_CC_POLLING_STATE` env var for test isolation.
 
 **Concurrency note:** concurrent sessions writing simultaneously can cause one entry to be lost (under-count — never over-count). Acceptable: per-session keying means session B's polls never inflate session A's count. Documented in code.
 
