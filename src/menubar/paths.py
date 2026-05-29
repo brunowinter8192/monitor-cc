@@ -11,6 +11,7 @@ QUEUE_FILE                = _APP_SUPPORT / "msg_queue.json"
 QUEUE_LOCK                = _APP_SUPPORT / "queue.lock"
 GHOSTTY_CWD_UUID_FILE     = _APP_SUPPORT / "ghostty_cwd_uuid.json"
 ORCHESTRATOR_SIGNALS_FILE = _APP_SUPPORT / "orchestrator_signals.json"  # {tmux_session_name: send_unix_ts}; written by worker-cli send
+CWD_DESKTOP_FILE          = _APP_SUPPORT / "cwd_desktop.json"            # {cwd: {space_id, desktop_no}}; written by discover.py; consumed by blanks desktop_targeting
 
 # FUNCTIONS
 

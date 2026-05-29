@@ -51,6 +51,7 @@ _det_cache_ts: float = 0.0
 _det_cache_cwds: frozenset = frozenset()
 _cgw_title_diag_logged: bool = False
 _last_result: Dict[str, Optional[int]] = {}  # previous cycle result for transition detection
+_cwd_desktop_lkg: Dict[str, dict] = {}       # last-known-good {cwd: {"space_id": int, "desktop_no": int}}; updated only on successful resolution — None result never clobbers
 
 # ORCHESTRATOR
 
@@ -63,12 +64,15 @@ def detect_main_desktop_numbers(
     cwd_tty_map:  Dict[str, str],
     now: float,
 ) -> Dict[str, Optional[int]]:
-    global _det_cache, _det_cache_ts, _det_cache_cwds, _cgw_title_diag_logged, _last_result
+    global _det_cache, _det_cache_ts, _det_cache_cwds, _cgw_title_diag_logged, _last_result, _cwd_desktop_lkg
     _cgw_title_diag_logged = False
     cwds = frozenset(cwd_uuid_map.keys())
     if cwds == _det_cache_cwds and (now - _det_cache_ts) < _DET_CACHE_TTL:
         return _det_cache
     result: Dict[str, Optional[int]] = {cwd: None for cwd in cwds}
+    # Remove LKG entries for cwds no longer in the active set (session closed)
+    for gone in [c for c in _cwd_desktop_lkg if c not in cwds]:
+        del _cwd_desktop_lkg[gone]
     _cwd_ctx: Dict[str, dict] = {}
     try:
         ghostty_pid_int = _ghostty_pid_int()
@@ -95,6 +99,7 @@ def detect_main_desktop_numbers(
                             _, desktop_no = info
                             result[cwd] = desktop_no
                             claimed.add(space_id)
+                            _cwd_desktop_lkg[cwd] = {"space_id": space_id, "desktop_no": desktop_no}
             if cwds and all(v is None for v in result.values()):
                 log_menubar('detection', f'all_failed n_mains={len(cwds)} reason=all_no_match')
         else:

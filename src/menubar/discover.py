@@ -14,7 +14,9 @@ from .proc_cache import (
 # From ghostty.py: Ghostty TTY-to-UUID mapping + cwd-UUID file write for hook delivery
 from .ghostty import _refresh_ghostty_tty_to_id, _write_cwd_uuid_map, _ghostty_tty_to_id
 # From desktop_detection.py: batch CGS-based desktop number detection for Main sessions
-from .desktop_detection import detect_main_desktop_numbers
+from .desktop_detection import detect_main_desktop_numbers, _cwd_desktop_lkg
+# From paths.py: APP_SUPPORT-relative sidecar path
+from .paths import CWD_DESKTOP_FILE
 
 ALIVE_WINDOW_SECS      = 3600   # stale threshold for main sessions (1h)
 WORKING_THRESHOLD_SECS = 10     # stale threshold: workers = window_activity age, mains = JSONL mtime
@@ -59,11 +61,24 @@ def list_alive_sessions() -> List[SessionInfo]:
                         for _pid, (tty, cwd) in _cc_proc_cache.items()
                         if tty and cwd and tty in _ghostty_tty_to_id}
         dno_map = detect_main_desktop_numbers(cwd_uuid_map, cwd_tty_map, now)
+        _write_cwd_desktop_sidecar()
         results = [s._replace(desktop_no=dno_map.get(s.cwd)) if not s.is_worker else s
                    for s in results]
     return results
 
 # FUNCTIONS
+
+# Atomic write of {cwd: {space_id, desktop_no}} sidecar for cross-repo desktop targeting.
+# Writes _cwd_desktop_lkg snapshot — only verified (non-None) entries; never writes None.
+# Stale cwds (session closed) already removed from _cwd_desktop_lkg before this call.
+def _write_cwd_desktop_sidecar() -> None:
+    data = dict(_cwd_desktop_lkg)   # snapshot — only last-known-good entries
+    try:
+        tmp = CWD_DESKTOP_FILE.with_name(CWD_DESKTOP_FILE.name + '.tmp')
+        tmp.write_text(json.dumps(data))
+        os.replace(tmp, CWD_DESKTOP_FILE)
+    except Exception:
+        return
 
 # Pick newest top-level *.jsonl in project_dir (excludes subagents/ subtree)
 def _newest_jsonl(project_dir: Path) -> Optional[Path]:

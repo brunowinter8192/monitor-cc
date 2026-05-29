@@ -17,12 +17,12 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### desktop_detection.py (345 LOC)
+### desktop_detection.py (350 LOC)
 
-**Purpose:** Batch detection of macOS Mission Control desktop numbers for all Main sessions via private CoreGraphics Services (CGS) APIs + one AppleScript round-trip. Ported from `dev/desktop_detection/01_probe.py`. Three-strategy resolver per window: name-unique → space-elimination → OSC-2 injection. Results cached for `_DET_CACHE_TTL=10s`; force-invalidated when cwd set changes (session add/remove). All errors (Ghostty down, AppleScript failure, CGS error) are caught by the orchestrator, logged as `[detection] all_failed n_mains=N reason=...` (only when ALL mains fail, not on partial), and return all-None. **Transition logging** (`_last_result` module state + `_cwd_ctx` per-cycle dict): on desktop-number change per cwd logs `[detection] transition <project>/<repo> <old>-><new> win=<ghostty_window_name> n_cand=<candidates>` — transition-gated, no per-cycle spam; `n_cand=0` = CGWindowList mismatch (confirmed trigger: worker-spawn/send immediately sets `n_cand=0`). Module-level CFUNCTYPE refs (`_FT_vv`, `_FT_vvv`, etc.) must remain module-level — GC'ing them corrupts the IMP pointer table and causes SIGSEGV.
+**Purpose:** Batch detection of macOS Mission Control desktop numbers for all Main sessions via private CoreGraphics Services (CGS) APIs + one AppleScript round-trip. Ported from `dev/desktop_detection/01_probe.py`. Three-strategy resolver per window: name-unique → space-elimination → OSC-2 injection. Results cached for `_DET_CACHE_TTL=10s`; force-invalidated when cwd set changes (session add/remove). All errors (Ghostty down, AppleScript failure, CGS error) are caught by the orchestrator, logged as `[detection] all_failed n_mains=N reason=...` (only when ALL mains fail, not on partial), and return all-None. **Transition logging** (`_last_result` module state + `_cwd_ctx` per-cycle dict): on desktop-number change per cwd logs `[detection] transition <project>/<repo> <old>-><new> win=<ghostty_window_name> n_cand=<candidates>` — transition-gated, no per-cycle spam; `n_cand=0` = CGWindowList mismatch (confirmed trigger: worker-spawn/send immediately sets `n_cand=0`). Module-level CFUNCTYPE refs (`_FT_vv`, `_FT_vvv`, etc.) must remain module-level — GC'ing them corrupts the IMP pointer table and causes SIGSEGV. **Sidecar LKG** (`_cwd_desktop_lkg` module state): updated only on the `if info:` success path with `{"space_id": int, "desktop_no": int}`; transient None (n_cand=0, Ghostty down, all_failed) never clobbers. Stale-cwd cleanup runs on each cache-miss (session closed → removed from dict). Exported to `discover.py` for `_write_cwd_desktop_sidecar()`.
 **Reads:** `ps -A` (Ghostty PID); `osascript` (Ghostty window/tab/UUID traversal); `CGWindowListCopyWindowInfo` (all spaces, all windows); `CGSCopyManagedDisplaySpaces` (space→desktop-no mapping); `CGSCopySpacesForWindows` (per-window space query); `/dev/ttys<NNN>` (OSC-2 injection for space-elimination fallback).
 **Writes:** `/dev/ttys<NNN>` (OSC-2 marker + cleanup); `_det_cache`, `_det_cache_ts`, `_det_cache_cwds` (module state); `src/logs/menubar.log` ([detection] category on all-fail only).
-**Called by:** `discover.py:list_alive_sessions` (`detect_main_desktop_numbers`).
+**Called by:** `discover.py:list_alive_sessions` (`detect_main_desktop_numbers`, `_cwd_desktop_lkg`).
 **Calls out:** `ctypes` (CoreGraphics + libobjc); `subprocess` (ps, osascript); `.menubar_log` (`log_menubar`).
 
 ---
@@ -81,12 +81,12 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### paths.py (35 LOC)
+### paths.py (36 LOC)
 
-**Purpose:** Single source of truth for 8 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`), `ORCHESTRATOR_SIGNALS_FILE` (`orchestrator_signals.json` — written by worker-cli send, read by menubar for auto-abort grace). Runs `_migrate_from_dotfiles()` at import.
+**Purpose:** Single source of truth for 9 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`), `ORCHESTRATOR_SIGNALS_FILE` (`orchestrator_signals.json` — written by worker-cli send, read by menubar for auto-abort grace), `CWD_DESKTOP_FILE` (`cwd_desktop.json` — written by `discover.py`, consumed by blanks `desktop_targeting.py` for cross-repo desktop lookup). Runs `_migrate_from_dotfiles()` at import.
 **Reads:** old dotfile paths under `~` on first import (migration); nothing thereafter.
 **Writes:** creates `_APP_SUPPORT` dir; moves old dotfiles to new paths on first import.
-**Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `queue_controller.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`); `queue.py` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`). `hook_writer.py` and `ghostty.py` define equivalent paths inline (standalone / cycle-avoidance).
+**Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `queue_controller.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`); `queue.py` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`); `discover.py` (`CWD_DESKTOP_FILE`). `hook_writer.py` and `ghostty.py` define equivalent paths inline (standalone / cycle-avoidance).
 **Calls out:** `pathlib` only.
 
 ---
@@ -162,13 +162,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (218 LOC)
+### discover.py (233 LOC)
 
-**Purpose:** Session discovery entry point. `SessionInfo` includes `session_id: str` (JSONL stem = CC session identifier; key for `msg_queue.json` queue) and `tmux_session_name: str` (worker-`basename(project_path)`-`worker_name` for workers, `''` for mains; used by `app.py:_has_recent_send_signal` for orchestrator-signal lookup — DO NOT reconstruct from `project_name` since the decoded-path heuristic diverges from the iterative-dev tmux convention, e.g. `MCP-RAG` vs `RAG`). `list_alive_sessions` calls `_write_cwd_uuid_map()` after each tick so `APP_SUPPORT/ghostty_cwd_uuid.json` stays current for hook delivery.
+**Purpose:** Session discovery entry point. `SessionInfo` includes `session_id: str` (JSONL stem = CC session identifier; key for `msg_queue.json` queue) and `tmux_session_name: str` (worker-`basename(project_path)`-`worker_name` for workers, `''` for mains; used by `app.py:_has_recent_send_signal` for orchestrator-signal lookup — DO NOT reconstruct from `project_name` since the decoded-path heuristic diverges from the iterative-dev tmux convention, e.g. `MCP-RAG` vs `RAG`). `list_alive_sessions` calls `_write_cwd_uuid_map()` after each tick so `APP_SUPPORT/ghostty_cwd_uuid.json` stays current for hook delivery, and `_write_cwd_desktop_sidecar()` immediately after `detect_main_desktop_numbers()` to publish `cwd_desktop.json` for cross-repo consumers.
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; delegates to `proc_cache.py`; Ghostty mapping via `ghostty.py`.
-**Writes:** nothing directly. Delegates writes to submodules (incl. `_write_cwd_uuid_map`).
+**Writes:** `APP_SUPPORT/cwd_desktop.json` (atomic tempfile+os.replace, LKG-only, via `_write_cwd_desktop_sidecar()`); delegates `ghostty_cwd_uuid.json` write to `ghostty.py:_write_cwd_uuid_map`.
 **Called by:** `app.py:CCMenuBarApp._tick`, `app.py:_open_main_panel`, `app.py:_PanelController.*Queue*` methods.
-**Calls out:** `session_finder.get_project_directories`, `session_finder.encode_project_path`; `.proc_cache`; `.ghostty` (`_refresh_ghostty_tty_to_id`, `_write_cwd_uuid_map`, `_ghostty_tty_to_id`); `.desktop_detection` (`detect_main_desktop_numbers`).
+**Calls out:** `session_finder.get_project_directories`, `session_finder.encode_project_path`; `.proc_cache`; `.ghostty` (`_refresh_ghostty_tty_to_id`, `_write_cwd_uuid_map`, `_ghostty_tty_to_id`); `.desktop_detection` (`detect_main_desktop_numbers`, `_cwd_desktop_lkg`); `.paths` (`CWD_DESKTOP_FILE`).
 
 ---
 
@@ -292,7 +292,8 @@ discover.py  ← ghostty.py (_refresh_ghostty_tty_to_id, _ghostty_tty_to_id)
              ← proc_cache.py (_refresh_cc_proc_cache, _refresh_tmux_state,
                                _tmux_session_exists, _read_hook_state,
                                _proxy_log_newest_mtime, _has_active_bg)
-             ← desktop_detection.py (detect_main_desktop_numbers)
+             ← desktop_detection.py (detect_main_desktop_numbers, _cwd_desktop_lkg)
+             ← paths.py (CWD_DESKTOP_FILE)
 
 desktop_detection.py → ctypes (CoreGraphics + libobjc); subprocess; .menubar_log
 
@@ -322,6 +323,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 
 | Variable | Module | Type | Owner | Description |
 |---|---|---|---|---|
+| `_cwd_desktop_lkg` | desktop_detection.py | `Dict[str, dict]` | module | Last-known-good `{cwd: {"space_id": int, "desktop_no": int}}`; updated only on `if info:` success path. Transient None never clobbers. Stale-cwd cleanup on each cache-miss. Exported to `discover.py` for `_write_cwd_desktop_sidecar()`. |
 | `CCMenuBarApp._panel_controller` | app.py | `_PanelController` | app.py | Single PyObjC NSObject as ObjC target for all button actions. Held to prevent ARC GC. |
 | `CCMenuBarApp._auto_focus` | app.py | `bool` | app.py | Whether auto-focus is enabled. Loaded from settings; toggled by `toggleAutoJump_`. |
 | `CCMenuBarApp._panel_width` | app.py | `int` | app.py owns, panel.py uses | Current panel width in pts. Loaded from settings (fallback: `PANEL_WIDTH=380`). Reset to `PANEL_WIDTH` on user-initiated fresh open via `togglePanel_` (runtime only, no save). Updated by `windowDidResize_` on user drag. Cycling (`_deferred_close_open`) preserves current value. |
