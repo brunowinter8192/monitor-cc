@@ -25,11 +25,11 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (375 LOC)
+### addon.py (374 LOC)
 
-**Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, saves error payloads on 4xx responses, writes `latency_update` records on successful responses.
+**Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, appends 4xx errors to `api_errors.jsonl`, writes `latency_update` records on successful responses. count_tokens requests (`/v1/messages/count_tokens`) pass through unmodified — `_is_messages_request()` matches only `/v1/messages` + optional query string.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
-**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); writes `src/logs/api_error_payload_*.json` on 4xx. Entry fields stamped post-modification include `stripped_unused_tools_names` (from `_strip_unused_tools` 3-tuple) and `deferred_tools_names` (from `_extract_deferred_tool_names` on the ORIGINAL pre-strip payload). Both default-omitted when empty.
+**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); appends one JSONL line to `src/logs/api_errors.jsonl` on 4xx (fields: `ts`, `status_code`, `error_response`, `request_url`, `request_payload`). Entry fields stamped post-modification include `stripped_unused_tools_names` (from `_strip_unused_tools` 3-tuple) and `deferred_tools_names` (from `_extract_deferred_tool_names` on the ORIGINAL pre-strip payload). Both default-omitted when empty.
 **Called by:** mitmproxy (via `addons = [ProxyAddon()]` at module level). Hooks: `request`, `responseheaders`, `response`.
 **Calls out:** `mitmproxy`
 
