@@ -225,7 +225,7 @@ trap cleanup EXIT INT TERM
 sleep 1
 echo "Proxy for $PROJECT on port $PROXY_PORT, log: api_requests_${LOG_ID}.jsonl"
 
-# Pinned to v2.1.114 via ~/.local/bin/claude-114 wrapper. Override with CLAUDE_BIN env var if needed.
+# Pinned to v2.1.149 via ~/.local/bin/claude-149 wrapper. Override with CLAUDE_BIN env var if needed.
 CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude-149}"
 if [ ! -x "$CLAUDE_BIN" ]; then
     echo "ERROR: $CLAUDE_BIN not found or not executable" >&2
