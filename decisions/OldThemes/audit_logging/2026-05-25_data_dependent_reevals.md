@@ -10,20 +10,17 @@ bei allen drei identisch ist.
 
 ## Re-Eval 1 — CC Noise Prefix Strip (Original mjkt-Scope)
 
+**Status: ✅ COMPLETE 2026-05-30** — ran early (5 days of data; ~1 week accumulated).
+
 **Source:** `decisions/OldThemes/audit_logging/cc_noise_strip_investigation.md`
 
-**Frage:** Welche weiteren CC-wrapper-Patterns in tool_result content (jenseits des
-schon adressierten `PreToolUse:<Tool> hook error: [python3 <path>]:` prefix) sind
-strippbar ohne agent-relevant content zu verlieren?
+**Result:** No new strippable patterns. `strip_hook_prefix.py` is sufficient.
+495 entries clustered across 6 buckets; all non-hook-prefixed content is agent-relevant (KEEP).
+Cross-check confirmed strip reaches Anthropic (2,970 requests in 65 available proxy logs).
+Full findings in `cc_noise_strip_investigation.md` Evidenz section.
 
-**Datenquelle:** `src/logs/tool_errors.jsonl` (live seit 2026-05-24 ~23:32 UTC).
-
-**Trigger-Datum:** ab ~2026-06-07 (≥ 2 Wochen Akkumulation).
-
-**Eval-Methode:**
-1. Grep über tool_errors.jsonl, Cluster nach distinct Error-Prefix-Shapes
-2. Pro Pattern decide: pure Noise (strippbar) vs context-bearing (keep, bias conservativ)
-3. Implementation in `src/proxy/strip_hook_prefix.py` ODER neues Strip-Modul für andere Klassen
+**Script:** `dev/tool_use_errors/A_error_cluster_audit.py`
+**Report:** `dev/tool_use_errors/reports/2026-05-30_error_cluster_audit.md`
 
 ---
 
