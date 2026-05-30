@@ -39,6 +39,7 @@ from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
 from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER, _WAKEUP_TEXT
 from .strip_hook_prefix import _strip_hook_prefix, _HOOK_PREFIX_MARKER
 from .strip_git_lock import _strip_git_lock_advice, _GIT_LOCK_MARKER
+from .strip_bd_noise import _strip_bd_noise, _BD_NOISE_MARKERS
 
 _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
@@ -124,6 +125,16 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         changed = True
 
     new_messages, pass_mods, pass_removed, c_idxs = _apply_git_lock_strip(new_messages)
+    modifications.extend(pass_mods)
+    for idx in c_idxs:
+        if idx not in stripped_msg_indices:
+            stripped_msg_indices.append(idx)
+            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
+        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+    if c_idxs:
+        changed = True
+
+    new_messages, pass_mods, pass_removed, c_idxs = _apply_bd_noise_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -491,6 +502,31 @@ def _apply_git_lock_strip(messages: list) -> tuple:
             pass_mods.append("stripped_git_lock_advice")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = gl_removed
+        else:
+            result.append(msg)
+    return result, pass_mods, pass_removed_by_idx, changed_indices
+
+
+# BD-noise pass — strips bd informational auto-import/export lines from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+def _apply_bd_noise_strip(messages: list) -> tuple:
+    result = []
+    pass_mods = []
+    pass_removed_by_idx = {}
+    changed_indices = []
+    for idx, msg in enumerate(messages):
+        if msg.get("role") != "user":
+            result.append(msg)
+            continue
+        old_content = msg.get("content", "")
+        if not any(_content_contains(old_content, m) for m in _BD_NOISE_MARKERS):
+            result.append(msg)
+            continue
+        new_content, bd_removed = _strip_bd_noise(old_content)
+        if bd_removed:
+            result.append({**msg, "content": new_content})
+            pass_mods.append("stripped_bd_noise")
+            changed_indices.append(idx)
+            pass_removed_by_idx[idx] = bd_removed
         else:
             result.append(msg)
     return result, pass_mods, pass_removed_by_idx, changed_indices
