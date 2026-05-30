@@ -34,6 +34,21 @@ _ALL_TEMPLATES = frozenset(_SR_TEMPLATES.keys())
 # substitutes system[2], so this SR block is the only delivery path for CLAUDE.md content.
 _PRESERVE_PREAMBLE = "As you answer the user's questions, you can use the following context:"
 
+# Env-context SR: CC injects userEmail + currentDate on nearly every request.
+# Full-block exact match (fullmatch) with \d{4}-\d{2}-\d{2} for the date and \s+ for the
+# whitespace gap before IMPORTANT (tolerates minor indentation changes in future CC updates).
+# Email and all other text match literally. Must be checked BEFORE _PRESERVE_PREAMBLE guard
+# because this block shares the same preamble as CLAUDE.md context blocks.
+_ENV_CONTEXT_RE = re.compile(
+    r"As you answer the user's questions, you can use the following context:\n"
+    r"# userEmail\n"
+    r"The user's email address is brunowinter7934@gmail\.com\.\n"
+    r"# currentDate\n"
+    r"Today's date is \d{4}-\d{2}-\d{2}\.\s+"
+    r"IMPORTANT: this context may or may not be relevant to your tasks\. "
+    r"You should not respond to this context unless it is highly relevant to your task\.",
+)
+
 # Map old marker strings → template IDs for backward-compat wrappers
 _MARKER_TO_TEMPLATE = {
     'task tools haven':                                'task-tools-nag',
@@ -118,6 +133,8 @@ def _apply_sr_strip(text, enabled_templates):
         if not inner_m:
             return full
         inner = inner_m.group(1).strip()
+        if _ENV_CONTEXT_RE.fullmatch(inner):
+            return ''  # strip env-context SR (userEmail/currentDate) — checked before preamble guard
         if inner.startswith(_PRESERVE_PREAMBLE):
             return full  # preserve CLAUDE.md context block — Opus needs project context
         tid, mode = _match_template(inner, enabled_templates)

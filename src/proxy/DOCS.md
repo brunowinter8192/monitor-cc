@@ -47,13 +47,13 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (494 LOC)
+### rules.py (530 LOC)
 
-**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip or replace system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_bg_exit_strip` (BGK plain-text path), `_apply_hook_prefix_strip` (hook-error-prefix strip), `_dedup_wakeup_blocks` (final pass), `_apply_system_passes` (system-block pass). `_apply_first_pass` ALWAYS appends `_WAKEUP_TEXT` via `_append_wakeup_text_to_content` to ANY `<task-notification>` block — detection via `_top_level_content_contains` (top-level str/text only, does NOT descend into tool_result; prevents false-positive when the tag appears as DATA in tool_result content). mod-name still differentiates `replaced_task_notification` for failed vs `trimmed_task_notification` for non-failed. `_apply_bg_exit_strip` replaces first BGK plain-text notification with `_WAKEUP_TEXT` (mod: `replaced_bg_completed_text`) — guard likewise uses `_top_level_content_contains`. `_apply_hook_prefix_strip` strips `PreToolUse:<Tool> hook error: [python3 <path>]:` prefix from tool_result content before the payload reaches Anthropic (mod: `stripped_hook_error_prefix`). `_dedup_wakeup_blocks` runs as the final message-side pass: collapses multiple consecutive `_WAKEUP_TEXT` blocks within a single user-message to one (TN path and BGK path firing on the same message both inject independently → dedup ensures max 1 wake-up block per message). Comparison via `rstrip('\n')` handles both TN-path (`_WAKEUP_TEXT` with `\n`) and BGK-path (inline form, `\n`-stripped). Dedup touches only `msg["content"]`, NEVER `stripped_msg_removed` — display invariant: wake-up text is INJECTED into outgoing payload, not stripped from it.
+**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip or replace system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_bg_exit_strip` (BGK plain-text path), `_apply_hook_prefix_strip` (hook-error-prefix strip), `_apply_git_lock_strip` (git index.lock advice strip), `_dedup_wakeup_blocks` (final pass), `_apply_system_passes` (system-block pass). `_apply_first_pass` ALWAYS appends `_WAKEUP_TEXT` via `_append_wakeup_text_to_content` to ANY `<task-notification>` block — detection via `_top_level_content_contains` (top-level str/text only, does NOT descend into tool_result; prevents false-positive when the tag appears as DATA in tool_result content). mod-name still differentiates `replaced_task_notification` for failed vs `trimmed_task_notification` for non-failed. `_apply_bg_exit_strip` replaces first BGK plain-text notification with `_WAKEUP_TEXT` (mod: `replaced_bg_completed_text`) — guard likewise uses `_top_level_content_contains`. `_apply_hook_prefix_strip` strips `PreToolUse:<Tool> hook error: [python3 <path>]:` prefix from tool_result content before the payload reaches Anthropic (mod: `stripped_hook_error_prefix`). `_apply_git_lock_strip` strips the constant 5-line git index.lock advice block from tool_result content (mod: `stripped_git_lock_advice`); guard via `_content_contains` (descends into tool_result). `_dedup_wakeup_blocks` runs as the final message-side pass: collapses multiple consecutive `_WAKEUP_TEXT` blocks within a single user-message to one (TN path and BGK path firing on the same message both inject independently → dedup ensures max 1 wake-up block per message). Comparison via `rstrip('\n')` handles both TN-path (`_WAKEUP_TEXT` with `\n`) and BGK-path (inline form, `\n`-stripped). Dedup touches only `msg["content"]`, NEVER `stripped_msg_removed` — display invariant: wake-up text is INJECTED into outgoing payload, not stripped from it.
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`, `strip_bg_completed`, `strip_hook_prefix`.
+**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`, `strip_bg_completed`, `strip_hook_prefix`, `strip_git_lock`.
 
 ---
 
@@ -67,9 +67,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_sr.py (173 LOC)
+### strip_sr.py (193 LOC)
 
-**Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 10 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, plan-mode); each template has one or more identifier strings. `claudemd-contents` uses a list of identifiers (`"As you answer the user's questions"` for CC's preamble form, `"Contents of "` for the bare form) — `_match_template` iterates the list with OR semantics. Strip uses `startswith` against extracted SR-block inner text — no greedy regex across code literals. `<task-notification>` blocks do NOT go through this module — they are handled separately by `_apply_first_pass` in `rules.py`. The injected `_WAKEUP_TEXT` is plain text — no `<system-reminder>` tags, SR-strip passes uninvolved.
+**Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 10 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, plan-mode); each template has one or more identifier strings. `claudemd-contents` uses a list of identifiers (`"As you answer the user's questions"` for CC's preamble form, `"Contents of "` for the bare form) — `_match_template` iterates the list with OR semantics. Strip uses `startswith` against extracted SR-block inner text — no greedy regex across code literals. `<task-notification>` blocks do NOT go through this module — they are handled separately by `_apply_first_pass` in `rules.py`. The injected `_WAKEUP_TEXT` is plain text — no `<system-reminder>` tags, SR-strip passes uninvolved. `_apply_sr_strip._replace` has a pre-guard `_ENV_CONTEXT_RE.fullmatch(inner)` check that fires BEFORE the `_PRESERVE_PREAMBLE` guard, stripping CC's injected userEmail/currentDate SR block; the full-block match (email literal + date regex + IMPORTANT footer literal) ensures CLAUDE.md-context blocks with the same preamble are never false-positively stripped.
 **Reads:** Message content (string or list of blocks); template catalog (module-local).
 **Writes:** Nothing — returns modified content.
 **Called by:** `src/proxy/rules.py`
@@ -104,6 +104,16 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Writes:** Nothing — returns `(modified_content, list[str])`.
 **Called by:** `src/proxy/rules.py` (`_apply_hook_prefix_strip` pass).
 **Calls out:** stdlib only (`re`).
+
+---
+
+### strip_git_lock.py (71 LOC)
+
+**Purpose:** Strip the constant 5-line git index.lock advice block from user-turn `tool_result` content before forwarding to Anthropic. CC appends this block (hardcoded in git's `lockfile.c`) to bash tool output when the beads auto-export hook calls `git add` while another git process holds `index.lock`. The variable warning line above it (`Warning: auto-export: git add failed: … File exists.`) is preserved — it contains the actionable repo path. Exact literal match via `str.replace` (no regex needed — block is constant across all repos/versions). Fast-path guard `_GIT_LOCK_MARKER = 'Another git process seems to be running'` skips non-matching messages cheaply. Returns `(new_content, removed_chunks)` for `stripped_git_lock_advice` mod attribution. Traverses all 4 content shapes mirroring `strip_hook_prefix.py`.
+**Reads:** Message content (string or list of blocks).
+**Writes:** Nothing — returns `(modified_content, list[str])`.
+**Called by:** `src/proxy/rules.py` (`_apply_git_lock_strip` pass).
+**Calls out:** stdlib only.
 
 ---
 
@@ -191,7 +201,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_vocab.py (251 LOC)
+### strip_vocab.py (253 LOC)
 
 **Purpose:** Shared vocabulary + semantics for proxy strip classification. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers. Exports:
 - Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL/SC/IR/PP with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection; excludes TN, SC, IR, PP).
@@ -257,4 +267,4 @@ mitmproxy import errors are silent — the proxy crashes on startup and workers 
 **Pyright-strip lives in the second pass, not the first-pass elif-chain.** `rules.py` has two passes: a first `elif`-chain (exclusive per message — a message that hits one elif cannot trigger another), and a cumulative second pass. Pyright diagnostics SRs can co-occur in the same message with Skills or claudeMd SRs; if pyright lived in the elif-chain it would be silently skipped for those messages. Any new rule that can co-occur with an existing first-pass rule MUST go to the second pass. The structural separation between `_apply_first_pass` and `_apply_cumulative_sr_strips` in `rules.py` enforces this invariant.
 
 
-**`_PRESERVE_PREAMBLE` guard in strip_sr.py.** `strip_sr.py` has a hard-coded guard that prevents stripping claudeMd-context SR blocks: an SR whose inner text starts with `"As you answer the user's questions, you can use the following context:"` is always preserved verbatim, regardless of template matching. This allows the CLAUDE.md project-context block (injected by CC as a claudeMd SR with preamble) to survive the claudemd-strip rule. Adding new "preserve entire block" logic: mirror this pattern — `startswith` check in the extractor before template dispatch.
+**`_PRESERVE_PREAMBLE` guard in strip_sr.py.** `strip_sr.py` has a hard-coded guard that prevents stripping claudeMd-context SR blocks: an SR whose inner text starts with `"As you answer the user's questions, you can use the following context:"` is always preserved verbatim, regardless of template matching. This allows the CLAUDE.md project-context block (injected by CC as a claudeMd SR with preamble) to survive the claudemd-strip rule. Adding new "preserve entire block" logic: mirror this pattern — `startswith` check in the extractor before template dispatch. **Exception: any new strip rule whose target block shares the same preamble (e.g. env-context SR) MUST insert its check BEFORE the `_PRESERVE_PREAMBLE` guard** — otherwise the guard fires first and the strip never runs. See `_ENV_CONTEXT_RE.fullmatch(inner)` check in `_apply_sr_strip._replace` for the pattern.
