@@ -1,5 +1,30 @@
 # Dolt Server Lifecycle — bd↔dolt Restart-War (2026-05-29)
 
+## ✅ RESOLVED 2026-05-30 — bd v0.60.0 → v1.0.4 Upgrade, Loop tot, null Datenverlust
+
+**Fix:** bd upgegradet (Option A) — Restart-Loop behoben. v1.0.4 hält den auto-gestarteten dolt-Server am Leben (PR #2655-Klasse) statt ihn pro Command zu churnen. Damit war es der #2655/#2675-Mechanismus, nicht eine v0.60-Sondervariante — das offene Gate aus dem KORREKTUR-Block ist geklärt.
+
+### Install — kontrollierte Single-Version (kein Auto-Update)
+- Binary `beads_1.0.4_darwin_arm64.tar.gz` (checksum-verifiziert gegen `checksums.txt`, `0c53479…`) nach `~/.local/bin/bd` (PATH-Position 1, vor `/opt/homebrew/bin`). `bd version` → 1.0.4 (ce242a879).
+- `brew uninstall bd` (alte Tap-Formula `steveyegge/beads`, v0.60.0 entfernt, Symlink weg). **`brew pin dolt`** (dolt 1.83.5 eingefroren — bd braucht es als Subprozess).
+- Kein Paketmanager mehr, kein Self-Update: `bd upgrade` ist nur ein lokaler Versions-Change-DETEKTOR (`cmd/bd/upgrade.go`, kein Netzwerk/Download — schreibt nur `metadata.json` + vergleicht). npm-Paket `@beads/bd` bewusst NICHT genutzt (publiziert die gesperrte 1.0.5 + Node-Shim-Schicht). Homebrew: kein `autoupdate`-Tap, keine launchd-Jobs → upgradet Binaries nie von selbst.
+- **Gesperrt:** v1.0.5 (Prerelease) enthält Migration `0043`, die Multi-Machine-`bd dolt`-Sync "silently and unrecoverably" zerstört (#4259) — Homebrew auf v1.0.4 zurückgerollt. Uns irrelevant: keine dolt-Remotes (`bd dolt remote list` = none) + v1.0.4 ≠ v1.0.5.
+
+### Migration — in-place auf Server-Store, kein Datenverlust
+- v1.0.4 RESPEKTIERT `metadata.json: dolt_mode=server` → migriert in-place auf `.beads/dolt/` (Server-Modus bleibt, KEIN Wechsel zu `.beads/embeddeddolt/`). Schema-Stempel 0.60.0 → 1.0.4 via `bd migrate --yes`.
+- **Datenverlust-Risiko per Wegwerf-Sandbox ausgeschlossen:** Kopie von Monitor_CCs `.beads` migriert → der jüngste Issue (29.05., noch nicht in die wochenalte `issues.jsonl` geflusht) überlebt, Issue Count 248 erhalten. Beweis, dass auf den echten DB-Daten migriert wird, nicht auf der stale JSONL. Die `auto_import_upgrade`-JSONL-Recovery ist emptiness-guarded + insert-if-new (`importFromLocalJSONLConflictSkip`, GH#3955) → auf nicht-leerer DB harmloser No-op, kann Live-Daten nicht überschreiben.
+- **7 Projekt-DBs migriert** (alle 1.0.4, Counts erhalten): Monitor_CC 248, Trading 15, blank 38, searxng 83, RAG 88, github 32, Reddit 35. `bd migrate` flusht die JSONL nebenbei wieder aktuell.
+- **arxiv + linkedin** bewusst ausgeklammert, Migration fehlgeschlagen (kein Datenverlust): arxiv `.beads/dolt/` enthält nur `config.yaml` (keine echte DB); linkedin auf fixem Port 3307 / Shared-Server (offline). Menubar loggt dafür harmlose Open-Errors. Nicht weiterverfolgt.
+
+### Verifikation — Loop tot
+- 3× `bd list` in Folge (= das Menubar-Polling-Kommando) → identischer Port 61785, identische Server-PID 72690, 1 Server, 20s stabil, **0 Circuit-Breaker**. Im alten v0.60 hätte dasselbe Polling den Server alle ~8s neugestartet.
+- Menubar via `launchctl bootout` fürs Migrationsfenster sauber raus, danach `launchctl bootstrap` zurück — 1 gesunde Instanz (`state = running`).
+
+### Backup (Rückversicherung, kann nach Stabilitäts-Bestätigung weg)
+`~/beads-upgrade-backup-20260530-213148/` (86 MB): rohe `.beads/dolt`-Dirs aller 9 Projekte + altes v0.60.0-Binary + JSONL.
+
+---
+
 ## ⚠️ KORREKTUR 2026-05-30 — Homebrew war ein Red Herring, Wurzel NICHT behoben
 
 Die unten dokumentierte Schlussfolgerung (Homebrew-dolt-Dienst = Ursache, `brew services stop dolt` = Fix) ist **falsch**. Beleg: der 53351-Loop kam zurück (20.715 Neustarts, +744 nach dem „Fix", 8s-Takt) — **ohne** dass der Homebrew-Dienst zurück war (`launchctl` bestätigt nicht geladen). Die Schleife pausierte 2026-05-29 ~22:55 nur durch die launchd-Respawn-Drossel (zeitlicher Zufall, 5 min vor `brew services stop`); die Lockstep-Zeitstempel waren KEIN Kopplungsbeweis. `brew services stop dolt` bleibt sinnvoll (redundanter Dienst weg), ist aber NICHT der Fix.

@@ -37,11 +37,11 @@ Vier Refactor/Fix-Themen laufen SEQUENTIELL, nicht parallel. Reihenfolge:
   - **Orphan-Cleanup:** `tool_use_errors.jsonl` (Legacy, kein Writer mehr) + verwaiste `.proxy_live_*`-Verzeichnisse toter Sessions.
 - count-30-Retention für api_requests: bewusst KEINE Größen-Begrenzung — akzeptiert (User-Entscheidung 2026-05-28), 16GB kein Problem.
 
-### 4. Dolt — bd↔dolt Lifecycle  ❌ NICHT GELÖST (Stand 2026-05-30) — bd-Upgrade aufgeschoben
-- OldThemes: `dolt_server_lifecycle.md` (siehe KORREKTUR-Block oben in der Datei).
+### 4. Dolt — bd↔dolt Lifecycle  ✅ GELÖST (2026-05-30) — bd v0.60.0 → v1.0.4 Upgrade
+- OldThemes: `dolt_server_lifecycle.md` (RESOLVED-Block oben in der Datei).
 - Zwei verworfene Theorien: (1) TIME_WAIT-Stau auf fixem Port (2026-05-28); (2) Homebrew-dolt-Zwei-Server-Krieg (2026-05-29 — Red Herring, Loop kam ohne Homebrew zurück).
-- Echte Wurzel: bd-interne per-Command Server-Lifecycle-Instabilität + Circuit-Breaker, getrieben vom kontinuierlichen Menubar-bd-Polling pro Projekt (cross-project, beads-Issue #2636-Klasse). Upstream gefixt (PR #2675/#2655), aber unsere bd v0.60.0 davor.
-- Plan: bd upgraden (Option A) — VORHER Changelog/Releases v0.60.0 → aktuell prüfen (Upgrade-Impact). Eigener Bead, nächste Session.
+- Echte Wurzel: bd-interne per-Command Server-Lifecycle-Instabilität, getrieben vom kontinuierlichen Menubar-bd-Polling (#2655-Klasse). v1.0.4 hält den auto-gestarteten Server am Leben → kein Churn mehr.
+- Fix: bd als kontrollierte Single-Version nach `~/.local/bin/bd` (v1.0.4, checksum-verifiziert), `brew uninstall bd` + `brew pin dolt`, kein Auto-Update. 7 Projekt-DBs in-place migriert (Schema 0.60.0→1.0.4, null Datenverlust, Sandbox-getestet). Loop verifiziert tot (Port+PID stabil, 0 Breaker). Details im RESOLVED-Block.
 
 ## Follow-up (nach Dolt)
 
