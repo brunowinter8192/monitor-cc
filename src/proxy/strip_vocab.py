@@ -40,6 +40,7 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'IR':  ('stripped_idle_recap',          []),  # full original stored, no SR-wrapping
     'PP':  ('stripped_po_preview',          ['Preview (first ']),  # PO wrapper kept, Preview content removed
     'BGK': ('stripped_bg_exit_notification', ['Background command "']),  # SIGTERM/SIGKILL kill notification from user-aborted sleep timer
+    'GL':  ('stripped_git_lock_advice',      ['Another git process seems to be running']),  # constant git index.lock advice block in tool_result
 }
 
 # Tag literal codes — 4 raw tags tracked for LEAK/SUSPECT detection
