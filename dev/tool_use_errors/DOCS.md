@@ -34,9 +34,7 @@ modification entries to confirm the proxy strip reaches Anthropic. Also compares
 
 ## Reports
 
-`reports/YYYY-MM-DD_error_cluster_audit.md` — named by UTC date of run.
-
-First run: `reports/2026-05-30_error_cluster_audit.md`
+Output: `reports/2026-05-30_error_cluster_audit.md` (first run; subsequent runs add `YYYY-MM-DD_error_cluster_audit.md`)
 
 **Key findings (2026-05-30 run):**
 - 495 entries total; no new strippable patterns found
