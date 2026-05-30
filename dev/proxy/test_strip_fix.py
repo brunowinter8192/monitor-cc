@@ -332,6 +332,90 @@ def t35_task_notification_stripped_from_tool_result():
     check('T35_tn_summary_preserved', 'done' in inner, repr(inner))
 
 
+# ── WAKEUP FALSE-POSITIVE TESTS ───────────────────────────────────────────────
+# Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
+import importlib as _wakeup_il
+_rules_mod = _wakeup_il.import_module('src.proxy.rules')
+_apply_first_pass = _rules_mod._apply_first_pass
+_apply_bg_exit_strip = _rules_mod._apply_bg_exit_strip
+_bgk_mod = _wakeup_il.import_module('src.proxy.strip_bg_completed')
+_WAKEUP_TEXT = _bgk_mod._WAKEUP_TEXT
+del _wakeup_il, _rules_mod, _bgk_mod
+
+
+def _has_wakeup(content) -> bool:
+    """Return True if _WAKEUP_TEXT (stripped of trailing newline) appears in content."""
+    core = _WAKEUP_TEXT.rstrip('\n')
+    if isinstance(content, str):
+        return core in content
+    if isinstance(content, list):
+        return any(
+            isinstance(b, dict) and b.get('type') == 'text' and core in b.get('text', '')
+            for b in content
+        )
+    return False
+
+
+# W01 — <task-notification> in tool_result str → TN branch must NOT fire
+def w01_tn_in_tool_result_str():
+    tn_data = 'RAG result: <task-notification><status>completed</status><summary>done</summary></task-notification>'
+    msgs = [{'role': 'user', 'content': tool_result_str(tn_data)}]
+    new_msgs, mods, _, _c = _apply_first_pass(msgs)
+    content = new_msgs[0]['content']
+    check('W01_no_wakeup_injected', not _has_wakeup(content), f'wakeup found: {content}')
+    check('W01_tn_mod_not_fired', not any('task_notification' in m for m in mods), f'mods: {mods}')
+    check('W01_tool_result_intact', new_msgs[0]['content'][0]['content'] == tn_data)
+
+
+# W02 — <task-notification> in tool_result list-of-text → TN branch must NOT fire
+def w02_tn_in_tool_result_list():
+    tn_data = 'source: <task-notification><status>failed</status><summary></summary></task-notification>'
+    msgs = [{'role': 'user', 'content': tool_result_list(tn_data)}]
+    new_msgs, mods, _, _c = _apply_first_pass(msgs)
+    content = new_msgs[0]['content']
+    check('W02_no_wakeup_injected', not _has_wakeup(content), f'wakeup found: {content}')
+    check('W02_tn_mod_not_fired', not any('task_notification' in m for m in mods), f'mods: {mods}')
+    check('W02_tool_result_intact', new_msgs[0]['content'][0]['content'][0]['text'] == tn_data)
+
+
+# W03 — complete BGK pattern in tool_result str → BGK branch must NOT fire, data intact
+def w03_bgk_in_tool_result_str():
+    bgk_data = 'log: Background command "sleep 600" completed (exit code 143)\n'
+    msgs = [{'role': 'user', 'content': tool_result_str(bgk_data)}]
+    new_msgs, mods, _, _c = _apply_bg_exit_strip(msgs)
+    content = new_msgs[0]['content']
+    check('W03_no_wakeup_injected', not _has_wakeup(content), f'wakeup found: {content}')
+    check('W03_bgk_mod_not_fired', 'replaced_bg_completed_text' not in mods, f'mods: {mods}')
+    check('W03_tool_result_intact', new_msgs[0]['content'][0]['content'] == bgk_data)
+
+
+# W04 — genuine plain-string completed TN → wakeup injected, mod=trimmed_task_notification
+def w04_genuine_tn_completed_plain_string():
+    tn = '<task-notification>\n<status>completed</status>\n<summary>Background command "sleep 10" completed (exit code 0)</summary>\n</task-notification>\n'
+    msgs = [{'role': 'user', 'content': tn}]
+    new_msgs, mods, _, _c = _apply_first_pass(msgs)
+    check('W04_wakeup_injected', _has_wakeup(new_msgs[0]['content']), repr(new_msgs[0]['content'])[:80])
+    check('W04_mod_trimmed', 'trimmed_task_notification' in mods, f'mods: {mods}')
+
+
+# W05 — genuine plain-string failed TN → wakeup injected, mod=replaced_task_notification
+def w05_genuine_tn_failed_plain_string():
+    tn = '<task-notification>\n<status>failed</status>\n<summary></summary>\n</task-notification>\n'
+    msgs = [{'role': 'user', 'content': tn}]
+    new_msgs, mods, _, _c = _apply_first_pass(msgs)
+    check('W05_wakeup_injected', _has_wakeup(new_msgs[0]['content']), repr(new_msgs[0]['content'])[:80])
+    check('W05_mod_replaced', 'replaced_task_notification' in mods, f'mods: {mods}')
+
+
+# W06 — genuine plain-string BGK kill notification → wakeup injected, mod=replaced_bg_completed_text
+def w06_genuine_bgk_plain_string():
+    bgk = 'Background command "sleep 600" completed (exit code 143)\n'
+    msgs = [{'role': 'user', 'content': bgk}]
+    new_msgs, mods, _, _c = _apply_bg_exit_strip(msgs)
+    check('W06_wakeup_injected', _has_wakeup(new_msgs[0]['content']), repr(new_msgs[0]['content'])[:80])
+    check('W06_mod_replaced', 'replaced_bg_completed_text' in mods, f'mods: {mods}')
+
+
 if __name__ == '__main__':
     tests = [
         t01_task_tools_nag_real_text_block, t02_task_tools_nag_fp_code_literal, t03_task_tools_nag_tool_result_str,
@@ -347,6 +431,9 @@ if __name__ == '__main__':
         t31_find_sr_blocks_skips_code_literal, t32_find_sr_blocks_tool_result,
         t33_content_contains_tool_result_str, t34_content_contains_text_block,
         t35_task_notification_stripped_from_tool_result,
+        w01_tn_in_tool_result_str, w02_tn_in_tool_result_list, w03_bgk_in_tool_result_str,
+        w04_genuine_tn_completed_plain_string, w05_genuine_tn_failed_plain_string,
+        w06_genuine_bgk_plain_string,
     ]
 
     print(f'Running {len(tests)} tests...\n')

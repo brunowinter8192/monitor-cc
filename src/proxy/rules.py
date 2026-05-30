@@ -29,6 +29,7 @@ from .payload_helpers import (
     _find_task_notification_blocks,
     _strip_blocked_tool_references,
     _content_contains,
+    _top_level_content_contains,
     _strip_task_notification_tags,
     _detect_sidecar,
     _detect_idle_recap,
@@ -244,7 +245,7 @@ def _apply_first_pass(messages: list) -> tuple:
                 changed_indices.append(idx)
                 pass_mods.append("removed_plan_mode_sr")
                 pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "Plan mode")
-        elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "<task-notification>"):
+        elif msg.get("role") == "user" and _top_level_content_contains(msg.get("content", ""), "<task-notification>"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
             new_msg["content"] = _strip_task_notification_tags(old_content)
@@ -420,7 +421,7 @@ def _apply_bg_exit_strip(messages: list) -> tuple:
             result.append(msg)
             continue
         old_content = msg.get("content", "")
-        if not _content_contains(old_content, _BG_CMD_MARKER):
+        if not _top_level_content_contains(old_content, _BG_CMD_MARKER):
             result.append(msg)
             continue
         new_content, bg_removed = _strip_bg_exit_notifications(old_content)

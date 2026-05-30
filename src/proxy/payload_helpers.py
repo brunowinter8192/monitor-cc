@@ -188,6 +188,19 @@ def _strip_task_notification_tags(content):
     return content
 
 
+# Check if content (str or top-level text blocks only — does NOT descend into tool_result) contains substring
+def _top_level_content_contains(content, substring: str) -> bool:
+    if isinstance(content, str):
+        return substring in content
+    if isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text" and substring in block.get("text", ""):
+                return True
+    return False
+
+
 # Detect CC idle-recap injection: last-msg-user, plain-string content, starts with idle marker
 def _detect_idle_recap(payload: dict) -> bool:
     msgs = payload.get("messages", [])
