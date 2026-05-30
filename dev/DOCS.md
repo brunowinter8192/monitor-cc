@@ -18,7 +18,7 @@ cd Monitor_CC/
 - [session_analysis/DOCS.md](session_analysis/DOCS.md) — Forensic session JSONL + proxy log analysis (cache behavior, rebuild detection, token attribution)
 - [tool_injection/DOCS.md](tool_injection/DOCS.md) — MCP tool schema extraction for proxy-side tool injection
 - [tool_use_analysis/DOCS.md](tool_use_analysis/DOCS.md) — Tool-use input size extraction (Proxy JSONL) + zero-result detection (Session JSONL)
-- `tool_use_errors/reports/` — Historical tool-error analysis snapshots (read-only archive; `analyze.py` and `DOCS.md` deleted 2026-05-24 — replaced by `src/logs/tool_errors.jsonl` persistent log)
+- [tool_use_errors/DOCS.md](tool_use_errors/DOCS.md) — Empirical audit of `src/logs/tool_errors.jsonl` — cluster analysis + strip_hook_prefix.py cross-check (2026-05-30)
 - [cursor_edges/DOCS.md](cursor_edges/DOCS.md) — NSPanel cursor-rect investigation probe — edge hover ↔/↕ blockers (NonactivatingPanel, subview coverage, mask conflicts)
 - [menubar_nspanel/DOCS.md](menubar_nspanel/DOCS.md) — NSPanel sticky-toggle probe suite — persistent menubar panel replacing NSMenu auto-dismiss behavior
 - [cc_source_research/DOCS.md](cc_source_research/DOCS.md) — CC binary + source research artifacts — env-var inventory from npm binaries, cross-referenced against community decompiles
