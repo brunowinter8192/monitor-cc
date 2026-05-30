@@ -47,13 +47,13 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (530 LOC)
+### rules.py (566 LOC)
 
-**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip or replace system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_bg_exit_strip` (BGK plain-text path), `_apply_hook_prefix_strip` (hook-error-prefix strip), `_apply_git_lock_strip` (git index.lock advice strip), `_dedup_wakeup_blocks` (final pass), `_apply_system_passes` (system-block pass). `_apply_first_pass` ALWAYS appends `_WAKEUP_TEXT` via `_append_wakeup_text_to_content` to ANY `<task-notification>` block — detection via `_top_level_content_contains` (top-level str/text only, does NOT descend into tool_result; prevents false-positive when the tag appears as DATA in tool_result content). mod-name still differentiates `replaced_task_notification` for failed vs `trimmed_task_notification` for non-failed. `_apply_bg_exit_strip` replaces first BGK plain-text notification with `_WAKEUP_TEXT` (mod: `replaced_bg_completed_text`) — guard likewise uses `_top_level_content_contains`. `_apply_hook_prefix_strip` strips `PreToolUse:<Tool> hook error: [python3 <path>]:` prefix from tool_result content before the payload reaches Anthropic (mod: `stripped_hook_error_prefix`). `_apply_git_lock_strip` strips the constant 5-line git index.lock advice block from tool_result content (mod: `stripped_git_lock_advice`); guard via `_content_contains` (descends into tool_result). `_dedup_wakeup_blocks` runs as the final message-side pass: collapses multiple consecutive `_WAKEUP_TEXT` blocks within a single user-message to one (TN path and BGK path firing on the same message both inject independently → dedup ensures max 1 wake-up block per message). Comparison via `rstrip('\n')` handles both TN-path (`_WAKEUP_TEXT` with `\n`) and BGK-path (inline form, `\n`-stripped). Dedup touches only `msg["content"]`, NEVER `stripped_msg_removed` — display invariant: wake-up text is INJECTED into outgoing payload, not stripped from it.
+**Purpose:** Apply proxy modification rules — detect and strip sidecar requests (single-message plain-string payload); strip or replace system-reminders, task-notification tags, plan-mode blocks, rejection messages; inject system2 rules into `system[2]`; normalize worktree paths in `system[3]`. Single exported orchestrator `apply_modification_rules` delegates to private helpers: `_check_idle_recap`, `_check_sidecar` (short-circuits), `_apply_first_pass`, `_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, `_apply_po_preview_strip` (message passes), `_apply_bg_exit_strip` (BGK plain-text path), `_apply_hook_prefix_strip` (hook-error-prefix strip), `_apply_git_lock_strip` (git index.lock advice strip), `_apply_bd_noise_strip` (bd informational import/export lines), `_dedup_wakeup_blocks` (final pass), `_apply_system_passes` (system-block pass). `_apply_first_pass` ALWAYS appends `_WAKEUP_TEXT` via `_append_wakeup_text_to_content` to ANY `<task-notification>` block — detection via `_top_level_content_contains` (top-level str/text only, does NOT descend into tool_result; prevents false-positive when the tag appears as DATA in tool_result content). mod-name still differentiates `replaced_task_notification` for failed vs `trimmed_task_notification` for non-failed. `_apply_bg_exit_strip` replaces first BGK plain-text notification with `_WAKEUP_TEXT` (mod: `replaced_bg_completed_text`) — guard likewise uses `_top_level_content_contains`. `_apply_hook_prefix_strip` strips `PreToolUse:<Tool> hook error: [python3 <path>]:` prefix from tool_result content before the payload reaches Anthropic (mod: `stripped_hook_error_prefix`). `_apply_git_lock_strip` strips the constant 5-line git index.lock advice block from tool_result content (mod: `stripped_git_lock_advice`); guard via `_content_contains` (descends into tool_result). `_apply_bd_noise_strip` strips all bd informational auto-import/export lines from tool_result content (mod: `stripped_bd_noise`); guard via `any(_content_contains(..., m) for m in _BD_NOISE_MARKERS)` — three markers needed because the `into empty database` variant has neither `issues.jsonl` nor `auto-export:`. `_dedup_wakeup_blocks` runs as the final message-side pass: collapses multiple consecutive `_WAKEUP_TEXT` blocks within a single user-message to one (TN path and BGK path firing on the same message both inject independently → dedup ensures max 1 wake-up block per message). Comparison via `rstrip('\n')` handles both TN-path (`_WAKEUP_TEXT` with `\n`) and BGK-path (inline form, `\n`-stripped). Dedup touches only `msg["content"]`, NEVER `stripped_msg_removed` — display invariant: wake-up text is INJECTED into outgoing payload, not stripped from it.
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)` 6-tuple.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`, `strip_bg_completed`, `strip_hook_prefix`, `strip_git_lock`.
+**Calls out:** `rules_config`, `content_strip`, `payload_helpers`, `strip_sr`, `strip_po`, `strip_bg_completed`, `strip_hook_prefix`, `strip_git_lock`, `strip_bd_noise`.
 
 ---
 
@@ -114,6 +114,16 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Writes:** Nothing — returns `(modified_content, list[str])`.
 **Called by:** `src/proxy/rules.py` (`_apply_git_lock_strip` pass).
 **Calls out:** stdlib only.
+
+---
+
+### strip_bd_noise.py (91 LOC)
+
+**Purpose:** Strip all bd informational auto-import/export lines from user-turn `tool_result` content before forwarding to Anthropic. bd (beads) emits these on every git commit via its auto-export hook: import-start (`auto-importing N bytes … into empty database`), import-done (`auto-imported N issues [and N memories] from …` / `auto-imported N issues into empty database`), export-done (`Exported N issues … to …` / `auto-export: wrote …`), and no-op status lines (`auto-export: no changes since last export` / `auto-export: throttled …` / `auto-export: skipping …`). Also covers upgrade-recovery variants (`auto-import: N issues from …`). All variants stripped with and without the `- ` bullet prefix present in hook-captured output. `Warning:` / `warning:` prefixed error lines (`auto-export failed:`, `auto-export skipped:`, `auto-import: failed to parse …`) are NOT matched — regex starts at `auto-import`/`auto-export`/`Exported`, never `Warning:`. Fast-path markers: `_BD_NOISE_MARKERS = ('issues.jsonl', 'auto-export:', 'into empty database')` — three needed because `auto-imported N issues into empty database` contains neither of the first two. Returns `(new_content, removed_chunks)` for `stripped_bd_noise` mod attribution. Traverses all 4 content shapes mirroring `strip_git_lock.py`.
+**Reads:** Message content (string or list of blocks).
+**Writes:** Nothing — returns `(modified_content, list[str])`.
+**Called by:** `src/proxy/rules.py` (`_apply_bd_noise_strip` pass).
+**Calls out:** stdlib only (`re`).
 
 ---
 
@@ -201,7 +211,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_vocab.py (253 LOC)
+### strip_vocab.py (254 LOC)
 
 **Purpose:** Shared vocabulary + semantics for proxy strip classification. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers. Exports:
 - Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL/SC/IR/PP with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection; excludes TN, SC, IR, PP).
