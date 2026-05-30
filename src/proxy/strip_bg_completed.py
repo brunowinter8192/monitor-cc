@@ -40,23 +40,8 @@ def _strip_bg_exit_notifications(content):
             if btype == 'text':
                 new_text = _strip_bg_from_text(block.get('text', ''), removed, injected)
                 result.append({**block, 'text': new_text or '.'})
-            elif btype == 'tool_result':
-                inner = block.get('content', '')
-                if isinstance(inner, str):
-                    new_inner = _strip_bg_from_text(inner, removed, injected)
-                    result.append({**block, 'content': new_inner} if new_inner != inner else block)
-                elif isinstance(inner, list):
-                    new_sub = []
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get('type') == 'text':
-                            new_text = _strip_bg_from_text(sub.get('text', ''), removed, injected)
-                            new_sub.append({**sub, 'text': new_text or '.'})
-                        else:
-                            new_sub.append(sub)
-                    result.append({**block, 'content': new_sub})
-                else:
-                    result.append(block)
             else:
+                # tool_result and all other block types — never contain genuine BG notifications
                 result.append(block)
         return result, removed
     return content, removed

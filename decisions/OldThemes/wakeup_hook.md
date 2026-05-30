@@ -142,3 +142,52 @@ Two bugs discovered via proxy log inspection during a session debugging "Punkt i
 - src/proxy/rules.py `_dedup_wakeup_blocks`, `_apply_first_pass`.
 - src/proxy/payload_helpers.py `_strip_task_notification_tags` line 167 (the `"."` placeholder source).
 - src/proxy/strip_bg_completed.py (BGK path, unchanged).
+
+---
+
+## Iteration 7 — tool_result False-Positive Fix
+
+### Problem identified
+
+`_WAKEUP_TEXT` was injected into outgoing API requests as a **false positive** — when there was NO genuine background-task notification, only the marker string appearing as DATA inside a `tool_result` block. Observed in a 69-request session: injection fired on every request where `<task-notification>` was anywhere in the message history inside tool_result content (34/34 requests), never without it.
+
+Root cause confirmed in code (two paths):
+
+**TN path** (`rules.py` `_apply_first_pass` line 247): guard used `_content_contains(content, "<task-notification>")`. `_content_contains` (payload_helpers.py lines 135–142) deliberately descends into `tool_result` sub-content — correct for SR-strip operations, wrong for wakeup injection. Any user-turn message with a tool_result containing `<task-notification>` as literal text (RAG results, grep dumps of proxy source, documentation reads) triggered the branch → `_append_wakeup_text_to_content` appended `_WAKEUP_TEXT` unconditionally to the whole message content.
+
+**BGK path** (`rules.py` `_apply_bg_exit_strip` line 423): same guard `_content_contains(old_content, _BG_CMD_MARKER)` descended into tool_result. Then `_strip_bg_exit_notifications` (strip_bg_completed.py) also traversed tool_result content via its own `elif btype == 'tool_result':` block. If `_BG_EXIT_RE` matched inside tool_result data (complete pattern: `Background command "CMD" completed (exit code 143/137)`), it replaced the match with `_WAKEUP_TEXT` INSIDE the tool_result content — data corruption rather than top-level injection.
+
+**Structural invariant confirmed:** Genuine CC background-task notifications always arrive at the TOP LEVEL of the user message content — plain string or top-level `text` block — never inside a `tool_result`. This is the discriminator the fix uses.
+
+### Fix
+
+**New helper `_top_level_content_contains(content, substring)` in `payload_helpers.py`:** checks only top-level str content and top-level `text` blocks in list content. Explicitly does NOT enter `tool_result` blocks.
+
+**TN guard swap (`rules.py` `_apply_first_pass`):** `_content_contains(..., "<task-notification>")` → `_top_level_content_contains(..., "<task-notification>")`. Genuine notifications at top level still fire the branch; tool_result data containing the string is now invisible to the guard.
+
+**BGK guard swap (`rules.py` `_apply_bg_exit_strip`):** `_content_contains(old_content, _BG_CMD_MARKER)` → `_top_level_content_contains(old_content, _BG_CMD_MARKER)`. Same principle.
+
+**`_strip_bg_exit_notifications` tool_result descent removed (`strip_bg_completed.py`):** `elif btype == 'tool_result':` block (15 lines) removed; all non-`text` blocks fall through unchanged. Defense in depth — the guard swap already prevents reaching this function for false-positive cases; removing the traversal makes the function's contract match the top-level-only guarantee and closes any future re-introduction of the gap.
+
+### Tests added
+
+6 cases added to `dev/proxy/test_strip_fix.py` (W01–W06):
+
+| # | Scenario | Expected | Result |
+|---|---|---|---|
+| W01 | `<task-notification>` in tool_result str content | No wakeup, TN mod not fired, data intact | PASS |
+| W02 | `<task-notification>` in tool_result list-of-text content | No wakeup, TN mod not fired, data intact | PASS |
+| W03 | `Background command "X" completed (exit code 143)` in tool_result str | No wakeup, BGK mod not fired, data intact | PASS |
+| W04 | Genuine plain-string completed TN | Wakeup injected, mod=`trimmed_task_notification` | PASS |
+| W05 | Genuine plain-string failed TN | Wakeup injected, mod=`replaced_task_notification` | PASS |
+| W06 | Genuine plain-string BGK kill notification | Wakeup injected, mod=`replaced_bg_completed_text` | PASS |
+
+Full suite: 60/60 PASS (was 45/45 pre-fix).
+
+### Architecture status post-Iteration-7
+
+1. **Detection:** `_top_level_content_contains` — top-level string or top-level `text` block only. tool_result content is invisible to both wakeup guards.
+2. **Genuine TN injection:** unchanged — `_apply_first_pass` + `_append_wakeup_text_to_content` for both completed and failed TNs.
+3. **Genuine BGK injection:** unchanged — `_apply_bg_exit_strip` + `_strip_bg_exit_notifications` (text-blocks-only traversal).
+4. **Dedup:** `_dedup_wakeup_blocks` final pass unchanged — still guarantees ≤ 1 wake-up block per message.
+5. **Display invariant:** unchanged — wake-up text never enters `stripped_msg_removed`.
