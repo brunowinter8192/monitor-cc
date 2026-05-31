@@ -119,3 +119,25 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 ### `03_bundle_stub.app/`
 
 Minimal `.app` bundle (CFBundleIdentifier=`com.brunowinter.monitor_cc_menubar`, ad-hoc signed) for probe03 bundle-context run. Launcher points to probe03-fields worktree venv + `03_field_availability_probe.py --tag=bundle`. Separate from `02_bundle_stub.app/` because each stub hardcodes its worktree path.
+
+### `04_space_move_probe.py` (305 LOC)
+
+Tests whether `SLSBridgedMoveWindowsToManagedSpaceOperation` + `performWithWMBridgeDelegate` (DockDoor/yabai technique, validated on 26.4.1) moves a non-owned Ghostty window to the active space on macOS 26.5.
+
+**Usage:**
+```bash
+cd /Users/brunowinter2000/Documents/ai/Monitor_CC
+./venv/bin/python dev/desktop_detection/04_space_move_probe.py
+```
+
+**Requires:** Ghostty running with ≥ 1 window on a non-active Mission Control space (≥ 2 spaces total).
+
+**Output:** PASS/FAIL line (`grep "RESULT:"`) + before/after/restore screenshots in `04_reports/` + on-screen WID dump. Precondition-not-met messages if setup is insufficient.
+
+**Move direction:** non-active space → active space (positive presence assertion — window appears in `CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly=1, 0)` after the call).
+
+**Key implementation notes:**
+- `_ghostty_wids_all()` filters `kCGWindowName != None` — excludes Ghostty tab-bar strips (33px height, name=None) which cannot be moved between spaces.
+- Two new CFUNCTYPEs: `_FT_0vv` (void, self+sel) for `performWithWMBridgeDelegate`; `_FT_vvvu64` (id, self, sel, NSArray*, uint64) for `initWithWindows:spaceID:`.
+- `performWithWMBridgeDelegate` is inherited from parent `SLSAsynchronousBridgedWindowManagementOperation` (not defined directly on the child class on 26.5).
+- On macOS 26.5: **FAIL** — ObjC chain executes without crash but window does not move. See `decisions/OldThemes/desktop_allocation/G2_space_move_probe.md` for hypotheses.
