@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-from collections import Counter
 from itertools import groupby
 
 from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
@@ -13,7 +12,7 @@ from .panel import (
     _MENLO, _BADGE_WORKING, _BADGE_IDLE,
     _GRID_COL0_W, _GRID_COL1_W, _GRID_COL3_W, _GRID_COL4_W, _GRID_COL_SPC,
     _ROW_H, _LABEL_H,
-    _project_desktop_no, _compute_required_height,
+    _compute_required_height,
     _make_line_separator, _make_header_label, _make_separator_view,
     _make_grid_cell_btn, _format_bg_badge)
 
@@ -59,17 +58,9 @@ class PanelManager:
         next_tag  = [1]
         abort_tag = 1000   # abort button tags start above session row tags (1..N)
         pw = self.app._panel_width
-        _pdn = {pn: _project_desktop_no(sessions, pn)
-                for pn in {s.project_name for s in sessions}}
-        _INF = float('inf')
         sorted_sessions = sorted(
             sessions,
-            key=lambda s: (
-                _pdn[s.project_name] if _pdn[s.project_name] is not None else _INF,
-                s.project_name,   # tie-break on conflict [!N]; keeps None-group order stable
-                s.is_worker,      # mains (False) before workers (True) within project
-                s.name,           # alphabetical within same type
-            )
+            key=lambda s: (s.project_name, s.is_worker, s.name)
         )
         required_h = _compute_required_height(sorted_sessions)
         self._resize_panel(max(self.app._panel_min_height, required_h))
@@ -93,10 +84,8 @@ class PanelManager:
         grid.columnAtIndex_(3).setWidth_(float(_GRID_COL3_W))
         grid.columnAtIndex_(4).setWidth_(float(_GRID_COL4_W))
         grid.setTranslatesAutoresizingMaskIntoConstraints_(False)
-        dno_counts   = Counter(s.desktop_no for s in sorted_sessions
-                               if not s.is_worker and s.desktop_no is not None)
-        conflict_set = {dn for dn, c in dno_counts.items() if c > 1}
-        row_idx      = 0
+        row_idx   = 0
+        main_slot = 0
         for project_name, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
             proj_bg = (bg_by_project or {}).get(project_name)
             sep_view, abort_btn = _make_separator_view(
@@ -116,18 +105,10 @@ class PanelManager:
                 dot   = _BADGE_WORKING if s.status == 'working' else _BADGE_IDLE
                 color = NSColor.systemOrangeColor()
                 if not s.is_worker:
-                    dno = s.desktop_no
-                    if dno is None:
-                        slot_str   = ''
-                        slot_color = color
-                    elif dno in conflict_set:
-                        slot_str   = f'[!{dno}]'
-                        slot_color = NSColor.systemRedColor()
-                    else:
-                        slot_str   = f'[{dno}]'
-                        slot_color = color
+                    main_slot += 1
+                    slot_str = f'[{main_slot}]' if main_slot <= 9 else ''
                     tag      = next_tag[0]; next_tag[0] += 1
-                    slot_btn = _make_grid_cell_btn(slot_str, slot_color)
+                    slot_btn = _make_grid_cell_btn(slot_str, color)
                     star_btn = _make_grid_cell_btn('*', color)
                     name_btn = _make_grid_cell_btn(s.name, color)
                     dot_btn  = _make_grid_cell_btn(dot, color)
@@ -136,8 +117,7 @@ class PanelManager:
                         btn.setTarget_(self.app._panel_controller)
                         btn.setAction_(b'focusSession:')
                     self._cwd_map[tag] = s.cwd or ''
-                    if dno is not None and dno not in conflict_set:
-                        self._desktop_to_cwd[dno] = s.cwd or ''
+                    self._desktop_to_cwd[main_slot] = s.cwd or ''
                     if proj_bg is not None:
                         badge_btn = _make_grid_cell_btn(
                             _format_bg_badge(proj_bg.min_remaining), color)
