@@ -17,19 +17,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ## Modules
 
-### desktop_detection.py (350 LOC)
+### panel.py (363 LOC)
 
-**Purpose:** Batch detection of macOS Mission Control desktop numbers for all Main sessions via private CoreGraphics Services (CGS) APIs + one AppleScript round-trip. Ported from `dev/desktop_detection/01_probe.py`. Three-strategy resolver per window: name-unique → space-elimination → OSC-2 injection. Results cached for `_DET_CACHE_TTL=10s`; force-invalidated when cwd set changes (session add/remove). All errors (Ghostty down, AppleScript failure, CGS error) are caught by the orchestrator, logged as `[detection] all_failed n_mains=N reason=...` (only when ALL mains fail, not on partial), and return all-None. **Transition logging** (`_last_result` module state + `_cwd_ctx` per-cycle dict): on desktop-number change per cwd logs `[detection] transition <project>/<repo> <old>-><new> win=<ghostty_window_name> n_cand=<candidates>` — transition-gated, no per-cycle spam; `n_cand=0` = CGWindowList mismatch (confirmed trigger: worker-spawn/send immediately sets `n_cand=0`). Module-level CFUNCTYPE refs (`_FT_vv`, `_FT_vvv`, etc.) must remain module-level — GC'ing them corrupts the IMP pointer table and causes SIGSEGV. **Sidecar LKG** (`_cwd_desktop_lkg` module state): updated only on the `if info:` success path with `{"space_id": int, "desktop_no": int}`; transient None (n_cand=0, Ghostty down, all_failed) never clobbers. Stale-cwd cleanup runs on each cache-miss (session closed → removed from dict). Exported to `discover.py` for `_write_cwd_desktop_sidecar()`.
-**Reads:** `ps -A` (Ghostty PID); `osascript` (Ghostty window/tab/UUID traversal); `CGWindowListCopyWindowInfo` (all spaces, all windows); `CGSCopyManagedDisplaySpaces` (space→desktop-no mapping); `CGSCopySpacesForWindows` (per-window space query); `/dev/ttys<NNN>` (OSC-2 injection for space-elimination fallback).
-**Writes:** `/dev/ttys<NNN>` (OSC-2 marker + cleanup); `_det_cache`, `_det_cache_ts`, `_det_cache_cwds` (module state); `src/logs/menubar.log` ([detection] category on all-fail only).
-**Called by:** `discover.py:list_alive_sessions` (`detect_main_desktop_numbers`, `_cwd_desktop_lkg`).
-**Calls out:** `ctypes` (CoreGraphics + libobjc); `subprocess` (ps, osascript); `.menubar_log` (`log_menubar`).
-
----
-
-### panel.py (369 LOC)
-
-**Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and pure computation helpers. Render functions (`rebuild`, `update_inplace`, `_resize_panel`) and re-entry guard moved to `panel_manager.py` (Step 4/6). Footer has two buttons: Kill (left) + Restart (right). Main session rows show `[N]` slot prefix based on `SessionInfo.desktop_no`; conflict shows `[!N]` in red; `None` shows no prefix. Workers carry no prefix. Per-project abort buttons (Option B) embedded inline in separator rows — `_make_separator_view` returns `(NSView, Optional[NSButton])`. Defines `_KeyablePanel(NSPanel)` — overrides `canBecomeKeyWindow` to return True so all three panels can receive keyboard events despite `NSWindowStyleMaskNonactivatingPanel`; imported by `bead_controller.py` and `queue_controller.py`. Also overrides `performKeyEquivalent_` to route Cmd+{V,C,X,A,Z} and Shift+Cmd+Z to the first responder. Pure UI concern — no rumps, no ctypes, no subprocess, no direct `app` instance access.
+**Purpose:** NSPanel construction, NSView/NSTextField/NSButton subclasses for cursor tracking, all UI factory helpers, and pure computation helpers. Render functions (`rebuild`, `update_inplace`, `_resize_panel`) and re-entry guard moved to `panel_manager.py` (Step 4/6). Footer has two buttons: Kill (left) + Restart (right). Main session rows show sequential `[1][2][3]…` slot prefix (`_GRID_COL0_W=33`); slots above 9 show no prefix. Workers carry no prefix. Per-project abort buttons (Option B) embedded inline in separator rows — `_make_separator_view` returns `(NSView, Optional[NSButton])`. Defines `_KeyablePanel(NSPanel)` — overrides `canBecomeKeyWindow` to return True so all three panels can receive keyboard events despite `NSWindowStyleMaskNonactivatingPanel`; imported by `bead_controller.py` and `queue_controller.py`. Also overrides `performKeyEquivalent_` to route Cmd+{V,C,X,A,Z} and Shift+Cmd+Z to the first responder. Pure UI concern — no rumps, no ctypes, no subprocess, no direct `app` instance access.
 **Reads:** function parameters only (sessions, bg_by_project, panel_width passed from callers). No direct `app` instance state accessed.
 **Writes:** NSPanel frame (via `_reposition_panel`); creates NSView/NSButton/NSTextField UI objects returned to callers.
 **Key signatures:** `_make_nspanel()`, `_reposition_panel(panel, nsstatusitem)`, `_compute_required_height(sorted_sessions)`, `_make_separator_view(project_name, panel_width, proj_min_remaining)`.
@@ -38,14 +28,14 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### panel_manager.py (192 LOC)
+### panel_manager.py (183 LOC)
 
 **Purpose:** Per-concern controller for main-session panel (Step 4/6 of CCMenuBarApp composition refactor). `PanelManager(app)` owns 8 migrating attrs (`_panel_open`, `_initialized`, `_displayed_items`, `_cwd_map`, `_desktop_to_cwd`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_rebuild_in_progress`) plus NSPanel and stack-view refs from `_make_nspanel()` (`_panel`, `_panel_sv`, `_panel_quit_btn`, `_toggle_btn`, `_panel_kill_btn`). Exposes `rebuild(sessions, bg_by_project=None)` (re-entry guarded full panel rebuild, adapted from `panel.py:_rebuild_panel_inner`), `update_inplace(sessions, bg_by_project)` (in-place dot+badge update, adapted from `panel.py:_update_panel_inplace`), `_resize_panel(new_h)` (adapted from `panel.py:_resize_panel`). Settings `_auto_focus`, `_panel_width`, `_panel_min_height` remain on `app` (cross-controller shared preferences; moving to PanelManager would create bead/queue→panel coupling with no benefit).
 **Reads:** `self.app._panel_width`, `self.app._panel_min_height`, `self.app._auto_focus`, `self.app._panel_controller`; `sessions` and `bg_by_project` from callers.
-**Writes:** `self._displayed_items`, `self._cwd_map`, `self._desktop_to_cwd`, `self._abort_btns_by_project`, `self._abort_project_for_tag` (reset each rebuild); `self._panel` frame (via `_resize_panel`).
+**Writes:** `self._displayed_items`, `self._cwd_map`, `self._desktop_to_cwd`, `self._abort_btns_by_project`, `self._abort_project_for_tag` (reset each rebuild); `self._panel` frame (via `_resize_panel`). `_desktop_to_cwd` maps sequential slot number → cwd (slots 1..9 correspond to Cmd+1..9 hotkeys); `_cwd_map` maps tag (= slot number for mains) → cwd for click routing.
 **Key signatures:** `PanelManager.__init__(app)`, `rebuild(sessions, bg_by_project=None)`, `update_inplace(sessions, bg_by_project)`, `_resize_panel(new_h)`.
 **Called by:** `app.py:CCMenuBarApp.__init__` (construction); `app.py:CCMenuBarApp._tick` (`panel.rebuild`, `panel.update_inplace`, `panel._panel_open`, `panel._initialized`, `panel._desktop_to_cwd`); `app.py:_open_main_panel` (`panel.rebuild`, `panel._panel.*`, `panel._panel_open`, `panel._desktop_to_cwd`); `app.py:_close_main_panel` (`panel._panel.*`, `panel._panel_open`); `app.py:_PanelController.focusSession_` (`panel._cwd_map`); `app.py:_PanelController.abortBgTimer_` (`panel._abort_project_for_tag`); `app.py:_PanelController.windowDidEndLiveResize_` (`panel.rebuild`, `panel._panel_open`, `panel._desktop_to_cwd`); `app.py:_background_panel`, `app.py:_deferred_close_open` (`panel._panel`).
-**Calls out:** `AppKit`, `Foundation`, `collections.Counter`, `itertools.groupby`; `.panel` (constants + factories).
+**Calls out:** `AppKit`, `Foundation`, `itertools.groupby`; `.panel` (constants + factories).
 
 ---
 
@@ -83,10 +73,10 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ### paths.py (36 LOC)
 
-**Purpose:** Single source of truth for 9 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`), `ORCHESTRATOR_SIGNALS_FILE` (`orchestrator_signals.json` — written by worker-cli send, read by menubar for auto-abort grace), `CWD_DESKTOP_FILE` (`cwd_desktop.json` — written by `discover.py`, consumed by blanks `desktop_targeting.py` for cross-repo desktop lookup). Runs `_migrate_from_dotfiles()` at import.
+**Purpose:** Single source of truth for 8 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`), `ORCHESTRATOR_SIGNALS_FILE` (`orchestrator_signals.json` — written by worker-cli send, read by menubar for auto-abort grace). Runs `_migrate_from_dotfiles()` at import.
 **Reads:** old dotfile paths under `~` on first import (migration); nothing thereafter.
 **Writes:** creates `_APP_SUPPORT` dir; moves old dotfiles to new paths on first import.
-**Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `queue_controller.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`); `queue.py` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`); `discover.py` (`CWD_DESKTOP_FILE`). `hook_writer.py` and `ghostty.py` define equivalent paths inline (standalone / cycle-avoidance).
+**Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `queue_controller.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`); `queue.py` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`). `hook_writer.py` and `ghostty.py` define equivalent paths inline (standalone / cycle-avoidance).
 **Calls out:** `pathlib` only.
 
 ---
@@ -147,7 +137,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Purpose:** Unified log sink for all menubar diagnostic categories. All output goes to `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/menubar.log` (ISO-second timestamp + `[category]` prefix per line). `log_menubar(category, message)` appends one line. `cleanup_old_lines()` drops lines older than 7 days and rewrites the file. Both functions are fully exception-safe (Carbon/AppKit callbacks must never raise). Categories in use: `hotkey` (every press), `abort` (auto-abort decisions + actions), `detection` (desktop-number transition + failures), `tick` (diagnostic, gated on `MENUBAR_DIAGNOSTICS=1`), `cursor` (gated on `MENUBAR_CURSOR_DEBUG`).
 **Reads:** `_APP_SUPPORT/menubar.log` (`cleanup_old_lines` only).
 **Writes:** `_APP_SUPPORT/menubar.log` (append on each `log_menubar` call).
-**Called by:** `hotkey_controller.py` (`log_menubar`); `app.py` (`log_menubar`, lazy `cleanup_old_lines` via import inside `_tick`); `focus_controller.py` (`log_menubar` via `_abort_log_write`); `bg_timer.py` (`log_menubar`); `panel.py` (`log_menubar`); `desktop_detection.py` (`log_menubar`).
+**Called by:** `hotkey_controller.py` (`log_menubar`); `app.py` (`log_menubar`, lazy `cleanup_old_lines` via import inside `_tick`); `focus_controller.py` (`log_menubar` via `_abort_log_write`); `bg_timer.py` (`log_menubar`); `panel.py` (`log_menubar`).
 **Calls out:** `datetime` (stdlib); `.paths` (`_APP_SUPPORT`).
 
 ---
@@ -162,13 +152,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### discover.py (233 LOC)
+### discover.py (207 LOC)
 
-**Purpose:** Session discovery entry point. `SessionInfo` includes `session_id: str` (JSONL stem = CC session identifier; key for `msg_queue.json` queue) and `tmux_session_name: str` (worker-`basename(project_path)`-`worker_name` for workers, `''` for mains; used by `app.py:_has_recent_send_signal` for orchestrator-signal lookup — DO NOT reconstruct from `project_name` since the decoded-path heuristic diverges from the iterative-dev tmux convention, e.g. `MCP-RAG` vs `RAG`). `list_alive_sessions` calls `_write_cwd_uuid_map()` after each tick so `APP_SUPPORT/ghostty_cwd_uuid.json` stays current for hook delivery, and `_write_cwd_desktop_sidecar()` immediately after `detect_main_desktop_numbers()` to publish `cwd_desktop.json` for cross-repo consumers.
+**Purpose:** Session discovery entry point. `SessionInfo` includes `session_id: str` (JSONL stem = CC session identifier; key for `msg_queue.json` queue) and `tmux_session_name: str` (worker-`basename(project_path)`-`worker_name` for workers, `''` for mains; used by `app.py:_has_recent_send_signal` for orchestrator-signal lookup — DO NOT reconstruct from `project_name` since the decoded-path heuristic diverges from the iterative-dev tmux convention, e.g. `MCP-RAG` vs `RAG`). `list_alive_sessions` calls `_write_cwd_uuid_map()` after each tick so `APP_SUPPORT/ghostty_cwd_uuid.json` stays current for hook delivery.
 **Reads:** `~/.claude/projects/*/` JSONL mtimes + last lines; delegates to `proc_cache.py`; Ghostty mapping via `ghostty.py`.
-**Writes:** `APP_SUPPORT/cwd_desktop.json` (atomic tempfile+os.replace, LKG-only, via `_write_cwd_desktop_sidecar()`); delegates `ghostty_cwd_uuid.json` write to `ghostty.py:_write_cwd_uuid_map`.
+**Writes:** delegates `ghostty_cwd_uuid.json` write to `ghostty.py:_write_cwd_uuid_map`.
 **Called by:** `app.py:CCMenuBarApp._tick`, `app.py:_open_main_panel`, `app.py:_PanelController.*Queue*` methods.
-**Calls out:** `session_finder.get_project_directories`, `session_finder.encode_project_path`; `.proc_cache`; `.ghostty` (`_refresh_ghostty_tty_to_id`, `_write_cwd_uuid_map`, `_ghostty_tty_to_id`); `.desktop_detection` (`detect_main_desktop_numbers`, `_cwd_desktop_lkg`); `.paths` (`CWD_DESKTOP_FILE`).
+**Calls out:** `session_finder.get_project_directories`, `session_finder.encode_project_path`; `.proc_cache`; `.ghostty` (`_refresh_ghostty_tty_to_id`, `_write_cwd_uuid_map`, `_ghostty_tty_to_id`).
 
 ---
 
@@ -260,7 +250,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 **Usage:** `./venv/bin/pip install py2app && ./venv/bin/python setup_py2app.py py2app` from project root. Install step: `cp -R dist/Monitor_CC_Menubar.app ~/Applications/Monitor_CC_Menubar.app`.
 
-**Post-install TCC step (required once):** System Settings → Privacy & Security → Screen Recording → find or add `Monitor_CC_Menubar` → toggle ON. If already listed from the ad-hoc bundle, toggle OFF then ON to force re-evaluation of the new binary identity. Without this, `kCGWindowName` is stripped and desktop detection returns all-None.
+**Post-install TCC step:** Screen Recording permission is no longer required (desktop detection removed). No TCC grant needed for current menubar features.
 
 **Gotcha — copy_package_data sweeps src/logs/:** `src/__init__.py` makes `src` a Package node in py2app's modulegraph. `copy_package_data(src)` then copies every subdirectory of `src/` that has NO `__init__.py` wholesale into the bundle — including `src/logs/` (runtime proxy logs, gitignored). In the main repo this grows to 15 GB+. `_prune_bundle_bloat()` runs post-`setup()` and removes everything from the bundle's `src/` not in `_BUNDLE_SRC_KEEP`. Whitelist must be updated if new cross-package `src.X` imports are added to `src/menubar/`.
 
@@ -292,10 +282,6 @@ discover.py  ← ghostty.py (_refresh_ghostty_tty_to_id, _ghostty_tty_to_id)
              ← proc_cache.py (_refresh_cc_proc_cache, _refresh_tmux_state,
                                _tmux_session_exists, _read_hook_state,
                                _proxy_log_newest_mtime, _has_active_bg)
-             ← desktop_detection.py (detect_main_desktop_numbers, _cwd_desktop_lkg)
-             ← paths.py (CWD_DESKTOP_FILE)
-
-desktop_detection.py → ctypes (CoreGraphics + libobjc); subprocess; .menubar_log
 
 menubar_log.py    → datetime, pathlib only (leaf node)
 focus_controller.py → sys, datetime; .bg_timer (_abort_bg_sleep_timers); .menubar_log (log_menubar);
@@ -303,7 +289,7 @@ focus_controller.py → sys, datetime; .bg_timer (_abort_bg_sleep_timers); .menu
                       .system (_focus_session)
 hotkey_controller.py → ctypes; .menubar_log (log_menubar); .system (_focus_session)
 panel.py          → AppKit, Foundation, itertools; .menubar_log (log_menubar)
-panel_manager.py  → AppKit, Foundation, collections.Counter, itertools.groupby; .panel (constants + factories)
+panel_manager.py  → AppKit, Foundation, itertools.groupby; .panel (constants + factories)
 queue_controller.py → AppKit, Foundation, objc, json, datetime; .panel (constants + helpers);
                       .queue (load_queue, save_queue, deliver_message); .paths (HOOKS_FILE)
 system.py         → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
@@ -323,7 +309,6 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 
 | Variable | Module | Type | Owner | Description |
 |---|---|---|---|---|
-| `_cwd_desktop_lkg` | desktop_detection.py | `Dict[str, dict]` | module | Last-known-good `{cwd: {"space_id": int, "desktop_no": int}}`; updated only on `if info:` success path. Transient None never clobbers. Stale-cwd cleanup on each cache-miss. Exported to `discover.py` for `_write_cwd_desktop_sidecar()`. |
 | `CCMenuBarApp._panel_controller` | app.py | `_PanelController` | app.py | Single PyObjC NSObject as ObjC target for all button actions. Held to prevent ARC GC. |
 | `CCMenuBarApp._auto_focus` | app.py | `bool` | app.py | Whether auto-focus is enabled. Loaded from settings; toggled by `toggleAutoJump_`. |
 | `CCMenuBarApp._panel_width` | app.py | `int` | app.py owns, panel.py uses | Current panel width in pts. Loaded from settings (fallback: `PANEL_WIDTH=380`). Reset to `PANEL_WIDTH` on user-initiated fresh open via `togglePanel_` (runtime only, no save). Updated by `windowDidResize_` on user drag. Cycling (`_deferred_close_open`) preserves current value. |
@@ -385,7 +370,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - `LSUIElement=1` must be set before `app.run()` to suppress the Dock icon. Set in `run()` via `os.environ.setdefault`.
 - Launched via launchd: `KeepAlive=true` auto-restarts on crash. Logs → `/tmp/monitor_cc_menubar.{log,err}`.
 - **launchd PATH inheritance**: `EnvironmentVariables/PATH` in the plist must prepend `/opt/homebrew/bin` — launchd's default PATH lacks Homebrew, making `tmux` unavailable for proc_cache.py worker-alive checks.
-- **launchd ASCII locale — all `text=True` subprocess calls need `encoding='utf-8', errors='replace'`**: launchd sets no locale → `locale.getpreferredencoding()` = `'ascii'` → any `subprocess.run(..., text=True)` without explicit encoding crashes on non-ASCII bytes. Confirmed: `ps -A -o command=` and `osascript` output containing CC worker spawn-prompts (emoji, umlauts) caused `UnicodeDecodeError` → `detect_main_desktop_numbers` returned `all_failed` → desktop number lost while any worker was running. All 13 `text=True` calls in the package now carry `encoding='utf-8', errors='replace'`. LaunchAgent plist template also sets `PYTHONUTF8=1` as belt-and-suspenders. Any NEW `subprocess.run(..., text=True)` added to this package MUST include `encoding='utf-8', errors='replace'`.
+- **launchd ASCII locale — all `text=True` subprocess calls need `encoding='utf-8', errors='replace'`**: launchd sets no locale → `locale.getpreferredencoding()` = `'ascii'` → any `subprocess.run(..., text=True)` without explicit encoding crashes on non-ASCII bytes. Confirmed: `ps -A -o command=` and `osascript` output containing CC worker spawn-prompts (emoji, umlauts) caused `UnicodeDecodeError`. All `text=True` calls in the package carry `encoding='utf-8', errors='replace'`. LaunchAgent plist template also sets `PYTHONUTF8=1` as belt-and-suspenders. Any NEW `subprocess.run(..., text=True)` added to this package MUST include `encoding='utf-8', errors='replace'`.
 - **Ghostty PID lookup** (`ghostty.py:_ghostty_pid`): `pgrep` is unreliable on macOS for full-path binary names. Use `ps -A -o pid=,command=` parsed directly: `'Ghostty.app/Contents/MacOS' in line` finds the process robustly.
 - **Ghostty AppleScript**: Ghostty.sdef exposes `id` (UUID, stable), `name` (current title), `working directory` per `terminal`. `focus` command takes a specifier: `focus terminal id "<UUID>"`. Does NOT expose `tty` or `pid`.
 - **OSC 2 cleanup**: After the probe, `\033]2;\007` (empty-string OSC 2) written to the probed TTYs restores the shell's default title. Without cleanup, idle shells show `__GHT_XXXXXXXX` until next prompt display.
