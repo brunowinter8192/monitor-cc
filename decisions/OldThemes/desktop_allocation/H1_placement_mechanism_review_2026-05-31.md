@@ -1,6 +1,6 @@
 # H1 — Placement-Mechanismus Review + Redesign-Richtung (2026-05-31)
 
-**Status:** Analyse-Session. Knüpft an G1 (Recherche), G2 (bridged-op Probe → FAIL auf 26.5). G3 (Detection-Probe) läuft.
+**Status:** ABGESCHLOSSEN (2026-05-31). Move SIP-frei zwischen nativen Spaces auf 26.5 bewiesen unmöglich (G4: 5/5 Move-APIs no-op MIT vollen AX+SC-Rechten; ökosystemweit bestätigt). Dead-Code-Rollback ausgeführt (Monitor_CC menubar + Meta/iterative-dev-Plugin). Siehe `## Abschluss` unten. Knüpft an G1 (Recherche), G2 (bridged-op Probe → FAIL), G3 (Detection-Probe → gelöst), G4 (Move-Sweep → alle FAIL).
 
 ## Auslöser
 
@@ -57,3 +57,22 @@ G3-Probe testet (b)+(c) gegen (a) als Grundwahrheit + sichere Space-Erkennung de
 ## Orchestrierungs-Lehre
 
 G2-Mission war relativ zum G1-Plan KORREKT (bridged-Op war DIE auf 26.4.1 verifizierte Technik, korrekt getestet). Opus-Fehler: G2-Ergebnis + User-Spawn-Beobachtung vermengt → vorschnell "falsche Primitive / Versions-Blame inkohärent". Korrektur: zwei getrennte Threads. Detection-first (User-Direktive) ist der richtige Einstieg, weil Thread B unabhängig von Thread A reparierbar UND verifizierbar ist.
+
+## Abschluss (2026-05-31)
+
+### Detection (Thread B) — GELÖST, dann zurückgebaut
+G3 (`G3_window_detection_probe.md`): Schnappschuss-VOR-Öffnen erkennt das neue Fenster zuverlässig (9/9), Space-Bestimmung für Ghostty 6/6 (alle 3 Signale einig). CotEditor-Fix quellbelegt (DockDoor `AppDelegate.performOnLaunchAction` feuert nur bei Kaltstart → `open -n` vermeiden, plain `open` + Dateiname-Match): danach 3/3 erkannt. Robuster Identifikations-Anker = **Dateiname-Match** (z-Order-unabhängig). Detection war also voll machbar — aber sie diente nur dem Move, der unmöglich ist → mit zurückgebaut.
+
+### Move (Thread A + B) — BEWIESEN UNMÖGLICH SIP-frei auf 26.5
+G4 (`G4_move_sweep_probe.md`): Permission-Selbsttest zur Laufzeit `AXIsProcessTrusted()=True` UND `CGPreflightScreenCaptureAccess()=True` (echtes Homebrew python3.14, keine TCC-Identitäts-Verwechslung). Trotzdem **alle 5 Move-Primitiven no-op**: bridged-op (G2), `CGSMoveWindowsToManagedSpace`, `SLSMoveWindowsToManagedSpace`, `CGSAddWindowsToSpaces`+`Remove`, `SLSSpaceSetCompatID`+`SLSSetWindowListWorkspace`. → Berechtigung ist NICHT der Gate (Accessibility-Hypothese widerlegt).
+
+DockDoor-Entitlements-Beleg: keine privaten `com.apple.private.skylight.*` Entitlements — nur AppleEvents + Sparkle + Kalender. DockDoor verlangt `AXIsProcessTrusted()` (Accessibility) + `CGPreflightScreenCaptureAccess()` (Screen Recording) — beide hatten wir. Also kein Apple-Signing-Geheimnis.
+
+Ökosystem-Verdikt (finale gh-Recherche): yabai #2789 — User auf 26.5 findet via LLDB, dass `SLSPerformAsynchronousBridgedWindowManagementOperation` "just doesn't work sometimes", muss ihn auf NULL setzen für Fallback auf Dock-Injektion. yabai #2634 — `move_space` in der 26er-Dock-Binary nicht mehr auffindbar. Hammerspoon #3636 — `moveWindowToSpace` hacky, "unzuverlässig bis Apple eine API liefert". **AeroSpace** (populärer moderner SIP-freier WM) benutzt native Spaces bewusst NICHT ("considerable limitations") und emuliert eigene Workspaces per Off-Screen-Positionierung (Accessibility-Position, SIP-frei) — das ernsthafteste Projekt hat native-Space-Move aufgegeben. Jeder funktionierende Tahoe-Move = SIP-off + Dock-Scripting-Addition (User abgelehnt: kein Sicherheits-Trade-off).
+
+**Fazit:** kein SIP-freier, unprivilegierter Weg, ein Fenster zwischen nativen macOS-Spaces auf 26.5 zu verschieben. Bewiesenes Negativ, kein offener Zweifel.
+
+### Rollback ausgeführt
+- **Monitor_CC menubar** (commit `466f327`+`f81b283`, gemergt `747e47f`): `desktop_detection.py` gelöscht; `discover.py` Sidecar-Writer + `desktop_no`-Feld raus; `paths.py` `CWD_DESKTOP_FILE` raus; `panel.py`/`panel_manager.py` zurück auf sequenzielle Slot-Nummern `[N]`; `setup_py2app.py` `NSScreenCaptureUsageDescription` raus (Detection-only); DOCS aktualisiert. Import-Smoke grün, −450 Zeilen.
+- **Meta/blank = iterative-dev-Plugin-Source** (commit `1926c50`+`89f1797`, gemergt `3441aaa`, published): `src/desktop/desktop_targeting.py` + Verzeichnis gelöscht; `tmux_spawn.sh` `open_tmux_viewer` Placement raus (Signatur `SESSION`, beide Caller); `bin/show` Placement + totes `app_name` raus. `bash -n` grün, Cache verifiziert placement-frei. Spawn öffnet jetzt das Fenster nur noch (natürliche Aktiv-Space-Platzierung).
+- **Bleibt als Beweis:** `dev/desktop_detection/` Probes 01–06, `decisions/OldThemes/desktop_allocation/` G1–G4 + H1.

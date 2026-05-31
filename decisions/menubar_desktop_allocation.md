@@ -1,5 +1,12 @@
 # menubar_desktop_allocation
 
+> ## ⚠️ ABANDONED / ROLLED BACK (2026-05-31)
+> Die Desktop-Allocation hing am Verschieben neuer Fenster auf den nativen Space der Caller-Main. Dieser Cross-Space-**Move ist auf macOS 26.5 SIP-frei bewiesen unmöglich** (5/5 private Move-APIs no-op trotz voller Accessibility+Screen-Recording-Rechte; ökosystemweit bestätigt — yabai/DockDoor/Hammerspoon brauchen SIP-off + Dock-Injektion, AeroSpace meidet native Spaces ganz). Rationale + Beweis: `decisions/OldThemes/desktop_allocation/H1_placement_mechanism_review_2026-05-31.md` + `G4_move_sweep_probe.md`.
+>
+> **Aktueller IST (post-Rollback):** Menubar zeigt wieder **sequenzielle Slot-Nummern `[N]`**, keine Desktop-Erkennung. `desktop_detection.py`, der cwd→space-Sidecar (`CWD_DESKTOP_FILE`) und das `desktop_no`-Feld sind entfernt. Screen-Recording wird vom Menubar nicht mehr benötigt (`NSScreenCaptureUsageDescription` aus py2app-Plist raus). Spawn-/File-Open-Placement (Meta/blank `tmux_spawn.sh` + `bin/show` + `desktop_targeting.py`) ebenfalls zurückgebaut.
+>
+> **Alles unterhalb beschreibt die ENTFERNTE Detection-Implementierung** — als historischer Record erhalten (TCC-Befunde bleiben wertvoll), NICHT der aktuelle Stand.
+
 ## Status Quo (IST)
 
 **After user installs `dist/Monitor_CC_Menubar.app/` and grants Screen Recording:**
