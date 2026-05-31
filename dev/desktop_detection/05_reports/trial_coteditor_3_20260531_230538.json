@@ -1,0 +1,28 @@
+{
+  "type": "coteditor",
+  "trial": 3,
+  "foreground": false,
+  "token": "p05c923ba7",
+  "gt_wid": 2289,
+  "gt_found": true,
+  "poll_elapsed_s": 0.21,
+  "title_observed": "probe05_p05c923ba7.txt",
+  "method_a": {
+    "wid": 2289,
+    "matched_name": "probe05_p05c923ba7.txt",
+    "agrees": true
+  },
+  "method_b": {
+    "wid": 2289,
+    "agrees": true
+  },
+  "space": {
+    "s1_space_id": 4,
+    "s1_desktop": 3,
+    "s2_on_screen": true,
+    "s3_space_id": 4,
+    "s3_desktop": 3,
+    "all_agree": true
+  },
+  "cleanup_ok": false
+}
