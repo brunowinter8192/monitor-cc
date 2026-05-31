@@ -157,18 +157,18 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 **Output:** per-trial JSON in `05_reports/trial_<type>_<n>_<ts>.json` + stdout summary table (`type × trial × fg/bg × gt_wid × A_agree × B_agree × desktop × space_agree`).
 
 **Window types:**
-1. `ghostty_tmux` — `open -n -a Ghostty --args --command "tmux attach-session -t TOKEN"`, token=`p05t<6hex>`
-2. `ghostty_osc2` — `open -n -a Ghostty --args --command "bash -c 'printf OSC2-TOKEN; sleep 60'"`, token=`p05g<6hex>`
-3. `coteditor` — write `/tmp/probe05_TOKEN.txt`, open via CotEditor, token=`p05c<6hex>`
+1. `ghostty_tmux` — `open -n -a Ghostty --args --command "tmux attach-session -t <tok>"`, token prefix `p05t`
+2. `ghostty_osc2` — `open -n -a Ghostty --args --command "bash -c 'printf OSC-2-tok; sleep 60'"`, token prefix `p05g`
+3. `coteditor` — write `/tmp/probe05_<tok>.txt`, open via CotEditor, token prefix `p05c`
 
 **Two identification methods measured:**
 - **Method A (title-match):** kCGWindowName contains token → compare to gt_wid
 - **Method B (frontmost):** first owner+layer0 window in CGWindowList z-order → compare to gt_wid
 
 **Space signals (3-way cross-check):**
-- S1: `CGSGetActiveSpace` before open (before/space)
-- S2: `wid_gt in on_screen_wids()` after open (on active space?)
-- S3: `CGSCopySpacesForWindows(wid_gt)` → space_id
+- S1: `CGSGetActiveSpace` before open
+- S2: gt_wid in `_on_screen_wids()` after open (on active space?)
+- S3: `CGSCopySpacesForWindows(gt_wid)` → space_id
 
 **Key findings (macOS 26.5, run 2026-05-31):**
 - Ground truth detection (snapshot-diff): **WORKS** — gt_wid found 9/9 trials
