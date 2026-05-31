@@ -1,0 +1,28 @@
+{
+  "type": "ghostty_tmux",
+  "trial": 2,
+  "foreground": true,
+  "token": "p05tb69e22",
+  "gt_wid": 2046,
+  "gt_found": true,
+  "poll_elapsed_s": 0.42,
+  "title_observed": "\u2026/Documents/ai/Monitor_CC",
+  "method_a": {
+    "wid": null,
+    "matched_name": null,
+    "agrees": false
+  },
+  "method_b": {
+    "wid": 2050,
+    "agrees": false
+  },
+  "space": {
+    "s1_space_id": 4,
+    "s1_desktop": 3,
+    "s2_on_screen": true,
+    "s3_space_id": 4,
+    "s3_desktop": 3,
+    "all_agree": true
+  },
+  "cleanup_ok": true
+}

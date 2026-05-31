@@ -141,3 +141,38 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 - Two new CFUNCTYPEs: `_FT_0vv` (void, self+sel) for `performWithWMBridgeDelegate`; `_FT_vvvu64` (id, self, sel, NSArray*, uint64) for `initWithWindows:spaceID:`.
 - `performWithWMBridgeDelegate` is inherited from parent `SLSAsynchronousBridgedWindowManagementOperation` (not defined directly on the child class on 26.5).
 - On macOS 26.5: **FAIL** — ObjC chain executes without crash but window does not move. See `decisions/OldThemes/desktop_allocation/G2_space_move_probe.md` for hypotheses.
+
+### `05_window_detection_probe.py` (492 LOC)
+
+Pure window-detection probe: for each new window, can we RELIABLY (a) identify the SPECIFIC window and (b) determine which Space it appeared on. NO window moves. Three window types × 3 trials (2 fg, 1 bg = 9 total).
+
+**Usage:**
+```bash
+cd /Users/brunowinter2000/Documents/ai/Monitor_CC
+./venv/bin/python dev/desktop_detection/05_window_detection_probe.py
+```
+
+**Requires:** Ghostty running (CotEditor not required — probe opens it). No preconditions on space count.
+
+**Output:** per-trial JSON in `05_reports/trial_<type>_<n>_<ts>.json` + stdout summary table (`type × trial × fg/bg × gt_wid × A_agree × B_agree × desktop × space_agree`).
+
+**Window types:**
+1. `ghostty_tmux` — `open -n -a Ghostty --args --command "tmux attach-session -t TOKEN"`, token=`p05t<6hex>`
+2. `ghostty_osc2` — `open -n -a Ghostty --args --command "bash -c 'printf OSC2-TOKEN; sleep 60'"`, token=`p05g<6hex>`
+3. `coteditor` — write `/tmp/probe05_TOKEN.txt`, open via CotEditor, token=`p05c<6hex>`
+
+**Two identification methods measured:**
+- **Method A (title-match):** kCGWindowName contains token → compare to gt_wid
+- **Method B (frontmost):** first owner+layer0 window in CGWindowList z-order → compare to gt_wid
+
+**Space signals (3-way cross-check):**
+- S1: `CGSGetActiveSpace` before open (before/space)
+- S2: `wid_gt in on_screen_wids()` after open (on active space?)
+- S3: `CGSCopySpacesForWindows(wid_gt)` → space_id
+
+**Key findings (macOS 26.5, run 2026-05-31):**
+- Ground truth detection (snapshot-diff): **WORKS** — gt_wid found 9/9 trials
+- Method A: **FAILS** (0/9) — Ghostty kCGWindowName = CWD (`…/Documents/ai/Monitor_CC`), not token; `open --args --command` doesn't execute the specified command (Ghostty starts default shell). CotEditor intermediate windows have null title.
+- Method B: **FAILS** (0/9) — probe terminal stays frontmost; Ghostty creates 2 named windows on launch (method_b picks wrong one)
+- Space detection S1/S2/S3: **WORKS for Ghostty** (6/6 all_agree=True), FAILS for CotEditor (intermediate windows have no space assignment, session restore contaminates ground truth)
+- See `decisions/OldThemes/desktop_allocation/G3_window_detection_probe.md` for full analysis and next steps.
