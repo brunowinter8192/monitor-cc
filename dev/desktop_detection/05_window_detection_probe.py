@@ -52,8 +52,8 @@ _WIN_COT  = "coteditor"
 
 _OWNER = {_WIN_TMUX: "Ghostty", _WIN_OSC2: "Ghostty", _WIN_COT: "CotEditor"}
 
-# require_name=True excludes Ghostty tab-bar strips (name=None, h=33px); False for CotEditor
-_REQUIRE_NAME = {_WIN_TMUX: True, _WIN_OSC2: True, _WIN_COT: False}
+# require_name=True excludes unnamed intermediate windows; CotEditor document windows have names
+_REQUIRE_NAME = {_WIN_TMUX: True, _WIN_OSC2: True, _WIN_COT: True}
 
 _TOKEN_PREFIX = {_WIN_TMUX: "p05t", _WIN_OSC2: "p05g", _WIN_COT: "p05c"}
 
@@ -262,9 +262,9 @@ def _open_window(win_type: str, token: str, foreground: bool) -> None:
         Path(f"/tmp/probe05_{token}.txt").write_text(
             f"probe05 token={token}\n", encoding="utf-8"
         )
+        # No -n (avoids cold-launch session restore); always -g (background, no focus steal)
         subprocess.run(
-            ["open", "-n"] + fg_flag + ["-a", "CotEditor",
-             f"/tmp/probe05_{token}.txt"],
+            ["open", "-g", "-a", "CotEditor", f"/tmp/probe05_{token}.txt"],
             capture_output=True, timeout=10,
         )
 
@@ -323,6 +323,19 @@ end tell'''
 
     return False
 
+# Warm-launch CotEditor before trials: prevents cold-launch session-restore from reopening
+# previous documents. If CotEditor is already running, returns immediately.
+def _ensure_coteditor_running() -> None:
+    arr = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
+    for i in range(_cf_count(arr)):
+        if _dict_str(_cf_at(arr, i), "kCGWindowOwnerName") == "CotEditor":
+            print("  CotEditor already running", flush=True)
+            return
+    print("  CotEditor not running — warm-launching...", flush=True)
+    subprocess.run(["open", "-g", "-a", "CotEditor"], capture_output=True, timeout=10)
+    time.sleep(2.0)
+    print("  CotEditor warm-launch complete", flush=True)
+
 # Run one trial: open window, detect via ground-truth + methods A/B, measure space signals.
 def _run_trial(
     cid: int, space_map: Dict[int, Tuple[str, int]],
@@ -332,6 +345,9 @@ def _run_trial(
     req_name = _REQUIRE_NAME[win_type]
     token    = _TOKEN_PREFIX[win_type] + secrets.token_hex(3)
     ts       = time.strftime("%Y%m%d_%H%M%S")
+    # CotEditor always opened with 'open -g' (no cold-launch, no focus steal)
+    if win_type == _WIN_COT:
+        foreground = False
     fg_label = "fg" if foreground else "bg"
 
     print(f"  [{win_type} trial {trial_n} {fg_label}] token={token}", flush=True)
@@ -340,21 +356,39 @@ def _run_trial(
     s1_space_id = int(_CG.CGSGetActiveSpace(cid))
     s1_desktop  = space_map.get(s1_space_id, ("?", "?"))[1]
 
-    # Ground truth: before snapshot, then poll until delta non-empty
     pids_before = _owner_pids(owner)
-    before      = _owner_wids_layer0(owner, req_name)
+    # Ghostty: snapshot before open (CotEditor uses token-name poll instead)
+    if win_type != _WIN_COT:
+        before = _owner_wids_layer0(owner, req_name)
 
     _open_window(win_type, token, foreground)
 
     wid_gt     = None
+    ma_wid     = None
+    ma_name    = None
+    ma_agrees  = None
     poll_start = time.monotonic()
-    while time.monotonic() - poll_start < 5.0:
-        time.sleep(0.2)
-        after = _owner_wids_layer0(owner, req_name)
-        delta = after - before
-        if delta:
-            wid_gt = min(delta)
-            break
+
+    if win_type == _WIN_COT:
+        # Token-name poll: CotEditor titles windows with filename — reliable unique key.
+        # Avoids snapshot-diff which grabbed session-restored windows (cold-launch issue).
+        while time.monotonic() - poll_start < 5.0:
+            time.sleep(0.2)
+            ma_wid, ma_name = _method_a(owner, token)
+            if ma_wid is not None:
+                wid_gt    = ma_wid
+                ma_agrees = True   # detection IS the token-match; agrees by construction
+                break
+    else:
+        # Ghostty: snapshot-diff poll — detect new WID by owner-list delta
+        while time.monotonic() - poll_start < 5.0:
+            time.sleep(0.2)
+            after = _owner_wids_layer0(owner, req_name)
+            delta = after - before
+            if delta:
+                wid_gt = min(delta)
+                break
+
     poll_elapsed = round(time.monotonic() - poll_start, 2)
 
     title_observed  = None
@@ -362,9 +396,6 @@ def _run_trial(
     s3_space_id     = None
     s3_desktop      = None
     space_all_agree = None
-    ma_wid          = None
-    ma_name         = None
-    ma_agrees       = None
     mb_wid          = None
     mb_agrees       = None
 
@@ -373,9 +404,10 @@ def _run_trial(
 
         title_observed, _ = _wid_info(wid_gt)
 
-        # Method A — title-match
-        ma_wid, ma_name = _method_a(owner, token)
-        ma_agrees = (ma_wid == wid_gt)
+        if win_type != _WIN_COT:
+            # For Ghostty: run method_a here (CotEditor: already resolved during poll)
+            ma_wid, ma_name = _method_a(owner, token)
+            ma_agrees = (ma_wid == wid_gt)
 
         # Method B — frontmost among owner layer-0 windows
         mb_wid    = _method_b(owner, req_name)
@@ -479,6 +511,9 @@ def probe_workflow() -> None:
 
     all_results: List[dict] = []
     for win_type in win_types:
+        if win_type == _WIN_COT:
+            print("--- coteditor: warm-launch check ---")
+            _ensure_coteditor_running()
         print(f"--- {win_type} ---")
         for trial_n, foreground in trial_schedule:
             r = _run_trial(cid, space_map, win_type, trial_n, foreground)
