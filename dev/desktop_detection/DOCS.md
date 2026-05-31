@@ -142,6 +142,40 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 - `performWithWMBridgeDelegate` is inherited from parent `SLSAsynchronousBridgedWindowManagementOperation` (not defined directly on the child class on 26.5).
 - On macOS 26.5: **FAIL** — ObjC chain executes without crash but window does not move. See `decisions/OldThemes/desktop_allocation/G2_space_move_probe.md` for hypotheses.
 
+### `06_move_sweep_probe.py` (435 LOC)
+
+Sweeps 4 C-level window-move primitives (CGS + SkyLight) to determine whether any can relocate a CotEditor window from the active Space to a non-active non-empty Space on macOS 26.5. Includes a permission self-check (AX + ScreenCapture + binary realpath) before any move attempt.
+
+**Usage:**
+```bash
+cd /Users/brunowinter2000/Documents/ai/Monitor_CC
+./venv/bin/python dev/desktop_detection/06_move_sweep_probe.py
+```
+
+**Requires:** ≥ 2 Mission Control spaces with at least one existing window on a non-active space. CotEditor: probe opens fresh docs per primitive (no warm-launch required, though CotEditor must be running for reliable doc detection; add `_ensure_coteditor_running()` if cold-launch is possible).
+
+**Output:** Permission block (AX / ScreenCapture / binary path), symbol-load status for all 4 primitives, per-primitive in_before/in_after/moved with screenshot paths in `06_reports/`, HEADLINE line.
+
+**Primitives tested (A/B/C/D):**
+- A: `CGSMoveWindowsToManagedSpace` (CoreGraphics)
+- B: `SLSMoveWindowsToManagedSpace` (SkyLight)
+- C: `CGSAddWindowsToSpaces` + `CGSRemoveWindowsFromSpaces` (CoreGraphics add/remove pair)
+- D: `SLSSpaceSetCompatID` + `SLSSetWindowListWorkspace` (SkyLight CompatID route)
+
+**Key design:**
+- Fresh CotEditor doc per primitive (`open -g`, no `-n`); closed via AppleScript by token name regardless of which Space it ends up on — no restore mechanism, no stranding risk.
+- Verification via `CGWindowListCopyWindowInfo(onscreen_only=1)` membership (NOT `CGSCopySpacesForWindows` which lags).
+- `_wids(onscreen=False)` parameterizes the on-screen/all-spaces scan into a single function.
+- `_try_sym` uses `ctypes.c_void_p.in_dll(lib, name)` for reliable symbol existence check (ctypes attribute access does NOT raise AttributeError for missing symbols).
+- uint32 window ID arrays (`_make_uint_array`) and uint64 space ID arrays (`_make_uint64_array` with `numberWithUnsignedLongLong:`) constructed separately.
+
+**Key findings (macOS 26.5, run 2026-05-31):**
+- AX=True, ScreenCapture=True — full permissions held; TCC is not the blocker.
+- All 4 symbols resolve (no MISSING); all 4 calls execute silently without crash.
+- **ALL 4 primitives are no-ops** — `in_after=True` for all, no window left the active Space.
+- Combined with G2 (ObjC `SLSBridgedMoveWindowsToManagedSpaceOperation`): 5/5 move APIs tested on 26.5, 0/5 functional.
+- See `decisions/OldThemes/desktop_allocation/G4_move_sweep_probe.md`.
+
 ### `05_window_detection_probe.py` (527 LOC)
 
 Pure window-detection probe: for each new window, can we RELIABLY (a) identify the SPECIFIC window and (b) determine which Space it appeared on. NO window moves. Three window types × 3 trials (9 total). Two passes: pass 1 baseline, pass 2 CotEditor fixed.
