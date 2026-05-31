@@ -1,6 +1,6 @@
 # G1 — Space-Move Neu-Recherche: bridged-Op + macOS-Versions-Split (2026-05-30)
 
-**Status:** Recherche abgeschlossen. Supersedet F1s „alle Move-APIs tot" teilweise — der bridged-Pfad lebt, aber versionsabhängig. Probe-First pending.
+**Status:** Recherche abgeschlossen. Supersedet F1s „alle Move-APIs tot" teilweise — der bridged-Pfad lebt, aber versionsabhängig. **Probe-Ergebnis (2026-05-31, G2): bridged-Op No-op auf 26.5 — siehe G2 + `H1_placement_mechanism_review_2026-05-31.md` (Regression vs Kontext offen; Produktions-Thread = plain CGSMove + Detection getrennt).**
 
 Knüpft an: `F1_cmd_b_books_blocked.md` (Move-API-Sackgasse), `Meta/blank/decisions/OldThemes/desktop_targeting_sidecar.md` (blank-Probe + Sackgassen-Protokoll der Vorsession).
 
