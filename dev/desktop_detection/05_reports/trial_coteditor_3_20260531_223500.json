@@ -1,0 +1,28 @@
+{
+  "type": "coteditor",
+  "trial": 3,
+  "foreground": false,
+  "token": "p05c21f601",
+  "gt_wid": 2162,
+  "gt_found": true,
+  "poll_elapsed_s": 0.41,
+  "title_observed": "Trading.md",
+  "method_a": {
+    "wid": null,
+    "matched_name": null,
+    "agrees": false
+  },
+  "method_b": {
+    "wid": 2169,
+    "agrees": false
+  },
+  "space": {
+    "s1_space_id": 4,
+    "s1_desktop": 3,
+    "s2_on_screen": false,
+    "s3_space_id": null,
+    "s3_desktop": null,
+    "all_agree": false
+  },
+  "cleanup_ok": true
+}

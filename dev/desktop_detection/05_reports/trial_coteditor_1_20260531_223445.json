@@ -1,0 +1,28 @@
+{
+  "type": "coteditor",
+  "trial": 1,
+  "foreground": true,
+  "token": "p05c525bbd",
+  "gt_wid": 2115,
+  "gt_found": true,
+  "poll_elapsed_s": 0.21,
+  "title_observed": null,
+  "method_a": {
+    "wid": null,
+    "matched_name": null,
+    "agrees": false
+  },
+  "method_b": {
+    "wid": 2123,
+    "agrees": false
+  },
+  "space": {
+    "s1_space_id": 4,
+    "s1_desktop": 3,
+    "s2_on_screen": false,
+    "s3_space_id": null,
+    "s3_desktop": null,
+    "all_agree": false
+  },
+  "cleanup_ok": true
+}
