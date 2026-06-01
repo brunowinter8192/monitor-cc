@@ -151,7 +151,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_unauthorized_background.py (67 LOC)
+### block_unauthorized_background.py (75 LOC)
 
 **Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT the canonical orchestration timer `sleep N && echo done` AND NOT a whitelisted long-running tool, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable — but legitimately-long tools (reddit-cli indexer, RAG `workflow.py index-dir`) are exempted via the whitelist. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
@@ -446,7 +446,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_batch_bd_close.py (143 LOC)
+### block_batch_bd_close.py (149 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks any Bash command that performs more than 1 bead-mutating `bd` operation in a single invocation. Upstream dolt bug (issues #4135/#4239/#3948): when multiple bd mutation calls share a shell invocation, JSONL auto-import fires between writes and clobbers all but the first — silently corrupting bead state. Hook counts "mutation units" across the quote-stripped command; total > 1 → exit 2 + stderr. Total ≤ 1 → exit 0. Exits 0 on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).

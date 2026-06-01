@@ -17,6 +17,7 @@
 #   - One-shot symbols from stale doc passages — fix the doc, do not whitelist
 
 # --- Python builtins / stdlib ---
+getpreferredencoding
 DEBUG
 ERROR
 WARNING
@@ -167,7 +168,14 @@ NLU
 BERT
 
 # --- Shell / OS environment variables ---
+PYTHONUTF8
 PROMPT_COMMAND
+
+# --- External library / framework functions (not defined in this codebase) ---
+# copy_package_data: py2app internal (copies package data into bundle)
+copy_package_data
+# _prune_bundle_bloat: in setup_py2app.py (project root) — outside SOURCE_GLOBS (src/**/*.py)
+_prune_bundle_bloat
 
 # --- External / OS / spec references (not Python identifiers in this codebase) ---
 MODE_MOUSE_ALL

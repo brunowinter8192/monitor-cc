@@ -28,7 +28,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### panel_manager.py (183 LOC)
+### panel_manager.py (172 LOC)
 
 **Purpose:** Per-concern controller for main-session panel (Step 4/6 of CCMenuBarApp composition refactor). `PanelManager(app)` owns 8 migrating attrs (`_panel_open`, `_initialized`, `_displayed_items`, `_cwd_map`, `_desktop_to_cwd`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_rebuild_in_progress`) plus NSPanel and stack-view refs from `_make_nspanel()` (`_panel`, `_panel_sv`, `_panel_quit_btn`, `_toggle_btn`, `_panel_kill_btn`). Exposes `rebuild(sessions, bg_by_project=None)` (re-entry guarded full panel rebuild, adapted from `panel.py:_rebuild_panel_inner`), `update_inplace(sessions, bg_by_project)` (in-place dot+badge update, adapted from `panel.py:_update_panel_inplace`), `_resize_panel(new_h)` (adapted from `panel.py:_resize_panel`). Settings `_auto_focus`, `_panel_width`, `_panel_min_height` remain on `app` (cross-controller shared preferences; moving to PanelManager would create bead/queue→panel coupling with no benefit).
 **Reads:** `self.app._panel_width`, `self.app._panel_min_height`, `self.app._auto_focus`, `self.app._panel_controller`; `sessions` and `bg_by_project` from callers.
