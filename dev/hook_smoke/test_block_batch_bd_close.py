@@ -62,6 +62,20 @@ CASES = [
     # GAP-2: two set-state invocations → 1+1 = 2 units
     ("set-state + set-state BLOCK",
      "bd set-state Monitor_CC-a x; bd set-state Monitor_CC-b y", 2),
+    # --- infra subcommands (config/dolt) are NOT bead mutations → 0 units ---
+    ("config set+get chain ALLOW (infra)",
+     "bd config set export.git-add false; bd config get export.git-add", 0),
+    ("dolt stop+start chain ALLOW (infra)",
+     "bd dolt stop; bd dolt start", 0),
+    ("config set + close = 1 mutation ALLOW",
+     "bd config set x y; bd close Monitor_CC-a", 0),
+    # --- delete is an id-list mutator (batch delete reverts too) ---
+    ("delete single ALLOW",
+     "bd delete Monitor_CC-a --force", 0),
+    ("delete two ids BLOCK",
+     "bd delete Monitor_CC-a Monitor_CC-b --force", 2),
+    ("delete + delete sequential BLOCK",
+     "bd delete Monitor_CC-a --force; bd delete Monitor_CC-b --force", 2),
 ]
 
 

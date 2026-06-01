@@ -19,8 +19,11 @@ _READ_ONLY = frozenset({
     'export', 'backup', 'state', 'version', 'help',
 })
 
+# Infra subcommands — operate on config / dolt-server, NOT bead state → 0 mutation units
+_INFRA = frozenset({'config', 'dolt'})
+
 # id-list mutators: count positional bead-id arguments; min 1 unit per invocation (no-id = last-touched)
-_ID_LIST_MUTATORS = frozenset({'close', 'done', 'reopen', 'update'})
+_ID_LIST_MUTATORS = frozenset({'close', 'done', 'reopen', 'update', 'delete'})
 
 # Value-taking flags for id-list mutators: next token (or embedded =value) is a value, not a bead-id
 _VALUE_FLAGS = frozenset({
@@ -94,6 +97,9 @@ def _count_mutation_units(stripped: str) -> int:
             continue
 
         if sub in _READ_ONLY:
+            continue
+
+        if sub in _INFRA:
             continue
 
         if sub == 'comments':

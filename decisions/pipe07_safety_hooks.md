@@ -343,10 +343,11 @@
 **Detection:** quote-stripped command is split into statements at `&&`, `||`, `;`, `|`, `\n`. For each statement starting with `bd`, the subcommand is classified and mutation units counted. Total units > 1 → block.
 
 **Mutation unit rules:**
-- id-list mutators (`close`, `done`, `reopen`, `update`): count positional bead-id arguments (`[A-Za-z]\w*-[\w.]+`); minimum 1 per invocation (`max(1, id_count)` — 0 ids = last-touched, still 1 mutation). Skip flags and values of value-taking flags (`-r`/`--reason`, `--reason-file`, `--session`, `-C`/`--directory`, `--db`, `--actor`, `--dolt-auto-commit`, `-p`/`--priority`, `-t`/`--type`, `-s`/`--status`, `--assignee`, `--label`). Handle `--flag value` and `--flag=value`.
+- id-list mutators (`close`, `done`, `reopen`, `update`, `delete`): count positional bead-id arguments (`[A-Za-z]\w*-[\w.]+`); minimum 1 per invocation (`max(1, id_count)` — 0 ids = last-touched, still 1 mutation). Skip flags and values of value-taking flags (`-r`/`--reason`, `--reason-file`, `--session`, `-C`/`--directory`, `--db`, `--actor`, `--dolt-auto-commit`, `-p`/`--priority`, `-t`/`--type`, `-s`/`--status`, `--assignee`, `--label`). Handle `--flag value` and `--flag=value`.
 - Other mutators (`set-state`, `create`, `todo`, `import`, `restore`, `supersede`, `duplicate`, `set-metadata`, `label`, `epic`, `swarm`, `branch`, `federation`, `vc`, unknown): 1 unit per invocation. `set-state` is here (not id-list) — its positional args include a state value (e.g. `in-progress`) matching the bead-id regex, making id-counting unreliable.
 - Compound: `comments add` / `dep add` / `dep remove` / `find-duplicates --merge` → 1 unit; view/list forms → 0.
 - READ-ONLY (`list`, `show`, `search`, `count`, `status`, `types`, `graph`, `history`, `diff`, `stale`, `lint`, `ready`, `export`, `backup`, `state`, `version`, `help`): 0 units.
+- Infra (`config`, `dolt`): 0 units — operate on config / dolt-server, not bead state (so `bd config set ...; bd config get ...` and `bd dolt stop; bd dolt start` chains pass).
 - Unknown subcommand → treated as MUTATING (conservative).
 
 **Blocked patterns:**
@@ -356,14 +357,15 @@
 - `bd create "x"; bd create "y"` (2 creates)
 - `bd close Monitor_CC-a && bd update Monitor_CC-b --status closed`
 - `bd close Monitor_CC-a; bd comments add Monitor_CC-b "x"`
+- `bd delete Monitor_CC-a Monitor_CC-b` (2 ids → batch delete reverts too)
 
-**Allowed patterns:** any single mutation (1 id or 1 invocation); mutation + any number of reads; `bd close` (no id, last-touched form — 0 ids → 0 units); read-only-only chains; quoted bd examples
+**Allowed patterns:** any single mutation (1 id or 1 invocation); mutation + any number of reads; `bd close` (no id, last-touched form — `max(1,0)` = 1 unit, still a single mutation → allowed); infra chains (`config`/`dolt`); read-only-only chains; quoted bd examples
 
 **Rationale:** upstream dolt bug — when multiple bd mutation calls share one shell invocation, JSONL auto-import fires between writes and clobbers all but the first. The structural fix enforces the "one mutation per Bash call" invariant at the hook layer, preventing silent data loss without requiring bd source changes.
 
 **Fail-open:** exits 0 on any parse/internal error.
 
-**Smoke:** `dev/hook_smoke/test_block_batch_bd_close.py` (23 cases: 13 allow, 10 block).
+**Smoke:** `dev/hook_smoke/test_block_batch_bd_close.py` (29 cases: 17 allow, 12 block).
 
 ## Evidenz
 
