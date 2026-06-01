@@ -255,7 +255,7 @@ class BeadController:
         state = 'ON' if app._auto_focus else 'OFF'
         app._tracker_toggle_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
-                f'Sessions \u00b7 [Beads] \u00b7 Queue     Auto-Jump: {state}',
+                f'Sessions \u00b7 RAG \u00b7 [Beads] \u00b7 Queue     Auto-Jump: {state}',
                 {NSFontAttributeName: _MENLO()}))
         pw         = app._panel_width
         required_h = self.compute_height()
