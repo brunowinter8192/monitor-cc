@@ -13,7 +13,7 @@ Session status detection in `src/menubar/` uses separate logic for Workers vs Ma
 - worker-cli status detection (`iterative-dev/src/spawn/tmux_spawn.sh:_worker_detect_status`) uses the identical sensor and threshold — single source of truth for worker status across menubar and CLI.
 
 **Mains** (Ghostty terminals, `discover.py` + `proc_cache.py`):
-- Alive if JSONL mtime within `ALIVE_WINDOW_SECS=3600s`.
+- Alive iff a live `claude` process exists for the session (`_proc_cwd_for_encoded_dir` returns non-None). JSONL age is NOT used for aliveness — a pre-proc-check holdover (`ALIVE_WINDOW_SECS=3600s` drop) was removed because it incorrectly dropped idle-but-alive mains with JSONL older than 1h. `ALIVE_WINDOW_SECS` is retained for hook staleness checks and the worker cwd-unavailable fallback.
 - **Priority 1 — Hook state** (`APP_SUPPORT/hooks.json`): `session_id` == JSONL stem. If entry exists and `updated_ts` within `ALIVE_WINDOW_SECS`: use `status` as-is. `UserPromptSubmit` sets working from T=0 (captures thinking phase); `Stop`/`StopFailure` set idle immediately. No heuristic lag.
 - **Priority 2 — JSONL mtime** (fallback when hooks absent/stale): `(now - jsonl_mtime) ≤ WORKING_THRESHOLD_SECS=10s` = working. TTY mtime removed (cursor blinks caused stuck-at-working).
 - **Priority 3 — Proxy override** (fallback): `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) ≤ THINKING_OVERRIDE_MAX_SECS=300s` → working. Proxy writes at the START of the reasoning phase, staying ahead for the full thinking duration. After response completion the proxy latency entry lands ~0.1s before CC writes JSONL, so `proxy_mtime` drops just below `jsonl_mtime` — no false positive.
