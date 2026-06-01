@@ -2,7 +2,7 @@
 
 **Purpose:** Holding area for proposed `~/.claude/shared-rules` changes that arose from observed friction but are NOT yet hardened into rules. Rule changes are expensive cross-session infra — codify only after a failure mode RECURS. Each entry: trigger → proposed rule text → target file → status. When a trigger recurs, promote to the actual rule; if it never recurs, drop.
 
-Replaces the old `~/.claude/shared-rules/_staging/` date-file mechanism (deleted 2026-06-01, "fast nur bs drin"). Staging now lives here in Monitor_CC and is RAG-indexed via `Monitor_CC-features`.
+Replaces the old `~/.claude/shared-rules/_staging/` date-file mechanism (deleted 2026-06-01, "fast nur bs drin"). Staging now lives here in Monitor_CC and is RAG-indexed via `Monitor_CC-docs`.
 
 ---
 
