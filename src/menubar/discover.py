@@ -137,9 +137,12 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
     if is_worker:
         cwd = _cwd_from_jsonl(jsonl)
         tmux_session = ''
+        display_name = worker_name   # fallback: lossy encoded-dir name (underscores → hyphens)
         if cwd and '/.claude/worktrees/' in cwd:
+            # Real worker name from cwd preserves underscores (encode_project_path is lossy: _ → -)
+            display_name = os.path.basename(cwd)
             # Worker alive iff its tmux session exists (consistent with worker-cli)
-            tmux_session = _worker_tmux_session(cwd, worker_name) or ''
+            tmux_session = _worker_tmux_session(cwd, display_name) or ''
             if not tmux_session or not _tmux_session_exists(tmux_session):
                 return None
         else:
@@ -161,7 +164,7 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
                     status = 'idle'
         else:
             status = 'idle'
-        return SessionInfo(name=worker_name, status=status, has_bg=has_bg,
+        return SessionInfo(name=display_name, status=status, has_bg=has_bg,
                            encoded_dir=encoded_dir, project_name=project_name,
                            is_worker=True, cwd='', session_id=session_id,
                            tmux_session_name=tmux_session)
