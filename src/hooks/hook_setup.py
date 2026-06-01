@@ -38,6 +38,7 @@ _HOOK_SCRIPTS = [
     ("block_dev_imports_src.py",         "Edit"),
     ("block_except_pass.py",             "Write"),
     ("block_except_pass.py",             "Edit"),
+    ("block_batch_bd_close.py",          "Bash"),
 ]
 _HOOK_ENTRIES = [(f"python3 {_HOOKS_DIR / s}", m) for s, m in _HOOK_SCRIPTS]
 
