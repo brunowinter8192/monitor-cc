@@ -19,8 +19,8 @@ _READ_ONLY = frozenset({
     'export', 'backup', 'state', 'version', 'help',
 })
 
-# id-list mutators: count the positional bead-id arguments, each = 1 unit
-_ID_LIST_MUTATORS = frozenset({'close', 'done', 'reopen', 'update', 'set-state'})
+# id-list mutators: count positional bead-id arguments; min 1 unit per invocation (no-id = last-touched)
+_ID_LIST_MUTATORS = frozenset({'close', 'done', 'reopen', 'update'})
 
 # Value-taking flags for id-list mutators: next token (or embedded =value) is a value, not a bead-id
 _VALUE_FLAGS = frozenset({
@@ -112,10 +112,10 @@ def _count_mutation_units(stripped: str) -> int:
             # else: find form → 0
 
         elif sub in _ID_LIST_MUTATORS:
-            total += _count_ids(rest)
+            total += max(1, _count_ids(rest))
 
         else:
-            # create, todo, import, restore, supersede, duplicate, set-metadata,
+            # create, set-state, todo, import, restore, supersede, duplicate, set-metadata,
             # label, epic, swarm, branch, federation, vc, unknown → 1 unit each
             total += 1
 

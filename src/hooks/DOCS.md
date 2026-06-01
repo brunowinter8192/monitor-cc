@@ -455,8 +455,8 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Calls out:** stdlib only (`json`, `os`, `re`, `sys`); `_fire_log.log_fire` (same-dir import).
 
 **Mutation unit counting:**
-- **id-list mutators** (`close`, `done`, `reopen`, `update`, `set-state`): count positional bead-id arguments (`[A-Za-z]\w*-[\w.]+`). Skip flags and values of value-taking flags (`-r`/`--reason`, `--reason-file`, `--session`, `-C`/`--directory`, `--db`, `--actor`, `--dolt-auto-commit`, `-p`/`--priority`, `-t`/`--type`, `-s`/`--status`, `--assignee`, `--label`). Handles both `--flag value` and `--flag=value` forms. Each bead-id = 1 unit; 0 ids (last-touched form) = 0 units.
-- **Other mutators** (`create`, `todo`, `import`, `restore`, `supersede`, `duplicate`, `set-metadata`, `label`, `epic`, `swarm`, `branch`, `federation`, `vc`, unknown): 1 unit per invocation.
+- **id-list mutators** (`close`, `done`, `reopen`, `update`): count positional bead-id arguments (`[A-Za-z]\w*-[\w.]+`); minimum 1 per invocation (0 ids = last-touched, still 1 mutation). Formula: `max(1, id_count)`. Skip flags and values of value-taking flags (`-r`/`--reason`, `--reason-file`, `--session`, `-C`/`--directory`, `--db`, `--actor`, `--dolt-auto-commit`, `-p`/`--priority`, `-t`/`--type`, `-s`/`--status`, `--assignee`, `--label`). Handles both `--flag value` and `--flag=value` forms.
+- **Other mutators** (`set-state`, `create`, `todo`, `import`, `restore`, `supersede`, `duplicate`, `set-metadata`, `label`, `epic`, `swarm`, `branch`, `federation`, `vc`, unknown): 1 unit per invocation. `set-state` is here (not id-list) because its positional args include a state value (e.g. `in-progress`) that matches the bead-id regex — id-counting is unreliable.
 - **Compound subcommands**: `comments add` / `dep add` / `dep remove` / `find-duplicates --merge` → 1 unit; `comments` (view) / `dep` (list) / `find-duplicates` (no merge) → 0 units.
 - **READ-ONLY** (`list`, `show`, `search`, `count`, `status`, `types`, `graph`, `history`, `diff`, `stale`, `lint`, `ready`, `export`, `backup`, `state`, `version`, `help`): 0 units.
 - **When in doubt** (unknown subcommand): treat as MUTATING. False-positive block is cheap; missing a batched mutation reintroduces the corruption bug.
@@ -476,14 +476,14 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - `bd create "some title" --type task` (1 create invocation)
 - `bd close Monitor_CC-lhf && bd export > .beads/issues.jsonl` (1 mutation + read)
 - `bd close Monitor_CC-lhf; bd list; bd show Monitor_CC-abc` (1 mutation + 2 reads)
-- `bd close` (no id — last-touched; 0 ids → 0 units)
+- `bd close` (no id — last-touched; max(1,0) = 1 unit, total ≤ 1 → allow)
 - `bd comments add Monitor_CC-lhf "..."` (1 unit)
 - `echo "bd close A B C"` (quoted — stripped before matching)
 - `bd show Monitor_CC-a; bd show Monitor_CC-b` (reads only)
 
 **Quote stripping.** Inline `_strip_quoted()` (copied from `block_bd_cli_worker.py`) removes single/double-quoted content before matching — prevents quoted bd examples in `worker-cli send` messages or `--reason="..."` values from contributing false id counts.
 
-**Smoke:** `dev/hook_smoke/test_block_batch_bd_close.py` (18 cases: 11 allow, 7 block).
+**Smoke:** `dev/hook_smoke/test_block_batch_bd_close.py` (23 cases: 13 allow, 10 block).
 
 ---
 

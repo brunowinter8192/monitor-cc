@@ -32,6 +32,12 @@ CASES = [
      "bd list -s open", 0),
     ("show show reads-only chain ALLOW",
      "bd show Monitor_CC-a; bd show Monitor_CC-b", 0),
+    # GAP-1: no-id id-list mutator = 1 unit (last-touched mutation)
+    ("close no-id alone ALLOW",
+     "bd close", 0),
+    # GAP-2: set-state has non-id positional arg — treated as other-mutator (1 unit)
+    ("set-state single ALLOW",
+     "bd set-state Monitor_CC-a in-progress", 0),
     # --- BLOCK: more than 1 mutation unit ---
     ("close two ids BLOCK",
      "bd close Monitor_CC-a Monitor_CC-b", 2),
@@ -47,6 +53,15 @@ CASES = [
      "bd close Monitor_CC-a && bd update Monitor_CC-b --status closed", 2),
     ("close + comments add chained BLOCK",
      'bd close Monitor_CC-a; bd comments add Monitor_CC-b "x"', 2),
+    # GAP-1: two no-id closings → 1+1 = 2 units
+    ("close no-id + close no-id BLOCK",
+     "bd close; bd close", 2),
+    # GAP-1: no-id close + update with id → 1+1 = 2 units
+    ("close no-id + update single id BLOCK",
+     "bd close; bd update Monitor_CC-x --status closed", 2),
+    # GAP-2: two set-state invocations → 1+1 = 2 units
+    ("set-state + set-state BLOCK",
+     "bd set-state Monitor_CC-a x; bd set-state Monitor_CC-b y", 2),
 ]
 
 
