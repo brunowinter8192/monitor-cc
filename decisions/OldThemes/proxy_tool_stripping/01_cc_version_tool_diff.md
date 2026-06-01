@@ -76,3 +76,9 @@ Logs cited (src/logs/):
 - Is `TOOL_BLOCKLIST` still correct for 2.149 (AskUserQuestion is now active — do we still want it stripped)?
 - Empty `#0.1` request (0msg, BP:0) — opens completely empty in the Monitor UI. What is it (haiku/aux request)? Display-edge or real.
 - Display: disambiguate schema-stripped-forwarded (dark blue) vs blocklist-removed (yellow) — same word `[STRIPPED]`.
+
+## Status (executed 2026-06-02)
+
+- **Version bump EXECUTED.** `tmux_spawn.sh` lines 518 (spawn) + 707 (revive) → `CLAUDE_BIN` default `claude-114` → `claude-149`. Workers now spawn on CC 2.1.149. Old wrappers claude-101/109/110/114 deleted + their installs cc-cache-fix-109/110/114 (321 MB) removed; only claude-149 remains.
+- **CAVEAT — not persisted in source.** Edit applied in the plugin CACHE (`~/.claude/plugins/cache/brunowinter-plugins/iterative-dev/1.0.0/src/spawn/tmux_spawn.sh`). The iterative-dev plugin SOURCE repo was NOT findable this session → the edit reverts on the next `plugin-publish`. To make permanent: apply the same `claude-114`→`claude-149` change in the plugin source repo (location unknown — ask user).
+- **VERIFICATION PENDING.** Next worker spawned on 2.149 → check its proxy log: (a) version 2.1.149, (b) tools lack Grep/Glob (aligning with opus → confirms H1 = version, not model), (c) is `Workflow` present anywhere (forwarded/stripped/deferred) → resolves the Workflow mystery. Folds into the first worker spawn of the logging redesign (pxn7).
