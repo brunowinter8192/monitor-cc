@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-18 safety hooks registered globally in `~/.claude/settings.json`. All 18 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 14 block hooks (exit 2) + 4 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_background_sleep`, `block_path_typo` (legacy name, rewrite semantics).
+19 safety hooks registered globally in `~/.claude/settings.json`. All 19 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 15 block hooks (exit 2) + 4 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_background_sleep`, `block_path_typo` (legacy name, rewrite semantics).
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -334,6 +334,37 @@
 
 **Smoke:** `dev/hook_smoke/test_rewrite_background_sleep.py` (8 cases: 3 positive rewrite, 5 negative no-op).
 
+### Hook 19 — `block_batch_bd_close.py` (`src/hooks/block_batch_bd_close.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_batch_bd_close.py`
+- **Timeout:** 5s
+
+**Detection:** quote-stripped command is split into statements at `&&`, `||`, `;`, `|`, `\n`. For each statement starting with `bd`, the subcommand is classified and mutation units counted. Total units > 1 → block.
+
+**Mutation unit rules:**
+- id-list mutators (`close`, `done`, `reopen`, `update`): count positional bead-id arguments (`[A-Za-z]\w*-[\w.]+`); minimum 1 per invocation (`max(1, id_count)` — 0 ids = last-touched, still 1 mutation). Skip flags and values of value-taking flags (`-r`/`--reason`, `--reason-file`, `--session`, `-C`/`--directory`, `--db`, `--actor`, `--dolt-auto-commit`, `-p`/`--priority`, `-t`/`--type`, `-s`/`--status`, `--assignee`, `--label`). Handle `--flag value` and `--flag=value`.
+- Other mutators (`set-state`, `create`, `todo`, `import`, `restore`, `supersede`, `duplicate`, `set-metadata`, `label`, `epic`, `swarm`, `branch`, `federation`, `vc`, unknown): 1 unit per invocation. `set-state` is here (not id-list) — its positional args include a state value (e.g. `in-progress`) matching the bead-id regex, making id-counting unreliable.
+- Compound: `comments add` / `dep add` / `dep remove` / `find-duplicates --merge` → 1 unit; view/list forms → 0.
+- READ-ONLY (`list`, `show`, `search`, `count`, `status`, `types`, `graph`, `history`, `diff`, `stale`, `lint`, `ready`, `export`, `backup`, `state`, `version`, `help`): 0 units.
+- Unknown subcommand → treated as MUTATING (conservative).
+
+**Blocked patterns:**
+- `bd close Monitor_CC-a Monitor_CC-b` (2 ids)
+- `bd close Monitor_CC-a; bd close Monitor_CC-b` (2 sequential closings)
+- `bd done Monitor_CC-a Monitor_CC-b`, `bd update Monitor_CC-a Monitor_CC-b --status closed`
+- `bd create "x"; bd create "y"` (2 creates)
+- `bd close Monitor_CC-a && bd update Monitor_CC-b --status closed`
+- `bd close Monitor_CC-a; bd comments add Monitor_CC-b "x"`
+
+**Allowed patterns:** any single mutation (1 id or 1 invocation); mutation + any number of reads; `bd close` (no id, last-touched form — 0 ids → 0 units); read-only-only chains; quoted bd examples
+
+**Rationale:** upstream dolt bug — when multiple bd mutation calls share one shell invocation, JSONL auto-import fires between writes and clobbers all but the first. The structural fix enforces the "one mutation per Bash call" invariant at the hook layer, preventing silent data loss without requiring bd source changes.
+
+**Fail-open:** exits 0 on any parse/internal error.
+
+**Smoke:** `dev/hook_smoke/test_block_batch_bd_close.py` (23 cases: 13 allow, 10 block).
+
 ## Evidenz
 
 **2026-05-22 hook-block analysis** (`dev/hook_firing/reports/2026-05-22_012326.md`, 7 days of CC sessions across all projects):
@@ -385,7 +416,7 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current 17 hooks + audit logging (no change needed). Pending evaluation after rollout:
+Keep current 19 hooks + audit logging (no change needed). Pending evaluation after rollout:
 - Do hooks #9–17 (2026-05-22 batch) intercept violations without false positives in live sessions?
 - `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.

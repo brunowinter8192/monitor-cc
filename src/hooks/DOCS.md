@@ -32,7 +32,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all 20 active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"`: includes `reason` field (stderr text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** `src/logs/hook_firing.jsonl` (appends one line per fire; path resolved from `__file__` relative to `src/`).
-**Called by:** all 21 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
+**Called by:** all 22 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
 **Calls out:** stdlib only (`json`, `os`, `datetime`).
 
 ---
@@ -446,7 +446,48 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### hook_setup.py (144 LOC)
+### block_batch_bd_close.py (143 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks any Bash command that performs more than 1 bead-mutating `bd` operation in a single invocation. Upstream dolt bug (issues #4135/#4239/#3948): when multiple bd mutation calls share a shell invocation, JSONL auto-import fires between writes and clobbers all but the first — silently corrupting bead state. Hook counts "mutation units" across the quote-stripped command; total > 1 → exit 2 + stderr. Total ≤ 1 → exit 0. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (one-line block message with root-cause explanation) on violation only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** stdlib only (`json`, `os`, `re`, `sys`); `_fire_log.log_fire` (same-dir import).
+
+**Mutation unit counting:**
+- **id-list mutators** (`close`, `done`, `reopen`, `update`): count positional bead-id arguments (`[A-Za-z]\w*-[\w.]+`); minimum 1 per invocation (0 ids = last-touched, still 1 mutation). Formula: `max(1, id_count)`. Skip flags and values of value-taking flags (`-r`/`--reason`, `--reason-file`, `--session`, `-C`/`--directory`, `--db`, `--actor`, `--dolt-auto-commit`, `-p`/`--priority`, `-t`/`--type`, `-s`/`--status`, `--assignee`, `--label`). Handles both `--flag value` and `--flag=value` forms.
+- **Other mutators** (`set-state`, `create`, `todo`, `import`, `restore`, `supersede`, `duplicate`, `set-metadata`, `label`, `epic`, `swarm`, `branch`, `federation`, `vc`, unknown): 1 unit per invocation. `set-state` is here (not id-list) because its positional args include a state value (e.g. `in-progress`) that matches the bead-id regex — id-counting is unreliable.
+- **Compound subcommands**: `comments add` / `dep add` / `dep remove` / `find-duplicates --merge` → 1 unit; `comments` (view) / `dep` (list) / `find-duplicates` (no merge) → 0 units.
+- **READ-ONLY** (`list`, `show`, `search`, `count`, `status`, `types`, `graph`, `history`, `diff`, `stale`, `lint`, `ready`, `export`, `backup`, `state`, `version`, `help`): 0 units.
+- **When in doubt** (unknown subcommand): treat as MUTATING. False-positive block is cheap; missing a batched mutation reintroduces the corruption bug.
+
+**Blocked patterns:**
+- `bd close Monitor_CC-a Monitor_CC-b` (2 ids → 2 units)
+- `bd close Monitor_CC-a; bd close Monitor_CC-b` (2 sequential closings)
+- `bd done Monitor_CC-a Monitor_CC-b`, `bd update Monitor_CC-a Monitor_CC-b --status closed`
+- `bd create "x"; bd create "y"` (2 create invocations)
+- `bd close Monitor_CC-a && bd update Monitor_CC-b --status closed`
+- `bd close Monitor_CC-a; bd comments add Monitor_CC-b "x"`
+
+**Allowed patterns:**
+- `bd close Monitor_CC-lhf` (1 id → 1 unit)
+- `bd close Monitor_CC-lhf --reason="..."` (1 id; reason flag value not counted)
+- `bd update Monitor_CC-lhf --status closed` (1 id, flag value skipped)
+- `bd create "some title" --type task` (1 create invocation)
+- `bd close Monitor_CC-lhf && bd export > .beads/issues.jsonl` (1 mutation + read)
+- `bd close Monitor_CC-lhf; bd list; bd show Monitor_CC-abc` (1 mutation + 2 reads)
+- `bd close` (no id — last-touched; max(1,0) = 1 unit, total ≤ 1 → allow)
+- `bd comments add Monitor_CC-lhf "..."` (1 unit)
+- `echo "bd close A B C"` (quoted — stripped before matching)
+- `bd show Monitor_CC-a; bd show Monitor_CC-b` (reads only)
+
+**Quote stripping.** Inline `_strip_quoted()` (copied from `block_bd_cli_worker.py`) removes single/double-quoted content before matching — prevents quoted bd examples in `worker-cli send` messages or `--reason="..."` values from contributing false id counts.
+
+**Smoke:** `dev/hook_smoke/test_block_batch_bd_close.py` (23 cases: 13 allow, 10 block).
+
+---
+
+### hook_setup.py (147 LOC)
 
 **Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message if the script is running from a worktree path — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]` (not only `PreToolUse`), checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source (worktree accident, repo move, etc.).
 **Reads:** `~/.claude/settings.json`.
@@ -486,4 +527,4 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Expected cost; CC must be restarted anyway to pick up the hook.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **`block_read_worktree.py` allows own-worktree reads.** Workers reading files in their own worktree via absolute path are now allowed. Cross-worktree reads (worker→other-worker) and main-session→worktree reads remain blocked.
-- **All 21 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
+- **All 22 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
