@@ -55,17 +55,11 @@ def hook_setup_workflow() -> None:
     pre = hooks.setdefault("PreToolUse", [])
     installed = 0
     for command, matcher in _HOOK_ENTRIES:
-        if _already_installed(pre, command, matcher):
-            print(f"Already installed — skipped: {command} [{matcher}]")
-        else:
+        if not _already_installed(pre, command, matcher):
             _add_hook(pre, command, matcher)
             installed += 1
     if installed:
         _save_settings(settings)
-        print(f"Installed {installed} PreToolUse safety hook(s) → {_SETTINGS_FILE}")
-        print("Restart Claude Code to activate the new hook(s).")
-    elif not swept:
-        print("All safety hooks already installed — nothing changed.")
 
 # FUNCTIONS
 
@@ -95,18 +89,12 @@ def _sweep_stale_hooks(settings: dict) -> int:
                 if cmd.startswith("python3 "):
                     tokens = cmd.split()
                     if len(tokens) >= 2 and not os.path.exists(tokens[1]):
-                        matcher_label = group.get("matcher", "<no matcher>")
-                        print(f"Swept stale: {event} [{matcher_label}] {cmd}")
                         swept += 1
                         continue
                 new_hooks.append(h)
             if new_hooks:
                 new_groups.append({**group, "hooks": new_hooks})
         hooks[event] = new_groups
-    if swept:
-        print(f"Swept {swept} stale hook(s)")
-    else:
-        print("Sweep clean — no stale hooks found")
     return swept
 
 # True if a hook entry with the given (command, matcher) pair already exists under PreToolUse
