@@ -169,9 +169,6 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
                            is_worker=True, cwd='', session_id=session_id,
                            tmux_session_name=tmux_session)
     else:
-        # Main session: stale if JSONL > 1h
-        if now - mtime > ALIVE_WINDOW_SECS:
-            return None
         # Main session alive ONLY if a live claude process exists for it.
         # Without this, exited mains stay visible until JSONL > 1h (ALIVE_WINDOW_SECS).
         proc_cwd = _proc_cwd_for_encoded_dir(encoded_dir)
