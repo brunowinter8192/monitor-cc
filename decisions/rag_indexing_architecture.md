@@ -12,7 +12,7 @@ Monitor_CC hat aktuell drei Collections:
 
 | Collection | Pfad | Chunks | Inhalt |
 |---|---|---|---|
-| Monitor_CC-meta | local via .rag-docs.json | 185 | DOCS.md (22), decisions/*.md (8), sources/sources.md |
+| Monitor_CC-meta | local via .rag-docs.json | 185 | DOCS.md (22), decisions/*.md (8) |
 | Monitor_CC-features | local via .rag-docs.json | 125 | decisions/OldThemes/<topic>/*.md (14 files in 11 Subfoldern) |
 | Monitor_reference | central via index-dir | 337 | 88 Anthropic API Doc Mirrors in `Meta/.../Monitor_reference/` |
 
@@ -30,11 +30,9 @@ Session 2026-05-11 Lesson: die ersten 92 API-Mirror-Files lagen falscherweise in
 
 Keep — kein Architektur-Change nötig. Drei Konventionen sollen aber konsistent eingehalten werden.
 
-**Konvention 1: Was wohin gehört.** Generische externe Reference (Anthropic API Mirror, Paper-PDFs, Vendor-Docs ohne project-spezifischen Decision-Bezug) → central via `workflow.py index-dir`. Project-spezifische Docs (DOCS.md, decisions/, OldThemes-Narrative, sources.md als Index) → local via `.rag-docs.json`. Project-interne Research-Reports (z.B. RAM_research) sind decisions/-Material, gehen nach `decisions/OldThemes/<topic>/`, nicht nach sources/.
+**Konvention 1: Was wohin gehört.** Generische externe Reference (Anthropic API Mirror, Paper-PDFs, Vendor-Docs ohne project-spezifischen Decision-Bezug) → central via `workflow.py index-dir`. Project-spezifische Docs (DOCS.md, decisions/, OldThemes-Narrative) → local via `.rag-docs.json`. Project-interne Research-Reports (z.B. RAM_research) sind decisions/-Material, gehen nach `decisions/OldThemes/<topic>/`.
 
 **Konvention 2: Collection-Naming.** Project-local: `<Project>-meta` und `<Project>-features`. Central Reference: `<Project>_reference` (mit Underscore statt Dash, peer-Konvention zu `RAG_reference`, `searxng_reference`). Monitor_CC weicht hier ab: die zentrale Collection heißt `Monitor_reference` ohne `_CC` weil bereits angelegt — beibehalten.
-
-**Konvention 3: sources.md Status.** Files im central reference store kriegen Status `Indexed (RAG: <central_collection>)`. Project-local Reference-Files kriegen Status `Referenced` (keine Indexierung dort). External URLs/Repos die nicht gespiegelt sind: `Referenced` oder `Verified`. Forum-Sources (Reddit/HN): permanent `Referenced`, kein RAG-Index.
 
 ## Offene Fragen
 
@@ -46,6 +44,4 @@ Cache-Read-Cost beim mehrfach-pro-Session-Run von `rag-cli update_docs .`: nicht
 
 - `Meta/ClaudeCode/MCP/RAG/src/rag/sync.py` — update_docs implementation
 - `Meta/ClaudeCode/MCP/RAG/workflow.py` — index-dir command (lines 99-200, 276-285)
-- `Meta/ClaudeCode/MCP/RAG/sources/sources.md` — Reference-Pattern für strikte 5-Spalten-Tabelle (kein description column)
-- `~/.claude/shared-rules/global/documentation.md` § "sources/sources.md" — Format-Spec + Status-Rules
 - Session 2026-05-11 — empirisches Beispiel für die zwei-Pfad-Trennung
