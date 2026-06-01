@@ -16,6 +16,7 @@ _HOOK_SCRIPTS = [
     ("block_polling_loop.py",            "Bash"),
     ("rewrite_chained_sleep.py",         "Bash"),
     ("rewrite_rag_cli_search_noise.py",  "Bash"),
+    ("rewrite_searxng_scrape_noise.py",  "Bash"),
     ("block_unauthorized_background.py",   "Bash"),
     ("rewrite_background_sleep.py",        "Bash"),
     ("rewrite_reddit_index_background.py", "Bash"),
