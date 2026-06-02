@@ -1,5 +1,5 @@
 {
-  "collection": "Monitor_CC-docs",
+  "collection": "monitor-cc-docs",
   "include": [
     "src/DOCS.md",
     "src/*/DOCS.md",
