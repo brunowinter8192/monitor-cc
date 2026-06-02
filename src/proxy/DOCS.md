@@ -25,11 +25,12 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (404 LOC)
+### addon.py (407 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, appends 4xx errors to `api_errors.jsonl`, writes `latency_update` records on successful responses. count_tokens requests (`/v1/messages/count_tokens`) pass through unmodified — `_is_messages_request()` matches only `/v1/messages` + optional query string.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
-**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); appends one JSONL line to `src/logs/api_errors.jsonl` on 4xx (fields: `ts`, `status_code`, `error_response`, `request_url`, `request_payload`). Entry fields stamped post-modification include `stripped_unused_tools_names` (from `_strip_unused_tools` 3-tuple) and `deferred_tools_names` (from `_extract_deferred_tool_names` on the ORIGINAL pre-strip payload). Both default-omitted when empty. Additionally writes two additive dual-log files via `_resolve_dual_log_file(suffix)` into `src/logs/dual_log/`: `_original` (raw CC payload snapshotted before `apply_modification_rules`, serialized immediately so later mutations are irrelevant) and `_forwarded` (final `modified_payload` after the complete pipeline incl. cache ops, written just before `flow.request.content` assignment — byte-identical to wire). Each write in its own `try/except`; failures never affect forwarding or main log.
+**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); appends one JSONL line to `src/logs/api_errors.jsonl` on 4xx (fields: `ts`, `status_code`, `error_response`, `request_url`, `request_payload`). Entry fields stamped post-modification include `stripped_unused_tools_names` (from `_strip_unused_tools` 3-tuple) and `deferred_tools_names` (from `_extract_deferred_tool_names` on the ORIGINAL pre-strip payload). Both default-omitted when empty. Additionally writes two additive dual-log files via `_resolve_dual_log_file(suffix)` into `src/logs/dual_log/`: `_original` (raw CC payload snapshotted before `apply_modification_rules`, serialized immediately so later mutations are irrelevant); `_forwarded` (delta entry via `_build_forwarded_delta` — REQ#1 full, subsequent requests only changed/new elements per-element hash diff with `cache_control` stripped for comparison). Each write in its own `try/except`; failures never affect forwarding or main log.
+**State:** `prev_delta_hashes_by_model` (dict, keyed by model_family) holds per-element hash lists `{"system": [...], "tools": [...], "messages": [...]}` from the last successfully written forwarded delta. Updated only after a successful `_write_entry` (self-healing: failed write leaves hash chain at last logged state).
 **Called by:** mitmproxy (via `addons = [ProxyAddon()]` at module level). Hooks: `request`, `responseheaders`, `response`.
 **Calls out:** `mitmproxy`
 
@@ -137,15 +138,15 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### logging.py (158 LOC)
+### logging.py (235 LOC)
 
-**Purpose:** Build structured JSONL log entries from flow + payload data; compute message diffs vs previous request; build `latency_update` records for response-side timing.
-**Reads:** Raw payload dicts, message lists, previous message summaries.
+**Purpose:** Build structured JSONL log entries from flow + payload data; compute message diffs vs previous request; build `latency_update` records for response-side timing; build `forwarded_delta` entries for the dual-log forwarded file.
+**Reads:** Raw payload dicts, message lists, previous message summaries, previous delta hash state.
 **Writes:** Nothing — returns structured entry dicts.
 **Called by:** `src/proxy/addon.py`
 **Calls out:** —
 
-**Log record types:** `_build_entry` → main request entry. `_build_latency_update(request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec, n_stalls=0, max_stall_ms=None, total_stall_ms=None)` → `{type: "latency_update", ...}` with 9 fields; written after successful response. Parser (proxy_display/parser.py) merges all latency fields into the main entry by matching `request_id`.
+**Log record types:** `_build_entry` → main request entry. `_build_latency_update(request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec, n_stalls=0, max_stall_ms=None, total_stall_ms=None)` → `{type: "latency_update", ...}` with 9 fields; written after successful response. Parser (proxy_display/parser.py) merges all latency fields into the main entry by matching `request_id`. `_build_forwarded_delta(payload, request_id, prev_hashes) -> (entry, curr_hashes)` → `{type: "forwarded_delta", is_first, counts, system_delta, tools_delta, messages_delta}`; REQ#1 full, subsequent requests only changed/new elements. Helpers: `_strip_cache_control(obj)` (recursive cache_control removal for stable hashing), `_delta_hash(element) -> str` (MD5[:10] after strip).
 
 ---
 
