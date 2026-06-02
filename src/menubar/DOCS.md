@@ -23,7 +23,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Reads:** function parameters only (sessions, bg_by_project, panel_width passed from callers). No direct `app` instance state accessed.
 **Writes:** NSPanel frame (via `_reposition_panel`); creates NSView/NSButton/NSTextField UI objects returned to callers.
 **Key signatures:** `_make_nspanel()`, `_reposition_panel(panel, nsstatusitem)`, `_compute_required_height(sorted_sessions)`, `_make_separator_view(project_name, panel_width, proj_min_remaining)`.
-**Called by:** `app.py` (`_reposition_panel` in `_open_main_panel`); `panel_manager.py` (imports constants + all factory helpers); `bead_controller.py` (imports constants + helpers); `queue_controller.py` (imports constants + helpers).
+**Called by:** `app.py` (`_reposition_panel` in `_open_main_panel`); `panel_manager.py` (imports constants + all factory helpers); `queue_controller.py` (imports constants + helpers).
 **Calls out:** `AppKit`, `Foundation`, `itertools`; `.menubar_log` (`log_menubar`).
 
 ---
@@ -61,27 +61,6 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bead_controller.py (350 LOC)
-
-**Purpose:** Per-concern controller for the bead tracker panel (Step 2/6 of CCMenuBarApp composition refactor). `BeadController(app)` owns all bead state (`_bead_data`, `_bead_db_paths`, `_bead_expanded`, `_bead_displayed`, `_bead_expand_tags`, `_bead_untrack_tags`, `_bead_query_tags`, `_bead_tick_counter`, `_rebuild_in_progress`) and exposes `tick(sessions)` (owns counter + condition + data fetch), `rebuild()` + `_rebuild_inner()` (re-entry guarded full panel rebuild), `compute_height()`, `handle_expand(tag)`, `handle_untrack(tag)`. ONE NSGridView (3 cols): col 0 = expand button (flexible), col 1 = ? status button (22pt), col 2 = × untrack button (22pt). Module-level pure helpers (`_make_bead_nspanel`, `_reposition_bead_panel`, `_resize_tracker_panel`, UI factories) stay module-level because they access only `app._tracker_*` / `app._panel_*` attrs that remain on app. `_make_expand_view` builds a per-line NSTextField container; when content exceeds `_BEAD_EXPAND_MAX_LINES=20` rows wraps in NSScrollView, container `widthAnchor` anchored to `sv.contentView().widthAnchor()` (scrolled) or `panel_width` directly (non-scrolled).
-**Reads:** `self._bead_data`, `self._bead_expanded`, `self._bead_expand_tags`, `self._bead_untrack_tags`, `self._bead_displayed`, `self._bead_db_paths`, `self._bead_query_tags`; `self.app._panel_width`, `self.app._panel_min_height`, `self.app._tracker_sv`, `self.app._tracker_panel`, `self.app._tracker_toggle_btn`, `self.app._panel_controller`, `self.app._auto_focus`, `self.app._tracker_open`.
-**Writes:** `self._bead_expanded` (clear or set expand text); `self._bead_displayed`, `self._bead_expand_tags`, `self._bead_untrack_tags`, `self._bead_query_tags` (reset each rebuild); `app._tracker_panel` frame (via `_resize_tracker_panel`).
-**Key signatures:** `BeadController.__init__(app)`, `tick(sessions)`, `rebuild()`, `compute_height()`, `handle_expand(tag)`, `handle_untrack(tag)`; module-level: `_make_bead_nspanel()`, `_reposition_bead_panel(panel, nsstatusitem)`.
-**Called by:** `app.py:CCMenuBarApp.__init__` (construction + `_make_bead_nspanel`); `app.py:CCMenuBarApp._tick` (`tick`); `app.py:_open_tracker_panel` (`app.bead.rebuild()`, `_reposition_bead_panel`); `app.py:_PanelController.expandBead_` (`handle_expand`); `app.py:_PanelController.untrackBead_` (`handle_untrack`); `app.py:_PanelController.queryBeadStatus_` (`_bead_query_tags` access); `app.py:_PanelController.windowDidEndLiveResize_` (`rebuild`).
-**Calls out:** `AppKit` (incl. `NSScrollView`), `Foundation`; `.bead_data` (`bd_show_text`, `bd_label_remove`, `project_db_map`, `load_tracked_beads`); `.panel` (constants + helpers).
-
----
-
-### bead_data.py (135 LOC)
-
-**Purpose:** All `bd` CLI interactions for the bead panel. `bd_show_text(bead_id, db_path)` runs `bd show --json` (description) then `bd comments --json` (separate call; show does NOT include comments) and returns a formatted string: description body (≤300 chars before Sources block), Sources block (full), then per-comment blocks `[YYYY-MM-DD HH:MM by Author]\n  text`. `bd_label_remove` untracks a bead. Helper functions: `project_db_map`, `load_tracked_beads`, `_bd_list_tracked`, `_bd_fetch_comments`, `_format_expand_text`, `_format_comment_ts`. Comment JSON schema: `{id, issue_id, author, text, created_at}` — field is `text` (not `body`). Timestamps parsed via `datetime.fromisoformat` with Z→+00:00 substitution, displayed in local timezone.
-**Reads:** `bd` CLI output via subprocess; nothing from app state.
-**Writes:** nothing (read-only toward bd).
-**Called by:** `bead_controller.py` (`bd_show_text`, `bd_label_remove`, `project_db_map`, `load_tracked_beads`).
-**Calls out:** `subprocess` (`bd`); stdlib (`json`, `datetime`, `pathlib`).
-
----
-
 ### paths.py (55 LOC)
 
 **Purpose:** Single source of truth for 8 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor-cc-menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`), `ORCHESTRATOR_SIGNALS_FILE` (`orchestrator_signals.json` — written by worker-cli send, read by menubar for auto-abort grace). Runs `_migrate_from_dotfiles()` and `_migrate_from_old_bundle_id()` at import.
@@ -97,18 +76,18 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Purpose:** Message queue storage + Ghostty delivery for the menubar app side. `load_queue()` / `save_queue(q)` — atomic read/write of `APP_SUPPORT/msg_queue.json` (schema: `{session_id: [{text: str, state: "draft"|"queued"|"sent", sent_at: str|null}]}`). `load_queue` normalizes all legacy formats via `_normalize_entry` on read — migration is transparent on next save. Migration rules: bare string → `{state:"queued"}`; dict missing `state`: `sent_at` non-null → `state:"sent"`, else → `state:"queued"`. Drafts are only created via the + button, never from migration. `deliver_message(cwd, message)` — reads `ghostty_cwd_uuid.json` for terminal UUID, then `focus terminal id UUID` + System Events `keystroke + Return`; falls back to cwd-based focus. Hook delivery uses inline equivalents in `hook_writer.py` (standalone, can't import from package).
 **Reads:** `QUEUE_FILE` (`msg_queue.json`); `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`).
 **Writes:** `QUEUE_FILE` (atomic via temp + `os.replace()`); osascript delivery to Ghostty.
-**Called by:** `queue_controller.py:QueueController` (`load_queue`, `save_queue`, `deliver_message`); `app.py:_PanelController.queryBeadStatus_` (`deliver_message`).
+**Called by:** `queue_controller.py:QueueController` (`load_queue`, `save_queue`, `deliver_message`).
 **Calls out:** `json`, `os`, `subprocess`; `.paths` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`).
 
 ---
 
-### app.py (546 LOC) ⚠ over 400 LOC ceiling — split-refactor complete (Step 6/6 done); RAG tab adds ~50 LOC
+### app.py (496 LOC) ⚠ over 400 LOC ceiling — split-refactor complete (Step 6/6 done); RAG tab adds ~50 LOC
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_tracker_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue action handlers (`addQueueRow_`, `toggleQueueEntry_`, `removeQueueEntry_`, `commitQueueField_`, `controlTextDidEndEditing_`) are 1-line delegates to `self._app.queue.handle_*` methods. `_tick` delegates session snapshot to `self.sessions.refresh()`, focus+abort logic to `self.focus.tick(sessions, bg_by_project, now)`, bead refresh to `self.bead.tick(sessions)`, queue refresh + conditional rebuild to `self.queue.tick(sessions)`, panel rebuild/update to `self.panel.rebuild()` / `self.panel.update_inplace()`, and digit-hotkey re-registration to `self.hotkey.reregister_digits(self.panel._desktop_to_cwd)`; status snapshot updated via `self.focus.update_statuses(sessions)` at tick-end.
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_rag_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue action handlers (`addQueueRow_`, `toggleQueueEntry_`, `removeQueueEntry_`, `commitQueueField_`, `controlTextDidEndEditing_`) are 1-line delegates to `self._app.queue.handle_*` methods. `_tick` delegates session snapshot to `self.sessions.refresh()`, focus+abort logic to `self.focus.tick(sessions, bg_by_project, now)`, queue refresh + conditional rebuild to `self.queue.tick(sessions)`, panel rebuild/update to `self.panel.rebuild()` / `self.panel.update_inplace()`, and digit-hotkey re-registration to `self.hotkey.reregister_digits(self.panel._desktop_to_cwd)`; status snapshot updated via `self.focus.update_statuses(sessions)` at tick-end.
 **Reads:** `self.sessions.refresh()` (via `SessionsController`) + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch.
 **Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `src/logs/menubar.log` ([abort] category via `_abort_log_write`; [tick] category when `MENUBAR_DIAGNOSTICS=1`).
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.focus_controller`, `.bead_controller`, `.queue_controller`, `.rag_controller`, `.panel_manager`, `.panel`, `.hotkey_controller`, `.system`, `.discover`, `.bg_timer`, `.paths`, `.queue` (`deliver_message`); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
+**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.focus_controller`, `.queue_controller`, `.rag_controller`, `.panel_manager`, `.panel`, `.hotkey_controller`, `.system`, `.discover`, `.bg_timer`, `.paths`; `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
 
 ---
 
@@ -117,7 +96,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Purpose:** Session snapshot cache. `SessionsController` wraps `list_alive_sessions()` with a one-value cache (`_last_sessions`) so all consumers within a tick read the same snapshot without re-calling discovery. First controller in the Step 1/6 CCMenuBarApp composition refactor.
 **Reads:** nothing directly; delegates to `discover.py:list_alive_sessions()`.
 **Writes:** `self._last_sessions` on each `refresh()` call.
-**Called by:** `app.py:CCMenuBarApp.__init__` (construction); `app.py:CCMenuBarApp._tick`, `app.py:_open_main_panel`, `app.py:_open_queue_panel` (`refresh()`); `queue_controller.py:QueueController.handle_add_row/handle_toggle_entry/handle_remove_entry/handle_commit_field` (`self.app.sessions.refresh()`); `app.py:_PanelController.queryBeadStatus_` (`.data`).
+**Called by:** `app.py:CCMenuBarApp.__init__` (construction); `app.py:CCMenuBarApp._tick`, `app.py:_open_main_panel`, `app.py:_open_queue_panel` (`refresh()`); `queue_controller.py:QueueController.handle_add_row/handle_toggle_entry/handle_remove_entry/handle_commit_field` (`self.app.sessions.refresh()`).
 **Calls out:** `.discover` (`list_alive_sessions`).
 
 ---
@@ -138,7 +117,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Purpose:** Carbon global hotkey registration + `HotkeyController` per-concern controller (Step 6/6 of CCMenuBarApp composition refactor). Module-level: `register_cmd_l(callback)` / `register_cmd_k(callback)` — install Cmd+L and Cmd+K hotkeys at app start; caller (`app._hotkey_cb/_ref`, `app._hotkey_k_cb/_ref`) keeps both alive as GC anchors (CFUNCTYPE GC while registered → SIGSEGV). `register_cmd_digits(callback_map)` / `unregister_hotkeys(refs)` — Cmd+1..9 registration lifecycle; `register_cmd_arrow_right/left(callback)` / `unregister_cmd_arrow_right/left(hk_ref)` — Cmd+→/← lifecycle. Module-level state: `_DIGIT_HANDLER_CB/REF`, `_ARROW_HANDLER_CB/REF` persist InstallEventHandler across cycles; `_DIGIT_CALLBACKS` / `_ARROW_CALLBACKS` are mutable dispatch tables. All handlers filter via `GetEventParameter(typeEventHotKeyID)` and return `eventNotHandledErr (-9874)` for unknown IDs. Every dispatch calls `log_menubar('hotkey', ...)`. `HotkeyController(app)` owns the 4 migrating GC refs (`_hotkey_digits_cb/_refs`, `_hotkey_arr_right/left_ref`) and wraps lifecycle calls into `reregister_digits(desktop_to_cwd)`, `register_arrow_right/left(callback)`, `unregister_arrow_right/left()`, `unregister_digits()`.
 **Reads:** nothing.
 **Writes:** Carbon event handlers + hotkey registrations via CDLL; mutates module-level `_DIGIT_CALLBACKS` / `_ARROW_CALLBACKS` dicts; appends to `src/logs/menubar.log` on each hotkey press.
-**Called by:** `app.py:CCMenuBarApp.__init__` (`register_cmd_l`, `register_cmd_k`, `HotkeyController` construction); `app.py:CCMenuBarApp._tick` + `app.py:_open_main_panel` + `app.py:_PanelController.windowDidEndLiveResize_` (`app.hotkey.reregister_digits`); `app.py:_open/close_main/tracker/queue_panel` (`app.hotkey.register/unregister_arrow_*`, `app.hotkey.unregister_digits`).
+**Called by:** `app.py:CCMenuBarApp.__init__` (`register_cmd_l`, `register_cmd_k`, `HotkeyController` construction); `app.py:CCMenuBarApp._tick` + `app.py:_open_main_panel` + `app.py:_PanelController.windowDidEndLiveResize_` (`app.hotkey.reregister_digits`); `app.py:_open/close_main/rag/queue_panel` (`app.hotkey.register/unregister_arrow_*`, `app.hotkey.unregister_digits`).
 **Calls out:** `ctypes` (Carbon framework CDLL); `.menubar_log` (`log_menubar`); `.system` (`_focus_session`).
 
 ---
@@ -215,21 +194,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### bead_tracker_hook.py (81 LOC)
-
-**Purpose:** CC PostToolUse hook — auto-tracks bead IDs referenced in `bd show` / `bd comments [add]` tool calls. Splits chained Bash calls on `;`/`&&`/`||` and processes each subcommand independently: skips subcommands containing `--db`/`--repo` (cross-project), matches bead IDs via `_BD_TRACK_RE`, walks up the project directory tree to find `.beads/dolt` (up to 5 levels, resolved once per hook invocation), then calls `bd label add` to register matched beads as tracked. Standalone script; never imported. Installed by `hook_setup.py`.
-**Reads:** stdin (CC PostToolUse JSON payload); `.beads/dolt` discovery via directory walk; `_BD_TRACK_RE` / `_HAS_DB_FLAG` patterns on `tool_input.command`.
-**Writes:** nothing directly — spawns `bd label add` via subprocess.
-**Called by:** CC hook system (PostToolUse/Bash). Never imported.
-**Calls out:** `subprocess` (`bd`); stdlib (`json`, `re`, `sys`, `pathlib`).
-
-**Usage:** `python3 src/menubar/bead_tracker_hook.py` (stdin = CC hook JSON). Install via `hook_setup.py`.
-
----
-
 ### hook_setup.py (141 LOC)
 
-**Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message if the script is running from a worktree path — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]`, checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source.
+**Purpose:** Idempotent installer for the activity-monitor hooks (UserPromptSubmit/Stop/StopFailure) with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message if the script is running from a worktree path — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]`, checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source.
 **Reads:** `~/.claude/settings.json`.
 **Writes:** `~/.claude/settings.json` (atomic via temp + `os.replace()`; up to two saves per run — one after sweep if stale entries found, one after add-loop if new entries installed).
 **Called by:** User manually (`python3 src/menubar/hook_setup.py` from Monitor_CC root). Never imported.
@@ -309,12 +276,12 @@ system.py         → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
                     lazy(.app) inside run() only
 queue.py          → json, os, subprocess; .paths (QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE)
 app.py            → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
-                    .sessions_controller, .focus_controller, .bead_controller, .queue_controller,
+                    .sessions_controller, .focus_controller, .queue_controller,
                     .rag_controller, .panel_manager, .panel, .hotkey_controller, .system, .discover,
-                    .bg_timer, .paths (SETTINGS_FILE), .queue (deliver_message), .menubar_log (log_menubar)
+                    .bg_timer, .paths (SETTINGS_FILE), .menubar_log (log_menubar)
 ```
 
-No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` and `hook_setup.py` are standalone scripts (stdlib + subprocess only), not imported by any module (exception: `write_plist()` or `write_plist_py2app()` from `setup_menubar.py` are lazy-imported in `app.py:restartApp_` — branch-specific, never both). `menubar_main.py` is the py2app entry point — only imported by the native launcher, not by any module in the package.
+No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py`, `hook_setup.py`, and `hook_writer.py` are standalone scripts (stdlib + subprocess only), not imported by any module (exception: `write_plist()` or `write_plist_py2app()` from `setup_menubar.py` are lazy-imported in `app.py:restartApp_` — branch-specific, never both). `menubar_main.py` is the py2app entry point — only imported by the native launcher, not by any module in the package.
 
 ---
 
@@ -340,7 +307,6 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 | `_ghostty_tty_last_refresh` | ghostty.py | `float` | module | Timestamp of last probe cycle (updated only when a probe actually ran). |
 | `_ghostty_cwd_uuid_last` | ghostty.py | `dict` | module | Previous write state for `ghostty_cwd_uuid.json` change-detection (skip write if unchanged). |
 | `CCMenuBarApp.sessions` | app.py | `SessionsController` | sessions_controller.py | Session snapshot cache. `sessions.refresh()` calls `list_alive_sessions()` and caches result; `sessions.data` returns cached snapshot. Replaces bare `_last_sessions` attr. |
-| `CCMenuBarApp.bead` | app.py | `BeadController` | bead_controller.py | Bead tracker controller. Owns `_bead_data`, `_bead_db_paths`, `_bead_expanded`, `_bead_displayed`, `_bead_expand_tags`, `_bead_untrack_tags`, `_bead_query_tags`, `_bead_tick_counter`. `bead.tick(sessions)` drives counter + refresh; `bead.rebuild()` re-renders NSPanel. |
 | `CCMenuBarApp.queue` | app.py | `QueueController` | queue_controller.py | Queue panel controller. Owns all 11 `_queue_*` attrs (incl. `_queue_open`, `_queue_panel`, `_queue_sv`, `_queue_toggle_btn`, `_queue_data`, `_pending_queue_tags`, `_pending_queue_views`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_queue_displayed_names`). `queue.tick(sessions)` drives data reload + conditional rebuild; `queue.open(sessions)` used on panel-open (forced rebuild). Action handlers: `handle_add_row`, `handle_toggle_entry`, `handle_remove_entry`, `handle_commit_field`, `handle_text_end_editing`, `handle_try_deliver`. |
 | `CCMenuBarApp.rag` | app.py | `RagController` | rag_controller.py | RAG status panel controller. Owns `_rag_open`, `_rag_panel`, `_rag_sv`, `_rag_toggle_btn`, `_rag_status_label`. `rag.tick(sessions)` reads `~/.rag-locks/rag.lock` and updates the status label in-place every tick. `rag.rebuild()` does full panel rebuild (called on open + live-resize). |
 | `CCMenuBarApp.panel` | app.py | `PanelManager` | panel_manager.py | Main-session panel controller (Step 4/6). Owns `_panel_open`, `_initialized`, `_displayed_items`, `_cwd_map`, `_desktop_to_cwd`, `_abort_btns_by_project`, `_abort_project_for_tag`, `_rebuild_in_progress`, and NSPanel refs `_panel`, `_panel_sv`, `_panel_quit_btn`, `_toggle_btn`, `_panel_kill_btn`. `panel.rebuild(sessions, bg_by_project)` drives full panel rebuild; `panel.update_inplace(sessions, bg_by_project)` drives in-place dot+badge update. Settings `_auto_focus`, `_panel_width`, `_panel_min_height` remain on `app` (cross-controller shared preferences). |
@@ -389,10 +355,10 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Ghostty AppleScript**: Ghostty.sdef exposes `id` (UUID, stable), `name` (current title), `working directory` per `terminal`. `focus` command takes a specifier: `focus terminal id "<UUID>"`. Does NOT expose `tty` or `pid`.
 - **OSC 2 cleanup**: After the probe, `\033]2;\007` (empty-string OSC 2) written to the probed TTYs restores the shell's default title. Without cleanup, idle shells show `__GHT_XXXXXXXX` until next prompt display.
 - **TTY ownership**: Ghostty children run as `/usr/bin/login` (root) but the `/dev/ttys<NNN>` device files are owned by the logged-in user → write access OK.
-- **Dynamic panel height (grow-only)** (`panel.py`): `_rebuild_panel` calls `_compute_required_height` → `_resize_panel(app, max(app._panel_min_height, required_h))`. Panel never shrinks below user-set floor. `NSBoxSeparator` containers require explicit `heightAnchor().constraintEqualToConstant_(18.0)` — plain `NSView` has no `intrinsicContentSize`. NSGridView additionally turns off TAMIC on ALL content views (via `addRowWithViews_`), so any `NSView` placed in a grid cell MUST carry a `heightAnchor` AND `widthAnchor` constraint; without height: `height=0`, `yPlacement=top` pins origin to row top, subviews bleed up; without width: AutoLayout assigns `w=0`, merged-cell content is invisible. `_make_separator_view` (panel.py) sets only `heightAnchor`. `_make_expand_view` (bead_controller.py) sets both: `heightAnchor = total`, `widthAnchor = panel_width` (non-scroll path) or `widthAnchor = sv.contentView().widthAnchor()` (NSScrollView path).
+- **Dynamic panel height (grow-only)** (`panel.py`): `_rebuild_panel` calls `_compute_required_height` → `_resize_panel(app, max(app._panel_min_height, required_h))`. Panel never shrinks below user-set floor. `NSBoxSeparator` containers require explicit `heightAnchor().constraintEqualToConstant_(18.0)` — plain `NSView` has no `intrinsicContentSize`. NSGridView additionally turns off TAMIC on ALL content views (via `addRowWithViews_`), so any `NSView` placed in a grid cell MUST carry a `heightAnchor` AND `widthAnchor` constraint; without height: `height=0`, `yPlacement=top` pins origin to row top, subviews bleed up; without width: AutoLayout assigns `w=0`, merged-cell content is invisible. `_make_separator_view` (panel.py) sets only `heightAnchor`.
 - **Cursor handling on panel edges** (`panel.py`): `_PanelContentView(NSView)` uses NSTrackingArea + `mouseMoved_` for edge detection; `_set_hovered_edge` calls `invalidateCursorRectsForView_` on state change; `resetCursorRects` installs a single full-bounds rect for the current edge state (state-driven, winit pattern). `_CursorlessLabel(NSTextField)` and `_CursorlessButton(NSButton)` suppress child-view `resetCursorRects` to prevent override of edge cursors. Note: `LSUIElement=1` accessory-app context blocks cursor-rect dispatch in practice (cursor change not visible to user); implementation is mechanically correct but AppKit dispatch is suppressed — see `decisions/OldThemes/menubar_overhaul_2026-05-19.md` Iteration 9.
 - **Status-change is panel-no-op**: working↔idle transitions NEVER trigger `_rebuild_panel` or `_resize_panel`. Open panel: status changes go through `_update_panel_inplace`. Closed panel: only trigger `_blink`. Only two events trigger `_rebuild_panel`: (1) session-set change; (2) abort-button None↔Some transition (panel open only). Queue panel has no in-place update path — any change triggers full `_rebuild_queue_panel`.
-- **Four-panel cycling** (`app.py`): Sessions → RAG → Beads → Queue → Sessions (Cmd+→); reverse (Cmd+←). Each `_open_*_panel` registers BOTH Cmd+→ and Cmd+←; each `_close_*_panel` unregisters both. Generic `_deferred_close_open(app, from, to)` handles all 12 transition combinations dispatched via `NSOperationQueue.mainQueue()`. `unregister_cmd_arrow_*(None)` is a no-op — safe when opposite direction was not registered.
+- **Three-panel cycling** (`app.py`): Sessions → RAG → Queue → Sessions (Cmd+→); reverse (Cmd+←). Each `_open_*_panel` registers BOTH Cmd+→ and Cmd+←; each `_close_*_panel` unregisters both. Generic `_deferred_close_open(app, from, to)` handles all 6 transition combinations dispatched via `NSOperationQueue.mainQueue()`. `unregister_cmd_arrow_*(None)` is a no-op — safe when opposite direction was not registered.
 - **NSTextField in nonactivating panel** (`queue_panel.py`, `panel.py`): `NSWindowStyleMaskNonactivatingPanel` prevents the *app* from activating (Ghostty stays frontmost). However the default NSPanel implementation also returns `canBecomeKeyWindow=False` for this mask — this silently prevents `makeFirstResponder_` from routing keyboard events to NSTextField. Fix: `_KeyablePanel(NSPanel)` in `panel.py` overrides `canBecomeKeyWindow` to return True; all three panels use `_KeyablePanel.alloc()`. `makeKeyAndOrderFront_(None)` + `makeFirstResponder_(tf)` in `_rebuild_queue_panel` then correctly grants keyboard focus to the input field without stealing app activation.
 - **NSPanel ObjC attribute constraint**: NSPanel (and all PyObjC-bridged ObjC objects) reject arbitrary Python attribute assignment — `panel.my_attr = x` raises `AttributeError`. `_make_nspanel()` returns `(panel, stack, quit_btn)` as a Python tuple.
 - **NSStackView gravity**: requires BOTH `addView_inGravity_(view, 1)` AND `setDistribution_(-1)` (`NSStackViewDistributionGravityAreas`). `setDistribution_(0)` ignores gravity entirely. Enum values: `GravityTop=1`, `GravityCenter=2`, `GravityBottom=3`; `DistGravityAreas=-1`, `DistFill=0`.

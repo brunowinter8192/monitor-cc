@@ -160,7 +160,7 @@ class QueueController:
         state = 'ON' if app._auto_focus else 'OFF'
         self._queue_toggle_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
-                f'Sessions \u00b7 RAG \u00b7 Beads \u00b7 [Queue]     Auto-Jump: {state}',
+                f'Sessions \u00b7 RAG \u00b7 [Queue]     Auto-Jump: {state}',
                 {NSFontAttributeName: _MENLO()}))
         main_sessions = sorted(
             [s for s in sessions if not s.is_worker],
