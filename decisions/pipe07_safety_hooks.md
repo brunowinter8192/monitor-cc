@@ -334,41 +334,6 @@
 
 **Smoke:** `dev/hook_smoke/test_rewrite_background_sleep.py` (8 cases: 3 positive rewrite, 5 negative no-op).
 
-### Hook 19 — `block_batch_bd_close.py` — RETIRED (bd 1.0.4)
-
-**RETIRED** — The upstream dolt bug that justified this hook (JSONL auto-import clobbering bead writes) is disproven on bd 1.0.4. `maybeAutoImportJSONL` (`cmd/bd/auto_import_upgrade.go`, gastownhall/beads `main` @ fbcee6c) is emptiness-guarded via `GetStatistics` AND uses `importFromLocalJSONLConflictSkip` (insert-if-new, not UPSERT — GH#3955): a stale JSONL on a non-empty DB is a harmless no-op, categorically not a clobber. The `nothing to commit` dolt-server.log warnings are benign — `maybeAutoCommit` (`cmd/bd/dolt_autocommit.go`) treats them as no-ops (`isDoltNothingToCommit → return nil`). Live batch-close test (3 ids, one `bd close` invocation) held through 12 reads + server bounce on bd 1.0.4 ce242a879. Hook script and smoke test deleted. See `decisions/OldThemes/bd_mutation_revert/02_resolved_1.0.4_hook_retired.md`.
-
-Historical technical record preserved below.
-
-- **Registration (was):** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
-- **Command (was):** `python3 <absolute-path>/src/hooks/block_batch_bd_close.py`
-- **Timeout:** 5s
-
-**Detection:** quote-stripped command is split into statements at `&&`, `||`, `;`, `|`, `\n`. For each statement starting with `bd`, the subcommand is classified and mutation units counted. Total units > 1 → block.
-
-**Mutation unit rules:**
-- id-list mutators (`close`, `done`, `reopen`, `update`, `delete`): count positional bead-id arguments (`[A-Za-z]\w*-[\w.]+`); minimum 1 per invocation (`max(1, id_count)` — 0 ids = last-touched, still 1 mutation). Skip flags and values of value-taking flags (`-r`/`--reason`, `--reason-file`, `--session`, `-C`/`--directory`, `--db`, `--actor`, `--dolt-auto-commit`, `-p`/`--priority`, `-t`/`--type`, `-s`/`--status`, `--assignee`, `--label`). Handle `--flag value` and `--flag=value`.
-- Other mutators (`set-state`, `create`, `todo`, `import`, `restore`, `supersede`, `duplicate`, `set-metadata`, `label`, `epic`, `swarm`, `branch`, `federation`, `vc`, unknown): 1 unit per invocation. `set-state` is here (not id-list) — its positional args include a state value (e.g. `in-progress`) matching the bead-id regex, making id-counting unreliable.
-- Compound: `comments add` / `dep add` / `dep remove` / `find-duplicates --merge` → 1 unit; view/list forms → 0.
-- READ-ONLY (`list`, `show`, `search`, `count`, `status`, `types`, `graph`, `history`, `diff`, `stale`, `lint`, `ready`, `export`, `backup`, `state`, `version`, `help`): 0 units.
-- Infra (`config`, `dolt`): 0 units — operate on config / dolt-server, not bead state (so `bd config set ...; bd config get ...` and `bd dolt stop; bd dolt start` chains pass).
-- Unknown subcommand → treated as MUTATING (conservative).
-
-**Blocked patterns:**
-- `bd close Monitor_CC-a Monitor_CC-b` (2 ids)
-- `bd close Monitor_CC-a; bd close Monitor_CC-b` (2 sequential closings)
-- `bd done Monitor_CC-a Monitor_CC-b`, `bd update Monitor_CC-a Monitor_CC-b --status closed`
-- `bd create "x"; bd create "y"` (2 creates)
-- `bd close Monitor_CC-a && bd update Monitor_CC-b --status closed`
-- `bd close Monitor_CC-a; bd comments add Monitor_CC-b "x"`
-- `bd delete Monitor_CC-a Monitor_CC-b` (2 ids → batch delete reverts too)
-
-**Allowed patterns:** any single mutation (1 id or 1 invocation); mutation + any number of reads; `bd close` (no id, last-touched form — `max(1,0)` = 1 unit, still a single mutation → allowed); infra chains (`config`/`dolt`); read-only-only chains; quoted bd examples
-
-**Rationale (historical):** upstream dolt bug — when multiple bd mutation calls share one shell invocation, JSONL auto-import fires between writes and clobbers all but the first. The structural fix enforces the "one mutation per Bash call" invariant at the hook layer, preventing silent data loss without requiring bd source changes. Bug no longer present on bd 1.0.4.
-
-**Smoke (deleted):** `dev/hook_smoke/test_block_batch_bd_close.py` (29 cases: 17 allow, 12 block).
-
 ## Evidenz
 
 **2026-05-22 hook-block analysis** (`dev/hook_firing/reports/2026-05-22_012326.md`, 7 days of CC sessions across all projects):
@@ -420,7 +385,7 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current 18 hooks + audit logging (hook 19 `block_batch_bd_close` retired — bd 1.0.4 disproves the auto-import clobber bug; see `decisions/OldThemes/bd_mutation_revert/02_resolved_1.0.4_hook_retired.md`). Pending evaluation after rollout:
+Keep current 18 hooks + audit logging. Pending evaluation after rollout:
 - Do hooks #9–17 (2026-05-22 batch) intercept violations without false positives in live sessions?
 - `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.
