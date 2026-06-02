@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 from datetime import datetime, timedelta
 
-# From paths.py: APP_SUPPORT dir (~/.../com.brunowinter.monitor_cc_menubar/)
+# From paths.py: APP_SUPPORT dir (~/.../com.brunowinter.monitor-cc-menubar/)
 from .paths import _APP_SUPPORT
 
 MENUBAR_LOG    = _APP_SUPPORT / 'menubar.log'

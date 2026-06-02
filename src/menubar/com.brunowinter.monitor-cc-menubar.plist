@@ -4,9 +4,9 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.brunowinter.monitor_cc_menubar</string>
+  <string>com.brunowinter.monitor-cc-menubar</string>
 
-  <!-- Replaced at setup time: points to Monitor_CC_Menubar.app/Contents/MacOS/Monitor_CC_Menubar (py2app native binary) -->
+  <!-- Replaced at setup time: points to monitor-cc-menubar.app/Contents/MacOS/monitor-cc-menubar (py2app native binary) -->
   <key>ProgramArguments</key>
   <array>
     <string><BUNDLE_LAUNCHER></string>
@@ -33,9 +33,9 @@
   </dict>
 
   <key>StandardOutPath</key>
-  <string>/tmp/monitor_cc_menubar.log</string>
+  <string>/tmp/monitor-cc-menubar.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/tmp/monitor_cc_menubar.err</string>
+  <string>/tmp/monitor-cc-menubar.err</string>
 </dict>
 </plist>

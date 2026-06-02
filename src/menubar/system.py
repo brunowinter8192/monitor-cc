@@ -9,7 +9,7 @@ from .ghostty import get_ghostty_terminal_id
 # From paths.py: APP_SUPPORT-relative PID lock file
 from .paths import PID_FILE as _LOCK_PATH
 
-_LAUNCHD_LABEL = 'com.brunowinter.monitor_cc_menubar'
+_LAUNCHD_LABEL = 'com.brunowinter.monitor-cc-menubar'
 
 # ORCHESTRATOR
 
@@ -79,5 +79,5 @@ def _focus_session(cwd: str) -> None:
             msg = f'{ts} OK {label}\n'
     except subprocess.TimeoutExpired:
         msg = f'{ts} TIMEOUT {label}\n'
-    with open('/tmp/monitor_cc_menubar_focus.log', 'a') as fh:
+    with open('/tmp/monitor-cc-menubar_focus.log', 'a') as fh:
         fh.write(msg)

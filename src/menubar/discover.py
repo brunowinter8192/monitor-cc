@@ -110,7 +110,7 @@ def _classify_encoded_dir(encoded_dir: str) -> tuple:
 # JSONL cwd drifts with each Bash `cd`. Returns None if proc cache has no match (stale).
 def _proc_cwd_for_encoded_dir(encoded_dir: str) -> Optional[str]:
     for _pid, (tty, proc_cwd) in _cc_proc_cache.items():
-        if encode_project_path(proc_cwd) == encoded_dir:
+        if encode_project_path(proc_cwd).lower() == encoded_dir.lower():
             return proc_cwd
     return None
 

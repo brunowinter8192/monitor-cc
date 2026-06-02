@@ -1,11 +1,11 @@
-# Monitor_CC Menubar
+# monitor-cc Menubar
 
 macOS status-bar indicator for live Claude Code sessions. Shows all active CC sessions with working/idle status and background-task badge. Updates every 1.5s.
 
 ## Manual run
 
 ```bash
-cd /path/to/Monitor_CC
+cd /path/to/monitor-cc
 ./venv/bin/python3 workflow.py --mode menubar
 ```
 
@@ -13,33 +13,33 @@ The `◉` icon appears in the menu bar. Click it to see active sessions.
 
 ## Auto-start via launchd
 
-1. **Edit the plist** — replace `<PROJECT_ROOT>` with the absolute path to your Monitor_CC directory:
+1. **Edit the plist** — replace `<PROJECT_ROOT>` with the absolute path to your monitor-cc directory:
 
 ```bash
-sed 's|<PROJECT_ROOT>|/path/to/Monitor_CC|g' \
-  src/menubar/com.brunowinter.monitor_cc_menubar.plist \
-  > ~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist
+sed 's|<PROJECT_ROOT>|/path/to/monitor-cc|g' \
+  src/menubar/com.brunowinter.monitor-cc-menubar.plist \
+  > ~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist
 ```
 
 2. **Load the agent:**
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist
+launchctl load ~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist
 ```
 
 3. **Check it started:**
 
 ```bash
-launchctl list | grep monitor_cc_menubar
+launchctl list | grep monitor-cc-menubar
 # Should show a PID in the first column
 ```
 
-4. **Logs** — stdout/stderr go to `/tmp/monitor_cc_menubar.log` and `.err`.
+4. **Logs** — stdout/stderr go to `/tmp/monitor-cc-menubar.log` and `.err`.
 
 ## Stop / unload
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist
+launchctl unload ~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist
 ```
 
 ## Menu layout

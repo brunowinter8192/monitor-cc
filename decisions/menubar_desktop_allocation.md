@@ -9,29 +9,31 @@
 
 ## Status Quo (IST)
 
-**After user installs `dist/Monitor_CC_Menubar.app/` and grants Screen Recording:**
+**After user installs `dist/monitor-cc-menubar.app/` and grants Screen Recording:**
 
 | Component | State |
 |---|---|
-| Bundle location | `~/Applications/Monitor_CC_Menubar.app/` |
+| Bundle location | `~/Applications/monitor-cc-menubar.app/` |
 | Bundle type | py2app (native Mach-O, embedded Python 3.14) |
-| Bundle identifier | `com.brunowinter.monitor_cc_menubar` |
-| CFBundleExecutable | `Monitor_CC_Menubar` (Mach-O 64-bit arm64) |
+| Bundle identifier | `com.brunowinter.monitor-cc-menubar` |
+| CFBundleName | `monitor-cc-menubar` |
+| CFBundleExecutable | `monitor-cc-menubar` (Mach-O 64-bit arm64) |
 | Embedded Python | `Python.framework/Versions/3.14/Python` (5.1MB stripped) |
-| TCC permission required | Screen Recording → `com.brunowinter.monitor_cc_menubar` |
-| Audit token at CGWindowList call | `com.brunowinter.monitor_cc_menubar` (native launcher, no exec chain) |
-| LaunchAgent | `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist` → `ProgramArguments = [.../Monitor_CC_Menubar]` |
+| TCC permission required | Screen Recording → `com.brunowinter.monitor-cc-menubar` |
+| Audit token at CGWindowList call | `com.brunowinter.monitor-cc-menubar` (native launcher, no exec chain) |
+| LaunchAgent | `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist` → `ProgramArguments = [.../monitor-cc-menubar]` |
+| APP_SUPPORT dir | `~/Library/Application Support/com.brunowinter.monitor-cc-menubar/` |
 | Restart mechanism | `restartApp_` → `write_plist_py2app()` + `launchctl bootout` + `launchctl bootstrap`; no bundle rebuild |
 
 **Detection pipeline** (`src/menubar/desktop_detection.py`, 343 LOC): three-strategy resolver per Main session window — (1) name-unique: `kCGWindowName` match in exactly one CGWindow → Hit; (2) space-elimination: multiple candidates, query `CGSCopySpacesForWindows` per candidate, eliminate already-claimed spaces → Hit; (3) OSC-2 injection: write `__DET_<hex>` marker to tty, re-match `kCGWindowName` → Hit. Results cached for 10s TTL, force-invalidated on cwd set change. **Transition logging** (`_last_result` module state): per-cycle comparison logs `[detection] transition <cwd_label> <old>-><new> win=<ghostty_win_name> n_cand=<N>` on desktop-number change — transition-gated, no per-cycle spam. Detection algorithm unchanged.
 
-**Log path** (`src/menubar/menubar_log.py`): `MENUBAR_LOG = _APP_SUPPORT / 'menubar.log'` — consistent with all other APP_SUPPORT files. Both dev (venv) and bundle write to `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/menubar.log`.
+**Log path** (`src/menubar/menubar_log.py`): `MENUBAR_LOG = _APP_SUPPORT / 'menubar.log'` — consistent with all other APP_SUPPORT files. Both dev (venv) and bundle write to `~/Library/Application Support/com.brunowinter.monitor-cc-menubar/menubar.log`.
 
 **Subprocess encoding** (2026-05-28): all 13 `subprocess.run(..., text=True)` calls in `src/menubar/` now carry `encoding='utf-8', errors='replace'`. Root cause: launchd sets no locale → Python defaults to ASCII → `ps -A -o command=` output containing CC worker spawn-prompts (emoji, umlauts) → `UnicodeDecodeError` → `detect_main_desktop_numbers` catch → `all_failed` → desktop number lost for all mains while any worker is running. Confirmed by live log: crash at 22:39 (ps, `b'...\xe2\xa0\x90 Offene Tasks...'`), crash at 22:40:59 (osascript, `'⠐ Offene Tasks'`). LaunchAgent plist template also gains `PYTHONUTF8=1` as belt-and-suspenders for launchd context.
 
 **Display** (`src/menubar/panel.py` + `src/menubar/discover.py`): mains show `[N]` slot prefix where N = macOS Mission Control desktop number. Conflict (2+ mains on same desktop) shows `[!N]` in red. `panel._desktop_to_cwd` populated conflict-free → `HotkeyController.reregister_digits()` (hotkey_controller.py) maps Cmd+N to the correct Main session.
 
-**Launch**: via launchd LaunchAgent (`RunAtLoad=true`) or manually via `open ~/Applications/Monitor_CC_Menubar.app`. **Restart**: Restart-Button ruft `write_plist_py2app()` (schreibt `ProgramArguments = [.../Monitor_CC_Menubar]`) dann reinen launchctl bootout+bootstrap — kein Bundle-Rebuild, TCC-Grant bleibt erhalten. `sys.frozen`-Gate in `restartApp_` trennt py2app-Pfad von dev/venv-Pfad.
+**Launch**: via launchd LaunchAgent (`RunAtLoad=true`) or manually via `open ~/Applications/monitor-cc-menubar.app`. **Restart**: Restart-Button ruft `write_plist_py2app()` (schreibt `ProgramArguments = [.../monitor-cc-menubar]`) dann reinen launchctl bootout+bootstrap — kein Bundle-Rebuild, TCC-Grant bleibt erhalten. `sys.frozen`-Gate in `restartApp_` trennt py2app-Pfad von dev/venv-Pfad.
 
 ## Evidenz
 
