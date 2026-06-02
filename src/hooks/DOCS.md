@@ -465,50 +465,6 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_batch_bd_close.py (149 LOC)
-
-**Purpose:** PreToolUse hook (Bash) — blocks any Bash command that performs more than 1 bead-mutating `bd` operation in a single invocation. Upstream dolt bug (issues #4135/#4239/#3948): when multiple bd mutation calls share a shell invocation, JSONL auto-import fires between writes and clobbers all but the first — silently corrupting bead state. Hook counts "mutation units" across the quote-stripped command; total > 1 → exit 2 + stderr. Total ≤ 1 → exit 0. Exits 0 on any parse error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
-**Writes:** stderr (one-line block message with root-cause explanation) on violation only.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** stdlib only (`json`, `os`, `re`, `sys`); `_fire_log.log_fire` (same-dir import).
-
-**Mutation unit counting:**
-- **id-list mutators** (`close`, `done`, `reopen`, `update`, `delete`): count positional bead-id arguments (`[A-Za-z]\w*-[\w.]+`); minimum 1 per invocation (0 ids = last-touched, still 1 mutation). Formula: `max(1, id_count)`. Skip flags and values of value-taking flags (`-r`/`--reason`, `--reason-file`, `--session`, `-C`/`--directory`, `--db`, `--actor`, `--dolt-auto-commit`, `-p`/`--priority`, `-t`/`--type`, `-s`/`--status`, `--assignee`, `--label`). Handles both `--flag value` and `--flag=value` forms.
-- **Other mutators** (`set-state`, `create`, `todo`, `import`, `restore`, `supersede`, `duplicate`, `set-metadata`, `label`, `epic`, `swarm`, `branch`, `federation`, `vc`, unknown): 1 unit per invocation. `set-state` is here (not id-list) because its positional args include a state value (e.g. `in-progress`) that matches the bead-id regex — id-counting is unreliable.
-- **Compound subcommands**: `comments add` / `dep add` / `dep remove` / `find-duplicates --merge` → 1 unit; `comments` (view) / `dep` (list) / `find-duplicates` (no merge) → 0 units.
-- **READ-ONLY** (`list`, `show`, `search`, `count`, `status`, `types`, `graph`, `history`, `diff`, `stale`, `lint`, `ready`, `export`, `backup`, `state`, `version`, `help`): 0 units.
-- **Infra** (`config`, `dolt`): 0 units — operate on config / dolt-server, not bead state. (So `bd config set ...; bd config get ...` and `bd dolt stop; bd dolt start` chains pass.)
-- **When in doubt** (unknown subcommand): treat as MUTATING. False-positive block is cheap; missing a batched mutation reintroduces the corruption bug.
-
-**Blocked patterns:**
-- `bd close Monitor_CC-a Monitor_CC-b` (2 ids → 2 units)
-- `bd close Monitor_CC-a; bd close Monitor_CC-b` (2 sequential closings)
-- `bd done Monitor_CC-a Monitor_CC-b`, `bd update Monitor_CC-a Monitor_CC-b --status closed`
-- `bd create "x"; bd create "y"` (2 create invocations)
-- `bd close Monitor_CC-a && bd update Monitor_CC-b --status closed`
-- `bd close Monitor_CC-a; bd comments add Monitor_CC-b "x"`
-- `bd delete Monitor_CC-a Monitor_CC-b` (2 ids → 2 units; batch delete also reverts)
-
-**Allowed patterns:**
-- `bd close Monitor_CC-lhf` (1 id → 1 unit)
-- `bd close Monitor_CC-lhf --reason="..."` (1 id; reason flag value not counted)
-- `bd update Monitor_CC-lhf --status closed` (1 id, flag value skipped)
-- `bd create "some title" --type task` (1 create invocation)
-- `bd close Monitor_CC-lhf && bd export > .beads/issues.jsonl` (1 mutation + read)
-- `bd close Monitor_CC-lhf; bd list; bd show Monitor_CC-abc` (1 mutation + 2 reads)
-- `bd close` (no id — last-touched; max(1,0) = 1 unit, total ≤ 1 → allow)
-- `bd comments add Monitor_CC-lhf "..."` (1 unit)
-- `echo "bd close A B C"` (quoted — stripped before matching)
-- `bd show Monitor_CC-a; bd show Monitor_CC-b` (reads only)
-- `bd config set export.git-add false; bd config get export.git-add` (infra — config/dolt not counted)
-
-**Quote stripping.** Inline `_strip_quoted()` (copied from `block_bd_cli_worker.py`) removes single/double-quoted content before matching — prevents quoted bd examples in `worker-cli send` messages or `--reason="..."` values from contributing false id counts.
-
-**Smoke:** `dev/hook_smoke/test_block_batch_bd_close.py` (29 cases: 17 allow, 12 block).
-
----
-
 ### hook_setup.py (135 LOC)
 
 **Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message (stderr) if running from a worktree — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]` (not only `PreToolUse`), checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source (worktree accident, repo move, etc.). Runs completely silent on success — no stdout output; stderr only for error conditions (worktree guard, JSON parse failure).

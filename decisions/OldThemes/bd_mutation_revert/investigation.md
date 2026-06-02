@@ -1,3 +1,11 @@
+## ✅ SUPERSEDED — bd 1.0.4
+
+The auto-import-clobber root cause documented in this file is **disproven on bd 1.0.4**. `maybeAutoImportJSONL` (`cmd/bd/auto_import_upgrade.go`) is emptiness-guarded via `GetStatistics` AND uses `importFromLocalJSONLConflictSkip` (insert-if-new, not UPSERT — GH#3955): a stale JSONL on a non-empty DB is a harmless no-op, categorically not a clobber. `block_batch_bd_close.py` has been retired. Full resolution and evidence: `decisions/OldThemes/bd_mutation_revert/02_resolved_1.0.4_hook_retired.md`.
+
+The root cause below (#4239/#3948/#4135, pre-1.0.4 JSONL auto-import clobbering) was real and valid for the bd versions in use at investigation time. Preserved as historical evidence.
+
+---
+
 # bd Mutation Revert — Investigation
 
 ## Problem (Symptom)
