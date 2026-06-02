@@ -24,7 +24,7 @@ class SessionInfo(NamedTuple):
     status: str              # 'working' | 'idle'
     has_bg: bool             # True if any in-progress background task exists
     encoded_dir: str         # ~/.claude/projects/ dir name, e.g. '-Users-.../Monitor_CC'
-    project_name: str        # project this session belongs to (for grouping); decoded-path heuristic — may not equal worker_tmux_session basename for nested paths like Meta/ClaudeCode/MCP/RAG (project_name='MCP-RAG', basename='RAG')
+    project_name: str        # project this session belongs to (for grouping); basename(live proc_cwd) for mains, basename(project_path_from_cwd) for workers; falls back to _decode_dir_name when worker cwd unavailable
     is_worker: bool          # True if session lives under .claude/worktrees/
     cwd: str                 # full working directory (non-empty for mains; '' for workers)
     session_id: str          # JSONL stem = CC session identifier (key for msg_queue.json)
@@ -141,6 +141,8 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
         if cwd and '/.claude/worktrees/' in cwd:
             # Real worker name from cwd preserves underscores (encode_project_path is lossy: _ → -)
             display_name = os.path.basename(cwd)
+            # Live project dir basename overrides stale decoded-dir name; fallback keeps decode value
+            project_name = os.path.basename(cwd.partition('/.claude/worktrees/')[0]) or project_name
             # Worker alive iff its tmux session exists (consistent with worker-cli)
             tmux_session = _worker_tmux_session(cwd, display_name) or ''
             if not tmux_session or not _tmux_session_exists(tmux_session):
@@ -174,6 +176,8 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
         proc_cwd = _proc_cwd_for_encoded_dir(encoded_dir)
         if proc_cwd is None:
             return None
+        # Live cwd basename overrides stale decoded-dir name (encode path never physically renamed)
+        project_name = os.path.basename(proc_cwd.rstrip('/'))
         # proc-cwd is launch cwd (stable); JSONL cwd drifts when user `cd`s in chat.
         cwd = proc_cwd
         name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
