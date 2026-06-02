@@ -127,10 +127,10 @@ Worker (Worktree) → mitmdump :8085 → proxy_addon.py → api_requests_worker_
 Alle schreiben nach `$MONITOR_CC_ROOT/src/logs/`. Monitor liest per `session_id` das richtige Log.
 
 Zusätzlich schreibt `addon.py` zwei additive Logs in `src/logs/dual_log/` (Subfolder, auto-created):
-- `api_requests_<log_id>_original.jsonl` — roher CC-Payload VOR jeder Modifikation (`payload` vor `apply_modification_rules`). `model` = CC-angefordertes Modell vor Override.
-- `api_requests_<log_id>_forwarded.jsonl` — Wire-Payload NACH kompletter Pipeline inkl. Cache-Ops (`modified_payload` an `flow.request.content`-Zuweisung). Bewusst verschieden von `entry["raw_payload"]` im Main-Log: enthält Proxy-eigene `cache_control`-Breakpoints. `model` = ggf. überschriebener Wert nach `_inject_model_override`.
+- `api_requests_<log_id>_original.jsonl` — roher CC-Payload VOR jeder Modifikation (`payload` vor `apply_modification_rules`). Voll-kumulativ, jeder Request vollständig. `model` = CC-angefordertes Modell vor Override.
+- `api_requests_<log_id>_forwarded.jsonl` — **Delta-Log** (`type: forwarded_delta`). REQ#1 voll (`is_first: true`), ab REQ#2 nur geänderte/neue Elemente per per-Element-Content-Hash-Diff (system/tools/messages getrennt). Hash-Vergleich strippt `cache_control` rekursiv (`_strip_cache_control`) → BP3/BP4-Wanderung erzeugt kein Spurious-Delta; geschriebener Inhalt behält Marker. self-healing Hash-Kette: `prev_delta_hashes_by_model` wird erst nach erfolgreichem Write aktualisiert. Entry-Felder: `type`, `request_id`, `timestamp`, `model` (post-Override), `is_first`, `counts` (Gesamtzahl system/tools/messages), `system_delta`/`tools_delta`/`messages_delta` (nur geänderte/neue Indizes als Dict). `model` = ggf. überschriebener Wert nach `_inject_model_override`.
 
-Envelope: `{"timestamp", "request_id", "model", "payload"}`. Beide Writes je in eigenem `try/except` — Fehler beeinflussen nie Forwarding oder Main-Log. Janitor-Rotation der `dual_log/`-Files noch offen (Follow-up).
+Beide Writes je in eigenem `try/except` — Fehler beeinflussen nie Forwarding oder Main-Log. Janitor-Rotation der `dual_log/`-Files noch offen (Follow-up).
 
 ### Tool Stripping (TOOL_BLOCKLIST)
 
