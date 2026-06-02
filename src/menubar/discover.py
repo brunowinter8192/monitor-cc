@@ -24,7 +24,7 @@ class SessionInfo(NamedTuple):
     status: str              # 'working' | 'idle'
     has_bg: bool             # True if any in-progress background task exists
     encoded_dir: str         # ~/.claude/projects/ dir name, e.g. '-Users-.../Monitor_CC'
-    project_name: str        # project this session belongs to (for grouping); decoded-path heuristic — may not equal worker_tmux_session basename for nested paths like Meta/ClaudeCode/MCP/RAG (project_name='MCP-RAG', basename='RAG')
+    project_name: str        # project this session belongs to (for grouping); basename(live proc_cwd) for mains, basename(project_path_from_cwd) for workers; falls back to _decode_dir_name when worker cwd unavailable
     is_worker: bool          # True if session lives under .claude/worktrees/
     cwd: str                 # full working directory (non-empty for mains; '' for workers)
     session_id: str          # JSONL stem = CC session identifier (key for msg_queue.json)
