@@ -77,6 +77,29 @@ Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `
 
 **Preceding text extraction:** walks the `parentUuid` chain from the tool_use event back to the nearest preceding assistant text block — gives context for what Opus was trying to accomplish.
 
+## extract_transcript.py
+
+**Purpose:** Chronological tool_use/tool_result transcript from a proxy-log JSONL snapshot — renders WHAT calls a session made, in order, to trace the workflow and spot redundant call sequences (10 calls where 2 would do). No waste/ratio scoring — a plain timeline dump. Marks `(ERROR)` on tool_results with `is_error` (surfaces skill-load / blocked-call failures directly). Built 2026-06-01 to analyse a capture-worker run.
+
+**Input:** One or more proxy-log JSONL paths under `src/logs/` (positional, variadic). Uses the entry with the highest `message_count` (cumulative snapshot) per file; entries with `raw_payload == null` skipped. Pure stdlib — no venv needed.
+
+**Output:** Markdown report to stdout by default, or a file via `--output`. CONVENTION Source-block header + per-file `--- msg[i] <role> tool_use/tool_result ---` blocks in message order.
+
+**Usage:**
+```bash
+./venv/bin/python3 dev/tool_use_analysis/extract_transcript.py \
+  src/logs/api_requests_worker_<id>_<name>_<ts>.jsonl \
+  --output /tmp/worker_transcript.md
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `proxy_jsonl` | *(positional, variadic)* Proxy JSONL path(s) | required |
+| `--max-input-chars` | Truncate tool_use input JSON | 4000 |
+| `--max-result-chars` | Truncate tool_result content | 1500 |
+| `--with-text` | Also include assistant/user text blocks | off (tool blocks only) |
+| `--output FILE` | Output markdown path | stdout |
+
 ## extract_patterns.py
 
 **Purpose:** Reads one or more Proxy JSONL files, pairs every `tool_use` block with its `tool_result`, applies ratio + input-size filtering (ratio≥3, input≥50 chars) to identify waste calls, normalizes tool inputs to grouping signatures (paths→`<PATH>`, log filenames→`<LOG>`, bead IDs→`<BEAD_ID>`, hex IDs→`<HEX>`, epoch timestamps→`<TS>`, long strings→`<TEXT>`), aggregates by `(tool_name, signature)`, and outputs a 6-section Markdown report: per-source summary, tool breakdown, Bash pattern groups (top 15), other tool patterns (Grep/Glob/Read), failed-call groups, wrapper candidates.
