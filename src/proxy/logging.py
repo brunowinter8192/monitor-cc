@@ -168,9 +168,29 @@ def _strip_cache_control(obj):
     return obj
 
 
-# MD5[:10] of element with cache_control stripped — stable across BP marker shifts
+# Mirror of cache._normalize_user_content_shape — collapses single-text-block list to plain string
+# for user messages after cache_control has been stripped; applied only for hash comparison, never
+# to the written element. Cannot import from cache.py (circular: cache imports from logging).
+def _normalize_msg_shape_for_hash(msg: dict) -> dict:
+    if msg.get("role") != "user":
+        return msg
+    content = msg.get("content")
+    if not isinstance(content, list) or len(content) != 1:
+        return msg
+    block = content[0]
+    if not isinstance(block, dict):
+        return msg
+    if set(block.keys()) == {"type", "text"} and block["type"] == "text":
+        return {**msg, "content": block["text"]}
+    return msg
+
+
+# MD5[:10] of element with cache_control stripped and message shape normalized — stable across BP shifts
 def _delta_hash(element) -> str:
-    return hashlib.md5(json.dumps(_strip_cache_control(element)).encode("utf-8")).hexdigest()[:10]
+    normalized = _strip_cache_control(element)
+    if isinstance(normalized, dict) and "role" in normalized:
+        normalized = _normalize_msg_shape_for_hash(normalized)
+    return hashlib.md5(json.dumps(normalized).encode("utf-8")).hexdigest()[:10]
 
 
 # Build forwarded delta entry and current hash state for _forwarded dual-log writes

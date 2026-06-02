@@ -72,3 +72,46 @@ Neue Funktionen ausschließlich in `src/proxy/logging.py` (kein neues Modul):
 `src/proxy/addon.py`: neuer State `self.prev_delta_hashes_by_model: dict = {}`, forwarded Write-Block
 ersetzt durch `_build_forwarded_delta`-Aufruf. Alle bestehenden Writes (main entry, sent_meta,
 latency_update, _original) und die gesamte Proxy-Modifikationslogik unverändert.
+
+## Live-Test Finding + Shape-Fix
+
+Am realen `monitor_cc`-Traffic tauchte eine inhaltsgleiche User-Message (`"nochmal"`) fälschlich im
+Delta auf. Root Cause: `_normalize_user_content_shape` in `cache.py` läuft NACH dem block-level
+`cache_control`-Strip und verlangt exakt `{"type","text"}`-Keys. Wenn ein BP auf der Message liegt,
+hat der Block 3 Keys inkl. `cache_control` → Bedingung feuert nicht → Inhalt bleibt als
+`[{"type":"text","text":"nochmal","cache_control":{...}}]` (Listen-Form). Wenn der BP wegwandert,
+bleiben nur 2 Keys → Bedingung feuert → Inhalt kollabiert zu `"nochmal"` (plain String).
+
+Unser `_strip_cache_control` entfernte zwar `cache_control`, aber nicht den Form-Unterschied →
+hash(`[{"type":"text","text":X}]`) ≠ hash(`"X"`) → Spurious-Delta.
+
+**Fix:** `_normalize_msg_shape_for_hash(msg)` in `logging.py` — exakter Mirror der Bedingung aus
+`cache._normalize_user_content_shape` (kein Import: `cache.py` importiert bereits von `logging.py` →
+Circular). In `_delta_hash` nach `_strip_cache_control` angewandt wenn `"role" in normalized` —
+**nur für den Vergleichs-Hash**, geschriebenes Element bleibt die echte Form.
+
+Verifiziert (automatisierte Assertions):
+- Alle drei Formen (Liste+cc / plain String / Liste-ohne-cc) → identischer Hash ✓
+- Multi-Block-Message (len > 1) → NICHT kollabiert ✓
+- Block mit Extra-Key (z.B. `"id"`) → NICHT kollabiert ✓
+- Assistant-Messages → NICHT normalisiert ✓
+
+**Hinweis sys[0]:** im Live-Test zeigt `system[0]` jeden Request im Delta (system[0] always in delta).
+Das ist legitim — CC rotiert pro Request ein cch-Billing-Token in sys[0]. Kein Leck.
+
+## verify_delta.py
+
+`dev/proxy_dual_log/verify_delta.py` — beweist Verlustfreiheit + Konsistenz des Forwarded-Delta-Logs
+gegen das Original-Log. Pro-Model-Family-Ketten-Rekonstruktion (delta overlay + truncate auf counts).
+
+Checks:
+- **Check 1 (hart):** rekonstruierte counts == im Delta deklarierte counts → FAIL bei Verletzung
+- **Check 2 (soft):** `forwarded counts.messages` vs `n_messages` im Original → Mismatch nur
+  gemeldet (nicht FAIL), weil der Proxy die Message-Anzahl legitim ändern kann
+
+Lauf auf `api_requests_opus_monitor_cc_1780441622`:
+```
+PASS — 6 ok, 0 soft-mismatch, 0 hard-fail
+Delta self-consistency: VERIFIED
+```
+6 Requests (2 haiku + 4 opus in zwei Ketten), alle counts-Invarianten erfüllt.
