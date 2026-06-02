@@ -47,6 +47,8 @@ DEFAULT_LOG_FILE = Path("/tmp/api_requests.jsonl")
 class ProxyAddon:
     def __init__(self):
         self.log_file = _resolve_log_file()
+        self.original_log_file = _resolve_dual_log_file("original")
+        self.forwarded_log_file = _resolve_dual_log_file("forwarded")
         self.prev_messages_by_model: Dict[str, list] = {}
         self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
         self.prev_sent_hashes_by_model: dict = {}  # model_family → hash fields from last sent_meta
@@ -86,6 +88,15 @@ class ProxyAddon:
                         "model_family": model_family,
                         "warnings": schema_warnings,
                     })
+            try:
+                _write_entry(self.original_log_file, {
+                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                    "request_id": flow.request.headers.get("x-request-id", ""),
+                    "model": payload.get("model", ""),
+                    "payload": payload,
+                })
+            except Exception as e:
+                print(f"[dual_log] original write failed: {e}", file=sys.stderr)
             modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed = apply_modification_rules(payload, model_family, project_path)
             deferred_tool_names = _extract_deferred_tool_names(payload)
 
@@ -161,6 +172,15 @@ class ProxyAddon:
             }
             _write_entry(self.log_file, sent_meta)
 
+            try:
+                _write_entry(self.forwarded_log_file, {
+                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                    "request_id": flow.request.headers.get("x-request-id", ""),
+                    "model": modified_payload.get("model", ""),
+                    "payload": modified_payload,
+                })
+            except Exception as e:
+                print(f"[dual_log] forwarded write failed: {e}", file=sys.stderr)
             flow.request.content = json.dumps(modified_payload).encode("utf-8")
             flow.request.headers.pop("content-encoding", None)
             # Strip deprecated interleaved-thinking beta header and inject context-management beta header
@@ -362,6 +382,16 @@ def _parse_payload(body: bytes) -> Optional[dict]:
         return json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
+
+
+# Resolve dual-log file path in src/logs/dual_log/ subfolder with given suffix (e.g. "original", "forwarded")
+def _resolve_dual_log_file(suffix: str) -> Path:
+    root = os.environ.get("MONITOR_CC_ROOT")
+    log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID")
+    filename = f"api_requests_{log_id}_{suffix}.jsonl" if log_id else f"api_requests_{suffix}.jsonl"
+    if root:
+        return Path(root) / "src" / "logs" / "dual_log" / filename
+    return Path("/tmp") / "dual_log" / filename
 
 
 # Append log entry as a single JSONL line, creating parent dirs if needed
