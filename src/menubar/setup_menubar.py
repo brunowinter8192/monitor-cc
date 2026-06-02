@@ -5,15 +5,15 @@ import sys
 import time
 from pathlib import Path
 
-_LABEL           = 'com.brunowinter.monitor_cc_menubar'
+_LABEL           = 'com.brunowinter.monitor-cc-menubar'
 _PLIST_TMPL      = Path(__file__).resolve().parent / f'{_LABEL}.plist'
 _LAUNCH_AGENTS   = Path.home() / 'Library' / 'LaunchAgents'
 _DEST            = _LAUNCH_AGENTS / f'{_LABEL}.plist'
 _PROJECT_ROOT    = Path(__file__).resolve().parent.parent.parent
 _GUI_TARGET      = f'gui/{os.getuid()}/{_LABEL}'
-_BUNDLE          = Path.home() / 'Applications' / 'Monitor_CC_Menubar.app'
+_BUNDLE          = Path.home() / 'Applications' / 'monitor-cc-menubar.app'
 _BUNDLE_LAUNCHER = _BUNDLE / 'Contents' / 'MacOS' / 'menubar'
-_BUNDLE_EXE      = _BUNDLE / 'Contents' / 'MacOS' / 'Monitor_CC_Menubar'
+_BUNDLE_EXE      = _BUNDLE / 'Contents' / 'MacOS' / 'monitor-cc-menubar'
 
 # ORCHESTRATOR
 
@@ -31,7 +31,7 @@ def setup_menubar_workflow() -> None:
     if ok:
         print(f'Done. {_LABEL} running via launchd.')
     else:
-        print(f'ERROR: bootstrap failed twice. Check /tmp/monitor_cc_menubar.err', file=sys.stderr)
+        print(f'ERROR: bootstrap failed twice. Check /tmp/monitor-cc-menubar.err', file=sys.stderr)
         sys.exit(1)
 
 # FUNCTIONS
@@ -64,7 +64,7 @@ def _write_info_plist(contents: Path) -> None:
         '  <key>CFBundleIdentifier</key>\n'
         f'  <string>{_LABEL}</string>\n'
         '  <key>CFBundleName</key>\n'
-        '  <string>Monitor_CC_Menubar</string>\n'
+        '  <string>monitor-cc-menubar</string>\n'
         '  <key>CFBundleExecutable</key>\n'
         '  <string>menubar</string>\n'
         '  <key>CFBundleVersion</key>\n'
@@ -96,7 +96,7 @@ def _write_launcher(macos: Path) -> None:
     launcher.chmod(0o755)
     print(f'  wrote {launcher}')
 
-# Create ~/Applications/Monitor_CC_Menubar.app bundle (always rebuild — overwrite-safe)
+# Create ~/Applications/monitor-cc-menubar.app bundle (always rebuild — overwrite-safe)
 def _build_app_bundle() -> None:
     contents = _BUNDLE / 'Contents'
     macos    = contents / 'MacOS'

@@ -3,14 +3,12 @@ import json
 import os
 import subprocess
 import time
-from pathlib import Path
 from typing import Dict, List, Optional
 
+# From paths.py: canonical APP_SUPPORT dir
+from .paths import _APP_SUPPORT
 # From proc_cache.py: CC process cache for tty→cwd lookups
 from .proc_cache import _cc_proc_cache
-
-# Inline APP_SUPPORT path (can't import paths.py — would create paths→proc_cache→ghostty→paths cycle)
-_APP_SUPPORT = Path("~/Library/Application Support/com.brunowinter.monitor_cc_menubar").expanduser()
 
 _GHOSTTY_TTY_REFRESH_INTERVAL = 10.0   # cooldown between new-TTY probe cycles
 _GHOSTTY_MARKER_PREFIX = '__GHT_'      # OSC 2 title marker prefix (not used by CC)

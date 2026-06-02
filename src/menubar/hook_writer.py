@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-_APP_SUPPORT          = Path("~/Library/Application Support/com.brunowinter.monitor_cc_menubar").expanduser()
+_APP_SUPPORT          = Path("~/Library/Application Support/com.brunowinter.monitor-cc-menubar").expanduser()
 _HOOK_STATE_FILE      = _APP_SUPPORT / "hooks.json"
 _HOOK_LOCK_FILE       = _APP_SUPPORT / "hooks.lock"
 _QUEUE_FILE           = _APP_SUPPORT / "msg_queue.json"

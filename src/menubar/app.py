@@ -151,14 +151,14 @@ class _PanelController(NSObject):
         # Detached bootout fires after our process exits, unloading the plist so KeepAlive does NOT respawn.
         # Plist reload happens at next login (RunAtLoad) or via manual `launchctl bootstrap`.
         uid = os.getuid()
-        label = 'com.brunowinter.monitor_cc_menubar'
+        label = 'com.brunowinter.monitor-cc-menubar'
         cmd = f'sleep 0.5 && launchctl bootout gui/{uid}/{label}'
         subprocess.Popen(['sh', '-c', cmd], start_new_session=True)
         rumps.quit_application()
 
     def restartApp_(self, sender):
         uid = os.getuid()
-        label = 'com.brunowinter.monitor_cc_menubar'
+        label = 'com.brunowinter.monitor-cc-menubar'
         if getattr(sys, 'frozen', False):
             # py2app bundle mode: write plist pointing to native binary, pure launchctl cycle
             from .setup_menubar import write_plist_py2app

@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-# py2app build script for Monitor_CC_Menubar.app
+# py2app build script for monitor-cc-menubar.app
 #
 # MUST be run from project root (here) — NOT from src/menubar/.
 # Reason: Python adds the script's directory to sys.path[0]; if run from src/menubar/,
@@ -9,11 +9,11 @@
 #   ./venv/bin/pip install py2app   # one-time
 #   ./venv/bin/python setup_py2app.py py2app
 #
-# Output: dist/Monitor_CC_Menubar.app/  (semi_standalone=False → embedded Python.framework ~80MB)
+# Output: dist/monitor-cc-menubar.app/  (semi_standalone=False → embedded Python.framework ~80MB)
 # Verify:
-#   codesign --verify --verbose=4 dist/Monitor_CC_Menubar.app
-#   defaults read dist/Monitor_CC_Menubar.app/Contents/Info.plist CFBundleIdentifier
-#   file dist/Monitor_CC_Menubar.app/Contents/MacOS/Monitor_CC_Menubar
+#   codesign --verify --verbose=4 dist/monitor-cc-menubar.app
+#   defaults read dist/monitor-cc-menubar.app/Contents/Info.plist CFBundleIdentifier
+#   file dist/monitor-cc-menubar.app/Contents/MacOS/monitor-cc-menubar
 #
 # Does NOT install to ~/Applications/ — user copies manually after review.
 
@@ -30,7 +30,7 @@ APP = ['src/menubar/menubar_main.py']
 # Place it alongside setup_menubar.py inside the bundle's lib tree
 DATA_FILES = [
     (f'lib/python{_PYTHON_VER}/src/menubar',
-     ['src/menubar/com.brunowinter.monitor_cc_menubar.plist']),
+     ['src/menubar/com.brunowinter.monitor-cc-menubar.plist']),
 ]
 
 OPTIONS = {
@@ -60,8 +60,8 @@ OPTIONS = {
 
     # Info.plist keys — CFBundleIdentifier MUST match existing TCC grant
     'plist': {
-        'CFBundleIdentifier':       'com.brunowinter.monitor_cc_menubar',
-        'CFBundleName':             'Monitor_CC_Menubar',
+        'CFBundleIdentifier':       'com.brunowinter.monitor-cc-menubar',
+        'CFBundleName':             'monitor-cc-menubar',
         'CFBundleVersion':          '1.0',
         'CFBundleShortVersionString': '1.0',
         'CFBundlePackageType':      'APPL',
@@ -70,7 +70,7 @@ OPTIONS = {
         'LSMinimumSystemVersion':   '10.15',
         # Required for osascript queries against Ghostty window list
         'NSAppleEventsUsageDescription': (
-            "Monitor_CC queries Ghostty's window list via AppleScript to identify "
+            "monitor-cc queries Ghostty's window list via AppleScript to identify "
             'Claude Code sessions.'
         ),
     },
@@ -87,7 +87,7 @@ _BUNDLE_SRC_KEEP = {'menubar', 'session_finder.py', 'constants.py', '__init__.py
 # Prune the bundle's src/ to whitelist only — prevents copy_package_data() from
 # copying src/logs/ (15 GB runtime proxy logs, no __init__.py → swept wholesale by py2app).
 def _prune_bundle_bloat() -> None:
-    src_lib = (Path('dist/Monitor_CC_Menubar.app/Contents/Resources')
+    src_lib = (Path('dist/monitor-cc-menubar.app/Contents/Resources')
                / f'lib/python{_PYTHON_VER}/src')
     if not src_lib.exists():
         return
@@ -101,7 +101,7 @@ def _prune_bundle_bloat() -> None:
 
 
 setup(
-    name='Monitor_CC_Menubar',
+    name='monitor-cc-menubar',
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': OPTIONS},

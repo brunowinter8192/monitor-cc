@@ -82,12 +82,12 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### paths.py (36 LOC)
+### paths.py (55 LOC)
 
-**Purpose:** Single source of truth for 8 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`), `ORCHESTRATOR_SIGNALS_FILE` (`orchestrator_signals.json` — written by worker-cli send, read by menubar for auto-abort grace). Runs `_migrate_from_dotfiles()` at import.
-**Reads:** old dotfile paths under `~` on first import (migration); nothing thereafter.
-**Writes:** creates `_APP_SUPPORT` dir; moves old dotfiles to new paths on first import.
-**Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `queue_controller.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`); `queue.py` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`). `hook_writer.py` and `ghostty.py` define equivalent paths inline (standalone / cycle-avoidance).
+**Purpose:** Single source of truth for 8 APP_SUPPORT file paths under `~/Library/Application Support/com.brunowinter.monitor-cc-menubar/`: `SETTINGS_FILE`, `HOOKS_FILE`, `HOOKS_LOCK`, `PID_FILE`, `QUEUE_FILE` (`msg_queue.json`), `QUEUE_LOCK` (`queue.lock`), `GHOSTTY_CWD_UUID_FILE` (`ghostty_cwd_uuid.json`), `ORCHESTRATOR_SIGNALS_FILE` (`orchestrator_signals.json` — written by worker-cli send, read by menubar for auto-abort grace). Runs `_migrate_from_dotfiles()` and `_migrate_from_old_bundle_id()` at import.
+**Reads:** old dotfile paths under `~` on first import (`_migrate_from_dotfiles`); old bundle-id dir `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/` on first import (`_migrate_from_old_bundle_id`).
+**Writes:** creates `_APP_SUPPORT` dir; moves old dotfiles + old-bundle-id runtime files to new paths on first import. Idempotent: new wins (no clobber).
+**Called by:** `app.py` (`SETTINGS_FILE`); `proc_cache.py` (`HOOKS_FILE`); `queue_controller.py` (`HOOKS_FILE`); `system.py` (`PID_FILE`); `queue.py` (`QUEUE_FILE`, `QUEUE_LOCK`, `GHOSTTY_CWD_UUID_FILE`); `ghostty.py` (`_APP_SUPPORT`). `hook_writer.py` defines `_APP_SUPPORT` inline (standalone script — relative import not usable).
 **Calls out:** `pathlib` only.
 
 ---
@@ -185,11 +185,11 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ### ghostty.py (155 LOC)
 
-**Purpose:** Ghostty terminal UUID mapping via OSC 2 title-marker probe. Maintains `_ghostty_tty_to_id` (tty → UUID) populated incrementally. Exposes `get_ghostty_terminal_id(cwd)` for click-to-focus routing in `system.py`. Also writes `APP_SUPPORT/ghostty_cwd_uuid.json` = `{cwd: uuid}` via `_write_cwd_uuid_map()` (called from `discover.py:list_alive_sessions` after each tick); used by `hook_writer.py` for queue delivery. `_APP_SUPPORT` defined inline (can't import `paths.py` — would create import cycle).
+**Purpose:** Ghostty terminal UUID mapping via OSC 2 title-marker probe. Maintains `_ghostty_tty_to_id` (tty → UUID) populated incrementally. Exposes `get_ghostty_terminal_id(cwd)` for click-to-focus routing in `system.py`. Also writes `APP_SUPPORT/ghostty_cwd_uuid.json` = `{cwd: uuid}` via `_write_cwd_uuid_map()` (called from `discover.py:list_alive_sessions` after each tick); used by `hook_writer.py` for queue delivery. `_APP_SUPPORT` imported from `paths.py`.
 **Reads:** `ps -A` (Ghostty PID + child TTYs); `/dev/ttys<NNN>` (OSC 2 marker writes); `osascript` (terminal id|||name pairs); `_cc_proc_cache`.
 **Writes:** `/dev/ttys<NNN>` (probe + cleanup); `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_ghostty_cwd_uuid_last` (module state); `APP_SUPPORT/ghostty_cwd_uuid.json` (atomic, change-detected).
 **Called by:** `discover.py:list_alive_sessions` (`_refresh_ghostty_tty_to_id`, `_write_cwd_uuid_map`); `system.py:_focus_session` (`get_ghostty_terminal_id`).
-**Calls out:** `json`, `subprocess`, `time`; `.proc_cache` (`_cc_proc_cache`).
+**Calls out:** `json`, `subprocess`, `time`; `.paths` (`_APP_SUPPORT`); `.proc_cache` (`_cc_proc_cache`).
 
 ---
 
@@ -241,9 +241,9 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ### setup_menubar.py (143 LOC)
 
-**Purpose:** Legacy ad-hoc bundle builder (Bash-launcher approach). Builds `~/Applications/Monitor_CC_Menubar.app` with a Bash launcher that `exec`s into venv Python — superseded by `setup_py2app.py` for production use. Active in the restart flow: `app.py:restartApp_` lazy-imports `write_plist()` (dev/venv mode) or `write_plist_py2app()` (py2app bundle mode) from here. `write_plist()` substitutes `_BUNDLE_LAUNCHER` (`Contents/MacOS/menubar`); `write_plist_py2app()` substitutes `_BUNDLE_EXE` (`Contents/MacOS/Monitor_CC_Menubar`) — each writes the correct binary name for its mode. Preserved as fallback during transition.
-**Reads:** `src/menubar/com.brunowinter.monitor_cc_menubar.plist` (template with `<BUNDLE_LAUNCHER>` token).
-**Writes:** `~/Applications/Monitor_CC_Menubar.app/Contents/{Info.plist,MacOS/menubar}` (legacy `setup_menubar_workflow()` only); `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist` (both `write_plist` variants).
+**Purpose:** Legacy ad-hoc bundle builder (Bash-launcher approach). Builds `~/Applications/monitor-cc-menubar.app` with a Bash launcher that `exec`s into venv Python — superseded by `setup_py2app.py` for production use. Active in the restart flow: `app.py:restartApp_` lazy-imports `write_plist()` (dev/venv mode) or `write_plist_py2app()` (py2app bundle mode) from here. `write_plist()` substitutes `_BUNDLE_LAUNCHER` (`Contents/MacOS/menubar`); `write_plist_py2app()` substitutes `_BUNDLE_EXE` (`Contents/MacOS/monitor-cc-menubar`) — each writes the correct binary name for its mode. Preserved as fallback during transition.
+**Reads:** `src/menubar/com.brunowinter.monitor-cc-menubar.plist` (template with `<BUNDLE_LAUNCHER>` token).
+**Writes:** `~/Applications/monitor-cc-menubar.app/Contents/{Info.plist,MacOS/menubar}` (legacy `setup_menubar_workflow()` only); `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist` (both `write_plist` variants).
 **Called by:** User manually (legacy). `app.py:restartApp_` (lazy import of `write_plist` in dev mode; `write_plist_py2app` in py2app mode).
 **Calls out:** `subprocess` (launchctl, codesign); stdlib (`os`, `pathlib`, `time`).
 
@@ -253,13 +253,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ### setup_py2app.py (117 LOC) — at project root, NOT in src/menubar/
 
-**Purpose:** py2app build script producing `dist/Monitor_CC_Menubar.app/` — a native Mach-O bundle with embedded Python 3.14 framework. Replaces the Bash-exec chain with a native launcher so the audit token at `CGWindowListCopyWindowInfo` is `com.brunowinter.monitor_cc_menubar` (not Python.app), making the Screen Recording TCC grant effective. Builds to `dist/` in the working directory; does NOT install to `~/Applications/`. Placed at project root (not `src/menubar/`) to avoid stdlib `queue` shadowing by `src/menubar/queue.py` when setuptools is loaded. After `setup()`: `_prune_bundle_bloat()` whitelist-prunes the bundle's `src/` to `{menubar, session_finder.py, constants.py, __init__.py, __pycache__}` — prevents `copy_package_data()` from sweeping `src/logs/` (runtime proxy logs, no `__init__.py`, ≥15 GB in main repo).
-**Reads:** `src/menubar/menubar_main.py` (entry point); `src/menubar/com.brunowinter.monitor_cc_menubar.plist` (bundled as data file).
-**Writes:** `dist/Monitor_CC_Menubar.app/` — full py2app bundle.
+**Purpose:** py2app build script producing `dist/monitor-cc-menubar.app/` — a native Mach-O bundle with embedded Python 3.14 framework. Replaces the Bash-exec chain with a native launcher so the audit token at `CGWindowListCopyWindowInfo` is `com.brunowinter.monitor-cc-menubar` (not Python.app), making the Screen Recording TCC grant effective. Builds to `dist/` in the working directory; does NOT install to `~/Applications/`. Placed at project root (not `src/menubar/`) to avoid stdlib `queue` shadowing by `src/menubar/queue.py` when setuptools is loaded. After `setup()`: `_prune_bundle_bloat()` whitelist-prunes the bundle's `src/` to `{menubar, session_finder.py, constants.py, __init__.py, __pycache__}` — prevents `copy_package_data()` from sweeping `src/logs/` (runtime proxy logs, no `__init__.py`, ≥15 GB in main repo).
+**Reads:** `src/menubar/menubar_main.py` (entry point); `src/menubar/com.brunowinter.monitor-cc-menubar.plist` (bundled as data file).
+**Writes:** `dist/monitor-cc-menubar.app/` — full py2app bundle.
 **Called by:** User manually (one-time build + after Python upgrade).
 **Calls out:** `py2app`, `setuptools`, `shutil`, `pathlib`.
 
-**Usage:** `./venv/bin/pip install py2app && ./venv/bin/python setup_py2app.py py2app` from project root. Install step: `cp -R dist/Monitor_CC_Menubar.app ~/Applications/Monitor_CC_Menubar.app`.
+**Usage:** `./venv/bin/pip install py2app && ./venv/bin/python setup_py2app.py py2app` from project root. Install step: `cp -R dist/monitor-cc-menubar.app ~/Applications/monitor-cc-menubar.app`.
 
 **Post-install TCC step:** Screen Recording permission is no longer required (desktop detection removed). No TCC grant needed for current menubar features.
 
@@ -282,12 +282,13 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 ```
 stdlib only
     ↓
-paths.py        (pathlib only — leaf node; triggers migration at import)
+paths.py        (pathlib only — leaf node; triggers migrations at import)
     ↓
 proc_cache.py   (json, os, subprocess, time, pathlib, typing; .paths)
-    ↓               ↓
-ghostty.py          bg_timer.py
-(_cc_proc_cache)    (_TASKS_BASE; .menubar_log log_menubar)
+    ↓    ↘          ↓
+ghostty.py  paths   bg_timer.py
+(_cc_proc_cache,    (_TASKS_BASE; .menubar_log log_menubar)
+ _APP_SUPPORT)
     ↓
 discover.py  ← ghostty.py (_refresh_ghostty_tty_to_id, _ghostty_tty_to_id)
              ← proc_cache.py (_refresh_cc_proc_cache, _refresh_tmux_state,
@@ -368,9 +369,9 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 
 - **Session status detection** (Workers + Mains): Priority-1/2/3 fallback chain with threshold values — see `decisions/menubar_session_status.md` for full IST chain.
 - **Singleton enforcement via fcntl lock** (`system.py`): `run()` calls `_acquire_singleton_lock()` before constructing `CCMenuBarApp`. Lock file: `PID_FILE` = `APP_SUPPORT/menubar.pid`. On success: sets `FD_CLOEXEC` on the fd (required for clean `os.execv` restart), writes PID, returns open file handle (held on `run()`'s stack frame for the process lifetime). On failure: prints to stderr and calls `sys.exit(0)`. **Exit code 0 is mandatory**: launchd `KeepAlive=true` respawns on non-zero exit only.
-- **APP_SUPPORT migration** (`paths.py`): on first import, `_migrate_from_dotfiles()` moves `~/.monitor_cc_menubar_{settings,hooks}.json`, `~/.monitor_cc_menubar_hooks.lock`, and `~/.monitor_cc_menubar.pid` to `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/`. `os.rename()` is atomic on APFS/HFS+ (same volume). If both old and new exist (partial prior migration or manual intervention): NEW wins, old silently deleted. `hook_writer.py` derives the same APP_SUPPORT path locally (standalone script; relative import not usable).
+- **APP_SUPPORT migration** (`paths.py`): on first import, two migrations run. `_migrate_from_dotfiles()` moves `~/.monitor_cc_menubar_{settings,hooks}.json`, `~/.monitor_cc_menubar_hooks.lock`, and `~/.monitor_cc_menubar.pid` to `~/Library/Application Support/com.brunowinter.monitor-cc-menubar/`. `_migrate_from_old_bundle_id()` moves runtime files from the old bundle-id dir `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/` to the new `com.brunowinter.monitor-cc-menubar/`. `os.rename()` is atomic on APFS/HFS+ (same volume). Both migrations: NEW wins — if new file already exists, old is left in place (no clobber). `hook_writer.py` defines `_APP_SUPPORT` inline (standalone script; relative import not usable).
 - **Restart — two-branch flow gated on `sys.frozen`** (`app.py:_PanelController.restartApp_`): py2app sets `sys.frozen = 'macosx_app'` in `__boot__.py`. **py2app branch**: `write_plist_py2app()` (from `setup_menubar.py`) writes the LaunchAgent plist with `ProgramArguments = [.../Monitor_CC_Menubar]`; detached helper runs pure `launchctl bootout gui/<uid>/... 2>/dev/null ; launchctl bootstrap gui/<uid> <dest>` — no Python invocation, no `_build_app_bundle()` call, bundle untouched, TCC identity preserved. `RunAtLoad=true` starts new instance immediately after bootstrap. **Dev/venv branch** (`sys.frozen` absent): `write_plist()` writes `Contents/MacOS/menubar` into the plist; helper runs `"{sys.executable}" "{_SETUP_PY}"` which calls `setup_menubar_workflow()` (bootout + rebuild Bash bundle + bootstrap). Both branches end with `rumps.quit_application()`. All imports are inside the branch body (not module-level) to avoid import-order sensitivity.
-- **Kill unloads the plist (`launchctl bootout`)**: `killApp_` (`app.py:_PanelController`) fires `launchctl bootout gui/<uid>/com.brunowinter.monitor_cc_menubar` via a detached `sh -c 'sleep 0.5 && ...'` subprocess (survives parent exit), then calls `rumps.quit_application()`. `bootout` removes the plist from the launchd domain so `KeepAlive=true` no longer respawns the process. Next reload requires login (`RunAtLoad=true`) or manual `launchctl bootstrap gui/<uid> ~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist`.
+- **Kill unloads the plist (`launchctl bootout`)**: `killApp_` (`app.py:_PanelController`) fires `launchctl bootout gui/<uid>/com.brunowinter.monitor-cc-menubar` via a detached `sh -c 'sleep 0.5 && ...'` subprocess (survives parent exit), then calls `rumps.quit_application()`. `bootout` removes the plist from the launchd domain so `KeepAlive=true` no longer respawns the process. Next reload requires login (`RunAtLoad=true`) or manual `launchctl bootstrap gui/<uid> ~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist`.
 - **Lazy import in system.run()**: `from .app import CCMenuBarApp` is inside `run()` to break the `app→system→app` circular import. `app.py` imports `_focus_session` from `system.py` at module level; `system.py` has no module-level import of `app.py`. No circular dependency at module init time.
 - **bg_result always passed explicitly to `_rebuild_panel`**: the `_rebuild_panel` fallback scan was removed from panel.py (to keep panel.py free of discover/bg_timer dependency). `app.py:_tick` computes `bg_result = _aggregate_bg(_scan_bg_sleep_timers(cwd_to_project))` once per tick and passes it explicitly to all panel calls.
 - **Global hotkey Cmd+L** (`hotkey_controller.py`): `register_cmd_l(callback)` wraps the callback in a ctypes `CFUNCTYPE` and registers via Carbon `RegisterEventHotKey`. Returns `(cb_handle, hk_handle)` — caller (`CCMenuBarApp.__init__`) stores both on `self._hotkey_cb` / `self._hotkey_ref` to prevent GC of the C callback. Same pattern for `register_cmd_k` → `self._hotkey_k_cb` / `self._hotkey_k_ref`.
@@ -381,7 +382,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Abort leaves task file at 0 bytes:** when the sleep child is killed via SIGTERM, the zsh parent exits via `&&` short-circuit (no `echo done` stdout), so CC writes nothing to the task file — it stays 0 bytes indefinitely. `_abort_bg_sleep_timers` (bg_timer.py) explicitly writes `aborted\n` to all 0-byte task files after kill so `_has_active_bg` returns False and the `[B]` badge disappears.
 - **CC uses `zsh -c`, not `bash -c`:** background bash commands are actually `zsh -c "source ... && eval 'cmd' ..."`. `_scan_bg_sleep_timers` correctly matches these because `echo done` appears in the zsh parent's args; the sleep child args are always exactly `sleep N`.
 - `LSUIElement=1` must be set before `app.run()` to suppress the Dock icon. Set in `run()` via `os.environ.setdefault`.
-- Launched via launchd: `KeepAlive=true` auto-restarts on crash. Logs → `/tmp/monitor_cc_menubar.{log,err}`.
+- Launched via launchd: `KeepAlive=true` auto-restarts on crash. Logs → `/tmp/monitor-cc-menubar.{log,err}`.
 - **launchd PATH inheritance**: `EnvironmentVariables/PATH` in the plist must prepend `/opt/homebrew/bin` — launchd's default PATH lacks Homebrew, making `tmux` unavailable for proc_cache.py worker-alive checks.
 - **launchd ASCII locale — all `text=True` subprocess calls need `encoding='utf-8', errors='replace'`**: launchd sets no locale → `locale.getpreferredencoding()` = `'ascii'` → any `subprocess.run(..., text=True)` without explicit encoding crashes on non-ASCII bytes. Confirmed: `ps -A -o command=` and `osascript` output containing CC worker spawn-prompts (emoji, umlauts) caused `UnicodeDecodeError`. All `text=True` calls in the package carry `encoding='utf-8', errors='replace'`. LaunchAgent plist template also sets `PYTHONUTF8=1` as belt-and-suspenders. Any NEW `subprocess.run(..., text=True)` added to this package MUST include `encoding='utf-8', errors='replace'`.
 - **Ghostty PID lookup** (`ghostty.py:_ghostty_pid`): `pgrep` is unreliable on macOS for full-path binary names. Use `ps -A -o pid=,command=` parsed directly: `'Ghostty.app/Contents/MacOS' in line` finds the process robustly.
@@ -425,4 +426,4 @@ python3 dev/menubar_debug.py --rebootstrap # same + re-registers launchd service
 2. Launches `venv/bin/python3 workflow.py --mode menubar` with `MENUBAR_DIAGNOSTICS=1` in env
 3. On Ctrl-C: prints "Stopped"; if `--rebootstrap`: runs `launchctl bootstrap` from the installed plist
 
-Tick log written to `/tmp/menubar-tick.log` while running (gated on `MENUBAR_DIAGNOSTICS=1`). stdout/stderr land in terminal directly. Requires `~/Library/LaunchAgents/com.brunowinter.monitor_cc_menubar.plist` to exist for `--rebootstrap` — run `src/menubar/setup_menubar.py` first if missing.
+Tick log written to `/tmp/menubar-tick.log` while running (gated on `MENUBAR_DIAGNOSTICS=1`). stdout/stderr land in terminal directly. Requires `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist` to exist for `--rebootstrap` — run `src/menubar/setup_menubar.py` first if missing.
