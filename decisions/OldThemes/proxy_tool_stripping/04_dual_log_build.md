@@ -1,6 +1,6 @@
 # Dual-Log Build — Additive Baseline Logging
 
-Build step 2026-07-XX. First concrete iteration of the architecture from `03_logging_redesign.md`.
+Build step 2026-06-02. First concrete iteration of the architecture from `03_logging_redesign.md`.
 Rein additives Logging — keine Monitor-Leseseite, keine Janitor-Änderungen, keine Proxy-Logik-Änderungen.
 
 ## Was gebaut wurde
