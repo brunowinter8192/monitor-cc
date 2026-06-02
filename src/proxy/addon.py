@@ -10,7 +10,7 @@ from typing import Dict, Optional
 
 from mitmproxy import http
 
-from .logging import _build_entry, _build_latency_update, _summarize_content_for_log
+from .logging import _build_entry, _build_latency_update, _summarize_content_for_log, _build_forwarded_delta
 
 
 # Suppress noise from `NotImplementedError: HTTP trailers are not implemented yet.`
@@ -52,6 +52,7 @@ class ProxyAddon:
         self.prev_messages_by_model: Dict[str, list] = {}
         self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
         self.prev_sent_hashes_by_model: dict = {}  # model_family → hash fields from last sent_meta
+        self.prev_delta_hashes_by_model: dict = {}  # model_family → {"system": [...], "tools": [...], "messages": [...]} for forwarded delta
         self._schema_checked: Dict[str, bool] = {}  # schema check runs once per model_family (opus + sonnet)
 
     def request(self, flow: http.HTTPFlow) -> None:
@@ -173,12 +174,14 @@ class ProxyAddon:
             _write_entry(self.log_file, sent_meta)
 
             try:
-                _write_entry(self.forwarded_log_file, {
-                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-                    "request_id": flow.request.headers.get("x-request-id", ""),
-                    "model": modified_payload.get("model", ""),
-                    "payload": modified_payload,
-                })
+                prev_delta = self.prev_delta_hashes_by_model.get(model_family)
+                delta_entry, curr_delta = _build_forwarded_delta(
+                    modified_payload,
+                    flow.request.headers.get("x-request-id", ""),
+                    prev_delta,
+                )
+                _write_entry(self.forwarded_log_file, delta_entry)
+                self.prev_delta_hashes_by_model[model_family] = curr_delta
             except Exception as e:
                 print(f"[dual_log] forwarded write failed: {e}", file=sys.stderr)
             flow.request.content = json.dumps(modified_payload).encode("utf-8")

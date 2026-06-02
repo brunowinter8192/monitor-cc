@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
@@ -156,3 +157,79 @@ def _summarize_content_for_log(content, max_chars=50000):
                         parts.append(tc)
         return "\n".join(parts)[:max_chars]
     return str(content)[:max_chars]
+
+
+# Recursively strip cache_control keys from dicts/lists — for stable comparison hashing only
+def _strip_cache_control(obj):
+    if isinstance(obj, dict):
+        return {k: _strip_cache_control(v) for k, v in obj.items() if k != "cache_control"}
+    if isinstance(obj, list):
+        return [_strip_cache_control(item) for item in obj]
+    return obj
+
+
+# MD5[:10] of element with cache_control stripped — stable across BP marker shifts
+def _delta_hash(element) -> str:
+    return hashlib.md5(json.dumps(_strip_cache_control(element)).encode("utf-8")).hexdigest()[:10]
+
+
+# Build forwarded delta entry and current hash state for _forwarded dual-log writes
+def _build_forwarded_delta(payload: dict, request_id: str, prev_hashes: Optional[dict]) -> tuple:
+    system = payload.get("system", []) or []
+    tools = payload.get("tools", []) or []
+    messages = payload.get("messages", []) or []
+    system_list = system if isinstance(system, list) else []
+
+    curr_sys_hashes = [_delta_hash(b) for b in system_list]
+    curr_tool_hashes = [_delta_hash(t) for t in tools]
+    curr_msg_hashes = [_delta_hash(m) for m in messages]
+
+    curr_hashes = {
+        "system": curr_sys_hashes,
+        "tools": curr_tool_hashes,
+        "messages": curr_msg_hashes,
+    }
+
+    is_first = prev_hashes is None
+
+    if is_first:
+        system_delta = {str(i): b for i, b in enumerate(system_list)}
+        tools_delta = {str(i): t for i, t in enumerate(tools)}
+        messages_delta = {str(i): m for i, m in enumerate(messages)}
+    else:
+        prev_sys = prev_hashes.get("system", [])
+        prev_tools = prev_hashes.get("tools", [])
+        prev_msgs = prev_hashes.get("messages", [])
+        system_delta = {
+            str(i): b for i, b in enumerate(system_list)
+            if i >= len(prev_sys) or curr_sys_hashes[i] != prev_sys[i]
+        }
+        tools_delta = {
+            str(i): t for i, t in enumerate(tools)
+            if i >= len(prev_tools) or curr_tool_hashes[i] != prev_tools[i]
+        }
+        messages_delta = {
+            str(i): m for i, m in enumerate(messages)
+            if i >= len(prev_msgs) or curr_msg_hashes[i] != prev_msgs[i]
+        }
+
+    now = datetime.now(timezone.utc)
+    timestamp = f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"
+
+    entry = {
+        "type": "forwarded_delta",
+        "request_id": request_id,
+        "timestamp": timestamp,
+        "model": payload.get("model", ""),
+        "is_first": is_first,
+        "counts": {
+            "system": len(system_list),
+            "tools": len(tools),
+            "messages": len(messages),
+        },
+        "system_delta": system_delta,
+        "tools_delta": tools_delta,
+        "messages_delta": messages_delta,
+    }
+
+    return entry, curr_hashes
