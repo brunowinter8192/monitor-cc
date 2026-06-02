@@ -62,7 +62,7 @@ def collect_jsonl_files(project_dirs: List[Path], project_filter: Optional[str] 
 # Check if project directory matches the filter path
 def matches_project_filter(project_dir: Path, project_filter: str) -> bool:
     encoded_filter = encode_project_path(project_filter)
-    matches = project_dir.name == encoded_filter
+    matches = project_dir.name.lower() == encoded_filter.lower()
     return matches
 
 # Encode project path to match Claude's directory naming convention
