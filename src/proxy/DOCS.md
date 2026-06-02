@@ -25,11 +25,11 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (374 LOC)
+### addon.py (404 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, appends 4xx errors to `api_errors.jsonl`, writes `latency_update` records on successful responses. count_tokens requests (`/v1/messages/count_tokens`) pass through unmodified — `_is_messages_request()` matches only `/v1/messages` + optional query string.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID` for log path resolution.
-**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); appends one JSONL line to `src/logs/api_errors.jsonl` on 4xx (fields: `ts`, `status_code`, `error_response`, `request_url`, `request_payload`). Entry fields stamped post-modification include `stripped_unused_tools_names` (from `_strip_unused_tools` 3-tuple) and `deferred_tools_names` (from `_extract_deferred_tool_names` on the ORIGINAL pre-strip payload). Both default-omitted when empty.
+**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); appends one JSONL line to `src/logs/api_errors.jsonl` on 4xx (fields: `ts`, `status_code`, `error_response`, `request_url`, `request_payload`). Entry fields stamped post-modification include `stripped_unused_tools_names` (from `_strip_unused_tools` 3-tuple) and `deferred_tools_names` (from `_extract_deferred_tool_names` on the ORIGINAL pre-strip payload). Both default-omitted when empty. Additionally writes two additive dual-log files via `_resolve_dual_log_file(suffix)` into `src/logs/dual_log/`: `_original` (raw CC payload snapshotted before `apply_modification_rules`, serialized immediately so later mutations are irrelevant) and `_forwarded` (final `modified_payload` after the complete pipeline incl. cache ops, written just before `flow.request.content` assignment — byte-identical to wire). Each write in its own `try/except`; failures never affect forwarding or main log.
 **Called by:** mitmproxy (via `addons = [ProxyAddon()]` at module level). Hooks: `request`, `responseheaders`, `response`.
 **Calls out:** `mitmproxy`
 

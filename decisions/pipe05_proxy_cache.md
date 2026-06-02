@@ -126,6 +126,12 @@ Worker (Worktree) → mitmdump :8085 → proxy_addon.py → api_requests_worker_
 
 Alle schreiben nach `$MONITOR_CC_ROOT/src/logs/`. Monitor liest per `session_id` das richtige Log.
 
+Zusätzlich schreibt `addon.py` zwei additive Logs in `src/logs/dual_log/` (Subfolder, auto-created):
+- `api_requests_<log_id>_original.jsonl` — roher CC-Payload VOR jeder Modifikation (`payload` vor `apply_modification_rules`). `model` = CC-angefordertes Modell vor Override.
+- `api_requests_<log_id>_forwarded.jsonl` — Wire-Payload NACH kompletter Pipeline inkl. Cache-Ops (`modified_payload` an `flow.request.content`-Zuweisung). Bewusst verschieden von `entry["raw_payload"]` im Main-Log: enthält Proxy-eigene `cache_control`-Breakpoints. `model` = ggf. überschriebener Wert nach `_inject_model_override`.
+
+Envelope: `{"timestamp", "request_id", "model", "payload"}`. Beide Writes je in eigenem `try/except` — Fehler beeinflussen nie Forwarding oder Main-Log. Janitor-Rotation der `dual_log/`-Files noch offen (Follow-up).
+
 ### Tool Stripping (TOOL_BLOCKLIST)
 
 `TOOL_BLOCKLIST` (frozenset) in `proxy_addon.py` entfernt 21 ungenutzte Tools aus dem `tools`-Array vor dem API-Send. ~25k chars weniger pro Request. Agent-Tool bleibt, aber Description getrimmt auf git-committer-only (~300 chars statt 10k).
