@@ -138,7 +138,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### logging.py (235 LOC)
+### logging.py (255 LOC)
 
 **Purpose:** Build structured JSONL log entries from flow + payload data; compute message diffs vs previous request; build `latency_update` records for response-side timing; build `forwarded_delta` entries for the dual-log forwarded file.
 **Reads:** Raw payload dicts, message lists, previous message summaries, previous delta hash state.
@@ -146,7 +146,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Called by:** `src/proxy/addon.py`
 **Calls out:** —
 
-**Log record types:** `_build_entry` → main request entry. `_build_latency_update(request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec, n_stalls=0, max_stall_ms=None, total_stall_ms=None)` → `{type: "latency_update", ...}` with 9 fields; written after successful response. Parser (proxy_display/parser.py) merges all latency fields into the main entry by matching `request_id`. `_build_forwarded_delta(payload, request_id, prev_hashes) -> (entry, curr_hashes)` → `{type: "forwarded_delta", is_first, counts, system_delta, tools_delta, messages_delta}`; REQ#1 full, subsequent requests only changed/new elements. Helpers: `_strip_cache_control(obj)` (recursive cache_control removal for stable hashing), `_delta_hash(element) -> str` (MD5[:10] after strip).
+**Log record types:** `_build_entry` → main request entry. `_build_latency_update(request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec, n_stalls=0, max_stall_ms=None, total_stall_ms=None)` → `{type: "latency_update", ...}` with 9 fields; written after successful response. Parser (proxy_display/parser.py) merges all latency fields into the main entry by matching `request_id`. `_build_forwarded_delta(payload, request_id, prev_hashes) -> (entry, curr_hashes)` → `{type: "forwarded_delta", is_first, counts, system_delta, tools_delta, messages_delta}`; REQ#1 full, subsequent requests only changed/new elements. Hashing helpers: `_strip_cache_control(obj)` (recursive cache_control removal), `_normalize_msg_shape_for_hash(msg)` (mirror of `cache._normalize_user_content_shape` — collapses single-text-block list to string for user messages after cc-strip; cannot import from cache.py due to circular import), `_delta_hash(element) -> str` (MD5[:10] after both normalizations; `"role" in element` guard ensures shape-norm only runs on messages).
 
 ---
 
