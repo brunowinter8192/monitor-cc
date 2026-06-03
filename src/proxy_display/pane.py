@@ -10,7 +10,10 @@ from ..constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
-from .parser import parse_proxy_log_isolated, find_proxy_log_path, _lazy_load_messages
+from .parser import (
+    parse_proxy_log_isolated, find_proxy_log_path, _lazy_load_messages,
+    accumulate_dual_log, _find_dual_log_paths, _infer_model_family,
+)
 from .format import format_proxy_block, _is_standalone_entry
 from ..panes.token_pane import build_cache_turns
 from ..input.click_handler import (
@@ -30,6 +33,10 @@ proxy_log_position: int = 0
 _proxy_jsonl_position: int = 0
 _proxy_cache_turns: list = []
 _proxy_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
+_proxy_stripped_pos: int = 0     # dual-log read position for _stripped.jsonl
+_proxy_injected_pos: int = 0     # dual-log read position for _injected.jsonl
+_proxy_acc_stripped: dict = {}   # family → {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
+_proxy_acc_injected: dict = {}   # same — both mutated in-place; entries hold references
 _proxy_log_path: Optional[Path] = None  # current log file path, updated each poll cycle for lazy-reload
 _proxy_pane_width: int = 80  # updated each render cycle; used by click handler for copy-button column check
 _proxy_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by format_proxy_block
@@ -219,6 +226,7 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
     global proxy_log_position, _proxy_jsonl_position, _proxy_cache_turns, _proxy_pending_by_rid
     global _proxy_log_path, _last_full_parse_ts
     global _proxy_current_main_session, _proxy_session_start_ts
+    global _proxy_stripped_pos, _proxy_injected_pos, _proxy_acc_stripped, _proxy_acc_injected
     if now - last_data_refresh < POLL_INTERVAL:
         return input_changed, last_data_refresh
     newest = monitor._get_newest_main_session()
@@ -238,6 +246,10 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
         _proxy_pending_by_rid.clear()
         _proxy_log_path = None
         _last_full_parse_ts = now
+        _proxy_stripped_pos = 0
+        _proxy_injected_pos = 0
+        _proxy_acc_stripped.clear()
+        _proxy_acc_injected.clear()
         input_changed = True
     if _last_full_parse_ts == 0.0:
         _last_full_parse_ts = now
@@ -249,6 +261,10 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
         _proxy_cache_turns = []
         _proxy_pending_by_rid.clear()
         _last_full_parse_ts = now
+        _proxy_stripped_pos = 0
+        _proxy_injected_pos = 0
+        _proxy_acc_stripped.clear()
+        _proxy_acc_injected.clear()
         input_changed = True
     new_entries, proxy_log_position = parse_proxy_log_isolated(
         monitor.active_project_filter, proxy_log_position, _proxy_pending_by_rid
@@ -256,6 +272,18 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
     filtered = [e for e in new_entries if e.get('timestamp', '') >= _proxy_session_start_ts]
     proxy_entries.extend(filtered)
     _proxy_log_path = find_proxy_log_path(monitor.active_project_filter)
+    # Accumulate dual-logs and attach references to all newly-added entries.
+    # Entries hold a Python reference to the acc dict; in-place mutations propagate automatically.
+    stripped_path, injected_path = _find_dual_log_paths(_proxy_log_path)
+    _proxy_stripped_pos = accumulate_dual_log(stripped_path, _proxy_stripped_pos, _proxy_acc_stripped)
+    _proxy_injected_pos = accumulate_dual_log(injected_path, _proxy_injected_pos, _proxy_acc_injected)
+    for entry in filtered:
+        family = _infer_model_family(entry.get('model', ''))
+        if family not in _proxy_acc_stripped:
+            _proxy_acc_stripped[family] = {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
+            _proxy_acc_injected[family] = {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
+        entry['_stripped_spans'] = _proxy_acc_stripped[family]
+        entry['_injected_spans'] = _proxy_acc_injected[family]
     _strip_inactive_messages(proxy_entries, proxy_expand_states)
     main_sessions = monitor.get_main_session_files()
     if main_sessions:

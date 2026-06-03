@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from ..constants import (
-    SOFT_RESET, RED, DIM, DIM_YELLOW_BG,
+    SOFT_RESET, RED, DIM, DIM_YELLOW_BG, DIM_GREEN_BG,
 )
 from .format import _format_delta, _format_k
 
@@ -35,16 +35,30 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
                 lines.append(f"      {DIM}(unchanged){SOFT_RESET}")
                 keys.append(None)
             else:
+                use_dual = '_stripped_spans' in entry
                 for sb in sys_blocks:
                     bidx = sb['idx']
                     bchars = sb.get('chars', 0)
-                    is_sys_stripped = ('replaced_system_prompt' in mods and bidx == 2) or ('stripped_sys3' in mods and bidx == 3)
-                    stripped_str = f"  [STRIPPED]" if is_sys_stripped else ''
                     block_key = ('sys_block', entry_idx, bidx)
                     is_block_expanded = expand_states.get(block_key, False)
                     block_symbol = '\u25bc' if is_block_expanded else '\u25b6'
-                    if is_sys_stripped:
-                        lines.append(f"      {DIM_YELLOW_BG}{DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{stripped_str}{SOFT_RESET}")
+                    if use_dual:
+                        s_spans = entry['_stripped_spans']['system'].get(str(bidx))
+                        i_spans = entry['_injected_spans']['system'].get(str(bidx))
+                    else:
+                        is_old_stripped = ('replaced_system_prompt' in mods and bidx == 2) or ('stripped_sys3' in mods and bidx == 3)
+                        s_spans = True if is_old_stripped else None  # marker only; content from original_text
+                        i_spans = None
+                    if s_spans and i_spans:
+                        label, hdr_bg = '  [REPLACED]', DIM_YELLOW_BG
+                    elif s_spans:
+                        label, hdr_bg = '  [STRIPPED]', DIM_YELLOW_BG
+                    elif i_spans:
+                        label, hdr_bg = '  [INJECTED]', DIM_GREEN_BG
+                    else:
+                        label, hdr_bg = '', ''
+                    if hdr_bg:
+                        lines.append(f"      {hdr_bg}{DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{label}{SOFT_RESET}")
                     else:
                         lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{SOFT_RESET}")
                     keys.append(block_key)
@@ -53,25 +67,29 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
                         if preview:
                             for raw_line in preview.split('\n'):
                                 raw_line = raw_line.expandtabs(8)
-                                if not raw_line:
-                                    lines.append(f"        {DIM}{SOFT_RESET}")
-                                    keys.append(None)
-                                    continue
-                                lines.append(f"        {DIM}{raw_line}{SOFT_RESET}")
+                                lines.append(f"        {DIM}{raw_line or ''}{SOFT_RESET}")
                                 keys.append(None)
                         else:
                             lines.append(f"        {DIM}(no preview){SOFT_RESET}")
                             keys.append(None)
-                        original_text = sb.get('original_text', '')
-                        if original_text:
-                            for raw_line in original_text.split('\n'):
-                                raw_line = raw_line.expandtabs(8)
-                                if not raw_line:
-                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
+                        if use_dual:
+                            for span_text in (s_spans or []):
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
                                     keys.append(None)
-                                    continue
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                                keys.append(None)
+                            for span_text in (i_spans or []):
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
+                        else:
+                            original_text = sb.get('original_text', '')
+                            if original_text:
+                                for raw_line in original_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
     return lines, keys
 
 # Render tools section for an expanded request entry, returning (lines, keys)
