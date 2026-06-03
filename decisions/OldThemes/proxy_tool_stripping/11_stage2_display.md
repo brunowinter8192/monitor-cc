@@ -70,8 +70,10 @@ Ran against real log `api_requests_opus_monitor_cc_1780517466.jsonl` + dual logs
 **F5A — sys block visibility:**
 Entry 1 expanded render: shows block[0] (changed preview) + block[2] (new block, absent in entry 0); block[1] absent from render (unchanged, correctly hidden).
 
-**F5B — tools (unchanged) line:**
-Second-request same-hash render: shows header + whole-stripped tools (Agent/AskUserQuestion/ScheduleWakeup/ToolSearch as yellow `▶ name`). No `(unchanged)` line. ✓
+**F5B — tools section absent on unchanged hash (post-correction):**
+Initial implementation removed only the `(unchanged)` placeholder while keeping the header + whole-stripped/deferred rows. Corrected in a follow-up: gate `not is_first_request and not tools_changed` BEFORE the header append → `return lines, keys` immediately (returns `([], [])`). Entire tools section absent in req#2+ when hash unchanged; whole-stripped/deferred rows gated away too (session-constant, unchanged when hash unchanged). Caller in `render_turn.py` does plain `lines.extend(t_lines)` — safe with empty return.
+
+Sample-render assertion: `render_tools(entry, prev_same_hash) == ([], [])` ✓; `render_tools(entry, None)` returns 8 lines ✓; `render_tools(entry, prev_diff_hash)` returns 5 lines ✓.
 
 **F3 + Marker cleanup — tool name-line colors (mock with desc-stripped + whole-injected + whole-stripped + deferred):**
 | Tool | Type | Name-line color | Label text |

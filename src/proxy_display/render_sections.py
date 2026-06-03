@@ -112,6 +112,9 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
         prev_tools_hash = prev_entry_for_delta.get('tools_hash', '') if prev_entry_for_delta else ''
         prev_tools_names = prev_entry_for_delta.get('tools_names', []) if prev_entry_for_delta else []
         tools_changed = bool(prev_tools_hash) and prev_tools_hash != tools_hash
+        is_first_request = not prev_tools_hash
+        if not is_first_request and not tools_changed:
+            return lines, keys
         added = [n for n in tools_names if n not in set(prev_tools_names)] if tools_changed else []
         removed = [n for n in prev_tools_names if n not in set(tools_names)] if tools_changed else []
         delta_parts = []
@@ -125,7 +128,6 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
         if is_tools_expanded:
             tools_defs = entry.get('tools_defs', [])
             use_dual = '_stripped_spans' in entry
-            is_first_request = not prev_tools_hash
             added_set = set(added)
             for r_name in removed:
                 lines.append(f"      {DIM}{RED}-{r_name}{SOFT_RESET}")
