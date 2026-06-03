@@ -97,6 +97,7 @@ class ProxyAddon:
             try:
                 _write_entry(self.original_log_file, {
                     "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                    "flow_id": flow.id,
                     "request_id": flow.request.headers.get("x-request-id", ""),
                     "model": payload.get("model", ""),
                     "payload": payload,
@@ -185,6 +186,7 @@ class ProxyAddon:
                     flow.request.headers.get("x-request-id", ""),
                     prev_delta,
                 )
+                delta_entry["flow_id"] = flow.id
                 _write_entry(self.forwarded_log_file, delta_entry)
                 self.prev_delta_hashes_by_model[model_family] = curr_delta
             except Exception as e:
@@ -310,6 +312,8 @@ class ProxyAddon:
                         s_entry, i_entry, new_s, new_i = _build_stripped_injected_deltas(
                             orig_payload, mod_payload, request_id, prev_s, prev_i, model_str,
                         )
+                        s_entry["flow_id"] = flow.id
+                        i_entry["flow_id"] = flow.id
                         _write_entry(self.stripped_log_file, s_entry)
                         _write_entry(self.injected_log_file, i_entry)
                         self.prev_stripped_hashes_by_model[mf] = new_s
