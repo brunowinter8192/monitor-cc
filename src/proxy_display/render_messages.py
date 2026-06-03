@@ -129,29 +129,52 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     else:
                         lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}")
                     keys.append(None)
-                    if full_text:
-                        for raw_line in full_text.split('\n'):
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"        {DIM}{SOFT_RESET}")
+                    i_blk = (entry['_injected_spans']['messages'].get(str(msg_idx), {}).get(str(bidx)) or []) if use_dual else []
+                    s_blk = (entry['_stripped_spans']['messages'].get(str(msg_idx), {}).get(str(bidx)) or []) if use_dual else []
+                    if i_blk and isinstance(i_blk[0], (list, tuple)):
+                        # New format: inline render — equal=DIM, injected=DIM_GREEN_BG, no gray preview
+                        for tag, span_text in i_blk:
+                            bg = DIM_GREEN_BG if tag == "injected" else ""
+                            for raw_line in span_text.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                if not raw_line:
+                                    lines.append(f"        {bg}{DIM}{SOFT_RESET}")
+                                    keys.append(None)
+                                    continue
+                                highlighted = _SUSPECT_TAG_RE.sub(
+                                    lambda m: f'{LIGHT_RED_BG}{m.group(0)}{RESET}{DIM}', raw_line
+                                )
+                                lines.append(f"        {bg}{DIM}{highlighted}{SOFT_RESET}")
                                 keys.append(None)
-                                continue
-                            highlighted = _SUSPECT_TAG_RE.sub(
-                                lambda m: f'{LIGHT_RED_BG}{m.group(0)}{RESET}{DIM}', raw_line
-                            )
-                            lines.append(f"        {DIM}{highlighted}{SOFT_RESET}")
-                            keys.append(None)
-                    if use_dual:
-                        for span_text in (entry['_stripped_spans']['messages'].get(str(msg_idx), {}).get(str(bidx), []) or []):
+                        for span_text in s_blk:
                             for raw_line in span_text.split('\n'):
                                 raw_line = raw_line.expandtabs(8)
                                 lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
                                 keys.append(None)
-                        for span_text in (entry['_injected_spans']['messages'].get(str(msg_idx), {}).get(str(bidx), []) or []):
-                            for raw_line in span_text.split('\n'):
+                    else:
+                        if full_text:
+                            for raw_line in full_text.split('\n'):
                                 raw_line = raw_line.expandtabs(8)
-                                lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                if not raw_line:
+                                    lines.append(f"        {DIM}{SOFT_RESET}")
+                                    keys.append(None)
+                                    continue
+                                highlighted = _SUSPECT_TAG_RE.sub(
+                                    lambda m: f'{LIGHT_RED_BG}{m.group(0)}{RESET}{DIM}', raw_line
+                                )
+                                lines.append(f"        {DIM}{highlighted}{SOFT_RESET}")
                                 keys.append(None)
+                        if use_dual:
+                            for span_text in s_blk:
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
+                            for span_text in i_blk:
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
             else:
                 preview = msg.get('content_preview', '')
                 if preview:
@@ -205,29 +228,52 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                     else:
                         lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}")
                     keys.append(None)
-                    if full_text:
-                        for raw_line in full_text.split('\n'):
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"        {DIM}{SOFT_RESET}")
+                    i_blk = (entry['_injected_spans']['messages'].get(str(msg_idx), {}).get(str(bidx)) or []) if use_dual else []
+                    s_blk = (entry['_stripped_spans']['messages'].get(str(msg_idx), {}).get(str(bidx)) or []) if use_dual else []
+                    if i_blk and isinstance(i_blk[0], (list, tuple)):
+                        # New format: inline render — equal=DIM, injected=DIM_GREEN_BG, no gray preview
+                        for tag, span_text in i_blk:
+                            bg = DIM_GREEN_BG if tag == "injected" else ""
+                            for raw_line in span_text.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                if not raw_line:
+                                    lines.append(f"        {bg}{DIM}{SOFT_RESET}")
+                                    keys.append(None)
+                                    continue
+                                highlighted = _SUSPECT_TAG_RE.sub(
+                                    lambda m: f'{LIGHT_RED_BG}{m.group(0)}{RESET}{DIM}', raw_line
+                                )
+                                lines.append(f"        {bg}{DIM}{highlighted}{SOFT_RESET}")
                                 keys.append(None)
-                                continue
-                            highlighted = _SUSPECT_TAG_RE.sub(
-                                lambda m: f'{LIGHT_RED_BG}{m.group(0)}{RESET}{DIM}', raw_line
-                            )
-                            lines.append(f"        {DIM}{highlighted}{SOFT_RESET}")
-                            keys.append(None)
-                    if use_dual:
-                        for span_text in (entry['_stripped_spans']['messages'].get(str(msg_idx), {}).get(str(bidx), []) or []):
+                        for span_text in s_blk:
                             for raw_line in span_text.split('\n'):
                                 raw_line = raw_line.expandtabs(8)
                                 lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
                                 keys.append(None)
-                        for span_text in (entry['_injected_spans']['messages'].get(str(msg_idx), {}).get(str(bidx), []) or []):
-                            for raw_line in span_text.split('\n'):
+                    else:
+                        if full_text:
+                            for raw_line in full_text.split('\n'):
                                 raw_line = raw_line.expandtabs(8)
-                                lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                if not raw_line:
+                                    lines.append(f"        {DIM}{SOFT_RESET}")
+                                    keys.append(None)
+                                    continue
+                                highlighted = _SUSPECT_TAG_RE.sub(
+                                    lambda m: f'{LIGHT_RED_BG}{m.group(0)}{RESET}{DIM}', raw_line
+                                )
+                                lines.append(f"        {DIM}{highlighted}{SOFT_RESET}")
                                 keys.append(None)
+                        if use_dual:
+                            for span_text in s_blk:
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
+                            for span_text in i_blk:
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
             else:
                 tail = msg.get('content_tail', '')
                 if tail:

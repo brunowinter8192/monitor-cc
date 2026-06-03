@@ -63,33 +63,47 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
                         lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{SOFT_RESET}")
                     keys.append(block_key)
                     if is_block_expanded:
-                        preview = sb.get('preview', '')
-                        if preview:
-                            for raw_line in preview.split('\n'):
-                                raw_line = raw_line.expandtabs(8)
-                                lines.append(f"        {DIM}{raw_line or ''}{SOFT_RESET}")
-                                keys.append(None)
-                        else:
-                            lines.append(f"        {DIM}(no preview){SOFT_RESET}")
-                            keys.append(None)
-                        if use_dual:
+                        if use_dual and i_spans and isinstance(i_spans[0], (list, tuple)):
+                            # New format: inline render — equal=DIM, injected=DIM_GREEN_BG, no gray preview
+                            for tag, span_text in i_spans:
+                                bg = DIM_GREEN_BG if tag == "injected" else ""
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {bg}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
                             for span_text in (s_spans or []):
                                 for raw_line in span_text.split('\n'):
                                     raw_line = raw_line.expandtabs(8)
                                     lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
                                     keys.append(None)
-                            for span_text in (i_spans or []):
-                                for raw_line in span_text.split('\n'):
-                                    raw_line = raw_line.expandtabs(8)
-                                    lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
-                                    keys.append(None)
                         else:
-                            original_text = sb.get('original_text', '')
-                            if original_text:
-                                for raw_line in original_text.split('\n'):
+                            preview = sb.get('preview', '')
+                            if preview:
+                                for raw_line in preview.split('\n'):
                                     raw_line = raw_line.expandtabs(8)
-                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    lines.append(f"        {DIM}{raw_line or ''}{SOFT_RESET}")
                                     keys.append(None)
+                            else:
+                                lines.append(f"        {DIM}(no preview){SOFT_RESET}")
+                                keys.append(None)
+                            if use_dual:
+                                for span_text in (s_spans or []):
+                                    for raw_line in span_text.split('\n'):
+                                        raw_line = raw_line.expandtabs(8)
+                                        lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                        keys.append(None)
+                                for span_text in (i_spans or []):
+                                    for raw_line in span_text.split('\n'):
+                                        raw_line = raw_line.expandtabs(8)
+                                        lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                        keys.append(None)
+                            else:
+                                original_text = sb.get('original_text', '')
+                                if original_text:
+                                    for raw_line in original_text.split('\n'):
+                                        raw_line = raw_line.expandtabs(8)
+                                        lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                        keys.append(None)
     return lines, keys
 
 # Render tools section for an expanded request entry, returning (lines, keys)
@@ -160,26 +174,45 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                     keys.append(tool_key)
                     if is_tool_exp:
                         bg = DIM_GREEN_BG if whole_injected else ''
-                        description = tool_def.get('description', '')
-                        if description:
-                            for raw_line in description.split('\n'):
-                                raw_line = raw_line.expandtabs(8)
-                                if not raw_line:
-                                    lines.append(f"        {bg}{DIM}{SOFT_RESET}")
+                        if i_desc and isinstance(i_desc[0], (list, tuple)):
+                            # New format: inline render for desc_changes — equal=DIM, injected=DIM_GREEN_BG
+                            for tag, span_text in i_desc:
+                                span_bg = DIM_GREEN_BG if tag == "injected" else ""
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    if not raw_line:
+                                        lines.append(f"        {span_bg}{DIM}{SOFT_RESET}")
+                                        keys.append(None)
+                                        continue
+                                    lines.append(f"        {span_bg}{DIM}{raw_line}{SOFT_RESET}")
                                     keys.append(None)
-                                    continue
-                                lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
-                                keys.append(None)
-                        for span_text in (s_desc or []):
-                            for raw_line in span_text.split('\n'):
-                                raw_line = raw_line.expandtabs(8)
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
-                                keys.append(None)
-                        for span_text in (i_desc or []):
-                            for raw_line in span_text.split('\n'):
-                                raw_line = raw_line.expandtabs(8)
-                                lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
-                                keys.append(None)
+                            for span_text in (s_desc or []):
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
+                        else:
+                            # Old format or whole_injected: forwarded description + stacked yellow/green
+                            description = tool_def.get('description', '')
+                            if description:
+                                for raw_line in description.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    if not raw_line:
+                                        lines.append(f"        {bg}{DIM}{SOFT_RESET}")
+                                        keys.append(None)
+                                        continue
+                                    lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
+                                    keys.append(None)
+                            for span_text in (s_desc or []):
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
+                            for span_text in (i_desc or []):
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
                         input_schema = tool_def.get('input_schema', {})
                         props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
                         required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []

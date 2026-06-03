@@ -126,7 +126,7 @@ Storage:
 The 21% overhead is the equal context (153c prefix + 18c suffix duplicated in both logs).
 For whole-block replaces (B1, B2): 0% overhead on span content, +28B tag encoding only.
 
-## Design Tension: Per-Log Form B vs 3-Color Render
+## Design Tension: Per-Log Form B vs 3-Color Render — RESOLVED
 
 Per-log Form B gives each log 2 colors (equal + own). For the 3-color inline render the
 read-side must merge both logs by equal-anchor alignment:
@@ -143,10 +143,18 @@ When non-trivial: blocks with 3+ distinct change regions each with both strip an
 Merge remains well-defined by equal-anchor zip but requires the read-side to implement the
 join algorithm.
 
-**Alternative (decision needed):** store the full 3-color merged sequence in `_injected` only.
+**Alternative evaluated:** store the full 3-color merged sequence in `_injected` only.
 Eliminates read-side merge. Cost: `_injected` carries stripped content → breaks per-log
-semantic separation (the four-log architecture user decision). Whether the merge complexity
-justifies deviating from the four-log separation is an open question for the build step.
+semantic separation (the four-log architecture user decision).
+
+**Decision (Stage 1 implementation):** Per-log Form B chosen. `_stripped` stays semantically
+pure (flat stripped texts only, unchanged). `_injected` stores ordered `[equal, injected]`
+span list. The read-side render is simpler than a merge: `_injected` spans drive the
+forwarded-block inline display (equal=DIM gray, injected=DIM_GREEN_BG green); `_stripped`
+renders as a separate stacked yellow "removed" section below. No read-side merge algorithm
+needed — each log renders independently. Three reasons: (1) `_stripped` stays untouched,
+(2) no cross-log join required in the renderer, (3) clean visual split: sent side (inline
+gray+green) vs removed side (yellow stacked).
 
 ## Conclusion
 
