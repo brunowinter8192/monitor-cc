@@ -196,20 +196,6 @@ class ProxyAddon:
             flow.metadata["mc_model_family"] = model_family
             flow.request.content = json.dumps(modified_payload).encode("utf-8")
             flow.request.headers.pop("content-encoding", None)
-            # Strip deprecated interleaved-thinking beta header and inject context-management beta header
-            existing_beta = flow.request.headers.get("anthropic-beta", "")
-            deprecated_header = "interleaved-thinking-2025-05-14"
-            if deprecated_header in existing_beta:
-                parts = [p.strip() for p in existing_beta.split(",") if p.strip() != deprecated_header]
-                existing_beta = ",".join(parts)
-            beta_value = "context-management-2025-06-27"
-            if existing_beta:
-                if beta_value not in existing_beta:
-                    flow.request.headers["anthropic-beta"] = existing_beta + "," + beta_value
-                else:
-                    flow.request.headers["anthropic-beta"] = existing_beta
-            else:
-                flow.request.headers["anthropic-beta"] = beta_value
         except Exception as e:
             print(f"[proxy_addon] Error: {e}", file=sys.stderr)
             try:

@@ -59,7 +59,7 @@ Injizierter Block:
 
 **Strategie `clear_thinking_20251015`:** Löscht alte Thinking-Blöcke, behält nur die letzten 2 Thinking-Turns.
 
-**Beta-Header:** `src/proxy/addon.py` `request()` fügt nach `flow.request.content = ...` den Header `anthropic-beta: context-management-2025-06-27` hinzu (append-safe: prüft ob bereits vorhanden).
+**Beta-Header:** Keine Manipulation. CC's `anthropic-beta`-Header passiert den Proxy unverändert. Die frühere Logik (Strip `interleaved-thinking-2025-05-14`, Add `context-management-2025-06-27`) wurde entfernt — Rationale und Flag-Liste in `decisions/OldThemes/proxy_header_mods.md`.
 
 **Logging:** `entry["context_management_injected"]: bool` in jedem Proxy-Log-Entry. `"injected_context_management"` in `modifications`-Liste wenn angewendet.
 
