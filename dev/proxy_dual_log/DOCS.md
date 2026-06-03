@@ -119,3 +119,28 @@ line per request.
 | `forwarded` (positional) | Path to `_forwarded.jsonl` |
 | `--original` | Named alternative for original path |
 | `--forwarded` | Named alternative for forwarded path |
+
+---
+
+### span_inline_probe.py
+
+**Purpose:** Form A vs Form B inline-render data model probe. Validates that Form B (full
+ordered span list per log) is the minimal enrichment that lets the read-side render
+strip/inject inline without content duplication. Shows Form A's empirical failure via concrete
+offset/substring mismatches on real data. Probes 3 blocks: sys[2] full-replace, sys[3]
+strip-to-dot, and a word-level message block with cache_control diff.
+
+Key finding: trailing equal span `'"is_error": false}'` from normalized diff NOT found in
+`fwd_raw_text` (exact_in_raw=-1) — Form A's offset/text unusable as raw-text anchor.
+Form B stores equal+stripped in `_stripped`, equal+injected in `_injected`; 3-color render
+= read-side lock-step zip by equal anchors (trivial for all patterns in session 1780517466).
+
+Imports `diff_engine._diff_text` via `importlib` (standalone load, no src/ package import).
+Inlines `_strip_cache_control` (5-line mirror of `logging.py:_strip_cache_control`).
+
+**Usage (from project root):**
+```bash
+./venv/bin/python dev/proxy_dual_log/span_inline_probe.py
+```
+
+**Output:** `dev/proxy_dual_log/span_inline_probe_reports/<YYYYMMDD>.md`
