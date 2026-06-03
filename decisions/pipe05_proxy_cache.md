@@ -134,6 +134,8 @@ Zusätzlich schreibt `addon.py` vier additive Logs in `src/logs/dual_log/` (Subf
 
 Alle vier Writes je in eigenem `try/except` — Fehler beeinflussen nie Forwarding oder Main-Log. `_stripped`/`_injected` werden vom `response()`-Hook geschrieben (Metadata-Bridge: `mc_original_payload`, `mc_modified_payload`, `mc_model_family` auf `flow.metadata`). Janitor-Rotation der `dual_log/`-Files noch offen (`_original`/`_forwarded` bereits bekannt als pending; `_stripped`/`_injected` ebenfalls noch nicht in `_LOG_REGISTRY` / count-30-Logik von `claude_proxy_start.sh` — Follow-up).
 
+**Korrelations-Key:** Alle vier Dual-Log-Entries tragen `"flow_id": flow.id` — mitmproxys stabiles Per-Flow-UUID, das in `request()` und `response()` identisch ist. `request_id` bleibt unberührt (semantisch: Anthropic-API-x-request-id; aktuell `""` in `_original`/`_forwarded`, UUID-Fallback in `_stripped`/`_injected`; kann später aus dem Response-Header backgefüllt werden). `flow_id` ist der Read-Side-Join-Key für die vier Logs.
+
 ### Tool Stripping (TOOL_BLOCKLIST)
 
 `TOOL_BLOCKLIST` (frozenset) in `proxy_addon.py` entfernt 21 ungenutzte Tools aus dem `tools`-Array vor dem API-Send. ~25k chars weniger pro Request. Agent-Tool bleibt, aber Description getrimmt auf git-committer-only (~300 chars statt 10k).
