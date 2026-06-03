@@ -149,7 +149,8 @@ _janitor_cleanup_live_copies
 # Janitor: rotate JSONL logs (keep 30 newest per type) + one-time orphan cleanup.
 _janitor_cleanup_jsonl_logs() {
     local keep=30
-    local rotated_opus=0 rotated_worker=0 f
+    local rotated_opus=0 rotated_worker=0 rotated_dual=0 f
+    local DUAL_LOG_DIR="$LOG_DIR/dual_log"
 
     # Rotate opus JSONL: keep 30 newest, delete older
     while IFS= read -r f; do
@@ -165,6 +166,33 @@ _janitor_cleanup_jsonl_logs() {
         rotated_worker=$((rotated_worker + 1))
     done < <(ls -t "$LOG_DIR"/api_requests_worker_*.jsonl 2>/dev/null | tail -n +$((keep + 1)))
 
+    # Rotate dual-logs: quartet-aligned — keep files whose log_id matches a surviving main log.
+    # Derives surviving log_ids from the main logs that remain after rotation above,
+    # then deletes any dual-log file not in that set. Prevents mtime-divergence orphans
+    # that per-suffix rotation (ls -t *_original | tail -n+31 etc.) could introduce, since
+    # the four suffix files of a quartet are written at different hook stages (request vs response).
+    if [ -d "$DUAL_LOG_DIR" ]; then
+        local surviving_ids stem log_id sfx
+        surviving_ids="$(
+            for f in "$LOG_DIR"/api_requests_opus_*.jsonl "$LOG_DIR"/api_requests_worker_*.jsonl; do
+                [ -f "$f" ] || continue
+                stem="$(basename "$f" .jsonl)"
+                echo "${stem#api_requests_}"
+            done
+        )"
+        for f in "$DUAL_LOG_DIR"/api_requests_*.jsonl; do
+            [ -f "$f" ] || continue
+            stem="$(basename "$f" .jsonl)"
+            stem="${stem#api_requests_}"
+            for sfx in original forwarded stripped injected; do stem="${stem%_$sfx}"; done
+            log_id="$stem"
+            if ! echo "$surviving_ids" | grep -qxF "$log_id"; then
+                rm -f "$f"
+                rotated_dual=$((rotated_dual + 1))
+            fi
+        done
+    fi
+
     # Remove legacy api_error_payload_*.json files (writer switched to api_errors.jsonl)
     find "$LOG_DIR" -maxdepth 1 -type f -name 'api_error_payload_*.json' -delete 2>/dev/null
 
@@ -174,7 +202,7 @@ _janitor_cleanup_jsonl_logs() {
     # Remove legacy tool_use_errors.jsonl (no writer; superseded by tool_errors.jsonl)
     rm -f "$LOG_DIR/tool_use_errors.jsonl"
 
-    echo "Janitor: rotated $rotated_opus opus jsonl, $rotated_worker worker jsonl"
+    echo "Janitor: rotated $rotated_opus opus jsonl, $rotated_worker worker jsonl, $rotated_dual dual-log files"
 }
 _janitor_cleanup_jsonl_logs
 
