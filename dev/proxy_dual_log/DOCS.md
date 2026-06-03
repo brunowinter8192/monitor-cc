@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Verification suite for the `src/logs/dual_log/` log pair written by `src/proxy/addon.py`.
-Proves losslessness and self-consistency of the forwarded-delta log against the original log.
+Verification suite for the `src/logs/dual_log/` log quartet written by `src/proxy/addon.py`.
+Proves losslessness and self-consistency of the forwarded-delta log against the original log,
+and completeness of the strip/inject diff engine (`src/proxy/diff_engine.py`).
 
 ## Modules
 
@@ -41,6 +42,46 @@ status, delta indices) + PASS/FAIL summary line.
 
 ---
 
+### verify_strip_inject.py
+
+**Purpose:** Completeness proof for the strip/inject diff engine (`src/proxy/diff_engine.py`).
+Simulates `_build_stripped_injected_deltas` on every request pair from a real `_original` +
+`_forwarded` log and verifies three hard checks per request:
+
+- **Check 1 (span reconstruction):** For every block where `orig_text != fwd_text`, spans
+  produced by the engine reconstruct `orig_text` from (equal + stripped) and `fwd_text` from
+  (equal + injected). Failure = `_diff_text` lost content.
+- **Check 2 (field coverage):** Every non-collection top-level field that differs between
+  original and forwarded appears in `fields_delta`. Failure = field-level modification (e.g.
+  model override) silently omitted.
+- **Check 3 (model cross-check):** `injected fields_delta["model"]` (if present) matches the
+  `model` field on the `_forwarded` delta entry for the same request.
+
+**Verified:** PASS 46/46 on `api_requests_opus_monitor_cc_1780497198` (historical log data).
+Live proxy writing `_stripped`/`_injected` during a real session: pending user test session.
+
+Imports `src.proxy.diff_engine` and `src.proxy.logging` via `sys.path.insert(0, parents[2])`.
+
+**Usage (from project root):**
+```bash
+./venv/bin/python dev/proxy_dual_log/verify_strip_inject.py \
+    src/logs/dual_log/api_requests_<id>_original.jsonl \
+    src/logs/dual_log/api_requests_<id>_forwarded.jsonl
+```
+
+**CLI flags:**
+
+| Flag | Description |
+|---|---|
+| `original` (positional) | Path to `_original.jsonl` |
+| `forwarded` (positional) | Path to `_forwarded.jsonl` |
+| `--original` | Named alternative for original path |
+| `--forwarded` | Named alternative for forwarded path |
+
+**Exit codes:** 0 = all 3 checks passed for all requests; 1 = at least one hard-fail.
+
+---
+
 ### diff_strip_inject.py
 
 **Purpose:** Span-level strip/inject diff of Original vs Forwarded proxy logs. Shows what the
@@ -49,6 +90,9 @@ a `_original.jsonl` + `_forwarded.jsonl` pair, reconstructs the full forwarded p
 the delta chain (per-model-family), aligns blocks (system by index, tools by name, messages
 by index + within-message by block position), and classifies spans as equal / stripped /
 injected using difflib. One diff delivers both colors: delete spans = stripped, insert spans = injected.
+
+Engine imported from `src/proxy/diff_engine.py` (via `sys.path.insert` — same engine used by
+the runtime `_build_stripped_injected_deltas` in `logging.py`).
 
 **Diff strategy:** Word-level when `SequenceMatcher.ratio() >= 0.1` (partial edits, e.g. a
 cache_control suffix appended to a 55k base64 block — ratio ≈ 1.0, only the last few words
