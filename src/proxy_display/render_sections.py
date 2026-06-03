@@ -193,3 +193,36 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                     lines.append(f"      {DIM_YELLOW_BG}{DIM}\u25b6 {d_name}  [DEFERRED]{SOFT_RESET}")
                     keys.append(None)
     return lines, keys
+
+# Render fields delta section for an expanded request entry, returning (lines, keys)
+def render_fields_delta(entry_idx: int, entry: dict, expand_states: dict, pane_width: int) -> tuple:
+    lines = []
+    keys = []
+    if '_stripped_spans' not in entry:
+        return lines, keys
+    s_fields = entry['_stripped_spans'].get('fields', {})
+    i_fields = entry['_injected_spans'].get('fields', {})
+    if not s_fields and not i_fields:
+        return lines, keys
+    all_field_keys = sorted(set(s_fields) | set(i_fields))
+    fields_key = ('fields', entry_idx)
+    is_fields_expanded = expand_states.get(fields_key, False)
+    fields_symbol = '\u25bc' if is_fields_expanded else '\u25b6'
+    lines.append(f"    {DIM}{fields_symbol} fields: {len(all_field_keys)} changed{SOFT_RESET}")
+    keys.append(fields_key)
+    if is_fields_expanded:
+        for k in all_field_keys:
+            old_val = s_fields.get(k)
+            new_val = i_fields.get(k)
+            if old_val is not None and new_val is not None:
+                lines.append(f"      {DIM_YELLOW_BG}{DIM}{k}: {old_val}{SOFT_RESET}")
+                keys.append(None)
+                lines.append(f"      {DIM_GREEN_BG}{DIM}{k}: {new_val}{SOFT_RESET}")
+                keys.append(None)
+            elif old_val is not None:
+                lines.append(f"      {DIM_YELLOW_BG}{DIM}{k}: {old_val}{SOFT_RESET}")
+                keys.append(None)
+            else:
+                lines.append(f"      {DIM_GREEN_BG}{DIM}{k}: {new_val}{SOFT_RESET}")
+                keys.append(None)
+    return lines, keys

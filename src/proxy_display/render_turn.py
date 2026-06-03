@@ -11,7 +11,7 @@ from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # Render all per-request rows for an expanded turn group, returning (lines, keys, opus_req_num, sub_req_num)
 def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None) -> tuple:
-    from .render_sections import render_system_blocks, render_tools
+    from .render_sections import render_system_blocks, render_tools, render_fields_delta
     from .render_messages import render_messages
     lines = []
     keys = []
@@ -144,6 +144,9 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
             if parts:
                 lines.append(f"    {DIM}{'  '.join(parts)}{SOFT_RESET}")
                 keys.append(None)
+            f_lines, f_keys = render_fields_delta(entry_idx, entry, expand_states, pane_width)
+            lines.extend(f_lines)
+            keys.extend(f_keys)
             s_lines, s_keys = render_system_blocks(entry_idx, entry, _section_ref, expand_states, pane_width, mods)
             lines.extend(s_lines)
             keys.extend(s_keys)

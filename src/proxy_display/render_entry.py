@@ -9,6 +9,7 @@ from ..constants import (
 from ..utils import _ANSI_ESCAPE_RE, _cell_width
 from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry
 from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
+from .render_sections import render_fields_delta
 
 # FUNCTIONS
 
@@ -190,6 +191,9 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     if is_expanded:
         lines.append(f"{L2}{DIM}{'─' * min(40, pane_width - len(L2) - 2)}{SOFT_RESET}")
         keys.append(None)
+        f_lines, f_keys = render_fields_delta(entry_idx, entry, expand_states, pane_width)
+        lines.extend(f_lines)
+        keys.extend(f_keys)
 
         messages = entry.get('messages', [])
         stripped_indices = set(entry.get('stripped_msg_indices', []))

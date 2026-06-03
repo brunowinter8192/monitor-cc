@@ -2,7 +2,7 @@
 import re
 from collections import Counter
 from ..constants import (
-    SOFT_RESET, RED, WHITE, DIM, DIM_YELLOW_BG, LIGHT_RED_BG, RESET,
+    SOFT_RESET, RED, WHITE, DIM, DIM_YELLOW_BG, DIM_GREEN_BG, LIGHT_RED_BG, RESET,
 )
 from ..proxy.strip_vocab import attribute_chunk, classify_req
 
@@ -94,9 +94,10 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
     fdi = diff.get('first_diff_index')
     if fdi is None:
         fdi = 0
+    use_dual = '_stripped_spans' in entry
     if prev_msg_count < len(messages):
         # Render stripped messages from [fdi, prev_msg_count) skipped by the new-range loop below
-        if fdi >= 0:
+        if fdi >= 0 and not use_dual:
             for msg_idx in sorted(s for s in stripped_indices if fdi <= s < prev_msg_count):
                 s_lines, s_keys = _render_stripped_block(entry, msg_idx, messages[msg_idx], show_chars=True)
                 lines.extend(s_lines)
@@ -105,7 +106,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             msg = messages[msg_idx]
             is_stripped = msg_idx in stripped_indices
             blocks = msg.get('blocks', [])
-            if is_stripped:
+            if is_stripped and not use_dual:
                 s_lines, s_keys = _render_stripped_block(entry, msg_idx, msg, show_chars=True)
                 lines.extend(s_lines)
                 keys.extend(s_keys)
@@ -140,6 +141,17 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                             )
                             lines.append(f"        {DIM}{highlighted}{SOFT_RESET}")
                             keys.append(None)
+                    if use_dual:
+                        for span_text in (entry['_stripped_spans']['messages'].get(str(msg_idx), {}).get(str(bidx), []) or []):
+                            for raw_line in span_text.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                keys.append(None)
+                        for span_text in (entry['_injected_spans']['messages'].get(str(msg_idx), {}).get(str(bidx), []) or []):
+                            for raw_line in span_text.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                keys.append(None)
             else:
                 preview = msg.get('content_preview', '')
                 if preview:
@@ -162,7 +174,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             else:
                 break
         # Render stripped messages from [fdi, diff_start) skipped by the diff-range loop below
-        if fdi >= 0:
+        if fdi >= 0 and not use_dual:
             for msg_idx in sorted(s for s in stripped_indices if fdi <= s < diff_start):
                 s_lines, s_keys = _render_stripped_block(entry, msg_idx, messages[msg_idx], show_chars=False)
                 lines.extend(s_lines)
@@ -171,7 +183,7 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
             msg = messages[msg_idx]
             is_stripped = msg_idx in stripped_indices
             blocks = msg.get('blocks', [])
-            if is_stripped:
+            if is_stripped and not use_dual:
                 s_lines, s_keys = _render_stripped_block(entry, msg_idx, msg, show_chars=False)
                 lines.extend(s_lines)
                 keys.extend(s_keys)
@@ -205,6 +217,17 @@ def render_messages(entry: dict, prev_entry_for_delta, entries: list, expand_sta
                             )
                             lines.append(f"        {DIM}{highlighted}{SOFT_RESET}")
                             keys.append(None)
+                    if use_dual:
+                        for span_text in (entry['_stripped_spans']['messages'].get(str(msg_idx), {}).get(str(bidx), []) or []):
+                            for raw_line in span_text.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                keys.append(None)
+                        for span_text in (entry['_injected_spans']['messages'].get(str(msg_idx), {}).get(str(bidx), []) or []):
+                            for raw_line in span_text.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                keys.append(None)
             else:
                 tail = msg.get('content_tail', '')
                 if tail:
