@@ -11,6 +11,10 @@
 | api_errors | `src/logs/api_errors.jsonl` | `proxy/addon.py:ProxyAddon.response` | (Debug/Analyse) | 4xx-API-Fehler aus mitmproxy: Status, Error-Body, Request-URL, Request-Payload | JSONL (`ts`-Feld) | 7d-ts-records | monitor-24h |
 | api_requests_opus | `src/logs/api_requests_opus_<project>_<ts>.jsonl` | `proxy/addon.py:_write_entry` | `proxy_display/parser.py`, `metadata/`, `panes/warnings_pane.py` | Vollständiger Proxy-Log: modifizierter Request + Response-Metadaten für Opus-Sessions | JSONL (multi-type entries) | count-30 | proxy-start-bash |
 | api_requests_worker | `src/logs/api_requests_worker_<name>_<ts>.jsonl` | `proxy/addon.py:_write_entry` | `proxy_display/parser.py` (worker_proxy_pane) | Vollständiger Proxy-Log für Worker-Sessions | JSONL (multi-type entries) | count-30 | proxy-start-bash |
+| api_requests_dual_original | `src/logs/dual_log/api_requests_<log_id>_original.jsonl` | `proxy/addon.py:_resolve_dual_log_file` | (Analyse) | Roher CC-Payload VOR Modifikation (pre-apply_modification_rules) | JSONL | count-30 (quartet-aligned) | proxy-start-bash |
+| api_requests_dual_forwarded | `src/logs/dual_log/api_requests_<log_id>_forwarded.jsonl` | `proxy/addon.py:_resolve_dual_log_file` | (Analyse) | Delta-Log des weitergeleiteten (post-Modifikation) Payloads | JSONL | count-30 (quartet-aligned) | proxy-start-bash |
+| api_requests_dual_stripped | `src/logs/dual_log/api_requests_<log_id>_stripped.jsonl` | `proxy/addon.py:_resolve_dual_log_file` | (Analyse) | Delta-Log: was der Proxy aus dem Original entfernt hat | JSONL | count-30 (quartet-aligned) | proxy-start-bash |
+| api_requests_dual_injected | `src/logs/dual_log/api_requests_<log_id>_injected.jsonl` | `proxy/addon.py:_resolve_dual_log_file` | (Analyse) | Delta-Log: was der Proxy in den forwarded Payload injiziert hat | JSONL | count-30 (quartet-aligned) | proxy-start-bash |
 | gpu_pane | `src/gpu_pane/logs/gpu_pane.log` | `gpu_pane/status.py:TimedRotatingFileHandler` | (kein aktiver Reader) | GPU-Monitoring-Statusmeldungen | Python-Log (`YYYY-MM-DD HH:MM:SS,mmm <level> msg`) | 7d-timed-rotation | live-handler |
 | ccwrap_session | `src/ccwrap/logs/<stem>.bin + <stem>.ansi.log` | `ccwrap/ansi_log.py:open_log_pair` | (Debug/Analyse) | Rohe ANSI-Terminal-Captures von CC-Sessions | Binary + ANSI-Tab-TSV | count-10-pairs | ccwrap-caller |
 | polling_state | `src/logs/polling_state.jsonl` | `hooks/block_polling_loop.py:_record_and_count` | (kein Reader) | Polling-Frequenz-State für block_polling_loop hook (session×target Zähler, self-pruned auf 30 s Fenster) | JSONL (`ts`-Feld) | 1d-ts-records | monitor-24h |
@@ -18,7 +22,8 @@
 ### Zwei-Trigger-Architektur
 
 **Trigger 1 — proxy-start-bash** (`src/claude_proxy_start.sh:_janitor_cleanup_jsonl_logs`):
-- Zuständig für `api_requests_opus_*` + `api_requests_worker_*` (count-30)
+- Zuständig für `api_requests_opus_*` + `api_requests_worker_*` (count-30) + `dual_log/` (quartet-aligned)
+- Dual-Log-Rotation: nach der Haupt-Log-Rotation werden die überlebenden `log_id`s gesammelt; alle `dual_log/`-Files ohne passende `log_id` werden gelöscht. Verhindert Mtime-Divergenz-Orphans (die vier Suffixe werden zu unterschiedlichen Hook-Zeitpunkten geschrieben)
 - Läuft bei jedem Proxy-Start — unabhängig davon ob Monitor aktiv ist
 - Bash (kein Python): count-basierte Rotation via `ls -t | tail -n +31` ist trivial in Shell
 
@@ -33,7 +38,7 @@
 
 ### LogSpec-Registry
 
-`src/log_janitor.py` enthält `_LOG_REGISTRY` (Tuple aus 8 `LogSpec`-Einträgen, alle Logs inventarisiert). `sweep_eligible_specs(logs_dir)` gibt `(spec, path)`-Paare für die vier monitor-24h-Logs zurück. `monitor.py` iteriert darüber — neue sweep-fähige Logs werden durch Hinzufügen eines Eintrags in `_LOG_REGISTRY` automatisch eingeschlossen.
+`src/log_janitor.py` enthält `_LOG_REGISTRY` (Tuple aus 12 `LogSpec`-Einträgen, alle Logs inventarisiert). `sweep_eligible_specs(logs_dir)` gibt `(spec, path)`-Paare für die vier monitor-24h-Logs zurück. `monitor.py` iteriert darüber — neue sweep-fähige Logs werden durch Hinzufügen eines Eintrags in `_LOG_REGISTRY` automatisch eingeschlossen.
 
 `polling_state.jsonl` ist primär self-pruning (block_polling_loop prunt Einträge > 30 s bei jedem Aufruf). Der monitor-24h Sweep via `cleanup_old_jsonl` ist ein Backup für den Fall, dass der Hook-Prune wiederholt fehlschlug (z. B. I/O-Fehler). Die effektive Retention im Normalbetrieb ist 30 Sekunden.
 

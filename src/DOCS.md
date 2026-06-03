@@ -35,12 +35,12 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 |---|---|---|
 | `constants.py` | 164 | Imported by ~all subpackages — shallow path avoids deep `...constants` chains |
 | `utils.py` | 91 | Same — `format_timestamp` + `visual_line_count` used everywhere |
-| `log_janitor.py` | 130 | `LogSpec` registry (7 entries) + `sweep_eligible_specs()` + `cleanup_old_jsonl(path)` — authoritative log inventory; 7-day JSONL sweep triggered from `core/monitor.py` every 24h |
+| `log_janitor.py` | 180 | `LogSpec` registry (11 entries) + `sweep_eligible_specs()` + `cleanup_old_jsonl(path)` — authoritative log inventory; 7-day JSONL sweep triggered from `core/monitor.py` every 24h |
 | `session_finder.py` | 85 | Single module, no subpackage warranted |
 | `startup.py` | 48 | Single module; only called by `workflow.py` |
 | `tmux_launcher.py` | 283 | Single module; only called by `workflow.py` (mode `all` → `launch_split_screen`; mode `restart-panes` → `restart_panes`, the Ctrl+R self-heal handler) |
 | `proxy_addon.py` | 31 | Thin shim — `claude_proxy_start.sh` copies it to `src/logs/.proxy_addon_live_<id>.py` for per-session isolation. Shim has sys.path logic that finds `src/proxy/` from both root and live-copy locations. Move would break live-copy pattern. |
-| `claude_proxy_start.sh` | 238 | Shell script — launches mitmproxy + Claude Code with proxy env |
+| `claude_proxy_start.sh` | 272 | Shell script — launches mitmproxy + Claude Code with proxy env; count-30 janitor for main + quartet-aligned dual-log rotation |
 
 ## Flow (Main Session)
 
