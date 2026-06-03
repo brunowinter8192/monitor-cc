@@ -256,9 +256,14 @@ def _build_forwarded_delta(payload: dict, request_id: str, prev_hashes: Optional
     return entry, curr_hashes
 
 
-# MD5[:10] of pipe-joined span texts — stable identity for a set of stripped/injected texts
+# MD5[:10] of pipe-joined span texts — stable identity for a set of stripped texts
 def _hash_spans(texts: list) -> str:
     return hashlib.md5("|".join(texts).encode("utf-8")).hexdigest()[:10]
+
+
+# MD5[:10] of ordered span sequence — stable identity for equal+injected span list (new _injected format)
+def _hash_span_sequence(spans: list) -> str:
+    return hashlib.md5("|".join(f"{tag}:{text}" for tag, text in spans).encode("utf-8")).hexdigest()[:10]
 
 
 # Build stripped_delta and injected_delta entries and updated hash states
@@ -298,19 +303,20 @@ def _build_stripped_injected_deltas(
     for d in sys_diffs:
         idx_str = str(d["idx"])
         s_texts = [t for tag, t in d["spans"] if tag == "stripped" and t]
-        i_texts = [t for tag, t in d["spans"] if tag == "injected" and t]
+        i_spans = [(tag, t) for tag, t in d["spans"] if tag in ("equal", "injected") and t]
+        has_i = any(tag == "injected" for tag, _ in i_spans)
         if s_texts:
             lk = f"sys.{d['idx']}"
             h = _hash_spans(s_texts)
             new_s[lk] = h
             if is_first or (prev_stripped or {}).get(lk) != h:
                 s_sys[idx_str] = s_texts
-        if i_texts:
+        if has_i:
             lk = f"sys.{d['idx']}"
-            h = _hash_spans(i_texts)
+            h = _hash_span_sequence(i_spans)
             new_i[lk] = h
             if is_first or (prev_injected or {}).get(lk) != h:
-                i_sys[idx_str] = i_texts
+                i_sys[idx_str] = i_spans
 
     # tools
     s_tools: dict = {}
@@ -329,19 +335,20 @@ def _build_stripped_injected_deltas(
             i_tools[name] = {"whole": True}
     for name, _o, _f, spans in tools_diff["desc_changes"]:
         s_texts = [t for tag, t in spans if tag == "stripped" and t]
-        i_texts = [t for tag, t in spans if tag == "injected" and t]
+        i_spans = [(tag, t) for tag, t in spans if tag in ("equal", "injected") and t]
+        has_i = any(tag == "injected" for tag, _ in i_spans)
         if s_texts:
             lk = f"tool_d.{name}"
             h = _hash_spans(s_texts)
             new_s[lk] = h
             if is_first or (prev_stripped or {}).get(lk) != h:
                 s_tools[name] = {"desc": s_texts}
-        if i_texts:
+        if has_i:
             lk = f"tool_d.{name}"
-            h = _hash_spans(i_texts)
+            h = _hash_span_sequence(i_spans)
             new_i[lk] = h
             if is_first or (prev_injected or {}).get(lk) != h:
-                i_tools[name] = {"desc": i_texts}
+                i_tools[name] = {"desc": i_spans}
 
     # messages
     s_msgs: dict = {}
@@ -353,19 +360,20 @@ def _build_stripped_injected_deltas(
         for bd in md["block_diffs"]:
             bidx = str(bd["bidx"])
             s_texts = [t for tag, t in bd["spans"] if tag == "stripped" and t]
-            i_texts = [t for tag, t in bd["spans"] if tag == "injected" and t]
+            i_spans = [(tag, t) for tag, t in bd["spans"] if tag in ("equal", "injected") and t]
+            has_i = any(tag == "injected" for tag, _ in i_spans)
             if s_texts:
                 lk = f"msg.{md['idx']}.{bd['bidx']}"
                 h = _hash_spans(s_texts)
                 new_s[lk] = h
                 if is_first or (prev_stripped or {}).get(lk) != h:
                     s_blks[bidx] = s_texts
-            if i_texts:
+            if has_i:
                 lk = f"msg.{md['idx']}.{bd['bidx']}"
-                h = _hash_spans(i_texts)
+                h = _hash_span_sequence(i_spans)
                 new_i[lk] = h
                 if is_first or (prev_injected or {}).get(lk) != h:
-                    i_blks[bidx] = i_texts
+                    i_blks[bidx] = i_spans
         if s_blks:
             s_msgs[midx] = s_blks
         if i_blks:
