@@ -10,7 +10,7 @@ from typing import Dict, Optional
 
 from mitmproxy import http
 
-from .logging import _build_entry, _build_latency_update, _summarize_content_for_log, _build_forwarded_delta
+from .logging import _build_entry, _build_latency_update, _summarize_content_for_log, _build_forwarded_delta, _build_stripped_injected_deltas
 
 
 # Suppress noise from `NotImplementedError: HTTP trailers are not implemented yet.`
@@ -49,10 +49,14 @@ class ProxyAddon:
         self.log_file = _resolve_log_file()
         self.original_log_file = _resolve_dual_log_file("original")
         self.forwarded_log_file = _resolve_dual_log_file("forwarded")
+        self.stripped_log_file = _resolve_dual_log_file("stripped")
+        self.injected_log_file = _resolve_dual_log_file("injected")
         self.prev_messages_by_model: Dict[str, list] = {}
         self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
         self.prev_sent_hashes_by_model: dict = {}  # model_family → hash fields from last sent_meta
         self.prev_delta_hashes_by_model: dict = {}  # model_family → {"system": [...], "tools": [...], "messages": [...]} for forwarded delta
+        self.prev_stripped_hashes_by_model: dict = {}  # model_family → flat loc_key → hash dict for stripped delta
+        self.prev_injected_hashes_by_model: dict = {}  # model_family → flat loc_key → hash dict for injected delta
         self._schema_checked: Dict[str, bool] = {}  # schema check runs once per model_family (opus + sonnet)
 
     def request(self, flow: http.HTTPFlow) -> None:
@@ -67,6 +71,7 @@ class ProxyAddon:
             payload = _parse_payload(body)
             if payload is None:
                 return
+            flow.metadata["mc_original_payload"] = payload
 
             model = payload.get("model", "")
             model_lower = model.lower()
@@ -184,6 +189,9 @@ class ProxyAddon:
                 self.prev_delta_hashes_by_model[model_family] = curr_delta
             except Exception as e:
                 print(f"[dual_log] forwarded write failed: {e}", file=sys.stderr)
+            # Capture final payload (post all mods + cache ops) for off-path strip/inject diff
+            flow.metadata["mc_modified_payload"] = modified_payload
+            flow.metadata["mc_model_family"] = model_family
             flow.request.content = json.dumps(modified_payload).encode("utf-8")
             flow.request.headers.pop("content-encoding", None)
             # Strip deprecated interleaved-thinking beta header and inject context-management beta header
@@ -291,6 +299,23 @@ class ProxyAddon:
                     request_id, ttfb_ms, stream_duration_ms, output_tokens, output_tokens_per_sec,
                     n_stalls, max_stall_ms, total_stall_ms,
                 ))
+                try:
+                    orig_payload = flow.metadata.get("mc_original_payload")
+                    mod_payload = flow.metadata.get("mc_modified_payload")
+                    mf = flow.metadata.get("mc_model_family")
+                    if orig_payload is not None and mod_payload is not None and mf is not None:
+                        prev_s = self.prev_stripped_hashes_by_model.get(mf)
+                        prev_i = self.prev_injected_hashes_by_model.get(mf)
+                        model_str = mod_payload.get("model", "")
+                        s_entry, i_entry, new_s, new_i = _build_stripped_injected_deltas(
+                            orig_payload, mod_payload, request_id, prev_s, prev_i, model_str,
+                        )
+                        _write_entry(self.stripped_log_file, s_entry)
+                        _write_entry(self.injected_log_file, i_entry)
+                        self.prev_stripped_hashes_by_model[mf] = new_s
+                        self.prev_injected_hashes_by_model[mf] = new_i
+                except Exception as e:
+                    print(f"[dual_log] stripped/injected write failed: {e}", file=sys.stderr)
         except Exception as e:
             print(f"[proxy_addon] Error in response hook: {e}", file=sys.stderr)
 

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional, Union
 
 from .message_summary import _summarize_message
+from .diff_engine import _diff_system, _diff_tools, _diff_messages, _diff_top_level_fields
 
 # FUNCTIONS
 
@@ -253,3 +254,166 @@ def _build_forwarded_delta(payload: dict, request_id: str, prev_hashes: Optional
     }
 
     return entry, curr_hashes
+
+
+# MD5[:10] of pipe-joined span texts — stable identity for a set of stripped/injected texts
+def _hash_spans(texts: list) -> str:
+    return hashlib.md5("|".join(texts).encode("utf-8")).hexdigest()[:10]
+
+
+# Build stripped_delta and injected_delta entries and updated hash states
+# Both payloads are normalized (cache_control stripped) at call site before passing here.
+# prev_stripped / prev_injected: flat dicts of loc_key → hash from previous request (None = first).
+# Returns (stripped_entry, injected_entry, new_stripped_hashes, new_injected_hashes).
+def _build_stripped_injected_deltas(
+    orig_payload: dict,
+    fwd_payload: dict,
+    request_id: str,
+    prev_stripped: Optional[dict],
+    prev_injected: Optional[dict],
+    model: str,
+) -> tuple:
+    orig_norm = _strip_cache_control(orig_payload)
+    fwd_norm = _strip_cache_control(fwd_payload)
+
+    orig_sys = [b for b in (orig_norm.get("system", []) or []) if isinstance(b, dict)]
+    fwd_sys = [b for b in (fwd_norm.get("system", []) or []) if isinstance(b, dict)]
+    orig_tools = orig_norm.get("tools", []) or []
+    fwd_tools = fwd_norm.get("tools", []) or []
+    orig_msgs = orig_norm.get("messages", []) or []
+    fwd_msgs = fwd_norm.get("messages", []) or []
+
+    sys_diffs = _diff_system(orig_sys, fwd_sys)
+    tools_diff = _diff_tools(orig_tools, fwd_tools)
+    msg_diffs = _diff_messages(orig_msgs, fwd_msgs)
+    field_diffs = _diff_top_level_fields(orig_norm, fwd_norm)
+
+    is_first = prev_stripped is None
+    new_s: dict = {}
+    new_i: dict = {}
+
+    # system
+    s_sys: dict = {}
+    i_sys: dict = {}
+    for d in sys_diffs:
+        idx_str = str(d["idx"])
+        s_texts = [t for tag, t in d["spans"] if tag == "stripped" and t]
+        i_texts = [t for tag, t in d["spans"] if tag == "injected" and t]
+        if s_texts:
+            lk = f"sys.{d['idx']}"
+            h = _hash_spans(s_texts)
+            new_s[lk] = h
+            if is_first or (prev_stripped or {}).get(lk) != h:
+                s_sys[idx_str] = s_texts
+        if i_texts:
+            lk = f"sys.{d['idx']}"
+            h = _hash_spans(i_texts)
+            new_i[lk] = h
+            if is_first or (prev_injected or {}).get(lk) != h:
+                i_sys[idx_str] = i_texts
+
+    # tools
+    s_tools: dict = {}
+    i_tools: dict = {}
+    for name in tools_diff["stripped"]:
+        lk = f"tool_w.{name}"
+        h = _hash_spans([name])
+        new_s[lk] = h
+        if is_first or (prev_stripped or {}).get(lk) != h:
+            s_tools[name] = {"whole": True}
+    for name in tools_diff["injected"]:
+        lk = f"tool_w.{name}"
+        h = _hash_spans([name])
+        new_i[lk] = h
+        if is_first or (prev_injected or {}).get(lk) != h:
+            i_tools[name] = {"whole": True}
+    for name, _o, _f, spans in tools_diff["desc_changes"]:
+        s_texts = [t for tag, t in spans if tag == "stripped" and t]
+        i_texts = [t for tag, t in spans if tag == "injected" and t]
+        if s_texts:
+            lk = f"tool_d.{name}"
+            h = _hash_spans(s_texts)
+            new_s[lk] = h
+            if is_first or (prev_stripped or {}).get(lk) != h:
+                s_tools[name] = {"desc": s_texts}
+        if i_texts:
+            lk = f"tool_d.{name}"
+            h = _hash_spans(i_texts)
+            new_i[lk] = h
+            if is_first or (prev_injected or {}).get(lk) != h:
+                i_tools[name] = {"desc": i_texts}
+
+    # messages
+    s_msgs: dict = {}
+    i_msgs: dict = {}
+    for md in msg_diffs:
+        midx = str(md["idx"])
+        s_blks: dict = {}
+        i_blks: dict = {}
+        for bd in md["block_diffs"]:
+            bidx = str(bd["bidx"])
+            s_texts = [t for tag, t in bd["spans"] if tag == "stripped" and t]
+            i_texts = [t for tag, t in bd["spans"] if tag == "injected" and t]
+            if s_texts:
+                lk = f"msg.{md['idx']}.{bd['bidx']}"
+                h = _hash_spans(s_texts)
+                new_s[lk] = h
+                if is_first or (prev_stripped or {}).get(lk) != h:
+                    s_blks[bidx] = s_texts
+            if i_texts:
+                lk = f"msg.{md['idx']}.{bd['bidx']}"
+                h = _hash_spans(i_texts)
+                new_i[lk] = h
+                if is_first or (prev_injected or {}).get(lk) != h:
+                    i_blks[bidx] = i_texts
+        if s_blks:
+            s_msgs[midx] = s_blks
+        if i_blks:
+            i_msgs[midx] = i_blks
+
+    # top-level fields
+    s_fields: dict = {}
+    i_fields: dict = {}
+    for fd in field_diffs:
+        key = fd["key"]
+        lk = f"field.{key}"
+        if fd["tag"] in ("stripped", "replaced"):
+            h = _delta_hash(fd["orig"])
+            new_s[lk] = h
+            if is_first or (prev_stripped or {}).get(lk) != h:
+                s_fields[key] = fd["orig"]
+        if fd["tag"] in ("injected", "replaced"):
+            h = _delta_hash(fd["fwd"])
+            new_i[lk] = h
+            if is_first or (prev_injected or {}).get(lk) != h:
+                i_fields[key] = fd["fwd"]
+
+    now = datetime.now(timezone.utc)
+    timestamp = f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"
+    counts = {"system": len(fwd_sys), "tools": len(fwd_tools), "messages": len(fwd_msgs)}
+
+    stripped_entry = {
+        "type": "stripped_delta",
+        "request_id": request_id,
+        "timestamp": timestamp,
+        "model": model,
+        "is_first": is_first,
+        "counts": counts,
+        "system_delta": s_sys,
+        "tools_delta": s_tools,
+        "messages_delta": s_msgs,
+        "fields_delta": s_fields,
+    }
+    injected_entry = {
+        "type": "injected_delta",
+        "request_id": request_id,
+        "timestamp": timestamp,
+        "model": model,
+        "is_first": is_first,
+        "counts": counts,
+        "system_delta": i_sys,
+        "tools_delta": i_tools,
+        "messages_delta": i_msgs,
+        "fields_delta": i_fields,
+    }
+    return stripped_entry, injected_entry, new_s, new_i
