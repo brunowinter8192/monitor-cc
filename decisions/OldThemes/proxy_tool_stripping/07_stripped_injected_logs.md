@@ -110,16 +110,58 @@ Word-level-Spans (ratio >= 0.1, echte Partial-Edits) werden als space-joined Wor
 
 Für die primären Use-Cases (sys[2]-Strip, Tool-Whole-Strip, msg[0]-Block-Strips) ist das unproblematisch — diese sind alle ratio < 0.1 (Whole-Block). Cache_control-Suffix-Edits (ratio ≈ 1.0) verlieren evtl. internal whitespace in der Span-Text-Repräsentation. Für Monitor-Highlighting ausreichend, für byte-genaue Rekonstruktion nicht geeignet.
 
-## Verifikationsstatus
+## Korrelations-Key: flow_id
+
+**Problem (live-gefunden):** Die vier Dual-Logs hatten keinen gemeinsamen Join-Key:
+- `_original` und `_forwarded` tragen `request_id: ""` — CC sendet kein `x-request-id`-Header im Request; dieses kommt erst im API-Response.
+- `_stripped` und `_injected` tragen eine UUID aus dem `_build_entry`-Fallback (`flow.request.headers.get("x-request-id") or str(uuid.uuid4())`), gespeichert via `mc_request_id`. Unterschiedlich von `""`, aber auch kein verlässlicher Join über alle vier.
+
+**Warum ORDER allein bricht:** `_original`/`_forwarded` werden in `request()` geschrieben (Request-Reihenfolge). `_stripped`/`_injected` werden in `response()` geschrieben (Response-Completion-Reihenfolge). Bei gleichzeitigen Requests divergieren diese Reihenfolgen. Realistischer Trigger: CC's Haiku-Title-Gen-Request (läuft concurrent zum Opus-Hauptrequest) — Request-order ≠ Response-order → Per-Request-Join anhand Position falsch.
+
+**Fix:** `flow.id` ist mitmproxys stabiles Per-Flow-UUID (`str(uuid.uuid4())` bei Flow-Erstellung, unveränderlich). Dasselbe `flow`-Objekt wird an `request()`, `responseheaders()` und `response()` übergeben — kein `flow.metadata`-Relay nötig.
+
+Implementiert als **dediziertes Feld `"flow_id": flow.id`** (Stamp an der Aufrufstelle) auf allen vier Dual-Log-Entries:
+- `_original`: im Dict-Literal in `request()`
+- `_forwarded`: `delta_entry["flow_id"] = flow.id` nach `_build_forwarded_delta` return, vor `_write_entry`
+- `_stripped`/`_injected`: `s_entry["flow_id"] = flow.id` / `i_entry["flow_id"] = flow.id` nach `_build_stripped_injected_deltas` return, vor `_write_entry`
+
+`request_id` bleibt in allen vier unberührt — semantisch "Anthropic-API-x-request-id", kann später aus dem Response-Header backgefüllt werden. `flow_id` ist der Read-Side-Join-Key. Kein Eingriff in Funktionssignaturen, Hash-Logik oder Main-Log.
+
+**Code-Review-verifiziert.** Live-four-log-flow_id-join (Read-Side) wird bei der Monitor-Lese-Migration bestätigt.
+
+## Verifikationsstatus — LIVE-VERIFIZIERT
 
 **`verify_strip_inject.py`** (dev/proxy_dual_log/, 345 LOC) — Vollständigkeitsbeweis:
-- **Check 1 (Span-Rekonstruktion):** Für jeden Block wo `orig_text != fwd_text` rekonstruiert die Engine `orig_text` aus (equal + stripped) und `fwd_text` aus (equal + injected) spans. Failure = `_diff_text` verliert Content.
-- **Check 2 (Field-Coverage):** Jedes non-collection Top-Level-Feld das sich unterscheidet erscheint in `fields_delta`. Failure = Model-Override oder anderes Feld still übergangen.
-- **Check 3 (Model-Cross-Check):** `injected fields_delta["model"]` (wenn vorhanden) matcht das `model`-Feld im entsprechenden `_forwarded`-Delta-Entry.
+- **Check 1 (Span-Rekonstruktion):** Für jeden Block wo `orig_text != fwd_text` rekonstruiert die Engine `orig_text` aus (equal + stripped) und `fwd_text` aus (equal + injected) spans.
+- **Check 2 (Field-Coverage):** Jedes non-collection Top-Level-Feld das sich unterscheidet erscheint in `fields_delta`.
+- **Check 3 (Model-Cross-Check):** `injected fields_delta["model"]` matcht das `model`-Feld im `_forwarded`-Delta-Entry.
 
-**Lauf auf `api_requests_opus_monitor_cc_1780497198`:** PASS 46/46 (historische Log-Daten).
+**Offline-Lauf auf `api_requests_opus_monitor_cc_1780497198`:** PASS 46/46.
 
-**LIVE-Pfad:** Der Proxy schreibt `_stripped`/`_injected` während einer echten Session — dieser Pfad ist NOCH NICHT live-verifiziert (steht aus bis zur nächsten User-Test-Session). Monitor-Leseseite (Highlighting) ebenfalls deferred bis Daten vorhanden.
+**LIVE-Verifikation: Session `api_requests_opus_monitor_cc_1780507825`** — 6 Requests (2 Haiku title-gen + 4 Opus), alle vier Logs jeweils 6 Zeilen, balanciert.
+
+Befunde:
+
+**Model-Override korrekt erfasst (REQ#3, erster Opus):**
+- `_stripped fields_delta.model` = `"claude-opus-4-7"` ✓
+- `_injected fields_delta.model` = `"claude-opus-4-8"` ✓
+
+**Vollständiger-Payload-Diff fängt mehr als nur model (REQ#3):** Derselbe Request zeigte zusätzlich in `fields_delta`:
+- `max_tokens`: 64000 (stripped) → 128000 (injected)
+- `output_config`: komplett rewritten
+- `thinking`: komplett rewritten
+
+Das sind stille Feld-Modifikationen, die das alte Logging nie aufgezeichnet hatte. Validiert die Entscheidung für `_diff_top_level_fields` — ohne sie wären diese Felder unbemerkt in `fields_delta` gefehlt.
+
+**sys[2] byte-exact (REQ#3):**
+- Stripped span: 7471 chars — exakt der CC-System-Prompt.
+- Injected span: 130441 chars — der Rules-Blob; bestätigt NICHT im Original vorhanden.
+
+**Delta-Suppression (REQs 4–6):** Leere `system_delta`, `tools_delta`, `fields_delta` (stabile Strips nach erstem Opus-Request supprimiert). Nur neue Messages erscheinen: REQ#5 `msg[2]`, REQ#6 `msg[4]`.
+
+**Haiku:** Eigene `is_first`-Kette, unabhängig von Opus.
+
+Monitor-Leseseite (Highlighting) bleibt deferred bis Read-Migration.
 
 ## Follow-Up: Janitor-Integration noch offen
 
