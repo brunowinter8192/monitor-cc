@@ -386,6 +386,68 @@ def _parse_log_file_isolated(log_path: Path, last_position: int, pending_by_rid:
                 pending_by_rid[rid] = e
     return entries, new_pos
 
+# Infer model family from model name string (matches addon.py logic)
+def _infer_model_family(model: str) -> str:
+    m = model.lower()
+    if 'haiku' in m:
+        return 'haiku'
+    if 'sonnet' in m:
+        return 'sonnet'
+    return 'opus'
+
+# Derive stripped/injected dual-log paths from the resolved main log path
+def _find_dual_log_paths(main_log_path: Optional[Path]) -> tuple:
+    if main_log_path is None:
+        return None, None
+    dual_dir = main_log_path.parent / 'dual_log'
+    stem = main_log_path.stem  # e.g. api_requests_<log_id>
+    return (
+        dual_dir / f'{stem}_stripped.jsonl',
+        dual_dir / f'{stem}_injected.jsonl',
+    )
+
+# Read new entries from one dual-log file (stripped or injected), accumulate per model_family.
+# acc_by_family: {family -> {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}}
+# Mutates acc_by_family IN-PLACE so all proxy_entries holding a reference see updates
+# automatically. is_first -> .clear() + .update() on existing section dicts (preserves refs).
+# Returns new file position; silently ignores missing/unreadable file.
+def accumulate_dual_log(path: Optional[Path], last_pos: int, acc_by_family: dict) -> int:
+    if path is None or not path.exists():
+        return last_pos
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            f.seek(last_pos)
+            while True:
+                raw_line = f.readline()
+                if not raw_line:
+                    break
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                family = _infer_model_family(entry.get('model', ''))
+                acc = acc_by_family.setdefault(
+                    family,
+                    {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
+                )
+                if entry.get('is_first', False):
+                    for section in ('system', 'tools', 'messages', 'fields'):
+                        acc[section].clear()
+                acc['system'].update(entry.get('system_delta') or {})
+                for name, val in (entry.get('tools_delta') or {}).items():
+                    acc['tools'][name] = val
+                for midx, blks in (entry.get('messages_delta') or {}).items():
+                    if midx not in acc['messages']:
+                        acc['messages'][midx] = {}
+                    acc['messages'][midx].update(blks)
+                acc['fields'].update(entry.get('fields_delta') or {})
+            return f.tell()
+    except OSError:
+        return last_pos
+
 # parse_proxy_log variant that uses _parse_log_file_isolated for the initial parse.
 # Marker-file lookup identical to parse_proxy_log; subprocess decision delegated to
 # _parse_log_file_isolated based on last_position.

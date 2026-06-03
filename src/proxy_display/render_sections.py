@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from ..constants import (
-    SOFT_RESET, RED, DIM, DIM_YELLOW_BG,
+    SOFT_RESET, RED, DIM, DIM_YELLOW_BG, DIM_GREEN_BG,
 )
 from .format import _format_delta, _format_k
 
@@ -35,16 +35,30 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
                 lines.append(f"      {DIM}(unchanged){SOFT_RESET}")
                 keys.append(None)
             else:
+                use_dual = '_stripped_spans' in entry
                 for sb in sys_blocks:
                     bidx = sb['idx']
                     bchars = sb.get('chars', 0)
-                    is_sys_stripped = ('replaced_system_prompt' in mods and bidx == 2) or ('stripped_sys3' in mods and bidx == 3)
-                    stripped_str = f"  [STRIPPED]" if is_sys_stripped else ''
                     block_key = ('sys_block', entry_idx, bidx)
                     is_block_expanded = expand_states.get(block_key, False)
                     block_symbol = '\u25bc' if is_block_expanded else '\u25b6'
-                    if is_sys_stripped:
-                        lines.append(f"      {DIM_YELLOW_BG}{DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{stripped_str}{SOFT_RESET}")
+                    if use_dual:
+                        s_spans = entry['_stripped_spans']['system'].get(str(bidx))
+                        i_spans = entry['_injected_spans']['system'].get(str(bidx))
+                    else:
+                        is_old_stripped = ('replaced_system_prompt' in mods and bidx == 2) or ('stripped_sys3' in mods and bidx == 3)
+                        s_spans = True if is_old_stripped else None  # marker only; content from original_text
+                        i_spans = None
+                    if s_spans and i_spans:
+                        label, hdr_bg = '  [REPLACED]', DIM_YELLOW_BG
+                    elif s_spans:
+                        label, hdr_bg = '  [STRIPPED]', DIM_YELLOW_BG
+                    elif i_spans:
+                        label, hdr_bg = '  [INJECTED]', DIM_GREEN_BG
+                    else:
+                        label, hdr_bg = '', ''
+                    if hdr_bg:
+                        lines.append(f"      {hdr_bg}{DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{label}{SOFT_RESET}")
                     else:
                         lines.append(f"      {DIM}{block_symbol} [{bidx}]: {_format_k(bchars)}{SOFT_RESET}")
                     keys.append(block_key)
@@ -53,25 +67,29 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
                         if preview:
                             for raw_line in preview.split('\n'):
                                 raw_line = raw_line.expandtabs(8)
-                                if not raw_line:
-                                    lines.append(f"        {DIM}{SOFT_RESET}")
-                                    keys.append(None)
-                                    continue
-                                lines.append(f"        {DIM}{raw_line}{SOFT_RESET}")
+                                lines.append(f"        {DIM}{raw_line or ''}{SOFT_RESET}")
                                 keys.append(None)
                         else:
                             lines.append(f"        {DIM}(no preview){SOFT_RESET}")
                             keys.append(None)
-                        original_text = sb.get('original_text', '')
-                        if original_text:
-                            for raw_line in original_text.split('\n'):
-                                raw_line = raw_line.expandtabs(8)
-                                if not raw_line:
-                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
+                        if use_dual:
+                            for span_text in (s_spans or []):
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
                                     keys.append(None)
-                                    continue
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                                keys.append(None)
+                            for span_text in (i_spans or []):
+                                for raw_line in span_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
+                        else:
+                            original_text = sb.get('original_text', '')
+                            if original_text:
+                                for raw_line in original_text.split('\n'):
+                                    raw_line = raw_line.expandtabs(8)
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                    keys.append(None)
     return lines, keys
 
 # Render tools section for an expanded request entry, returning (lines, keys)
@@ -102,6 +120,7 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
         keys.append(tools_key)
         if is_tools_expanded:
             tools_defs = entry.get('tools_defs', [])
+            use_dual = '_stripped_spans' in entry
             is_first_request = not prev_tools_hash
             added_set = set(added)
             if not is_first_request and not tools_changed:
@@ -115,63 +134,160 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                 t_name = tool_def.get('name', '')
                 if not is_first_request and (not tools_changed or t_name not in added_set):
                     continue
-                stripped_original = tool_def.get('stripped_original')
-                stripped_marker = '  [STRIPPED]' if stripped_original else ''
                 tool_key = ('tool', entry_idx, tool_idx)
                 is_tool_exp = expand_states.get(tool_key, False)
                 t_symbol = '\u25bc' if is_tool_exp else '\u25b6'
-                lines.append(f"      {DIM}{t_symbol} {t_name}{stripped_marker}{SOFT_RESET}")
-                keys.append(tool_key)
-                if is_tool_exp:
-                    bg = ''
-                    description = tool_def.get('description', '')
-                    if description:
-                        for raw_line in description.split('\n'):
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"        {bg}{DIM}{SOFT_RESET}")
+                if use_dual:
+                    s_tool = entry['_stripped_spans']['tools'].get(t_name, {})
+                    i_tool = entry['_injected_spans']['tools'].get(t_name, {})
+                    whole_injected = bool(i_tool.get('whole'))
+                    s_desc = s_tool.get('desc', [])
+                    i_desc = i_tool.get('desc', [])
+                    if whole_injected:
+                        label, hdr_bg = '  [INJECTED]', DIM_GREEN_BG
+                    elif s_desc and i_desc:
+                        label, hdr_bg = '  [REPLACED]', DIM_YELLOW_BG
+                    elif s_desc:
+                        label, hdr_bg = '  [STRIPPED]', DIM_YELLOW_BG
+                    elif i_desc:
+                        label, hdr_bg = '  [INJECTED]', DIM_GREEN_BG
+                    else:
+                        label, hdr_bg = '', ''
+                    if hdr_bg:
+                        lines.append(f"      {hdr_bg}{DIM}{t_symbol} {t_name}{label}{SOFT_RESET}")
+                    else:
+                        lines.append(f"      {DIM}{t_symbol} {t_name}{SOFT_RESET}")
+                    keys.append(tool_key)
+                    if is_tool_exp:
+                        bg = DIM_GREEN_BG if whole_injected else ''
+                        description = tool_def.get('description', '')
+                        if description:
+                            for raw_line in description.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                if not raw_line:
+                                    lines.append(f"        {bg}{DIM}{SOFT_RESET}")
+                                    keys.append(None)
+                                    continue
+                                lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
                                 keys.append(None)
-                                continue
-                            lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
-                            keys.append(None)
-                    orig_desc = (stripped_original or {}).get('description', '')
-                    if orig_desc:
-                        for raw_line in orig_desc.split('\n'):
-                            raw_line = raw_line.expandtabs(8)
-                            if not raw_line:
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
+                        for span_text in (s_desc or []):
+                            for raw_line in span_text.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
                                 keys.append(None)
-                                continue
-                            lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                            keys.append(None)
-                    input_schema = tool_def.get('input_schema', {})
-                    props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
-                    required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
-                    for param_name, param_info in props.items():
-                        if isinstance(param_info, dict):
-                            param_type = param_info.get('type', '?')
-                            param_desc = param_info.get('description', '')
-                            orig_param_desc = ''
-                            if not param_desc and stripped_original:
-                                orig_param_desc = stripped_original.get('params', {}).get(param_name, '')
-                            req_marker = '*' if param_name in required_props else ''
-                            param_line = f"{param_name}{req_marker}: {param_type}"
-                            if orig_param_desc:
-                                param_line += f" \u2014 {orig_param_desc}"
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{param_line}{SOFT_RESET}")
-                            else:
+                        for span_text in (i_desc or []):
+                            for raw_line in span_text.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                                keys.append(None)
+                        input_schema = tool_def.get('input_schema', {})
+                        props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
+                        required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
+                        for param_name, param_info in props.items():
+                            if isinstance(param_info, dict):
+                                param_type = param_info.get('type', '?')
+                                param_desc = param_info.get('description', '')
+                                req_marker = '*' if param_name in required_props else ''
+                                param_line = f"{param_name}{req_marker}: {param_type}"
                                 if param_desc:
                                     param_line += f" \u2014 {param_desc}"
                                 lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
-                            keys.append(None)
-            stripped_unused = entry.get('stripped_unused_tools_names', [])
+                                keys.append(None)
+                else:
+                    stripped_original = tool_def.get('stripped_original')
+                    stripped_marker = '  [STRIPPED]' if stripped_original else ''
+                    lines.append(f"      {DIM}{t_symbol} {t_name}{stripped_marker}{SOFT_RESET}")
+                    keys.append(tool_key)
+                    if is_tool_exp:
+                        bg = ''
+                        description = tool_def.get('description', '')
+                        if description:
+                            for raw_line in description.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                if not raw_line:
+                                    lines.append(f"        {bg}{DIM}{SOFT_RESET}")
+                                    keys.append(None)
+                                    continue
+                                lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
+                                keys.append(None)
+                        orig_desc = (stripped_original or {}).get('description', '')
+                        if orig_desc:
+                            for raw_line in orig_desc.split('\n'):
+                                raw_line = raw_line.expandtabs(8)
+                                if not raw_line:
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
+                                    keys.append(None)
+                                    continue
+                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
+                                keys.append(None)
+                        input_schema = tool_def.get('input_schema', {})
+                        props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
+                        required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
+                        for param_name, param_info in props.items():
+                            if isinstance(param_info, dict):
+                                param_type = param_info.get('type', '?')
+                                param_desc = param_info.get('description', '')
+                                orig_param_desc = ''
+                                if not param_desc and stripped_original:
+                                    orig_param_desc = stripped_original.get('params', {}).get(param_name, '')
+                                req_marker = '*' if param_name in required_props else ''
+                                param_line = f"{param_name}{req_marker}: {param_type}"
+                                if orig_param_desc:
+                                    param_line += f" \u2014 {orig_param_desc}"
+                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{param_line}{SOFT_RESET}")
+                                else:
+                                    if param_desc:
+                                        param_line += f" \u2014 {param_desc}"
+                                    lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
+                                keys.append(None)
             deferred = entry.get('deferred_tools_names', [])
-            if stripped_unused:
-                for s_name in stripped_unused:
-                    lines.append(f"      {DIM_YELLOW_BG}{DIM}\u25b6 {s_name}  [STRIPPED]{SOFT_RESET}")
-                    keys.append(None)
+            if use_dual:
+                forwarded_names = set(tools_names)
+                for name, val in entry['_stripped_spans'].get('tools', {}).items():
+                    if val.get('whole') and name not in forwarded_names:
+                        lines.append(f"      {DIM_YELLOW_BG}{DIM}\u25b6 {name}  [STRIPPED]{SOFT_RESET}")
+                        keys.append(None)
+            else:
+                stripped_unused = entry.get('stripped_unused_tools_names', [])
+                if stripped_unused:
+                    for s_name in stripped_unused:
+                        lines.append(f"      {DIM_YELLOW_BG}{DIM}\u25b6 {s_name}  [STRIPPED]{SOFT_RESET}")
+                        keys.append(None)
             if deferred:
                 for d_name in deferred:
                     lines.append(f"      {DIM_YELLOW_BG}{DIM}\u25b6 {d_name}  [DEFERRED]{SOFT_RESET}")
                     keys.append(None)
+    return lines, keys
+
+# Render fields delta section for an expanded request entry, returning (lines, keys)
+def render_fields_delta(entry_idx: int, entry: dict, expand_states: dict, pane_width: int) -> tuple:
+    lines = []
+    keys = []
+    if '_stripped_spans' not in entry:
+        return lines, keys
+    s_fields = entry['_stripped_spans'].get('fields', {})
+    i_fields = entry['_injected_spans'].get('fields', {})
+    if not s_fields and not i_fields:
+        return lines, keys
+    all_field_keys = sorted(set(s_fields) | set(i_fields))
+    fields_key = ('fields', entry_idx)
+    is_fields_expanded = expand_states.get(fields_key, False)
+    fields_symbol = '\u25bc' if is_fields_expanded else '\u25b6'
+    lines.append(f"    {DIM}{fields_symbol} fields: {len(all_field_keys)} changed{SOFT_RESET}")
+    keys.append(fields_key)
+    if is_fields_expanded:
+        for k in all_field_keys:
+            old_val = s_fields.get(k)
+            new_val = i_fields.get(k)
+            if old_val is not None and new_val is not None:
+                lines.append(f"      {DIM_YELLOW_BG}{DIM}{k}: {old_val}{SOFT_RESET}")
+                keys.append(None)
+                lines.append(f"      {DIM_GREEN_BG}{DIM}{k}: {new_val}{SOFT_RESET}")
+                keys.append(None)
+            elif old_val is not None:
+                lines.append(f"      {DIM_YELLOW_BG}{DIM}{k}: {old_val}{SOFT_RESET}")
+                keys.append(None)
+            else:
+                lines.append(f"      {DIM_GREEN_BG}{DIM}{k}: {new_val}{SOFT_RESET}")
+                keys.append(None)
     return lines, keys
