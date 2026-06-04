@@ -89,8 +89,14 @@ def _read_rag_status(lock_path: Path = _RAG_LOCK) -> str:
         if pid is None or not _pid_alive(pid):
             return _NO_INDEXING
         command    = data.get('command', '')
-        if not command.startswith('index'):
-            return _NO_INDEXING   # server/search lock; belt-and-suspenders gate
+        kind       = data.get('kind')
+        if kind is not None:
+            if kind != 'index':
+                return _NO_INDEXING   # server/search/delete lock
+        else:
+            # backward compat: old lock without kind field
+            if not command.startswith('index'):
+                return _NO_INDEXING
         args       = data.get('args') or {}
         collection = args.get('collection') or Path(args.get('input', '')).name or 'unknown'
         progress   = data.get('progress') or {}
