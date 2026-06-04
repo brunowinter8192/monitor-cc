@@ -34,51 +34,51 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_parse.py (110 LOC)
+### warnings_parse.py (31 LOC)
 
-**Purpose:** Pure parsing/classification helpers and unknown-type tracking state for the warnings pane. No UI concerns.
-**Reads:** Proxy entry dicts (passed in as lists); reads `unknown_type_counts` module state.
+**Purpose:** Unknown-type tracking state and format helpers for the warnings pane. Gutted in Stage 2D — old parse/classify helpers (_iso_to_float, _is_tool_error, _is_zero_result_block, _build_tool_use_id_map, _resolve_tool_call) removed. Retains: `unknown_type_counts` / `warned_unknown_types` module-level state; `track_unknown_type(entry)` called by `monitor_session`; `format_unknown_type_warning(msg_type, count)` and `format_warnings_block()` used by `warnings_render`.
+**Reads:** `unknown_type_counts` module state.
 **Writes:** Mutates `unknown_type_counts`, `warned_unknown_types` (module-level state).
-**Called by:** `warnings_pane.py` (`_iso_to_float`); `warnings_scan.py` (parse helpers); `warnings_render.py` (`unknown_type_counts`, `format_unknown_type_warning`); `panes.__init__` (re-exports `track_unknown_type`); `core/monitor_session.py` (via package import).
-**Calls out:** stdlib only (`json`, `datetime`), `constants`.
+**Called by:** `warnings_render.py` (`unknown_type_counts`, `format_unknown_type_warning`); `panes.__init__` (re-exports `track_unknown_type`); `core/monitor_session.py` (via package import).
+**Calls out:** `constants` (YELLOW, RESET).
 
 ---
 
-### warnings_pane.py (298 LOC)
+### warnings_pane.py (247 LOC)
 
-**Purpose:** Warnings pane event loop and module-level state owner. Owns all mutable globals (`tool_errors`, `zero_results`, `schema_warnings`, dedup sets, scroll/hover state). Delegates scanning to `warnings_scan`, rendering to `warnings_render`, persistence to `warnings_persist`. Processes schema-warning entries inline (no scan helper needed — simpler pattern). Loop follows drain-refresh-render pattern; private helpers `_warnings_ram_state`, `_handle_warnings_mouse`, `_handle_warnings_key`, `_refresh_warnings_data`, `_build_warnings_output` extracted from loop body.
-**Reads:** Proxy JSONL (incremental via `_proxy_log_position`); worker log files; shared state `monitor.active_project_filter`.
-**Writes:** stdout (ANSI screen); rebinds `error_line_map`, `zero_result_line_map` from render return tuple; extends `tool_errors`, `zero_results`, `schema_warnings`; appends new tool errors to `src/logs/tool_errors.jsonl` via `warnings_persist.append_tool_errors` (parallel persistent-write, fail-silent, forward-only from monitor start).
+**Purpose:** Warnings pane event loop and module-level state owner. Reads tool errors directly from the `_errors` dual-log (current proxy session, via `find_errors_log_path`) and from worker `_errors` dual-logs (via `scan_worker_errors_logs`); no proxy-log scanning. `_errors_record_to_display(rec)` converts raw `_errors` records to display dicts; `_read_errors_log(path, last_pos)` does incremental line-by-line reads. On project/session change, all state is reset and positions cleared. Loop follows drain-refresh-render pattern; private helpers `_warnings_ram_state`, `_handle_warnings_mouse`, `_handle_warnings_key`, `_refresh_warnings_data`, `_build_warnings_output` extracted from loop body. No zero_results, schema_warnings, or dedup sets.
+**Reads:** `_errors` dual-log (incremental via `_errors_log_pos`); worker `_errors` dual-logs (incremental via `_worker_errors_positions`); shared state `monitor.active_project_filter`.
+**Writes:** stdout (ANSI screen); rebinds `error_line_map` from render return; extends `tool_errors`.
 **Called by:** `core/monitor.py` (mode dispatch).
-**Calls out:** `input.click_handler` (module-level), `core.monitor` (lazy, inside `_refresh_warnings_data`), `proxy_display.parser` (lazy, inside `_refresh_warnings_data`), `panes.warnings_parse` (`_iso_to_float`), `panes.warnings_scan`, `panes.warnings_render`, `panes.warnings_persist`.
+**Calls out:** `input.click_handler` (module-level), `core.monitor` (lazy, inside `_refresh_warnings_data`), `proxy_display.parser` (lazy: `find_errors_log_path`, `scan_worker_errors_logs`, `proxy_session_id_for_project`, `get_proxy_session_start_ts`), `panes.warnings_render`.
 
 ---
 
-### warnings_scan.py (107 LOC)
+### warnings_scan.py (12 LOC)
 
-**Purpose:** Pure scanning helpers — reads proxy/worker log entry dicts, classifies tool errors and zero-result blocks, deduplicates via caller-supplied seen-key sets. No UI concerns, no module-level state. Returns `(items_list, new_dedup_keys)` tuples; caller extends its own lists and updates its own seen sets. Tool error dicts include persistence fields `_ts_raw`, `_tool_use_id`, `_proxy_file`, `_request_id` for use by `warnings_persist`.
-**Reads:** Entry dicts passed as `entries` list; `seen_error_keys` / `seen_zero_keys` sets read-only for dedup check.
-**Writes:** Nothing — returns new lists and sets; no mutation of arguments.
-**Called by:** `panes.warnings_pane` (`run_warnings_loop`).
-**Calls out:** `panes.warnings_parse` (`_iso_to_float`, `_is_tool_error`, `_is_zero_result_block`, `_build_tool_use_id_map`, `_resolve_tool_call`), `utils.format_timestamp`, `format.strip_marker` (`get_stripped_data`).
-
----
-
-### warnings_persist.py (38 LOC)
-
-**Purpose:** Persistent-write helper for tool error events — appends each new tool error detected by `warnings_pane` to `src/logs/tool_errors.jsonl` (append-forever, no rotation). Schema per line: `{ts, session_id, worker, tool_name, tool_use_id, error_full, proxy_file, request_id}`. Worker attribution: `_worker_name` from entry → `"main"` (empty) or `"worker:<name>"`. Session_id: proxy session hash (md5 of project_path). Fail-silent on any write exception. Log path overridable via `MONITOR_CC_TOOL_ERROR_LOG` env var. Forward-only: populated from first warnings_pane refresh after monitor start; no historical backfill.
-**Reads:** error dicts from `_scan_proxy_entries_for_errors`; `project_filter` from `warnings_pane` module-level state.
-**Writes:** `src/logs/tool_errors.jsonl` (appends one line per new error; path resolved from `__file__` relative to project root).
-**Called by:** `panes.warnings_pane` (`_refresh_warnings_data`) after `tool_errors.extend(new_errors)`.
-**Calls out:** `proxy_display.parser` (`proxy_session_id_for_project`).
+**Purpose:** No-op stub — scan functions removed in Stage 2D; errors are now sourced from `_errors` dual-log by `warnings_pane` directly. Two stub functions retained for import compatibility; both return empty results immediately.
+**Reads:** Nothing.
+**Writes:** Nothing.
+**Called by:** Nothing (stub, not called).
+**Calls out:** Nothing.
 
 ---
 
-### warnings_render.py (168 LOC)
+### warnings_persist.py (8 LOC)
 
-**Purpose:** Pure rendering helpers — formats the warnings pane from caller-supplied state. `_format_warnings_pane` returns `(rendered_str, new_error_line_map, new_zero_result_line_map)` as a tuple; no globals written. Reads `unknown_type_counts` from `warnings_parse` (its owner module). `_serialize_warnings` formats clipboard output given explicit tool_errors/zero_results lists.
+**Purpose:** No-op stub — `append_tool_errors` removed in Stage 2D; tool errors are now written to the `_errors` dual-log by the proxy write-side, not by monitor. Single stub function retained for import compatibility; returns immediately without writing.
+**Reads:** Nothing.
+**Writes:** Nothing.
+**Called by:** Nothing (stub, not called).
+**Calls out:** Nothing.
+
+---
+
+### warnings_render.py (124 LOC)
+
+**Purpose:** Pure rendering helpers — formats the warnings pane from caller-supplied state. `_format_warnings_pane(tool_errors, error_expand_states, error_hover_row, error_scroll_offset, pane_height, pane_width, last_refresh_ts)` returns `(rendered_str, new_error_line_map)` 2-tuple; no globals written. `_format_warnings_header(last_refresh_ts)` builds the header line. Reads `unknown_type_counts` from `warnings_parse` (its owner module). `_serialize_warnings(key, tool_errors)` formats clipboard output for a single error entry.
 **Reads:** All pane state passed as function arguments; `unknown_type_counts` imported from `warnings_parse` (read-only).
-**Writes:** Nothing — returns rendered strings and new line-map dicts; no mutation of arguments.
+**Writes:** Nothing — returns rendered string and new line-map dict; no mutation of arguments.
 **Called by:** `panes.warnings_pane` (`run_warnings_loop`).
 **Calls out:** `panes.warnings_parse` (`unknown_type_counts`, `format_unknown_type_warning`), `format.strip_marker` (`highlight_stripped`), `utils` (`truncate_visible`, `first_word_of_call`, `format_worker_prefix`), `constants`.
 
@@ -92,8 +92,9 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 |---|---|
 | `token_pane` | `cache_expand_states`, `cache_line_map`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position` |
 | `warnings_parse` | `unknown_type_counts`, `warned_unknown_types` |
-| `warnings_pane` | `tool_errors`, `error_expand_states`, `error_line_map`, `zero_results`, `zero_result_line_map`, `schema_warnings`, `_seen_error_keys`, `_seen_zero_keys`, `error_scroll_offset`, `_proxy_log_position` |
-| `warnings_scan` | none (stateless — receives state as args, returns new values) |
+| `warnings_pane` | `tool_errors`, `error_expand_states`, `error_line_map`, `error_hover_row`, `error_scroll_offset`, `_errors_log_pos`, `_errors_log_path`, `_worker_errors_positions`, `_last_project_filter`, `_monitor_start_ts` |
+| `warnings_scan` | none (stub — no state) |
+| `warnings_persist` | none (stub — no state) |
 | `warnings_render` | none (stateless — receives state as args, returns new values) |
 
 ## Gotchas
