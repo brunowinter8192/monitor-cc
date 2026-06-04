@@ -10,7 +10,7 @@ from ..constants import (
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
 from .parser import (
-    find_worker_proxy_log, _parse_log_file_isolated, _lazy_load_messages,
+    find_worker_proxy_log, _parse_forwarded_log, _lazy_load_messages_forwarded,
     accumulate_dual_log, _find_dual_log_paths, _infer_model_family,
 )
 from .format import format_proxy_block, _is_standalone_entry
@@ -37,7 +37,8 @@ _worker_proxy_jsonl_position: int = 0
 _worker_proxy_cache_turns: list = []
 _worker_proxy_workers: list = []
 _worker_proxy_force_reload: bool = False
-_worker_proxy_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
+_worker_proxy_fwd_pos: int = 0          # forwarded-log byte position for incremental reads
+_worker_proxy_acc_fwd: dict = {}        # family accumulator for _parse_forwarded_log
 _worker_proxy_log_path: Optional[Path] = None  # current log file path, updated each poll cycle for lazy-reload
 _worker_proxy_pane_width: int = 80  # updated each render cycle; used by click handler for copy-button column check
 _worker_proxy_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by format_proxy_block
@@ -188,7 +189,8 @@ def _worker_proxy_ram_state() -> list:
         ('worker_proxy_line_map',         worker_proxy_line_map),
         ('_worker_proxy_cache_turns',     _worker_proxy_cache_turns),
         ('_worker_proxy_workers',         _worker_proxy_workers),
-        ('_worker_proxy_pending_by_rid',  _worker_proxy_pending_by_rid),
+        ('_worker_proxy_fwd_pos',         _worker_proxy_fwd_pos),
+        ('_worker_proxy_acc_fwd',         _worker_proxy_acc_fwd),
         ('worker_proxy_hover_row',        str(worker_proxy_hover_row)),
         ('worker_proxy_scroll_offset',    worker_proxy_scroll_offset),
         ('worker_proxy_log_position',     worker_proxy_log_position),
@@ -214,7 +216,8 @@ def _handle_worker_proxy_mouse(button: int, col: int, row: int) -> bool:
             if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
                 e = worker_proxy_entries[entry_idx]
                 if e.get('messages') is None:
-                    _lazy_load_messages(e, _worker_proxy_log_path)
+                    fwd_path = _worker_proxy_log_path.parent / 'dual_log' / f'{_worker_proxy_log_path.stem}_forwarded.jsonl'
+                    _lazy_load_messages_forwarded(e, fwd_path)
             copy_to_clipboard(_serialize_worker_proxy(key))
             if entry_idx is not None:
                 _worker_copy_feedback_until[entry_idx] = time.time() + 1.5
@@ -225,13 +228,14 @@ def _handle_worker_proxy_mouse(button: int, col: int, row: int) -> bool:
                 entry_idx = _wp_entry_idx_from_key(key)
                 if entry_idx is not None and entry_idx < len(worker_proxy_entries) and _worker_proxy_log_path:
                     e = worker_proxy_entries[entry_idx]
+                    fwd_path = _worker_proxy_log_path.parent / 'dual_log' / f'{_worker_proxy_log_path.stem}_forwarded.jsonl'
                     if e.get('messages') is None:
-                        _lazy_load_messages(e, _worker_proxy_log_path)
+                        _lazy_load_messages_forwarded(e, fwd_path)
                     prev_idx = _resolve_prev_same_wp(worker_proxy_entries, entry_idx)
                     if prev_idx is not None:
                         pe = worker_proxy_entries[prev_idx]
                         if pe.get('messages') is None:
-                            _lazy_load_messages(pe, _worker_proxy_log_path)
+                            _lazy_load_messages_forwarded(pe, fwd_path)
                 _wp_just_expanded = key
         return True
     if button == 64:
@@ -260,7 +264,8 @@ def _handle_worker_proxy_key(char: str, monitor) -> bool:
 def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global worker_proxy_entries, worker_proxy_expand_states, worker_proxy_line_map
     global worker_proxy_scroll_offset, worker_proxy_hover_row, worker_proxy_log_position
-    global _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_pending_by_rid
+    global _worker_proxy_jsonl_position, _worker_proxy_cache_turns
+    global _worker_proxy_fwd_pos, _worker_proxy_acc_fwd
     global _worker_proxy_log_path, _worker_proxy_last_full_parse_ts
     global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_last_worker_name
     global _worker_proxy_stripped_pos, _worker_proxy_injected_pos
@@ -289,7 +294,8 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
         worker_proxy_log_position = 0
         _worker_proxy_jsonl_position = 0
         _worker_proxy_cache_turns = []
-        _worker_proxy_pending_by_rid.clear()
+        _worker_proxy_fwd_pos = 0
+        _worker_proxy_acc_fwd.clear()
         _worker_proxy_log_path = None
         _worker_proxy_last_full_parse_ts = now
         _worker_proxy_last_worker_name = worker_name
@@ -306,7 +312,8 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
         worker_proxy_log_position = 0
         _worker_proxy_jsonl_position = 0
         _worker_proxy_cache_turns = []
-        _worker_proxy_pending_by_rid.clear()
+        _worker_proxy_fwd_pos = 0
+        _worker_proxy_acc_fwd.clear()
         _worker_proxy_last_full_parse_ts = now
         _worker_proxy_stripped_pos = 0
         _worker_proxy_injected_pos = 0
@@ -316,9 +323,12 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
     if worker_name:
         log_path = find_worker_proxy_log(worker_name, monitor.active_project_filter)
         if log_path:
-            new_entries, worker_proxy_log_position = _parse_log_file_isolated(
-                log_path, worker_proxy_log_position, _worker_proxy_pending_by_rid
+            fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'
+            new_entries, _worker_proxy_fwd_pos = _parse_forwarded_log(
+                fwd_path, _worker_proxy_fwd_pos, _worker_proxy_acc_fwd
             )
+            for entry in new_entries:
+                entry['_source_file'] = fwd_path.name
             worker_proxy_entries.extend(new_entries)
             stripped_path, injected_path = _find_dual_log_paths(log_path)
             _worker_proxy_stripped_pos = accumulate_dual_log(stripped_path, _worker_proxy_stripped_pos, _worker_proxy_acc_stripped)
