@@ -53,16 +53,17 @@ def _shorten_model(model: str) -> str:
         return 'opus'
     return model[:8] if model else '?'
 
-# True when entry is a structural sidecar (haiku, zero-context, or mc=1 title/summary)
-# mc=1+no-BP catches CC title/summary generation; bp=[0] guard preserves real first-REQ
+# True when entry is a structural sidecar (haiku or zero-context: no system AND no tools).
+# cache_breakpoints is always [] for forwarded entries, so the old bp-guard logic is replaced
+# by system/tools presence: a real main-session request always carries a full system prompt
+# and tool list (sys_chars>0, tools_chars>0); CC title/summary and haiku sidecars have neither.
+# Backward-compatible: old main-log entries with bp=[0] had sys_chars>0 too, so they still pass.
 def _is_standalone_entry(entry: dict) -> bool:
+    sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
+    tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
     return (
         'haiku' in entry.get('model', '').lower()
-        or (entry.get('system_total_chars', entry.get('system_prompt_chars', 0)) == 0
-            and entry.get('tools_total_chars', entry.get('tools_chars', 0)) == 0
-            and len(entry.get('cache_breakpoints', [])) == 0)
-        or (entry.get('message_count', 0) == 1
-            and len(entry.get('cache_breakpoints', [])) == 0)
+        or (sys_chars == 0 and tools_chars == 0)
     )
 
 
