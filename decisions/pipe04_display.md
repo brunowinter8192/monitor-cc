@@ -37,6 +37,29 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 - **% Removed (Session 11):** `_format_cache_call()` no longer calculates or displays cache-read percentage. Shows only raw JSONL values: CR, CC, D, output_tokens.
 - **Thinking Display (Session 11):** Thinking content_blocks now include `output_tokens` from message-level usage. Rendered as `thinking (Xk out)` in expanded API call view.
 
+### Proxy Pane — Forwarded-Log Migration (Stage 2, 2026-06)
+
+**Source migrated from main log to `_forwarded` dual-log (Stage 2C):**
+- `parse_proxy_log_forwarded` / `_parse_forwarded_log` replace `parse_proxy_log_isolated`; state `_proxy_fwd_pos`+`_proxy_acc_fwd` replace `_proxy_pending_by_rid` in `pane.py` and `worker_proxy_pane.py`.
+- Worker pane uses `_parse_forwarded_log` directly with fwd_path derived from `find_worker_proxy_log` result: `log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'`.
+- Lazy-reload: `_lazy_load_messages_forwarded(entry, fwd_path)` replaces `_lazy_load_messages(entry, log_path)` — replays forwarded delta stream to target `_fwd_req_idx` rather than seeking a `_byte_offset`.
+- Deque bound: only the last `PROXY_MESSAGES_KEEP_LAST=10` entries have `messages` populated; earlier entries carry `messages=None` (lazy-loadable). Replaces the main-log strip-on-extend pattern.
+- Graceful degrade: missing `_forwarded` file → `_parse_forwarded_log` returns `([], last_pos)` → empty pane, no crash. Old `_forwarded` without `max_tokens`/`output_config` → `eff`/`think` simply absent from header.
+
+**BP:N counter + latency badge removed (Stage 2A):**
+- `BP:N` counter dropped from REQ header row in `render_turn.py` and `render_entry.py` — pre-ops cache_breakpoints not reconstructable from `_forwarded`. `cache_breakpoints` field still present in entry dicts (used for `opus_req_num` increment logic / sub-number #N.M assignment) but no longer displayed.
+- Latency badge (`_format_latency` / `ttfb_ms` / `output_tokens_per_sec` / `n_stalls`) removed from `render_turn.py` and `format.py`.
+
+### Warnings Pane — _errors Dual-Log Migration (Stage 2D, 2026-06)
+
+**Source migrated to `_errors` dual-log (current-session-only):**
+- `_refresh_warnings_data` reads `find_errors_log_path(project_filter)` → main session `_errors` log from byte 0 (current session by design; incremental via `_errors_log_pos`).
+- Worker errors via `scan_worker_errors_logs(last_positions, project_session_id, min_mtime)` — globs `dual_log/api_requests_worker_{sid}_*_errors.jsonl`.
+- Each `_errors` record converted by `_errors_record_to_display` to the `tool_errors` display dict. `worker_name` extracted from `record['worker']` field (`worker:<name>` prefix).
+- **Dropped:** proxy-log scan (`parse_proxy_log` call + `_proxy_log_position`), worker-log scan (`scan_worker_logs` + `_worker_log_positions`), `_scan_proxy_entries_for_errors`, `_scan_proxy_entries_for_zero_results`, zero_results section, schema_warnings section, dedup sets `_seen_zero_keys`/`_seen_error_keys`, `_proxy_pending_by_rid`.
+- `warnings_scan.py` + `warnings_persist.py` are now stubs; `warnings_parse.py` retains only `track_unknown_type`/`unknown_type_counts`/`format_unknown_type_warning` (still used by `warnings_render` and `core/monitor_session`).
+- `_format_warnings_pane` signature: removed `schema_warnings`, `zero_results`, `zero_result_expand_states` params; returns 2-tuple `(rendered_str, error_line_map)` instead of 3-tuple.
+
 ### Proxy Pane Redesign (Session 17, 2026-04-09)
 
 **Turn-based expand/collapse:** Proxy Pane redesigned from per-request expand to two-level turn-based hierarchy. Turn header is clickable (expand/collapse). Expanded turn shows: request metadata lines (compact, also clickable) + message lines. Request expand shows messages belonging to that specific request.
