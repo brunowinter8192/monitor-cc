@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import gzip
+import hashlib
 import json
 import logging
 import os
@@ -10,7 +11,7 @@ from typing import Dict, Optional
 
 from mitmproxy import http
 
-from .logging import _build_entry, _build_latency_update, _summarize_content_for_log, _build_forwarded_delta, _build_stripped_injected_deltas
+from .logging import _build_entry, _build_latency_update, _summarize_content_for_log, _build_forwarded_delta, _build_stripped_injected_deltas, _build_errors_entries
 
 
 # Suppress noise from `NotImplementedError: HTTP trailers are not implemented yet.`
@@ -51,13 +52,17 @@ class ProxyAddon:
         self.forwarded_log_file = _resolve_dual_log_file("forwarded")
         self.stripped_log_file = _resolve_dual_log_file("stripped")
         self.injected_log_file = _resolve_dual_log_file("injected")
+        self.errors_log_file = _resolve_dual_log_file("errors")
         self.prev_messages_by_model: Dict[str, list] = {}
         self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
         self.prev_sent_hashes_by_model: dict = {}  # model_family → hash fields from last sent_meta
         self.prev_delta_hashes_by_model: dict = {}  # model_family → {"system": [...], "tools": [...], "messages": [...]} for forwarded delta
         self.prev_stripped_hashes_by_model: dict = {}  # model_family → flat loc_key → hash dict for stripped delta
         self.prev_injected_hashes_by_model: dict = {}  # model_family → flat loc_key → hash dict for injected delta
+        self.prev_error_ids_by_model: Dict[str, set] = {}  # model_family → set of tool_use_ids already written to _errors
         self._schema_checked: Dict[str, bool] = {}  # schema check runs once per model_family (opus + sonnet)
+        self._session_id = _derive_session_id()
+        self._worker_context = _derive_worker_context()
 
     def request(self, flow: http.HTTPFlow) -> None:
         try:
@@ -191,6 +196,26 @@ class ProxyAddon:
                 self.prev_delta_hashes_by_model[model_family] = curr_delta
             except Exception as e:
                 print(f"[dual_log] forwarded write failed: {e}", file=sys.stderr)
+            try:
+                seen_ids = self.prev_error_ids_by_model.get(model_family, set())
+                err_entries = _build_errors_entries(
+                    payload,
+                    entry.get("request_id", ""),
+                    entry.get("timestamp", ""),
+                    seen_ids,
+                    self._worker_context,
+                    self._session_id,
+                    self.log_file.name,
+                )
+                for err_entry in err_entries:
+                    err_entry["flow_id"] = flow.id
+                    _write_entry(self.errors_log_file, err_entry)
+                if err_entries:
+                    new_seen = set(seen_ids)
+                    new_seen.update(e["tool_use_id"] for e in err_entries)
+                    self.prev_error_ids_by_model[model_family] = new_seen
+            except Exception as e:
+                print(f"[dual_log] errors write failed: {e}", file=sys.stderr)
             # Capture final payload (post all mods + cache ops) for off-path strip/inject diff
             flow.metadata["mc_modified_payload"] = modified_payload
             flow.metadata["mc_model_family"] = model_family
@@ -417,6 +442,25 @@ def _write_entry(log_file: Path, entry: dict) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
+
+
+# Derive proxy session_id from PROXY_PROJECT_PATH env — md5(project_path)[:8], empty string if absent
+def _derive_session_id() -> str:
+    project_path = os.environ.get("PROXY_PROJECT_PATH", "")
+    if project_path:
+        return hashlib.md5(project_path.encode()).hexdigest()[:8]
+    return ""
+
+
+# Derive worker context string from PROXY_LOG_ID env — "worker:<name>" or "main"
+# Worker log_ids follow the pattern worker_<hash>_<name>_<ts>; main log_ids do not start with worker_
+def _derive_worker_context() -> str:
+    log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID") or ""
+    if log_id.startswith("worker_"):
+        parts = log_id.split("_")
+        if len(parts) >= 4:
+            return "worker:" + "_".join(parts[2:-1])
+    return "main"
 
 
 addons = [ProxyAddon()]

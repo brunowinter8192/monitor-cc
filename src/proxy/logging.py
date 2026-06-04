@@ -266,6 +266,8 @@ def _build_forwarded_delta(payload: dict, request_id: str, prev_hashes: Optional
         "request_id": request_id,
         "timestamp": timestamp,
         "model": payload.get("model", ""),
+        "max_tokens": payload.get("max_tokens"),
+        "output_config": payload.get("output_config"),
         "is_first": is_first,
         "counts": {
             "system": len(system_list),
@@ -473,3 +475,75 @@ def _build_stripped_injected_deltas(
         "fn_map": i_fn_map,
     }
     return stripped_entry, injected_entry, new_s, new_i
+
+
+# Extract full text from a tool_result content value — handles plain string and list-of-blocks
+def _extract_tool_result_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                text = block.get("text", "")
+                if text:
+                    parts.append(text)
+        return "\n".join(parts)
+    return str(content) if content is not None else ""
+
+
+# Scan payload messages for new is_error==True tool_result blocks not yet in seen_ids.
+# Returns list of error record dicts ready for _write_entry; does NOT mutate seen_ids.
+# tool_name is resolved by scanning all tool_use blocks in the payload for id→name mapping.
+def _build_errors_entries(
+    payload: dict,
+    request_id: str,
+    timestamp: str,
+    seen_ids: set,
+    worker_context: str,
+    session_id: str,
+    proxy_file: str,
+) -> list:
+    messages = payload.get("messages", []) or []
+
+    # Build tool_use_id → tool_name map from all tool_use blocks in the conversation
+    tu_name_map: dict = {}
+    for msg in messages:
+        content = msg.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for blk in content:
+            if blk.get("type") == "tool_use":
+                bid = blk.get("id", "")
+                if bid:
+                    tu_name_map[bid] = blk.get("name", "")
+
+    new_entries = []
+    for msg in messages:
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for blk in content:
+            if blk.get("type") != "tool_result":
+                continue
+            if blk.get("is_error") is not True:
+                continue
+            tid = blk.get("tool_use_id", "")
+            if tid in seen_ids:
+                continue
+            error_full = _extract_tool_result_text(blk.get("content", ""))
+            new_entries.append({
+                "type": "tool_error",
+                "request_id": request_id,
+                "timestamp": timestamp,
+                "ts": timestamp,
+                "session_id": session_id,
+                "worker": worker_context,
+                "tool_name": tu_name_map.get(tid, ""),
+                "tool_use_id": tid,
+                "error_full": error_full,
+                "proxy_file": proxy_file,
+            })
+    return new_entries

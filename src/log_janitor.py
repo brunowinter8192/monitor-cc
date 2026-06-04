@@ -114,6 +114,16 @@ _LOG_REGISTRY: tuple = (
         sweep_eligible=False,
     ),
     LogSpec(
+        name="api_requests_dual_errors",
+        path_pattern="dual_log/api_requests_*_errors.jsonl",
+        writer="proxy/addon.py:_build_errors_entries",
+        purpose="Dual-log: derived tool-error log; is_error tool_result blocks from original payload, dedup by tool_use_id, format field-matched to tool_errors.jsonl",
+        fmt="jsonl",
+        retention="count-30",
+        janitor_trigger="proxy-start-bash",
+        sweep_eligible=False,
+    ),
+    LogSpec(
         name="gpu_pane",
         path_pattern="../gpu_pane/logs/gpu_pane.log",
         writer="gpu_pane/status.py:TimedRotatingFileHandler",
