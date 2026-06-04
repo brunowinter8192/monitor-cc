@@ -2,7 +2,7 @@
 
 ## Role
 
-Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output files and the mitmproxy API log, formats tool calls and events to a terminal, and drives 8 dedicated tmux panes (tokens, warnings, workers, worker-proxy, worker-metadata, proxy, metadata). The `src/` tree is the entire application — `workflow.py` at the project root is just a 25-line entry point.
+Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output files and the mitmproxy API log, formats tool calls and events to a terminal, and drives 6 dedicated tmux panes (tokens, warnings, workers, worker-proxy, proxy, gpu). The `src/` tree is the entire application — `workflow.py` at the project root is just a 25-line entry point.
 
 ## Entry Points
 
@@ -20,7 +20,6 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `input/` | Keyboard/mouse stdin handling | 150 | 1 |
 | `jsonl/` | JSONL parsing + tool call extraction | 580 | 3 |
 | `workers/` | Workers pane (tmux session discovery + status display) | 572 | 3 |
-| `metadata/` | Metadata pane (API config state from proxy log) | 334 | 2 |
 | `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering, subprocess-parse, copy-button) | 2118 | 8 |
 | `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 3074 | 18 |
 | `ram_audit/` | SIGUSR1 RAM-dump helper, gated by MONITOR_CC_RAM_AUDIT env | 101 | 1 |
@@ -44,7 +43,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 
 ## Flow (Main Session)
 
-1. `workflow.py` → `run_monitor(project_filter, mode="all")` → `tmux_launcher.launch_split_screen()` spawns 9 panes each running `workflow.py --mode <X>`.
+1. `workflow.py` → `run_monitor(project_filter, mode="all")` → `tmux_launcher.launch_split_screen()` spawns 7 panes each running `workflow.py --mode <X>`.
 2. The main pane runs `run_main_loop()` (in `core/monitor.py`): every 0.5s discover sessions → for each session read new JSONL lines → classify tool calls → append to `main_event_buffer` (list in `core/monitor_display.py`) → render via `render_main_buffer()` → `print()` to stdout in `run_main_loop()`.
 3. Each dedicated pane runs its own event loop (e.g. `run_tokens_loop()`): poll data source → handle mouse/keyboard → render full screen.
 4. mitmproxy (started by `claude_proxy_start.sh`) intercepts API traffic, strips/modifies payloads, logs to `src/logs/api_requests_<id>.jsonl`.
@@ -70,7 +69,6 @@ Most runtime state lives in `core/monitor.py` as module-level variables; display
 - [input/DOCS.md](input/DOCS.md) — click_handler
 - [jsonl/DOCS.md](jsonl/DOCS.md) — jsonl_parser, jsonl_extractors, jsonl_cache_turns
 - [workers/DOCS.md](workers/DOCS.md) — worker_pane, worker_format, worker_tmux
-- [metadata/DOCS.md](metadata/DOCS.md) — metadata_pane, metadata_format
 - [proxy_display/DOCS.md](proxy_display/DOCS.md) — proxy pane TUI (8 modules)
 - [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (18 modules)
 - [ram_audit/DOCS.md](ram_audit/DOCS.md) — SIGUSR1 RAM-dump helper (env-gated tracemalloc)

@@ -3,8 +3,8 @@
 ## Status Quo (IST)
 
 - `formatter.py`: color-coded output (green=main, red=error, pastel=meta)
-- Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Three-pane split: Workers (2.0) | Worker-Proxy (2.1) | Worker-Metadata (2.2).
-**BUG-CLASS (fixed, 2026-04-25 Performance Session):** All 9 stdin-driven panes were polling at a 50ms floor via `time.sleep(INPUT_POLL_INTERVAL)` at the end of each loop iteration → input latency 0–50ms (~25ms median) for hover/click/scroll/keyboard regardless of how fast the rest of the loop ran. Replaced with `wait_for_input(INPUT_POLL_INTERVAL)` from `src/input/click_handler.py` — a `select.select([_stdin_fd], [], [], timeout)` wrapper with `time.sleep` fallback when stdin not in raw mode. Loop wakes immediately on any byte arriving on stdin (mouse event, keypress) OR after the timeout expires. Smoke test 11.9ms wake-latency on stdin-mid-wait. Affected modules: `panes/{token,warnings}_pane.py`, `workers/worker_pane.py` (two call sites: try body + except handler), `proxy_display/{pane,worker_proxy_pane}.py`. `metadata_pane.py` unchanged — has no stdin handler. Pattern A (direct sleep replacement) chosen over Pattern B (refresh-aligned timeout) because `warnings_pane`'s `WARNINGS_POLL_INTERVAL=10s` would otherwise mean up to 10s blocking on input — Pattern B would have made warnings unresponsive.
+- Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Two-pane split: Workers (2.0, 34%) | Worker-Proxy (2.1, 66%).
+**BUG-CLASS (fixed, 2026-04-25 Performance Session):** All 9 stdin-driven panes were polling at a 50ms floor via `time.sleep(INPUT_POLL_INTERVAL)` at the end of each loop iteration → input latency 0–50ms (~25ms median) for hover/click/scroll/keyboard regardless of how fast the rest of the loop ran. Replaced with `wait_for_input(INPUT_POLL_INTERVAL)` from `src/input/click_handler.py` — a `select.select([_stdin_fd], [], [], timeout)` wrapper with `time.sleep` fallback when stdin not in raw mode. Loop wakes immediately on any byte arriving on stdin (mouse event, keypress) OR after the timeout expires. Smoke test 11.9ms wake-latency on stdin-mid-wait. Affected modules: `panes/{token,warnings}_pane.py`, `workers/worker_pane.py` (two call sites: try body + except handler), `proxy_display/{pane,worker_proxy_pane}.py`. Pattern A (direct sleep replacement) chosen over Pattern B (refresh-aligned timeout) because `warnings_pane`'s `WARNINGS_POLL_INTERVAL=10s` would otherwise mean up to 10s blocking on input — Pattern B would have made warnings unresponsive.
 
 ### LONG_OUTPUT_THRESHOLD (Kategorie: Display / UX)
 
@@ -22,7 +22,7 @@ Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
 ### Pane Headers (Kategorie: Display / UX)
 
-Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 9 panes (MAIN, TOKENS, PROXY, METADATA, WORKERS, WORKER-PROXY, WORKER-METADATA, WARNINGS, GPU). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
+Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 7 panes (MAIN, TOKENS, PROXY, WORKERS, WORKER-PROXY, WARNINGS, GPU). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
 
 
 ### Token-Profiling Pane (Kategorie: Display / Token Visibility)
@@ -168,25 +168,21 @@ Purpose: Claude reads the PNG per Read-Tool for visual layout verification durin
 
 Earlier IST sections reference the pre-Session-17 layout (4 windows, 6 panes) and pre-reversal scroll direction. This section documents the current prod state. Where an earlier section conflicts, THIS section is authoritative.
 
-#### Current tmux Layout (src/tmux_launcher.py:45-66, 131-137)
+#### Current tmux Layout (`configure_tmux_session()` `pane_titles` dict)
 
-5 windows, 9 panes. Source of truth: `configure_tmux_session()` `pane_titles` dict.
+5 windows, 7 panes.
 
 | Window | Name | Panes |
 |---|---|---|
 | 0 | main | 0.0 MAIN (70%), 0.1 TOKENS (30%) |
-| 1 | proxy | 1.0 PROXY (70%), 1.1 METADATA (30%) |
-| 2 | workers | 2.0 WORKERS (34%), 2.1 WORKER-PROXY (33%), 2.2 WORKER-METADATA (33%) |
+| 1 | proxy | 1.0 PROXY (fullscreen) |
+| 2 | workers | 2.0 WORKERS (34%), 2.1 WORKER-PROXY (66%) |
 | 3 | debug | 3.0 WARNINGS (fullscreen) |
 | 4 | gpu | 4.0 GPU (fullscreen) |
 
-Cross-reference: all earlier IST entries that say e.g. `Window 1 "rules" Pane 1.0` now mean `Window 2 Pane 2.0`. The functional description of each pane is still correct, only the window index shifted.
-
-New panes added since the last IST pass: Proxy Pane (Window 1.0), Metadata Pane (Window 1.1), Worker-Proxy Pane (Window 3.1), Worker-Metadata Pane (Window 3.2).
-
 #### Scroll Direction Reversed (traditional)
 
-Wheel up = viewport moves toward earlier content (up), wheel down = viewport moves toward later content (down). Applied in ALL interactive panes: token, warnings, workers, hooks, metadata, proxy, worker-proxy. Reverses the Session-10..16 behaviour where wheel up scrolled toward newer content.
+Wheel up = viewport moves toward earlier content (up), wheel down = viewport moves toward later content (down). Applied in ALL interactive panes: token, warnings, workers, hooks, proxy, worker-proxy. Reverses the Session-10..16 behaviour where wheel up scrolled toward newer content.
 
 Implementation: each pane's mouse handler maps button 64 → `scroll_offset += N`, button 65 → `scroll_offset -= N` (or equivalent semantic).
 

@@ -5,9 +5,9 @@
 Workers pane package. Discovers active Claude Code worker sessions via tmux, extracts token and
 tool-call data from their JSONL files, renders an interactive TUI pane with expand/collapse and
 per-worker cache-tracker, and publishes the selected worker name via an IPC file for cross-pane
-coordination with `proxy_display` and `metadata`. Touch this package when changing worker
-discovery, worker status detection, or the workers pane display. Do NOT touch for proxy or
-metadata rendering — those panes only read the IPC selection file.
+coordination with `proxy_display`. Touch this package when changing worker
+discovery, worker status detection, or the workers pane display. Do NOT touch for proxy
+rendering — that pane only reads the IPC selection file.
 
 ## Public Interface
 
