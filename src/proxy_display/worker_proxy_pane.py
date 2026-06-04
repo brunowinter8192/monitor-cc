@@ -9,7 +9,10 @@ from ..constants import (
     POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
-from .parser import find_worker_proxy_log, _parse_log_file_isolated, _lazy_load_messages
+from .parser import (
+    find_worker_proxy_log, _parse_log_file_isolated, _lazy_load_messages,
+    accumulate_dual_log, _find_dual_log_paths, _infer_model_family,
+)
 from .format import format_proxy_block, _is_standalone_entry
 from ..panes.token_pane import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
@@ -42,6 +45,10 @@ _worker_copy_feedback_until: Dict[int, float] = {}  # entry_idx → expiry times
 _worker_proxy_last_full_parse_ts: float = 0.0  # timestamp of last re-init to position 0 (time-triggered reset)
 _wp_just_expanded = None  # line_map key set by mouse handler on expand; cleared by _build_worker_proxy_output
 _worker_proxy_last_worker_name: Optional[str] = None  # tracks worker change for full state reset
+_worker_proxy_stripped_pos: int = 0    # dual-log read position for _stripped.jsonl
+_worker_proxy_injected_pos: int = 0    # dual-log read position for _injected.jsonl
+_worker_proxy_acc_stripped: dict = {}  # family → {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
+_worker_proxy_acc_injected: dict = {}  # same; entries hold Python refs so in-place updates propagate
 
 # ORCHESTRATOR
 
@@ -187,6 +194,10 @@ def _worker_proxy_ram_state() -> list:
         ('worker_proxy_log_position',     worker_proxy_log_position),
         ('_worker_proxy_jsonl_position',  _worker_proxy_jsonl_position),
         ('_worker_proxy_force_reload',    _worker_proxy_force_reload),
+        ('_worker_proxy_stripped_pos',    _worker_proxy_stripped_pos),
+        ('_worker_proxy_injected_pos',    _worker_proxy_injected_pos),
+        ('_worker_proxy_acc_stripped',    _worker_proxy_acc_stripped),
+        ('_worker_proxy_acc_injected',    _worker_proxy_acc_injected),
     ]
 
 # Process one mouse event; returns True if display should refresh
@@ -252,6 +263,8 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_pending_by_rid
     global _worker_proxy_log_path, _worker_proxy_last_full_parse_ts
     global _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_last_worker_name
+    global _worker_proxy_stripped_pos, _worker_proxy_injected_pos
+    global _worker_proxy_acc_stripped, _worker_proxy_acc_injected
     if not _worker_proxy_force_reload and now - last_data_refresh < POLL_INTERVAL:
         return input_changed, last_data_refresh
     _worker_proxy_force_reload = False
@@ -280,6 +293,10 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
         _worker_proxy_log_path = None
         _worker_proxy_last_full_parse_ts = now
         _worker_proxy_last_worker_name = worker_name
+        _worker_proxy_stripped_pos = 0
+        _worker_proxy_injected_pos = 0
+        _worker_proxy_acc_stripped.clear()
+        _worker_proxy_acc_injected.clear()
         input_changed = True
     if _worker_proxy_last_full_parse_ts == 0.0:
         _worker_proxy_last_full_parse_ts = now
@@ -291,6 +308,10 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
         _worker_proxy_cache_turns = []
         _worker_proxy_pending_by_rid.clear()
         _worker_proxy_last_full_parse_ts = now
+        _worker_proxy_stripped_pos = 0
+        _worker_proxy_injected_pos = 0
+        _worker_proxy_acc_stripped.clear()
+        _worker_proxy_acc_injected.clear()
         input_changed = True
     if worker_name:
         log_path = find_worker_proxy_log(worker_name, monitor.active_project_filter)
@@ -299,6 +320,16 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
                 log_path, worker_proxy_log_position, _worker_proxy_pending_by_rid
             )
             worker_proxy_entries.extend(new_entries)
+            stripped_path, injected_path = _find_dual_log_paths(log_path)
+            _worker_proxy_stripped_pos = accumulate_dual_log(stripped_path, _worker_proxy_stripped_pos, _worker_proxy_acc_stripped)
+            _worker_proxy_injected_pos = accumulate_dual_log(injected_path, _worker_proxy_injected_pos, _worker_proxy_acc_injected)
+            for entry in new_entries:
+                family = _infer_model_family(entry.get('model', ''))
+                if family not in _worker_proxy_acc_stripped:
+                    _worker_proxy_acc_stripped[family] = {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
+                    _worker_proxy_acc_injected[family] = {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
+                entry['_stripped_spans'] = _worker_proxy_acc_stripped[family]
+                entry['_injected_spans'] = _worker_proxy_acc_injected[family]
             _worker_proxy_log_path = log_path
             _strip_inactive_wp_messages(worker_proxy_entries, worker_proxy_expand_states)
             if new_entries:
