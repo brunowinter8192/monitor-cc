@@ -150,15 +150,15 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### logging.py (427 LOC) ⚠️ refactor candidate (>400 LOC hard ceiling)
+### logging.py (475 LOC) ⚠️ refactor candidate (>400 LOC hard ceiling)
 
 **Purpose:** Build structured JSONL log entries from flow + payload data; compute message diffs vs previous request; build `latency_update` records for response-side timing; build `forwarded_delta` / `stripped_delta` / `injected_delta` entries for the four dual-log files.
 **Reads:** Raw payload dicts, message lists, previous message summaries, previous delta hash state.
 **Writes:** Nothing — returns structured entry dicts.
 **Called by:** `src/proxy/addon.py`
-**Calls out:** `src/proxy/diff_engine` (`_diff_system`, `_diff_tools`, `_diff_messages`, `_diff_top_level_fields`)
+**Calls out:** `src/proxy/diff_engine` (`_diff_system`, `_diff_tools`, `_diff_messages`, `_diff_top_level_fields`); `src/proxy/strip_vocab` (`attribute_chunk` — for fn attribution in fn_map)
 
-**Log record types:** `_build_entry` → main request entry. `_build_latency_update(...)` → latency fields, merged by parser. `_build_forwarded_delta(payload, request_id, prev_hashes) -> (entry, curr_hashes)` → `{type: "forwarded_delta", is_first, counts, system_delta, tools_delta, messages_delta}`; REQ#1 full, subsequent only changed elements. `_build_stripped_injected_deltas(orig_payload, fwd_payload, request_id, prev_stripped, prev_injected, model) -> (stripped_entry, injected_entry, new_s_hashes, new_i_hashes)` — complete-payload diff (system + tools + messages + top-level fields via `_diff_top_level_fields`); both payloads pre-normalized at call site via `_strip_cache_control`. **_stripped format (unchanged):** `system_delta[idx]`/`messages_delta[midx][bidx]`/`tools_delta[name]["desc"]` = flat stripped text lists; hash via `_hash_spans` (MD5[:10] of pipe-joined texts). **_injected format (Stage 1 new):** same locations store ordered `[(tag, text), ...]` span lists with tags `"equal"` / `"injected"`; only written when block has ≥1 injected span; hash via `_hash_span_sequence` (MD5[:10] of `tag:text|...`). Hashing helpers: `_strip_cache_control(obj)`, `_normalize_msg_shape_for_hash(msg)`, `_delta_hash(element)`, `_hash_spans(texts)`, `_hash_span_sequence(spans)` — latter two differ by namespace to prevent hash collisions across formats.
+**Log record types:** `_build_entry` → main request entry. `_build_latency_update(...)` → latency fields, merged by parser. `_build_forwarded_delta(payload, request_id, prev_hashes) -> (entry, curr_hashes)` → `{type: "forwarded_delta", is_first, counts, system_delta, tools_delta, messages_delta}`; REQ#1 full, subsequent only changed elements. `_build_stripped_injected_deltas(orig_payload, fwd_payload, request_id, prev_stripped, prev_injected, model) -> (stripped_entry, injected_entry, new_s_hashes, new_i_hashes)` — complete-payload diff (system + tools + messages + top-level fields via `_diff_top_level_fields`); both payloads pre-normalized at call site via `_strip_cache_control`; messages additionally normalized via `_normalize_msg_shape_for_hash` before diff (eliminates json_reserialization false positives from cache BP normalization). **_stripped format:** `system_delta[idx]`/`messages_delta[midx][bidx]`/`tools_delta[name]["desc"]` = flat stripped text lists; hash via `_hash_spans` (MD5[:10] of pipe-joined texts). **_injected format (Stage 1):** same locations store ordered `[(tag, text), ...]` span lists with tags `"equal"` / `"injected"`; only written when block has ≥1 injected span; hash via `_hash_span_sequence` (MD5[:10] of `tag:text|...`). **fn_map (new):** top-level `fn_map: {loc_key → fn_name}` attached to both `_stripped` and `_injected` entries at write time. `loc_key` matches the hash-tracking keys (`sys.N`, `tool_w.name`, `tool_d.name`, `msg.M.B`, `field.key`). Attribution: sys by index (`_SYS_FN`), tools by shape (`_strip_unused_tools`/`inject_mcp_tools`/`_strip_tool_descriptions`), messages via `attribute_chunk` → `_MSG_CODE_TO_FN`, fields via `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN`. Old entries without `fn_map` are read-side safe (field simply absent). Hashing helpers: `_strip_cache_control(obj)`, `_normalize_msg_shape_for_hash(msg)`, `_delta_hash(element)`, `_hash_spans(texts)`, `_hash_span_sequence(spans)` — latter two differ by namespace to prevent hash collisions across formats.
 
 ---
 
@@ -224,10 +224,10 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_vocab.py (254 LOC)
+### strip_vocab.py (258 LOC)
 
 **Purpose:** Shared vocabulary + semantics for proxy strip classification. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers. Exports:
-- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL/SC/IR/PP with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection; excludes TN, SC, IR, PP).
+- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL/SC/IR/PP/BGK/GL/BD/ENV/HP/SN/FM with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection; excludes TN, SC, IR, PP).
 - `attribute_chunk(chunk) -> code | None` — marker-substring attribution (starts-with special-case for TN).
 - `code_for_rule(full_name) -> code | None` — reverse lookup from `modifications[]` entry to rule code.
 - `classify_tags(entry) -> (leak_signals, sus_signals)` — **delta-scoped**: reads `entry.diff_from_prev.first_diff_index` and scans `entry.messages[first_diff_index:][].blocks[].full_text` + content_preview/tail for the 4 tag literals. Missing `diff_from_prev` or `first_diff_index == 0` falls back to full-scan (correct for first REQ). `first_diff_index < 0` (no-change sentinel) returns empty. Pairs each found tag with the relevant rule in `modifications[]` to decide LEAK vs SUS.
@@ -235,7 +235,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 - `legend_markdown() -> str` — Markdown legend block (3 tables: Buckets, Rules, Tag Literals) emitted at the top of audit reports.
 **Reads:** Nothing at module level.
 **Writes:** Nothing — pure data + helpers.
-**Called by:** `dev/tool_use_analysis/strip_audit.py` (via sys.path insertion) for full legend + classify_req delegation; `src/proxy_display/render_messages.py` for attribute_chunk, classify_tags, code_for_rule, classify_req (monitor `_aggregate_req_buckets` is a thin delegate).
+**Called by:** `dev/tool_use_analysis/strip_audit.py` (via sys.path insertion) for full legend + classify_req delegation; `src/proxy_display/render_messages.py` for attribute_chunk, classify_tags, code_for_rule, classify_req (monitor `_aggregate_req_buckets` is a thin delegate); `src/proxy/logging.py` (imports `attribute_chunk as _attribute_chunk` for fn_map attribution in `_build_stripped_injected_deltas`).
 **Calls out:** `collections.Counter` (counter-delta inside classify_req).
 
 ---

@@ -115,13 +115,79 @@ msg_diffs = _diff_messages(orig_msgs_norm, fwd_msgs_norm)
 (HP/UI_PARTIAL/SN/FM). No diff entries exist that are natural evolution — every message
 diff is either json_reserialization or an attributable proxy strip.
 
-## Decision / next
+## Decision / next — COMPLETED 2026-06-04
 
-**fn field: do NOT materialise yet.** Prerequisites:
-1. Fix json_reserialization bug in `logging.py._build_stripped_injected_deltas`
-2. Add 6 vocab entries to `strip_vocab.RULES` (ENV, HP, UI_PARTIAL, DATE_SR, SN, FM)
-3. Re-run script to confirm ADJUSTED ≈ 100% holds after fix
-4. Then add `fn` field to log entries
+All four prerequisites implemented in `fn-materialize` branch:
 
-Both steps are contained fixes: json_reser fix = 3-line normalization; vocab additions = 6
-entries in `RULES` dict. Estimated combined scope: 1 session.
+### A — json_reserialization fix (logging.py)
+
+`_build_stripped_injected_deltas` now applies `_normalize_msg_shape_for_hash()` to each
+message before passing to `_diff_messages`. Single-element block-list user messages collapse
+to plain string — string vs block-list format differences no longer generate false strip/inject
+entries. Fix is 3 lines; `_normalize_msg_shape_for_hash` was already in the file (used for
+hash comparison) — now also applied to the diff input.
+
+**Impact (visible in new logs after proxy restart):** 80 strip-side + 329 inject-side false
+positive entries per 19 pairs eliminated. Historical logs unchanged (JSONL already written).
+
+### B — 6 strip_vocab.RULES additions
+
+| Code | Change | Marker(s) |
+|---|---|---|
+| `UI` | secondary marker added | `IMPORTANT: After completing your current task` |
+| `CMD` | marker added | `The date has changed.` |
+| `ENV` | new rule | `As you answer the user's questions, you can use the following context:\n# userEmail` |
+| `HP` | new rule (mod: `stripped_hook_error_prefix`) | `PreToolUse:` / `hook error` |
+| `SN` | new rule | `[SYSTEM NOTIFICATION` |
+| `FM` | new rule | ` was modified` (space-was-space-modified; `Note: ` excluded as too generic) |
+
+### C — Re-run results (20 pairs; 1 new pair since original analysis)
+
+| Side | Before (19 pairs) | After (20 pairs) |
+|---|---|---|
+| Strip RAW | 87.6% (566/646, 80 fp) | 87.2% (627/719, 92 fp) |
+| Strip ADJUSTED | **100.0%** | **100.0%** |
+| Inject RAW | 33.0% (162/491, 329 fp) | 32.0% (178/556, 378 fp) |
+| Inject ADJUSTED | **100.0%** | **100.0%** |
+
+**RAW not improved in re-run** — expected: fix A applies only to future log writes; existing
+JSONL files retain json_reser false positives (they were written by old code). RAW improvement
+visible only in new logs after proxy restart (marked pending live-verify).
+
+**Per-rule counts vs expectations (Leitplanke 2):**
+
+| Code | Expected | Actual | Status |
+|---|---|---|---|
+| ENV | ~15 | 16 | ✓ plausible |
+| HP | ~11 | 13 | ✓ plausible |
+| UI_PARTIAL → UI | ~5 | 4 | ✓ plausible |
+| DATE_SR → CMD | ~1 | 1 | ✓ |
+| SN | ~2 | 3 | ✓ plausible |
+| FM | ~1 | 1 | ✓ |
+
+All residual gaps now attributed as vocab (0 UNATTR, 0 residual). Gate passed → proceeded to D.
+
+### D — fn_map materialized
+
+`fn_map: {loc_key → fn_name}` added as top-level field to both `_stripped` and `_injected`
+entries at write time. Attribution constants `_SYS_FN`, `_FIELD_STRIP_FN`, `_FIELD_INJECT_FN`,
+`_MSG_CODE_TO_FN` defined in logging.py INFRASTRUCTURE. `attribute_chunk` imported as
+`_attribute_chunk` from `strip_vocab`.
+
+Sample stripped entry fn_map (simulated):
+```json
+{
+  "sys.2": "_apply_system_passes",
+  "tool_w.list_issues": "_strip_unused_tools",
+  "msg.0.0": "_apply_first_pass",
+  "field.max_tokens": "_inject_model_override",
+  "field.model": "_inject_model_override"
+}
+```
+
+Read-side (render_sections.py, render_messages.py, parser.py) untouched — confirmed via
+`git diff --stat`. Old entries without fn_map are safe (field simply absent).
+
+**Pending live-verify (next session):** new logs written after proxy restart should show:
+- Eliminated json_reser false positives (RAW approaching ADJUSTED)
+- fn_map present in every stripped_delta/injected_delta entry
