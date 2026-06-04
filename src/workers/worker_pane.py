@@ -91,7 +91,7 @@ def run_workers_loop() -> None:
 
 # FUNCTIONS
 
-# Build path to the selection IPC file for the given project (shared with proxy/metadata panes)
+# Build path to the selection IPC file for the given project (shared with proxy pane)
 def get_selection_file_path(project_filter: Optional[str]) -> str:
     if project_filter:
         normalized = os.path.normpath(os.path.expanduser(project_filter))

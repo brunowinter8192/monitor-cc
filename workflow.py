@@ -25,7 +25,7 @@ def main() -> None:
         run_gpu_loop()
     else:
         setup_signal_handlers()
-        if args.mode not in ('warnings', 'tokens', 'workers', 'metadata'):
+        if args.mode not in ('warnings', 'tokens', 'workers'):
             print_startup_message(args.project, args.mode)
         run_monitor(args.project, args.mode)
 

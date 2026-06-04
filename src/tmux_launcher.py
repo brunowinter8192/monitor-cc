@@ -12,15 +12,13 @@ from .constants import TMUX_HISTORY_LIMIT
 # Layout definition for self-healing pane recreation (mirrors launch_split_screen)
 # Format: [(win_idx, win_name, [(mode, split_from_or_None, pct_or_None)])]
 _WINDOW_LAYOUT = [
-    (0, 'main',    [('main',            None,            None),
-                    ('tokens',          'main',          '30%')]),
-    (1, 'proxy',   [('proxy',           None,            None),
-                    ('metadata',        'proxy',         '30%')]),
-    (2, 'workers', [('workers',         None,            None),
-                    ('worker-proxy',    'workers',       '66%'),
-                    ('worker-metadata', 'worker-proxy',  '50%')]),
-    (3, 'debug',   [('warnings',        None,            None)]),
-    (4, 'gpu',     [('gpu',             None,            None)]),
+    (0, 'main',    [('main',         None,      None),
+                    ('tokens',       'main',    '30%')]),
+    (1, 'proxy',   [('proxy',        None,      None)]),
+    (2, 'workers', [('workers',      None,      None),
+                    ('worker-proxy', 'workers', '66%')]),
+    (3, 'debug',   [('warnings',     None,      None)]),
+    (4, 'gpu',     [('gpu',          None,      None)]),
 ]
 
 # ORCHESTRATOR
@@ -45,31 +43,28 @@ def launch_split_screen(project_filter: Optional[str] = None, script_path: str =
     main_cmd = f"python3 {script_path} --mode main {project_arg}"
     tokens_cmd = f"python3 {script_path} --mode tokens {project_arg}"
     proxy_cmd = f"python3 {script_path} --mode proxy {project_arg}"
-    metadata_cmd = f"python3 {script_path} --mode metadata {project_arg}"
     warnings_cmd = f"python3 {script_path} --mode warnings {project_arg}"
     gpu_cmd = f"python3 {script_path} --mode gpu {project_arg}"
     workers_cmd = f"python3 {script_path} --mode workers {project_arg}"
     worker_proxy_cmd = f"python3 {script_path} --mode worker-proxy {project_arg}"
-    worker_metadata_cmd = f"python3 {script_path} --mode worker-metadata {project_arg}"
 
     original_history_limit = get_global_history_limit()
     subprocess.run(["tmux", "set-option", "-g", "history-limit", TMUX_HISTORY_LIMIT])
 
-    # 4-Window Layout:
+    # 5-Window Layout:
     # Window 0 "main":    Main (left, 70%) + Tokens (right, 30%)
-    # Window 1 "proxy":   API Proxy log + Metadata (right, 30%)
-    # Window 2 "workers": Workers (left) + Worker-Proxy (top right) + Worker-Metadata (bottom right)
+    # Window 1 "proxy":   API Proxy log (fullscreen)
+    # Window 2 "workers": Workers (left, 34%) + Worker-Proxy (right, 66%)
     # Window 3 "debug":   Warnings (fullscreen)
+    # Window 4 "gpu":     GPU (fullscreen)
     subprocess.run(["tmux", "new-session", "-d", "-s", session_name, main_cmd])
     subprocess.run(["tmux", "rename-window", "-t", f"{session_name}:0", "main"])
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:0.0", "-l", "30%", tokens_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:1", "-n", "proxy", proxy_cmd])
-    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:1.0", "-l", "30%", metadata_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:2", "-n", "workers", workers_cmd])
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:2.0", "-l", "66%", worker_proxy_cmd])
-    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:2.1", "-l", "50%", worker_metadata_cmd])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:3", "-n", "debug", warnings_cmd])
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:4", "-n", "gpu", gpu_cmd])
@@ -140,8 +135,8 @@ def configure_tmux_session(session_name: str, script_path: str = '', project_arg
     subprocess.run(["tmux", "bind-key", "-T", "root", "WheelDownPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode; send-keys -X -N 5 scroll-down"])
     pane_titles = {
         '0.0': 'MAIN', '0.1': 'TOKENS',
-        '1.0': 'PROXY', '1.1': 'METADATA',
-        '2.0': 'WORKERS', '2.1': 'WORKER-PROXY', '2.2': 'WORKER-METADATA',
+        '1.0': 'PROXY',
+        '2.0': 'WORKERS', '2.1': 'WORKER-PROXY',
         '3.0': 'WARNINGS',
         '4.0': 'GPU',
     }
@@ -174,8 +169,7 @@ def _build_mode_commands(script_path: str, project_path: Optional[str]) -> dict:
     project_arg = f"--project {project_path}" if project_path else ""
     cmds = {
         mode: f"python3 {script_path} --mode {mode} {project_arg}"
-        for mode in ('main', 'tokens', 'proxy', 'metadata',
-                     'workers', 'worker-proxy', 'worker-metadata', 'warnings', 'gpu')
+        for mode in ('main', 'tokens', 'proxy', 'workers', 'worker-proxy', 'warnings', 'gpu')
     }
     return cmds
 
