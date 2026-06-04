@@ -144,3 +144,31 @@ Inlines `_strip_cache_control` (5-line mirror of `logging.py:_strip_cache_contro
 ```
 
 **Output:** `dev/proxy_dual_log/span_inline_probe_reports/<YYYYMMDD>.md`
+
+---
+
+### attribution_coverage.py
+
+**Purpose:** Read-only function-attribution coverage analysis for `_stripped`/`_injected` dual-logs.
+Answers: can every strip AND inject entry be attributed to a responsible proxy function?
+Processes all available `*_stripped.jsonl`/`*_injected.jsonl` pairs in `src/logs/dual_log/`
+and produces a coverage report with per-category attribution tables, RAW/ADJUSTED coverage
+percentages, full residual listing, and false-positive evidence.
+
+Key findings from first run (19 pairs, 2026-06-04):
+- Strip ADJUSTED 100% / Inject ADJUSTED 100% — zero truly unattributed entries
+- 6 residual gap categories in strip_vocab (ENV/HP/UI_PARTIAL/DATE_SR/SN/FM) — all attributable,
+  need vocab additions before `fn` field can be materialised
+- **json_reserialization bug**: 409 false positive entries from `_set_cache_breakpoints`
+  format-normalisation not being mirrored in `_build_stripped_injected_deltas` diff setup;
+  renders as false yellow/green in the monitor
+
+Loads `strip_vocab` via `importlib.util.spec_from_file_location` (block_dev_imports_src safe).
+Auto-detects main repo vs worktree path for dual_log directory.
+
+**Usage (from project root):**
+```bash
+./venv/bin/python dev/proxy_dual_log/attribution_coverage.py
+```
+
+**Output:** `dev/proxy_dual_log/attribution_coverage_reports/<YYYYMMDD>.md`
