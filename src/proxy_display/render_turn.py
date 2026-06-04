@@ -4,7 +4,7 @@ from ..constants import (
     SOFT_RESET, RED, WHITE, YELLOW, DIM,
 )
 from ..utils import _ANSI_ESCAPE_RE, _cell_width
-from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry, _format_latency, _fmt_thinking_budget, _fmt_effort
+from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
 from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
 
 # FUNCTIONS
@@ -39,8 +39,6 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
                 num_label = f'#{opus_req_num}.{sub_req_num}'
 
         msg_count = entry.get('message_count', 0)
-        cache_bp = entry.get('cache_breakpoints', [])
-        bp_count = len(cache_bp)
         mods = entry.get('modifications', [])
 
         warn_parts = []
@@ -116,9 +114,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
 
         tag_labels = _aggregate_entry_tags(entry)
         tag_badge = f' {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
-        latency_str = _format_latency(entry.get('ttfb_ms'), entry.get('output_tokens_per_sec'),
-                                      entry.get('n_stalls', 0), entry.get('max_stall_ms'))
-        header_raw = f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg BP:{bp_count}{eff_str}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{latency_str}{SOFT_RESET}"
+        header_raw = f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg{eff_str}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{SOFT_RESET}"
         if copy_feedback is not None:
             _stripped_h = _ANSI_ESCAPE_RE.sub('', header_raw)
             visible_len = sum(_cell_width(ch) for ch in _stripped_h)
