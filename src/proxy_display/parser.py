@@ -14,6 +14,7 @@ from ..constants import (
     PROXY_MESSAGES_KEEP_LAST,
 )
 from ..proxy.message_summary import _summarize_message
+from ..proxy.logging import _compute_diff
 
 # FUNCTIONS
 
@@ -595,6 +596,10 @@ def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict) -> 
                 sys_cnt = counts.get('system', 0)
                 tools_cnt = counts.get('tools', 0)
                 msg_cnt = counts.get('messages', 0)
+                # Capture prev summaries for diff_from_prev BEFORE updating accumulator.
+                # is_first=True means proxy session reset → treat as first-ever request for this family.
+                prev_acc = acc_by_family.get(family)
+                prev_messages_for_diff = None if is_first else (prev_acc['messages'] if prev_acc else None)
                 if is_first:
                     new_system = _dict_to_list_fwd(fwd_e.get('system_delta') or {}, sys_cnt)
                     new_tools = _dict_to_list_fwd(fwd_e.get('tools_delta') or {}, tools_cnt)
@@ -604,7 +609,7 @@ def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict) -> 
                         for m in raw_msgs
                     ]
                 else:
-                    prev = acc_by_family.get(family, {'system': [], 'tools': [], 'messages': []})
+                    prev = prev_acc if prev_acc else {'system': [], 'tools': [], 'messages': []}
                     new_system = _apply_delta_to_list(prev['system'], fwd_e.get('system_delta') or {}, sys_cnt)
                     new_tools = _apply_delta_to_list(prev['tools'], fwd_e.get('tools_delta') or {}, tools_cnt)
                     new_summaries = list(prev['messages'])
@@ -626,6 +631,7 @@ def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict) -> 
                 }
                 entry = _extract_forwarded_fields(fwd_e, new_system, new_tools, new_summaries)
                 entry['_fwd_req_idx'] = req_idx
+                entry['diff_from_prev'] = _compute_diff(prev_messages_for_diff, new_summaries)
                 entries.append(entry)
                 recent_window.append((entry, new_summaries))
                 if len(recent_window) > PROXY_MESSAGES_KEEP_LAST:
