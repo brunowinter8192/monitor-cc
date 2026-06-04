@@ -22,7 +22,7 @@ that writes `dev/ram_audit/dumps/<ts>_<pane_name>.txt`.
 **Purpose:** Shared RAM-dump helper — tracemalloc start, PID file write, SIGUSR1 handler registration, dump file writer.
 **Reads:** `module_state_provider()` callback for pane globals; `/proc/<pid>` or macOS `resource.getrusage` for RSS.
 **Writes:** `/tmp/.monitor_cc_pid_<pane_name>` (PID file on entry, removed on exit); `dev/ram_audit/dumps/<YYYYmmdd_HHMMSS>_<pane_name>.txt` (dump on SIGUSR1).
-**Called by:** `src/core/monitor.py`, `src/panes/token_pane.py`, `src/panes/warnings_pane.py`, `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/metadata/metadata_pane.py` (×2), `src/workers/worker_pane.py`.
+**Called by:** `src/core/monitor.py`, `src/panes/token_pane.py`, `src/panes/warnings_pane.py`, `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/workers/worker_pane.py`.
 **Calls out:** `psutil` (optional — RSS source); stdlib `gc`, `tracemalloc`, `resource`, `signal`, `atexit`.
 
 ---

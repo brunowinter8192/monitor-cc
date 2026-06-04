@@ -56,9 +56,7 @@ MODE_WARNINGS = 'warnings'
 MODE_TOKENS = 'tokens'
 MODE_WORKERS = 'workers'
 MODE_PROXY = 'proxy'
-MODE_METADATA = 'metadata'
 MODE_WORKER_PROXY = 'worker-proxy'
-MODE_WORKER_METADATA = 'worker-metadata'
 
 # Hook events — session lifecycle
 HOOK_SESSION_START = 'SessionStart'

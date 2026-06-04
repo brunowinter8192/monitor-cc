@@ -26,7 +26,7 @@ from src.format import format_user_media, format_skill_activation, format_thinki
 
 # Cache tracker rendering (token_format.py)
 from src.format import format_cache_tracker
-from src.format import _format_k          # compact "Xk" token count — used by workers/metadata/proxy_display
+from src.format import _format_k          # compact "Xk" token count — used by workers/proxy_display
 ```
 
 ## Modules
@@ -66,7 +66,7 @@ from src.format import _format_k          # compact "Xk" token count — used by
 **Purpose:** Build logical lines for the token/cache tracker — groups API calls into turns with CR/CC/D counts, handles expand/collapse and viewport clipping. Returns a 5-tuple `(visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count)`. The fifth element `initial_parent_count` is the number of collapsed parent rows before the current viewport — used by `token_pane.py` to keep expand/collapse key assignments stable across scrolls. Does NOT render (no zebra, no hover, no truncation) — that is `token_pane.py`'s job. Also provides `_format_k` for compact token counts.
 **Reads:** Cache turn lists, expand state dicts, pane dimensions, scroll offset — all passed as arguments.
 **Writes:** Returns 5-tuple. No stdout, no file writes.
-**Called by:** `panes/token_pane.py` (`format_cache_tracker`); `workers/worker_format.py` (`format_cache_tracker`, `_format_k`); `metadata/metadata_format.py`, `proxy_display/format.py` (`_format_k`).
+**Called by:** `panes/token_pane.py` (`format_cache_tracker`); `workers/worker_format.py` (`format_cache_tracker`, `_format_k`); `proxy_display/format.py` (`_format_k`).
 **Calls out:** `format.formatter` (lazy, `shorten_tool_name` for tool name abbreviation in cache rows).
 
 ## Gotchas
