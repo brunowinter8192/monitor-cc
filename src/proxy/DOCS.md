@@ -235,7 +235,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 - `legend_markdown() -> str` — Markdown legend block (3 tables: Buckets, Rules, Tag Literals) emitted at the top of audit reports.
 **Reads:** Nothing at module level.
 **Writes:** Nothing — pure data + helpers.
-**Called by:** `dev/tool_use_analysis/strip_audit.py` (via sys.path insertion) for full legend + classify_req delegation; `src/proxy_display/render_messages.py` for attribute_chunk, classify_tags, code_for_rule, classify_req (monitor `_aggregate_req_buckets` is a thin delegate).
+**Called by:** `dev/tool_use_analysis/strip_audit.py` (via sys.path insertion) for full legend + classify_req delegation; `src/proxy_display/render_messages.py` for attribute_chunk, classify_tags, code_for_rule, classify_req (monitor `_aggregate_req_buckets` is a thin delegate); `src/proxy/logging.py` (imports `attribute_chunk as _attribute_chunk` for fn_map attribution in `_build_stripped_injected_deltas`).
 **Calls out:** `collections.Counter` (counter-delta inside classify_req).
 
 ---
