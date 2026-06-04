@@ -178,6 +178,20 @@ def _read_rss_mb(pid: int | None) -> int | None:
     return None
 
 
+# Fetch [{collection, chunks}] via lock-exempt rag-cli list_collections --json; [] on any failure
+def _fetch_collections() -> list[dict]:
+    try:
+        r = subprocess.run(
+            ['rag-cli', 'list_collections', '--json'],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0:
+            return json.loads(r.stdout)
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError):
+        pass
+    return []
+
+
 # Append anomaly to _last_anomalies and log warning (best-effort)
 def _warn(kind: str, message: str, source: str) -> None:
     _last_anomalies.append({'kind': kind, 'message': message, 'source': source})

@@ -13,12 +13,13 @@ from ..input.click_handler import (
     setup_keyboard_input, restore_terminal, read_keypress, wait_for_input,
     enable_mouse, disable_mouse, read_mouse_event,
 )
-from .status import all_statuses, get_anomalies, PRESET_NAMES
+from .status import all_statuses, get_anomalies, PRESET_NAMES, _fetch_collections
 from .errors import errors_today, errors_today_by_server
 
-GPU_POLL_INTERVAL = 2.0      # seconds between data refreshes
-TOGGLE_TIMEOUT    = 120      # seconds before [starting…]/[stopping…] label expires
-IDLE_TIMEOUT      = int(os.getenv("RAG_SERVER_IDLE_TIMEOUT", "3600"))
+GPU_POLL_INTERVAL         = 2.0   # seconds between server data refreshes
+COLLECTIONS_POLL_INTERVAL = 30.0  # seconds between RAG collection count refreshes
+TOGGLE_TIMEOUT            = 120   # seconds before [starting…]/[stopping…] label expires
+IDLE_TIMEOUT              = int(os.getenv("RAG_SERVER_IDLE_TIMEOUT", "3600"))
 _ANSI_RE          = re.compile(r'\x1b\[[0-9;]*[mKHJABCDEFGsuTXP]')
 
 _toggle_state: dict = {}   # preset name or 'port-{N}' → ('starting'|'stopping', float ts)
@@ -30,12 +31,14 @@ _button_regions: dict = {} # (start_col, end_col, phys_row) → (action, target_
 def run_gpu_loop() -> None:
     last_output = None
     last_data_refresh = 0.0
+    last_collections_refresh = 0.0
     force_refresh = False
     presets: list = []
     arbitrary: list = []
     anomalies: list = []
     today_errors: list = []
     error_counts: dict = {}
+    collections: list = []
 
     setup_keyboard_input()
     enable_mouse()
@@ -71,7 +74,6 @@ def run_gpu_loop() -> None:
 
             now = time.time()
             if force_refresh or now - last_data_refresh >= GPU_POLL_INTERVAL:
-                force_refresh = False
                 presets, arbitrary = all_statuses()
                 anomalies = get_anomalies()
                 today_errors = errors_today()
@@ -79,6 +81,13 @@ def run_gpu_loop() -> None:
                 last_data_refresh = now
                 input_changed = True
                 _expire_toggle_states(presets, arbitrary)
+
+            if force_refresh or now - last_collections_refresh >= COLLECTIONS_POLL_INTERVAL:
+                collections = _fetch_collections()
+                last_collections_refresh = now
+                input_changed = True
+
+            force_refresh = False
 
             if input_changed:
                 try:
@@ -90,7 +99,7 @@ def run_gpu_loop() -> None:
                     pane_height = 30
                 output = _render_pane(pane_width, pane_height,
                                       presets, arbitrary, anomalies,
-                                      today_errors, error_counts)
+                                      today_errors, error_counts, collections)
                 if output != last_output:
                     print("\033[2J\033[3J\033[H", end='', flush=True)
                     print(output, end='', flush=True)
@@ -217,7 +226,8 @@ def _fire_button(action: str, target: str) -> None:
 # Build full pane content; updates _button_regions as side effect
 def _render_pane(pane_width: int, pane_height: int,
                  presets: list, arbitrary: list, anomalies: list,
-                 today_errors: list, error_counts: dict) -> str:
+                 today_errors: list, error_counts: dict,
+                 collections: list) -> str:
     _button_regions.clear()
     lines: list[str] = []
 
@@ -271,6 +281,14 @@ def _render_pane(pane_width: int, pane_height: int,
             phys_row   = len(lines) + 1
             _button_regions[(vis_len + pad + 1, vis_len + pad + len(btn), phys_row)] = ('stop', target)
             lines.append(content + ' ' * pad + btn)
+
+    lines.append("")
+    lines.append(f"{DIM}{'═' * min(pane_width, 64)}{RESET}  RAG Collections")
+    if collections:
+        for c in collections:
+            lines.append(f"  {c['collection']:<32} {c['chunks']} chunks")
+    else:
+        lines.append(f"  {DIM}(none indexed){RESET}")
 
     lines.append("")
     lines.append(f"{DIM}{'═' * min(pane_width, 64)}{RESET}  Errors today (last 10)")
