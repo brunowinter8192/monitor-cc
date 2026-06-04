@@ -6,7 +6,7 @@ Monitor_CC nutzt zwei separate Indexing-Pfade der RAG-Infrastruktur. Welcher Pfa
 
 **Pfad 1 — project-local** via `.rag-docs.json` am Repo-Root + `rag-cli update_docs .`. Hash-basierte Sync gegen die im Manifest deklarierten Globs. Files leben IM Projekt-Repo. Multi-Collection-Format erlaubt mehrere Collections pro Projekt. Wird bei jedem Session-Recap ausgeführt um Doku-Änderungen einzusyncen.
 
-**Pfad 2 — central reference** via `python workflow.py index-dir --input <data/documents/<collection>>` im RAG-Projekt. Files leben in `Meta/ClaudeCode/MCP/RAG/data/documents/<collection_name>/`, dort gitignored (`data/` im RAG-`.gitignore`). Collection-Name = Directory-Name. Wird einmalig pro Reference-Material-Hinzufügung gefahren, nicht hash-synced.
+**Pfad 2 — central reference** via `rag-cli index --collection <name>` im RAG-Projekt. Files leben in `Meta/ClaudeCode/cli/rag-cli/data/documents/<collection_name>/`, dort gitignored (`data/` im RAG-`.gitignore`). Collection-Name = Subdirectory-Name. Wird einmalig pro Reference-Material-Hinzufügung gefahren, nicht hash-synced. `workflow.py` existiert nicht mehr — Einstiegspunkt ist ausschliesslich `cli.py` (via `rag-cli` wrapper).
 
 Monitor_CC hat aktuell drei Collections:
 
@@ -14,23 +14,25 @@ Monitor_CC hat aktuell drei Collections:
 |---|---|---|---|
 | Monitor_CC-meta | local via .rag-docs.json | 185 | DOCS.md (22), decisions/*.md (8) |
 | Monitor_CC-features | local via .rag-docs.json | 125 | decisions/OldThemes/<topic>/*.md (14 files in 11 Subfoldern) |
-| Monitor_reference | central via index-dir | 337 | 88 Anthropic API Doc Mirrors in `Meta/.../Monitor_reference/` |
+| Monitor_reference | central via rag-cli index | 337 | 88 Anthropic API Doc Mirrors in `Meta/.../Monitor_reference/` |
 
-`.rag-docs.json` Manifest enthält nur zwei Collections (-meta + -features). Die dritte (Monitor_reference) ist nicht im Manifest weil ihre Files nicht im Repo leben — sie wird über den index-dir-Pfad gewartet.
+`.rag-docs.json` Manifest enthält nur zwei Collections (-meta + -features). Die dritte (Monitor_reference) ist nicht im Manifest weil ihre Files nicht im Repo leben — sie wird über den `rag-cli index`-Pfad gewartet.
 
 ## Evidenz
 
-`/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/MCP/RAG/src/rag/sync.py:74-115` — `update_docs_workflow` walkt `.rag-docs.json` Globs, hash-syncs per `(collection, relative_path)`-Key, akzeptiert Single- oder Multi-Collection-Format.
+`cli/rag-cli/src/rag/sync.py` — `sync_docs_workflow` walkt `.rag-docs.json` Globs, hash-synced per `(collection, document)`-Key, akzeptiert Single- oder Multi-Collection-Format (via `update_docs` subcommand in `cli.py`).
 
-`/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/MCP/RAG/workflow.py:99-200` — `index-dir`-Command nimmt `--input <directory>` Flag (NICHT positional), default `--collection` ist der Directory-Name. Skip-by-default via `indexed_files`-Hash. `.md` only, `.txt` Files werden nicht indexiert.
+`cli/rag-cli/cli.py:95-101` — `index` subcommand nimmt `--collection` (required), liest ausschliesslich `data/documents/<collection>/*.md`. Kein `--input`-Flag; `workflow.py` existiert nicht mehr.
 
-Session 2026-05-11 Lesson: die ersten 92 API-Mirror-Files lagen falscherweise in `Monitor_CC/sources/` flach. Worker `source-alloc` wurde mit dem Auftrag gespawnt diese in `Monitor_CC/sources/<topic>/`-Subfolder zu gruppieren und eine `Monitor_CC_reference` Collection via project-local Pfad aufzubauen. Beides falsch — generische API-Dokus haben keinen project-spezifischen Bezug und gehören in den central reference store, nicht ins Projekt-Repo. Korrektur: `mv` der 91 Files cross-repo nach `Meta/.../Monitor_reference/`, `git rm` in Monitor_CC, Collection via `workflow.py index-dir` neu aufgebaut. Worker-Commit wurde verworfen.
+Session 2026-05-11 Lesson: die ersten 92 API-Mirror-Files lagen falscherweise in `Monitor_CC/sources/` flach. Korrektur: `mv` der 91 Files cross-repo nach `Meta/.../Monitor_reference/`, `git rm` in Monitor_CC, Collection via `workflow.py index-dir` neu aufgebaut (historisch — seither durch rag-cli Konsolidierung abgelöst).
+
+Session 2026-06-10: `workflow.py` bei rag-cli Konsolidierung entfernt. gh-cli (`index_issues/releases/discussions.py`) und searxng SKILL.md haben toten `workflow.py index-dir`-Aufruf durch `rag-cli index --collection <name>` ersetzt. Input-Model unverändert: gh-cli schreibt MDs nach `data/documents/<collection>/` (war schon korrekt), searxng setzt die Ausgabe-Directory auf `$RAG_ROOT/data/documents/$COLLECTION` direkt.
 
 ## Recommendation (SOLL)
 
-Keep — kein Architektur-Change nötig. Drei Konventionen sollen aber konsistent eingehalten werden.
+Keep — kein Architektur-Change nötig. Drei Konventionen sollen konsistent eingehalten werden.
 
-**Konvention 1: Was wohin gehört.** Generische externe Reference (Anthropic API Mirror, Paper-PDFs, Vendor-Docs ohne project-spezifischen Decision-Bezug) → central via `workflow.py index-dir`. Project-spezifische Docs (DOCS.md, decisions/, OldThemes-Narrative) → local via `.rag-docs.json`. Project-interne Research-Reports (z.B. RAM_research) sind decisions/-Material, gehen nach `decisions/OldThemes/<topic>/`.
+**Konvention 1: Was wohin gehört.** Generische externe Reference (Anthropic API Mirror, Paper-PDFs, Vendor-Docs ohne project-spezifischen Decision-Bezug) → central via `rag-cli index --collection`. Project-spezifische Docs (DOCS.md, decisions/, OldThemes-Narrative) → local via `.rag-docs.json`. Project-interne Research-Reports (z.B. RAM_research) sind decisions/-Material, gehen nach `decisions/OldThemes/<topic>/`.
 
 **Konvention 2: Collection-Naming.** Project-local: `<Project>-meta` und `<Project>-features`. Central Reference: `<Project>_reference` (mit Underscore statt Dash, peer-Konvention zu `RAG_reference`, `searxng_reference`). Monitor_CC weicht hier ab: die zentrale Collection heißt `Monitor_reference` ohne `_CC` weil bereits angelegt — beibehalten.
 
@@ -42,6 +44,7 @@ Cache-Read-Cost beim mehrfach-pro-Session-Run von `rag-cli update_docs .`: nicht
 
 ## Quellen
 
-- `Meta/ClaudeCode/MCP/RAG/src/rag/sync.py` — update_docs implementation
-- `Meta/ClaudeCode/MCP/RAG/workflow.py` — index-dir command (lines 99-200, 276-285)
+- `cli/rag-cli/src/rag/sync.py` — update_docs / sync_docs_workflow implementation
+- `cli/rag-cli/cli.py` — index subcommand (lines 95-101, 198-323)
 - Session 2026-05-11 — empirisches Beispiel für die zwei-Pfad-Trennung
+- Session 2026-06-10 — rag-cli Konsolidierung (workflow.py entfernt, index-command-Wechsel)

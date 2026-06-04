@@ -11,7 +11,9 @@ RAG tab is the second panel in the four-tab ring `Sessions · RAG · Beads · Qu
 - File present: read `pid`, call `os.kill(pid, 0)`:
   - `ESRCH` (ProcessLookupError) → dead process → `no indexing currently running`
   - `EPERM` (PermissionError) → process exists → treat as alive
-- `command` does not start with `index` → `no indexing currently running`
+- Gate on `kind` field (present in locks written by rag-cli post-consolidation):
+  - `kind` present: `kind != 'index'` → `no indexing currently running`
+  - `kind` absent (backward compat — old lock format): `command.startswith('index')` fallback
 - Otherwise format: `{collection}: {done}/{total} · {elapsed}`
   - `collection` = `args.collection`, fallback `Path(args.input).name`, fallback `'unknown'`
   - `done`/`total` from `progress` dict (defaults 0/0 when absent)
@@ -31,26 +33,31 @@ RAG tab is the second panel in the four-tab ring `Sessions · RAG · Beads · Qu
 
 ## Evidenz
 
-**Live lock file schema** (confirmed from running indexer during development, pid 54231):
+**Live lock file schema** (post-consolidation, rag-cli `index` command):
 ```json
 {
-  "pid": 54231,
-  "command": "index-dir",
-  "args": {"collection": "gh_reference", "input": "/abs/path/..."},
-  "started_at": "2026-06-01T19:17:53.347821+00:00",
+  "pid": 12345,
+  "command": "index",
+  "kind": "index",
+  "args": {"collection": "gh_reference"},
+  "started_at": "2026-06-10T12:00:00.000000+00:00",
   "status": "running",
-  "progress": {"done": 70, "total": 307, "current_document": "..."},
-  "heartbeat": "2026-06-01T20:07:23.720890+00:00"
+  "progress": {"done": 5, "total": 20, "current_document": "foo.md"},
+  "heartbeat": "2026-06-10T12:00:30.000000+00:00"
 }
 ```
 
-**Lock file scope:** `rag.lock` is acquired only by the three indexing commands (`index-dir`, `index-file`, `index-json`). Server and search commands use a separate lock file (`server_lock`). The `command.startswith('index')` gate is belt-and-suspenders — in practice any `rag.lock` will have an `index-*` command.
+**Lock file scope (post-consolidation):** `rag.lock` is acquired by ALL rag-cli commands except `status` and `server` (cli.py lines 131-148). The `kind` field distinguishes indexing ops from query/delete ops. `kind="index"` set for `{"index", "update_docs"}`; `kind="query"` for all others (`_INDEXING_COMMANDS` frozenset in `lock.py`).
+
+**`update_docs` in the gate:** `update_docs` acquires the lock with `command="update_docs"`, `kind="index"`. Without the `kind` gate, the old `command.startswith('index')` check silently excluded it — the menubar showed "no indexing" during `update_docs` runs. The new gate catches it correctly. Note: `update_docs` does not call `lock.update_progress`, so the menubar shows `unknown: 0/0 · elapsed` during its run (no collection key in `args`; sync.py doesn't report per-file progress to the lock). This is acceptable as a status indicator.
+
+**Backward compat:** locks written before the `kind` field was added (pre-consolidation) had `command="index-dir"`, `"index-file"`, or `"index-json"`. The `command.startswith('index')` fallback handles these correctly.
 
 **PID staleness:** The RAG repo's own staleness check uses `os.kill(pid, 0)` with `ProcessLookupError → dead`. Mirrored exactly here.
 
 ## Recommendation (SOLL)
 
-Keep — feature as built, no eval pending.
+Keep — feature as corrected, no further eval pending.
 
 ## Offene Fragen
 
