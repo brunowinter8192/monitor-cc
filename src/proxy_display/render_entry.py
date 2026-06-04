@@ -23,9 +23,6 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
 
     model = _shorten_model(entry.get('model', '?'))
     msg_count = entry.get('message_count', 0)
-    cache_bp = entry.get('cache_breakpoints', [])
-
-    bp_count = len(cache_bp)
     is_expanded = expand_states.get(entry_idx, False)
     symbol = '\u25bc' if is_expanded else '\u25b6'
 
@@ -82,7 +79,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         haiku_info = ''
     tag_labels = _aggregate_entry_tags(entry)
     tag_badge = f'  {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
-    header_raw_e = f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg  BP:{bp_count}{mods_str}  {status_str}{haiku_info}{tag_badge}{SOFT_RESET}"
+    header_raw_e = f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg{mods_str}  {status_str}{haiku_info}{tag_badge}{SOFT_RESET}"
     if copy_feedback is not None:
         _stripped_he = _ANSI_ESCAPE_RE.sub('', header_raw_e)
         visible_len = sum(_cell_width(ch) for ch in _stripped_he)
