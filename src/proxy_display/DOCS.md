@@ -2,63 +2,64 @@
 
 ## Role
 
-Proxy pane TUI package. Reads mitmproxy log entries from `src/logs/api_requests_*.jsonl`,
-groups them by session turn, and renders an interactive expand/collapse display showing API
-request structure (model, message counts, cache breakpoints, system/tools/messages detail).
+Proxy pane TUI package. Reads mitmproxy forwarded-delta entries from
+`src/logs/dual_log/api_requests_*_forwarded.jsonl`, reconstructs per-request
+system/tools/messages via delta accumulation, and renders an interactive expand/collapse
+display showing API request structure (model, message counts, system/tools/messages detail).
 Additionally reads `src/logs/dual_log/*_stripped.jsonl` / `*_injected.jsonl` to drive a
 yellow (DIM_YELLOW_BG) / green (DIM_GREEN_BG) overlay showing what the proxy stripped and
 injected per request. Runs two event loops — one for the main session proxy log, one for the
 selected worker's proxy log (both carry the full dual-log overlay). Also exports
-`parse_proxy_log` and path helpers used by `panes.warnings_pane`. Touch this
-package when changing proxy pane display logic or the parser field extraction. Do NOT touch
-for the proxy modification pipeline — that lives in `src/proxy/`.
+`parse_proxy_log_forwarded`, `find_errors_log_path`, `scan_worker_errors_logs`, and path
+helpers used by `panes.warnings_pane`. Touch this package when changing proxy pane display
+logic or the parser field extraction. Do NOT touch for the proxy modification pipeline —
+that lives in `src/proxy/`.
 
 ## Public Interface
 
 - `run_proxy_loop` — main proxy pane event loop (entry point from `core.monitor`)
 - `run_worker_proxy_loop` — worker proxy pane event loop (entry point from `core.monitor`)
-- `parse_proxy_log(project_filter_or_path, last_position)` — parse proxy JSONL incrementally
+- `parse_proxy_log_forwarded(project_filter, last_pos, acc_by_family)` — parse `_forwarded` dual-log incrementally; returns `(entries, new_pos)`
 - `find_worker_proxy_log(worker_name, project_filter=None)` — resolve proxy log path for a named worker; tries prefixed glob `api_requests_worker_{hash}_{name}_*.jsonl` first (when `project_filter` provided), falls back to unprefixed for older logs
-- `_parse_log_file(path, last_position)` — low-level log file reader
+- `find_errors_log_path(project_filter)` — resolve `_errors` dual-log path for current proxy session; used by `warnings_pane`
+- `scan_worker_errors_logs(last_positions, project_session_id, min_mtime)` — glob + incremental read of worker `_errors` logs; used by `warnings_pane`
 - `format_proxy_block(entries, ...)` — render full proxy pane ANSI string
 
 ## Flow
 
-`src/logs/api_requests_*.jsonl` → `parser` (incremental JSONL read via `readline()`, stamps `_byte_offset` per entry, raw_payload extraction → flat entry dicts, `del raw_payload`)
-→ `pane` strip-on-extend: messages deleted from entries outside keep-last=10 window + not-expanded
+`src/logs/dual_log/api_requests_*_forwarded.jsonl` → `parser._parse_forwarded_log` (incremental JSONL read, delta accumulation per model family via `_apply_delta_to_list`/`_dict_to_list_fwd`, message summaries via `_summarize_fwd_message`, deque-bounded: last `PROXY_MESSAGES_KEEP_LAST=10` entries get `messages`, rest carry `messages=None`)
+→ `pane` (entries extended; entries outside window + not-expanded carry `messages=None`)
 → `format` (group by turn — turns always expanded, viewport, scroll) → `render_turn` (req rows)
 → `render_sections` + `render_messages` (expanded req detail; requires messages — lazy-reload ensures they are present)
 → `pane` / `worker_proxy_pane` (event loop, stdin → stdout)
 
-On expand-click: `_lazy_load_messages(entry, log_path)` seeks to `entry['_byte_offset']`, reads one JSONL line, re-populates `entry['messages']` + `content_tail` enrichment. Also reloads `prev_same` (first non-standalone predecessor) in the same click handler.
+On expand-click: `_lazy_load_messages_forwarded(entry, fwd_path)` replays forwarded delta stream from byte 0 to `entry['_fwd_req_idx']`, reconstructs and populates `entry['messages']`. Also reloads `prev_same` in the same click handler.
 
 **Expand model (flat):** Turn boundaries are indicated by empty-line separators only (no header rows). Only Req-level and below are expandable. line_map contains only Req-level and deeper keys — one sequential phys_row counter through the visible slice, no nested offsets.
 
 ## Modules
 
-### pane.py (331 LOC)
+### pane.py (338 LOC)
 
-**Purpose:** Event loop for the main proxy pane — reads proxy log incrementally, handles mouse input (click expand/collapse, scroll, hover), renders on change. Drain-refresh-render pattern: `run_proxy_loop` is a ~47-LOC skeleton delegating to 4 helpers. Strip-on-extend: after each `proxy_entries.extend()`, strips `messages` from entries outside the `PROXY_MESSAGES_KEEP_LAST=10` window that are not actively expanded. On expand-click, lazy-reloads messages for the target entry AND its `prev_same` (first non-standalone predecessor) via `_lazy_load_messages`. Copy-button click on REQ header (col ≥ pane_width-2, row in `_proxy_copy_rows`) copies REQ content to clipboard via `_serialize_proxy`; ✓-flash for 1.5s after click via `_copy_feedback_until`. hover+y removed (copy-button is the sole copy mechanism). Module state: `_proxy_pane_width` (updated each render, used by click handler), `_proxy_copy_rows` (phys_rows with ⎘, populated by `format_proxy_block`), `_copy_feedback_until` (entry_idx → expiry float), `_proxy_just_expanded` (sentinel key set by mouse handler on expand, cleared by `_build_proxy_output` after auto-scroll pass), `_proxy_current_main_session` / `_proxy_session_start_ts` (session-change tracking, promoted from loop-locals). **Dual-log accumulator:** `_proxy_stripped_pos` / `_proxy_injected_pos` (byte-position cursors, reset to 0 on session change); `_proxy_acc_stripped` / `_proxy_acc_injected` (`{family: {section: dict}}` accumulator dicts, cleared on session change). In `_refresh_proxy_data`: calls `_find_dual_log_paths` to resolve sibling `_stripped`/`_injected` paths, calls `accumulate_dual_log` for each, then for each newly-parsed entry attaches `entry['_stripped_spans'] = _proxy_acc_stripped[family]` and `entry['_injected_spans'] = _proxy_acc_injected[family]` BY REFERENCE (not copies). Both reset blocks (session-change detection) call `.clear()` on all four dual-log state vars.
-**Helpers (new):** `_proxy_ram_state()` — 12 LOC; `_handle_proxy_mouse(button, col, row) -> bool` — 37 LOC; `_refresh_proxy_data(now, input_changed, last_data_refresh, monitor) -> (bool, float)` — 46 LOC; `_build_proxy_output() -> str` — 34 LOC. No `_handle_proxy_key` (no keyboard branch: hover+y was removed before this refactor).
-**Reads:** Module-level state (entries, expand states, scroll offset, hover row, line map, `_proxy_log_path`); active project filter from shared monitor state; stdin.
+**Purpose:** Event loop for the main proxy pane — reads `_forwarded` dual-log incrementally, handles mouse input (click expand/collapse, scroll, hover), renders on change. Drain-refresh-render pattern: `run_proxy_loop` is a ~47-LOC skeleton delegating to 4 helpers. Deque-bounded messages: only the last `PROXY_MESSAGES_KEEP_LAST=10` entries have `messages` populated by `_parse_forwarded_log`; entries outside that window carry `messages=None` and are lazy-loaded on expand-click. On expand-click, lazy-reloads messages for the target entry AND its `prev_same` (first non-standalone predecessor) via `_lazy_load_messages_forwarded(entry, fwd_path)` where `fwd_path = _proxy_log_path.parent / 'dual_log' / f'{_proxy_log_path.stem}_forwarded.jsonl'`. Copy-button click on REQ header copies REQ content to clipboard; ✓-flash for 1.5s after click. **Forwarded-log state:** `_proxy_fwd_pos` (int, byte position in `_forwarded` file, reset to 0 on session change/reparse); `_proxy_acc_fwd` (dict, family accumulator for `_parse_forwarded_log`, cleared on reset). **Dual-log overlay accumulator (unchanged from pre-migration):** `_proxy_stripped_pos` / `_proxy_injected_pos` + `_proxy_acc_stripped` / `_proxy_acc_injected` for `_stripped`/`_injected` overlay; entries hold references to family acc dict. Session-change + time-triggered reset blocks clear all fwd + overlay state vars.
+**Reads:** Module-level state; active project filter from shared monitor state; stdin.
 **Writes:** ANSI output to stdout (direct tmux pane write).
 **Called by:** `src/core/monitor.py` (via `..proxy_display.run_proxy_loop`)
-**Calls out:** `input` (click_handler), `panes` (token_pane.build_cache_turns), `proxy_display.parser` (`_find_dual_log_paths`, `accumulate_dual_log`, `_infer_model_family`)
+**Calls out:** `input` (click_handler), `panes` (token_pane.build_cache_turns), `proxy_display.parser` (`parse_proxy_log_forwarded`, `_lazy_load_messages_forwarded`, `find_proxy_log_path`, `_find_dual_log_paths`, `accumulate_dual_log`, `_infer_model_family`)
 
 ---
 
-### worker_proxy_pane.py (414 LOC)
+### worker_proxy_pane.py (424 LOC)
 
-**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's proxy log, handles digit-key worker switching, mouse input, renders with worker-switcher header. Drain-refresh-render pattern: `run_worker_proxy_loop` is a ~46-LOC skeleton delegating to 5 helpers. Header height is computed via `utils.visual_line_count` to handle multi-line wrap correctly: `body_hover`, `content_height`, and `line_map` shift all use `header_lines` instead of a hardcoded 1. Same strip-on-extend + lazy-reload pattern as `pane.py` — `_strip_inactive_wp_messages` runs after each extend; click-expand triggers `_lazy_load_messages` for entry + `prev_same`; `_worker_proxy_log_path` holds the current worker's JSONL path. Copy-button identical to pane.py with `_worker_proxy_*` prefix state; `_worker_proxy_copy_rows` is shifted by `header_lines` after each `format_proxy_block` call (same shift as `worker_proxy_line_map`). hover+y removed. Module state: `_wp_just_expanded` (sentinel set by mouse handler, cleared by `_build_worker_proxy_output`), `_worker_proxy_last_worker_name` (worker-change tracking, promoted from loop-local). **Dual-log accumulator (mirrored from pane.py):** `_worker_proxy_stripped_pos` / `_worker_proxy_injected_pos` (byte-position cursors, reset on worker-change and time-triggered reparse); `_worker_proxy_acc_stripped` / `_worker_proxy_acc_injected` (`{family: {section: dict}}` dicts, cleared on both resets). In `_refresh_worker_proxy_data`, inside the `if log_path:` block: calls `_find_dual_log_paths(log_path)`, `accumulate_dual_log` for each dual-log, then attaches `_stripped_spans`/`_injected_spans` BY REFERENCE to every new entry; family-seeded with empty dicts when dual-log has no record yet. Iterates `new_entries` directly (no timestamp filter, unlike main pane's `filtered`).
-**Helpers (new):** `_worker_proxy_ram_state()` — 18 LOC; `_handle_worker_proxy_mouse(button, col, row) -> bool` — 38 LOC; `_handle_worker_proxy_key(char, monitor) -> bool` — 9 LOC (digit keys → IPC write + force_reload); `_refresh_worker_proxy_data(now, input_changed, last_data_refresh, monitor) -> (bool, float)` — 72 LOC (force_reload-OR-tick gate); `_build_worker_proxy_output(monitor) -> (str, str)` — 68 LOC (returns `(output, header)` tuple; loop uses `header` for overdraw step `print(f"\033[H{header}\033[K",...)`).
-**Reads:** Module-level state (including `_worker_proxy_log_path`); live worker list from `workers.worker_tmux`; worker selection IPC file.
+**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's `_forwarded` dual-log, handles digit-key worker switching, mouse input, renders with worker-switcher header. Drain-refresh-render pattern with `force_reload-OR-tick` gate. **Forwarded-log state:** `_worker_proxy_fwd_pos` (int) + `_worker_proxy_acc_fwd` (dict) replace `_worker_proxy_pending_by_rid`. In `_refresh_worker_proxy_data`: `fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'`; calls `_parse_forwarded_log(fwd_path, _worker_proxy_fwd_pos, _worker_proxy_acc_fwd)` directly; stamps `entry['_source_file'] = fwd_path.name` on each new entry. Lazy-load: same `_lazy_load_messages_forwarded` pattern, fwd_path derived from `_worker_proxy_log_path`. Worker-change + time-triggered reset blocks clear fwd state vars. **Dual-log overlay accumulator (unchanged):** `_worker_proxy_stripped_pos` / `_worker_proxy_injected_pos` + `_worker_proxy_acc_stripped` / `_worker_proxy_acc_injected` — both reset triggers clear all four. `_worker_proxy_log_path` still updated to `log_path` (used for overlay path derivation and lazy-load fwd_path derivation). Header rendered via overdraw pattern; `_build_worker_proxy_output` returns `(output, header)` tuple.
+**Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file.
 **Writes:** ANSI output to stdout (direct tmux pane write).
 **Called by:** `src/core/monitor.py` (via `..proxy_display.run_worker_proxy_loop`)
-**Calls out:** `input` (click_handler), `workers` (worker_tmux, worker_pane.get_selection_file_path, write_selection), `panes` (token_pane.build_cache_turns), `utils` (visual_line_count), `proxy_display.parser` (`_find_dual_log_paths`, `accumulate_dual_log`, `_infer_model_family`)
+**Calls out:** `input` (click_handler), `workers` (worker_tmux, worker_pane.get_selection_file_path, write_selection), `panes` (token_pane.build_cache_turns), `utils` (visual_line_count), `proxy_display.parser` (`find_worker_proxy_log`, `_parse_forwarded_log`, `_lazy_load_messages_forwarded`, `_find_dual_log_paths`, `accumulate_dual_log`, `_infer_model_family`)
 
 ---
 
-### format.py (237 LOC)
+### format.py (215 LOC)
 
 **Purpose:** `format_proxy_block` — groups proxy entries by turn (turns always expanded, no turn-level header row emitted), applies scroll/viewport windowing, delegates rendering to `render_turn`, returns `(ansi_string, total_lines)` for scroll math. Accepts optional `copy_feedback: dict` (entry_idx→expiry) and `copy_rows_out: set` — both forwarded to `render_turn_expanded` / `_render_entry_lines`; in the visible-slice loop, `copy_rows_out` is populated with phys_rows of REQ header lines that contain ⎘ or ✓ (detected via substring check on the raw line before background processing). Turn-groups are separated by a single empty line; all visible rows are REQ-level or deeper. Helpers: `_fmt_effort(s) → 'hig'/'med'/'lo'/'-'`; `_fmt_thinking_budget(n) → 'Nk'/'N'/'-'` — both used by `render_turn.py` for per-REQ header fields. Also exports `_is_standalone_entry(entry) -> bool` — shared predicate used by `render_turn` and `render_entry` backward walks to skip structurally-separate entries (haiku, zero-context, and mc=1 CC title/summary sidecars where `message_count==1 and cache_breakpoints==[]`). Sidecar detection is intentional: walking past them gives the right prev_same for ⚠T/⚠S and for the expand-block unchanged comparison. Owns the row-background priority chain applied in the final render loop: hover > `DIM_YELLOW_BG` > collision > zebra. Collision detection is a Record-during-Render pass: `rendered_opus_labels: list[(entry_idx, num_label)]` is passed into `render_turn_expanded` and `_render_entry_lines`, which append each opus REQ's generated `#N` label; after all rows are rendered, a `Counter` over the labels identifies duplicates and produces `collision_entry_idxs: set[int]`. Any REQ-header row whose `entry_idx` is in that set gets `COLLISION_BG` — the same-#N abort-cascade marker (see `decisions/OldThemes/abort_cascade/background_task_abort_cascade.md`). Helper `_fmt_thinking_budget(n: Optional[int]) -> str` — None→`'-'`, n<1000→`str(n)`, n≥1000→`'Nk'`; used by REQ-header only (via `render_turn.py`).
 **Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.

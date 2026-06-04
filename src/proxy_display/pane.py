@@ -11,7 +11,7 @@ from ..constants import (
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
 from .parser import (
-    parse_proxy_log_isolated, find_proxy_log_path, _lazy_load_messages,
+    parse_proxy_log_forwarded, _lazy_load_messages_forwarded, find_proxy_log_path,
     accumulate_dual_log, _find_dual_log_paths, _infer_model_family,
 )
 from .format import format_proxy_block, _is_standalone_entry
@@ -32,7 +32,8 @@ proxy_log_position: int = 0
 
 _proxy_jsonl_position: int = 0
 _proxy_cache_turns: list = []
-_proxy_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
+_proxy_fwd_pos: int = 0          # forwarded-log byte position for incremental reads
+_proxy_acc_fwd: dict = {}        # family accumulator for _parse_forwarded_log
 _proxy_stripped_pos: int = 0     # dual-log read position for _stripped.jsonl
 _proxy_injected_pos: int = 0     # dual-log read position for _injected.jsonl
 _proxy_acc_stripped: dict = {}   # family → {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
@@ -168,7 +169,8 @@ def _proxy_ram_state() -> list:
         ('proxy_expand_states',   proxy_expand_states),
         ('proxy_line_map',        proxy_line_map),
         ('_proxy_cache_turns',    _proxy_cache_turns),
-        ('_proxy_pending_by_rid', _proxy_pending_by_rid),
+        ('_proxy_fwd_pos',        _proxy_fwd_pos),
+        ('_proxy_acc_fwd',        _proxy_acc_fwd),
         ('proxy_hover_row',       str(proxy_hover_row)),
         ('proxy_scroll_offset',   proxy_scroll_offset),
         ('proxy_log_position',    proxy_log_position),
@@ -189,7 +191,8 @@ def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
             if entry_idx is not None and entry_idx < len(proxy_entries) and _proxy_log_path:
                 e = proxy_entries[entry_idx]
                 if e.get('messages') is None:
-                    _lazy_load_messages(e, _proxy_log_path)
+                    fwd_path = _proxy_log_path.parent / 'dual_log' / f'{_proxy_log_path.stem}_forwarded.jsonl'
+                    _lazy_load_messages_forwarded(e, fwd_path)
             copy_to_clipboard(_serialize_proxy(key, proxy_entries))
             if entry_idx is not None:
                 _copy_feedback_until[entry_idx] = time.time() + 1.5
@@ -200,13 +203,14 @@ def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
                 entry_idx = _entry_idx_from_key(key)
                 if entry_idx is not None and entry_idx < len(proxy_entries) and _proxy_log_path:
                     e = proxy_entries[entry_idx]
+                    fwd_path = _proxy_log_path.parent / 'dual_log' / f'{_proxy_log_path.stem}_forwarded.jsonl'
                     if e.get('messages') is None:
-                        _lazy_load_messages(e, _proxy_log_path)
+                        _lazy_load_messages_forwarded(e, fwd_path)
                     prev_idx = _resolve_prev_same(proxy_entries, entry_idx)
                     if prev_idx is not None:
                         pe = proxy_entries[prev_idx]
                         if pe.get('messages') is None:
-                            _lazy_load_messages(pe, _proxy_log_path)
+                            _lazy_load_messages_forwarded(pe, fwd_path)
                 _proxy_just_expanded = key
         return True
     if button == 64:
@@ -223,7 +227,8 @@ def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
 # Tick-boundary proxy data refresh; returns (input_changed, new_last_data_refresh)
 def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global proxy_entries, proxy_expand_states, proxy_line_map, proxy_scroll_offset, proxy_hover_row
-    global proxy_log_position, _proxy_jsonl_position, _proxy_cache_turns, _proxy_pending_by_rid
+    global proxy_log_position, _proxy_jsonl_position, _proxy_cache_turns
+    global _proxy_fwd_pos, _proxy_acc_fwd
     global _proxy_log_path, _last_full_parse_ts
     global _proxy_current_main_session, _proxy_session_start_ts
     global _proxy_stripped_pos, _proxy_injected_pos, _proxy_acc_stripped, _proxy_acc_injected
@@ -243,7 +248,8 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
         proxy_hover_row = None
         _proxy_jsonl_position = 0
         _proxy_cache_turns = []
-        _proxy_pending_by_rid.clear()
+        _proxy_fwd_pos = 0
+        _proxy_acc_fwd.clear()
         _proxy_log_path = None
         _last_full_parse_ts = now
         _proxy_stripped_pos = 0
@@ -259,15 +265,16 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
         proxy_log_position = 0
         _proxy_jsonl_position = 0
         _proxy_cache_turns = []
-        _proxy_pending_by_rid.clear()
+        _proxy_fwd_pos = 0
+        _proxy_acc_fwd.clear()
         _last_full_parse_ts = now
         _proxy_stripped_pos = 0
         _proxy_injected_pos = 0
         _proxy_acc_stripped.clear()
         _proxy_acc_injected.clear()
         input_changed = True
-    new_entries, proxy_log_position = parse_proxy_log_isolated(
-        monitor.active_project_filter, proxy_log_position, _proxy_pending_by_rid
+    new_entries, _proxy_fwd_pos = parse_proxy_log_forwarded(
+        monitor.active_project_filter, _proxy_fwd_pos, _proxy_acc_fwd
     )
     filtered = [e for e in new_entries if e.get('timestamp', '') >= _proxy_session_start_ts]
     proxy_entries.extend(filtered)
