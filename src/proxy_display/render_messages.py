@@ -15,11 +15,17 @@ _SUSPECT_TAG_RE = re.compile(
 # Aggregate tag labels for entries where a strip rule fired in the delta range
 def _aggregate_entry_tags(entry: dict) -> list[str]:
     diff = entry.get('diff_from_prev') or {}
-    start = diff.get('first_diff_index')
-    if start is None:
+    fdi = diff.get('first_diff_index')
+    if fdi is None:
         start = 0  # First REQ — all msgs are new, no diff_from_prev key
-    elif start < 0:
+    elif fdi < 0:
         return []  # Byte-identical re-fire — no new strip activity
+    else:
+        # Truly new messages start at prev_message_count, not first_diff_index.
+        # first_diff_index can regress into old messages when a prior msg changes
+        # by even 1 char (re-serialization, trailing-newline drift after TN strip);
+        # using it as the gate causes double-firing of the same strip.
+        start = entry.get('message_count', 0) - (diff.get('messages_added') or 0)
     smr = entry.get('stripped_msg_removed') or {}
     found = set()
     for idx_str, chunks in smr.items():

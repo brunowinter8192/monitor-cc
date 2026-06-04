@@ -91,14 +91,17 @@ def code_for_rule(full_name: str) -> str | None:
 
 # Scan delta messages (monitor format) for leaked/suspect tag literals
 # Returns (leak_signals, sus_signals) — compact LEAK:<TAG> / SUS:<TAG> strings
-# Delta-scoped: only messages[first_diff_index:] (mirrors _aggregate_entry_tags pattern)
+# Delta-scoped: only truly new messages [prev_message_count, message_count).
+# prev_message_count derived as message_count - messages_added (avoids first_diff_index
+# regression: fdi can point into old msgs when a prior msg shifts by 1 char).
 # Scans blocks[*].full_text instead of raw_payload (raw_payload discarded by monitor parser)
 # LEAK iff the relevant strip rule fired on a msg in delta range (smr key >= start)
 def classify_tags(entry: dict) -> tuple[list[str], list[str]]:
     diff = entry.get('diff_from_prev') or {}
-    start = diff.get('first_diff_index', 0) if diff else 0
-    if start < 0:
+    fdi = diff.get('first_diff_index', 0) if diff else 0
+    if fdi < 0:
         return [], []
+    start = entry.get('message_count', 0) - (diff.get('messages_added') or 0) if diff else 0
     messages = entry.get('messages', [])[start:]
     smr = entry.get('stripped_msg_removed') or {}
 
