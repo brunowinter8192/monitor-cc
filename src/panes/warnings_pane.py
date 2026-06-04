@@ -1,10 +1,11 @@
 # INFRASTRUCTURE
 from pathlib import Path
-from typing import Dict, Optional, Set
+from typing import Dict, Optional
+import json
 import os
 import time
 
-from ..constants import INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL, WARNINGS_INITIAL_TAIL_BYTES
+from ..constants import INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL
 from ..utils import format_timestamp
 from ..ram_audit import register_ram_dump
 from ..input.click_handler import (
@@ -12,47 +13,29 @@ from ..input.click_handler import (
     enable_mouse, disable_mouse, read_mouse_event,
     resolve_parent_key, copy_to_clipboard, wait_for_input,
 )
-from .warnings_parse import _iso_to_float
-from .warnings_scan import _scan_proxy_entries_for_errors, _scan_proxy_entries_for_zero_results
 from .warnings_render import _format_warnings_pane, _format_warnings_header, _serialize_warnings
-from .warnings_persist import append_tool_errors
 
 tool_errors: list = []
 error_expand_states: Dict[int, bool] = {}
 error_line_map: Dict[int, int] = {}
 error_hover_row: Optional[int] = None
 error_scroll_offset: int = 0
-_proxy_log_position: int = 0
 _last_project_filter: Optional[str] = None
-_last_log_path: Optional[Path] = None
 _last_refresh_ts: float = 0.0
 _force_refresh: bool = False
 _monitor_start_ts: float = 0.0
-_worker_log_positions: Dict[str, int] = {}
-
-schema_warnings: list = []  # list of {timestamp, model, warnings: list[str]}
-zero_results: list = []  # list of {timestamp, tool_name, reason, tool_call_input}
-zero_result_expand_states: Dict[int, bool] = {}
-zero_result_line_map: Dict[int, int] = {}
-
-# Dedup sets: proxy entries carry cumulative message history, so the same tool_result
-# block reappears in every subsequent entry. Keys prevent re-counting historic results.
-# Key format: (msg_idx, blk_idx, text_key) for zero-results; (msg_idx, text_key) for errors.
-# Note: msg_idx is stable as long as messages are only appended. Context-trimming (rare)
-# may cause a deduped item to appear at a shifted index — acceptable edge-case for v1.
-_seen_zero_keys: Set = set()
-_seen_error_keys: Set = set()
-_proxy_pending_by_rid: dict = {}  # persisted across polling cycles for latency_update merge
+_errors_log_pos: int = 0               # byte position in current session _errors log
+_errors_log_path: Optional[Path] = None  # resolved path for change-detection
+_worker_errors_positions: Dict[str, int] = {}  # per-file byte positions for worker _errors logs
 
 # ORCHESTRATOR
 
 # Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
     global tool_errors, error_expand_states, error_line_map, error_hover_row
-    global error_scroll_offset, _proxy_log_position, _last_project_filter
+    global error_scroll_offset, _last_project_filter
     global _last_refresh_ts, _force_refresh
-    global schema_warnings, zero_results, zero_result_expand_states, zero_result_line_map
-    global _monitor_start_ts, _worker_log_positions, _last_log_path, _proxy_pending_by_rid
+    global _monitor_start_ts, _errors_log_pos, _errors_log_path, _worker_errors_positions
 
     register_ram_dump('warnings', _warnings_ram_state)
     _monitor_start_ts = time.time()
@@ -98,14 +81,10 @@ def run_warnings_loop() -> None:
 
 # FUNCTIONS
 
-# Load historical warnings from newest main session
+# Prime monitor_sessions so the pane has fresh session state on startup
 def load_historical_warnings() -> None:
     from ..core import monitor as _monitor
-    main_sessions = _monitor.get_main_session_files()
-    if main_sessions:
-        filepath = main_sessions[0]
-        _monitor.file_positions[filepath] = 0
-        _monitor.tool_use_caches[filepath] = {}
+    _monitor.monitor_sessions()
 
 # Return module-level state snapshot for RAM audit
 def _warnings_ram_state() -> list:
@@ -113,19 +92,12 @@ def _warnings_ram_state() -> list:
         ('tool_errors',                  tool_errors),
         ('error_expand_states',          error_expand_states),
         ('error_line_map',               error_line_map),
-        ('schema_warnings',              schema_warnings),
-        ('zero_results',                 zero_results),
-        ('zero_result_expand_states',    zero_result_expand_states),
-        ('zero_result_line_map',         zero_result_line_map),
-        ('_worker_log_positions',        _worker_log_positions),
-        ('_seen_zero_keys',              _seen_zero_keys),
-        ('_seen_error_keys',             _seen_error_keys),
-        ('_proxy_pending_by_rid',        _proxy_pending_by_rid),
+        ('_worker_errors_positions',     _worker_errors_positions),
         ('error_hover_row',              str(error_hover_row)),
         ('error_scroll_offset',          error_scroll_offset),
-        ('_proxy_log_position',          _proxy_log_position),
+        ('_errors_log_pos',              _errors_log_pos),
+        ('_errors_log_path',             str(_errors_log_path)),
         ('_last_project_filter',         str(_last_project_filter)),
-        ('_last_log_path',               str(_last_log_path)),
         ('_last_refresh_ts',             _last_refresh_ts),
         ('_force_refresh',               _force_refresh),
         ('_monitor_start_ts',            _monitor_start_ts),
@@ -133,15 +105,11 @@ def _warnings_ram_state() -> list:
 
 # Process one mouse event; returns True if display should refresh
 def _handle_warnings_mouse(button: int, col: int, row: int) -> bool:
-    global error_hover_row, error_scroll_offset, error_expand_states, zero_result_expand_states
+    global error_hover_row, error_scroll_offset, error_expand_states
     if button == 0:
         ekey = error_line_map.get(row)
         if ekey is not None:
             error_expand_states[ekey] = not error_expand_states.get(ekey, False)
-            return True
-        zkey = zero_result_line_map.get(row)
-        if zkey is not None:
-            zero_result_expand_states[zkey] = not zero_result_expand_states.get(zkey, False)
             return True
         return False
     if button == 64:
@@ -166,28 +134,65 @@ def _handle_warnings_key(char: str) -> bool:
     global _force_refresh
     if char == 'y':
         key = resolve_parent_key(error_line_map, error_hover_row)
-        if key is None:
-            key = resolve_parent_key(zero_result_line_map, error_hover_row)
         if key is not None:
-            copy_to_clipboard(_serialize_warnings(key, tool_errors, zero_results))
+            copy_to_clipboard(_serialize_warnings(key, tool_errors))
         return False
     if char in ('r', 'R'):
         _force_refresh = True
         return True
     return False
 
+# Convert one _errors-log record to a tool_errors display dict.
+def _errors_record_to_display(rec: dict) -> dict:
+    worker_field = rec.get('worker', '')
+    worker_name = worker_field[len('worker:'):] if worker_field.startswith('worker:') else \
+                  rec.get('_worker_name_from_file', '')
+    ts_raw = rec.get('ts', '')
+    error_full = rec.get('error_full', '') or ''
+    return {
+        'timestamp': format_timestamp(ts_raw) if ts_raw else '??:??:??',
+        'tool_name': rec.get('tool_name', ''),
+        'summary': error_full[:80],
+        'full_text': error_full,
+        'tool_call_input': {},
+        'worker_name': worker_name,
+        '_tool_use_id': rec.get('tool_use_id', ''),
+        '_ts_raw': ts_raw,
+        '_proxy_file': rec.get('proxy_file', ''),
+        '_request_id': rec.get('request_id', ''),
+    }
+
+# Read new records from an _errors log file starting at last_pos. Returns (records, new_pos).
+def _read_errors_log(path: Path, last_pos: int) -> tuple:
+    records: list = []
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            f.seek(last_pos)
+            while True:
+                raw_line = f.readline()
+                if not raw_line:
+                    break
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+            return records, f.tell()
+    except OSError:
+        return records, last_pos
+
 # Tick-boundary warnings data refresh; returns (input_changed, new_last_data_refresh)
 def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
     from ..core import monitor as _monitor
     from ..proxy_display.parser import (
-        parse_proxy_log, scan_worker_logs, get_proxy_session_start_ts,
-        find_proxy_log_path, proxy_session_id_for_project,
+        find_errors_log_path, scan_worker_errors_logs,
+        proxy_session_id_for_project, get_proxy_session_start_ts,
     )
     global tool_errors, error_expand_states, error_line_map, error_scroll_offset, error_hover_row
-    global _proxy_log_position, _last_project_filter, _last_log_path
-    global schema_warnings, zero_results, zero_result_expand_states, zero_result_line_map
-    global _monitor_start_ts, _worker_log_positions, _last_refresh_ts, _force_refresh
-    global _seen_zero_keys, _seen_error_keys, _proxy_pending_by_rid
+    global _last_project_filter, _last_refresh_ts, _force_refresh, _monitor_start_ts
+    global _errors_log_pos, _errors_log_path, _worker_errors_positions
 
     if not (_force_refresh or now - last_data_refresh >= WARNINGS_POLL_INTERVAL):
         return input_changed, last_data_refresh
@@ -195,94 +200,39 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
     _monitor.monitor_sessions()
 
     project_filter = _monitor.active_project_filter
-    log_path = find_proxy_log_path(project_filter)
+    errors_path = find_errors_log_path(project_filter)
 
-    if project_filter != _last_project_filter or log_path != _last_log_path:
-        # Seek to last WARNINGS_INITIAL_TAIL_BYTES instead of position 0 to bound
-        # peak pymalloc allocation. Partial first line at seek point is silently
-        # skipped by _parse_log_file's JSONDecodeError handler.
-        _proxy_log_position = 0
-        if log_path and log_path.exists():
-            try:
-                fsize = log_path.stat().st_size
-                if fsize > WARNINGS_INITIAL_TAIL_BYTES:
-                    _proxy_log_position = fsize - WARNINGS_INITIAL_TAIL_BYTES
-            except OSError:
-                pass
+    if project_filter != _last_project_filter or errors_path != _errors_log_path:
+        _errors_log_pos = 0
+        _errors_log_path = errors_path
+        _worker_errors_positions.clear()
         _monitor_start_ts = get_proxy_session_start_ts(project_filter) if project_filter else time.time()
-        _worker_log_positions.clear()
         tool_errors = []
-        zero_results = []
-        schema_warnings = []
         error_expand_states.clear()
-        zero_result_expand_states.clear()
-        _seen_zero_keys.clear()
-        _seen_error_keys.clear()
-        _proxy_pending_by_rid.clear()
         error_scroll_offset = 0
         error_hover_row = None
         _last_project_filter = project_filter
-        _last_log_path = log_path
 
-    # Detect file truncation (proxy restarted with same path)
-    if log_path and log_path.exists():
-        try:
-            file_size = log_path.stat().st_size
-        except OSError:
-            file_size = None
-        if file_size is not None and file_size < _proxy_log_position:
-            _proxy_log_position = 0
-            tool_errors = []
-            zero_results = []
-            schema_warnings = []
-            error_expand_states.clear()
-            zero_result_expand_states.clear()
-            _seen_zero_keys.clear()
-            _seen_error_keys.clear()
-            _proxy_pending_by_rid.clear()
-            error_scroll_offset = 0
+    # Read main session _errors log (current-session-only by design; starts at pos 0 per session)
+    new_errors: list = []
+    if errors_path and errors_path.exists():
+        raw_recs, _errors_log_pos = _read_errors_log(errors_path, _errors_log_pos)
+        new_errors.extend(_errors_record_to_display(r) for r in raw_recs)
 
-    new_entries, _proxy_log_position = parse_proxy_log(project_filter, _proxy_log_position, _proxy_pending_by_rid)
+    # Read worker _errors dual-logs
     _worker_sid = proxy_session_id_for_project(project_filter) if project_filter else ''
-    worker_entries, _worker_log_positions = scan_worker_logs(
-        _worker_log_positions, _worker_sid,
-        tail_bytes=WARNINGS_INITIAL_TAIL_BYTES,
-        # Strict current-session only: worker logs are always written AFTER the proxy
-        # session starts, so their mtime is always >> _monitor_start_ts. No clock-skew
-        # buffer needed.
-        min_mtime=_monitor_start_ts,
+    worker_recs, _worker_errors_positions = scan_worker_errors_logs(
+        _worker_errors_positions, _worker_sid, min_mtime=_monitor_start_ts,
     )
-    all_new_entries = new_entries + worker_entries
+    new_errors.extend(_errors_record_to_display(r) for r in worker_recs)
 
-    new_errors, new_error_keys = _scan_proxy_entries_for_errors(
-        all_new_entries, _monitor_start_ts, _seen_error_keys)
-    _seen_error_keys.update(new_error_keys)
     tool_errors.extend(new_errors)
-    append_tool_errors(new_errors, _last_project_filter or '')
-
-    new_zero, new_zero_keys = _scan_proxy_entries_for_zero_results(
-        all_new_entries, _monitor_start_ts, _seen_zero_keys)
-    _seen_zero_keys.update(new_zero_keys)
-    zero_results.extend(new_zero)
-
-    for entry in new_entries:
-        if entry.get('type') == 'schema_warning':
-            ts_raw = entry.get('timestamp', '')
-            if ts_raw and _iso_to_float(ts_raw) < _monitor_start_ts:
-                continue
-            ts = format_timestamp(ts_raw) if ts_raw else '??:??:??'
-            schema_warnings.append({
-                'timestamp': ts,
-                'model': entry.get('model', ''),
-                'warnings': entry.get('warnings', []),
-            })
-
     _last_refresh_ts = now
     return True, now
 
-# Render warnings pane to ANSI string; updates error_line_map and zero_result_line_map
+# Render warnings pane to ANSI string; updates error_line_map
 def _build_warnings_output() -> str:
-    global error_line_map, zero_result_line_map
+    global error_line_map
     try:
         term = os.get_terminal_size()
         pane_height = term.lines - 1
@@ -290,9 +240,8 @@ def _build_warnings_output() -> str:
     except OSError:
         pane_height = 50
         pane_width = 80
-    output, error_line_map, zero_result_line_map = _format_warnings_pane(
+    output, error_line_map = _format_warnings_pane(
         tool_errors, error_expand_states, error_hover_row, error_scroll_offset,
-        schema_warnings, zero_results, zero_result_expand_states,
         pane_height, pane_width, _last_refresh_ts,
     )
     return output
