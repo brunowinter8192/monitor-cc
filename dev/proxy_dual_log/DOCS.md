@@ -147,6 +147,39 @@ Inlines `_strip_cache_control` (5-line mirror of `logging.py:_strip_cache_contro
 
 ---
 
+### main_log_elimination_probe.py
+
+**Purpose:** Feasibility probe for eliminating the main log (`api_requests_<id>.jsonl`).
+Answers two questions on a real session using the `_forwarded` + `_original` quartet logs:
+
+- **Question A (Forwarded reconstruction):** Accumulates `_forwarded` delta log per-model-family
+  into full `{system, tools, messages}` payloads, diffs against main log `raw_payload` after
+  stripping `cache_control`. Reports content losslessness, BP-count divergence table, and classifies
+  every top-level payload field as: delta-covered / MUST-ADD / metadata-pane-only-irrelevant.
+- **Question B (Error extraction):** Extracts `is_error=True` tool_result blocks from `_original`
+  payloads, deduplicates by `tool_use_id`, compares against `tool_errors.jsonl` for the session.
+
+Matching strategy: positional (request_ids are empty in quartet; both logs written serially).
+Inlines `_strip_cache_control` + `_normalize_msg_shape_for_hash` verbatim from `src/proxy/logging.py`.
+
+**Findings (session `opus_monitor_cc_1780602018`, 47 requests):**
+- A: LOSSLESS — system/tools/messages reconstruct exactly after cache_control normalization
+- A: BP-count diverges structurally (pre-ops 3 markers → post-ops grows +1/request)
+- A: MUST-ADD `max_tokens` + `output_config` to `_build_forwarded_delta` for proxy-pane header fields
+- B: EXACT MATCH — 1 unique error (by tool_use_id) matches tool_errors.jsonl entry
+
+**Usage (from project root):**
+```bash
+MONITOR_CC_ROOT=/path/to/monitor-cc \
+./venv/bin/python dev/proxy_dual_log/main_log_elimination_probe.py <session_suffix>
+```
+
+Default session: `opus_monitor_cc_1780602018`
+
+**Output:** `dev/proxy_dual_log/main_log_elimination_probe_reports/<YYYYMMDD>.md`
+
+---
+
 ### attribution_coverage.py
 
 **Purpose:** Read-only function-attribution coverage analysis for `_stripped`/`_injected` dual-logs.

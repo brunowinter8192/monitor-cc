@@ -47,6 +47,31 @@
 - 108 `api_error_payload_*.json`-Dateien in `src/logs/`: 105/108 mit `request_url` = `https://api.anthropic.com/v1/messages/count_tokens?beta=true` — belegen, dass `_is_messages_request` via `path.startswith("/v1/messages")` count_tokens miterfasst und `_inject_model_override` `max_tokens` injiziert hat → API 400 `max_tokens: Extra inputs are not permitted`.
 - `log_janitor.md` (in diesem Repo): Trigger-Entscheidung (Menubar-Bundle-Problem), ts-Format-Robustheit, Modul-Platzierung — Basis für die Zwei-Trigger-Architektur.
 
+**Main-log elimination feasibility probe:**
+- Script: `dev/proxy_dual_log/main_log_elimination_probe.py`
+- Report: `dev/proxy_dual_log/main_log_elimination_probe_reports/20260604.md`
+- Dataset: session `opus_monitor_cc_1780602018`, 47 requests (haiku + opus), positional match
+
+| Check | Result |
+|---|---|
+| Content lossless (system/tools/messages) | ✅ 47/47 after cache_control-normalize |
+| Tool-error extraction vs tool_errors.jsonl | ✅ exact match (1 unique tool_use_id both sides) |
+| BP:N counter derivable from quartet | ❌ pre-ops count not reconstructable — must be dropped |
+| Missing top-level fields for proxy pane | `max_tokens` + `output_config` MUST-ADD to `_forwarded` |
+
 ## Recommendation (SOLL)
 
-Keep — Inventar und Registry vollständig und korrekt. `polling_state.jsonl` korrekt eingetragen (2026-05-29).
+**Change: eliminate the main log (`api_requests_<id>.jsonl`), derive the monitor read-side from the dual-log quartet.**
+
+Feasibility proven by probe (47/47 content lossless, exact error-set match).
+
+**Migration prerequisites (all in `src/`):**
+
+1. **`_build_forwarded_delta`** (`src/proxy/logging.py`): add `max_tokens` and `output_config` scalar fields to the forwarded entry dict — required for proxy-pane header fields `think:Nk` and `eff:X`.
+2. **Proxy-pane header** (`src/proxy_display/render_turn.py`): drop `BP:N` counter — pre-ops `cache_breakpoints` is not reconstructable from the quartet (post-ops markers accumulate monotonically, 3→46 over session; pre-ops count only lives in main-log `_build_entry`).
+3. **`parser.py` read path** (`src/proxy_display/parser.py`): migrate from main-log `_parse_log_file` to `_forwarded` accumulation (pattern: `accumulate_dual_log` already used for `_stripped`/`_injected`).
+4. **`warnings_scan` / `append_tool_errors`** (`src/panes/warnings_scan.py`, `warnings_persist.py`): migrate to read `is_error=True` tool_result blocks from `_original` payloads with `tool_use_id` dedup.
+
+6 metadata-pane-only fields (`temperature`, `top_p/k`, `tool_choice`, `thinking`, `context_management`, `metadata`, `diagnostics`, `stream`) drop with the metadata pane deletion — no migration action needed.
+
+After migration: `api_requests_<id>.jsonl` write path (`_write_entry` from `addon.py:_build_entry` + `sent_meta` + `latency_update`) can be removed entirely. Retention policy: main-log count-30 janitor entry in `_LOG_REGISTRY` drops; quartet count-30 stays.
