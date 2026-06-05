@@ -29,8 +29,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         if _is_standalone_entry(entry):
             num_label = 'H' if model_short == 'haiku' else 'S'
         else:
-            diff = entry.get('diff_from_prev', {})
-            if diff.get('messages_added', 1) > 0:
+            if (entry.get('diff_from_prev') or {}).get('messages_added', 1) > 0:
                 opus_req_num += 1
                 sub_req_num = 0
                 num_label = f'#{opus_req_num}'
