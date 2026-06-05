@@ -165,3 +165,72 @@ the `is_error=True` scan + dedup in the pane.
 Remove main-log write path from `proxy/addon.py` + `proxy/logging.py`; remove `sent_meta`,
 `latency_update`, `schema_warning` record types; remove main-log + tool_errors.jsonl LogSpec
 entries from `log_janitor.py`; clean up `warnings_scan.py` / `warnings_persist.py` stubs.
+
+---
+
+## Stage 2E — Render-layer regressions (live-verify, 2026-06)
+
+### What We Found (live-verify after Stage 2 merge)
+
+Three fields consumed by the render layer were never set by `_extract_forwarded_fields`:
+
+| Field | Symptom | Root cause |
+|---|---|---|
+| `diff_from_prev` | All messages shown as new (no new-vs-old delta) | `render_messages.py` reads `entry['diff_from_prev']`; absent → `fdi=None` → `start=0` → all messages treated as new |
+| `modifications` | SR/TN header badges + bucket signals gone | `_aggregate_entry_tags` / `classify_req` consume `modifications`; `_extract_forwarded_fields` sets `modifications=[]` always — the migration removed the field source |
+| `cache_breakpoints=[]` always | Everything rendered as sidecar | `_is_standalone_entry` had two `cache_breakpoints==[]`-guarded branches; since bp=[] always for forwarded entries, both fired — real opus REQs classified as sidecars |
+
+### Stage 2E.1 — FIXED (two of three)
+
+**diff_from_prev:** in `_parse_forwarded_log`, capture `prev_messages_for_diff` from
+`acc_by_family[family]['messages']` BEFORE updating the accumulator (`None` when `is_first=True`
+— proxy-session reset, treat as first-ever request for this family). After computing
+`new_summaries`, stamp `entry['diff_from_prev'] = _compute_diff(prev_messages_for_diff,
+new_summaries)` (`_compute_diff` imported from `..proxy.logging` — no mitmproxy deps, no circular
+imports). Import added to parser.py INFRASTRUCTURE.
+
+**Offline verification (session `opus_monitor_cc_1780602018`):** 20/20 opus entries: reconstructed
+`diff_from_prev` (first_diff_index, messages_added, messages_removed) matches the main-log
+entries' raw `diff_from_prev` exactly. First entry: fdi=0, added=1 ✓. Subsequent entries: fdi
+tracks prev mc, added=2 per turn ✓.
+
+**_is_standalone_entry:** rewrote to content discriminator — drops both `cache_breakpoints`-guarded
+branches and the `mc==1` branch entirely. New logic:
+
+```python
+def _is_standalone_entry(entry: dict) -> bool:
+    sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
+    tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+    return (
+        'haiku' in entry.get('model', '').lower()
+        or (sys_chars == 0 and tools_chars == 0)
+    )
+```
+
+Real main-session opus/sonnet requests always carry the full CC system prompt
+(`sys_chars≈130k`) and tool list (`tools_chars≈2k`). CC title/summary and haiku sidecars have
+`sys_chars=0` and `tools_chars=0`. Backward-compatible: old main-log real first-REQs had
+`bp=[0]` AND `sys_chars>0` — the new `sys_chars>0` guard protects them identically.
+
+**Offline verification (same session):** haiku → standalone=True ✓; opus first-REQ (mc=1,
+sys=129422, tools=2269) → standalone=False ✓; opus multi-msg REQ → standalone=False ✓.
+
+### Remaining after 2E.1
+
+**(a) Sidecar/turn-grouping final state:** the everything-sidecar regression is gone and turns
+now group. Exact remaining symptom (if any) needs characterization in the next live-verify —
+not yet observed in this session.
+
+**(b) SR/TN header badges (#4 — deferred):** `modifications=[]` always means
+`_aggregate_entry_tags` / `classify_tags` see no modifications → no badge. Three design
+options:
+1. Derive a `modifications`-equivalent from the `_stripped_spans` / `_injected_spans` fn_maps
+   already attached by `accumulate_dual_log` (re-synthesize the list from span data).
+2. Re-source `classify_tags` / `_aggregate_entry_tags` directly from `_stripped_spans` (cleanest
+   — eliminates the `modifications` intermediary entirely).
+3. Drop the badges like BP:N and the latency badge (display simplification).
+
+**(c) Stage 3 (write-side removal) not started.**
+
+**(d) Full live-verify on new-format logs pending** — needs proxy restart to produce a fresh
+`_forwarded` log that includes the `diff_from_prev`-populated entries end-to-end.
