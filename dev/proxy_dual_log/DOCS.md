@@ -180,6 +180,40 @@ Default session: `opus_monitor_cc_1780602018`
 
 ---
 
+### green_overlay_probe.py
+
+**Purpose:** Reproduces the green-overlay false-injection bug in `_diff_text` (word-level path)
+on real log data and validates the char-level candidate fix. The bug: when a JSON-serialized
+tool_result block is diffed, the escaped `\n` sequences are NOT real whitespace, so tokens
+containing both code content and `<system-reminder>…` are treated as single words by `.split()`.
+SequenceMatcher tags them as 'replace' → common prefix `set()))\n\n` mis-tagged as stripped
+(yellow) AND injected (green). Only `<system-reminder>…` was actually stripped.
+
+Implements both variants inline (self-contained, no `src/` imports at module level):
+- `diff_text_word` — exact copy of production `_diff_text` (word-level path)
+- `diff_text_char` — candidate fix: char-level SequenceMatcher, keeps early-exit branches
+
+Also runs 4 regression cases (R1–R3 real logs ratio >= 0.1; R4 synthetic whitespace-collapse
+test) to confirm no span explosion and correct whitespace fidelity.
+
+**Key findings (2026-06-05, session `badge-recap_1780678180`):**
+- Bug case: word=4 spans (common prefix `set()))\n\n` wrongly split), char=6 spans (280-char
+  common prefix correctly equal ✅, `<system-reminder>` stripped ✅, fidelity ✅)
+- R1 (ratio=0.76): word=4, char=6 — no explosion
+- R2 (ratio=0.99): word=3, char=3 — identical span count
+- R3 (ratio=0.95): word=4, char=3 — char fewer spans ✅
+- R4 synthetic whitespace: word collapses `  ` / `\t` / `   ` to single space; char preserves exactly ✅
+- All 4 regression fidelity checks: orig_ok=True fwd_ok=True ✅
+
+**Usage (from project root):**
+```bash
+./venv/bin/python dev/proxy_dual_log/green_overlay_probe.py
+```
+
+**Output:** `dev/proxy_dual_log/green_overlay_probe_reports/green_overlay_probe.md`
+
+---
+
 ### attribution_coverage.py
 
 **Purpose:** Read-only function-attribution coverage analysis for `_stripped`/`_injected` dual-logs.
