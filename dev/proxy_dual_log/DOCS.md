@@ -214,6 +214,39 @@ test) to confirm no span explosion and correct whitespace fidelity.
 
 ---
 
+### groundtruth_message_spans_probe.py
+
+**Purpose:** Validates `build_message_spans(orig_text, fwd_text, stripped_chunks)` — the
+ground-truth span construction algorithm that replaces the blind `_diff_text` for messages.
+Instead of diffing, builds spans from the exact stripped chunks recorded by
+`apply_modification_rules` (`stripped_msg_removed`): split `orig_text` at chunk positions →
+EQUAL + STRIPPED segments; walk `fwd_text` matching EQUALs; gaps in `fwd_text` = INJECTED
+(the real replacement placeholder, if any). Proves: zero phantom green on pure-strip cases,
+lossless fidelity (equal+stripped rebuilds orig, equal+injected rebuilds fwd), and correct
+small injected spans for replace cases (`.` placeholder, wake-up text).
+
+Data source: re-runs `apply_modification_rules` on `_original` dual-log payloads to regenerate
+`stripped_msg_removed`; validates mod payload == fwd delta per case. Operates at inner-content
+level (`block["text"]` / `block["content"]`) rather than `json.dumps(block)` — JSON structural
+chars (`"is_error": false}`) are never coloured.
+
+**Key findings (2026-06-05):**
+- BUG case msg[18] blk[0] tool_result SR strip: GT 0 phantom ✅; diff_text_word at production
+  JSON level: injected phantom `set()))\\n\\n",` ❌
+- TEXT_REPLACE DEF-SR → `.`: GT injected=`.` correct small ✅; fidelity ✅
+- BG_REPLACE TN→wakeup: GT injected=`background done…` correct small ✅; fidelity ✅
+- LARGE_SR 5777-char: precision gap — trailing `\n` not in stripped_chunks; `fwd_ok=False`
+- Recording gaps: ENV-context SR and trailing `\n` not captured in `stripped_msg_removed`
+
+**Usage (from project root):**
+```bash
+./venv/bin/python dev/proxy_dual_log/groundtruth_message_spans_probe.py
+```
+
+**Output:** `dev/proxy_dual_log/groundtruth_message_spans_probe_reports/groundtruth_spans_<YYYYMMDD_HHMMSS>.md`
+
+---
+
 ### attribution_coverage.py
 
 **Purpose:** Read-only function-attribution coverage analysis for `_stripped`/`_injected` dual-logs.
