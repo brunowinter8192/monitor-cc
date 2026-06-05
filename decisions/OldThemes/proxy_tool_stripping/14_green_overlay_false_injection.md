@@ -84,6 +84,32 @@ Port must close both gaps before GT spans can be used in production.
 
 **Nested-chunk case (flagged):** BG_REPLACE has chunk[1] (BG command, 77 chars) nested inside chunk[0] (TN block, 406 chars = entire o_text). Later-pass chunks extracted from intermediate content may be nested inside earlier-pass chunks. Algorithm detects this (NESTED_CHUNK flag) and skips; fidelity unaffected.
 
+## Phase B Step 1 — Recording (DONE)
+
+Inject-side fully recorded. Two recording gaps closed. Byte-identical forwarded payload confirmed.
+
+**`injected_msg_added` accumulator added to `apply_modification_rules`.** New 7th return element, parallel to `stripped_msg_removed`. All eight private pass helpers return 5-tuple `(new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)`; orchestrator accumulates via `injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))`. Four inject points captured:
+1. `_apply_first_pass` TN branch → `[_WAKEUP_TEXT]`
+2. `_apply_first_pass` plan-mode FULL-strip branch → `["(plan-mode reminder stripped by proxy)"]`
+3. `_apply_bg_exit_strip` when `bg_removed` non-empty → `[_WAKEUP_TEXT]`
+4. `_check_sidecar` / `_check_idle_recap` short-circuits → 7-tuple with `{idx: [marker]}` directly
+
+**Gap 1 — ENV-context SR recording closed.** `_apply_cumulative_sr_strips` switched from marker-by-marker `_find_system_reminder_blocks(original, marker)` calls to diff-based extraction: `[sr for sr in _find_all_system_reminder_blocks(original_before_pass) if sr not in _find_all_system_reminder_blocks(content)]`. Captures ENV-context SRs stripped via `_ENV_CONTEXT_RE` that the per-marker approach excluded.
+
+**Gap 2 — trailing `\n` closed.** Both `_find_system_reminder_blocks` and `_find_all_system_reminder_blocks` in `payload_helpers.py` updated to `</system-reminder>\n?` with `re.DOTALL`. Recorded chunk now includes the trailing newline that `_STANDALONE_SR_RE` strips — eliminates the LARGE_SR `fwd_ok=False` precision gap.
+
+**`addon.py` stash.** After `stripped_msg_removed` in the entry dict: `if injected_msg_added: entry['injected_msg_added'] = {str(k): v for k, v in injected_msg_added.items()}`. Not consumed yet — Step 2 wires it to the span builder.
+
+**Short-circuit strip-record status.** Both `_check_sidecar` and `_check_idle_recap` already recorded `orig_content` in `stripped_msg_removed` (element 5 of the 7-tuple, pre-existing). Both yellow (orig) and green (marker) available to Step 2 builder. No inject-without-strip gap.
+
+**Byte-identical proof.** 194 payloads from `api_requests_opus_monitor_cc_1780670328_original.jsonl` — `json.dumps(modified_payload["messages"], sort_keys=True)` per payload diff-compared before/after change (git stash / pop): identical.
+
+### Next — Phase B Step 2
+
+- Thread `injected_msg_added` through to `build_message_spans` in the GT span builder
+- Switch `_diff_messages` (or its call site) from `_diff_text` to GT spans when records are available
+- Resolve inner-content level decision (block["content"] / block["text"] vs json.dumps — see Phase B finding a above)
+
 ## Source refs
 - `_diff_text`, `_diff_messages` in `src/proxy/diff_engine.py`
 - `apply_modification_rules`, `stripped_msg_removed` in `src/proxy/rules.py`

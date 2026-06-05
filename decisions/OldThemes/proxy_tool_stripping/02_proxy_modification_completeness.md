@@ -69,6 +69,21 @@ that changes the payload without storing the original = a place the Monitor cann
    (d) TRIVIAL (only metadata pointers, no real content).
 4. Is overriding the user's selected model even intended, and is the field-vs-text inconsistency a bug?
 
+## Inject-side recording + closed strip gaps (Phase B Step 1)
+
+Two new capture fields added to the log entry:
+
+| Field | Added when | Content |
+|---|---|---|
+| `injected_msg_added` | non-empty | `{str(msg_idx): [injected_text, …]}` — what the proxy ADDED per message; 4 inject points: TN wakeup, plan-mode-strip placeholder, bg-exit wakeup, sidecar/idle-recap marker |
+| (existing) `stripped_msg_removed` | non-empty | unchanged — now also captures ENV-context SRs (Gap 1) and trailing `\n` on SR blocks (Gap 2) |
+
+**Gap 1 — ENV-context SR recording (CLOSED).** `_apply_cumulative_sr_strips` previously used marker-by-marker `_find_system_reminder_blocks(original, marker)` extraction; ENV-context SRs stripped via `_ENV_CONTEXT_RE` as a side-effect of the SK-template pass were silently excluded from `pass_removed_by_idx`. Now uses diff-based extraction across the whole pass — same pattern as `_apply_final_sr_pass`.
+
+**Gap 2 — trailing `\n` (CLOSED).** `_find_system_reminder_blocks` and `_find_all_system_reminder_blocks` patterns updated to `</system-reminder>\n?` — recorded chunk now matches what `_STANDALONE_SR_RE` actually removes (SR + optional trailing newline). Symmetric change; comparison-based callers unaffected.
+
+**Short-circuit cases.** `_check_sidecar` and `_check_idle_recap` already recorded `orig_content` in `stripped_msg_removed`; `injected_msg_added` now adds the placeholder marker. Both yellow (orig) and green (marker) available to the display layer.
+
 ## Investigation plan (user-directed, 2026-06-02)
 
 1. (this file) OldThemes updated.
