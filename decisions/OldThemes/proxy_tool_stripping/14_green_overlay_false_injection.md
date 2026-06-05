@@ -110,6 +110,12 @@ Inject-side fully recorded. Two recording gaps closed. Byte-identical forwarded 
 - Switch `_diff_messages` (or its call site) from `_diff_text` to GT spans when records are available
 - Resolve inner-content level decision (block["content"] / block["text"] vs json.dumps — see Phase B finding a above)
 
+**Plumbing mechanism.** `stripped_msg_removed` and `injected_msg_added` are computed in `apply_modification_rules` (request hook, `addon.py`) and currently written only to the main log entry. Step 2 requires both to be stashed on `flow.metadata` in `request()` (parallel to `mc_original_payload`), read back in `response()`, and passed into `_build_stripped_injected_deltas` — which uses them for the message part instead of calling `_diff_text`.
+
+**Display implication.** Strip/inject message blocks today render at `json.dumps`-level: the `_get_text` path serialises the entire block dict (`{"tool_use_id":…, "content":…, "is_error":…}`) before diffing, so yellow/green can bleed into JSON structural chars — this is the phantom source. Content-level spans (`block["content"]` / `block["text"]`) show only the actual content, same as normal (non-strip/inject) blocks already do. The change is targeted: today only strip/inject tool_result blocks show the JSON wrapper; normal blocks are already content-level. No pane-wide impact.
+
+**Algorithm to port.** `build_message_spans(orig_text, fwd_text, stripped_chunks)` in `dev/proxy_dual_log/groundtruth_message_spans_probe.py` is the validated record-driven span builder. Port this function to `src/proxy/diff_engine.py` (or a new `src/proxy/gt_spans.py`) and call it from `_diff_messages` when `stripped_msg_removed` records are available for the block.
+
 ## Source refs
 - `_diff_text`, `_diff_messages` in `src/proxy/diff_engine.py`
 - `apply_modification_rules`, `stripped_msg_removed` in `src/proxy/rules.py`
