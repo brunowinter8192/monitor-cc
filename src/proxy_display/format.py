@@ -109,7 +109,6 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
         prev_group_last_entry = None
         for group in groups:
             turn_idx = group['turn_idx']
-            opus_req_num = sum(len(t.get('api_calls', [])) for t in (turns or [])[:turn_idx])
             sub_req_num = 0
 
             prev_entry_for_delta = prev_group_last_entry
@@ -137,11 +136,11 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     else:
         for entry_idx, entry in enumerate(entries):
             model_short = _shorten_model(entry.get('model', '?'))
-            if model_short == 'haiku':
-                num_label = 'H'
+            if _is_standalone_entry(entry):
+                num_label = 'H' if model_short == 'haiku' else 'S'
             else:
-                bp_len = len(entry.get('cache_breakpoints', []))
-                if entry_idx == 0 or bp_len >= 1:
+                diff = entry.get('diff_from_prev', {})
+                if diff.get('messages_added', 1) > 0:
                     opus_req_num += 1
                     sub_req_num = 0
                     num_label = f'#{opus_req_num}'

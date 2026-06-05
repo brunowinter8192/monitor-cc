@@ -26,11 +26,11 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
 
     for entry_idx, entry in group['entry_pairs']:
         model_short = _shorten_model(entry.get('model', '?'))
-        if model_short == 'haiku':
-            num_label = 'H'
+        if _is_standalone_entry(entry):
+            num_label = 'H' if model_short == 'haiku' else 'S'
         else:
-            bp_len = len(entry.get('cache_breakpoints', []))
-            if entry_idx == 0 or bp_len >= 1:
+            diff = entry.get('diff_from_prev', {})
+            if diff.get('messages_added', 1) > 0:
                 opus_req_num += 1
                 sub_req_num = 0
                 num_label = f'#{opus_req_num}'
