@@ -44,6 +44,17 @@
 
 `polling_state.jsonl` ist primär self-pruning (block_polling_loop prunt Einträge > 30 s bei jedem Aufruf). Der monitor-24h Sweep via `cleanup_old_jsonl` ist ein Backup für den Fall, dass der Hook-Prune wiederholt fehlschlug (z. B. I/O-Fehler). Die effektive Retention im Normalbetrieb ist 30 Sekunden.
 
+### Message-Span Diffing (Strip/Inject)
+
+`messages_delta` spans in `_stripped` and `_injected` entries are GT-record-driven on inner-content level. Per-block logic in `_build_stripped_injected_deltas` (`logging.py`):
+
+- `stripped_msg_removed` (int msg_idx → list[str] chunks, bridged via `flow.metadata["mc_stripped_msg_removed"]` from `request()` to `response()`) provides the recorded strip chunks.
+- For each block: `blk_chunks = [c for c in msg_chunks if c in _get_inner_text(block)]`. When `blk_chunks` non-empty (per-block gate) AND both block objects non-None: `build_message_spans(_get_inner_text(ob), _get_inner_text(fb), blk_chunks)` computes GT spans.
+- Blocks without matching recorded chunks fall back to `_diff_text` (word-level SequenceMatcher).
+- Inner-content level: `_get_inner_text` returns `block["text"]` for text blocks, `block["content"]` for tool_result blocks. JSON wrapper never enters span building → phantom green on tool_result structural chars eliminated.
+
+Both `_get_inner_text` and `build_message_spans` live in `src/proxy/diff_engine.py`.
+
 ## Evidenz
 
 - 108 `api_error_payload_*.json`-Dateien in `src/logs/`: 105/108 mit `request_url` = `https://api.anthropic.com/v1/messages/count_tokens?beta=true` — belegen, dass `_is_messages_request` via `path.startswith("/v1/messages")` count_tokens miterfasst und `_inject_model_override` `max_tokens` injiziert hat → API 400 `max_tokens: Extra inputs are not permitted`.
