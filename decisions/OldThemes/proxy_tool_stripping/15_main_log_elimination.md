@@ -234,3 +234,54 @@ options:
 
 **(d) Full live-verify on new-format logs pending** — needs proxy restart to produce a fresh
 `_forwarded` log that includes the `diff_from_prev`-populated entries end-to-end.
+
+---
+
+### #4 SOLL: per-function strip/inject warnings (fn_map-driven)
+
+**Chosen direction (user):** drop the four aggregate tag badges (SR/TN/PO/ND) entirely and
+replace them with per-function warnings — one warning per stripping function and one per
+injection function, shown whenever that function fires for a request. SR, TN, and
+persisted-output (PO) are all stripping signals; the new model surfaces every strip + every
+inject individually, giving a comprehensive per-function picture as a direct visual win.
+
+#### Data already available (verified this session)
+
+`_build_stripped_injected_deltas` (`src/proxy/logging.py`) already attaches
+`fn_map: {loc_key → fn_name}` to every `_stripped` and `_injected` log entry. The full
+mapping as written today:
+
+| Location | fn_name |
+|---|---|
+| `sys[2]` | `_apply_system_passes` |
+| `sys[3]` | `_strip_sys3` |
+| tools | `_strip_unused_tools` / `inject_mcp_tools` / `_strip_tool_descriptions` |
+| messages (TN/REJ/NAG/DEF) | `_apply_first_pass` (via `attribute_chunk` → `_MSG_CODE_TO_FN`) |
+| messages (SK/CMD/PYR) | `_apply_cumulative_sr_strips` |
+| messages (ALL/ENV/SN/FM) | `_apply_final_sr_pass` |
+| messages (PP) | `_apply_po_preview_strip` |
+| messages (BGK) | `_apply_bg_exit_strip` |
+| messages (GL/BD/HP) | git-lock / bd-noise / hook-prefix functions |
+| messages (unclassified) | `"unknown"` (attribute_chunk fallback) |
+| fields (model/max_tokens/thinking/output_config) | `_inject_model_override` |
+| fields (context_management) | `_inject_context_management` |
+
+#### Implementation gaps to close
+
+1. **`accumulate_dual_log` fn_map accumulation** (`src/proxy_display/parser.py`):
+   `accumulate_dual_log` currently accumulates `system`/`tools`/`messages`/`fields` deltas but
+   drops `fn_map`. It must also collect and merge `fn_map` entries across `_stripped` and
+   `_injected` accumulation so the render side receives which functions fired per request.
+
+2. **Render side — derive warnings from fn_map** (`render_turn.py` / `render_entry.py`):
+   For each accumulated fn_map entry, emit one strip warning per fired strip function and one
+   inject warning per fired inject function. Show on the REQ header / expanded view. This
+   **subsumes and replaces** `_aggregate_entry_tags` / `classify_tags`, which depended on the
+   now-removed `modifications` field.
+
+3. **`"unknown"` message cases:** `attribute_chunk` cannot classify every chunk — these surface
+   as `fn_name="unknown"` in the fn_map. Either extend `attribute_chunk` coverage to eliminate
+   them, or surface an explicit "unknown strip" warning so unclassified strips are still visible.
+
+This is the chosen resolution of #4 (SR/TN/PO badges): re-source warnings from the
+already-written fn_map, broadened to every strip + inject function.
