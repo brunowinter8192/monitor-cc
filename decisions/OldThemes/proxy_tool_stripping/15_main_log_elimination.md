@@ -217,9 +217,37 @@ sys=129422, tools=2269) → standalone=False ✓; opus multi-msg REQ → standal
 
 ### Remaining after 2E.1
 
-**(a) Sidecar/turn-grouping final state:** the everything-sidecar regression is gone and turns
-now group. Exact remaining symptom (if any) needs characterization in the next live-verify —
-not yet observed in this session.
+**(a) Sidecar/turn-grouping + request numbering: FIXED (2026-06)**
+
+Root cause confirmed: the `#N` trigger in `render_turn.py` was `entry_idx == 0 or bp_len >= 1`
+where `bp_len = len(entry.get('cache_breakpoints', []))`. After Stage 2, `cache_breakpoints` is
+hardcoded `[]` for every forwarded entry — `bp_len >= 1` never fired; only the very first global
+entry (`entry_idx==0`) got `#N`. All others fell into `#N.M`. Additionally, `format.py:112`
+reseeded `opus_req_num = sum(api_calls...)` per turn-group, producing `#0` for the first turn
+and gaps. The sidecar gate was haiku-only (`model_short == 'haiku'`), so non-haiku zero-context
+sidecars would have received real `#N` labels.
+
+**Fixes applied (two commits on req-numbering branch):**
+
+1. **Trigger** (`render_turn.py` + `format.py` no-turns fallback): replaced `bp_len` / `entry_idx`
+   check with `(entry.get('diff_from_prev') or {}).get('messages_added', 1) > 0`. A fresh
+   conversation turn adds messages (`messages_added > 0`) → `#N`; retry/abort re-send of the same
+   list (`messages_added == 0`) → `#N.M`. Default `1` (key absent) treats old entries as fresh.
+   Pattern `or {}` matches codebase convention in `render_messages.py` — guards against
+   `diff_from_prev = None` from JSONL null deserialization.
+
+2. **Continuous counter** (`format.py`): removed `opus_req_num = sum(api_calls...)` reseeding;
+   `opus_req_num` now threads uninterrupted through `render_turn_expanded`'s return value.
+
+3. **Sidecar gate** (`render_turn.py` + `format.py`): `_is_standalone_entry(entry)` replaces
+   haiku-only check. Haiku → `'H'`; non-haiku sidecar (`sys_chars==0 AND tools_chars==0`) → `'S'`.
+   Neither increments `opus_req_num`.
+
+**Verification (live log `opus_monitor_cc_1780670328`, 40 entries):**
+- Haiku entries (idx 0-1) → `'H'`
+- Opus entries (idx 2-39) → `#1`…`#38`, no gaps, no sub-numbers
+- Synthetic retry (messages_added=0): `#1` → `#1.1` → `#2` ✓
+- Synthetic non-haiku sidecar (sonnet, sys=0, tools=0): label `'S'`, counter unchanged ✓
 
 **(b) SR/TN header badges (#4 — deferred):** `modifications=[]` always means
 `_aggregate_entry_tags` / `classify_tags` see no modifications → no badge. Three design
