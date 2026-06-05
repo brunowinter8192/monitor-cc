@@ -132,7 +132,7 @@ Inject-side fully recorded. Two recording gaps closed. Byte-identical forwarded 
 
 **Design question (b) — `injected_msg_added` left out:** GT algorithm discovers injected spans from gaps in `fwd_text` between matched equal segments — no external injection record needed. `injected_msg_added` would add complexity for zero correctness benefit. Left out.
 
-**Verification:** byte-faithful port confirmed by import + spot-check (pure strip → zero injected, fidelity round-trip). Existing strip suite `dev/proxy/test_strip_fix.py`: 46/46 PASS (pre-existing crash in `w01_tn_in_tool_result_str` on `_apply_first_pass` return-arity is independent of this task). Live render verification of green-overlay fix in proxy pane: pending user review.
+**Verification:** byte-faithful port confirmed by import + spot-check (pure strip → zero injected, fidelity round-trip). Existing strip suite `dev/proxy/test_strip_fix.py`: 60/60 PASS (W01–W06 unpack arity fixed in a subsequent commit). Live render verification of green-overlay fix in proxy pane: pending user review.
 
 ## Source refs
 - `_diff_text`, `_diff_messages` in `src/proxy/diff_engine.py`
