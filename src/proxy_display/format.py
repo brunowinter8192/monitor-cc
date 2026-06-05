@@ -4,7 +4,7 @@ from typing import Optional
 
 from ..constants import (
     RESET, SOFT_RESET, GREEN, RED, DIM, YELLOW, HOVER_BG,
-    DIM_YELLOW_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
+    DIM_YELLOW_BG, DIM_GREEN_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )
 from ..format.token_format import _format_k
 from ..utils import truncate_visible
@@ -204,6 +204,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             chosen_bg = HOVER_BG
         elif DIM_YELLOW_BG in line:
             chosen_bg = DIM_YELLOW_BG
+        elif DIM_GREEN_BG in line:
+            chosen_bg = DIM_GREEN_BG
         elif is_collision:
             chosen_bg = COLLISION_BG
         else:
