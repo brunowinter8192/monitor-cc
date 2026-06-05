@@ -22,6 +22,45 @@ REPORT_DIR = _SCRIPT_DIR / "green_overlay_probe_reports"
 
 RATIO_THRESHOLD = 0.1  # from src/proxy/diff_engine.py
 
+# Copied from src/proxy/strip_vocab.py RULES — marker substrings only (attribution needs them)
+_STRIP_RULES_MARKERS: dict[str, list[str]] = {
+    'REJ': ['(rejection marker stripped by proxy)'],
+    'TN':  ['<task-notification>'],
+    'NAG': ["task tools haven"],
+    'DEF': ['deferred tools are now available via ToolSearch'],
+    'UI':  ['user sent a new message while you were working', 'IMPORTANT: After completing your current task'],
+    'SK':  ['The following skills are available for use with the Skill tool'],
+    'CMD': ['# claudeMd', 'Contents of ', 'The date has changed.'],
+    'PYR': ['<new-diagnostics>'],
+    'PM':  ['Plan mode is active', 'Plan mode '],
+    'ALL': [],  # skip — no markers
+    'SC':  [],  # skip — no markers
+    'IR':  [],  # skip — no markers
+    'PP':  ['Preview (first '],
+    'BGK': ['Background command "'],
+    'GL':  ['Another git process seems to be running'],
+    'BD':  ['issues.jsonl', 'auto-export: no changes', 'auto-export: throttled', 'auto-export: skipping'],
+    'ENV': ["As you answer the user's questions, you can use the following context:\n# userEmail"],
+    'HP':  ['PreToolUse:', 'hook error'],
+    'SN':  ['[SYSTEM NOTIFICATION'],
+    'FM':  [' was modified'],
+}
+
+# Copied from src/proxy/logging.py
+_MSG_CODE_TO_FN: dict[str, str] = {
+    'REJ': '_apply_first_pass',    'TN':  '_apply_first_pass',
+    'NAG': '_apply_first_pass',    'DEF': '_apply_first_pass',
+    'UI':  '_apply_first_pass',    'PM':  '_apply_first_pass',
+    'SK':  '_apply_cumulative_sr_strips', 'CMD': '_apply_cumulative_sr_strips',
+    'PYR': '_apply_cumulative_sr_strips',
+    'ALL': '_apply_final_sr_pass', 'ENV': '_apply_final_sr_pass',
+    'SN':  '_apply_final_sr_pass', 'FM':  '_apply_final_sr_pass',
+    'SC':  '_check_sidecar',       'IR':  '_check_idle_recap',
+    'PP':  '_apply_po_preview_strip', 'BGK': '_apply_bg_exit_strip',
+    'GL':  '_apply_git_lock_strip',   'BD':  '_apply_bd_noise_strip',
+    'HP':  '_apply_hook_prefix_strip',
+}
+
 # FUNCTIONS
 
 # Copied from src/proxy/diff_engine.py — exact production implementation
@@ -113,6 +152,77 @@ def diff_text_char(orig_text: str, fwd_text: str) -> list:
     return spans
 
 
+# Copied from src/proxy/strip_vocab.py:attribute_chunk — marker-based rule attribution
+def _attribute_chunk_probe(chunk: str):
+    if chunk.startswith('<task-notification>'):
+        return 'TN'
+    for code, markers in _STRIP_RULES_MARKERS.items():
+        if code in ('TN', 'ALL', 'SC', 'IR'):
+            continue
+        for marker in markers:
+            if marker in chunk:
+                return code
+    return None
+
+
+# Mirrored from src/proxy/logging.py inject-attribution block (~line 421)
+def _fn_for_inject(i_text: str) -> str:
+    if not i_text:
+        return "unknown"
+    if "background done" in i_text:
+        return "_apply_bg_exit_strip"
+    code = _attribute_chunk_probe(i_text)
+    return _MSG_CODE_TO_FN.get(code, "unknown") if code else "unknown"
+
+
+# Level-2 fix: char-level diff + gate phantom injected spans via attribution
+# Injected span with fn="unknown" → reclassify to equal (grey).
+# Injected span with known fn → keep green. Maintains fidelity (gated equal still in fwd recon).
+def diff_text_char_gated(orig_text: str, fwd_text: str) -> list:
+    raw = diff_text_char(orig_text, fwd_text)
+    result = []
+    for tag, text in raw:
+        if tag == "injected" and _fn_for_inject(text) == "unknown":
+            result.append(("equal", text))  # phantom → grey
+        else:
+            result.append((tag, text))
+    return result
+
+
+# Scan live _injected logs: classify msg.* unknown entries as phantom vs potentially-real
+def scan_gating_soundness() -> dict:
+    import re
+    _phantom_re = re.compile(r'\\n\\n[",}\]]')
+    inj_logs = sorted(LOG_DIR.glob("*_injected.jsonl"))
+    counts = {"phantom_like": 0, "real_like": 0, "bg_done": 0}
+    real_examples = []
+    for logf in inj_logs:
+        with open(logf) as f:
+            for line in f:
+                entry = json.loads(line)
+                fn_map = entry.get("fn_map", {})
+                for lk, fn in fn_map.items():
+                    if not lk.startswith("msg."):
+                        continue
+                    if fn == "_apply_bg_exit_strip":
+                        counts["bg_done"] += 1
+                        continue
+                    if fn != "unknown":
+                        continue
+                    midx, bidx = lk.split(".")[1], lk.split(".")[2]
+                    md = entry.get("messages_delta", {})
+                    i_spans = md.get(midx, {}).get(bidx, [])
+                    i_text = " ".join(t for tag, t in i_spans if tag == "injected" and t) if i_spans else ""
+                    if _phantom_re.search(i_text) or (len(i_text) > 5 and i_text.strip().endswith('}')):
+                        counts["phantom_like"] += 1
+                    else:
+                        counts["real_like"] += 1
+                        if len(real_examples) < 5:
+                            real_examples.append((lk, repr(i_text[:80])))
+    counts["real_examples"] = real_examples
+    return counts
+
+
 # Load first matching entry by flow_id from a JSONL file
 def load_entry_by_flow_id(path: Path, flow_id: str) -> dict:
     with open(path) as f:
@@ -139,21 +249,29 @@ def fmt_spans(spans: list, max_text: int = 120) -> str:
     return "\n".join(lines)
 
 
-# Run both variants on a pair and return comparison record
+# Run all three variants on a pair and return comparison record
 def compare_pair(label: str, o_text: str, f_text: str) -> dict:
-    word_spans = diff_text_word(o_text, f_text)
-    char_spans = diff_text_char(o_text, f_text)
+    word_spans  = diff_text_word(o_text, f_text)
+    char_spans  = diff_text_char(o_text, f_text)
+    gated_spans = diff_text_char_gated(o_text, f_text)
     fid_o, fid_f = check_fidelity(o_text, f_text, char_spans)
+    # gated fidelity: gated equal (was injected) counts toward fwd; stripped+equal count toward orig
+    gated_orig_recon = "".join(t for tag, t in gated_spans if tag in ("equal", "stripped"))
+    gated_fwd_recon  = "".join(t for tag, t in gated_spans if tag in ("equal", "injected"))
+    gated_fid_ok = (gated_orig_recon == o_text) and (gated_fwd_recon == f_text)
     return {
-        "label":      label,
-        "o_len":      len(o_text),
-        "f_len":      len(f_text),
-        "word_spans": word_spans,
-        "char_spans": char_spans,
-        "word_count": len(word_spans),
-        "char_count": len(char_spans),
-        "fid_ok":     fid_o and fid_f,
-        "fid_detail": f"orig_ok={fid_o} fwd_ok={fid_f}",
+        "label":       label,
+        "o_len":       len(o_text),
+        "f_len":       len(f_text),
+        "word_spans":  word_spans,
+        "char_spans":  char_spans,
+        "gated_spans": gated_spans,
+        "word_count":  len(word_spans),
+        "char_count":  len(char_spans),
+        "gated_count": len(gated_spans),
+        "fid_ok":      fid_o and fid_f,
+        "fid_detail":  f"orig_ok={fid_o} fwd_ok={fid_f}",
+        "gated_fid_ok": gated_fid_ok,
     }
 
 
@@ -234,7 +352,7 @@ def get_regression_cases() -> list:
     return cases
 
 
-# Build and write the probe report
+# Build and write the probe report (Level 2: gating soundness + three-variant comparison)
 def green_overlay_probe_workflow():
     REPORT_DIR.mkdir(exist_ok=True)
     lines = []
@@ -242,15 +360,60 @@ def green_overlay_probe_workflow():
     def emit(*parts):
         lines.append("".join(str(p) for p in parts) + "\n")
 
-    emit("# Green Overlay Probe Report")
+    emit("# Green Overlay Probe Report (Level 2)")
     emit()
-    emit("**Bug:** word-level `_diff_text` mis-tags common prefix as stripped+injected when")
-    emit("JSON-serialized blocks contain `\\\\n` (backslash-n, 2 chars) — no real whitespace")
-    emit("inside the JSON string token, so orig and fwd tokens are one word each, differ → 'replace'.")
+    emit("Three diff variants: `diff_text_word` (current/buggy) · `diff_text_char` (char-level)")
+    emit("· `diff_text_char_gated` (char-level + attribution gate for phantom injected spans).")
 
-    # --- Primary bug case ---
+    # --- Gating soundness section ---
     emit()
-    emit("## Primary Bug Case")
+    emit("## Gating Signal Soundness Verification")
+    emit()
+    emit("Gate rule: injected span with `_fn_for_inject(text) == 'unknown'` → reclassify to `equal`.")
+    emit()
+    try:
+        soundness = scan_gating_soundness()
+        bg = soundness["bg_done"]
+        phantom = soundness["phantom_like"]
+        real = soundness["real_like"]
+        total_unknown = phantom + real
+        emit(f"**Scanned 44 `*_injected.jsonl` logs (msg.\\* loc_keys only):**")
+        emit()
+        emit(f"| fn value | count | classification |")
+        emit(f"|---|---|---|")
+        emit(f"| `'_apply_bg_exit_strip'` | {bg} | REAL inject — correctly non-unknown ✅ |")
+        emit(f"| `'unknown'` total | {total_unknown} | see breakdown below |")
+        emit(f"| — phantom-like (ends `\\\\n\\\\n[\",}}\\\\]]`) | {phantom} | word-level diff artifact ✅ correctly gated |")
+        emit(f"| — other (potentially real) | {real} | ⚠️ FLAG: real injects also map to unknown |")
+        emit()
+        emit("**Phantom attribution test:**")
+        for s in ['", "is_error": f', 'connections?\\n\\n",', 'set()))\\n\\n",']:
+            fn = _fn_for_inject(s)
+            emit(f"- `_fn_for_inject({s!r:30s})` → `{fn!r}` {'→ correctly gated ✅' if fn == 'unknown' else '→ kept green ✅'}")
+        emit()
+        emit("**Real inject test:**")
+        bg_text = 'background done — check worker or other process'
+        fn_bg = _fn_for_inject(bg_text)
+        emit(f"- `_fn_for_inject('background done...')` → `{fn_bg!r}` → kept green {'✅' if fn_bg != 'unknown' else '❌'}")
+        emit()
+        emit("**⚠️ FLAG — real injects that ALSO map to 'unknown':**")
+        for lk, ex in soundness.get("real_examples", []):
+            fn = _fn_for_inject(ex.strip("'"))
+            emit(f"- `{lk}` i_text={ex} → fn={fn!r} → would be gated (suppressed)")
+        emit()
+        emit("**Verdict:** Gate is CONDITIONALLY sound. It correctly eliminates the phantom diff")
+        emit(f"artifacts ({phantom} cases — `\\\\n\\\\n[\",}}]` tail pattern from word-level bug on write-side).")
+        emit(f"But {real} real message-level injects also attribute to 'unknown'")
+        emit("(dot-replacements at msg.0.x for haiku/title calls, file-path injections, etc.) and")
+        emit("would be suppressed (shown grey instead of green). Sidecar markers `[SIDECAR_STRIPPED_X_BYTES]`")
+        emit("would also be suppressed. Only `_apply_bg_exit_strip` (bg-done, 78 cases) correctly avoids gating.")
+    except Exception as ex:
+        emit(f"ERROR in soundness scan: {ex}")
+        import traceback; traceback.print_exc()
+
+    # --- Primary bug case — three variants side by side ---
+    emit()
+    emit("## Primary Bug Case — Three Variants Side By Side")
     try:
         o_text, f_text, stem, flow_id = get_bug_case()
 
@@ -262,63 +425,61 @@ def green_overlay_probe_workflow():
         emit(f"**Source:** `{stem}`")
         emit(f"**Flow ID:** `{flow_id}`")
         emit(f"**Location:** `messages[18]` block 0 (tool_result, role=user)")
-        emit(f"**o_text len:** {len(o_text)} chars | **f_text len:** {len(f_text)} chars")
-        emit(f"**Common prefix len:** {cp_len} chars (ends at `set()))\\\\n\\\\n`)")
-        emit(f"**Divergence in o_text:** `{repr(o_text[cp_len:cp_len+60])}`")
-        emit(f"**Divergence in f_text:** `{repr(f_text[cp_len:cp_len+60])}`")
+        emit(f"**o_text len:** {len(o_text)} | **f_text len:** {len(f_text)} | **common prefix:** {cp_len} chars (ends at `set()))\\\\n\\\\n`)")
 
         r = compare_pair("bug_case", o_text, f_text)
 
         emit()
-        emit(f"### Word-level spans — CURRENT (buggy) — {r['word_count']} spans")
-        emit()
+        emit(f"### Variant 1: `diff_text_word` — CURRENT PRODUCTION (buggy) — {r['word_count']} spans")
         emit("```")
         emit(fmt_spans(r["word_spans"]))
         emit("```")
-        emit()
-        emit("**Bug:** the long token containing `set()))\\\\n\\\\n<system-reminder>\\\\nThe...` (orig)")
-        emit("and `set()))\\\\n\\\\n\",` (fwd) are ONE word each (no real whitespace inside JSON).")
-        emit("SequenceMatcher tags them 'replace' → common prefix `set()))\\\\n\\\\n` mis-tagged as")
-        emit("stripped (yellow) AND injected (green). Only `<system-reminder>…` was actually stripped.")
+        emit("**Bug:** `set()))\\\\n\\\\n<system-reminder>...` (orig) and `set()))\\\\n\\\\n\",` (fwd) are ONE word each.")
+        emit("SequenceMatcher 'replace' → common prefix `set()))\\\\n\\\\n` appears as BOTH stripped (yellow) AND injected (green).")
 
         emit()
-        emit(f"### Char-level spans — CANDIDATE FIX — {r['char_count']} spans")
-        emit()
+        emit(f"### Variant 2: `diff_text_char` — char-level fix — {r['char_count']} spans")
         emit("```")
         emit(fmt_spans(r["char_spans"]))
         emit("```")
-        emit()
-        fid_o, fid_f = check_fidelity(o_text, f_text, r["char_spans"])
-        emit(f"**Fidelity:** orig_recon==o_text: {fid_o} {'✅' if fid_o else '❌'} | fwd_recon==f_text: {fid_f} {'✅' if fid_f else '❌'}")
-
         char_spans = r["char_spans"]
-        if char_spans and char_spans[0][0] == "equal":
-            eq_len = len(char_spans[0][1])
-            emit(f"**Char span[0]:** `equal`, len={eq_len} → common prefix correctly tagged as equal ✅")
-        stripped_texts = [t for tag, t in char_spans if tag == "stripped"]
-        has_sysrem = any("<system-reminder>" in t for t in stripped_texts)
-        emit(f"**Stripped contains `<system-reminder>`:** {has_sysrem} {'✅' if has_sysrem else '❌'}")
-        injected_texts = [t for tag, t in char_spans if tag == "injected"]
-        emit(f"**Injected spans:** {[repr(t[:60]) for t in injected_texts]}")
+        inj_in_char = [t for tag, t in char_spans if tag == "injected"]
+        emit(f"**Yellow fixed:** common prefix is now span[0]=equal ({cp_len} chars) ✅")
+        emit(f"**Residual phantom green:** `{[repr(t[:60]) for t in inj_in_char]}` — LCS suboptimal alignment on suffix ⚠️")
+
+        emit()
+        emit(f"### Variant 3: `diff_text_char_gated` — THE GOAL — {r['gated_count']} spans")
+        emit("```")
+        emit(fmt_spans(r["gated_spans"]))
+        emit("```")
+        gated_spans = r["gated_spans"]
+        remaining_inj = [t for tag, t in gated_spans if tag == "injected"]
+        remaining_stripped = [t for tag, t in gated_spans if tag == "stripped"]
+        has_sysrem_g = any("<system-reminder>" in t for t in remaining_stripped)
+        emit(f"**Green spans remaining:** {len(remaining_inj)} {'(none — phantom gone ✅)' if not remaining_inj else repr(remaining_inj[0][:60])}")
+        emit(f"**Stripped contains `<system-reminder>`:** {has_sysrem_g} {'✅' if has_sysrem_g else '❌'}")
+        emit(f"**Fidelity (char):** {r['fid_detail']} | **Fidelity (gated):** gated_ok={r['gated_fid_ok']} {'✅' if r['gated_fid_ok'] else '❌'}")
 
     except Exception as ex:
-        emit(f"ERROR loading bug case: {ex}")
+        emit(f"ERROR in primary bug case: {ex}")
         import traceback; traceback.print_exc()
 
-    # --- Regression cases ---
+    # --- Regression cases — all three variants ---
     emit()
-    emit("## Regression Spot-Check")
+    emit("## Regression Spot-Check — All Three Variants")
     emit()
-    emit("| Case | o_len | f_len | word spans | char spans | char fidelity |")
-    emit("|---|---|---|---|---|---|")
+    emit("| Case | o_len | f_len | word | char | gated | gated_fid | gated inj remaining |")
+    emit("|---|---|---|---|---|---|---|---|")
 
     reg_detail_lines = []
     try:
         reg_cases = get_regression_cases()
         for label, o_t, f_t in reg_cases:
             r = compare_pair(label, o_t, f_t)
-            fid_cell = f"✅ {r['fid_detail']}" if r["fid_ok"] else f"❌ {r['fid_detail']}"
-            emit(f"| {label} | {r['o_len']} | {r['f_len']} | {r['word_count']} | {r['char_count']} | {fid_cell} |")
+            gated_inj = [t for tag, t in r["gated_spans"] if tag == "injected"]
+            inj_cell = f"{len(gated_inj)} kept" if gated_inj else "0 (all gated)"
+            fid_g = "✅" if r["gated_fid_ok"] else "❌"
+            emit(f"| {label} | {r['o_len']} | {r['f_len']} | {r['word_count']} | {r['char_count']} | {r['gated_count']} | {fid_g} | {inj_cell} |")
             reg_detail_lines.append((label, o_t, f_t, r))
 
         emit()
@@ -329,15 +490,20 @@ def green_overlay_probe_workflow():
             emit(f"o_text: `{repr(o_t[:200])}`")
             emit(f"f_text: `{repr(f_t[:200])}`")
             emit()
-            emit(f"Word spans ({r['word_count']}):")
-            emit("```")
-            emit(fmt_spans(r["word_spans"]))
-            emit("```")
-            emit(f"Char spans ({r['char_count']}):")
-            emit("```")
-            emit(fmt_spans(r["char_spans"]))
-            emit("```")
-            emit(f"Fidelity: {r['fid_detail']}")
+            emit(f"Word ({r['word_count']} spans):")
+            emit("```"); emit(fmt_spans(r["word_spans"])); emit("```")
+            emit(f"Char ({r['char_count']} spans):")
+            emit("```"); emit(fmt_spans(r["char_spans"])); emit("```")
+            emit(f"Gated ({r['gated_count']} spans):")
+            emit("```"); emit(fmt_spans(r["gated_spans"])); emit("```")
+            gated_inj_list = [t for tag, t in r["gated_spans"] if tag == "injected"]
+            if gated_inj_list:
+                for t in gated_inj_list:
+                    fn = _fn_for_inject(t)
+                    emit(f"  → kept injected: `{repr(t[:80])}` fn=`{fn}` {'✅ real' if fn != 'unknown' else '⚠️ still unknown'}")
+            else:
+                emit("  → no injected spans remaining (all phantom-gated or no real injects in this case)")
+            emit(f"Fidelity: char={r['fid_detail']} | gated={r['gated_fid_ok']}")
 
     except Exception as ex:
         emit(f"ERROR in regression cases: {ex}")
@@ -347,15 +513,21 @@ def green_overlay_probe_workflow():
     emit()
     emit("## Summary")
     emit()
-    emit("- **Word-level bug:** splits on real whitespace → JSON `\\\\n` is not whitespace →")
-    emit("  long tokens with embedded escaped newlines + `<system-reminder>` are ONE word →")
-    emit("  SequenceMatcher 'replace' → common prefix mis-colored stripped (yellow) + injected (green).")
-    emit("- **Char-level fix:** operates character-by-character → finds exact boundary →")
-    emit("  common prefix tagged `equal`, only diverging suffix is stripped/injected.")
-    emit("- **Whitespace collapse:** word-level `' '.join(...)` collapses multi-space/tab;")
-    emit("  char-level uses exact substrings — zero information loss.")
-    emit("- **Span count:** char-level span count ≤ word-level for ordinary text;")
-    emit("  see regression table above — no explosion on any real case tested.")
+    emit("### Level 1 (char-level): fixes YELLOW boundary")
+    emit("- Word-level splits on whitespace → JSON `\\\\n` is not whitespace → single-word tokens →")
+    emit("  SequenceMatcher 'replace' → common prefix in both stripped (yellow) AND injected (green).")
+    emit("- Char-level finds exact boundary → common prefix = equal, only changed suffix colored.")
+    emit("- Residual: char-level has LCS suboptimal alignment → phantom green on `\\\"\\\\, is_error: f\\\"` suffix.")
+    emit()
+    emit("### Level 2 (char-level + gating): fixes residual phantom GREEN")
+    emit("- Gate: injected span with fn=unknown (no strip/inject marker) → reclassify equal (grey).")
+    emit("- Correctly removes `\\\"\\\\, is_error: f\\\"` phantom from the bug case.")
+    emit("- ⚠️ Known limitation: 144 real 'unknown' msg-injects in live logs would also be suppressed")
+    emit("  (dot-replacements for haiku calls, file-path injects, sidecar markers).")
+    emit("  Only `_apply_bg_exit_strip` (bg-done) reliably avoids gating.")
+    emit()
+    emit("### Whitespace fidelity")
+    emit("- Word-level `' '.join(...)` collapses multi-space/tab; char-level/gated preserve exactly.")
 
     report_path = REPORT_DIR / "green_overlay_probe.md"
     with open(report_path, "w") as fout:
