@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional, Union
 
 from .message_summary import _summarize_message
-from .diff_engine import _diff_system, _diff_tools, _diff_messages, _diff_top_level_fields
+from .diff_engine import _diff_system, _diff_tools, _diff_messages, _diff_top_level_fields, _get_inner_text, build_message_spans
 from .strip_vocab import attribute_chunk as _attribute_chunk
 
 # fn attribution maps for fn_map field in _build_stripped_injected_deltas
@@ -305,6 +305,7 @@ def _build_stripped_injected_deltas(
     prev_stripped: Optional[dict],
     prev_injected: Optional[dict],
     model: str,
+    stripped_msg_removed: Optional[dict] = None,
 ) -> tuple:
     orig_norm = _strip_cache_control(orig_payload)
     fwd_norm = _strip_cache_control(fwd_payload)
@@ -391,14 +392,37 @@ def _build_stripped_injected_deltas(
     # messages
     s_msgs: dict = {}
     i_msgs: dict = {}
+    gt_chunks = stripped_msg_removed or {}
     for md in msg_diffs:
         midx = str(md["idx"])
         s_blks: dict = {}
         i_blks: dict = {}
+        msg_chunks = gt_chunks.get(md["idx"], [])
+        # Raw normalized block objects for inner-text extraction (GT path)
+        om_norm = orig_msgs_norm[md["idx"]] if md["idx"] < len(orig_msgs_norm) else {}
+        fm_norm = fwd_msgs_norm[md["idx"]] if md["idx"] < len(fwd_msgs_norm) else {}
+        o_content_raw = om_norm.get("content", "") if isinstance(om_norm, dict) else ""
+        f_content_raw = fm_norm.get("content", "") if isinstance(fm_norm, dict) else ""
         for bd in md["block_diffs"]:
-            bidx = str(bd["bidx"])
-            s_texts = [t for tag, t in bd["spans"] if tag == "stripped" and t]
-            i_spans = [(tag, t) for tag, t in bd["spans"] if tag in ("equal", "injected") and t]
+            bidx_int = bd["bidx"]
+            bidx = str(bidx_int)
+            # GT span path: only when per-block filtered chunks are non-empty (gate per block)
+            spans = bd["spans"]  # default: existing _diff_text result
+            if msg_chunks:
+                if isinstance(o_content_raw, list) and isinstance(f_content_raw, list):
+                    ob = o_content_raw[bidx_int] if bidx_int < len(o_content_raw) else None
+                    fb = f_content_raw[bidx_int] if bidx_int < len(f_content_raw) else None
+                else:
+                    ob, fb = o_content_raw, f_content_raw
+                # None-block guard: skip GT if either block is missing (index out of range)
+                if ob is not None and fb is not None:
+                    o_inner = _get_inner_text(ob)
+                    f_inner = _get_inner_text(fb)
+                    blk_chunks = [c for c in msg_chunks if c in o_inner]
+                    if blk_chunks:
+                        spans, _ = build_message_spans(o_inner, f_inner, blk_chunks)
+            s_texts = [t for tag, t in spans if tag == "stripped" and t]
+            i_spans = [(tag, t) for tag, t in spans if tag in ("equal", "injected") and t]
             has_i = any(tag == "injected" for tag, _ in i_spans)
             if s_texts:
                 lk = f"msg.{md['idx']}.{bd['bidx']}"

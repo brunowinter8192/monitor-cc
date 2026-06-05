@@ -167,6 +167,7 @@ class ProxyAddon:
             # Store timing/id for latency hooks (responseheaders + response)
             flow.metadata["mc_request_at"] = datetime.now(timezone.utc)
             flow.metadata["mc_request_id"] = entry.get("request_id", "")
+            flow.metadata["mc_stripped_msg_removed"] = stripped_msg_removed
 
             prev_mod_msgs = self.prev_messages_by_model.get(model_family)
             modified_payload = _strip_all_cache_control(modified_payload)
@@ -322,8 +323,9 @@ class ProxyAddon:
                         prev_s = self.prev_stripped_hashes_by_model.get(mf)
                         prev_i = self.prev_injected_hashes_by_model.get(mf)
                         model_str = mod_payload.get("model", "")
+                        smr = flow.metadata.get("mc_stripped_msg_removed") or {}
                         s_entry, i_entry, new_s, new_i = _build_stripped_injected_deltas(
-                            orig_payload, mod_payload, request_id, prev_s, prev_i, model_str,
+                            orig_payload, mod_payload, request_id, prev_s, prev_i, model_str, smr,
                         )
                         s_entry["flow_id"] = flow.id
                         i_entry["flow_id"] = flow.id
