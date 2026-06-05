@@ -43,9 +43,11 @@ appeared.
 Two contributing factors:
 - `DIM_GREEN_BG` was not imported in `format.py` at all (only `DIM_YELLOW_BG` was imported),
   so even a manual fix attempt would have failed with a `NameError`.
-- `SOFT_RESET = '\033[39m'` resets only the foreground colour, not the background. The `\033[K`
-  EOL-fill therefore uses whatever background was last set — for green rows this was `zebra_bg`,
-  not `DIM_GREEN_BG`, so the right-hand margin was also not green.
+- `SOFT_RESET = '\033[39m'` resets only the foreground colour, not the background. This means
+  the inline `DIM_GREEN_BG` set inside the text remained active after `SOFT_RESET`, so `\033[K`
+  already filled the **right-hand** margin correctly with green. The bug was exclusively the
+  **left** margin (columns 0–5), which received the prepended `chosen_bg = zebra_bg` (empty or
+  dark). The fix does not touch `SOFT_RESET`.
 
 ## Fix
 
