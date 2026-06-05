@@ -47,6 +47,84 @@ def _diff_text(orig_text: str, fwd_text: str) -> list:
     return spans
 
 
+# Inner content text for GT span building — avoids JSON-wrap on tool_result blocks
+def _get_inner_text(block) -> str:
+    if isinstance(block, str):
+        return block
+    if isinstance(block, dict):
+        if "text" in block:
+            return str(block["text"])
+        if block.get("type") == "tool_result":
+            c = block.get("content", "")
+            if isinstance(c, str):
+                return c
+            if isinstance(c, list):
+                return "\n".join(
+                    b.get("text", "") for b in c
+                    if isinstance(b, dict) and "text" in b
+                )
+        return json.dumps(block, ensure_ascii=False)
+    return json.dumps(block, ensure_ascii=False)
+
+
+# Build ground-truth spans from exact stripped chunks recorded by apply_modification_rules
+def build_message_spans(orig_text: str, fwd_text: str, stripped_chunks: list) -> tuple:
+    """Returns (spans, flags) — tags: 'equal' / 'stripped' / 'injected'."""
+    flags = []
+
+    if not stripped_chunks:
+        if orig_text == fwd_text:
+            return [("equal", orig_text)] if orig_text else [], flags
+        return [("equal", orig_text)], flags
+
+    # Step 1: split orig_text at stripped_chunk positions → equal_segs + stripped_segs
+    equal_segs: list = []
+    stripped_segs: list = []
+    pos = 0
+    for chunk in stripped_chunks:
+        chunk_pos = orig_text.find(chunk, pos)
+        if chunk_pos == -1:
+            if any(chunk in s for s in stripped_segs):
+                flags.append(f"NESTED_CHUNK(len={len(chunk)}) '{chunk[:40]}...'")
+            else:
+                flags.append(f"CHUNK_NOT_IN_ORIG(len={len(chunk)}) '{chunk[:40]}...'")
+            continue
+        equal_segs.append(orig_text[pos:chunk_pos])
+        stripped_segs.append(chunk)
+        pos = chunk_pos + len(chunk)
+    equal_segs.append(orig_text[pos:])
+
+    # Step 2 + 3: walk fwd_text matching each equal segment; gaps = injected
+    spans: list = []
+    fwd_pos = 0
+
+    for i, eq_seg in enumerate(equal_segs):
+        if i > 0:
+            spans.append(("stripped", stripped_segs[i - 1]))
+        if eq_seg:
+            eq_fwd_pos = fwd_text.find(eq_seg, fwd_pos)
+            if eq_fwd_pos == -1:
+                flags.append(f"EQUAL_NOT_IN_FWD(len={len(eq_seg)}) '{eq_seg[:40]}...'")
+                spans.append(("equal", eq_seg))
+                continue
+            if eq_fwd_pos > fwd_pos:
+                spans.append(("injected", fwd_text[fwd_pos:eq_fwd_pos]))
+            spans.append(("equal", eq_seg))
+            fwd_pos = eq_fwd_pos + len(eq_seg)
+
+    if fwd_pos < len(fwd_text):
+        spans.append(("injected", fwd_text[fwd_pos:]))
+
+    # Safety: full-replace case where orig_text == chunk (all equal_segs empty)
+    if not spans and stripped_segs:
+        for s in stripped_segs:
+            spans.append(("stripped", s))
+        if fwd_text:
+            spans.append(("injected", fwd_text))
+
+    return spans, flags
+
+
 # Count stripped and injected spans
 def _span_counts(spans: list) -> tuple:
     return (sum(1 for t, _ in spans if t == "stripped"),

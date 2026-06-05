@@ -116,6 +116,24 @@ Inject-side fully recorded. Two recording gaps closed. Byte-identical forwarded 
 
 **Algorithm to port.** `build_message_spans(orig_text, fwd_text, stripped_chunks)` in `dev/proxy_dual_log/groundtruth_message_spans_probe.py` is the validated record-driven span builder. Port this function to `src/proxy/diff_engine.py` (or a new `src/proxy/gt_spans.py`) and call it from `_diff_messages` when `stripped_msg_removed` records are available for the block.
 
+## Phase B Step 2 — Port (implementation)
+
+**Ported to src/:** `_get_inner_text` + `build_message_spans` byte-faithfully from `dev/proxy_dual_log/groundtruth_message_spans_probe.py` into `src/proxy/diff_engine.py`. No algorithmic changes; probe IS the validation baseline.
+
+**Plumbing:** `stripped_msg_removed` (int msg_idx → list[str]) computed in `request()` by `apply_modification_rules` was not on `flow.metadata`. Added `flow.metadata["mc_stripped_msg_removed"] = stripped_msg_removed` in `addon.py` `request()` (after log write). In `response()`, read as `smr = flow.metadata.get("mc_stripped_msg_removed") or {}` and passed as new 7th parameter `stripped_msg_removed: Optional[dict] = None` to `_build_stripped_injected_deltas` in `logging.py`.
+
+**Messages loop switch:** in `_build_stripped_injected_deltas`, for each message block:
+1. Get `msg_chunks = stripped_msg_removed.get(md["idx"], [])`.
+2. Derive inner text: for list-content messages use `_get_inner_text(ob)` / `_get_inner_text(fb)` on the raw block objects from `orig_msgs_norm`/`fwd_msgs_norm`; for string-content (normalized single-text-block) use the content string directly.
+3. **Per-block gate:** `blk_chunks = [c for c in msg_chunks if c in o_inner]` — only call `build_message_spans` when `blk_chunks` is non-empty. Blocks with no matching chunks fall back to `bd["spans"]` (`_diff_text` result). Prevents a modified block whose chunks belong to another block from being collapsed to `[('equal', orig)]`.
+4. **None-block guard:** if `ob` or `fb` is `None` (block index out of range) → fall back to `bd["spans"]` without calling `_get_inner_text`.
+
+**Design question (a) — inner-content level:** confirmed correct. `_get_inner_text` returns `block["text"]` for text blocks and `block["content"]` (or `\n`-joined inner text for list content) for tool_result blocks. JSON wrapper (`"is_error": false}`, `"type": "tool_result"`) never enters span building. Consistent with renderer: `render_messages.py` "new format" inline path walks `span_text` directly; `full_text` for normal (non-strip) blocks already comes from inner content via `_summarize_message`. No renderer changes needed.
+
+**Design question (b) — `injected_msg_added` left out:** GT algorithm discovers injected spans from gaps in `fwd_text` between matched equal segments — no external injection record needed. `injected_msg_added` would add complexity for zero correctness benefit. Left out.
+
+**Verification:** byte-faithful port confirmed by import + spot-check (pure strip → zero injected, fidelity round-trip). Existing strip suite `dev/proxy/test_strip_fix.py`: 46/46 PASS (pre-existing crash in `w01_tn_in_tool_result_str` on `_apply_first_pass` return-arity is independent of this task). Live render verification of green-overlay fix in proxy pane: pending user review.
+
 ## Source refs
 - `_diff_text`, `_diff_messages` in `src/proxy/diff_engine.py`
 - `apply_modification_rules`, `stripped_msg_removed` in `src/proxy/rules.py`
