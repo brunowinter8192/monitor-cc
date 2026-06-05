@@ -249,14 +249,7 @@ sidecars would have received real `#N` labels.
 - Synthetic retry (messages_added=0): `#1` → `#1.1` → `#2` ✓
 - Synthetic non-haiku sidecar (sonnet, sys=0, tools=0): label `'S'`, counter unchanged ✓
 
-**(b) SR/TN header badges (#4 — deferred):** `modifications=[]` always means
-`_aggregate_entry_tags` / `classify_tags` see no modifications → no badge. Three design
-options:
-1. Derive a `modifications`-equivalent from the `_stripped_spans` / `_injected_spans` fn_maps
-   already attached by `accumulate_dual_log` (re-synthesize the list from span data).
-2. Re-source `classify_tags` / `_aggregate_entry_tags` directly from `_stripped_spans` (cleanest
-   — eliminates the `modifications` intermediary entirely).
-3. Drop the badges like BP:N and the latency badge (display simplification).
+**(b) SR/TN header badges (#4 — RESOLVED):** Re-sourced via `flow_id` join on the `_stripped`/`_injected` dual-log `fn_map`. `accumulate_dual_log` maintains `_fns_by_flow_id: {flow_id → set(fn_names)}` per family (strip + inject separately), cleared in-place on `is_first`; appends `set(fn_map.values())` keyed by `flow_id` per line. Forwarded entries carry `flow_id` (mitmproxy UUID4 per-flow). Pane attaches `_strip_fns_lookup` / `_inject_fns_lookup` (references to per-family `_fns_by_flow_id` dicts) to each entry. Render emits a count badge: `{n}strip` (YELLOW) / `{n}inj` (GREEN) on the REQ header, where n = `len(lookup.get(flow_id, set()))`; only non-zero parts shown; both-zero → no badge. `_aggregate_entry_tags` removed entirely. `flow_id` join chosen over positional index: 4xx/5xx responses skip the `_stripped`/`_injected` write in `response()` — positional alignment would break on error responses.
 
 **(c) Stage 3 (write-side removal) not started.**
 
@@ -267,11 +260,7 @@ options:
 
 ### #4 SOLL: per-function strip/inject warnings (fn_map-driven)
 
-**Chosen direction (user):** drop the four aggregate tag badges (SR/TN/PO/ND) entirely and
-replace them with per-function warnings — one warning per stripping function and one per
-injection function, shown whenever that function fires for a request. SR, TN, and
-persisted-output (PO) are all stripping signals; the new model surfaces every strip + every
-inject individually, giving a comprehensive per-function picture as a direct visual win.
+**Direction chosen + implemented:** drop the four aggregate tag badges (SR/TN/PO/ND) and replace with a count badge showing how many distinct strip/inject functions fired per request. COUNT (not named per-function warnings) was built — `{n}strip` (YELLOW) / `{n}inj` (GREEN) on the REQ header.
 
 #### Data already available (verified this session)
 
@@ -294,22 +283,10 @@ mapping as written today:
 | fields (model/max_tokens/thinking/output_config) | `_inject_model_override` |
 | fields (context_management) | `_inject_context_management` |
 
-#### Implementation gaps to close
+#### Implementation (DONE)
 
-1. **`accumulate_dual_log` fn_map accumulation** (`src/proxy_display/parser.py`):
-   `accumulate_dual_log` currently accumulates `system`/`tools`/`messages`/`fields` deltas but
-   drops `fn_map`. It must also collect and merge `fn_map` entries across `_stripped` and
-   `_injected` accumulation so the render side receives which functions fired per request.
+1. **`accumulate_dual_log` fn_map accumulation** (`src/proxy_display/parser.py`): ✅ — maintains `acc['_fns_by_flow_id']: {flow_id → set(fn_names)}` per family (`_stripped` + `_injected` each), cleared in-place on `is_first`; appends `set(fn_map.values())` keyed by `flow_id` per line.
 
-2. **Render side — derive warnings from fn_map** (`render_turn.py` / `render_entry.py`):
-   For each accumulated fn_map entry, emit one strip warning per fired strip function and one
-   inject warning per fired inject function. Show on the REQ header / expanded view. This
-   **subsumes and replaces** `_aggregate_entry_tags` / `classify_tags`, which depended on the
-   now-removed `modifications` field.
+2. **Render side — count badge** (`render_turn.py` / `render_entry.py`): ✅ — emits `{n}strip` (YELLOW) / `{n}inj` (GREEN) on REQ header where n = `len(lookup.get(flow_id, set()))`. Named per-function warnings NOT implemented — count is the signal. `_aggregate_entry_tags` removed entirely.
 
-3. **`"unknown"` message cases:** `attribute_chunk` cannot classify every chunk — these surface
-   as `fn_name="unknown"` in the fn_map. Either extend `attribute_chunk` coverage to eliminate
-   them, or surface an explicit "unknown strip" warning so unclassified strips are still visible.
-
-This is the chosen resolution of #4 (SR/TN/PO badges): re-source warnings from the
-already-written fn_map, broadened to every strip + inject function.
+3. **`"unknown"` message cases:** not addressed — out of scope for count-badge implementation.
