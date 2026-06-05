@@ -13,7 +13,7 @@ from constants import TOOL_BLOCKLIST
 
 # Extract <system-reminder> blocks containing marker from str or list content (incl. tool_result)
 def _find_system_reminder_blocks(content, marker: str) -> list:
-    pat = re.compile(r'(?m)^<system-reminder>.*?' + re.escape(marker) + r'.*?</system-reminder>', re.DOTALL)
+    pat = re.compile(r'(?m)^<system-reminder>.*?' + re.escape(marker) + r'.*?</system-reminder>\n?', re.DOTALL)
     if isinstance(content, str):
         return pat.findall(content)
     if isinstance(content, list):
@@ -37,7 +37,7 @@ def _find_system_reminder_blocks(content, marker: str) -> list:
 
 # Extract ALL <system-reminder>...</system-reminder> blocks from str or list content (incl. tool_result)
 def _find_all_system_reminder_blocks(content) -> list:
-    pat = re.compile(r'(?m)^<system-reminder>.*?</system-reminder>', re.DOTALL)
+    pat = re.compile(r'(?m)^<system-reminder>.*?</system-reminder>\n?', re.DOTALL)
     if isinstance(content, str):
         return pat.findall(content)
     if isinstance(content, list):
