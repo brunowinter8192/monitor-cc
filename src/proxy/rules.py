@@ -45,7 +45,7 @@ _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
 # ORCHESTRATOR
 
-# Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed)
+# Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added)
 def apply_modification_rules(payload: dict, model_family: str = "opus", project_path: str = "") -> tuple:
     system_rules = _load_system2_rules(model_family, project_path)
 
@@ -63,84 +63,93 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     stripped_msg_indices = []
     stripped_msg_originals = {}
     stripped_msg_removed = {}
+    injected_msg_added = {}
 
-    new_messages, pass_mods, pass_removed, c_idxs = _apply_first_pass(messages_to_process)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_first_pass(messages_to_process)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
             stripped_msg_indices.append(idx)
             stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
         stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs = _apply_cumulative_sr_strips(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_cumulative_sr_strips(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
             stripped_msg_indices.append(idx)
             stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
         stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs = _apply_final_sr_pass(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_final_sr_pass(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
             stripped_msg_indices.append(idx)
             stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
         stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs = _apply_po_preview_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_po_preview_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
             stripped_msg_indices.append(idx)
             stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
         stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs = _apply_bg_exit_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_bg_exit_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
             stripped_msg_indices.append(idx)
             stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
         stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs = _apply_hook_prefix_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_hook_prefix_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
             stripped_msg_indices.append(idx)
             stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
         stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs = _apply_git_lock_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_git_lock_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
             stripped_msg_indices.append(idx)
             stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
         stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs = _apply_bd_noise_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_bd_noise_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
             stripped_msg_indices.append(idx)
             stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
         stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
 
@@ -154,16 +163,16 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         changed = True
 
     if not changed:
-        return payload, modifications, None, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
+        return payload, modifications, None, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added
     modified = dict(payload)
     modified["messages"] = new_messages
     modified["system"] = new_system
-    return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed
+    return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added
 
 
 # FUNCTIONS
 
-# Short-circuit for CC idle-recap injected message — returns full 6-tuple if detected, None otherwise
+# Short-circuit for CC idle-recap injected message — returns full 7-tuple if detected, None otherwise
 def _check_idle_recap(payload: dict) -> tuple:
     if not _detect_idle_recap(payload):
         return None
@@ -181,10 +190,11 @@ def _check_idle_recap(payload: dict) -> tuple:
         [idx],
         {idx: orig_content},
         {idx: [orig_content]},
+        {idx: [marker]},
     )
 
 
-# Short-circuit for sidecar single-message requests — returns full 6-tuple if detected, None otherwise
+# Short-circuit for sidecar single-message requests — returns full 7-tuple if detected, None otherwise
 def _check_sidecar(payload: dict) -> tuple:
     if not _detect_sidecar(payload):
         return None
@@ -200,6 +210,7 @@ def _check_sidecar(payload: dict) -> tuple:
         [0],
         {0: orig_content},
         {0: [orig_content]},
+        {0: [marker]},
     )
 
 
@@ -244,11 +255,12 @@ def _dedup_wakeup_blocks(messages: list) -> list:
     return result
 
 
-# First-pass message loop — elif-chain strips plan-mode, task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+# First-pass message loop — elif-chain strips plan-mode, task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
 def _apply_first_pass(messages: list) -> tuple:
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
+    pass_injected_by_idx = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
@@ -267,6 +279,7 @@ def _apply_first_pass(messages: list) -> tuple:
                 changed_indices.append(idx)
                 pass_mods.append("removed_plan_mode_sr")
                 pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "Plan mode")
+                pass_injected_by_idx[idx] = ["(plan-mode reminder stripped by proxy)"]
         elif msg.get("role") == "user" and _top_level_content_contains(msg.get("content", ""), "<task-notification>"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
@@ -287,6 +300,7 @@ def _apply_first_pass(messages: list) -> tuple:
                 if also_stripped_nag:
                     removed = removed + _find_system_reminder_blocks(old_content, "task tools haven")
                 pass_removed_by_idx[idx] = removed
+                pass_injected_by_idx[idx] = [_WAKEUP_TEXT]
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "task tools haven"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
@@ -328,10 +342,10 @@ def _apply_first_pass(messages: list) -> tuple:
                 pass_removed_by_idx[idx] = ["(rejection marker stripped by proxy)"]
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
 
 
-# Cumulative second pass — strips Skills, claudeMd, pyright SRs from every user message including those already touched by pass 1 — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+# Cumulative second pass — strips Skills, claudeMd, pyright, ENV-context SRs from every user message including those already touched by pass 1 — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
 def _apply_cumulative_sr_strips(messages: list) -> tuple:
     _SKILLS_MARKER = "The following skills are available for use with the Skill tool"
     _CLAUDEMD_MARKER = "# claudeMd"
@@ -339,6 +353,7 @@ def _apply_cumulative_sr_strips(messages: list) -> tuple:
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
+    pass_injected_by_idx = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -369,24 +384,21 @@ def _apply_cumulative_sr_strips(messages: list) -> tuple:
             result.append({**msg, "content": content})
             pass_mods.extend(cur_pass_mods)
             changed_indices.append(idx)
-            removed = []
-            if "stripped_skills_sr" in cur_pass_mods:
-                removed.extend(_find_system_reminder_blocks(original_before_pass, _SKILLS_MARKER))
-            if "stripped_claudemd_sr" in cur_pass_mods:
-                removed.extend(_find_system_reminder_blocks(original_before_pass, _CLAUDEMD_MARKER))
-            if "stripped_pyright_diagnostics" in cur_pass_mods:
-                removed.extend(_find_system_reminder_blocks(original_before_pass, "<new-diagnostics>"))
-            pass_removed_by_idx[idx] = removed
+            pass_removed_by_idx[idx] = [
+                sr for sr in _find_all_system_reminder_blocks(original_before_pass)
+                if sr not in _find_all_system_reminder_blocks(content)
+            ]
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
 
 
-# Final SR pass — strips all remaining system-reminder blocks from every user message — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+# Final SR pass — strips all remaining system-reminder blocks from every user message — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
 def _apply_final_sr_pass(messages: list) -> tuple:
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
+    pass_injected_by_idx = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -404,14 +416,15 @@ def _apply_final_sr_pass(messages: list) -> tuple:
             ]
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
 
 
-# PO-preview pass — strips Preview sections from persisted-output blocks in user messages — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+# PO-preview pass — strips Preview sections from persisted-output blocks in user messages — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
 def _apply_po_preview_strip(messages: list) -> tuple:
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
+    pass_injected_by_idx = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -429,14 +442,15 @@ def _apply_po_preview_strip(messages: list) -> tuple:
             pass_removed_by_idx[idx] = po_removed
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
 
 
-# BG-exit-notification pass — strips "Background command "..." failed with exit code 143/137" lines from user messages — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+# BG-exit-notification pass — strips "Background command "..." failed with exit code 143/137" lines from user messages — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
 def _apply_bg_exit_strip(messages: list) -> tuple:
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
+    pass_injected_by_idx = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -452,16 +466,18 @@ def _apply_bg_exit_strip(messages: list) -> tuple:
             pass_mods.append("replaced_bg_completed_text")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = bg_removed
+            pass_injected_by_idx[idx] = [_WAKEUP_TEXT]
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
 
 
-# Hook-prefix pass — strips PreToolUse:<Tool> hook error: [python3 <path>]: prefix from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+# Hook-prefix pass — strips PreToolUse:<Tool> hook error: [python3 <path>]: prefix from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
 def _apply_hook_prefix_strip(messages: list) -> tuple:
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
+    pass_injected_by_idx = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -479,14 +495,15 @@ def _apply_hook_prefix_strip(messages: list) -> tuple:
             pass_removed_by_idx[idx] = hp_removed
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
 
 
-# Git-lock-advice pass — strips constant git index.lock advice block from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+# Git-lock-advice pass — strips constant git index.lock advice block from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
 def _apply_git_lock_strip(messages: list) -> tuple:
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
+    pass_injected_by_idx = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -504,14 +521,15 @@ def _apply_git_lock_strip(messages: list) -> tuple:
             pass_removed_by_idx[idx] = gl_removed
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
 
 
-# BD-noise pass — strips bd informational auto-import/export lines from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices)
+# BD-noise pass — strips bd informational auto-import/export lines from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
 def _apply_bd_noise_strip(messages: list) -> tuple:
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
+    pass_injected_by_idx = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -529,7 +547,7 @@ def _apply_bd_noise_strip(messages: list) -> tuple:
             pass_removed_by_idx[idx] = bd_removed
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
 
 
 # System-block passes — injects system2 rules and normalizes system3 session-guidance / worktree paths — returns (new_system, original_system2_text, mods, sys_changed)

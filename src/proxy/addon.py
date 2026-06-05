@@ -109,7 +109,7 @@ class ProxyAddon:
                 })
             except Exception as e:
                 print(f"[dual_log] original write failed: {e}", file=sys.stderr)
-            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed = apply_modification_rules(payload, model_family, project_path)
+            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added = apply_modification_rules(payload, model_family, project_path)
             deferred_tool_names = _extract_deferred_tool_names(payload)
 
             if model_family not in self.fixated:
@@ -157,6 +157,8 @@ class ProxyAddon:
                     entry['stripped_msg_originals'][str(k)] = _summarize_content_for_log(v)
             if stripped_msg_removed:
                 entry['stripped_msg_removed'] = {str(k): v for k, v in stripped_msg_removed.items()}
+            if injected_msg_added:
+                entry['injected_msg_added'] = {str(k): v for k, v in injected_msg_added.items()}
             if stripped_tool_names:
                 entry['stripped_unused_tools_names'] = stripped_tool_names
             if deferred_tool_names:
