@@ -435,11 +435,12 @@ def accumulate_dual_log(path: Optional[Path], last_pos: int, acc_by_family: dict
                 family = _infer_model_family(entry.get('model', ''))
                 acc = acc_by_family.setdefault(
                     family,
-                    {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
+                    {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}, '_fns_by_flow_id': {}}
                 )
                 if entry.get('is_first', False):
                     for section in ('system', 'tools', 'messages', 'fields'):
                         acc[section].clear()
+                    acc.setdefault('_fns_by_flow_id', {}).clear()
                 acc['system'].update(entry.get('system_delta') or {})
                 for name, val in (entry.get('tools_delta') or {}).items():
                     acc['tools'][name] = val
@@ -448,6 +449,8 @@ def accumulate_dual_log(path: Optional[Path], last_pos: int, acc_by_family: dict
                         acc['messages'][midx] = {}
                     acc['messages'][midx].update(blks)
                 acc['fields'].update(entry.get('fields_delta') or {})
+                fid = entry.get('flow_id', '')
+                acc.setdefault('_fns_by_flow_id', {})[fid] = set((entry.get('fn_map') or {}).values())
             return f.tell()
     except OSError:
         return last_pos
@@ -631,6 +634,7 @@ def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict) -> 
                 }
                 entry = _extract_forwarded_fields(fwd_e, new_system, new_tools, new_summaries)
                 entry['_fwd_req_idx'] = req_idx
+                entry['flow_id'] = fwd_e.get('flow_id', '')
                 entry['diff_from_prev'] = _compute_diff(prev_messages_for_diff, new_summaries)
                 entries.append(entry)
                 recent_window.append((entry, new_summaries))

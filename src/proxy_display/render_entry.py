@@ -8,7 +8,7 @@ from ..constants import (
 )
 from ..utils import _ANSI_ESCAPE_RE, _cell_width
 from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry
-from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
+from .render_messages import _aggregate_req_buckets
 from .render_sections import render_fields_delta
 
 # FUNCTIONS
@@ -77,8 +77,13 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         haiku_info = f"  sys:{_format_k(sys_chars)} tools:{_format_k(tools_chars)} msgs:{_format_k(msgs_chars)}"
     else:
         haiku_info = ''
-    tag_labels = _aggregate_entry_tags(entry)
-    tag_badge = f'  {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
+    _fid = entry.get('flow_id', '')
+    _n_strip = len(entry.get('_strip_fns_lookup', {}).get(_fid, set()))
+    _n_inj   = len(entry.get('_inject_fns_lookup', {}).get(_fid, set()))
+    _badge_parts = []
+    if _n_strip: _badge_parts.append(f'{YELLOW}{_n_strip}strip{SOFT_RESET}')
+    if _n_inj:   _badge_parts.append(f'{GREEN}{_n_inj}inj{SOFT_RESET}')
+    tag_badge = ('  ' + ' '.join(_badge_parts)) if _badge_parts else ''
     header_raw_e = f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg{mods_str}  {status_str}{haiku_info}{tag_badge}{SOFT_RESET}"
     if copy_feedback is not None:
         _stripped_he = _ANSI_ESCAPE_RE.sub('', header_raw_e)

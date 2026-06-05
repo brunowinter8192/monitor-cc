@@ -1,11 +1,11 @@
 # INFRASTRUCTURE
 import time
 from ..constants import (
-    SOFT_RESET, RED, WHITE, YELLOW, DIM,
+    SOFT_RESET, RED, GREEN, WHITE, YELLOW, DIM,
 )
 from ..utils import _ANSI_ESCAPE_RE, _cell_width
 from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
-from .render_messages import _aggregate_entry_tags, _aggregate_req_buckets
+from .render_messages import _aggregate_req_buckets
 
 # FUNCTIONS
 
@@ -111,8 +111,13 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         else:
             cr_cc_str = ''
 
-        tag_labels = _aggregate_entry_tags(entry)
-        tag_badge = f' {RED}⚠{",".join(tag_labels)}{SOFT_RESET}' if tag_labels else ''
+        _fid = entry.get('flow_id', '')
+        _n_strip = len(entry.get('_strip_fns_lookup', {}).get(_fid, set()))
+        _n_inj   = len(entry.get('_inject_fns_lookup', {}).get(_fid, set()))
+        _badge_parts = []
+        if _n_strip: _badge_parts.append(f'{YELLOW}{_n_strip}strip{SOFT_RESET}')
+        if _n_inj:   _badge_parts.append(f'{GREEN}{_n_inj}inj{SOFT_RESET}')
+        tag_badge = (' ' + ' '.join(_badge_parts)) if _badge_parts else ''
         header_raw = f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg{eff_str}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{SOFT_RESET}"
         if copy_feedback is not None:
             _stripped_h = _ANSI_ESCAPE_RE.sub('', header_raw)

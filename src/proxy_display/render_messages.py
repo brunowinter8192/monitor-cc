@@ -12,34 +12,6 @@ _SUSPECT_TAG_RE = re.compile(
 
 # FUNCTIONS
 
-# Aggregate tag labels for entries where a strip rule fired in the delta range
-def _aggregate_entry_tags(entry: dict) -> list[str]:
-    diff = entry.get('diff_from_prev') or {}
-    fdi = diff.get('first_diff_index')
-    if fdi is None:
-        start = 0  # First REQ — all msgs are new, no diff_from_prev key
-    elif fdi < 0:
-        return []  # Byte-identical re-fire — no new strip activity
-    else:
-        # Truly new messages start at prev_message_count, not first_diff_index.
-        # first_diff_index can regress into old messages when a prior msg changes
-        # by even 1 char (re-serialization, trailing-newline drift after TN strip);
-        # using it as the gate causes double-firing of the same strip.
-        start = entry.get('message_count', 0) - (diff.get('messages_added') or 0)
-    smr = entry.get('stripped_msg_removed') or {}
-    found = set()
-    for idx_str, chunks in smr.items():
-        if int(idx_str) < start:
-            continue
-        for chunk in (chunks or []):
-            if '<system-reminder>' in chunk:
-                found.add('SR')
-            if '<task-notification>' in chunk:
-                found.add('TN')
-            if '<new-diagnostics>' in chunk:
-                found.add('ND')
-    return sorted(found)
-
 # Render header + stripped chunks for one message, returning (lines, keys) with len==len
 # show_chars=True adds chars_fmt to the header line (Branch 1 style); False omits it (Branch 2 style)
 # Header key is appended last (matches render_messages loop convention)
