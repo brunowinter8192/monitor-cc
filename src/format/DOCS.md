@@ -38,9 +38,9 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ---
 
-### formatter.py (176 LOC)
+### formatter.py (170 LOC)
 
-**Purpose:** Format tool call request/response pairs as ANSI-colored terminal strings. Handles output truncation, todo list rendering, parameter formatting, and status icons/colors.
+**Purpose:** Format tool call request/response pairs as ANSI-colored terminal strings. Handles todo list rendering, parameter formatting, and status icons/colors.
 **Reads:** Tool call dicts passed as arguments. No shared state, no file I/O.
 **Writes:** Returns formatted strings. No stdout, no file writes.
 **Called by:** `core/monitor_display.py` (`format_tool_call`).
