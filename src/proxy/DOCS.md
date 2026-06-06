@@ -17,24 +17,22 @@ which mitmproxy loads via `-s` flag.
 ## Flow
 
 mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
-→ `schema_check` (drift detection) → `rules` (system2 + project rule injection, content strip)
+→ `rules` (system2 + project rule injection, content strip)
 → `fixation` (freeze sys[2] + msg[0] after first request) → `tools` (blocklist strip)
 → `tool_injection` (MCP schema append) → `inject_helpers` (model override, context management)
-→ log entry written → `cache` (strip all markers, set BP3/BP4/anchor) → `hash_meta` (sent_meta log)
-→ modified payload forwarded to Anthropic
+→ dual-log writes (original + forwarded + errors) → `cache` (strip all markers, set BP3/BP4/anchor)
+→ modified payload forwarded to Anthropic; `response()` hook writes stripped/injected dual-logs via metadata bridge
 
 ## Modules
 
-### addon.py (470 LOC) ⚠️ refactor candidate (>400 LOC hard ceiling)
+### addon.py (318 LOC)
 
-**Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes JSONL log entries, appends 4xx errors to `api_errors.jsonl`, writes `latency_update` records on successful responses. count_tokens requests (`/v1/messages/count_tokens`) pass through unmodified — `_is_messages_request()` matches only `/v1/messages` + optional query string.
+**Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes dual-log entries, appends 4xx errors to `api_errors.jsonl`. count_tokens requests (`/v1/messages/count_tokens`) pass through unmodified — `_is_messages_request()` matches only `/v1/messages` + optional query string.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID`, `PROXY_PROJECT_PATH` for log path resolution and session/worker context.
-**Writes:** Modifies `flow.request.content` in place; appends to `src/logs/api_requests_*.jsonl` (main entry on request, `latency_update` record on response); appends one JSONL line to `src/logs/api_errors.jsonl` on 4xx (fields: `ts`, `status_code`, `error_response`, `request_url`, `request_payload`). Entry fields stamped post-modification include `stripped_unused_tools_names` (from `_strip_unused_tools` 3-tuple), `deferred_tools_names` (from `_extract_deferred_tool_names` on the ORIGINAL pre-strip payload), and `injected_msg_added` (from `apply_modification_rules` 7-tuple, `{str(k): v}` — stashed for Step 2 GT span builder). All three default-omitted when empty. Additionally writes five additive dual-log files via `_resolve_dual_log_file(suffix)` into `src/logs/dual_log/`: `_original` (raw CC payload snapshotted before `apply_modification_rules`); `_forwarded` (delta entry via `_build_forwarded_delta` — REQ#1 full, subsequent requests only changed/new elements per-element hash diff with `cache_control` stripped for comparison; always carries `max_tokens` + `output_config` scalars per entry); `_stripped` and `_injected` (delta entries via `_build_stripped_injected_deltas` — written in `response()` hook after upstream send via metadata bridge, zero forwarding latency); `_errors` (new error entries via `_build_errors_entries` — `is_error=True` tool_result blocks extracted from original payload, dedup by `tool_use_id` per model_family, written in `request()` hook). Each write in its own `try/except`; failures never affect forwarding or main log.
-**State:** `prev_delta_hashes_by_model` (dict, keyed by model_family) — per-element hash lists for `_forwarded` delta chain. `prev_stripped_hashes_by_model` / `prev_injected_hashes_by_model` (dict, keyed by model_family) — flat `loc_key → MD5[:10]` dicts for `_stripped`/`_injected` delta chains. `prev_error_ids_by_model` (dict, keyed by model_family) — set of `tool_use_id` strings already written to `_errors`; dedup guard preventing re-emission of cumulative-history errors. All four updated only after a successful `_write_entry` (self-healing). `_session_id` (str, computed once at `__init__` via `_derive_session_id`) — `md5(PROXY_PROJECT_PATH)[:8]` for `_errors` records. `_worker_context` (str, computed once at `__init__` via `_derive_worker_context`) — `"main"` or `"worker:<name>"` parsed from `PROXY_LOG_ID`. Metadata bridge: `mc_original_payload` (ref to pre-modification payload), `mc_modified_payload` (post-cache-ops payload), `mc_model_family`, `mc_stripped_msg_removed` (dict int→list[str] from `apply_modification_rules`, carries recorded strip chunks across the request/response boundary for GT span building) — all stored on `flow.metadata` in `request()`, read in `response()` for strip/inject diff.
+**Writes:** Modifies `flow.request.content` in place; appends one JSONL line to `src/logs/api_errors.jsonl` on 4xx. Writes five dual-log files via `_resolve_dual_log_file(suffix)` into `src/logs/dual_log/`: `_original` (raw CC payload before `apply_modification_rules`); `_forwarded` (delta entry via `_build_forwarded_delta` — REQ#1 full, subsequent only changed elements per hash diff; always carries `max_tokens` + `output_config` scalars); `_stripped` and `_injected` (delta entries via `_build_stripped_injected_deltas` — written in `response()` hook via metadata bridge); `_errors` (`is_error=True` tool_result blocks from original payload, dedup by `tool_use_id` per model_family, written in `request()` hook). Each write in its own `try/except`; failures never affect forwarding.
+**State:** `prev_messages_by_model` (dict, keyed by model_family) — message summaries from previous request; used by `_set_cache_breakpoints` for BP3 unchanged-prefix detection. `prev_delta_hashes_by_model` — per-element hash lists for `_forwarded` delta chain. `prev_stripped_hashes_by_model` / `prev_injected_hashes_by_model` — flat `loc_key → MD5[:10]` dicts for `_stripped`/`_injected` delta chains. `prev_error_ids_by_model` — set of `tool_use_id` strings already written to `_errors`; dedup guard. `_session_id` (computed once via `_derive_session_id`) — `md5(PROXY_PROJECT_PATH)[:8]`. `_worker_context` (computed once via `_derive_worker_context`) — `"main"` or `"worker:<name>"`. Metadata bridge: `mc_original_payload`, `mc_modified_payload`, `mc_model_family`, `mc_stripped_msg_removed`, `mc_request_id`, `mc_stripped_msg_removed` — stored on `flow.metadata` in `request()`, read in `response()`.
 **Called by:** mitmproxy (via `addons = [ProxyAddon()]` at module level). Hooks: `request`, `responseheaders`, `response`.
 **Calls out:** `mitmproxy`
-
-**Latency hooks:** `responseheaders(flow)` stores `flow.metadata["mc_responseheaders_at"]`. For 2xx responses it also sets `flow.response.stream = stream_chunks` (a closure that records per-chunk relative timestamps into `flow.metadata["mc_chunk_timestamps_ms"]` and buffers body in `flow.metadata["mc_body_parts"]` — because streaming mode empties `flow.response.content`). `response(flow)` success-path reads `mc_request_at` + `mc_responseheaders_at`, computes `ttfb_ms` / `stream_duration_ms` / `output_tokens_per_sec`, calls `_compute_stall_stats(chunk_timestamps_ms)` to derive `n_stalls` / `max_stall_ms` / `total_stall_ms`, writes a `latency_update` record with all 8 fields. Parser merges these fields into the main entry by matching `request_id`.
 
 ---
 
@@ -150,15 +148,15 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### logging.py (573 LOC) ⚠️ refactor candidate (>400 LOC hard ceiling)
+### logging.py (477 LOC) ⚠️ refactor candidate (>400 LOC hard ceiling)
 
-**Purpose:** Build structured JSONL log entries from flow + payload data; compute message diffs vs previous request; build `latency_update` records for response-side timing; build `forwarded_delta` / `stripped_delta` / `injected_delta` / `tool_error` entries for the five dual-log files.
+**Purpose:** Build structured JSONL entries for the dual-log files; compute message diffs vs previous request; build `forwarded_delta` / `stripped_delta` / `injected_delta` / `tool_error` entries.
 **Reads:** Raw payload dicts, message lists, previous message summaries, previous delta hash state.
 **Writes:** Nothing — returns structured entry dicts.
 **Called by:** `src/proxy/addon.py`
 **Calls out:** `src/proxy/diff_engine` (`_diff_system`, `_diff_tools`, `_diff_messages`, `_diff_top_level_fields`, `_get_inner_text`, `build_message_spans`); `src/proxy/strip_vocab` (`attribute_chunk` — for fn attribution in fn_map)
 
-**Log record types:** `_build_entry` → main request entry. `_build_latency_update(...)` → latency fields, merged by parser. `_build_forwarded_delta(payload, request_id, prev_hashes) -> (entry, curr_hashes)` → `{type: "forwarded_delta", is_first, counts, system_delta, tools_delta, messages_delta, model, max_tokens, output_config}`; REQ#1 full, subsequent only changed elements; `max_tokens` and `output_config` always-include per entry (like `model`) so read-side gets fresh values without a separate scalar accumulator. `_build_stripped_injected_deltas(orig_payload, fwd_payload, request_id, prev_stripped, prev_injected, model, stripped_msg_removed=None) -> (stripped_entry, injected_entry, new_s_hashes, new_i_hashes)` — complete-payload diff (system + tools + messages + top-level fields via `_diff_top_level_fields`); both payloads pre-normalized at call site via `_strip_cache_control`; messages additionally normalized via `_normalize_msg_shape_for_hash` before diff (eliminates json_reserialization false positives from cache BP normalization). **Message span path (GT):** when `stripped_msg_removed` (int msg_idx → list[str] chunks, passed from `addon.py` via `flow.metadata["mc_stripped_msg_removed"]`) has chunks for a message, each block computes `blk_chunks = [c for c in msg_chunks if c in _get_inner_text(block)]` — only if `blk_chunks` non-empty (per-block gate) AND both block objects non-None (None-block guard) does the loop call `build_message_spans(_get_inner_text(ob), _get_inner_text(fb), blk_chunks)` to get GT spans; otherwise falls back to `bd["spans"]` from `_diff_messages` (`_diff_text` path). Inner-content level (`block["text"]` / `block["content"]`) avoids JSON-wrap phantom green on tool_result blocks. **_stripped format:** `system_delta[idx]`/`messages_delta[midx][bidx]`/`tools_delta[name]["desc"]` = flat stripped text lists; hash via `_hash_spans` (MD5[:10] of pipe-joined texts). **_injected format (Stage 1):** same locations store ordered `[(tag, text), ...]` span lists with tags `"equal"` / `"injected"`; only written when block has ≥1 injected span; hash via `_hash_span_sequence` (MD5[:10] of `tag:text|...`). **fn_map (new):** top-level `fn_map: {loc_key → fn_name}` attached to both `_stripped` and `_injected` entries at write time. `loc_key` matches the hash-tracking keys (`sys.N`, `tool_w.name`, `tool_d.name`, `msg.M.B`, `field.key`). Attribution: sys by index (`_SYS_FN`), tools by shape (`_strip_unused_tools`/`inject_mcp_tools`/`_strip_tool_descriptions`), messages via `attribute_chunk` → `_MSG_CODE_TO_FN`, fields via `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN`. Old entries without `fn_map` are read-side safe (field simply absent). Hashing helpers: `_strip_cache_control(obj)`, `_normalize_msg_shape_for_hash(msg)`, `_delta_hash(element)`, `_hash_spans(texts)`, `_hash_span_sequence(spans)` — latter two differ by namespace to prevent hash collisions across formats. `_build_errors_entries(payload, request_id, timestamp, seen_ids, worker_context, session_id, proxy_file) -> list` → scans `payload.messages` for `is_error=True` tool_result blocks not in `seen_ids`; builds `tu_name_map` from all `tool_use` blocks (id→name) to resolve `tool_name`; returns list of `{type: "tool_error", request_id, timestamp, ts, session_id, worker, tool_name, tool_use_id, error_full, proxy_file}` records (format field-matched to `tool_errors.jsonl`). `_extract_tool_result_text(content) -> str` — handles both tool_result content shapes: plain string returned as-is; list-of-blocks joins all `text` block values with `\n`.
+**Log record types:** `_build_forwarded_delta(payload, request_id, prev_hashes) -> (entry, curr_hashes)` → `{type: "forwarded_delta", is_first, counts, system_delta, tools_delta, messages_delta, model, max_tokens, output_config}`; REQ#1 full, subsequent only changed elements; `max_tokens` and `output_config` always-include per entry (like `model`) so read-side gets fresh values without a separate scalar accumulator. `_build_stripped_injected_deltas(orig_payload, fwd_payload, request_id, prev_stripped, prev_injected, model, stripped_msg_removed=None) -> (stripped_entry, injected_entry, new_s_hashes, new_i_hashes)` — complete-payload diff (system + tools + messages + top-level fields via `_diff_top_level_fields`); both payloads pre-normalized at call site via `_strip_cache_control`; messages additionally normalized via `_normalize_msg_shape_for_hash` before diff (eliminates json_reserialization false positives from cache BP normalization). **Message span path (GT):** when `stripped_msg_removed` (int msg_idx → list[str] chunks, passed from `addon.py` via `flow.metadata["mc_stripped_msg_removed"]`) has chunks for a message, each block computes `blk_chunks = [c for c in msg_chunks if c in _get_inner_text(block)]` — only if `blk_chunks` non-empty (per-block gate) AND both block objects non-None (None-block guard) does the loop call `build_message_spans(_get_inner_text(ob), _get_inner_text(fb), blk_chunks)` to get GT spans; otherwise falls back to `bd["spans"]` from `_diff_messages` (`_diff_text` path). Inner-content level (`block["text"]` / `block["content"]`) avoids JSON-wrap phantom green on tool_result blocks. **_stripped format:** `system_delta[idx]`/`messages_delta[midx][bidx]`/`tools_delta[name]["desc"]` = flat stripped text lists; hash via `_hash_spans` (MD5[:10] of pipe-joined texts). **_injected format (Stage 1):** same locations store ordered `[(tag, text), ...]` span lists with tags `"equal"` / `"injected"`; only written when block has ≥1 injected span; hash via `_hash_span_sequence` (MD5[:10] of `tag:text|...`). **fn_map (new):** top-level `fn_map: {loc_key → fn_name}` attached to both `_stripped` and `_injected` entries at write time. `loc_key` matches the hash-tracking keys (`sys.N`, `tool_w.name`, `tool_d.name`, `msg.M.B`, `field.key`). Attribution: sys by index (`_SYS_FN`), tools by shape (`_strip_unused_tools`/`inject_mcp_tools`/`_strip_tool_descriptions`), messages via `attribute_chunk` → `_MSG_CODE_TO_FN`, fields via `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN`. Old entries without `fn_map` are read-side safe (field simply absent). Hashing helpers: `_strip_cache_control(obj)`, `_normalize_msg_shape_for_hash(msg)`, `_delta_hash(element)`, `_hash_spans(texts)`, `_hash_span_sequence(spans)` — latter two differ by namespace to prevent hash collisions across formats. `_build_errors_entries(payload, request_id, timestamp, seen_ids, worker_context, session_id, proxy_file) -> list` → scans `payload.messages` for `is_error=True` tool_result blocks not in `seen_ids`; builds `tu_name_map` from all `tool_use` blocks (id→name) to resolve `tool_name`; returns list of `{type: "tool_error", request_id, timestamp, ts, session_id, worker, tool_name, tool_use_id, error_full, proxy_file}` records (format field-matched to `tool_errors.jsonl`). `_extract_tool_result_text(content) -> str` — handles both tool_result content shapes: plain string returned as-is; list-of-blocks joins all `text` block values with `\n`.
 
 ---
 
@@ -167,7 +165,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Purpose:** Summarize and classify message content for log entries — produces compact dicts with role, type, chars, preview, block counts, and cache_control presence.
 **Reads:** Raw message dicts from API payload.
 **Writes:** Nothing — returns summary dicts.
-**Called by:** `src/proxy/addon.py`, `src/proxy/logging.py`, `src/proxy/cache.py`, `src/proxy/hash_meta.py`
+**Called by:** `src/proxy/addon.py`, `src/proxy/logging.py`, `src/proxy/cache.py`
 **Calls out:** —
 
 ---
@@ -199,16 +197,6 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Purpose:** Freeze `sys[2]` content and `msg[0]` project-rules block after the first request per model family, preventing byte-drift from rule-file reloads mid-session.
 **Reads:** Modified payload dict; fixated state dict.
 **Writes:** Nothing — returns updated fixated dict (capture) or modified payload (apply).
-**Called by:** `src/proxy/addon.py`
-**Calls out:** —
-
----
-
-### hash_meta.py (185 LOC)
-
-**Purpose:** Compute per-request MD5 hash snapshots of tools, system blocks, and messages for cache-stability forensics; produce drift report vs previous request.
-**Reads:** Final modified payload (tools, system, messages lists).
-**Writes:** Nothing — returns `sent_meta` JSONL entry dict.
 **Called by:** `src/proxy/addon.py`
 **Calls out:** —
 
@@ -250,23 +238,13 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### schema_check.py (57 LOC)
-
-**Purpose:** Validate API payload structure against known-good invariants on first opus request per session; detect schema drift (unexpected top-level keys, system block count, messages[0] shape, tools shape).
-**Reads:** Raw payload dict before any proxy modifications.
-**Writes:** Nothing — returns list of warning strings (empty = no drift).
-**Called by:** `src/proxy/addon.py`
-**Calls out:** —
-
----
-
 ## State
 
 `tool_injection.py` holds four module-level caches (set once per mitmproxy process):
 - `_SCHEMA_STORE_CACHE` — all plugin schemas loaded from `src/proxy/schemas/`
 - `_ACTIVE_PLUGINS_CACHE`, `_ACTIVE_PLUGINS_MTIME`, `_ACTIVE_PLUGINS_PATH` — active plugin list with mtime-based reload
 
-`addon.py` owns `ProxyAddon` instance state (not module-level variables): `prev_messages_by_model` dict for BP3 unchanged-prefix detection; `prev_delta_hashes_by_model` for `_forwarded` delta chain; `prev_stripped_hashes_by_model` / `prev_injected_hashes_by_model` (flat `loc_key → MD5[:10]` dicts) for `_stripped`/`_injected` delta chains; `prev_error_ids_by_model` (dict, keyed by model_family, values are sets of `tool_use_id` strings) for `_errors` dedup chain. All state resets on mitmproxy hot-reload. `_session_id` and `_worker_context` are computed once at `__init__` and are immutable for the proxy's lifetime.
+`addon.py` owns `ProxyAddon` instance state: `prev_messages_by_model` for BP3 unchanged-prefix detection; `prev_delta_hashes_by_model` for `_forwarded` delta chain; `prev_stripped_hashes_by_model` / `prev_injected_hashes_by_model` (flat `loc_key → MD5[:10]` dicts) for `_stripped`/`_injected` delta chains; `prev_error_ids_by_model` (sets of `tool_use_id` strings) for `_errors` dedup chain. All state resets on mitmproxy hot-reload. `_session_id` and `_worker_context` are computed once at `__init__` and are immutable for the proxy's lifetime.
 
 ## Gotchas
 
@@ -278,8 +256,6 @@ cd src/logs && mitmdump -s ../.proxy_addon_live_*.py --set flow_detail=0 -q -p 0
 PID=$!; sleep 3; kill $PID 2>/dev/null; wait $PID 2>/dev/null
 ```
 mitmproxy import errors are silent — the proxy crashes on startup and workers get ECONNREFUSED.
-
-**Pre/post-modification log fields are distinct.** `entry.tools` / `entry.tools_count` reflect what Claude Code sent (pre-modification). `sent_meta.sent_tools_count` / `sent_meta.sent_cache_breakpoints` reflect what actually went on the wire (post-injection, post-cache-marker). When investigating cache rebuilds, always read `sent_meta.*` first — `raw_payload.tools` will mislead you.
 
 **Worker proxies are frozen at spawn time.** Each worker's proxy package snapshot in `src/logs/.proxy_live_worker_<name>/` never updates. A worker spawned before a proxy-touching merge cannot reach new behavior or new imports. Before `worker_send` for a proxy task: check spawn time, run `git log --since='<spawn-time>' -- src/proxy/`, and kill+respawn if any merges are found.
 

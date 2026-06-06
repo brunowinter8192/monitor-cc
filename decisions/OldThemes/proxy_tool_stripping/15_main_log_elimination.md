@@ -290,3 +290,96 @@ mapping as written today:
 2. **Render side — count badge** (`render_turn.py` / `render_entry.py`): ✅ — emits `{n}strip` (YELLOW) / `{n}inj` (GREEN) on REQ header where n = `len(lookup.get(flow_id, set()))`. Named per-function warnings NOT implemented — count is the signal. `_aggregate_entry_tags` removed entirely.
 
 3. **`"unknown"` message cases:** not addressed — out of scope for count-badge implementation.
+
+---
+
+## Stage 3 — Write-side Removal (DONE)
+
+### What Was Removed
+
+**proxy/addon.py:**
+- Main-log `_write_entry(self.log_file, ...)` call removed from `request()` hook
+- `self.log_file`, `self.prev_sent_hashes_by_model`, `self._schema_checked` state removed
+- `_build_entry`, `_build_sent_meta`, `_check_payload_schema` imports removed
+- Latency tracking removed from `responseheaders()` + `response()` hooks; `responseheaders()` simplified to `flow.response.stream = True` only (`stream=True` is load-bearing — prevents mitmproxy from buffering the full CC response, which would break CC token streaming)
+- `request_id` / `timestamp` re-threaded inline (replaces `_build_entry` return values): `mc_request_id = flow.request.headers.get("x-request-id") or str(uuid.uuid4())`; `mc_timestamp` from `datetime.now(timezone.utc)` — both stored on `flow.metadata` for the `_errors` dual-log writer in `request()`
+- `api_errors.jsonl` path re-anchored: `self.errors_log_file.parent.parent / "api_errors.jsonl"` (errors_log_file is in `dual_log/`; `.parent.parent` = `src/logs/`)
+
+**proxy/logging.py:**
+- `import uuid` removed
+- `_build_entry()` deleted (119-LOC main-log entry builder)
+- `_count_system_chars()` deleted (helper for `_build_entry`)
+- `_build_latency_update()` deleted (19-LOC latency record builder)
+- `_summarize_content_for_log()` deleted (16-LOC content summarizer)
+- `_compute_diff()` KEPT — re-exported to `cache.py` + `parser.py`
+- `_summarize_message` import KEPT — re-exported to `cache.py`
+
+**proxy/hash_meta.py:** deleted entirely — `_compute_sys_block_hashes`, `_compute_tool_hashes`, `_compute_msg_hashes`, `_compute_msg0_block_hashes`, `_compute_drift_report`, `_build_sent_meta` (sent_meta JSONL record builder); zero external callers confirmed.
+
+**proxy/schema_check.py:** deleted entirely — `_check_payload_schema` (schema drift detection on first opus request); zero external callers confirmed.
+
+**core/monitor.py:**
+- `_refresh_strip_cache()` function deleted (scanned main log to feed strip data into 0:main pane)
+- `_refresh_strip_cache()` call removed from `run_main_loop` poll cycle
+- `_strip_proxy_position: int = 0` state removed
+- `ingest_proxy_strip_data` import removed
+
+**core/monitor_display.py:**
+- `ingest_proxy_strip_data()` deleted (populated `_strip_by_tool_id` / `_strip_prompt_ts_set`)
+- `_strip_by_tool_id: dict`, `_strip_prompt_ts_set: set` state removed
+- `_format_event_to_lines` tool_call branch: strip overlay removed — `output_data = d['output'] or ''` directly; `highlight_stripped` call removed
+- `_format_event_to_lines` user_prompt branch: `strip_badge=False` hardcoded (badge was `[~]` when proxy had stripped msg[0])
+- `from ..format.strip_marker import highlight_stripped, build_tool_id_strip_lookup` import removed
+
+**format/strip_marker.py:**
+- `get_stripped_data()` deleted
+- `build_tool_result_strip_lookup()` deleted
+- `build_tool_id_strip_lookup()` deleted
+- `highlight_stripped()` KEPT — still used by `panes/warnings_render.py:71`
+
+**proxy_display/parser.py (9 functions deleted):**
+- `_enrich_content_tails`, `_lazy_load_messages`, `_extract_raw_payload_fields` (raw-payload field extraction pipeline)
+- `_parse_log_file` (main-log JSONL reader with `sent_meta`/`latency_update` merge via `pending_by_rid`)
+- `parse_proxy_log` (marker-file lookup + `_parse_log_file` call)
+- `scan_worker_logs` (glob worker main-logs, `_parse_log_file` per file)
+- `_subprocess_worker`, `_parse_log_file_isolated` (subprocess offload pattern)
+- `parse_proxy_log_isolated` (isolated variant of `parse_proxy_log`)
+- `import logging`, `KNOWN_PAYLOAD_KEYS`/`KNOWN_CONTENT_BLOCK_TYPES`/`KNOWN_TOOL_DEFINITION_KEYS`/`KNOWN_MESSAGE_ROLES` constants import also removed
+- `entry['schema_warnings'] = []` placeholder removed from `_extract_forwarded_fields`
+- `find_worker_proxy_log` updated: primary source = `dual_log/api_requests_worker_*_forwarded.jsonl` glob; returns synthetic `logs_dir/stem.jsonl` path (stem = log_id, never opened as file); legacy main-log glob as fallback
+
+**proxy_display/render_entry.py:**
+- schema_warnings rendering block deleted (11 lines: header + expand + per-warning lines)
+
+**proxy_display/__init__.py:**
+- `parse_proxy_log`, `parse_proxy_log_isolated`, `_parse_log_file`, `_parse_log_file_isolated` removed from imports
+
+**panes/warnings_persist.py:** deleted — `append_tool_errors` no-op stub; zero external callers.
+**panes/warnings_scan.py:** deleted — scan stubs; zero external callers.
+
+**log_janitor.py:**
+- `tool_errors` LogSpec removed (writer stub, no reader, superseded by `_errors` dual-log)
+- `api_requests_opus` LogSpec removed (main log eliminated)
+- `api_requests_worker` LogSpec removed (main log eliminated)
+- Registry: 12 entries → 10 entries
+
+### Rotation Re-anchor (Block C)
+
+Old anchor: derived surviving `log_id`s from `LOG_DIR/api_requests_opus_*.jsonl` + `api_requests_worker_*.jsonl` main logs. After main-log elimination these globs return empty → dual_log/ would be fully deleted on every proxy start.
+
+New anchor (per-class split, user condition): 
+- Phase 1a: rotate `dual_log/api_requests_opus_*_original.jsonl` keep-30
+- Phase 1b: rotate `dual_log/api_requests_worker_*_original.jsonl` keep-30
+- Phase 2: surviving `log_id`s = union from remaining `_original` files (strip `_original` suffix)
+- Phase 3: delete `dual_log/api_requests_*.jsonl` not in surviving set — suffix-stripping loop covers `original/forwarded/stripped/injected/errors`
+
+Pre-existing bug fixed: `_errors` suffix was missing from the strip loop → `_errors` files always deleted (stem never reduced to base log_id). Fixed by adding `errors` to `for sfx in original forwarded stripped injected errors`.
+
+Marker staleness check re-anchored: `$LOG_DIR/dual_log/api_requests_${existing_log_id}_forwarded.jsonl` (was `$LOG_DIR/api_requests_${existing_log_id}.jsonl`). Checks mtime < 60s to decide if existing marker is still live.
+
+### Verification
+
+- Import smoke: `core.monitor` + `proxy_display` + `proxy` packages — clean
+- Per-symbol dead-caller grep: 18 symbols at 0 live callers
+- `grep '_write_entry(self.log_file'` → 0 hits
+- Rotation dry-run on real `dual_log/` data: 206 files retained, 0 deleted (no stale files present)

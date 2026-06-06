@@ -6,11 +6,8 @@
 
 | Name | Datei | Writer | Reader | Zweck | Format | Retention | Janitor-Trigger |
 |---|---|---|---|---|---|---|---|
-| tool_errors | `src/logs/tool_errors.jsonl` | `panes/warnings_persist.py:append_tool_errors` (now stub — no longer written post Stage 2D) | (no active reader — orphaned log, Stage 3 cleanup pending) | Tool-use-Fehler aus CC Hooks, Anzeige Warnings-Pane — superseded by `_errors` dual-log | JSONL (`ts`-Feld) | 7d-ts-records | monitor-24h |
 | hook_firing | `src/logs/hook_firing.jsonl` | `hooks/*:log_fire` | (Debug/Analyse) | Hook-Execution-Events (PreToolUse / PostToolUse Firings) | JSONL (`ts`-Feld, UTC+Z) | 7d-ts-records | monitor-24h |
 | api_errors | `src/logs/api_errors.jsonl` | `proxy/addon.py:ProxyAddon.response` | (Debug/Analyse) | 4xx-API-Fehler aus mitmproxy: Status, Error-Body, Request-URL, Request-Payload | JSONL (`ts`-Feld) | 7d-ts-records | monitor-24h |
-| api_requests_opus | `src/logs/api_requests_opus_<project>_<ts>.jsonl` | `proxy/addon.py:_write_entry` | **read-side migrated (Stage 2) — no active pane reader**; write still active (Stage 3 removes write path) | Vollständiger Proxy-Log: modifizierter Request + Response-Metadaten für Opus-Sessions | JSONL (multi-type entries) | count-30 | proxy-start-bash |
-| api_requests_worker | `src/logs/api_requests_worker_<name>_<ts>.jsonl` | `proxy/addon.py:_write_entry` | **read-side migrated (Stage 2) — no active pane reader**; write still active (Stage 3 removes write path) | Vollständiger Proxy-Log für Worker-Sessions | JSONL (multi-type entries) | count-30 | proxy-start-bash |
 | api_requests_dual_original | `src/logs/dual_log/api_requests_<log_id>_original.jsonl` | `proxy/addon.py:_resolve_dual_log_file` | (Analyse) | Roher CC-Payload VOR Modifikation (pre-apply_modification_rules) | JSONL | count-30 (quartet-aligned) | proxy-start-bash |
 | api_requests_dual_forwarded | `src/logs/dual_log/api_requests_<log_id>_forwarded.jsonl` | `proxy/addon.py:_resolve_dual_log_file` | `proxy_display/pane.py` + `worker_proxy_pane.py` via `parse_proxy_log_forwarded` / `_parse_forwarded_log` (Stage 2C) | Delta-Log des weitergeleiteten (post-Modifikation) Payloads; trägt `max_tokens` + `output_config` + `max_tokens`-Felder (Stage 1 addition, required for proxy pane header) | JSONL | count-30 (quartet-aligned) | proxy-start-bash |
 | api_requests_dual_stripped | `src/logs/dual_log/api_requests_<log_id>_stripped.jsonl` | `proxy/addon.py:_resolve_dual_log_file` | `proxy_display/pane.py` + `worker_proxy_pane.py` via `accumulate_dual_log` (yellow overlay) | Delta-Log: was der Proxy aus dem Original entfernt hat | JSONL | count-30 (quartet-aligned) | proxy-start-bash |
@@ -24,13 +21,17 @@
 ### Zwei-Trigger-Architektur
 
 **Trigger 1 — proxy-start-bash** (`src/claude_proxy_start.sh:_janitor_cleanup_jsonl_logs`):
-- Zuständig für `api_requests_opus_*` + `api_requests_worker_*` (count-30) + `dual_log/` (quartet-aligned)
-- Dual-Log-Rotation: nach der Haupt-Log-Rotation werden die überlebenden `log_id`s gesammelt; alle `dual_log/`-Files ohne passende `log_id` werden gelöscht. Verhindert Mtime-Divergenz-Orphans (die vier Suffixe werden zu unterschiedlichen Hook-Zeitpunkten geschrieben)
+- Zuständig für `dual_log/` — per-class split: opus-originals keep-30 + worker-originals keep-30 getrennt
+- Phase 1a: `ls -t dual_log/api_requests_opus_*_original.jsonl | tail -n +31` → delete
+- Phase 1b: `ls -t dual_log/api_requests_worker_*_original.jsonl | tail -n +31` → delete
+- Phase 2: surviving `log_id`s = union from remaining `_original` files after rotation
+- Phase 3: alle anderen `dual_log/api_requests_*.jsonl` ohne passende `log_id` gelöscht (suffix-stripping: original/forwarded/stripped/injected/errors)
+- Marker-Staleness: zeigt auf `dual_log/api_requests_<log_id>_forwarded.jsonl` (nicht mehr Haupt-Log) — mtime-Check prüft ob aktive Session; <60s → MARKER_IS_STALE=false
 - Läuft bei jedem Proxy-Start — unabhängig davon ob Monitor aktiv ist
 - Bash (kein Python): count-basierte Rotation via `ls -t | tail -n +31` ist trivial in Shell
 
 **Trigger 2 — monitor-24h** (`src/core/monitor.py:run_main_loop`, 86400s-Guard):
-- Zuständig für die drei sweep-fähigen JSONL-Logs (tool_errors, hook_firing, api_errors)
+- Zuständig für die sweep-fähigen JSONL-Logs (hook_firing, api_errors, polling_state)
 - Python: `cleanup_old_jsonl(path)` aus `src/log_janitor.py` über `sweep_eligible_specs(logs_dir)`
 - Path-Auflösung: `Path(__file__).parent.parent / 'logs'` aus `src/core/monitor.py` = `src/logs/` ✓
 
@@ -40,7 +41,7 @@
 
 ### LogSpec-Registry
 
-`src/log_janitor.py` enthält `_LOG_REGISTRY` (Tuple aus 12 `LogSpec`-Einträgen, alle Logs inventarisiert). `sweep_eligible_specs(logs_dir)` gibt `(spec, path)`-Paare für die vier monitor-24h-Logs zurück. `monitor.py` iteriert darüber — neue sweep-fähige Logs werden durch Hinzufügen eines Eintrags in `_LOG_REGISTRY` automatisch eingeschlossen.
+`src/log_janitor.py` enthält `_LOG_REGISTRY` (Tuple aus 10 `LogSpec`-Einträgen, alle Logs inventarisiert). `sweep_eligible_specs(logs_dir)` gibt `(spec, path)`-Paare für die monitor-24h-Logs zurück. `monitor.py` iteriert darüber — neue sweep-fähige Logs werden durch Hinzufügen eines Eintrags in `_LOG_REGISTRY` automatisch eingeschlossen.
 
 `polling_state.jsonl` ist primär self-pruning (block_polling_loop prunt Einträge > 30 s bei jedem Aufruf). Der monitor-24h Sweep via `cleanup_old_jsonl` ist ein Backup für den Fall, dass der Hook-Prune wiederholt fehlschlug (z. B. I/O-Fehler). Die effektive Retention im Normalbetrieb ist 30 Sekunden.
 
@@ -100,9 +101,13 @@ Feasibility proven by full-session probe (118/118 content lossless). Read-side m
 - ✅ **2E.3:** SR/TN header badges (#4) — count badge re-sourced via `flow_id` join on `_stripped`/`_injected` `fn_map`; `{n}strip` (YELLOW) / `{n}inj` (GREEN) on REQ header; `_aggregate_entry_tags` removed. Detail: `decisions/OldThemes/proxy_tool_stripping/15_main_log_elimination.md` § "(b)"
 - ⏳ **2E remaining:** (c) full live-verify on new-format logs needs proxy restart
 
-**Stage 3 — Write-side removal (pending):**
-- Remove `api_requests_<id>.jsonl` write path: `_write_entry` / `_build_entry` / `sent_meta` / `latency_update` / `schema_warning` from `proxy/addon.py` + `proxy/logging.py`
-- Remove main-log `LogSpec` entry from `src/log_janitor.py:_LOG_REGISTRY` (count-30 janitor)
-- Remove orphaned `tool_errors.jsonl` LogSpec (`src/log_janitor.py`) — writer stub, no reader
-- Remove `append_tool_errors` stub from `warnings_persist.py` + its `LogSpec`
-- Quartet count-30 janitor entry stays
+**Stage 3 — Write-side removal (DONE):**
+- ✅ `api_requests_<id>.jsonl` write path removed: `_build_entry` / `_build_latency_update` / `_count_system_chars` / `_summarize_content_for_log` deleted from `proxy/logging.py`; main-log `_write_entry` calls + latency hook removed from `proxy/addon.py`
+- ✅ `proxy/hash_meta.py` deleted (sent_meta writer + drift-report helpers — no callers)
+- ✅ `proxy/schema_check.py` deleted (schema-warning writer — no callers after Block A)
+- ✅ `tool_errors` + `api_requests_opus` + `api_requests_worker` LogSpec entries removed from `src/log_janitor.py:_LOG_REGISTRY`
+- ✅ `warnings_persist.py` deleted; `warnings_scan.py` deleted
+- ✅ 0:main strip overlay removed (`_refresh_strip_cache`, `ingest_proxy_strip_data`, `_strip_by_tool_id`, `_strip_prompt_ts_set`, `build_tool_id_strip_lookup`)
+- ✅ 9 dead parser fns deleted (`_enrich_content_tails`, `_lazy_load_messages`, `_extract_raw_payload_fields`, `_parse_log_file`, `parse_proxy_log`, `scan_worker_logs`, `_subprocess_worker`, `_parse_log_file_isolated`, `parse_proxy_log_isolated`)
+- ✅ Rotation re-anchored to `_original` files (per-class opus-30 + worker-30 split); marker staleness → `_forwarded.jsonl`; pre-existing `_errors` suffix bug fixed
+- ✅ `find_worker_proxy_log` updated: dual-log forwarded discovery as primary (globs `dual_log/api_requests_worker_*_forwarded.jsonl`), legacy main-log as fallback
