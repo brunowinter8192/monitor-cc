@@ -32,7 +32,6 @@ workflow.py → run_monitor(project_filter, mode)
       loop: monitor_sessions() → process_all_sessions(sessions)
               → process_session_file(path) → parse_new_tool_calls()
               → classify (task/subagent/tool) → display_*(...)
-              → _refresh_strip_cache()    # ingest proxy JSONL strip data
               → render_main_buffer()      # flush buffer to stdout
 ```
 
@@ -40,11 +39,11 @@ Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buf
 
 ## Modules
 
-### monitor.py (350 LOC)
+### monitor.py (333 LOC)
 
-**Purpose:** Polling orchestrator — discovers sessions, drives the streaming loop, dispatches to pane event loops by mode, and owns all shared state dicts. `run_main_loop()` also scans proxy JSONL each poll cycle via `_refresh_strip_cache()` to feed strip data into `monitor_display`, and runs a 24h log janitor (via `log_janitor.cleanup_old_jsonl`) for `src/logs/tool_errors.jsonl` and `src/logs/hook_firing.jsonl`. Mouse-event handler now has three branches for `button == 0` (left-click): row 1 (search-bar text-area focuses, `[←]`/`[→]` arrow regions navigate matches), row ≥ 2 (⎘ copy-button hit on tool_call REQUEST/RESPONSE headers via `_main_copy_rows` lookup). `read_mouse_event` returns `(-1,-1,-1)` sentinel for SGR release events — handled as no-op in a dedicated `event[0] != -1` branch BEFORE the bare-ESC handler so releases don't trigger search-cancel. Keyboard input has search-focus branch (Enter commits matches + calls `ensure_match_visible`; Esc clears query/matches/focus; Backspace edits; printable chars append while focused — y-hotkey only reachable when not focused).
-**Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`; proxy JSONL via `proxy_display.parser` (for strip cache); lazy reads from `panes`, `workers`, `proxy_display`; module-level `monitor_display._main_copy_rows`, `_main_pane_width`, `_search_focused`, `_search_query`, `_search_matches`.
-**Writes:** stdout (via `monitor_display`); mutates shared state (`file_positions`, `tool_use_caches`, `agent_to_task`, `agent_to_type`, `buffered_subagent_calls`, `call_counter`, `_strip_proxy_position`); mutates `monitor_display._search_*` state via Enter/Esc/Backspace/printable handlers; mutates `monitor_display._main_copy_feedback_until` on click.
+**Purpose:** Polling orchestrator — discovers sessions, drives the streaming loop, dispatches to pane event loops by mode, and owns all shared state dicts. `run_main_loop()` runs a 24h log janitor (via `log_janitor.cleanup_old_jsonl`) for sweep-eligible logs (`hook_firing.jsonl`, `api_errors.jsonl`, `polling_state.jsonl`). Mouse-event handler now has three branches for `button == 0` (left-click): row 1 (search-bar text-area focuses, `[←]`/`[→]` arrow regions navigate matches), row ≥ 2 (⎘ copy-button hit on tool_call REQUEST/RESPONSE headers via `_main_copy_rows` lookup). `read_mouse_event` returns `(-1,-1,-1)` sentinel for SGR release events — handled as no-op in a dedicated `event[0] != -1` branch BEFORE the bare-ESC handler so releases don't trigger search-cancel. Keyboard input has search-focus branch (Enter commits matches + calls `ensure_match_visible`; Esc clears query/matches/focus; Backspace edits; printable chars append while focused — y-hotkey only reachable when not focused).
+**Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`; lazy reads from `panes`, `workers`, `proxy_display`; module-level `monitor_display._main_copy_rows`, `_main_pane_width`, `_search_focused`, `_search_query`, `_search_matches`.
+**Writes:** stdout (via `monitor_display`); mutates shared state (`file_positions`, `tool_use_caches`, `agent_to_task`, `agent_to_type`, `buffered_subagent_calls`, `call_counter`); mutates `monitor_display._search_*` state via Enter/Esc/Backspace/printable handlers; mutates `monitor_display._main_copy_feedback_until` on click.
 **Called by:** `workflow.py` (top-level entry).
 **Calls out:** `session_finder`, `jsonl`; lazy: `panes`, `workers`, `proxy_display`, `input.click_handler` (copy_to_clipboard, read_mouse_event with sentinel-aware return).
 
@@ -60,7 +59,7 @@ Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buf
 
 ---
 
-### monitor_display.py (413 LOC)
+### monitor_display.py (391 LOC)
 
 **Purpose:** Terminal output + event buffer for the main streaming pane. Buffers all events (tool calls, user prompts, system messages, etc.) in `main_event_buffer`. On each render cycle: applies proxy strip highlights (tool_call output replaced with pre-strip content + `highlight_stripped()`; user prompts get `[~]` badge); renders the persistent search bar on row 1; injects ⎘ copy-buttons on REQUEST and RESPONSE header lines of tool_calls with click-region tracking via `_main_copy_rows: dict[phys_row → (event_idx, 'request'|'response')]`; applies per-line substring highlight for search matches via `_highlight_query_in_line` (ANSI-safe split-and-inject pattern from `highlight_stripped`); buffer renders from row 2 (row 1 reserved for search bar). `serialize_main_event(event_idx, part='all'|'request'|'response')` converts a buffer entry to clipboard text for the y-hotkey ('all') or ⎘ click ('request' / 'response').
 

@@ -9,9 +9,6 @@ ANSI-colored string rendering — tool call pairs, user events, and the token/ca
 ```python
 # Strip highlighting (strip_marker.py)
 from src.format.strip_marker import highlight_stripped        # inline DIM_YELLOW_BG chunk highlight
-from src.format.strip_marker import get_stripped_data         # (pre_strip_text, chunks) from proxy entry
-from src.format.strip_marker import build_tool_result_strip_lookup
-from src.format.strip_marker import build_tool_id_strip_lookup      # for main-pane (parsed entries)
 
 # Tool call formatting (formatter.py)
 from src.format import format_tool_call
@@ -31,12 +28,12 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ## Modules
 
-### strip_marker.py (85 LOC)
+### strip_marker.py (24 LOC)
 
-**Purpose:** Proxy-strip content highlighting helper — `highlight_stripped` wraps found chunks in `DIM_YELLOW_BG`/`SOFT_RESET` inline; `get_stripped_data` extracts pre-strip text + removed chunks from a proxy entry for a given message index; `build_tool_result_strip_lookup` / `build_tool_id_strip_lookup` build `tool_use_id → (pre_strip_text, chunks)` maps for main-pane.
-**Reads:** Proxy entry dicts passed as arguments. No I/O, no shared state.
-**Writes:** Returns strings / dicts. No stdout, no file writes.
-**Called by:** `panes.warnings_pane`, `core.monitor_display`.
+**Purpose:** Proxy-strip content highlighting helper — `highlight_stripped` wraps found chunks in `DIM_YELLOW_BG`/`SOFT_RESET` inline. `get_stripped_data`, `build_tool_result_strip_lookup`, and `build_tool_id_strip_lookup` deleted in Stage 3 (main-pane strip overlay removed).
+**Reads:** Chunk strings passed as arguments. No I/O, no shared state.
+**Writes:** Returns strings. No stdout, no file writes.
+**Called by:** `panes.warnings_render`.
 **Calls out:** `constants` only.
 
 ---

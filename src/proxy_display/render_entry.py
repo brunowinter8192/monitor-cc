@@ -178,17 +178,6 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
                     lines.append(dl)
                     keys.append(None)
 
-    schema_warnings = entry.get('schema_warnings', [])
-    if schema_warnings:
-        schema_key = (entry_idx, 'schema')
-        is_schema_expanded = expand_states.get(schema_key, False)
-        schema_sym = '\u25bc' if is_schema_expanded else '\u25b6'
-        lines.append(f"{L2}{schema_sym} {RED}⚠ SCHEMA DRIFT ({len(schema_warnings)}){SOFT_RESET}")
-        keys.append(schema_key)
-        if is_schema_expanded:
-            for sw in schema_warnings:
-                lines.append(f"{L3}{DIM}{sw}{SOFT_RESET}")
-                keys.append(None)
 
     if is_expanded:
         lines.append(f"{L2}{DIM}{'─' * min(40, pane_width - len(L2) - 2)}{SOFT_RESET}")

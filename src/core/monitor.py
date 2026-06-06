@@ -12,7 +12,7 @@ from ..session_finder import find_active_sessions
 # From jsonl/: Parse JSONL lines for session start timestamp
 from ..jsonl import parse_jsonl_lines, read_new_lines
 # From monitor_display.py: Session status output
-from .monitor_display import print_session_status, ingest_proxy_strip_data
+from .monitor_display import print_session_status
 # From monitor_session.py: Session file processing, task handling, historical load
 from .monitor_session import get_file_end_position, get_initial_position, process_session_file, load_historical_main
 # From ram_audit: register tracemalloc + SIGUSR1 dump handler for this pane
@@ -28,7 +28,6 @@ task_requests_seen: Set[str] = set()
 active_project_filter: Optional[str] = None
 active_mode: str = MODE_ALL
 _last_monitored_count: Optional[int] = None
-_strip_proxy_position: int = 0  # byte position in proxy log for strip-data ingestion
 
 # ORCHESTRATOR
 def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> None:
@@ -149,7 +148,6 @@ def run_main_loop() -> None:
             ('active_project_filter',   str(active_project_filter)),
             ('active_mode',             active_mode),
             ('_last_monitored_count',   str(_last_monitored_count)),
-            ('_strip_proxy_position',   _strip_proxy_position),
         ]
     register_ram_dump('main', _ram_state)
 
@@ -272,7 +270,6 @@ def run_main_loop() -> None:
                         _sticky_pw = 80
                     _sticky_pre = _display._count_buffer_lines(_sticky_pw)
                 monitor_sessions()
-                _refresh_strip_cache()
                 # sticky-scroll: offset grows by line delta so absolute viewport stays pinned
                 if _sticky_pre is not None and _display.main_scroll_offset > 0:
                     try:
@@ -309,14 +306,6 @@ def run_main_loop() -> None:
     finally:
         disable_mouse()
         restore_terminal()
-
-# Scan proxy log for new entries and ingest strip data into monitor_display cache
-def _refresh_strip_cache() -> None:
-    global _strip_proxy_position
-    from ..proxy_display.parser import parse_proxy_log
-    new_entries, _strip_proxy_position = parse_proxy_log(active_project_filter, _strip_proxy_position)
-    if new_entries:
-        ingest_proxy_strip_data(new_entries)
 
 # Get the newest main (non-agent) session file
 def _get_newest_main_session() -> Optional[Path]:

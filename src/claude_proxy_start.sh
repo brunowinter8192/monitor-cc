@@ -74,7 +74,7 @@ MARKER_IS_STALE=true
 if [ -f "$MARKER_FILE" ]; then
     existing_log_id=$(sed -n '2p' "$MARKER_FILE" 2>/dev/null)
     if [ -n "$existing_log_id" ]; then
-        existing_log="$LOG_DIR/api_requests_${existing_log_id}.jsonl"
+        existing_log="$LOG_DIR/dual_log/api_requests_${existing_log_id}_forwarded.jsonl"
         if [ -f "$existing_log" ]; then
             log_mtime=$(stat -f %m "$existing_log" 2>/dev/null || stat -c %Y "$existing_log" 2>/dev/null)
             now=$(date +%s)
@@ -95,7 +95,7 @@ TMP_IS_STALE=true
 if [ -f "$TMP_MARKER" ]; then
     existing_tmp_log_id=$(sed -n '2p' "$TMP_MARKER" 2>/dev/null)
     if [ -n "$existing_tmp_log_id" ]; then
-        existing_tmp_log="$LOG_DIR/api_requests_${existing_tmp_log_id}.jsonl"
+        existing_tmp_log="$LOG_DIR/dual_log/api_requests_${existing_tmp_log_id}_forwarded.jsonl"
         if [ -f "$existing_tmp_log" ]; then
             tmp_log_mtime=$(stat -f %m "$existing_tmp_log" 2>/dev/null || stat -c %Y "$existing_tmp_log" 2>/dev/null)
             tmp_now=$(date +%s)
@@ -146,45 +146,47 @@ _janitor_cleanup_live_copies() {
 }
 _janitor_cleanup_live_copies
 
-# Janitor: rotate JSONL logs (keep 30 newest per type) + one-time orphan cleanup.
+# Janitor: rotate dual-log files (keep 30 opus + 30 worker by _original count) + legacy cleanup.
 _janitor_cleanup_jsonl_logs() {
     local keep=30
-    local rotated_opus=0 rotated_worker=0 rotated_dual=0 f
+    local rotated_dual=0 f
     local DUAL_LOG_DIR="$LOG_DIR/dual_log"
 
-    # Rotate opus JSONL: keep 30 newest, delete older
-    while IFS= read -r f; do
-        [ -f "$f" ] || continue
-        rm -f "$f"
-        rotated_opus=$((rotated_opus + 1))
-    done < <(ls -t "$LOG_DIR"/api_requests_opus_*.jsonl 2>/dev/null | tail -n +$((keep + 1)))
-
-    # Rotate worker JSONL: keep 30 newest, delete older
-    while IFS= read -r f; do
-        [ -f "$f" ] || continue
-        rm -f "$f"
-        rotated_worker=$((rotated_worker + 1))
-    done < <(ls -t "$LOG_DIR"/api_requests_worker_*.jsonl 2>/dev/null | tail -n +$((keep + 1)))
-
-    # Rotate dual-logs: quartet-aligned — keep files whose log_id matches a surviving main log.
-    # Derives surviving log_ids from the main logs that remain after rotation above,
-    # then deletes any dual-log file not in that set. Prevents mtime-divergence orphans
-    # that per-suffix rotation (ls -t *_original | tail -n+31 etc.) could introduce, since
-    # the four suffix files of a quartet are written at different hook stages (request vs response).
     if [ -d "$DUAL_LOG_DIR" ]; then
         local surviving_ids stem log_id sfx
+
+        # Phase 1a: rotate opus _original files — keep 30 newest, delete older
+        while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            rm -f "$f"
+            rotated_dual=$((rotated_dual + 1))
+        done < <(ls -t "$DUAL_LOG_DIR"/api_requests_opus_*_original.jsonl 2>/dev/null | tail -n +$((keep + 1)))
+
+        # Phase 1b: rotate worker _original files — keep 30 newest, delete older
+        while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            rm -f "$f"
+            rotated_dual=$((rotated_dual + 1))
+        done < <(ls -t "$DUAL_LOG_DIR"/api_requests_worker_*_original.jsonl 2>/dev/null | tail -n +$((keep + 1)))
+
+        # Phase 2: union surviving log_ids from remaining _original files after rotation
         surviving_ids="$(
-            for f in "$LOG_DIR"/api_requests_opus_*.jsonl "$LOG_DIR"/api_requests_worker_*.jsonl; do
+            for f in "$DUAL_LOG_DIR"/api_requests_opus_*_original.jsonl \
+                     "$DUAL_LOG_DIR"/api_requests_worker_*_original.jsonl; do
                 [ -f "$f" ] || continue
                 stem="$(basename "$f" .jsonl)"
-                echo "${stem#api_requests_}"
+                stem="${stem#api_requests_}"
+                echo "${stem%_original}"
             done
         )"
+
+        # Phase 3: delete other dual-log files not in surviving set
+        # suffix list includes 'errors' (pre-existing bug: was missing, causing _errors to always be deleted)
         for f in "$DUAL_LOG_DIR"/api_requests_*.jsonl; do
             [ -f "$f" ] || continue
             stem="$(basename "$f" .jsonl)"
             stem="${stem#api_requests_}"
-            for sfx in original forwarded stripped injected; do stem="${stem%_$sfx}"; done
+            for sfx in original forwarded stripped injected errors; do stem="${stem%_$sfx}"; done
             log_id="$stem"
             if ! echo "$surviving_ids" | grep -qxF "$log_id"; then
                 rm -f "$f"
@@ -199,10 +201,10 @@ _janitor_cleanup_jsonl_logs() {
     # Remove legacy proxy_errors_*.log files (mitmdump uses 2>/dev/null since 2026-05-28)
     find "$LOG_DIR" -maxdepth 1 -type f -name 'proxy_errors_*.log' -delete 2>/dev/null
 
-    # Remove legacy tool_use_errors.jsonl (no writer; superseded by tool_errors.jsonl)
+    # Remove legacy tool_use_errors.jsonl (no writer; superseded by _errors dual-log)
     rm -f "$LOG_DIR/tool_use_errors.jsonl"
 
-    echo "Janitor: rotated $rotated_opus opus jsonl, $rotated_worker worker jsonl, $rotated_dual dual-log files"
+    echo "Janitor: rotated $rotated_dual dual-log files"
 }
 _janitor_cleanup_jsonl_logs
 
