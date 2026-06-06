@@ -54,26 +54,6 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_scan.py (12 LOC)
-
-**Purpose:** No-op stub — scan functions removed in Stage 2D; errors are now sourced from `_errors` dual-log by `warnings_pane` directly. Two stub functions retained for import compatibility; both return empty results immediately.
-**Reads:** Nothing.
-**Writes:** Nothing.
-**Called by:** Nothing (stub, not called).
-**Calls out:** Nothing.
-
----
-
-### warnings_persist.py (8 LOC)
-
-**Purpose:** No-op stub — `append_tool_errors` removed in Stage 2D; tool errors are now written to the `_errors` dual-log by the proxy write-side, not by monitor. Single stub function retained for import compatibility; returns immediately without writing.
-**Reads:** Nothing.
-**Writes:** Nothing.
-**Called by:** Nothing (stub, not called).
-**Calls out:** Nothing.
-
----
-
 ### warnings_render.py (124 LOC)
 
 **Purpose:** Pure rendering helpers — formats the warnings pane from caller-supplied state. `_format_warnings_pane(tool_errors, error_expand_states, error_hover_row, error_scroll_offset, pane_height, pane_width, last_refresh_ts)` returns `(rendered_str, new_error_line_map)` 2-tuple; no globals written. `_format_warnings_header(last_refresh_ts)` builds the header line. Reads `unknown_type_counts` from `warnings_parse` (its owner module). `_serialize_warnings(key, tool_errors)` formats clipboard output for a single error entry.
@@ -93,8 +73,6 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 | `token_pane` | `cache_expand_states`, `cache_line_map`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position` |
 | `warnings_parse` | `unknown_type_counts`, `warned_unknown_types` |
 | `warnings_pane` | `tool_errors`, `error_expand_states`, `error_line_map`, `error_hover_row`, `error_scroll_offset`, `_errors_log_pos`, `_errors_log_path`, `_worker_errors_positions`, `_last_project_filter`, `_monitor_start_ts` |
-| `warnings_scan` | none (stub — no state) |
-| `warnings_persist` | none (stub — no state) |
 | `warnings_render` | none (stateless — receives state as args, returns new values) |
 
 ## Gotchas

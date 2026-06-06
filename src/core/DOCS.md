@@ -59,7 +59,7 @@ Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buf
 
 ---
 
-### monitor_display.py (413 LOC)
+### monitor_display.py (391 LOC)
 
 **Purpose:** Terminal output + event buffer for the main streaming pane. Buffers all events (tool calls, user prompts, system messages, etc.) in `main_event_buffer`. On each render cycle: applies proxy strip highlights (tool_call output replaced with pre-strip content + `highlight_stripped()`; user prompts get `[~]` badge); renders the persistent search bar on row 1; injects ⎘ copy-buttons on REQUEST and RESPONSE header lines of tool_calls with click-region tracking via `_main_copy_rows: dict[phys_row → (event_idx, 'request'|'response')]`; applies per-line substring highlight for search matches via `_highlight_query_in_line` (ANSI-safe split-and-inject pattern from `highlight_stripped`); buffer renders from row 2 (row 1 reserved for search bar). `serialize_main_event(event_idx, part='all'|'request'|'response')` converts a buffer entry to clipboard text for the y-hotkey ('all') or ⎘ click ('request' / 'response').
 
