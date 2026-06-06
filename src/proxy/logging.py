@@ -210,6 +210,7 @@ def _build_stripped_injected_deltas(
     prev_injected: Optional[dict],
     model: str,
     stripped_msg_removed: Optional[dict] = None,
+    injected_msg_added: Optional[dict] = None,
 ) -> tuple:
     orig_norm = _strip_cache_control(orig_payload)
     fwd_norm = _strip_cache_control(fwd_payload)
@@ -297,11 +298,13 @@ def _build_stripped_injected_deltas(
     s_msgs: dict = {}
     i_msgs: dict = {}
     gt_chunks = stripped_msg_removed or {}
+    gt_injected = injected_msg_added or {}
     for md in msg_diffs:
         midx = str(md["idx"])
         s_blks: dict = {}
         i_blks: dict = {}
         msg_chunks = gt_chunks.get(md["idx"], [])
+        ima_chunks_msg = gt_injected.get(md["idx"], [])
         # Raw normalized block objects for inner-text extraction (GT path)
         om_norm = orig_msgs_norm[md["idx"]] if md["idx"] < len(orig_msgs_norm) else {}
         fm_norm = fwd_msgs_norm[md["idx"]] if md["idx"] < len(fwd_msgs_norm) else {}
@@ -323,8 +326,9 @@ def _build_stripped_injected_deltas(
                     o_inner = _get_inner_text(ob)
                     f_inner = _get_inner_text(fb)
                     blk_chunks = [c for c in msg_chunks if c in o_inner]
+                    ima_chunks_blk = [c for c in ima_chunks_msg if c in f_inner]
                     if blk_chunks:
-                        spans, _ = build_message_spans(o_inner, f_inner, blk_chunks)
+                        spans, _ = build_message_spans(o_inner, f_inner, blk_chunks, ima_chunks_blk)
             s_texts = [t for tag, t in spans if tag == "stripped" and t]
             i_spans = [(tag, t) for tag, t in spans if tag in ("equal", "injected") and t]
             has_i = any(tag == "injected" for tag, _ in i_spans)

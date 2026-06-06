@@ -133,6 +133,7 @@ class ProxyAddon:
             mc_timestamp = f"{now_ts.strftime('%Y-%m-%dT%H:%M:%S.')}{now_ts.microsecond // 1000:03d}Z"
             flow.metadata["mc_request_id"] = mc_request_id
             flow.metadata["mc_stripped_msg_removed"] = stripped_msg_removed
+            flow.metadata["mc_injected_msg_added"] = injected_msg_added
 
             prev_mod_msgs = self.prev_messages_by_model.get(model_family)
             modified_payload = _strip_all_cache_control(modified_payload)
@@ -231,8 +232,9 @@ class ProxyAddon:
                         prev_i = self.prev_injected_hashes_by_model.get(mf)
                         model_str = mod_payload.get("model", "")
                         smr = flow.metadata.get("mc_stripped_msg_removed") or {}
+                        ima = flow.metadata.get("mc_injected_msg_added") or {}
                         s_entry, i_entry, new_s, new_i = _build_stripped_injected_deltas(
-                            orig_payload, mod_payload, request_id, prev_s, prev_i, model_str, smr,
+                            orig_payload, mod_payload, request_id, prev_s, prev_i, model_str, smr, ima,
                         )
                         s_entry["flow_id"] = flow.id
                         i_entry["flow_id"] = flow.id
