@@ -49,10 +49,11 @@
 
 `messages_delta` spans in `_stripped` and `_injected` entries are GT-record-driven on inner-content level. Per-block logic in `_build_stripped_injected_deltas` (`logging.py`):
 
-- `stripped_msg_removed` (int msg_idx → list[str] chunks, bridged via `flow.metadata["mc_stripped_msg_removed"]` from `request()` to `response()`) provides the recorded strip chunks.
-- For each block: `blk_chunks = [c for c in msg_chunks if c in _get_inner_text(block)]`. When `blk_chunks` non-empty (per-block gate) AND both block objects non-None: `build_message_spans(_get_inner_text(ob), _get_inner_text(fb), blk_chunks)` computes GT spans.
-- Blocks without matching recorded chunks fall back to `_diff_text` (word-level SequenceMatcher).
-- Inner-content level: `_get_inner_text` returns `block["text"]` for text blocks, `block["content"]` for tool_result blocks. JSON wrapper never enters span building → phantom green on tool_result structural chars eliminated.
+- `stripped_msg_removed` (int msg_idx → list[str] chunks, bridged via `flow.metadata["mc_stripped_msg_removed"]`) and `injected_msg_added` (int msg_idx → list[str], bridged via `flow.metadata["mc_injected_msg_added"]`) both stashed in `request()`, read in `response()`.
+- For each block: `blk_chunks = [c for c in msg_chunks if c in o_inner]`; `ima_chunks_blk = [c for c in ima_chunks_msg if c in f_inner]`. When `blk_chunks` non-empty (per-block gate) AND both block objects non-None: `build_message_spans(o_inner, f_inner, blk_chunks, ima_chunks_blk)` computes GT spans.
+- Yellow (stripped): exact `stripped_chunks` positions in `orig_text`. Green (injected): `fwd_text.find(chunk)` for each `injected_chunks` entry — no gap inference. `injected_chunks=[]` → all fwd content equal (grey).
+- Blocks without matching recorded strip chunks fall back to `bd["spans"]` / `_diff_text` (word-level SequenceMatcher).
+- Inner-content level: `_get_inner_text` returns `block["text"]` for text blocks, `block["content"]` for tool_result blocks. JSON wrapper never enters span building.
 
 Both `_get_inner_text` and `build_message_spans` live in `src/proxy/diff_engine.py`.
 
