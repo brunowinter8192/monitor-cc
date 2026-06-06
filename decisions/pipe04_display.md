@@ -8,11 +8,7 @@
 
 ### LONG_OUTPUT_THRESHOLD (Kategorie: Display / UX)
 
-`LONG_OUTPUT_THRESHOLD = 10000` in `src/constants.py`.
-Verwendet in `format_output()` (formatter.py:119-138):
-- `len(content) >= LONG_OUTPUT_THRESHOLD` → `LIGHT_RED_BG` Hintergrundfarbe für den gesamten Output-Block
-
-Zentralisiert in constants.py.
+**Removed.** `LONG_OUTPUT_THRESHOLD` and the length-based `LIGHT_RED_BG` wrap in `format_output()` have been deleted. Long tool outputs in the main pane now render identically to normal-length outputs — no background color, no length check.
 
 ### SCORE_PATTERN Regex (Kategorie: Display / UX)
 

@@ -5,7 +5,7 @@ from typing import List, Optional
 # From utils.py: Timestamp formatting
 from ..utils import format_timestamp
 # From constants.py: Colors and config values
-from ..constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_PURPLE, LIGHT_RED_BG, PASTEL_ORANGE, WHITE, RESET, LONG_OUTPUT_THRESHOLD
+from ..constants import GREEN, BLUE, YELLOW, CYAN, RED, PASTEL_PURPLE, PASTEL_ORANGE, WHITE, RESET
 
 INDENT = '  '
 
@@ -95,12 +95,10 @@ def format_task_parameters(params: dict) -> str:
             lines.append(f"{INDENT}{key}: {formatted_value}")
     return '\n'.join(lines)
 
-# Format output content with 2-space indentation and red background for long outputs
+# Format output content with 2-space indentation
 def format_output(content: str) -> str:
     if not content:
         return f"{INDENT}(empty)"
-
-    is_long = len(content) >= LONG_OUTPUT_THRESHOLD
 
     lines = content.split('\n')
     formatted_lines = []
@@ -110,11 +108,7 @@ def format_output(content: str) -> str:
             formatted_lines.append(f"{INDENT}{GREEN}{line}{RESET}")
         else:
             formatted_lines.append(f"{INDENT}{line}")
-    result = '\n'.join(formatted_lines)
-
-    if is_long:
-        return f"{LIGHT_RED_BG}{result}{RESET}"
-    return result
+    return '\n'.join(formatted_lines)
 
 # Format error output content in red
 def format_error_output(content: str) -> str:
