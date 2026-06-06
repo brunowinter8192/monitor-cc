@@ -24,16 +24,6 @@ class LogSpec:
 # Authoritative log inventory — single source for all Monitor_CC log policies
 _LOG_REGISTRY: tuple = (
     LogSpec(
-        name="tool_errors",
-        path_pattern="tool_errors.jsonl",
-        writer="panes/warnings_persist.py:append_tool_errors",
-        purpose="Tool-use errors from CC hooks, displayed in warnings pane",
-        fmt="jsonl",
-        retention="7d-ts-records",
-        janitor_trigger="monitor-24h",
-        sweep_eligible=True,
-    ),
-    LogSpec(
         name="hook_firing",
         path_pattern="hook_firing.jsonl",
         writer="hooks/*:log_fire",
@@ -52,26 +42,6 @@ _LOG_REGISTRY: tuple = (
         retention="7d-ts-records",
         janitor_trigger="monitor-24h",
         sweep_eligible=True,
-    ),
-    LogSpec(
-        name="api_requests_opus",
-        path_pattern="api_requests_opus_*.jsonl",
-        writer="proxy/addon.py:_write_entry",
-        purpose="Full proxy log: modified request + response metadata for Opus sessions",
-        fmt="jsonl",
-        retention="count-30",
-        janitor_trigger="proxy-start-bash",
-        sweep_eligible=False,
-    ),
-    LogSpec(
-        name="api_requests_worker",
-        path_pattern="api_requests_worker_*.jsonl",
-        writer="proxy/addon.py:_write_entry",
-        purpose="Full proxy log: modified request + response metadata for Worker sessions",
-        fmt="jsonl",
-        retention="count-30",
-        janitor_trigger="proxy-start-bash",
-        sweep_eligible=False,
     ),
     LogSpec(
         name="api_requests_dual_original",
