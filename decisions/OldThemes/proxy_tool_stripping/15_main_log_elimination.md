@@ -383,3 +383,12 @@ Marker staleness check re-anchored: `$LOG_DIR/dual_log/api_requests_${existing_l
 - Per-symbol dead-caller grep: 18 symbols at 0 live callers
 - `grep '_write_entry(self.log_file'` → 0 hits
 - Rotation dry-run on real `dual_log/` data: 206 files retained, 0 deleted (no stale files present)
+
+### Pending Live-Verify (Stage 3) — next session after proxy restart
+
+Requires a fresh monitor-cc proxy restart (new code on dev). Three checks:
+1. No new main log written: `ls -lt src/logs/api_requests_*.jsonl` shows NO top-level file growing with a fresh mtime; only `src/logs/dual_log/` grows.
+2. Tab 0:main renders tool outputs with NO strip underlays (no coloured highlights), green call/response headers intact, no crash.
+3. Tab 1:proxy and Tab 2:workers (worker-proxy via new find_worker_proxy_log dual-log discovery) render normally.
+
+On all green: close issue #4 and sync dev to main.
