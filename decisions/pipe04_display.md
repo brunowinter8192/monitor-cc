@@ -8,7 +8,7 @@
 
 ### LONG_OUTPUT_THRESHOLD (Kategorie: Display / UX)
 
-**Removed.** `LONG_OUTPUT_THRESHOLD` and the length-based `LIGHT_RED_BG` wrap in `format_output()` have been deleted. Long tool outputs in the main pane now render identically to normal-length outputs — no background color, no length check.
+**Removed.** Constant and the length-based `LIGHT_RED_BG` wrap in `format_output()` have been deleted. Long tool outputs in the main pane now render identically to normal-length outputs — no background color, no length check.
 
 ### SCORE_PATTERN Regex (Kategorie: Display / UX)
 
