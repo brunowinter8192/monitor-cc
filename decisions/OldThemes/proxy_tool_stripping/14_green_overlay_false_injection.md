@@ -134,6 +134,39 @@ Inject-side fully recorded. Two recording gaps closed. Byte-identical forwarded 
 
 **Verification:** byte-faithful port confirmed by import + spot-check (pure strip → zero injected, fidelity round-trip). Existing strip suite `dev/proxy/test_strip_fix.py`: 60/60 PASS (W01–W06 unpack arity fixed in a subsequent commit). Live render verification of green-overlay fix in proxy pane: pending user review.
 
+## Phase B Step 3 — Record-Driven Green (IMPLEMENTED, commit 95c8be7)
+
+**Motivation for revisiting Phase B Step 2.** Step 2 left `injected_msg_added` out of the span builder (design question (b): "no external injection record needed"). That claim proved false: the fwd-gap inference found injected text correctly in some cases, masking the phantom risk in others. The real failure class: any message where `blk_chunks` is empty (no recorded strip at inner-content level) routes to `bd["spans"]` / `_diff_text`, which can still produce phantoms via word-level SequenceMatcher.
+
+**IMPLEMENTED — src/ changes (merged dev, commit 95c8be7):**
+
+`build_message_spans(orig_text, fwd_text, stripped_chunks, injected_chunks=None)` in `src/proxy/diff_engine.py`:
+- Step 2 (NEW): emit `("stripped", s)` for each `stripped_segs[i-1]` in the equal_segs walk — no equal spans here.
+- Step 3 (NEW, replaces old Step 2+3 + safety block): decompose `fwd_text` via `injected_chunks` only. `injected_chunks=[]` → single `("equal", fwd_text)`, nothing injected. Non-empty: `fwd_text.find(chunk)` per chunk, sorted by position; emit `("equal", gap)` + `("injected", chunk)` pairs; trailing remainder = equal.
+- Removed: EQUAL_NOT_IN_FWD gap, `eq_fwd_pos > fwd_pos` gap, trailing `fwd_pos < len(fwd_text)` gap, full-replace safety block.
+- New diagnostic flag: `INJECT_NOT_IN_FWD`.
+
+Plumbing:
+- `addon.py request()`: `flow.metadata["mc_injected_msg_added"] = injected_msg_added` alongside `mc_stripped_msg_removed`.
+- `addon.py response()`: `ima = flow.metadata.get("mc_injected_msg_added") or {}` passed as 8th arg to `_build_stripped_injected_deltas`.
+- `logging.py _build_stripped_injected_deltas`: new `injected_msg_added: Optional[dict] = None` param; `gt_injected = injected_msg_added or {}`; per-message `ima_chunks_msg`; per-block `ima_chunks_blk = [c for c in ima_chunks_msg if c in f_inner]`; 4th arg to `build_message_spans`.
+
+5 inject type resolution in fwd_text:
+| Type | `injected_chunks` value | Located by |
+|---|---|---|
+| idle-recap | `[f"[IDLE_RECAP_STRIPPED_{N}_BYTES]"]` | `fwd_text.find(marker)` → pos 0 (full replace) |
+| sidecar | `[f"[SIDECAR_STRIPPED_{N}_BYTES]"]` | same |
+| plan-mode full-strip | `["(plan-mode reminder stripped by proxy)"]` | same |
+| task-notification | `[_WAKEUP_TEXT]` | `fwd_text.find(_WAKEUP_TEXT)` → end of string |
+| bg-exit | `[_WAKEUP_TEXT]` | same; unique via `_dedup_wakeup_blocks` |
+
+**STILL OPEN (follow-ups, NOT done in this commit):**
+- (a) Residual `_diff_text` fallback: blocks with no recorded strip (`blk_chunks` empty) still route to `bd["spans"]` / `_diff_text` — can still produce phantom injected.
+- (b) Faithfulness audit of all strip/inject recording sites — byte-exact chunk match against what the strip function actually removes.
+- (c) `strip_po` `.lstrip` — recorded PO-preview chunk excludes leading `\n\n`; yellow boundary slightly off. No longer a phantom source (gap inference gone), but yellow alignment affected.
+
+**PENDING LIVE-VERIFY:** proxy restart required; a persisted-output tool_result that previously rendered green (phantom) must render grey after restart. Live test is the acceptance criterion.
+
 ## Source refs
 - `_diff_text`, `_diff_messages` in `src/proxy/diff_engine.py`
 - `apply_modification_rules`, `stripped_msg_removed` in `src/proxy/rules.py`
