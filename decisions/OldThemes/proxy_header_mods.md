@@ -63,7 +63,7 @@ Anthropic docs** and the effect is understood and intentional.
 
 ### Catalogue correction — 14 flags, not 13
 
-Empirical source: `src/logs/api_requests_opus_trading_1780512209.jsonl`-class proxy logs (latest full session, 392 reqs). `anthropic-beta` is NOT a fixed set — CC sends different subsets by request type. Three distinct combinations observed; union = 14 flags. Earlier "13" was a single full-main-request snapshot; `structured-outputs-2025-12-15` appears only in structured-output (subagent/tool) requests.
+Empirical source: latest full-session proxy log (392 reqs, opus). `anthropic-beta` is NOT a fixed set — CC sends different subsets by request type. Three distinct combinations observed; union = 14 flags. Earlier "13" was a single full-main-request snapshot; `structured-outputs-2025-12-15` appears only in structured-output (subagent/tool) requests.
 
 | Request type | Count | Flags |
 |---|---|---|
@@ -102,4 +102,4 @@ No flag is worth stripping. Keep ALL pass-through, no manipulation. Each flag ei
 
 ### Sources
 
-`monitor-cc-reference`: `api_beta_headers.md`, `extended_thinking.md`, `effort.md`, `context_editing.md`, `cache_diagnostics.md`, `prompt_caching.md`, `context_windows.md`, `release_notes_overview.md`, `tool_use/advisor_tool.md`, `about_claude_models_overview.md`. Empirical 14-flag catalogue: `src/logs/api_requests_opus_trading_1780512209.jsonl`-class proxy logs (392 reqs).
+`monitor-cc-reference`: `api_beta_headers.md`, `extended_thinking.md`, `effort.md`, `context_editing.md`, `cache_diagnostics.md`, `prompt_caching.md`, `context_windows.md`, `release_notes_overview.md`, `tool_use/advisor_tool.md`, `about_claude_models_overview.md`. Empirical 14-flag catalogue: latest full-session proxy log (392 reqs, opus).
