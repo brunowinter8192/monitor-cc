@@ -113,3 +113,20 @@ python3 dev/hook_smoke/test_rewrite_chained_sleep.py
 
 **Expected output:** `All 8 tests passed.` (exit 0). HOOK path in the script is relative
 (`src/hooks/rewrite_chained_sleep.py`) — must be run from project root.
+
+---
+
+### test_header_capture.py (139 LOC)
+
+**Purpose:** 13-case smoke for the proxy header-capture additions in `src/proxy/addon.py`. Tests two
+independent surfaces: (1) beta-flags extraction logic (split/strip/drop-empty on `anthropic-beta`
+header value); (2) `_filter_response_headers()` — exact-name and prefix-based filter with lowercase
+normalization. Does NOT require a live mitmproxy process — uses minimal mock headers objects.
+
+**Usage (from project root):**
+```bash
+./venv/bin/python dev/hook_smoke/test_header_capture.py
+```
+
+**Expected output:** `13/13 passed` (exit 0). Imports `_filter_response_headers` directly from
+`src/proxy/addon` via `sys.path.insert` on `src/`.

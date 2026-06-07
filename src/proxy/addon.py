@@ -50,6 +50,7 @@ class ProxyAddon:
         self.stripped_log_file = _resolve_dual_log_file("stripped")
         self.injected_log_file = _resolve_dual_log_file("injected")
         self.errors_log_file = _resolve_dual_log_file("errors")
+        self.response_log_file = _resolve_dual_log_file("response")
         self.prev_messages_by_model: Dict[str, list] = {}
         self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
         self.prev_delta_hashes_by_model: dict = {}  # model_family → {"system": [...], "tools": [...], "messages": [...]} for forwarded delta
@@ -151,6 +152,8 @@ class ProxyAddon:
                     prev_delta,
                 )
                 delta_entry["flow_id"] = flow.id
+                raw_beta = flow.request.headers.get("anthropic-beta", "")
+                delta_entry["anthropic_beta"] = [f.strip() for f in raw_beta.split(",") if f.strip()]
                 _write_entry(self.forwarded_log_file, delta_entry)
                 self.prev_delta_hashes_by_model[model_family] = curr_delta
             except Exception as e:
@@ -193,6 +196,18 @@ class ProxyAddon:
                 flow.response.stream = True
         except Exception as e:
             print(f"[proxy_addon] Error in responseheaders hook: {e}", file=sys.stderr)
+        try:
+            if _is_messages_request(flow) and flow.response:
+                entry = {
+                    "flow_id": flow.id,
+                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                    "request_id": flow.response.headers.get("request-id", ""),
+                    "status_code": flow.response.status_code,
+                    "headers": _filter_response_headers(flow.response.headers),
+                }
+                _write_entry(self.response_log_file, entry)
+        except Exception as e:
+            print(f"[dual_log] response write failed: {e}", file=sys.stderr)
 
     def response(self, flow: http.HTTPFlow) -> None:
         """Log 4xx errors; write stripped/injected dual-log entries on success."""
@@ -249,6 +264,20 @@ class ProxyAddon:
 
 
 # FUNCTIONS
+
+_RESPONSE_HEADER_EXACT = frozenset({"request-id", "retry-after", "anthropic-organization-id"})
+_RESPONSE_HEADER_PREFIXES = ("anthropic-ratelimit-", "anthropic-priority-", "anthropic-fast-")
+
+
+# Filter Anthropic rate-limit + identity response headers; normalize keys to lowercase
+def _filter_response_headers(headers) -> dict:
+    result = {}
+    for k, v in headers.items():
+        kl = k.lower()
+        if kl in _RESPONSE_HEADER_EXACT or kl.startswith(_RESPONSE_HEADER_PREFIXES):
+            result[kl] = v
+    return result
+
 
 # Check if flow is a POST to exactly /v1/messages (with optional query string) on api.anthropic.com — excludes /v1/messages/count_tokens and other sub-paths
 def _is_messages_request(flow: http.HTTPFlow) -> bool:
