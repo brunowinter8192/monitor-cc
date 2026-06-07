@@ -60,7 +60,7 @@ Injizierter Block:
 
 **Strategie `clear_thinking_20251015`:** Löscht alte Thinking-Blöcke, behält nur die letzten 2 Thinking-Turns.
 
-**Beta-Header:** Keine Manipulation. CC's `anthropic-beta`-Header passiert den Proxy unverändert. Die frühere Logik (Strip `interleaved-thinking-2025-05-14`, Add `context-management-2025-06-27`) wurde entfernt — Rationale und Flag-Liste in `decisions/OldThemes/proxy_header_mods.md`.
+**Beta-Header:** Keine Manipulation. CC's `anthropic-beta`-Header passiert den Proxy unverändert. Die frühere Logik (Strip `interleaved-thinking-2025-05-14`, Add `context-management-2025-06-27`) wurde entfernt — Rationale, vollständige Flag-Analyse (14 Flags) und Verdict in `decisions/OldThemes/proxy_header_mods.md` (Research Result resolved).
 
 **Logging:** `entry["context_management_injected"]: bool` in jedem Proxy-Log-Entry. `"injected_context_management"` in `modifications`-Liste wenn angewendet.
 
@@ -112,6 +112,19 @@ Jeder Worker in einem Worktree bekommt einen eigenen mitmproxy-Prozess auf eigen
 path == MESSAGES_PATH or path.startswith(MESSAGES_PATH + "?")
 ```
 Zuvor: `path.startswith(MESSAGES_PATH)` — matcht auch `/v1/messages/count_tokens?beta=true` → `_inject_model_override` injizierte `max_tokens` → API 400. Jetzt: count_tokens-Requests laufen KOMPLETT unmodifiziert durch. Kein Stripping, kein Inject, kein Log-Entry in `api_requests_*.jsonl`.
+
+### Model Override
+
+`_inject_model_override(payload, model_family)` in `src/proxy/inject_helpers.py` injects `model`, `effort`, `max_tokens`, and `thinking` from `~/.claude/shared-rules/proxy_rules.json` blocks `model_override` (main/opus) and `model_override_worker` (sonnet).
+
+| Param | Opus (`model_override`) | Worker (`model_override_worker`) |
+|---|---|---|
+| `model` | `claude-opus-4-8` | `claude-sonnet-4-6` |
+| `effort` | `xhigh` | `high` |
+| `max_tokens` | `128000` | `64000` |
+| `thinking` | adaptive + omitted | adaptive + omitted |
+
+Guard: `_is_messages_request()` in `addon.py` restricts injection to exact `/v1/messages` path (+ optional query string) — count_tokens requests pass through unmodified (see `### count_tokens Passthrough`). Value `64000` reflects current `proxy_rules.json` after correction from 128000 (Sonnet 4.6 ceiling; see `decisions/OldThemes/model_override_limits.md`).
 
 ### 4xx Error Logging
 
@@ -319,6 +332,24 @@ Subjektiv: Lag/Flicker im proxy-pane vollständig weg (Quelle war tracemalloc-Ov
 
 Details + Experimente + Paths-Forward: `decisions/OldThemes/tokenizer/tokenizer_baseline.md` (geparkt).
 
+### Model Override Limits
+
+Per-model max output (synchronous Messages API):
+
+| Model | Max output |
+|---|---|
+| Opus 4.8 | 128,000 |
+| Sonnet 4.6 | 64,000 |
+| Haiku 4.5 | 64,000 |
+
+Source: `monitor-cc-reference`: `about_claude_models_overview.md` (Max output row), `extended_thinking.md`. Note: 300k is Batches-API-only (`output-300k-2026-03-24`).
+
+`max_tokens` schema (`monitor-cc-reference`: `api_messages_create.md`): `minimum: 0`, no max enforced; `stop_reason: "max_tokens"` = "exceeded requested `max_tokens` or the model's maximum" → API clamps to ceiling. Evidence: Sonnet workers ran `max_tokens=128000`, zero 400s; schema enforces no upper bound. Caveat: "clamp" inferred from stop_reason wording + no-400; docs contain no literal clamp statement.
+
+Effort levels (`monitor-cc-reference`: `effort.md`): `low < medium < high < xhigh < max`. `high` = "exactly the same behavior as omitting the effort parameter". `xhigh` Opus 4.8 / 4.7 ONLY. Sonnet ceiling = `max`; Sonnet recommended default = `medium`. No beta header required for effort param.
+
+Full investigation trail: `decisions/OldThemes/model_override_limits.md`.
+
 ## Recommendation (SOLL)
 
 Keep (no change needed) — eigene Breakpoints sind implementiert und verifiziert. TTL `1h` und `scope: "global"` korrekt auf Markern gesetzt.
@@ -358,6 +389,18 @@ Change: Proxy takes full deterministic control of `tools[]`:
 - Schema store at `src/proxy/schemas/<plugin>/<tool>.json` populated by `dev/tool_injection/01_extract_schemas.py` — one-time extraction via FastMCP introspection per plugin
 - Append-only injection logic: iterative-dev first, active plugins in activation order, stable alphabetical within each plugin block
 - `active_plugins` tracked in `ProxyAddon.fixated` for session-stable behavior
+
+### Model Override — max_tokens
+
+Change applied: worker `max_tokens` 128000 → 64000 (Sonnet 4.6 ceiling). Opus 128000 kept (= Opus 4.8 ceiling, exact). Source: `monitor-cc-reference` `about_claude_models_overview.md`.
+
+### Model Override — effort
+
+Keep: worker `high`, opus `xhigh`. No change. `high` = default (deliberate); `xhigh` valid on Opus 4.8 only — must NOT be set on Sonnet.
+
+### anthropic-beta Headers
+
+Keep: ALL 14 flags pass-through unmodified, no manipulation. Per-flag research resolved in `decisions/OldThemes/proxy_header_mods.md`. Conclusion: no flag worth stripping — each is auth-critical, feature-active, cost-relevant, or correctness-sensitive.
 
 ## Offene Fragen
 
