@@ -94,6 +94,16 @@ _LOG_REGISTRY: tuple = (
         sweep_eligible=False,
     ),
     LogSpec(
+        name="api_requests_dual_response",
+        path_pattern="dual_log/api_requests_*_response.jsonl",
+        writer="proxy/addon.py:_resolve_dual_log_file",
+        purpose="Dual-log: response HTTP headers (rate-limit family + request-id), joined by flow_id",
+        fmt="jsonl",
+        retention="count-30",
+        janitor_trigger="proxy-start-bash",
+        sweep_eligible=False,
+    ),
+    LogSpec(
         name="gpu_pane",
         path_pattern="../gpu_pane/logs/gpu_pane.log",
         writer="gpu_pane/status.py:TimedRotatingFileHandler",

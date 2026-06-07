@@ -186,7 +186,7 @@ _janitor_cleanup_jsonl_logs() {
             [ -f "$f" ] || continue
             stem="$(basename "$f" .jsonl)"
             stem="${stem#api_requests_}"
-            for sfx in original forwarded stripped injected errors; do stem="${stem%_$sfx}"; done
+            for sfx in original forwarded stripped injected errors response; do stem="${stem%_$sfx}"; done
             log_id="$stem"
             if ! echo "$surviving_ids" | grep -qxF "$log_id"; then
                 rm -f "$f"
