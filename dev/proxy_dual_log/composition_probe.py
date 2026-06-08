@@ -185,8 +185,8 @@ def run_passes_and_collect_ops(messages: list) -> tuple:
         _apply_po_preview_strip, _apply_bg_exit_strip, _apply_hook_prefix_strip,
         _apply_git_lock_strip, _apply_bd_noise_strip, _dedup_wakeup_blocks,
     )
-    # Passes with real op recording (result[5]) — 1A: po_preview, hook_prefix, git_lock, bd_noise
-    _REAL_OPS_PASSES = frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise"})
+    # Passes with real op recording (result[5]) — 1A: po_preview, hook_prefix, git_lock, bd_noise; 1B adds bg_exit
+    _REAL_OPS_PASSES = frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise", "bg_exit"})
     pass_sequence = [
         ("first_pass",    _apply_first_pass),
         ("cumulative_sr", _apply_cumulative_sr_strips),
@@ -226,17 +226,14 @@ def run_passes_and_collect_ops(messages: list) -> tuple:
                         )
         current = after_msgs
 
-    # Dedup wakeup — Layer-1 payload modification modeled as a final composed op
-    after_dedup = _dedup_wakeup_blocks(current)
-    for msg_idx in range(len(current)):
-        bc = current[msg_idx].get("content", "")     if msg_idx < len(current)     else ""
-        ac = after_dedup[msg_idx].get("content", "") if msg_idx < len(after_dedup) else ""
-        if bc != ac:
-            for blk_idx, bt, at in get_block_pairs(bc, ac):
-                for off, rem, inj in extract_ops_from_pair(bt, at):
-                    ops.setdefault(msg_idx, {}).setdefault(blk_idx, []).append(
-                        ("dedup_wakeup", off, rem, inj)
-                    )
+    # Dedup wakeup — Layer-1 payload modification, uses real ops from _dedup_wakeup_blocks (1B)
+    after_dedup, dedup_ops = _dedup_wakeup_blocks(current)
+    for msg_idx, blk_map in dedup_ops.items():
+        for blk_idx, op_list in blk_map.items():
+            for off, rem, inj in op_list:
+                ops.setdefault(msg_idx, {}).setdefault(blk_idx, []).append(
+                    ("dedup_wakeup", off, rem, inj)
+                )
 
     return after_dedup, ops
 

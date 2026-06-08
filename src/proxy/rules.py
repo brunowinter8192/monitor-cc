@@ -102,7 +102,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         changed = True
     _merge_ops(_all_ops, _pass_ops)
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_bg_exit_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_bg_exit_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -112,6 +112,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
+    _merge_ops(_all_ops, _pass_ops)
 
     new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_hook_prefix_strip(new_messages)
     modifications.extend(pass_mods)
@@ -149,7 +150,8 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         changed = True
     _merge_ops(_all_ops, _pass_ops)
 
-    new_messages = _dedup_wakeup_blocks(new_messages)
+    new_messages, _pass_ops = _dedup_wakeup_blocks(new_messages)
+    _merge_ops(_all_ops, _pass_ops)
 
     new_system, original_system2_text, sys_mods, sys_changed = _apply_system_passes(
         payload.get("system", []), system_rules
@@ -182,10 +184,12 @@ def _append_wakeup_text_to_content(content):
 # TN path appends {text: _WAKEUP_TEXT} with trailing \n; BGK path inlines via _strip_bg_from_text
 # which calls result.strip(), producing _WAKEUP_TEXT.rstrip('\n'). Both forms count as one wake-up.
 # Comparison uses rstrip('\n') so both variants are matched as duplicates of each other.
-def _dedup_wakeup_blocks(messages: list) -> list:
+# Returns (new_messages, ops_by_msg_blk) — ops record the removal of each duplicate wakeup block.
+def _dedup_wakeup_blocks(messages: list) -> tuple:
     _wakeup_core = _WAKEUP_TEXT.rstrip('\n')
     result = []
-    for msg in messages:
+    ops_by_msg_blk: dict = {}
+    for idx, msg in enumerate(messages):
         content = msg.get("content", "")
         if isinstance(content, list):
             seen = False
@@ -197,16 +201,22 @@ def _dedup_wakeup_blocks(messages: list) -> list:
                         new_content.append(block)
                 else:
                     new_content.append(block)
-            result.append({**msg, "content": new_content} if len(new_content) != len(content) else msg)
+            if len(new_content) != len(content):
+                result.append({**msg, "content": new_content})
+                ops_by_msg_blk[idx] = _ops_from_content_change(content, new_content)
+            else:
+                result.append(msg)
         elif isinstance(content, str) and content.count(_wakeup_core) > 1:
             first = content.index(_wakeup_core)
             end = first + len(_wakeup_core)
             if end < len(content) and content[end] == '\n':
                 end += 1
-            result.append({**msg, "content": content[:end]})
+            new_content_str = content[:end]
+            result.append({**msg, "content": new_content_str})
+            ops_by_msg_blk[idx] = _ops_from_content_change(content, new_content_str)
         else:
             result.append(msg)
-    return result
+    return result, ops_by_msg_blk
 
 
 # Minimal (offset, removed, injected) op from (before, after) text pair via common-prefix/suffix
@@ -462,6 +472,7 @@ def _apply_bg_exit_strip(messages: list) -> tuple:
     pass_mods = []
     pass_removed_by_idx = {}
     pass_injected_by_idx = {}
+    pass_ops_by_msg_blk: dict = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -478,9 +489,10 @@ def _apply_bg_exit_strip(messages: list) -> tuple:
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = bg_removed
             pass_injected_by_idx[idx] = [_WAKEUP_TEXT]
+            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
 # Hook-prefix pass — strips PreToolUse:<Tool> hook error: [python3 <path>]: prefix from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
