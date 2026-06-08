@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import json
 import os
 import re
 import sys
@@ -54,6 +55,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     stripped_msg_originals = {}
     stripped_msg_removed = {}
     injected_msg_added = {}
+    _all_ops: dict = {}
 
     new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_first_pass(messages_to_process)
     modifications.extend(pass_mods)
@@ -88,7 +90,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_po_preview_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_po_preview_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -98,6 +100,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
+    _merge_ops(_all_ops, _pass_ops)
 
     new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_bg_exit_strip(new_messages)
     modifications.extend(pass_mods)
@@ -110,7 +113,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_hook_prefix_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_hook_prefix_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -120,8 +123,9 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
+    _merge_ops(_all_ops, _pass_ops)
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_git_lock_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_git_lock_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -131,8 +135,9 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
+    _merge_ops(_all_ops, _pass_ops)
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_bd_noise_strip(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_bd_noise_strip(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -142,6 +147,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
+    _merge_ops(_all_ops, _pass_ops)
 
     new_messages = _dedup_wakeup_blocks(new_messages)
 
@@ -201,6 +207,61 @@ def _dedup_wakeup_blocks(messages: list) -> list:
         else:
             result.append(msg)
     return result
+
+
+# Minimal (offset, removed, injected) op from (before, after) text pair via common-prefix/suffix
+def _extract_block_op(before: str, after: str) -> list:
+    if before == after:
+        return []
+    p = 0
+    while p < len(before) and p < len(after) and before[p] == after[p]:
+        p += 1
+    s = 0
+    max_s = min(len(before) - p, len(after) - p)
+    while s < max_s and before[-(s + 1)] == after[-(s + 1)]:
+        s += 1
+    removed  = before[p: (len(before) - s) if s else len(before)]
+    injected = after[p:  (len(after)  - s) if s else len(after)]
+    return [(p, removed, injected)]
+
+
+# Extract plain text from a single content block for op recording
+def _block_inner_text(block) -> str:
+    if isinstance(block, str):
+        return block
+    if isinstance(block, dict):
+        if "text" in block:
+            return str(block["text"])
+        if block.get("type") == "tool_result":
+            c = block.get("content", "")
+            if isinstance(c, str):
+                return c
+            if isinstance(c, list):
+                return "\n".join(b.get("text", "") for b in c if isinstance(b, dict) and "text" in b)
+        return json.dumps(block, ensure_ascii=False)
+    return json.dumps(block, ensure_ascii=False)
+
+
+# Per-block ops {blk_idx: [(offset, removed, injected)]} from a content change — used by op-recording passes
+def _ops_from_content_change(old_content, new_content) -> dict:
+    ops: dict = {}
+    if isinstance(old_content, list) and isinstance(new_content, list):
+        for bi in range(max(len(old_content), len(new_content))):
+            bt = _block_inner_text(old_content[bi]) if bi < len(old_content) else ""
+            at = _block_inner_text(new_content[bi]) if bi < len(new_content) else ""
+            for op in _extract_block_op(bt, at):
+                ops.setdefault(bi, []).append(op)
+    elif isinstance(old_content, str) and isinstance(new_content, str):
+        for op in _extract_block_op(old_content, new_content):
+            ops.setdefault(0, []).append(op)
+    return ops
+
+
+# Merge per-block ops from one pass into the accumulated ops dict
+def _merge_ops(dst: dict, src: dict) -> None:
+    for msg_idx, blk_map in src.items():
+        for blk_idx, op_list in blk_map.items():
+            dst.setdefault(msg_idx, {}).setdefault(blk_idx, []).extend(op_list)
 
 
 # First-pass message loop — elif-chain strips plan-mode, task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
@@ -373,6 +434,7 @@ def _apply_po_preview_strip(messages: list) -> tuple:
     pass_mods = []
     pass_removed_by_idx = {}
     pass_injected_by_idx = {}
+    pass_ops_by_msg_blk: dict = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -388,9 +450,10 @@ def _apply_po_preview_strip(messages: list) -> tuple:
             pass_mods.append("stripped_po_preview")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = po_removed
+            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
 # BG-exit-notification pass — strips "Background command "..." failed with exit code 143/137" lines from user messages — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
@@ -426,6 +489,7 @@ def _apply_hook_prefix_strip(messages: list) -> tuple:
     pass_mods = []
     pass_removed_by_idx = {}
     pass_injected_by_idx = {}
+    pass_ops_by_msg_blk: dict = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -441,9 +505,10 @@ def _apply_hook_prefix_strip(messages: list) -> tuple:
             pass_mods.append("stripped_hook_error_prefix")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = hp_removed
+            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
 # Git-lock-advice pass — strips constant git index.lock advice block from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
@@ -452,6 +517,7 @@ def _apply_git_lock_strip(messages: list) -> tuple:
     pass_mods = []
     pass_removed_by_idx = {}
     pass_injected_by_idx = {}
+    pass_ops_by_msg_blk: dict = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -467,9 +533,10 @@ def _apply_git_lock_strip(messages: list) -> tuple:
             pass_mods.append("stripped_git_lock_advice")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = gl_removed
+            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
 # BD-noise pass — strips bd informational auto-import/export lines from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
@@ -478,6 +545,7 @@ def _apply_bd_noise_strip(messages: list) -> tuple:
     pass_mods = []
     pass_removed_by_idx = {}
     pass_injected_by_idx = {}
+    pass_ops_by_msg_blk: dict = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -493,9 +561,10 @@ def _apply_bd_noise_strip(messages: list) -> tuple:
             pass_mods.append("stripped_bd_noise")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = bd_removed
+            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
 # System-block passes — injects system2 rules and normalizes system3 session-guidance / worktree paths — returns (new_system, original_system2_text, mods, sys_changed)
