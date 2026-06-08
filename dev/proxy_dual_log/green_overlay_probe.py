@@ -34,8 +34,6 @@ _STRIP_RULES_MARKERS: dict[str, list[str]] = {
     'PYR': ['<new-diagnostics>'],
     'PM':  ['Plan mode is active', 'Plan mode '],
     'ALL': [],  # skip — no markers
-    'SC':  [],  # skip — no markers
-    'IR':  [],  # skip — no markers
     'PP':  ['Preview (first '],
     'BGK': ['Background command "'],
     'GL':  ['Another git process seems to be running'],
@@ -55,7 +53,6 @@ _MSG_CODE_TO_FN: dict[str, str] = {
     'PYR': '_apply_cumulative_sr_strips',
     'ALL': '_apply_final_sr_pass', 'ENV': '_apply_final_sr_pass',
     'SN':  '_apply_final_sr_pass', 'FM':  '_apply_final_sr_pass',
-    'SC':  '_check_sidecar',       'IR':  '_check_idle_recap',
     'PP':  '_apply_po_preview_strip', 'BGK': '_apply_bg_exit_strip',
     'GL':  '_apply_git_lock_strip',   'BD':  '_apply_bd_noise_strip',
     'HP':  '_apply_hook_prefix_strip',
@@ -157,7 +154,7 @@ def _attribute_chunk_probe(chunk: str):
     if chunk.startswith('<task-notification>'):
         return 'TN'
     for code, markers in _STRIP_RULES_MARKERS.items():
-        if code in ('TN', 'ALL', 'SC', 'IR'):
+        if code in ('TN', 'ALL'):
             continue
         for marker in markers:
             if marker in chunk:
@@ -405,8 +402,8 @@ def green_overlay_probe_workflow():
         emit(f"artifacts ({phantom} cases — `\\\\n\\\\n[\",}}]` tail pattern from word-level bug on write-side).")
         emit(f"But {real} real message-level injects also attribute to 'unknown'")
         emit("(dot-replacements at msg.0.x for haiku/title calls, file-path injections, etc.) and")
-        emit("would be suppressed (shown grey instead of green). Sidecar markers `[SIDECAR_STRIPPED_X_BYTES]`")
-        emit("would also be suppressed. Only `_apply_bg_exit_strip` (bg-done, 78 cases) correctly avoids gating.")
+        emit("would be suppressed (shown grey instead of green).")
+        emit("Only `_apply_bg_exit_strip` (bg-done, 78 cases) correctly avoids gating.")
     except Exception as ex:
         emit(f"ERROR in soundness scan: {ex}")
         import traceback; traceback.print_exc()
@@ -523,7 +520,7 @@ def green_overlay_probe_workflow():
     emit("- Gate: injected span with fn=unknown (no strip/inject marker) → reclassify equal (grey).")
     emit("- Correctly removes `\\\"\\\\, is_error: f\\\"` phantom from the bug case.")
     emit("- ⚠️ Known limitation: 144 real 'unknown' msg-injects in live logs would also be suppressed")
-    emit("  (dot-replacements for haiku calls, file-path injects, sidecar markers).")
+    emit("  (dot-replacements for haiku calls, file-path injects).")
     emit("  Only `_apply_bg_exit_strip` (bg-done) reliably avoids gating.")
     emit()
     emit("### Whitespace fidelity")

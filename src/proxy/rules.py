@@ -31,8 +31,6 @@ from .payload_helpers import (
     _content_contains,
     _top_level_content_contains,
     _strip_task_notification_tags,
-    _detect_sidecar,
-    _detect_idle_recap,
 )
 from .rules_config import _load_config, _load_system2_rules
 from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
@@ -48,14 +46,6 @@ _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 # Apply all proxy modification rules — returns (modified_payload, list_of_applied_rules, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added)
 def apply_modification_rules(payload: dict, model_family: str = "opus", project_path: str = "") -> tuple:
     system_rules = _load_system2_rules(model_family, project_path)
-
-    result = _check_idle_recap(payload)
-    if result is not None:
-        return result
-
-    result = _check_sidecar(payload)
-    if result is not None:
-        return result
 
     messages_to_process = list(payload.get("messages", []))
     modifications = []
@@ -171,48 +161,6 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
 
 
 # FUNCTIONS
-
-# Short-circuit for CC idle-recap injected message — returns full 7-tuple if detected, None otherwise
-def _check_idle_recap(payload: dict) -> tuple:
-    if not _detect_idle_recap(payload):
-        return None
-    msgs = payload["messages"]
-    idx = len(msgs) - 1
-    orig_content = msgs[idx]["content"]
-    marker = f"[IDLE_RECAP_STRIPPED_{len(orig_content)}_BYTES]"
-    modified = dict(payload)
-    modified["messages"] = list(msgs)
-    modified["messages"][idx] = {**msgs[idx], "content": marker}
-    return (
-        modified,
-        ["stripped_idle_recap"],
-        None,
-        [idx],
-        {idx: orig_content},
-        {idx: [orig_content]},
-        {idx: [marker]},
-    )
-
-
-# Short-circuit for sidecar single-message requests — returns full 7-tuple if detected, None otherwise
-def _check_sidecar(payload: dict) -> tuple:
-    if not _detect_sidecar(payload):
-        return None
-    orig_content = payload["messages"][0]["content"]
-    orig_len = len(orig_content)
-    marker = f"[SIDECAR_STRIPPED_{orig_len}_BYTES]"
-    modified = dict(payload)
-    modified["messages"] = [{**payload["messages"][0], "content": marker}]
-    return (
-        modified,
-        ["stripped_sidecar_content"],
-        None,
-        [0],
-        {0: orig_content},
-        {0: [orig_content]},
-        {0: [marker]},
-    )
-
 
 # Append _WAKEUP_TEXT to content (str or list) as wake-up hint for failed bg-task signals
 def _append_wakeup_text_to_content(content):

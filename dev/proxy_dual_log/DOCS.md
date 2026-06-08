@@ -17,7 +17,7 @@ payload from the delta stream (per-model-family chain), and verifies two invaria
   delta self-consistency — must always hold. Violation = delta-builder bug → exit 1 + FAIL.
 - **Check 2 (soft diagnostic):** `forwarded counts.messages` vs message count in the original.
   Mismatches are reported with context (request, delta indices, diff) but do NOT fail the script —
-  the proxy legitimately changes message count (msg0-strip, sidecar path).
+  the proxy legitimately changes message count (msg0-strip).
 
 Output: per-request table (line, request_id, family, is_first, sys/tools/msgs counts, delta KB,
 status, delta indices) + PASS/FAIL summary line.
@@ -262,8 +262,6 @@ the removal range become "stripped"; prior "injected" bytes re-removed disappear
 - 480 double-inject blocks — dedup op correctly reduces each to 1 injected wakeup
 - Money shot (msg[100] TN+BG double-inject): span list = 1 stripped (full TN block) +
   1 injected wakeup; Cfwd (48 chars) reconstructed byte-exact from C0 (406 chars)
-
-**Sidecar/idle_recap:** UNVERIFIED — absent from corpus; theoretical model stated.
 
 **Usage (from project root):**
 ```bash

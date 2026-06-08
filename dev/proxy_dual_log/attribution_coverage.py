@@ -131,13 +131,8 @@ def _classify_strip_msg(s_texts: list, i_bv: list) -> tuple:
     # Known strip_vocab markers: check each stripped text chunk independently
     for text in s_texts:
         code = attribute_chunk(text)
-        if code and code not in ("ALL", "SC"):
+        if code and code != "ALL":
             return ("vocab", code)
-
-    # Sidecar via inject counterpart
-    i_text = _inject_text(i_bv)
-    if "[SIDECAR_STRIPPED_" in i_text:
-        return ("vocab", "SC")
 
     # False positive: json_reserialization (string content → block-list, cache.py side effect)
     # Only checked AFTER all proxy-strip patterns fail — json_reser is the fallback for
