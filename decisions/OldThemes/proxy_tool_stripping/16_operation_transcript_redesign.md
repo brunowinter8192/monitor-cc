@@ -1,6 +1,6 @@
 # 16 — Operation-Transcript Redesign of the Strip/Inject Span Logs (2026-06-08)
 
-Status: **architecture validated on real data by dev/ probe; src/ port IN PROGRESS — Stage 1A DONE.** Supersedes the patch-on-patch approach of the `_diff_text` fallback + `_dedup_wakeup_blocks` for the `_stripped`/`_injected` span construction.
+Status: **Stage 1 Recording COMPLETE; Stage 2 (production wiring) pending.** Supersedes the patch-on-patch approach of the `_diff_text` fallback + `_dedup_wakeup_blocks` for the `_stripped`/`_injected` span construction.
 
 ## Origin
 
@@ -81,13 +81,15 @@ Each pass: initialises `pass_ops_by_msg_blk: dict = {}`, calls `_ops_from_conten
 
 **Corpus (2026-06-09):** 9509/9509 byte-exact. Money-shot msg[100] TN+BG: injected wakeup spans = **1** ✅ double-inject FIXED at recording level. 772 double-inject blocks all pass.
 
-### ⬜ Stage 1C — PENDING: SR passes
+### ✅ Stage 1C — DONE (2026-06-09)
 
-`_apply_cumulative_sr_strips` + `_apply_final_sr_pass`. Multiple ops per block (one per SR match).
+`_apply_cumulative_sr_strips` + `_apply_final_sr_pass` migrated. Same 6th-return pattern. `cumulative_sr` records op from `original_before_pass` → final `content` after all inner SR strips (one `_ops_from_content_change` call covers the composed multi-strip). `final_sr` records `_ops_from_content_change(old_content, new_content)`. Both added to `_REAL_OPS_PASSES`. Corpus 9509/9509, cumulative_sr 1277/0, final_sr 99/0.
 
-### ⬜ Stage 1D — PENDING: TN-transform + first_pass
+### ✅ Stage 1D — DONE (2026-06-09) — **Stage 1 COMPLETE**
 
-`_apply_first_pass` TN branch — trickiest: strips XML wrapper while keeping inner text; op is `(prefix_len, changed_region, new_region)`, not a clean chunk removal.
+`_apply_first_pass` migrated — all 7 branches covered: plan-mode strip, plan-mode else (full placeholder replace), TN-transform (XML wrapper strip + wakeup append → list content), task-tools-nag, deferred-tools, user-interrupt, rejection. Each branch records `_ops_from_content_change(old_content, new_msg["content"])` inside its `if changed` guard. `first_pass` added to `_REAL_OPS_PASSES` — all passes now real, zero stand-in remaining.
+
+**Full-proof corpus (2026-06-09):** 9509/9509 blocks byte-exact, both invariants. `first_pass` 7258/0 100%. Money-shot msg[100] TN+BG: injected wakeup spans = **1** ✅ with `first_pass` real.
 
 ## Stage 1 — Implementation Plan (for Sub-Stage Workers)
 
@@ -117,24 +119,13 @@ pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
 
 ### Probe wiring (`dev/proxy_dual_log/composition_probe.py`)
 
-`_REAL_OPS_PASSES` after 1B: `frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise", "bg_exit"})`. Sub-stage worker adds the new pass name(s) here.
+`_REAL_OPS_PASSES` final (after 1D): `frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise", "bg_exit", "cumulative_sr", "final_sr", "first_pass"})` — **all 8 passes real, no stand-in remaining**. Pass loop reads `result[5]` for every pass. Dedup unpacks `_dedup_wakeup_blocks(current)` as `(after_dedup, dedup_ops)` and iterates `dedup_ops` directly.
 
-Pass loop: when `pass_name in _REAL_OPS_PASSES`, reads `result[5]` directly; else stand-in `(before, after)` diff. Dedup: separate block below the loop, unpacks `_dedup_wakeup_blocks(current)` as `(after_dedup, dedup_ops)` and iterates `dedup_ops` directly — no change needed for 1C/1D.
+**Full proof (2026-06-09):** 9509/9509 byte-exact. Money-shot msg[100] = 1 injected wakeup ✅.
 
 ### Per-pass op shapes
 
-See `Op Shape Per Pass` table in `dev/proxy_dual_log/01_reports/composition_probe_20260609.md`. Defines exactly what each pass should record at its mutation site.
-
-### Acceptance per sub-stage
-
-- Corpus: `9509/9509` blocks byte-exact, both invariants (`equal+stripped == C0`, `equal+injected == Cfwd`)
-- Money shot: relevant pass-type appears in per-pass-type table at 100% / 0 failed
-
-### Open sub-stages
-
-**1C — SR passes** (`_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, plus SR branches inside `_apply_first_pass`: plan-mode, task-tools-nag, deferred-tools, user-interrupt, rejection SRs). Multiple ops per block possible (one `_extract_block_op` per SR match position). Probe: add `"cumulative_sr"`, `"final_sr"` to `_REAL_OPS_PASSES`; SR branches in `first_pass` remain stand-in until 1D.
-
-**1D — TN-transform in `_apply_first_pass`** — trickiest. Strips XML wrapper while keeping inner text — not a clean chunk removal. Op shape: `(prefix_len, changed_region, new_region)`. The `first_pass` name can only enter `_REAL_OPS_PASSES` once ALL its branches (SR strips + TN transform) are recorded.
+See `Op Shape Per Pass` table in `dev/proxy_dual_log/01_reports/composition_probe_20260609.md`. Defines exactly what each pass records at its mutation site.
 
 ## Open
 

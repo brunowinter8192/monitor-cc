@@ -57,7 +57,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     injected_msg_added = {}
     _all_ops: dict = {}
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_first_pass(messages_to_process)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_first_pass(messages_to_process)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -67,6 +67,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
+    _merge_ops(_all_ops, _pass_ops)
 
     new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_cumulative_sr_strips(new_messages)
     modifications.extend(pass_mods)
@@ -282,6 +283,7 @@ def _apply_first_pass(messages: list) -> tuple:
     pass_mods = []
     pass_removed_by_idx = {}
     pass_injected_by_idx = {}
+    pass_ops_by_msg_blk: dict = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
@@ -295,12 +297,14 @@ def _apply_first_pass(messages: list) -> tuple:
                     changed_indices.append(idx)
                     pass_mods.append("removed_plan_mode_sr")
                     pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "Plan mode")
+                    pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, stripped)
             else:
                 result.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
                 changed_indices.append(idx)
                 pass_mods.append("removed_plan_mode_sr")
                 pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "Plan mode")
                 pass_injected_by_idx[idx] = ["(plan-mode reminder stripped by proxy)"]
+                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, "(plan-mode reminder stripped by proxy)")
         elif msg.get("role") == "user" and _top_level_content_contains(msg.get("content", ""), "<task-notification>"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
@@ -322,6 +326,7 @@ def _apply_first_pass(messages: list) -> tuple:
                     removed = removed + _find_system_reminder_blocks(old_content, "task tools haven")
                 pass_removed_by_idx[idx] = removed
                 pass_injected_by_idx[idx] = [_WAKEUP_TEXT]
+                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "task tools haven"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
@@ -331,6 +336,7 @@ def _apply_first_pass(messages: list) -> tuple:
                 changed_indices.append(idx)
                 pass_mods.append("stripped_task_tools_nag")
                 pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "task tools haven")
+                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "deferred tools are now available via ToolSearch"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
@@ -340,6 +346,7 @@ def _apply_first_pass(messages: list) -> tuple:
                 changed_indices.append(idx)
                 pass_mods.append("stripped_deferred_tools_sr")
                 pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "deferred tools are now available via ToolSearch")
+                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "user sent a new message while you were working"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
@@ -352,6 +359,7 @@ def _apply_first_pass(messages: list) -> tuple:
                 pass_removed_by_idx[idx] = [
                     line for block in _ui_blocks for line in _IMP_LINE_RE.findall(block)
                 ] or _ui_blocks
+                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
         elif msg.get("role") == "user" and _message_has_rejection(msg.get("content", "")):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
@@ -361,9 +369,10 @@ def _apply_first_pass(messages: list) -> tuple:
                 changed_indices.append(idx)
                 pass_mods.append("stripped_rejection_message")
                 pass_removed_by_idx[idx] = ["(rejection marker stripped by proxy)"]
+                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
 # Cumulative second pass — strips Skills, claudeMd, pyright, ENV-context SRs from every user message including those already touched by pass 1 — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)

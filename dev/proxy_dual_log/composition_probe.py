@@ -185,8 +185,8 @@ def run_passes_and_collect_ops(messages: list) -> tuple:
         _apply_po_preview_strip, _apply_bg_exit_strip, _apply_hook_prefix_strip,
         _apply_git_lock_strip, _apply_bd_noise_strip, _dedup_wakeup_blocks,
     )
-    # Passes with real op recording (result[5]) — 1A: po_preview, hook_prefix, git_lock, bd_noise; 1B: bg_exit; 1C: cumulative_sr, final_sr
-    _REAL_OPS_PASSES = frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise", "bg_exit", "cumulative_sr", "final_sr"})
+    # Passes with real op recording (result[5]) — 1A: po_preview, hook_prefix, git_lock, bd_noise; 1B: bg_exit; 1C: cumulative_sr, final_sr; 1D: first_pass — ALL passes now real, no stand-in
+    _REAL_OPS_PASSES = frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise", "bg_exit", "cumulative_sr", "final_sr", "first_pass"})
     pass_sequence = [
         ("first_pass",    _apply_first_pass),
         ("cumulative_sr", _apply_cumulative_sr_strips),
