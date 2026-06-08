@@ -117,6 +117,12 @@ def extract_cache_turns(messages: list) -> list:
                     'content_blocks': blocks,
                     'request_id': request_id,
                     '_input_key': input_key,
+                    'cache_creation_ttl': usage.get('cache_creation') or {},
+                    'server_tool_use':    usage.get('server_tool_use') or {},
+                    'service_tier':       usage.get('service_tier', ''),
+                    'speed':              usage.get('speed', ''),
+                    'inference_geo':      usage.get('inference_geo', ''),
+                    'iterations':         usage.get('iterations') or [],
                 })
                 current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + sum(b.get('chars', 0) for b in blocks if b['type'] == 'thinking')
                 current_turn['thinking_sig_chars'] = current_turn.get('thinking_sig_chars', 0) + sum(b.get('sig_chars', 0) for b in blocks if b['type'] == 'thinking')

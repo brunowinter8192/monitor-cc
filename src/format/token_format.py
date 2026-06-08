@@ -90,6 +90,32 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
             line_keys.append(key)
 
             if is_expanded:
+                ttl = call.get('cache_creation_ttl') or {}
+                m5  = ttl.get('ephemeral_5m_input_tokens', 0)
+                h1  = ttl.get('ephemeral_1h_input_tokens', 0)
+                if ttl:
+                    all_lines.append(f"    {DIM}5m:{_format_k(m5)}  1h:{_format_k(h1)}{SOFT_RESET}")
+                    line_keys.append(None)
+                stu = call.get('server_tool_use') or {}
+                ws  = stu.get('web_search_requests', 0)
+                wf  = stu.get('web_fetch_requests', 0)
+                if ws or wf:
+                    all_lines.append(f"    {DIM}web_search:{ws}  web_fetch:{wf}{SOFT_RESET}")
+                    line_keys.append(None)
+                tier = call.get('service_tier', '')
+                spd  = call.get('speed', '')
+                geo  = call.get('inference_geo', '')
+                meta_parts = []
+                if tier: meta_parts.append(f"tier:{tier}")
+                if spd:  meta_parts.append(f"speed:{spd}")
+                if geo:  meta_parts.append(f"geo:{geo}")
+                if meta_parts:
+                    all_lines.append(f"    {DIM}{' '.join(meta_parts)}{SOFT_RESET}")
+                    line_keys.append(None)
+                iters = call.get('iterations') or []
+                if iters:
+                    all_lines.append(f"    {DIM}iter:{len(iters)}{SOFT_RESET}")
+                    line_keys.append(None)
                 for block in call.get('content_blocks', []):
                     bt = block.get('type', '')
                     if bt == 'tool_use':
