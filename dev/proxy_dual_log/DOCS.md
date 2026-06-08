@@ -256,10 +256,12 @@ the accumulated `(equal/stripped/injected)` span list and applying each op — "
 the removal range become "stripped"; prior "injected" bytes re-removed disappear. Models
 `_dedup_wakeup_blocks` as a final composed op (Layer-1 payload modification, not a span-build hack).
 
-**Proved (7219/7219 blocks, 492 entries, 5 stems):**
+**Stage 1A wiring:** `_REAL_OPS_PASSES = frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise"})` — for these 4 passes the probe reads `result[5]` (directly-recorded ops from `src/proxy/rules.py`) instead of the `(before, after)` stand-in. Remaining passes still use the stand-in; both paths verified byte-exact.
+
+**Proved (9509/9509 blocks, 567 entries, 5 stems — 2026-06-09 with Stage 1A ops):**
 - Both reconstruction invariants byte-exact: `equal+stripped == C0`, `equal+injected == Cfwd`
-- 676 multi-pass blocks (same block, ≥2 passes) — all pass
-- 480 double-inject blocks — dedup op correctly reduces each to 1 injected wakeup
+- 1134 multi-pass blocks (same block, ≥2 passes) — all pass
+- 772 double-inject blocks — dedup op correctly reduces each to 1 injected wakeup
 - Money shot (msg[100] TN+BG double-inject): span list = 1 stripped (full TN block) +
   1 injected wakeup; Cfwd (48 chars) reconstructed byte-exact from C0 (406 chars)
 

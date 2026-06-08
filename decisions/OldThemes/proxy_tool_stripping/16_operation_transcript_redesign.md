@@ -1,6 +1,6 @@
 # 16 — Operation-Transcript Redesign of the Strip/Inject Span Logs (2026-06-08)
 
-Status: **architecture validated on real data by dev/ probe; src/ port PENDING (staged).** Supersedes the patch-on-patch approach of the `_diff_text` fallback + `_dedup_wakeup_blocks` for the `_stripped`/`_injected` span construction.
+Status: **architecture validated on real data by dev/ probe; src/ port IN PROGRESS — Stage 1A DONE.** Supersedes the patch-on-patch approach of the `_diff_text` fallback + `_dedup_wakeup_blocks` for the `_stripped`/`_injected` span construction.
 
 ## Origin
 
@@ -58,11 +58,35 @@ Applying op `(offset_in_Ck, removed, injected)`: walk the list tracking a Ck-cur
 
 The report's **Op-Shape-Per-Pass table is the src/ port spec** — what each pass must record directly instead of the probe's `(before,after)` stand-in.
 
-## Open (for the src/ port)
+## Staged src/ Port
 
-- **Staged port** (per workers-1.md § Sequential Sub-Stage Decomposition): pass-by-pass precise recording → composition builder to src/ → invariant as CI test → remove `_diff_text` fallback + `_dedup` span-patch. One stage at a time with per-stage sign-off.
+### ✅ Stage 1A — DONE (2026-06-09)
+
+4 pure-strip passes migrated to position-anchored op recording in `src/proxy/rules.py`:
+`_apply_po_preview_strip`, `_apply_hook_prefix_strip`, `_apply_git_lock_strip`, `_apply_bd_noise_strip`.
+
+Each pass: initialises `pass_ops_by_msg_blk: dict = {}`, calls `_ops_from_content_change(old_content, new_content)` at its mutation site, returns it as 6th value. `apply_modification_rules` unpacks the 6th return for each of the 4 passes and merges into `_all_ops` (via `_merge_ops`) — additive only, 7-tuple intact, `_all_ops` not yet returned (Stage-2 hook point).
+
+`composition_probe.py` wired with `_REAL_OPS_PASSES = frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise"})` — reads `result[5]` directly for these 4; stand-in path for the rest.
+
+**Corpus (2026-06-09):** 9509/9509 blocks byte-exact across 567 entries / 559 modified / 5 stems. Both invariants hold. All per-pass-type rates 100%.
+
+### ⬜ Stage 1B — PENDING: bg_exit + dedup
+
+`_apply_bg_exit_strip` (the actual double-inject pass) + `_dedup_wakeup_blocks`. This is the stage that fixes the production bug — dedup becomes an explicit composed op rather than a span-build hack.
+
+### ⬜ Stage 1C — PENDING: SR passes
+
+`_apply_cumulative_sr_strips` + `_apply_final_sr_pass`. Multiple ops per block (one per SR match).
+
+### ⬜ Stage 1D — PENDING: TN-transform + first_pass
+
+`_apply_first_pass` TN branch — trickiest: strips XML wrapper while keeping inner text; op is `(prefix_len, changed_region, new_region)`, not a clean chunk removal.
+
+## Open
+
 - **sidecar / idle_recap UNVERIFIED** — absent from the 5-stem corpus. Theoretical model: `Op(0,0,full_original,marker)` single full-replacement, trivially composable. Port must close with real data.
-- **TN-transform recording is the trickiest** — `_apply_first_pass` TN branch strips the XML wrapper while keeping inner text (not a clean strip); its op is `(prefix_len, changed_region, new_region)`, not a clean chunk removal.
+- **Stage 2 (composition builder → src/)** — wire `_all_ops` into span derivation, replace `_diff_text` fallback + `_dedup` span-patch. Follows after 1B–1D sign-off.
 
 ## Sources
 
