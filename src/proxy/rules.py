@@ -68,7 +68,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     if c_idxs:
         changed = True
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_cumulative_sr_strips(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_cumulative_sr_strips(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -78,8 +78,9 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
+    _merge_ops(_all_ops, _pass_ops)
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected = _apply_final_sr_pass(new_messages)
+    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_final_sr_pass(new_messages)
     modifications.extend(pass_mods)
     for idx in c_idxs:
         if idx not in stripped_msg_indices:
@@ -89,6 +90,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
     if c_idxs:
         changed = True
+    _merge_ops(_all_ops, _pass_ops)
 
     new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_po_preview_strip(new_messages)
     modifications.extend(pass_mods)
@@ -373,6 +375,7 @@ def _apply_cumulative_sr_strips(messages: list) -> tuple:
     pass_mods = []
     pass_removed_by_idx = {}
     pass_injected_by_idx = {}
+    pass_ops_by_msg_blk: dict = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -407,17 +410,19 @@ def _apply_cumulative_sr_strips(messages: list) -> tuple:
                 sr for sr in _find_all_system_reminder_blocks(original_before_pass)
                 if sr not in _find_all_system_reminder_blocks(content)
             ]
+            pass_ops_by_msg_blk[idx] = _ops_from_content_change(original_before_pass, content)
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
-# Final SR pass — strips all remaining system-reminder blocks from every user message — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)
+# Final SR pass — strips all remaining system-reminder blocks from every user message — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
 def _apply_final_sr_pass(messages: list) -> tuple:
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
     pass_injected_by_idx = {}
+    pass_ops_by_msg_blk: dict = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
         if msg.get("role") != "user":
@@ -433,9 +438,10 @@ def _apply_final_sr_pass(messages: list) -> tuple:
             pass_removed_by_idx[idx] = [
                 sr for sr in _find_all_system_reminder_blocks(old_content) if sr not in remaining
             ]
+            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
 # PO-preview pass — strips Preview sections from persisted-output blocks in user messages — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx)

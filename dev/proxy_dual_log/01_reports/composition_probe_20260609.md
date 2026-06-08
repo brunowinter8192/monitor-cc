@@ -1,4 +1,4 @@
-# Multi-Pass Composition Probe — 2026-06-09 00:46:18
+# Multi-Pass Composition Probe — 2026-06-09 01:13:24
 
 Validates: per-pass ops `(offset_in_Ck, removed, injected)` composed via span-list
 accumulation produce byte-exact reconstruction of both C0 and Cfwd.
