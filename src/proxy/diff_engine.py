@@ -133,6 +133,63 @@ def _span_counts(spans: list) -> tuple:
             sum(1 for t, _ in spans if t == "injected"))
 
 
+# Apply one edit op (offset_in_Ck, removed, injected) to a span list over C0
+# Ck = "".join(t for tag,t in spans if tag in ("equal","injected"))
+# "equal" bytes in [offset, offset+len(removed)) → "stripped"; "injected" bytes in that range disappear
+def apply_edit_to_spans(spans: list, offset: int, removed: str, injected: str) -> list:
+    if not removed and not injected:
+        return spans
+    rem_end = offset + len(removed)
+    new_spans = []
+    ck_cursor = 0
+    inject_emitted = not bool(injected)
+
+    for tag, text in spans:
+        if tag == "stripped":
+            new_spans.append((tag, text))
+            continue
+        span_start = ck_cursor
+        span_end   = ck_cursor + len(text)
+        ck_cursor  = span_end
+
+        if span_end <= offset:
+            new_spans.append((tag, text))
+        elif span_start >= rem_end:
+            if not inject_emitted:
+                new_spans.append(("injected", injected))
+                inject_emitted = True
+            new_spans.append((tag, text))
+        else:
+            lo       = max(offset, span_start) - span_start
+            hi       = min(rem_end, span_end)  - span_start
+            prefix_t = text[:lo]
+            mid_t    = text[lo:hi]
+            suffix_t = text[hi:]
+            if prefix_t:
+                new_spans.append((tag, prefix_t))
+            if mid_t and tag == "equal":
+                new_spans.append(("stripped", mid_t))
+            # mid_t with tag="injected" disappears (prior injection re-removed)
+            if not inject_emitted:
+                new_spans.append(("injected", injected))
+                inject_emitted = True
+            if suffix_t:
+                new_spans.append((tag, suffix_t))
+
+    if not inject_emitted:
+        new_spans.append(("injected", injected))
+    return new_spans
+
+
+# Compose accumulated per-block ops (offset, removed, injected) into a span list over C0
+# Inv1: "".join(equal+stripped) == C0_text; Inv2: "".join(equal+injected) == Cfwd_text
+def compose_block(c0_text: str, block_ops: list) -> list:
+    spans = [("equal", c0_text)] if c0_text else []
+    for off, rem, inj in block_ops:
+        spans = apply_edit_to_spans(spans, off, rem, inj)
+    return spans
+
+
 # Diff system blocks by index
 def _diff_system(orig_sys: list, fwd_sys: list) -> list:
     n = max(len(orig_sys), len(fwd_sys)) if (orig_sys or fwd_sys) else 0
