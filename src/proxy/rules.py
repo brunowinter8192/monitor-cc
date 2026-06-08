@@ -164,11 +164,11 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         changed = True
 
     if not changed:
-        return payload, modifications, None, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added
+        return payload, modifications, None, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, _all_ops
     modified = dict(payload)
     modified["messages"] = new_messages
     modified["system"] = new_system
-    return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added
+    return modified, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, _all_ops
 
 
 # FUNCTIONS
