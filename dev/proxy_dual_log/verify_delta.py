@@ -9,7 +9,7 @@ payload from the delta stream (per model-family chain), and checks two invariant
 
   Check 2 (SOFT diagnostic): forwarded counts.messages vs message count in the original.
                   A mismatch is reported with context but does NOT fail the script —
-                  the proxy legitimately changes message count (msg0-strip, sidecar path).
+                  the proxy legitimately changes message count (msg0-strip).
 
 Usage (from project root):
     ./venv/bin/python dev/proxy_dual_log/verify_delta.py \\

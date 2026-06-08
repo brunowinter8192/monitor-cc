@@ -25,7 +25,6 @@ _MSG_CODE_TO_FN: dict[str, str] = {
     'PYR': '_apply_cumulative_sr_strips',
     'ALL': '_apply_final_sr_pass', 'ENV': '_apply_final_sr_pass',
     'SN':  '_apply_final_sr_pass', 'FM':  '_apply_final_sr_pass',
-    'SC':  '_check_sidecar',       'IR':  '_check_idle_recap',
     'PP':  '_apply_po_preview_strip', 'BGK': '_apply_bg_exit_strip',
     'GL':  '_apply_git_lock_strip',   'BD':  '_apply_bd_noise_strip',
     'HP':  '_apply_hook_prefix_strip',

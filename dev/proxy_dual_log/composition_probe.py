@@ -505,17 +505,6 @@ def composition_probe_workflow():
     emit("| `_apply_bd_noise_strip` | `Op(blk_idx, offset, bd_line, '')` | pure strip |")
     emit("| `_dedup_wakeup_blocks` | `Op(blk_idx, offset_2nd+, wakeup, '')` | run AFTER all passes; Layer-1 payload op, NOT a span-building hack |")
 
-    # ── Sidecar / idle_recap ───────────────────────────────────────────────────
-    emit()
-    emit("## Sidecar / Idle-Recap Coverage")
-    emit()
-    emit("**Status: UNVERIFIED — not present in 5-stem corpus.**")
-    emit()
-    emit("Both use the SHORT-CIRCUIT path: entire message replaced by a marker string.")
-    emit("Composition model (theoretical): `Op(0, 0, full_original_content, marker_string)` —")
-    emit("trivially composable single full-replacement, invariants hold by construction.")
-    emit("Proof requires real-data corpus entries; absent from current data.")
-
     # ── Verdict ────────────────────────────────────────────────────────────────
     emit()
     emit("## Verdict")
@@ -534,7 +523,6 @@ def composition_probe_workflow():
         emit(f"- `{dbl}` double-inject blocks — dedup op reduces each to 1 injected wakeup ✅")
         emit(f"- `_dedup_wakeup_blocks` is a Layer-1 pass, not a span-building workaround")
         emit(f"- Money shot (msg[100] TN+BG): 1 injected wakeup, C0+Cfwd byte-exact ✅")
-        emit(f"- Sidecar/idle_recap: UNVERIFIED (absent from corpus)")
     except Exception:
         emit("Results unavailable (corpus run failed).")
 

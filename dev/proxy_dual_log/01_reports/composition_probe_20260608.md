@@ -1,4 +1,4 @@
-# Multi-Pass Composition Probe — 2026-06-08 22:15:55
+# Multi-Pass Composition Probe — 2026-06-08 23:35:27
 
 Validates: per-pass ops `(offset_in_Ck, removed, injected)` composed via span-list
 accumulation produce byte-exact reconstruction of both C0 and Cfwd.
@@ -47,25 +47,25 @@ Composition must produce exactly ONE injected wakeup (= Cfwd byte-exact).
 
 | Metric | Value |
 |---|---|
-| Total entries | 492 |
-| Entries with modifications | 484 |
-| Blocks checked | 7219 |
-| Blocks passed (byte-exact) | 7219 |
+| Total entries | 567 |
+| Entries with modifications | 559 |
+| Blocks checked | 9509 |
+| Blocks passed (byte-exact) | 9509 |
 | Blocks failed | 0 |
-| Multi-pass blocks (≥2 ops same block) | 676 |
-| Double-inject blocks (≥2 injecting ops) | 480 |
+| Multi-pass blocks (≥2 ops same block) | 1134 |
+| Double-inject blocks (≥2 injecting ops) | 772 |
 
 ### Per-Pass-Type Results
 
 | Pass | Passed | Failed | Rate |
 |---|---|---|---|
-| `bg_exit` | 480 | 0 | 100% |
-| `cumulative_sr` | 1030 | 0 | 100% |
-| `dedup_wakeup` | 480 | 0 | 100% |
-| `final_sr` | 75 | 0 | 100% |
-| `first_pass` | 5499 | 0 | 100% |
-| `hook_prefix` | 320 | 0 | 100% |
-| `po_preview` | 373 | 0 | 100% |
+| `bg_exit` | 772 | 0 | 100% |
+| `cumulative_sr` | 1277 | 0 | 100% |
+| `dedup_wakeup` | 772 | 0 | 100% |
+| `final_sr` | 99 | 0 | 100% |
+| `first_pass` | 7258 | 0 | 100% |
+| `hook_prefix` | 418 | 0 | 100% |
+| `po_preview` | 619 | 0 | 100% |
 
 **No failing cases — all blocks pass both invariants byte-exact ✅**
 
@@ -86,22 +86,12 @@ What each production pass would emit directly (instead of probe's stand-in):
 | `_apply_bd_noise_strip` | `Op(blk_idx, offset, bd_line, '')` | pure strip |
 | `_dedup_wakeup_blocks` | `Op(blk_idx, offset_2nd+, wakeup, '')` | run AFTER all passes; Layer-1 payload op, NOT a span-building hack |
 
-## Sidecar / Idle-Recap Coverage
-
-**Status: UNVERIFIED — not present in 5-stem corpus (492 entries).**
-
-Both use the SHORT-CIRCUIT path: entire message replaced by a marker string.
-Composition model (theoretical): `Op(0, 0, full_original_content, marker_string)` —
-trivially composable single full-replacement, invariants hold by construction.
-Proof requires real-data corpus entries; absent from current data.
-
 ## Verdict
 
 **Multi-pass composition: HOLDS BYTE-EXACT on all corpus data**
 
-- `7219/7219` blocks pass both invariants across 484 modified requests
-- `676` multi-pass blocks verified (same block, ≥2 passes)
-- `480` double-inject blocks — dedup op reduces each to 1 injected wakeup ✅
+- `9509/9509` blocks pass both invariants across 559 modified requests
+- `1134` multi-pass blocks verified (same block, ≥2 passes)
+- `772` double-inject blocks — dedup op reduces each to 1 injected wakeup ✅
 - `_dedup_wakeup_blocks` is a Layer-1 pass, not a span-building workaround
 - Money shot (msg[100] TN+BG): 1 injected wakeup, C0+Cfwd byte-exact ✅
-- Sidecar/idle_recap: UNVERIFIED (absent from corpus)

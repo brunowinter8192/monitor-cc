@@ -36,8 +36,6 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'PYR': ('stripped_pyright_diagnostics', ['<new-diagnostics>']),
     'PM':  ('removed_plan_mode_sr',         ['Plan mode is active', 'Plan mode ']),
     'ALL': ('stripped_all_sr_msg0',         []),
-    'SC':  ('stripped_sidecar_content',     []),  # full original stored, no marker substring
-    'IR':  ('stripped_idle_recap',          []),  # full original stored, no SR-wrapping
     'PP':  ('stripped_po_preview',          ['Preview (first ']),  # PO wrapper kept, Preview content removed
     'BGK': ('stripped_bg_exit_notification', ['Background command "']),  # SIGTERM/SIGKILL kill notification from user-aborted sleep timer
     'GL':  ('stripped_git_lock_advice',      ['Another git process seems to be running']),  # constant git index.lock advice block in tool_result
@@ -63,9 +61,9 @@ STRIP_RULE_CODES: frozenset[str] = frozenset(RULES.keys())
 _FULL_NAME_TO_CODE: dict[str, str] = {fn: code for code, (fn, _) in RULES.items()}
 
 # Rule names that indicate an SR-wrapping strip (for LEAK:<SR> detection in classify_tags)
-# Excludes TN (tag-strip, not SR) and SC (sidecar — raw content, not SR-wrapped)
+# Excludes TN (tag-strip, not SR) and PP (PO-preview — wrapper preserved, not SR-wrapped)
 _SR_STRIP_RULES: frozenset[str] = frozenset(
-    fn for code, (fn, _) in RULES.items() if code not in ('TN', 'SC', 'IR', 'PP')
+    fn for code, (fn, _) in RULES.items() if code not in ('TN', 'PP')
 )
 
 
