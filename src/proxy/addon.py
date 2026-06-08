@@ -95,7 +95,7 @@ class ProxyAddon:
             except Exception as e:
                 print(f"[dual_log] original write failed: {e}", file=sys.stderr)
 
-            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added = apply_modification_rules(payload, model_family, project_path)
+            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, all_ops = apply_modification_rules(payload, model_family, project_path)
             deferred_tool_names = _extract_deferred_tool_names(payload)
 
             if model_family not in self.fixated:
@@ -135,6 +135,7 @@ class ProxyAddon:
             flow.metadata["mc_request_id"] = mc_request_id
             flow.metadata["mc_stripped_msg_removed"] = stripped_msg_removed
             flow.metadata["mc_injected_msg_added"] = injected_msg_added
+            flow.metadata["mc_all_ops"] = all_ops
 
             prev_mod_msgs = self.prev_messages_by_model.get(model_family)
             modified_payload = _strip_all_cache_control(modified_payload)

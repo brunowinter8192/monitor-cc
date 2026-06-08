@@ -243,7 +243,7 @@ def get_bug_case():
     orig_e = load_entry_by_flow_id(LOG_DIR / f"{stem}_original.jsonl", flow_id)
     orig_payload = orig_e["payload"]
 
-    mod_payload, _, _, _, _, sremoved = run_rules(orig_payload)
+    mod_payload, _, _, _, _, sremoved, *_ = run_rules(orig_payload)
 
     def _sc(obj):
         return _strip_cache_control(obj)
@@ -283,7 +283,7 @@ def get_text_block_replace_case():
 
     orig_e = load_entry_by_flow_id(LOG_DIR / f"{stem}_original.jsonl", flow_id)
     orig_payload = orig_e["payload"]
-    mod_payload, _, _, _, _, sremoved = run_rules(orig_payload)
+    mod_payload, _, _, _, _, sremoved, *_ = run_rules(orig_payload)
 
     def _sc(obj):
         return _strip_cache_control(obj)
@@ -327,7 +327,7 @@ def get_bg_exit_replace_case():
 
     orig_e = load_entry_by_flow_id(LOG_DIR / f"{stem}_original.jsonl", flow_id)
     orig_payload = orig_e["payload"]
-    mod_payload, _, _, _, _, sremoved = run_rules(orig_payload)
+    mod_payload, _, _, _, _, sremoved, *_ = run_rules(orig_payload)
 
     def _sc(obj):
         return _strip_cache_control(obj)
@@ -359,7 +359,7 @@ def get_multi_chunk_case():
 
     orig_e = load_entry_by_flow_id(LOG_DIR / f"{stem}_original.jsonl", flow_id)
     orig_payload = orig_e["payload"]
-    mod_payload, _, _, _, _, sremoved = run_rules(orig_payload)
+    mod_payload, _, _, _, _, sremoved, *_ = run_rules(orig_payload)
 
     def _sc(obj):
         return _strip_cache_control(obj)
