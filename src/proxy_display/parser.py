@@ -414,6 +414,48 @@ def find_errors_log_path(project_filter: Optional[str]) -> Optional[Path]:
             log_id = lines[1].strip()
     return Path(root) / 'src' / 'logs' / 'dual_log' / f'api_requests_{log_id}_errors.jsonl'
 
+# Resolve the _response dual-log path for the current proxy session of project_filter.
+# Returns None if project_filter is empty; path may not exist (callers check .exists()).
+def find_response_log_path(project_filter: Optional[str]) -> Optional[Path]:
+    if not project_filter:
+        return None
+    root = os.environ.get('MONITOR_CC_ROOT', '') or str(Path(__file__).parent.parent.parent)
+    session_id = _proxy_session_id_for_project(project_filter)
+    marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
+    log_id = session_id
+    if marker_file.exists():
+        lines = marker_file.read_text(encoding='utf-8').splitlines()
+        if len(lines) >= 2 and lines[1].strip():
+            log_id = lines[1].strip()
+    return Path(root) / 'src' / 'logs' / 'dual_log' / f'api_requests_{log_id}_response.jsonl'
+
+# Read new _response entries from last_pos; returns ({request_id: headers_dict}, new_pos).
+# Silently ignores missing/unreadable file and malformed lines.
+def read_response_log(path: Optional[Path], last_pos: int) -> tuple:
+    if path is None or not path.exists():
+        return {}, last_pos
+    rid_map: dict = {}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            f.seek(last_pos)
+            while True:
+                raw = f.readline()
+                if not raw:
+                    break
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                rid = entry.get('request_id', '')
+                if rid:
+                    rid_map[rid] = entry.get('headers', {})
+            return rid_map, f.tell()
+    except OSError:
+        return {}, last_pos
+
 # Glob dual_log/api_requests_worker_{project_session_id}_*_errors.jsonl, read new records per
 # file by byte-pos. worker_name extracted from filename (mirrors scan_worker_logs naming logic).
 # Unprefixed fallback when project_session_id is empty. Returns (records, new_positions).

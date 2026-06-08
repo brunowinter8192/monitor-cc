@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import datetime
 from typing import Optional
 from ..constants import RED, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET
 # FUNCTIONS
@@ -39,7 +40,7 @@ def _format_ts(timestamp: str) -> str:
     return format_timestamp(timestamp)
 
 # Format cache tracker — returns (visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count)
-def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0) -> tuple:
+def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None) -> tuple:
     from .formatter import shorten_tool_name
     if not turns:
         return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0, 0
@@ -116,6 +117,43 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
                 if iters:
                     all_lines.append(f"    {DIM}iter:{len(iters)}{SOFT_RESET}")
                     line_keys.append(None)
+                rid = call.get('request_id', '')
+                rl_headers = (response_rid_map or {}).get(rid) if rid else None
+                if rl_headers:
+                    def _fmt_reset(epoch_str: str) -> str:
+                        try:
+                            ts = datetime.datetime.fromtimestamp(int(epoch_str))
+                            now = datetime.datetime.now()
+                            if ts.date() == now.date():
+                                return ts.strftime('%H:%M')
+                            return ts.strftime('%a %H:%M')
+                        except (ValueError, OSError):
+                            return epoch_str
+                    u5h = rl_headers.get('anthropic-ratelimit-unified-5h-utilization', '')
+                    r5h = rl_headers.get('anthropic-ratelimit-unified-5h-reset', '')
+                    u7d = rl_headers.get('anthropic-ratelimit-unified-7d-utilization', '')
+                    r7d = rl_headers.get('anthropic-ratelimit-unified-7d-reset', '')
+                    parts_rl = []
+                    if u5h:
+                        pct5 = f"{float(u5h)*100:.0f}%"
+                        parts_rl.append(f"5h:{pct5}→{_fmt_reset(r5h)}" if r5h else f"5h:{pct5}")
+                    if u7d:
+                        pct7 = f"{float(u7d)*100:.0f}%"
+                        parts_rl.append(f"7d:{pct7}→{_fmt_reset(r7d)}" if r7d else f"7d:{pct7}")
+                    if parts_rl:
+                        all_lines.append(f"    {DIM}rl: {'  '.join(parts_rl)}{SOFT_RESET}")
+                        line_keys.append(None)
+                    status = rl_headers.get('anthropic-ratelimit-unified-status', 'allowed')
+                    overage = rl_headers.get('anthropic-ratelimit-unified-overage-status', '')
+                    warn_parts = []
+                    if status != 'allowed':
+                        warn_parts.append(f"status:{status}")
+                    if overage and overage != 'allowed':
+                        reason = rl_headers.get('anthropic-ratelimit-unified-overage-disabled-reason', '')
+                        warn_parts.append(f"overage:{overage}" + (f"({reason})" if reason else ''))
+                    if warn_parts:
+                        all_lines.append(f"    {YELLOW}{'  '.join(warn_parts)}{SOFT_RESET}")
+                        line_keys.append(None)
                 for block in call.get('content_blocks', []):
                     bt = block.get('type', '')
                     if bt == 'tool_use':
