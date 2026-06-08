@@ -247,6 +247,33 @@ chars (`"is_error": false}`) are never coloured.
 
 ---
 
+### composition_probe.py
+
+**Purpose:** Proves multi-pass span composition over C0. Models each proxy pass as an
+`Op(offset_in_Ck, removed, injected)` derived from the pass's `(before, after)` block-text
+pair via common-prefix/suffix. Composes all passes into a single span list over C0 by walking
+the accumulated `(equal/stripped/injected)` span list and applying each op — "equal" bytes in
+the removal range become "stripped"; prior "injected" bytes re-removed disappear. Models
+`_dedup_wakeup_blocks` as a final composed op (Layer-1 payload modification, not a span-build hack).
+
+**Proved (7219/7219 blocks, 492 entries, 5 stems):**
+- Both reconstruction invariants byte-exact: `equal+stripped == C0`, `equal+injected == Cfwd`
+- 676 multi-pass blocks (same block, ≥2 passes) — all pass
+- 480 double-inject blocks — dedup op correctly reduces each to 1 injected wakeup
+- Money shot (msg[100] TN+BG double-inject): span list = 1 stripped (full TN block) +
+  1 injected wakeup; Cfwd (48 chars) reconstructed byte-exact from C0 (406 chars)
+
+**Sidecar/idle_recap:** UNVERIFIED — absent from corpus; theoretical model stated.
+
+**Usage (from project root):**
+```bash
+./venv/bin/python dev/proxy_dual_log/composition_probe.py
+```
+
+**Output:** `dev/proxy_dual_log/01_reports/composition_probe_<YYYYMMDD>.md`
+
+---
+
 ### attribution_coverage.py
 
 **Purpose:** Read-only function-attribution coverage analysis for `_stripped`/`_injected` dual-logs.
