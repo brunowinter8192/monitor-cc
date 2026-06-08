@@ -6,9 +6,40 @@ Emerged from the `anthropic-beta` flag research (see `proxy_header_mods.md`). Co
 
 ## Status
 
-- **Write-side header capture: DONE** (this session, merged on dev). `_forwarded` now carries `anthropic_beta` (full flag list per request); a new `_response` dual-log captures the response HTTP-header rate-limit family + `request-id` in the `responseheaders()` hook for all status codes. See `decisions/logging.md`, `decisions/pipe05_proxy_cache.md`, `src/proxy/DOCS.md`, smoke `dev/hook_smoke/test_header_capture.py`.
-- **Read-side + pane redesign: PENDING** (next session). Surface the captured + already-logged-but-unshown fields; restructure the proxy pane along Request/Response. Tracked in the umbrella issue.
-- **Live-verify: PENDING** a proxy restart (frozen live-copy) — grep fresh `_forwarded` for 6/13/9 beta subsets, grep `_response` for real `anthropic-ratelimit-*` (confirms the headers survive on our OAuth traffic).
+- **Write-side header capture: DONE + LIVE-VERIFIED** (2026-06-08). `_forwarded` carries `anthropic_beta`; `_response` dual-log captures response rate-limit headers + `request-id` in `responseheaders()` for all status codes. Verified live on disk: real `_response` entries (status 200, `anthropic-ratelimit-unified-*` family present) and `anthropic_beta` subsets in `_forwarded`. The earlier "frozen live-copy, live-verify PENDING" note is obsolete.
+- **Architecture refined (2026-06-08): proxy pane = REQUEST only, token pane = RESPONSE.** Supersedes the "two-block REQUEST/RESPONSE inside the proxy pane" direction (see `## Pane redesign direction`, now marked superseded). Full reasoning in `## 2026-06-08 — Architecture refinement` below.
+- **Proxy-pane (request) cluster: DONE + merged on dev** (2026-06-08, worker `proxy-req-pane`): `beta:` drill-down section (`anthropic_beta` from `_forwarded`); CR/CC removed from the proxy header (response data → token pane); write-side carry of `context_management` + `diagnostics` into `_forwarded` (read deferred — no real entries until a proxy restart + traffic). See `decisions/logging.md`, `decisions/pipe05_proxy_cache.md`, `src/proxy/DOCS.md`, `src/proxy_display/DOCS.md`.
+- **Token-pane (response) cluster: DONE + merged on dev + LIVE-VERIFIED** (2026-06-08, worker `proxy-req-pane` reused): usage extras (`extract_cache_turns` api_call + `format_cache_tracker`) and unified rate-limit headers (`_response` reader `find_response_log_path`/`read_response_log`, joined by `request_id` — verified 67/67 + 73 live) rendered above the thinking block, per request N. User-verified live. See `src/jsonl/DOCS.md`, `src/format/DOCS.md`, `src/panes/DOCS.md`, `src/proxy_display/DOCS.md`, `decisions/logging.md`.
+- **Token-pane nits (DEFERRED, #10):** (a) `overage:rejected(org_level_disabled)` is a steady-state account property → suppress when reason is `org_level_disabled` (it fires every request, carries no per-request signal); (b) harden the `float(utilization)` parse in `format_cache_tracker` (currently unguarded; header is reliably a float string, low risk).
+- **Directives read-side: DEFERRED** — write-side carry landed; needs a proxy restart + traffic before real `_forwarded` entries carry `context_management`/`diagnostics` to render.
+
+## 2026-06-08 — Architecture refinement (the request/response boundary)
+
+The earlier "two-block REQUEST/RESPONSE inside the proxy pane" plan was rejected. Two principles replace it.
+
+**1. Pane assignment by request/response semantics.** Each pane is indexed per request N, but each shows a different direction of that exchange:
+- **Proxy pane = REQUEST** — what the proxy sends TO the API for req N (request body + request headers). The response of req N feeds into req N+1; the design counts in requests, not separate blocks. We do NOT restructure into REQUEST/RESPONSE blocks — we enrich the request-centric rows with request-side fields only.
+- **Token pane = RESPONSE** — what the server returns for req N. Since req N's response is not re-sent to the API in req N+1, it belongs to the token pane, not the proxy pane.
+
+**2. Two orthogonal questions — do not conflate:**
+- *What may the proxy LOG?* → **wire-Lesart**: only data the proxy captures on the wire. Request body/headers (`_original`/`_forwarded`) ✅; response HEADERS (`_response`, read in `responseheaders()` before the body streams) ✅; response BODY/usage object ❌ (2xx `stream=True` pass-through — never touches the proxy; CC writes it to Session-JSONL). `_response` capture stays as-is, it is legitimate.
+- *Which pane DISPLAYS a datum?* → request/response semantics, independent of which file logged it. The rate-limit headers are wire-captured by the proxy (so the `_response` log is correct) but are RESPONSE data → displayed in the **token pane**. The token pane therefore reads TWO sources for req N's response: the Session-JSONL usage object + the proxy `_response` rate-limit headers.
+
+**Consequences:**
+- Proxy pane loses CR/CC from the header (response data; token pane owns it) — restores the boundary (CR/CC were a long-standing leak of Session-JSONL response data into the request pane).
+- Proxy pane gains only request-side enrichment: `beta:` (request header) and — once read-side lands — `context_management`/`diagnostics` (request body directives, write-carried into `_forwarded` this session).
+- The `usage:`-section-in-the-proxy-pane idea is DEAD — usage extras are Session-JSONL response data → token pane.
+- Rate-limit `ratelimit:` rendering moves from proxy pane → token pane.
+
+## 2026-06-08 — Response-header family CORRECTION (unified, not classic)
+
+The rate-limit family on our OAuth/subscription traffic is NOT the classic API `anthropic-ratelimit-{requests,tokens,input-tokens,output-tokens}-{limit,remaining,reset}` the reference docs (and `## Response-Header rate-limit family` below) describe. Real captured `_response` headers (status 200, verified on disk 2026-06-08) are the **`anthropic-ratelimit-unified-*` subscription family**: `unified-status`, `unified-5h-{status,reset,utilization}`, `unified-7d-{status,reset,utilization}`, `unified-representative-claim`, `unified-fallback-percentage`, `unified-reset`, `unified-overage-{status,disabled-reason}`, plus `request-id`, `anthropic-organization-id`. (`anthropic-priority-*`/`anthropic-fast-*` absent on OAuth traffic.) The write-side filter `_filter_response_headers` already captures these via the `anthropic-ratelimit-` prefix match. Token-pane RESPONSE rendering targets the unified 5h/7d utilization + reset — NOT requests/tokens-remaining. This is exactly the "what really happens vs. what the API docs say" gap the header capture was built to close.
+
+## 2026-06-08 — Usage extras re-measured + directives correction
+
+- **Usage extras present 932/932** assistant msgs (6 recent sessions): `cache_creation` (`ephemeral_5m`/`ephemeral_1h`), `server_tool_use` (`web_search_requests`/`web_fetch_requests`), `service_tier` (str, e.g. `"standard"`), `speed` (str), `inference_geo` (str, often `""`), `iterations` (list of per-iteration breakdown dicts). `output_tokens_details` 0/932 → thinking-tokens deferral reconfirmed.
+- **Join path corrected:** the panes get per-request usage via `extract_cache_turns` (`jsonl_cache_turns.py`) building `api_calls`, NOT via `extract_usage_data` (a different consumer). Usage extras land on the token pane by extending the `api_call` dict in `extract_cache_turns` + rendering in `format_cache_tracker` (`token_format.py`) above the thinking block.
+- **Directives correction:** the claim "`context_management` + `diagnostics` sit in `_original`/`_forwarded` today — pure read-side gap" (see `### Request-Body directives` below) was WRONG. They sit only in `_original`; the `_forwarded` delta carried only `anthropic_beta` (header, added in addon.py). Surfacing them needed a write-side carry into `_build_forwarded_delta` (logging.py) — landed 2026-06-08. Read-side deferred until real entries exist.
 
 ## Data anatomy — four quadrants (Request/Response × Header/Body)
 
@@ -47,6 +78,8 @@ Earlier claim: `usage.output_tokens_details.thinking_tokens` sits in the same us
 
 ## Response-Header rate-limit family (③, NEW candidate)
 
+> **CORRECTED 2026-06-08** — the classic `anthropic-ratelimit-{requests,tokens}-*` family below is NOT what our OAuth traffic returns. Real family is `anthropic-ratelimit-unified-*` (5h/7d windows). See `## 2026-06-08 — Response-header family CORRECTION`.
+
 Anthropic returns on every response (reference: `monitor-cc-reference: platform_claude_com_docs_en_api_rate_limits.md`, `api_overview.md`): `request-id`, `anthropic-organization-id`, and the rate-limit family `anthropic-ratelimit-{requests,tokens,input-tokens,output-tokens}-{limit,remaining,reset}` (reset = RFC-3339), `retry-after` (on throttle), `anthropic-priority-*` (Priority Tier), `anthropic-fast-*` (fast mode). This is "how close to the throttle / when it resets" — observability the monitor has zero of, complementing the consumption view (CR/CC/Out).
 
 **Key mechanic:** response HEADERS arrive with the status line *before* the body streams → readable in `responseheaders()` for free, no body buffering, no stream-pass break. This is why ③ is an EASY win and thinking_tokens (response BODY) is hard.
@@ -64,6 +97,8 @@ The 14-flag catalog (`proxy_header_mods.md`) was extracted from an **old top-lev
 5. **Hard** thinking_tokens consumed — only via proxy SSE buffering; defer.
 
 ## Pane redesign direction
+
+> **SUPERSEDED 2026-06-08** — the two-block cut was rejected. See `## 2026-06-08 — Architecture refinement`. Replaced by: proxy pane = REQUEST only (request-centric rows enriched, no response block), token pane = RESPONSE (usage extras + rate-limit headers).
 
 Proxy pane = visual single-source-of-truth (logs are for Opus). Restructure per Request/Response: a REQUEST block (sys/tools/messages/fields + beta-flag subset indicator) and a RESPONSE block (usage extras + rate-limit headers). Two-block cut preferred over bolting a response section onto the request-centric layout — "request solid, response absent" is the imbalance to fix, not cement.
 
