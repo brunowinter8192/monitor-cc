@@ -11,18 +11,11 @@ from .render_messages import _aggregate_req_buckets
 
 # Render all per-request rows for an expanded turn group, returning (lines, keys, opus_req_num, sub_req_num)
 def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None) -> tuple:
-    from .render_sections import render_system_blocks, render_tools, render_fields_delta
+    from .render_sections import render_system_blocks, render_tools, render_fields_delta, render_beta
     from .render_messages import render_messages
     lines = []
     keys = []
 
-    _raw_calls = turns[turn_idx].get('api_calls', []) if turns and turn_idx < len(turns) else []
-    turn_api_calls = [
-        c for c in _raw_calls
-        if c.get('cache_read', 0) + c.get('cache_creation', 0) > 0
-        or c.get('cache_read', 0) + c.get('cache_creation', 0) + c.get('direct', 0) > 1000
-    ]
-    opus_call_idx = 0
 
     for entry_idx, entry in group['entry_pairs']:
         model_short = _shorten_model(entry.get('model', '?'))
@@ -102,15 +95,6 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         eff_str = f" eff:{_fmt_effort(eff_val)}" if eff_val is not None else ''
         mt = entry.get('max_tokens') or 0
         think_str = f" think:{_fmt_thinking_budget(mt)}" if (mt and model_short != 'haiku') else ''
-        if model_short != 'haiku':
-            api_call = turn_api_calls[opus_call_idx] if opus_call_idx < len(turn_api_calls) else {}
-            cr = api_call.get('cache_read', 0)
-            cc = api_call.get('cache_creation', 0)
-            cr_cc_str = f" CR:{_format_k(cr)} CC:{_format_k(cc)}"
-            opus_call_idx += 1
-        else:
-            cr_cc_str = ''
-
         _fid = entry.get('flow_id', '')
         _n_strip = len(entry.get('_strip_fns_lookup', {}).get(_fid, set()))
         _n_inj   = len(entry.get('_inject_fns_lookup', {}).get(_fid, set()))
@@ -118,7 +102,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         if _n_strip: _badge_parts.append(f'{YELLOW}{_n_strip}strip{SOFT_RESET}')
         if _n_inj:   _badge_parts.append(f'{GREEN}{_n_inj}inj{SOFT_RESET}')
         tag_badge = (' ' + ' '.join(_badge_parts)) if _badge_parts else ''
-        header_raw = f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg{eff_str}{think_str}{cr_cc_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{SOFT_RESET}"
+        header_raw = f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg{eff_str}{think_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{SOFT_RESET}"
         if copy_feedback is not None:
             _stripped_h = _ANSI_ESCAPE_RE.sub('', header_raw)
             visible_len = sum(_cell_width(ch) for ch in _stripped_h)
@@ -147,6 +131,9 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
             f_lines, f_keys = render_fields_delta(entry_idx, entry, expand_states, pane_width)
             lines.extend(f_lines)
             keys.extend(f_keys)
+            b_lines, b_keys = render_beta(entry_idx, entry, expand_states)
+            lines.extend(b_lines)
+            keys.extend(b_keys)
             s_lines, s_keys = render_system_blocks(entry_idx, entry, _section_ref, expand_states, pane_width, mods)
             lines.extend(s_lines)
             keys.extend(s_keys)

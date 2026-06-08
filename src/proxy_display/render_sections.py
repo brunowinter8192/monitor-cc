@@ -267,6 +267,25 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                     keys.append(None)
     return lines, keys
 
+# Render beta flags section for an expanded request entry, returning (lines, keys)
+def render_beta(entry_idx: int, entry: dict, expand_states: dict) -> tuple:
+    lines = []
+    keys = []
+    flags = entry.get('anthropic_beta') or []
+    if not flags:
+        return lines, keys
+    beta_key = ('beta', entry_idx)
+    is_beta_expanded = expand_states.get(beta_key, False)
+    beta_symbol = '▼' if is_beta_expanded else '▶'
+    lines.append(f"    {DIM}{beta_symbol} beta: {len(flags)} flags{SOFT_RESET}")
+    keys.append(beta_key)
+    if is_beta_expanded:
+        for flag in flags:
+            lines.append(f"      {DIM}{flag}{SOFT_RESET}")
+            keys.append(None)
+    return lines, keys
+
+
 # Render fields delta section for an expanded request entry, returning (lines, keys)
 def render_fields_delta(entry_idx: int, entry: dict, expand_states: dict, pane_width: int) -> tuple:
     lines = []
