@@ -247,10 +247,9 @@ class ProxyAddon:
                         prev_s = self.prev_stripped_hashes_by_model.get(mf)
                         prev_i = self.prev_injected_hashes_by_model.get(mf)
                         model_str = mod_payload.get("model", "")
-                        smr = flow.metadata.get("mc_stripped_msg_removed") or {}
-                        ima = flow.metadata.get("mc_injected_msg_added") or {}
+                        all_ops = flow.metadata.get("mc_all_ops") or {}
                         s_entry, i_entry, new_s, new_i = _build_stripped_injected_deltas(
-                            orig_payload, mod_payload, request_id, prev_s, prev_i, model_str, smr, ima,
+                            orig_payload, mod_payload, request_id, prev_s, prev_i, model_str, all_ops,
                         )
                         s_entry["flow_id"] = flow.id
                         i_entry["flow_id"] = flow.id
