@@ -24,13 +24,13 @@ core/monitor.run_monitor(mode=X)
 
 ## Modules
 
-### token_pane.py (259 LOC)
+### token_pane.py (269 LOC)
 
-**Purpose:** Token/cache tracker pane — incrementally reads session JSONL, builds cache-turn dicts, renders interactive expand/collapse/scroll view with CR/CC/D per request. Owns the zebra/hover/truncation render loop: calls `format_cache_tracker` for logical lines, then applies `ZEBRA_BG_A/B`, `HOVER_BG` priority, and `truncate_visible` per line. Loop follows drain-refresh-render pattern; private helpers `_tokens_ram_state`, `_handle_tokens_mouse`, `_handle_tokens_key`, `_refresh_tokens_data`, `_build_tokens_output` extracted from loop body.
-**Reads:** Session JSONL (incremental via `_cache_jsonl_position`); shared state `monitor.active_project_filter`.
-**Writes:** stdout (ANSI screen); mutates module-level `cache_expand_states`, `cache_line_map`, `cache_hover_row`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position`.
+**Purpose:** Token/cache tracker pane — incrementally reads session JSONL, builds cache-turn dicts, renders interactive expand/collapse/scroll view with CR/CC/D per request. Owns the zebra/hover/truncation render loop: calls `format_cache_tracker` for logical lines, then applies `ZEBRA_BG_A/B`, `HOVER_BG` priority, and `truncate_visible` per line. Loop follows drain-refresh-render pattern; private helpers `_tokens_ram_state`, `_handle_tokens_mouse`, `_handle_tokens_key`, `_refresh_tokens_data`, `_build_tokens_output` extracted from loop body. Also polls `_response` dual-log incrementally via `find_response_log_path` + `read_response_log` (from `proxy_display.parser`), accumulates `_response_rid_map: {request_id → headers}` for rate-limit display; resets on session change alongside other state.
+**Reads:** Session JSONL (incremental via `_cache_jsonl_position`); `_response` dual-log (incremental via `_response_log_pos`); shared state `monitor.active_project_filter`.
+**Writes:** stdout (ANSI screen); mutates module-level `cache_expand_states`, `cache_line_map`, `cache_hover_row`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position`, `_response_log_pos`, `_response_rid_map`.
 **Called by:** `core/monitor.py` (mode dispatch); `proxy_display/pane.py` + `proxy_display/worker_proxy_pane.py` (`build_cache_turns` function).
-**Calls out:** `jsonl`, `input.click_handler`, `format.token_format`, `core.monitor` (lazy, inside `_refresh_tokens_data`), `utils.truncate_visible`.
+**Calls out:** `jsonl`, `input.click_handler`, `format.token_format`, `core.monitor` (lazy, inside `_refresh_tokens_data`), `proxy_display.parser` (lazy: `find_response_log_path`, `read_response_log`), `utils.truncate_visible`.
 
 ---
 
@@ -70,7 +70,7 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 
 | Module | Key state vars |
 |---|---|
-| `token_pane` | `cache_expand_states`, `cache_line_map`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position` |
+| `token_pane` | `cache_expand_states`, `cache_line_map`, `cache_scroll_offset`, `_cache_turns`, `_cache_jsonl_position`, `_response_log_pos`, `_response_rid_map` |
 | `warnings_parse` | `unknown_type_counts`, `warned_unknown_types` |
 | `warnings_pane` | `tool_errors`, `error_expand_states`, `error_line_map`, `error_hover_row`, `error_scroll_offset`, `_errors_log_pos`, `_errors_log_path`, `_worker_errors_positions`, `_last_project_filter`, `_monitor_start_ts` |
 | `warnings_render` | none (stateless — receives state as args, returns new values) |

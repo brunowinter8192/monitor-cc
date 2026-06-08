@@ -22,6 +22,8 @@ cache_scroll_offset: int = 0
 _cache_jsonl_position: int = 0
 _cache_turns: list = []
 _cache_current_filepath = None
+_response_log_pos: int = 0
+_response_rid_map: dict = {}
 
 # ORCHESTRATOR
 
@@ -197,8 +199,10 @@ def _handle_tokens_key(char: str) -> bool:
 # Tick-boundary token data refresh; returns (input_changed, new_last_data_refresh)
 def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
     from ..core import monitor as _monitor
+    from ..proxy_display.parser import find_response_log_path, read_response_log
     global _cache_current_filepath, _cache_jsonl_position, _cache_turns
     global cache_expand_states, cache_scroll_offset, cache_hover_row
+    global _response_log_pos, _response_rid_map
     if now - last_data_refresh < POLL_INTERVAL:
         return input_changed, last_data_refresh
     main_sessions = _monitor.get_main_session_files()
@@ -211,10 +215,15 @@ def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: flo
         cache_expand_states.clear()
         cache_scroll_offset = 0
         cache_hover_row = None
+        _response_log_pos = 0
+        _response_rid_map.clear()
     if filepath is not None:
         _cache_turns, _cache_jsonl_position = build_cache_turns(
             filepath, _cache_jsonl_position, _cache_turns
         )
+    resp_path = find_response_log_path(_monitor.active_project_filter)
+    new_entries, _response_log_pos = read_response_log(resp_path, _response_log_pos)
+    _response_rid_map.update(new_entries)
     return True, now
 
 # Format, clip viewport, and render token turns to ANSI string; updates cache_line_map
@@ -228,7 +237,8 @@ def _build_tokens_output() -> str:
         pane_height = 50
         pane_width = 80
     visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count = format_cache_tracker(
-        _cache_turns, cache_expand_states, pane_height, pane_width, cache_scroll_offset
+        _cache_turns, cache_expand_states, pane_height, pane_width, cache_scroll_offset,
+        response_rid_map=_response_rid_map,
     )
     result_lines = []
     if sticky_header is not None:
