@@ -185,6 +185,8 @@ def run_passes_and_collect_ops(messages: list) -> tuple:
         _apply_po_preview_strip, _apply_bg_exit_strip, _apply_hook_prefix_strip,
         _apply_git_lock_strip, _apply_bd_noise_strip, _dedup_wakeup_blocks,
     )
+    # Passes with real op recording (result[5]) — 1A: po_preview, hook_prefix, git_lock, bd_noise
+    _REAL_OPS_PASSES = frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise"})
     pass_sequence = [
         ("first_pass",    _apply_first_pass),
         ("cumulative_sr", _apply_cumulative_sr_strips),
@@ -200,15 +202,28 @@ def run_passes_and_collect_ops(messages: list) -> tuple:
 
     for pass_name, pass_fn in pass_sequence:
         before = current
-        after_msgs, _, _, changed_idxs, _ = pass_fn(before)
-        for msg_idx in changed_idxs:
-            bc = before[msg_idx].get("content", "")     if msg_idx < len(before)     else ""
-            ac = after_msgs[msg_idx].get("content", "") if msg_idx < len(after_msgs) else ""
-            for blk_idx, bt, at in get_block_pairs(bc, ac):
-                for off, rem, inj in extract_ops_from_pair(bt, at):
-                    ops.setdefault(msg_idx, {}).setdefault(blk_idx, []).append(
-                        (pass_name, off, rem, inj)
-                    )
+        result = pass_fn(before)
+        after_msgs = result[0]
+        changed_idxs = result[3]
+        if pass_name in _REAL_OPS_PASSES:
+            # Use directly-recorded ops from 6th return value
+            pass_ops = result[5]
+            for msg_idx, blk_map in pass_ops.items():
+                for blk_idx, op_list in blk_map.items():
+                    for off, rem, inj in op_list:
+                        ops.setdefault(msg_idx, {}).setdefault(blk_idx, []).append(
+                            (pass_name, off, rem, inj)
+                        )
+        else:
+            # Stand-in for passes not yet migrated to op recording
+            for msg_idx in changed_idxs:
+                bc = before[msg_idx].get("content", "")     if msg_idx < len(before)     else ""
+                ac = after_msgs[msg_idx].get("content", "") if msg_idx < len(after_msgs) else ""
+                for blk_idx, bt, at in get_block_pairs(bc, ac):
+                    for off, rem, inj in extract_ops_from_pair(bt, at):
+                        ops.setdefault(msg_idx, {}).setdefault(blk_idx, []).append(
+                            (pass_name, off, rem, inj)
+                        )
         current = after_msgs
 
     # Dedup wakeup — Layer-1 payload modification modeled as a final composed op
