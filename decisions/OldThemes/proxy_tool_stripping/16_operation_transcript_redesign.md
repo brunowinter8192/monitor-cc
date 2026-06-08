@@ -71,9 +71,15 @@ Each pass: initialises `pass_ops_by_msg_blk: dict = {}`, calls `_ops_from_conten
 
 **Corpus (2026-06-09):** 9509/9509 blocks byte-exact across 567 entries / 559 modified / 5 stems. Both invariants hold. All per-pass-type rates 100%.
 
-### ⬜ Stage 1B — PENDING: bg_exit + dedup
+### ✅ Stage 1B — DONE (2026-06-09)
 
-`_apply_bg_exit_strip` (the actual double-inject pass) + `_dedup_wakeup_blocks`. This is the stage that fixes the production bug — dedup becomes an explicit composed op rather than a span-build hack.
+`_apply_bg_exit_strip` + `_dedup_wakeup_blocks` migrated.
+
+`_apply_bg_exit_strip`: same 6th-return pattern as 1A — `pass_ops_by_msg_blk` init, `_ops_from_content_change(old_content, new_content)` at mutation site, 6th return, `_merge_ops` in orchestrator. `bg_exit` added to `_REAL_OPS_PASSES` in probe.
+
+`_dedup_wakeup_blocks`: signature changed `list` → `tuple` — returns `(new_messages, ops_by_msg_blk)`. Records op per changed message via `_ops_from_content_change`; caller (`apply_modification_rules`) unpacks tuple + `_merge_ops`. Probe dedup block replaced with direct tuple-unpack of the real return — no stand-in.
+
+**Corpus (2026-06-09):** 9509/9509 byte-exact. Money-shot msg[100] TN+BG: injected wakeup spans = **1** ✅ double-inject FIXED at recording level. 772 double-inject blocks all pass.
 
 ### ⬜ Stage 1C — PENDING: SR passes
 
@@ -83,10 +89,57 @@ Each pass: initialises `pass_ops_by_msg_blk: dict = {}`, calls `_ops_from_conten
 
 `_apply_first_pass` TN branch — trickiest: strips XML wrapper while keeping inner text; op is `(prefix_len, changed_region, new_region)`, not a clean chunk removal.
 
+## Stage 1 — Implementation Plan (for Sub-Stage Workers)
+
+Self-contained reference for 1C/1D workers. Pattern established in 1A+1B.
+
+### Data structure
+
+6th return value on every pass function:
+```python
+pass_ops_by_msg_blk: dict  # {msg_idx: {blk_idx: [(offset, removed, injected)]}}
+```
+Orchestrator (`apply_modification_rules`) accumulates via `_merge_ops(dst, src)` into `_all_ops: dict = {}`. `_all_ops` is NOT returned — Stage-2 hook point only. Production 7-tuple intact, change is purely additive.
+
+`_dedup_wakeup_blocks` is a special case: signature changed to return `(new_messages, ops_by_msg_blk)` — caller unpacks tuple directly, no 5-tuple unpacking pattern.
+
+### Recording method
+
+`_ops_from_content_change(old_content, new_content) -> dict`
+- str content: calls `_extract_block_op(before, after)` → 1 op per block, keyed `{0: [(off, rem, inj)]}`
+- list content: iterates blocks, calls `_extract_block_op` per block pair
+`_extract_block_op` uses common-prefix/suffix scan → minimal single op `(offset, removed, injected)` per block. Returns `[]` on no change.
+
+Call site: immediately after `result.append({**msg, "content": new_content})` at the mutation site:
+```python
+pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
+```
+
+### Probe wiring (`dev/proxy_dual_log/composition_probe.py`)
+
+`_REAL_OPS_PASSES` after 1B: `frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise", "bg_exit"})`. Sub-stage worker adds the new pass name(s) here.
+
+Pass loop: when `pass_name in _REAL_OPS_PASSES`, reads `result[5]` directly; else stand-in `(before, after)` diff. Dedup: separate block below the loop, unpacks `_dedup_wakeup_blocks(current)` as `(after_dedup, dedup_ops)` and iterates `dedup_ops` directly — no change needed for 1C/1D.
+
+### Per-pass op shapes
+
+See `Op Shape Per Pass` table in `dev/proxy_dual_log/01_reports/composition_probe_20260609.md`. Defines exactly what each pass should record at its mutation site.
+
+### Acceptance per sub-stage
+
+- Corpus: `9509/9509` blocks byte-exact, both invariants (`equal+stripped == C0`, `equal+injected == Cfwd`)
+- Money shot: relevant pass-type appears in per-pass-type table at 100% / 0 failed
+
+### Open sub-stages
+
+**1C — SR passes** (`_apply_cumulative_sr_strips`, `_apply_final_sr_pass`, plus SR branches inside `_apply_first_pass`: plan-mode, task-tools-nag, deferred-tools, user-interrupt, rejection SRs). Multiple ops per block possible (one `_extract_block_op` per SR match position). Probe: add `"cumulative_sr"`, `"final_sr"` to `_REAL_OPS_PASSES`; SR branches in `first_pass` remain stand-in until 1D.
+
+**1D — TN-transform in `_apply_first_pass`** — trickiest. Strips XML wrapper while keeping inner text — not a clean chunk removal. Op shape: `(prefix_len, changed_region, new_region)`. The `first_pass` name can only enter `_REAL_OPS_PASSES` once ALL its branches (SR strips + TN transform) are recorded.
+
 ## Open
 
 - **sidecar / idle_recap UNVERIFIED** — absent from the 5-stem corpus. Theoretical model: `Op(0,0,full_original,marker)` single full-replacement, trivially composable. Port must close with real data.
-- **Stage 2 (composition builder → src/)** — wire `_all_ops` into span derivation, replace `_diff_text` fallback + `_dedup` span-patch. Follows after 1B–1D sign-off.
+- **Stage 2 (composition builder → src/)** — wire `_all_ops` into span derivation, replace `_diff_text` fallback + `_dedup` span-patch. Follows after 1C–1D sign-off.
 
 ## Sources
 
