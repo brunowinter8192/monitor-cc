@@ -38,7 +38,8 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 # ORCHESTRATOR
 
 def verify_strip_inject_workflow(original_path: Path, forwarded_path: Path) -> int:
-    from src.proxy.logging import _build_stripped_injected_deltas, _strip_cache_control
+    from src.proxy.strip_inject_delta import _build_stripped_injected_deltas
+    from src.proxy.logging import _strip_cache_control
     from src.proxy.diff_engine import _diff_top_level_fields, _diff_system, _diff_tools, _diff_messages, _span_counts
 
     orig_entries = _load_jsonl(original_path)

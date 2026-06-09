@@ -12,7 +12,8 @@ from typing import Dict, Optional
 
 from mitmproxy import http
 
-from .logging import _build_forwarded_delta, _build_stripped_injected_deltas, _build_errors_entries
+from .logging import _build_forwarded_delta, _build_errors_entries
+from .strip_inject_delta import _build_stripped_injected_deltas
 
 
 # Suppress noise from `NotImplementedError: HTTP trailers are not implemented yet.`
