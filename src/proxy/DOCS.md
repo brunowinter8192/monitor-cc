@@ -67,7 +67,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_sr.py (193 LOC)
+### strip_sr.py (194 LOC)
 
 **Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 10 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, plan-mode); each template has one or more identifier strings. `claudemd-contents` uses a list of identifiers (`"As you answer the user's questions"` for CC's preamble form, `"Contents of "` for the bare form) — `_match_template` iterates the list with OR semantics. Strip uses `startswith` against extracted SR-block inner text — no greedy regex across code literals. `<task-notification>` blocks do NOT go through this module — they are handled separately by `_apply_first_pass` in `rules.py`. The injected `_WAKEUP_TEXT` is plain text — no `<system-reminder>` tags, SR-strip passes uninvolved. `_apply_sr_strip._replace` has a pre-guard `_ENV_CONTEXT_RE.fullmatch(inner)` check that fires BEFORE the `_PRESERVE_PREAMBLE` guard, stripping CC's injected userEmail/currentDate SR block; the full-block match (email literal + date regex + IMPORTANT footer literal) ensures CLAUDE.md-context blocks with the same preamble are never false-positively stripped. **Partial-strip trailing-`\n`:** `_apply_sr_strip._replace` partial path preserves the original trailing-`\n` state: `trailing_nl = '\n' if full.endswith('\n') else ''` — the `\n` is appended only when the matched original had one. When the original SR had no trailing newline, `_STANDALONE_SR_RE` (ends with `\n?`) consumed none, so appending unconditionally would introduce a net-new `\n` into the forwarded payload; with the fix the output is byte-identical to the input w.r.t. the trailing character.
 **Reads:** Message content (string or list of blocks); template catalog (module-local).
@@ -149,7 +149,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### logging.py (470 LOC) ⚠️ refactor candidate (>400 LOC hard ceiling)
+### logging.py (468 LOC) ⚠️ refactor candidate (>400 LOC hard ceiling)
 
 **Purpose:** Build structured JSONL entries for the dual-log files; compute message diffs vs previous request; build `forwarded_delta` / `stripped_delta` / `injected_delta` / `tool_error` entries.
 **Reads:** Raw payload dicts, message lists, previous message summaries, previous delta hash state.
@@ -229,7 +229,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### payload_helpers.py (239 LOC)
+### payload_helpers.py (202 LOC)
 
 **Purpose:** Low-level payload content inspection and manipulation used by `rules.py` — find/strip system-reminder blocks, strip blocklisted tool_reference blocks, strip task-notification XML tags. Exports two content-search helpers with distinct scopes: `_content_contains` (descends into tool_result — used by SR-strip guards which legitimately match tool_result content); `_top_level_content_contains` (top-level str/text only, never tool_result — used by wakeup-injection guards to prevent false-positive injection from marker strings in tool_result data). `_find_system_reminder_blocks` and `_find_all_system_reminder_blocks` patterns include `\n?` after `</system-reminder>` (with `re.DOTALL`) — recorded chunk includes the trailing newline that `_STANDALONE_SR_RE` strips, closing the precision gap in GT span building.
 **Reads:** Message content (string or list), payload dicts.
