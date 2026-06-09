@@ -335,7 +335,7 @@ def t35_task_notification_stripped_from_tool_result():
 # ── WAKEUP FALSE-POSITIVE TESTS ───────────────────────────────────────────────
 # Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
 import importlib as _wakeup_il
-_rules_mod = _wakeup_il.import_module('src.proxy.rules')
+_rules_mod = _wakeup_il.import_module('src.proxy.message_passes')
 _apply_first_pass = _rules_mod._apply_first_pass
 _apply_bg_exit_strip = _rules_mod._apply_bg_exit_strip
 _bgk_mod = _wakeup_il.import_module('src.proxy.strip_bg_completed')
@@ -360,7 +360,7 @@ def _has_wakeup(content) -> bool:
 def w01_tn_in_tool_result_str():
     tn_data = 'RAG result: <task-notification><status>completed</status><summary>done</summary></task-notification>'
     msgs = [{'role': 'user', 'content': tool_result_str(tn_data)}]
-    new_msgs, mods, _, _c, _ = _apply_first_pass(msgs)
+    new_msgs, mods, _, _c, _, _ops = _apply_first_pass(msgs)
     content = new_msgs[0]['content']
     check('W01_no_wakeup_injected', not _has_wakeup(content), f'wakeup found: {content}')
     check('W01_tn_mod_not_fired', not any('task_notification' in m for m in mods), f'mods: {mods}')
@@ -371,7 +371,7 @@ def w01_tn_in_tool_result_str():
 def w02_tn_in_tool_result_list():
     tn_data = 'source: <task-notification><status>failed</status><summary></summary></task-notification>'
     msgs = [{'role': 'user', 'content': tool_result_list(tn_data)}]
-    new_msgs, mods, _, _c, _ = _apply_first_pass(msgs)
+    new_msgs, mods, _, _c, _, _ops = _apply_first_pass(msgs)
     content = new_msgs[0]['content']
     check('W02_no_wakeup_injected', not _has_wakeup(content), f'wakeup found: {content}')
     check('W02_tn_mod_not_fired', not any('task_notification' in m for m in mods), f'mods: {mods}')
@@ -382,7 +382,7 @@ def w02_tn_in_tool_result_list():
 def w03_bgk_in_tool_result_str():
     bgk_data = 'log: Background command "sleep 600" completed (exit code 143)\n'
     msgs = [{'role': 'user', 'content': tool_result_str(bgk_data)}]
-    new_msgs, mods, _, _c, _ = _apply_bg_exit_strip(msgs)
+    new_msgs, mods, _, _c, _, _ops = _apply_bg_exit_strip(msgs)
     content = new_msgs[0]['content']
     check('W03_no_wakeup_injected', not _has_wakeup(content), f'wakeup found: {content}')
     check('W03_bgk_mod_not_fired', 'replaced_bg_completed_text' not in mods, f'mods: {mods}')
@@ -393,7 +393,7 @@ def w03_bgk_in_tool_result_str():
 def w04_genuine_tn_completed_plain_string():
     tn = '<task-notification>\n<status>completed</status>\n<summary>Background command "sleep 10" completed (exit code 0)</summary>\n</task-notification>\n'
     msgs = [{'role': 'user', 'content': tn}]
-    new_msgs, mods, _, _c, _ = _apply_first_pass(msgs)
+    new_msgs, mods, _, _c, _, _ops = _apply_first_pass(msgs)
     check('W04_wakeup_injected', _has_wakeup(new_msgs[0]['content']), repr(new_msgs[0]['content'])[:80])
     check('W04_mod_trimmed', 'trimmed_task_notification' in mods, f'mods: {mods}')
 
@@ -402,7 +402,7 @@ def w04_genuine_tn_completed_plain_string():
 def w05_genuine_tn_failed_plain_string():
     tn = '<task-notification>\n<status>failed</status>\n<summary></summary>\n</task-notification>\n'
     msgs = [{'role': 'user', 'content': tn}]
-    new_msgs, mods, _, _c, _ = _apply_first_pass(msgs)
+    new_msgs, mods, _, _c, _, _ops = _apply_first_pass(msgs)
     check('W05_wakeup_injected', _has_wakeup(new_msgs[0]['content']), repr(new_msgs[0]['content'])[:80])
     check('W05_mod_replaced', 'replaced_task_notification' in mods, f'mods: {mods}')
 
@@ -411,7 +411,7 @@ def w05_genuine_tn_failed_plain_string():
 def w06_genuine_bgk_plain_string():
     bgk = 'Background command "sleep 600" completed (exit code 143)\n'
     msgs = [{'role': 'user', 'content': bgk}]
-    new_msgs, mods, _, _c, _ = _apply_bg_exit_strip(msgs)
+    new_msgs, mods, _, _c, _, _ops = _apply_bg_exit_strip(msgs)
     check('W06_wakeup_injected', _has_wakeup(new_msgs[0]['content']), repr(new_msgs[0]['content'])[:80])
     check('W06_mod_replaced', 'replaced_bg_completed_text' in mods, f'mods: {mods}')
 
