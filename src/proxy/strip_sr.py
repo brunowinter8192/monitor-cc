@@ -144,7 +144,8 @@ def _apply_sr_strip(text, enabled_templates):
             return ''
         # partial: preserve user body, strip IMPORTANT line and outer tags
         cleaned = _IMP_LINE_RE.sub('', inner_m.group(1))
-        return '<system-reminder>' + cleaned + '</system-reminder>\n'
+        trailing_nl = '\n' if full.endswith('\n') else ''
+        return '<system-reminder>' + cleaned + '</system-reminder>' + trailing_nl
 
     return _STANDALONE_SR_RE.sub(_replace, text)
 
