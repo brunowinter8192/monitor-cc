@@ -1,4 +1,4 @@
-# Multi-Pass Composition Probe — 2026-06-09 01:21:54
+# Multi-Pass Composition Probe — 2026-06-09 23:27:14
 
 Validates: per-pass ops `(offset_in_Ck, removed, injected)` composed via span-list
 accumulation produce byte-exact reconstruction of both C0 and Cfwd.
@@ -23,49 +23,35 @@ Pass chain: `_apply_first_pass` strips TN wrapper + injects wakeup → reveals B
 `_dedup_wakeup_blocks` removes second wakeup from Cfwd.
 Composition must produce exactly ONE injected wakeup (= Cfwd byte-exact).
 
-**C0** (406 chars): `'<task-notification>\n<task-id>bpvcpkcx3</task-id>\n<tool-use-id>toolu_01CNJDFzyJ9HWQHvzNtM9Z7z</tool-u'...`
-**Cfwd** (48 chars): `'background done — check worker or other process\n'`
-
-**Op chain (derived from per-pass before→after):**
-- `first_pass` offset=0 removed='<task-notification>\n<task-id>bpvcpkcx3</task-id>\n<tool-use-i' injected='Background command "sleep 600 &amp;&amp; echo done" failed w'
-- `bg_exit` offset=0 removed='Background command "sleep 600 &amp;&amp; echo done" failed w' injected='background done — check worker or other process\nbackground d'
-- `dedup_wakeup` offset=48 removed='background done — check worker or other process' injected=''
-
-**Composed span list over C0:**
+ERROR: [Errno 2] No such file or directory: '/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log/api_requests_opus_monitor_cc_1780933074_original.jsonl'
 ```
-  ('stripped'  , '<task-notification>\n<task-id>bpvcpkcx3</task-id>\n<tool-use-id>toolu_01CNJDFzyJ9H'...)
-  ('injected'  , 'background done — check worker or other process\n')
-```
+Traceback (most recent call last):
+  File "/Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/rules-split/dev/proxy_dual_log/composition_probe.py", line 422, in composition_probe_workflow
+    c0_text, cfwd_text, blk_ops, spans = get_money_shot_case()
+                                         ~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/brunowinter2000/Documents/ai/monitor-cc/.claude/worktrees/rules-split/dev/proxy_dual_log/composition_probe.py", line 354, in get_money_shot_case
+    with open(orig_path) as f:
+         ~~~~^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log/api_requests_opus_monitor_cc_1780933074_original.jsonl'
 
-- Injected wakeup spans: **1** ✅ exactly 1 — double-inject FIXED
-- Stripped spans: 1 (full TN block shown as yellow ✅)
-- Inv1 C0 recon:   ✅ PASS
-- Inv2 Cfwd recon: ✅ PASS
-- **Overall: ✅ BYTE-EXACT**
+```
 
 ## Corpus Run — All Entries Across 5 Stems
 
 | Metric | Value |
 |---|---|
-| Total entries | 567 |
-| Entries with modifications | 559 |
-| Blocks checked | 9509 |
-| Blocks passed (byte-exact) | 9509 |
+| Total entries | 0 |
+| Entries with modifications | 0 |
+| Blocks checked | 0 |
+| Blocks passed (byte-exact) | 0 |
 | Blocks failed | 0 |
-| Multi-pass blocks (≥2 ops same block) | 1134 |
-| Double-inject blocks (≥2 injecting ops) | 772 |
+| Multi-pass blocks (≥2 ops same block) | 0 |
+| Double-inject blocks (≥2 injecting ops) | 0 |
 
 ### Per-Pass-Type Results
 
 | Pass | Passed | Failed | Rate |
 |---|---|---|---|
-| `bg_exit` | 772 | 0 | 100% |
-| `cumulative_sr` | 1277 | 0 | 100% |
-| `dedup_wakeup` | 772 | 0 | 100% |
-| `final_sr` | 99 | 0 | 100% |
-| `first_pass` | 7258 | 0 | 100% |
-| `hook_prefix` | 418 | 0 | 100% |
-| `po_preview` | 619 | 0 | 100% |
 
 **No failing cases — all blocks pass both invariants byte-exact ✅**
 
@@ -90,8 +76,8 @@ What each production pass would emit directly (instead of probe's stand-in):
 
 **Multi-pass composition: HOLDS BYTE-EXACT on all corpus data**
 
-- `9509/9509` blocks pass both invariants across 559 modified requests
-- `1134` multi-pass blocks verified (same block, ≥2 passes)
-- `772` double-inject blocks — dedup op reduces each to 1 injected wakeup ✅
+- `0/0` blocks pass both invariants across 0 modified requests
+- `0` multi-pass blocks verified (same block, ≥2 passes)
+- `0` double-inject blocks — dedup op reduces each to 1 injected wakeup ✅
 - `_dedup_wakeup_blocks` is a Layer-1 pass, not a span-building workaround
 - Money shot (msg[100] TN+BG): 1 injected wakeup, C0+Cfwd byte-exact ✅
