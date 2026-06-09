@@ -11,9 +11,8 @@ from pathlib import Path
 RAG_LOCKS_DIR = Path.home() / '.rag-locks'
 
 
-# Discovered once per process via `rag-cli server presets --json`. Falls back to
-# the legacy three-name list if rag-cli is missing or fails. Process is respawned
-# by Monitor's Ctrl+R, which re-imports this module → new presets surface there.
+# Discovered once per process via `rag-cli server presets --json`; returns [] on any
+# failure. Process is respawned by Monitor's Ctrl+R, re-imports module → new presets.
 def _discover_preset_names() -> list[str]:
     try:
         r = subprocess.run(
@@ -25,7 +24,7 @@ def _discover_preset_names() -> list[str]:
             return [p['name'] for p in payload]
     except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
         pass
-    return ['embedding', 'reranker', 'splade']  # legacy fallback
+    return []
 
 
 PRESET_NAMES = _discover_preset_names()

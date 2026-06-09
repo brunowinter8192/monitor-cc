@@ -25,3 +25,60 @@ Decision: `COLLECTIONS_POLL_INTERVAL = 30.0` s, independent of `GPU_POLL_INTERVA
 ## Verified
 
 Smoke: `acquire("update_docs", {})` held while `rag-cli list_collections --json` ran → exit 0, valid JSON, no LockBusyError. 17 real collections returned. `py_compile` clean on both changed files.
+
+---
+
+## Preset-Discovery Masking Fallback — Removal (route-consol task)
+
+### Why the fallback was (c) MASKING
+
+`_discover_preset_names()` returned `['embedding', 'reranker', 'splade']` on any rag-cli
+failure. At the time of removal the real presets were:
+
+```
+['embedding-8b', 'embedding-0.6b', 'reranker-0.6b', 'reranker-8b', 'generator-4b', 'splade']
+```
+
+Only `splade` overlapped. A rag-cli failure would silently surface 3 stale names (2 no longer
+exist as presets) instead of the 6 real ones — hiding the failure AND showing fabricated data.
+This is the definition of category (c) MASKING: the fallback produces something DIFFERENT from
+what the primary route would deliver, concealing a real gap.
+
+### Removal principle
+
+The binding user decision: a monitor must NOT carry a fallback that masks a rag-cli normal-
+operation failure. On failure, `_discover_preset_names` returns `[]` and the GPU Servers block
+renders with no preset rows — empty, no fabricated names. The user notices a rag-cli failure
+directly when running a query; the monitor does not need to proxy-display it.
+
+### Mirror to `_fetch_collections`
+
+`_fetch_collections()` has returned `[]` on failure since its introduction (see "30s cadence"
+section above). Its block shows `(none indexed)` when empty — no fabricated content, no error
+marker. The preset block now mirrors this identical pattern.
+
+### Consumer empty-safety (verified Phase A)
+
+| Consumer | Code | Empty-safe? |
+|---|---|---|
+| `status.py:79` | `if name in PRESET_NAMES` | Yes — membership test on `[]`, never True |
+| `status.py:87` | `[... for n in PRESET_NAMES]` | Yes — comprehension over `[]` → `[]` |
+| `pane.py:55` | `if idx < len(PRESET_NAMES)` | Yes — `0 > 1` False, gate blocks line 56 |
+| `pane.py:56` | `name = PRESET_NAMES[idx]` | Yes — only reached through gate |
+| `pane.py:117` | `name = PRESET_NAMES[idx]` in `_toggle_server` | Yes — callable only through gate |
+
+### Footer removal (same task)
+
+The legend line `[1-N] toggle presets  click [start]/[stop]/[restart]  ●=healthy ...` was
+removed from `_render_pane` alongside the fallback fix. The hint was cosmetically wrong with
+0 presets (showed `[1] toggle presets` when pressing 1 did nothing). With a static preset
+list the hint had been informative; with dynamic discovery the count is not known statically.
+The anomalies block (`⚠ N anomalies (see logs/gpu_pane.log)`) is an operational alert —
+untouched.
+
+### Files changed
+
+- `src/gpu_pane/status.py` — `_discover_preset_names` returns `[]` on failure (220→219 LOC)
+- `src/gpu_pane/pane.py` — footer legend block removed (327→318 LOC)
+- `decisions/gpu_pane_collections.md` — created (IST/Evidenz/SOLL)
+- `src/gpu_pane/DOCS.md` — fallback mentions removed; Gotcha line-85 rewritten; footer hint removed
