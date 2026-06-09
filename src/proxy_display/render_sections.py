@@ -286,6 +286,30 @@ def render_beta(entry_idx: int, entry: dict, expand_states: dict) -> tuple:
     return lines, keys
 
 
+# Render context_management + diagnostics directives section for an expanded request entry, returning (lines, keys)
+def render_directives(entry_idx: int, entry: dict, expand_states: dict) -> tuple:
+    lines = []
+    keys = []
+    cm = entry.get('context_management')
+    edits = (cm or {}).get('edits') or []
+    if edits:
+        ctx_key = ('ctx', entry_idx)
+        is_ctx_expanded = expand_states.get(ctx_key, False)
+        ctx_symbol = '▼' if is_ctx_expanded else '▶'
+        lines.append(f"    {DIM}{ctx_symbol} ctx: {len(edits)} edits{SOFT_RESET}")
+        keys.append(ctx_key)
+        if is_ctx_expanded:
+            for edit in edits:
+                lines.append(f"      {DIM}{edit.get('type', '')}{SOFT_RESET}")
+                keys.append(None)
+    diag = entry.get('diagnostics') or {}
+    pmid = diag.get('previous_message_id')
+    if pmid:
+        lines.append(f"    {DIM}diag: {pmid[:14]}{SOFT_RESET}")
+        keys.append(None)
+    return lines, keys
+
+
 # Render fields delta section for an expanded request entry, returning (lines, keys)
 def render_fields_delta(entry_idx: int, entry: dict, expand_states: dict, pane_width: int) -> tuple:
     lines = []

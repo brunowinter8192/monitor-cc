@@ -209,6 +209,8 @@ def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, messag
     entry['output_config'] = fwd_entry.get('output_config') or {}
     entry['effort_value'] = (fwd_entry.get('output_config') or {}).get('effort')
     entry['anthropic_beta'] = fwd_entry.get('anthropic_beta') or []
+    entry['context_management'] = fwd_entry.get('context_management')
+    entry['diagnostics'] = fwd_entry.get('diagnostics')
     entry['is_first'] = fwd_entry.get('is_first', False)
     entry['message_count'] = fwd_entry.get('counts', {}).get('messages', 0)
     entry['messages_total_chars'] = sum(s.get('chars', 0) for s in message_summaries)
