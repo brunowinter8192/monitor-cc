@@ -64,6 +64,19 @@ Dropped dead imports `_strip_tool_descriptions`/`_strip_sys3`; restored a pre-ex
 12/12 before+after each stage (fixture-based) + differential 8-tuple+`_all_ops` byte-identical over 9
 fixtures; Opus re-ran the invariant on merged dev independently (12/12, ALL PASS).
 
+### `proxy_display/worker_proxy_pane.py` 426 → 382
+
+State constraint: 23 module-level variables mutated via `global` across 5 functions
+(`run_worker_proxy_loop`, `_handle_worker_proxy_mouse`, `_handle_worker_proxy_key`,
+`_refresh_worker_proxy_data`, `_build_worker_proxy_output`). Two further functions read state
+without `global` (`_serialize_worker_proxy`, `_worker_proxy_ram_state`). All 7 must stay in
+`worker_proxy_pane.py`. The 4 remaining functions are pure (all inputs via parameters, no `global`,
+no module-state reads): `_format_worker_proxy_header`, `_wp_entry_idx_from_key`,
+`_resolve_prev_same_wp`, `_strip_inactive_wp_messages`. These 4 moved verbatim to new
+`worker_proxy_helpers.py` (55 LOC). State ownership unchanged — 100% stays in `worker_proxy_pane.py`;
+no `global` semantics are affected. Verify: all 4 functions AST-identical (`ast.dump` hash pre/post);
+import smoke on all `proxy_display` modules + `__init__` entry point — all OK.
+
 ### `proxy_display/parser.py` 512 → 239
 
 Forwarded-reconstruction concern (8 functions incl. `_infer_model_family` + `_proxy_session_id_for_project`)
@@ -88,7 +101,6 @@ import from parser); corrected to single-source-in-leaf + re-export (same patter
 
 ## Remaining HARD Files
 
-- `proxy_display/worker_proxy_pane.py` (426) — clean standalone proxy_display file-split, do next.
 - `menubar/app.py` (461) + `menubar/queue_controller.py` (448) — entangled with the menubar
   controller-composition refactor (`refactor_roadmap.md` stage 1, Queue "in flight"). Address those via
   THAT campaign, NOT a standalone LOC-split, to avoid merge collision.

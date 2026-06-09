@@ -5,15 +5,15 @@ import os
 import time
 
 from ..constants import (
-    RESET, YELLOW, DIM, WHITE,
-    POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
+    RESET, YELLOW, DIM,
+    POLL_INTERVAL, INPUT_POLL_INTERVAL,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
 from .parser import (
     find_worker_proxy_log, _parse_forwarded_log, _lazy_load_messages_forwarded,
     accumulate_dual_log, _find_dual_log_paths, _infer_model_family,
 )
-from .format import format_proxy_block, _is_standalone_entry
+from .format import format_proxy_block
 from ..panes.token_pane import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
 from ..workers.worker_pane import get_selection_file_path
@@ -25,6 +25,10 @@ from ..input.click_handler import (
 )
 from ..utils import visual_line_count
 from ..ram_audit import register_ram_dump
+from .worker_proxy_helpers import (
+    _format_worker_proxy_header, _wp_entry_idx_from_key,
+    _resolve_prev_same_wp, _strip_inactive_wp_messages,
+)
 
 worker_proxy_entries: List[dict] = []
 worker_proxy_expand_states: Dict[int, bool] = {}
@@ -104,32 +108,6 @@ def run_worker_proxy_loop() -> None:
 
 # FUNCTIONS
 
-# Build header line for worker-proxy pane listing workers with current selection marked
-def _format_worker_proxy_header(workers: list, current_worker: Optional[str]) -> str:
-    label = f"{YELLOW}WORKER-PROXY{RESET}  "
-    if not workers:
-        return label + f"{DIM}no workers{RESET}"
-    parts = []
-    for i, w in enumerate(workers, 1):
-        name = w['name']
-        star = '*' if name == current_worker else ''
-        if name == current_worker:
-            parts.append(f"{WHITE}[{i}{star}]{name}{RESET}")
-        else:
-            parts.append(f"{DIM}[{i}]{name}{RESET}")
-    return label + '  '.join(parts)
-
-# Extract entry_idx from any proxy line_map key variant (shared with pane.py pattern)
-def _wp_entry_idx_from_key(key) -> Optional[int]:
-    if isinstance(key, int):
-        return key
-    if isinstance(key, tuple):
-        if isinstance(key[0], str):
-            return key[1]
-        if isinstance(key[0], int):
-            return key[0]
-    return None
-
 # Serialize a worker-proxy entry to full untruncated text for clipboard
 def _serialize_worker_proxy(key) -> str:
     import json
@@ -158,28 +136,6 @@ def _serialize_worker_proxy(key) -> str:
                 parts.append(f"\n--- msg[{msg_idx}] {role} {msg_type} ---")
                 parts.append(ct)
     return '\n'.join(parts)
-
-# Walk backward from k-1 to find first non-standalone entry idx (prev_same reference)
-def _resolve_prev_same_wp(entries: list, k: int) -> Optional[int]:
-    for i in range(k - 1, -1, -1):
-        if not _is_standalone_entry(entries[i]):
-            return i
-    return None
-
-# Strip messages from all entries outside the keep-last window that are not expanded
-def _strip_inactive_wp_messages(entries: list, expand_states: dict) -> None:
-    cutoff = max(0, len(entries) - PROXY_MESSAGES_KEEP_LAST)
-    for i in range(cutoff):
-        e = entries[i]
-        if e.get('messages') is None:
-            continue
-        is_active = (
-            expand_states.get(i, False) or
-            expand_states.get(('req', i), False) or
-            expand_states.get((i, 'neg_delta'), False)
-        )
-        if not is_active:
-            del e['messages']
 
 # Return module-level state snapshot for RAM audit
 def _worker_proxy_ram_state() -> list:
