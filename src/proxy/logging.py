@@ -307,17 +307,15 @@ def _build_stripped_injected_deltas(
         for bd in md["block_diffs"]:
             bidx_int = bd["bidx"]
             bidx = str(bidx_int)
-            spans = bd["spans"]  # default: _diff_text result for unmodified blocks
-            block_ops = msg_ops.get(bidx_int)
-            if block_ops is not None:
-                if isinstance(o_content_raw, list):
-                    ob = o_content_raw[bidx_int] if bidx_int < len(o_content_raw) else None
-                    c0_text = _get_inner_text(ob) if ob is not None else ""
-                elif bidx_int == 0:
-                    c0_text = o_content_raw if isinstance(o_content_raw, str) else ""
-                else:
-                    c0_text = ""
-                spans = compose_block(c0_text, block_ops)
+            if isinstance(o_content_raw, list):
+                ob = o_content_raw[bidx_int] if bidx_int < len(o_content_raw) else None
+                c0_text = _get_inner_text(ob) if ob is not None else ""
+            elif bidx_int == 0:
+                c0_text = o_content_raw if isinstance(o_content_raw, str) else ""
+            else:
+                c0_text = ""
+            block_ops = msg_ops.get(bidx_int, [])
+            spans = compose_block(c0_text, block_ops)
             s_texts = [t for tag, t in spans if tag == "stripped" and t]
             i_spans = [(tag, t) for tag, t in spans if tag in ("equal", "injected") and t]
             has_i = any(tag == "injected" for tag, _ in i_spans)

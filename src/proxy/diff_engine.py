@@ -236,13 +236,13 @@ def _diff_messages(orig_msgs: list, fwd_msgs: list) -> list:
         if om is None:
             f_text = _get_text(fm)
             result.append({"idx": i, "block_diffs": [
-                {"bidx": 0, "o_text": "", "f_text": f_text, "spans": [("injected", f_text)]}
+                {"bidx": 0, "o_text": "", "f_text": f_text}
             ]})
             continue
         if fm is None:
             o_text = _get_text(om)
             result.append({"idx": i, "block_diffs": [
-                {"bidx": 0, "o_text": o_text, "f_text": "", "spans": [("stripped", o_text)]}
+                {"bidx": 0, "o_text": o_text, "f_text": ""}
             ]})
             continue
         o_content = om.get("content", "")
@@ -254,11 +254,11 @@ def _diff_messages(orig_msgs: list, fwd_msgs: list) -> list:
                 ob = o_content[bi] if bi < len(o_content) else None
                 fb = f_content[bi] if bi < len(f_content) else None
                 o_text, f_text = _get_text(ob), _get_text(fb)
-                block_diffs.append({"bidx": bi, "o_text": o_text, "f_text": f_text, "spans": _diff_text(o_text, f_text)})
+                block_diffs.append({"bidx": bi, "o_text": o_text, "f_text": f_text})
         else:
             o_text = o_content if isinstance(o_content, str) else json.dumps(o_content)
             f_text = f_content if isinstance(f_content, str) else json.dumps(f_content)
-            block_diffs = [{"bidx": 0, "o_text": o_text, "f_text": f_text, "spans": _diff_text(o_text, f_text)}]
+            block_diffs = [{"bidx": 0, "o_text": o_text, "f_text": f_text}]
         result.append({"idx": i, "block_diffs": block_diffs})
     return result
 
