@@ -104,6 +104,38 @@ Jeder Worker in einem Worktree bekommt einen eigenen mitmproxy-Prozess auf eigen
 - Eigene Log-Datei: `api_requests_<worker_session_id>.jsonl`
 - Cross-Project-Worker (anderes Projekt als Main) bekommen keinen Proxy — Marker existiert nur für das Main-Projekt
 
+### Marker Lifecycle
+
+Per-project marker files let the monitor (and workers in worktrees) discover the active proxy's
+port and log_id without polling:
+
+| File | Lines | Written by |
+|---|---|---|
+| `src/logs/.proxy_session_<sid>` | 1=port / 2=log_id / 3=owner_pid | `claude_proxy_start.sh` at session start |
+| `/tmp/.monitor_cc_proxy_<sid>` | 1=port / 2=log_id / 3=root / 4=owner_pid | same |
+
+`sid` = first 8 chars of MD5(`project_path`) — matches `_proxy_session_id_for_project()` in
+`forwarded_parser.py`.
+
+**Write guard** — `_proxy_pid_is_live()` (defined in `claude_proxy_start.sh`) is the primary
+staleness check: `kill -0 <pid>` (process exists?) AND `ps -p <pid> -o args=` contains
+`claude_proxy_start.sh` (identity check prevents PID-reuse false-positives — same bug class as the
+retired port-listening guard). Belt-and-suspenders: alive PID must also have log mtime < 60s.
+Old markers without PID line: fall back to mtime-only (safe rollout). New session claims the marker
+only if the previous owner's PID is dead or identity-mismatched.
+
+**Heartbeat** — `_marker_heartbeat` runs in background every 10s after proxy starts. If the
+marker is missing or its stored PID is dead/unrelated, the secondary session reclaims it. Max
+blindness window after primary exits without cleanup: ~10s. `$$` in the heartbeat subshell = parent
+shell PID (bash spec).
+
+**Cleanup guard** — `cleanup()` removes markers only if `marker_pid (line 3/4) == $$`. A parallel
+session that reclaimed the marker via heartbeat has its own PID on those lines — the exiting
+session skips the rm and leaves the reclaimer's marker intact.
+
+**Read side** — `parse_proxy_log_forwarded()` reads `lines[1]` (log_id) — unchanged by the
+3-line/4-line format extension. No changes to Python read path.
+
 ### count_tokens Passthrough
 
 `_is_messages_request()` in `src/proxy/addon.py` matched per 2026-05-29 exakt auf `/v1/messages` + optionalen Query-String:

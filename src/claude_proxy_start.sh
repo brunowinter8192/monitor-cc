@@ -66,47 +66,96 @@ fi
 LOG_DIR="$MONITOR_CC_ROOT/src/logs"
 mkdir -p "$LOG_DIR"
 MARKER_FILE="$LOG_DIR/.proxy_session_$SESSION_ID"
-# Only overwrite marker if its referenced log_id is no longer being actively written.
-# Parallel sessions (e.g. hi-test) for the same project must NOT clobber the live marker.
-# Check via log file mtime, not the listed port — port can be reused by an unrelated mitmdump
-# of another project, which led to false-positive "fresh" reads of marker pointing to a stale log_id.
+# Check if a stored marker PID belongs to a live claude_proxy_start.sh session.
+# kill -0 alone is insufficient: PID reuse by an unrelated process produces false-positives
+# (same class of bug as the retired port-reuse guard). Secondary identity check via ps args
+# ensures the process is actually claude_proxy_start.sh, not an unrelated recycled PID.
+_proxy_pid_is_live() {
+    local pid="$1"
+    [ -n "$pid" ] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+    local cmd
+    cmd=$(ps -p "$pid" -o args= 2>/dev/null)
+    case "$cmd" in
+        *claude_proxy_start.sh*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+# Only overwrite marker if its referenced session is no longer active.
+# Parallel sessions for the same project must NOT clobber a live marker.
+# Primary liveness: stored PID + process-identity (prevents PID-reuse false-positives).
+# Secondary liveness: log mtime < 60s (belt-and-suspenders for alive sessions).
+# Old format (no PID line): falls back to mtime-only check for safe rollout.
 MARKER_IS_STALE=true
 if [ -f "$MARKER_FILE" ]; then
     existing_log_id=$(sed -n '2p' "$MARKER_FILE" 2>/dev/null)
+    existing_pid=$(sed -n '3p' "$MARKER_FILE" 2>/dev/null)
     if [ -n "$existing_log_id" ]; then
-        existing_log="$LOG_DIR/dual_log/api_requests_${existing_log_id}_forwarded.jsonl"
-        if [ -f "$existing_log" ]; then
-            log_mtime=$(stat -f %m "$existing_log" 2>/dev/null || stat -c %Y "$existing_log" 2>/dev/null)
-            now=$(date +%s)
-            if [ -n "$log_mtime" ] && [ $((now - log_mtime)) -lt 60 ]; then
-                MARKER_IS_STALE=false
+        if [ -n "$existing_pid" ]; then
+            # New format: verify PID is a live claude_proxy_start.sh process
+            if _proxy_pid_is_live "$existing_pid"; then
+                existing_log="$LOG_DIR/dual_log/api_requests_${existing_log_id}_forwarded.jsonl"
+                if [ -f "$existing_log" ]; then
+                    log_mtime=$(stat -f %m "$existing_log" 2>/dev/null || stat -c %Y "$existing_log" 2>/dev/null)
+                    now=$(date +%s)
+                    if [ -n "$log_mtime" ] && [ $((now - log_mtime)) -lt 60 ]; then
+                        MARKER_IS_STALE=false
+                    fi
+                fi
+            fi
+            # PID dead or not a claude_proxy_start.sh process: stale regardless of log mtime
+        else
+            # Old format (no PID line): mtime-only fallback
+            existing_log="$LOG_DIR/dual_log/api_requests_${existing_log_id}_forwarded.jsonl"
+            if [ -f "$existing_log" ]; then
+                log_mtime=$(stat -f %m "$existing_log" 2>/dev/null || stat -c %Y "$existing_log" 2>/dev/null)
+                now=$(date +%s)
+                if [ -n "$log_mtime" ] && [ $((now - log_mtime)) -lt 60 ]; then
+                    MARKER_IS_STALE=false
+                fi
             fi
         fi
     fi
 fi
 if [ "$MARKER_IS_STALE" = true ]; then
-    printf "%s\n%s\n" "$PROXY_PORT" "$LOG_ID" > "$MARKER_FILE"
+    printf "%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$$" > "$MARKER_FILE"
 fi
 # Also write to /tmp for cross-repo discovery (workers find proxy via this)
-# Format: line 1 = port, line 2 = log_id, line 3 = MONITOR_CC_ROOT
-# Same guard: only overwrite if existing marker's port is not listening
+# Format: line 1 = port, line 2 = log_id, line 3 = MONITOR_CC_ROOT, line 4 = owner PID
+# Same guard: PID+identity primary, mtime secondary; old format (no PID line) falls back to mtime.
 TMP_MARKER="/tmp/.monitor_cc_proxy_${SESSION_ID}"
 TMP_IS_STALE=true
 if [ -f "$TMP_MARKER" ]; then
     existing_tmp_log_id=$(sed -n '2p' "$TMP_MARKER" 2>/dev/null)
+    existing_tmp_pid=$(sed -n '4p' "$TMP_MARKER" 2>/dev/null)
     if [ -n "$existing_tmp_log_id" ]; then
-        existing_tmp_log="$LOG_DIR/dual_log/api_requests_${existing_tmp_log_id}_forwarded.jsonl"
-        if [ -f "$existing_tmp_log" ]; then
-            tmp_log_mtime=$(stat -f %m "$existing_tmp_log" 2>/dev/null || stat -c %Y "$existing_tmp_log" 2>/dev/null)
-            tmp_now=$(date +%s)
-            if [ -n "$tmp_log_mtime" ] && [ $((tmp_now - tmp_log_mtime)) -lt 60 ]; then
-                TMP_IS_STALE=false
+        if [ -n "$existing_tmp_pid" ]; then
+            if _proxy_pid_is_live "$existing_tmp_pid"; then
+                existing_tmp_log="$LOG_DIR/dual_log/api_requests_${existing_tmp_log_id}_forwarded.jsonl"
+                if [ -f "$existing_tmp_log" ]; then
+                    tmp_log_mtime=$(stat -f %m "$existing_tmp_log" 2>/dev/null || stat -c %Y "$existing_tmp_log" 2>/dev/null)
+                    tmp_now=$(date +%s)
+                    if [ -n "$tmp_log_mtime" ] && [ $((tmp_now - tmp_log_mtime)) -lt 60 ]; then
+                        TMP_IS_STALE=false
+                    fi
+                fi
+            fi
+            # PID dead or not a claude_proxy_start.sh process: stale regardless of log mtime
+        else
+            # Old format (no PID line): mtime-only fallback
+            existing_tmp_log="$LOG_DIR/dual_log/api_requests_${existing_tmp_log_id}_forwarded.jsonl"
+            if [ -f "$existing_tmp_log" ]; then
+                tmp_log_mtime=$(stat -f %m "$existing_tmp_log" 2>/dev/null || stat -c %Y "$existing_tmp_log" 2>/dev/null)
+                tmp_now=$(date +%s)
+                if [ -n "$tmp_log_mtime" ] && [ $((tmp_now - tmp_log_mtime)) -lt 60 ]; then
+                    TMP_IS_STALE=false
+                fi
             fi
         fi
     fi
 fi
 if [ "$TMP_IS_STALE" = true ]; then
-    printf "%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$MONITOR_CC_ROOT" > "$TMP_MARKER"
+    printf "%s\n%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$MONITOR_CC_ROOT" "$$" > "$TMP_MARKER"
 fi
 
 # Copy addon and entire proxy/ package to isolated live copies — prevents git merge hot-reload
@@ -253,26 +302,48 @@ export PROXY_PROJECT_PATH="$PROJECT"
 mitmdump -p $PROXY_PORT -s "$LIVE_ADDON" --set flow_detail=0 -q 2>/dev/null &
 PROXY_PID=$!
 
-# Cleanup on exit: kill proxy, remove per-session live-copies, and conditionally the per-project marker
+# Background heartbeat: if the primary session exits (cleanup or crash), secondary sessions reclaim
+# the marker within ~10s instead of remaining blind forever.
+# kill -0 $PROXY_PID uses plain liveness (our OWN process — no PID-reuse risk, we just forked it).
+# $$ inside the subshell expands to the parent shell's PID (bash spec: $$ in subshell = invoking PID).
+_marker_heartbeat() {
+    while sleep 10; do
+        kill -0 $PROXY_PID 2>/dev/null || break
+        local m_pid
+        m_pid=$(sed -n '3p' "$MARKER_FILE" 2>/dev/null)
+        if ! _proxy_pid_is_live "$m_pid"; then
+            printf "%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$$" > "$MARKER_FILE"
+        fi
+        local t_pid
+        t_pid=$(sed -n '4p' "$TMP_MARKER" 2>/dev/null)
+        if ! _proxy_pid_is_live "$t_pid"; then
+            printf "%s\n%s\n%s\n%s\n" "$PROXY_PORT" "$LOG_ID" "$MONITOR_CC_ROOT" "$$" > "$TMP_MARKER"
+        fi
+    done
+}
+_marker_heartbeat &
+HEARTBEAT_PID=$!
+
+# Cleanup on exit: kill proxy and heartbeat, remove live-copies, conditionally the per-project marker
 cleanup() {
+    kill $HEARTBEAT_PID 2>/dev/null
     kill $PROXY_PID 2>/dev/null
     wait $PROXY_PID 2>/dev/null
-    # Only remove the per-project marker if it still contains OUR log_id — a parallel session
-    # in the same project may have overwritten it with its own log_id.
+    # Remove per-project marker only if we own it (our PID is on line 3).
+    # A parallel session may have reclaimed the marker via heartbeat — don't clobber it.
     if [ -f "$MARKER_FILE" ]; then
-        local marker_log_id
-        marker_log_id=$(sed -n '2p' "$MARKER_FILE" 2>/dev/null)
-        if [ "$marker_log_id" = "$LOG_ID" ]; then
+        local marker_pid
+        marker_pid=$(sed -n '3p' "$MARKER_FILE" 2>/dev/null)
+        if [ "$marker_pid" = "$$" ]; then
             rm -f "$MARKER_FILE"
         fi
     fi
-    # Only remove the /tmp per-project marker if it still contains OUR port — another session
-    # that started later may have already overwritten it with its own port, so don't clobber it.
+    # Remove /tmp marker only if we own it (our PID is on line 4).
     local tmp_marker="/tmp/.monitor_cc_proxy_${SESSION_ID}"
     if [ -f "$tmp_marker" ]; then
-        local marker_port
-        marker_port=$(sed -n '1p' "$tmp_marker" 2>/dev/null)
-        if [ "$marker_port" = "$PROXY_PORT" ]; then
+        local marker_pid
+        marker_pid=$(sed -n '4p' "$tmp_marker" 2>/dev/null)
+        if [ "$marker_pid" = "$$" ]; then
             rm -f "$tmp_marker"
         fi
     fi
