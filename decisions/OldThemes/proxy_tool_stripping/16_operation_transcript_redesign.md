@@ -1,6 +1,6 @@
 # 16 — Operation-Transcript Redesign of the Strip/Inject Span Logs (2026-06-08)
 
-Status: **Stage 1 Recording COMPLETE; Stage 2 (production wiring) pending.** Supersedes the patch-on-patch approach of the `_diff_text` fallback + `_dedup_wakeup_blocks` for the `_stripped`/`_injected` span construction.
+Status: **Stage 1 + Stage 2 COMPLETE; LIVE-VERIFY pending (proxy restart required).** Supersedes the patch-on-patch approach of the `_diff_text` fallback + `_dedup_wakeup_blocks` for the `_stripped`/`_injected` span construction.
 
 ## Origin
 
@@ -127,10 +127,29 @@ pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
 
 See `Op Shape Per Pass` table in `dev/proxy_dual_log/01_reports/composition_probe_20260609.md`. Defines exactly what each pass records at its mutation site.
 
+## ✅ Stage 2 — Consumer Switch COMPLETE (2026-06-09)
+
+Three sub-stages shipped as three commits:
+
+**Stage 2A** (`stage2A: port compose_block to diff_engine`): `apply_edit_to_spans` + `compose_block` ported byte-faithfully from probe to `src/proxy/diff_engine.py`. Production ops are 3-tuples `(offset, removed, injected)` — unpacking adjusted accordingly (no pass_name). Acceptance: import clean.
+
+**Stage 2B** (`stage2B: thread _all_ops to flow.metadata`): `apply_modification_rules` now returns 8-tuple (`_all_ops` as 8th element, both return paths). `addon.py` `request()` unpacks 8th value + stashes `flow.metadata["mc_all_ops"] = all_ops`. No behavior change in logging. All callers audited: `addon.py` (FIXED), `proxy_addon.py` (import only, no unpack), `dev/proxy_dual_log/groundtruth_message_spans_probe.py` (4 unpack sites → `*_`).
+
+**Stage 2C** (`stage2C: switch consumer to compose_block — double-inject fixed`): `_build_stripped_injected_deltas` signature: `stripped_msg_removed`/`injected_msg_added` replaced by `all_ops: Optional[dict] = None`. Messages loop: `gt_chunks`/`gt_injected`/`msg_chunks`/`ima_chunks_msg`/`blk_chunks`/`ima_chunks_blk`/`build_message_spans` call removed; replaced by `block_ops = msg_ops.get(bidx_int); if block_ops is not None: spans = compose_block(c0_text, block_ops)`. `bd["spans"]` fallback retained for op-less (unmodified) blocks. `addon.py` `response()` reads `mc_all_ops`, passes `all_ops` to `_build_stripped_injected_deltas`.
+
+**Offline verification (money-shot msg[100] flow_id 58620c90, api_requests_opus_monitor_cc_1780933074):**
+- Op chain on blk[0]: 3 ops — `first_pass` (TN strip + wakeup inject), `bg_exit` (BG line strip + wakeup inject), `dedup_wakeup` (removes 2nd wakeup, offset=48, injected="")
+- `compose_block` output: 1 injected span, wakeup_count=1 ✅ (was 2 with old `find()`-based path)
+- `has_i=True`, `i_fn_map["msg.100.0"]="_apply_bg_exit_strip"` → badge fires ✅
+
+**LIVE-VERIFY:** pending proxy restart. Expected: single green line per TN+BG message, REQ inj-badge present, no double-green.
+
 ## Open
 
-- **sidecar / idle_recap UNVERIFIED** — absent from the 5-stem corpus. Theoretical model: `Op(0,0,full_original,marker)` single full-replacement, trivially composable. Port must close with real data.
-- **Stage 2 (composition builder → src/)** — wire `_all_ops` into span derivation, replace `_diff_text` fallback + `_dedup` span-patch. Follows after 1C–1D sign-off.
+- **LIVE-VERIFY** (proxy restart required) — behavioral confirmation after merge to dev + restart.
+- **Stage 3 — CI invariant test** — port the `check_invariants` probe into a proper CI regression test (`dev/proxy_dual_log/` assertion suite). Catches any future pass that mutates without recording ops.
+- **Stage 4 — full `_diff_text` fallback removal** — after CI test guards completeness, remove the `bd["spans"]` fallback for op-less blocks (replace with a tripwire/assertion). Currently the fallback is benign (returns `[("equal", text)]` for truly unmodified blocks), but it silences future recording gaps.
+- **sidecar / idle_recap UNVERIFIED** — absent from the 5-stem corpus. Theoretical model: `Op(0,0,full_original,marker)` single full-replacement, trivially composable. Port must close with real data before Stage 4.
 
 ## Sources
 

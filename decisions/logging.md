@@ -48,15 +48,15 @@
 
 ### Message-Span Diffing (Strip/Inject)
 
-`messages_delta` spans in `_stripped` and `_injected` entries are GT-record-driven on inner-content level. Per-block logic in `_build_stripped_injected_deltas` (`logging.py`):
+`messages_delta` spans in `_stripped` and `_injected` entries are built via operation-transcript composition. Per-block logic in `_build_stripped_injected_deltas` (`logging.py`):
 
-- `stripped_msg_removed` (int msg_idx → list[str] chunks, bridged via `flow.metadata["mc_stripped_msg_removed"]`) and `injected_msg_added` (int msg_idx → list[str], bridged via `flow.metadata["mc_injected_msg_added"]`) both stashed in `request()`, read in `response()`.
-- For each block: `blk_chunks = [c for c in msg_chunks if c in o_inner]`; `ima_chunks_blk = [c for c in ima_chunks_msg if c in f_inner]`. When `blk_chunks` non-empty (per-block gate) AND both block objects non-None: `build_message_spans(o_inner, f_inner, blk_chunks, ima_chunks_blk)` computes GT spans.
-- Yellow (stripped): exact `stripped_chunks` positions in `orig_text`. Green (injected): `fwd_text.find(chunk)` for each `injected_chunks` entry — no gap inference. `injected_chunks=[]` → all fwd content equal (grey).
-- Blocks without matching recorded strip chunks fall back to `bd["spans"]` / `_diff_text` (word-level SequenceMatcher).
-- Inner-content level: `_get_inner_text` returns `block["text"]` for text blocks, `block["content"]` for tool_result blocks. JSON wrapper never enters span building.
+- `_all_ops` (`{msg_idx: {blk_idx: [(offset, removed, injected)]}}`) returned from `apply_modification_rules` as 8th tuple element; stashed in `request()` as `flow.metadata["mc_all_ops"]`; read in `response()` and passed into `_build_stripped_injected_deltas(all_ops=...)`.
+- Per block: `block_ops = all_ops[msg_idx][blk_idx]` when present → `c0_text = _get_inner_text(orig_block)`; `spans = compose_block(c0_text, block_ops)`. `compose_block` applies each `(offset, removed, injected)` op via `apply_edit_to_spans`, tracking Ck-cursor (equal+injected) — yields exact spans without re-search.
+- Unmodified blocks (no `block_ops` entry) fall back to `bd["spans"]` (`_diff_text` result) — truly equal blocks return `[("equal", text)]` from `_diff_text`.
+- Double-inject fixed: TN+BG chain produces 3 ops on msg[N] blk[0] (first_pass TN-strip+wakeup-inject, bg_exit BG-strip+wakeup-inject, dedup_wakeup removes 2nd wakeup). `compose_block` yields exactly 1 injected wakeup span — offline-verified on money-shot msg[100]: wakeup_count=1, has_i=True, badge fires. LIVE-VERIFY pending (proxy restart required).
+- Inner-content level: `_get_inner_text` returns `block["text"]` for text blocks, `block["content"]` for tool_result.
 
-Both `_get_inner_text` and `build_message_spans` live in `src/proxy/diff_engine.py`.
+`compose_block`, `apply_edit_to_spans`, and `_get_inner_text` live in `src/proxy/diff_engine.py`.
 
 ## Evidenz
 
