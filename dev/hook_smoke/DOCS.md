@@ -116,6 +116,19 @@ python3 dev/hook_smoke/test_rewrite_chained_sleep.py
 
 ---
 
+### test_version_purge.sh (140 LOC)
+
+**Purpose:** 8-assertion smoke for the version-aware dual-log purge (`_janitor_version_purge_jsonl_logs` + `_compute_proxy_hash` in `src/claude_proxy_start.sh`). Runs in a temp dir; never touches real `src/logs/`. Four cases: (a) version change purges stale (>60min) logs; (b) same version leaves stale files untouched; (c) fresh (<60min) logs survive a version-change purge; (d) absent marker triggers first-run cleanup and creates the marker. Mirrors the production functions inline — keep in sync with `src/claude_proxy_start.sh` when editing either.
+
+**Usage (from project root):**
+```bash
+bash dev/hook_smoke/test_version_purge.sh
+```
+
+**Expected output:** `All 8 assertions passed.` (exit 0).
+
+---
+
 ### test_header_capture.py (139 LOC)
 
 **Purpose:** 13-case smoke for the proxy header-capture additions in `src/proxy/addon.py`. Tests two

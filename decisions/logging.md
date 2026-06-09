@@ -21,8 +21,9 @@
 
 ### Zwei-Trigger-Architektur
 
-**Trigger 1 — proxy-start-bash** (`src/claude_proxy_start.sh:_janitor_cleanup_jsonl_logs`):
-- Zuständig für `dual_log/` — per-class split: opus-originals keep-30 + worker-originals keep-30 getrennt
+**Trigger 1 — proxy-start-bash** (`src/claude_proxy_start.sh:_janitor_cleanup_jsonl_logs` + `_janitor_version_purge_jsonl_logs` + `_compute_proxy_hash`):
+- Zuständig für `dual_log/` — per-class split: opus-originals keep-30 + worker-originals keep-30 getrennt; vorangestellt: version-aware purge (Phase 0)
+- Phase 0 (version-purge, `_janitor_version_purge_jsonl_logs`): Content-Hash (`_compute_proxy_hash`) über `proxy_addon.py` + `proxy/**/*.py` + `proxy/**/*.json` (sort-stabil via `find … | sort`; schließt `*.pyc`, `*.md`, `.DS_Store` aus). Marker `dual_log/.proxy_version` (1 Zeile = letzter Hash). Hash-Änderung oder fehlender Marker → `find dual_log/ -maxdepth 1 -name "api_requests_*.jsonl" -mmin +60 -delete`; danach Marker schreiben. Fehlender Marker = First-Run = treated as change (bereinigt alte Logs beim ersten versions-aware Start). mtime < 60min = lebendige Session = überlebt den Purge.
 - Phase 1a: `ls -t dual_log/api_requests_opus_*_original.jsonl | tail -n +31` → delete
 - Phase 1b: `ls -t dual_log/api_requests_worker_*_original.jsonl | tail -n +31` → delete
 - Phase 2: surviving `log_id`s = union from remaining `_original` files after rotation
