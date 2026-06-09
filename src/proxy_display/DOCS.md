@@ -49,13 +49,27 @@ On expand-click: `forwarded_parser._lazy_load_messages_forwarded(entry, fwd_path
 
 ---
 
-### worker_proxy_pane.py (426 LOC)
+### worker_proxy_pane.py (382 LOC)
 
-**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's `_forwarded` dual-log, handles digit-key worker switching, mouse input, renders with worker-switcher header. Drain-refresh-render pattern with `force_reload-OR-tick` gate. **Forwarded-log state:** `_worker_proxy_fwd_pos` (int) + `_worker_proxy_acc_fwd` (dict) replace `_worker_proxy_pending_by_rid`. In `_refresh_worker_proxy_data`: `fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'`; calls `_parse_forwarded_log(fwd_path, _worker_proxy_fwd_pos, _worker_proxy_acc_fwd)` directly; stamps `entry['_source_file'] = fwd_path.name` on each new entry. Lazy-load: same `_lazy_load_messages_forwarded` pattern, fwd_path derived from `_worker_proxy_log_path`. Worker-change + time-triggered reset blocks clear fwd state vars. **Dual-log overlay accumulator (unchanged):** `_worker_proxy_stripped_pos` / `_worker_proxy_injected_pos` + `_worker_proxy_acc_stripped` / `_worker_proxy_acc_injected` — both reset triggers clear all four. Entries receive `_strip_fns_lookup` / `_inject_fns_lookup` references to the per-family `_fns_by_flow_id` dicts (same pattern as main pane). `_worker_proxy_log_path` still updated to `log_path` (used for overlay path derivation and lazy-load fwd_path derivation). Header rendered via overdraw pattern; `_build_worker_proxy_output` returns `(output, header)` tuple.
+**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's `_forwarded` dual-log, handles digit-key worker switching, mouse input, renders with worker-switcher header. Drain-refresh-render pattern with `force_reload-OR-tick` gate. **Forwarded-log state:** `_worker_proxy_fwd_pos` (int) + `_worker_proxy_acc_fwd` (dict) replace `_worker_proxy_pending_by_rid`. In `_refresh_worker_proxy_data`: `fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'`; calls `_parse_forwarded_log(fwd_path, _worker_proxy_fwd_pos, _worker_proxy_acc_fwd)` directly; stamps `entry['_source_file'] = fwd_path.name` on each new entry. Lazy-load: same `_lazy_load_messages_forwarded` pattern, fwd_path derived from `_worker_proxy_log_path`. Worker-change + time-triggered reset blocks clear fwd state vars. **Dual-log overlay accumulator (unchanged):** `_worker_proxy_stripped_pos` / `_worker_proxy_injected_pos` + `_worker_proxy_acc_stripped` / `_worker_proxy_acc_injected` — both reset triggers clear all four. Entries receive `_strip_fns_lookup` / `_inject_fns_lookup` references to the per-family `_fns_by_flow_id` dicts (same pattern as main pane). `_worker_proxy_log_path` still updated to `log_path` (used for overlay path derivation and lazy-load fwd_path derivation). Header rendered via overdraw pattern; `_build_worker_proxy_output` returns `(output, header)` tuple. Pure helpers extracted to `worker_proxy_helpers.py`.
 **Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file.
 **Writes:** ANSI output to stdout (direct tmux pane write).
 **Called by:** `src/core/monitor.py` (via `..proxy_display.run_worker_proxy_loop`)
-**Calls out:** `input` (click_handler), `workers` (worker_tmux, worker_pane.get_selection_file_path, write_selection), `panes` (token_pane.build_cache_turns), `utils` (visual_line_count), `proxy_display.parser` (`find_worker_proxy_log`, `_parse_forwarded_log`, `_lazy_load_messages_forwarded`, `_find_dual_log_paths`, `accumulate_dual_log`, `_infer_model_family`)
+**Calls out:** `input` (click_handler), `workers` (worker_tmux, worker_pane.get_selection_file_path, write_selection), `panes` (token_pane.build_cache_turns), `utils` (visual_line_count), `proxy_display.parser` (`find_worker_proxy_log`, `_parse_forwarded_log`, `_lazy_load_messages_forwarded`, `_find_dual_log_paths`, `accumulate_dual_log`, `_infer_model_family`), `proxy_display.worker_proxy_helpers` (4 pure helpers)
+
+---
+
+### worker_proxy_helpers.py (55 LOC)
+
+**Purpose:** Pure helper functions extracted from `worker_proxy_pane.py` to satisfy the 400-LOC ceiling. No module-level state, no `global` declarations. All inputs via parameters; called only from `worker_proxy_pane.py`.
+- `_format_worker_proxy_header(workers, current_worker)` — builds ANSI header string with worker list and selection marker
+- `_wp_entry_idx_from_key(key)` — extracts `entry_idx` from int/tuple line_map keys
+- `_resolve_prev_same_wp(entries, k)` — walks backward to find first non-standalone predecessor
+- `_strip_inactive_wp_messages(entries, expand_states)` — evicts `messages` from entries outside the keep-last window that are not expanded
+**Reads:** Parameters only.
+**Writes:** Nothing (returns values; `_strip_inactive_wp_messages` mutates the `entries` argument).
+**Called by:** `src/proxy_display/worker_proxy_pane.py` exclusively
+**Calls out:** `constants` (`RESET`, `YELLOW`, `DIM`, `WHITE`, `PROXY_MESSAGES_KEEP_LAST`), `proxy_display.format` (`_is_standalone_entry`)
 
 ---
 
