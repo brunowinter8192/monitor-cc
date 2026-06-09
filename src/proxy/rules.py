@@ -57,101 +57,30 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     injected_msg_added = {}
     _all_ops: dict = {}
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_first_pass(messages_to_process)
-    modifications.extend(pass_mods)
-    for idx in c_idxs:
-        if idx not in stripped_msg_indices:
-            stripped_msg_indices.append(idx)
-            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
-        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
-        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
-    if c_idxs:
-        changed = True
-    _merge_ops(_all_ops, _pass_ops)
+    _passes = [
+        _apply_first_pass,
+        _apply_cumulative_sr_strips,
+        _apply_final_sr_pass,
+        _apply_po_preview_strip,
+        _apply_bg_exit_strip,
+        _apply_hook_prefix_strip,
+        _apply_git_lock_strip,
+        _apply_bd_noise_strip,
+    ]
 
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_cumulative_sr_strips(new_messages)
-    modifications.extend(pass_mods)
-    for idx in c_idxs:
-        if idx not in stripped_msg_indices:
-            stripped_msg_indices.append(idx)
-            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
-        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
-        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
-    if c_idxs:
-        changed = True
-    _merge_ops(_all_ops, _pass_ops)
-
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_final_sr_pass(new_messages)
-    modifications.extend(pass_mods)
-    for idx in c_idxs:
-        if idx not in stripped_msg_indices:
-            stripped_msg_indices.append(idx)
-            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
-        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
-        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
-    if c_idxs:
-        changed = True
-    _merge_ops(_all_ops, _pass_ops)
-
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_po_preview_strip(new_messages)
-    modifications.extend(pass_mods)
-    for idx in c_idxs:
-        if idx not in stripped_msg_indices:
-            stripped_msg_indices.append(idx)
-            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
-        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
-        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
-    if c_idxs:
-        changed = True
-    _merge_ops(_all_ops, _pass_ops)
-
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_bg_exit_strip(new_messages)
-    modifications.extend(pass_mods)
-    for idx in c_idxs:
-        if idx not in stripped_msg_indices:
-            stripped_msg_indices.append(idx)
-            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
-        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
-        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
-    if c_idxs:
-        changed = True
-    _merge_ops(_all_ops, _pass_ops)
-
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_hook_prefix_strip(new_messages)
-    modifications.extend(pass_mods)
-    for idx in c_idxs:
-        if idx not in stripped_msg_indices:
-            stripped_msg_indices.append(idx)
-            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
-        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
-        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
-    if c_idxs:
-        changed = True
-    _merge_ops(_all_ops, _pass_ops)
-
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_git_lock_strip(new_messages)
-    modifications.extend(pass_mods)
-    for idx in c_idxs:
-        if idx not in stripped_msg_indices:
-            stripped_msg_indices.append(idx)
-            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
-        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
-        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
-    if c_idxs:
-        changed = True
-    _merge_ops(_all_ops, _pass_ops)
-
-    new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = _apply_bd_noise_strip(new_messages)
-    modifications.extend(pass_mods)
-    for idx in c_idxs:
-        if idx not in stripped_msg_indices:
-            stripped_msg_indices.append(idx)
-            stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
-        stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
-        injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
-    if c_idxs:
-        changed = True
-    _merge_ops(_all_ops, _pass_ops)
+    new_messages = messages_to_process
+    for pass_fn in _passes:
+        new_messages, pass_mods, pass_removed, c_idxs, pass_injected, _pass_ops = pass_fn(new_messages)
+        modifications.extend(pass_mods)
+        for idx in c_idxs:
+            if idx not in stripped_msg_indices:
+                stripped_msg_indices.append(idx)
+                stripped_msg_originals[idx] = messages_to_process[idx].get("content", "")
+            stripped_msg_removed.setdefault(idx, []).extend(pass_removed.get(idx, []))
+            injected_msg_added.setdefault(idx, []).extend(pass_injected.get(idx, []))
+        if c_idxs:
+            changed = True
+        _merge_ops(_all_ops, _pass_ops)
 
     new_messages, _pass_ops = _dedup_wakeup_blocks(new_messages)
     _merge_ops(_all_ops, _pass_ops)
