@@ -5,15 +5,15 @@ import os
 import time
 
 from ..constants import (
-    RESET, YELLOW, DIM, WHITE,
-    POLL_INTERVAL, INPUT_POLL_INTERVAL, PROXY_MESSAGES_KEEP_LAST,
+    RESET, YELLOW, DIM,
+    POLL_INTERVAL, INPUT_POLL_INTERVAL,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )
 from .parser import (
     find_worker_proxy_log, _parse_forwarded_log, _lazy_load_messages_forwarded,
     accumulate_dual_log, _find_dual_log_paths, _infer_model_family,
 )
-from .format import format_proxy_block, _is_standalone_entry
+from .format import format_proxy_block
 from ..panes.token_pane import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
 from ..workers.worker_pane import get_selection_file_path
