@@ -12,7 +12,7 @@ from ..proxy.logging import _compute_diff
 
 # FUNCTIONS
 
-# Local copy — avoids importing from parser.py (leaf module); logic identical to parser._proxy_session_id_for_project
+# Single source — parser.py imports this; defined here so forwarded_parser.py stays a leaf (no import from parser.py)
 def _proxy_session_id_for_project(project_path: str) -> str:
     return hashlib.md5(project_path.encode()).hexdigest()[:8]
 

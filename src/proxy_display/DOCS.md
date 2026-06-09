@@ -74,18 +74,18 @@ On expand-click: `forwarded_parser._lazy_load_messages_forwarded(entry, fwd_path
 **Purpose:** Forwarded-log delta reconstruction — the 8 functions that parse `_forwarded` dual-log JSONL and rebuild per-request entries. `_infer_model_family(model)` maps model name to haiku/sonnet/opus. `_summarize_fwd_message(msg)` builds a summary dict with `content_tail`. `_dict_to_list_fwd` / `_apply_delta_to_list` convert index-keyed delta dicts into lists. `_extract_forwarded_fields(fwd_entry, system, tools, summaries)` builds the full entry dict (stamps `_fwd_req_idx`, `flow_id`, `anthropic_beta`, `context_management`, `diagnostics`, `cache_breakpoints=[]`). `_parse_forwarded_log(fwd_path, last_pos, acc_by_family)` reads `forwarded_delta` JSONL incrementally, accumulates system/tools/message deltas per model family (deque-bounded: last `PROXY_MESSAGES_KEEP_LAST=10` entries get `messages`, rest carry `messages=None`), stamps `diff_from_prev` via `_compute_diff`. `_lazy_load_messages_forwarded(entry, fwd_path)` replays forwarded stream from byte 0 to `entry['_fwd_req_idx']` on expand-click. `parse_proxy_log_forwarded(project_filter, last_pos, acc_by_family)` resolves the `_forwarded` log path via marker file and delegates to `_parse_forwarded_log`. Leaf module — does NOT import from `parser.py`; contains a local `_proxy_session_id_for_project` copy (same 1-line md5 logic) to avoid circular import.
 **Reads:** `_forwarded` dual-log JSONL files (incremental by byte position).
 **Writes:** Nothing — returns `(entry_list, new_position)` or `True/False` tuples.
-**Called by:** `src/proxy_display/parser.py` (re-exports all 8 functions); `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py` (via parser.py re-exports)
+**Called by:** `src/proxy_display/parser.py` (re-exports all 8 functions + `_proxy_session_id_for_project`); `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py` (via parser.py re-exports)
 **Calls out:** `proxy.message_summary` (`_summarize_message`), `proxy.logging` (`_compute_diff`), `constants` (`PROXY_MESSAGES_KEEP_LAST`)
 
 ---
 
-### parser.py (243 LOC)
+### parser.py (239 LOC)
 
 **Purpose:** Proxy log path resolution, dual-log overlay accumulation, and re-export of forwarded reconstruction functions from `forwarded_parser.py`. **Path helpers:** `find_proxy_log_path`, `find_errors_log_path`, `find_response_log_path`, `find_worker_proxy_log`, `_find_dual_log_paths` — all resolve JSONL paths for the current proxy session via marker file. `read_response_log(path, last_pos)` reads `_response` entries incrementally (`{request_id: headers_dict}`). `scan_worker_errors_logs(last_positions, project_session_id, min_mtime)` globs worker `_errors` dual-logs, reads incrementally by byte position, extracts `_worker_name_from_file` from filename. **Dual-log overlay:** `accumulate_dual_log(path, last_pos, acc_by_family)` reads stripped/injected delta entries, mutates `acc_by_family` IN-PLACE (`.clear()`+`.update()` preserves Python refs held by pane entries); maintains `acc['_fns_by_flow_id']: {flow_id → set(fn_names)}` per family. Uses `_infer_model_family` imported from `forwarded_parser`. **Re-exports (from `forwarded_parser`):** all 8 forwarded-reconstruction functions — callers importing from `parser` continue to work without change. **find_worker_proxy_log:** globs `dual_log/api_requests_worker_{session_id}_{name}_*_forwarded.jsonl` where session_id = md5(project_filter)[:8]; returns None when no match or project_filter absent.
 **Reads:** `_errors` / `_response` / `_stripped` / `_injected` dual-log JSONL files (incremental by byte position).
 **Writes:** Nothing — returns tuples or path objects.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py` (`parse_proxy_log_forwarded`, `_parse_forwarded_log`, `_lazy_load_messages_forwarded`, `_find_dual_log_paths`, `accumulate_dual_log`, `_infer_model_family`); `src/panes/warnings_pane.py` (`find_errors_log_path`, `scan_worker_errors_logs`, `proxy_session_id_for_project`, `get_proxy_session_start_ts`); `src/panes/token_pane.py` (`find_response_log_path`, `read_response_log`)
-**Calls out:** `forwarded_parser` (re-export + `_infer_model_family`)
+**Calls out:** `forwarded_parser` (re-export of 9 functions incl. `_proxy_session_id_for_project` + `_infer_model_family`)
 
 ---
 

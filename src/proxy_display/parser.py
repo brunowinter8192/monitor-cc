@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-import hashlib
 import json
 import os
 import time
@@ -7,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from .forwarded_parser import (
+    _proxy_session_id_for_project,
     _infer_model_family, _summarize_fwd_message, _dict_to_list_fwd,
     _apply_delta_to_list, _extract_forwarded_fields, _parse_forwarded_log,
     _lazy_load_messages_forwarded, parse_proxy_log_forwarded,
@@ -17,10 +17,6 @@ from .forwarded_parser import (
 # Estimate token count from char count (chars/3.5 heuristic, ~±15%)
 def _chars_to_tokens(chars: int) -> int:
     return int(chars / 3.5)
-
-# Derive proxy session_id from project path — matches claude_proxy_start.sh md5 hash logic
-def _proxy_session_id_for_project(project_path: str) -> str:
-    return hashlib.md5(project_path.encode()).hexdigest()[:8]
 
 # Public wrapper — used by panes to build project-scoped worker log globs
 def proxy_session_id_for_project(project_path: str) -> str:
