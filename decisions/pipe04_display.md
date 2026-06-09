@@ -62,7 +62,7 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 
 **REQ numbering sync:** `opus_req_num` reset at each turn boundary using cumulative `api_calls` count from session JSONL turns. Eliminates cross-turn drift from proxy-only requests (that don't appear in session JSONL). Helper requests (non-haiku, BP:0) get sub-numbers (#7.1, #7.2).
 
-**Modified message detection:** When consecutive requests have same message_count but different total chars, backwards scan from end finds divergence point. `content_tail` field (last 500 chars) stored in `_extract_raw_payload_fields()` enables showing the actual new content appended to modified messages.
+**Modified message detection:** When consecutive requests have same message_count but different total chars, backwards scan from end finds divergence point. `content_tail` field (last 500 chars) enables showing the actual new content appended to modified messages.
 
 **Turn header config:** Shows `effort:X`, `think:Yk(type)` from API payload's `output_config.effort` and `thinking.budget_tokens`/`thinking.type`. Red highlight when values change between turns.
 
