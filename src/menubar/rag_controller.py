@@ -98,8 +98,11 @@ def _read_rag_status(lock_path: Path = _RAG_LOCK) -> str:
             if not command.startswith('index'):
                 return _NO_INDEXING
         args       = data.get('args') or {}
-        collection = args.get('collection') or Path(args.get('input', '')).name or 'unknown'
         progress   = data.get('progress') or {}
+        collection = (args.get('collection')
+                      or progress.get('collection')
+                      or Path(args.get('input', '')).name
+                      or 'unknown')
         done       = progress.get('done', 0)
         total      = progress.get('total', 0)
         elapsed    = _format_elapsed(data.get('started_at', ''))
