@@ -129,7 +129,7 @@ bash dev/hook_smoke/test_version_purge.sh
 
 ---
 
-### test_header_capture.py (139 LOC)
+### test_header_capture.py (179 LOC)
 
 **Purpose:** 13-case smoke for the proxy header-capture additions in `src/proxy/addon.py`. Tests two
 independent surfaces: (1) beta-flags extraction logic (split/strip/drop-empty on `anthropic-beta`

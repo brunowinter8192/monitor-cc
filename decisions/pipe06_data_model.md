@@ -40,7 +40,7 @@ Some fields exist in the Proxy JSONL directly, others are computed by `monitor.p
 | `tools_count`, `tools_chars`, `tools_names`, `tools` | proxy_addon.py `_build_entry()` | From raw payload |
 | `cache_breakpoints` | proxy_addon.py | Message indices with `cache_control` set |
 | `has_cache_control` (per message) | proxy_addon.py `_has_cache_control()` | Whether message has `cache_control` attribute |
-| `tools_hash` | monitor.py `_extract_raw_payload_fields()` | MD5 of sorted tool names, computed from `raw_payload` |
+| `tools_hash` | monitor.py (raw-payload field extractor, removed) | MD5 of sorted tool names, computed from `raw_payload` |
 | `system_total_chars` | monitor.py | Computed from `raw_payload.system` blocks |
 | `schema_warnings` | monitor.py | Computed by checking against `KNOWN_*` sets in constants.py |
 
