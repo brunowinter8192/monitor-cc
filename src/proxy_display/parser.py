@@ -32,33 +32,15 @@ def find_worker_proxy_log(worker_name: str, project_filter: Optional[str] = None
         root = str(Path(__file__).parent.parent.parent)
     logs_dir = Path(root) / "src" / "logs"
     dual_dir = logs_dir / "dual_log"
-    # Primary: search dual_log/ for _forwarded files (written after Stage 3)
-    if project_filter:
-        project_session_id = _proxy_session_id_for_project(project_filter)
-        fwd_matches = list(dual_dir.glob(f"api_requests_worker_{project_session_id}_{worker_name}_*_forwarded.jsonl"))
-        if fwd_matches:
-            best = max(fwd_matches, key=lambda f: f.stat().st_mtime)
-            stem = best.stem[:-len("_forwarded")]
-            return logs_dir / f"{stem}.jsonl"  # synthetic path — stem is the log_id
-    # Unprefixed forwarded fallback
-    if dual_dir.exists():
-        fwd_matches = list(dual_dir.glob(f"api_requests_worker_{worker_name}_*_forwarded.jsonl"))
-        if fwd_matches:
-            best = max(fwd_matches, key=lambda f: f.stat().st_mtime)
-            stem = best.stem[:-len("_forwarded")]
-            return logs_dir / f"{stem}.jsonl"
-    # Legacy fallback: pre-Stage-3 main logs still on disk
-    if not logs_dir.exists():
+    if not project_filter:
         return None
-    if project_filter:
-        project_session_id = _proxy_session_id_for_project(project_filter)
-        matches = list(logs_dir.glob(f"api_requests_worker_{project_session_id}_{worker_name}_*.jsonl"))
-        if matches:
-            return max(matches, key=lambda f: f.stat().st_mtime)
-    matches = list(logs_dir.glob(f"api_requests_worker_{worker_name}_*.jsonl"))
-    if not matches:
+    project_session_id = _proxy_session_id_for_project(project_filter)
+    fwd_matches = list(dual_dir.glob(f"api_requests_worker_{project_session_id}_{worker_name}_*_forwarded.jsonl"))
+    if not fwd_matches:
         return None
-    return max(matches, key=lambda f: f.stat().st_mtime)
+    best = max(fwd_matches, key=lambda f: f.stat().st_mtime)
+    stem = best.stem[:-len("_forwarded")]
+    return logs_dir / f"{stem}.jsonl"  # synthetic path — stem is the log_id
 
 # Return epoch float of proxy session start (marker file mtime); falls back silently to time.time()
 def get_proxy_session_start_ts(project_filter: str) -> float:
