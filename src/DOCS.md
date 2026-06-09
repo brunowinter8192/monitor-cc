@@ -39,7 +39,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `startup.py` | 48 | Single module; only called by `workflow.py` |
 | `tmux_launcher.py` | 283 | Single module; only called by `workflow.py` (mode `all` → `launch_split_screen`; mode `restart-panes` → `restart_panes`, the Ctrl+R self-heal handler) |
 | `proxy_addon.py` | 31 | Thin shim — `claude_proxy_start.sh` copies it to `src/logs/.proxy_addon_live_<id>.py` for per-session isolation. Shim has sys.path logic that finds `src/proxy/` from both root and live-copy locations. Move would break live-copy pattern. |
-| `claude_proxy_start.sh` | 272 | Shell script — launches mitmproxy + Claude Code with proxy env; count-30 janitor for main + quartet-aligned dual-log rotation |
+| `claude_proxy_start.sh` | 303 | Shell script — launches mitmproxy + Claude Code with proxy env; version-aware purge (Phase 0: hash proxy source, delete stale >60min logs on change) + count-30 quartet-aligned dual-log rotation |
 
 ## Flow (Main Session)
 
