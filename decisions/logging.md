@@ -51,8 +51,9 @@
 `messages_delta` spans in `_stripped` and `_injected` entries are built via operation-transcript composition. Per-block logic in `_build_stripped_injected_deltas` (`logging.py`):
 
 - `_all_ops` (`{msg_idx: {blk_idx: [(offset, removed, injected)]}}`) returned from `apply_modification_rules` as 8th tuple element; stashed in `request()` as `flow.metadata["mc_all_ops"]`; read in `response()` and passed into `_build_stripped_injected_deltas(all_ops=...)`.
-- Per block: `block_ops = all_ops[msg_idx][blk_idx]` when present → `c0_text = _get_inner_text(orig_block)`; `spans = compose_block(c0_text, block_ops)`. `compose_block` applies each `(offset, removed, injected)` op via `apply_edit_to_spans`, tracking Ck-cursor (equal+injected) — yields exact spans without re-search.
-- Unmodified blocks (no `block_ops` entry) fall back to `bd["spans"]` (`_diff_text` result) — truly equal blocks return `[("equal", text)]` from `_diff_text`.
+- Per block: `block_ops = msg_ops.get(bidx_int, [])` (empty default). `c0_text` extracted from orig content for all blocks via `_get_inner_text`. `spans = compose_block(c0_text, block_ops)` always — no `_diff_text` fallback for messages. Op-less (unmodified) blocks: `block_ops=[]` → `[("equal", c0_text)]` → `s_texts=[]`, `has_i=False` → nothing written. Output-unchanged vs pre-Stage-4 for unmodified blocks: verified.
+- `_diff_text` not called for messages (Stage 4). `_diff_messages` produces block structure only (`{bidx, o_text, f_text}`, no `spans` field). `_diff_text` remains for system/tools (`_diff_system`, `_diff_tools`).
+- Guard against mutation-without-op: `dev/proxy_dual_log/test_composition_invariant.py` — committed synthetic fixture (9 entries, all 8 passes + dedup_wakeup + money-shot), exit 1 on any invariant violation. No runtime fallback.
 - Double-inject fixed: TN+BG chain produces 3 ops on msg[N] blk[0] (first_pass TN-strip+wakeup-inject, bg_exit BG-strip+wakeup-inject, dedup_wakeup removes 2nd wakeup). `compose_block` yields exactly 1 injected wakeup span — offline-verified on money-shot msg[100]: wakeup_count=1, has_i=True, badge fires. LIVE-VERIFY pending (proxy restart required).
 - Inner-content level: `_get_inner_text` returns `block["text"]` for text blocks, `block["content"]` for tool_result.
 

@@ -1,6 +1,6 @@
 # 16 — Operation-Transcript Redesign of the Strip/Inject Span Logs (2026-06-08)
 
-Status: **Stage 1 + Stage 2 COMPLETE; LIVE-VERIFY pending (proxy restart required).** Supersedes the patch-on-patch approach of the `_diff_text` fallback + `_dedup_wakeup_blocks` for the `_stripped`/`_injected` span construction.
+Status: **Stages 1–4 CODE-COMPLETE; LIVE-VERIFY pending (proxy restart required).** Supersedes the patch-on-patch approach of the `_diff_text` fallback + `_dedup_wakeup_blocks` for the `_stripped`/`_injected` span construction.
 
 ## Origin
 
@@ -144,12 +144,24 @@ Three sub-stages shipped as three commits:
 
 **LIVE-VERIFY:** pending proxy restart. Expected: single green line per TN+BG message, REQ inj-badge present, no double-green.
 
+## ✅ Stage 3 — CI Invariant Test DONE (2026-06-09)
+
+`dev/proxy_dual_log/test_composition_invariant.py` — standalone Python, exits 1 on any invariant violation. Committed synthetic fixture at `dev/proxy_dual_log/fixtures/invariant_corpus.jsonl`: 9 entries covering all 8 passes + dedup_wakeup + money-shot (fix-3: TN with BG summary → first_pass + bg_exit + dedup_wakeup). Negative check confirmed: dropping any single op from the 3-op money-shot chain → `ok=False` on both invariants. 12/12 checks passed, blocks_checked=11, exit 0.
+
+## ✅ Stage 4 — `_diff_text` Fallback Removal DONE (2026-06-09)
+
+`_build_stripped_injected_deltas` messages loop (Stage 4 commit `967cdd8`):
+- Removed: `spans = bd["spans"]` default + `if block_ops is not None:` guard
+- Now: `block_ops = msg_ops.get(bidx_int, [])` (empty default); `c0_text` always extracted; `spans = compose_block(c0_text, block_ops)` unconditionally
+- Op-less blocks: `block_ops=[]` → `[("equal", c0_text)]` → nothing logged — identical output to pre-Stage-4
+- Optional cleanup: `_diff_messages` in `diff_engine.py` no longer computes `spans` (removed `"spans": _diff_text(...)` from all 4 block_diffs construction sites)
+- `_diff_text` still called by `_diff_system` and `_diff_tools` — untouched
+- CI test (`test_composition_invariant.py`): still 12/12, exit 0 after Stage 4 changes
+
 ## Open
 
-- **LIVE-VERIFY** (proxy restart required) — behavioral confirmation after merge to dev + restart.
-- **Stage 3 — CI invariant test** — port the `check_invariants` probe into a proper CI regression test (`dev/proxy_dual_log/` assertion suite). Catches any future pass that mutates without recording ops.
-- **Stage 4 — full `_diff_text` fallback removal** — after CI test guards completeness, remove the `bd["spans"]` fallback for op-less blocks (replace with a tripwire/assertion). Currently the fallback is benign (returns `[("equal", text)]` for truly unmodified blocks), but it silences future recording gaps.
-- **sidecar / idle_recap UNVERIFIED** — absent from the 5-stem corpus. Theoretical model: `Op(0,0,full_original,marker)` single full-replacement, trivially composable. Port must close with real data before Stage 4.
+- **LIVE-VERIFY** (proxy restart required) — behavioral confirmation after merge to dev + restart. Expected: single green line per TN+BG message, REQ inj-badge present, no double-green.
+- **sidecar / idle_recap UNVERIFIED** — absent from the 5-stem corpus. Theoretical model: `Op(0,0,full_original,marker)` single full-replacement, trivially composable. Port covers this theoretically; real-data confirmation deferred.
 
 ## Sources
 
