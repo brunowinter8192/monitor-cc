@@ -146,6 +146,32 @@ _janitor_cleanup_live_copies() {
 }
 _janitor_cleanup_live_copies
 
+# Compute stable content hash over proxy source: proxy_addon.py + .py/.json files under proxy/
+# Excludes __pycache__/*.pyc (noise on recompile), DOCS.md, .DS_Store — code + schemas only.
+_compute_proxy_hash() {
+    { cat "$SCRIPT_DIR/proxy_addon.py"
+      find "$SCRIPT_DIR/proxy" -type f \( -name '*.py' -o -name '*.json' \) | sort \
+          | while IFS= read -r f; do cat "$f"; done
+    } | if command -v md5 &>/dev/null; then md5; else md5sum | head -c 32; fi
+}
+
+# Phase 0 of the janitor: delete stale (>60min) dual-logs when proxy source changed.
+# Called from _janitor_cleanup_jsonl_logs; reads $DUAL_LOG_DIR + $SCRIPT_DIR from caller scope.
+_janitor_version_purge_jsonl_logs() {
+    local purged_stale=0 current_hash saved_hash f
+    local version_marker="$DUAL_LOG_DIR/.proxy_version"
+    current_hash="$(_compute_proxy_hash)"
+    saved_hash="$(cat "$version_marker" 2>/dev/null)"
+    if [ "$current_hash" != "$saved_hash" ]; then
+        while IFS= read -r f; do
+            rm -f "$f"
+            purged_stale=$((purged_stale + 1))
+        done < <(find "$DUAL_LOG_DIR" -maxdepth 1 -type f -name "api_requests_*.jsonl" -mmin +60 2>/dev/null)
+        echo "$current_hash" > "$version_marker"
+        echo "Janitor: version change ($purged_stale stale dual-logs purged)"
+    fi
+}
+
 # Janitor: rotate dual-log files (keep 30 opus + 30 worker by _original count) + legacy cleanup.
 _janitor_cleanup_jsonl_logs() {
     local keep=30
@@ -154,6 +180,9 @@ _janitor_cleanup_jsonl_logs() {
 
     if [ -d "$DUAL_LOG_DIR" ]; then
         local surviving_ids stem log_id sfx
+
+        # Phase 0: version-aware purge (runs before count-rotation)
+        _janitor_version_purge_jsonl_logs
 
         # Phase 1a: rotate opus _original files — keep 30 newest, delete older
         while IFS= read -r f; do
