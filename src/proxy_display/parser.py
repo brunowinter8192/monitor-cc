@@ -155,10 +155,7 @@ def accumulate_dual_log(path: Optional[Path], last_pos: int, acc_by_family: dict
                     acc['messages'][midx].update(blks)
                 acc['fields'].update(entry.get('fields_delta') or {})
                 fid = entry.get('flow_id', '')
-                acc.setdefault('_fns_by_flow_id', {})[fid] = set(
-                    v for k, v in (entry.get('fn_map') or {}).items()
-                    if not k.startswith('field.')
-                )
+                acc.setdefault('_fns_by_flow_id', {})[fid] = set((entry.get('fn_map') or {}).values())
             return f.tell()
     except OSError:
         return last_pos

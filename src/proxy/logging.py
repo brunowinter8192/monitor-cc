@@ -334,7 +334,9 @@ def _build_stripped_injected_deltas(
                 if is_first or (prev_injected or {}).get(lk) != h:
                     i_blks[bidx] = i_spans
                     i_text = " ".join(t for tag, t in i_spans if tag == "injected" and t)
-                    if "background done" in i_text:
+                    if i_text == ".":
+                        pass  # empty-block placeholder — not a real injection, skip badge
+                    elif "background done" in i_text:
                         i_fn_map[lk] = "_apply_bg_exit_strip"
                     else:
                         code = _attribute_chunk(i_text) if i_text else None
@@ -355,13 +357,11 @@ def _build_stripped_injected_deltas(
             new_s[lk] = h
             if is_first or (prev_stripped or {}).get(lk) != h:
                 s_fields[key] = fd["orig"]
-                s_fn_map[lk] = _FIELD_STRIP_FN.get(key, "_inject_model_override")
         if fd["tag"] in ("injected", "replaced"):
             h = _delta_hash(fd["fwd"])
             new_i[lk] = h
             if is_first or (prev_injected or {}).get(lk) != h:
                 i_fields[key] = fd["fwd"]
-                i_fn_map[lk] = _FIELD_INJECT_FN.get(key, "_inject_model_override")
 
     now = datetime.now(timezone.utc)
     timestamp = f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"
