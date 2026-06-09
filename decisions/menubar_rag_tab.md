@@ -15,7 +15,8 @@ RAG tab is the second panel in the four-tab ring `Sessions · RAG · Beads · Qu
   - `kind` present: `kind != 'index'` → `no indexing currently running`
   - `kind` absent (backward compat — old lock format): `command.startswith('index')` fallback
 - Otherwise format: `{collection}: {done}/{total} · {elapsed}`
-  - `collection` = `args.collection`, fallback `Path(args.input).name`, fallback `'unknown'`
+  - `collection` = `args.collection`, fallback `progress.collection`, fallback `Path(args.input).name`, fallback `'unknown'`
+  - `progress.collection` is set per-collection during `update_docs` runs → shows real name (e.g. `monitor-cc-meta: 3/8 · 5s`) instead of old `unknown: 0/0 · elapsed`
   - `done`/`total` from `progress` dict (defaults 0/0 when absent)
   - `elapsed` = `now(utc) - started_at`, formatted `{M}m{SS}s` when minutes > 0, else `{S}s`
 
@@ -49,7 +50,7 @@ RAG tab is the second panel in the four-tab ring `Sessions · RAG · Beads · Qu
 
 **Lock file scope (post-consolidation):** `rag.lock` is acquired by ALL rag-cli commands except `status` and `server` (cli.py lines 131-148). The `kind` field distinguishes indexing ops from query/delete ops. `kind="index"` set for `{"index", "update_docs"}`; `kind="query"` for all others (`_INDEXING_COMMANDS` frozenset in `lock.py`).
 
-**`update_docs` in the gate:** `update_docs` acquires the lock with `command="update_docs"`, `kind="index"`. Without the `kind` gate, the old `command.startswith('index')` check silently excluded it — the menubar showed "no indexing" during `update_docs` runs. The new gate catches it correctly. Note: `update_docs` does not call `lock.update_progress`, so the menubar shows `unknown: 0/0 · elapsed` during its run (no collection key in `args`; sync.py doesn't report per-file progress to the lock). This is acceptable as a status indicator.
+**`update_docs` in the gate:** `update_docs` acquires the lock with `command="update_docs"`, `kind="index"`. Without the `kind` gate, the old `command.startswith('index')` check silently excluded it — the menubar showed "no indexing" during `update_docs` runs. The new gate catches it correctly. `update_docs` now writes `progress.collection` (per-collection name as it iterates) into the lock's `progress` dict; the menubar reads this as the label fallback, showing e.g. `monitor-cc-meta: 3/8 · 5s` instead of the old `unknown: 0/0 · elapsed`.
 
 **Backward compat:** locks written before the `kind` field was added (pre-consolidation) had `command="index-dir"`, `"index-file"`, or `"index-json"`. The `command.startswith('index')` fallback handles these correctly.
 
