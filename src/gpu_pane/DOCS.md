@@ -23,9 +23,9 @@ Standalone tmux Window 4 pane that monitors RAG GPU servers and indexed collecti
 
 ## Modules
 
-### pane.py (327 LOC)
+### pane.py (318 LOC)
 
-**Purpose:** Event loop, keyboard + mouse handling, three-block render (GPU Servers + RAG Collections + Errors), idle-countdown computation, context-dependent button rendering. `COLLECTIONS_POLL_INTERVAL = 30.0` s controls the slower collection-count cadence; `last_collections_refresh` tracks last fetch. Digit-key handler accepts `'1'`-`'9'` capped to `len(PRESET_NAMES)`. Preset row format width 16 (fits longest variant name e.g. `embedding-0.6b`). Footer hint dynamic `[1-N] toggle presets`.
+**Purpose:** Event loop, keyboard + mouse handling, three-block render (GPU Servers + RAG Collections + Errors), idle-countdown computation, context-dependent button rendering. `COLLECTIONS_POLL_INTERVAL = 30.0` s controls the slower collection-count cadence; `last_collections_refresh` tracks last fetch. Digit-key handler accepts `'1'`-`'9'` capped to `len(PRESET_NAMES)`. Preset row format width 16 (fits longest variant name e.g. `embedding-0.6b`).
 **Reads:** `all_statuses()`, `get_anomalies()`, `errors_today()`, `errors_today_by_server()` on each 2s tick; `_fetch_collections()` on each 30s tick (+ force-refresh); `RAG_SERVER_IDLE_TIMEOUT` env (default 3600); `PRESET_NAMES` from `status` module (set at import).
 **Writes:** stdout (full-screen ANSI via `\033[2J\033[3J\033[H`).
 **Called by:** `workflow.py` (`--mode gpu` route).
@@ -33,9 +33,9 @@ Standalone tmux Window 4 pane that monitors RAG GPU servers and indexed collecti
 
 ---
 
-### status.py (220 LOC)
+### status.py (219 LOC)
 
-**Purpose:** State-file registry reader + collection fetcher. Globs `~/.rag-locks/server-port-*.json`; builds preset + arbitrary status lists; detects six anomaly classes; logs to `src/gpu_pane/logs/gpu_pane.log` via `TimedRotatingFileHandler(when='d', backupCount=7)` — rotates daily, 7-day retention. `PRESET_NAMES` list discovered at module-import-time via `subprocess.run(['rag-cli', 'server', 'presets', '--json'])` with 3s timeout; falls back to legacy `['embedding', 'reranker', 'splade']`. `_fetch_collections()` calls `rag-cli list_collections --json` (5s timeout); returns `[{collection, chunks}]`; returns `[]` on any failure (rag-cli absent, Postgres down, JSON error).
+**Purpose:** State-file registry reader + collection fetcher. Globs `~/.rag-locks/server-port-*.json`; builds preset + arbitrary status lists; detects six anomaly classes; logs to `src/gpu_pane/logs/gpu_pane.log` via `TimedRotatingFileHandler(when='d', backupCount=7)` — rotates daily, 7-day retention. `PRESET_NAMES` list discovered at module-import-time via `subprocess.run(['rag-cli', 'server', 'presets', '--json'])` with 3s timeout; returns `[]` on any failure (no fabricated names). `_fetch_collections()` calls `rag-cli list_collections --json` (5s timeout); returns `[{collection, chunks}]`; returns `[]` on any failure (rag-cli absent, Postgres down, JSON error).
 **Reads:** `~/.rag-locks/server-port-*.json` JSON (content + mtime); `http://localhost:<port>/health`; `ps -o rss=`; `rag-cli server presets --json` (once per process at import); `rag-cli list_collections --json` (called by pane.py every 30s).
 **Writes:** nothing (read-only); anomalies appended to module-level `_last_anomalies`; logging to `gpu_pane.log`.
 **Called by:** `pane.py`.
@@ -63,7 +63,7 @@ Standalone tmux Window 4 pane that monitors RAG GPU servers and indexed collecti
 | `pane.py` | `last_collections_refresh: float` (local in `run_gpu_loop`) | 30s cadence check | updated after each `_fetch_collections()` call |
 | `status.py` | `_last_anomalies: list[dict]` | `get_anomalies()` called by pane.py | `_warn()`, `_check_legacy_files()`, `_status_for_state()` (reset each tick by `all_statuses()`) |
 | `status.py` | `_legacy_warned: bool` | `_check_legacy_files()` | `_check_legacy_files()` (set on first legacy-file detection) |
-| `status.py` | `PRESET_NAMES: list[str]` | `pane.py` (digit-key handler, `_toggle_server`); `all_statuses` (preset row order) | `_discover_preset_names()` at module import — frozen for process lifetime |
+| `status.py` | `PRESET_NAMES: list[str]` | `pane.py` (digit-key handler, `_toggle_server`); `all_statuses` (preset row order) | `_discover_preset_names()` at module import — frozen for process lifetime; `[]` on rag-cli failure |
 
 **`_toggle_state` key convention:** preset name (e.g. `'embedding'`) for presets; `'port-{N}'` (e.g. `'port-8090'`) for arbitrary servers.
 
@@ -82,6 +82,6 @@ Standalone tmux Window 4 pane that monitors RAG GPU servers and indexed collecti
 - click triggers `_fire_button` which sets `_toggle_state` to `starting`/`stopping` then runs `rag-cli` fire-and-forget; if the rag-cli execution stalls, label gets stuck until `TOGGLE_TIMEOUT=120s` natural expiry.
 - **Hard cut:** pane does NOT read `~/.rag-locks/rag-server-{name}.port` or `rag-server-{name}-last-used` files. Those are obsolete. Legacy `.port` files are detected and logged as anomalies (via glob in `_check_legacy_files`) but their content is never read.
 - **PRESET_NAMES is frozen per pane process.** Discovery runs once at `status.py` import via `rag-cli server presets --json`. To pick up RAG-side SERVERS changes, user must respawn the pane via Ctrl+R (tmux respawn-pane re-imports the module). Without respawn, new presets registered in RAG don't appear in the pane.
-- **rag-cli not in PATH at gpu_pane import time → silent fallback to legacy 3-name list.** No anomaly logged for this case (intentional — keeps pane usable on machines without RAG installed). If user expects multi-model variants and only sees `embedding`/`reranker`/`splade`: check `which rag-cli` from the gpu_pane process's environment.
+- **rag-cli failure at import → empty preset block, no fabricated names.** `_discover_preset_names` returns `[]` on FileNotFoundError / TimeoutExpired / JSONDecodeError / KeyError. The GPU Servers header renders with no preset rows; all running servers land in the arbitrary block. No anomaly logged (mirrors `_fetch_collections` behavior). Check `which rag-cli` from the gpu_pane process's environment if presets never appear.
 - **Collections block shows `(none indexed)` on any `_fetch_collections()` failure** — Postgres down, rag-cli absent, timeout. Silent degradation; no anomaly logged. Collections start as `[]` at pane launch and populate after the first 30s tick (or on 'r').
 - **`list_collections` is lock-exempt in rag-cli** — pure Postgres aggregate read (`count(*) group by collection`), safe concurrent with indexing writes (Postgres MVCC). Does not require the advisory flock. `_fetch_collections()` will succeed even while `rag-cli index` or `rag-cli update_docs` holds the lock.

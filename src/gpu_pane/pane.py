@@ -308,15 +308,6 @@ def _render_pane(pane_width: int, pane_height: int,
     else:
         lines.append(f"  {DIM}(no errors today){RESET}")
 
-    lines.append("")
-    n_presets = len(presets)
-    digit_hint = f"[1-{n_presets}]" if n_presets > 1 else "[1]"
-    lines.append(
-        f"{DIM}{digit_hint} toggle presets  click [start]/[stop]/[restart]  "
-        f"{GREEN}●{RESET}{DIM}=healthy {YELLOW}◐{RESET}{DIM}=unhealthy "
-        f"{RED}○{RESET}{DIM}=stopped  arbitrary: click [stop]{RESET}"
-    )
-
     if anomalies:
         n = len(anomalies)
         lines.append(
