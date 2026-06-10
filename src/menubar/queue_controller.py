@@ -4,10 +4,8 @@ import objc
 import sys
 from datetime import datetime, timezone
 
-from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
-                    NSForegroundColorAttributeName, NSGridCellPlacementFill,
-                    NSGridView, NSLayoutAttributeLeading,
-                    NSPanel, NSStackView, NSTextField, NSView, NSStatusWindowLevel,
+from AppKit import (NSLayoutAttributeLeading,
+                    NSStackView, NSView, NSStatusWindowLevel,
                     NSUserInterfaceLayoutOrientationVertical,
                     NSWindowCollectionBehaviorCanJoinAllSpaces,
                     NSWindowCollectionBehaviorIgnoresCycle,
@@ -15,16 +13,15 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
 from Foundation import NSMakeRect, NSMakeSize
 
 from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
-                    PANEL_GAP, _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO,
-                    _CursorlessButton, _CursorlessLabel, _KeyablePanel,
-                    _make_line_separator, _make_header_label)
+                    PANEL_GAP, _TOP_BAR_H, _CursorlessButton, _KeyablePanel)
 # From paths.py: HOOKS_FILE path for delivery guard
 from .paths import HOOKS_FILE as _HOOKS_FILE
 # From queue.py: queue storage + delivery
 from .queue import load_queue, save_queue, deliver_message
 
-_QUEUE_TOGGLE_W = 22   # pts — ↑/↓ toggle button width
-_QUEUE_MINUS_W  = 22   # pts — × delete button width
+# From queue_panel_render.py: render-concern functions (module-level, controller as first arg)
+from .queue_panel_render import (_rebuild_inner as _qpr_rebuild_inner,
+                                  _compute_height, _resize_panel)
 _NSEventTypeKeyDown = 10         # NSEventTypeKeyDown
 _MODIFIER_MASK      = 0xFFFF0000  # NSEventModifierFlagDeviceIndependentFlagsMask
 
@@ -91,17 +88,6 @@ def _reposition_queue_panel(panel, nsstatusitem) -> None:
     py = sr.origin.y - h - PANEL_GAP
     panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
 
-# + add button spanning full row width; caller wires tag/target/action
-def _make_queue_add_btn(grid_w: int):
-    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, grid_w, _ROW_H - 1))
-    btn.setBordered_(False)
-    btn.setButtonType_(7)
-    btn.setAttributedTitle_(
-        NSAttributedString.alloc().initWithString_attributes_(
-            '  +', {NSFontAttributeName: _MENLO(),
-                    NSForegroundColorAttributeName: NSColor.systemGrayColor()}))
-    btn.heightAnchor().constraintEqualToConstant_(float(_ROW_H - 1)).setActive_(True)   # NSGridView turns off TAMIC
-    return btn
 
 # Per-concern controller for the queue panel: state ownership, tick refresh, panel render, action dispatch
 class QueueController:
