@@ -84,104 +84,39 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
             groups[0]['entry_pairs'].append((entry_idx, entry))
     return [g for g in groups if g['entry_pairs']]
 
-# Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
-def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None) -> tuple:
+# No-turns fallback: render entries directly via _render_entry_lines, returning (all_lines, line_keys, opus_req_num, sub_req_num)
+def _render_entries_no_turns(entries: list, expand_states: dict, pane_width: int, opus_req_num: int, sub_req_num: int, rendered_opus_labels: list, item_positions_out, copy_feedback, copy_rows_out) -> tuple:
     from .render_entry import _render_entry_lines
-    from .render_turn import render_turn_expanded
-    if not entries:
-        return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
-
-    if expand_states is None:
-        expand_states = {}
-
     all_lines = []
     line_keys = []
-
-    if turns:
-        groups = _assign_turns_to_entries(entries, turns)
-    else:
-        groups = [{'turn_idx': 0, 'timestamp': '', 'entry_pairs': list(enumerate(entries))}]
-    opus_req_num = 0
-    sub_req_num = 0
-    rendered_opus_labels = []
-
-    if groups:
-        prev_group_last_entry = None
-        for group in groups:
-            turn_idx = group['turn_idx']
-            sub_req_num = 0
-
-            prev_entry_for_delta = prev_group_last_entry
-            t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
-                group, entries, expand_states, pane_width,
-                prev_entry_for_delta, opus_req_num, sub_req_num,
-                turns=turns, turn_idx=turn_idx,
-                rendered_opus_labels=rendered_opus_labels,
-                copy_feedback=copy_feedback,
-                copy_rows_out=copy_rows_out,
-            )
-            all_lines.extend(t_lines)
-            line_keys.extend(t_keys)
-            if item_positions_out is not None:
-                base = len(all_lines) - len(t_lines)
-                for i, key in enumerate(t_keys):
-                    if key is not None:
-                        item_positions_out[key] = base + i
-
-            main_entries = [e for _, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
-            if main_entries:
-                prev_group_last_entry = main_entries[-1]
-            all_lines.append('')
-            line_keys.append(None)
-    else:
-        for entry_idx, entry in enumerate(entries):
-            model_short = _shorten_model(entry.get('model', '?'))
-            if _is_standalone_entry(entry):
-                num_label = 'H' if model_short == 'haiku' else 'S'
+    for entry_idx, entry in enumerate(entries):
+        model_short = _shorten_model(entry.get('model', '?'))
+        if _is_standalone_entry(entry):
+            num_label = 'H' if model_short == 'haiku' else 'S'
+        else:
+            if (entry.get('diff_from_prev') or {}).get('messages_added', 1) > 0:
+                opus_req_num += 1
+                sub_req_num = 0
+                num_label = f'#{opus_req_num}'
             else:
-                if (entry.get('diff_from_prev') or {}).get('messages_added', 1) > 0:
-                    opus_req_num += 1
-                    sub_req_num = 0
-                    num_label = f'#{opus_req_num}'
-                else:
-                    sub_req_num += 1
-                    num_label = f'#{opus_req_num}.{sub_req_num}'
-            e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label, rendered_opus_labels=rendered_opus_labels, copy_feedback=copy_feedback, copy_rows_out=copy_rows_out)
-            all_lines.extend(e_lines)
-            line_keys.extend(e_keys)
-            if item_positions_out is not None:
-                base = len(all_lines) - len(e_lines)
-                for i, key in enumerate(e_keys):
-                    if key is not None:
-                        item_positions_out[key] = base + i
-            all_lines.append('')
-            line_keys.append(None)
+                sub_req_num += 1
+                num_label = f'#{opus_req_num}.{sub_req_num}'
+        e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label, rendered_opus_labels=rendered_opus_labels, copy_feedback=copy_feedback, copy_rows_out=copy_rows_out)
+        all_lines.extend(e_lines)
+        line_keys.extend(e_keys)
+        if item_positions_out is not None:
+            base = len(all_lines) - len(e_lines)
+            for i, key in enumerate(e_keys):
+                if key is not None:
+                    item_positions_out[key] = base + i
+        all_lines.append('')
+        line_keys.append(None)
+    return all_lines, line_keys, opus_req_num, sub_req_num
 
-    _label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
-    collision_entry_idxs = {idx for idx, lbl in rendered_opus_labels if _label_counts[lbl] >= 2}
-
-    while all_lines and all_lines[-1] == '':
-        all_lines.pop()
-        line_keys.pop()
-
-    total_lines = len(all_lines)
-    viewport_lines = max(1, pane_height - 1)
-    max_scroll = max(0, len(all_lines) - viewport_lines)
-    clamped_offset = min(scroll_offset, max_scroll)
-    start = max(0, len(all_lines) - viewport_lines - clamped_offset)
-    end = start + viewport_lines
-
-    visible_lines = all_lines[start:end]
-    visible_keys = line_keys[start:end]
-
-    if line_map is not None:
-        line_map.clear()
-        for row_idx, key in enumerate(visible_keys):
-            if key is not None:
-                line_map[row_idx + 1] = key
-
-    initial_offset = sum(1 for k in line_keys[:start] if k is not None)
-    parent_count = initial_offset
+# Apply per-row background priority (hover > DIM_YELLOW_BG > DIM_GREEN_BG > collision > zebra)
+# initial_parent_count preserves zebra parity continuity across the scroll viewport boundary
+def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_entry_idxs: set, hover_row, copy_rows_out, pane_width: int, initial_parent_count: int) -> list:
+    parent_count = initial_parent_count
     result_lines = []
     for row_offset, line in enumerate(visible_lines):
         row = row_offset + 1
@@ -212,5 +147,74 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             chosen_bg = zebra_bg
         trunc = truncate_visible(line, pane_width)
         result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
+    return result_lines
 
+# Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
+def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None) -> tuple:
+    from .render_turn import render_turn_expanded
+    if not entries:
+        return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
+    if expand_states is None:
+        expand_states = {}
+    all_lines = []
+    line_keys = []
+    if turns:
+        groups = _assign_turns_to_entries(entries, turns)
+    else:
+        groups = [{'turn_idx': 0, 'timestamp': '', 'entry_pairs': list(enumerate(entries))}]
+    opus_req_num = 0
+    sub_req_num = 0
+    rendered_opus_labels = []
+    if groups:
+        prev_group_last_entry = None
+        for group in groups:
+            turn_idx = group['turn_idx']
+            sub_req_num = 0
+            prev_entry_for_delta = prev_group_last_entry
+            t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
+                group, entries, expand_states, pane_width,
+                prev_entry_for_delta, opus_req_num, sub_req_num,
+                turns=turns, turn_idx=turn_idx,
+                rendered_opus_labels=rendered_opus_labels,
+                copy_feedback=copy_feedback,
+                copy_rows_out=copy_rows_out,
+            )
+            all_lines.extend(t_lines)
+            line_keys.extend(t_keys)
+            if item_positions_out is not None:
+                base = len(all_lines) - len(t_lines)
+                for i, key in enumerate(t_keys):
+                    if key is not None:
+                        item_positions_out[key] = base + i
+            main_entries = [e for _, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
+            if main_entries:
+                prev_group_last_entry = main_entries[-1]
+            all_lines.append('')
+            line_keys.append(None)
+    else:
+        n_lines, n_keys, opus_req_num, sub_req_num = _render_entries_no_turns(
+            entries, expand_states, pane_width, opus_req_num, sub_req_num,
+            rendered_opus_labels, item_positions_out, copy_feedback, copy_rows_out)
+        all_lines.extend(n_lines)
+        line_keys.extend(n_keys)
+    _label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
+    collision_entry_idxs = {idx for idx, lbl in rendered_opus_labels if _label_counts[lbl] >= 2}
+    while all_lines and all_lines[-1] == '':
+        all_lines.pop()
+        line_keys.pop()
+    total_lines = len(all_lines)
+    viewport_lines = max(1, pane_height - 1)
+    max_scroll = max(0, len(all_lines) - viewport_lines)
+    clamped_offset = min(scroll_offset, max_scroll)
+    start = max(0, len(all_lines) - viewport_lines - clamped_offset)
+    end = start + viewport_lines
+    visible_lines = all_lines[start:end]
+    visible_keys = line_keys[start:end]
+    if line_map is not None:
+        line_map.clear()
+        for row_idx, key in enumerate(visible_keys):
+            if key is not None:
+                line_map[row_idx + 1] = key
+    initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
+    result_lines = _apply_row_backgrounds(visible_lines, visible_keys, collision_entry_idxs, hover_row, copy_rows_out, pane_width, initial_parent_count)
     return '\n'.join(result_lines), total_lines
