@@ -8,8 +8,6 @@ from ..constants import (
 )
 from ..utils import truncate_visible, first_word_of_call, format_worker_prefix
 from ..format.strip_marker import highlight_stripped
-from .warnings_parse import unknown_type_counts, format_unknown_type_warning
-
 INDENT = '  '
 
 # FUNCTIONS
@@ -40,15 +38,6 @@ def _format_warnings_pane(
     # each key is None or ('error', idx)
     all_keys = []
 
-    if unknown_type_counts:
-        all_lines.append(f"{YELLOW}FORMAT WARNINGS ({len(unknown_type_counts)} unknown types){SOFT_RESET}")
-        all_keys.append(None)
-        for msg_type, count in sorted(unknown_type_counts.items(), key=lambda x: x[1], reverse=True):
-            all_lines.append(format_unknown_type_warning(msg_type, count))
-            all_keys.append(None)
-        all_lines.append('')
-        all_keys.append(None)
-
     if tool_errors:
         all_lines.append(f"{RED}TOOL ERRORS ({len(tool_errors)}){SOFT_RESET}")
         all_keys.append(None)
@@ -74,7 +63,7 @@ def _format_warnings_pane(
                     all_lines.append(f"    {DIM}{raw_line}{SOFT_RESET}" if raw_line else '')
                     all_keys.append(None)
 
-    if not unknown_type_counts and not tool_errors:
+    if not tool_errors:
         all_lines.append(f"{DIM}No warnings.{SOFT_RESET}")
         all_keys.append(None)
 

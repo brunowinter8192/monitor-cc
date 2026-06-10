@@ -2,8 +2,6 @@
 import re
 from typing import List
 
-from ..constants import KNOWN_MESSAGE_TYPES, KNOWN_IGNORED_TYPES
-
 # FUNCTIONS
 
 # Extract non-text media from user messages (images, documents)
@@ -180,15 +178,3 @@ def extract_system_messages(messages: List[dict]) -> List[dict]:
         if text:
             items.append({'timestamp': timestamp, 'text': text})
     return items
-
-# Detect unknown message types not in KNOWN or KNOWN_IGNORED sets
-def detect_unknown_types(messages: List[dict]) -> List[dict]:
-    all_known = KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES
-    unknown = {}
-    for message in messages:
-        msg_type = message.get('type', '')
-        if msg_type and msg_type not in all_known:
-            if msg_type not in unknown:
-                unknown[msg_type] = {'type': msg_type, 'count': 0, 'example': str(message)[:200]}
-            unknown[msg_type]['count'] += 1
-    return list(unknown.values())

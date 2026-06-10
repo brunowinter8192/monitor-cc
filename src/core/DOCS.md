@@ -55,7 +55,7 @@ Buffer: `monitor_display._buffer_append()` appends each event to `main_event_buf
 **Reads:** Session JSONL files (incremental, via file positions in `monitor.py` state); shared state from `monitor.py`.
 **Writes:** Mutates `monitor.call_counter`, `monitor.agent_to_task`, `monitor.agent_to_type`, `monitor.buffered_subagent_calls`; calls `monitor_display` for output.
 **Called by:** `monitor.py` via `process_all_sessions()` → `process_session_file()`; also `load_historical_main()` on startup.
-**Calls out:** `jsonl`, `panes` (track_unknown_type).
+**Calls out:** `jsonl`, `monitor_display`.
 
 ---
 
