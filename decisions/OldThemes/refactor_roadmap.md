@@ -1,5 +1,9 @@
 # Refactor Roadmap — Sequencing (2026-05-28)
 
+> HISTORISCH — Punkt-in-Zeit-Sequencing-Beschluss vom 2026-05-28, kein lebendes Status-Board.
+> Aktives Cross-Session-Tracking läuft über GitHub Issues (bd/dolt-Beads ausgemustert).
+> Stage-Status hier nur, wo nachträglich faktisch korrigiert (Stage 1).
+
 ## Decision
 
 Vier Refactor/Fix-Themen laufen SEQUENTIELL, nicht parallel. Reihenfolge:
