@@ -96,6 +96,131 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
                                     keys.append(None)
     return lines, keys
 
+# Render one tool entry in dual-spans mode (header + expanded desc/schema), returning (lines, keys)
+def _render_tool_dual(tool_idx: int, t_name: str, tool_def: dict, entry: dict, expand_states: dict, entry_idx: int) -> tuple:
+    lines = []
+    keys = []
+    tool_key = ('tool', entry_idx, tool_idx)
+    is_tool_exp = expand_states.get(tool_key, False)
+    t_symbol = '▼' if is_tool_exp else '▶'
+    s_tool = entry['_stripped_spans']['tools'].get(t_name, {})
+    i_tool = entry['_injected_spans']['tools'].get(t_name, {})
+    whole_injected = bool(i_tool.get('whole'))
+    s_desc = s_tool.get('desc', [])
+    i_desc = i_tool.get('desc', [])
+    hdr_bg = DIM_GREEN_BG if whole_injected else ''
+    lines.append(f"      {hdr_bg}{DIM}{t_symbol} {t_name}{SOFT_RESET}")
+    keys.append(tool_key)
+    if is_tool_exp:
+        bg = DIM_GREEN_BG if whole_injected else ''
+        if i_desc and isinstance(i_desc[0], (list, tuple)):
+            # New format: inline render for desc_changes — equal=DIM, injected=DIM_GREEN_BG
+            for tag, span_text in i_desc:
+                span_bg = DIM_GREEN_BG if tag == "injected" else ""
+                for raw_line in span_text.split('\n'):
+                    raw_line = raw_line.expandtabs(8)
+                    if not raw_line:
+                        lines.append(f"        {span_bg}{DIM}{SOFT_RESET}")
+                        keys.append(None)
+                        continue
+                    lines.append(f"        {span_bg}{DIM}{raw_line}{SOFT_RESET}")
+                    keys.append(None)
+            for span_text in (s_desc or []):
+                for raw_line in span_text.split('\n'):
+                    raw_line = raw_line.expandtabs(8)
+                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                    keys.append(None)
+        else:
+            # Old format or whole_injected: forwarded description + stacked yellow/green
+            description = tool_def.get('description', '')
+            if description:
+                for raw_line in description.split('\n'):
+                    raw_line = raw_line.expandtabs(8)
+                    if not raw_line:
+                        lines.append(f"        {bg}{DIM}{SOFT_RESET}")
+                        keys.append(None)
+                        continue
+                    lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
+                    keys.append(None)
+            for span_text in (s_desc or []):
+                for raw_line in span_text.split('\n'):
+                    raw_line = raw_line.expandtabs(8)
+                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                    keys.append(None)
+            for span_text in (i_desc or []):
+                for raw_line in span_text.split('\n'):
+                    raw_line = raw_line.expandtabs(8)
+                    lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
+                    keys.append(None)
+        input_schema = tool_def.get('input_schema', {})
+        props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
+        required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
+        for param_name, param_info in props.items():
+            if isinstance(param_info, dict):
+                param_type = param_info.get('type', '?')
+                param_desc = param_info.get('description', '')
+                req_marker = '*' if param_name in required_props else ''
+                param_line = f"{param_name}{req_marker}: {param_type}"
+                if param_desc:
+                    param_line += f" — {param_desc}"
+                lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
+                keys.append(None)
+    return lines, keys
+
+# Render one tool entry in legacy (no dual-spans) mode (header + expanded desc/schema), returning (lines, keys)
+def _render_tool_legacy(tool_idx: int, t_name: str, tool_def: dict, expand_states: dict, entry_idx: int) -> tuple:
+    lines = []
+    keys = []
+    tool_key = ('tool', entry_idx, tool_idx)
+    is_tool_exp = expand_states.get(tool_key, False)
+    t_symbol = '▼' if is_tool_exp else '▶'
+    stripped_original = tool_def.get('stripped_original')
+    lines.append(f"      {DIM}{t_symbol} {t_name}{SOFT_RESET}")
+    keys.append(tool_key)
+    if is_tool_exp:
+        bg = ''
+        description = tool_def.get('description', '')
+        if description:
+            for raw_line in description.split('\n'):
+                raw_line = raw_line.expandtabs(8)
+                if not raw_line:
+                    lines.append(f"        {bg}{DIM}{SOFT_RESET}")
+                    keys.append(None)
+                    continue
+                lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
+                keys.append(None)
+        orig_desc = (stripped_original or {}).get('description', '')
+        if orig_desc:
+            for raw_line in orig_desc.split('\n'):
+                raw_line = raw_line.expandtabs(8)
+                if not raw_line:
+                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
+                    keys.append(None)
+                    continue
+                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
+                keys.append(None)
+        input_schema = tool_def.get('input_schema', {})
+        props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
+        required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
+        for param_name, param_info in props.items():
+            if isinstance(param_info, dict):
+                param_type = param_info.get('type', '?')
+                param_desc = param_info.get('description', '')
+                orig_param_desc = ''
+                if not param_desc and stripped_original:
+                    orig_param_desc = stripped_original.get('params', {}).get(param_name, '')
+                req_marker = '*' if param_name in required_props else ''
+                param_line = f"{param_name}{req_marker}: {param_type}"
+                if orig_param_desc:
+                    param_line += f" — {orig_param_desc}"
+                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{param_line}{SOFT_RESET}")
+                else:
+                    if param_desc:
+                        param_line += f" — {param_desc}"
+                    lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
+                keys.append(None)
+    return lines, keys
+
 # Render tools section for an expanded request entry, returning (lines, keys)
 def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_states: dict, pane_width: int) -> tuple:
     lines = []
@@ -136,118 +261,12 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
                 t_name = tool_def.get('name', '')
                 if not is_first_request and (not tools_changed or t_name not in added_set):
                     continue
-                tool_key = ('tool', entry_idx, tool_idx)
-                is_tool_exp = expand_states.get(tool_key, False)
-                t_symbol = '▼' if is_tool_exp else '▶'
                 if use_dual:
-                    s_tool = entry['_stripped_spans']['tools'].get(t_name, {})
-                    i_tool = entry['_injected_spans']['tools'].get(t_name, {})
-                    whole_injected = bool(i_tool.get('whole'))
-                    s_desc = s_tool.get('desc', [])
-                    i_desc = i_tool.get('desc', [])
-                    hdr_bg = DIM_GREEN_BG if whole_injected else ''
-                    lines.append(f"      {hdr_bg}{DIM}{t_symbol} {t_name}{SOFT_RESET}")
-                    keys.append(tool_key)
-                    if is_tool_exp:
-                        bg = DIM_GREEN_BG if whole_injected else ''
-                        if i_desc and isinstance(i_desc[0], (list, tuple)):
-                            # New format: inline render for desc_changes — equal=DIM, injected=DIM_GREEN_BG
-                            for tag, span_text in i_desc:
-                                span_bg = DIM_GREEN_BG if tag == "injected" else ""
-                                for raw_line in span_text.split('\n'):
-                                    raw_line = raw_line.expandtabs(8)
-                                    if not raw_line:
-                                        lines.append(f"        {span_bg}{DIM}{SOFT_RESET}")
-                                        keys.append(None)
-                                        continue
-                                    lines.append(f"        {span_bg}{DIM}{raw_line}{SOFT_RESET}")
-                                    keys.append(None)
-                            for span_text in (s_desc or []):
-                                for raw_line in span_text.split('\n'):
-                                    raw_line = raw_line.expandtabs(8)
-                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
-                                    keys.append(None)
-                        else:
-                            # Old format or whole_injected: forwarded description + stacked yellow/green
-                            description = tool_def.get('description', '')
-                            if description:
-                                for raw_line in description.split('\n'):
-                                    raw_line = raw_line.expandtabs(8)
-                                    if not raw_line:
-                                        lines.append(f"        {bg}{DIM}{SOFT_RESET}")
-                                        keys.append(None)
-                                        continue
-                                    lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
-                                    keys.append(None)
-                            for span_text in (s_desc or []):
-                                for raw_line in span_text.split('\n'):
-                                    raw_line = raw_line.expandtabs(8)
-                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
-                                    keys.append(None)
-                            for span_text in (i_desc or []):
-                                for raw_line in span_text.split('\n'):
-                                    raw_line = raw_line.expandtabs(8)
-                                    lines.append(f"        {DIM_GREEN_BG}{DIM}{raw_line or ''}{SOFT_RESET}")
-                                    keys.append(None)
-                        input_schema = tool_def.get('input_schema', {})
-                        props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
-                        required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
-                        for param_name, param_info in props.items():
-                            if isinstance(param_info, dict):
-                                param_type = param_info.get('type', '?')
-                                param_desc = param_info.get('description', '')
-                                req_marker = '*' if param_name in required_props else ''
-                                param_line = f"{param_name}{req_marker}: {param_type}"
-                                if param_desc:
-                                    param_line += f" — {param_desc}"
-                                lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
-                                keys.append(None)
+                    t_lines, t_keys = _render_tool_dual(tool_idx, t_name, tool_def, entry, expand_states, entry_idx)
                 else:
-                    stripped_original = tool_def.get('stripped_original')
-                    lines.append(f"      {DIM}{t_symbol} {t_name}{SOFT_RESET}")
-                    keys.append(tool_key)
-                    if is_tool_exp:
-                        bg = ''
-                        description = tool_def.get('description', '')
-                        if description:
-                            for raw_line in description.split('\n'):
-                                raw_line = raw_line.expandtabs(8)
-                                if not raw_line:
-                                    lines.append(f"        {bg}{DIM}{SOFT_RESET}")
-                                    keys.append(None)
-                                    continue
-                                lines.append(f"        {bg}{DIM}{raw_line}{SOFT_RESET}")
-                                keys.append(None)
-                        orig_desc = (stripped_original or {}).get('description', '')
-                        if orig_desc:
-                            for raw_line in orig_desc.split('\n'):
-                                raw_line = raw_line.expandtabs(8)
-                                if not raw_line:
-                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{SOFT_RESET}")
-                                    keys.append(None)
-                                    continue
-                                lines.append(f"        {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
-                                keys.append(None)
-                        input_schema = tool_def.get('input_schema', {})
-                        props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
-                        required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
-                        for param_name, param_info in props.items():
-                            if isinstance(param_info, dict):
-                                param_type = param_info.get('type', '?')
-                                param_desc = param_info.get('description', '')
-                                orig_param_desc = ''
-                                if not param_desc and stripped_original:
-                                    orig_param_desc = stripped_original.get('params', {}).get(param_name, '')
-                                req_marker = '*' if param_name in required_props else ''
-                                param_line = f"{param_name}{req_marker}: {param_type}"
-                                if orig_param_desc:
-                                    param_line += f" — {orig_param_desc}"
-                                    lines.append(f"        {DIM_YELLOW_BG}{DIM}{param_line}{SOFT_RESET}")
-                                else:
-                                    if param_desc:
-                                        param_line += f" — {param_desc}"
-                                    lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
-                                keys.append(None)
+                    t_lines, t_keys = _render_tool_legacy(tool_idx, t_name, tool_def, expand_states, entry_idx)
+                lines.extend(t_lines)
+                keys.extend(t_keys)
             deferred = entry.get('deferred_tools_names', [])
             if use_dual:
                 forwarded_names = set(tools_names)
