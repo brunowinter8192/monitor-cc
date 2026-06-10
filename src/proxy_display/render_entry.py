@@ -13,32 +13,8 @@ from .render_sections import render_fields_delta
 
 # FUNCTIONS
 
-# Render a single proxy entry into (lines, line_keys). indent sets the nesting level.
-def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '', num_label: str = '#0', rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None) -> tuple:
-    L1 = indent
-    L2 = indent + '  '
-    L3 = indent + '    '
-    lines = []
-    keys = []
-
-    model = _shorten_model(entry.get('model', '?'))
-    msg_count = entry.get('message_count', 0)
-    is_expanded = expand_states.get(entry_idx, False)
-    symbol = '\u25bc' if is_expanded else '\u25b6'
-
-    is_standalone = _is_standalone_entry(entry)
-    if model != 'haiku' and not is_standalone and rendered_opus_labels is not None:
-        rendered_opus_labels.append((entry_idx, num_label))
-    model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
-    prev_entry = None
-    if not is_standalone:
-        for _i in range(entry_idx - 1, -1, -1):
-            _prev_model = entries[_i].get('model', '')
-            _prev_family = "haiku" if "haiku" in _prev_model.lower() else "opus"
-            if _prev_family == model_family and not _is_standalone_entry(entries[_i]):
-                prev_entry = entries[_i]
-                break
-
+# Compute warning symbols/details, tool-mod string, and tag badge for an entry header
+def _compute_entry_warnings(entry: dict, prev_entry, L3: str) -> tuple:
     warn_symbols = []
     warn_details = []
     if prev_entry is not None:
@@ -55,8 +31,6 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
             new_c = entry['system_total_chars']
             delta = new_c - old_c
             warn_details.append([f"{L3}{DIM}sys: {_format_k(old_c)} → {_format_k(new_c)} ({delta:+,}){SOFT_RESET}"])
-    all_status = warn_symbols[:]
-    status_str = '  '.join(all_status)
     _curr_tools = entry.get('tools_names', [])
     _prev_tools = prev_entry.get('tools_names', []) if prev_entry is not None else []
     _t_added = len(set(_curr_tools) - set(_prev_tools))
@@ -69,14 +43,6 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         mods_str = f"  {YELLOW}🔧-{_t_removed}{SOFT_RESET}"
     else:
         mods_str = ''
-
-    sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
-    tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
-    msgs_chars = entry.get('messages_total_chars', 0)
-    if is_standalone:
-        haiku_info = f"  sys:{_format_k(sys_chars)} tools:{_format_k(tools_chars)} msgs:{_format_k(msgs_chars)}"
-    else:
-        haiku_info = ''
     _fid = entry.get('flow_id', '')
     _n_strip = len(entry.get('_strip_fns_lookup', {}).get(_fid, set()))
     _n_inj   = len(entry.get('_inject_fns_lookup', {}).get(_fid, set()))
@@ -84,30 +50,15 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
     if _n_strip: _badge_parts.append(f'{YELLOW}{_n_strip}strip{SOFT_RESET}')
     if _n_inj:   _badge_parts.append(f'{GREEN}{_n_inj}inj{SOFT_RESET}')
     tag_badge = ('  ' + ' '.join(_badge_parts)) if _badge_parts else ''
-    header_raw_e = f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg{mods_str}  {status_str}{haiku_info}{tag_badge}{SOFT_RESET}"
-    if copy_feedback is not None:
-        _stripped_he = _ANSI_ESCAPE_RE.sub('', header_raw_e)
-        visible_len = sum(_cell_width(ch) for ch in _stripped_he)
-        is_flash = copy_feedback.get(entry_idx, 0) > time.time()
-        copy_sym = '✓' if is_flash else '⎘'
-        sym_cells = _cell_width(copy_sym)
-        pad = pane_width - 1 - sym_cells - visible_len  # 1 space + sym_cells
-        if pad >= 0:
-            lines.append(header_raw_e + ' ' * pad + ' ' + copy_sym)
-        else:
-            lines.append(header_raw_e)
-    else:
-        lines.append(header_raw_e)
-    keys.append(entry_idx)
-    if is_expanded:
-        buckets = _aggregate_req_buckets(entry, prev_entry)
-        parts = [f'INERT:{c}' for c in buckets['inert_codes']]
-        parts += [f'IDX:{i}' for i in buckets['idx_msgs']]
-        parts += buckets['leak_signals']
-        parts += buckets['sus_signals']
-        if parts:
-            lines.append(f"{L2}{DIM}{'  '.join(parts)}{SOFT_RESET}")
-            keys.append(None)
+    return warn_symbols, warn_details, mods_str, tag_badge
+
+# Render delta row: "(first request)" or Δ-row + neg_delta expand details, returning (lines, keys)
+def _render_entry_delta(entry_idx: int, entry: dict, prev_entry, expand_states: dict, L2: str, L3: str) -> tuple:
+    lines = []
+    keys = []
+    sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
+    tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+    msgs_chars = entry.get('messages_total_chars', 0)
     if prev_entry is None:
         lines.append(f"{L2}{DIM}(first request){SOFT_RESET}")
         keys.append(None)
@@ -121,7 +72,7 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
         else:
             neg_key = (entry_idx, 'neg_delta')
             is_neg_exp = expand_states.get(neg_key, False)
-            neg_sym = '\u25bc' if is_neg_exp else '\u25b6'
+            neg_sym = '▼' if is_neg_exp else '▶'
             lines.append(f"{L2}{neg_sym} {_format_delta('sys', d_sys)}  {_format_delta('tools', d_tools)}  {_format_delta('msgs', d_msgs)}")
             keys.append(neg_key)
             if is_neg_exp:
@@ -165,11 +116,101 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
                         m_chars = msg.get('chars', 0)
                         lines.append(f"{L3}{GREEN}added:{SOFT_RESET} {DIM}[{m_idx:3d}] {role:<8} {m_type:<20} {m_chars:,}c{SOFT_RESET}")
                         keys.append(None)
+    return lines, keys
 
+# Render divider + fields_delta + per-message summary rows for an expanded entry, returning (lines, keys)
+def _render_entry_msg_list(entry_idx: int, entry: dict, prev_entry, expand_states: dict, L2: str, pane_width: int) -> tuple:
+    lines = []
+    keys = []
+    lines.append(f"{L2}{DIM}{'─' * min(40, pane_width - len(L2) - 2)}{SOFT_RESET}")
+    keys.append(None)
+    f_lines, f_keys = render_fields_delta(entry_idx, entry, expand_states, pane_width)
+    lines.extend(f_lines)
+    keys.extend(f_keys)
+    messages = entry.get('messages', [])
+    stripped_indices = set(entry.get('stripped_msg_indices', []))
+    new_start = prev_entry.get('message_count', 0) if prev_entry is not None else 0
+    for msg_idx, msg in enumerate(messages):
+        role = msg.get('role', '?')[:4]
+        msg_type = msg.get('type', 'text')
+        chars = msg.get('chars', 0)
+        chars_fmt = f"{chars:,}c"
+        blocks = msg.get('blocks', [])
+        is_stripped = msg_idx in stripped_indices
+        is_old = msg_idx < new_start
+        type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
+        if is_stripped:
+            lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}[{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
+        elif is_old:
+            lines.append(f"{L2}{DIM}[{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{SOFT_RESET}")
+        else:
+            lines.append(f"{L2}{WHITE}[{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{SOFT_RESET}")
+        keys.append(None)
+    return lines, keys
+
+# Render a single proxy entry into (lines, line_keys). indent sets the nesting level.
+def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_states: dict, pane_width: int, indent: str = '', num_label: str = '#0', rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None) -> tuple:
+    L1 = indent
+    L2 = indent + '  '
+    L3 = indent + '    '
+    lines = []
+    keys = []
+    model = _shorten_model(entry.get('model', '?'))
+    msg_count = entry.get('message_count', 0)
+    is_expanded = expand_states.get(entry_idx, False)
+    symbol = '▼' if is_expanded else '▶'
+    is_standalone = _is_standalone_entry(entry)
+    if model != 'haiku' and not is_standalone and rendered_opus_labels is not None:
+        rendered_opus_labels.append((entry_idx, num_label))
+    model_family = "haiku" if "haiku" in entry.get('model', '').lower() else "opus"
+    prev_entry = None
+    if not is_standalone:
+        for _i in range(entry_idx - 1, -1, -1):
+            _prev_model = entries[_i].get('model', '')
+            _prev_family = "haiku" if "haiku" in _prev_model.lower() else "opus"
+            if _prev_family == model_family and not _is_standalone_entry(entries[_i]):
+                prev_entry = entries[_i]
+                break
+    warn_symbols, warn_details, mods_str, tag_badge = _compute_entry_warnings(entry, prev_entry, L3)
+    status_str = '  '.join(warn_symbols)
+    sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
+    tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
+    msgs_chars = entry.get('messages_total_chars', 0)
+    if is_standalone:
+        haiku_info = f"  sys:{_format_k(sys_chars)} tools:{_format_k(tools_chars)} msgs:{_format_k(msgs_chars)}"
+    else:
+        haiku_info = ''
+    header_raw_e = f"{WHITE}{L1}{symbol} {num_label}  {model}  {msg_count}msg{mods_str}  {status_str}{haiku_info}{tag_badge}{SOFT_RESET}"
+    if copy_feedback is not None:
+        _stripped_he = _ANSI_ESCAPE_RE.sub('', header_raw_e)
+        visible_len = sum(_cell_width(ch) for ch in _stripped_he)
+        is_flash = copy_feedback.get(entry_idx, 0) > time.time()
+        copy_sym = '✓' if is_flash else '⎘'
+        sym_cells = _cell_width(copy_sym)
+        pad = pane_width - 1 - sym_cells - visible_len  # 1 space + sym_cells
+        if pad >= 0:
+            lines.append(header_raw_e + ' ' * pad + ' ' + copy_sym)
+        else:
+            lines.append(header_raw_e)
+    else:
+        lines.append(header_raw_e)
+    keys.append(entry_idx)
+    if is_expanded:
+        buckets = _aggregate_req_buckets(entry, prev_entry)
+        parts = [f'INERT:{c}' for c in buckets['inert_codes']]
+        parts += [f'IDX:{i}' for i in buckets['idx_msgs']]
+        parts += buckets['leak_signals']
+        parts += buckets['sus_signals']
+        if parts:
+            lines.append(f"{L2}{DIM}{'  '.join(parts)}{SOFT_RESET}")
+            keys.append(None)
+    d_lines, d_keys = _render_entry_delta(entry_idx, entry, prev_entry, expand_states, L2, L3)
+    lines.extend(d_lines)
+    keys.extend(d_keys)
     if warn_symbols:
         warn_key = (entry_idx, 'warnings')
         is_warn_expanded = expand_states.get(warn_key, False)
-        warn_sym = '\u25bc' if is_warn_expanded else '\u25b6'
+        warn_sym = '▼' if is_warn_expanded else '▶'
         lines.append(f"{L2}{warn_sym} {'  '.join(warn_symbols)}")
         keys.append(warn_key)
         if is_warn_expanded:
@@ -177,34 +218,8 @@ def _render_entry_lines(entry_idx: int, entry: dict, entries: list, expand_state
                 for dl in detail_lines:
                     lines.append(dl)
                     keys.append(None)
-
-
     if is_expanded:
-        lines.append(f"{L2}{DIM}{'─' * min(40, pane_width - len(L2) - 2)}{SOFT_RESET}")
-        keys.append(None)
-        f_lines, f_keys = render_fields_delta(entry_idx, entry, expand_states, pane_width)
-        lines.extend(f_lines)
-        keys.extend(f_keys)
-
-        messages = entry.get('messages', [])
-        stripped_indices = set(entry.get('stripped_msg_indices', []))
-
-        new_start = prev_entry.get('message_count', 0) if prev_entry is not None else 0
-        for msg_idx, msg in enumerate(messages):
-            role = msg.get('role', '?')[:4]
-            msg_type = msg.get('type', 'text')
-            chars = msg.get('chars', 0)
-            chars_fmt = f"{chars:,}c"
-            blocks = msg.get('blocks', [])
-            is_stripped = msg_idx in stripped_indices
-            is_old = msg_idx < new_start
-            type_label = f"{len(blocks)} blocks" if len(blocks) > 1 else msg_type
-            if is_stripped:
-                lines.append(f"{L2}{DIM_YELLOW_BG}{DIM}[{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}  [STRIPPED]{SOFT_RESET}")
-            elif is_old:
-                lines.append(f"{L2}{DIM}[{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{SOFT_RESET}")
-            else:
-                lines.append(f"{L2}{WHITE}[{msg_idx:3d}] {role:<8} {type_label:<20} {chars_fmt:>8}{SOFT_RESET}")
-            keys.append(None)
-
+        m_lines, m_keys = _render_entry_msg_list(entry_idx, entry, prev_entry, expand_states, L2, pane_width)
+        lines.extend(m_lines)
+        keys.extend(m_keys)
     return lines, keys
