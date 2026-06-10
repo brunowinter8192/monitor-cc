@@ -11,7 +11,7 @@ modifying cache-turn grouping. Do NOT touch for display logic — that lives in 
 
 ## Public Interface
 
-- `parse_new_tool_calls(filepath, last_position, tool_use_cache)` — incremental parse, returns 10-tuple of lists + new position
+- `parse_new_tool_calls(filepath, last_position, tool_use_cache)` — incremental parse, returns 9-tuple of lists + new position
 - `read_new_lines(filepath, last_position)` — read raw new lines from file
 - `parse_jsonl_lines(lines)` — parse raw lines into message dicts
 - `get_current_position(filepath)` — return current byte offset
@@ -27,19 +27,19 @@ tool_use/tool_result correlation) → `jsonl_extractors` (typed extractions from
 
 ## Modules
 
-### jsonl_parser.py (258 LOC)
+### jsonl_parser.py (256 LOC)
 
 **Purpose:** Core session JSONL parser — reads new lines incrementally by byte offset, correlates tool_use/tool_result pairs, and delegates typed extraction to `jsonl_extractors`.
 **Reads:** Session JSONL file (by `filepath` + `last_position` byte offset); `tool_use_cache` dict for cross-chunk correlation.
-**Writes:** Nothing — returns 10-tuple `(tool_calls, malformed, prompts, media, thinking, skills, usage, system_messages, unknown_types, new_lines)` + new position.
+**Writes:** Nothing — returns 9-tuple `(tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, usage_data, system_messages)`.
 **Called by:** `src/core/monitor.py`, `src/core/monitor_session.py`, `src/workers/worker_format.py`, `src/workers/worker_pane.py`, `src/panes/token_pane.py`
 **Calls out:** —
 
 ---
 
-### jsonl_extractors.py (194 LOC)
+### jsonl_extractors.py (180 LOC)
 
-**Purpose:** Extract typed data from parsed JSONL message lists: user media (images/documents), user prompts, thinking blocks, skill activations, usage data, system messages, and unknown type detection.
+**Purpose:** Extract typed data from parsed JSONL message lists: user media (images/documents), user prompts, thinking blocks, skill activations, usage data, system messages.
 **Reads:** List of message dicts (from `parse_jsonl_lines`).
 **Writes:** Nothing — one typed list returned per extractor function.
 **Called by:** `src/jsonl/jsonl_parser.py`

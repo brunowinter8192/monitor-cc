@@ -6,7 +6,7 @@
 - `src/panes/token_pane.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
 - `src/panes/warnings_pane.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `_format_warnings_pane()` (in `src/panes/warnings_render.py`) bei Änderungen
 - `src/workers/worker_pane.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. Expanded Workers zeigen Cache-Tracker Token-View (CR/CC/D per API Call) via `extract_cache_turns()` + `format_cache_tracker()`. Keine Subagent-Rendering mehr (separates Pane).
-- `system_messages` wird als 10. Return-Wert von `parse_new_tool_calls()` zurückgegeben; `process_session_file()` entpackt und rendert via `display_system_message()` / `format_system_message()`
+- `system_messages` wird als 9. (letzter) Return-Wert von `parse_new_tool_calls()` zurückgegeben; `process_session_file()` entpackt und rendert via `display_system_message()` / `format_system_message()`
 - Agent tracking: `agent_to_task`, `agent_to_type` maps, `buffered_subagent_calls` für Orphans (Calls ohne bekannten Agent)
 - Session-Browser: `token_cumulative_n: Optional[int]` (monitor.py:48) steuert Modus. Keyboard-Input in `run_tokens_loop()`: Ziffern → buffer, Enter → set/clear n, 'q' → clear. `compute_cumulative_tokens(n)` liest letzte N Main-Sessions von Position 0.
 
@@ -34,15 +34,13 @@ Alle Module-Level Variablen in `src/core/monitor.py` mit Zugriffs-Mapping (Stand
 | `active_project_filter` | `Optional[str]` | monitor.py:35 | monitor.py | monitor.py | Aktiver Projekt-Filter |
 | `active_mode` | `str` | monitor.py | monitor.py | monitor.py | Aktueller Mode (all/main/rules/workers/proxy/...) |
 | `_last_monitored_count` | `Optional[int]` | monitor.py | monitor.py | monitor.py | Logging-Guard: Session-Count |
-| `warned_unknown_types` | `Set[str]` | monitor.py:43 | monitor.py | monitor.py | Bereits gewarnted unknown Types |
-| `unknown_type_counts` | `Dict[str, int]` | monitor.py:44 | monitor.py | monitor.py | Count pro unbekanntem Type |
 | `token_profile` | `Dict[str, int]` | monitor.py:45 | monitor.py | monitor.py | Kumulative Output-Tokens nach Block-Type |
 | `token_profile_tools` | `Dict[str, int]` | monitor.py:46 | monitor.py | monitor.py | Output-Tokens nach Tool-Name |
 | `token_profile_request_ids` | `Set[str]` | monitor.py:47 | monitor.py | monitor.py | Gesehene requestIds (Turn-Dedup) |
 | `token_cumulative_n` | `Optional[int]` | monitor.py:48 | monitor.py | monitor.py | Session-Browser: letzte N Sessions (None = current session) |
 | `token_input_buffer` | `str` | monitor.py:49 | monitor.py | monitor.py | Keyboard-Input-Buffer für Session-Browser |
 
-**Kopplungsanalyse:** `warned_unknown_types`, `unknown_type_counts` leben in `panes/warnings_parse.py`. Token-Profiling-State (`token_profile` etc.) in `panes/token_pane.py`.
+**Kopplungsanalyse:** Token-Profiling-State (`token_profile` etc.) in `panes/token_pane.py`.
 
 ### buffered_subagent_calls — kein TTL (Kategorie: Memory)
 
@@ -51,14 +49,6 @@ Alle Module-Level Variablen in `src/core/monitor.py` mit Zugriffs-Mapping (Stand
 - Eintrag wird geleert wenn Task-Response mit `spawned_agent_id` eintrifft (`handle_task_response()`, monitor.py:374-379)
 - Kein TTL: Wenn keine Task-Response eintrifft (z.B. Claude Code crashed, Session endet), wachsen Einträge unbegrenzt
 - Kein Cleanup bei Session-Removal (anders als `tool_use_caches` die via `update_session_tracking()` bereinigt werden)
-
-### Unknown Type Tracking (Kategorie: Format-Stabilität)
-
-`unknown_type_counts: Dict[str, int]` (monitor.py:78) und `warned_unknown_types: Set[str]` (monitor.py:77):
-- `detect_unknown_types()` in jsonl_parser.py erkennt Message Types die nicht in KNOWN_MESSAGE_TYPES oder KNOWN_IGNORED_TYPES sind
-- `track_unknown_type()` in monitor.py akkumuliert Counts
-- `format_warnings_block()` rendert Warnings für dediziertes tmux Pane
-- `run_warnings_loop()` pollt und rendert per eigenem Poll-Zyklus
 
 ### filter_sessions_by_mode — Session Count im Header (Session 4, Kategorie: Korrektheit)
 
@@ -80,9 +70,9 @@ Die `dev/pipeline/`-Suites wurden primär für pipe02-Entscheidungen aufgesetzt;
 
 `dev/pipeline/memory_profile/01_reports/cache_growth_20260322_152818.md` (Script: `dev/pipeline/memory_profile/01_cache_growth.py`, Dataset: Session `35ca8892`, 357 Messages): 1 Orphaned Entry nach 357 Messages (Bash-Call ohne tool_result). `buffered_subagent_calls`-Sektion nicht im Report — Test-Session enthielt keine Subagents. Struktural analoges Verhalten zu `tool_use_caches`.
 
-### Unknown Types / Warnings Coverage (IST-5)
+### Unknown Types / Warnings Coverage (RETIRED — IST-5)
 
-`dev/pipeline/format_stability/01_reports/unknown_types_20260322_152802.md` (Script: `dev/pipeline/format_stability/01_unknown_types.py`, Dataset: 1479 Dateien, 222,636 Lines, 2026-03-22): 5 real-world unknown top-level types gefunden (8.1% unbekannt ohne Filter). Belegt dass Warnings-Loop reale Fälle detektiert — nicht nur theoretisch.
+`dev/pipeline/format_stability/01_reports/unknown_types_20260322_152802.md` (Script: `dev/pipeline/format_stability/01_unknown_types.py`, Dataset: 1479 Dateien, 222,636 Lines, 2026-03-22): 5 real-world unknown top-level types gefunden (8.1% unbekannt ohne Filter). Belegt dass Warnings-Loop reale Fälle detektiert — historisch korrekt, Feature ist entfernt. Dev-Script bleibt erhalten. Format-Inspektion erfolgt jetzt über das Proxy-Pane (vollständiges Forwarded-Payload sichtbar).
 
 IST-2 (workers-loop 6-step), IST-3 (state table), IST-6 (`filter_sessions_by_mode`), IST-7 (token profiling globals), IST-8 (logging 0) sind code-read-derived — kein dev/-Benchmark backing.
 
