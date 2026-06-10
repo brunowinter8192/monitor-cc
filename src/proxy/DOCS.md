@@ -25,7 +25,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (349 LOC)
+### addon.py (377 LOC)
 
 **Purpose:** Core mitmproxy addon class — receives HTTP flows, orchestrates the full modification pipeline, writes dual-log entries, appends 4xx errors to `api_errors.jsonl`. count_tokens requests (`/v1/messages/count_tokens`) pass through unmodified — `_is_messages_request()` matches only `/v1/messages` + optional query string.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `MONITOR_CC_ROOT`, `PROXY_LOG_ID`, `PROXY_PROJECT_PATH` for log path resolution and session/worker context.
@@ -33,7 +33,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **State:** `prev_messages_by_model` (dict, keyed by model_family) — message summaries from previous request; used by `_set_cache_breakpoints` for BP3 unchanged-prefix detection. `prev_delta_hashes_by_model` — per-element hash lists for `_forwarded` delta chain. `prev_stripped_hashes_by_model` / `prev_injected_hashes_by_model` — flat `loc_key → MD5[:10]` dicts for `_stripped`/`_injected` delta chains. `prev_error_ids_by_model` — set of `tool_use_id` strings already written to `_errors`; dedup guard. `_session_id` (computed once via `_derive_session_id`) — `md5(PROXY_PROJECT_PATH)[:8]`. `_worker_context` (computed once via `_derive_worker_context`) — `"main"` or `"worker:<name>"`. Metadata bridge: `mc_original_payload`, `mc_modified_payload`, `mc_model_family`, `mc_all_ops`, `mc_request_id` — stored on `flow.metadata` in `request()`, read in `response()`. (`mc_stripped_msg_removed` / `mc_injected_msg_added` still stashed in `request()` but no longer consumed in `response()` — dead stashes.)
 **Called by:** mitmproxy (via `addons = [ProxyAddon()]` at module level). Hooks: `request`, `responseheaders`, `response`.
 **Calls out:** `mitmproxy`
-**Key functions (FUNCTIONS section):** `_filter_response_headers(headers) → dict` — filters Anthropic response headers by exact name (`request-id`, `retry-after`, `anthropic-organization-id`) or prefix (`anthropic-ratelimit-*`, `anthropic-priority-*`, `anthropic-fast-*`); normalizes keys to lowercase. Constants: `_RESPONSE_HEADER_EXACT` (frozenset), `_RESPONSE_HEADER_PREFIXES` (tuple).
+**Key functions (FUNCTIONS section):** `_filter_response_headers(headers) → dict` — filters Anthropic response headers by exact name (`request-id`, `retry-after`, `anthropic-organization-id`) or prefix (`anthropic-ratelimit-*`, `anthropic-priority-*`, `anthropic-fast-*`); normalizes keys to lowercase. Constants: `_RESPONSE_HEADER_EXACT` (frozenset), `_RESPONSE_HEADER_PREFIXES` (tuple). `request()` decomposed (C2): 5 private helpers `_log_errors_entries`, `_log_forwarded_delta`, `_run_post_fixation_pipeline`, `_log_original_request`, `_infer_model_family`.
 
 ---
 

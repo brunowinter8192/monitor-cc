@@ -123,16 +123,61 @@ established the harness + baseline capture. Predecessor-2 committed all 5 stage 
 (`bdda986`..`b2f5b96`) and ran final 14/14 verify before dying; Opus merged the branch (`6fa9e6c`).
 Docs completion (this section + DOCS.md LOC sync) deferred to successor worker.
 
+## C2 Function-Cluster Splits (stages on dev)
+
+Five cross-package functions ≥100 LOC decomposed into orchestrators + private same-module helpers.
+Stages committed `101a27f`…`a60cb4e`, merged onto dev.
+
+| Function | File | Before | After (orchestrator) | Helpers |
+|---|---|---|---|---|
+| `_strip_impl` | `hooks/_shell_strip.py` | 147 LOC | 27-LOC orchestrator | 6 scan-helpers |
+| `extract_cache_turns` | `jsonl/jsonl_cache_turns.py` | 128 LOC | 65-LOC orchestrator | 4 helpers |
+| `format_cache_tracker` | `format/token_format.py` | 178 LOC | 57-LOC orchestrator | 3 helpers |
+| `run_main_loop` | `core/monitor.py` | 180 LOC | 49-LOC orchestrator | 6 helpers: `_main_ram_state`, `_handle_main_mouse`, `_handle_main_search_cancel`, `_handle_main_search_input`, `_refresh_main_data`, `_build_main_output` |
+| `request` | `proxy/addon.py` | 127 LOC | 69-LOC orchestrator | 5 helpers: `_log_errors_entries`, `_log_forwarded_delta`, `_run_post_fixation_pipeline`, `_log_original_request`, `_infer_model_family`; invariant 12/12 per extraction |
+
+**Proof harnesses:** `dev/jsonl/A_extract_cache_turns_proof.py` (10/10 at capture-time);
+`dev/display/A_format_cache_tracker_proof.py` (60/60 at capture-time). NOTE: both harnesses
+read LIVE session JSONLs — baselines are only valid at capture-instant. The active session drifts;
+Opus re-verify showed exactly the live session failing, all static sessions byte-identical. Future
+runs: re-capture immediately before refactoring, verify immediately after, same sitting.
+
+## Menubar Block — `app.py` + `queue_controller.py` Splits
+
+Predecessor worker died at context wall mid-Block-A; successor (`menubar-loc2`) completed all three
+stages from the SUCCESSOR-HANDOFF on branch `menubar-loc` (commit `1c3f1d4`).
+
+### Block A — `queue_controller.py` 448→269
+
+`_rebuild_inner` (154 LOC), `compute_height` (11 LOC), `_resize_panel` (6 LOC) + all render-concern
+helpers moved verbatim to new `queue_panel_render.py` (207 LOC). Controller methods replaced with
+thin delegations (`_qpr_rebuild_inner(self, sessions)` etc.). All render-concern imports (AppKit
+NSGridView, NSColor, NSTextField, etc.) moved to render module.
+
+**Verification:** import smoke PASS; AST-identity MATCH for all 3 delegation targets in render
+module vs original; old-body symbols (`NSGridView`, `_CursorlessLabel`, `first_draft_tf`) absent
+from controller; `wc -l`: controller 269, render 207 — both <400.
+
+### Block B — `app.py` 461→306
+
+`_load_settings` + `_save_settings` → new `app_settings.py` (37 LOC).
+`_deferred_close_open`, `_background_panel`, `_open/close_main/rag/queue_panel` (8 functions) →
+new `panel_lifecycle.py` (145 LOC). `app.py` retains `_PanelController` (NSObject — objc selectors
+MUST stay), `CCMenuBarApp` (rumps.App + @rumps.timer), `_blink`, `_set_bar_icon`, `_tick_log`.
+Trimmed imports: `import json`, `_reposition_panel`, `_reposition_rag_panel`,
+`_reposition_queue_panel`, `SETTINGS_FILE` — each grep-verified absent from remaining `app.py`.
+
+**Verification:** import smoke PASS (all 3 modules); AST-identity MATCH for all 10 verbatim-moved
+functions (2 settings + 8 lifecycle); trimmed symbols verified absent; `wc -l`: app 306,
+app_settings 37, panel_lifecycle 145 — all <400.
+
+### Final Audit
+
+Zero `src/` files >400 LOC. Zero functions ≥100 LOC (largest: `panel_manager._rebuild_inner` 95,
+`queue_panel_render._build_entry_row_view` 79). Campaign complete.
+
 ## Remaining HARD Files
 
-- `menubar/app.py` (461) + `menubar/queue_controller.py` (448) — entangled with the menubar
-  controller-composition refactor (`refactor_roadmap.md` stage 1, Queue "in flight"). Address those via
-  THAT campaign, NOT a standalone LOC-split, to avoid merge collision.
-
-**Remaining function-HARD (≥100 LOC):**
-- `run_main_loop` 180 (`src/core/monitor.py`)
-- `format_cache_tracker` 178 (`src/format/token_format.py`)
-- `_strip_impl` 147 (`src/hooks/_shell_strip.py`)
-- `extract_cache_turns` 128 (`src/jsonl/jsonl_cache_turns.py`)
-- `request` 127 (`src/proxy/addon.py`, class method col=4) — BYTE-CRITICAL
-- `_rebuild_inner` 154 (`src/menubar/queue_controller.py`) — separate block, falls with queue_controller file split (menubar campaign)
+NONE — campaign complete. All file-HARD (>400 LOC) and function-HARD (≥100 LOC) violations
+resolved. Menubar rebuild + live-run verification deferred (py2app bundle not rebuilt here;
+behavior verification requires running app).
