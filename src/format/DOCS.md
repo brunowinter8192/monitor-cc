@@ -58,18 +58,19 @@ from src.format import _format_k          # compact "Xk" token count — used by
 
 ---
 
-### token_format.py (220 LOC)
+### token_format.py (229 LOC)
 
 **Purpose:** Build logical lines for the token/cache tracker — groups API calls into turns with CR/CC/D counts, handles expand/collapse and viewport clipping. Returns a 5-tuple `(visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count)`. The fifth element `initial_parent_count` is the number of collapsed parent rows before the current viewport — used by `token_pane.py` to keep expand/collapse key assignments stable across scrolls. Does NOT render (no zebra, no hover, no truncation) — that is `token_pane.py`'s job. Also provides `_format_k` for compact token counts. `format_cache_tracker` accepts an optional `response_rid_map: dict` (keyed by `request_id`); when a call's `request_id` matches, renders (1) usage-extras lines above the content-blocks loop (5m/1h TTL split, web_search/web_fetch if non-zero, tier/speed/geo, iteration count) and (2) rate-limit header lines (`rl: 5h:X%→HH:MM  7d:X%→…`; status/overage in YELLOW when non-nominal). Graceful when map absent or request_id not matched.
 **Reads:** Cache turn lists, expand state dicts, pane dimensions, scroll offset, optional response_rid_map — all passed as arguments.
 **Writes:** Returns 5-tuple. No stdout, no file writes.
 **Called by:** `panes/token_pane.py` (`format_cache_tracker`); `workers/worker_format.py` (`format_cache_tracker`, `_format_k`); `proxy_display/format.py` (`_format_k`).
-**Calls out:** `format.formatter` (lazy, `shorten_tool_name` for tool name abbreviation in cache rows).
+**Calls out:** `format.formatter` (`shorten_tool_name`, module-level import).
+Private helpers (same module): `_fmt_rl_reset_time`, `_render_expanded_call_lines`, `_compute_cache_viewport`.
 
 ## Gotchas
 
 - `highlight_stripped` wraps each **line** of a chunk individually (`DIM_YELLOW_BG{line}SOFT_RESET` per `\n`-separated segment) rather than wrapping the whole chunk as a single unit. Downstream renderers (`warnings_pane`) split the result on `\n` and apply a per-line zebra BG; a single wrap around the whole chunk would leave lines 2..N without `DIM_YELLOW_BG`, causing the zebra selector to miss them. `outer_bg` is appended once after the final highlighted line to restore the caller's row background.
-- `token_format.py` lazy-imports `formatter.shorten_tool_name` inside `format_cache_tracker()` — both are in the same package so the import is `from .formatter import shorten_tool_name`. Do NOT change to `..formatter`.
+- `token_format.py` imports `formatter.shorten_tool_name` at module level — same package, `from .formatter import shorten_tool_name`. Do NOT change to `..formatter`.
 - `_format_k` and `_format_cache_call` use leading underscores but are exported and used by 4 external callers — they are effectively public despite the naming convention.
 - `format_cache_tracker` returns a **5-tuple** `(visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count)` — NOT a string. The render loop (zebra/hover/truncation) lives in `token_pane.py`. `initial_parent_count` counts collapsed parent rows before the viewport start; callers that don't need it unpack with `_, _, _, _, _`.
 - Line content uses `SOFT_RESET` (`\033[39m`) instead of `RESET` (`\033[0m`) for inline FG-color endings. This lets the render loop inject a row-level BG without it being killed mid-line. Exception: `_format_cache_call` keeps `RESET` for `cc_broken` rows (error-BG ends at the line terminator, not mid-content).
