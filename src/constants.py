@@ -120,25 +120,6 @@ HOOK_EVENT_CATEGORIES = {
 # Excluded tools from display
 EXCLUDED_TOOLS = {'Edit'}
 
-
-# JSONL message types the parser actively processes
-KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}
-
-# JSONL message types deliberately ignored (known but not relevant for monitoring)
-KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode', 'summary'}
-
-# Known API payload top-level keys (Anthropic Messages API)
-KNOWN_PAYLOAD_KEYS = {'model', 'messages', 'system', 'tools', 'max_tokens', 'thinking', 'output_config', 'metadata', 'stream', 'context_management', 'temperature', 'top_p', 'top_k', 'tool_choice', 'stop_sequences'}
-
-# Known message content block types
-KNOWN_CONTENT_BLOCK_TYPES = {'text', 'thinking', 'tool_use', 'tool_result', 'image'}
-
-# Known tool definition keys
-KNOWN_TOOL_DEFINITION_KEYS = {'name', 'description', 'input_schema', 'defer_loading'}
-
-# Known message roles
-KNOWN_MESSAGE_ROLES = {'assistant', 'user'}
-
 # Proxy addon — tool stripping (shared between proxy_addon.py and proxy_pane.py)
 TOOL_BLOCKLIST = frozenset({
     # Task tools (we use beads)

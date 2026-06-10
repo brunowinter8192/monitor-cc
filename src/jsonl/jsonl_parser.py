@@ -10,11 +10,10 @@ from ..constants import EXCLUDED_TOOLS
 from .jsonl_extractors import (
     extract_user_media, extract_user_prompts, extract_thinking_blocks,
     extract_skill_activations, extract_usage_data, extract_system_messages,
-    detect_unknown_types,
 )
 
 # Top-level subprocess worker (must be importable by name for multiprocessing 'spawn').
-# Parses session JSONL in a child process, returns 10-tuple + cache via Queue.
+# Parses session JSONL in a child process, returns 9-tuple + cache via Queue.
 # SUBPROCESS_PARSE_FAIL=1 / SUBPROCESS_PARSE_SLOW=1 env vars activate test hooks.
 def _subprocess_worker(filepath_str: str, root_dir: str, q) -> None:
     import sys
@@ -40,7 +39,7 @@ def _subprocess_worker(filepath_str: str, root_dir: str, q) -> None:
 # Falls back to in-parent parse on subprocess failure, timeout, or IPC error.
 # Test hooks: SUBPROCESS_PARSE_TIMEOUT env (override 60s default), SUBPROCESS_PARSE_FAIL=1,
 # SUBPROCESS_PARSE_SLOW=1 (child sleeps 10s to exercise timeout path).
-def parse_new_tool_calls_isolated(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
+def parse_new_tool_calls_isolated(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
     if last_position != 0:
         return parse_new_tool_calls(filepath, last_position, tool_use_cache)
     import multiprocessing as _mp
@@ -73,7 +72,7 @@ def parse_new_tool_calls_isolated(filepath: Path, last_position: int, tool_use_c
     return result_tuple
 
 # ORCHESTRATOR
-def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
+def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dict) -> Tuple[List[dict], int, List[dict], List[dict], List[dict], List[dict], List[dict], List[dict], List[dict]]:
     new_lines = read_new_lines(filepath, last_position)
     new_position = get_current_position(filepath)
     messages, malformed_lines = parse_jsonl_lines(new_lines)
@@ -82,11 +81,10 @@ def parse_new_tool_calls(filepath: Path, last_position: int, tool_use_cache: dic
     user_media = extract_user_media(messages)
     thinking_blocks = extract_thinking_blocks(messages)
     skill_activations = extract_skill_activations(messages)
-    unknown_types = detect_unknown_types(messages)
     usage_data = extract_usage_data(messages)
     system_messages = extract_system_messages(messages)
     malformed_warnings = build_malformed_warnings(filepath, malformed_lines)
-    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data, system_messages
+    return tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, usage_data, system_messages
 
 # FUNCTIONS
 
