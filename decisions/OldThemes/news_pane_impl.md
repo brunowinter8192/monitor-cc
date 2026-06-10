@@ -33,3 +33,9 @@ Button placed at end of a line using the gpu_pane pattern:
 Live verification at 120-wide pane: region `(107, 120, 7)`, `stripped[sc-1:ec] == '[run pipeline]'` exact match. The `sc-1` offset converts 1-indexed terminal column to 0-indexed string slice.
 
 Subprocess verification: `_fire_pipeline()` → `poll() is None = True` → `terminate()` → `poll() = -15` (SIGTERM) → `_is_running() = False`. Confirmed the handle state machine works end-to-end.
+
+## Post-Merge — Log Rendering Direction (User Follow-up)
+
+First live end-to-end run (user-triggered) pulled 45 articles, indexed 37 (108 chunks) into `searxng_crypto`. Button + subprocess + live log all confirmed working against a real run.
+
+**Change:** `_render_log_pane()` initially pinned events to the pane BOTTOM (blank padding above, events sticking to the bottom edge). User wanted top-down growth. Removed the top-padding loop — events now render directly under the header + filename line and grow downward; on overflow the oldest drop and the newest stay visible, still top-anchored (`recent = events[-MAX_LOG_LINES:][-max(1, available):]`). Single-function change, no logic touched beyond padding removal.
