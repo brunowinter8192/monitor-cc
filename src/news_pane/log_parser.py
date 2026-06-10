@@ -15,7 +15,7 @@ _LOG_LINE_RE = re.compile(r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(\w+)\s
 
 _WHITELIST = [
     re.compile(r'Checking preconditions'),
-    re.compile(r'  \[(OK|FAIL)\]'),
+    re.compile(r'\[(OK|FAIL)\]'),
     re.compile(r'STAGE (?:discover|dedup|scrape|cleanup|publish)'),
     re.compile(r'(?:discover|dedup|scrape|cleanup|publish)\s+→'),
     re.compile(r'Nothing new to scrape'),
@@ -53,6 +53,14 @@ def find_current_run_lines(log_path: Path) -> list[str]:
     if last_start < 0:
         return lines
     return lines[last_start:]
+
+
+# Parse a structured log line; return (hh:mm:ss, level, message) or None if unrecognized
+def parse_line(line: str) -> tuple[str, str, str] | None:
+    m = _LOG_LINE_RE.match(line)
+    if not m:
+        return None
+    return (m.group(1)[11:], m.group(2).upper(), m.group(3))
 
 
 # Return lines from current_run_lines that match the whitelist or are WARNING/ERROR level
