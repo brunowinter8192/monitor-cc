@@ -96,7 +96,7 @@
 Feasibility proven by full-session probe (118/118 content lossless). Read-side migration complete (Stage 2 DONE). Remaining: Stage 3 — write-side removal.
 
 **Stage 2 — Read-side migration (DONE except 2E remaining):**
-- ✅ **2A:** `BP:N` counter + latency badge removed from proxy pane header (`render_turn.py`, `render_entry.py`, `format.py`)
+- ✅ **2A:** `BP:N` counter + latency badge removed from proxy pane header (`render_turn.py`, `format.py`)
 - ✅ **2B:** `parser.py` forwarded-reconstruction core — `_parse_forwarded_log` (deque-bounded, `PROXY_MESSAGES_KEEP_LAST=10`), `_lazy_load_messages_forwarded`, `_summarize_fwd_message`/`_dict_to_list_fwd`/`_apply_delta_to_list`/`_extract_forwarded_fields` helpers; `find_errors_log_path`; `parse_proxy_log_forwarded`
 - ✅ **2C:** `pane.py` + `worker_proxy_pane.py` wired to `parse_proxy_log_forwarded` / `_parse_forwarded_log`; state `_proxy_fwd_pos`/`_proxy_acc_fwd` replace `_proxy_pending_by_rid`; lazy-load uses `_lazy_load_messages_forwarded`
 - ✅ **2D:** `warnings_pane` reads `_errors` dual-log (main session via `find_errors_log_path` + `_read_errors_log`; workers via `scan_worker_errors_logs`); `warnings_scan`/`warnings_persist` stubbed; `warnings_parse` gutted

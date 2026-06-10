@@ -43,7 +43,7 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 - Graceful degrade: missing `_forwarded` file → `_parse_forwarded_log` returns `([], last_pos)` → empty pane, no crash. Old `_forwarded` without `max_tokens`/`output_config` → `eff`/`think` simply absent from header.
 
 **BP:N counter + latency badge removed (Stage 2A):**
-- `BP:N` counter dropped from REQ header row in `render_turn.py` and `render_entry.py` — pre-ops cache_breakpoints not reconstructable from `_forwarded`. `cache_breakpoints` field still present in entry dicts (used for `opus_req_num` increment logic / sub-number #N.M assignment) but no longer displayed.
+- `BP:N` counter dropped from REQ header row in `render_turn.py` — pre-ops cache_breakpoints not reconstructable from `_forwarded`. `cache_breakpoints` field still present in entry dicts (used for `opus_req_num` increment logic / sub-number #N.M assignment) but no longer displayed.
 - Latency badge (`_format_latency` / `ttfb_ms` / `output_tokens_per_sec` / `n_stalls`) removed from `render_turn.py` and `format.py`.
 
 ### Warnings Pane — _errors Dual-Log Migration (Stage 2D, 2026-06)
