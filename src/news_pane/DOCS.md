@@ -2,7 +2,7 @@
 
 ## Role
 
-Standalone tmux Window 5 "news" pane pair that controls and observes the CoinDesk news ingestion pipeline (lives in searxng-cli). LEFT pane NEWS (5.0): shows `searxng_crypto` collection stats (doc count + chunk count), last-run timestamp, clickable `[run pipeline]` button with running indicator. RIGHT pane NEWS-LOG (5.1): tails the pipeline's own log file, filters to meaningful stage events, renders pinned to pane bottom. No IPC between the two panes — both reference the same log file on disk. No dependency on `core/monitor.py` or `active_project_filter`.
+Standalone tmux Window 5 "news" pane pair that controls and observes the CoinDesk news ingestion pipeline (lives in searxng-cli). LEFT pane NEWS (5.0): shows `searxng_crypto` collection stats (doc count + chunk count), last-run timestamp, clickable `[run pipeline]` button with running indicator. RIGHT pane NEWS-LOG (5.1): tails the pipeline's own log file, filters to meaningful stage events, renders top-anchored (events grow top-down from the header). No IPC between the two panes — both reference the same log file on disk. No dependency on `core/monitor.py` or `active_project_filter`.
 
 ## Public Interface
 
@@ -17,7 +17,7 @@ Standalone tmux Window 5 "news" pane pair that controls and observes the CoinDes
 4. Mouse click (button=0) → `_is_running()` guard → `_fire_pipeline()` → `subprocess.Popen` fire-and-forget; handle stored in `_pipeline_proc`.
 5. `_is_running()`: `_pipeline_proc.poll() is None` OR log fallback (`_is_running_via_log()`).
 6. **NEWS-LOG pane:** `run_news_log_loop()` → 0.5s poll loop (no mouse/keyboard, tmux native scroll active).
-7. Each tick: `find_log_file()` → `find_current_run_lines()` (lines from last `=== coindesk pipeline started ===`) → `filter_events()` (whitelist + WARNING/ERROR) → `_render_log_pane()` (pins to pane bottom).
+7. Each tick: `find_log_file()` → `find_current_run_lines()` (lines from last `=== coindesk pipeline started ===`) → `filter_events()` (whitelist + WARNING/ERROR) → `_render_log_pane()` (top-anchored, newest visible on overflow).
 
 ## Modules
 
@@ -33,7 +33,7 @@ Standalone tmux Window 5 "news" pane pair that controls and observes the CoinDes
 
 ### log_pane.py (80 LOC)
 
-**Purpose:** Right log-tail pane. Polls newest log file every 0.5s; extracts current-run lines; filters to whitelist events; renders pinned to bottom. No mouse (tmux native scroll active). `LOG_POLL_INTERVAL = 0.5` s; `MAX_LOG_LINES = 40`.
+**Purpose:** Right log-tail pane. Polls newest log file every 0.5s; extracts current-run lines; filters to whitelist events; renders top-anchored (events grow top-down from the header, newest visible on overflow). No mouse (tmux native scroll active). `LOG_POLL_INTERVAL = 0.5` s; `MAX_LOG_LINES = 40`.
 **Reads:** log file via `find_log_file()` + `find_current_run_lines()` + `filter_events()` (every 0.5s).
 **Writes:** stdout (full-screen ANSI via `\033[2J\033[3J\033[H`).
 **Called by:** `workflow.py` (`--mode news-log` route).

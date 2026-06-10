@@ -100,7 +100,7 @@ Window 5 "news": left pane NEWS (5.0, 50%) controls and observes the CoinDesk â†
 **NEWS-LOG pane (5.1, `--mode news-log`, `src/news_pane/log_pane.py`):**
 - No mouse (tmux native scroll active in this pane).
 - Finds newest `news_coindesk_*.log` by mtime; extracts lines from last `=== coindesk pipeline started ===`; filters via whitelist (STAGE/â†’/[OK]/[FAIL]/preconditions/Nothing new/markers) + WARNING/ERROR level.
-- Renders filtered events pinned to pane bottom (blank padding above), `MAX_LOG_LINES = 40`.
+- Renders filtered events top-anchored (directly under header + filename, growing top-down; newest visible on overflow), `MAX_LOG_LINES = 40`.
 - Poll interval: 0.5s.
 
 **Log whitelist patterns (applied to `msg` after `_LOG_LINE_RE` strips leading whitespace):**
