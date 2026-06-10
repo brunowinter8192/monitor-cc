@@ -56,7 +56,7 @@ def _format_event_line(raw: str, max_width: int) -> str:
     return f"{prefix}{msg}"
 
 
-# Build full log pane content; sticks events to bottom within available height
+# Build full log pane content; events top-anchored, newest visible on overflow
 def _render_log_pane(pane_width: int, pane_height: int,
                      log_path, events: list[str]) -> str:
     lines: list[str] = []
@@ -70,10 +70,7 @@ def _render_log_pane(pane_width: int, pane_height: int,
 
     available = max(0, pane_height - len(lines) - 1)
     recent    = events[-MAX_LOG_LINES:][-max(1, available):]
-    pad       = max(0, available - len(recent))
 
-    for _ in range(pad):
-        lines.append("")
     for raw in recent:
         lines.append(_format_event_line(raw, pane_width))
 
