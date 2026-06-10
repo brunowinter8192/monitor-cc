@@ -99,11 +99,40 @@ import from parser); corrected to single-source-in-leaf + re-export (same patter
   (fixture-based, no live logs needed). `verify_strip_inject.py` has a pre-existing `KeyError: 'spans'`
   crash (out of scope) — use the invariant/differential instead.
 
+## Render-Cluster Function Splits (stages 1–5 on dev)
+
+Five proxy_display render functions decomposed into orchestrators + private same-module helpers.
+Stages committed `676c2ae`..`b2f5b96`, merged `6fa9e6c`.
+
+| Function | File | Before | After (orchestrator) | Helpers |
+|---|---|---|---|---|
+| `render_messages` | render_messages.py | 210 LOC | 12-LOC orchestrator | `_render_stripped_block` 45, `_render_block_spans` 60, `_render_new_messages` 40, `_render_modified_messages` 56 |
+| `_render_entry_lines` | render_entry.py | 194 LOC | 74-LOC orchestrator | `_compute_entry_warnings` 37, `_render_entry_delta` 64, `_render_entry_msg_list` 28 |
+| `render_tools` | render_sections.py | 169 LOC | 63-LOC orchestrator | `_render_tool_dual` 69, `_render_tool_legacy` 52 |
+| `render_turn_expanded` | render_turn.py | 141 LOC | 48-LOC orchestrator | `_compute_req_delta_str` 19, `_compute_req_mods_str` 12, `_build_req_header_line` 27, `_render_req_expanded` 34 |
+| `format_proxy_block` | format.py | 129 LOC | 68-LOC orchestrator | `_assign_turns_to_entries` 15, `_render_entries_no_turns` 27, `_apply_row_backgrounds` 33 |
+
+**Verification:** `dev/proxy_dual_log/A_render_refactor_proof.py` — 14 cases covering all 5 targets
+transitively via `format_proxy_block` entry point; 14/14 byte-identical against
+`A_render_refactor_proof_reports/baseline_20260610.json`. All orchestrators below 100 LOC; all
+helpers private to their module (no cross-module exports added).
+
+**Process notes:** Two predecessor workers died at the context wall during this cluster; staged
+commits made recovery lossless (each stage independently committable). Stage-0 (`676c2ae`)
+established the harness + baseline capture. Predecessor-2 committed all 5 stage refactors
+(`bdda986`..`b2f5b96`) and ran final 14/14 verify before dying; Opus merged the branch (`6fa9e6c`).
+Docs completion (this section + DOCS.md LOC sync) deferred to successor worker.
+
 ## Remaining HARD Files
 
 - `menubar/app.py` (461) + `menubar/queue_controller.py` (448) — entangled with the menubar
   controller-composition refactor (`refactor_roadmap.md` stage 1, Queue "in flight"). Address those via
   THAT campaign, NOT a standalone LOC-split, to avoid merge collision.
 
-Remaining function-HARD (≥100, after logging/rules done): `render_messages` 209, `_render_entry_lines`
-193, `run_main_loop` 179, `format_cache_tracker` 177, `render_tools` 168, `_rebuild_inner` 153, etc.
+**Remaining function-HARD (≥100 LOC):**
+- `run_main_loop` 180 (`src/core/monitor.py`)
+- `format_cache_tracker` 178 (`src/format/token_format.py`)
+- `_strip_impl` 147 (`src/hooks/_shell_strip.py`)
+- `extract_cache_turns` 128 (`src/jsonl/jsonl_cache_turns.py`)
+- `request` 127 (`src/proxy/addon.py`, class method col=4) — BYTE-CRITICAL
+- `_rebuild_inner` 154 (`src/menubar/queue_controller.py`) — separate block, falls with queue_controller file split (menubar campaign)

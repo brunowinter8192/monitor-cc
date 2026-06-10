@@ -80,6 +80,7 @@ On expand-click: `forwarded_parser._lazy_load_messages_forwarded(entry, fwd_path
 **Writes:** Nothing — returns `(ansi_string, total_lines)` tuple.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/render_turn.py` (imports `_is_standalone_entry`), `src/proxy_display/render_entry.py` (imports `_is_standalone_entry`)
 **Calls out:** `format` (token_format)
+New private helpers (same module): `_assign_turns_to_entries`, `_render_entries_no_turns`, `_apply_row_backgrounds`.
 
 ---
 
@@ -103,27 +104,29 @@ On expand-click: `forwarded_parser._lazy_load_messages_forwarded(entry, fwd_path
 
 ---
 
-### render_entry.py (210 LOC)
+### render_entry.py (225 LOC)
 
 **Purpose:** Render a single proxy request entry (collapsed or expanded) into display lines — shows model, message count, change warnings, delta breakdown, and flat per-message list when expanded. Used only in no-turns mode (when turns list is empty). Supports copy-button ⎘ (same pattern as `render_turn.py`): right-aligned at `pane_width-1` when `copy_feedback` is not None and there is room. Msg rows are non-clickable (key=None); msg-level expand was removed to keep line_map flat. Emits count badge on REQ-header: `{n}strip` (YELLOW) and/or `{n}inj` (GREEN), where n = number of distinct strip/inject functions that fired this request, resolved via `entry['_strip_fns_lookup'].get(entry['flow_id'], set())`; only non-zero parts shown; both zero → no badge. When expanded, emits a second line with aggregated bucket signals (`INERT:X  LEAK:<TN>  SUS:<PO>`) computed via `_aggregate_req_buckets`; collapsed header unchanged. Backward walk for `prev_entry` (reference for ⚠T/⚠S) uses `format._is_standalone_entry` to skip structurally-separate candidates — ensures a sidecar or zero-context entry between two real REQs does not become the reference. Accepts optional `rendered_opus_labels: list` param; when non-None, appends `(entry_idx, num_label)` per non-haiku non-standalone opus REQ so `format.py` can post-process the list into `collision_entry_idxs` for the COLLISION_BG marker. In expanded view: calls `render_fields_delta(entry_idx, entry, expand_states, pane_width)` immediately after the horizontal divider — no-ops when `_stripped_spans` absent or fields dicts empty.
 **Reads:** Entry dict, all entries (for prev-entry lookup), expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/format.py`
 **Calls out:** `render_messages` (`_aggregate_req_buckets`), `render_sections` (`render_fields_delta`)
+New private helpers (same module): `_compute_entry_warnings`, `_render_entry_delta`, `_render_entry_msg_list`.
 
 ---
 
-### render_turn.py (153 LOC)
+### render_turn.py (160 LOC)
 
 **Purpose:** Render all per-request rows for an expanded turn group, numbering requests and delegating system/tools/messages rendering to section modules. REQ-header format: `▶/▼ #N model Nmsg [eff:X] [think:Nk] [mods] [warns] [deltas] [tag badge]`. CR/CC removed — those are response data (cache read/creation); proxy pane shows request side only. **Numbering:** `_is_standalone_entry` gate: haiku → `'H'`, non-haiku sidecar (sys=0, tools=0) → `'S'`; for real requests: `#N` when `(entry.get('diff_from_prev') or {}).get('messages_added', 1) > 0` (fresh message list added), `#N.M` when `messages_added==0` (retry/abort re-send of same list). Copy ⎘-symbol right-aligned at `pane_width-1` in each REQ header when `copy_feedback` is not None and there is room (visible_len ≤ pane_width-1-sym_cells); flashes ✓ for 1.5s after click using `copy_feedback.get(entry_idx)` expiry. Visible width computed via `sum(_cell_width(ch))` to handle wide chars (⚠ = 2 cells, ✓ = 2 cells, ⎘ = 1 cell) consistently with `truncate_visible`. `eff:X` shown when entry has a non-None `effort_value` (uses flat field via `_fmt_effort`; 'high'→'hig', 'low'→'lo', 'medium'→'med'). `think:Nk` shown for non-haiku entries when `max_tokens > 0` (sources from the request output cap, formatted via `_fmt_thinking_budget`; never shown for haiku). Emits count badge on REQ-header: `{n}strip` (YELLOW) and/or `{n}inj` (GREEN), where n = number of distinct strip/inject functions that fired this request, resolved via `entry['_strip_fns_lookup'].get(entry['flow_id'], set())`; only non-zero parts shown; both zero → no badge. When a REQ is expanded, emits a second line with aggregated bucket signals (`INERT:X  IDX:N  LEAK:<TN>  SUS:<PO>`) computed via `_aggregate_req_buckets` (counter-delta semantics for INERT, mirrors strip_audit._classify_req); collapsed header unchanged. Backward walk for `prev_same` (reference for ⚠T/⚠S) uses `format._is_standalone_entry` to skip standalone candidates. Expanded-REQ downstream calls — `_aggregate_req_buckets`, `render_fields_delta`, `render_system_blocks`, `render_tools`, `render_messages` — all use `_section_ref = None if is_standalone else prev_same`, not the BP-anchor. Order: `render_fields_delta` (payload-level field changes) is called FIRST, above `render_system_blocks` — no-ops when `_stripped_spans` absent or fields dicts empty. This aligns the "unchanged" expand display with the ⚠T/⚠S header warning on the same reference. `prev_entry_for_delta` (BP-anchor) is preserved for the header char-delta string and the BP-anchor carry-forward, not for the expanded-block comparisons. Accepts optional `rendered_opus_labels: list` param; when non-None, appends `(entry_idx, num_label)` per non-haiku non-standalone opus REQ so `format.py` can post-process the list into `collision_entry_idxs` for the COLLISION_BG marker.
 **Reads:** Group dict, all entries, expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys, opus_req_num, sub_req_num)` tuple.
 **Called by:** `src/proxy_display/format.py`
 **Calls out:** `render_messages` (`_aggregate_req_buckets`), `render_sections` (`render_fields_delta`, `render_beta`, `render_directives`, `render_system_blocks`, `render_tools`)
+New private helpers (same module): `_compute_req_delta_str`, `_compute_req_mods_str`, `_build_req_header_line`, `_render_req_expanded`.
 
 ---
 
-### render_sections.py (344 LOC)
+### render_sections.py (363 LOC)
 
 **Purpose:** Render system blocks, tools, fields-delta, and beta-flags sections for an expanded request entry. All three span-based functions share the same dual-color sentinel: `use_dual = '_stripped_spans' in entry` / `if '_stripped_spans' in entry:`. New path uses `entry['_stripped_spans']` / `entry['_injected_spans']` span data from the dual-log accumulator; `else:` path keeps the old side-channel unchanged (worker pane has no `_stripped_spans`).
 
@@ -140,16 +143,18 @@ On expand-click: `forwarded_parser._lazy_load_messages_forwarded(entry, fwd_path
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`, `src/proxy_display/render_entry.py`
 **Calls out:** —
+New private helpers (same module): `_render_tool_dual`, `_render_tool_legacy`.
 
 ---
 
-### render_messages.py (287 LOC)
+### render_messages.py (254 LOC)
 
 **Purpose:** Render new/modified/removed messages for an expanded request entry — handles added messages (full block content) and diffs (content_tail). Dual-color sentinel: `use_dual = '_stripped_spans' in entry`. Per block: resolves `i_blk` from `entry['_injected_spans']['messages'][midx][bidx]` and `s_blk` from `_stripped_spans`. If `i_blk` is new-format (`isinstance(i_blk[0], (list, tuple))`): inline render — iterates `[(tag, text), ...]`, equal=DIM gray (with suspect-tag highlight), injected=DIM_GREEN_BG green; `s_blk` (flat strings) stacked DIM_YELLOW_BG below; gray `full_text` block suppressed. Old-format or no i_blk: gray `full_text` as before, then stacked s_blk yellow + i_blk green (legacy path, backward-compat). Both branches of the outer msg-count conditional (`prev_msg_count < len(messages)` vs `else`) carry identical inline-vs-legacy dispatch. `_render_stripped_block` calls (old side-channel) guarded with `and not use_dual`. EFF:RULE attribution kept in old path only. Also exports `_aggregate_req_buckets(entry, prev_entry)` (5-bucket classify_req delegate). `_SUSPECT_TAG_RE` highlights 4 suspect tags with `LIGHT_RED_BG` — applied to equal spans as well in new render path.
 **Reads:** Entry dict, previous entry, all entries, expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`
 **Calls out:** `proxy.strip_vocab` (`attribute_chunk`, `classify_tags`, `code_for_rule`, `classify_req`)
+New private helpers (same module): `_render_stripped_block`, `_render_block_spans`, `_render_new_messages`, `_render_modified_messages`.
 
 ---
 
