@@ -3,7 +3,7 @@ from collections import Counter
 from typing import Optional
 
 from ..constants import (
-    RESET, SOFT_RESET, GREEN, RED, DIM, YELLOW, HOVER_BG,
+    RESET, SOFT_RESET, DIM, YELLOW, HOVER_BG,
     DIM_YELLOW_BG, DIM_GREEN_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )
 from ..format.token_format import _format_k
@@ -15,16 +15,6 @@ from .parser import _chars_to_tokens
 # Format token estimate as compact string with ~ prefix
 def _format_tok_est(chars: int) -> str:
     return f"~{_format_k(_chars_to_tokens(chars))}tok"
-
-# Format a signed char-count delta with token estimate (GREEN=positive, RED=negative, DIM=zero)
-def _format_delta(label: str, delta: int) -> str:
-    if delta == 0:
-        return f"{DIM}Δ{label}:0{SOFT_RESET}"
-    sign = '+' if delta > 0 else '-'
-    color = GREEN if delta > 0 else RED
-    abs_chars = abs(delta)
-    tok_est = _chars_to_tokens(abs_chars)
-    return f"{color}Δ{label}:{sign}{_format_k(abs_chars)}(~{_format_k(tok_est)}tok){SOFT_RESET}"
 
 # Format effort string as compact label: 'high'→'hig', 'medium'→'med', 'low'→'lo', None→'-'
 def _fmt_effort(s: Optional[str]) -> str:
@@ -84,35 +74,6 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
             groups[0]['entry_pairs'].append((entry_idx, entry))
     return [g for g in groups if g['entry_pairs']]
 
-# No-turns fallback: render entries directly via _render_entry_lines, returning (all_lines, line_keys, opus_req_num, sub_req_num)
-def _render_entries_no_turns(entries: list, expand_states: dict, pane_width: int, opus_req_num: int, sub_req_num: int, rendered_opus_labels: list, item_positions_out, copy_feedback, copy_rows_out) -> tuple:
-    from .render_entry import _render_entry_lines
-    all_lines = []
-    line_keys = []
-    for entry_idx, entry in enumerate(entries):
-        model_short = _shorten_model(entry.get('model', '?'))
-        if _is_standalone_entry(entry):
-            num_label = 'H' if model_short == 'haiku' else 'S'
-        else:
-            if (entry.get('diff_from_prev') or {}).get('messages_added', 1) > 0:
-                opus_req_num += 1
-                sub_req_num = 0
-                num_label = f'#{opus_req_num}'
-            else:
-                sub_req_num += 1
-                num_label = f'#{opus_req_num}.{sub_req_num}'
-        e_lines, e_keys = _render_entry_lines(entry_idx, entry, entries, expand_states, pane_width, indent='', num_label=num_label, rendered_opus_labels=rendered_opus_labels, copy_feedback=copy_feedback, copy_rows_out=copy_rows_out)
-        all_lines.extend(e_lines)
-        line_keys.extend(e_keys)
-        if item_positions_out is not None:
-            base = len(all_lines) - len(e_lines)
-            for i, key in enumerate(e_keys):
-                if key is not None:
-                    item_positions_out[key] = base + i
-        all_lines.append('')
-        line_keys.append(None)
-    return all_lines, line_keys, opus_req_num, sub_req_num
-
 # Apply per-row background priority (hover > DIM_YELLOW_BG > DIM_GREEN_BG > collision > zebra)
 # initial_parent_count preserves zebra parity continuity across the scroll viewport boundary
 def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_entry_idxs: set, hover_row, copy_rows_out, pane_width: int, initial_parent_count: int) -> list:
@@ -166,14 +127,12 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
     sub_req_num = 0
     rendered_opus_labels = []
     if groups:
-        prev_group_last_entry = None
         for group in groups:
             turn_idx = group['turn_idx']
             sub_req_num = 0
-            prev_entry_for_delta = prev_group_last_entry
             t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
                 group, entries, expand_states, pane_width,
-                prev_entry_for_delta, opus_req_num, sub_req_num,
+                opus_req_num, sub_req_num,
                 turns=turns, turn_idx=turn_idx,
                 rendered_opus_labels=rendered_opus_labels,
                 copy_feedback=copy_feedback,
@@ -186,17 +145,8 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
                 for i, key in enumerate(t_keys):
                     if key is not None:
                         item_positions_out[key] = base + i
-            main_entries = [e for _, e in group['entry_pairs'] if 'haiku' not in e.get('model', '').lower()]
-            if main_entries:
-                prev_group_last_entry = main_entries[-1]
             all_lines.append('')
             line_keys.append(None)
-    else:
-        n_lines, n_keys, opus_req_num, sub_req_num = _render_entries_no_turns(
-            entries, expand_states, pane_width, opus_req_num, sub_req_num,
-            rendered_opus_labels, item_positions_out, copy_feedback, copy_rows_out)
-        all_lines.extend(n_lines)
-        line_keys.extend(n_keys)
     _label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
     collision_entry_idxs = {idx for idx, lbl in rendered_opus_labels if _label_counts[lbl] >= 2}
     while all_lines and all_lines[-1] == '':
