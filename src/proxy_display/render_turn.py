@@ -4,31 +4,10 @@ from ..constants import (
     SOFT_RESET, RED, GREEN, WHITE, YELLOW, DIM,
 )
 from ..utils import _ANSI_ESCAPE_RE, _cell_width
-from .format import _shorten_model, _format_delta, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
+from .format import _shorten_model, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
 from .render_messages import _aggregate_req_buckets
 
 # FUNCTIONS
-
-# Compute cross-group delta string for a request (e.g. "  Δsys:+1k  Δmsgs:+500"), or ''
-def _compute_req_delta_str(entry: dict, is_standalone: bool, prev_entry_for_delta) -> str:
-    if is_standalone or prev_entry_for_delta is None:
-        return ''
-    e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
-    e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
-    e_msgs = entry.get('messages_total_chars', 0)
-    delta_parts = []
-    if e_sys > 0:
-        d = e_sys - prev_entry_for_delta.get('system_total_chars', prev_entry_for_delta.get('system_prompt_chars', 0))
-        if d != 0:
-            delta_parts.append(_format_delta('sys', d))
-    if e_tools > 0:
-        d = e_tools - prev_entry_for_delta.get('tools_total_chars', prev_entry_for_delta.get('tools_chars', 0))
-        if d != 0:
-            delta_parts.append(_format_delta('tools', d))
-    d = e_msgs - prev_entry_for_delta.get('messages_total_chars', 0)
-    if d != 0:
-        delta_parts.append(_format_delta('msgs', d))
-    return f"  {'  '.join(delta_parts)}" if delta_parts else ''
 
 # Compute tool-mod string (🔧+N / -N / ±N) comparing entry tools to prev_same, or ''
 def _compute_req_mods_str(entry: dict, prev_same) -> str:
@@ -45,7 +24,7 @@ def _compute_req_mods_str(entry: dict, prev_same) -> str:
     return ''
 
 # Build the request header line string with haiku_info, eff/think, tag_badge, copy ⎘/✓ right-pad
-def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symbol: str, model_short: str, msg_count: int, req_delta_str: str, mods_str: str, warn_str: str, pane_width: int, copy_feedback) -> str:
+def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symbol: str, model_short: str, msg_count: int, mods_str: str, warn_str: str, pane_width: int, copy_feedback) -> str:
     e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
     e_msgs = entry.get('messages_total_chars', 0)
@@ -61,7 +40,7 @@ def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symb
     if _n_strip: _badge_parts.append(f'{YELLOW}{_n_strip}strip{SOFT_RESET}')
     if _n_inj:   _badge_parts.append(f'{GREEN}{_n_inj}inj{SOFT_RESET}')
     tag_badge = (' ' + ' '.join(_badge_parts)) if _badge_parts else ''
-    header_raw = f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg{eff_str}{think_str}{mods_str}{warn_str}{req_delta_str}{haiku_info}{tag_badge}{SOFT_RESET}"
+    header_raw = f"  {WHITE}{req_symbol} {num_label} {model_short} {msg_count}msg{eff_str}{think_str}{mods_str}{warn_str}{haiku_info}{tag_badge}{SOFT_RESET}"
     if copy_feedback is not None:
         _stripped_h = _ANSI_ESCAPE_RE.sub('', header_raw)
         visible_len = sum(_cell_width(ch) for ch in _stripped_h)
@@ -110,7 +89,7 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     return lines, keys
 
 # Render all per-request rows for an expanded turn group, returning (lines, keys, opus_req_num, sub_req_num)
-def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, prev_entry_for_delta, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None) -> tuple:
+def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None) -> tuple:
     lines = []
     keys = []
     for entry_idx, entry in group['entry_pairs']:
@@ -147,14 +126,11 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         req_key = ('req', entry_idx)
         is_req_expanded = expand_states.get(req_key, False)
         req_symbol = '▼' if is_req_expanded else '▶'
-        req_delta_str = _compute_req_delta_str(entry, is_standalone, prev_entry_for_delta)
         mods_str = _compute_req_mods_str(entry, prev_same)
-        lines.append(_build_req_header_line(entry, entry_idx, num_label, req_symbol, model_short, msg_count, req_delta_str, mods_str, warn_str, pane_width, copy_feedback))
+        lines.append(_build_req_header_line(entry, entry_idx, num_label, req_symbol, model_short, msg_count, mods_str, warn_str, pane_width, copy_feedback))
         keys.append(req_key)
         if is_req_expanded:
             e_lines, e_keys = _render_req_expanded(entry_idx, entry, entries, is_standalone, prev_same, expand_states, pane_width)
             lines.extend(e_lines)
             keys.extend(e_keys)
-        if len(entry.get('cache_breakpoints', [])) >= 1:
-            prev_entry_for_delta = entry
     return lines, keys, opus_req_num, sub_req_num

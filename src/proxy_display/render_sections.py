@@ -2,7 +2,7 @@
 from ..constants import (
     SOFT_RESET, RED, DIM, DIM_YELLOW_BG, DIM_GREEN_BG,
 )
-from .format import _format_delta, _format_k
+from .format import _format_k
 
 # FUNCTIONS
 
@@ -16,10 +16,7 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
         sys_key = ('sys', entry_idx)
         is_sys_expanded = expand_states.get(sys_key, False)
         sys_symbol = '▼' if is_sys_expanded else '▶'
-        prev_sys_total = prev_entry_for_delta.get('system_total_chars', 0) if prev_entry_for_delta else 0
-        sys_delta = sys_total - prev_sys_total if prev_entry_for_delta else 0
-        sys_delta_str = f"  {_format_delta('sys', sys_delta)}" if sys_delta != 0 else ''
-        lines.append(f"    {DIM}{sys_symbol} sys: {len(sys_blocks)} blocks ({sys_total:,}c){SOFT_RESET}{sys_delta_str}")
+        lines.append(f"    {DIM}{sys_symbol} sys: {len(sys_blocks)} blocks ({sys_total:,}c){SOFT_RESET}")
         keys.append(sys_key)
         if is_sys_expanded:
             prev_sys_blocks = prev_entry_for_delta.get('system_blocks', []) if prev_entry_for_delta else []
@@ -242,13 +239,7 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
             return lines, keys
         added = [n for n in tools_names if n not in set(prev_tools_names)] if tools_changed else []
         removed = [n for n in prev_tools_names if n not in set(tools_names)] if tools_changed else []
-        delta_parts = []
-        if added:
-            delta_parts.append(f"{RED}+{len(added)}{SOFT_RESET}")
-        if removed:
-            delta_parts.append(f"{RED}-{len(removed)}{SOFT_RESET}")
-        tools_delta_str = f"  {'  '.join(delta_parts)}" if delta_parts else ''
-        lines.append(f"    {DIM}{tools_symbol} tools: {tools_count} defs ({_format_k(tools_chars)}){hash_str}{SOFT_RESET}{tools_delta_str}")
+        lines.append(f"    {DIM}{tools_symbol} tools: {tools_count} defs ({_format_k(tools_chars)}){hash_str}{SOFT_RESET}")
         keys.append(tools_key)
         if is_tools_expanded:
             tools_defs = entry.get('tools_defs', [])
