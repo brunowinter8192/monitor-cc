@@ -4,7 +4,7 @@
 
 Vier Refactor/Fix-Themen laufen SEQUENTIELL, nicht parallel. Reihenfolge:
 
-1. **Menubar** — Controller-Composition-Refactor (in flight)
+1. **Menubar** — Controller-Composition-Refactor ✅ ABGESCHLOSSEN (2026-06, B1-B5 alle 6 Controller)
 2. **blank** — Desktop-Targeting Sidecar-Konsolidierung (Weg 2)
 3. **Logging + Proxy** — unified Janitor + decisions/logging.md + count_tokens-Fix + Orphan-Cleanup
 4. **Dolt** — bd↔dolt Lifecycle Hook-Fix
@@ -17,9 +17,9 @@ Vier Refactor/Fix-Themen laufen SEQUENTIELL, nicht parallel. Reihenfolge:
 
 ## Stages
 
-### 1. Menubar — Controller-Composition-Refactor
+### 1. Menubar — Controller-Composition-Refactor ✅ ABGESCHLOSSEN
 - OldThemes: `menubar_refactor_v1/`
-- Status: Step 1 (Sessions) + Step 2 (Bead) merged; Step 3 (Queue) in flight; Steps 4 (PanelManager), 5 (Focus), 6 (Hotkey) pending.
+- Status: alle 6 Steps merged (B1 Sessions, B2 Bead, B3 Queue, B4 PanelManager, B4b Focus, B5 Hotkey — siehe `menubar_refactor_v1/B5_migration_log.md`). Die dort deferred LOC-Ceiling-Verletzungen (app.py, queue_controller.py) wurden 2026-06-10 in der LOC-Refactor-Kampagne per Standalone-Split aufgelöst (`loc_refactor_campaign.md`).
 
 ### 2. blank — Desktop-Targeting Sidecar-Konsolidierung
 - OldThemes: `desktop_allocation/D1_blank_sidecar_consolidation.md`
