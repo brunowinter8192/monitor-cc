@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 from datetime import datetime, timedelta
+import os
 import time
 from pathlib import Path
 from typing import Dict, Set, List, Optional
@@ -11,12 +12,19 @@ from ..constants import RESET, CYAN, POLL_INTERVAL, INPUT_POLL_INTERVAL, MODE_AL
 from ..session_finder import find_active_sessions
 # From jsonl/: Parse JSONL lines for session start timestamp
 from ..jsonl import parse_jsonl_lines, read_new_lines
-# From monitor_display.py: Session status output
-from .monitor_display import print_session_status
+# From monitor_display.py: Session status output + main-loop rendering
+from .monitor_display import print_session_status, render_main_buffer
+from . import monitor_display as _md
 # From monitor_session.py: Session file processing, task handling, historical load
 from .monitor_session import get_file_end_position, get_initial_position, process_session_file, load_historical_main
 # From ram_audit: register tracemalloc + SIGUSR1 dump handler for this pane
 from ..ram_audit import register_ram_dump
+# From click_handler: keyboard/mouse I/O for main loop
+from ..input.click_handler import (
+    read_keypress, setup_keyboard_input, restore_terminal,
+    enable_mouse, disable_mouse, read_mouse_event,
+    resolve_parent_key, copy_to_clipboard,
+)
 
 file_positions: Dict[Path, int] = {}
 tool_use_caches: Dict[Path, dict] = {}
@@ -127,35 +135,12 @@ def filter_sessions_by_mode(sessions: list, mode: str) -> list:
 
 # Runs virtual-rendering main loop with mouse-scroll, zebra, and truncation
 def run_main_loop() -> None:
-    import os
-    from ..input.click_handler import (
-        read_keypress, setup_keyboard_input, restore_terminal,
-        enable_mouse, disable_mouse, read_mouse_event,
-        resolve_parent_key, copy_to_clipboard,
-    )
-    from .monitor_display import render_main_buffer
-    from . import monitor_display as _display
-
-    def _ram_state():
-        return [
-            ('file_positions',          file_positions),
-            ('tool_use_caches',         tool_use_caches),
-            ('agent_to_task',           agent_to_task),
-            ('agent_to_type',           agent_to_type),
-            ('buffered_subagent_calls', buffered_subagent_calls),
-            ('task_requests_seen',      task_requests_seen),
-            ('call_counter',            call_counter),
-            ('active_project_filter',   str(active_project_filter)),
-            ('active_mode',             active_mode),
-            ('_last_monitored_count',   str(_last_monitored_count)),
-        ]
-    register_ram_dump('main', _ram_state)
-
+    register_ram_dump('main', _main_ram_state)
     load_historical_main()
     current_main_session = _get_newest_main_session()
     last_output = None
     last_data_refresh = 0.0
-    _last_janitor_ts = 0.0
+    last_janitor_ts = 0.0
     setup_keyboard_input()
     enable_mouse()
     try:
@@ -168,144 +153,182 @@ def run_main_loop() -> None:
                 if char == '\033':
                     event = read_mouse_event(char)
                     if event is not None and event[0] != -1:
-                        button, col, row = event
-                        pw = _display._main_pane_width
-                        if button == 0:  # left click
-                            if row == 1:  # search bar row
-                                if col >= pw - 2:  # [→] next match
-                                    if _display._search_matches:
-                                        _display._search_current_idx = (_display._search_current_idx + 1) % len(_display._search_matches)
-                                        _display.ensure_match_visible()
-                                        input_changed = True
-                                elif col >= pw - 6:  # [←] prev match
-                                    if _display._search_matches:
-                                        _display._search_current_idx = (_display._search_current_idx - 1) % len(_display._search_matches)
-                                        _display.ensure_match_visible()
-                                        input_changed = True
-                                else:  # search text area → focus
-                                    _display._search_focused = True
-                                    input_changed = True
-                            else:  # buffer area (row >= 2) — never unfocus; always check copy
-                                entry = _display._main_copy_rows.get(row)
-                                if entry is not None and col >= pw - 2:
-                                    event_idx, part = entry
-                                    copy_to_clipboard(_display.serialize_main_event(event_idx, part))
-                                    _display._main_copy_feedback_until[(event_idx, part)] = time.time() + 1.5
-                                    input_changed = True
-                        elif button == 64:  # WheelUp → older events
-                            _display.main_scroll_offset = max(0, _display.main_scroll_offset + 3)
+                        if _handle_main_mouse(*event):
                             input_changed = True
-                        elif button == 65:  # WheelDown → newer events
-                            _display.main_scroll_offset = max(0, _display.main_scroll_offset - 3)
-                            input_changed = True
-                        elif button >= 32:  # motion/hover
-                            _display.main_hover_row = row
-                            input_changed = True
-                    elif event is not None:  # (-1,-1,-1) sentinel → release event, ignore
+                    elif event is not None:  # (-1,-1,-1) sentinel → release, ignore
                         pass
-                    elif _display._search_focused:  # event is None: bare ESC → cancel search
-                        _display._search_focused = False
-                        _display._search_query = ''
-                        _display._search_committed = False
-                        _display._search_matches = []
-                        _display._search_match_set = set()
-                        _display._search_match_line_offsets = {}
-                        input_changed = True
-                elif _display._search_focused:  # search input mode
-                    if char in ('\x7f', '\x08'):  # backspace (DEL or BS)
-                        _display._search_query = _display._search_query[:-1]
-                        _display._search_committed = False
-                        _display._search_matches = []
-                        _display._search_match_set = set()
-                        _display._search_match_line_offsets = {}
-                        input_changed = True
-                    elif char in ('\r', '\n'):  # enter → commit search, unfocus
-                        if _display._search_query != _display._search_cached_query:
-                            _display._search_matches, _display._search_match_set = _display._compute_search_matches(_display._search_query)
-                            _display._search_cached_query = _display._search_query
-                            _display._search_current_idx = 0
-                        _display._search_match_line_offsets = _display._compute_match_line_offsets(
-                            _display._search_query, _display._search_matches
-                        )
-                        _display._search_committed = True
-                        _display._search_focused = False
-                        _display.ensure_match_visible()
-                        input_changed = True
-                    elif char.isprintable():
-                        if len(_display._search_query) < 200:
-                            _display._search_query += char
-                            _display._search_committed = False
-                            _display._search_matches = []
-                            _display._search_match_set = set()
-                            _display._search_match_line_offsets = {}
+                    elif _md._search_focused:  # bare ESC → cancel search
+                        if _handle_main_search_cancel():
                             input_changed = True
+                elif _md._search_focused:
+                    if _handle_main_search_input(char):
+                        input_changed = True
                 elif char == 'y':
-                    key = resolve_parent_key(_display.main_line_map, _display.main_hover_row)
+                    key = resolve_parent_key(_md.main_line_map, _md.main_hover_row)
                     if key is not None:
-                        copy_to_clipboard(_display.serialize_main_event(key))
-
+                        copy_to_clipboard(_md.serialize_main_event(key))
             now = time.time()
-            _display._main_copy_feedback_until = {
-                k: v for k, v in _display._main_copy_feedback_until.items() if v > now
+            _md._main_copy_feedback_until = {
+                k: v for k, v in _md._main_copy_feedback_until.items() if v > now
             }
-            if _display._main_copy_feedback_until:
+            if _md._main_copy_feedback_until:
                 input_changed = True
-            if now - last_data_refresh >= POLL_INTERVAL:
-                newest = _get_newest_main_session()
-                if newest != current_main_session and newest is not None:
-                    current_main_session = newest
-                    file_positions[newest] = 0
-                    tool_use_caches[newest] = {}
-                    _display.main_event_buffer.clear()
-                    _display.main_scroll_offset = 0
-                    _display.main_event_buffer.append(
-                        {'type': 'session_banner', 'data': {}, 'call_number': None}
-                    )
-                # sticky-scroll: snapshot rendered line count before new events arrive
-                _sticky_pre = None
-                if _display.main_scroll_offset > 0:
-                    try:
-                        _sticky_pw = os.get_terminal_size().columns
-                    except OSError:
-                        _sticky_pw = 80
-                    _sticky_pre = _display._count_buffer_lines(_sticky_pw)
-                monitor_sessions()
-                # sticky-scroll: offset grows by line delta so absolute viewport stays pinned
-                if _sticky_pre is not None and _display.main_scroll_offset > 0:
-                    try:
-                        _sticky_pw = os.get_terminal_size().columns
-                    except OSError:
-                        _sticky_pw = 80
-                    _sticky_delta = _display._count_buffer_lines(_sticky_pw) - _sticky_pre
-                    if _sticky_delta != 0:
-                        _display.main_scroll_offset = max(0, _display.main_scroll_offset + _sticky_delta)
-                last_data_refresh = now
-                input_changed = True
-                if now - _last_janitor_ts >= 86400:
-                    from ..log_janitor import cleanup_old_jsonl, sweep_eligible_specs
-                    _logs = Path(__file__).parent.parent / 'logs'
-                    for _, _path in sweep_eligible_specs(_logs):
-                        cleanup_old_jsonl(_path)
-                    _last_janitor_ts = now
-
+            changed, last_data_refresh, last_janitor_ts, current_main_session = (
+                _refresh_main_data(now, last_data_refresh, last_janitor_ts, current_main_session)
+            )
+            input_changed = input_changed or changed
             if input_changed:
-                try:
-                    term = os.get_terminal_size()
-                    pane_height = term.lines - 1
-                    pane_width = term.columns
-                except OSError:
-                    pane_height = 50
-                    pane_width = 80
-                output = render_main_buffer(pane_height, pane_width, _display.main_scroll_offset)
-                if output != last_output:
-                    print("\033[2J\033[3J\033[H", end='', flush=True)
-                    if output:
-                        print(output)
-                    last_output = output
+                last_output = _build_main_output(last_output)
             time.sleep(INPUT_POLL_INTERVAL)
     finally:
         disable_mouse()
         restore_terminal()
+
+# RAM state snapshot for the main pane (registered via register_ram_dump)
+def _main_ram_state() -> list:
+    return [
+        ('file_positions',          file_positions),
+        ('tool_use_caches',         tool_use_caches),
+        ('agent_to_task',           agent_to_task),
+        ('agent_to_type',           agent_to_type),
+        ('buffered_subagent_calls', buffered_subagent_calls),
+        ('task_requests_seen',      task_requests_seen),
+        ('call_counter',            call_counter),
+        ('active_project_filter',   str(active_project_filter)),
+        ('active_mode',             active_mode),
+        ('_last_monitored_count',   str(_last_monitored_count)),
+    ]
+
+# Handle mouse events for the main pane; returns True if input_changed.
+def _handle_main_mouse(button: int, col: int, row: int) -> bool:
+    pw = _md._main_pane_width
+    if button == 0:  # left click
+        if row == 1:  # search bar row
+            if col >= pw - 2:  # [→] next match
+                if _md._search_matches:
+                    _md._search_current_idx = (_md._search_current_idx + 1) % len(_md._search_matches)
+                    _md.ensure_match_visible()
+                    return True
+            elif col >= pw - 6:  # [←] prev match
+                if _md._search_matches:
+                    _md._search_current_idx = (_md._search_current_idx - 1) % len(_md._search_matches)
+                    _md.ensure_match_visible()
+                    return True
+            else:  # search text area → focus
+                _md._search_focused = True
+                return True
+        else:  # buffer area (row >= 2) — always check copy
+            entry = _md._main_copy_rows.get(row)
+            if entry is not None and col >= pw - 2:
+                event_idx, part = entry
+                copy_to_clipboard(_md.serialize_main_event(event_idx, part))
+                _md._main_copy_feedback_until[(event_idx, part)] = time.time() + 1.5
+                return True
+    elif button == 64:  # WheelUp → older events
+        _md.main_scroll_offset = max(0, _md.main_scroll_offset + 3)
+        return True
+    elif button == 65:  # WheelDown → newer events
+        _md.main_scroll_offset = max(0, _md.main_scroll_offset - 3)
+        return True
+    elif button >= 32:  # motion/hover
+        _md.main_hover_row = row
+        return True
+    return False
+
+# Cancel active search on bare ESC; returns True (always triggers redraw).
+def _handle_main_search_cancel() -> bool:
+    _md._search_focused = False
+    _md._search_query = ''
+    _md._search_committed = False
+    _md._search_matches = []
+    _md._search_match_set = set()
+    _md._search_match_line_offsets = {}
+    return True
+
+# Handle keyboard input while search is focused; returns True if input_changed.
+def _handle_main_search_input(char: str) -> bool:
+    if char in ('\x7f', '\x08'):  # backspace (DEL or BS)
+        _md._search_query = _md._search_query[:-1]
+        _md._search_committed = False
+        _md._search_matches = []
+        _md._search_match_set = set()
+        _md._search_match_line_offsets = {}
+        return True
+    if char in ('\r', '\n'):  # enter → commit search, unfocus
+        if _md._search_query != _md._search_cached_query:
+            _md._search_matches, _md._search_match_set = _md._compute_search_matches(_md._search_query)
+            _md._search_cached_query = _md._search_query
+            _md._search_current_idx = 0
+        _md._search_match_line_offsets = _md._compute_match_line_offsets(
+            _md._search_query, _md._search_matches
+        )
+        _md._search_committed = True
+        _md._search_focused = False
+        _md.ensure_match_visible()
+        return True
+    if char.isprintable():
+        if len(_md._search_query) < 200:
+            _md._search_query += char
+            _md._search_committed = False
+            _md._search_matches = []
+            _md._search_match_set = set()
+            _md._search_match_line_offsets = {}
+            return True
+    return False
+
+# Tick-boundary data refresh: session change, sticky-scroll, monitor_sessions, janitor.
+# Returns (input_changed, last_data_refresh, last_janitor_ts, current_main_session).
+def _refresh_main_data(now: float, last_data_refresh: float, last_janitor_ts: float, current_main_session) -> tuple:
+    if now - last_data_refresh < POLL_INTERVAL:
+        return False, last_data_refresh, last_janitor_ts, current_main_session
+    newest = _get_newest_main_session()
+    if newest != current_main_session and newest is not None:
+        current_main_session = newest
+        file_positions[newest] = 0
+        tool_use_caches[newest] = {}
+        _md.main_event_buffer.clear()
+        _md.main_scroll_offset = 0
+        _md.main_event_buffer.append({'type': 'session_banner', 'data': {}, 'call_number': None})
+    _sticky_pre = None
+    if _md.main_scroll_offset > 0:
+        try:
+            _sticky_pw = os.get_terminal_size().columns
+        except OSError:
+            _sticky_pw = 80
+        _sticky_pre = _md._count_buffer_lines(_sticky_pw)
+    monitor_sessions()
+    if _sticky_pre is not None and _md.main_scroll_offset > 0:
+        try:
+            _sticky_pw = os.get_terminal_size().columns
+        except OSError:
+            _sticky_pw = 80
+        _sticky_delta = _md._count_buffer_lines(_sticky_pw) - _sticky_pre
+        if _sticky_delta != 0:
+            _md.main_scroll_offset = max(0, _md.main_scroll_offset + _sticky_delta)
+    if now - last_janitor_ts >= 86400:
+        from ..log_janitor import cleanup_old_jsonl, sweep_eligible_specs
+        _logs = Path(__file__).parent.parent / 'logs'
+        for _, _path in sweep_eligible_specs(_logs):
+            cleanup_old_jsonl(_path)
+        last_janitor_ts = now
+    return True, now, last_janitor_ts, current_main_session
+
+# Render main buffer, print if changed; returns new last_output.
+def _build_main_output(last_output):
+    try:
+        term = os.get_terminal_size()
+        pane_height = term.lines - 1
+        pane_width = term.columns
+    except OSError:
+        pane_height = 50
+        pane_width = 80
+    output = render_main_buffer(pane_height, pane_width, _md.main_scroll_offset)
+    if output != last_output:
+        print("\033[2J\033[3J\033[H", end='', flush=True)
+        if output:
+            print(output)
+        return output
+    return last_output
 
 # Get the newest main (non-agent) session file
 def _get_newest_main_session() -> Optional[Path]:

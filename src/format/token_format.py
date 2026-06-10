@@ -1,8 +1,12 @@
 # INFRASTRUCTURE
 import datetime
+import re as _re
 from typing import Optional
 from ..constants import RED, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET
+from .formatter import shorten_tool_name
+
 # FUNCTIONS
+
 # Format token count as compact "Xk" or "X.Xk" string
 def _format_k(n: int) -> str:
     if n >= 1000:
@@ -39,9 +43,134 @@ def _format_ts(timestamp: str) -> str:
     from ..utils import format_timestamp
     return format_timestamp(timestamp)
 
+# Format rate-limit reset epoch string for display (HH:MM same-day, or DayName HH:MM otherwise)
+def _fmt_rl_reset_time(epoch_str: str) -> str:
+    try:
+        ts = datetime.datetime.fromtimestamp(int(epoch_str))
+        now = datetime.datetime.now()
+        if ts.date() == now.date():
+            return ts.strftime('%H:%M')
+        return ts.strftime('%a %H:%M')
+    except (ValueError, OSError):
+        return epoch_str
+
+# Render expanded detail lines for one API call; returns (lines, keys).
+def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
+    lines = []
+    keys = []
+    ttl = call.get('cache_creation_ttl') or {}
+    m5  = ttl.get('ephemeral_5m_input_tokens', 0)
+    h1  = ttl.get('ephemeral_1h_input_tokens', 0)
+    if ttl:
+        lines.append(f"    {DIM}5m:{_format_k(m5)}  1h:{_format_k(h1)}{SOFT_RESET}")
+        keys.append(None)
+    stu = call.get('server_tool_use') or {}
+    ws  = stu.get('web_search_requests', 0)
+    wf  = stu.get('web_fetch_requests', 0)
+    if ws or wf:
+        lines.append(f"    {DIM}web_search:{ws}  web_fetch:{wf}{SOFT_RESET}")
+        keys.append(None)
+    tier = call.get('service_tier', '')
+    spd  = call.get('speed', '')
+    geo  = call.get('inference_geo', '')
+    meta_parts = []
+    if tier: meta_parts.append(f"tier:{tier}")
+    if spd:  meta_parts.append(f"speed:{spd}")
+    if geo:  meta_parts.append(f"geo:{geo}")
+    if meta_parts:
+        lines.append(f"    {DIM}{' '.join(meta_parts)}{SOFT_RESET}")
+        keys.append(None)
+    iters = call.get('iterations') or []
+    if iters:
+        lines.append(f"    {DIM}iter:{len(iters)}{SOFT_RESET}")
+        keys.append(None)
+    rid = call.get('request_id', '')
+    rl_headers = (response_rid_map or {}).get(rid) if rid else None
+    if rl_headers:
+        u5h = rl_headers.get('anthropic-ratelimit-unified-5h-utilization', '')
+        r5h = rl_headers.get('anthropic-ratelimit-unified-5h-reset', '')
+        u7d = rl_headers.get('anthropic-ratelimit-unified-7d-utilization', '')
+        r7d = rl_headers.get('anthropic-ratelimit-unified-7d-reset', '')
+        parts_rl = []
+        if u5h:
+            pct5 = f"{float(u5h)*100:.0f}%"
+            parts_rl.append(f"5h:{pct5}→{_fmt_rl_reset_time(r5h)}" if r5h else f"5h:{pct5}")
+        if u7d:
+            pct7 = f"{float(u7d)*100:.0f}%"
+            parts_rl.append(f"7d:{pct7}→{_fmt_rl_reset_time(r7d)}" if r7d else f"7d:{pct7}")
+        if parts_rl:
+            lines.append(f"    {DIM}rl: {'  '.join(parts_rl)}{SOFT_RESET}")
+            keys.append(None)
+        status = rl_headers.get('anthropic-ratelimit-unified-status', 'allowed')
+        overage = rl_headers.get('anthropic-ratelimit-unified-overage-status', '')
+        warn_parts = []
+        if status != 'allowed':
+            warn_parts.append(f"status:{status}")
+        if overage and overage != 'allowed':
+            reason = rl_headers.get('anthropic-ratelimit-unified-overage-disabled-reason', '')
+            warn_parts.append(f"overage:{overage}" + (f"({reason})" if reason else ''))
+        if warn_parts:
+            lines.append(f"    {YELLOW}{'  '.join(warn_parts)}{SOFT_RESET}")
+            keys.append(None)
+    for block in call.get('content_blocks', []):
+        bt = block.get('type', '')
+        if bt == 'tool_use':
+            tool_name = block.get('tool_name', 'Unknown')
+            if tool_name.startswith('mcp__'):
+                tool_name = shorten_tool_name(tool_name)
+            input_data = block.get('preview', {})
+            if isinstance(input_data, dict) and input_data:
+                lines.append(f"    {GREEN}{tool_name}{SOFT_RESET}")
+                keys.append(None)
+                for k, v in input_data.items():
+                    val_str = str(v).replace('\n', ' ') if not isinstance(v, str) else v.replace('\n', ' ')
+                    lines.append(f"      {GREEN}{k}: {val_str}{SOFT_RESET}")
+                    keys.append(None)
+            else:
+                lines.append(f"    {GREEN}{tool_name}{SOFT_RESET}")
+                keys.append(None)
+        elif bt == 'thinking':
+            sc = block.get('sig_chars', 0)
+            sig_str = f"sig: {_format_k(sc)}" if sc else "sig: —"
+            lines.append(f"    {PASTEL_ORANGE}thinking ({sig_str}){SOFT_RESET}")
+            keys.append(None)
+        elif bt == 'text':
+            preview = block.get('preview', '')
+            if preview:
+                lines.append(f"    {WHITE}text: {preview.replace(chr(10), ' ')}{SOFT_RESET}")
+            else:
+                lines.append(f"    {WHITE}text{SOFT_RESET}")
+            keys.append(None)
+    return lines, keys
+
+# Compute viewport slice, sticky header, and initial_parent_count; returns the 5-tuple.
+def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, pane_width: int, scroll_offset: int) -> tuple:
+    viewport_lines = pane_height - 1
+    max_scroll = max(0, len(all_lines) - viewport_lines)
+    clamped_offset = min(scroll_offset, max_scroll)
+    start = max(0, len(all_lines) - viewport_lines - clamped_offset)
+    end = start + viewport_lines
+    sticky_header = None
+    if start > 0:
+        for i in range(start, -1, -1):
+            if line_keys[i] is None and 'Turn ' in all_lines[i]:
+                raw = all_lines[i]
+                if len(raw) > pane_width + 20:
+                    m = _re.search(r'Turn \d+ \[[^\]]+\]', raw)
+                    if m:
+                        sticky_header = f"{PASTEL_PURPLE}{m.group(0)}...{SOFT_RESET}"
+                    else:
+                        sticky_header = raw
+                else:
+                    sticky_header = raw
+                break
+    visible_lines = all_lines[start:end]
+    visible_keys = line_keys[start:end]
+    initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
+    return visible_lines, visible_keys, sticky_header, start, initial_parent_count
+
 # Format cache tracker — returns (visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count)
 def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None) -> tuple:
-    from .formatter import shorten_tool_name
     if not turns:
         return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0, 0
 
@@ -63,7 +192,6 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
         prompt = turn.get('prompt', '').replace('\n', ' ')
         timestamp = _format_ts(turn.get('timestamp', ''))
         truncated = prompt[:prompt_max] + ('...' if len(prompt) > prompt_max else '')
-
         api_calls = turn.get('api_calls', [])
         thinking_calls = sum(
             1 for call in api_calls
@@ -78,111 +206,18 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
             cc = call.get('cache_creation', 0)
             d = call.get('direct', 0)
             out = call.get('output_tokens', 0)
-
             key = (turn_idx, call_idx)
             is_expanded = expand_states.get(key, False)
-            symbol = '\u25bc' if is_expanded else '\u25b6'
-
+            symbol = '▼' if is_expanded else '▶'
             request_num += 1
             has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
             sig_chars = sum(b.get('sig_chars', 0) for b in call.get('content_blocks', []) if b.get('type') == 'thinking')
-            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking, sig_chars)
-            all_lines.append(call_line)
+            all_lines.append(_format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking, sig_chars))
             line_keys.append(key)
-
             if is_expanded:
-                ttl = call.get('cache_creation_ttl') or {}
-                m5  = ttl.get('ephemeral_5m_input_tokens', 0)
-                h1  = ttl.get('ephemeral_1h_input_tokens', 0)
-                if ttl:
-                    all_lines.append(f"    {DIM}5m:{_format_k(m5)}  1h:{_format_k(h1)}{SOFT_RESET}")
-                    line_keys.append(None)
-                stu = call.get('server_tool_use') or {}
-                ws  = stu.get('web_search_requests', 0)
-                wf  = stu.get('web_fetch_requests', 0)
-                if ws or wf:
-                    all_lines.append(f"    {DIM}web_search:{ws}  web_fetch:{wf}{SOFT_RESET}")
-                    line_keys.append(None)
-                tier = call.get('service_tier', '')
-                spd  = call.get('speed', '')
-                geo  = call.get('inference_geo', '')
-                meta_parts = []
-                if tier: meta_parts.append(f"tier:{tier}")
-                if spd:  meta_parts.append(f"speed:{spd}")
-                if geo:  meta_parts.append(f"geo:{geo}")
-                if meta_parts:
-                    all_lines.append(f"    {DIM}{' '.join(meta_parts)}{SOFT_RESET}")
-                    line_keys.append(None)
-                iters = call.get('iterations') or []
-                if iters:
-                    all_lines.append(f"    {DIM}iter:{len(iters)}{SOFT_RESET}")
-                    line_keys.append(None)
-                rid = call.get('request_id', '')
-                rl_headers = (response_rid_map or {}).get(rid) if rid else None
-                if rl_headers:
-                    def _fmt_reset(epoch_str: str) -> str:
-                        try:
-                            ts = datetime.datetime.fromtimestamp(int(epoch_str))
-                            now = datetime.datetime.now()
-                            if ts.date() == now.date():
-                                return ts.strftime('%H:%M')
-                            return ts.strftime('%a %H:%M')
-                        except (ValueError, OSError):
-                            return epoch_str
-                    u5h = rl_headers.get('anthropic-ratelimit-unified-5h-utilization', '')
-                    r5h = rl_headers.get('anthropic-ratelimit-unified-5h-reset', '')
-                    u7d = rl_headers.get('anthropic-ratelimit-unified-7d-utilization', '')
-                    r7d = rl_headers.get('anthropic-ratelimit-unified-7d-reset', '')
-                    parts_rl = []
-                    if u5h:
-                        pct5 = f"{float(u5h)*100:.0f}%"
-                        parts_rl.append(f"5h:{pct5}→{_fmt_reset(r5h)}" if r5h else f"5h:{pct5}")
-                    if u7d:
-                        pct7 = f"{float(u7d)*100:.0f}%"
-                        parts_rl.append(f"7d:{pct7}→{_fmt_reset(r7d)}" if r7d else f"7d:{pct7}")
-                    if parts_rl:
-                        all_lines.append(f"    {DIM}rl: {'  '.join(parts_rl)}{SOFT_RESET}")
-                        line_keys.append(None)
-                    status = rl_headers.get('anthropic-ratelimit-unified-status', 'allowed')
-                    overage = rl_headers.get('anthropic-ratelimit-unified-overage-status', '')
-                    warn_parts = []
-                    if status != 'allowed':
-                        warn_parts.append(f"status:{status}")
-                    if overage and overage != 'allowed':
-                        reason = rl_headers.get('anthropic-ratelimit-unified-overage-disabled-reason', '')
-                        warn_parts.append(f"overage:{overage}" + (f"({reason})" if reason else ''))
-                    if warn_parts:
-                        all_lines.append(f"    {YELLOW}{'  '.join(warn_parts)}{SOFT_RESET}")
-                        line_keys.append(None)
-                for block in call.get('content_blocks', []):
-                    bt = block.get('type', '')
-                    if bt == 'tool_use':
-                        tool_name = block.get('tool_name', 'Unknown')
-                        if tool_name.startswith('mcp__'):
-                            tool_name = shorten_tool_name(tool_name)
-                        input_data = block.get('preview', {})
-                        if isinstance(input_data, dict) and input_data:
-                            all_lines.append(f"    {GREEN}{tool_name}{SOFT_RESET}")
-                            line_keys.append(None)
-                            for k, v in input_data.items():
-                                val_str = str(v).replace('\n', ' ') if not isinstance(v, str) else v.replace('\n', ' ')
-                                all_lines.append(f"      {GREEN}{k}: {val_str}{SOFT_RESET}")
-                                line_keys.append(None)
-                        else:
-                            all_lines.append(f"    {GREEN}{tool_name}{SOFT_RESET}")
-                            line_keys.append(None)
-                    elif bt == 'thinking':
-                        sc = block.get('sig_chars', 0)
-                        sig_str = f"sig: {_format_k(sc)}" if sc else "sig: —"
-                        all_lines.append(f"    {PASTEL_ORANGE}thinking ({sig_str}){SOFT_RESET}")
-                        line_keys.append(None)
-                    elif bt == 'text':
-                        preview = block.get('preview', '')
-                        if preview:
-                            all_lines.append(f"    {WHITE}text: {preview.replace(chr(10), ' ')}{SOFT_RESET}")
-                        else:
-                            all_lines.append(f"    {WHITE}text{SOFT_RESET}")
-                        line_keys.append(None)
+                exp_lines, exp_keys = _render_expanded_call_lines(call, response_rid_map)
+                all_lines.extend(exp_lines)
+                line_keys.extend(exp_keys)
 
         all_lines.append('')
         line_keys.append(None)
@@ -191,30 +226,4 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
         all_lines.pop()
         line_keys.pop()
 
-    viewport_lines = pane_height - 1
-    max_scroll = max(0, len(all_lines) - viewport_lines)
-    clamped_offset = min(scroll_offset, max_scroll)
-    start = max(0, len(all_lines) - viewport_lines - clamped_offset)
-    end = start + viewport_lines
-
-    sticky_header = None
-    if start > 0:
-        for i in range(start, -1, -1):
-            if line_keys[i] is None and 'Turn ' in all_lines[i]:
-                raw = all_lines[i]
-                if len(raw) > pane_width + 20:
-                    import re as _re
-                    m = _re.search(r'Turn \d+ \[[^\]]+\]', raw)
-                    if m:
-                        sticky_header = f"{PASTEL_PURPLE}{m.group(0)}...{SOFT_RESET}"
-                    else:
-                        sticky_header = raw
-                else:
-                    sticky_header = raw
-                break
-
-    visible_lines = all_lines[start:end]
-    visible_keys = line_keys[start:end]
-    initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
-
-    return visible_lines, visible_keys, sticky_header, start, initial_parent_count
+    return _compute_cache_viewport(all_lines, line_keys, pane_height, pane_width, scroll_offset)

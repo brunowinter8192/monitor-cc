@@ -75,26 +75,10 @@ class ProxyAddon:
                 return
             flow.metadata["mc_original_payload"] = payload
 
-            model = payload.get("model", "")
-            model_lower = model.lower()
-            if "haiku" in model_lower:
-                model_family = "haiku"
-            elif "sonnet" in model_lower:
-                model_family = "sonnet"
-            else:
-                model_family = "opus"
+            model_family = _infer_model_family(payload.get("model", ""))
             project_path = os.environ.get("PROXY_PROJECT_PATH", "")
 
-            try:
-                _write_entry(self.original_log_file, {
-                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-                    "flow_id": flow.id,
-                    "request_id": flow.request.headers.get("x-request-id", ""),
-                    "model": payload.get("model", ""),
-                    "payload": payload,
-                })
-            except Exception as e:
-                print(f"[dual_log] original write failed: {e}", file=sys.stderr)
+            _log_original_request(self.original_log_file, flow, payload)
 
             modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, all_ops = apply_modification_rules(payload, model_family, project_path)
             deferred_tool_names = _extract_deferred_tool_names(payload)
@@ -104,30 +88,9 @@ class ProxyAddon:
             else:
                 modified_payload = _apply_fixation(modified_payload, modifications, self.fixated[model_family])
 
-            modified_payload, stripped_count, stripped_tool_names = _strip_unused_tools(modified_payload)
-            if stripped_count > 0:
-                modifications.append(f"stripped_{stripped_count}_unused_tools")
-
-            modified_payload = inject_mcp_tools(modified_payload, project_path)
-            modifications.append("injected_mcp_tools")
-
-            modified_payload, desc_stripped, tool_descs_originals = _strip_tool_descriptions(modified_payload)
-            if desc_stripped > 0:
-                modifications.append(f"stripped_tool_descs_{desc_stripped}")
-
-            modified_payload, sys3_stripped, sys3_original = _strip_sys3(modified_payload)
-            if sys3_stripped:
-                modifications.append("stripped_sys3")
-
-            modified_payload = _strip_blocked_tool_references(modified_payload)
-
-            modified_payload, cm_injected = _inject_context_management(modified_payload)
-            if cm_injected:
-                modifications.append("injected_context_management")
-
-            modified_payload, model_overridden = _inject_model_override(modified_payload, model_family)
-            if model_overridden:
-                modifications.append("injected_model_override")
+            modified_payload, modifications = _run_post_fixation_pipeline(
+                modified_payload, modifications, model_family, project_path
+            )
 
             # Derive request_id and timestamp for downstream dual-log writes (replaces _build_entry)
             mc_request_id = flow.request.headers.get("x-request-id") or str(uuid.uuid4())
@@ -146,41 +109,20 @@ class ProxyAddon:
                 _summarize_message(m) for m in modified_payload.get("messages", [])
             ]
 
-            try:
-                prev_delta = self.prev_delta_hashes_by_model.get(model_family)
-                delta_entry, curr_delta = _build_forwarded_delta(
-                    modified_payload,
-                    flow.request.headers.get("x-request-id", ""),
-                    prev_delta,
-                )
-                delta_entry["flow_id"] = flow.id
-                raw_beta = flow.request.headers.get("anthropic-beta", "")
-                delta_entry["anthropic_beta"] = [f.strip() for f in raw_beta.split(",") if f.strip()]
-                _write_entry(self.forwarded_log_file, delta_entry)
+            curr_delta = _log_forwarded_delta(
+                self.forwarded_log_file, modified_payload, flow,
+                self.prev_delta_hashes_by_model.get(model_family),
+            )
+            if curr_delta is not None:
                 self.prev_delta_hashes_by_model[model_family] = curr_delta
-            except Exception as e:
-                print(f"[dual_log] forwarded write failed: {e}", file=sys.stderr)
 
-            try:
-                seen_ids = self.prev_error_ids_by_model.get(model_family, set())
-                err_entries = _build_errors_entries(
-                    payload,
-                    mc_request_id,
-                    mc_timestamp,
-                    seen_ids,
-                    self._worker_context,
-                    self._session_id,
-                    "",
-                )
-                for err_entry in err_entries:
-                    err_entry["flow_id"] = flow.id
-                    _write_entry(self.errors_log_file, err_entry)
-                if err_entries:
-                    new_seen = set(seen_ids)
-                    new_seen.update(e["tool_use_id"] for e in err_entries)
-                    self.prev_error_ids_by_model[model_family] = new_seen
-            except Exception as e:
-                print(f"[dual_log] errors write failed: {e}", file=sys.stderr)
+            new_seen = _log_errors_entries(
+                self.errors_log_file, payload, mc_request_id, mc_timestamp,
+                self.prev_error_ids_by_model.get(model_family, set()),
+                self._worker_context, self._session_id, flow.id,
+            )
+            if new_seen is not None:
+                self.prev_error_ids_by_model[model_family] = new_seen
 
             flow.metadata["mc_modified_payload"] = modified_payload
             flow.metadata["mc_model_family"] = model_family
@@ -265,6 +207,91 @@ class ProxyAddon:
 
 
 # FUNCTIONS
+
+# Build and write error entries; returns updated seen_ids set on success (if any written), None on error.
+def _log_errors_entries(log_file: Path, payload: dict, mc_request_id: str, mc_timestamp: str,
+                        prev_seen_ids: set, worker_context: str, session_id: str, flow_id: str) -> Optional[set]:
+    try:
+        err_entries = _build_errors_entries(
+            payload, mc_request_id, mc_timestamp, prev_seen_ids, worker_context, session_id, "",
+        )
+        for err_entry in err_entries:
+            err_entry["flow_id"] = flow_id
+            _write_entry(log_file, err_entry)
+        if err_entries:
+            new_seen = set(prev_seen_ids)
+            new_seen.update(e["tool_use_id"] for e in err_entries)
+            return new_seen
+        return None
+    except Exception as e:
+        print(f"[dual_log] errors write failed: {e}", file=sys.stderr)
+        return None
+
+
+# Build and write forwarded-delta entry; returns curr_delta on success, None on error.
+def _log_forwarded_delta(log_file: Path, modified_payload: dict, flow, prev_delta) -> Optional[dict]:
+    try:
+        delta_entry, curr_delta = _build_forwarded_delta(
+            modified_payload,
+            flow.request.headers.get("x-request-id", ""),
+            prev_delta,
+        )
+        delta_entry["flow_id"] = flow.id
+        raw_beta = flow.request.headers.get("anthropic-beta", "")
+        delta_entry["anthropic_beta"] = [f.strip() for f in raw_beta.split(",") if f.strip()]
+        _write_entry(log_file, delta_entry)
+        return curr_delta
+    except Exception as e:
+        print(f"[dual_log] forwarded write failed: {e}", file=sys.stderr)
+        return None
+
+
+# Run the 7 post-fixation modification steps; returns (modified_payload, modifications).
+def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, model_family: str, project_path: str) -> tuple:
+    modified_payload, stripped_count, _ = _strip_unused_tools(modified_payload)
+    if stripped_count > 0:
+        modifications.append(f"stripped_{stripped_count}_unused_tools")
+    modified_payload = inject_mcp_tools(modified_payload, project_path)
+    modifications.append("injected_mcp_tools")
+    modified_payload, desc_stripped, _ = _strip_tool_descriptions(modified_payload)
+    if desc_stripped > 0:
+        modifications.append(f"stripped_tool_descs_{desc_stripped}")
+    modified_payload, sys3_stripped, _ = _strip_sys3(modified_payload)
+    if sys3_stripped:
+        modifications.append("stripped_sys3")
+    modified_payload = _strip_blocked_tool_references(modified_payload)
+    modified_payload, cm_injected = _inject_context_management(modified_payload)
+    if cm_injected:
+        modifications.append("injected_context_management")
+    modified_payload, model_overridden = _inject_model_override(modified_payload, model_family)
+    if model_overridden:
+        modifications.append("injected_model_override")
+    return modified_payload, modifications
+
+
+# Write original-payload entry to dual-log; swallows write errors.
+def _log_original_request(log_file: Path, flow, payload: dict) -> None:
+    try:
+        _write_entry(log_file, {
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            "flow_id": flow.id,
+            "request_id": flow.request.headers.get("x-request-id", ""),
+            "model": payload.get("model", ""),
+            "payload": payload,
+        })
+    except Exception as e:
+        print(f"[dual_log] original write failed: {e}", file=sys.stderr)
+
+
+# Map model name string to "haiku", "sonnet", or "opus"
+def _infer_model_family(model: str) -> str:
+    m = model.lower()
+    if "haiku" in m:
+        return "haiku"
+    if "sonnet" in m:
+        return "sonnet"
+    return "opus"
+
 
 _RESPONSE_HEADER_EXACT = frozenset({"request-id", "retry-after", "anthropic-organization-id"})
 _RESPONSE_HEADER_PREFIXES = ("anthropic-ratelimit-", "anthropic-priority-", "anthropic-fast-")

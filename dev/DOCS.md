@@ -12,7 +12,8 @@ cd Monitor_CC/
 
 ## Documentation Tree
 
-- [display/DOCS.md](display/DOCS.md) — Display layer tests (tmux layout, rules rendering)
+- [display/DOCS.md](display/DOCS.md) — Display layer tests + format_cache_tracker differential proof
+- [jsonl/DOCS.md](jsonl/DOCS.md) — extract_cache_turns differential proof harness
 - `hook_firing/reports/` — Historical hook block-event analysis snapshots (read-only archive; `analyze.py` and `DOCS.md` deleted 2026-05-24 — replaced by `src/logs/hook_firing.jsonl` persistent log)
 - [pipeline/DOCS.md](pipeline/DOCS.md) — Pipeline evaluation suite (memory, I/O, parsing, format stability)
 - [session_analysis/DOCS.md](session_analysis/DOCS.md) — Forensic session JSONL + proxy log analysis (cache behavior, rebuild detection, token attribution)

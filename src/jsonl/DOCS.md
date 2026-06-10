@@ -47,10 +47,11 @@ tool_use/tool_result correlation) → `jsonl_extractors` (typed extractions from
 
 ---
 
-### jsonl_cache_turns.py (134 LOC)
+### jsonl_cache_turns.py (150 LOC)
 
 **Purpose:** Extract per-turn cache tracking data grouped by user prompts; each turn contains a list of requests with CR/CC/D/Out token metrics. Implements streaming-snapshot dedup: CC sometimes writes multiple assistant messages for the same request as incremental snapshots (partial thinking + final output). The dedup logic uses a `seen_types` set of `(type, identifier)` tuples (`('tool_use', tool_name)`, `('thinking',)`, `('text', preview)`) to skip blocks already counted in an earlier snapshot of the same response — preventing double-counting of thinking_chars across snapshots. Each `api_call` dict carries 6 usage extras from the `usage` object: `cache_creation_ttl` (dict `{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`), `server_tool_use` (dict `{web_search_requests, web_fetch_requests}`), `service_tier` (str), `speed` (str), `inference_geo` (str, often `""`), `iterations` (list of per-iteration breakdown dicts).
 **Reads:** List of message dicts.
 **Writes:** Nothing — returns list of cache turn dicts.
 **Called by:** `src/panes/token_pane.py`, `src/workers/worker_pane.py`
 **Calls out:** —
+Private helpers (same module): `_parse_user_message_text`, `_extract_content_blocks`, `_build_api_call`, `_merge_duplicate_call`.

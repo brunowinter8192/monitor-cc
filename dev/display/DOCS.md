@@ -54,6 +54,19 @@ Captures all 10 tmux panes of a running Monitor_CC session (5 windows) and combi
 
 **Dependencies:** `termshot` (`brew install homeport/tap/termshot`), `Pillow` (`pip install Pillow`)
 
+### A_format_cache_tracker_proof.py
+
+**Purpose:** Differential proof harness for `format_cache_tracker` decomposition. Loads 10 real session JSONLs via `extract_cache_turns`, calls `format_cache_tracker(turns, pane_height, pane_width)` across 6 parameter combinations (2 heights × 3 widths), serializes the 5-tuple return as JSON, verifies byte-identical against baseline. Exercises `_render_expanded_call_lines`, `_compute_cache_viewport`, and `_fmt_rl_reset_time` transitively.
+
+**Usage:**
+```bash
+# From project root
+./venv/bin/python dev/display/A_format_cache_tracker_proof.py --mode capture
+./venv/bin/python dev/display/A_format_cache_tracker_proof.py --mode verify
+```
+
+**Output:** `A_format_cache_tracker_proof_reports/baseline_<timestamp>.json` — dict of `{session_stem_HxW: serialized_5tuple}` for 60 cases.
+
 ## Documentation Tree
 
 - [jsonl_exploration/DOCS.md](jsonl_exploration/DOCS.md) — JSONL structure exploration suite (3 scripts, MD reports)
