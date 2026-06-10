@@ -23,7 +23,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 **Reads:** function parameters only (sessions, bg_by_project, panel_width passed from callers). No direct `app` instance state accessed.
 **Writes:** NSPanel frame (via `_reposition_panel`); creates NSView/NSButton/NSTextField UI objects returned to callers.
 **Key signatures:** `_make_nspanel()`, `_reposition_panel(panel, nsstatusitem)`, `_compute_required_height(sorted_sessions)`, `_make_separator_view(project_name, panel_width, proj_min_remaining)`.
-**Called by:** `app.py` (`_reposition_panel` in `_open_main_panel`); `panel_manager.py` (imports constants + all factory helpers); `queue_controller.py` (imports constants + helpers).
+**Called by:** `panel_lifecycle.py` (`_reposition_panel` in `_open_main_panel`); `panel_manager.py` (imports constants + all factory helpers); `queue_controller.py` (imports constants + helpers).
 **Calls out:** `AppKit`, `Foundation`, `itertools`; `.menubar_log` (`log_menubar`).
 
 ---
@@ -39,14 +39,25 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### queue_controller.py (448 LOC) ⚠ over 400 LOC ceiling — split deferred to post-Step-3
+### queue_controller.py (269 LOC)
 
-**Purpose:** Per-concern controller for the queue panel (Step 3/6 of CCMenuBarApp composition refactor). `QueueController(app)` owns all queue state (`_queue_open`, `_queue_panel`, `_queue_sv`, `_queue_toggle_btn`, `_queue_displayed_names`, `_queue_data`, `_pending_queue_tags`, `_pending_queue_views`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_rebuild_in_progress`) and exposes `tick(sessions)` (load + conditional rebuild), `open(sessions)` (explicit pre-load + unconditional rebuild for panel-open), `rebuild(sessions)` + `_rebuild_inner(sessions)` (re-entry guarded full panel rebuild), `compute_height(sessions)`, `_resize_panel(new_h)`, and action handlers `handle_add_row`, `handle_toggle_entry`, `handle_remove_entry`, `handle_commit_field`, `handle_text_end_editing`, `handle_try_deliver`. Uses `_QueuePanel(_KeyablePanel)` subclass: plain `q` with no modifiers mid-text jumps cursor to end; `q` at end/empty inserts normally (`sendEvent_` heuristic). ONE NSGridView (1-col): every row is a full-width container `NSView` (`wantsLayer=True`). Three-state rows: **draft** (editable NSTextField, `↑` toggle, `×` delete), **queued** (red bg tint `α0.18`, read-only label, `↓` toggle, `×` delete), **sent** (green bg tint, read-only label, no toggle, `×` delete). Column layout (frame-based): `[0..col0_w) text | [col0_w..+22pt) toggle | [+22pt..pw) ×`. Module-level pure helpers (`_make_queue_nspanel`, `_reposition_queue_panel`, `_make_queue_add_btn`) stay module-level; `_reposition_queue_panel` imported by `app.py:_open_queue_panel`. `handle_try_deliver` absorbed from `app.py:_try_deliver_now` — reads `HOOKS_FILE`, delivers via `queue.deliver_message`, marks entry sent. 448 LOC exceeds 400-line ceiling; natural split would separate panel-render from action-dispatch concern but is deferred as a post-refactor task.
+**Purpose:** Per-concern controller for the queue panel (Step 3/6 of CCMenuBarApp composition refactor). `QueueController(app)` owns all queue state (`_queue_open`, `_queue_panel`, `_queue_sv`, `_queue_toggle_btn`, `_queue_displayed_names`, `_queue_data`, `_pending_queue_tags`, `_pending_queue_views`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_rebuild_in_progress`) and exposes `tick(sessions)` (load + conditional rebuild), `open(sessions)` (explicit pre-load + unconditional rebuild for panel-open), `rebuild(sessions)` + `_rebuild_inner(sessions)` (re-entry guarded full panel rebuild), `compute_height(sessions)`, `_resize_panel(new_h)`, and action handlers `handle_add_row`, `handle_toggle_entry`, `handle_remove_entry`, `handle_commit_field`, `handle_text_end_editing`, `handle_try_deliver`. Uses `_QueuePanel(_KeyablePanel)` subclass: plain `q` with no modifiers mid-text jumps cursor to end; `q` at end/empty inserts normally (`sendEvent_` heuristic). ONE NSGridView (1-col): every row is a full-width container `NSView` (`wantsLayer=True`). Three-state rows: **draft** (editable NSTextField, `↑` toggle, `×` delete), **queued** (red bg tint `α0.18`, read-only label, `↓` toggle, `×` delete), **sent** (green bg tint, read-only label, no toggle, `×` delete). Column layout (frame-based): `[0..col0_w) text | [col0_w..+22pt) toggle | [+22pt..pw) ×`. Module-level pure helpers (`_make_queue_nspanel`, `_reposition_queue_panel`, `_make_queue_add_btn`) stay module-level; `_reposition_queue_panel` imported by `app.py:_open_queue_panel`. `handle_try_deliver` absorbed from `app.py:_try_deliver_now` — reads `HOOKS_FILE`, delivers via `queue.deliver_message`, marks entry sent. Render functions (`_rebuild_inner`, `compute_height`, `_resize_panel`) and all render-concern helpers moved verbatim to `queue_panel_render.py` (see below).
 **Reads:** `self._queue_data`, `self._pending_queue_tags`, `self._pending_queue_views`, `self._queue_add_tags`, `self._queue_remove_tags`, `self._queue_toggle_tags`; `self.app._panel_width`, `self.app._panel_min_height`, `self.app._auto_focus`, `self.app._panel_controller`; `HOOKS_FILE` (`handle_try_deliver`); `sessions` list from caller.
 **Writes:** `self._queue_data`, `self._queue_displayed_names`, `self._queue_add_tags`, `self._queue_remove_tags`, `self._pending_queue_tags`, `self._pending_queue_views`, `self._queue_toggle_tags` (reset each rebuild); `self._queue_panel` frame (via `_resize_panel`); `QUEUE_FILE` (via `save_queue`).
 **Key signatures:** `QueueController.__init__(app)`, `tick(sessions)`, `open(sessions)`, `rebuild(sessions)`, `handle_add_row(tag)`, `handle_toggle_entry(tag)`, `handle_remove_entry(tag)`, `handle_commit_field(tag, text)`, `handle_text_end_editing(tag, text)`, `handle_try_deliver(session_id, text, idx)`; module-level: `_make_queue_nspanel()`, `_reposition_queue_panel(panel, nsstatusitem)`.
-**Called by:** `app.py:CCMenuBarApp.__init__` (construction); `app.py:CCMenuBarApp._tick` (`queue.tick`); `app.py:_open_queue_panel` (`queue.open`, `_reposition_queue_panel`); `app.py:_PanelController.addQueueRow_` → `handle_add_row`; `app.py:_PanelController.toggleQueueEntry_` → `handle_toggle_entry`; `app.py:_PanelController.removeQueueEntry_` → `handle_remove_entry`; `app.py:_PanelController.commitQueueField_` → `handle_commit_field`; `app.py:_PanelController.controlTextDidEndEditing_` → `handle_text_end_editing`; `app.py:_PanelController.windowDidEndLiveResize_` (`queue.rebuild`).
+**Called by:** `app.py:CCMenuBarApp.__init__` (construction); `app.py:CCMenuBarApp._tick` (`queue.tick`); `panel_lifecycle.py:_open_queue_panel` (`queue.open`); `app.py:_PanelController.addQueueRow_` → `handle_add_row`; `app.py:_PanelController.toggleQueueEntry_` → `handle_toggle_entry`; `app.py:_PanelController.removeQueueEntry_` → `handle_remove_entry`; `app.py:_PanelController.commitQueueField_` → `handle_commit_field`; `app.py:_PanelController.controlTextDidEndEditing_` → `handle_text_end_editing`; `app.py:_PanelController.windowDidEndLiveResize_` (`queue.rebuild`).
 **Calls out:** `AppKit`, `Foundation`, `objc`, `json`, `datetime`; `.panel` (constants + helpers); `.queue` (`load_queue`, `save_queue`, `deliver_message`); `.paths` (`HOOKS_FILE`).
+
+---
+
+### queue_panel_render.py (207 LOC)
+
+**Purpose:** Render-concern module for the queue panel, extracted from `queue_controller.py`. Contains `_rebuild_inner(controller, sessions)` — full NSGridView rebuild dispatched via `_qpr_rebuild_inner` alias; `_compute_height(controller, sessions)` — required-height calculation; `_resize_panel(controller, new_h)` — NSPanel resize anchored at top edge; `_build_session_grid(controller, main_sessions, ...)` — per-session row construction helper; `_build_entry_row_view(controller, s, i, entry, ...)` — per-entry container NSView with three-state rendering (draft/queued/sent); `_make_queue_add_btn(grid_w)` — + button factory. Takes `controller` (a `QueueController` instance) as first argument; mutates controller state dicts (`_pending_queue_tags`, `_pending_queue_views`, `_queue_add_tags`, `_queue_remove_tags`, `_queue_toggle_tags`, `_queue_displayed_names`) as part of rebuild.
+**Reads:** `controller._queue_data`, `controller.app._panel_width`, `controller.app._panel_min_height`, `controller.app._auto_focus`, `controller.app._panel_controller`.
+**Writes:** controller state dicts (reset + repopulated each rebuild); `controller._queue_panel` frame (via `_resize_panel`); creates AppKit NSView/NSTextField/NSButton UI objects.
+**Key signatures:** `_rebuild_inner(controller, sessions)`, `_compute_height(controller, sessions) -> int`, `_resize_panel(controller, new_h)`.
+**Called by:** `queue_controller.py:QueueController._rebuild_inner` (alias `_qpr_rebuild_inner`), `QueueController.compute_height`, `QueueController._resize_panel` — thin delegations only.
+**Calls out:** `AppKit` (NSGridView, NSView, NSTextField, NSColor, NSAttributedString, NSFont, NSMakeRect), `Foundation`; `.panel` (constants + helpers).
 
 ---
 
@@ -81,13 +92,34 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (461 LOC) ⚠ over 400 LOC ceiling — split-refactor pending (menubar campaign)
+### app.py (306 LOC)
 
-**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save. Three-panel lifecycle: `_open/close_main_panel`, `_open/close_rag_panel`, `_open/close_queue_panel`. Panel cycling via `_deferred_close_open(app, from, to)` (generic, dispatched through NSOperationQueue.mainQueue). Queue action handlers (`addQueueRow_`, `toggleQueueEntry_`, `removeQueueEntry_`, `commitQueueField_`, `controlTextDidEndEditing_`) are 1-line delegates to `self._app.queue.handle_*` methods. `_tick` delegates session snapshot to `self.sessions.refresh()`, focus+abort logic to `self.focus.tick(sessions, bg_by_project, now)`, queue refresh + conditional rebuild to `self.queue.tick(sessions)`, panel rebuild/update to `self.panel.rebuild()` / `self.panel.update_inplace()`, and digit-hotkey re-registration to `self.hotkey.reregister_digits(self.panel._desktop_to_cwd)`; status snapshot updated via `self.focus.update_statuses(sessions)` at tick-end.
+**Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save. Three-panel lifecycle and cycling moved to `panel_lifecycle.py`. Settings load/save moved to `app_settings.py`. Queue action handlers (`addQueueRow_`, `toggleQueueEntry_`, `removeQueueEntry_`, `commitQueueField_`, `controlTextDidEndEditing_`) are 1-line delegates to `self._app.queue.handle_*` methods. `_tick` delegates session snapshot to `self.sessions.refresh()`, focus+abort logic to `self.focus.tick(sessions, bg_by_project, now)`, queue refresh + conditional rebuild to `self.queue.tick(sessions)`, panel rebuild/update to `self.panel.rebuild()` / `self.panel.update_inplace()`, and digit-hotkey re-registration to `self.hotkey.reregister_digits(self.panel._desktop_to_cwd)`; status snapshot updated via `self.focus.update_statuses(sessions)` at tick-end.
 **Reads:** `self.sessions.refresh()` (via `SessionsController`) + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch.
 **Writes:** bar icon; `SETTINGS_FILE` on toggle/resize; `src/logs/menubar.log` ([abort] category via `_abort_log_write`; [tick] category when `MENUBAR_DIAGNOSTICS=1`).
 **Called by:** `system.py:run()` (lazy import).
-**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.focus_controller`, `.queue_controller`, `.rag_controller`, `.panel_manager`, `.panel`, `.hotkey_controller`, `.system`, `.discover`, `.bg_timer`, `.paths`; `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
+**Calls out:** `rumps`, `AppKit`, `Foundation`, `objc`, `subprocess`, `threading`; `.sessions_controller`, `.focus_controller`, `.queue_controller`, `.rag_controller`, `.panel_manager`, `.panel`, `.hotkey_controller`, `.system`, `.discover`, `.bg_timer`; `.app_settings` (`_load_settings`, `_save_settings`); `.panel_lifecycle` (8 lifecycle functions); `.menubar_log` (`log_menubar`, lazy `cleanup_old_lines`); `.setup_menubar` (lazy).
+
+---
+
+### app_settings.py (37 LOC)
+
+**Purpose:** Settings load/save extracted from `app.py`. `_load_settings()` reads `SETTINGS_FILE` JSON → `(auto_focus, panel_width, panel_min_height)` with backwards-compat fallback to legacy `panel_max_height` key and clamping to `PANEL_MIN_*` floors. `_save_settings(auto_focus, panel_width, panel_min_height)` writes atomically via tempfile + `os.replace`. Both functions were verbatim-moved from `app.py` (AST-identical).
+**Reads:** `SETTINGS_FILE` (`APP_SUPPORT/settings.json`).
+**Writes:** `SETTINGS_FILE` (atomic, tempfile swap).
+**Called by:** `app.py:CCMenuBarApp.__init__` (`_load_settings`); `app.py:_PanelController.toggleAutoJump_`, `windowDidResize_` (`_save_settings`).
+**Calls out:** `json`, `os`; `.paths` (`SETTINGS_FILE`); `.panel` (constants for defaults/clamping).
+
+---
+
+### panel_lifecycle.py (145 LOC)
+
+**Purpose:** Three-panel open/close/background/cycle lifecycle extracted from `app.py`. Contains 8 functions verbatim-moved from `app.py`: `_open_main_panel`, `_close_main_panel`, `_open_rag_panel`, `_close_rag_panel`, `_open_queue_panel`, `_close_queue_panel` (each: rebuild → reposition → show → register hotkeys, or hide → unregister), `_deferred_close_open(app, from_panel, to_panel)` (generic Cmd+→/← cycling; captures outgoing frame, closes from-panel, opens to-panel, restores frame), `_background_panel(app)` (Cmd+K toggle: orderBack_/orderFrontRegardless without closing). No circular import: none of these import `app.py`.
+**Reads:** `app.panel.*`, `app.rag.*`, `app.queue.*`, `app.hotkey.*`, `app.sessions`, `app._nsapp.nsstatusitem`; `_scan_bg_sleep_timers`.
+**Writes:** NSPanel frame/order via each controller's panel ref; hotkey registration/unregistration via `app.hotkey`.
+**Key signatures:** `_open_main_panel(app)`, `_close_main_panel(app)`, `_open_rag_panel(app)`, `_close_rag_panel(app)`, `_open_queue_panel(app)`, `_close_queue_panel(app)`, `_deferred_close_open(app, from_panel, to_panel)`, `_background_panel(app)`.
+**Called by:** `app.py:_PanelController.togglePanel_` (`_close_rag_panel`, `_close_queue_panel`, `_close_main_panel`, `_open_main_panel`); `app.py:CCMenuBarApp.__init__` (`_background_panel` lambda via `register_cmd_k`); `app.py` hotkey lambdas for Cmd+→/← cycling.
+**Calls out:** `sys`, `Foundation.NSOperationQueue`; `.discover` (`list_alive_sessions`); `.bg_timer` (`_scan_bg_sleep_timers`); `.panel` (`_reposition_panel`); `.rag_controller` (`_reposition_rag_panel`); `.queue_controller` (`_reposition_queue_panel`).
 
 ---
 
@@ -275,10 +307,13 @@ rag_controller.py → AppKit, Foundation, json, os, errno, datetime, pathlib; .p
 system.py         → fcntl, os, subprocess, sys; .ghostty, .paths (PID_FILE)
                     lazy(.app) inside run() only
 queue.py          → json, os, subprocess; .paths (QUEUE_FILE, QUEUE_LOCK, GHOSTTY_CWD_UUID_FILE)
-app.py            → rumps, objc, AppKit, Foundation, time, threading, json, os, sys
+app_settings.py   → json, os; .paths (SETTINGS_FILE); .panel (constants)
+panel_lifecycle.py → sys, Foundation; .discover, .bg_timer; .panel (_reposition_panel);
+                    .rag_controller (_reposition_rag_panel); .queue_controller (_reposition_queue_panel)
+app.py            → rumps, objc, AppKit, Foundation, time, threading, os, sys
                     .sessions_controller, .focus_controller, .queue_controller,
                     .rag_controller, .panel_manager, .panel, .hotkey_controller, .system, .discover,
-                    .bg_timer, .paths (SETTINGS_FILE), .menubar_log (log_menubar)
+                    .bg_timer, .app_settings, .panel_lifecycle, .menubar_log (log_menubar)
 ```
 
 No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py`, `hook_setup.py`, and `hook_writer.py` are standalone scripts (stdlib + subprocess only), not imported by any module (exception: `write_plist()` or `write_plist_py2app()` from `setup_menubar.py` are lazy-imported in `app.py:restartApp_` — branch-specific, never both). `menubar_main.py` is the py2app entry point — only imported by the native launcher, not by any module in the package.

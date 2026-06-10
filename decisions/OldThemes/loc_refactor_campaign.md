@@ -142,15 +142,42 @@ read LIVE session JSONLs — baselines are only valid at capture-instant. The ac
 Opus re-verify showed exactly the live session failing, all static sessions byte-identical. Future
 runs: re-capture immediately before refactoring, verify immediately after, same sitting.
 
+## Menubar Block — `app.py` + `queue_controller.py` Splits
+
+Predecessor worker died at context wall mid-Block-A; successor (`menubar-loc2`) completed all three
+stages from the SUCCESSOR-HANDOFF on branch `menubar-loc` (commit `1c3f1d4`).
+
+### Block A — `queue_controller.py` 448→269
+
+`_rebuild_inner` (154 LOC), `compute_height` (11 LOC), `_resize_panel` (6 LOC) + all render-concern
+helpers moved verbatim to new `queue_panel_render.py` (207 LOC). Controller methods replaced with
+thin delegations (`_qpr_rebuild_inner(self, sessions)` etc.). All render-concern imports (AppKit
+NSGridView, NSColor, NSTextField, etc.) moved to render module.
+
+**Verification:** import smoke PASS; AST-identity MATCH for all 3 delegation targets in render
+module vs original; old-body symbols (`NSGridView`, `_CursorlessLabel`, `first_draft_tf`) absent
+from controller; `wc -l`: controller 269, render 207 — both <400.
+
+### Block B — `app.py` 461→306
+
+`_load_settings` + `_save_settings` → new `app_settings.py` (37 LOC).
+`_deferred_close_open`, `_background_panel`, `_open/close_main/rag/queue_panel` (8 functions) →
+new `panel_lifecycle.py` (145 LOC). `app.py` retains `_PanelController` (NSObject — objc selectors
+MUST stay), `CCMenuBarApp` (rumps.App + @rumps.timer), `_blink`, `_set_bar_icon`, `_tick_log`.
+Trimmed imports: `import json`, `_reposition_panel`, `_reposition_rag_panel`,
+`_reposition_queue_panel`, `SETTINGS_FILE` — each grep-verified absent from remaining `app.py`.
+
+**Verification:** import smoke PASS (all 3 modules); AST-identity MATCH for all 10 verbatim-moved
+functions (2 settings + 8 lifecycle); trimmed symbols verified absent; `wc -l`: app 306,
+app_settings 37, panel_lifecycle 145 — all <400.
+
+### Final Audit
+
+Zero `src/` files >400 LOC. Zero functions ≥100 LOC (largest: `panel_manager._rebuild_inner` 95,
+`queue_panel_render._build_entry_row_view` 79). Campaign complete.
+
 ## Remaining HARD Files
 
-Only menubar files remain (this block):
-- `menubar/app.py` (461)
-- `menubar/queue_controller.py` (448)
-
-All other file-HARD violations (proxy/logging.py, proxy_display/parser.py,
-proxy_display/worker_proxy_pane.py, proxy/rules.py) and all function-HARD violations outside
-menubar are resolved.
-
-**Remaining function-HARD (≥100 LOC):**
-- `_rebuild_inner` 154 (`src/menubar/queue_controller.py`) — falls with queue_controller file split (this block)
+NONE — campaign complete. All file-HARD (>400 LOC) and function-HARD (≥100 LOC) violations
+resolved. Menubar rebuild + live-run verification deferred (py2app bundle not rebuilt here;
+behavior verification requires running app).
