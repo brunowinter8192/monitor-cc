@@ -68,7 +68,9 @@ def _process_system_section(sys_diffs, is_first, prev_stripped, prev_injected):
             i_hashes[lk] = h
             if is_first or (prev_injected or {}).get(lk) != h:
                 i_sys[idx_str] = i_spans
-                i_fn[lk] = _SYS_FN.get(d["idx"], "_apply_system_passes")
+                i_text = " ".join(t for tag, t in i_spans if tag == "injected" and t)
+                if i_text != ".":
+                    i_fn[lk] = _SYS_FN.get(d["idx"], "_apply_system_passes")
     return s_sys, i_sys, s_hashes, i_hashes, s_fn, i_fn
 
 
@@ -112,7 +114,9 @@ def _process_tools_section(tools_diff, is_first, prev_stripped, prev_injected):
             i_hashes[lk] = h
             if is_first or (prev_injected or {}).get(lk) != h:
                 i_tools[name] = {"desc": i_spans}
-                i_fn[lk] = "inject_mcp_tools"
+                i_text = " ".join(t for tag, t in i_spans if tag == "injected" and t)
+                if i_text != ".":
+                    i_fn[lk] = "inject_mcp_tools"
     return s_tools, i_tools, s_hashes, i_hashes, s_fn, i_fn
 
 
