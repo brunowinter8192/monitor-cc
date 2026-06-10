@@ -123,16 +123,34 @@ established the harness + baseline capture. Predecessor-2 committed all 5 stage 
 (`bdda986`..`b2f5b96`) and ran final 14/14 verify before dying; Opus merged the branch (`6fa9e6c`).
 Docs completion (this section + DOCS.md LOC sync) deferred to successor worker.
 
+## C2 Function-Cluster Splits (stages on dev)
+
+Five cross-package functions ≥100 LOC decomposed into orchestrators + private same-module helpers.
+Stages committed `101a27f`…`a60cb4e`, merged onto dev.
+
+| Function | File | Before | After (orchestrator) | Helpers |
+|---|---|---|---|---|
+| `_strip_impl` | `hooks/_shell_strip.py` | 147 LOC | 27-LOC orchestrator | 6 scan-helpers |
+| `extract_cache_turns` | `jsonl/jsonl_cache_turns.py` | 128 LOC | 65-LOC orchestrator | 4 helpers |
+| `format_cache_tracker` | `format/token_format.py` | 178 LOC | 57-LOC orchestrator | 3 helpers |
+| `run_main_loop` | `core/monitor.py` | 180 LOC | 49-LOC orchestrator | 6 helpers: `_main_ram_state`, `_handle_main_mouse`, `_handle_main_search_cancel`, `_handle_main_search_input`, `_refresh_main_data`, `_build_main_output` |
+| `request` | `proxy/addon.py` | 127 LOC | 69-LOC orchestrator | 5 helpers: `_log_errors_entries`, `_log_forwarded_delta`, `_run_post_fixation_pipeline`, `_log_original_request`, `_infer_model_family`; invariant 12/12 per extraction |
+
+**Proof harnesses:** `dev/jsonl/A_extract_cache_turns_proof.py` (10/10 at capture-time);
+`dev/display/A_format_cache_tracker_proof.py` (60/60 at capture-time). NOTE: both harnesses
+read LIVE session JSONLs — baselines are only valid at capture-instant. The active session drifts;
+Opus re-verify showed exactly the live session failing, all static sessions byte-identical. Future
+runs: re-capture immediately before refactoring, verify immediately after, same sitting.
+
 ## Remaining HARD Files
 
-- `menubar/app.py` (461) + `menubar/queue_controller.py` (448) — entangled with the menubar
-  controller-composition refactor (`refactor_roadmap.md` stage 1, Queue "in flight"). Address those via
-  THAT campaign, NOT a standalone LOC-split, to avoid merge collision.
+Only menubar files remain (this block):
+- `menubar/app.py` (461)
+- `menubar/queue_controller.py` (448)
+
+All other file-HARD violations (proxy/logging.py, proxy_display/parser.py,
+proxy_display/worker_proxy_pane.py, proxy/rules.py) and all function-HARD violations outside
+menubar are resolved.
 
 **Remaining function-HARD (≥100 LOC):**
-- `run_main_loop` 180 (`src/core/monitor.py`)
-- `format_cache_tracker` 178 (`src/format/token_format.py`)
-- `_strip_impl` 147 (`src/hooks/_shell_strip.py`)
-- `extract_cache_turns` 128 (`src/jsonl/jsonl_cache_turns.py`)
-- `request` 127 (`src/proxy/addon.py`, class method col=4) — BYTE-CRITICAL
-- `_rebuild_inner` 154 (`src/menubar/queue_controller.py`) — separate block, falls with queue_controller file split (menubar campaign)
+- `_rebuild_inner` 154 (`src/menubar/queue_controller.py`) — falls with queue_controller file split (this block)
