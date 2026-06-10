@@ -2,19 +2,20 @@
 
 ## Status Quo (IST)
 
-- `workflow.py`: `--mode all` → tmux 5-Window (main+tokens | proxy | workers+worker-proxy | warnings | gpu), `--mode main|rules|warnings|hooks|tokens|workers|proxy|worker-proxy|gpu|restart-panes` → einzelner Prozess
-- `startup.py`: argparse mit choices `['all', 'main', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'worker-proxy', 'restart-panes']`, `--project`
-- `tmux_launcher.py`: 5 Windows (7 Panes), history 50000, keybindings (C-q scroll, C-r restart all panes, C-f search, mouse, M-m/M-t/M-p/M-k/M-w copy)
+- `workflow.py`: `--mode all` → tmux 6-Window (main+tokens | proxy | workers+worker-proxy | warnings | gpu | news+news-log), `--mode main|rules|warnings|hooks|tokens|workers|proxy|worker-proxy|gpu|news|news-log|restart-panes` → einzelner Prozess
+- `startup.py`: argparse mit choices `['all', 'main', 'rules', 'warnings', 'hooks', 'tokens', 'workers', 'proxy', 'worker-proxy', 'restart-panes', 'news', 'news-log']`, `--project`
+- `tmux_launcher.py`: 6 Windows (9 Panes), history 50000, keybindings (C-q scroll, C-r restart all panes, C-f search, mouse, M-m/M-t/M-p/M-k/M-w/M-n copy)
 
-tmux Layout (5 Windows):
+tmux Layout (6 Windows):
 ```
 Window 0 "main":    Main (0.0, left 70%)   | Tokens (0.1, right 30%)
 Window 1 "proxy":   Proxy (1.0, fullscreen)
 Window 2 "workers": Workers (2.0, 34%)     | Worker-Proxy (2.1, 66%)
 Window 3 "debug":   Warnings (3.0, fullscreen)
 Window 4 "gpu":     GPU (4.0, fullscreen)
+Window 5 "news":    News (5.0, left 50%)   | News-Log (5.1, right 50%)
 ```
-Switch windows: Ctrl-b 0/1/2/3/4
+Switch windows: Ctrl-b 0/1/2/3/4/5
 
 Window-Erstellung:
 1. `new-session -d -s $session $main_cmd` → Window 0, Pane 0.0
@@ -25,7 +26,9 @@ Window-Erstellung:
 6. `split-window -h -t $session:2.0 -l 66% $worker_proxy_cmd` → Pane 2.1
 7. `new-window -t $session:3 -n "debug" $warnings_cmd` → Window 3, Pane 3.0
 8. `new-window -t $session:4 -n "gpu" $gpu_cmd` → Window 4, Pane 4.0
-9. `select-window -t $session:0` → Main window active on attach
+9. `new-window -t $session:5 -n "news" $news_cmd` → Window 5, Pane 5.0
+10. `split-window -h -t $session:5.0 -l 50% $news_log_cmd` → Pane 5.1
+11. `select-window -t $session:0` → Main window active on attach
 
 ### POLL_INTERVAL (Kategorie: Performance)
 
@@ -57,6 +60,7 @@ Hardcoded Split-Befehle in `src/tmux_launcher.py`:
 - Window 2: `-l 66%` (workers 34% | worker-proxy 66%)
 - Window 3: kein Split — warnings fullscreen
 - Window 4: kein Split — gpu fullscreen
+- Window 5: `-l 50%` (news left 50% | news-log right 50%)
 
 Keine Config-Parameter. Ratios nicht als Konstanten benannt.
 

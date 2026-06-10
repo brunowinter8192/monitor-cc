@@ -23,6 +23,12 @@ def main() -> None:
     elif args.mode == 'gpu':
         from src.gpu_pane.pane import run_gpu_loop
         run_gpu_loop()
+    elif args.mode == 'news':
+        from src.news_pane.pane import run_news_loop
+        run_news_loop()
+    elif args.mode == 'news-log':
+        from src.news_pane.log_pane import run_news_log_loop
+        run_news_log_loop()
     else:
         setup_signal_handlers()
         if args.mode not in ('warnings', 'tokens', 'workers'):

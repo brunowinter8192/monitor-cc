@@ -85,6 +85,29 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 - Diagnosis: `tmux list-keys | grep C-r` showed binding targeting `monitor_cc_79b52c8d` while active session was `monitor_cc_f93afc17`. After killing all stale sessions and restarting fresh, C-r worked correctly.
 - Fix: Replace `f"{session_name}"` with `"#{session_name}"` in bind-key call. tmux resolves `#{session_name}` at runtime to the session where the keypress occurs.
 
+### News Pane — Window 5 (2-Pane Split, 2026-06)
+
+Window 5 "news": left pane NEWS (5.0, 50%) controls and observes the CoinDesk → `searxng_crypto` news ingestion pipeline (external project: searxng-cli). Right pane NEWS-LOG (5.1, 50%) tails the pipeline log.
+
+**NEWS pane (5.0, `--mode news`, `src/news_pane/pane.py`):**
+- Displays: `searxng_crypto` doc count (`rag-cli list_documents searxng_crypto`), chunk count (`rag-cli list_collections --json`), last-run timestamp (`src/logs/news_coindesk_last_run.txt` in searxng-cli).
+- `[run pipeline]` button (SGR mouse, right-aligned): launches `venv/bin/python -m src.news --source coindesk` with `cwd=SEARXNG_ROOT`, stdout+stderr DEVNULL. Popen handle held in `_pipeline_proc`.
+- Running indicator: label flips to `⟳ running… [running…]` (YELLOW) while `_pipeline_proc.poll() is None`. Log fallback: start-marker present, no end-marker, log mtime < 60s.
+- Button region only registered when idle — no separate guard flag.
+- `enable_mouse()` active (SGR mode 1003+1006); tmux native scroll NOT available while pane active.
+- Poll interval: 2s.
+
+**NEWS-LOG pane (5.1, `--mode news-log`, `src/news_pane/log_pane.py`):**
+- No mouse (tmux native scroll active in this pane).
+- Finds newest `news_coindesk_*.log` by mtime; extracts lines from last `=== coindesk pipeline started ===`; filters via whitelist (STAGE/→/[OK]/[FAIL]/preconditions/Nothing new/markers) + WARNING/ERROR level.
+- Renders filtered events pinned to pane bottom (blank padding above), `MAX_LOG_LINES = 40`.
+- Poll interval: 0.5s.
+
+**Log whitelist patterns (applied to `msg` after `_LOG_LINE_RE` strips leading whitespace):**
+`Checking preconditions`, `\[(OK|FAIL)\]`, `STAGE (discover|dedup|scrape|cleanup|publish)`, `(stage-name) →`, `Nothing new to scrape`, `RegwallGuardError`, `=== coindesk pipeline`.
+
+**Keybinding:** `M-n` → `capture-pane -t session:5.1 -pS - | pbcopy` (news-log pane copy).
+
 ### Screen Clear Escape Sequence (Kategorie: Display / Robustheit)
 
 `\033[2J\033[3J\033[H` an folgenden Stellen:
@@ -189,7 +212,7 @@ Earlier IST sections reference the pre-Session-17 layout (4 windows, 6 panes) an
 
 #### Current tmux Layout (`configure_tmux_session()` `pane_titles` dict)
 
-5 windows, 7 panes.
+6 windows, 9 panes.
 
 | Window | Name | Panes |
 |---|---|---|
@@ -198,6 +221,7 @@ Earlier IST sections reference the pre-Session-17 layout (4 windows, 6 panes) an
 | 2 | workers | 2.0 WORKERS (34%), 2.1 WORKER-PROXY (66%) |
 | 3 | debug | 3.0 WARNINGS (fullscreen) |
 | 4 | gpu | 4.0 GPU (fullscreen) |
+| 5 | news | 5.0 NEWS (50%), 5.1 NEWS-LOG (50%) |
 
 #### Scroll Direction Reversed (traditional)
 
