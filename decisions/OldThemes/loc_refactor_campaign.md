@@ -179,5 +179,6 @@ Zero `src/` files >400 LOC. Zero functions ≥100 LOC (largest: `panel_manager._
 ## Remaining HARD Files
 
 NONE — campaign complete. All file-HARD (>400 LOC) and function-HARD (≥100 LOC) violations
-resolved. Menubar rebuild + live-run verification deferred (py2app bundle not rebuilt here;
-behavior verification requires running app).
+resolved. Menubar bundle rebuilt + reinstalled + relaunched same session (Opus, post-merge;
+process stable on split code). Visual panel check + monitor/proxy next-start sanity tracked
+as pending live verification.
