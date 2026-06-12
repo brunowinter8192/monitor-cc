@@ -84,6 +84,32 @@ python3 dev/hook_smoke/test_log_janitor.py
 
 ---
 
+### test_rewrite_rag_cli_search_noise.py (140 LOC)
+
+**Purpose:** 15-case smoke for `rewrite_rag_cli_search_noise.py`. Verifies 9 positive-strip cases (`| head`, `| tail`, `| grep`, `> redirect`, `2>&1`, `2>&1 | head`, `cd &&` chain, trailing `; bd list` chain, `|| echo fail` chain) and 6 negative no-op cases (bare search_hybrid, cd chain no noise, trailing chain no pipe, `list_collections | head` out of scope, `read_document | head` out of scope, search_hybrid inside quoted echo).
+
+**Usage (from project root):**
+```bash
+python3 dev/hook_smoke/test_rewrite_rag_cli_search_noise.py
+```
+
+**Expected output:** `All 15 tests passed.` (exit 0). HOOK path is relative — must be run from project root.
+
+---
+
+### test_rewrite_worker_cli_response_noise.py (144 LOC)
+
+**Purpose:** 16-case smoke for `rewrite_worker_cli_response_noise.py`. Verifies 9 positive-strip cases (`| head`, `| tail`, `| grep`, `> redirect`, `2>&1`, `2>&1 | head`, `cd &&` chain, trailing `; bd list` chain, `|| echo fail` chain) and 7 negative no-op cases (bare response, **`worker-cli capture X | tail -40` critical pass-through**, `worker-cli status`, `worker-cli list`, cd chain no noise, trailing chain no pipe, response inside quoted echo).
+
+**Usage (from project root):**
+```bash
+python3 dev/hook_smoke/test_rewrite_worker_cli_response_noise.py
+```
+
+**Expected output:** `All 16 tests passed.` (exit 0). HOOK path is relative — must be run from project root.
+
+---
+
 ### test_rewrite_background_sleep.py (117 LOC)
 
 **Purpose:** 8-case smoke for `rewrite_background_sleep.py`. Verifies 3 positive-rewrite cases

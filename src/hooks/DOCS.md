@@ -22,7 +22,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by six Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure). `_strip_impl` is decomposed into 6 private scan helpers (`_scan_heredoc`, `_scan_ansi_c_quote`, `_scan_cmd_subst`, `_scan_backtick`, `_scan_single_quote`, `_scan_double_quote`), each returning `(fragment, new_i)`.
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** n/a.
-**Called by:** `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `block_polling_loop.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `block_polling_loop.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py`, `rewrite_worker_cli_response_noise.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
 **Calls out:** stdlib only (no imports).
 
 ---
@@ -130,6 +130,29 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - `rag-cli search_hybrid` token appears inside a quoted string (blanked by `_strip_non_shell_active`)
 
 **Smoke:** `dev/hook_smoke/test_rewrite_rag_cli_search_noise.py` (15 cases: 9 positive strip, 6 negative no-op).
+
+---
+
+### rewrite_worker_cli_response_noise.py (107 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — **rewrites** `worker-cli response` invocations by stripping downstream noise inside the logical command segment: pipes (`| head`, `| tail`, `| grep`, etc.), redirects (`>`, `>>`, `&>`, `<`, `2>&1`, `2>`), and single backgrounding `&`. Chains around the segment (`cd && worker-cli response ...`, `worker-cli response ... ; bd list`, `worker-cli response ... || echo fail`) are preserved — only the response segment is cleaned. Scope is `response` only; `capture`, `status`, `list`, `send`, `merge`, `spawn`, `kill`, `revive` pass through unchanged. Critical guaranteed no-op: `worker-cli capture X | tail -40` (documented legitimate fallback) — the anchor `\bworker-cli\s+response\b` cannot match `capture`. Direct clone of `rewrite_rag_cli_search_noise.py` with anchor swapped. Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command`) when noise was stripped; nothing when no-op.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert); `_fire_log.log_fire`.
+
+**Strip mechanic:**
+1. Find `\bworker-cli\s+response\b` matches in the shell-stripped command.
+2. For each match, determine its segment-end by scanning forward for `;`, `&&`, `||`, `)`, `\n`, or single `&` (not part of `&&`, `&>`, or `2>&1`).
+3. Within `[match_end, segment_end)`, find the first noise marker (`|` excluding `||`, any redirect, or `2>&1`).
+4. Strip from the noise marker through segment-end. If segment-end equals end-of-command, also eat leading whitespace before the noise (avoids trailing-space artifact); otherwise preserve it as separator to the trailing chain.
+
+**Pass-through (no-op) conditions:**
+- `worker-cli response` invocation has no pipe/redirect inside its segment
+- `worker-cli` subcommand is not `response` (out of scope — anchor cannot match other subcommands)
+- `worker-cli response` token appears inside a quoted string (blanked by `_strip_non_shell_active`)
+
+**Smoke:** `dev/hook_smoke/test_rewrite_worker_cli_response_noise.py` (16 cases: 9 positive strip, 7 negative no-op including the critical `worker-cli capture | tail` pass-through).
 
 ---
 
@@ -465,7 +488,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### hook_setup.py (135 LOC)
+### hook_setup.py (138 LOC)
 
 **Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message (stderr) if running from a worktree — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]` (not only `PreToolUse`), checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source (worktree accident, repo move, etc.). Runs completely silent on success — no stdout output; stderr only for error conditions (worktree guard, JSON parse failure).
 **Reads:** `~/.claude/settings.json`.
