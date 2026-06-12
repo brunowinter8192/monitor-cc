@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-18 safety hooks registered globally in `~/.claude/settings.json`. All 18 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 14 block hooks (exit 2) + 4 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_background_sleep`, `block_path_typo` (legacy name, rewrite semantics).
+19 safety hooks registered globally in `~/.claude/settings.json`. All 19 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 14 block hooks (exit 2) + 5 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_background_sleep`, `block_path_typo` (legacy name, rewrite semantics), `rewrite_worker_cli_response_noise`.
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -334,6 +334,29 @@
 
 **Smoke:** `dev/hook_smoke/test_rewrite_background_sleep.py` (8 cases: 3 positive rewrite, 5 negative no-op).
 
+### Hook 19 — `rewrite_worker_cli_response_noise.py` (`src/hooks/rewrite_worker_cli_response_noise.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–18
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_worker_cli_response_noise.py`
+- **Timeout:** 5s
+
+**Detection:** `\bworker-cli\s+response\b` in shell-active regions of the command
+
+**Strip condition (ALL must hold):**
+1. The shell-active command contains `worker-cli response` as a whole token
+2. Within the response segment (up to the next `&&`, `||`, `;`, `)`, `\n`, or single `&`), a noise marker is found: `|` (excluding `||`), `>`, `>>`, `&>`, `<`, `2>`, `2>&1`
+3. Strip from the noise marker through segment-end; eat leading whitespace only when segment extends to end-of-command
+
+**Pass-through (no-op):**
+- `worker-cli response X` with no pipe/redirect inside its segment
+- Any subcommand other than `response`: `capture`, `status`, `list`, `send`, `merge`, `spawn`, `kill`, `revive` — anchor regex cannot match them
+- `worker-cli response` token appearing inside a quoted string (blanked by `_strip_non_shell_active`)
+- Parse errors (fail-open)
+
+**Rationale:** `worker-cli response` prints the full last assistant message to stdout — output bounded and context-destined. Adding `| head`, `| tail`, or `> file` truncates the message silently. Critical no-op: `worker-cli capture X | tail -40` is a documented legitimate fallback; `capture` is guaranteed out of scope by the exact-subcommand anchor. Direct clone of `rewrite_rag_cli_search_noise.py` with anchor swapped to `\bworker-cli\s+response\b`.
+
+**Smoke:** `dev/hook_smoke/test_rewrite_worker_cli_response_noise.py` (16 cases: 9 positive strip, 7 negative no-op including the critical `worker-cli capture | tail` pass-through).
+
 ## Evidenz
 
 **2026-05-22 hook-block analysis** (`dev/hook_firing/reports/2026-05-22_012326.md`, 7 days of CC sessions across all projects):
@@ -385,7 +408,7 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current 18 hooks + audit logging. Pending evaluation after rollout:
+Keep current 19 hooks + audit logging. Pending evaluation after rollout:
 - Do hooks #9–17 (2026-05-22 batch) intercept violations without false positives in live sessions?
 - `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.

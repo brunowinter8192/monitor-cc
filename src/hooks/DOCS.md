@@ -133,6 +133,29 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
+### rewrite_worker_cli_response_noise.py (~95 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — **rewrites** `worker-cli response` invocations by stripping downstream noise inside the logical command segment: pipes (`| head`, `| tail`, `| grep`, etc.), redirects (`>`, `>>`, `&>`, `<`, `2>&1`, `2>`), and single backgrounding `&`. Chains around the segment (`cd && worker-cli response ...`, `worker-cli response ... ; bd list`, `worker-cli response ... || echo fail`) are preserved — only the response segment is cleaned. Scope is `response` only; `capture`, `status`, `list`, `send`, `merge`, `spawn`, `kill`, `revive` pass through unchanged. Critical guaranteed no-op: `worker-cli capture X | tail -40` (documented legitimate fallback) — the anchor `\bworker-cli\s+response\b` cannot match `capture`. Direct clone of `rewrite_rag_cli_search_noise.py` with anchor swapped. Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command`) when noise was stripped; nothing when no-op.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert); `_fire_log.log_fire`.
+
+**Strip mechanic:**
+1. Find `\bworker-cli\s+response\b` matches in the shell-stripped command.
+2. For each match, determine its segment-end by scanning forward for `;`, `&&`, `||`, `)`, `\n`, or single `&` (not part of `&&`, `&>`, or `2>&1`).
+3. Within `[match_end, segment_end)`, find the first noise marker (`|` excluding `||`, any redirect, or `2>&1`).
+4. Strip from the noise marker through segment-end. If segment-end equals end-of-command, also eat leading whitespace before the noise (avoids trailing-space artifact); otherwise preserve it as separator to the trailing chain.
+
+**Pass-through (no-op) conditions:**
+- `worker-cli response` invocation has no pipe/redirect inside its segment
+- `worker-cli` subcommand is not `response` (out of scope — anchor cannot match other subcommands)
+- `worker-cli response` token appears inside a quoted string (blanked by `_strip_non_shell_active`)
+
+**Smoke:** `dev/hook_smoke/test_rewrite_worker_cli_response_noise.py` (16 cases: 9 positive strip, 7 negative no-op including the critical `worker-cli capture | tail` pass-through).
+
+---
+
 ### rewrite_searxng_scrape_noise.py (~95 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — **rewrites** `searxng-cli scrape_url` invocations by stripping downstream noise inside the logical command segment: pipes (`| head`, `| tail`, `| sed`, `| grep`), redirects (`>`, `>>`, `&>`, `<`, `2>&1`, `2>`), and single backgrounding `&`. Direct clone of `rewrite_rag_cli_search_noise.py` with the anchor swapped to `\bsearxng-cli\s+scrape_url\b`. Rationale: `scrape_url` output is bounded (15k PruningContentFilter cap) and meant to land directly in context; a `> /tmp/file 2>&1` redirect followed by `| head` truncates the page and mixes crawl4ai browser logs into what looks like content (real incident — gave a "content stops after section 3" false impression and an apparent `=== LOG RECORD ===` leak that were both display artifacts of the truncating command, not the scraper). Scope is `scrape_url` only; `search_web`, `search_engine_drilldown`, `download_pdf` produce bounded output and pass through unchanged. Chains around the segment (`cd && scrape_url ...`, `scrape_url ... ; bd list`, `scrape_url ... || echo fail`) are preserved — only the scrape segment is cleaned. Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
