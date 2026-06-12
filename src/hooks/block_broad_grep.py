@@ -15,7 +15,7 @@ _INCLUDE_SCOPE  = re.compile(r'--include[=\s]')
 _HEAD_PIPE      = re.compile(r'^\s*\|\s*head\b')
 # Safe target: last non-whitespace token ends with a known code/text file extension
 _FILE_EXT_SAFE  = re.compile(
-    r'\S+\.(?:py|sh|md|json|jsonl|yaml|yml|toml|ts|js|go|rs|txt|cfg|ini|sql|html|css)\s*$',
+    r'\S+\.(?:py|sh|md|json|jsonl|yaml|yml|toml|ts|js|go|rs|c|cc|cpp|cxx|h|hh|hpp|hxx|txt|cfg|ini|sql|html|css)\s*$',
     re.IGNORECASE,
 )
 # Trailing shell redirection forms to strip before file-extension check:
@@ -24,7 +24,7 @@ _TRAILING_REDIRECT = re.compile(
     r'\s+(?:\d?>>?\s*&\s*\d|\d?>>?\s*\S+|&>>?\s*\S+|\d?<\s*\S+)\s*$'
 )
 
-_BLOCK_MESSAGE = "add --include='*.py' scope | use the Grep tool | grep -n <pattern> <file.py>\n"
+_BLOCK_MESSAGE = "recursive grep needs scope: add --include='<glob>' OR target explicit files (grep -n <pattern> <file>)\n"
 
 # ORCHESTRATOR
 
