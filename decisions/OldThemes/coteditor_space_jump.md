@@ -58,6 +58,27 @@ Focus-Log-Zeilenformat (`system.py:_focus_session`): `<ts> OK id=<UUID>` (Path A
 
 ## Verwandtes Thema — cmd+N holt Ghostty überall nach vorn
 
-Dasselbe `activate` in `_focus_session` ist der Kern des cmd+N-Foreground-Themas (cmd+N holt Ghostty
-auf ALLEN Desktops in den Vordergrund statt nur auf dem Ziel-Desktop). Beide Symptome hängen an
-derselben AppleScript-Aktivierung — ein Fix dort betrifft potenziell beide.
+Dasselbe `activate` in `_focus_session` war der Kern des cmd+N-Foreground-Themas (cmd+N holte Ghostty
+auf ALLEN Desktops in den Vordergrund statt nur auf dem Ziel-Desktop). Dort wurde das `activate`
+entfernt (siehe `cmd_n_ghostty_foreground.md`) — fixt cmd+N, betrifft diesen CotEditor-Sprung aber
+NICHT (s.u., der Sprung kommt gar nicht aus `_focus_session`).
+
+## Repro-Befund 2026-06-12 — Menubar als Ursache AUSGESCHLOSSEN
+
+Der Bug wurde live reproduziert (~22:03): User markierte auf Schreibtisch 3 eine Zeile in CotEditor
+→ wurde auf Schreibtisch 1 mit Ghostty im Vordergrund geworfen. User bestätigt: **nur mit Maus/Trackpad
+markiert, KEINE cmd-Ziffer gedrückt.**
+
+Log-Auswertung (Marker-Diff): im Focus-Log gab es zum Sprung-Moment **KEINEN Eintrag** (2,5-Min-Lücke
+um 22:03; das einzige Event war ein `cmd+k` = Panel-Toggle, kein Focus).
+
+→ Fall 3 des Repro-Experiments: **keine Focus-Zeile = `_focus_session` feuerte nicht = Menubar ist
+unschuldig.** Der Sprung kommt NICHT aus der Menubar-Fokus-Funktion. Hypothese "Sprung kommt NICHT von
+der Menubar" → **BESTÄTIGT**; die menubar-internen Kandidaten (Auto-Focus, cmd+Ziffer) sind für diesen
+Fall ausgeschlossen (kein Event geloggt).
+
+**Konsequenz — Logging-Lücke:** unser Logging fängt nur `_focus_session`-Aufrufe (Focus-Log) und
+cmd-Tastendrücke (`[hotkey]`) ab. Der echte Trigger des CotEditor-Markier-Sprungs wird aktuell GAR
+NICHT geloggt. Nächster Schritt braucht einen anderen Weg, den Trigger zu fangen — Kandidaten:
+macOS-Spaces-Verhalten beim Fokuswechsel, eine Trackpad-/Gesten-Quelle, ein anderer App-/System-Mechanismus
+(alles außerhalb der Menubar).
