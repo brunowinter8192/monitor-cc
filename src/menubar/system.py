@@ -49,7 +49,6 @@ def _focus_session(cwd: str) -> None:
         safe_id = term_id.replace('"', '\\"')
         script = (
             'tell application "Ghostty"\n'
-            '  activate\n'
             f'  focus terminal id "{safe_id}"\n'
             'end tell'
         )
@@ -58,7 +57,6 @@ def _focus_session(cwd: str) -> None:
         safe_cwd = cwd.replace('"', '\\"')
         script = (
             'tell application "Ghostty"\n'
-            '  activate\n'
             '  try\n'
             f'    focus (first terminal whose working directory is "{safe_cwd}")\n'
             '    return "MATCH"\n'
