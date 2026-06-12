@@ -164,7 +164,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### system.py (83 LOC)
+### system.py (81 LOC)
 
 **Purpose:** `run()` entry point + singleton lock (`_acquire_singleton_lock`) + Ghostty click-to-focus (`_focus_session`). Owns the process-lifecycle concerns; no AppKit dependency.
 **Reads:** `PID_FILE` (`APP_SUPPORT/menubar.pid`, lock file); `get_ghostty_terminal_id(cwd)` from `ghostty.py` on click.
