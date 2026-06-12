@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from setuptools import setup
 
@@ -132,6 +133,11 @@ def _install_bundle() -> None:
                    capture_output=True, timeout=10)
     r = subprocess.run(['launchctl', 'bootstrap', f'gui/{uid}', str(plist)],
                        capture_output=True, timeout=10)
+    if r.returncode != 0:
+        print(f'  bootstrap retry in 1s (rc={r.returncode})...')
+        time.sleep(1)
+        r = subprocess.run(['launchctl', 'bootstrap', f'gui/{uid}', str(plist)],
+                           capture_output=True, timeout=10)
     if r.returncode == 0:
         print(f'  bootstrap {label}: ok')
     else:
