@@ -10,14 +10,15 @@
 #   ./venv/bin/python setup_py2app.py py2app
 #
 # Output: dist/monitor-cc-menubar.app/  (semi_standalone=False → embedded Python.framework ~80MB)
+# After build: installs to ~/Applications/, writes launchd plist, bootstraps service.
 # Verify:
 #   codesign --verify --verbose=4 dist/monitor-cc-menubar.app
 #   defaults read dist/monitor-cc-menubar.app/Contents/Info.plist CFBundleIdentifier
 #   file dist/monitor-cc-menubar.app/Contents/MacOS/monitor-cc-menubar
-#
-# Does NOT install to ~/Applications/ — user copies manually after review.
 
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from setuptools import setup
@@ -100,6 +101,43 @@ def _prune_bundle_bloat() -> None:
         print(f'  pruned from bundle src/: {", ".join(sorted(removed))}')
 
 
+# Copy dist/ bundle to ~/Applications, codesign, write launchd plist, bootout+bootstrap service
+def _install_bundle() -> None:
+    label  = 'com.brunowinter.monitor-cc-menubar'
+    dist   = Path('dist/monitor-cc-menubar.app')
+    dst    = Path.home() / 'Applications' / 'monitor-cc-menubar.app'
+    tmpl   = Path('src/menubar/com.brunowinter.monitor-cc-menubar.plist')
+    agents = Path.home() / 'Library' / 'LaunchAgents'
+    plist  = agents / f'{label}.plist'
+    exe    = dst / 'Contents' / 'MacOS' / 'monitor-cc-menubar'
+    root   = Path(__file__).resolve().parent
+    uid    = os.getuid()
+    if dst.exists():
+        shutil.rmtree(dst)
+    shutil.copytree(dist, dst)
+    print(f'  installed: {dst}')
+    r = subprocess.run(['codesign', '-s', '-', '--deep', '--force', str(dst)],
+                       capture_output=True, timeout=30)
+    if r.returncode == 0:
+        print('  codesign: ok')
+    else:
+        print(f'  codesign WARN (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
+    content = tmpl.read_text(encoding='utf-8')
+    content = content.replace('<PROJECT_ROOT>', str(root))
+    content = content.replace('<BUNDLE_LAUNCHER>', str(exe))
+    agents.mkdir(parents=True, exist_ok=True)
+    plist.write_text(content, encoding='utf-8')
+    print(f'  plist: {plist}')
+    subprocess.run(['launchctl', 'bootout', f'gui/{uid}/{label}'],
+                   capture_output=True, timeout=10)
+    r = subprocess.run(['launchctl', 'bootstrap', f'gui/{uid}', str(plist)],
+                       capture_output=True, timeout=10)
+    if r.returncode == 0:
+        print(f'  bootstrap {label}: ok')
+    else:
+        print(f'  bootstrap failed (rc={r.returncode}): {r.stderr.decode(errors="replace").strip()}')
+
+
 setup(
     name='monitor-cc-menubar',
     app=APP,
@@ -110,3 +148,4 @@ setup(
 
 if 'py2app' in sys.argv:
     _prune_bundle_bloat()
+    _install_bundle()
