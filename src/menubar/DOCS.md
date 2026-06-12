@@ -92,7 +92,7 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### app.py (306 LOC)
+### app.py (309 LOC)
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) + `_PanelController` (NSObject target for all button actions + NSTextField delegate) + `_tick` timer + blink + bar-icon + settings load/save. Three-panel lifecycle and cycling moved to `panel_lifecycle.py`. Settings load/save moved to `app_settings.py`. Queue action handlers (`addQueueRow_`, `toggleQueueEntry_`, `removeQueueEntry_`, `commitQueueField_`, `controlTextDidEndEditing_`) are 1-line delegates to `self._app.queue.handle_*` methods. `_tick` delegates session snapshot to `self.sessions.refresh()`, focus+abort logic to `self.focus.tick(sessions, bg_by_project, now)`, queue refresh + conditional rebuild to `self.queue.tick(sessions)`, panel rebuild/update to `self.panel.rebuild()` / `self.panel.update_inplace()`, and digit-hotkey re-registration to `self.hotkey.reregister_digits(self.panel._desktop_to_cwd)`; status snapshot updated via `self.focus.update_statuses(sessions)` at tick-end.
 **Reads:** `self.sessions.refresh()` (via `SessionsController`) + `_scan_bg_sleep_timers()` on every tick and on panel open; `SETTINGS_FILE` on launch.
@@ -238,27 +238,25 @@ Standalone macOS status-bar (menubar) application that shows all currently-runni
 
 ---
 
-### setup_menubar.py (143 LOC)
+### setup_menubar.py (30 LOC)
 
-**Purpose:** Legacy ad-hoc bundle builder (Bash-launcher approach). Builds `~/Applications/monitor-cc-menubar.app` with a Bash launcher that `exec`s into venv Python — superseded by `setup_py2app.py` for production use. Active in the restart flow: `app.py:restartApp_` lazy-imports `write_plist()` (dev/venv mode) or `write_plist_py2app()` (py2app bundle mode) from here. `write_plist()` substitutes `_BUNDLE_LAUNCHER` (`Contents/MacOS/menubar`); `write_plist_py2app()` substitutes `_BUNDLE_EXE` (`Contents/MacOS/monitor-cc-menubar`) — each writes the correct binary name for its mode. Preserved as fallback during transition.
+**Purpose:** Plist-writer utility for `app.py:restartApp_`. Exports `write_plist()` (dev/venv mode: substitutes `_BUNDLE_LAUNCHER` = `Contents/MacOS/menubar`) and `write_plist_py2app()` (py2app mode: substitutes `_BUNDLE_EXE` = `Contents/MacOS/monitor-cc-menubar`) — each writes the correct binary name for its mode into `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist`. No `__main__` guard; not standalone-runnable. Legacy build pipeline (`setup_menubar_workflow`, `_build_app_bundle`, etc.) removed — production install is now `setup_py2app.py py2app`.
 **Reads:** `src/menubar/com.brunowinter.monitor-cc-menubar.plist` (template with `<BUNDLE_LAUNCHER>` token).
-**Writes:** `~/Applications/monitor-cc-menubar.app/Contents/{Info.plist,MacOS/menubar}` (legacy `setup_menubar_workflow()` only); `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist` (both `write_plist` variants).
-**Called by:** User manually (legacy). `app.py:restartApp_` (lazy import of `write_plist` in dev mode; `write_plist_py2app` in py2app mode).
-**Calls out:** `subprocess` (launchctl, codesign); stdlib (`os`, `pathlib`, `time`).
-
-**Usage (legacy):** `python3 src/menubar/setup_menubar.py` from project root.
+**Writes:** `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist`.
+**Called by:** `app.py:restartApp_` (lazy import of `write_plist` in dev mode; `write_plist_py2app` in py2app mode).
+**Calls out:** `pathlib` only.
 
 ---
 
-### setup_py2app.py (117 LOC) — at project root, NOT in src/menubar/
+### setup_py2app.py (157 LOC) — at project root, NOT in src/menubar/
 
-**Purpose:** py2app build script producing `dist/monitor-cc-menubar.app/` — a native Mach-O bundle with embedded Python 3.14 framework. Replaces the Bash-exec chain with a native launcher so the audit token at `CGWindowListCopyWindowInfo` is `com.brunowinter.monitor-cc-menubar` (not Python.app), making the Screen Recording TCC grant effective. Builds to `dist/` in the working directory; does NOT install to `~/Applications/`. Placed at project root (not `src/menubar/`) to avoid stdlib `queue` shadowing by `src/menubar/queue.py` when setuptools is loaded. After `setup()`: `_prune_bundle_bloat()` whitelist-prunes the bundle's `src/` to `{menubar, session_finder.py, constants.py, __init__.py, __pycache__}` — prevents `copy_package_data()` from sweeping `src/logs/` (runtime proxy logs, no `__init__.py`, ≥15 GB in main repo).
-**Reads:** `src/menubar/menubar_main.py` (entry point); `src/menubar/com.brunowinter.monitor-cc-menubar.plist` (bundled as data file).
-**Writes:** `dist/monitor-cc-menubar.app/` — full py2app bundle.
+**Purpose:** py2app build + install + bootstrap script. Produces `dist/monitor-cc-menubar.app/` (native Mach-O, embedded Python framework), then post-`setup()` runs `_prune_bundle_bloat()` + `_install_bundle`. `_prune_bundle_bloat()` whitelist-prunes the bundle's `src/` to `{menubar, session_finder.py, constants.py, __init__.py, __pycache__}` — prevents `copy_package_data()` from sweeping `src/logs/` (runtime proxy logs, no `__init__.py`, ≥15 GB in main repo). `_install_bundle` copies to `~/Applications/`, ad-hoc codesigns, writes the LaunchAgent plist (inline template substitution — avoids `src.menubar` import chain triggering AppKit in build context), then launchctl bootout + bootstrap (with 1s retry on rc≠0). Placed at project root (not `src/menubar/`) to avoid stdlib `queue` shadowing by `src/menubar/queue.py` when setuptools is loaded.
+**Reads:** `src/menubar/menubar_main.py` (entry point); `src/menubar/com.brunowinter.monitor-cc-menubar.plist` (bundled as data file + read by `_install_bundle` for plist substitution).
+**Writes:** `dist/monitor-cc-menubar.app/`; `~/Applications/monitor-cc-menubar.app/`; `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist`.
 **Called by:** User manually (one-time build + after Python upgrade).
-**Calls out:** `py2app`, `setuptools`, `shutil`, `pathlib`.
+**Calls out:** `py2app`, `setuptools`, `shutil`, `pathlib`, `os`, `subprocess`, `time`.
 
-**Usage:** `./venv/bin/pip install py2app && ./venv/bin/python setup_py2app.py py2app` from project root. Install step: `cp -R dist/monitor-cc-menubar.app ~/Applications/monitor-cc-menubar.app`.
+**Usage:** `./venv/bin/pip install py2app && ./venv/bin/python setup_py2app.py py2app` from project root. One command: build + install + bootstrap.
 
 **Post-install TCC step:** Screen Recording permission is no longer required (desktop detection removed). No TCC grant needed for current menubar features.
 
@@ -316,7 +314,7 @@ app.py            → rumps, objc, AppKit, Foundation, time, threading, os, sys
                     .bg_timer, .app_settings, .panel_lifecycle, .menubar_log (log_menubar)
 ```
 
-No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py`, `hook_setup.py`, and `hook_writer.py` are standalone scripts (stdlib + subprocess only), not imported by any module (exception: `write_plist()` or `write_plist_py2app()` from `setup_menubar.py` are lazy-imported in `app.py:restartApp_` — branch-specific, never both). `menubar_main.py` is the py2app entry point — only imported by the native launcher, not by any module in the package.
+No cycles. `system.py` has no module-level import of `app.py`; the lazy import inside `run()` prevents the `app→system→app` circular dependency. `proc_cache.py` has no internal project imports (leaf node). `setup_menubar.py` is a plist-writer utility (not standalone-runnable; no `__main__`); `write_plist()` or `write_plist_py2app()` are lazy-imported in `app.py:restartApp_` (branch-specific, never both). `hook_setup.py` and `hook_writer.py` are standalone scripts (stdlib + subprocess only), not imported by any module. `menubar_main.py` is the py2app entry point — only imported by the native launcher, not by any module in the package.
 
 ---
 
@@ -371,7 +369,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Session status detection** (Workers + Mains): Priority-1/2/3 fallback chain with threshold values — see `decisions/menubar_session_status.md` for full IST chain.
 - **Singleton enforcement via fcntl lock** (`system.py`): `run()` calls `_acquire_singleton_lock()` before constructing `CCMenuBarApp`. Lock file: `PID_FILE` = `APP_SUPPORT/menubar.pid`. On success: sets `FD_CLOEXEC` on the fd (required for clean `os.execv` restart), writes PID, returns open file handle (held on `run()`'s stack frame for the process lifetime). On failure: prints to stderr and calls `sys.exit(0)`. **Exit code 0 is mandatory**: launchd `KeepAlive=true` respawns on non-zero exit only.
 - **APP_SUPPORT migration** (`paths.py`): on first import, two migrations run. `_migrate_from_dotfiles()` moves `~/.monitor_cc_menubar_{settings,hooks}.json`, `~/.monitor_cc_menubar_hooks.lock`, and `~/.monitor_cc_menubar.pid` to `~/Library/Application Support/com.brunowinter.monitor-cc-menubar/`. `_migrate_from_old_bundle_id()` moves runtime files from the old bundle-id dir `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/` to the new `com.brunowinter.monitor-cc-menubar/`. `os.rename()` is atomic on APFS/HFS+ (same volume). Both migrations: NEW wins — if new file already exists, old is left in place (no clobber). `hook_writer.py` defines `_APP_SUPPORT` inline (standalone script; relative import not usable).
-- **Restart — two-branch flow gated on `sys.frozen`** (`app.py:_PanelController.restartApp_`): py2app sets `sys.frozen = 'macosx_app'` in `__boot__.py`. **py2app branch**: `write_plist_py2app()` (from `setup_menubar.py`) writes the LaunchAgent plist with `ProgramArguments = [.../monitor-cc-menubar]`; detached helper runs pure `launchctl bootout gui/<uid>/... 2>/dev/null ; launchctl bootstrap gui/<uid> <dest>` — no Python invocation, no `_build_app_bundle()` call, bundle untouched, TCC identity preserved. `RunAtLoad=true` starts new instance immediately after bootstrap. **Dev/venv branch** (`sys.frozen` absent): `write_plist()` writes `Contents/MacOS/menubar` into the plist; helper runs `"{sys.executable}" "{_SETUP_PY}"` which calls `setup_menubar_workflow()` (bootout + rebuild Bash bundle + bootstrap). Both branches end with `rumps.quit_application()`. All imports are inside the branch body (not module-level) to avoid import-order sensitivity.
+- **Restart — two-branch flow gated on `sys.frozen`** (`app.py:_PanelController.restartApp_`): py2app sets `sys.frozen = 'macosx_app'` in `__boot__.py`. **py2app branch**: `write_plist_py2app()` (from `setup_menubar.py`) writes the LaunchAgent plist with `ProgramArguments = [.../monitor-cc-menubar]`; detached helper runs `launchctl bootout gui/<uid>/... 2>/dev/null ; launchctl bootstrap gui/<uid> <dest>` — bundle untouched, TCC identity preserved. **Dev/venv branch** (`sys.frozen` absent): `write_plist()` writes `Contents/MacOS/menubar` into the plist; same pure launchctl bootout+bootstrap cycle — no Python subprocess, no bundle rebuild. Both branches end with `rumps.quit_application()`. All imports are inside the branch body (not module-level) to avoid import-order sensitivity.
 - **Kill unloads the plist (`launchctl bootout`)**: `killApp_` (`app.py:_PanelController`) fires `launchctl bootout gui/<uid>/com.brunowinter.monitor-cc-menubar` via a detached `sh -c 'sleep 0.5 && ...'` subprocess (survives parent exit), then calls `rumps.quit_application()`. `bootout` removes the plist from the launchd domain so `KeepAlive=true` no longer respawns the process. Next reload requires login (`RunAtLoad=true`) or manual `launchctl bootstrap gui/<uid> ~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist`.
 - **Lazy import in system.run()**: `from .app import CCMenuBarApp` is inside `run()` to break the `app→system→app` circular import. `app.py` imports `_focus_session` from `system.py` at module level; `system.py` has no module-level import of `app.py`. No circular dependency at module init time.
 - **bg_result always passed explicitly to `_rebuild_panel`**: the `_rebuild_panel` fallback scan was removed from panel.py (to keep panel.py free of discover/bg_timer dependency). `app.py:_tick` computes `bg_result = _aggregate_bg(_scan_bg_sleep_timers(cwd_to_project))` once per tick and passes it explicitly to all panel calls.
@@ -427,4 +425,4 @@ python3 dev/menubar_debug.py --rebootstrap # same + re-registers launchd service
 2. Launches `venv/bin/python3 workflow.py --mode menubar` with `MENUBAR_DIAGNOSTICS=1` in env
 3. On Ctrl-C: prints "Stopped"; if `--rebootstrap`: runs `launchctl bootstrap` from the installed plist
 
-Tick log written to `/tmp/menubar-tick.log` while running (gated on `MENUBAR_DIAGNOSTICS=1`). stdout/stderr land in terminal directly. Requires `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist` to exist for `--rebootstrap` — run `src/menubar/setup_menubar.py` first if missing.
+Tick log written to `/tmp/menubar-tick.log` while running (gated on `MENUBAR_DIAGNOSTICS=1`). stdout/stderr land in terminal directly. Requires `~/Library/LaunchAgents/com.brunowinter.monitor-cc-menubar.plist` to exist for `--rebootstrap` — run `./venv/bin/python setup_py2app.py py2app` first if missing.

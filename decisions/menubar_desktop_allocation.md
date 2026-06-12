@@ -106,7 +106,7 @@ Keep (no change needed) — this IS the SOLL. py2app native bundle solves the TC
 
 3. **Python upgrade breaks the bundle**: if Homebrew upgrades Python 3.14 to a new patch release, the embedded framework stays on 3.14.3 (the build-time version). The bundle remains functional — the embedded Python is self-contained and not affected by Homebrew upgrades. A fresh `py2app` build would pick up the newer Python. This is intentional (`semi_standalone=False`).
 
-4. **Restart button — fixed** (2026-05-28): `restartApp_` gates on `sys.frozen`; py2app branch calls `write_plist_py2app()` (writes `ProgramArguments = [.../Monitor_CC_Menubar]`) then pure launchctl bootout+bootstrap — no bundle rebuild, no Python invocation in helper. See `decisions/OldThemes/menubar_restart_broken/A2_fix.md`. Residual open: dev-mode restart (`sys.frozen=False`) calls `setup_menubar_workflow()` which overwrites an installed py2app bundle — Refactor-Scope, not fixed here.
+4. **Restart button — fixed** (2026-05-28): `restartApp_` gates on `sys.frozen`; py2app branch calls `write_plist_py2app()` (writes `ProgramArguments = [.../Monitor_CC_Menubar]`) then pure launchctl bootout+bootstrap — no bundle rebuild, no Python invocation in helper. See `decisions/OldThemes/menubar_restart_broken/A2_fix.md`. Dev-mode restart footgun also fixed (2026-06-03): `setup_menubar_workflow` removed from `setup_menubar.py`; dev branch now uses identical pure launchctl cycle — no bundle rebuild possible.
 
 ## Quellen
 

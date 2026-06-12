@@ -46,7 +46,6 @@ from .panel_lifecycle import (_open_main_panel, _close_main_panel,
 
 BLINK_DURATION = 0.2   # seconds
 POLL_INTERVAL  = 1.5   # seconds
-_SETUP_PY      = Path(__file__).resolve().parent / 'setup_menubar.py'
 
 # FUNCTIONS
 
@@ -130,10 +129,14 @@ class _PanelController(NSObject):
                 f'launchctl bootstrap gui/{uid} "{dest}"'
             )
         else:
-            # Dev/venv mode: write plist pointing to Bash launcher, run setup_menubar.py to rebootstrap
+            # Dev/venv mode: write plist pointing to Bash launcher, pure launchctl cycle
             from .setup_menubar import write_plist
             write_plist()
-            cmd = f'sleep 0.5 && "{sys.executable}" "{_SETUP_PY}"'
+            dest = str(Path.home() / 'Library' / 'LaunchAgents' / f'{label}.plist')
+            cmd = (
+                f'sleep 0.5 && launchctl bootout gui/{uid}/{label} 2>/dev/null ; '
+                f'launchctl bootstrap gui/{uid} "{dest}"'
+            )
         subprocess.Popen(['sh', '-c', cmd], start_new_session=True)
         rumps.quit_application()   # clean status-bar teardown; launchd starts new instance
 

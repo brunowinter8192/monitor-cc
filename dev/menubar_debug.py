@@ -42,7 +42,7 @@ def _bootout() -> None:
 # launchctl bootstrap from installed plist
 def _bootstrap() -> None:
     if not _PLIST.exists():
-        print(f'WARNING: {_PLIST} not found — run src/menubar/setup_menubar.py first.')
+        print(f'WARNING: {_PLIST} not found — run: ./venv/bin/python setup_py2app.py py2app')
         return
     r = subprocess.run(['launchctl', 'bootstrap', f'gui/{os.getuid()}', str(_PLIST)],
                        capture_output=True, timeout=10)
