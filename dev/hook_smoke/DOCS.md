@@ -97,7 +97,7 @@ python3 dev/hook_smoke/test_rewrite_rag_cli_search_noise.py
 
 ---
 
-### test_rewrite_worker_cli_response_noise.py (116 LOC)
+### test_rewrite_worker_cli_response_noise.py (144 LOC)
 
 **Purpose:** 16-case smoke for `rewrite_worker_cli_response_noise.py`. Verifies 9 positive-strip cases (`| head`, `| tail`, `| grep`, `> redirect`, `2>&1`, `2>&1 | head`, `cd &&` chain, trailing `; bd list` chain, `|| echo fail` chain) and 7 negative no-op cases (bare response, **`worker-cli capture X | tail -40` critical pass-through**, `worker-cli status`, `worker-cli list`, cd chain no noise, trailing chain no pipe, response inside quoted echo).
 
