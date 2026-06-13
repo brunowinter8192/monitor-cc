@@ -13,6 +13,8 @@ from .proc_cache import (
 )
 # From ghostty.py: Ghostty TTY-to-UUID mapping + cwd-UUID file write for hook delivery
 from .ghostty import _refresh_ghostty_tty_to_id, _write_cwd_uuid_map, _ghostty_tty_to_id
+# From desktop_detection.py: batch CGS-based desktop number detection for Main sessions
+from .desktop_detection import detect_main_desktop_numbers
 
 ALIVE_WINDOW_SECS      = 3600   # stale threshold for main sessions (1h)
 WORKING_THRESHOLD_SECS = 10     # stale threshold: workers = window_activity age, mains = JSONL mtime
@@ -29,6 +31,7 @@ class SessionInfo(NamedTuple):
     cwd: str                 # full working directory (non-empty for mains; '' for workers)
     session_id: str          # JSONL stem = CC session identifier (key for msg_queue.json)
     tmux_session_name: str   # worker-{basename(project_path)}-{worker_name} per iterative-dev convention; '' for mains. Used for orchestrator-signal lookup in app.py:_has_recent_send_signal — DO NOT reconstruct from project_name (decode heuristic mismatch).
+    desktop_no: Optional[int] = None   # macOS Mission Control desktop number (1-based); None if detection failed or session is a worker
 
 # ORCHESTRATOR
 
@@ -48,6 +51,16 @@ def list_alive_sessions() -> List[SessionInfo]:
                 results.append(info)
         except Exception:
             continue
+    # Batch desktop detection for mains (single AppleScript round-trip for the batch)
+    main_cwds = {s.cwd for s in results if not s.is_worker and s.cwd}
+    if main_cwds:
+        cwd_tty_map  = {cwd: tty for _pid, (tty, cwd) in _cc_proc_cache.items() if tty and cwd}
+        cwd_uuid_map = {cwd: _ghostty_tty_to_id[tty]
+                        for _pid, (tty, cwd) in _cc_proc_cache.items()
+                        if tty and cwd and tty in _ghostty_tty_to_id}
+        dno_map = detect_main_desktop_numbers(cwd_uuid_map, cwd_tty_map, now)
+        results = [s._replace(desktop_no=dno_map.get(s.cwd)) if not s.is_worker else s
+                   for s in results]
     return results
 
 # FUNCTIONS
