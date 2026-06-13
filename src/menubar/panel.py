@@ -34,7 +34,7 @@ _BADGE_WORKING = '[*]'   # green — ASCII fixed-width, no emoji drift
 _BADGE_IDLE    = '[ ]'   # red
 
 # Grid column widths (pts) — 5-column main-panel layout, measured from Menlo 13pt char widths
-_GRID_COL0_W  = 33   # slot "[N]" (3 chars × 7.8pt + buffer)
+_GRID_COL0_W  = 40   # slot "[N]"/conflict "[!N]" (up to 4 chars × 7.8pt + buffer)
 _GRID_COL1_W  = 17   # star "* " (2 chars × 7.8pt + buffer)
 _GRID_COL3_W  = 25   # dot "[ ]"/"[*]" (3 chars × 7.8pt + buffer)
 _GRID_COL4_W  = 72   # badge "[B M:SS]" max 9 chars × 7.8pt + buffer
@@ -348,6 +348,13 @@ def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining
     tf.setBackgroundColor_(NSColor.windowBackgroundColor())
     container.addSubview_(tf)
     return container, abort_btn
+
+# Effective desktop number for a project: min desktop_no across its mains, None if all-None.
+def _project_desktop_no(sessions, project_name: str):
+    vals = [s.desktop_no for s in sessions
+            if not s.is_worker and s.project_name == project_name
+            and s.desktop_no is not None]
+    return min(vals) if vals else None
 
 # Compute exact panel height needed to display all sessions; no truncation.
 # Abort buttons (Option B) are embedded in separator views — zero height cost.

@@ -1,11 +1,10 @@
 # menubar_desktop_allocation
 
-> ## ⚠️ ABANDONED / ROLLED BACK (2026-05-31)
-> Die Desktop-Allocation hing am Verschieben neuer Fenster auf den nativen Space der Caller-Main. Dieser Cross-Space-**Move ist auf macOS 26.5 SIP-frei bewiesen unmöglich** (5/5 private Move-APIs no-op trotz voller Accessibility+Screen-Recording-Rechte; ökosystemweit bestätigt — yabai/DockDoor/Hammerspoon brauchen SIP-off + Dock-Injektion, AeroSpace meidet native Spaces ganz). Rationale + Beweis: `decisions/OldThemes/desktop_allocation/H1_placement_mechanism_review_2026-05-31.md` + `G4_move_sweep_probe.md`.
+> ## ⚠️ MOVE PERMANENTLY ABANDONED (2026-05-31) — Detection-only display RESTORED (2026-06-13)
 >
-> **Aktueller IST (post-Rollback):** Menubar zeigt wieder **sequenzielle Slot-Nummern `[N]`**, keine Desktop-Erkennung. `desktop_detection.py`, der cwd→space-Sidecar (`CWD_DESKTOP_FILE`) und das `desktop_no`-Feld sind entfernt. Screen-Recording wird vom Menubar nicht mehr benötigt (`NSScreenCaptureUsageDescription` aus py2app-Plist raus). Spawn-/File-Open-Placement (Meta/blank `tmux_spawn.sh` + `bin/show` + `desktop_targeting.py`) ebenfalls zurückgebaut.
+> **Window-Move stays dead:** Cross-Space window-move is impossible on macOS 26.5 without SIP-off + Dock injection (5/5 private APIs no-op; proven in G4/H1). This part of the feature is permanently gone.
 >
-> **Alles unterhalb beschreibt die ENTFERNTE Detection-Implementierung** — als historischer Record erhalten (TCC-Befunde bleiben wertvoll), NICHT der aktuelle Stand.
+> **Detection-only display restored (issue #20):** `desktop_detection.py`, `SessionInfo.desktop_no`, `[N]`/`[!N]` panel slot display, and `NSScreenCaptureUsageDescription` are back. The sidecar (`CWD_DESKTOP_FILE`, `_write_cwd_desktop_sidecar`) and spawn/file-open placement (`desktop_targeting.py`) remain removed — they served the dead move feature. See `decisions/OldThemes/desktop_allocation/I1_detection_only_reintroduction.md`.
 
 ## Status Quo (IST)
 
@@ -25,15 +24,17 @@
 | APP_SUPPORT dir | `~/Library/Application Support/com.brunowinter.monitor-cc-menubar/` |
 | Restart mechanism | `restartApp_` → `write_plist_py2app()` + `launchctl bootout` + `launchctl bootstrap`; no bundle rebuild |
 
-**Detection pipeline** (removed in rollback — `desktop_detection.py` deleted): former three-strategy resolver per Main session window — (1) name-unique: `kCGWindowName` match in exactly one CGWindow → Hit; (2) space-elimination: multiple candidates, query `CGSCopySpacesForWindows` per candidate, eliminate already-claimed spaces → Hit; (3) OSC-2 injection: write `__DET_<hex>` marker to tty, re-match `kCGWindowName` → Hit. Results cached for 10s TTL, force-invalidated on cwd set change. **Transition logging** (`_last_result` module state): per-cycle comparison logs `[detection] transition <cwd_label> <old>-><new> win=<ghostty_win_name> n_cand=<N>` on desktop-number change — transition-gated, no per-cycle spam. Detection algorithm unchanged.
+**Detection pipeline** (`src/menubar/desktop_detection.py` — restored 2026-06-13): three-strategy resolver per Main session window — (1) name-unique: `kCGWindowName` match in exactly one CGWindow → Hit; (2) space-elimination: multiple candidates, query `CGSCopySpacesForWindows` per candidate, eliminate already-claimed spaces → Hit; (3) OSC-2 injection: write `__DET_<hex>` marker to tty, re-match `kCGWindowName` after 500ms → Hit. Results cached for `_DET_CACHE_TTL=10s`, force-invalidated on cwd set change. **Transition logging** (`_last_result` module state): per-cycle comparison logs `[detection] transition <cwd_label> <old>-><new> win=<ghostty_win_name> n_cand=<N>` on desktop-number change — transition-gated, no per-cycle spam. `detect_main_desktop_numbers(cwd_uuid_map, cwd_tty_map, now)` called in `list_alive_sessions()` post-loop (single AppleScript round-trip for the whole batch); result written to `SessionInfo.desktop_no` via `_replace`. No sidecar written (cross-repo desktop_targeting stays removed).
+
+**Display** (`src/menubar/panel.py` + `src/menubar/panel_manager.py`): mains show `[N]` slot prefix where N = macOS Mission Control desktop number (1-based). Conflict (2+ mains on same desktop) shows `[!N]` in red. `panel._desktop_to_cwd = {dno: cwd}` populated conflict-free → `HotkeyController.reregister_digits()` maps Cmd+N to the session on desktop N. When detection fails (Screen Recording not granted / Ghostty not running): `desktop_no=None` → slot empty, `_desktop_to_cwd={}` → Cmd+N no-ops, panel renders normally without numbers. `_GRID_COL0_W=40` (up from 33) to accommodate 4-char `[!N]` conflict label.
 
 **Log path** (`src/menubar/menubar_log.py`): `MENUBAR_LOG = _APP_SUPPORT / 'menubar.log'` — consistent with all other APP_SUPPORT files. Both dev (venv) and bundle write to `~/Library/Application Support/com.brunowinter.monitor-cc-menubar/menubar.log`.
 
-**Subprocess encoding** (2026-05-28): all 13 `subprocess.run(..., text=True)` calls in `src/menubar/` now carry `encoding='utf-8', errors='replace'`. Root cause: launchd sets no locale → Python defaults to ASCII → `ps -A -o command=` output containing CC worker spawn-prompts (emoji, umlauts) → `UnicodeDecodeError` → `detect_main_desktop_numbers` catch → `all_failed` → desktop number lost for all mains while any worker is running. Confirmed by live log: crash at 22:39 (ps, `b'...\xe2\xa0\x90 Offene Tasks...'`), crash at 22:40:59 (osascript, `'⠐ Offene Tasks'`). LaunchAgent plist template also gains `PYTHONUTF8=1` as belt-and-suspenders for launchd context.
+**Subprocess encoding** (2026-05-28): all `subprocess.run(..., text=True)` calls in `src/menubar/` carry `encoding='utf-8', errors='replace'`. Root cause: launchd sets no locale → Python defaults to ASCII → `ps -A -o command=` output containing CC worker spawn-prompts (emoji, umlauts) → `UnicodeDecodeError` → `detect_main_desktop_numbers` catch → `all_failed` → desktop number lost for all mains while any worker is running. LaunchAgent plist template also carries `PYTHONUTF8=1`.
 
-**Display** (`src/menubar/panel.py` + `src/menubar/discover.py`): mains show `[N]` slot prefix where N = macOS Mission Control desktop number. Conflict (2+ mains on same desktop) shows `[!N]` in red. `panel._desktop_to_cwd` populated conflict-free → `HotkeyController.reregister_digits()` (hotkey_controller.py) maps Cmd+N to the correct Main session.
+**Launch**: via launchd LaunchAgent (`RunAtLoad=true`) or manually via `open ~/Applications/monitor-cc-menubar.app`. **Restart**: Restart-Button ruft `write_plist_py2app()` dann reinen launchctl bootout+bootstrap — kein Bundle-Rebuild, TCC-Grant bleibt erhalten. `sys.frozen`-Gate in `restartApp_` trennt py2app-Pfad von dev/venv-Pfad.
 
-**Launch**: via launchd LaunchAgent (`RunAtLoad=true`) or manually via `open ~/Applications/monitor-cc-menubar.app`. **Restart**: Restart-Button ruft `write_plist_py2app()` (schreibt `ProgramArguments = [.../monitor-cc-menubar]`) dann reinen launchctl bootout+bootstrap — kein Bundle-Rebuild, TCC-Grant bleibt erhalten. `sys.frozen`-Gate in `restartApp_` trennt py2app-Pfad von dev/venv-Pfad.
+**NOT restored (stays dead):** window-move (`CGSMoveWindowsToManagedSpace` etc.), sidecar (`CWD_DESKTOP_FILE` / `_write_cwd_desktop_sidecar`), spawn/file-open placement (`desktop_targeting.py`). See `H1_placement_mechanism_review_2026-05-31.md`.
 
 ## Evidenz
 
@@ -96,7 +97,7 @@ test confirms 38 MB bundle with 50 MB fake `src/logs/` fully pruned. See
 
 ## Recommendation (SOLL)
 
-Keep (no change needed) — this IS the SOLL. py2app native bundle solves the TCC audit-token issue; detection pipeline is unchanged.
+Keep (no change needed) — detection-only display is the SOLL. py2app native bundle solves the TCC audit-token issue; window-move stays permanently abandoned; sidecar stays removed.
 
 ## Offene Fragen
 

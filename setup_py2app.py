@@ -70,6 +70,11 @@ OPTIONS = {
         # Pure menubar app — no Dock icon, no app switcher entry
         'LSUIElement':              True,
         'LSMinimumSystemVersion':   '10.15',
+        # Required for CGWindowListCopyWindowInfo + kCGWindowName visibility
+        'NSScreenCaptureUsageDescription': (
+            'Monitor_CC reads Ghostty window titles to map Claude Code sessions '
+            'to Mission Control desktops. No screen content is captured or stored.'
+        ),
         # Required for osascript queries against Ghostty window list
         'NSAppleEventsUsageDescription': (
             "monitor-cc queries Ghostty's window list via AppleScript to identify "
