@@ -139,10 +139,12 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
         tmux_session = ''
         display_name = worker_name   # fallback: lossy encoded-dir name (underscores → hyphens)
         if cwd and '/.claude/worktrees/' in cwd:
-            # Real worker name from cwd preserves underscores (encode_project_path is lossy: _ → -)
-            display_name = os.path.basename(cwd)
+            project_path, _, worktree_rest = cwd.partition('/.claude/worktrees/')
+            # First component after the marker = worktree leaf name; stable even when worker cd's into subdirs.
+            # os.path.basename(cwd) is wrong when cwd drifts deeper: yields subdir name, not worktree name.
+            display_name = worktree_rest.split('/')[0] or worker_name
             # Live project dir basename overrides stale decoded-dir name; fallback keeps decode value
-            project_name = os.path.basename(cwd.partition('/.claude/worktrees/')[0]) or project_name
+            project_name = os.path.basename(project_path) or project_name
             # Worker alive iff its tmux session exists (consistent with worker-cli)
             tmux_session = _worker_tmux_session(cwd, display_name) or ''
             if not tmux_session or not _tmux_session_exists(tmux_session):
