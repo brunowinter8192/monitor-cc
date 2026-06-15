@@ -19,6 +19,7 @@ _HOOK_SCRIPTS = [
     ("rewrite_worker_cli_response_noise.py",     "Bash"),
     ("rewrite_searxng_scrape_noise.py",  "Bash"),
     ("block_unauthorized_background.py",   "Bash"),
+    ("block_worker_send_background.py",     "Bash"),
     ("rewrite_background_sleep.py",        "Bash"),
     ("rewrite_reddit_index_background.py", "Bash"),
     ("rewrite_pipe_background.py",         "Bash"),
