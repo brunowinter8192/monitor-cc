@@ -14,6 +14,7 @@ _HOOK_TIMEOUT  = 5
 _HOOK_SCRIPTS = [
     ("block_dangerous_kill.py",          "Bash"),
     ("block_polling_loop.py",            "Bash"),
+    ("block_busywait_loop.py",           "Bash"),
     ("rewrite_chained_sleep.py",         "Bash"),
     ("rewrite_rag_cli_search_noise.py",          "Bash"),
     ("rewrite_worker_cli_response_noise.py",     "Bash"),
