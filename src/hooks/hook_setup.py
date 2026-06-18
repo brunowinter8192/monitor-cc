@@ -38,6 +38,7 @@ _HOOK_SCRIPTS = [
     ("block_read_directory.py",          "Read"),
     ("block_read_oversize.py",           "Read"),
     ("block_worker_spawn_opus.py",       "Bash"),
+    ("block_worker_spawn_placement.py",  "Bash"),
     ("block_bd_cli_worker.py",           "Bash"),
     ("block_git_add_deps.py",            "Bash"),
     ("block_dev_imports_src.py",         "Write"),
