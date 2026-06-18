@@ -25,6 +25,7 @@ _HOOK_SCRIPTS = [
     ("rewrite_reddit_index_background.py", "Bash"),
     ("rewrite_pipe_background.py",         "Bash"),
     ("block_search_subreddits_limit.py", "Bash"),
+    ("block_index_issues_chained.py",    "Bash"),
     ("block_broad_grep.py",              "Bash"),
     ("block_git_destructive.py",         "Bash"),
     ("rewrite_bd_invalid_repo.py",       "Bash"),
