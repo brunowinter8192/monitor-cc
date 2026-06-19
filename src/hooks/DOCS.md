@@ -22,7 +22,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by six Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure). `_strip_impl` is decomposed into 6 private scan helpers (`_scan_heredoc`, `_scan_ansi_c_quote`, `_scan_cmd_subst`, `_scan_backtick`, `_scan_single_quote`, `_scan_double_quote`), each returning `(fragment, new_i)`.
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** n/a.
-**Called by:** `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `block_polling_loop.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py`, `rewrite_worker_cli_response_noise.py`, `block_worker_spawn_placement.py`, `block_index_issues_chained.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `rewrite_chained_sleep.py`, `block_dangerous_kill.py`, `block_broad_grep.py`, `block_polling_loop.py`, `block_venv_no_redirect.py`, `block_worker_spawn_opus.py`, `rewrite_worker_cli_response_noise.py`, `block_worker_spawn_placement.py`, `block_gh_cli_chained.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
 **Calls out:** stdlib only (no imports).
 
 ---
@@ -262,26 +262,30 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_index_issues_chained.py (63 LOC)
+### block_gh_cli_chained.py (71 LOC)
 
-**Purpose:** PreToolUse hook (Bash) — blocks `gh-cli index_issues` / `index_discussions` calls chained with any non-index command. Indexing GitHub issues/discussions into RAG must run as its own standalone Bash call, not tacked onto an unrelated chain (watchdog dump, grep, echo, rag-cli). Multiple `index_*` calls combined in one Bash are allowed. Exits 2 + stderr on violation. Exits 0 on any parse/internal error (fail-open).
+**Purpose:** PreToolUse hook (Bash) — blocks any of the 7 gh-cli search/research tools (`search_repos`, `search_code`, `get_repo_tree`, `get_file_content`, `index_issues`, `index_discussions`, `index_releases`) chained with any non-search command. These tools must run standalone so their full output reaches context — piping through grep/head/tail/sed/awk/wc forces Opus to reconstruct files from fragments instead of reading the complete result. Multiple gh-cli search/research calls combined in one Bash are allowed. The 5 issue-management commands (`list_issues`, `get_issue`, `create_issue`, `update_issue`, `delete_issue`) are fully exempt. Exits 2 + stderr on violation. Exits 0 on any parse/internal error (fail-open). Supersedes `block_index_issues_chained.py`.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_input: {command}}`).
 **Writes:** stderr (block message) on violation only.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** `_shell_strip._strip_non_shell_active`, `_fire_log.log_fire`; stdlib (`json`, `re`).
 
 **Blocked patterns:**
-- `tail x && gh-cli index_issues "q" o/r` — index chained with another command
-- `echo "..."` + newline + `gh-cli index_issues ...` — echo separator forbidden
-- `gh-cli index_issues "q" o/r | head` — piped to a non-index command
+- `gh-cli search_repos "q" | grep foo` — piped to a non-search command
+- `gh-cli index_issues "q" o/r && rag-cli index docs` — chained with rag-cli
+- `gh-cli search_code "q" o/r && echo done` — chained with echo
+- `gh-cli get_file_content o/r path | head -10` — piped to head
 
 **Allowed patterns:**
-- `gh-cli index_issues "q" o/r --limit 30` — standalone
-- `gh-cli index_issues "a" o/r && gh-cli index_discussions "b" o/r` — multiple `index_*` combined
-- `gh-cli index_issues "q" o/r > /tmp/log 2>&1` — redirects are not chaining
-- any command with no `index_*` call — not policed
+- `gh-cli index_issues "q" o/r --limit 30 --offset 0` — standalone with tool-native args
+- `gh-cli index_issues "a" o/r && gh-cli index_discussions "b" o/r` — multiple search/research calls combined
+- `gh-cli get_file_content o/r path > /tmp/out.txt` — redirect is not a separator
+- `gh-cli list_issues o/r | grep open` — issue command, exempt
+- any command with none of the 7 search/research calls — not policed
 
-**Segment split.** `_SEPARATOR_RE` splits the (quote-stripped) command on `&&` `||` `;` `|` newline and space-bounded `&`; `>&`/`2>&1` redirects survive intact (no whitespace before `&`). Every non-empty segment must start with `gh-cli index_(issues|discussions)`, else block.
+**Segment split.** `_SEPARATOR_RE` splits the (quote-stripped) command on `&&` `||` `;` `|` newline and space-bounded `&`; `>&`/`2>&1` redirects survive intact (no whitespace before `&`). Every non-empty segment must start with one of the 7 gh-cli search/research tools, else block.
+
+**Smoke:** `dev/hook_smoke/test_block_gh_cli_chained.py` (18 cases: 9 block, 6 pass-standalone/two-chained/redirect, 2 exempt-issue-command, 1 single-quote strip, 1 heredoc strip).
 
 ---
 
