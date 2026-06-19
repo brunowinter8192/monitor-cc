@@ -1,6 +1,6 @@
 # MCP → CLI Legacy Cleanup
 
-The `ClaudeCode/cli/*` projects (reddit, searxng, rag, gh) and `iterative-dev` migrated from MCP servers to CLI tools long ago. Stale "MCP server" references remained scattered across the rules, plugin tooling, manifests, READMEs, and one live code dependency. This file tracks what was cleaned (2026-06-19) and what remains, deferred for risk.
+The `ClaudeCode/cli/*` projects (reddit, searxng, rag, gh) and `iterative-dev` migrated from MCP servers to CLI tools long ago. Stale "MCP server" references remained scattered across the rules, plugin tooling, manifests, READMEs, and one live code dependency. This file tracks the cleanup across two 2026-06-19 sessions. **Complete** — the four risk-bearing remainders were resolved in session 2.
 
 ## Done (2026-06-19)
 
@@ -11,38 +11,29 @@ Non-risky, behavior-shaping surfaces — committed in this session:
 - **`claude-plugins/README.md`**: "bundles MCP servers" → "CLI tools"; repo links `searxng-mcp`/`github-MCP`/`Reddit-MCP`/`RAG` → `searxng-cli`/`gh-cli`/`reddit-cli`/`rag-cli`.
 - **Code dependency** (`reddit-cli`): removed `from mcp.types import TextContent` from `search_subreddits.py` + `index_subreddits.py`; both workflows now return plain `str`; `cli.py` does `print(result)`; `mcp` removed from `requirements.txt`. Live-verified (`reddit-cli search_subreddits "python"` runs clean). Merged reddit-cli main `f4477c8`.
 
-## Remaining (deferred — risk)
+## Done (2026-06-19, session 2) — the four deferred remainders
 
-### 1. Plugin-identifier manifest fields
-- `reddit-cli/.claude-plugin/marketplace.json`: `"name": "reddit-mcp"`, `"repo": "brunowinter8192/Reddit"`
-- `rag-cli/.claude-plugin/marketplace.json`: `"name": "rag-mcp"`, `"repo": "brunowinter8192/RAG"`
-- (searxng plugin.json `name` is already `searxng-cli`; gh-cli has no mcp-named manifest.)
+### 1. Plugin-identifier manifest fields — RESOLVED (no rename needed)
+Traced the full resolution chain before touching anything: `known_marketplaces.json` registers **only** `brunowinter-plugins` → source `claude-plugins`; CC reads `claude-plugins/.claude-plugin/marketplace.json` (the canonical manifest) and clones each plugin's `source.repo`. `plugin-publish` builds `KEY="${PLUGIN_NAME}@${MARKETPLACE}"` from **plugin.json** `name`, not marketplace.json. The canonical manifest + every `plugin.json` + `installed_plugins.json` keys + cache dirs were **already fully unified on `-cli`**. The `reddit-mcp`/`rag-mcp` names lived only in the per-repo `reddit-cli`/`rag-cli` `.claude-plugin/marketplace.json` — which CC never consumes (a plugin repo defines itself via its `plugin.json`; only `claude-plugins` is a registered marketplace; no other plugin repo even has a marketplace.json). **Resolution:** deleted both dead `marketplace.json` files. Zero install/cache risk — they were never in the consumed path.
 
-**Risk:** the `name` field is the plugin identifier in the marketplace; `repo` is the source pointer. `plugin-publish` builds `KEY="${PLUGIN_NAME}@${MARKETPLACE}"` from **plugin.json** `name` (not marketplace.json), and there is a name mismatch (plugin.json `reddit-cli` vs marketplace.json `reddit-mcp`). The marketplace → `/plugin install` → `installed_plugins.json` key → cache-path chain may key off these. Trace that resolution before renaming, else install/update mapping could break.
+### 2. Runtime path `~/.reddit-mcp/` → `~/.reddit-cli/` — MIGRATED (no re-login)
+`mv ~/.reddit-mcp ~/.reddit-cli` carried the live Chrome session + 24h token cache over (checked first that no Chrome process held the session dir). Updated 4 source refs (`src/reddit/browser.py`, `src/reddit/client.py`, `dev/bg_chrome_probe/01_bg_launch.py`, `02_headless_new.py`) + 8 doc refs (DOCS.md, src/reddit/DOCS.md, retrieval01, auth02, auth03, OldThemes browser_cleanup_leak / background_chrome_launch / oauth_read_migration). Left untouched: `.claude-plugin/marketplace.json` (item 1) and the external `reddit-mcp-buddy` mention in a scraped Reddit post. **Live-verified:** `reddit-cli search_subreddits "python"` returned real results, exit 0, no Chrome/mint activity, token-cache mtime unchanged — token loaded from the new path.
 
-**Next session:** understand how Claude Code consumes marketplace.json `name`/`repo` vs plugin.json `name` + `installed_plugins.json`. Then, if safe: reddit-mcp→reddit-cli, rag-mcp→rag-cli, repo Reddit→reddit-cli, RAG→rag-cli.
+### 3. Borderline legacy names — RENAMED
+- Log: `reddit_mcp.log` → `reddit-cli.log` (`cli.py` FileHandler + 5 doc refs). Log file did not exist on disk (runtime-created) → zero data loss.
+- Decision file: `decisions/delivery01_mcp_tools.md` → `delivery01_cli_tools.md` via `git mv` (history preserved) + 2 inbound refs (DOCS.md tree, oauth_read_migration.md).
 
-### 2. Runtime path `~/.reddit-mcp/`
-- `reddit-cli/src/reddit/browser.py`: `SESSION_DIR = ~/.reddit-mcp/session` (persisted Chrome login session)
-- `reddit-cli/src/reddit/client.py`: `TOKEN_CACHE_PATH = ~/.reddit-mcp/token_cache.json`
+### 4. Obsolete READMEs — DELETED, not rewritten (scope change by user)
+User decision: not building for external, no per-feature README maintenance → delete all project-owned READMEs everywhere. Removed 7 files: `monitor-cc/README.md` + `monitor-cc/src/menubar/README.md`; `reddit-cli` + `rag-cli` + `searxng-cli` READMEs; `iterative-dev/README.md` + `iterative-dev/CLAUDE.md`. Vendored READMEs untouched (tmux `repo/`, rag-cli `llama.cpp/`, all `.venv`/`dist`/`build`). gh-cli had no README.
 
-**Risk:** live data — the logged-in browser session + cached 24h token. Renaming the dir orphans the existing session (forces re-login + token re-mint).
+## Also done (session 2) — GitHub hygiene
 
-**Next session:** decide whether it is worth touching (invisible runtime path). If renamed (e.g. `~/.reddit-cli/`), do it as a migration that moves the existing session/token, or accept a one-time re-login.
+- **Repo descriptions cleared** — all 10 non-empty descriptions PATCHed to empty via the GitHub API (Python `requests`, `GH_TOKEN` from `~/.zshrc`, routed through mitmproxy via env `HTTPS_PROXY` + `REQUESTS_CA_BUNDLE`; the official `gh` fails on the mitmproxy CA). Wiped the remaining "MCP server" text that still sat in descriptions (Arxiv, gh-cli, GmailMCP, reddit-cli, searxng-cli, claude-plugins).
+- **Repo renames** — `Arxiv`→`arxiv`, `GmailMCP`→`gmail` (the last dir↔repo name mismatches; both out-of-marketplace tools). GitHub auto-redirects; local remotes updated. All other cli/ dirs already match their GitHub repos and plugin names.
 
-### 3. Borderline legacy names
-- `reddit_mcp.log` — log filename (`reddit-cli/cli.py` logging setup + `DOCS.md` mention).
-- `reddit-cli/decisions/delivery01_mcp_tools.md` — decision filename.
+## Commits
 
-**Risk:** low. Renaming the log changes the log destination (2 references); renaming the decision file needs any inbound references updated. Cosmetic.
-
-### 4. Obsolete READMEs (bigger than MCP — full rewrites)
-- `reddit-cli/README.md`: describes 14 tools that no longer exist (`search_posts`, `reply_to_post`, `get_inbox`, …) + `claude mcp add-json` install. Current CLI = 2 subcommands (`search_subreddits`, `index_subreddits`, RAG-indexing model).
-- `searxng-cli/README.md`: install via non-existent `mcp-start.sh`, old clone URL `SearXNG.git`, "MCP Tools" header. Tool list roughly current but the setup section is stale.
-
-**Risk:** a blind rewrite could write WRONG setup steps (worse than stale). Needs each project's real current `cli.py` + setup flow.
-
-**Next session:** rewrite both READMEs from the actual current interface, per project, deliberately.
+- monitor-cc `5c4184d` (main); reddit-cli `9475bf7` (main, plugin-publish); rag-cli `d25a4b1` + `e8b8cec` (main, plugin-publish; the `e8b8cec` is an unrelated untracked design-doc committed to clean the tree for plugin-publish); searxng-cli `340fabd` (**dev** — repo was mid-parallel-work; README deletion reaches main on the user's dev→main merge); iterative-dev `8249153` (main, plugin-publish). All four plugin caches re-synced at unchanged version.
 
 ## Sources
 - `plugin-publish` resolution chain: `iterative-dev/bin/plugin-publish` (KEY/cache logic), `~/.claude/plugins/installed_plugins.json`.
