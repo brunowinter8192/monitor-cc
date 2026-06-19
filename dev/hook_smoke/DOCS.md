@@ -35,6 +35,17 @@ python3 dev/hook_smoke/test_block_broad_grep.py
 
 ---
 
+### test_block_gh_cli_chained.py (89 LOC)
+
+**Purpose:** 18-case smoke for `block_gh_cli_chained.py`. Verifies 9 blocked cases (each of the 7 search/research tools piped/chained with a non-search command), 6 pass cases (two search tools chained together, standalone with tool-native args, redirect to file), 2 exempt issue-command passes (`list_issues` / `get_issue` piped to grep/head), and 2 shell-strip passes (pattern inside single-quotes, pattern inside heredoc body).
+
+**Usage:**
+```bash
+python3 dev/hook_smoke/test_block_gh_cli_chained.py
+```
+
+---
+
 ### test_block_dangerous_kill.py (90 LOC)
 
 **Purpose:** 18-case smoke for `block_dangerous_kill.py` — pkill -f patterns, pipe-kill chains, heredoc/quote exemptions, and allowlist cases.
