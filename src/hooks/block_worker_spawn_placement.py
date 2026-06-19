@@ -13,7 +13,12 @@ _WORKTREE_FRAGMENT = '.claude/worktrees/'
 _SPAWN_RE       = re.compile(r'\bworker-cli\s+spawn\s+(\S+)\s+(\S+)\s+(\S+)', re.DOTALL)
 _NO_WORKTREE_RE = re.compile(r'\bworker-cli\s+spawn\b.*--no-worktree\b', re.DOTALL)
 
-_WRONG_PROJECT_MSG  = "worker spawn nicht im aktuellen projekt — nutze 'c': worker-cli spawn <name> <prompt> c sonnet\n"
+_WRONG_PROJECT_MSG  = (
+    "worker spawn nur im aktuellen projekt — nutze 'c' (worktree im aktuellen projekt). "
+    "Für cross-project arbeit: mit 'c' spawnen, dann im zielprojekt selbst ein worktree bauen "
+    "(git -C <zielprojekt> worktree add .claude/worktrees/<name> -b <name>) und den worker DORT arbeiten lassen "
+    "— oder, wenn die zieldateien gitignored sind, direkt im source des zielprojekts. Nie --no-worktree.\n"
+)
 _NO_WORKTREE_MSG    = "worker spawn immer im worktree — kein --no-worktree\n"
 
 # ORCHESTRATOR
