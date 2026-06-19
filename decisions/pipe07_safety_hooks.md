@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-19 safety hooks registered globally in `~/.claude/settings.json`. All 19 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 14 block hooks (exit 2) + 5 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_background_sleep`, `block_path_typo` (legacy name, rewrite semantics), `rewrite_worker_cli_response_noise`.
+20 safety hooks registered globally in `~/.claude/settings.json`. All 20 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 14 block hooks (exit 2) + 5 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_background_sleep`, `block_path_typo` (legacy name, rewrite semantics), `rewrite_worker_cli_response_noise`.
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -356,6 +356,28 @@
 **Rationale:** `worker-cli response` prints the full last assistant message to stdout — output bounded and context-destined. Adding `| head`, `| tail`, or `> file` truncates the message silently. Critical no-op: `worker-cli capture X | tail -40` is a documented legitimate fallback; `capture` is guaranteed out of scope by the exact-subcommand anchor. Direct clone of `rewrite_rag_cli_search_noise.py` with anchor swapped to `\bworker-cli\s+response\b`.
 
 **Smoke:** `dev/hook_smoke/test_rewrite_worker_cli_response_noise.py` (16 cases: 9 positive strip, 7 negative no-op including the critical `worker-cli capture | tail` pass-through).
+
+### Hook 20 — `block_worker_kill_while_working.py` (`src/hooks/block_worker_kill_while_working.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_worker_kill_while_working.py`
+- **Timeout:** 5s
+
+**Detection (double-gate):**
+1. Regex `\bworker-cli\s+kill\s+([\w.-]+)` on shell-stripped command captures the name token. `[\w.-]+` excludes trailing shell metacharacters: `worker-cli kill foo;` → `foo`, `worker-cli kill foo && x` → `foo`. Quoted/heredoc `worker-cli kill X` inside a send-message body is blanked by `_strip_non_shell_active` → no match → allow.
+2. For each captured name, runs `worker-cli status <name>` subprocess (timeout 3s). Registry auto-resolves project path. Blocks iff the first whitespace token of the output equals exactly `'working'`.
+
+**Blocked patterns:** `worker-cli kill <name>` when `worker-cli status <name>` first token is `working`
+
+**Allowed patterns (ALL of these allow):** any status ≠ `working` (idle, idle force-stopped, exited, unknown); nonexistent worker (status exit 1 → `''`); subprocess timeout or error; quoted kill inside a `worker-cli send` message; heredoc body kill; parse/JSON errors; any exception (fail-open)
+
+**Block message:** tells user the worker is working, to stop it first (ESC or `worker-cli send '<name>' 'stop'`), wait until idle, then kill.
+
+**Known accepted residual:** a shell comment carrying the literal kill + a live-working-worker-name blocks (e.g. `echo hi # worker-cli kill foo` where `foo` is working). Consistent with the whole hook family — none of the 20 hooks strip shell comments. The double-gate makes this FP require both the comment text to name a real worker AND that worker to be actively working simultaneously.
+
+**Fail-open:** outer `except Exception: sys.exit(0)` in the workflow function ensures ANY unexpected error exits 0. Status subprocess: `TimeoutExpired`, `FileNotFoundError`, and all other errors → return `''` → allow. Per-name status_fn exception inside `decide()` → `status = ''` → continue checking remaining names.
+
+**Smoke:** `dev/hook_smoke/test_block_worker_kill_while_working.py` (13 cases: 3 block, 9 allow, 1 accepted-residual block).
 
 ## Evidenz
 
