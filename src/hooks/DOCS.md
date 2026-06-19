@@ -557,6 +557,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ## Gotchas
 
+- **Hooks are the single source of truth for mechanical command rules — do NOT also state the rule in a skill or rule file.** A skill/rule loads its full text into every session (context cost + a maintenance surface that drifts) and carries that text whether or not it is relevant; a hook fires surgically only on the actual violation and costs nothing idle. Failure-case rules can therefore be added freely as hooks without bloating any always-loaded surface. When a rule can be a hook, make it a hook and keep skills/rules lean — never duplicate a hook-enforced rule as prose.
 - **Auto-deploy via `.githooks/` (per-clone setup required).** The repo ships `.githooks/post-merge` and `.githooks/post-commit` — both fire `python3 src/hooks/hook_setup.py` automatically when a commit (merge or direct) touches `src/hooks/*`. This keeps `~/.claude/settings.json` in sync with the filesystem, preventing the stale-hook disaster class. Each clone must activate the hooks once:
   ```bash
   git config core.hooksPath .githooks
