@@ -365,7 +365,9 @@
 
 **Detection (double-gate):**
 1. Regex `\bworker-cli\s+kill\s+([\w.-]+)` on shell-stripped command captures the name token. `[\w.-]+` excludes trailing shell metacharacters: `worker-cli kill foo;` → `foo`, `worker-cli kill foo && x` → `foo`. Quoted/heredoc `worker-cli kill X` inside a send-message body is blanked by `_strip_non_shell_active` → no match → allow.
-2. For each captured name, runs `worker-cli status <name>` subprocess (timeout 3s). Registry auto-resolves project path. Blocks iff the first whitespace token of the output equals exactly `'working'`.
+2. For each captured name, runs `worker-cli status <name>` subprocess (timeout 3s) via `_resolve_worker_cli()` — resolves the binary by **absolute path** (`shutil.which` first; fallback: `glob ~/.claude/plugins/cache/brunowinter-plugins/iterative-dev/*/bin/worker-cli`, newest). If unresolvable → `''` → allow. Registry auto-resolves project path. Blocks iff the first whitespace token of the output equals exactly `'working'`.
+
+**Hook-env PATH gotcha:** CC's hook execution environment provides a PATH that does NOT include the plugin-cache bins. A subprocess-hook calling a plugin CLI by bare name → `FileNotFoundError` → fail-open → hook silently never fires. This was a live bug: the kill-guard let working-worker kills through until fixed in `_resolve_worker_cli()`. **General pattern for any future subprocess-hook:** resolve plugin CLIs by absolute path (`shutil.which` + plugin-cache glob), never by bare name.
 
 **Blocked patterns:** `worker-cli kill <name>` when `worker-cli status <name>` first token is `working`
 
