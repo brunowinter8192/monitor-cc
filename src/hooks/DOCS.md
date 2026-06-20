@@ -107,25 +107,31 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### rewrite_chained_sleep.py (131 LOC)
+### rewrite_chained_sleep.py (143 LOC)
 
-**Purpose:** PreToolUse hook (Bash) — **rewrites** chained `sleep N` by stripping it when the immediately-preceding command is trivial-sync (`echo`, `true`). Sleep-first chains, load-bearing predecessors (`kill`, `pkill`, `launchctl`, `tmux`, etc.) and loop-body sleeps are passed through unchanged (no-op). Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
+**Purpose:** PreToolUse hook (Bash) — **rewrites** chained `sleep N` by stripping it when the immediately-preceding segment is in `_TRIVIAL` (single-token read-only-fast commands) or `_TRIVIAL_PAIRS` (two-token exact pairs for safe subcommands of multi-verb CLIs). Sleep-first chains, load-bearing predecessors, and loop-body sleeps are passed through unchanged (no-op). Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
 **Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command`) when sleep(s) were stripped; nothing when no-op.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert).
 
+**Allowlist:**
+- `_TRIVIAL` (first token of preceding segment): `echo`, `true`, `grep`, `cat`, `ls`, `wc`, `head`, `tail`, `find`
+- `_TRIVIAL_PAIRS` (`(tokens[0], tokens[1])` exact pair): `(git,status)`, `(git,log)`, `(git,diff)`, `(git,show)`, `(rag-cli,search_hybrid)`, `(worker-cli,status)`, `(worker-cli,list)`, `(worker-cli,response)`
+
 **Strip condition (ALL must hold):**
 1. A chain operator (`&&`, `||`, `;`) immediately precedes `sleep N` (only whitespace between op and sleep)
-2. First token of the segment before that operator is in `_TRIVIAL = {'echo', 'true'}`
+2. `tokens[0]` of the preceding segment is in `_TRIVIAL`, OR `(tokens[0], tokens[1])` is in `_TRIVIAL_PAIRS`
 3. Sleep is NOT inside a `for|while|until ... done` span
 
 **Pass-through (no-op) conditions:**
 - Sleep-first chain (no preceding chain op) — intent is timing
-- `cmd_before` not in `_TRIVIAL`
+- cmd not in `_TRIVIAL` and pair not in `_TRIVIAL_PAIRS` (e.g. `git push`, `rag-cli index`, `worker-cli send/kill`, `launchctl`, `tmux`)
+- Flag between command and subcommand (e.g. `git -C <path> status` → `tokens[1]='-C'` → pair not found → no strip; conservatively fail-toward-preserve)
+- Single `&` background operator — not in `_CHAIN_RE`, so sleep has no preceding chain op → no strip
 - Sleep inside loop body
 
-**Smoke:** `dev/hook_smoke/test_rewrite_chained_sleep.py` (8 cases: 3 positive strip, 5 negative no-op).
+**Smoke:** `dev/hook_smoke/test_rewrite_chained_sleep.py` (31 cases: 18 strip, 13 pass-through).
 
 ---
 

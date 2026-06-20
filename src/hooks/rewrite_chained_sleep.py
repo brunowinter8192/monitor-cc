@@ -12,7 +12,17 @@ _SLEEP_RE = re.compile(r'\bsleep\s+\d+(?:\.\d+)?\b')
 _CHAIN_RE = re.compile(r';|&&|\|\|')
 _LOOP_RE  = re.compile(r'\b(for|while|until)\b')
 _DONE_RE  = re.compile(r'\bdone\b')
-_TRIVIAL  = frozenset({'echo', 'true'})
+_TRIVIAL  = frozenset({'echo', 'true', 'grep', 'cat', 'ls', 'wc', 'head', 'tail', 'find'})
+_TRIVIAL_PAIRS = frozenset({
+    ('git',        'status'),
+    ('git',        'log'),
+    ('git',        'diff'),
+    ('git',        'show'),
+    ('rag-cli',    'search_hybrid'),
+    ('worker-cli', 'status'),
+    ('worker-cli', 'list'),
+    ('worker-cli', 'response'),
+})
 
 
 # ORCHESTRATOR
@@ -77,8 +87,8 @@ def _find_strip_ranges(command: str, stripped: str) -> list:
         seg = stripped[seg_start:prec.start()].strip()
         if not seg:
             continue
-        cmd_before = seg.split()[0]
-        if cmd_before not in _TRIVIAL:
+        tokens = seg.split()
+        if tokens[0] not in _TRIVIAL and not (len(tokens) >= 2 and (tokens[0], tokens[1]) in _TRIVIAL_PAIRS):
             continue
 
         # Skip when sleep is inside a loop body

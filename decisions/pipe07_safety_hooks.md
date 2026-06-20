@@ -27,22 +27,42 @@
 - **Timeout:** 5s
 - **Replaced:** `block_chained_sleep.py` disabled 2026-05-24 (renamed → `.disabled`) after sleep-pattern audit showed trivial-sync pattern was 30.4% of violations.
 
-**Behavior:** REWRITE hook (exits 0 always, never blocks). Strips `sleep N` when the immediately-preceding command token is in `_TRIVIAL = frozenset({'echo', 'true'})`. Pass-through (no-op) for all other patterns.
+**Behavior:** REWRITE hook (exits 0 always, never blocks). Strips `sleep N` when the immediately-preceding segment is in `_TRIVIAL` (single-token) or `_TRIVIAL_PAIRS` (two-token exact pair). Pass-through (no-op) for all other patterns.
+
+**Allowlist:**
+
+`_TRIVIAL` (single-token — first token of preceding segment):
+```
+echo, true, grep, cat, ls, wc, head, tail, find
+```
+
+`_TRIVIAL_PAIRS` (two-token exact pair — `(tokens[0], tokens[1])` of preceding segment):
+```
+(git, status), (git, log), (git, diff), (git, show)
+(rag-cli, search_hybrid)
+(worker-cli, status), (worker-cli, list), (worker-cli, response)
+```
+
+**Multi-token rationale:** bare `git`, `rag-cli`, `worker-cli` in `_TRIVIAL` would strip after `git push/pull/fetch/merge/commit`, `rag-cli index/update_docs`, `worker-cli send/spawn/kill/merge` — all potentially load-bearing. Pairing with the exact read-only subcommand gives a narrow, FP-safe gate. `(tokens[0], tokens[1])` is a frozenset-of-tuples exact lookup — no substring or prefix matching.
+
+**Flag-handling limitation (known):** when a flag sits between command and subcommand — e.g. `git -C <path> status` where `tokens[1]='-C'` not `'status'` — the pair `('git', '-C')` is not in `_TRIVIAL_PAIRS`, so the sleep is conservatively NOT stripped. Fail-toward-preserve: missing a strip is safe; an incorrect strip of a load-bearing sleep is not. A narrow special-case for `git -C <path> <subcmd>` was evaluated and rejected — it would require index arithmetic (`tokens[3]`) that breaks for `git -C path --no-pager status` and `git -c k=v status` variations.
 
 **Strip condition (ALL must hold):**
 1. A chain operator (`&&`, `||`, `;`) immediately precedes `sleep N`
-2. First token of the preceding segment is `echo` or `true`
+2. First token of the preceding segment is in `_TRIVIAL`, OR `(tokens[0], tokens[1])` is in `_TRIVIAL_PAIRS`
 3. Sleep is NOT inside a `for|while|until ... done` span
 
 **Pass-through (no-op) — sleep preserved as-is:**
 - Sleep-first chain (no preceding op) — timer intent
-- cmd_before not in `_TRIVIAL` (load-bearing: `kill`, `launchctl`, `pkill`, `tmux`, etc.)
+- cmd_before not in `_TRIVIAL` and pair not in `_TRIVIAL_PAIRS` (load-bearing: `git push/pull/commit`, `rag-cli index/update_docs`, `worker-cli send/kill`, `launchctl`, `pkill`, `tmux`, etc.)
+- `git/rag-cli/worker-cli` with a flag between command and subcommand (e.g. `git -C <path> status`) — conservatively NOT stripped (fail-toward-preserve)
+- Single `&` background operator — not in `_CHAIN_RE` (`r';|&&|\|\|'`), so `tail -f log & sleep N` has no preceding chain op → sleep-first path → no strip
 - Loop body sleep
 - Any parse/internal error (fail-open)
 
 **Shell-region stripping:** uses `_shell_strip._strip_non_shell_active` (same-dir import) before tokenizing — heredoc bodies and quoted strings replaced with spaces of equal length. Prevents false-positive on `sleep` inside heredoc/string literals.
 
-**Smoke:** `dev/hook_smoke/test_rewrite_chained_sleep.py` (8 cases, 3 strip / 5 pass-through).
+**Smoke:** `dev/hook_smoke/test_rewrite_chained_sleep.py` (31 cases: 18 strip / 13 pass-through). Note: launchctl is covered by the 8 original cases; the 15 new strip + 8 new critical no-strip bring the total to 31.
 
 ### Hook 3 — `block_unauthorized_background.py` (`src/hooks/block_unauthorized_background.py`)
 
