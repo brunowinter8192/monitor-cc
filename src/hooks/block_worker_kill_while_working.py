@@ -64,14 +64,36 @@ def decide(command: str, status_fn) -> tuple:
 
 # Run 'worker-cli status <name>' with 3s timeout; return stdout or '' on any error/non-zero exit
 def _live_worker_status(name: str) -> str:
+    # TEMP DEBUG — remove after diagnosis
+    import datetime, shutil
+    _debug = {
+        "name": name,
+        "PATH": os.environ.get("PATH"),
+        "cwd": os.getcwd(),
+        "which_worker_cli": shutil.which("worker-cli"),
+    }
     try:
         result = subprocess.run(
             ['worker-cli', 'status', name],
             capture_output=True, text=True, timeout=3,
         )
-        return result.stdout.strip() if result.returncode == 0 else ''
+        _debug["returncode"] = result.returncode
+        _debug["stdout"] = result.stdout.strip()
+        _debug["stderr"] = result.stderr.strip()
+        ret = result.stdout.strip() if result.returncode == 0 else ''
+        _debug["returned"] = ret
+    except Exception as _e:
+        _debug["exception_type"] = type(_e).__name__
+        _debug["exception_msg"] = str(_e)
+        _debug["returned"] = ''
+        ret = ''
+    try:
+        _debug["ts"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open("/tmp/killguard_debug.log", "a", encoding="utf-8") as _f:
+            _f.write(json.dumps(_debug, ensure_ascii=False) + "\n")
     except Exception:
-        return ''
+        _ = None  # debug log failure must never break the hook
+    return ret
 
 # Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
