@@ -19,7 +19,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ### _shell_strip.py (194 LOC)
 
-**Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by six Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure). `_strip_impl` is decomposed into 6 private scan helpers (`_scan_heredoc`, `_scan_ansi_c_quote`, `_scan_cmd_subst`, `_scan_backtick`, `_scan_single_quote`, `_scan_double_quote`), each returning `(fragment, new_i)`.
+**Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by seventeen Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure). `_strip_impl` is decomposed into 6 private scan helpers (`_scan_heredoc`, `_scan_ansi_c_quote`, `_scan_cmd_subst`, `_scan_backtick`, `_scan_single_quote`, `_scan_double_quote`), each returning `(fragment, new_i)`.
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** n/a.
 **Called by:** `block_broad_grep.py`, `block_busywait_loop.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_polling_loop.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_pipe_background.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_reddit_index_background.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_response_noise.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
@@ -29,10 +29,10 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ### _fire_log.py (44 LOC)
 
-**Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all 20 active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"`: includes `reason` field (stderr text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
+**Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all 30 active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"`: includes `reason` field (stderr text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** `src/logs/hook_firing.jsonl` (appends one line per fire; path resolved from `__file__` relative to `src/`).
-**Called by:** all 24 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
+**Called by:** all 30 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
 **Calls out:** stdlib only (`json`, `os`, `datetime`).
 
 ---
@@ -79,6 +79,25 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Quote/heredoc stripping.** `_strip_non_shell_active()` removes heredoc bodies and quoted regions before fingerprint extraction — prevents counting a `ps -p` example in a `worker-cli send` message.
 
 **Smoke:** `dev/hook_smoke/test_block_polling_loop.py` (15 cases: frequency 3-poll sequence, different-target, single-check, no-target, session-isolation groups).
+
+---
+
+### block_busywait_loop.py (59 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks `while`/`until` loops whose body is EXACTLY `sleep N` AND whose condition contains a passive status-check pattern (`[`, `ps`, `pgrep`, `kill`, `grep`, `egrep`, `fgrep`, `test`, `tail`, `head`, `cat`, `wc`, `ls`, `stat`). This is the single-call busy-wait signature that `block_polling_loop` (cross-call frequency) cannot see. Narrowly scoped: retry loops, daemons doing real work, `while read`, bounded counters, and `for` loops are all outside scope (body not sleep-only or condition not a status-check). Exits 2 + stderr. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message with alternatives) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert); `_fire_log.log_fire`.
+
+**Blocked patterns:**
+- `while ps -p $PID > /dev/null; do sleep 2; done` — process-existence poll
+- `until grep "done" file.log; do sleep 5; done` — log-tail poll
+- `while [ -z "$STATUS" ]; do sleep 1; done` — bracket-condition with sleep-only body
+
+**Allowed patterns:** retry loops (`until curl ...; do sleep; done`); daemons (`while true; do work; sleep; done`); `while read line; do ...; done`; `for` loops with sleep; single `sleep N` outside a loop.
+
+**Quote/heredoc stripping.** `_strip_non_shell_active()` removes heredoc bodies and quoted regions before `_LOOP_RE` matching — prevents false-positives from `while`/`sleep` appearing as literal text inside `worker-cli send` messages.
 
 ---
 
@@ -190,6 +209,37 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - Command does not match the indexer pattern
 - Indexer pattern appears only in a quoted region (e.g. inside a `worker-cli send` message)
 - Parse errors (fail-open)
+
+---
+
+### rewrite_pipe_background.py (74 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — **silently rewrites** invocations of worker-exclusive long-running capture/news pipelines by flipping `run_in_background` to `true` via `hookSpecificOutput.updatedInput`. Targets `pipe_scraper` (searxng crawler: `./venv/bin/python -m src.crawler.pipe_scraper --url-file ...`) and `pipe_theblock.py` (news aggregator). Scope is deliberately narrow — `rag-cli index` and `workflow.py convert` are NOT included (Opus may run those foreground; forcing background would override that safe choice). Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_strip_non_shell_active` before pattern matching.
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
+**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command, run_in_background: true}`) when pipeline detected and `run_in_background` not already true; nothing on passthrough.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert); `_fire_log.log_fire`.
+
+**Rewrite condition:** `run_in_background != true` AND command contains `\bpipe_scraper\b` OR `\bpipe_theblock\.py\b` after quote-stripping.
+
+**Passthrough (no output):**
+- Command already has `run_in_background=true`
+- Command matches neither pipeline pattern in shell-active regions
+- Parse errors (fail-open)
+
+---
+
+### block_search_subreddits_limit.py (54 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks `reddit-cli search_subreddits` and `cli.py search_subreddits` invocations that carry a `--limit` flag. Subreddit discovery must return the full result set; capping it prematurely hides candidates. Exits 2 + stderr. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert); `_fire_log.log_fire`.
+
+**Blocked patterns:** `reddit-cli search_subreddits "query" --limit N`; `cli.py search_subreddits "query" --limit N` — `--limit` caps the result set before the caller can select from it.
+
+**Allowed patterns:** `reddit-cli search_subreddits "query"` without `--limit`; commands not containing `search_subreddits`; parse errors (fail-open). `_LIMIT_RE` is searched only after `_SEARCH_RE` matches — non-matching commands exit at the first gate.
 
 ---
 
@@ -328,22 +378,6 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Blocked patterns:** `file_path` is an existing file >256KB AND none of `offset`/`limit`/`pages` present in `tool_input`.
 
 **Allowed patterns:** file ≤256KB; offset/limit/pages present (user already scoped); nonexistent file; stat error (all fail-open).
-
----
-
-### block_read_worktree.py (56 LOC)
-
-**Purpose:** PreToolUse hook (Read) — blocks Read calls on files inside `.claude/worktrees/` that are NOT inside the calling session's own worktree. Reading another session's worktree via the Read tool re-injects CLAUDE.md into context (context bloat / duplicate system prompt). Workers reading their own worktree files are allowed. Exits 2 + stderr with Bash alternatives (`cat`, `head`, `git -C <wt> show`). Exits 0 on any parse/internal error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {file_path}}`).
-**Writes:** stderr (block message with Bash alternatives) on foreign-worktree match only.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Read entry). Never imported.
-**Calls out:** stdlib only (`json`, `os`).
-
-**Blocked patterns:** `file_path` contains `.claude/worktrees/` AND path is NOT under the current session's own worktree root (determined via `os.getcwd()`).
-
-**Allowed patterns:** file_path outside any worktree; file_path inside the calling session's own worktree; main-session reads of non-worktree paths; parse errors (fail-open).
-
-**Own-worktree detection.** Hook subprocess inherits the CC session's CWD. If CWD contains `.claude/worktrees/`, extract `<project>/.claude/worktrees/<name>` as the worktree root. Files starting with this root are own-worktree reads → allowed. Main sessions (no worktree in CWD) always produce block for worktree paths. `os.getcwd()` equality to session CWD confirmed empirically.
 
 ---
 
@@ -541,6 +575,20 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
+### block_worker_send_background.py (54 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks `worker-cli send` commands dispatched with `run_in_background=true`. `worker-cli send` is a fire-once, must-confirm action; backgrounding risks SIGTERM-kill before delivery (exit 143, silent message loss) or the orchestrator's next action running before the send completes. Canonical pattern: send in a standalone foreground Bash call; any timer dispatched as a separate `sleep 600 && echo done` call. Exits 2 + stderr. Exits 0 when `run_in_background` is absent or false, or on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
+**Writes:** stderr (block message with fix) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert); `_fire_log.log_fire`.
+
+**Blocked patterns:** any `worker-cli send <name> <message>` with `run_in_background=true`.
+
+**Allowed patterns:** `worker-cli send` with `run_in_background=false` or field absent; commands without `worker-cli send`; `worker-cli send` appearing inside a quoted string (blanked by `_strip_non_shell_active`); parse errors (fail-open).
+
+---
+
 ### block_worker_kill_while_working.py (87 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `worker-cli kill <name>` when the named worker is currently `working`. Double-gate: (1) regex `\bworker-cli\s+kill\s+([\w.-]+)` on shell-stripped command captures name token(s); (2) runs `worker-cli status <name>` subprocess (timeout 3s) and blocks only when the first output token is exactly `working`. Quoted/heredoc kill commands inside `worker-cli send` messages are stripped by `_strip_non_shell_active` → no match → guaranteed allow. All non-working statuses (idle, idle force-stopped, exited, unknown), subprocess errors, timeouts, and all exceptions → allow. Exits 2 + stderr with a message instructing the user to stop the worker first (ESC / `send 'stop'`) then kill.
@@ -551,7 +599,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 **Double-gate rationale:** pure regex alone would block a `kill` dispatched right after a worker finishes (race). The live status check ensures block iff the worker is verifiably `working` at hook-fire time — zero false positives for idle/finished/nonexistent workers.
 
-**Known accepted residual:** a shell comment containing the literal kill + a live-working-worker-name blocks (e.g. `echo hi # worker-cli kill foo`). Consistent with the whole hook family — none of the 20 hooks strip comments. The double-gate makes this unlikely in practice.
+**Known accepted residual:** a shell comment containing the literal kill + a live-working-worker-name blocks (e.g. `echo hi # worker-cli kill foo`). Consistent with the whole hook family — none of the 30 hooks strip comments. The double-gate makes this unlikely in practice.
 
 **Smoke:** `dev/hook_smoke/test_block_worker_kill_while_working.py` (13 cases: 3 block, 9 allow, 1 accepted-residual block).
 
@@ -597,5 +645,4 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 - **Seventeen hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `block_broad_grep.py`, `block_busywait_loop.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_polling_loop.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_pipe_background.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_reddit_index_background.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_response_noise.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Hooks are active immediately after settings.json is written; no CC restart needed.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
-- **`block_read_worktree.py` allows own-worktree reads.** Workers reading files in their own worktree via absolute path are now allowed. Cross-worktree reads (worker→other-worker) and main-session→worktree reads remain blocked.
-- **All 23 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
+- **All 30 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
