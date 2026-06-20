@@ -1,7 +1,9 @@
 # INFRASTRUCTURE
+import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -62,38 +64,30 @@ def decide(command: str, status_fn) -> tuple:
             return True, name
     return False, None
 
+# Resolve absolute path to worker-cli: shutil.which first, then plugin-cache glob fallback.
+# Returns None if unresolvable (hook PATH lacks plugin bin — confirmed diagnosis).
+def _resolve_worker_cli() -> str:
+    found = shutil.which('worker-cli')
+    if found:
+        return found
+    candidates = glob.glob(os.path.expanduser(
+        '~/.claude/plugins/cache/brunowinter-plugins/iterative-dev/*/bin/worker-cli'
+    ))
+    return sorted(candidates)[-1] if candidates else None
+
 # Run 'worker-cli status <name>' with 3s timeout; return stdout or '' on any error/non-zero exit
 def _live_worker_status(name: str) -> str:
-    # TEMP DEBUG — remove after diagnosis
-    import datetime, shutil
-    _debug = {
-        "name": name,
-        "PATH": os.environ.get("PATH"),
-        "cwd": os.getcwd(),
-        "which_worker_cli": shutil.which("worker-cli"),
-    }
     try:
+        binary = _resolve_worker_cli()
+        if binary is None:
+            return ''
         result = subprocess.run(
-            ['worker-cli', 'status', name],
+            [binary, 'status', name],
             capture_output=True, text=True, timeout=3,
         )
-        _debug["returncode"] = result.returncode
-        _debug["stdout"] = result.stdout.strip()
-        _debug["stderr"] = result.stderr.strip()
-        ret = result.stdout.strip() if result.returncode == 0 else ''
-        _debug["returned"] = ret
-    except Exception as _e:
-        _debug["exception_type"] = type(_e).__name__
-        _debug["exception_msg"] = str(_e)
-        _debug["returned"] = ''
-        ret = ''
-    try:
-        _debug["ts"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        with open("/tmp/killguard_debug.log", "a", encoding="utf-8") as _f:
-            _f.write(json.dumps(_debug, ensure_ascii=False) + "\n")
+        return result.stdout.strip() if result.returncode == 0 else ''
     except Exception:
-        _ = None  # debug log failure must never break the hook
-    return ret
+        return ''
 
 # Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
