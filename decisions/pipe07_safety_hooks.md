@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-30 safety hooks registered globally in `~/.claude/settings.json`. All 30 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 22 scripts with `block_` prefix + 8 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
+31 safety hooks registered globally in `~/.claude/settings.json`. All 31 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 23 scripts with `block_` prefix + 8 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -373,7 +373,7 @@
 
 **Block message:** tells user the worker is working, to stop it first (ESC or `worker-cli send '<name>' 'stop'`), wait until idle, then kill.
 
-**Known accepted residual:** a shell comment carrying the literal kill + a live-working-worker-name blocks (e.g. `echo hi # worker-cli kill foo` where `foo` is working). Consistent with the whole hook family — none of the 30 hooks strip shell comments. The double-gate makes this FP require both the comment text to name a real worker AND that worker to be actively working simultaneously.
+**Known accepted residual:** a shell comment carrying the literal kill + a live-working-worker-name blocks (e.g. `echo hi # worker-cli kill foo` where `foo` is working). Consistent with the whole hook family — none of the 31 hooks strip shell comments. The double-gate makes this FP require both the comment text to name a real worker AND that worker to be actively working simultaneously.
 
 **Fail-open:** outer `except Exception: sys.exit(0)` in the workflow function ensures ANY unexpected error exits 0. Status subprocess: `TimeoutExpired`, `FileNotFoundError`, and all other errors → return `''` → allow. Per-name status_fn exception inside `decide()` → `status = ''` → continue checking remaining names.
 
@@ -630,6 +630,44 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
+### Hook 31 — `block_manual_worker_cleanup.py` (`src/hooks/block_manual_worker_cleanup.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_manual_worker_cleanup.py`
+- **Timeout:** 5s
+
+**Detection:** two independent patterns applied to the shell-stripped command; either triggers the block:
+1. `\btmux\s+kill-session\b[^;&|\n]*\s-t\s*worker-` — `tmux kill-session` whose `-t` target starts with `worker-`
+2. `\bgit\s+(?:-C\s+\S+\s+)?worktree\s+remove\b[^;&|\n]*\.claude/worktrees/` — `git worktree remove` targeting `.claude/worktrees/`
+
+`[^;&|\n]*` (replacing `.*`) prevents either pattern from bridging across shell separators (`;`, `&`, `|`, newline). This closes the cross-command false positive: `tmux kill-session -t main ; cmd -t worker-x` does not block because the `-t worker-x` belongs to a different segment.
+
+**Blocked patterns:**
+- `tmux kill-session -t worker-monitor-cc-hook-docs` — kills worker tmux session directly
+- `tmux kill-session -a -t worker-foo` — same with extra flags
+- `tmux kill-session -tworker-foo` — no-space form (`-tNAME`)
+- `git worktree remove .claude/worktrees/hook-docs` — removes worker worktree directly
+- `git -C /repo worktree remove .claude/worktrees/hook-docs` — same with `-C` flag
+- `git worktree remove --force .claude/worktrees/hook-docs` — same with `--force`
+
+**Allowed patterns (not blocked):**
+- `worker-cli kill <name>` — the recommended atomic cleanup path (no pattern match)
+- `tmux kill-session -t main` / `-t my-regular-session` — non-`worker-` target
+- `tmux kill-session` (no `-t`) — kills current session, no target specified
+- `git worktree remove /some/other/path` — path outside `.claude/worktrees/`
+- `git worktree list` / `git worktree add ...` — non-remove subcommands
+- `git branch -D <anything>` — excluded by design (worker branches have no distinguishing prefix; blocking would FP on legitimate feature-branch deletes)
+- Patterns inside quoted strings (blanked by `_strip_non_shell_active`) — e.g. `worker-cli send foo 'tmux kill-session -t worker-bar'`
+- Cross-separator patterns — e.g. `tmux kill-session -t main ; echo -t worker-x`
+
+**Rationale:** The safe cleanup path is `worker-cli kill <name>` (atomic: tmux kill-session + worktree remove + branch delete + registry clear). Performing those steps RAW leaves partial/orphaned state: a bare `tmux kill-session` leaves the worktree and registry intact; a bare `git worktree remove` leaves the session still running. `git branch -D` alone has no distinguishing worker-branch prefix and cannot orphan a session or worktree, so it is excluded.
+
+**Fail-open:** exits 0 on any parse error; `_parse_command()` returns `(None, None)` on any exception → immediate exit 0.
+
+**Smoke:** `dev/hook_smoke/test_block_manual_worker_cleanup.py` (21 cases: 8 block, 13 allow including 2 separator cases and 2 quoted-string cases).
+
+---
+
 ## Evidenz
 
 **2026-05-22 hook-block analysis** (`dev/hook_firing/reports/2026-05-22_012326.md`, 7 days of CC sessions across all projects):
@@ -681,7 +719,7 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current 30 hooks + audit logging. Pending evaluation after rollout:
+Keep current 31 hooks + audit logging. Pending evaluation after rollout:
 - Do hooks #9–17 (2026-05-22 batch) intercept violations without false positives in live sessions?
 - `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.
