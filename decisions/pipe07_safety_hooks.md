@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-20 safety hooks registered globally in `~/.claude/settings.json`. All 20 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 14 block hooks (exit 2) + 5 rewrite hooks (exit 0 + updatedInput JSON): `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_background_sleep`, `block_path_typo` (legacy name, rewrite semantics), `rewrite_worker_cli_response_noise`.
+30 safety hooks registered globally in `~/.claude/settings.json`. All 30 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 22 scripts with `block_` prefix + 8 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -373,11 +373,262 @@
 
 **Block message:** tells user the worker is working, to stop it first (ESC or `worker-cli send '<name>' 'stop'`), wait until idle, then kill.
 
-**Known accepted residual:** a shell comment carrying the literal kill + a live-working-worker-name blocks (e.g. `echo hi # worker-cli kill foo` where `foo` is working). Consistent with the whole hook family — none of the 20 hooks strip shell comments. The double-gate makes this FP require both the comment text to name a real worker AND that worker to be actively working simultaneously.
+**Known accepted residual:** a shell comment carrying the literal kill + a live-working-worker-name blocks (e.g. `echo hi # worker-cli kill foo` where `foo` is working). Consistent with the whole hook family — none of the 30 hooks strip shell comments. The double-gate makes this FP require both the comment text to name a real worker AND that worker to be actively working simultaneously.
 
 **Fail-open:** outer `except Exception: sys.exit(0)` in the workflow function ensures ANY unexpected error exits 0. Status subprocess: `TimeoutExpired`, `FileNotFoundError`, and all other errors → return `''` → allow. Per-name status_fn exception inside `decide()` → `status = ''` → continue checking remaining names.
 
 **Smoke:** `dev/hook_smoke/test_block_worker_kill_while_working.py` (13 cases: 3 block, 9 allow, 1 accepted-residual block).
+
+### Hook 21 — `block_busywait_loop.py` (`src/hooks/block_busywait_loop.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_busywait_loop.py`
+- **Timeout:** 5s
+
+**Detection (double condition, BOTH must hold):**
+1. A `while`/`until` loop in shell-active regions has a body consisting of EXACTLY `sleep N` (nothing else after stripping semicolons and whitespace)
+2. The loop condition contains a passive status-check signal: `[`, `ps`, `pgrep`, `kill`, `grep`, `egrep`, `fgrep`, `test`, `tail`, `head`, `cat`, `wc`, `ls`, `stat`
+
+**Blocked patterns:**
+- `while ps -p $PID > /dev/null; do sleep 2; done` — process-existence poll
+- `until grep "done" file.log; do sleep 5; done` — log-tail poll
+- `while [ -z "$STATUS" ]; do STATUS=$(cat status.txt); sleep 1; done` — bracket condition with sleep-only body
+
+**Allowed patterns (not blocked):**
+- Retry loops with real work in body: `until curl -f http://...; do sleep 2; done` (body is not sleep-only)
+- Daemons: `while true; do work; sleep 60; done` (body is not sleep-only)
+- `while read line; do ...; done` (condition is not a status-check)
+- Bounded `for` loops with sleep
+- Single `sleep N` outside any loop
+
+**Complementary to `block_polling_loop` (Hook 8):** Hook 8 detects cross-call frequency (`ps -p`, `tail -N file` repeated ≥ 3× in 30 s). This hook detects the within-one-call busy-wait signature that a frequency counter cannot see.
+
+**Shell-region stripping:** uses `_strip_non_shell_active` before `_LOOP_RE` matching — prevents false-positives from `while`/`sleep` appearing as literal text inside heredoc bodies or quoted strings.
+
+**Fail-open:** exits 0 on any parse error; unmatched commands pass through immediately.
+
+---
+
+### Hook 22 — `rewrite_rag_cli_search_noise.py` (`src/hooks/rewrite_rag_cli_search_noise.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–21
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_rag_cli_search_noise.py`
+- **Timeout:** 5s
+
+**Detection:** `\brag-cli\s+search_hybrid\b` in shell-active regions of the command
+
+**Strip condition (ALL must hold):**
+1. Shell-active command contains `rag-cli search_hybrid` as a whole token
+2. Within the `search_hybrid` segment (up to the next `&&`, `||`, `;`, `)`, `\n`, or single `&`), a noise marker is found: `|` (excluding `||`), `>`, `>>`, `<<`, `&>`, `<`, `2>`, `2>&1`
+3. Strip from the noise marker through segment-end; eat leading whitespace only when segment extends to end-of-command (avoids trailing-space artifact)
+
+**Pass-through (no-op):**
+- `rag-cli search_hybrid <coll> <query>` with no pipe/redirect inside its segment
+- Any `rag-cli` subcommand other than `search_hybrid` (`read_document`, `list_collections`, `server`, etc.) — anchor cannot match
+- `rag-cli search_hybrid` appearing inside a quoted string (blanked by `_strip_non_shell_active`)
+- Parse errors (fail-open)
+
+**Rationale:** `search_hybrid` output is bounded and meant to land directly in context. Adding `| head`, `| tail`, or `> file` truncates results silently. Chains around the segment are preserved (`cd && rag-cli ... && bd list` → only the rag-cli segment is cleaned).
+
+**Smoke:** `dev/hook_smoke/test_rewrite_rag_cli_search_noise.py` (15 cases: 9 positive strip, 6 negative no-op).
+
+---
+
+### Hook 23 — `rewrite_searxng_scrape_noise.py` (`src/hooks/rewrite_searxng_scrape_noise.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–22
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_searxng_scrape_noise.py`
+- **Timeout:** 5s
+
+**Detection:** `\bsearxng-cli\s+scrape_url\b` in shell-active regions of the command
+
+**Strip condition (ALL must hold):**
+1. Shell-active command contains `searxng-cli scrape_url` as a whole token
+2. Within the `scrape_url` segment (up to the next `&&`, `||`, `;`, `)`, `\n`, or single `&`), a noise marker is found: `|` (excluding `||`), `>`, `>>`, `<<`, `&>`, `<`, `2>`, `2>&1`
+3. Strip from the noise marker through segment-end; eat leading whitespace only when segment extends to end-of-command
+
+**Pass-through (no-op):**
+- `searxng-cli scrape_url <url>` with no pipe/redirect inside its segment
+- Any `searxng-cli` subcommand other than `scrape_url` (`search_web`, `search_engine_drilldown`, `download_pdf`) — those produce bounded output and pass through unchanged
+- `searxng-cli scrape_url` appearing inside a quoted string (blanked by `_strip_non_shell_active`)
+- Parse errors (fail-open)
+
+**Rationale:** `scrape_url` output is bounded (15k PruningContentFilter cap) and meant to land directly in context. A `> /tmp/file 2>&1` redirect mixes crawl4ai browser logs into what appears to be page content. Real incident: a redirected scrape_url produced a false "content stops after section 3" impression and an apparent `=== LOG RECORD ===` leak — both display artifacts of the truncating command, not the scraper. Direct clone of `rewrite_rag_cli_search_noise.py` with anchor swapped to `\bsearxng-cli\s+scrape_url\b`.
+
+**Smoke:** `dev/hook_smoke/test_rewrite_searxng_scrape_noise.py` (16 cases: 9 positive strip, 7 negative no-op).
+
+---
+
+### Hook 24 — `block_worker_send_background.py` (`src/hooks/block_worker_send_background.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_worker_send_background.py`
+- **Timeout:** 5s
+
+**Detection:** `tool_input.run_in_background == true` AND shell-stripped command matches `\bworker-cli\s+send\b`
+
+**Blocked patterns:** any `worker-cli send <name> <message>` dispatched with `run_in_background=true`
+
+**Allowed patterns:** `worker-cli send` with `run_in_background=false` or field absent; commands without `worker-cli send`; `worker-cli send` appearing inside a quoted string (blanked by `_strip_non_shell_active`); parse errors (fail-open)
+
+**Rationale:** `worker-cli send` is a fire-once, must-confirm action. Backgrounding means the send subprocess may be SIGTERM-killed before delivering the message (exit 143, silent message loss), or the orchestrator's next action runs before the send completes. Canonical pattern: send in a standalone foreground Bash call; any background timer (`sleep 600 && echo done`) dispatched as a SEPARATE Bash call.
+
+**Fail-open:** exits 0 when `run_in_background` is absent, false, or not a bool; exits 0 on any parse error.
+
+---
+
+### Hook 25 — `rewrite_reddit_index_background.py` (`src/hooks/rewrite_reddit_index_background.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–24
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_reddit_index_background.py`
+- **Timeout:** 5s
+
+**Detection:** `tool_input.run_in_background != true` AND shell-stripped command matches `\b(reddit-cli|cli\.py)\s+index_subreddits\b`
+
+**Rewrite:** `run_in_background` field flipped from `false` (or absent) to `true` via `hookSpecificOutput.updatedInput.{command, run_in_background: true}`
+
+**Passthrough (no output):**
+- Command already has `run_in_background=true` (nothing to do)
+- Command does not contain `reddit-cli index_subreddits` or `cli.py index_subreddits` in shell-active regions
+- Indexer pattern appears only inside a quoted string (blanked by `_strip_non_shell_active`)
+- Parse errors (fail-open)
+
+**Rationale:** The reddit RAG-indexer takes ~75–100s wallclock (4 subs × 5 posts × ~1.1s/chunk embedding latency) — too long for a blocking Bash call. Pairs with `block_unauthorized_background` (Hook 3): the `_INDEXER_CANONICAL` whitelist in Hook 3 explicitly passes `reddit-cli index_subreddits` through its background check, so the `run_in_background: true` produced here survives the round-trip without triggering a block.
+
+**Fail-open:** exits 0 on any parse error; missing `run_in_background` defaults to `False` → triggers rewrite when indexer pattern matches.
+
+---
+
+### Hook 26 — `rewrite_pipe_background.py` (`src/hooks/rewrite_pipe_background.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–25
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_pipe_background.py`
+- **Timeout:** 5s
+
+**Detection:** `tool_input.run_in_background != true` AND shell-stripped command matches `\bpipe_scraper\b` OR `\bpipe_theblock\.py\b`
+
+**Rewrite:** `run_in_background` field flipped to `true` via `hookSpecificOutput.updatedInput.{command, run_in_background: true}`
+
+**Passthrough (no output):**
+- Command already has `run_in_background=true`
+- Command matches neither `pipe_scraper` nor `pipe_theblock.py` in shell-active regions
+- Parse errors (fail-open)
+
+**Scope (deliberately narrow):** only worker-exclusive long-running pipelines that Opus never invokes interactively: `pipe_scraper` (searxng crawler: `cd "$SEARXNG" && ./venv/bin/python -m src.crawler.pipe_scraper --url-file ...`) and `pipe_theblock.py` (news aggregator). `rag-cli index` and `workflow.py convert` are NOT included — Opus may legitimately run those foreground; forcing background would override that safe choice. Those are handled via `block_unauthorized_background` (Hook 3) whitelist for explicit per-call opt-in.
+
+**Fail-open:** exits 0 on any parse error; `run_in_background` absent defaults to `False` → triggers rewrite if pattern matches.
+
+---
+
+### Hook 27 — `block_search_subreddits_limit.py` (`src/hooks/block_search_subreddits_limit.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_search_subreddits_limit.py`
+- **Timeout:** 5s
+
+**Detection:** shell-stripped command contains `\b(reddit-cli|cli\.py)\s+search_subreddits\b` AND a `--limit` flag appears after the subcommand match position
+
+**Blocked patterns:**
+- `reddit-cli search_subreddits "crypto news" --limit 5` — caps the full result set
+- `cli.py search_subreddits "query" --limit 10` — same via raw CLI
+
+**Allowed patterns:** `reddit-cli search_subreddits "query"` without `--limit`; commands not containing `search_subreddits`; parse errors (fail-open)
+
+**Rationale:** Subreddit discovery must return the full result set — the caller selects 3–5 subreddits from ALL matches. Capping with `--limit` prematurely hides candidates, defeating the discovery purpose. `_LIMIT_RE` is searched only after `_SEARCH_RE` matches; non-matching commands exit immediately.
+
+**Fail-open:** exits 0 on any parse error; early exit before `_LIMIT_RE` check when `search_subreddits` not found.
+
+---
+
+### Hook 28 — `block_gh_cli_chained.py` (`src/hooks/block_gh_cli_chained.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_gh_cli_chained.py`
+- **Timeout:** 5s
+
+**Detection:** shell-stripped command contains one of the 7 gh-cli search/research tools (`search_repos`, `search_code`, `get_repo_tree`, `get_file_content`, `index_issues`, `index_discussions`, `index_releases`) AND after splitting on `&&`, `||`, `;`, `|`, `\n`, space-bounded `&`, at least one segment does NOT start with one of those 7 tools.
+
+**Blocked patterns:**
+- `gh-cli search_repos "q" | grep foo` — piped to a non-search command
+- `gh-cli index_issues "q" o/r && rag-cli index docs` — chained with rag-cli
+- `gh-cli get_file_content o/r path | head -10` — piped to head
+
+**Allowed patterns:**
+- `gh-cli index_issues "q" o/r --limit 30` — standalone with tool-native args
+- `gh-cli index_issues "a" o/r && gh-cli index_discussions "b" o/r` — multiple search/research calls combined
+- `gh-cli get_file_content o/r path > /tmp/out.txt` — redirect is not a `_SEPARATOR_RE` token (`>&`/`2>&1` have no whitespace before `&` and survive intact)
+- `gh-cli list_issues o/r | grep open` — issue-management commands (`list_issues`, `get_issue`, `create_issue`, `update_issue`, `delete_issue`) don't match `_GH_SEARCH_RE` → early exit
+- Parse errors (fail-open)
+
+**Rationale:** Search/research tools must run standalone so their full output reaches context. Piping through `grep`/`head`/`tail`/`sed`/`awk`/`wc` forces reconstruction from fragments. Tool-native args (`--offset`, `--limit`, `--path`, `--metadata-only`, `--sort-by`) narrow results without truncating output.
+
+**Smoke:** `dev/hook_smoke/test_block_gh_cli_chained.py` (18 cases: 9 block, 6 pass-standalone/two-chained/redirect, 2 exempt-issue-command, 1 single-quote strip, 1 heredoc strip).
+
+---
+
+### Hook 29 — `rewrite_bd_invalid_repo.py` (`src/hooks/rewrite_bd_invalid_repo.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_bd_invalid_repo.py`
+- **Timeout:** 5s
+
+**Detection:** command contains `\bbd\b` AND `_REPO_TOKEN_RE` matches `--repo /path`, `--repo=/path`, `--repo "path"`, or `--repo 'path'` AND the extracted path does not exist OR contains no `.beads/` subdirectory.
+
+**Rewrite:** matched `--repo <path>` token(s) are span-removed from the original command (no regex-replace; pure span deletion). At most a double-space remains where the token was — harmless for shell. Multiple `--repo` flags in one command all detected and removed in a single regex pass.
+
+**Passthrough (no output):**
+- `bd` commands without `--repo` (use cwd default)
+- `bd --repo <valid-path-with-.beads/>` — both `isdir(path)` and `isdir(path/.beads)` pass
+- Non-`bd` commands; shell-meta paths (`$PROJ_ROOT`, `` `pwd` ``, etc.) — unresolvable at hook time, let through
+- Any exception (outer `except Exception: sys.exit(0)` wraps the workflow)
+
+**Path validation per detected `--repo` arg:**
+1. Skip if path contains `$`, `` ` ``, `\`, `*`, `?`, `{` — shell-meta, unresolvable at hook time
+2. `os.path.expanduser` + `os.path.abspath` → resolved form
+3. `os.path.isdir(resolved)` AND `os.path.isdir(resolved + '/.beads')` — both required
+
+**Rationale:** Created after real incident: `bd --repo /Users/brunowinter2000/Monitor_CC create ...` (path typo — actual project under `Documents/ai/`) auto-initialized an unwanted `.beads/dolt/` at the wrong path and triggered a dolt-server port collision. The hook strips invalid `--repo` flags so `bd` defaults to cwd (which has `.beads/`).
+
+**Live verification (2026-05-22):** `bd --repo /Users/brunowinter2000/Wrong/Path create --title "test" --type task` produced bead `Monitor_CC-ggh6` (correct project prefix from cwd-default), `/Users/brunowinter2000/Wrong/` not auto-initialized.
+
+**Fail-open:** outer `except Exception: sys.exit(0)` in workflow guarantees pass-through on any unexpected error.
+
+---
+
+### Hook 30 — `block_worker_spawn_placement.py` (`src/hooks/block_worker_spawn_placement.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_worker_spawn_placement.py`
+- **Timeout:** 5s
+
+**Detection:** hook skips entirely when own CWD contains `.claude/worktrees/` (workers don't spawn workers). For main sessions: shell-stripped command matches `\bworker-cli\s+spawn\s+(\S+)\s+(\S+)\s+(\S+)` (extracts name, prompt, project_path). Two independent checks (either triggers block):
+1. `\bworker-cli\s+spawn\b.*--no-worktree\b` anywhere in the shell-stripped command
+2. `project_path` argument resolves to a different git-root than the session's own CWD
+
+**Blocked patterns:**
+- `worker-cli spawn <name> <prompt> /different/project` — cross-project spawn
+- `worker-cli spawn <name> <prompt> c --no-worktree` — worktree-less spawn
+
+**Allowed patterns:**
+- `project_path` of `c` or `.` (resolve to current project by definition → no root comparison needed)
+- Same-project absolute/relative path resolving to the same git-root
+- Any command without `worker-cli spawn`; spawn from inside a worktree CWD (hook skips entirely)
+- `project_path` or current-root resolution failure (fail-open)
+- Parse errors (fail-open)
+
+**Project-root resolution** (mirrors worker-cli's `resolve_project_path`):
+1. `os.path.abspath(expanduser(path))` → absolute form
+2. Strip `/.claude/worktrees/<name>` suffix if present
+3. `os.path.realpath()` — normalises symlink components (`/Users` vs `/System/Volumes/Data/Users`)
+4. Walk parent dirs until `.git` directory found → project root; `None` if filesystem root reached
+
+Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is case-insensitive.
+
+**Rationale:** Workers always run in a worktree of the current project. Cross-project spawns write to the wrong tree. `--no-worktree` leaves the worker without isolation — all writes land in the project root, conflicting with the main session.
+
+**Fail-open:** exits 0 when CWD is a worktree; exits 0 on path-resolution failure; exits 0 on any parse error.
+
+---
 
 ## Evidenz
 
@@ -430,7 +681,7 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current 19 hooks + audit logging. Pending evaluation after rollout:
+Keep current 30 hooks + audit logging. Pending evaluation after rollout:
 - Do hooks #9–17 (2026-05-22 batch) intercept violations without false positives in live sessions?
 - `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.
