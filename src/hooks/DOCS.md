@@ -19,20 +19,20 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ### _shell_strip.py (194 LOC)
 
-**Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by seventeen Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure). `_strip_impl` is decomposed into 6 private scan helpers (`_scan_heredoc`, `_scan_ansi_c_quote`, `_scan_cmd_subst`, `_scan_backtick`, `_scan_single_quote`, `_scan_double_quote`), each returning `(fragment, new_i)`.
+**Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by eighteen Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure). `_strip_impl` is decomposed into 6 private scan helpers (`_scan_heredoc`, `_scan_ansi_c_quote`, `_scan_cmd_subst`, `_scan_backtick`, `_scan_single_quote`, `_scan_double_quote`), each returning `(fragment, new_i)`.
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** n/a.
-**Called by:** `block_broad_grep.py`, `block_busywait_loop.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_polling_loop.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_pipe_background.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_reddit_index_background.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_response_noise.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `block_broad_grep.py`, `block_busywait_loop.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_manual_worker_cleanup.py`, `block_polling_loop.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_pipe_background.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_reddit_index_background.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_response_noise.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
 **Calls out:** stdlib only (no imports).
 
 ---
 
 ### _fire_log.py (44 LOC)
 
-**Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all 30 active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"`: includes `reason` field (stderr text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
+**Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all 31 active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"`: includes `reason` field (stderr text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** `src/logs/hook_firing.jsonl` (appends one line per fire; path resolved from `__file__` relative to `src/`).
-**Called by:** all 30 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
+**Called by:** all 31 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
 **Calls out:** stdlib only (`json`, `os`, `datetime`).
 
 ---
@@ -599,9 +599,27 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 **Double-gate rationale:** pure regex alone would block a `kill` dispatched right after a worker finishes (race). The live status check ensures block iff the worker is verifiably `working` at hook-fire time — zero false positives for idle/finished/nonexistent workers.
 
-**Known accepted residual:** a shell comment containing the literal kill + a live-working-worker-name blocks (e.g. `echo hi # worker-cli kill foo`). Consistent with the whole hook family — none of the 30 hooks strip comments. The double-gate makes this unlikely in practice.
+**Known accepted residual:** a shell comment containing the literal kill + a live-working-worker-name blocks (e.g. `echo hi # worker-cli kill foo`). Consistent with the whole hook family — none of the 31 hooks strip comments. The double-gate makes this unlikely in practice.
 
 **Smoke:** `dev/hook_smoke/test_block_worker_kill_while_working.py` (13 cases: 3 block, 9 allow, 1 accepted-residual block).
+
+---
+
+### block_manual_worker_cleanup.py (54 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks raw manual worker-cleanup commands that bypass `worker-cli kill <name>` and leave orphaned state. Two patterns: (1) `tmux kill-session -t worker-*` — kills the tmux session without removing the worktree, registry entry, or branch; (2) `git worktree remove .claude/worktrees/*` — removes the worktree without stopping the session or clearing the registry. Both patterns use `[^;&|\n]*` (not `.*`) to prevent bridging across shell separators — `tmux kill-session -t main ; cmd -t worker-x` does not trigger. `git branch -D` is deliberately excluded (worker branches have no distinguishing prefix; blocking would FP on normal feature-branch deletes). Exits 2 + stderr with `worker-cli kill <name>` as the fix. Exits 0 on any parse error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
+**Writes:** stderr (block message with worker-cli kill alternative) on match only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert); `_fire_log.log_fire`.
+
+**Blocked patterns:**
+- `tmux kill-session -t worker-*` — direct session kill (any `-t` form including `-tNAME` no-space)
+- `git worktree remove .claude/worktrees/*` — direct worktree remove (handles `-C path`, `--force`, absolute paths)
+
+**Allowed patterns:** `worker-cli kill <name>`; `tmux kill-session -t non-worker-session`; `tmux kill-session` (no -t); `git worktree remove /non-claude/path`; `git worktree list`/`add`; `git branch -D`; quoted patterns inside `worker-cli send` messages (stripped); cross-separator patterns (separator guard); parse errors (fail-open).
+
+**Smoke:** `dev/hook_smoke/test_block_manual_worker_cleanup.py` (21 cases: 8 block, 13 allow including 2 separator-guard cases and 2 quoted-string cases).
 
 ---
 
@@ -642,7 +660,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 - **Global registration.** Bash hooks fire for every Bash call; Edit hooks for every Edit call; Read hooks for every Read call — across all CC sessions on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
 - **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths. The sweep pass removes the old stale paths automatically on re-run.
 - **Stale hooks block all Bash calls.** A stale `python3 <missing>.py` hook exits 2 (Python interpreter error for missing file), which CC treats as a block — every Bash command in every session fails globally. Recovery: re-run `hook_setup.py` from the main repo root (from a real terminal, not CC's Bash tool, since Bash is blocked). The sweep removes dead entries before the add-loop runs.
-- **Seventeen hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `block_broad_grep.py`, `block_busywait_loop.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_polling_loop.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_pipe_background.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_reddit_index_background.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_response_noise.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
+- **Eighteen hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `block_broad_grep.py`, `block_busywait_loop.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_manual_worker_cleanup.py`, `block_polling_loop.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_pipe_background.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_reddit_index_background.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_response_noise.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Hooks are active immediately after settings.json is written; no CC restart needed.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
-- **All 30 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
+- **All 31 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
