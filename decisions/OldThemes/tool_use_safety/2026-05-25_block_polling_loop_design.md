@@ -149,6 +149,31 @@ Entscheidung darüber dann mit konkreten Daten, nicht hypothetisch.
 
 ---
 
+## 2026-06-22 — Live-FP (frequenz-Version) + Fix: pipe-gefüttertes tail hat kein Target
+
+**Kontext:** Der oben beschriebene Single-Call-Ansatz (A) wurde nicht die finale Form — die laufende Implementierung ist die frequenz-basierte Variante (Entscheidung 2026-05-29, `hook_fp_audit/2026-05-29.md`): `_extract_target` liest `ps -p <N>` → `pid:N` ODER `tail -<N> <file>` → `file:path`, zählt pro (session,target) im 30s-Fenster, blockt ab dem 3. Treffer.
+
+**FP entdeckt (Session CC-Version-Bump 149→176):** Befehl `cd … && plugin-publish 2>&1 | tail -25` (+ angehängte `echo`/`grep`) wurde mit "polling loop — ≥3 checks …" geblockt. Reine Output-Kürzung, kein Poll.
+
+**Evidenz:**
+- `src/logs/hook_firing.jsonl`: zwei Blocks 2026-06-22 15:58:56 (`block_manual_worker_cleanup`, gleiche Kette) + 15:59:13 (`block_polling_loop`).
+- `src/logs/polling_state.jsonl`: extrahiertes Target = `file:echo;` — der Hook hielt den String `echo;` für eine "gepollte Datei".
+
+**Mechanismus (verifiziert):** `_TAIL_N_FILE = r'\btail\s+-\d+\s+(\S+)'` greift das Token NACH `tail -25`. Bei pipe-gefüttertem Tail (`… | tail -25`) gibt es KEIN Dateiargument — Tail liest stdin —, also fängt `(\S+)` (über den Zeilenumbruch hinweg) das nächste verkettete Kommando `echo;`. Gewohnheits-Stil `cmd | tail -N` direkt gefolgt von `echo "…"` ⇒ dasselbe Pseudo-Target `file:echo;` lief 3× im 30s-Fenster auf (Merge-Befehl + 2 plugin-publish-Versuche) ⇒ Schwelle 3 gerissen. Echter FP: ein pipe-gefüttertes Tail hat keine Datei zum Pollen.
+
+**Fix-Richtung (User-green-lit 2026-06-22):** Ein pipe-gefüttertes `tail -N` (preceded by `|`, liest stdin) liefert KEIN Poll-Target. Whitelistet `cmd | tail -N` (+ verkettete Kommandos, auch wiederholt). Echtes `tail -N <file>` (ohne Pipe) bleibt als Watch-Loop-Target erkannt; `ps -p`-Pfad unberührt.
+
+**Umsetzung (committed `48e1504`, Worker `pollfix`):** Zwei-Bedingungen-Diskriminator —
+- **C1** `_TAIL_N_FILE = r'\btail\s+-\d+[^\S\n]+(\S+)'`: Whitespace vor dem Datei-Arg auf Space/Tab beschränkt (kein Newline) → das Folgezeilen-Kommando wird nicht mehr als Datei gefangen.
+- **C2** in `_extract_target`: wenn `stripped[:m.start()].rstrip()` auf einzelnes `|` endet (nicht `||`) → `return None` (pipe-gefüttert, liest stdin).
+- C1 fängt die Newline-Variante (`| tail -N\necho`), C2 die Gleiche-Zeile-Variante (`| tail -N ; echo`). Echtes `tail -N <file>` (kein Pipe davor) + `ps -p`-Pfad unberührt.
+- Smoke `dev/hook_smoke/test_block_polling_loop.py`: +Gruppe `_run_group_pipe_fed_tail` (5 Fälle), **20/20 grün**. IST `decisions/pipe07_safety_hooks.md` Hook 8 + `src/hooks/DOCS.md` + `dev/hook_smoke/DOCS.md` angeglichen.
+- **Akzeptierter Nicht-Fall:** `cmd | tail -N <file>` (pipe-gefüttert MIT File-Arg — Tail liest dann die Datei, nicht stdin) wird von C2 mit-whitelistet. Kein real geschriebenes Poll-Pattern; bewusst keine Extra-Logik.
+
+**Bezug Re-Eval 3** (`audit_logging/2026-05-25_data_dependent_reevals.md`): Dieser FP ist genau ein Datenpunkt der FP-Seite von Re-Eval 3. Die FN-Seite (andere Polling-Varianten, die durchschlüpfen) bleibt offen.
+
+---
+
 ## Sources
 
 - Forensik der `mode-topk-sweep` Worker-Session (RAG-Projekt, 2026-05-24):
