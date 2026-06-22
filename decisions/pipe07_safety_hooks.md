@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-32 safety hooks registered globally in `~/.claude/settings.json`. All 32 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 23 scripts with `block_` prefix + 9 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
+33 safety hooks registered globally in `~/.claude/settings.json`. All 33 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 24 scripts with `block_` prefix + 9 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -721,6 +721,36 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 **Fail-open:** exits 0 on any parse/internal error.
 
 **Smoke:** `dev/hook_smoke/test_rewrite_worker_cli_capture_noise.py` (17 cases: 5 positive strip, 1 `--raw`-survives strip, 3 redirect-preserved no-op, 8 negative no-op including `worker-cli response | tail` and `worker-cli send` quoted-capture pass-throughs).
+
+---
+
+### Hook 33 — `block_log_read.py` (`src/hooks/block_log_read.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_log_read.py`
+- **Timeout:** 5s
+
+**Two branches, per-segment:**
+
+The command is shell-stripped (`_strip_non_shell_active`) then split into segments on `&&`, `||`, `|`, `;`, `\n`. Each segment is classified independently:
+
+**Branch A — logread cap:** segment contains `\blogread\s+(\S+)` → first arg is the FILE (2nd arg is an optional line count, not the file). Records `{ts, session_id, file}` to `src/logs/logread_state.jsonl`. Prunes entries older than 24h (dead-session cleanup; NOT a detection window). Cumulative count per `(session_id, file)` with no time window — 1st and 2nd reads pass, 3rd read of the same file in the same session blocks. Block message: "go idle immediately! stop whatever you do, go idle!\nYou have read this log 3x this session — that is polling. Stop. The orchestrator reads the process output when it finishes."
+
+**Branch B — non-logread .log read:** segment does NOT contain `logread` AND contains a read tool (`tail`, `cat`, `head`, `grep`/`egrep`/`fgrep`, `sed`, `less`, `more`, `awk`, `tac`, `nl`, `zcat`) AND a `.log` (or `.log.N` / `.log.gz`) token that is NOT a redirect output target. Block message: "BLOCKED: read .log files only via `logread <file>` — the single sanctioned log reader. tail/cat/grep/etc. on a .log are disabled to make log-polling impossible. If you are waiting for a process, go idle."
+
+**Write-not-blocked:** `.log` appearing as a redirect OUTPUT target (`> file`, `>> file`, `N> file`, `&> file`, etc.) is stripped by `_REDIRECT_STRIP` before the `.log`-arg check. `echo x > foo.log`, `cmd >> foo.log`, `cmd 2>> foo.log`, `tee foo.log` all pass — `tee` is not in the read-tool list, and redirect targets are stripped from the rest. `cat a.log > b.log` blocks because `a.log` is a read input (stripped `> b.log` leaves `cat a.log`).
+
+**Per-segment precedence:** logread presence in one segment does NOT suppress Branch B in other segments. `tail x.log ; logread y.log` — the tail segment triggers Branch B (block); the logread segment is still counted in the Branch A pass (which runs first across all segments before Branch B).
+
+**Two-pass order:** Branch A pass runs first across ALL segments (counting every logread invocation in the command); Branch B pass then checks all non-logread segments. A Branch A cap triggers exit 2 before Branch B runs. A Branch B block triggers exit 2 after all Branch A counts are recorded.
+
+**State file:** `src/logs/logread_state.jsonl` — `{ts, session_id, file}` per logread invocation. Path overridable via `MONITOR_CC_LOGREAD_STATE` env var for test isolation.
+
+**Fail-open:** any parse/IO error → exit 0.
+
+**Rationale:** workers repeatedly poll `.log` files via `tail -n +N file | head` (incremental-offset poll). `block_polling_loop` (Hook 8) can partially catch this via frequency, but API latency makes poll spacing unpredictable, and even a blocked call doesn't stop the next one. The structural fix: one sanctioned read path (`logread`), capped to 3 per session per file. All other `.log` reads blocked unconditionally.
+
+**Smoke:** `dev/hook_smoke/test_block_log_read.py` (22 cases: read-tool block, write-pass, logread frequency cap, line-count-as-same-file, file independence, shell-strip, non-.log pass, evasion per-segment).
 
 ---
 
