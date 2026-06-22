@@ -108,7 +108,7 @@ python3 dev/hook_smoke/test_rewrite_rag_cli_search_noise.py
 
 ---
 
-### test_rewrite_worker_cli_capture_noise.py (117 LOC)
+### test_rewrite_worker_cli_capture_noise.py (152 LOC)
 
 **Purpose:** 17-case smoke for `rewrite_worker_cli_capture_noise.py`. Verifies 5 positive-strip cases (`| tail -40`, `| grep bar`, `| head -20 | sed`, `cd && ... | tail ; echo done` chain, `| wc -l`), 1 `--raw`-survives case (`--raw | tail -40` → `--raw` preserved), 3 redirect-preserved no-op cases (`> /tmp/x.txt`, `>> /tmp/x.txt`, `2>&1` all UNCHANGED), and 8 negative no-op cases (bare capture, `--raw` no-pipe, `response | tail` out-of-scope, wrong subcommands, chains without noise, quoted capture inside send-message).
 

@@ -181,7 +181,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### rewrite_worker_cli_capture_noise.py (97 LOC)
+### rewrite_worker_cli_capture_noise.py (109 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — **rewrites** `worker-cli capture` invocations by stripping downstream pipes inside the logical command segment. Redirects (`>`, `>>`, `2>&1`, `&>`, `<`) are **preserved** — `worker-cli capture X > /tmp/file` is a legitimate pattern (save clean output to disk). Scope is `capture` only; `response`, `status`, `list`, `send`, `merge`, `spawn`, `kill`, `revive` pass through unchanged. `--raw` flag (sits before any pipe) is never inside the strip range and survives automatically. Chains around the segment (`cd && worker-cli capture ...`, `worker-cli capture ... ; echo done`) are preserved — only the capture segment is cleaned. Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing. Direct clone of `rewrite_worker_cli_response_noise.py` with anchor swapped to `\bworker-cli\s+capture\b` and `_NOISE_RE` narrowed to pipe-only (`(?<!\|)\|(?!\|)`).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
