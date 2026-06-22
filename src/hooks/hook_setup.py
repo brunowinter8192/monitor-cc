@@ -29,6 +29,7 @@ _HOOK_SCRIPTS = [
     ("block_search_subreddits_limit.py", "Bash"),
     ("block_gh_cli_chained.py",          "Bash"),
     ("block_broad_grep.py",              "Bash"),
+    ("block_broad_find.py",              "Bash"),
     ("block_git_destructive.py",         "Bash"),
     ("rewrite_bd_invalid_repo.py",       "Bash"),
     ("block_venv_no_redirect.py",        "Bash"),

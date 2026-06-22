@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-33 safety hooks registered globally in `~/.claude/settings.json`. All 33 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 24 scripts with `block_` prefix + 9 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
+34 safety hooks registered globally in `~/.claude/settings.json`. All 34 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 25 scripts with `block_` prefix + 9 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -751,6 +751,53 @@ The command is shell-stripped (`_strip_non_shell_active`) then split into segmen
 **Rationale:** workers repeatedly poll `.log` files via `tail -n +N file | head` (incremental-offset poll). `block_polling_loop` (Hook 8) can partially catch this via frequency, but API latency makes poll spacing unpredictable, and even a blocked call doesn't stop the next one. The structural fix: one sanctioned read path (`logread`), capped to 3 per session per file. All other `.log` reads blocked unconditionally.
 
 **Smoke:** `dev/hook_smoke/test_block_log_read.py` (22 cases: read-tool block, write-pass, logread frequency cap, line-count-as-same-file, file independence, shell-strip, non-.log pass, evasion per-segment).
+
+---
+
+### Hook 34 — `block_broad_find.py` (`src/hooks/block_broad_find.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_broad_find.py`
+- **Timeout:** 5s
+
+**Detection (ALL three must hold to block):**
+1. At least one search root is BROAD — after `os.path.expanduser` + `os.path.normpath`: equals home dir, equals `/`, or equals/is under `~/.claude/`
+2. No `-maxdepth N` predicate in the find segment
+3. Output is NOT immediately `| head`-bounded (`after_segment` does not start with `| head`)
+
+**Root extraction:** tokenises the find segment, skips leading global options (`-H`, `-L`, `-P`, `-O<level>`, `-D debugopts`), collects tokens until the first predicate (token starting with `-`, `(`, `!`, `,`). Each root normalised by replacing `$HOME`/`${HOME}` prefix with `~` first, then `os.path.expanduser` + `os.path.normpath` — covers bare forms AND all subpath forms (`$HOME/.claude`, `${HOME}/foo`) uniformly. Trailing slashes handled by `normpath` (`~/` → home).
+
+**Broad-root set (intentionally tight):**
+- `~`, `~/`, `$HOME`, `${HOME}` — home directory in any form
+- `/` — filesystem root
+- `~/.claude` or any path under it — the `.claude` subtree (hundreds of session/worktree dirs)
+
+Non-broad (pass-through): `.`, relative paths, specific project paths, `~/Documents`, `~/Library`, etc.
+
+**Blocked patterns:**
+- `find ~/.claude -type d -iname '*searxng*'` — trigger incident: traversed whole `.claude` tree, ~80 results, context flood
+- `find ~ -name foo` — home dir, unbounded
+- `find ~/ -type f` — trailing-slash home (normalised by `normpath`)
+- `find $HOME -type f` — env-var home
+- `find / -name bar` — filesystem root
+- `find ~/.claude/projects -type d` — subpath under `.claude`
+- `find $HOME/.claude -type d` — same damage class, `$HOME` prefix form
+
+**Allowed patterns:**
+- `find ~/.claude -type d ... | head -20` — head-bounded → no context-flood risk
+- `find ~ -maxdepth 2 -name foo` — maxdepth limits traversal
+- `find src/ -name '*.py'` — non-broad root
+- `find . -type f` — dot is not broad
+- `find /Users/x/Documents/ai/project -name '*.py'` — specific project path
+- `echo "find ~ -name foo"` — quoted: blanked by `_strip_non_shell_active`
+
+**Head-bounded exemption.** `_find_segment()` returns `(segment, after_segment)`. `_is_head_bounded(after)` checks `^\s*\|\s*head\b` on `after_segment` only — head is the DIRECT next pipe. A `| head` further downstream in the chain does NOT exempt. Rationale: output between the find and the eventual head is still unbound (intermediate commands may buffer/log it). A `| tee`, `| wc`, or `| grep` immediately after find does NOT exempt — only `| head` immediately produces bounded output without logging the full tree.
+
+**Rationale:** unbounded `find` over a broad tree is the same context-flood damage class as broad recursive `grep` (`block_broad_grep`, Hook 4): both traverse large directory trees and dump unbounded results into context. The difference is that `grep -r` has `--include` scoping; `find` has `-maxdepth` and `| head`. A `find` with `-maxdepth 1` or piped to `| head -20` is bounded and carries no flood risk — those are not blocked. A plain `find ~ -name foo` or `find ~/.claude -type d ...` without any limit is a flood hazard equivalent to `grep -r . --include=` — blocked on damage principle. Deliberately NOT hooked: `ls -lT | head`, bounded `find` with `-maxdepth`, or any output-bounded query — bounded output is friction/style, not damage. The block-on-damage principle from the hook design: only block when irreversible harm or context flooding is certain; pass through any form with a demonstrable bound.
+
+**Fail-open:** exits 0 on any parse/internal error. `_parse_command()` returns `(None, None)` on exception. `_extract_roots()` returns `[]` if segment does not start with `find` token. Any path normalisation error returns the token unchanged — which then fails the broad-root check and passes through.
+
+**Smoke:** `dev/hook_smoke/test_block_broad_find.py` (19 cases: 8 block including real incident + trailing-slash + `$HOME` bare + `$HOME/.claude` subpath + multi-root; 11 pass including head-bounded, maxdepth, non-broad roots, quoted args, word-boundary).
 
 ---
 
