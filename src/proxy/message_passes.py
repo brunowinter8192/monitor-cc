@@ -22,12 +22,37 @@ from .payload_helpers import (
 from .rules_config import _load_config
 from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
 from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER, _WAKEUP_TEXT
+from .strip_bg_launch_ack import _strip_bg_launch_ack, _BG_LAUNCH_ACK_MARKER
 from .strip_hook_prefix import _strip_hook_prefix, _HOOK_PREFIX_MARKER
 from .strip_git_lock import _strip_git_lock_advice, _GIT_LOCK_MARKER
 from .strip_bd_noise import _strip_bd_noise, _BD_NOISE_MARKERS
 from .rule_ops import _ops_from_content_change, _append_wakeup_text_to_content
 
 # FUNCTIONS
+
+# Role=system pass — strips entire content of every role='system' message by replacing with '.' — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
+def _apply_role_system_strip(messages: list) -> tuple:
+    result = []
+    pass_mods = []
+    pass_removed_by_idx = {}
+    pass_injected_by_idx: dict = {}
+    pass_ops_by_msg_blk: dict = {}
+    changed_indices = []
+    for idx, msg in enumerate(messages):
+        if msg.get("role") != "system":
+            result.append(msg)
+            continue
+        old_content = msg.get("content", "")
+        if not old_content or old_content == ".":
+            result.append(msg)
+            continue
+        result.append({**msg, "content": "."})
+        changed_indices.append(idx)
+        pass_mods.append("stripped_role_system_msg")
+        pass_removed_by_idx[idx] = [old_content if isinstance(old_content, str) else str(old_content)]
+        pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, ".")
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
+
 
 # Remove duplicate _WAKEUP_TEXT injections from messages — keeps first occurrence per message.
 # TN path appends {text: _WAKEUP_TEXT} with trailing \n; BGK path inlines via _strip_bg_from_text
@@ -166,9 +191,10 @@ def _apply_first_pass(messages: list) -> tuple:
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
-# Cumulative second pass — strips Skills, claudeMd, pyright, ENV-context SRs from every user message including those already touched by pass 1 — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
+# Cumulative second pass — strips Skills, agent-types, claudeMd, pyright, ENV-context SRs from every user message including those already touched by pass 1 — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
 def _apply_cumulative_sr_strips(messages: list) -> tuple:
     _SKILLS_MARKER = "The following skills are available for use with the Skill tool"
+    _AGENT_TYPES_MARKER = "Available agent types for the Agent tool"
     _CLAUDEMD_MARKER = "# claudeMd"
     _PYRIGHT_ENABLED = _load_config().get("pyright_diagnostics_strip", {}).get("enabled", False)
     result = []
@@ -192,6 +218,11 @@ def _apply_cumulative_sr_strips(messages: list) -> tuple:
             if new_content != content:
                 content = new_content
                 cur_pass_mods.append("stripped_skills_sr")
+        if _content_contains(content, _AGENT_TYPES_MARKER):
+            new_content = _strip_system_reminder(content, _AGENT_TYPES_MARKER)
+            if new_content != content:
+                content = new_content
+                cur_pass_mods.append("stripped_agent_types_sr")
         if _content_contains(content, _CLAUDEMD_MARKER):
             new_content = _strip_system_reminder(content, _CLAUDEMD_MARKER)
             if new_content != content:
@@ -351,6 +382,34 @@ def _apply_git_lock_strip(messages: list) -> tuple:
             pass_mods.append("stripped_git_lock_advice")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = gl_removed
+            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
+        else:
+            result.append(msg)
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
+
+
+# BG-launch-ack pass — replaces content of background-command launch-ack blocks with '.' — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
+def _apply_bg_launch_ack_strip(messages: list) -> tuple:
+    result = []
+    pass_mods = []
+    pass_removed_by_idx = {}
+    pass_injected_by_idx: dict = {}
+    pass_ops_by_msg_blk: dict = {}
+    changed_indices = []
+    for idx, msg in enumerate(messages):
+        if msg.get("role") != "user":
+            result.append(msg)
+            continue
+        old_content = msg.get("content", "")
+        if not _content_contains(old_content, _BG_LAUNCH_ACK_MARKER):
+            result.append(msg)
+            continue
+        new_content, ack_removed = _strip_bg_launch_ack(old_content)
+        if ack_removed:
+            result.append({**msg, "content": new_content})
+            pass_mods.append("stripped_bg_launch_ack")
+            changed_indices.append(idx)
+            pass_removed_by_idx[idx] = ack_removed
             pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
         else:
             result.append(msg)

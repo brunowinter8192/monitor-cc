@@ -32,18 +32,21 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'DEF': ('stripped_deferred_tools_sr',   ['deferred tools are now available via ToolSearch']),
     'UI':  ('stripped_user_interrupt_sr',   ['user sent a new message while you were working', 'IMPORTANT: After completing your current task']),
     'SK':  ('stripped_skills_sr',           ['The following skills are available for use with the Skill tool']),
+    'AT':  ('stripped_agent_types_sr',      ['Available agent types for the Agent tool']),
     'CMD': ('stripped_claudemd_sr',         ['# claudeMd', 'Contents of ', 'The date has changed.']),
     'PYR': ('stripped_pyright_diagnostics', ['<new-diagnostics>']),
     'PM':  ('removed_plan_mode_sr',         ['Plan mode is active', 'Plan mode ']),
     'ALL': ('stripped_all_sr_msg0',         []),
     'PP':  ('stripped_po_preview',          ['Preview (first ']),  # PO wrapper kept, Preview content removed
     'BGK': ('stripped_bg_exit_notification', ['Background command "']),  # SIGTERM/SIGKILL kill notification from user-aborted sleep timer
+    'BL':  ('stripped_bg_launch_ack',        ['running in background with ID']),  # launch-ack: 'Command running in background with ID: <id>...'
     'GL':  ('stripped_git_lock_advice',      ['Another git process seems to be running']),  # constant git index.lock advice block in tool_result
     'BD':  ('stripped_bd_noise',             ['issues.jsonl', 'auto-export: no changes', 'auto-export: throttled', 'auto-export: skipping']),  # bd informational auto-import/export lines
     'ENV': ('stripped_env_context_sr',        ["As you answer the user's questions, you can use the following context:\n# userEmail"]),
     'HP':  ('stripped_hook_error_prefix',     ['PreToolUse:', 'hook error']),
     'SN':  ('stripped_system_notification_sr', ['[SYSTEM NOTIFICATION']),
     'FM':  ('stripped_file_modified_sr',       [' was modified']),
+    'RS':  ('stripped_role_system_msg',        []),  # role-gated, no content marker — attribution via om_norm.role in _process_messages_section
 }
 
 # Tag literal codes — 4 raw tags tracked for LEAK/SUSPECT detection

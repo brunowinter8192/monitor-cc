@@ -17,14 +17,17 @@ _FIELD_INJECT_FN: dict[str, str] = {
     **_FIELD_STRIP_FN, 'context_management': '_inject_context_management',
 }
 _MSG_CODE_TO_FN: dict[str, str] = {
+    'RS':  '_apply_role_system_strip',
     'REJ': '_apply_first_pass',  'TN':  '_apply_first_pass',
     'NAG': '_apply_first_pass',  'DEF': '_apply_first_pass',
     'UI':  '_apply_first_pass',  'PM':  '_apply_first_pass',
-    'SK':  '_apply_cumulative_sr_strips', 'CMD': '_apply_cumulative_sr_strips',
+    'SK':  '_apply_cumulative_sr_strips', 'AT':  '_apply_cumulative_sr_strips',
+    'CMD': '_apply_cumulative_sr_strips',
     'PYR': '_apply_cumulative_sr_strips',
     'ALL': '_apply_final_sr_pass', 'ENV': '_apply_final_sr_pass',
     'SN':  '_apply_final_sr_pass', 'FM':  '_apply_final_sr_pass',
     'PP':  '_apply_po_preview_strip', 'BGK': '_apply_bg_exit_strip',
+    'BL':  '_apply_bg_launch_ack_strip',
     'GL':  '_apply_git_lock_strip',   'BD':  '_apply_bd_noise_strip',
     'HP':  '_apply_hook_prefix_strip',
 }
@@ -157,7 +160,10 @@ def _process_messages_section(msg_diffs, orig_msgs_norm, is_first, prev_stripped
                 s_hashes[lk] = h
                 if is_first or (prev_stripped or {}).get(lk) != h:
                     s_blks[bidx] = s_texts
-                    code = _attribute_chunk("\n".join(s_texts))
+                    if om_norm.get("role") == "system":
+                        code = 'RS'
+                    else:
+                        code = _attribute_chunk("\n".join(s_texts))
                     s_fn[lk] = _MSG_CODE_TO_FN.get(code, "unknown") if code else "unknown"
             if has_i:
                 lk = f"msg.{md['idx']}.{bd['bidx']}"
