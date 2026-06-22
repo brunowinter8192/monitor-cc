@@ -29,6 +29,30 @@ from .rule_ops import _ops_from_content_change, _append_wakeup_text_to_content
 
 # FUNCTIONS
 
+# Role=system pass — strips entire content of every role='system' message by replacing with '.' — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
+def _apply_role_system_strip(messages: list) -> tuple:
+    result = []
+    pass_mods = []
+    pass_removed_by_idx = {}
+    pass_injected_by_idx: dict = {}
+    pass_ops_by_msg_blk: dict = {}
+    changed_indices = []
+    for idx, msg in enumerate(messages):
+        if msg.get("role") != "system":
+            result.append(msg)
+            continue
+        old_content = msg.get("content", "")
+        if not old_content or old_content == ".":
+            result.append(msg)
+            continue
+        result.append({**msg, "content": "."})
+        changed_indices.append(idx)
+        pass_mods.append("stripped_role_system_msg")
+        pass_removed_by_idx[idx] = [old_content if isinstance(old_content, str) else str(old_content)]
+        pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, ".")
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
+
+
 # Remove duplicate _WAKEUP_TEXT injections from messages — keeps first occurrence per message.
 # TN path appends {text: _WAKEUP_TEXT} with trailing \n; BGK path inlines via _strip_bg_from_text
 # which calls result.strip(), producing _WAKEUP_TEXT.rstrip('\n'). Both forms count as one wake-up.

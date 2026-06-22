@@ -44,6 +44,7 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'HP':  ('stripped_hook_error_prefix',     ['PreToolUse:', 'hook error']),
     'SN':  ('stripped_system_notification_sr', ['[SYSTEM NOTIFICATION']),
     'FM':  ('stripped_file_modified_sr',       [' was modified']),
+    'RS':  ('stripped_role_system_msg',        []),  # role-gated, no content marker — attribution via om_norm.role in _process_messages_section
 }
 
 # Tag literal codes — 4 raw tags tracked for LEAK/SUSPECT detection

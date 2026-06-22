@@ -17,6 +17,7 @@ _FIELD_INJECT_FN: dict[str, str] = {
     **_FIELD_STRIP_FN, 'context_management': '_inject_context_management',
 }
 _MSG_CODE_TO_FN: dict[str, str] = {
+    'RS':  '_apply_role_system_strip',
     'REJ': '_apply_first_pass',  'TN':  '_apply_first_pass',
     'NAG': '_apply_first_pass',  'DEF': '_apply_first_pass',
     'UI':  '_apply_first_pass',  'PM':  '_apply_first_pass',
@@ -157,7 +158,10 @@ def _process_messages_section(msg_diffs, orig_msgs_norm, is_first, prev_stripped
                 s_hashes[lk] = h
                 if is_first or (prev_stripped or {}).get(lk) != h:
                     s_blks[bidx] = s_texts
-                    code = _attribute_chunk("\n".join(s_texts))
+                    if om_norm.get("role") == "system":
+                        code = 'RS'
+                    else:
+                        code = _attribute_chunk("\n".join(s_texts))
                     s_fn[lk] = _MSG_CODE_TO_FN.get(code, "unknown") if code else "unknown"
             if has_i:
                 lk = f"msg.{md['idx']}.{bd['bidx']}"

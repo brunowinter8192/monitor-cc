@@ -141,5 +141,7 @@ TOOL_BLOCKLIST = frozenset({
     "ToolSearch",
     # Unused scheduling + monitoring built-ins
     "ScheduleWakeup", "Monitor",
+    # Workflow tool (CC 2.1.176+ built-in, ~18.5k-char description, all noise)
+    "Workflow",
 })
 
