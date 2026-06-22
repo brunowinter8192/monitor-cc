@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-31 safety hooks registered globally in `~/.claude/settings.json`. All 31 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 23 scripts with `block_` prefix + 8 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
+32 safety hooks registered globally in `~/.claude/settings.json`. All 32 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 23 scripts with `block_` prefix + 9 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -687,6 +687,40 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 **Fail-open:** exits 0 on any parse error; `_parse_command()` returns `(None, None)` on any exception → immediate exit 0.
 
 **Smoke:** `dev/hook_smoke/test_block_manual_worker_cleanup.py` (21 cases: 8 block, 13 allow including 2 separator cases and 2 quoted-string cases).
+
+---
+
+### Hook 32 — `rewrite_worker_cli_capture_noise.py` (`src/hooks/rewrite_worker_cli_capture_noise.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–31
+- **Command:** `python3 <absolute-path>/src/hooks/rewrite_worker_cli_capture_noise.py`
+- **Timeout:** 5s
+
+**Detection:** `\bworker-cli\s+capture\b` in shell-active regions of the command
+
+**Strip condition (ALL must hold):**
+1. Shell-active command contains `worker-cli capture` as a whole token
+2. Within the `capture` segment (up to the next `&&`, `||`, `;`, `)`, `\n`, or single `&`), a pipe is found: `|` excluding `||`
+3. Strip from the pipe through segment-end; eat leading whitespace only when segment extends to end-of-command
+
+**Pipe-only — redirects are explicitly preserved:**
+`worker-cli capture X > /tmp/file` is a legitimate pattern (save the clean output to disk). The noise regex is `(?<!\|)\|(?!\|)` — a single `|` only. Redirects (`>`, `>>`, `2>&1`, `&>`, `<`) are NOT stripped. This is the sole difference from `rewrite_worker_cli_response_noise` (Hook 19), which strips both pipes and redirects.
+
+**`--raw` survives:** the `--raw` flag sits between the anchor end and the pipe. Range-strip begins at the pipe position → `--raw` is never inside the strip range → preserved. `worker-cli capture X --raw | tail -40` rewrites to `worker-cli capture X --raw`.
+
+**Pass-through (no-op):**
+- `worker-cli capture X` with no pipe inside its segment
+- `worker-cli capture X > /tmp/file` — redirect, not a pipe → no noise marker found
+- `worker-cli capture X --raw` — flag, no pipe
+- Any subcommand other than `capture`: `response`, `status`, `list`, `send`, `merge`, `spawn`, `kill`, `revive` — anchor cannot match
+- `worker-cli capture` appearing inside a quoted string (blanked by `_strip_non_shell_active`)
+- Parse errors (fail-open)
+
+**Rationale:** `worker-cli capture` (iterative-dev plugin, 2026-06 redesign) now returns clean, scoped-to-last-prompt output on stdout directly. Appending `| tail -40` / `| grep X` re-truncates the already-complete output and stacks duplicate lines in context. Direct clone of `rewrite_worker_cli_response_noise.py` with anchor swapped to `\bworker-cli\s+capture\b` and `_NOISE_RE` narrowed to pipe-only.
+
+**Fail-open:** exits 0 on any parse/internal error.
+
+**Smoke:** `dev/hook_smoke/test_rewrite_worker_cli_capture_noise.py` (17 cases: 5 positive strip, 1 `--raw`-survives strip, 3 redirect-preserved no-op, 8 negative no-op including `worker-cli response | tail` and `worker-cli send` quoted-capture pass-throughs).
 
 ---
 
