@@ -47,9 +47,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules.py (119 LOC)
+### rules.py (123 LOC)
 
-**Purpose:** Orchestrates the proxy modification pipeline. Exports `apply_modification_rules` — loads system2 rules, runs 8 message passes from `message_passes` via a `_passes` loop (each pass updates `new_messages` in sequence, accumulates `modifications`/`stripped_msg_indices`/`stripped_msg_removed`/`injected_msg_added`/`_all_ops`), then calls `_dedup_wakeup_blocks` and `_apply_system_passes`. Re-exports `_strip_blocked_tool_references` (imported from `payload_helpers`) for `addon.py`. Contains `_apply_system_passes`: injects system2 rules into `system[2]`, strips session-guidance and gitStatus from `system[3]`, normalizes worktree paths in `system[3]`.
+**Purpose:** Orchestrates the proxy modification pipeline. Exports `apply_modification_rules` — loads system2 rules, runs 11 message passes from `message_passes` via a `_passes` loop (each pass updates `new_messages` in sequence, accumulates `modifications`/`stripped_msg_indices`/`stripped_msg_removed`/`injected_msg_added`/`_all_ops`), then calls `_dedup_wakeup_blocks` and `_apply_system_passes`. Re-exports `_strip_blocked_tool_references` (imported from `payload_helpers`) for `addon.py`. Contains `_apply_system_passes`: injects system2 rules into `system[2]`, strips session-guidance and gitStatus from `system[3]`, normalizes worktree paths in `system[3]`.
 **Reads:** Raw payload dict; rule text via `rules_config._load_system2_rules`.
 **Writes:** Nothing — returns `(modified_payload, modifications, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, _all_ops)` 8-tuple. `_all_ops` is `{msg_idx: {blk_idx: [(offset, removed, injected)]}}` — position-anchored ops from all passes accumulated via `_merge_ops`.
 **Called by:** `src/proxy/addon.py` (imports `apply_modification_rules`, `_strip_blocked_tool_references`)
@@ -67,13 +67,13 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### message_passes.py (385 LOC)
+### message_passes.py (444 LOC)
 
-**Purpose:** All nine message-level passes delegated by `apply_modification_rules`. Each of the 8 main passes receives `messages: list` and returns a 6-tuple `(new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)`. Pass sequence (call order in `rules._passes` loop): `_apply_first_pass` (elif-chain: plan-mode SR, task-notification tags + wakeup injection, task-tools-nag SR, deferred-tools SR, user-interrupt SR, rejection message); `_apply_cumulative_sr_strips` (skills-SR, claudeMd-SR, pyright-diagnostics — cumulative: applied to every user msg including those already touched by pass 1, diff-based SR extraction); `_apply_final_sr_pass` (strips all remaining `<system-reminder>` blocks); `_apply_po_preview_strip` (strips `Preview (first NKB):` section from `<persisted-output>` blocks); `_apply_bg_exit_strip` (replaces first BGK kill notification with `_WAKEUP_TEXT`, mod: `replaced_bg_completed_text`); `_apply_hook_prefix_strip` (strips `PreToolUse:<Tool> hook error: [python3 <path>]:` prefix from tool_result content, mod: `stripped_hook_error_prefix`); `_apply_git_lock_strip` (strips constant 5-line git index.lock advice from tool_result content, mod: `stripped_git_lock_advice`); `_apply_bd_noise_strip` (strips bd informational auto-import/export lines from tool_result content, mod: `stripped_bd_noise`). `_dedup_wakeup_blocks` returns a 2-tuple `(new_messages, ops_by_msg_blk)` — deduplicates multiple `_WAKEUP_TEXT` injections within the same user message to one; called after the 8-pass loop by `rules.apply_modification_rules`. Three inject points across passes: (1) TN branch → `[_WAKEUP_TEXT]`; (2) plan-mode FULL-strip branch → `["(plan-mode reminder stripped by proxy)"]`; (3) `_apply_bg_exit_strip` when `bg_removed` non-empty → `[_WAKEUP_TEXT]`. All passes call `_ops_from_content_change` / `_append_wakeup_text_to_content` from `rule_ops`.
+**Purpose:** All twelve message-level passes delegated by `apply_modification_rules`. Each of the 11 main passes receives `messages: list` and returns a 6-tuple `(new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)`. Pass sequence (call order in `rules._passes` loop): `_apply_role_system_strip` (replaces entire content of every `role='system'` message with `"."`, mod: `stripped_role_system_msg` — CC 2.1.176 delivers deferred-tools / agent-types / skills as a role=system plain-string message on Opus; idempotency guard skips empty + already-`"."` content); `_apply_first_pass` (elif-chain: plan-mode SR, task-notification tags + wakeup injection, task-tools-nag SR, deferred-tools SR, user-interrupt SR, rejection message); `_apply_cumulative_sr_strips` (skills-SR, agent-types-SR, claudeMd-SR, pyright-diagnostics — cumulative: applied to every user msg including those already touched by pass 1, diff-based SR extraction; `stripped_agent_types_sr` added for Sonnet-worker standalone agent-types SR ~2,353 chars); `_apply_final_sr_pass` (strips all remaining `<system-reminder>` blocks); `_apply_po_preview_strip` (strips `Preview (first NKB):` section from `<persisted-output>` blocks); `_apply_bg_exit_strip` (replaces first BGK kill notification with `_WAKEUP_TEXT`, mod: `replaced_bg_completed_text`); `_apply_bg_launch_ack_strip` (replaces block content with `"."` for background-command launch-ack blocks matching `'running in background with ID'`, all 4 content shapes, mod: `stripped_bg_launch_ack`); `_apply_hook_prefix_strip` (strips `PreToolUse:<Tool> hook error: [python3 <path>]:` prefix from tool_result content, mod: `stripped_hook_error_prefix`); `_apply_git_lock_strip` (strips constant 5-line git index.lock advice from tool_result content, mod: `stripped_git_lock_advice`); `_apply_bd_noise_strip` (strips bd informational auto-import/export lines from tool_result content, mod: `stripped_bd_noise`). `_dedup_wakeup_blocks` returns a 2-tuple `(new_messages, ops_by_msg_blk)` — deduplicates multiple `_WAKEUP_TEXT` injections within the same user message to one; called after the 11-pass loop by `rules.apply_modification_rules`. Three inject points across passes: (1) TN branch → `[_WAKEUP_TEXT]`; (2) plan-mode FULL-strip branch → `["(plan-mode reminder stripped by proxy)"]`; (3) `_apply_bg_exit_strip` when `bg_removed` non-empty → `[_WAKEUP_TEXT]`. All passes call `_ops_from_content_change` / `_append_wakeup_text_to_content` from `rule_ops`.
 **Reads:** Message list; `rules_config._load_config()` (pyright-strip flag in `_apply_cumulative_sr_strips`).
 **Writes:** Nothing — returns new lists/dicts; no mutation of input messages.
-**Called by:** `src/proxy/rules.py` (all 9 functions imported; 8 via `_passes` loop + `_dedup_wakeup_blocks` after)
-**Calls out:** `strip_sr`, `content_strip` (`_message_has_rejection`, `_strip_rejection_message`), `payload_helpers`, `rules_config`, `strip_po`, `strip_bg_completed`, `strip_hook_prefix`, `strip_git_lock`, `strip_bd_noise`, `rule_ops`.
+**Called by:** `src/proxy/rules.py` (all 12 functions imported; 11 via `_passes` loop + `_dedup_wakeup_blocks` after)
+**Calls out:** `strip_sr`, `content_strip` (`_message_has_rejection`, `_strip_rejection_message`), `payload_helpers`, `rules_config`, `strip_po`, `strip_bg_completed`, `strip_bg_launch_ack`, `strip_hook_prefix`, `strip_git_lock`, `strip_bd_noise`, `rule_ops`.
 
 ---
 
@@ -87,9 +87,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_sr.py (194 LOC)
+### strip_sr.py (196 LOC)
 
-**Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 10 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, plan-mode); each template has one or more identifier strings. `claudemd-contents` uses a list of identifiers (`"As you answer the user's questions"` for CC's preamble form, `"Contents of "` for the bare form) — `_match_template` iterates the list with OR semantics. Strip uses `startswith` against extracted SR-block inner text — no greedy regex across code literals. `<task-notification>` blocks do NOT go through this module — they are handled separately by `_apply_first_pass` in `message_passes.py`. The injected `_WAKEUP_TEXT` is plain text — no `<system-reminder>` tags, SR-strip passes uninvolved. `_apply_sr_strip._replace` has a pre-guard `_ENV_CONTEXT_RE.fullmatch(inner)` check that fires BEFORE the `_PRESERVE_PREAMBLE` guard, stripping CC's injected userEmail/currentDate SR block; the full-block match (email literal + date regex + IMPORTANT footer literal) ensures CLAUDE.md-context blocks with the same preamble are never false-positively stripped. **Partial-strip trailing-`\n`:** `_apply_sr_strip._replace` partial path preserves the original trailing-`\n` state: `trailing_nl = '\n' if full.endswith('\n') else ''` — the `\n` is appended only when the matched original had one. When the original SR had no trailing newline, `_STANDALONE_SR_RE` (ends with `\n?`) consumed none, so appending unconditionally would introduce a net-new `\n` into the forwarded payload; with the fix the output is byte-identical to the input w.r.t. the trailing character.
+**Purpose:** Strip `<system-reminder>` tag blocks from API message content via template-based exact-match. Maintains a catalog of 11 known SR templates (task-tools-nag, pyright-new-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, agent-types, plan-mode); each template has one or more identifier strings. `claudemd-contents` uses a list of identifiers (`"As you answer the user's questions"` for CC's preamble form, `"Contents of "` for the bare form) — `_match_template` iterates the list with OR semantics. Strip uses `startswith` against extracted SR-block inner text — no greedy regex across code literals. `<task-notification>` blocks do NOT go through this module — they are handled separately by `_apply_first_pass` in `message_passes.py`. The injected `_WAKEUP_TEXT` is plain text — no `<system-reminder>` tags, SR-strip passes uninvolved. `_apply_sr_strip._replace` has a pre-guard `_ENV_CONTEXT_RE.fullmatch(inner)` check that fires BEFORE the `_PRESERVE_PREAMBLE` guard, stripping CC's injected userEmail/currentDate SR block; the full-block match (email literal + date regex + IMPORTANT footer literal) ensures CLAUDE.md-context blocks with the same preamble are never false-positively stripped. **Partial-strip trailing-`\n`:** `_apply_sr_strip._replace` partial path preserves the original trailing-`\n` state: `trailing_nl = '\n' if full.endswith('\n') else ''` — the `\n` is appended only when the matched original had one. When the original SR had no trailing newline, `_STANDALONE_SR_RE` (ends with `\n?`) consumed none, so appending unconditionally would introduce a net-new `\n` into the forwarded payload; with the fix the output is byte-identical to the input w.r.t. the trailing character.
 **Reads:** Message content (string or list of blocks); template catalog (module-local).
 **Writes:** Nothing — returns modified content.
 **Called by:** `src/proxy/message_passes.py`
@@ -103,6 +103,16 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 **Writes:** Nothing — returns `(modified_content, list[str])`.
 **Called by:** `src/proxy/message_passes.py`
 **Calls out:** stdlib only (`re`).
+
+---
+
+### strip_bg_launch_ack.py (61 LOC)
+
+**Purpose:** Replace entire block content with `"."` for background-command launch-ack blocks. CC emits `"Command running in background with ID: <id>. Output is being written to: <path>. You will be notified when it completes. To check interim output, use Read on that file path."` as tool_result content or text block. Fast-path marker: `_BG_LAUNCH_ACK_MARKER = 'running in background with ID'`. Covers all 4 content shapes (str, list/text, list/tool_result-str, list/tool_result-list). Does NOT match BGK completion notification (`"Background command … failed/completed"`). Returns `(new_content, removed_chunks)` for `stripped_bg_launch_ack` mod attribution via BL rule.
+**Reads:** Message content (string or list of blocks).
+**Writes:** Nothing — returns `(modified_content, list[str])`.
+**Called by:** `src/proxy/message_passes.py` (`_apply_bg_launch_ack_strip`)
+**Calls out:** stdlib only.
 
 ---
 
@@ -181,9 +191,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_inject_delta.py (284 LOC)
+### strip_inject_delta.py (290 LOC)
 
-**Purpose:** Build `stripped_delta` and `injected_delta` JSONL entries from an original↔forwarded payload pair. Computes per-section diffs via four pure-return helpers (`_process_system_section`, `_process_tools_section`, `_process_messages_section`, `_process_fields_section`), builds flat `loc_key → MD5[:10]` hash chains for delta suppression, and attributes each change to the responsible strip/inject function via `fn_map`. Fn-attribution constants (`_SYS_FN`, `_FIELD_STRIP_FN`, `_FIELD_INJECT_FN`, `_MSG_CODE_TO_FN`) and span-hash helpers (`_hash_spans`, `_hash_span_sequence`) live here.
+**Purpose:** Build `stripped_delta` and `injected_delta` JSONL entries from an original↔forwarded payload pair. Computes per-section diffs via four pure-return helpers (`_process_system_section`, `_process_tools_section`, `_process_messages_section`, `_process_fields_section`), builds flat `loc_key → MD5[:10]` hash chains for delta suppression, and attributes each change to the responsible strip/inject function via `fn_map`. Fn-attribution constants (`_SYS_FN`, `_FIELD_STRIP_FN`, `_FIELD_INJECT_FN`, `_MSG_CODE_TO_FN`) and span-hash helpers (`_hash_spans`, `_hash_span_sequence`) live here. `_process_messages_section` uses role-based attribution for `role='system'` message strips: if `om_norm.get("role") == "system"` → `code = 'RS'` directly (bypasses `_attribute_chunk`), ensuring correct attribution regardless of content.
 **Reads:** Original and forwarded payload dicts (cache_control stripped at call site); previous hash state dicts (`loc_key → MD5[:10]`) from prior request; `all_ops` (`{msg_idx: {blk_idx: [(offset, removed, injected)]}}`) bridged from `flow.metadata`.
 **Writes:** Nothing — returns `(stripped_entry, injected_entry, new_stripped_hashes, new_injected_hashes)` 4-tuple.
 **Called by:** `src/proxy/addon.py` (imports `_build_stripped_injected_deltas`, called in `response()` hook via metadata bridge)
@@ -245,10 +255,10 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_vocab.py (258 LOC)
+### strip_vocab.py (262 LOC)
 
 **Purpose:** Shared vocabulary + semantics for proxy strip classification. Single source of truth used by `dev/tool_use_analysis/strip_audit.py` and `src/proxy_display/` (monitor). MUST be updated in lockstep when `rules.py` adds/renames rules or changes markers. Exports:
-- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/DEF/NAG/TN/PYR/UI/PM/REJ/ALL/SC/IR/PP/BGK/GL/BD/ENV/HP/SN/FM with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection; excludes TN, SC, IR, PP).
+- Constants: `BUCKETS` (EFF/INERT/IDX/LEAK/SUS), `RULES` (CMD/SK/AT/DEF/NAG/TN/PYR/UI/PM/REJ/ALL/SC/IR/PP/BGK/BL/GL/BD/ENV/HP/SN/FM/RS with markers), `TAG_LITERALS` (PO/SR/TN/ND), `STRIP_RULE_CODES`, `_SR_STRIP_RULES` (SR-class strip rule full names, used for LEAK:<SR> detection; excludes TN, SC, IR, PP).
 - `attribute_chunk(chunk) -> code | None` — marker-substring attribution (starts-with special-case for TN).
 - `code_for_rule(full_name) -> code | None` — reverse lookup from `modifications[]` entry to rule code.
 - `classify_tags(entry) -> (leak_signals, sus_signals)` — **delta-scoped**: scans `entry.messages[prev_message_count:][].blocks[].full_text` + content_preview/tail for the 4 tag literals. `prev_message_count = message_count - messages_added` (from `diff_from_prev`). Missing `diff_from_prev` → start=0 (first REQ, full scan). `first_diff_index < 0` (byte-identical re-fire sentinel) returns empty. Does NOT use `first_diff_index` as delta bound — `first_diff_index` can regress into old messages on 1-char re-serialization drift (TN strip appends `\n`) causing double-fire. Pairs each found tag with the relevant rule in `modifications[]` to decide LEAK vs SUS.
