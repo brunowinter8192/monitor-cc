@@ -75,3 +75,18 @@ Nicht von CC 2.1.176 verursacht — Vorkommen in msg[63] in echten Logs bestäti
 | `src/proxy/strip_bg_launch_ack.py` | Neues Modul |
 | `src/proxy/strip_vocab.py` | Codes RS, AT, BL |
 | `src/proxy/strip_inject_delta.py` | RS/AT/BL in `_MSG_CODE_TO_FN`; role-basierte Attribution für RS in `_process_messages_section` |
+
+## Noise-Audit (Session-Scan, 2026-06-22)
+
+Nach den vier Fixes wurde der Session-Log (`api_requests_opus_monitor_cc_1782159415_original.jsonl`) auf weitere ungedeckte CC-injizierte Noise-Klassen gescannt (distinct SR-Templates, role=system-Heads, wiederkehrende kurze tool_result-Inhalte). Ergebnis: **kein neuer ungedeckter Noise-Typ.**
+
+| Noise-Klasse | Status |
+|---|---|
+| Task-Tools-Nag (`The task tools haven't been used recently`) | gedeckt — in 176 als role=system → Fix 2 (RS); im Log bei idx 18 → `.` bestätigt |
+| deferred/agent-types/skills-Block | gedeckt — Fix 2 (RS, Opus) + Fix 3 (AT, Sonnet-Worker) |
+| bg-launch-ack | gedeckt — Fix 4 (BL) |
+| env-context SR (`As you answer… # userEmail`) | gedeckt — bestehende ENV-Regel |
+
+Was der Scan sonst als „wiederkehrend" zeigt (`(Bash completed with no output)` 57×, `monitor-cc` 59×, eigene Probe-/git-Ausgaben, `idle X%`), ist **eigener Tool-Output als Conversation-History** — die echte Arbeit, nicht strippbar (lossy).
+
+Bewusst NICHT gestrippt (aktionabel, kein reines Rauschen): der Read-Tool-Marker `[Truncated: PARTIAL view …]` und der `<persisted-output>`-Wrapper — beide nennen Pfad/Position des vollen Outputs.
