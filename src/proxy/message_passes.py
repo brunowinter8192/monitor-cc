@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 from .strip_sr import (
     _strip_all_system_reminders,
-    _strip_plan_mode_blocks,
     _strip_system_reminder,
     _strip_user_interrupt_sr,
     _strip_pyright_diagnostics,
@@ -93,7 +92,7 @@ def _dedup_wakeup_blocks(messages: list) -> tuple:
     return result, ops_by_msg_blk
 
 
-# First-pass message loop — elif-chain strips plan-mode, task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
+# First-pass message loop — elif-chain strips task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
 def _apply_first_pass(messages: list) -> tuple:
     result = []
     pass_mods = []
@@ -102,26 +101,7 @@ def _apply_first_pass(messages: list) -> tuple:
     pass_ops_by_msg_blk: dict = {}
     changed_indices = []
     for idx, msg in enumerate(messages):
-        if msg.get("role") == "user" and _content_contains(msg.get("content", ""), "Plan mode is active"):
-            old_content = msg.get("content", "")
-            stripped = _strip_plan_mode_blocks(old_content)
-            if stripped:
-                new_msg = dict(msg)
-                new_msg["content"] = stripped
-                result.append(new_msg)
-                if stripped != old_content:
-                    changed_indices.append(idx)
-                    pass_mods.append("removed_plan_mode_sr")
-                    pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "Plan mode")
-                    pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, stripped)
-            else:
-                result.append({"role": "user", "content": "(plan-mode reminder stripped by proxy)"})
-                changed_indices.append(idx)
-                pass_mods.append("removed_plan_mode_sr")
-                pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "Plan mode")
-                pass_injected_by_idx[idx] = ["(plan-mode reminder stripped by proxy)"]
-                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, "(plan-mode reminder stripped by proxy)")
-        elif msg.get("role") == "user" and _top_level_content_contains(msg.get("content", ""), "<task-notification>"):
+        if msg.get("role") == "user" and _top_level_content_contains(msg.get("content", ""), "<task-notification>"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
             new_msg["content"] = _strip_task_notification_tags(old_content)
