@@ -23,6 +23,8 @@ CASES = [
      "find ~/.claude/projects -type d", 2),
     ("multiple roots: one broad BLOCK",
      "find /tmp ~ -name foo", 2),
+    ("$HOME subpath: $HOME/.claude BLOCK",
+     "find $HOME/.claude -type d", 2),
 
     # --- PASS: head-bounded ---
     ("real incident + head PASS",

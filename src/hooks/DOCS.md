@@ -357,7 +357,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_broad_find.py (126 LOC)
+### block_broad_find.py (130 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `find` invocations over broad/unbounded search roots when no `-maxdepth N` predicate is present and output is not immediately `| head`-bounded. Broad roots: `~`, `~/`, `$HOME`, `/`, and the `.claude` subtree (`~/.claude` or any path under it). A `find ~/.claude -type d -iname '*searxng*'` without depth or head limits traverses hundreds of session/worktree dirs and floods context (~80 results — the trigger incident). Exits 2 + stderr with three escapes. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -383,7 +383,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 **Head-bounded exemption.** `_find_segment()` returns `(segment, after_segment)`. `_is_head_bounded(after)` checks `^\s*\|\s*head\b` — true only when `head` is the DIRECT next pipe after the find segment.
 
-**Root extraction.** After `\bfind\b` (word boundary excludes `mdfind`, `findmnt`), leading global options (`-H`, `-L`, `-P`, `-O<level>`, `-D debugopts`) are skipped token-by-token. Tokens are collected as roots until the first predicate (token starting with `-`, `(`, `!`, `,`). Each root is normalised with `os.path.expanduser` + `os.path.normpath`; `$HOME`/`${HOME}` resolved explicitly.
+**Root extraction.** After `\bfind\b` (word boundary excludes `mdfind`, `findmnt`), leading global options (`-H`, `-L`, `-P`, `-O<level>`, `-D debugopts`) are skipped token-by-token. Tokens are collected as roots until the first predicate (token starting with `-`, `(`, `!`, `,`). Each root is normalised: `$HOME`/`${HOME}` prefix replaced with `~` first, then `os.path.expanduser` + `os.path.normpath` — covers all subpath forms (`$HOME/.claude`, `${HOME}/foo`) uniformly.
 
 **Quote/heredoc stripping.** Before segment extraction, `_strip_non_shell_active()` (from `_shell_strip.py`) removes heredoc bodies and quoted regions. Prevents false-positives when `find ~/.claude ...` appears as literal text inside a `worker-cli send` message.
 

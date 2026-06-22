@@ -95,11 +95,15 @@ def _extract_roots(segment: str) -> list:
     return roots
 
 # Resolve a root token to a normalised absolute path.
-# Handles ~, ~/, ~/path, $HOME, ${HOME}; falls back to the token itself on error.
+# Handles ~, ~/, ~/path, $HOME, ${HOME} and all their subpath forms (e.g. $HOME/.claude).
+# Strategy: replace $HOME/${HOME} prefix with ~ so that expanduser covers all subpaths uniformly.
+# Falls back to the token itself on any error (fail-open).
 def _resolve_root(token: str) -> str:
     try:
-        if token in ('$HOME', '${HOME}'):
-            return _HOME
+        if token.startswith('${HOME}'):
+            token = '~' + token[7:]
+        elif token.startswith('$HOME'):
+            token = '~' + token[5:]
         return os.path.normpath(os.path.expanduser(token))
     except Exception:
         return token

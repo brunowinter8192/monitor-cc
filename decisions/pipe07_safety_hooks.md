@@ -765,7 +765,7 @@ The command is shell-stripped (`_strip_non_shell_active`) then split into segmen
 2. No `-maxdepth N` predicate in the find segment
 3. Output is NOT immediately `| head`-bounded (`after_segment` does not start with `| head`)
 
-**Root extraction:** tokenises the find segment, skips leading global options (`-H`, `-L`, `-P`, `-O<level>`, `-D debugopts`), collects tokens until the first predicate (token starting with `-`, `(`, `!`, `,`). `$HOME`/`${HOME}` resolved explicitly; all roots normalised with `normpath` to handle trailing slashes (`~/` → same as `~`).
+**Root extraction:** tokenises the find segment, skips leading global options (`-H`, `-L`, `-P`, `-O<level>`, `-D debugopts`), collects tokens until the first predicate (token starting with `-`, `(`, `!`, `,`). Each root normalised by replacing `$HOME`/`${HOME}` prefix with `~` first, then `os.path.expanduser` + `os.path.normpath` — covers bare forms AND all subpath forms (`$HOME/.claude`, `${HOME}/foo`) uniformly. Trailing slashes handled by `normpath` (`~/` → home).
 
 **Broad-root set (intentionally tight):**
 - `~`, `~/`, `$HOME`, `${HOME}` — home directory in any form
@@ -781,6 +781,7 @@ Non-broad (pass-through): `.`, relative paths, specific project paths, `~/Docume
 - `find $HOME -type f` — env-var home
 - `find / -name bar` — filesystem root
 - `find ~/.claude/projects -type d` — subpath under `.claude`
+- `find $HOME/.claude -type d` — same damage class, `$HOME` prefix form
 
 **Allowed patterns:**
 - `find ~/.claude -type d ... | head -20` — head-bounded → no context-flood risk
@@ -796,7 +797,7 @@ Non-broad (pass-through): `.`, relative paths, specific project paths, `~/Docume
 
 **Fail-open:** exits 0 on any parse/internal error. `_parse_command()` returns `(None, None)` on exception. `_extract_roots()` returns `[]` if segment does not start with `find` token. Any path normalisation error returns the token unchanged — which then fails the broad-root check and passes through.
 
-**Smoke:** `dev/hook_smoke/test_block_broad_find.py` (18 cases: 7 block including real incident + trailing-slash + `$HOME` + multi-root; 11 pass including head-bounded, maxdepth, non-broad roots, quoted args, word-boundary).
+**Smoke:** `dev/hook_smoke/test_block_broad_find.py` (19 cases: 8 block including real incident + trailing-slash + `$HOME` bare + `$HOME/.claude` subpath + multi-root; 11 pass including head-bounded, maxdepth, non-broad roots, quoted args, word-boundary).
 
 ---
 
