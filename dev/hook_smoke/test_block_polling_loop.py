@@ -23,6 +23,7 @@ def test_block_polling_loop_workflow() -> None:
     failures += _run_group_no_target(state_file)
     failures += _run_group_session_isolation(state_file)
     failures += _run_group_pipe_fed_tail(state_file)
+    failures += _run_group_long_form_tail(state_file)
     os.unlink(state_file)
     print()
     if failures:
@@ -111,7 +112,7 @@ def _run_group_no_target(state_file: str) -> list:
     r = _check("git status no target PASS",
                _run_hook("git status && ls -la", state_file, sid), 0)
     if r: failures.append(r)
-    r = _check("tail -n long-form no target PASS",
+    r = _check("ps-p wins over tail-n when both present PASS",
                _run_hook("ps -p 555; tail -n 20 /tmp/file.log", state_file, sid), 0)
     if r: failures.append(r)
     r = _check("ps aux no -p PASS",
@@ -159,6 +160,74 @@ def _run_group_pipe_fed_tail(state_file: str) -> list:
     r = _check("cat | tail -25 no-file-arg PASS",
                _run_hook("cat /tmp/log.txt | tail -25", state_file, sid), 0)
     if r: failures.append(r)
+    return failures
+
+
+# Long-form tail: all GNU forms yield file target; offset-agnostic keying; pipe-fed long form passes
+def _run_group_long_form_tail(state_file: str) -> list:
+    failures = []
+    # Worker's exact pattern: tail -n +N file | head with increasing offset, same file → blocks on 3rd
+    sid = "long-tail-offset"
+    r = _check("tail -n +58 | head offset #1 PASS",
+               _run_hook("tail -n +58 /tmp/docling-reference_index.log | head -30", state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("tail -n +88 | head offset #2 PASS",
+               _run_hook("tail -n +88 /tmp/docling-reference_index.log | head -30", state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("tail -n +118 | head offset #3 BLOCK",
+               _run_hook("tail -n +118 /tmp/docling-reference_index.log | head -30", state_file, sid), 2)
+    if r: failures.append(r)
+
+    sid = "long-tail-n"
+    r = _check("tail -n 30 #1 PASS", _run_hook("tail -n 30 /tmp/x.log", state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("tail -n 30 #2 PASS", _run_hook("tail -n 30 /tmp/x.log", state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("tail -n 30 #3 BLOCK", _run_hook("tail -n 30 /tmp/x.log", state_file, sid), 2)
+    if r: failures.append(r)
+
+    sid = "long-tail-lines"
+    r = _check("tail --lines=30 #1 PASS", _run_hook("tail --lines=30 /tmp/x.log", state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("tail --lines=30 #2 PASS", _run_hook("tail --lines=30 /tmp/x.log", state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("tail --lines=30 #3 BLOCK", _run_hook("tail --lines=30 /tmp/x.log", state_file, sid), 2)
+    if r: failures.append(r)
+
+    # Pipe-fed long form: cmd | tail -n +58 → no target, always passes regardless of repetition
+    sid = "pipe-fed-long"
+    r = _check("pipe-fed | tail -n +58 #1 PASS",
+               _run_hook("cmd | tail -n +58 /tmp/x.log", state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("pipe-fed | tail -n +58 #2 PASS",
+               _run_hook("cmd | tail -n +58 /tmp/x.log", state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("pipe-fed | tail -n +58 #3 PASS",
+               _run_hook("cmd | tail -n +58 /tmp/x.log", state_file, sid), 0)
+    if r: failures.append(r)
+
+    # Single long-form read always passes (one-off)
+    sid = "long-tail-single"
+    r = _check("tail -n 20 single read PASS",
+               _run_hook("tail -n 20 /tmp/single-long.log", state_file, sid), 0)
+    if r: failures.append(r)
+
+    # Attached forms (-nN and -n+N without space): pre-saturate 2×, use attached form as 3rd
+    # → same file fingerprint → blocks (proves attached form detected and file-keyed)
+    sid = "attached-n30"
+    _run_hook("tail -n 30 /tmp/af-n.log", state_file, sid)
+    _run_hook("tail -n 30 /tmp/af-n.log", state_file, sid)
+    r = _check("tail -n30 no-space #3 BLOCK",
+               _run_hook("tail -n30 /tmp/af-n.log", state_file, sid), 2)
+    if r: failures.append(r)
+
+    sid = "attached-nplus"
+    _run_hook("tail -n +58 /tmp/af-np.log", state_file, sid)
+    _run_hook("tail -n +88 /tmp/af-np.log", state_file, sid)
+    r = _check("tail -n+118 no-space offset #3 BLOCK",
+               _run_hook("tail -n+118 /tmp/af-np.log", state_file, sid), 2)
+    if r: failures.append(r)
+
     return failures
 
 

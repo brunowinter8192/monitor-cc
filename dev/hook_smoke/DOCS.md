@@ -69,9 +69,9 @@ python3 dev/hook_smoke/test_block_read_worktree.py
 
 ---
 
-### test_block_polling_loop.py (166 LOC)
+### test_block_polling_loop.py (235 LOC)
 
-**Purpose:** 20-case stateful smoke for `block_polling_loop.py`. Uses a temp state file (env var `MONITOR_CC_POLLING_STATE`) to isolate test runs. Six test groups: frequency (ps-p and tail each reach block on 3rd call), different-target (new target passes after saturation), single-check (one-off always passes), no-target (tail -n long form, ps aux, git status, quoted patterns), session-isolation (session B saturation does not affect session A's count), pipe-fed-tail (cmd | tail -N repeated ≥3× always passes — no target extracted for pipe-fed tail).
+**Purpose:** 35-case stateful smoke for `block_polling_loop.py`. Uses a temp state file (env var `MONITOR_CC_POLLING_STATE`) to isolate test runs. Seven test groups: frequency (ps-p and tail each reach block on 3rd call), different-target (new target passes after saturation), single-check (one-off always passes), no-target (ps-p takes priority over tail-n, ps aux, git status, quoted patterns), session-isolation (session B saturation does not affect session A's count), pipe-fed-tail (cmd | tail -N repeated ≥3× always passes), long-form-tail (all GNU tail forms — -n N, -n +N, -nN, -n+N, --lines=N — block on 3rd call; worker's exact `tail -n +N file | head` pattern with increasing offsets on same file is file-keyed and blocks on 3rd; pipe-fed long-form always passes).
 
 **Usage:**
 ```bash
