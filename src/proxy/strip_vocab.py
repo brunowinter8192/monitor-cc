@@ -32,6 +32,7 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'DEF': ('stripped_deferred_tools_sr',   ['deferred tools are now available via ToolSearch']),
     'UI':  ('stripped_user_interrupt_sr',   ['user sent a new message while you were working', 'IMPORTANT: After completing your current task']),
     'SK':  ('stripped_skills_sr',           ['The following skills are available for use with the Skill tool']),
+    'AT':  ('stripped_agent_types_sr',      ['Available agent types for the Agent tool']),
     'CMD': ('stripped_claudemd_sr',         ['# claudeMd', 'Contents of ', 'The date has changed.']),
     'PYR': ('stripped_pyright_diagnostics', ['<new-diagnostics>']),
     'PM':  ('removed_plan_mode_sr',         ['Plan mode is active', 'Plan mode ']),

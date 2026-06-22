@@ -25,6 +25,7 @@ _SR_TEMPLATES = {
     'claudemd-contents':   (["As you answer the user's questions", 'Contents of '],     'full'),
     'date-changed':        ('The date has changed.',                                    'full'),
     'skills-available':    ('The following skills are available',                       'full'),
+    'agent-types':         ('Available agent types for the Agent tool',                 'full'),
     'plan-mode':           ('Plan mode ',                                               'full'),
 }
 _ALL_TEMPLATES = frozenset(_SR_TEMPLATES.keys())
@@ -59,6 +60,7 @@ _MARKER_TO_TEMPLATE = {
     '# claudeMd':                                      'claudemd-contents',
     'Contents of ':                                    'claudemd-contents',
     'The following skills are available':              'skills-available',
+    'Available agent types for the Agent tool':        'agent-types',
     'Plan mode is active':                             'plan-mode',
 }
 

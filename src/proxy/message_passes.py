@@ -190,9 +190,10 @@ def _apply_first_pass(messages: list) -> tuple:
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
-# Cumulative second pass — strips Skills, claudeMd, pyright, ENV-context SRs from every user message including those already touched by pass 1 — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
+# Cumulative second pass — strips Skills, agent-types, claudeMd, pyright, ENV-context SRs from every user message including those already touched by pass 1 — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
 def _apply_cumulative_sr_strips(messages: list) -> tuple:
     _SKILLS_MARKER = "The following skills are available for use with the Skill tool"
+    _AGENT_TYPES_MARKER = "Available agent types for the Agent tool"
     _CLAUDEMD_MARKER = "# claudeMd"
     _PYRIGHT_ENABLED = _load_config().get("pyright_diagnostics_strip", {}).get("enabled", False)
     result = []
@@ -216,6 +217,11 @@ def _apply_cumulative_sr_strips(messages: list) -> tuple:
             if new_content != content:
                 content = new_content
                 cur_pass_mods.append("stripped_skills_sr")
+        if _content_contains(content, _AGENT_TYPES_MARKER):
+            new_content = _strip_system_reminder(content, _AGENT_TYPES_MARKER)
+            if new_content != content:
+                content = new_content
+                cur_pass_mods.append("stripped_agent_types_sr")
         if _content_contains(content, _CLAUDEMD_MARKER):
             new_content = _strip_system_reminder(content, _CLAUDEMD_MARKER)
             if new_content != content:
