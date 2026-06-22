@@ -174,6 +174,18 @@ Entscheidung darüber dann mit konkreten Daten, nicht hypothetisch.
 
 ---
 
+## 2026-06-22 — Live-FN geschlossen: lange/Offset-Tail-Formen (Log-Polling)
+
+**Live-FN entdeckt:** Ein Docling/RAG-Conversion-Worker pollte ein wachsendes Log endlos mit `tail -n +58 /tmp/docling-reference_index.log | head -30`, Offset monoton steigend (+58, +88, +118 …) auf dieselbe Datei. Der Hook fing es NICHT — verifiziert: 3 identische-Datei-Reads alle `exit 0`, KEIN Target extrahiert.
+
+**Root Cause:** `_TAIL_N_FILE = r'\btail\s+-\d+…'` matchte nur die BSD-Kurzform `tail -<N>`. Die GNU-Lang-/Offset-Formen (`-n N`, `-n +N`, `-nN`, `-n+N`, `--lines=N`, `--lines N`) matchten nicht → kein File-Target → Frequenz-Zähler feuerte nie. Exakt die dokumentierte Lücke (Design-Schwäche „reines Log-Polling" + DOCS „`tail -n N` long form not detected"). Auslöser-Trigger für die Erweiterung (vom Design-Doc vorgesehen: „sobald hook_firing zeigt dass andere Formen real auftreten") war damit erfüllt.
+
+**Fix (committed `db789ad`, Worker `polllong`):** `_TAIL_N_FILE` → `_TAIL_FILE`, Alternation über alle Formen; die Zahl/der Offset wird INNERHALB des Flag-Arms konsumiert (`-n[^\S\n]*\+?\d+` etc.), `(\S+)` fängt immer die Datei → **datei-gekeyt, Offset-agnostisch** (+58/+88/+118 = derselbe Fingerprint → 3. Read blockt). Pipe-fed-Ausnahme (C2 aus dem FP-Fix) bleibt. FP-sicher: `tail -network` / `--lines-processed` brauchen eine Ziffer nach dem Flag → kein Match. Smoke 20→35 (Worker-Exakt-Form blockt auf #3; angehängte `-n30`/`-n+58`; pipe-fed weiter no-target). IST `pipe07_safety_hooks.md` Hook 8 + `src/hooks/DOCS.md` + `dev/hook_smoke/DOCS.md` angeglichen (Caveat raus). Live gegen die Worker-Exakt-Form verifiziert.
+
+**Re-Eval 3 FN-Seite:** Dies schließt den **Tail-Form-Teil** der FN-Seite. Restrisiko bleibt: form-fremde Polls (sed-Windowing, python/jq-Tail, dd-Loops) — die voll form-agnostische Variante (Angriffsfläche C, Session-JSONL-Frequenzanalyse) bleibt zurückgestellt (schwerer + FP-anfällig). Pragmatik: realistische Tail-Formen gedeckt, exotische bleiben Restrisiko. Meta-Punkt (User-Frage): Worker-Regel-Verstöße („go idle, don't poll") sind nur strukturell verlässlich zu fixen — der Hook, nicht die Regel.
+
+---
+
 ## Sources
 
 - Forensik der `mode-topk-sweep` Worker-Session (RAG-Projekt, 2026-05-24):
