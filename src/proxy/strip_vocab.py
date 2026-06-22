@@ -39,6 +39,7 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'ALL': ('stripped_all_sr_msg0',         []),
     'PP':  ('stripped_po_preview',          ['Preview (first ']),  # PO wrapper kept, Preview content removed
     'BGK': ('stripped_bg_exit_notification', ['Background command "']),  # SIGTERM/SIGKILL kill notification from user-aborted sleep timer
+    'BL':  ('stripped_bg_launch_ack',        ['running in background with ID']),  # launch-ack: 'Command running in background with ID: <id>...'
     'GL':  ('stripped_git_lock_advice',      ['Another git process seems to be running']),  # constant git index.lock advice block in tool_result
     'BD':  ('stripped_bd_noise',             ['issues.jsonl', 'auto-export: no changes', 'auto-export: throttled', 'auto-export: skipping']),  # bd informational auto-import/export lines
     'ENV': ('stripped_env_context_sr',        ["As you answer the user's questions, you can use the following context:\n# userEmail"]),

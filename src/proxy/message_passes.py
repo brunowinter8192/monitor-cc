@@ -22,6 +22,7 @@ from .payload_helpers import (
 from .rules_config import _load_config
 from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
 from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER, _WAKEUP_TEXT
+from .strip_bg_launch_ack import _strip_bg_launch_ack, _BG_LAUNCH_ACK_MARKER
 from .strip_hook_prefix import _strip_hook_prefix, _HOOK_PREFIX_MARKER
 from .strip_git_lock import _strip_git_lock_advice, _GIT_LOCK_MARKER
 from .strip_bd_noise import _strip_bd_noise, _BD_NOISE_MARKERS
@@ -381,6 +382,34 @@ def _apply_git_lock_strip(messages: list) -> tuple:
             pass_mods.append("stripped_git_lock_advice")
             changed_indices.append(idx)
             pass_removed_by_idx[idx] = gl_removed
+            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
+        else:
+            result.append(msg)
+    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
+
+
+# BG-launch-ack pass — replaces content of background-command launch-ack blocks with '.' — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
+def _apply_bg_launch_ack_strip(messages: list) -> tuple:
+    result = []
+    pass_mods = []
+    pass_removed_by_idx = {}
+    pass_injected_by_idx: dict = {}
+    pass_ops_by_msg_blk: dict = {}
+    changed_indices = []
+    for idx, msg in enumerate(messages):
+        if msg.get("role") != "user":
+            result.append(msg)
+            continue
+        old_content = msg.get("content", "")
+        if not _content_contains(old_content, _BG_LAUNCH_ACK_MARKER):
+            result.append(msg)
+            continue
+        new_content, ack_removed = _strip_bg_launch_ack(old_content)
+        if ack_removed:
+            result.append({**msg, "content": new_content})
+            pass_mods.append("stripped_bg_launch_ack")
+            changed_indices.append(idx)
+            pass_removed_by_idx[idx] = ack_removed
             pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
         else:
             result.append(msg)
