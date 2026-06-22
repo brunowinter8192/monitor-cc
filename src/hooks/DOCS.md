@@ -58,7 +58,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_polling_loop.py (132 LOC)
+### block_polling_loop.py (138 LOC)
 
 **Purpose:** PreToolUse hook — stateful frequency-based polling loop detector. Extracts a target fingerprint from each Bash command (`ps -p <N>` → `"pid:N"`, `tail -<N> <file>` → `"file:path"`), records it with timestamp and session_id in `src/logs/polling_state.jsonl`, and blocks when ≥ 3 polls hit the SAME target within 30 s in the SAME session. First and second polls always pass. Third poll in 30 s blocks. Different targets, different sessions, and one-off checks are never blocked. Exits 2 + stderr on threshold. Exits 0 on any parse or I/O error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`); `src/logs/polling_state.jsonl` (state).
@@ -66,19 +66,19 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** stdlib only (`json`, `re`, `os`, `datetime`).
 
-**Fingerprint forms:** `"pid:<N>"` from `ps -p <N>`; `"file:<path>"` from `tail -<N> <path>` (BSD short numeric form only; `tail -n N` long form not detected). First match wins.
+**Fingerprint forms:** `"pid:<N>"` from `ps -p <N>`; `"file:<path>"` from `tail -<N> <path>` (BSD short numeric form only; `tail -n N` long form not detected). First match wins. Pipe-fed `cmd | tail -N` yields no target: `_TAIL_N_FILE` uses `[^\S\n]+` (space/tab only, no newlines) so `| tail -N\nnext-cmd` never captures next-cmd as file arg; pipe-context check in `_extract_target` additionally returns `None` when a single `|` (not `||`) immediately precedes `tail` in the stripped command (handles same-line `| tail -N ; echo` variants).
 
 **State schema:** `{ts: "2026-05-29T12:34:56Z", session_id: str, target: str}` — one JSONL line per poll invocation. Self-pruning: on each call, entries older than 30 s are pruned before writing back. monitor-24h backup sweep via `log_janitor` (`sweep_eligible=True`). Path overridable via `MONITOR_CC_POLLING_STATE` env var for test isolation.
 
 **Concurrency note:** concurrent sessions writing simultaneously can cause one entry to be lost (under-count — never over-count). Acceptable: per-session keying means session B's polls never inflate session A's count. Documented in code.
 
-**Allowed patterns:** `ps -p <PID>` alone (one-off); `tail -<N> file` alone (one-off); either appearing once or twice in 30 s; `tail -n N` long form; patterns in quoted strings or heredoc body.
+**Allowed patterns:** `ps -p <PID>` alone (one-off); `tail -<N> file` alone (one-off); either appearing once or twice in 30 s; `tail -n N` long form; patterns in quoted strings or heredoc body; `cmd | tail -N` pipe-fed (never produces a target regardless of repetition count).
 
 **Antipattern context:** `block_unauthorized_background` blocks `run_in_background=true`, but workers can circumvent via shell `cmd &`. This hook catches the repeated-check pattern regardless of how the background was started.
 
 **Quote/heredoc stripping.** `_strip_non_shell_active()` removes heredoc bodies and quoted regions before fingerprint extraction — prevents counting a `ps -p` example in a `worker-cli send` message.
 
-**Smoke:** `dev/hook_smoke/test_block_polling_loop.py` (15 cases: frequency 3-poll sequence, different-target, single-check, no-target, session-isolation groups).
+**Smoke:** `dev/hook_smoke/test_block_polling_loop.py` (20 cases: frequency 3-poll sequence, different-target, single-check, no-target, session-isolation, pipe-fed-tail groups).
 
 ---
 

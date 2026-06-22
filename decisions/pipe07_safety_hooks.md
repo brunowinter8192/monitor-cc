@@ -164,7 +164,7 @@ echo, true, grep, cat, ls, wc, head, tail, find
 
 **Target fingerprinting:**
 - `ps -p <N>` → `"pid:<N>"` — process-existence check
-- `tail -<N> <file>` (BSD/POSIX short numeric form only; `tail -n N` long form NOT detected) → `"file:<path>"`
+- `tail -<N> <file>` (BSD/POSIX short numeric form only; `tail -n N` long form NOT detected) → `"file:<path>"`. Requires the file arg to be on the same line as the flag (`[^\S\n]+` — space/tab only, no newlines before arg). Additionally, if a single `|` (not `||`) immediately precedes `tail` in the stripped command, the tail is pipe-fed (reads stdin) — no file target is extracted and `None` is returned. Both conditions together eliminate the false-positive `cmd | tail -N\nnext-cmd` pattern where the next-line command was previously captured as the file arg.
 - First match in command wins; no target extracted → pass through
 
 **State file:** `src/logs/polling_state.jsonl` — one JSONL line per poll: `{ts, session_id, target}`. Self-pruning on every invocation (entries older than 30 s pruned before counting). Backup cleanup via `log_janitor`'s monitor-24h sweep. Path overridable via `MONITOR_CC_POLLING_STATE` env var (used for test isolation).
@@ -173,11 +173,11 @@ echo, true, grep, cat, ls, wc, head, tail, find
 
 **Blocked patterns:** `ps -p <PID>` repeated ≥ 3× on the same PID within 30 s / session; `tail -<N> <file>` repeated ≥ 3× on the same file within 30 s / session
 
-**Allowed patterns:** any single or double poll; different PIDs/files in the same session; `tail -n N` long form (not detected); commands with neither pattern; patterns inside quoted strings or heredoc (stripped by `_strip_non_shell_active`)
+**Allowed patterns:** any single or double poll; different PIDs/files in the same session; `tail -n N` long form (not detected); commands with neither pattern; patterns inside quoted strings or heredoc (stripped by `_strip_non_shell_active`); pipe-fed `cmd | tail -N` (reads stdin — no file arg; yields `None` regardless of repetition count)
 
 **Fail-open:** exits 0 on any parse or I/O error; `_record_and_count()` returns 0 on exception.
 
-**Smoke:** `dev/hook_smoke/test_block_polling_loop.py` (15 cases: frequency sequence, different-target, single-check, no-target, session-isolation groups).
+**Smoke:** `dev/hook_smoke/test_block_polling_loop.py` (20 cases: frequency sequence, different-target, single-check, no-target, session-isolation, pipe-fed-tail groups).
 
 ### Hook 9 — `block_bd_cli_worker.py` (`src/hooks/block_bd_cli_worker.py`)
 
