@@ -22,6 +22,7 @@ def test_block_polling_loop_workflow() -> None:
     failures += _run_group_single_checks(state_file)
     failures += _run_group_no_target(state_file)
     failures += _run_group_session_isolation(state_file)
+    failures += _run_group_pipe_fed_tail(state_file)
     os.unlink(state_file)
     print()
     if failures:
@@ -132,6 +133,31 @@ def _run_group_session_isolation(state_file: str) -> list:
     # session A's first poll on the same target should still pass
     r = _check("session A unaffected by session B saturation PASS",
                _run_hook("ps -p 77777", state_file, sid_a), 0)
+    if r: failures.append(r)
+    return failures
+
+
+# Pipe-fed tail: cmd | tail -N reads stdin — no file arg, never produces a poll target.
+# The original false-positive: plugin-publish 2>&1 | tail -25\necho "done" repeated ≥3×
+# extracted "echo;" as file target. All pipe-fed variants must PASS regardless of repetition.
+def _run_group_pipe_fed_tail(state_file: str) -> list:
+    failures = []
+    sid = "pipe-fed"
+    # Exact false-positive pattern: | tail -N\nnext-cmd repeated ≥3× — all must PASS
+    cmd = "plugin-publish 2>&1 | tail -25\necho \"done\"; grep \"result\""
+    r = _check("pipe-fed | tail newline-echo #1 PASS", _run_hook(cmd, state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("pipe-fed | tail newline-echo #2 PASS", _run_hook(cmd, state_file, sid), 0)
+    if r: failures.append(r)
+    r = _check("pipe-fed | tail newline-echo #3 PASS", _run_hook(cmd, state_file, sid), 0)
+    if r: failures.append(r)
+    # Same-line pipe variant: | tail -N ; echo (pipe + semicolon-separated next cmd)
+    r = _check("pipe-fed | tail same-line semi PASS",
+               _run_hook("cmd 2>&1 | tail -25 ; echo done", state_file, sid), 0)
+    if r: failures.append(r)
+    # stdin-only: cat f | tail -25 with no following command
+    r = _check("cat | tail -25 no-file-arg PASS",
+               _run_hook("cat /tmp/log.txt | tail -25", state_file, sid), 0)
     if r: failures.append(r)
     return failures
 

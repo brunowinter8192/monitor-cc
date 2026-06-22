@@ -13,8 +13,11 @@ _THRESHOLD   = 3    # polls on same target within window that trigger block
 
 # Matches: ps -p <literal-PID> — process-existence check; captures PID
 _PS_P_CHECK = re.compile(r'\bps\s+-p\s+(\d+)')
-# Matches: tail -<N> <file> — log-read, BSD/POSIX short numeric form; captures file path
-_TAIL_N_FILE = re.compile(r'\btail\s+-\d+\s+(\S+)')
+# Matches: tail -<N> <file> — log-read, BSD/POSIX short numeric form; captures file path.
+# [^\S\n]+ (space/tab only, no newlines) prevents pipe-fed tail -N\nnext-cmd from
+# capturing next-cmd as the file arg. Pipe-context check in _extract_target handles
+# same-line pipe variants (cmd | tail -N ; echo).
+_TAIL_N_FILE = re.compile(r'\btail\s+-\d+[^\S\n]+(\S+)')
 
 _BLOCK_MESSAGE = (
     "polling loop — \u22653 checks on the same ps-p/tail target within 30 s; "
@@ -60,13 +63,16 @@ def _parse_command():
         return None, None
 
 # Extract poll target fingerprint from shell-stripped command.
-# ps -p <N> → "pid:<N>"; tail -<N> <file> → "file:<path>"; no match → None
+# ps -p <N> → "pid:<N>"; tail -<N> <file> → "file:<path>"; pipe-fed tail → None; no match → None
 def _extract_target(stripped: str):
     m = _PS_P_CHECK.search(stripped)
     if m:
         return f"pid:{m.group(1)}"
     m = _TAIL_N_FILE.search(stripped)
     if m:
+        before = stripped[:m.start()].rstrip()
+        if before.endswith('|') and not before.endswith('||'):
+            return None  # pipe-fed tail — reads stdin, no file target
         return f"file:{m.group(1)}"
     return None
 
