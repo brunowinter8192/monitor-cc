@@ -38,7 +38,15 @@ The running proxy nukes any Read/RAG tool_result containing the marker. Workarou
 - Source read via masked Bash: `sed -E 's/[Bb]ackground/X/g' <file>`.
 - Edits applied via Read-gate (Read returns `.` but satisfies the "has been read" gate) + exact ASCII `old_string`s matched against real disk bytes. tool_use inputs (Edit/Write/Bash command) are NOT stripped.
 
-## Pending (next session, post proxy-restart = frictionless)
-- Live-verify the nuke is gone after the proxy restarts (regenerates live-copy from `src/proxy/`).
-- Add FP regression cases to `dev/proxy_176_bg_launch_ack_tests.py`: large-mid-content tool_result + user str containing the phrase → must be preserved.
-- IST sync: `decisions/pipe05_proxy_cache.md` BL entry and `src/proxy/DOCS.md` strip_bg_launch_ack entry → anchored-on-prefix (deferred only because editing those marker-containing files under the live nuke is error-prone).
+## Resolution (2026-06-23, post proxy-restart — all three Pending items closed)
+Proxy restarted on the anchored fix (`3ba9932` merged to `main`; `dev == main`). All three deferred items done frictionlessly.
+
+### 1. Live-verify — PASS (both directions)
+- (a) Marker mid-content survives: `cat src/proxy/strip_bg_launch_ack.py` (source is full of the marker phrase) and RAG results quoting the marker both arrived INTACT — under the old substring-anywhere nuke the whole tool_result would have collapsed to `.`. dual_log of the live session (`api_requests_opus_monitor_cc_1782174574_stripped.jsonl`) shows NO `bg_launch_ack` fn_map entry for any of these blocks → the strip did not fire on them (preservation = absence of BL attribution).
+- (b) Genuine ack still collapses: real CC ack from `1782166807_original.jsonl` opens `Command running in background with ID: bxab0pzvo. Output is being written to: /private/tmp/claude-...` (real ID, not the `<id>` doc placeholder) → starts exactly with `_BG_LAUNCH_ACK_PREFIX` → `_is_bg_launch_ack` True → collapses to `.`. (Note: the session harness returns background-command output directly instead of persisting the classic ack text in conversation history, so no fresh BL strip event could be forced through the live flow this session — verified instead against the real captured ack text + the anchored source logic.)
+
+### 2. FP-regression — committed `4827e9c` (worker, TEST-ONLY)
+4 new cases in `dev/proxy_176_bg_launch_ack_tests.py`, one per content shape, marker mid-content → preserved: `test_fp_tool_result_str_mid_content`, `test_fp_user_str_mid_content`, `test_fp_text_block_mid_content`, `test_fp_tool_result_list_mid_content`. Fixtures contain the marker substring (so the caller fast-path gate DOES fire) but none starts with the prefix → the anchored decision preserves them — exactly the bug class. Full suite now 26 checks, all PASS.
+
+### 3. IST sync — done (orchestrator-written)
+`decisions/pipe05_proxy_cache.md` BL entry + `src/proxy/DOCS.md` (pass-sequence inline + `strip_bg_launch_ack.py` Purpose) now describe the anchored `startswith` on `Command running in background with ID:` and the FP-fix rationale, replacing the old substring-anywhere wording. `_BG_LAUNCH_ACK_MARKER` documented as the caller-side fast-path gate only.
