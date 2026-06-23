@@ -288,18 +288,18 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_unauthorized_background.py (75 LOC)
+### block_unauthorized_background.py (90 LOC)
 
-**Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT the canonical orchestration timer `sleep N && echo done` AND NOT a whitelisted long-running tool, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable — but legitimately-long tools (reddit-cli indexer, RAG `workflow.py index-dir`) are exempted via the whitelist. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
+**Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT a sleep-only timer AND NOT a whitelisted long-running tool, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Sleep-only commands (bare `sleep N` OR `sleep N && echo <anything>`) are always exempt — both the raw form and the normalized `sleep 600 && echo done` — so a sleep timer is never foreground-forced regardless of hook execution order. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable — but legitimately-long tools (reddit-cli indexer, RAG `workflow.py index-dir`) are exempted via the whitelist. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
 **Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command, run_in_background: false}`) on non-canonical bg; nothing on passthrough.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** stdlib only (`json`, `re`).
 
-**Rewrite condition:** `run_in_background=true` AND command does NOT match `_CANONICAL` (the `sleep N && echo done` timer form) AND does NOT match `_INDEXER_CANONICAL` (`\b(reddit-cli|cli\.py)\s+index_subreddits\b`) AND does NOT match `_RAG_INDEXER_CANONICAL` (`\bworkflow\.py\s+index-dir\b`).
+**Rewrite condition:** `run_in_background=true` AND command does NOT match `_CANONICAL` (any sleep-only form: bare `sleep N` OR `sleep N && echo <anything>`, regex `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`) AND does NOT match `_INDEXER_CANONICAL` (`\b(reddit-cli|cli\.py)\s+index_subreddits\b`) AND does NOT match `_RAG_INDEXER_CANONICAL` (`\bworkflow\.py\s+index-dir\b`).
 
 **Passthrough (no output):**
-- `sleep N && echo done` (optional whitespace, optional float N) with `run_in_background=true`
+- Any sleep-only command (`sleep N`, `sleep N && echo done`, `sleep N && echo "custom text"`) with `run_in_background=true` — `_CANONICAL` matches all sleep-only forms
 - `reddit-cli index_subreddits ...` / `cli.py index_subreddits ...` with `run_in_background=true` (long-running RAG-indexer, ~75-100s; paired with `rewrite_reddit_index_background.py`)
 - `workflow.py index-dir ...` with `run_in_background=true` (RAG indexer — embedding-bound, minutes; NOT auto-backgrounded, explicit per-call choice; no rewrite-pair)
 - Any command with `run_in_background=false` or field absent (foreground — no restriction)
@@ -309,26 +309,26 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### rewrite_background_sleep.py (61 LOC)
+### rewrite_background_sleep.py (62 LOC)
 
-**Purpose:** PreToolUse hook (Bash) — **rewrites** background timer commands `sleep N && echo done` where N ≠ 600 to `sleep 600 && echo done`. Pairs with `block_unauthorized_background.py` which enforces the canonical timer FORM (only `sleep N && echo done` passes the background check); this hook enforces the canonical timer VALUE (N must be 600 per `tool-use.md`). Exits 0 in all cases (fail-open rewrite hook — never blocks). No quote-stripping needed: the canonical form is fully anchored and cannot contain quoted regions.
+**Purpose:** PreToolUse hook (Bash) — **rewrites** ANY sleep-only background command to the canonical `sleep 600 && echo done`. Matches bare `sleep N` OR `sleep N && echo <anything>` (regex `_SLEEP_ONLY_BG`). Already-canonical guard: `command.strip() == _TARGET` (exact string match, not N comparison). Pairs with `block_unauthorized_background.py` which exempts all sleep-only background commands from foreground-forcing; this hook normalizes all of them to the canonical 10-minute timer. Exits 0 in all cases (fail-open rewrite hook — never blocks).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
-**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command`) when N ≠ 600; nothing on passthrough.
+**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command`) when command is a non-canonical sleep-only form; nothing on passthrough.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** stdlib only (`json`, `os`, `re`, `sys`).
 
 **Rewrite condition (ALL must hold):**
 1. `run_in_background == True`
-2. Command matches `^\s*sleep\s+(\d+(?:\.\d+)?)\s*&&\s*echo\s+done\s*$`
-3. Captured N: `float(N) != 600`
+2. Command matches `_SLEEP_ONLY_BG`: `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`
+3. `command.strip() != "sleep 600 && echo done"`
 
 **Passthrough (no output):**
 - `run_in_background=false` or field absent — foreground, any sleep form allowed
-- `sleep 600 && echo done` with `run_in_background=true` — already canonical value
-- Any non-canonical command — form guard already handled by `block_unauthorized_background.py`
+- `command.strip() == "sleep 600 && echo done"` — already the canonical target
+- Any non-sleep-only command — `_SLEEP_ONLY_BG` fails to match; `block_unauthorized_background.py` handles these
 - Parse errors (fail-open)
 
-**Smoke:** `dev/hook_smoke/test_rewrite_background_sleep.py` (8 cases: 3 positive rewrite, 5 negative no-op).
+**Smoke:** `dev/hook_smoke/test_rewrite_background_sleep.py` (11 cases: 5 positive rewrite, 6 negative no-op).
 
 ---
 

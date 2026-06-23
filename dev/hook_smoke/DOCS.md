@@ -164,10 +164,11 @@ python3 dev/hook_smoke/test_rewrite_worker_cli_response_noise.py
 
 ### test_rewrite_background_sleep.py (117 LOC)
 
-**Purpose:** 8-case smoke for `rewrite_background_sleep.py`. Verifies 3 positive-rewrite cases
-(`sleep 300`, `sleep 5`, `sleep 1200` with `run_in_background=true` → rewritten to
-`sleep 600 && echo done`) and 5 negative no-op cases (foreground flag; already 600; non-canonical
-command; wrong chain target; bare sleep without `&& echo done`).
+**Purpose:** 11-case smoke for `rewrite_background_sleep.py`. Verifies 5 positive-rewrite cases
+(`sleep 300`, `sleep 5`, `sleep 1200` with `run_in_background=true`; bare `sleep 300` alone;
+`sleep 45 && echo "bg-ack-probe done"` custom echo; `sleep 600 && echo "custom text"` N=600 non-canonical
+→ all rewritten to `sleep 600 && echo done`) and 6 negative no-op cases (foreground flag; exact target
+`sleep 600 && echo done`; non-canonical non-sleep command; wrong chain target `&& rag-cli`).
 
 **Usage (from project root):**
 ```bash
@@ -175,6 +176,19 @@ python3 dev/hook_smoke/test_rewrite_background_sleep.py
 ```
 
 **Expected output:** `All 8 tests passed.` (exit 0). HOOK path is relative — must be run from project root.
+
+---
+
+### test_block_unauthorized_background.py (84 LOC)
+
+**Purpose:** 9-case smoke for `block_unauthorized_background.py`. Verifies 6 ALLOW cases (no foreground-force): original `sleep N && echo done`, bare `sleep N`, custom echo `sleep 45 && echo "bg-ack-probe done"` (fire-log actual), normalized `sleep 600 && echo done`, `reddit-cli index_subreddits` whitelist, `workflow.py index-dir` whitelist. Verifies 2 FORCE cases (foreground-forced): `./venv/bin/python script.py` and `rag-cli update_docs .` (original triggering incident). Verifies 1 PASS case (already foreground → no output): `./venv/bin/python script.py` with `run_in_background=false`.
+
+**Usage (from project root):**
+```bash
+./venv/bin/python dev/hook_smoke/test_block_unauthorized_background.py
+```
+
+**Expected output:** `All 9 tests passed.` (exit 0). HOOK path is relative — must be run from project root.
 
 ---
 
