@@ -7,7 +7,7 @@
 `proxy_addon.py` interceptiert alle API-Requests via mitmproxy und modifiziert den Payload vor dem Senden:
 
 1. `apply_modification_rules()` — Content-Modifications:
-   - **SR-Strip via Template-Catalog (commit e1a3b9a, 2026-04-21):** `strip_sr.py` matcht 8 distinct SR-Templates über exakten startswith-Identifier statt greedy regex. Templates: `task-tools-nag`, `pyright-new-diagnostics`, `deferred-tools`, `user-interrupt`, `system-notification`, `file-modified`, `claudemd-contents`, `date-changed`. Operiert auf allen 4 content-shapes: top-level string, `text`-blocks in list, `tool_result.content` (string), `tool_result.content` (list of text-sub-blocks). Vorgängerversion (greedy regex `<sr>.*?</sr>`) hatte False-Positive-Bug — matchte über Code-Literale wie `if "<system-reminder>" in text:` und entfernte echten Python-Code aus Payloads. Replay über 22 historische JSONLs (~37k strips): 0 false-positives mit neuem template-based code (vorher ~970 FPs).
+   - **SR-Strip via Template-Catalog (commit e1a3b9a, 2026-04-21):** `strip_sr.py` matcht 11 distinct SR-Templates über exakten startswith-Identifier statt greedy regex. Templates: `task-tools-nag`, `pyright-diagnostics`, `deferred-tools`, `user-interrupt`, `system-notification`, `file-modified`, `claudemd-contents`, `date-changed`, `skills-available`, `agent-types`, `plan-mode`. Operiert auf allen 4 content-shapes: top-level string, `text`-blocks in list, `tool_result.content` (string), `tool_result.content` (list of text-sub-blocks). Vorgängerversion (greedy regex `<sr>.*?</sr>`) hatte False-Positive-Bug — matchte über Code-Literale wie `if "<system-reminder>" in text:` und entfernte echten Python-Code aus Payloads. Replay über 22 historische JSONLs (~37k strips): 0 false-positives mit neuem template-based code (vorher ~970 FPs).
    - **Env-Context SR Strip (commit a26f83a, 2026-05-30):** `strip_sr.py::_apply_sr_strip._replace` prüft vor dem `_PRESERVE_PREAMBLE`-Guard via `_ENV_CONTEXT_RE.fullmatch(inner)` ob der SR-Block dem CC-injizierten userEmail/currentDate-Block entspricht. Bei Match → vollständiger Strip (`return ''`). Pre-guard-Position ist zwingend: der env-context Block hat exakt denselben Preamble wie CLAUDE.md-Kontext-Blocks (`"As you answer the user's questions, you can use the following context:"`), sodass der `_PRESERVE_PREAMBLE`-Guard zuerst feuern würde. Regex: Email literal, Datum `\d{4}-\d{2}-\d{2}`, Whitespace vor IMPORTANT via `\s+` (toleriert CC-Indentation-Änderungen), restlicher Text literal. `re.fullmatch` stellt sicher dass nur der exakte Block (nicht CLAUDE.md-Kontext mit gleichem Preamble) matcht. Strip fließt in den bestehenden `_apply_final_sr_pass` (`stripped_all_sr`/`stripped_all_sr_msg0` mod). strip_vocab.py Rule `'ENV'` hinzugefügt: Marker `"As you answer the user's questions, you can use the following context:\n# userEmail"` — ermöglicht fn-Materialisierung via `attribute_chunk` für dual-log Attribution.
    - **6 strip_vocab.RULES Ergänzungen (2026-06-04):** Attribution-Coverage-Analyse (dev/proxy_dual_log/attribution_coverage.py) identifizierte 6 Kategorien die in Strip-Logs auftauchten aber keine RULES-Marker hatten → residual-gap. Jetzt behoben: `ENV` (new rule, `_apply_final_sr_pass`), `HP` (new rule, `stripped_hook_error_prefix`, `_apply_hook_prefix_strip`), `SN` (new rule, `_apply_final_sr_pass`), `FM` (new rule, marker ` was modified`, `_apply_final_sr_pass`), `UI`-Rule: secondary marker `IMPORTANT: After completing your current task` added (UI_PARTIAL-Strips), `CMD`-Rule: marker `The date has changed.` added (DATE_SR-Strips). Alle jetzt in `attribute_chunk` adressierbar.
    - `removed_plan_mode_sr`: weiterhin separat behandelt (text-block drop bei "Plan mode is active")
@@ -23,7 +23,7 @@
      - `stripped_agent_types_sr` (`_apply_cumulative_sr_strips`, Pass 2): Strippt `<system-reminder>`-Block der agent-types-Liste aus `role=='user'`-Messages auf Sonnet-Workern. Sonnet-Worker bekommen agent-types weiterhin als standalone user-SR (~2,353 chars) statt in der role=system-Message. Template `'agent-types'` mit Identifier `'Available agent types for the Agent tool'` in `strip_sr.py`. strip_vocab.py Rule `'AT'`.
      - `stripped_bg_launch_ack` (`_apply_bg_launch_ack_strip` via `strip_bg_launch_ack.py`): Ersetzt Content eines Blocks mit `"."` nur wenn dessen Text (nach `lstrip()`) mit dem Ack-Präfix `'Command running in background with ID:'` **beginnt** — anchored `startswith` via `_is_bg_launch_ack`, NICHT substring-anywhere. Ein echter CC-Launch-Ack beginnt immer mit diesem Präfix; ein großes tool_result oder eine getippte/eingefügte User-Message, die die Phrase nur als Daten mitten im Inhalt enthält, bleibt erhalten (FP-Nuke-Fix). Fast-path-Marker `'running in background with ID'` (`_BG_LAUNCH_ACK_MARKER`) dient nur dem Gate im Caller (`message_passes.py`), die Strip-Entscheidung liegt im anchored Präfix. Deckt alle 4 Content-Shapes ab (str-Message, text-Block, tool_result-str, tool_result-list). strip_vocab.py Rule `'BL'`. Pass nach `_apply_bg_exit_strip` in `_passes`.
    - **`"Workflow"` in `TOOL_BLOCKLIST` (CC 2.1.176):** CC 2.1.176 bringt ein neues built-in Tool `Workflow` mit ~18.5k-char Description. Zu `TOOL_BLOCKLIST` in `constants.py` hinzugefügt — `_strip_unused_tools` entfernt es vollständig aus dem Payload.
-   - `replaced_system_prompt`: Ersetzt system[2] (>5000 chars) mit "." (Logging-Reduktion)
+   - `replaced_system_prompt` (`rules.py:103`): Ersetzt den Text-Content von system[2] durch den geladenen `system_rules`-Text (global + model + project, via `_load_system2_rules`); `"."` nur als Fallback wenn keine Rules. Kein `>5000 chars`-Threshold.
 
 2. `_strip_all_cache_control()` — Entfernt ALLE cache_control Marker von Claude Code:
    - system blocks, tools, messages (top-level + content blocks)
@@ -190,7 +190,7 @@ Alle sechs Writes je in eigenem `try/except` — Fehler beeinflussen nie Forward
 
 ### Tool Stripping (TOOL_BLOCKLIST)
 
-`TOOL_BLOCKLIST` (frozenset) in `constants.py` entfernt 22 ungenutzte Tools aus dem `tools`-Array vor dem API-Send. ~25k chars weniger pro Request (inkl. ~18.5k Workflow-Description ab CC 2.1.176). Agent-Tool bleibt, aber Description getrimmt auf git-committer-only (~300 chars statt 10k).
+`TOOL_BLOCKLIST` (frozenset) in `constants.py:124-146` entfernt 27 ungenutzte Tools aus dem `tools`-Array vor dem API-Send. ~25k chars weniger pro Request (inkl. ~18.5k Workflow-Description ab CC 2.1.176). `Agent` ist seit dem Refactor selbst in `TOOL_BLOCKLIST` (`constants.py:137`) → vollständig gestrippt; die frühere git-committer-only Description-Trimmung existiert nicht mehr.
 
 ### Live-Copy Isolation
 
@@ -362,9 +362,9 @@ Erwarteter Impact: ~25-30k Tokens CR statt CC ab dem 2. Request jeder Session. C
 
 Change: ESC-Abbruch tool_result Messages ("The user doesn't want to proceed with this tool use...") werden auf `"."` gekürzt. Marker: `_REJECTION_MARKER` Konstante.
 
-### Agent-Tool Trimming
+### Agent-Tool Trimming — SUPERSEDED
 
-Change: Agent-Tool bleibt im tools-Array, aber Description von ~10k auf ~300 chars getrimmt (nur git-committer Subagent-Type).
+Superseded: Die frühere Description-Trimmung (Agent bleibt im tools-Array, ~10k → ~300 chars git-committer-only) wurde durch vollständiges Blocklisting ersetzt. `Agent` steht jetzt in `TOOL_BLOCKLIST` (`constants.py:137`) → komplett aus dem Payload gestrippt. Kein Trim-Code mehr vorhanden.
 
 ### Session-Guidance Stripping
 
