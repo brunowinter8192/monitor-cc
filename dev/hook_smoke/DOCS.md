@@ -57,6 +57,19 @@ python3 dev/hook_smoke/test_block_dangerous_kill.py
 
 ---
 
+### test_block_git_destructive.py (113 LOC)
+
+**Purpose:** 21-case smoke for `block_git_destructive.py`. Verifies 2 FP-regression ALLOW cases (minimal: `git push -u origin main\n[ -f .env ]`; actual recap command with push + echo + `[ -f .rag-docs.json ]` across lines), 13 BLOCK cases (force-push `--force`/`--force-with-lease`/`-f`, push with `-C` flag, `--amend`/`--amend --no-edit`, `--no-verify` on commit and push, `--allow-empty`, `git config` write and write-with-`-C`), and 6 ALLOW cases (plain push, `push -u`, normal commit, `config --list`/`--get`/`--show-origin`, force-push phrase inside quoted message).
+
+**Usage (from project root):**
+```bash
+./venv/bin/python dev/hook_smoke/test_block_git_destructive.py
+```
+
+**Expected output:** `All 21 tests passed.` (exit 0). HOOK path is relative — must be run from project root.
+
+---
+
 ### test_block_read_worktree.py
 
 **Purpose:** Smoke test for `block_read_worktree.py` — foreign worktree reads blocked, own-worktree

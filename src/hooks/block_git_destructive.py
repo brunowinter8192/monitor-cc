@@ -8,25 +8,25 @@ from _fire_log import log_fire
 
 # Each entry: (compiled pattern, label, suggestion). Patterns matched against quote-stripped command.
 _PATTERNS = [
-    (re.compile(r'\bgit\b[^|;&]*\bcommit\b[^|;&]*--amend\b'),
+    (re.compile(r'\bgit\b[^|;&\n]*\bcommit\b[^|;&\n]*--amend\b'),
      "git commit --amend",
      "Never amend existing commits — create a new commit instead."),
-    (re.compile(r'\bgit\b[^|;&]*\bpush\b[^|;&]*(?:--force\b|--force-with-lease\b)'),
+    (re.compile(r'\bgit\b[^|;&\n]*\bpush\b[^|;&\n]*(?:--force\b|--force-with-lease\b)'),
      "git push --force / --force-with-lease",
      "Never force push — reset, recommit, or work on a new branch."),
-    (re.compile(r'\bgit\b[^|;&]*\bpush\b[^|;&]*\s-f\b'),
+    (re.compile(r'\bgit\b[^|;&\n]*\bpush\b[^|;&\n]*\s-f\b'),
      "git push -f",
      "Never force push — reset, recommit, or work on a new branch."),
-    (re.compile(r'\bgit\b[^|;&]*\b(?:commit|push)\b[^|;&]*--no-verify\b'),
+    (re.compile(r'\bgit\b[^|;&\n]*\b(?:commit|push)\b[^|;&\n]*--no-verify\b'),
      "git --no-verify (skip hooks)",
      "Never skip hooks — fix the hook failure or run the check manually first."),
-    (re.compile(r'\bgit\b[^|;&]*\bcommit\b[^|;&]*--allow-empty\b'),
+    (re.compile(r'\bgit\b[^|;&\n]*\bcommit\b[^|;&\n]*--allow-empty\b'),
      "git commit --allow-empty",
      "Never create empty commits — they add noise without value."),
 ]
 
 # git config modify detection (separate from regex list — needs exclusion of read-only variants)
-_GIT_CONFIG_RE = re.compile(r'\bgit\b(?:\s+-C\s+\S+)?\s+config\b([^|;&]*)')
+_GIT_CONFIG_RE = re.compile(r'\bgit\b(?:\s+-C\s+\S+)?\s+config\b([^|;&\n]*)')
 _GIT_CONFIG_READONLY = re.compile(
     r'\s--(?:list|get|get-all|get-regexp|show-origin|show-scope|show-keys|help)\b'
 )
