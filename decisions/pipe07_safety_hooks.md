@@ -265,7 +265,7 @@ echo, true, grep, cat, ls, wc, head, tail, find
 - **Command:** `python3 <absolute-path>/src/hooks/block_git_destructive.py`
 - **Timeout:** 5s
 
-**Detection:** five compiled regex patterns applied to quote-stripped command; `git config` write-variant detected separately (excludes `--list|--get|--show-origin|...` read-only flags)
+**Detection:** five compiled regex patterns applied to quote-stripped command; all five `_PATTERNS` connectors and `_GIT_CONFIG_RE` use `[^|;&\n]*` (newline in exclusion class) — a match cannot span across lines of a multi-line command, closing the cross-line false positive (e.g. `git push` on one line + `[ -f file ]` on a later line). `git config` write-variant detected separately (excludes `--list|--get|--show-origin|...` read-only flags)
 
 **Blocked patterns:**
 - `git commit --amend` — never amend existing commits
