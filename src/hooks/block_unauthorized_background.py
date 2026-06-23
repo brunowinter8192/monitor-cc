@@ -6,8 +6,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _fire_log import log_fire
 
-# canonical allowed background form: sleep N && echo done (optional whitespace/float)
-_CANONICAL = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$')
+# canonical allowed background form: any sleep-only command — bare "sleep N" or "sleep N && echo <anything>".
+# Mirrors _SLEEP_ONLY_BG in rewrite_background_sleep.py; exempts both raw and normalized forms so the
+# hook is safe regardless of execution order relative to rewrite_background_sleep.
+# [^;&|\n]* stops at shell separators — "sleep N && echo x && other_cmd" is NOT exempt.
+_CANONICAL = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$')
 
 # additional whitelist: reddit-cli index_subreddits (long-running RAG-indexer, ~75-100s)
 # paired with rewrite_reddit_index_background.py which auto-sets rb=true for this command
