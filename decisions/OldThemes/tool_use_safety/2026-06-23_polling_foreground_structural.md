@@ -28,3 +28,24 @@ Idea: force every process to foreground with an auto-timeout (30/60min); only sl
 - Short jobs (≤ CC fg timeout): foreground-forcing works; close the shell-`&` gap in `block_unauthorized_background`.
 - Long jobs: foreground impossible (auto-background); anti-poll property must come from launch → truly-idle → external-wake discipline, not occupation. Harder, partly discipline-only.
 - Prerequisite: verify the actual CC Bash auto-background threshold + whether the resulting handle is BashOutput-pollable (and thus itself hookable).
+
+## Sleep-only foreground-forcing was too aggressive — fixed (2026-06-23, later same session)
+
+The IST in "Existing polling/wait hook stack" above (`block_unauthorized_background`: "only `sleep N && echo done` passes as background") was a bug, not the design. Both `block_unauthorized_background._CANONICAL` and `rewrite_background_sleep._CANONICAL_BG` matched ONLY the exact literal `sleep N && echo done`; any deviation fell through.
+
+### Symptom
+A background timer in any non-exact form was silently foreground-forced — it ran in the foreground and returned its output immediately, defeating the "launch timer → go idle" mechanism. Concretely: `sleep 45 && echo "bg-ack-probe done"` (custom echo text) and bare `sleep 300` (no echo) both failed the exact regex.
+
+### Evidence
+fire-log `src/logs/hook_firing.jsonl`: `sleep 45 && echo "bg-ack-probe done"` rewritten by `block_unauthorized_background` (run_in_background true→false) at ts `2026-06-23T00:33:02Z`, while canonical `sleep N && echo done` forms went to `rewrite_background_sleep` → `sleep 600`.
+
+### Fix — committed `9b49869` on dev
+Both hooks broadened to a shared sleep-only pattern `_SLEEP_ONLY_BG = ^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$` (bare `sleep N` OR `sleep N && echo <anything>`; `[^;&|\n]*` stops at separators so `sleep N && echo x && realcmd` is NOT exempt).
+- `rewrite_background_sleep`: normalizes any sleep-only bg command → `sleep 600 && echo done`; guard switched from `float(group(1))==600` to `command.strip()==_TARGET` (broadened regex dropped the capture group).
+- `block_unauthorized_background`: `_CANONICAL` broadened to the same pattern → sleep-only is never foreground-forced; exempts both raw and normalized forms (hook-order independent). Non-sleep background commands are STILL foreground-forced (the actual #30 lever — preserved; smoke FORCE1/FORCE2).
+
+### Verification
+Smokes: `test_rewrite_background_sleep.py` 11/11, new `test_block_unauthorized_background.py` 9/9. Hooks live post-merge (`hook_setup.py` re-registers from `src/hooks/`).
+
+### Relation to #30
+Fixes the legitimate timer (the "go idle" tool) that foreground-forcing was breaking — makes the sanctioned launch→idle→external-wake path actually usable. Does NOT resolve the broader #30 goal: the shell-`&` gap (Gap 1) and long-job auto-background (Gap 2) above remain Pending.
