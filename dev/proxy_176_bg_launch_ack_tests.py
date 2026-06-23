@@ -34,6 +34,43 @@ _LAUNCH_ACK = (
 # Completion notification — must NOT be falsely triggered
 _COMPLETION_NOTIF = 'Background command "sleep 30" failed with exit code 143'
 
+# FP fixtures — each CONTAINS the marker phrase but does NOT start with the ack prefix.
+# Simulates large tool_result / pasted user content that quotes the phrase as data.
+_FP_LARGE = (
+    "RAG search results (hybrid, 5 hits):\n\n"
+    "[1] decisions/strip_bg_launch_ack.md (score 0.92)\n"
+    "    The strip was added because every CC 2.1.176 session emitted a\n"
+    "    'Command running in background with ID: <id>' ack immediately\n"
+    "    after bash tool invocations. These acks polluted the context window.\n\n"
+    "[2] src/proxy/strip_bg_launch_ack.py (score 0.88)\n"
+    "    Marker constant: 'running in background with ID'. Anchored prefix:\n"
+    "    'Command running in background with ID:'. The strip ONLY fires\n"
+    "    when text.lstrip().startswith(prefix), not substring-anywhere.\n\n"
+    "[3] dev/proxy_176_bg_launch_ack_tests.py (score 0.85)\n"
+    "    Unit suite. Tests: tool_result string, text block, list content,\n"
+    "    str message, non-matching, completion notification, assistant.\n\n"
+    "Query: 'running in background with ID strip anchored prefix fix'\n"
+    "Collection: monitor-cc-docs | Mode: hybrid | k=5\n"
+)
+
+_FP_USER_STR = (
+    "I pasted this output from the terminal:\n"
+    "  running in background with ID: bxab0pzvo. Output is being written to ...\n"
+    "Does the proxy strip this? I want it preserved."
+)
+
+_FP_TEXT_BLOCK_TEXT = (
+    "The following phrase appears in the decision file:\n"
+    "'Command running in background with ID: <id>' — this is the ack prefix.\n"
+    "It is quoted here for documentation purposes."
+)
+
+_FP_LIST_SUB_TEXT = (
+    "Tool output (read file dev/proxy_176_bg_launch_ack_tests.py):\n"
+    "Line 28: _LAUNCH_ACK = 'Command running in background with ID: bg_01ABC. '\n"
+    "Line 33-35: fixture for completion notification.\n"
+)
+
 
 def test_tool_result_str_content():
     print("Item 4a — tool_result string content replaced with '.'")
@@ -157,6 +194,64 @@ def test_attribution_bl_code():
     print()
 
 
+def test_fp_tool_result_str_mid_content():
+    print("Item 4i — FP: large tool_result containing marker mid-content preserved")
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_fp1", "content": _FP_LARGE},
+        ],
+    }]
+    result, mods, removed, changed, _, _ = _apply_bg_launch_ack_strip(messages)
+    tr = result[0]["content"][0]
+    check("content UNCHANGED", tr["content"] == _FP_LARGE)
+    check("stripped_bg_launch_ack NOT in mods", "stripped_bg_launch_ack" not in mods)
+    check("index 0 NOT in changed_indices", 0 not in changed)
+    check("nothing removed at index 0", removed.get(0) is None)
+    print()
+
+
+def test_fp_user_str_mid_content():
+    print("Item 4j — FP: user string message containing marker mid-content preserved")
+    messages = [{"role": "user", "content": _FP_USER_STR}]
+    result, mods, removed, changed, _, _ = _apply_bg_launch_ack_strip(messages)
+    check("content UNCHANGED", result[0]["content"] == _FP_USER_STR)
+    check("stripped_bg_launch_ack NOT in mods", "stripped_bg_launch_ack" not in mods)
+    print()
+
+
+def test_fp_text_block_mid_content():
+    print("Item 4k — FP: text block containing marker mid-content preserved")
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": _FP_TEXT_BLOCK_TEXT},
+        ],
+    }]
+    result, mods, removed, changed, _, _ = _apply_bg_launch_ack_strip(messages)
+    text_block = result[0]["content"][0]
+    check("text UNCHANGED", text_block["text"] == _FP_TEXT_BLOCK_TEXT)
+    check("stripped_bg_launch_ack NOT in mods", "stripped_bg_launch_ack" not in mods)
+    print()
+
+
+def test_fp_tool_result_list_mid_content():
+    print("Item 4l — FP: tool_result list content with marker mid-content preserved")
+    messages = [{
+        "role": "user",
+        "content": [{
+            "type": "tool_result",
+            "tool_use_id": "toolu_fp2",
+            "content": [{"type": "text", "text": _FP_LIST_SUB_TEXT}],
+        }],
+    }]
+    result, mods, removed, changed, _, _ = _apply_bg_launch_ack_strip(messages)
+    sub = result[0]["content"][0]["content"][0]
+    check("sub-text UNCHANGED", sub["text"] == _FP_LIST_SUB_TEXT)
+    check("stripped_bg_launch_ack NOT in mods", "stripped_bg_launch_ack" not in mods)
+    print()
+
+
 if __name__ == "__main__":
     test_tool_result_str_content()
     test_text_block_content()
@@ -166,4 +261,8 @@ if __name__ == "__main__":
     test_completion_notification_not_triggered()
     test_assistant_untouched()
     test_attribution_bl_code()
+    test_fp_tool_result_str_mid_content()
+    test_fp_user_str_mid_content()
+    test_fp_text_block_mid_content()
+    test_fp_tool_result_list_mid_content()
     print("Done.")
