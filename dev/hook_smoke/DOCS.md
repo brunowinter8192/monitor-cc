@@ -57,7 +57,7 @@ python3 dev/hook_smoke/test_block_dangerous_kill.py
 
 ---
 
-### test_block_git_destructive.py (113 LOC)
+### test_block_git_destructive.py (107 LOC)
 
 **Purpose:** 21-case smoke for `block_git_destructive.py`. Verifies 2 FP-regression ALLOW cases (minimal: `git push -u origin main\n[ -f .env ]`; actual recap command with push + echo + `[ -f .rag-docs.json ]` across lines), 13 BLOCK cases (force-push `--force`/`--force-with-lease`/`-f`, push with `-C` flag, `--amend`/`--amend --no-edit`, `--no-verify` on commit and push, `--allow-empty`, `git config` write and write-with-`-C`), and 6 ALLOW cases (plain push, `push -u`, normal commit, `config --list`/`--get`/`--show-origin`, force-push phrase inside quoted message).
 
