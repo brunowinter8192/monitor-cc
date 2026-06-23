@@ -55,10 +55,31 @@ CASES = [
         True,
         None,
     ),
-    # --- negative E: bare sleep without chain → no rewrite ---
+    # --- negative E (updated): bare sleep → now normalized to canonical 600s timer ---
     (
-        "sleep 300 alone — no && echo done, no rewrite",
+        "sleep 300 alone — bare sleep, normalize to sleep 600 && echo done",
         "sleep 300",
+        True,
+        "sleep 600 && echo done",
+    ),
+    # --- positive: custom echo text (fire-log actual incident) → normalize ---
+    (
+        "sleep 45 with custom echo text → normalize to 600",
+        'sleep 45 && echo "bg-ack-probe done"',
+        True,
+        "sleep 600 && echo done",
+    ),
+    # --- positive: N=600 but non-canonical echo → normalize ---
+    (
+        "sleep 600 with custom echo — not the target string, normalize",
+        'sleep 600 && echo "custom text"',
+        True,
+        "sleep 600 && echo done",
+    ),
+    # --- negative: sleep 600 && echo done — exact target, no rewrite ---
+    (
+        "sleep 600 && echo done — exact target, no rewrite",
+        "sleep 600 && echo done",
         True,
         None,
     ),

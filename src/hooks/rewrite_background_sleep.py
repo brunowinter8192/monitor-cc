@@ -7,23 +7,24 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _fire_log import log_fire
 
-_CANONICAL_BG = re.compile(r'^\s*sleep\s+(\d+(?:\.\d+)?)\s*&&\s*echo\s+done\s*$')
+# Matches any sleep-only background command: bare "sleep N" or "sleep N && echo <anything>".
+# [^;&|\n]* stops at shell separators — prevents matching "sleep N && echo x && other_cmd".
+_SLEEP_ONLY_BG = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$')
 _TARGET = "sleep 600 && echo done"
 
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; rewrite sleep N → sleep 600 when background timer has N ≠ 600
+# Read Bash tool_input from stdin; rewrite any sleep-only background command → canonical "sleep 600 && echo done"
 def rewrite_background_sleep_workflow() -> None:
     command, run_in_background, session_id = _parse_input()
     if not run_in_background:
         sys.exit(0)
     if command is None:
         sys.exit(0)
-    m = _CANONICAL_BG.match(command)
-    if not m:
+    if not _SLEEP_ONLY_BG.match(command):
         sys.exit(0)
-    if float(m.group(1)) == 600:
+    if command.strip() == _TARGET:
         sys.exit(0)
     output = _emit_rewrite()
     log_fire("rewrite_background_sleep", "rewrite", "Bash", command, rewritten=_TARGET, session_id=session_id)

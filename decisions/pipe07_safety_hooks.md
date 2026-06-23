@@ -72,14 +72,14 @@ echo, true, grep, cat, ls, wc, head, tail, find
 
 **Detection:** `tool_input.run_in_background == true`
 
-**Allowlist:** full command must match `^\s*sleep\s+\d+(?:\.\d+)?\s*&&\s*echo\s+done\s*$`
+**Allowlist:** full command must match `_CANONICAL` — any sleep-only form: bare `sleep N` OR `sleep N && echo <anything>` (regex: `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`). Also exempts `reddit-cli index_subreddits`, `workflow.py index-dir`, and long-running pipelines (`pipe_scraper`, `pipe_theblock.py`, `rag-cli index`, `workflow.py convert`) via separate named patterns.
 
 **Blocked patterns:**
-- Any `run_in_background=true` command that is NOT the canonical timer — e.g. `rag-cli update_docs .`, `python3 script.py`, builds, test runners
+- Any `run_in_background=true` command that is NOT a sleep-only timer and NOT a whitelisted pipeline — e.g. `rag-cli update_docs .`, `python3 script.py`, builds, test runners
 
-**Allowed:** `sleep N && echo done` with `run_in_background=true` — the one canonical orchestration timer form; any command with `run_in_background=false` or field absent
+**Allowed:** any sleep-only background command — `sleep N`, `sleep N && echo done`, `sleep N && echo "custom text"` — plus whitelisted long-running pipelines; any command with `run_in_background=false` or field absent. Hook-order independent: both the raw sleep-only form and the already-normalized `sleep 600 && echo done` are exempt, so a sleep timer is never foreground-forced regardless of whether `rewrite_background_sleep` (Hook 18) runs first.
 
-**Rationale:** background mode hides stdout/stderr until completion, making long-running tools unmonitorable. `rag-cli update_docs .` with `run_in_background=true` ran 2m36s with no live output — the triggering incident. Enforces Rule 12 from `~/.claude/shared-rules/global/tool-use.md`.
+**Rationale:** background mode hides stdout/stderr until completion, making long-running tools unmonitorable. `rag-cli update_docs .` with `run_in_background=true` ran 2m36s with no live output — the triggering incident. Enforces Rule 12 from `~/.claude/shared-rules/global/tool-use.md`. Sleep-only exemption broadened after fire-log evidence that `sleep 45 && echo "bg-ack-probe done"` (custom echo text) was incorrectly foreground-forced.
 
 **Fail-open:** exits 0 on any parse/internal error; `(None, False)` default on exception means missing/invalid fields are treated as foreground — never blocks on hook failure.
 
@@ -338,21 +338,21 @@ echo, true, grep, cat, ls, wc, head, tail, find
 - **Command:** `python3 <absolute-path>/src/hooks/rewrite_background_sleep.py`
 - **Timeout:** 5s
 
-**Detection:** `tool_input.run_in_background == true` AND command matches `^\s*sleep\s+(\d+(?:\.\d+)?)\s*&&\s*echo\s+done\s*$` AND captured N ≠ 600
+**Detection:** `tool_input.run_in_background == true` AND command matches `_SLEEP_ONLY_BG` (bare `sleep N` OR `sleep N && echo <anything>`: `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`) AND command is NOT already the exact target `"sleep 600 && echo done"`.
 
 **Rewrite:** entire command replaced with `sleep 600 && echo done`
 
 **Passthrough (no output):**
 - `run_in_background=false` or field absent — foreground, any form allowed
-- `sleep 600 && echo done` with `run_in_background=true` — already canonical value
-- Any non-canonical command — form guard already handled by `block_unauthorized_background` (Hook 3)
+- Command is exactly `sleep 600 && echo done` — already the canonical target (`command.strip() == _TARGET`)
+- Any non-sleep-only command — `_SLEEP_ONLY_BG` fails to match; `block_unauthorized_background` (Hook 3) handles non-canonical bg commands
 - Parse errors (fail-open)
 
-**Rationale:** `tool-use.md` specifies Opus timers MUST always be 600s. `block_unauthorized_background` (Hook 3) enforces the FORM (`sleep N && echo done` only); this hook enforces the VALUE (N = 600). Complementary layer — no overlap: Hook 3 passes canonical form through; Hook 18 normalizes any remaining N ≠ 600. Hooks are independent: Hook 3 produces no output for canonical forms so only Hook 18's rewrite reaches CC.
+**Rationale:** `tool-use.md` specifies Opus timers MUST always be 600s. Hook 3 exempts any sleep-only background command; this hook normalizes ALL of them to the canonical 10-minute form. Complementary layer: Hook 3 never foreground-forces a sleep-only timer; Hook 18 normalizes any sleep-only timer whose form or duration differs from the canonical target. Covers bare `sleep N`, custom echo text (fire-log: `sleep 45 && echo "bg-ack-probe done"` was the triggering incident), and non-600 durations.
 
 **Fail-open:** exits 0 on any parse/internal error; missing `run_in_background` defaults to `False` → immediate passthrough.
 
-**Smoke:** `dev/hook_smoke/test_rewrite_background_sleep.py` (8 cases: 3 positive rewrite, 5 negative no-op).
+**Smoke:** `dev/hook_smoke/test_rewrite_background_sleep.py` (11 cases: 5 positive rewrite, 6 negative no-op).
 
 ### Hook 19 — `rewrite_worker_cli_response_noise.py` (`src/hooks/rewrite_worker_cli_response_noise.py`)
 
