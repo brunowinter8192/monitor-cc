@@ -3,73 +3,71 @@
 ## Status Quo (IST)
 
 - `session_finder.py`: `~/.claude/projects/` → glob `*.jsonl` + `*/subagents/agent-*.jsonl`, sorted by mtime
-- `jsonl_parser.py`: tool_use/tool_result correlation via cache, extracts 9 data types (tools, prompts, media, thinking, skills, warnings, usage, unknown_types) via 9-Tuple-Rückgabe
-- `constants.py`: `KNOWN_MESSAGE_TYPES = {'assistant', 'user', 'progress', 'system', 'result'}`, `KNOWN_IGNORED_TYPES = {'file-history-snapshot', 'queue-operation', 'last-prompt', 'custom-title', 'agent-name', 'attachment', 'permission-mode'}`
-- `constants.py`: 25 Hook-Event-Konstanten (`HOOK_SESSION_START`, `HOOK_SESSION_END`, `HOOK_POST_TOOL`, `HOOK_POST_TOOL_FAILURE`, `HOOK_PERMISSION_REQUEST`, `HOOK_PERMISSION_DENIED`, `HOOK_SUBAGENT_START`, `HOOK_SUBAGENT_STOP`, `HOOK_TEAMMATE_IDLE`, `HOOK_TASK_CREATED`, `HOOK_TASK_COMPLETED`, `HOOK_STOP`, `HOOK_STOP_FAILURE`, `HOOK_FILE_CHANGED`, `HOOK_CWD_CHANGED`, `HOOK_CONFIG_CHANGE`, `HOOK_PRE_COMPACT`, `HOOK_POST_COMPACT`, `HOOK_ELICITATION`, `HOOK_ELICITATION_RESULT`, `HOOK_NOTIFICATION`, `HOOK_WORKTREE_CREATE`, `HOOK_WORKTREE_REMOVE` + bestehende 3) und `HOOK_EVENT_CATEGORIES` Dict für Color-Mapping
-- `jsonl_parser.py`: `detect_unknown_types()` scannt Messages gegen `KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES` und gibt unbekannte Types zurück → Warnings-Pane
-- `jsonl_parser.py`: `extract_system_messages()` extrahiert `type=system` Messages und deren Text-Content; Rückgabe als 10. Element des Parse-Tuples
-- `session-start-rules.sh`: liest stdin (JSON mit `source`, `cwd`), logt via `hook_logger.py` mit `source=$SOURCE`; nutzt `$CWD` aus JSON statt `$(pwd)` für Worktree-Check
+- `jsonl_parser.py`: tool_use/tool_result correlation via cache, extracts 8 data types (tools, prompts, media, thinking, skills, warnings, usage, system) via 9-Tuple-Rückgabe
+- `constants.py`: 25 Hook-Event-Konstanten (`HOOK_SESSION_START`, `HOOK_SESSION_END`, `HOOK_POST_TOOL`, `HOOK_POST_TOOL_FAILURE`, `HOOK_PERMISSION_REQUEST`, `HOOK_PERMISSION_DENIED`, `HOOK_SUBAGENT_START`, `HOOK_SUBAGENT_STOP`, `HOOK_TEAMMATE_IDLE`, `HOOK_TASK_CREATED`, `HOOK_TASK_COMPLETED`, `HOOK_STOP`, `HOOK_STOP_FAILURE`, `HOOK_FILE_CHANGED`, `HOOK_CWD_CHANGED`, `HOOK_CONFIG_CHANGE`, `HOOK_PRE_COMPACT`, `HOOK_POST_COMPACT`, `HOOK_ELICITATION`, `HOOK_ELICITATION_RESULT`, `HOOK_NOTIFICATION`, `HOOK_WORKTREE_CREATE`, `HOOK_WORKTREE_REMOVE` + bestehende 3) und `HOOK_EVENT_CATEGORIES` Dict für Color-Mapping- `jsonl_parser.py`: `extract_system_messages()` extrahiert `type=system` Messages und deren Text-Content; Rückgabe als 9. (letztes) Element des 9-Tuples
+- `session-start-rules.sh`: liest stdin (JSON mit `source`, `cwd`), logt via `hook_logger.py` mit `source=$SOURCE`; nutzt `$CWD` aus JSON statt `$(pwd)` für Worktree-Check (NOTE: Dateiname stale — nicht im Repo vorhanden; gegen tatsächlichen Global-Hook verifizieren, vgl. `session-start-project-rules.sh`)
 
 
 ### Session Discovery — Filesystem-Scan pro Poll (Kategorie: Performance)
 
-`find_active_sessions()` in `src/session_finder.py:25-36` wird jeden Poll-Zyklus (alle 0.5s) aufgerufen. Ablauf pro Aufruf:
-1. `get_project_directories()` (session_finder.py:41-54): `CLAUDE_PROJECTS_DIR.iterdir()` — liest gesamtes `~/.claude/projects/` Directory
-2. `collect_jsonl_files()` (session_finder.py:57-73): Pro Projekt-Dir zwei Globs:
+`find_active_sessions()` in `src/session_finder.py:16-26` wird jeden Poll-Zyklus (alle 0.5s) aufgerufen. Ablauf pro Aufruf:
+1. `get_project_directories()` (session_finder.py:31-42): `CLAUDE_PROJECTS_DIR.iterdir()` — liest gesamtes `~/.claude/projects/` Directory
+2. `collect_jsonl_files()` (session_finder.py:45-60): Pro Projekt-Dir zwei Globs:
    - `project_dir.glob('*.jsonl')` — Session-Dateien
    - `project_dir.glob('*/subagents/agent-*.jsonl')` — Subagent-Dateien
-3. `sort_by_modification_time()` (session_finder.py:87-88): `sorted(..., key=lambda f: f.stat().st_mtime, reverse=True)` — `stat()` Syscall pro Datei
+3. `sort_by_modification_time()` (session_finder.py:74-76): `sorted(..., key=lambda f: f.stat().st_mtime, reverse=True)` — `stat()` Syscall pro Datei
 
 Kein Caching zwischen Polls. Bei vielen Projekten/Sessions: O(N) Syscalls pro 0.5s.
-`CLAUDE_PROJECTS_DIR` ist hardcoded: `Path.home() / '.claude' / 'projects'` (session_finder.py:18).
+`CLAUDE_PROJECTS_DIR` ist hardcoded: `Path.home() / '.claude' / 'projects'` (session_finder.py:9).
 
-### JSONL Parsing — 5 separate Iterationen (Kategorie: Performance)
+### JSONL Parsing — 7 separate Iterationen (Kategorie: Performance)
 
-`parse_new_tool_calls()` in `src/jsonl/jsonl_parser.py:35-53` iteriert die `messages`-Liste 5x:
-1. `extract_tool_calls(messages, tool_use_cache)` — tool_use/tool_result Paare (jsonl_parser.py:43)
-2. `extract_user_prompts(messages)` — externe User-Prompts (jsonl_parser.py:44)
-3. `extract_user_media(messages)` — Bilder, Dokumente (jsonl_parser.py:45)
-4. `extract_thinking_blocks(messages)` — Thinking-Blöcke (jsonl_parser.py:46)
-5. `extract_skill_activations(messages)` — Skill/Command-Aktivierungen (jsonl_parser.py:47)
+`parse_new_tool_calls()` in `src/jsonl/jsonl_parser.py:75-87` iteriert die `messages`-Liste 7x:
+1. `extract_tool_calls(messages, tool_use_cache)` — tool_use/tool_result Paare (jsonl_parser.py:79)
+2. `extract_user_prompts(messages)` — externe User-Prompts (jsonl_parser.py:80)
+3. `extract_user_media(messages)` — Bilder, Dokumente (jsonl_parser.py:81)
+4. `extract_thinking_blocks(messages)` — Thinking-Blöcke (jsonl_parser.py:82)
+5. `extract_skill_activations(messages)` — Skill/Command-Aktivierungen (jsonl_parser.py:83)
+6. `extract_usage_data(messages)` — Token-Usage pro assistant-Message (jsonl_parser.py:84)
+7. `extract_system_messages(messages)` — type=system Messages (jsonl_parser.py:85)
 
 Jede Funktion iteriert vollständig über alle Messages. Keine gemeinsame Iteration mit Switch-Dispatch.
 
 **9-Tuple-Rückgabe und Erweiterbarkeit:**
 `parse_new_tool_calls()` gibt zurück:
-`(tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, unknown_types, usage_data)`
+`(tool_calls, new_position, malformed_warnings, user_media, thinking_blocks, user_prompts, skill_activations, usage_data, system_messages)`
 
 `extract_usage_data()` extrahiert pro assistant-Message: `output_tokens`, `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, Content-Block-Type (thinking/tool_use/text), Tool-Name (bei tool_use), `requestId`. Rückgabe: `[{type, tool_name, output_tokens, input_tokens, cache_creation_input_tokens, cache_read_input_tokens, request_id}]`. Filter: Skip wenn BEIDE output_tokens UND input_tokens == 0.
 
 Jedes neue JSONL-Datenformat erfordert:
 1. Neue `extract_*()`-Funktion
 2. Neuer Rückgabewert im 9-Tuple
-3. Neues Entpacken in `process_session_file()` (monitor.py)
-4. Neue Display-Funktion in monitor.py
-5. Ggf. neuer Eintrag in KNOWN_IGNORED_TYPES (constants.py)
+3. Neues Entpacken in `process_session_file()` (core/monitor_session.py)
+4. Neue Display-Funktion (panes/ bzw. core/monitor.py)
 
 Das Tuple wächst linear mit der Anzahl extrahierter Datentypen.
 
 ### tool_use_cache — kein Orphan-Cleanup (Kategorie: Memory)
 
-`tool_use_caches: Dict[Path, dict]` in monitor.py:61 — pro Session-Datei ein Cache-Dict.
-Der Cache pro Datei (`cache` in `extract_tool_calls()`, jsonl_parser.py:124) ist ein `dict` keyed by `tool_use_id`:
-- Eintrag wird bei `tool_use`-Block hinzugefügt (jsonl_parser.py:162): `tool_use_cache[tool_data['tool_use_id']] = tool_data`
-- Eintrag wird bei passendem `tool_result` gelöscht (jsonl_parser.py:178): `del tool_use_cache[tool_use_id]`
+`tool_use_caches: Dict[Path, dict]` in core/monitor.py:30 — pro Session-Datei ein Cache-Dict.
+Der Cache pro Datei (`cache` in `extract_tool_calls()`, jsonl_parser.py:141) ist ein `dict` keyed by `tool_use_id`:
+- Eintrag wird bei `tool_use`-Block hinzugefügt (jsonl_parser.py:176): `tool_use_cache[tool_data['tool_use_id']] = tool_data`
+- Eintrag wird bei passendem `tool_result` gelöscht (jsonl_parser.py:187): `del tool_use_cache[tool_use_id]`
 - Kein TTL, kein Cleanup für Orphaned Entries (tool_use ohne zugehöriges tool_result)
 
-Auswirkung: Wenn Claude Code crashed oder ein Tool-Call nie ein Result bekommt, wächst der Cache unbegrenzt. Wird bei Session-Removal via `del tool_use_caches[removed_file]` (monitor.py:159) vollständig geleert.
+Auswirkung: Wenn Claude Code crashed oder ein Tool-Call nie ein Result bekommt, wächst der Cache unbegrenzt. Wird bei Session-Removal via `del tool_use_caches[removed_file]` (core/monitor.py:113) vollständig geleert.
 
 ### EXCLUDED_TOOLS — einziger Filterpunkt (Kategorie: Konfiguration)
 
-`EXCLUDED_TOOLS = {'Edit'}` in `src/constants.py:18`.
-Angewendet in `filter_excluded_tools()` (jsonl_parser.py:258-259), aufgerufen am Ende von `extract_tool_calls()` (jsonl_parser.py:186).
+`EXCLUDED_TOOLS = {'Edit'}` in `src/constants.py:121`.
+Angewendet in `filter_excluded_tools()` (jsonl_parser.py:251-252), aufgerufen am Ende von `extract_tool_calls()` (jsonl_parser.py:191).
 Nur ein einziger Tool-Name ausgeschlossen. Kein Wildcard-Pattern, kein Category-Filter.
 
 ### Byte-Offset Tracking — kein Truncation-Handling (Kategorie: Robustheit)
 
-`read_new_lines()` in `src/jsonl/jsonl_parser.py:71-91`:
-- `f.seek(last_position)` (jsonl_parser.py:77) — springt direkt zum gespeicherten Byte-Offset
-- Neuer Position nach Lesen: `filepath.stat().st_size` (jsonl_parser.py:95)
+`read_new_lines()` in `src/jsonl/jsonl_parser.py:105-116`:
+- `f.seek(last_position)` (jsonl_parser.py:109) — springt direkt zum gespeicherten Byte-Offset
+- Neuer Position nach Lesen: `filepath.stat().st_size` (jsonl_parser.py:120)
 - Kein Handling wenn `file_size < last_position` (z.B. bei JSONL-Rotation oder File-Truncation durch Claude Code)
 
 Im Truncation-Fall würde `seek()` ans Dateiende springen und `f.read()` leeren String zurückgeben — kein Error, aber stille Datenverlust.
@@ -77,10 +75,10 @@ Im Truncation-Fall würde `seek()` ans Dateiende springen und `f.read()` leeren 
 ### Content Polymorphism (Kategorie: Format-Stabilität)
 
 Zwei Stellen handhaben `content` als String oder Array:
-- `extract_user_prompts()` (jsonl_parser.py:308-320): `isinstance(content, list)` → text-Blöcke konkatenieren; `isinstance(content, str)` → direkt verwenden
-- `extract_result_content()` (jsonl_parser.py:239-245): `isinstance(content, list)` → erstes Element; `str(content)` als Fallback
+- `extract_user_prompts()` (jsonl_extractors.py:30-63): `isinstance(content, list)` → text-Blöcke konkatenieren; `isinstance(content, str)` → direkt verwenden
+- `extract_result_content()` (jsonl_parser.py:242-248): `isinstance(content, list)` → erstes Element; `str(content)` als Fallback
 
-Kein explizites Format-Versioning. `detect_unknown_types(messages)` in jsonl_parser.py scannt Messages gegen KNOWN_MESSAGE_TYPES | KNOWN_IGNORED_TYPES (constants.py) und meldet unbekannte Types.
+Kein explizites Format-Versioning.
 
 
 ## Evidenz
@@ -107,6 +105,8 @@ Kein explizites Format-Versioning. `detect_unknown_types(messages)` in jsonl_par
 | **Total (5 Passes)** | **1895.5** | 100% |
 
 Average 5.40 µs/Message. Single-pass savings estimate: 70.2 µs.
+
+Scope-Hinweis: Diese Messung erfasste **5 Passes (pre-refactor)** — vor Hinzufügen von `extract_usage_data` + `extract_system_messages`. Die 2 zusätzlichen Passes sind leichtgewichtig (analog `extract_user_media`/`extract_thinking_blocks` <1% Anteil). Der IST-Pass-Count ist aktuell **7** (siehe oben).
 
 ### tool_use_cache Orphan-Verhalten (IST-3)
 

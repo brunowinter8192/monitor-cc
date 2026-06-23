@@ -3,7 +3,7 @@
 ## Status Quo (IST)
 
 - `formatter.py`: color-coded output (green=main, red=error, pastel=meta)
-- Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` + `format_workers_block()` — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Two-pane split: Workers (2.0, 34%) | Worker-Proxy (2.1, 66%).
+- Workers-Pane (Window 2, Pane 2.0): `run_workers_loop()` (`workers/worker_pane.py:37`) + `format_workers_block()` (`workers/worker_format.py:71`) — zeigt Worker-Name, Status, Spawn-Zeit, Purpose. Two-pane split: Workers (2.0, 34%) | Worker-Proxy (2.1, 66%).
 **BUG-CLASS (fixed, 2026-04-25 Performance Session):** All 9 stdin-driven panes were polling at a 50ms floor via `time.sleep(INPUT_POLL_INTERVAL)` at the end of each loop iteration → input latency 0–50ms (~25ms median) for hover/click/scroll/keyboard regardless of how fast the rest of the loop ran. Replaced with `wait_for_input(INPUT_POLL_INTERVAL)` from `src/input/click_handler.py` — a `select.select([_stdin_fd], [], [], timeout)` wrapper with `time.sleep` fallback when stdin not in raw mode. Loop wakes immediately on any byte arriving on stdin (mouse event, keypress) OR after the timeout expires. Smoke test 11.9ms wake-latency on stdin-mid-wait. Affected modules: `panes/{token,warnings}_pane.py`, `workers/worker_pane.py` (two call sites: try body + except handler), `proxy_display/{pane,worker_proxy_pane}.py`. Pattern A (direct sleep replacement) chosen over Pattern B (refresh-aligned timeout) because `warnings_pane`'s `WARNINGS_POLL_INTERVAL=10s` would otherwise mean up to 10s blocking on input — Pattern B would have made warnings unresponsive.
 
 ### LONG_OUTPUT_THRESHOLD (Kategorie: Display / UX)
@@ -12,13 +12,13 @@
 
 ### SCORE_PATTERN Regex (Kategorie: Display / UX)
 
-`SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')` in `src/format/formatter.py:20`.
-Verwendet in `format_output()` (formatter.py:130-131): Zeilen die matchen werden in `GREEN` coloriert.
+`SCORE_PATTERN = re.compile(r'^-+ Result \d+ \(score: [\d.]+\) -+$')` in `src/format/formatter.py:12`.
+Verwendet in `format_output()` (formatter.py:107-108): Zeilen die matchen werden in `GREEN` coloriert.
 Speziell für RAG-Suchergebnisse (Format aus rag-Plugin). Hardcoded Pattern.
 
 ### Pane Headers (Kategorie: Display / UX)
 
-Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 7 panes (MAIN, TOKENS, PROXY, WORKERS, WORKER-PROXY, WARNINGS, GPU). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
+Sticky headers via tmux `pane-border-status top` + `pane-border-format` in `configure_tmux_session()`. Pane titles set via `select-pane -T` for all 9 panes (MAIN, TOKENS, PROXY, WORKERS, WORKER-PROXY, WARNINGS, GPU, NEWS, NEWS-LOG). Color: `colour216` (PASTEL_ORANGE). Headers never scroll away — tmux renders them in the pane border.
 
 
 ### Token-Profiling Pane (Kategorie: Display / Token Visibility)
@@ -53,7 +53,7 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 - Worker errors via `scan_worker_errors_logs(last_positions, project_session_id, min_mtime)` — globs `dual_log/api_requests_worker_{sid}_*_errors.jsonl`.
 - Each `_errors` record converted by `_errors_record_to_display` to the `tool_errors` display dict. `worker_name` extracted from `record['worker']` field (`worker:<name>` prefix).
 - **Dropped:** proxy-log scan (`parse_proxy_log` call + `_proxy_log_position`), worker-log scan (`scan_worker_logs` + `_worker_log_positions`), `_scan_proxy_entries_for_errors`, `_scan_proxy_entries_for_zero_results`, zero_results section, schema_warnings section, dedup sets `_seen_zero_keys`/`_seen_error_keys`, `_proxy_pending_by_rid`.
-- `warnings_scan.py` + `warnings_persist.py` are now stubs; `warnings_parse.py` retains only `track_unknown_type`/`unknown_type_counts`/`format_unknown_type_warning` (still used by `warnings_render` and `core/monitor_session`).
+- `warnings_scan.py` / `warnings_persist.py` / `warnings_parse.py` no longer exist; the unknown-type warning path (`track_unknown_type`/`unknown_type_counts`/`format_unknown_type_warning`) was removed entirely. The warnings module is now just `warnings_pane.py` + `warnings_render.py`.
 - `_format_warnings_pane` signature: removed `schema_warnings`, `zero_results`, `zero_result_expand_states` params; returns 2-tuple `(rendered_str, error_line_map)` instead of 3-tuple.
 
 ### Proxy Pane Redesign (Session 17, 2026-04-09)
@@ -66,19 +66,15 @@ Eigenes tmux Pane (Window 0 "main", Pane 0.1, rechts 30%) via `--mode tokens`:
 
 **Turn header config:** Shows `effort:X`, `think:Yk(type)` from API payload's `output_config.effort` and `thinking.budget_tokens`/`thinking.type`. Red highlight when values change between turns.
 
-**Image grouping (Main Pane):** `format_user_media()` in formatter.py now accepts list of media items grouped by timestamp. Multiple images rendered as single line: `[4x IMAGE: image/png]`.
+**Image grouping (Main Pane):** `format_user_media()` in `format/formatter_events.py:36` now accepts list of media items grouped by timestamp. Multiple images rendered as single line: `[4x IMAGE: image/png]`.
 
-### Session-Browser (Session 3)
+### Session-Browser (Session 3) — REMOVED
 
-- `token_cumulative_n: Optional[int]` (monitor.py:48): steuert Modus. `None` = current session, `N` = letzte N Main-Sessions kumuliert
-- Keyboard-Input in `run_tokens_loop()` (monitor.py:479-517): Ziffern → `token_input_buffer`, Enter → setzt `token_cumulative_n`, 'q' → setzt auf None, Backspace → löscht letzten Char
-- `compute_cumulative_tokens(n)` (monitor.py:423-450): liest letzte N Main-Session-Files von Position 0 (kein Byte-Offset, full rescan), aggregiert Input/Output/Cache/Turns + per-tool output breakdown
-- Input `0` → returns to current session view (`token_cumulative_n = None`)
-- Live-Prompt-Anzeige: `"Last N sessions › {buffer}_"` am Ende des Pane-Outputs
+Cumulative-token Session-Browser feature entfernt: `token_cumulative_n`, `compute_cumulative_tokens(n)` und das zugehörige Keyboard-Handling in `run_tokens_loop()` existieren nicht mehr (grep `cumulative|token_cumulative src/ --include=*.py` → keine Treffer im Token-Pfad). `run_tokens_loop()` lebt jetzt in `panes/token_pane.py:31`.
 
 ### Restart Hotkey (Kategorie: Display / UX)
 
-`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py): `respawn-pane -k` für alle 9 Panes across 5 Windows (0.0, 0.1, 1.0, 1.1, 2.0, 2.1, 2.2, 3.0, 4.0) via `\;`-Chain. Restarts all monitor processes with their original commands.
+`C-r` (Ctrl+R) keybinding in `configure_tmux_session()` (tmux_launcher.py:174-175): `bind-key -T root C-r run-shell <restart_cmd>`, wobei `restart_cmd` `--mode restart-panes` aufruft → `restart_panes()` (tmux_launcher.py:208). `restart_panes()` heilt fehlende Panes aus `_WINDOW_LAYOUT` (6 Windows: 0.0, 0.1, 1.0, 2.0, 2.1, 3.0, 4.0, 5.0, 5.1 — 9 Panes) und respawnt danach alle Panes mit `respawn-pane -k`. Kein `\;`-Chain mehr. Restarts all monitor processes with their original commands.
 
 **BUG (fixed, Session 6):** User reports "Monitor restarted" message appears but panes don't visibly restart.
 - Root cause: `C-r` binding is global (`-T root`) with hardcoded session name via Python f-string (`f"{session_name}:0.0"`). When multiple monitor sessions exist simultaneously, the last `configure_tmux_session()` call wins → C-r respawns panes of the wrong session. User sees "Monitor restarted" display-message but no visual change because the respawn happens in a different (possibly hidden) session.
@@ -111,29 +107,28 @@ Window 5 "news": left pane NEWS (5.0, 50%) controls and observes the CoinDesk �
 ### Screen Clear Escape Sequence (Kategorie: Display / Robustheit)
 
 `\033[2J\033[3J\033[H` an folgenden Stellen:
-- `src/core/monitor.py`: in `run_warnings_loop()` and `run_tokens_loop()`
+- `src/panes/warnings_pane.py`: in `run_warnings_loop()`; `src/panes/token_pane.py`: in `run_tokens_loop()`
 
 Bedeutung: `[2J` löscht sichtbaren Screen, `[3J` löscht Scrollback-Buffer, `[H` setzt Cursor auf Position 0,0.
 
 ### Warnings-Pane (Kategorie: Format-Stabilität)
 
 Eigenes tmux Pane (Window 3 "debug", Pane 3.0, fullscreen) via `--mode warnings`:
-- `run_warnings_loop()` in monitor.py: pollt `monitor_sessions()`, rendert `format_warnings_block()`
-- `format_unknown_type_warning()` in formatter.py (formatter.py:229-230): `[!] Unknown JSONL type: <type> (seen Nx)`
+- `run_warnings_loop()` in `panes/warnings_pane.py:34`: pollt Sessions, rendert via `_format_warnings_pane()` (`panes/warnings_render.py:26`)
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-w Keybinding: Warnings-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 3.0)
 
 ### Workers-Pane (Kategorie: Worker-Monitoring, Session 3+7+9+10)
 
-Eigenes tmux Pane (Window 2 "workers", Pane 2.0, links ~34%) via `--mode workers`. Window 2 has three panes: Workers (2.0) | Worker-Proxy (2.1) | Worker-Metadata (2.2). Subagents-Pane entfernt.
-- `run_workers_loop()` in monitor.py: pollt `list_workers()`, rendert `format_workers_block()`. Keyboard-Input (Digits 1-9 toggle) + SGR Mouse-Click toggle + Scroll.
-- `list_workers(project_path)` (monitor.py): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
-- `detect_worker_status(session)` (monitor.py): prüft `#{pane_dead}` für exited-Status; analysiert `#{window_activity}` Timestamp für idle-Detection (10s Threshold)
-- `get_tmux_env(session, var)` (monitor.py): liest WORKER_SPAWNED, WORKER_PURPOSE aus tmux show-environment
-- `get_worker_project_name(project_path)` (monitor.py): extrahiert Projektname worktree-aware (splittet bei `/.claude/worktrees/`)
-- `find_worker_jsonl(session_name)` (monitor.py): Worker JSONL Discovery via `pane_current_path` → `encode_project_path()` → `~/.claude/projects/<encoded>/`. Worktree-aware: direkter Lookup auf Worktree-Verzeichnis (kein Fallback auf Base-Projekt).
-- `format_workers_block(workers, expand_states, worker_turns, line_map, hover_row, scroll_offsets)` (formatter.py): Expand/Collapse per Worker. Collapsed: `[+] [idx] name STATUS spawn_time` + truncated purpose. Expanded: `[-] [idx] name STATUS spawn_time` + full purpose + scrollable Cache-Tracker Token-View (CR/CC/D per API call via `format_cache_tracker()`). Hover-Highlight: `HOVER_BG` on header line when `hover_row` matches.
-- State: `worker_expand_states: Dict[str, bool]`, `worker_scroll_offsets: Dict[str, int]`, `worker_line_map: Dict[int, str]`, `hover_row: Optional[int]` (monitor.py)
+Eigenes tmux Pane (Window 2 "workers", Pane 2.0, links ~34%) via `--mode workers`. Window 2 has two panes: Workers (2.0) | Worker-Proxy (2.1). Subagents-Pane entfernt.
+- `run_workers_loop()` in `workers/worker_pane.py:37`: pollt `list_workers()`, rendert `format_workers_block()`. Keyboard-Input (Digits 1-9 toggle) + SGR Mouse-Click toggle + Scroll.
+- `list_workers(project_path)` (`workers/worker_tmux.py:47`): scannt tmux-Sessions mit Prefix `worker-{project_name}-`, liest Status + Env-Variablen pro Worker
+- `detect_worker_status(session)` (`workers/worker_tmux.py:24`): prüft `#{pane_dead}` für exited-Status; analysiert `#{window_activity}` Timestamp für idle-Detection (10s Threshold)
+- `get_tmux_env(session, var)` (`workers/worker_tmux.py:14`): liest WORKER_SPAWNED, WORKER_PURPOSE aus tmux show-environment
+- `get_worker_project_name(project_path)` (`workers/worker_format.py:17`): extrahiert Projektname worktree-aware (splittet bei `/.claude/worktrees/`)
+- `find_worker_jsonl(session_name)` (`workers/worker_tmux.py:75`): Worker JSONL Discovery via `pane_current_path` → `encode_project_path()` → `~/.claude/projects/<encoded>/`. Worktree-aware: direkter Lookup auf Worktree-Verzeichnis (kein Fallback auf Base-Projekt).
+- `format_workers_block(workers, expand_states=None, worker_turns=None, scroll_offsets=None, cache_expand_states=None, frozen=False, selected_name=None)` (`workers/worker_format.py:71`): Expand/Collapse per Worker. Collapsed: `[+] [idx] name STATUS spawn_time` + truncated purpose. Expanded: `[-] [idx] name STATUS spawn_time` + full purpose + scrollable Cache-Tracker Token-View (CR/CC/D per API call via `format_cache_tracker()`).
+- State: `worker_expand_states: Dict[str, bool]`, `worker_scroll_offsets: Dict[str, int]` (`workers/worker_pane.py`)
 - Status-Farben: working=GREEN, idle=YELLOW, exited=RED, unknown=WHITE
 - Screen-clear bei Änderung (`\033[2J\033[3J\033[H`)
 - M-k Keybinding: Workers-Pane Content → Clipboard via pbcopy (tmux_launcher.py, Pane 2.0)
@@ -235,7 +230,7 @@ Bug: when the body print overflows the pane height (terminal line wrap), the ren
 
 Fix: after body print, overdraw the header using `\033[H{header}\033[K` (cursor home + header text + erase-to-EOL). Header always survives body overflow.
 
-Applied: `src/panes/warnings_pane.py`, `src/proxy_display/pane.py` (function `run_worker_proxy_loop`). Pattern is generalizable — any pane that draws its own header on row 1 should use it.
+Applied: `src/panes/warnings_pane.py`, `src/proxy_display/pane.py` (function `run_proxy_loop`). Pattern is generalizable — any pane that draws its own header on row 1 should use it.
 
 #### Warnings Pane — 10s Polling + `r` Key
 
@@ -249,7 +244,7 @@ Applied: `src/panes/warnings_pane.py`, `src/proxy_display/pane.py` (function `ru
 - Shows the proxy log of ONE selected worker at a time.
 - Header: `WORKER-PROXY [1*]selected [2]other [3]another` — active selection marked with `*`.
 - Digit keys 1-9 switch selection. IPC via `write_selection()` exposed from `src/workers/__init__.py`.
-- Source: `src/proxy_display/pane.py` (function `run_worker_proxy_loop`)
+- Source: `src/proxy_display/worker_proxy_pane.py` (function `run_worker_proxy_loop`)
 - State clear rule: `worker_proxy_entries` (and all associated state) is cleared when `_worker_proxy_workers` is empty OR `current_worker` from selection file is not in worker list OR `worker_name != last_worker_name`. Ensures stale entries don't persist when all workers exit.
 - Thinking block display: Thinking blocks render as `[N] thinking      text:Xc sig:Yc` to expose signature byte length (encrypted thinking carrier, ~400 chars typical on Opus 4.7 `display: summarized`). Field `sig_chars` added to block dict in `src/proxy/message_summary.py`. `chars` field remains `len(thinking_text)` only — signature NOT counted (signatures are not billed as input tokens per Anthropic docs).
 
