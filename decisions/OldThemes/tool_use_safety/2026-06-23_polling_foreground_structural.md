@@ -47,5 +47,15 @@ Both hooks broadened to a shared sleep-only pattern `_SLEEP_ONLY_BG = ^\s*sleep\
 ### Verification
 Smokes: `test_rewrite_background_sleep.py` 11/11, new `test_block_unauthorized_background.py` 9/9. Hooks live post-merge (`hook_setup.py` re-registers from `src/hooks/`).
 
-### Relation to #30
-Fixes the legitimate timer (the "go idle" tool) that foreground-forcing was breaking — makes the sanctioned launch→idle→external-wake path actually usable. Does NOT resolve the broader #30 goal: the shell-`&` gap (Gap 1) and long-job auto-background (Gap 2) above remain Pending.
+### Relation to the foreground-forcing goal
+Fixes the legitimate timer (the "go idle" tool) that foreground-forcing was breaking — makes the sanctioned launch→idle→external-wake path actually usable. Does NOT resolve the broader goal: the shell-`&` gap (Gap 1) and long-job auto-background (Gap 2) above remain Pending.
+
+## Conclusion — orchestrator self-poll is rule-only, not hookable (2026-06-23, later session)
+
+The core polling case is the ORCHESTRATOR'S OWN self-poll: launch the background timer (`sleep N && echo done`) then issue the `worker-cli status` check in the same turn / immediate succession. `run_in_background=true` returns instantly, so the chained status check runs with zero elapsed time — the wait collapses, polling at machine speed, while the sleep runs on uselessly. The agent cannot perceive this from the inside: the eventual `echo done` makes every check feel "post-timer".
+
+Not hookable: the timer command is byte-identical to the sanctioned timer (already established line 18); the violation is the across-turn SEQUENCE, which is in no single tool payload. The hookable levers (Gap 1 shell-`&`, Gap 2 long-job auto-background) target worker/external-process polling, not the orchestrator's own timer→status chain.
+
+Resolution = rule discipline only. Sharpened `~/.claude/shared-rules/opus/workers-2.md` "Timer & Polling Flow": a timer launch is the SOLE and FINAL action of its turn — STOP after it, no further tool call (never a status check) in the same turn; the status check happens ONLY in the next turn that the timer's `echo done` completion opens. Plus the hard line "NEVER chain anything after a timer launch."
+
+Done to the extent possible. The orchestrator self-poll residual is rule-enforced. Gap 1 / Gap 2 stay Pending as separate hookable work if fire-log evidence justifies them.

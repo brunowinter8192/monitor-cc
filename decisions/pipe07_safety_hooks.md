@@ -650,6 +650,8 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 **Fail-open:** exits 0 when CWD is a worktree; exits 0 on path-resolution failure; exits 0 on any parse error.
 
+**Known limitation (2026-06-23):** static command-string analysis is blind to a dynamic `project_path` — `worker-cli spawn ... "$(pwd)"` (after a `cd <other>`) is seen as the literal `"$(pwd)"`, resolves to the hook's own cwd git-root, and fail-opens. Only EXPLICIT absolute paths to another project are caught. Primary enforcement moved to `worker-cli spawn` itself (forces the home worktree into `PROXY_PROJECT_PATH` at runtime); this hook remains a fast pre-filter. See `decisions/OldThemes/worker_spawn_placement_enforcement.md`.
+
 ---
 
 ### Hook 31 — `block_manual_worker_cleanup.py` (`src/hooks/block_manual_worker_cleanup.py`)
