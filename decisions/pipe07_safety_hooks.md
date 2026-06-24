@@ -755,13 +755,15 @@ Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the ant
 
 ## Recommendation (SOLL)
 
-Keep current 31 hooks + audit logging. Pending evaluation after rollout:
-- Do hooks #9–17 (2026-05-22 batch) intercept violations without false positives in live sessions?
+**Background/foreground simplification (2026-06-24) — SHIPPED, IST = SOLL.** Model: force ALL non-timer background → foreground (Hook 3, whitelist trimmed to sleep-timer only); the two proxy injections (`strip_bg_launch_ack` "go idle" + `strip_bg_completed` "background done") carry all signalling. Removed Hooks 8/21/33 (polling + log-read blockers) and 25/26 (force-to-bg). Backed by smoke 9/9 (`dev/hook_smoke/test_block_unauthorized_background.py`), live-verify (`.log` read passes; zero stale registrations post-merge → no Bash lockout), and the auto-background evidence (CC auto-backgrounds a long foreground job emitting the catchable ack). No shell-`&` foreground hook built — see Offene Fragen. Full narrative: `decisions/OldThemes/tool_use_safety/2026-06-24_background_foreground_simplification.md`.
+
+Remaining hooks — Keep + audit logging. Pending:
 - `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.
 
 ## Offene Fragen
 
+- **shell-`&` work-hiding (accepted residual, 2026-06-24):** Hook 3 forces only the CC `run_in_background` flag → foreground; a shell-level `cmd &` (incl. `nohup … &`) bypasses it, produces NO CC ack, NO proxy injection, runs detached/invisible. A `work-cmd &` could thus be polled unguarded (block_polling_loop / block_log_read removed). NOT closed: forcing shell-`&` foreground would break legit `nohup`/launchd daemon launches (daemon never completes → no wake). No frequency evidence → block-on-evidence principle → revisit with a targeted hook only if fire-log shows real `work-cmd &` polling. See `decisions/OldThemes/tool_use_safety/2026-06-24_background_foreground_simplification.md`.
 - **Next antipattern:** Rule-9 (Read before Edit/Write) — 1 violation in 2026-05-20 run; requires session state to detect (which files were read this session), not hookable from a single tool_input payload alone.
 - **Migration threshold:** when is a negative rule in `tool-use.md` mature enough to be retired in favour of a hook? Proposed criterion: pattern fires ≥3× in a 7-day window AND can be reliably regex-captured without false positives.
 - **Worker-local suppression:** should workers running in worktrees be able to suppress specific hooks? Currently no mechanism — global registration means all hooks fire everywhere.
