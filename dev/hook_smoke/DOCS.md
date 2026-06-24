@@ -46,6 +46,17 @@ python3 dev/hook_smoke/test_block_gh_cli_chained.py
 
 ---
 
+### test_block_rag_cli_chained.py (79 LOC)
+
+**Purpose:** 11-case smoke for `block_rag_cli_chained.py`. Verifies 4 blocked cases (rag-cli followed via `;`, `&&`, `|` by tail/echo/grep/head), and 7 allow cases (redirect to file, file-guard before rag-cli, cd before rag-cli, two rag-cli calls chained, no rag-cli at all, rag-cli inside single-quotes, rag-cli inside heredoc body).
+
+**Usage:**
+```bash
+python3 dev/hook_smoke/test_block_rag_cli_chained.py
+```
+
+---
+
 ### test_block_dangerous_kill.py (90 LOC)
 
 **Purpose:** 18-case smoke for `block_dangerous_kill.py` — pkill -f patterns, pipe-kill chains, heredoc/quote exemptions, and allowlist cases.
