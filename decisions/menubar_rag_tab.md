@@ -14,11 +14,13 @@ RAG tab is the second panel in the four-tab ring `Sessions · RAG · Beads · Qu
 - Gate on `kind` field (present in locks written by rag-cli post-consolidation):
   - `kind` present: `kind != 'index'` → `no indexing currently running`
   - `kind` absent (backward compat — old lock format): `command.startswith('index')` fallback
-- Otherwise format: `{collection}: {done}/{total} · {elapsed}`
+- Otherwise format — three branches based on lock `progress` dict contents:
+  1. **`chunks_done` + `chunks_total` present** (mid-document embedding): `{collection} · {done+1}/{total} docs · {chunks_done}/{chunks_total} chunks · {elapsed}` — `done+1` gives the 1-based current-doc number because `done` = completed-doc count when chunk updates fire.
+  2. **`total > 0`, no chunk fields** (between docs, or old-format lock): `{collection} · {done}/{total} docs · {elapsed}`.
+  3. **`total == 0` or empty `progress` dict** (initial lock state): `{collection} · {elapsed}`.
   - `collection` = `args.collection`, fallback `progress.collection`, fallback `Path(args.input).name`, fallback `'unknown'`
-  - `progress.collection` is set per-collection during `update_docs` runs → shows real name (e.g. `monitor-cc-meta: 3/8 · 5s`) instead of old `unknown: 0/0 · elapsed`
-  - `done`/`total` from `progress` dict (defaults 0/0 when absent)
   - `elapsed` = `now(utc) - started_at`, formatted `{M}m{SS}s` when minutes > 0, else `{S}s`
+  - Separator unified to `·` throughout (was `:` before done/total)
 
 **Polling:** `RagController.tick(sessions)` called every `POLL_INTERVAL = 1.5s` by `CCMenuBarApp._tick`. Updates the NSTextField label in-place via `setAttributedStringValue_` (no full rebuild per tick — cheap).
 
@@ -34,19 +36,28 @@ RAG tab is the second panel in the four-tab ring `Sessions · RAG · Beads · Qu
 
 ## Evidenz
 
-**Live lock file schema** (post-consolidation, rag-cli `index` command):
+**Live lock file schema** (post-two-level-progress, rag-cli `index` command):
 ```json
 {
   "pid": 12345,
   "command": "index",
   "kind": "index",
-  "args": {"collection": "gh_reference"},
+  "args": {"collection": "trading-reference"},
   "started_at": "2026-06-10T12:00:00.000000+00:00",
   "status": "running",
-  "progress": {"done": 5, "total": 20, "current_document": "foo.md"},
+  "progress": {
+    "done": 2,
+    "total": 5,
+    "current_document": "large_doc.md",
+    "collection": "trading-reference",
+    "chunks_done": 30,
+    "chunks_total": 1772
+  },
   "heartbeat": "2026-06-10T12:00:30.000000+00:00"
 }
 ```
+
+`chunks_done`/`chunks_total` appear only during a document's embedding batch loop. Between documents (after the per-doc END marker fires) and for old-format locks, these fields are absent — `_read_rag_status` falls back to branch 2 (doc-level only).
 
 **Lock file scope (post-consolidation):** `rag.lock` is acquired by ALL rag-cli commands except `status` and `server` (cli.py lines 131-148). The `kind` field distinguishes indexing ops from query/delete ops. `kind="index"` set for `{"index", "update_docs"}`; `kind="query"` for all others (`_INDEXING_COMMANDS` frozenset in `lock.py`).
 

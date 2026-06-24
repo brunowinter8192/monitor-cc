@@ -97,16 +97,28 @@ def _read_rag_status(lock_path: Path = _RAG_LOCK) -> str:
             # backward compat: old lock without kind field
             if not command.startswith('index'):
                 return _NO_INDEXING
-        args       = data.get('args') or {}
-        progress   = data.get('progress') or {}
-        collection = (args.get('collection')
-                      or progress.get('collection')
-                      or Path(args.get('input', '')).name
-                      or 'unknown')
-        done       = progress.get('done', 0)
-        total      = progress.get('total', 0)
-        elapsed    = _format_elapsed(data.get('started_at', ''))
-        return f'{collection}: {done}/{total} \u00b7 {elapsed}'
+        args         = data.get('args') or {}
+        progress     = data.get('progress') or {}
+        collection   = (args.get('collection')
+                        or progress.get('collection')
+                        or Path(args.get('input', '')).name
+                        or 'unknown')
+        done         = progress.get('done', 0)
+        total        = progress.get('total', 0)
+        chunks_done  = progress.get('chunks_done')
+        chunks_total = progress.get('chunks_total')
+        elapsed      = _format_elapsed(data.get('started_at', ''))
+        if chunks_done is not None and chunks_total:
+            # mid-document: done = completed docs; done+1 = current doc number
+            return (f'{collection} \u00b7 {done + 1}/{total} docs'
+                    f' \u00b7 {chunks_done}/{chunks_total} chunks'
+                    f' \u00b7 {elapsed}')
+        elif total > 0:
+            # between docs or old-format lock (no chunk fields)
+            return f'{collection} \u00b7 {done}/{total} docs \u00b7 {elapsed}'
+        else:
+            # no progress yet (initial lock state) or single-doc job pre-embed
+            return f'{collection} \u00b7 {elapsed}'
     except Exception:
         return _NO_INDEXING
 
