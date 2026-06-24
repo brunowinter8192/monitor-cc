@@ -188,6 +188,39 @@ def _strip_task_notification_tags(content):
     return content
 
 
+# Extract <output-file> path from the first <task-notification> block in content (str or list); returns '' if absent
+def _extract_task_notification_output_file(content) -> str:
+    _OUTPUT_FILE_PAT = re.compile(r'<output-file>(.*?)</output-file>', re.DOTALL)
+    for block_text in _find_task_notification_blocks(content):
+        m = _OUTPUT_FILE_PAT.search(block_text)
+        if m:
+            return m.group(1).strip()
+    return ''
+
+
+# Replace <task-notification>...</task-notification> blocks inline with replacement_text (no separate append)
+# Uses lambda form of re.sub to avoid backslash-sequence interpretation in replacement_text.
+def _replace_task_notification_tags(content, replacement_text: str):
+    _NOTIF_PAT = re.compile(r'(?m)^<task-notification>.*?</task-notification>\n?', re.DOTALL)
+    _repl = lambda m: replacement_text  # noqa: E731
+    if isinstance(content, str):
+        return _NOTIF_PAT.sub(_repl, content) or '.'
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if not isinstance(block, dict):
+                result.append(block)
+                continue
+            btype = block.get("type")
+            if btype == "text":
+                new_text = _NOTIF_PAT.sub(_repl, block.get("text", ""))
+                result.append({**block, "text": new_text or '.'})
+            else:
+                result.append(block)
+        return result
+    return content
+
+
 # Check if content (str or top-level text blocks only — does NOT descend into tool_result) contains substring
 def _top_level_content_contains(content, substring: str) -> bool:
     if isinstance(content, str):
