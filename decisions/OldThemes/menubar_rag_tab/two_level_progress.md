@@ -42,12 +42,17 @@ Three branches:
 
 rag-cli `status.format_status` + `lock._raise_busy` relabeled "chunks" → "N/M docs · X/Y chunks" (the old label wrongly said "chunks" for what were document counts).
 
-## Verification status
-Mock-verified only (offline; lock dir redirected to /tmp — live `~/.rag-locks/rag.lock` never touched; the user's trading-reference index ran throughout):
-- rag-cli: `update_progress` writes/omits chunk fields correctly (5 asserts + 2 safety).
-- menubar: all three branches render correctly; dead-PID → no-indexing (4 asserts + safety).
+## Verification status — LIVE-VERIFIED 2026-06-24
 
-Live end-to-end verification DEFERRED — requires running an index (collides with the live trading-reference run via the exclusive lock). Will verify on the next reddit `index_subreddits` run after the current run finishes. NOTE: the menubar app must be RESTARTED to pick up the new reader; the currently-running index writes old-format locks (old code in memory), so the full two-level display only appears on an index started with the new rag-cli code.
+Live end-to-end verified during the trading-reference index run (doc 7/8 Tsay2010, 998 chunks):
+- Writer (rag-cli): the live `~/.rag-locks/rag.lock` carries both levels and advances — `chunks_done` climbs in steps of 32 (the embedding batch size), `chunks_total` per current doc, `done`/`total` per doc.
+- Reader (menubar): the rebuilt bundle renders branch 1 `{collection} · {done+1}/{total} docs · {chunks_done}/{chunks_total} chunks · {elapsed}`, re-read each 1.5s tick.
+
+**Root-cause of the "feature invisible" symptom (the trap):** the menubar runs as a FROZEN py2app bundle (`~/Applications/monitor-cc-menubar.app`, `semi_standalone=False`) — code changes do NOT take effect on restart; the bundle must be REBUILT. The running bundle was from 2026-06-13, the feature merged 2026-06-24 → the merged-and-correct reader was never in the running bundle. The original "must be RESTARTED" note was the trap: a restart re-launches the same frozen bundle. Fix was `./venv/bin/python setup_py2app.py py2app` (rebuild + reinstall to ~/Applications + relaunch launchd). See `src/menubar/DOCS.md` Gotchas (frozen-bundle).
+
+Mock-verification (pre-deploy, retained): rag-cli `update_progress` writes/omits chunk fields (5+2 asserts); menubar all three branches render + dead-PID → no-indexing (4 asserts + safety).
+
+**Chunk-cadence finding (decided: leave as-is):** `chunks_done` advances per embedding batch (batch size 32, ~50s/batch on the 8B embedder), so the chunk number jumps +32 ~once/min while elapsed ticks every 1.5s — looks static over short watching windows. Not a bug: a 32-chunk batch is one atomic embedding call, no sub-batch progress exists. Smoother counting would require smaller batches → embedding-throughput cost. User: "good enough", leave as-is.
 
 ## IST
 - Menubar: `decisions/menubar_rag_tab.md`
