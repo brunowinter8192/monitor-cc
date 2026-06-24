@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-34 safety hooks registered globally in `~/.claude/settings.json`. All 34 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 25 scripts with `block_` prefix + 9 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_pipe_background`, `rewrite_rag_cli_search_noise`, `rewrite_reddit_index_background`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names.
+29 safety hooks registered globally in `~/.claude/settings.json`. All 29 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 22 scripts with `block_` prefix + 7 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_rag_cli_search_noise`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names. Disabled (renamed `.py.disabled`): `block_chained_sleep`, `block_polling_loop`, `block_busywait_loop`, `block_log_read`, `rewrite_reddit_index_background`, `rewrite_pipe_background`.
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -72,14 +72,14 @@ echo, true, grep, cat, ls, wc, head, tail, find
 
 **Detection:** `tool_input.run_in_background == true`
 
-**Allowlist:** full command must match `_CANONICAL` — any sleep-only form: bare `sleep N` OR `sleep N && echo <anything>` (regex: `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`). Also exempts `reddit-cli index_subreddits`, `workflow.py index-dir`, and long-running pipelines (`pipe_scraper`, `pipe_theblock.py`, `rag-cli index`, `workflow.py convert`) via separate named patterns.
+**Allowlist:** full command must match `_CANONICAL` — any sleep-only form: bare `sleep N` OR `sleep N && echo <anything>` (regex: `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`). No other whitelist — ALL non-sleep-timer background commands are foreground-forced.
 
-**Blocked patterns:**
-- Any `run_in_background=true` command that is NOT a sleep-only timer and NOT a whitelisted pipeline — e.g. `rag-cli update_docs .`, `python3 script.py`, builds, test runners
+**Blocked patterns (foreground-forced):**
+- Any `run_in_background=true` command that is NOT a sleep-only timer — e.g. `rag-cli update_docs .`, `python3 script.py`, `reddit-cli index_subreddits`, `workflow.py index-dir`, builds, test runners, pipelines
 
-**Allowed:** any sleep-only background command — `sleep N`, `sleep N && echo done`, `sleep N && echo "custom text"` — plus whitelisted long-running pipelines; any command with `run_in_background=false` or field absent. Hook-order independent: both the raw sleep-only form and the already-normalized `sleep 600 && echo done` are exempt, so a sleep timer is never foreground-forced regardless of whether `rewrite_background_sleep` (Hook 18) runs first.
+**Allowed:** any sleep-only background command — `sleep N`, `sleep N && echo done`, `sleep N && echo "custom text"` — any command with `run_in_background=false` or field absent. Hook-order independent: both the raw sleep-only form and the already-normalized `sleep 600 && echo done` are exempt, so a sleep timer is never foreground-forced regardless of whether `rewrite_background_sleep` (Hook 18) runs first.
 
-**Rationale:** background mode hides stdout/stderr until completion, making long-running tools unmonitorable. `rag-cli update_docs .` with `run_in_background=true` ran 2m36s with no live output — the triggering incident. Enforces Rule 12 from `~/.claude/shared-rules/global/tool-use.md`. Sleep-only exemption broadened after fire-log evidence that `sleep 45 && echo "bg-ack-probe done"` (custom echo text) was incorrectly foreground-forced.
+**Rationale:** background mode hides stdout/stderr until completion, making long-running tools unmonitorable. `rag-cli update_docs .` with `run_in_background=true` ran 2m36s with no live output — the triggering incident. Enforces Rule 12 from `~/.claude/shared-rules/global/tool-use.md`. Sleep-only exemption broadened after fire-log evidence that `sleep 45 && echo "bg-ack-probe done"` (custom echo text) was incorrectly foreground-forced. Whitelist removed: the proxy injection layer now handles "background done" signalling; all non-timer background is forced to foreground.
 
 **Fail-open:** exits 0 on any parse/internal error; `(None, False)` default on exception means missing/invalid fields are treated as foreground — never blocks on hook failure.
 
@@ -153,31 +153,6 @@ echo, true, grep, cat, ls, wc, head, tail, find
 **Rationale:** CC rejects reads above 256KB with a size error — hook surfaces the error before the round-trip and provides the `grep` + offset/limit fix path inline.
 
 **Fail-open:** exits 0 when `file_path` absent, not a string, file doesn't exist, or `getsize()` raises.
-
-### Hook 8 — `block_polling_loop.py` (`src/hooks/block_polling_loop.py`)
-
-- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
-- **Command:** `python3 <absolute-path>/src/hooks/block_polling_loop.py`
-- **Timeout:** 5s
-
-**Detection:** stateful frequency check — blocks when ≥ `_THRESHOLD` (3) polls to the SAME target occur within `_WINDOW_SECS` (30 s) in the SAME session. One-off and second polls always pass. Third poll in the window blocks.
-
-**Target fingerprinting:**
-- `ps -p <N>` → `"pid:<N>"` — process-existence check
-- `tail <flags> <file>` → `"file:<path>"` — all BSD/POSIX and GNU forms: `-N` (short), `-n N`, `-n +N`, `-nN`, `-n+N`, `--lines=N`, `--lines N`. Fingerprint is FILE-KEYED — different numeric args on the same file (e.g. `-n +58` vs `-n +88`) produce the same `"file:<path>"` target. Requires file arg on same line as flag (`[^\S\n]+` — space/tab only, no newlines). If a single `|` (not `||`) immediately precedes `tail`, the tail is pipe-fed (reads stdin) — `None` returned regardless of form or repetition count.
-- First match in command wins; no target extracted → pass through
-
-**State file:** `src/logs/polling_state.jsonl` — one JSONL line per poll: `{ts, session_id, target}`. Self-pruning on every invocation (entries older than 30 s pruned before counting). Backup cleanup via `log_janitor`'s monitor-24h sweep. Path overridable via `MONITOR_CC_POLLING_STATE` env var (used for test isolation).
-
-**Concurrency:** concurrent sessions share the file. A simultaneous write can cause one entry to be lost (under-count only — never over-count). Acceptable: per-session counting means session B's polls don't affect session A's block threshold.
-
-**Blocked patterns:** `ps -p <PID>` repeated ≥ 3× on the same PID within 30 s / session; `tail <flags> <file>` (any supported form) repeated ≥ 3× on the same file within 30 s / session — including incremental-offset polling (`tail -n +58`, `tail -n +88`, `tail -n +118` on the same file count as 3 polls)
-
-**Allowed patterns:** any single or double poll; different PIDs/files in the same session; commands with neither pattern; patterns inside quoted strings or heredoc (stripped by `_strip_non_shell_active`); pipe-fed `cmd | tail ...` (reads stdin — no file arg; yields `None` regardless of tail form or repetition count)
-
-**Fail-open:** exits 0 on any parse or I/O error; `_record_and_count()` returns 0 on exception.
-
-**Smoke:** `dev/hook_smoke/test_block_polling_loop.py` (35 cases: frequency, different-target, single-check, no-target, session-isolation, pipe-fed-tail, long-form-tail groups).
 
 ### Hook 9 — `block_bd_cli_worker.py` (`src/hooks/block_bd_cli_worker.py`)
 
@@ -401,36 +376,6 @@ echo, true, grep, cat, ls, wc, head, tail, find
 
 **Smoke:** `dev/hook_smoke/test_block_worker_kill_while_working.py` (13 cases: 3 block, 9 allow, 1 accepted-residual block).
 
-### Hook 21 — `block_busywait_loop.py` (`src/hooks/block_busywait_loop.py`)
-
-- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
-- **Command:** `python3 <absolute-path>/src/hooks/block_busywait_loop.py`
-- **Timeout:** 5s
-
-**Detection (double condition, BOTH must hold):**
-1. A `while`/`until` loop in shell-active regions has a body consisting of EXACTLY `sleep N` (nothing else after stripping semicolons and whitespace)
-2. The loop condition contains a passive status-check signal: `[`, `ps`, `pgrep`, `kill`, `grep`, `egrep`, `fgrep`, `test`, `tail`, `head`, `cat`, `wc`, `ls`, `stat`
-
-**Blocked patterns:**
-- `while ps -p $PID > /dev/null; do sleep 2; done` — process-existence poll
-- `until grep "done" file.log; do sleep 5; done` — log-tail poll
-- `while [ -z "$STATUS" ]; do STATUS=$(cat status.txt); sleep 1; done` — bracket condition with sleep-only body
-
-**Allowed patterns (not blocked):**
-- Retry loops with real work in body: `until curl -f http://...; do sleep 2; done` (body is not sleep-only)
-- Daemons: `while true; do work; sleep 60; done` (body is not sleep-only)
-- `while read line; do ...; done` (condition is not a status-check)
-- Bounded `for` loops with sleep
-- Single `sleep N` outside any loop
-
-**Complementary to `block_polling_loop` (Hook 8):** Hook 8 detects cross-call frequency (`ps -p`, `tail -N file` repeated ≥ 3× in 30 s). This hook detects the within-one-call busy-wait signature that a frequency counter cannot see.
-
-**Shell-region stripping:** uses `_strip_non_shell_active` before `_LOOP_RE` matching — prevents false-positives from `while`/`sleep` appearing as literal text inside heredoc bodies or quoted strings.
-
-**Fail-open:** exits 0 on any parse error; unmatched commands pass through immediately.
-
----
-
 ### Hook 22 — `rewrite_rag_cli_search_noise.py` (`src/hooks/rewrite_rag_cli_search_noise.py`)
 
 - **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–21
@@ -496,49 +441,6 @@ echo, true, grep, cat, ls, wc, head, tail, find
 **Rationale:** `worker-cli send` is a fire-once, must-confirm action. Backgrounding means the send subprocess may be SIGTERM-killed before delivering the message (exit 143, silent message loss), or the orchestrator's next action runs before the send completes. Canonical pattern: send in a standalone foreground Bash call; any background timer (`sleep 600 && echo done`) dispatched as a SEPARATE Bash call.
 
 **Fail-open:** exits 0 when `run_in_background` is absent, false, or not a bool; exits 0 on any parse error.
-
----
-
-### Hook 25 — `rewrite_reddit_index_background.py` (`src/hooks/rewrite_reddit_index_background.py`)
-
-- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–24
-- **Command:** `python3 <absolute-path>/src/hooks/rewrite_reddit_index_background.py`
-- **Timeout:** 5s
-
-**Detection:** `tool_input.run_in_background != true` AND shell-stripped command matches `\b(reddit-cli|cli\.py)\s+index_subreddits\b`
-
-**Rewrite:** `run_in_background` field flipped from `false` (or absent) to `true` via `hookSpecificOutput.updatedInput.{command, run_in_background: true}`
-
-**Passthrough (no output):**
-- Command already has `run_in_background=true` (nothing to do)
-- Command does not contain `reddit-cli index_subreddits` or `cli.py index_subreddits` in shell-active regions
-- Indexer pattern appears only inside a quoted string (blanked by `_strip_non_shell_active`)
-- Parse errors (fail-open)
-
-**Rationale:** The reddit RAG-indexer takes ~75–100s wallclock (4 subs × 5 posts × ~1.1s/chunk embedding latency) — too long for a blocking Bash call. Pairs with `block_unauthorized_background` (Hook 3): the `_INDEXER_CANONICAL` whitelist in Hook 3 explicitly passes `reddit-cli index_subreddits` through its background check, so the `run_in_background: true` produced here survives the round-trip without triggering a block.
-
-**Fail-open:** exits 0 on any parse error; missing `run_in_background` defaults to `False` → triggers rewrite when indexer pattern matches.
-
----
-
-### Hook 26 — `rewrite_pipe_background.py` (`src/hooks/rewrite_pipe_background.py`)
-
-- **Registration:** `PreToolUse` / `matcher: "Bash"` — same scope as hooks 1–25
-- **Command:** `python3 <absolute-path>/src/hooks/rewrite_pipe_background.py`
-- **Timeout:** 5s
-
-**Detection:** `tool_input.run_in_background != true` AND shell-stripped command matches `\bpipe_scraper\b` OR `\bpipe_theblock\.py\b`
-
-**Rewrite:** `run_in_background` field flipped to `true` via `hookSpecificOutput.updatedInput.{command, run_in_background: true}`
-
-**Passthrough (no output):**
-- Command already has `run_in_background=true`
-- Command matches neither `pipe_scraper` nor `pipe_theblock.py` in shell-active regions
-- Parse errors (fail-open)
-
-**Scope (deliberately narrow):** only worker-exclusive long-running pipelines that Opus never invokes interactively: `pipe_scraper` (searxng crawler: `cd "$SEARXNG" && ./venv/bin/python -m src.crawler.pipe_scraper --url-file ...`) and `pipe_theblock.py` (news aggregator). `rag-cli index` and `workflow.py convert` are NOT included — Opus may legitimately run those foreground; forcing background would override that safe choice. Those are handled via `block_unauthorized_background` (Hook 3) whitelist for explicit per-call opt-in.
-
-**Fail-open:** exits 0 on any parse error; `run_in_background` absent defaults to `False` → triggers rewrite if pattern matches.
 
 ---
 
@@ -723,36 +625,6 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 **Fail-open:** exits 0 on any parse/internal error.
 
 **Smoke:** `dev/hook_smoke/test_rewrite_worker_cli_capture_noise.py` (17 cases: 5 positive strip, 1 `--raw`-survives strip, 3 redirect-preserved no-op, 8 negative no-op including `worker-cli response | tail` and `worker-cli send` quoted-capture pass-throughs).
-
----
-
-### Hook 33 — `block_log_read.py` (`src/hooks/block_log_read.py`)
-
-- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
-- **Command:** `python3 <absolute-path>/src/hooks/block_log_read.py`
-- **Timeout:** 5s
-
-**Two branches, per-segment:**
-
-The command is shell-stripped (`_strip_non_shell_active`) then split into segments on `&&`, `||`, `|`, `;`, `\n`. Each segment is classified independently:
-
-**Branch A — logread cap:** segment contains `\blogread\s+(\S+)` → first arg is the FILE (2nd arg is an optional line count, not the file). Records `{ts, session_id, file}` to `src/logs/logread_state.jsonl`. Prunes entries older than 24h (dead-session cleanup; NOT a detection window). Cumulative count per `(session_id, file)` with no time window — 1st and 2nd reads pass, 3rd read of the same file in the same session blocks. Block message: "go idle immediately! stop whatever you do, go idle!\nYou have read this log 3x this session — that is polling. Stop. The orchestrator reads the process output when it finishes."
-
-**Branch B — non-logread .log read:** segment does NOT contain `logread` AND contains a read tool (`tail`, `cat`, `head`, `grep`/`egrep`/`fgrep`, `sed`, `less`, `more`, `awk`, `tac`, `nl`, `zcat`) AND a `.log` (or `.log.N` / `.log.gz`) token that is NOT a redirect output target. Block message: "BLOCKED: read .log files only via `logread <file>` — the single sanctioned log reader. tail/cat/grep/etc. on a .log are disabled to make log-polling impossible. If you are waiting for a process, go idle."
-
-**Write-not-blocked:** `.log` appearing as a redirect OUTPUT target (`> file`, `>> file`, `N> file`, `&> file`, etc.) is stripped by `_REDIRECT_STRIP` before the `.log`-arg check. `echo x > foo.log`, `cmd >> foo.log`, `cmd 2>> foo.log`, `tee foo.log` all pass — `tee` is not in the read-tool list, and redirect targets are stripped from the rest. `cat a.log > b.log` blocks because `a.log` is a read input (stripped `> b.log` leaves `cat a.log`).
-
-**Per-segment precedence:** logread presence in one segment does NOT suppress Branch B in other segments. `tail x.log ; logread y.log` — the tail segment triggers Branch B (block); the logread segment is still counted in the Branch A pass (which runs first across all segments before Branch B).
-
-**Two-pass order:** Branch A pass runs first across ALL segments (counting every logread invocation in the command); Branch B pass then checks all non-logread segments. A Branch A cap triggers exit 2 before Branch B runs. A Branch B block triggers exit 2 after all Branch A counts are recorded.
-
-**State file:** `src/logs/logread_state.jsonl` — `{ts, session_id, file}` per logread invocation. Path overridable via `MONITOR_CC_LOGREAD_STATE` env var for test isolation.
-
-**Fail-open:** any parse/IO error → exit 0.
-
-**Rationale:** workers repeatedly poll `.log` files via `tail -n +N file | head` (incremental-offset poll). `block_polling_loop` (Hook 8) can partially catch this via frequency, but API latency makes poll spacing unpredictable, and even a blocked call doesn't stop the next one. The structural fix: one sanctioned read path (`logread`), capped to 3 per session per file. All other `.log` reads blocked unconditionally.
-
-**Smoke:** `dev/hook_smoke/test_block_log_read.py` (22 cases: read-tool block, write-pass, logread frequency cap, line-count-as-same-file, file independence, shell-strip, non-.log pass, evasion per-segment).
 
 ---
 

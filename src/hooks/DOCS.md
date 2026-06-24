@@ -22,7 +22,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by twenty Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure). `_strip_impl` is decomposed into 6 private scan helpers (`_scan_heredoc`, `_scan_ansi_c_quote`, `_scan_cmd_subst`, `_scan_backtick`, `_scan_single_quote`, `_scan_double_quote`), each returning `(fragment, new_i)`.
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** n/a.
-**Called by:** `block_broad_find.py`, `block_broad_grep.py`, `block_busywait_loop.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_log_read.py`, `block_manual_worker_cleanup.py`, `block_polling_loop.py`, `block_rag_cli_chained.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_pipe_background.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_reddit_index_background.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_capture_noise.py`, `rewrite_worker_cli_response_noise.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `block_broad_find.py`, `block_broad_grep.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_manual_worker_cleanup.py`, `block_rag_cli_chained.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_capture_noise.py`, `rewrite_worker_cli_response_noise.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
 **Calls out:** stdlib only (no imports).
 
 ---
@@ -55,63 +55,6 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Allowlist (`_PKILL_F_ALLOWLIST`):** explicit literal strings for `pkill -f` arguments that are safe to pass through. Checked against original (un-stripped) command via `_PKILL_F_ARG_RE` (handles single-quoted, double-quoted, unquoted). Conservative: any non-allowlisted `pkill -f` in the same command still blocks. Current entries: `"dolt sql-server"` (bd Beads SQL backend — bd's orphan-cleanup SIGKILLs any process with this cmdline string, making it impossible for a worker to carry it).
 
 **Quote/heredoc stripping.** Before regex matching, `_strip_non_shell_active()` (imported from `_shell_strip.py`) removes heredoc bodies, single-quoted, double-quoted, and ANSI-C `$'...'` regions from the command string. Command substitutions `$(...)` and backtick expressions are kept shell-active. Eliminates false-positives where `pkill -f` appears as literal text inside heredoc bodies (test scaffolding, `bd comments add` session notes, Python string literals).
-
----
-
-### block_polling_loop.py (147 LOC)
-
-**Purpose:** PreToolUse hook — stateful frequency-based polling loop detector. Extracts a target fingerprint from each Bash command (`ps -p <N>` → `"pid:N"`, `tail <flags> <file>` → `"file:path"`), records it with timestamp and session_id in `src/logs/polling_state.jsonl`, and blocks when ≥ 3 polls hit the SAME target within 30 s in the SAME session. First and second polls always pass. Third poll in 30 s blocks. Different targets, different sessions, and one-off checks are never blocked. Exits 2 + stderr on threshold. Exits 0 on any parse or I/O error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`); `src/logs/polling_state.jsonl` (state).
-**Writes:** stderr (one-line block message) on threshold; `src/logs/polling_state.jsonl` (appends + rewrites for self-pruning).
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** stdlib only (`json`, `re`, `os`, `datetime`).
-
-**Fingerprint forms:** `"pid:<N>"` from `ps -p <N>`; `"file:<path>"` from `tail <flags> <path>` — all forms: `-N` (BSD short), `-n N`, `-n +N`, `-nN`, `-n+N`, `--lines=N`, `--lines N`. Fingerprint is FILE-KEYED — different flag values on the same file produce the same target (incremental-offset polling caught). First match wins. Pipe-fed `cmd | tail ...` yields no target: `_TAIL_FILE` uses `[^\S\n]+` (space/tab only, no newlines) before file arg so `| tail ...\nnext-cmd` never captures next-cmd; pipe-context check in `_extract_target` returns `None` when a single `|` (not `||`) immediately precedes `tail` (handles same-line variants). Both conditions apply to all tail forms.
-
-**State schema:** `{ts: "2026-05-29T12:34:56Z", session_id: str, target: str}` — one JSONL line per poll invocation. Self-pruning: on each call, entries older than 30 s are pruned before writing back. monitor-24h backup sweep via `log_janitor` (`sweep_eligible=True`). Path overridable via `MONITOR_CC_POLLING_STATE` env var for test isolation.
-
-**Concurrency note:** concurrent sessions writing simultaneously can cause one entry to be lost (under-count — never over-count). Acceptable: per-session keying means session B's polls never inflate session A's count. Documented in code.
-
-**Allowed patterns:** `ps -p <PID>` alone (one-off); any `tail <flags> file` alone (one-off); either appearing once or twice in 30 s; patterns in quoted strings or heredoc body; `cmd | tail ...` pipe-fed (never produces a target regardless of form or repetition count).
-
-**Antipattern context:** `block_unauthorized_background` blocks `run_in_background=true`, but workers can circumvent via shell `cmd &`. This hook catches the repeated-check pattern regardless of how the background was started.
-
-**Quote/heredoc stripping.** `_strip_non_shell_active()` removes heredoc bodies and quoted regions before fingerprint extraction — prevents counting a `ps -p` example in a `worker-cli send` message.
-
-**Smoke:** `dev/hook_smoke/test_block_polling_loop.py` (35 cases: frequency, different-target, single-check, no-target, session-isolation, pipe-fed-tail, long-form-tail groups).
-
----
-
-### block_log_read.py (161 LOC)
-
-**Purpose:** PreToolUse hook (Bash) — structural `.log` access gate with two per-segment branches. **Branch A:** `logread <file>` invocations are COUNTED per `(session_id, file)` cumulatively (no time window); 1st and 2nd reads pass, 3rd read of the same file in the session blocks with a "go idle" message. 2nd arg to `logread` is a line count, not a file — `logread x.log 50` counts as reading `x.log`. **Branch B:** any other read tool (`tail`, `cat`, `head`, `grep`/`egrep`/`fgrep`, `sed`, `less`, `more`, `awk`, `tac`, `nl`, `zcat`) with a `.log` (also `.log.N`, `.log.gz`) as an INPUT argument is blocked unconditionally. Write-not-blocked: `.log` as redirect output target (`> f`, `>> f`, `N> f`, `&> f`) is stripped before the `.log`-arg check; `tee` is not in the read-tool list. Per-segment precedence: `tail x.log ; logread y.log` — tail segment blocked (Branch B), logread segment counted (Branch A). Two-pass order: Branch A records all logread counts first; Branch B blocks run after. Exits 2 + stderr on block. Exits 0 on any parse/IO error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`); `src/logs/logread_state.jsonl` (Branch A state).
-**Writes:** stderr (branch-specific block message) on match only; `src/logs/logread_state.jsonl` (appends + rewrites for 24h prune).
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import); `_fire_log.log_fire`; stdlib (`json`, `os`, `re`, `datetime`).
-
-**State schema:** `{ts: "2026-...", session_id: str, file: str}` — one JSONL line per `logread` invocation. 24h prune on every call (not a detection window — purely prevents unbounded growth from dead sessions). Path overridable via `MONITOR_CC_LOGREAD_STATE` env var for test isolation.
-
-**Smoke:** `dev/hook_smoke/test_block_log_read.py` (22 cases: read-tool block, write-pass, logread frequency cap, line-count-as-same-file, file independence, shell-strip, non-.log pass, evasion per-segment).
-
----
-
-### block_busywait_loop.py (59 LOC)
-
-**Purpose:** PreToolUse hook (Bash) — blocks `while`/`until` loops whose body is EXACTLY `sleep N` AND whose condition contains a passive status-check pattern (`[`, `ps`, `pgrep`, `kill`, `grep`, `egrep`, `fgrep`, `test`, `tail`, `head`, `cat`, `wc`, `ls`, `stat`). This is the single-call busy-wait signature that `block_polling_loop` (cross-call frequency) cannot see. Narrowly scoped: retry loops, daemons doing real work, `while read`, bounded counters, and `for` loops are all outside scope (body not sleep-only or condition not a status-check). Exits 2 + stderr. Exits 0 on any parse error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
-**Writes:** stderr (block message with alternatives) on match only.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert); `_fire_log.log_fire`.
-
-**Blocked patterns:**
-- `while ps -p $PID > /dev/null; do sleep 2; done` — process-existence poll
-- `until grep "done" file.log; do sleep 5; done` — log-tail poll
-- `while [ -z "$STATUS" ]; do sleep 1; done` — bracket-condition with sleep-only body
-
-**Allowed patterns:** retry loops (`until curl ...; do sleep; done`); daemons (`while true; do work; sleep; done`); `while read line; do ...; done`; `for` loops with sleep; single `sleep N` outside a loop.
-
-**Quote/heredoc stripping.** `_strip_non_shell_active()` removes heredoc bodies and quoted regions before `_LOOP_RE` matching — prevents false-positives from `while`/`sleep` appearing as literal text inside `worker-cli send` messages.
 
 ---
 
@@ -239,41 +182,6 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### rewrite_reddit_index_background.py (67 LOC)
-
-**Purpose:** PreToolUse hook (Bash) — **silently rewrites** invocations of the reddit RAG-indexer CLI (`reddit-cli index_subreddits` or `python cli.py index_subreddits`) by flipping `run_in_background` to `true` via `hookSpecificOutput.updatedInput`. The indexer takes ~75-100s wallclock per typical query (4 subs × 5 posts × ~1.1s/chunk Embedding-Latenz) which is too long for blocking Bash. Pairs with the `_INDEXER_CANONICAL` whitelist in `block_unauthorized_background.py` so the bg-flip survives the round-trip. Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before pattern matching.
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
-**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command, run_in_background: true}`) when indexer CLI detected and rb not already true; nothing on passthrough.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert).
-
-**Rewrite condition:** `run_in_background != true` AND command contains `\b(reddit-cli|cli\.py)\s+index_subreddits\b` after quote-stripping.
-
-**Passthrough (no output):**
-- Command already has `run_in_background=true` (nothing to do)
-- Command does not match the indexer pattern
-- Indexer pattern appears only in a quoted region (e.g. inside a `worker-cli send` message)
-- Parse errors (fail-open)
-
----
-
-### rewrite_pipe_background.py (74 LOC)
-
-**Purpose:** PreToolUse hook (Bash) — **silently rewrites** invocations of worker-exclusive long-running capture/news pipelines by flipping `run_in_background` to `true` via `hookSpecificOutput.updatedInput`. Targets `pipe_scraper` (searxng crawler: `./venv/bin/python -m src.crawler.pipe_scraper --url-file ...`) and `pipe_theblock.py` (news aggregator). Scope is deliberately narrow — `rag-cli index` and `workflow.py convert` are NOT included (Opus may run those foreground; forcing background would override that safe choice). Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_strip_non_shell_active` before pattern matching.
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
-**Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command, run_in_background: true}`) when pipeline detected and `run_in_background` not already true; nothing on passthrough.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
-**Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert); `_fire_log.log_fire`.
-
-**Rewrite condition:** `run_in_background != true` AND command contains `\bpipe_scraper\b` OR `\bpipe_theblock\.py\b` after quote-stripping.
-
-**Passthrough (no output):**
-- Command already has `run_in_background=true`
-- Command matches neither pipeline pattern in shell-active regions
-- Parse errors (fail-open)
-
----
-
 ### block_search_subreddits_limit.py (54 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `reddit-cli search_subreddits` and `cli.py search_subreddits` invocations that carry a `--limit` flag. Subreddit discovery must return the full result set; capping it prematurely hides candidates. Exits 2 + stderr. Exits 0 on any parse error (fail-open).
@@ -288,24 +196,22 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_unauthorized_background.py (90 LOC)
+### block_unauthorized_background.py (67 LOC)
 
-**Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT a sleep-only timer AND NOT a whitelisted long-running tool, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Sleep-only commands (bare `sleep N` OR `sleep N && echo <anything>`) are always exempt — both the raw form and the normalized `sleep 600 && echo done` — so a sleep timer is never foreground-forced regardless of hook execution order. Background mode hides stdout/stderr until completion, making long-running tools (rag-cli, python scripts, builds) unmonitorable — but legitimately-long tools (reddit-cli indexer, RAG `workflow.py index-dir`) are exempted via the whitelist. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
+**Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is NOT a sleep-only timer, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Sleep-only commands (bare `sleep N` OR `sleep N && echo <anything>`) are always exempt — both the raw form and the normalized `sleep 600 && echo done` — so a sleep timer is never foreground-forced regardless of hook execution order. All other background commands are foreground-forced without exception. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
 **Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command, run_in_background: false}`) on non-canonical bg; nothing on passthrough.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** stdlib only (`json`, `re`).
 
-**Rewrite condition:** `run_in_background=true` AND command does NOT match `_CANONICAL` (any sleep-only form: bare `sleep N` OR `sleep N && echo <anything>`, regex `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`) AND does NOT match `_INDEXER_CANONICAL` (`\b(reddit-cli|cli\.py)\s+index_subreddits\b`) AND does NOT match `_RAG_INDEXER_CANONICAL` (`\bworkflow\.py\s+index-dir\b`).
+**Rewrite condition:** `run_in_background=true` AND command does NOT match `_CANONICAL` (any sleep-only form: bare `sleep N` OR `sleep N && echo <anything>`, regex `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`).
 
 **Passthrough (no output):**
 - Any sleep-only command (`sleep N`, `sleep N && echo done`, `sleep N && echo "custom text"`) with `run_in_background=true` — `_CANONICAL` matches all sleep-only forms
-- `reddit-cli index_subreddits ...` / `cli.py index_subreddits ...` with `run_in_background=true` (long-running RAG-indexer, ~75-100s; paired with `rewrite_reddit_index_background.py`)
-- `workflow.py index-dir ...` with `run_in_background=true` (RAG indexer — embedding-bound, minutes; NOT auto-backgrounded, explicit per-call choice; no rewrite-pair)
 - Any command with `run_in_background=false` or field absent (foreground — no restriction)
 - Parse errors (fail-open)
 
-**No quote-stripping.** Checks the `run_in_background` bool field and the three whitelisted regexes — no general command-text scanning. The `_INDEXER_CANONICAL` regex uses word-boundaries (`\b`) which match the indexer pattern even mid-command (e.g. `cd /path && reddit-cli index_subreddits ...`). Indexer pattern appearing in a quoted region of an unrelated command would also match (rare false-positive — accepted trade-off vs adding quote-stripping cost).
+**No quote-stripping.** Checks the `run_in_background` bool field and `_CANONICAL` only — no general command-text scanning.
 
 ---
 
@@ -765,7 +671,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 - **Global registration.** Bash hooks fire for every Bash call; Edit hooks for every Edit call; Read hooks for every Read call — across all CC sessions on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
 - **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths. The sweep pass removes the old stale paths automatically on re-run.
 - **Stale hooks block all Bash calls.** A stale `python3 <missing>.py` hook exits 2 (Python interpreter error for missing file), which CC treats as a block — every Bash command in every session fails globally. Recovery: re-run `hook_setup.py` from the main repo root (from a real terminal, not CC's Bash tool, since Bash is blocked). The sweep removes dead entries before the add-loop runs.
-- **Twenty-two hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `block_broad_find.py`, `block_broad_grep.py`, `block_busywait_loop.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_log_read.py`, `block_manual_worker_cleanup.py`, `block_polling_loop.py`, `block_rag_cli_chained.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_pipe_background.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_reddit_index_background.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_capture_noise.py`, `rewrite_worker_cli_response_noise.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
+- **Seventeen hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `block_broad_find.py`, `block_broad_grep.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_manual_worker_cleanup.py`, `block_rag_cli_chained.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_capture_noise.py`, `rewrite_worker_cli_response_noise.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Hooks are active immediately after settings.json is written; no CC restart needed.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **Subprocess hooks must resolve plugin CLIs by absolute path.** CC's hook execution environment has a stripped PATH that does NOT include `~/.local/bin` or the plugin-cache `bin/` directories. A subprocess-hook invoking a plugin CLI by bare name (e.g. `subprocess.run(['worker-cli', ...])`) receives `FileNotFoundError` → catches it → returns the fail-open default → hook silently never fires. This was a confirmed live bug in `block_worker_kill_while_working`: the kill-guard let working-worker kills through until `_resolve_worker_cli()` was added (`shutil.which` + glob `~/.claude/plugins/cache/.../bin/worker-cli`). **Pattern for any future subprocess-hook:** resolve the binary via `shutil.which` first, then a hardcoded plugin-cache glob fallback; return `None` if unresolvable and fail-open. Never rely on bare PATH.

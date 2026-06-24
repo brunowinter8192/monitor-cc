@@ -20,11 +20,11 @@ CASES = [
     ("sleep 600 && echo done — normalized form, hook-order independent ALLOW",
      "sleep 600 && echo done", True, None),
 
-    # --- ALLOW: existing pipeline whitelists — must NOT be foreground-forced ---
-    ("reddit-cli index_subreddits whitelist ALLOW",
-     "reddit-cli index_subreddits", True, None),
-    ("workflow.py index-dir whitelist ALLOW",
-     "workflow.py index-dir", True, None),
+    # --- FORCE: former pipeline whitelists — no whitelist, must be foreground-forced ---
+    ("reddit-cli index_subreddits — foreground-forced FORCE",
+     "reddit-cli index_subreddits", True, False),
+    ("workflow.py index-dir — foreground-forced FORCE",
+     "workflow.py index-dir", True, False),
 
     # --- FORCE: genuine non-sleep background commands — must be foreground-forced ---
     ("./venv/bin/python script.py — non-sleep background FORCE",

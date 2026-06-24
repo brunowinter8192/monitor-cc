@@ -13,9 +13,6 @@ _HOOK_TIMEOUT  = 5
 # inspects tool_name internally to pick the right field (command vs file_path).
 _HOOK_SCRIPTS = [
     ("block_dangerous_kill.py",          "Bash"),
-    ("block_polling_loop.py",            "Bash"),
-    ("block_log_read.py",                "Bash"),
-    ("block_busywait_loop.py",           "Bash"),
     ("rewrite_chained_sleep.py",         "Bash"),
     ("rewrite_rag_cli_search_noise.py",          "Bash"),
     ("block_rag_cli_chained.py",                 "Bash"),
@@ -25,8 +22,6 @@ _HOOK_SCRIPTS = [
     ("block_unauthorized_background.py",   "Bash"),
     ("block_worker_send_background.py",     "Bash"),
     ("rewrite_background_sleep.py",        "Bash"),
-    ("rewrite_reddit_index_background.py", "Bash"),
-    ("rewrite_pipe_background.py",         "Bash"),
     ("block_search_subreddits_limit.py", "Bash"),
     ("block_gh_cli_chained.py",          "Bash"),
     ("block_broad_grep.py",              "Bash"),

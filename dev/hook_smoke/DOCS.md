@@ -93,30 +93,6 @@ python3 dev/hook_smoke/test_block_read_worktree.py
 
 ---
 
-### test_block_log_read.py (187 LOC)
-
-**Purpose:** 22-case stateful smoke for `block_log_read.py`. Uses a temp state file (env var `MONITOR_CC_LOGREAD_STATE`) to isolate test runs. Eight test groups: read-tool block (5 cases: `tail -n +58 x.log | head`, `cat`, `grep`, `less`, `sed -n '...' a.log`), write-pass (5 cases: `echo > x.log`, `cmd >>`, `cmd 2>>`, `tee`, `echo | tee`), logread frequency (3 cases: 1st/2nd PASS, 3rd BLOCK), line-count-as-same-file (3 cases: `logread x.log` then `logread x.log 50` counts same file, 3rd call BLOCK), file independence (3 cases: `a.log` and `b.log` counted independently), shell-strip (1 case: `worker-cli send "tail x.log"` PASS), non-.log (1 case: `cat x.txt` PASS), evasion per-segment (1 case: `tail x.log ; logread y.log` → tail segment BLOCK even with logread present).
-
-**Usage:**
-```bash
-python3 dev/hook_smoke/test_block_log_read.py
-```
-
-**Expected output:** `All tests passed.` (exit 0). HOOK path is relative — must be run from project root.
-
----
-
-### test_block_polling_loop.py (235 LOC)
-
-**Purpose:** 35-case stateful smoke for `block_polling_loop.py`. Uses a temp state file (env var `MONITOR_CC_POLLING_STATE`) to isolate test runs. Seven test groups: frequency (ps-p and tail each reach block on 3rd call), different-target (new target passes after saturation), single-check (one-off always passes), no-target (ps-p takes priority over tail-n, ps aux, git status, quoted patterns), session-isolation (session B saturation does not affect session A's count), pipe-fed-tail (cmd | tail -N repeated ≥3× always passes), long-form-tail (all GNU tail forms — -n N, -n +N, -nN, -n+N, --lines=N — block on 3rd call; worker's exact `tail -n +N file | head` pattern with increasing offsets on same file is file-keyed and blocks on 3rd; pipe-fed long-form always passes).
-
-**Usage:**
-```bash
-python3 dev/hook_smoke/test_block_polling_loop.py
-```
-
----
-
 ### test_log_janitor.py (75 LOC)
 
 **Purpose:** 4-case smoke for `src/log_janitor.cleanup_old_jsonl`. Verifies: old record >7 days dropped,
@@ -192,7 +168,7 @@ python3 dev/hook_smoke/test_rewrite_background_sleep.py
 
 ### test_block_unauthorized_background.py (84 LOC)
 
-**Purpose:** 9-case smoke for `block_unauthorized_background.py`. Verifies 6 ALLOW cases (no foreground-force): original `sleep N && echo done`, bare `sleep N`, custom echo `sleep 45 && echo "bg-ack-probe done"` (fire-log actual), normalized `sleep 600 && echo done`, `reddit-cli index_subreddits` whitelist, `workflow.py index-dir` whitelist. Verifies 2 FORCE cases (foreground-forced): `./venv/bin/python script.py` and `rag-cli update_docs .` (original triggering incident). Verifies 1 PASS case (already foreground → no output): `./venv/bin/python script.py` with `run_in_background=false`.
+**Purpose:** 9-case smoke for `block_unauthorized_background.py`. Verifies 4 ALLOW cases (no foreground-force): original `sleep N && echo done`, bare `sleep N`, custom echo `sleep 45 && echo "bg-ack-probe done"` (fire-log actual), normalized `sleep 600 && echo done`. Verifies 4 FORCE cases (foreground-forced): `reddit-cli index_subreddits`, `workflow.py index-dir` (former whitelisted, now forced), `./venv/bin/python script.py`, `rag-cli update_docs .` (original triggering incident). Verifies 1 PASS case (already foreground → no output): `./venv/bin/python script.py` with `run_in_background=false`.
 
 **Usage (from project root):**
 ```bash

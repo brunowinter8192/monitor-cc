@@ -10,30 +10,12 @@ from _fire_log import log_fire
 # Mirrors _SLEEP_ONLY_BG in rewrite_background_sleep.py; exempts both raw and normalized forms so the
 # hook is safe regardless of execution order relative to rewrite_background_sleep.
 # [^;&|\n]* stops at shell separators — "sleep N && echo x && other_cmd" is NOT exempt.
+# ALL other run_in_background=true commands are foreground-forced — no whitelist.
 _CANONICAL = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$')
-
-# additional whitelist: reddit-cli index_subreddits (long-running RAG-indexer, ~75-100s)
-# paired with rewrite_reddit_index_background.py which auto-sets rb=true for this command
-_INDEXER_CANONICAL = re.compile(r'\b(reddit-cli|cli\.py)\s+index_subreddits\b')
-
-# additional whitelist: RAG workflow.py index-dir (long-running, embedding-bound — minutes)
-# NOT paired with an auto-background rewrite — backgrounding stays an explicit per-call choice
-_RAG_INDEXER_CANONICAL = re.compile(r'\bworkflow\.py\s+index-dir\b')
-
-# additional whitelist: long-running capture/news pipelines (worker launches → goes idle).
-# pipe_scraper + pipe_theblock.py are paired with rewrite_pipe_background.py (auto-sets rb=true).
-# rag-cli index + workflow.py convert are whitelist-only (explicit per-call choice — Opus may
-# run these foreground; auto-forcing would override that and reintroduce cascade risk).
-_PIPELINE_CANONICAL = re.compile(
-    r'\bpipe_scraper\b'
-    r'|\bpipe_theblock\.py\b'
-    r'|\brag-cli\s+index\b'
-    r'|\bworkflow\.py\s+convert\b'
-)
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; silently rewrite run_in_background=true → false for non-canonical commands
+# Read Bash tool_input from stdin; silently rewrite run_in_background=true → false for any non-sleep-timer command
 def block_unauthorized_background_workflow() -> None:
     command, run_in_background, session_id = _parse_input()
     if not run_in_background:
@@ -63,14 +45,9 @@ def _parse_input():
     except Exception:
         return None, False, None
 
-# True if command is the canonical background timer OR a whitelisted long-running pipeline
+# True if command is the canonical background timer (sleep-only)
 def _is_canonical(command: str) -> bool:
-    return bool(
-        _CANONICAL.match(command)
-        or _INDEXER_CANONICAL.search(command)
-        or _RAG_INDEXER_CANONICAL.search(command)
-        or _PIPELINE_CANONICAL.search(command)
-    )
+    return bool(_CANONICAL.match(command))
 
 # Build allow+updatedInput dict flipping run_in_background to false; return it (caller handles print)
 def _emit_rewrite(command: str) -> dict:
