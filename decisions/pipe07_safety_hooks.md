@@ -803,6 +803,35 @@ Non-broad (pass-through): `.`, relative paths, specific project paths, `~/Docume
 
 ---
 
+### Hook 35 — `block_rag_cli_chained.py` (`src/hooks/block_rag_cli_chained.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — fires for every Bash tool call
+- **Command:** `python3 <absolute-path>/src/hooks/block_rag_cli_chained.py`
+- **Timeout:** 5s
+
+**Detection:** shell-stripped command contains `\brag-cli\b` (anchor — early exit if absent); split on `_SEPARATOR_RE` (`&&`, `||`, `;`, `|`, `\n`, space-bounded `&`; redirects `>`, `2>&1` are NOT separators); find the FIRST segment whose `.strip()` starts with `'rag-cli'`; every segment AFTER that index must also start with `'rag-cli'` — if any does not → block (exit 2). Segments BEFORE the first rag-cli segment are unrestricted.
+
+**Blocked patterns:**
+- `rag-cli index --collection x ; tail /tmp/x.txt` — rag-cli followed by tail via `;`
+- `rag-cli index --collection x && echo done` — rag-cli followed by echo via `&&`
+- `rag-cli search_hybrid "q" coll | grep foo` — rag-cli followed by grep via `|`
+- `rag-cli list_documents coll | head` — rag-cli followed by head via `|`
+
+**Allowed patterns:**
+- `rag-cli index --collection x > /tmp/x.txt` — redirect is not a `_SEPARATOR_RE` token; single segment, nothing after
+- `[ -f .rag-docs.json ] && rag-cli update_docs .` — guard before first rag-cli, nothing after
+- `cd /some/path && rag-cli index --collection x` — cd before first rag-cli, nothing after
+- `rag-cli delete --collection x && rag-cli index --collection x` — both segments start with rag-cli
+- any command with no `rag-cli` — anchor exits early, not policed
+- `rag-cli` inside single-quoted string or heredoc body — blanked by `_strip_non_shell_active`, anchor fails
+- Parse errors (fail-open)
+
+**Rationale:** The orchestrator chains `rag-cli index ... ; tail <log>` (start + read in one command) and then poll-loops. The chained non-rag-cli command is structurally impossible to allow: rag-cli operations produce output that reaches context only via their own exit; piping or chaining to `tail`/`grep`/`head`/`echo` either truncates that output or bypasses it entirely. Segments before the first rag-cli (guards, `cd`) are allowed because they do not follow a rag-cli call and carry no truncation risk. Registered AFTER `rewrite_rag_cli_search_noise.py` in `_HOOK_SCRIPTS` so that hook's `updatedInput` (noise-stripped command) is seen before this block check fires.
+
+**Smoke:** `dev/hook_smoke/test_block_rag_cli_chained.py` (11 cases: 4 block, 7 allow including redirect/guard/cd/two-rag-cli/no-rag-cli/single-quote/heredoc).
+
+---
+
 ## Evidenz
 
 **2026-05-22 hook-block analysis** (`dev/hook_firing/reports/2026-05-22_012326.md`, 7 days of CC sessions across all projects):
