@@ -17,6 +17,8 @@ from .payload_helpers import (
     _content_contains,
     _top_level_content_contains,
     _strip_task_notification_tags,
+    _extract_task_notification_output_file,
+    _replace_task_notification_tags,
 )
 from .rules_config import _load_config
 from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
@@ -104,14 +106,29 @@ def _apply_first_pass(messages: list) -> tuple:
         if msg.get("role") == "user" and _top_level_content_contains(msg.get("content", ""), "<task-notification>"):
             old_content = msg.get("content", "")
             new_msg = dict(msg)
-            new_msg["content"] = _strip_task_notification_tags(old_content)
             is_failed_bg = _content_contains(old_content, "<status>failed</status>")
             also_stripped_nag = False
-            if _content_contains(new_msg["content"], "task tools haven"):
-                new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
-                pass_mods.append("stripped_task_tools_nag")
-                also_stripped_nag = True
-            new_msg["content"] = _append_wakeup_text_to_content(new_msg["content"])
+            if is_failed_bg:
+                # Failed path: unchanged — extract summary inline, strip nag, append wakeup as separate block
+                new_msg["content"] = _strip_task_notification_tags(old_content)
+                if _content_contains(new_msg["content"], "task tools haven"):
+                    new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
+                    pass_mods.append("stripped_task_tools_nag")
+                    also_stripped_nag = True
+                new_msg["content"] = _append_wakeup_text_to_content(new_msg["content"])
+                injected_text = _WAKEUP_TEXT
+            else:
+                # Completed path: single block = wakeup + optional Output line; summary dropped
+                output_path = _extract_task_notification_output_file(old_content)
+                injected_text = (
+                    _WAKEUP_TEXT.rstrip('\n') + '\nOutput: ' + output_path + '\n'
+                    if output_path else _WAKEUP_TEXT
+                )
+                new_msg["content"] = _replace_task_notification_tags(old_content, injected_text)
+                if _content_contains(new_msg["content"], "task tools haven"):
+                    new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
+                    pass_mods.append("stripped_task_tools_nag")
+                    also_stripped_nag = True
             result.append(new_msg)
             if new_msg["content"] != old_content:
                 changed_indices.append(idx)
@@ -121,7 +138,7 @@ def _apply_first_pass(messages: list) -> tuple:
                 if also_stripped_nag:
                     removed = removed + _find_system_reminder_blocks(old_content, "task tools haven")
                 pass_removed_by_idx[idx] = removed
-                pass_injected_by_idx[idx] = [_WAKEUP_TEXT]
+                pass_injected_by_idx[idx] = [injected_text]
                 pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
         elif msg.get("role") == "user" and _content_contains(msg.get("content", ""), "task tools haven"):
             old_content = msg.get("content", "")
