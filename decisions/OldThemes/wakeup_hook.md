@@ -191,3 +191,51 @@ Full suite: 60/60 PASS (was 45/45 pre-fix).
 3. **Genuine BGK injection:** unchanged — `_apply_bg_exit_strip` + `_strip_bg_exit_notifications` (text-blocks-only traversal).
 4. **Dedup:** `_dedup_wakeup_blocks` final pass unchanged — still guarantees ≤ 1 wake-up block per message.
 5. **Display invariant:** unchanged — wake-up text never enters `stripped_msg_removed`.
+
+---
+
+## Iteration 8 — Single-Block Completed TN + Output-File Path (commit `3190890`)
+
+### Problems identified
+
+Two bugs in the completed (non-failed) `<task-notification>` path:
+
+1. **Double completed-signal:** for list-content TN messages (the normal CC shape — one text block containing the XML), the existing flow produced TWO forwarded blocks: `[{text: "<summary> text"}, {text: "background done — …"}]`. `_strip_task_notification_tags` extracted the `<summary>` text as block 0; `_append_wakeup_text_to_content` appended a second block. The agent received two independent "completed" signals from the same notification.
+
+2. **`<output-file>` path discarded:** `_strip_task_notification_tags` extracted only `<summary>` via `_SUMMARY_PAT`. The `<output-file>` tag (path to the backgrounded job's result file, e.g. `/private/tmp/…/bi3f93ph9.output`) was silently dropped. Consequence: the agent had no way to read the result of a backgrounded rag-cli / build / etc. and re-ran the job in foreground, defeating the point of backgrounding.
+
+Evidence from live session: original message (1 text block, XML); forwarded to API: 2 text blocks (`block[0]` = extracted summary line, `block[1]` = wake-up text).
+
+### Decision
+
+Split the TN branch in `_apply_first_pass` by `is_failed_bg`:
+
+**Completed path (new):**
+- `_extract_task_notification_output_file(old_content)` — new helper in `payload_helpers.py`; searches `_find_task_notification_blocks` results for `<output-file>(.*?)</output-file>`; returns path string or `''`.
+- `injected_text = _WAKEUP_TEXT + "Output: <path>\n"` if path present, else `_WAKEUP_TEXT`.
+- `_replace_task_notification_tags(old_content, injected_text)` — new helper; replaces TN XML inline in the existing text block via `lambda m: replacement_text` (lambda form of re.sub, no backslash-sequence interpretation in paths). tool_result blocks passed through unchanged. Result: ONE block containing only the wake-up text + optional Output line.
+- `_append_wakeup_text_to_content` NOT called — eliminates the second block.
+- `pass_injected_by_idx[idx] = [injected_text]` — attribution reflects actual injected text (with output-file path if present).
+
+**Failed path (unchanged):** `_strip_task_notification_tags` (extract summary) → nag-strip → `_append_wakeup_text_to_content` (separate block) → `injected_text = _WAKEUP_TEXT`.
+
+**BGK kill-notification path (unchanged):** `strip_bg_completed.py` / `_apply_bg_exit_strip` — untouched.
+
+### Smoke tests (`dev/proxy_bgcomplete_tests.py`, 18/18 PASS)
+
+| # | Scenario | Expected | Result |
+|---|---|---|---|
+| B01 | Completed TN + `<output-file>` path, list content | 1 block: wake-up + `Output: <path>` line; summary dropped; `injected=[wakeup+path]` | PASS |
+| B02 | Completed TN, no `<output-file>`, list content | 1 block: wake-up only; no `Output:` line; `injected=[_WAKEUP_TEXT]` | PASS |
+| B03 | Failed TN | Wake-up present; `mod=replaced_task_notification`; `injected=[_WAKEUP_TEXT]` | PASS |
+
+Existing regression suite `dev/proxy/test_strip_fix.py`: 60/60 PASS (W04/W05 intact).
+
+### Architecture status post-Iteration-8
+
+1. **Detection:** unchanged — `_top_level_content_contains` guards both TN and BGK paths.
+2. **Completed TN injection:** `_replace_task_notification_tags` inline → 1 block = `_WAKEUP_TEXT [+ "Output: <path>\n"]`. Summary dropped. `_append_wakeup_text_to_content` not called.
+3. **Failed TN injection:** unchanged — summary extract + `_append_wakeup_text_to_content` → 2 blocks (`"."` placeholder + wake-up).
+4. **BGK injection:** unchanged.
+5. **Dedup:** `_dedup_wakeup_blocks` unchanged — still active as safety net for TN+BGK co-fire edge cases.
+6. **Display invariant:** unchanged.
