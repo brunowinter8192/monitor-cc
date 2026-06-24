@@ -24,7 +24,7 @@ def _strip_bg_launch_ack(content):
     if isinstance(content, str):
         if _is_bg_launch_ack(content):
             removed.append(content)
-            return '.', removed
+            return 'Command is running in the background. Do NOT check, poll, or read its output — just wait until it finishes (you will get a completion notice).', removed
         return content, removed
     if isinstance(content, list):
         result = []
@@ -37,7 +37,7 @@ def _strip_bg_launch_ack(content):
                 text = block.get('text', '')
                 if _is_bg_launch_ack(text):
                     removed.append(text)
-                    result.append({**block, 'text': '.'})
+                    result.append({**block, 'text': 'Command is running in the background. Do NOT check, poll, or read its output — just wait until it finishes (you will get a completion notice).'})
                 else:
                     result.append(block)
             elif btype == 'tool_result':
@@ -45,7 +45,7 @@ def _strip_bg_launch_ack(content):
                 if isinstance(inner, str):
                     if _is_bg_launch_ack(inner):
                         removed.append(inner)
-                        result.append({**block, 'content': '.'})
+                        result.append({**block, 'content': 'Command is running in the background. Do NOT check, poll, or read its output — just wait until it finishes (you will get a completion notice).'})
                     else:
                         result.append(block)
                 elif isinstance(inner, list):
@@ -56,7 +56,7 @@ def _strip_bg_launch_ack(content):
                             text = sub.get('text', '')
                             if _is_bg_launch_ack(text):
                                 removed.append(text)
-                                new_sub.append({**sub, 'text': '.'})
+                                new_sub.append({**sub, 'text': 'Command is running in the background. Do NOT check, poll, or read its output — just wait until it finishes (you will get a completion notice).'})
                                 sub_changed = True
                             else:
                                 new_sub.append(sub)

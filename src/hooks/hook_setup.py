@@ -18,6 +18,7 @@ _HOOK_SCRIPTS = [
     ("block_busywait_loop.py",           "Bash"),
     ("rewrite_chained_sleep.py",         "Bash"),
     ("rewrite_rag_cli_search_noise.py",          "Bash"),
+    ("block_rag_cli_chained.py",                 "Bash"),
     ("rewrite_worker_cli_response_noise.py",     "Bash"),
     ("rewrite_worker_cli_capture_noise.py",      "Bash"),
     ("rewrite_searxng_scrape_noise.py",  "Bash"),
