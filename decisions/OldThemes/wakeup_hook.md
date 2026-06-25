@@ -239,3 +239,48 @@ Existing regression suite `dev/proxy/test_strip_fix.py`: 60/60 PASS (W04/W05 int
 4. **BGK injection:** unchanged.
 5. **Dedup:** `_dedup_wakeup_blocks` unchanged — still active as safety net for TN+BGK co-fire edge cases.
 6. **Display invariant:** unchanged.
+
+---
+
+## Iteration 9 — Unify failed-TN path with completed; remove dead code (commit `6ac4297` + `2d30c87`)
+
+### Motivation
+
+After Iteration 8, the two TN paths produced different agent-visible outputs:
+- **Completed:** 1 block = wake-up (+ optional Output line). Summary dropped.
+- **Failed:** 2 blocks = `"."` placeholder + wake-up. Failed-status text not forwarded but the extra block was still visible.
+
+There was no reason for this asymmetry. "Done" and "failed" both mean the background job is finished — the agent needs the same wake-up signal either way. The `"."` placeholder block was an artifact of the old summary-extract path (`_strip_task_notification_tags` returning `"."` for an empty `<summary>`), not a deliberate design choice.
+
+### Change
+
+**`_apply_first_pass` TN branch** (`message_passes.py`): collapsed `if is_failed_bg:` fork. Both failed and completed now run identical logic:
+```python
+output_path = _extract_task_notification_output_file(old_content)
+injected_text = _WAKEUP_TEXT.rstrip('\n') + '\nOutput: ' + output_path + '\n' if output_path else _WAKEUP_TEXT
+new_msg["content"] = _replace_task_notification_tags(old_content, injected_text)
+```
+Mod-name distinction preserved: `replaced_task_notification` (failed) / `trimmed_task_notification` (completed) — logging/attribution only, no output difference.
+
+**Dead code removed:**
+- `_append_wakeup_text_to_content` (`rule_ops.py`) — zero callers after fork collapse. `from .strip_bg_completed import _WAKEUP_TEXT` import in `rule_ops.py` also removed (existed only to supply this function).
+- `_strip_task_notification_tags` (`payload_helpers.py`) — summary-extraction behavior intentionally obsolete; zero production callers.
+- `t35_task_notification_stripped_from_tool_result` (`dev/proxy/test_strip_fix.py`) — tested the deleted function; retired (2 assertions). Suite: 58/58 PASS.
+
+### Smoke (`dev/proxy_bgcomplete_tests.py`, 28/28 PASS)
+
+| # | Scenario | Expected | Result |
+|---|---|---|---|
+| B01 | Completed TN + output-file | 1 block: wake-up + `Output: <path>`; `mod=trimmed_task_notification` | PASS |
+| B02 | Completed TN, no output-file | 1 block: wake-up only; `mod=trimmed_task_notification` | PASS |
+| B03 | Failed TN, no output-file | 1 block: wake-up only; `mod=replaced_task_notification` | PASS |
+| B04 | Failed TN + output-file | 1 block: wake-up + `Output: <path>`; `mod=replaced_task_notification` | PASS |
+
+### Architecture status post-Iteration-9
+
+1. **Detection:** unchanged — `_top_level_content_contains` guards both TN and BGK paths.
+2. **All TN injection (failed + completed):** `_replace_task_notification_tags` inline → 1 block = `_WAKEUP_TEXT [+ "Output: <path>\n"]`. Summary and status dropped.
+3. **BGK injection:** unchanged — `strip_bg_completed.py` / `_apply_bg_exit_strip`.
+4. **Dedup:** `_dedup_wakeup_blocks` unchanged — safety net for TN+BGK co-fire.
+5. **Display invariant:** unchanged.
+6. **Dead functions removed:** `_append_wakeup_text_to_content`, `_strip_task_notification_tags`.
