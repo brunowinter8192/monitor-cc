@@ -94,9 +94,9 @@ def b02_completed_no_output_file():
     print()
 
 
-# B03 — failed TN → behavior unchanged: wakeup present, mod=replaced_task_notification
-def b03_failed_tn_unchanged():
-    print("B03 — failed TN → unchanged (wakeup present, mod=replaced_task_notification)")
+# B03 — failed TN, no output-file → single block, wakeup only, summary dropped (mirrors B02)
+def b03_failed_tn_single_block():
+    print("B03 — failed TN, no output-file → single block, wakeup only, summary dropped")
     tn = (
         "<task-notification>\n"
         "<status>failed</status>\n"
@@ -109,7 +109,10 @@ def b03_failed_tn_unchanged():
     text = _all_text(content)
     wakeup_core = _WAKEUP_TEXT.rstrip('\n')
 
+    check("B03_single_block", _block_count(content) == 1, f"got {_block_count(content)} blocks")
     check("B03_wakeup_present", wakeup_core in text, repr(text[:80]))
+    check("B03_no_output_line", "Output:" not in text, repr(text[:80]))
+    check("B03_summary_dropped", "<summary>" not in text and "<status>" not in text, repr(text[:80]))
     check("B03_mod_replaced", "replaced_task_notification" in mods, f"mods={mods}")
     check("B03_injected_is_wakeup", injected.get(0) == [_WAKEUP_TEXT], f"injected={injected}")
     check("B03_removed_is_tn_block", removed.get(0) and removed[0][0].startswith("<task-notification>"),
@@ -117,8 +120,39 @@ def b03_failed_tn_unchanged():
     print()
 
 
+# B04 — failed TN with output-file → single block, wakeup + Output line (mirrors B01)
+def b04_failed_tn_with_output_file():
+    print("B04 — failed TN + output-file → single block, wakeup + Output: path")
+    output_path = "/private/tmp/abc123/fail_output.output"
+    tn = (
+        "<task-notification>\n"
+        "<task-id>xyzfail</task-id>\n"
+        f"<output-file>{output_path}</output-file>\n"
+        "<status>failed</status>\n"
+        "<summary></summary>\n"
+        "</task-notification>\n"
+    )
+    msgs = [{"role": "user", "content": [{"type": "text", "text": tn}]}]
+    new_msgs, mods, removed, changed, injected, ops = _apply_first_pass(msgs)
+    content = new_msgs[0]["content"]
+    text = _all_text(content)
+    wakeup_core = _WAKEUP_TEXT.rstrip('\n')
+    expected_injected = wakeup_core + "\nOutput: " + output_path + "\n"
+
+    check("B04_single_block", _block_count(content) == 1, f"got {_block_count(content)} blocks")
+    check("B04_wakeup_present", wakeup_core in text, repr(text[:80]))
+    check("B04_output_line_present", f"Output: {output_path}" in text, repr(text[:120]))
+    check("B04_summary_dropped", "<summary>" not in text and "<status>" not in text, repr(text[:120]))
+    check("B04_mod_replaced", "replaced_task_notification" in mods, f"mods={mods}")
+    check("B04_injected_correct", injected.get(0) == [expected_injected], f"injected={injected}")
+    check("B04_removed_is_tn_block", removed.get(0) and removed[0][0].startswith("<task-notification>"),
+          f"removed={removed}")
+    print()
+
+
 if __name__ == "__main__":
     b01_completed_with_output_file()
     b02_completed_no_output_file()
-    b03_failed_tn_unchanged()
+    b03_failed_tn_single_block()
+    b04_failed_tn_with_output_file()
     print("Done.")
