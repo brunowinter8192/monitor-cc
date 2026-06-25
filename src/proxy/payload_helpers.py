@@ -143,51 +143,6 @@ def _content_contains(content, substring: str) -> bool:
     return False
 
 
-# Replace task-notification XML blocks with plain summary text; strips all XML wrapper
-def _strip_task_notification_tags(content):
-    _NOTIF_PAT = re.compile(r'(?m)^<task-notification>.*?</task-notification>\n?', re.DOTALL)
-    _SUMMARY_PAT = re.compile(r'<summary>(.*?)</summary>', re.DOTALL)
-
-    def _extract(m):
-        sm = _SUMMARY_PAT.search(m.group(0))
-        return (sm.group(1).strip() + '\n') if sm else ''
-
-    if isinstance(content, str):
-        return _NOTIF_PAT.sub(_extract, content)
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict):
-                result.append(block)
-                continue
-            btype = block.get("type")
-            if btype == "text":
-                new_text = _NOTIF_PAT.sub(_extract, block.get("text", ""))
-                if not new_text.strip():
-                    new_text = "."
-                result.append({**block, "text": new_text})
-            elif btype == "tool_result":
-                inner = block.get("content", "")
-                if isinstance(inner, str):
-                    new_inner = _NOTIF_PAT.sub(_extract, inner)
-                    result.append({**block, "content": new_inner} if new_inner != inner else block)
-                elif isinstance(inner, list):
-                    new_sub_blocks = []
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get("type") == "text":
-                            new_text = _NOTIF_PAT.sub(_extract, sub.get("text", ""))
-                            new_sub_blocks.append({**sub, "text": new_text})
-                        else:
-                            new_sub_blocks.append(sub)
-                    result.append({**block, "content": new_sub_blocks})
-                else:
-                    result.append(block)
-            else:
-                result.append(block)
-        return result
-    return content
-
-
 # Extract <output-file> path from the first <task-notification> block in content (str or list); returns '' if absent
 def _extract_task_notification_output_file(content) -> str:
     _OUTPUT_FILE_PAT = re.compile(r'<output-file>(.*?)</output-file>', re.DOTALL)

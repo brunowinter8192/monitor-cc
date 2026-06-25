@@ -19,7 +19,7 @@ from src.proxy.strip_sr import (
     _strip_plan_mode_blocks, _strip_user_interrupt_sr, _strip_pyright_diagnostics,
 )
 from src.proxy.payload_helpers import (
-    _content_contains, _find_system_reminder_blocks, _strip_task_notification_tags,
+    _content_contains, _find_system_reminder_blocks,
 )
 
 _O = '<system-reminder>'
@@ -322,15 +322,6 @@ def t34_content_contains_text_block():
     check('T34_contains_in_text_block', result is True, f'got {result}')
 
 
-# ── TASK-NOTIFICATION (non-regression) ───────────────────────────────────────
-
-def t35_task_notification_stripped_from_tool_result():
-    tn = '<task-notification><task-id>abc</task-id><summary>done</summary></task-notification>'
-    result = _strip_task_notification_tags(tool_result_str(tn))
-    inner = result[0]['content']
-    check('T35_tn_stripped_from_tr', '<task-notification>' not in inner, repr(inner[:60]))
-    check('T35_tn_summary_preserved', 'done' in inner, repr(inner))
-
 
 # ── WAKEUP FALSE-POSITIVE TESTS ───────────────────────────────────────────────
 # Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
@@ -430,7 +421,6 @@ if __name__ == '__main__':
         t29_plan_mode_returns_none_when_empty, t30_plan_mode_preserves_other_content,
         t31_find_sr_blocks_skips_code_literal, t32_find_sr_blocks_tool_result,
         t33_content_contains_tool_result_str, t34_content_contains_text_block,
-        t35_task_notification_stripped_from_tool_result,
         w01_tn_in_tool_result_str, w02_tn_in_tool_result_list, w03_bgk_in_tool_result_str,
         w04_genuine_tn_completed_plain_string, w05_genuine_tn_failed_plain_string,
         w06_genuine_bgk_plain_string,
