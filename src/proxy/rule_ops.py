@@ -1,19 +1,7 @@
 # INFRASTRUCTURE
 import json
 
-from .strip_bg_completed import _WAKEUP_TEXT
-
 # FUNCTIONS
-
-# Append _WAKEUP_TEXT to content (str or list) as wake-up hint for failed bg-task signals
-def _append_wakeup_text_to_content(content):
-    if isinstance(content, str):
-        sep = '' if not content or content.endswith('\n') else '\n'
-        return content + sep + _WAKEUP_TEXT
-    if isinstance(content, list):
-        return list(content) + [{'type': 'text', 'text': _WAKEUP_TEXT}]
-    return content
-
 
 # Minimal (offset, removed, injected) op from (before, after) text pair via common-prefix/suffix
 def _extract_block_op(before: str, after: str) -> list:
