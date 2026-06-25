@@ -284,3 +284,17 @@ Mod-name distinction preserved: `replaced_task_notification` (failed) / `trimmed
 4. **Dedup:** `_dedup_wakeup_blocks` unchanged — safety net for TN+BGK co-fire.
 5. **Display invariant:** unchanged.
 6. **Dead functions removed:** `_append_wakeup_text_to_content`, `_strip_task_notification_tags`.
+
+---
+
+## Latent display-attribution bug — `_diff_messages` scalar/list mismatch (diagnosed, NOT fixed, moot for Iter 8/9)
+
+Found during the byte-forensics that motivated Iteration 8 (live log `api_requests_opus_trading_ai_1782331720`, msg[183]/msg[187]). Documented here so it is not re-investigated from scratch if a future append-path resurfaces it.
+
+**Symptom:** when the proxy APPENDS a new text block to a message whose original content was a single text block, the appended block renders GREY (unattributed) in the monitor instead of GREEN (injected). The block IS forwarded correctly — pure read-side attribution defect.
+
+**Root cause:** `_diff_messages` (`src/proxy/diff_engine.py`). `_normalize_msg_shape_for_hash` collapses a single-text-block list to a plain string. When the original collapses to a string but the forwarded is a multi-block list (because the proxy appended a block), the guard `isinstance(o_content, list) and isinstance(f_content, list)` fails → the scalar `else` branch emits only `block_diffs` for `bidx:0`. The appended block (`bidx:1`) is never emitted as a block_diff, so `_process_messages_section` never composes its injected span → the injected-delta log omits it → grey render. `_ops_from_content_change` DOES record the op for the appended block, but the missing block_diff means it is never consumed.
+
+**Why moot after Iter 8/9:** the old completed/failed paths were the only code that appended a wake-up block to a single-block message. Both now produce a SINGLE block (inline `_replace_task_notification_tags`), so original-string ↔ forwarded-string → scalar branch handles it correctly → green. The bug no longer triggers on any current path.
+
+**When it would bite again:** any NEW pass that appends a block (rather than replacing inline) to a single-block message. Fix-if-needed: make `_diff_messages` iterate `max(len(orig_blocks), len(fwd_blocks))` regardless of the scalar/list shape mismatch (mirror the list/list branch's `nb` loop for the scalar-orig + list-fwd case).
