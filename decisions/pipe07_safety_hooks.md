@@ -2,7 +2,7 @@
 
 ## Status Quo (IST)
 
-29 safety hooks registered globally in `~/.claude/settings.json`. All 29 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. 22 scripts with `block_` prefix + 7 scripts with `rewrite_` prefix. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_rag_cli_search_noise`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names. Disabled (renamed `.py.disabled`): `block_chained_sleep`, `block_polling_loop`, `block_busywait_loop`, `block_log_read`, `rewrite_reddit_index_background`, `rewrite_pipe_background`.
+36 safety hooks registered globally in `~/.claude/settings.json`. All 36 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_rag_cli_search_noise`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names. Disabled (renamed `.py.disabled`): `block_chained_sleep`, `block_polling_loop`, `block_log_read`, `rewrite_reddit_index_background`, `rewrite_pipe_background`.
 
 ### Hook 1 — `block_dangerous_kill.py` (`src/hooks/block_dangerous_kill.py`)
 
@@ -306,6 +306,32 @@ echo, true, grep, cat, ls, wc, head, tail, find
 **Rationale:** Workers are always Sonnet (workers-1.md § Worker Model). Opus as a worker burns ~20–40× billing per token and eliminates the independent cross-model verification perspective (both sides share the same architecture). The hook prevents accidental or copy-paste spawns with the wrong model.
 
 **Fail-open:** exits 0 on any parse error.
+
+### `block_background_sleep_nonworker.py` (`src/hooks/block_background_sleep_nonworker.py`)
+
+- **Registration:** `PreToolUse` / `matcher: "Bash"` — registered immediately BEFORE Hook 18 (`rewrite_background_sleep.py`) in `_HOOK_SCRIPTS`; a blocked timer never reaches the rewrite hook
+- **Command:** `python3 <absolute-path>/src/hooks/block_background_sleep_nonworker.py`
+- **Timeout:** 5s
+
+**Gate:** `run_in_background == True` AND command matches `_SLEEP_ONLY_BG` (same regex as Hook 18) AND the **last non-timer Bash command** for this session was NOT `worker-cli` (any subcommand).
+
+**Rationale:** The only legitimate sleep-timer is the worker-wait poll loop — every timer in that loop is immediately preceded by a `worker-cli spawn/status/send`. A timer after any other command (e.g. `rag-cli index`, a build) is a redundant "wait" for a self-notifying background task; the orchestrator should go idle instead. The gate is: `last-cmd starts with worker-cli` → allow; anything else (including no prior cmd) → block.
+
+**State mechanism:** `logs/last_cmd_state.jsonl` — one JSONL entry per session `{ts, session_id, cmd}`. Written on every non-timer Bash call (replaces own session entry + prunes entries >24h). Timer calls never write state. Path overridable via `MONITOR_CC_LAST_CMD_STATE`.
+
+**Fail-open split:**
+- IO/parse exception on state read (`_READ_ERROR` sentinel) → exit 0 (allow — transient error must not block entire worker loop).
+- State read succeeded but no entry found for session → exit 2 (BLOCK — genuine no-prior-command case).
+
+**worker-cli detection:** `_strip_non_shell_active(stored_cmd)` → `^\s*worker-cli\b` (matches any subcommand as leading token; stripping removes quoted prompt text safely).
+
+**Block message:** "Go idle immediately. Stop whatever you are doing and go idle. A background Bash task self-notifies via its completion notice — do NOT set a timer to wait for it. Timers are ONLY for polling a worker you just spawned/messaged (worker-cli)."
+
+**Fail-open:** exits 0 on any parse error in `_parse_input`; `_is_worker_cli` returns False for None/empty (no-prior BLOCK is intentional, not a fail-open case).
+
+**Smoke:** `dev/hook_smoke/test_block_background_sleep_nonworker.py` (7 cases: rag-cli→BLOCK, worker-cli spawn→ALLOW, worker-cli status→ALLOW, no-prior→BLOCK, non-timer-bg→exits-0+state-written, state-written confirmed by subsequent BLOCK, IO-error→fail-open ALLOW). All 7 passing.
+
+---
 
 ### Hook 18 — `rewrite_background_sleep.py` (`src/hooks/rewrite_background_sleep.py`)
 
