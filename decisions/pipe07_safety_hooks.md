@@ -323,13 +323,13 @@ echo, true, grep, cat, ls, wc, head, tail, find
 - IO/parse exception on state read (`_READ_ERROR` sentinel) → exit 0 (allow — transient error must not block entire worker loop).
 - State read succeeded but no entry found for session → exit 2 (BLOCK — genuine no-prior-command case).
 
-**worker-cli detection:** `_strip_non_shell_active(stored_cmd)` → `^\s*worker-cli\b` (matches any subcommand as leading token; stripping removes quoted prompt text safely).
+**worker-cli detection:** `_strip_non_shell_active(stored_cmd)` → `(?:^|[;&|\n])\s*worker-cli\b` (`.search`) — matches any `worker-cli` subcommand appearing at the start of the string OR immediately after a shell separator (`;`, `&`, `|`, newline). Covers bare `worker-cli ...` and all cd-prefixed spawn forms (`cd /p ; worker-cli ...`, `cd /p && worker-cli ...`, `cd /p\nworker-cli ...`).
 
 **Block message:** "Go idle immediately. Stop whatever you are doing and go idle. A background Bash task self-notifies via its completion notice — do NOT set a timer to wait for it. Timers are ONLY for polling a worker you just spawned/messaged (worker-cli)."
 
 **Fail-open:** exits 0 on any parse error in `_parse_input`; `_is_worker_cli` returns False for None/empty (no-prior BLOCK is intentional, not a fail-open case).
 
-**Smoke:** `dev/hook_smoke/test_block_background_sleep_nonworker.py` (7 cases: rag-cli→BLOCK, worker-cli spawn→ALLOW, worker-cli status→ALLOW, no-prior→BLOCK, non-timer-bg→exits-0+state-written, state-written confirmed by subsequent BLOCK, IO-error→fail-open ALLOW). All 7 passing.
+**Smoke:** `dev/hook_smoke/test_block_background_sleep_nonworker.py` (10 cases: rag-cli→BLOCK, worker-cli spawn→ALLOW, worker-cli status→ALLOW, no-prior→BLOCK, `cd /p ; worker-cli spawn`→ALLOW, `cd /p && worker-cli status`→ALLOW, `cd /p\nworker-cli spawn` live-repro form→ALLOW, non-timer-bg→exits-0+state-written, state-written confirmed by subsequent BLOCK, IO-error→fail-open ALLOW). All 10 passing.
 
 ---
 
