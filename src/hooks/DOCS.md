@@ -22,7 +22,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by twenty Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure). `_strip_impl` is decomposed into 6 private scan helpers (`_scan_heredoc`, `_scan_ansi_c_quote`, `_scan_cmd_subst`, `_scan_backtick`, `_scan_single_quote`, `_scan_double_quote`), each returning `(fragment, new_i)`.
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** n/a.
-**Called by:** `block_broad_find.py`, `block_broad_grep.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_manual_worker_cleanup.py`, `block_rag_cli_chained.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_capture_noise.py`, `rewrite_worker_cli_response_noise.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `block_background_sleep_nonworker.py`, `block_broad_find.py`, `block_broad_grep.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_manual_worker_cleanup.py`, `block_rag_cli_chained.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_capture_noise.py`, `rewrite_worker_cli_response_noise.py` via `sys.path` insertion + `from _shell_strip import _strip_non_shell_active`.
 **Calls out:** stdlib only (no imports).
 
 ---
@@ -32,7 +32,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 **Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all 33 active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"`: includes `reason` field (stderr text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
 **Reads:** n/a (pure logic module, not a standalone script).
 **Writes:** `src/logs/hook_firing.jsonl` (appends one line per fire; path resolved from `__file__` relative to `src/`).
-**Called by:** all 35 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
+**Called by:** all 36 active hook scripts via `sys.path` insertion + `from _fire_log import log_fire`. Called at the decision-point only (immediately before `sys.exit(2)` for blocks; immediately before `print(json.dumps(output))` for rewrites). NOT called on passthroughs.
 **Calls out:** stdlib only (`json`, `os`, `datetime`).
 
 ---
@@ -179,6 +179,30 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 - `searxng-cli scrape_url` token appears inside a quoted string (blanked by `_strip_non_shell_active`)
 
 **Smoke:** `dev/hook_smoke/test_rewrite_searxng_scrape_noise.py` (16 cases: 9 positive strip, 7 negative no-op).
+
+---
+
+### block_background_sleep_nonworker.py (143 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks sleep-only background timers (`run_in_background=True` + `_SLEEP_ONLY_BG` match) when the **last non-timer Bash command** in the session was NOT a `worker-cli` command. Rationale: the only legitimate sleep-timer is the worker-wait poll loop, where every timer is immediately preceded by a `worker-cli spawn/status/send`. A timer after any other command (e.g. `rag-cli index`, a build) is a redundant "wait" for a self-notifying background task — the orchestrator should go idle instead. Exits 2 + stderr on block. Exits 0 for all non-timer commands (after recording state). Exits 0 (fail-open) on any IO/parse error. Fails open on state-read IO errors (a transient error must NOT start blocking legitimate worker-wait timers for the whole session).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}, session_id}`); `logs/last_cmd_state.jsonl` (per-session latest non-timer command).
+**Writes:** `logs/last_cmd_state.jsonl` (updated on every non-timer Bash call — one entry per session, self-pruning at 24h); stderr (block message) on block only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Registered BEFORE `rewrite_background_sleep.py` — a blocked timer never reaches the rewrite hook. Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active` (worker-cli detection on stored cmd); `_fire_log.log_fire`; stdlib (`datetime`, `json`, `os`, `re`, `sys`).
+
+**Timer detection:** `run_in_background == True AND _SLEEP_ONLY_BG.match(command)` — same regex as `rewrite_background_sleep.py`: `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`.
+
+**worker-cli detection:** `_strip_non_shell_active(stored_cmd)` → `^\s*worker-cli\b` — matches any `worker-cli` subcommand (`spawn`, `status`, `send`, …) as the leading token.
+
+**State file (`logs/last_cmd_state.jsonl`):** JSONL, one entry per session: `{"ts": "...", "session_id": "...", "cmd": "..."}`. On every non-timer Bash call: read → drop own session entry + drop entries >24h old → append new entry → overwrite (one-per-session, self-pruning). Timer calls never write state. Path overridable via `MONITOR_CC_LAST_CMD_STATE` env var (test isolation).
+
+**Fail-open split:**
+- IO/parse exception on state read (`_READ_ERROR` sentinel) → exit 0 (allow — transient error must not block worker loop).
+- State read succeeded but no entry found for session → BLOCK (genuine no-prior-command case).
+
+**Block message (user-specified):** "Go idle immediately. Stop whatever you are doing and go idle. A background Bash task self-notifies via its completion notice — do NOT set a timer to wait for it. Timers are ONLY for polling a worker you just spawned/messaged (worker-cli)."
+
+**Smoke:** `dev/hook_smoke/test_block_background_sleep_nonworker.py` (7 cases: (a) rag-cli last → BLOCK, (b) worker-cli spawn last → ALLOW, (c) worker-cli status last → ALLOW, (d) no prior → BLOCK, (e) non-timer bg → exits 0 + state written, (e-verify) state-written confirmed by subsequent timer BLOCK, (f) IO error → fail-open ALLOW).
 
 ---
 
@@ -675,4 +699,4 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Hooks are active immediately after settings.json is written; no CC restart needed.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **Subprocess hooks must resolve plugin CLIs by absolute path.** CC's hook execution environment has a stripped PATH that does NOT include `~/.local/bin` or the plugin-cache `bin/` directories. A subprocess-hook invoking a plugin CLI by bare name (e.g. `subprocess.run(['worker-cli', ...])`) receives `FileNotFoundError` → catches it → returns the fail-open default → hook silently never fires. This was a confirmed live bug in `block_worker_kill_while_working`: the kill-guard let working-worker kills through until `_resolve_worker_cli()` was added (`shutil.which` + glob `~/.claude/plugins/cache/.../bin/worker-cli`). **Pattern for any future subprocess-hook:** resolve the binary via `shutil.which` first, then a hardcoded plugin-cache glob fallback; return `None` if unresolvable and fail-open. Never rely on bare PATH.
-- **All 35 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
+- **All 36 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
