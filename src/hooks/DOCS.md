@@ -192,7 +192,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 **Timer detection:** `run_in_background == True AND _SLEEP_ONLY_BG.match(command)` — same regex as `rewrite_background_sleep.py`: `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`.
 
-**worker-cli detection:** `_strip_non_shell_active(stored_cmd)` → `^\s*worker-cli\b` — matches any `worker-cli` subcommand (`spawn`, `status`, `send`, …) as the leading token.
+**worker-cli detection:** `_strip_non_shell_active(stored_cmd)` → `(?:^|[;&|\n])\s*worker-cli\b` (`.search`) — matches any `worker-cli` subcommand (`spawn`, `status`, `send`, …) appearing at the start of the string OR immediately after a shell separator (`;`, `&`, `|`, newline). Covers bare `worker-cli ...` and cd-prefixed spawns (`cd /path ; worker-cli spawn ...`, `cd /path && worker-cli ...`, `cd /path\nworker-cli ...`).
 
 **State file (`logs/last_cmd_state.jsonl`):** JSONL, one entry per session: `{"ts": "...", "session_id": "...", "cmd": "..."}`. On every non-timer Bash call: read → drop own session entry + drop entries >24h old → append new entry → overwrite (one-per-session, self-pruning). Timer calls never write state. Path overridable via `MONITOR_CC_LAST_CMD_STATE` env var (test isolation).
 
@@ -202,7 +202,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 **Block message (user-specified):** "Go idle immediately. Stop whatever you are doing and go idle. A background Bash task self-notifies via its completion notice — do NOT set a timer to wait for it. Timers are ONLY for polling a worker you just spawned/messaged (worker-cli)."
 
-**Smoke:** `dev/hook_smoke/test_block_background_sleep_nonworker.py` (7 cases: (a) rag-cli last → BLOCK, (b) worker-cli spawn last → ALLOW, (c) worker-cli status last → ALLOW, (d) no prior → BLOCK, (e) non-timer bg → exits 0 + state written, (e-verify) state-written confirmed by subsequent timer BLOCK, (f) IO error → fail-open ALLOW).
+**Smoke:** `dev/hook_smoke/test_block_background_sleep_nonworker.py` (10 cases: (a) rag-cli last → BLOCK, (b) worker-cli spawn last → ALLOW, (c) worker-cli status last → ALLOW, (d) no prior → BLOCK, (g) `cd /p ; worker-cli spawn` → ALLOW, (h) `cd /p && worker-cli status` → ALLOW, (i) `cd /p\nworker-cli spawn` live-repro form → ALLOW, (e) non-timer bg → exits 0 + state written, (e-verify) state-written confirmed by subsequent timer BLOCK, (f) IO error → fail-open ALLOW).
 
 ---
 

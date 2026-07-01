@@ -11,7 +11,7 @@ from _fire_log import log_fire
 
 # Mirrors _SLEEP_ONLY_BG in rewrite_background_sleep.py — same signature triggers the block check.
 _SLEEP_ONLY_BG = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$')
-_WORKER_CLI_RE = re.compile(r'^\s*worker-cli\b')
+_WORKER_CLI_RE = re.compile(r'(?:^|[;&|\n])\s*worker-cli\b')
 _PRUNE_SECS = 86400  # 24 hours — sessions never outlast this
 
 _STATE_FILE = os.environ.get(
@@ -74,7 +74,7 @@ def _is_worker_cli(cmd) -> bool:
     if not cmd:
         return False
     stripped = _strip_non_shell_active(cmd)
-    return bool(_WORKER_CLI_RE.match(stripped))
+    return bool(_WORKER_CLI_RE.search(stripped))
 
 # Return stored last non-timer command for session; None if not found; _READ_ERROR on IO/parse failure
 def _get_last_cmd(session_id: str):

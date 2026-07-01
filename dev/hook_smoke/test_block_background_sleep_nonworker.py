@@ -51,6 +51,27 @@ def test_block_background_sleep_nonworker_workflow() -> None:
         _check("(d) no prior cmd → timer BLOCKED",
                ec == 2 and "Go idle" in stderr, f"exit={ec} stderr={stderr!r:.80}", failures)
 
+        # (g) cd ; worker-cli spawn → timer ALLOWED (semicolon separator)
+        _clear(state_file)
+        _inject_cmd(SESSION, 'cd /some/path ; worker-cli spawn foo /tmp/p.md . sonnet', env)
+        ec, _ = _run_timer(SESSION, env)
+        _check("(g) cd ; worker-cli spawn → timer ALLOWED",
+               ec == 0, f"exit={ec}", failures)
+
+        # (h) cd && worker-cli status → timer ALLOWED (ampersand separator)
+        _clear(state_file)
+        _inject_cmd(SESSION, 'cd /some/path && worker-cli status foo', env)
+        ec, _ = _run_timer(SESSION, env)
+        _check("(h) cd && worker-cli status → timer ALLOWED",
+               ec == 0, f"exit={ec}", failures)
+
+        # (i) cd newline worker-cli spawn → timer ALLOWED (exact live-repro form)
+        _clear(state_file)
+        _inject_cmd(SESSION, 'cd /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/gh-cli\nworker-cli spawn doccheck-verify /tmp/p.md . sonnet', env)
+        ec, _ = _run_timer(SESSION, env)
+        _check("(i) cd\\nworker-cli spawn → timer ALLOWED (live-repro form)",
+               ec == 0, f"exit={ec}", failures)
+
         # (e) non-timer bg cmd → hook exits 0 (state updated, not blocked by this hook)
         _clear(state_file)
         ec, _ = _run_non_timer_bg(SESSION, "rag-cli index --collection x", env)
@@ -70,7 +91,7 @@ def test_block_background_sleep_nonworker_workflow() -> None:
                ec == 0, f"exit={ec}", failures)
 
     print()
-    total = 7
+    total = 10
     passed = total - len(failures)
     if failures:
         print(f"FAILED: {len(failures)} case(s):")
