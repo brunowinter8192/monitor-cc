@@ -374,6 +374,37 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
+### block_rag_docs_layer.py (119 LOC)
+
+**Purpose:** PreToolUse hook (Bash) — blocks `rag-cli search_hybrid` calls on any `*-docs` collection that lack a `--document` or `--exclude` filter naming `process-docs`. The `<Project>-docs` RAG collections mix `process-docs/**` (process history) and `**/DOCS.md` (code module map); an unscoped search dilutes results across both layers. Process-layer search: `--document 'process-docs/%'` (or a specific `process-docs/<area>/%'`). Code-layer search: `--exclude 'process-docs/%'`. Exits 2 + stderr on violation. Exits 0 on any parse/tokenization error (fail-open).
+**Reads:** stdin (CC PreToolUse JSON payload: `{tool_input: {command}}`).
+**Writes:** stderr (block message with the two valid filter forms) on violation only.
+**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
+**Calls out:** `_shell_strip._strip_non_shell_active`, `_fire_log.log_fire`; stdlib (`json`, `re`, `shlex`).
+
+**Blocked patterns:**
+- `rag-cli search_hybrid "q" monitor-cc-docs` — no filter at all
+- `cd /x && rag-cli search_hybrid "q" foo-docs` — collection ends `-docs`, no filter, after a leading cd
+- `rag-cli search_hybrid "q" monitor-cc-docs --document 'src/search/%'` — filter present but value doesn't contain `process-docs` (known edge case, see Gotchas)
+
+**Allowed patterns:**
+- `rag-cli search_hybrid "q" monitor-cc-docs --document 'process-docs/%'` — process-layer filter
+- `rag-cli search_hybrid "q" monitor-cc-docs --exclude 'process-docs/%'` — code-layer filter
+- `rag-cli search_hybrid "q" monitor-cc-docs --document='process-docs/%'` — `=`-form filter
+- `rag-cli search_hybrid "q" monitor-cc-reference` — collection doesn't end `-docs`, rule inapplicable
+- `rag-cli list_documents monitor-cc-docs` — not `search_hybrid`, out of scope
+- `rag-cli search_hybrid` token inside a quoted string — blanked by `_strip_non_shell_active`, anchor fails
+
+**Segment extraction.** Same technique as `rewrite_rag_cli_search_noise.py`: `_RAG_RE` (`\brag-cli\s+search_hybrid\b`) is matched against the shell-stripped command; the segment end is found via the same chain-operator/noise regexes. Because `_strip_non_shell_active` is position-preserving, the match indices are then sliced out of the **original** (unstripped) command — recovering real quoted argument values (e.g. `'process-docs/%'`) for `shlex.split` tokenization, rather than the blanked stripped form.
+
+**Predicate.** `_segment_violates()`: `shlex.split` the original segment → find `collection` (2 tokens after the `search_hybrid` literal) → if it doesn't end with `-docs`, no violation → else violation unless any `--document`/`--exclude` token (space-separated or `--flag=value` form) has a value containing the substring `process-docs`.
+
+**Known edge case:** a code SUB-area search like `--document 'src/search/%'` does not contain `process-docs`, so it is blocked under this predicate — the correct form for scoped code search is `--exclude 'process-docs/%'` (broad code-layer exclusion), not a positive `--document` on a code subpath. A more permissive predicate (e.g. accepting any `--document` value NOT starting with `process-docs` as implicitly code-layer) was intentionally not implemented — deferred pending real usage data.
+
+**Smoke:** `dev/hook_smoke/test_block_rag_docs_layer.py` (11 cases: 3 block, 8 allow).
+
+---
+
 ### block_noop_edit.py (42 LOC)
 
 **Purpose:** PreToolUse hook (Edit) — blocks Edit calls where `old_string == new_string`. CC rejects these with "No changes to make: old_string and new_string are exactly the same" — the hook surfaces this before the round-trip. Exits 2 + stderr. Exits 0 on any parse/internal error (fail-open).
@@ -695,8 +726,8 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 - **Global registration.** Bash hooks fire for every Bash call; Edit hooks for every Edit call; Read hooks for every Read call — across all CC sessions on this machine (main sessions and workers). Keep hooks fast and narrowly scoped. Current timeout: 5s (set in `hook_setup.py`).
 - **Absolute path in settings.json.** `hook_setup.py` writes the full resolved path of each hook script at install time. If the repo is moved, re-run `hook_setup.py` to update the paths. The sweep pass removes the old stale paths automatically on re-run.
 - **Stale hooks block all Bash calls.** A stale `python3 <missing>.py` hook exits 2 (Python interpreter error for missing file), which CC treats as a block — every Bash command in every session fails globally. Recovery: re-run `hook_setup.py` from the main repo root (from a real terminal, not CC's Bash tool, since Bash is blocked). The sweep removes dead entries before the add-loop runs.
-- **Seventeen hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `block_broad_find.py`, `block_broad_grep.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_manual_worker_cleanup.py`, `block_rag_cli_chained.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_capture_noise.py`, `rewrite_worker_cli_response_noise.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
+- **Twenty hooks share a shell-region stripper (`_shell_strip.py`).** Before regex matching, `_strip_non_shell_active()` replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length (position-preserving). Command substitutions `$(...)` and backtick expressions are kept shell-active. Hooks using this: `block_background_sleep_nonworker.py`, `block_broad_find.py`, `block_broad_grep.py`, `block_busywait_loop.py`, `block_dangerous_kill.py`, `block_gh_cli_chained.py`, `block_manual_worker_cleanup.py`, `block_rag_cli_chained.py`, `block_rag_docs_layer.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_spawn_opus.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_rag_cli_search_noise.py`, `rewrite_searxng_scrape_noise.py`, `rewrite_worker_cli_capture_noise.py`, `rewrite_worker_cli_response_noise.py`. Fail-open: any parse error returns the original string unchanged — a malformed command is never incorrectly allowed by the stripper.
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Hooks are active immediately after settings.json is written; no CC restart needed.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **Subprocess hooks must resolve plugin CLIs by absolute path.** CC's hook execution environment has a stripped PATH that does NOT include `~/.local/bin` or the plugin-cache `bin/` directories. A subprocess-hook invoking a plugin CLI by bare name (e.g. `subprocess.run(['worker-cli', ...])`) receives `FileNotFoundError` → catches it → returns the fail-open default → hook silently never fires. This was a confirmed live bug in `block_worker_kill_while_working`: the kill-guard let working-worker kills through until `_resolve_worker_cli()` was added (`shutil.which` + glob `~/.claude/plugins/cache/.../bin/worker-cli`). **Pattern for any future subprocess-hook:** resolve the binary via `shutil.which` first, then a hardcoded plugin-cache glob fallback; return `None` if unresolvable and fail-open. Never rely on bare PATH.
-- **All 36 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
+- **All 33 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
