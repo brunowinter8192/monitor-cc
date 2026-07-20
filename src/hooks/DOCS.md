@@ -655,7 +655,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### block_worker_kill_while_working.py (87 LOC)
+### block_worker_kill_while_working.py (103 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `worker-cli kill <name>` when the named worker is currently `working`. Double-gate: (1) regex `\bworker-cli\s+kill\s+([\w.-]+)` on shell-stripped command captures name token(s); (2) runs `worker-cli status <name>` subprocess (timeout 3s) and blocks only when the first output token is exactly `working`. Quoted/heredoc kill commands inside `worker-cli send` messages are stripped by `_strip_non_shell_active` → no match → guaranteed allow. All non-working statuses (idle, idle force-stopped, exited, unknown), subprocess errors, timeouts, and all exceptions → allow. Exits 2 + stderr with a message instructing the user to stop the worker first (ESC / `send 'stop'`) then kill.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`); `worker-cli status <name>` output (subprocess).
