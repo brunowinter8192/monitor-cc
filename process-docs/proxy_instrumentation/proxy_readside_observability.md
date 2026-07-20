@@ -2,14 +2,14 @@
 
 ## Origin
 
-Emerged from the `anthropic-beta` flag research (see `proxy_header_mods.md`). Conclusion there: no flag is worth stripping — the proxy's value is observation, not mutation. The constructive inverse of stripping: surface the request/response data on the wire in the monitor pane.
+Emerged from the `anthropic-beta` flag research documented in the proxy-header-mods process history. Conclusion there: no flag is worth stripping — the proxy's value is observation, not mutation. The constructive inverse of stripping: surface the request/response data on the wire in the monitor pane.
 
 ## Status
 
 - **Write-side header capture: DONE + LIVE-VERIFIED** (2026-06-08). `_forwarded` carries `anthropic_beta`; `_response` dual-log captures response rate-limit headers + `request-id` in `responseheaders()` for all status codes. Verified live on disk: real `_response` entries (status 200, `anthropic-ratelimit-unified-*` family present) and `anthropic_beta` subsets in `_forwarded`. The earlier "frozen live-copy, live-verify PENDING" note is obsolete.
 - **Architecture refined (2026-06-08): proxy pane = REQUEST only, token pane = RESPONSE.** Supersedes the "two-block REQUEST/RESPONSE inside the proxy pane" direction (see `## Pane redesign direction`, now marked superseded). Full reasoning in `## 2026-06-08 — Architecture refinement` below.
-- **Proxy-pane (request) cluster: DONE + merged on dev** (2026-06-08, worker `proxy-req-pane`): `beta:` drill-down section (`anthropic_beta` from `_forwarded`); CR/CC removed from the proxy header (response data → token pane); write-side carry of `context_management` + `diagnostics` into `_forwarded` (read deferred — no real entries until a proxy restart + traffic). See `decisions/logging.md`, `decisions/pipe05_proxy_cache.md`, `src/proxy/DOCS.md`, `src/proxy_display/DOCS.md`.
-- **Token-pane (response) cluster: DONE + merged on dev + LIVE-VERIFIED** (2026-06-08, worker `proxy-req-pane` reused): usage extras (`extract_cache_turns` api_call + `format_cache_tracker`) and unified rate-limit headers (`_response` reader `find_response_log_path`/`read_response_log`, joined by `request_id` — verified 67/67 + 73 live) rendered above the thinking block, per request N. User-verified live. See `src/jsonl/DOCS.md`, `src/format/DOCS.md`, `src/panes/DOCS.md`, `src/proxy_display/DOCS.md`, `decisions/logging.md`.
+- **Proxy-pane (request) cluster: DONE + merged on dev** (2026-06-08, worker `proxy-req-pane`): `beta:` drill-down section (`anthropic_beta` from `_forwarded`); CR/CC removed from the proxy header (response data → token pane); write-side carry of `context_management` + `diagnostics` into `_forwarded` (read deferred — no real entries until a proxy restart + traffic). See `src/proxy/DOCS.md`, `src/proxy_display/DOCS.md`.
+- **Token-pane (response) cluster: DONE + merged on dev + LIVE-VERIFIED** (2026-06-08, worker `proxy-req-pane` reused): usage extras (`extract_cache_turns` api_call + `format_cache_tracker`) and unified rate-limit headers (`_response` reader `find_response_log_path`/`read_response_log`, joined by `request_id` — verified 67/67 + 73 live) rendered above the thinking block, per request N. User-verified live. See `src/jsonl/DOCS.md`, `src/format/DOCS.md`, `src/panes/DOCS.md`, `src/proxy_display/DOCS.md`.
 - **Token-pane nits — both REJECTED (2026-06-09):** (a) `overage:rejected(org_level_disabled)` is NOT suppressed — it is a server-returned response field, and the pane shows server-returned data for completeness even when it carries no per-request signal (the completeness principle, consistent with other no-signal-but-shown fields). (b) The `float(utilization)` parse in `format_cache_tracker` is NOT guarded — the header is reliably a float string, so a guard would be a fallback without a real need.
 - **Directives read-side: DONE** — `parser._extract_forwarded_fields` extracts `context_management` + `diagnostics` verbatim from `_forwarded`; `render_sections.render_directives` renders collapsible `ctx: N edits` (expanded: one line per edit `type`) + non-collapsible `diag: <pmid[:14]>` in the expanded REQUEST view of `render_turn_expanded`, immediately after `render_beta`. Live-verified on real `_forwarded` entries: `▶ ctx: 1 edits` / `diag: msg_01CTk7dYN4` rendered correctly (entries with `clear_thinking_20251015` + `previous_message_id`).
 
@@ -86,7 +86,7 @@ Anthropic returns on every response (reference: `monitor-cc-reference: platform_
 
 ## Beta-header provenance (why we "knew" about 14 flags)
 
-The 14-flag catalog (`proxy_header_mods.md`) was extracted from an **old top-level `api_requests_*.jsonl`** that had a `request_headers` field. That format was replaced by the dual-log system (bodies only), the header-reading code was removed with the beta-manipulation block, and the source files rotated away (cited file is gone). → the catalog was a frozen snapshot from a deleted log; no live capture existed until this session's `_forwarded.anthropic_beta`.
+The 14-flag catalog (documented in the proxy-header-mods process history) was extracted from an **old top-level `api_requests_*.jsonl`** that had a `request_headers` field. That format was replaced by the dual-log system (bodies only), the header-reading code was removed with the beta-manipulation block, and the source files rotated away (cited file is gone). → the catalog was a frozen snapshot from a deleted log; no live capture existed until this session's `_forwarded.anthropic_beta`.
 
 ## Prioritization (post-correction)
 
@@ -115,4 +115,4 @@ Proxy pane = visual single-source-of-truth (logs are for Opus). Restructure per 
 
 - `monitor-cc-reference`: `platform_claude_com_docs_en_api_rate_limits.md`, `platform_claude_com_docs_en_api_overview.md`, `platform_claude_com_docs_en_api_service_tiers.md` (response headers).
 - Empirical: clean `_original` dual-logs (context_management/previous_message_id presence), 8 Session-JSONLs / 633 assistant msgs (usage object shape, output_tokens_details absence).
-- `decisions/OldThemes/proxy_header_mods.md` (14-flag catalogue + provenance).
+- The proxy-header-mods process history (14-flag catalogue + provenance).
