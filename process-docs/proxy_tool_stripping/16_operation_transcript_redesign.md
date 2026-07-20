@@ -165,7 +165,7 @@ Three sub-stages shipped as three commits:
 
 ## Sources
 
-- `decisions/OldThemes/proxy_tool_stripping/14_green_overlay_false_injection.md` (false-injection arc, GT approach)
+- The prior green-overlay false-injection process history in this area (false-injection arc, GT approach)
 - `dev/proxy_dual_log/composition_probe.py` + `01_reports/composition_probe_20260608.md` (the byte-exact proof)
 - `src/proxy/rules.py` (passes + current recording), `src/proxy/diff_engine.py` (`build_message_spans`/`_diff_text` to replace), `src/proxy/logging.py` (`_build_stripped_injected_deltas` glue)
 - `Meta/iterative-dev/.../iterative-dev-refactor/SKILL.md` § 2.8 (the generalized fallback-hell scan + one-way redesign companion)

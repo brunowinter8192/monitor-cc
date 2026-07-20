@@ -1,8 +1,8 @@
 # Sidecar / Idle-Recap Strip — Removal (2026-06-08)
 
-Status: **REMOVED + merged on dev** (commit `6da5410`, merge `2522af9`). The two short-circuit strips `_check_sidecar` / `_check_idle_recap` and their detectors are gone. This file is the demotion target for the old IST history (formerly in `decisions/pipe05_proxy_cache.md`) + the removal rationale.
+Status: **REMOVED + merged on dev** (commit `6da5410`, merge `2522af9`). The two short-circuit strips `_check_sidecar` / `_check_idle_recap` and their detectors are gone. This file is the demotion target for the old current-state history (formerly in the proxy-cache pipeline's current-state documentation) + the removal rationale.
 
-## What existed (demoted from pipe05 IST)
+## What Existed (Demoted from the Pipeline Current-State Doc)
 
 - `stripped_sidecar_content` (added commit `54d743e`, 2026-04-23): `_check_sidecar` short-circuited early in `apply_modification_rules` (`src/proxy/rules.py`). Detected CC-internal sidecar requests via `_detect_sidecar` (`src/proxy/payload_helpers.py`): single-msg, plain-string content, empty system (≤10 chars), non-haiku. Replaced `messages[0].content` with marker `[SIDECAR_STRIPPED_<n>_BYTES]` before forwarding. Original rationale: a single sidecar injection once cost ~24k CC tokens (evidence: session 1776956156 REQ#80.1, 49,586c content). Short-circuit placement avoided a spurious `stripped_all_sr_msg0` on the marker.
 - `stripped_idle_recap`: `_check_idle_recap` short-circuited the CC idle-recap injection via `_detect_idle_recap`: last-msg user, plain-string content starting with `"The user stepped away and is coming back."`. Replaced content with `[IDLE_RECAP_STRIPPED_<n>_BYTES]`.
@@ -37,13 +37,13 @@ Full forwarded content must stay visible in the proxy pane. Worker-traced in `sr
 - `src/proxy/payload_helpers.py` — `_detect_sidecar` / `_detect_idle_recap`
 - `src/proxy/strip_vocab.py` — `SC` / `IR` RULES entries + `_SR_STRIP_RULES` exclusion (`('TN','SC','IR','PP')` → `('TN','PP')`, comment fixed to PP)
 - `src/proxy/logging.py` — `SC` / `IR` in `_MSG_CODE_TO_FN`
-- `decisions/pipe05_proxy_cache.md` IST — `stripped_sidecar_content` entry removed
+- The proxy-cache pipeline's current-state documentation — `stripped_sidecar_content` entry removed
 - `src/proxy/DOCS.md` — `rules.py` module entry (LOC 584→532, inject-points 4→3, Purpose + helper list)
 - `dev/proxy_dual_log/` — `green_overlay_probe.py`, `composition_probe.py` (sidecar coverage block), `attribution_coverage.py`, `verify_delta.py`, `DOCS.md`
 
 ## Relation to the operation-transcript port
 
-This emerged as "Stage 0" of the operation-transcript port (`16_operation_transcript_redesign.md`) — originally "verify sidecar/idle_recap composition with real data". It became "remove" instead. The port's actual surface (multi-pass span-derivation) is UNAFFECTED: sidecar/idle_recap short-circuited before that path. `composition_probe` multi-pass stayed byte-exact post-removal (9509/9509 over the same 5 stems; count grew from the 7219 baseline only via append-only corpus growth, 492→567 entries). The port proper (pass-by-pass op recording → composition builder → CI invariant → fallback removal) is unchanged and pending.
+This emerged as "Stage 0" of the operation-transcript port (documented separately in this area) — originally "verify sidecar/idle_recap composition with real data". It became "remove" instead. The port's actual surface (multi-pass span-derivation) is UNAFFECTED: sidecar/idle_recap short-circuited before that path. `composition_probe` multi-pass stayed byte-exact post-removal (9509/9509 over the same 5 stems; count grew from the 7219 baseline only via append-only corpus growth, 492→567 entries). The port proper (pass-by-pass op recording → composition builder → CI invariant → fallback removal) is unchanged and pending.
 
 ## Runtime note
 
