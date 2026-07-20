@@ -1,91 +1,92 @@
 # Pipe Section: Core Loop
 
-## Status Quo (IST)
+## State as of this section's audit
 
-- `monitor.py`: `run_main_loop()` ruft `load_historical_main()` auf (setzt neueste Main-Session auf Position 0), trackt `current_main_session` via `_get_newest_main_session()`. Detects session change each poll cycle → clears screen + resets position. Pollt alle 0.5s via `monitor_sessions()` + `_refresh_strip_cache()` + `render_main_buffer()`
-- `src/panes/token_pane.py`: `run_tokens_loop()` pollt alle 0.5s, `build_cache_turns()` liest neueste Main-Session ab Position 0 und rendert Cache-Tracker. Unterstützt Mouse-Events (Expand/Collapse, Hover).
-- `src/panes/warnings_pane.py`: `run_warnings_loop()` ruft `load_historical_warnings()` auf (setzt neueste Main-Session auf Position 0), dann pollt alle 0.5s via `monitor_sessions()` und rendert `_format_warnings_pane()` (in `src/panes/warnings_render.py`) bei Änderungen
-- `src/workers/worker_pane.py`: `run_workers_loop()` pollt alle 0.5s, ruft `list_workers()` auf und rendert `format_workers_block()` bei Änderungen. Expanded Workers zeigen Cache-Tracker Token-View (CR/CC/D per API Call) via `extract_cache_turns()` + `format_cache_tracker()`. Keine Subagent-Rendering mehr (separates Pane).
-- `system_messages` wird als 9. (letzter) Return-Wert von `parse_new_tool_calls()` zurückgegeben; `process_session_file()` entpackt und rendert via `display_system_message()` / `format_system_message()`
-- Agent tracking: `agent_to_task`, `agent_to_type` maps, `buffered_subagent_calls` für Orphans (Calls ohne bekannten Agent)
-- Session-Browser: `token_cumulative_n: Optional[int]` (monitor.py:48) steuert Modus. Keyboard-Input in `run_tokens_loop()`: Ziffern → buffer, Enter → set/clear n, 'q' → clear. `compute_cumulative_tokens(n)` liest letzte N Main-Sessions von Position 0.
+- `monitor.py`: `run_main_loop()` calls `load_historical_main()` (sets the newest main session to position 0), tracks `current_main_session` via `_get_newest_main_session()`. Detects a session change each poll cycle → clears the screen + resets position. Polls every 0.5s via `monitor_sessions()` + `_refresh_strip_cache()` + `render_main_buffer()`
+- `src/panes/token_pane.py`: `run_tokens_loop()` polls every 0.5s, `build_cache_turns()` reads the newest main session from position 0 and renders the cache tracker. Supports mouse events (expand/collapse, hover).
+- `src/panes/warnings_pane.py`: `run_warnings_loop()` calls `load_historical_warnings()` (sets the newest main session to position 0), then polls every 0.5s via `monitor_sessions()` and renders `_format_warnings_pane()` (in `src/panes/warnings_render.py`) on change
+- `src/workers/worker_pane.py`: `run_workers_loop()` polls every 0.5s, calls `list_workers()` and renders `format_workers_block()` on change. Expanded workers show the cache-tracker token view (CR/CC/D per API call) via `extract_cache_turns()` + `format_cache_tracker()`. No more subagent rendering (separate pane).
+- `system_messages` is returned as the 9th (last) return value of `parse_new_tool_calls()`; `process_session_file()` unpacks and renders it via `display_system_message()` / `format_system_message()`
+- Agent tracking: `agent_to_task`, `agent_to_type` maps, `buffered_subagent_calls` for orphans (calls with no known agent)
+- Session browser: `token_cumulative_n: Optional[int]` (monitor.py:48) controls the mode. Keyboard input in `run_tokens_loop()`: digits → buffer, Enter → set/clear n, 'q' → clear. `compute_cumulative_tokens(n)` reads the last N main sessions from position 0.
 
-`run_workers_loop()` Ablauf:
-1. `list_workers(active_project_filter)` → liest tmux-Sessions mit `worker-{project}-` Prefix
-2. Pro Worker: `detect_worker_status()` via `#{pane_dead}` + pane-content-Analyse, `get_tmux_env()` für WORKER_SPAWNED + WORKER_PURPOSE
-3. Pro erweitertem Worker: `find_worker_jsonl()` → `extract_cache_turns()` → `worker_turns[name]`
-4. `format_workers_block(workers, expand_states, worker_turns, ...)` → rendert Worker-Liste mit Cache-Tracker bei Expand
-5. Bei Änderung: Screen-Clear + Print
+`run_workers_loop()` sequence:
+1. `list_workers(active_project_filter)` → reads tmux sessions with the `worker-{project}-` prefix
+2. Per worker: `detect_worker_status()` via `#{pane_dead}` + pane-content analysis, `get_tmux_env()` for WORKER_SPAWNED + WORKER_PURPOSE
+3. Per expanded worker: `find_worker_jsonl()` → `extract_cache_turns()` → `worker_turns[name]`
+4. `format_workers_block(workers, expand_states, worker_turns, ...)` → renders the worker list with the cache tracker on expand
+5. On change: screen-clear + print
 6. `time.sleep(POLL_INTERVAL)`
 
-### Globale Mutable State — alle Variablen (Kategorie: Architektur / Kopplung)
+### Global Mutable State — All Variables (category: architecture / coupling)
 
-Alle Module-Level Variablen in `src/core/monitor.py` mit Zugriffs-Mapping (Stand nach Session 3):
+All module-level variables in `src/core/monitor.py` with an access mapping (state after session 3):
 
-| Variable | Typ | Definiert | Gelesen | Geschrieben | Beschreibung |
+| Variable | Type | Defined | Read | Written | Description |
 |----------|-----|-----------|---------|-------------|--------------|
-| `file_positions` | `Dict[Path, int]` | monitor.py:28 | monitor.py | monitor.py | Byte-Offsets pro JSONL-Datei |
-| `tool_use_caches` | `Dict[Path, dict]` | monitor.py:29 | monitor.py | monitor.py | tool_use_cache pro Session-Datei |
-| `call_counter` | `int` | monitor.py:30 | monitor.py | monitor.py | Globaler Call-Zähler für Display |
+| `file_positions` | `Dict[Path, int]` | monitor.py:28 | monitor.py | monitor.py | Byte offsets per JSONL file |
+| `tool_use_caches` | `Dict[Path, dict]` | monitor.py:29 | monitor.py | monitor.py | tool_use_cache per session file |
+| `call_counter` | `int` | monitor.py:30 | monitor.py | monitor.py | Global call counter for display |
 | `agent_to_task` | `Dict[str, str]` | monitor.py:31 | monitor.py | monitor.py | agent_id → task tool_use_id |
 | `agent_to_type` | `Dict[str, str]` | monitor.py:32 | monitor.py | monitor.py | agent_id → subagent_type |
-| `buffered_subagent_calls` | `Dict[str, List[dict]]` | monitor.py:33 | monitor.py | monitor.py | Calls ohne bekannten Agent, kein TTL |
-| `task_requests_seen` | `Set[str]` | monitor.py:34 | monitor.py | monitor.py | Gesehene Task-Request IDs |
-| `active_project_filter` | `Optional[str]` | monitor.py:35 | monitor.py | monitor.py | Aktiver Projekt-Filter |
-| `active_mode` | `str` | monitor.py | monitor.py | monitor.py | Aktueller Mode (all/main/rules/workers/proxy/...) |
-| `_last_monitored_count` | `Optional[int]` | monitor.py | monitor.py | monitor.py | Logging-Guard: Session-Count |
-| `token_profile` | `Dict[str, int]` | monitor.py:45 | monitor.py | monitor.py | Kumulative Output-Tokens nach Block-Type |
-| `token_profile_tools` | `Dict[str, int]` | monitor.py:46 | monitor.py | monitor.py | Output-Tokens nach Tool-Name |
-| `token_profile_request_ids` | `Set[str]` | monitor.py:47 | monitor.py | monitor.py | Gesehene requestIds (Turn-Dedup) |
-| `token_cumulative_n` | `Optional[int]` | monitor.py:48 | monitor.py | monitor.py | Session-Browser: letzte N Sessions (None = current session) |
-| `token_input_buffer` | `str` | monitor.py:49 | monitor.py | monitor.py | Keyboard-Input-Buffer für Session-Browser |
+| `buffered_subagent_calls` | `Dict[str, List[dict]]` | monitor.py:33 | monitor.py | monitor.py | Calls with no known agent, no TTL |
+| `task_requests_seen` | `Set[str]` | monitor.py:34 | monitor.py | monitor.py | Seen task-request IDs |
+| `active_project_filter` | `Optional[str]` | monitor.py:35 | monitor.py | monitor.py | Active project filter |
+| `active_mode` | `str` | monitor.py | monitor.py | monitor.py | Current mode (all/main/rules/workers/proxy/...) |
+| `_last_monitored_count` | `Optional[int]` | monitor.py | monitor.py | monitor.py | Logging guard: session count |
+| `token_profile` | `Dict[str, int]` | monitor.py:45 | monitor.py | monitor.py | Cumulative output tokens by block type |
+| `token_profile_tools` | `Dict[str, int]` | monitor.py:46 | monitor.py | monitor.py | Output tokens by tool name |
+| `token_profile_request_ids` | `Set[str]` | monitor.py:47 | monitor.py | monitor.py | Seen requestIds (turn dedup) |
+| `token_cumulative_n` | `Optional[int]` | monitor.py:48 | monitor.py | monitor.py | Session browser: last N sessions (None = current session) |
+| `token_input_buffer` | `str` | monitor.py:49 | monitor.py | monitor.py | Keyboard input buffer for the session browser |
 
-**Kopplungsanalyse:** Token-Profiling-State (`token_profile` etc.) in `panes/token_pane.py`.
+**Coupling analysis:** token-profiling state (`token_profile` etc.) lives in `panes/token_pane.py`.
 
-### buffered_subagent_calls — kein TTL (Kategorie: Memory)
+### buffered_subagent_calls — No TTL (category: memory)
 
 `buffered_subagent_calls: Dict[str, List[dict]]` (monitor.py:65):
-- Eintrag wird hinzugefügt wenn Subagent-Call eintrifft, aber `agent_id` noch nicht in `agent_to_task` ist (`handle_subagent_call()`, monitor.py:410-414)
-- Eintrag wird geleert wenn Task-Response mit `spawned_agent_id` eintrifft (`handle_task_response()`, monitor.py:374-379)
-- Kein TTL: Wenn keine Task-Response eintrifft (z.B. Claude Code crashed, Session endet), wachsen Einträge unbegrenzt
-- Kein Cleanup bei Session-Removal (anders als `tool_use_caches` die via `update_session_tracking()` bereinigt werden)
+- An entry is added when a subagent call arrives but `agent_id` is not yet in `agent_to_task` (`handle_subagent_call()`, monitor.py:410-414)
+- An entry is cleared when a task response with `spawned_agent_id` arrives (`handle_task_response()`, monitor.py:374-379)
+- No TTL: if no task response arrives (e.g. Claude Code crashed, session ends), entries grow unbounded
+- No cleanup on session removal (unlike `tool_use_caches`, which get cleaned up via `update_session_tracking()`)
 
-### filter_sessions_by_mode — Session Count im Header (Session 4, Kategorie: Korrektheit)
+### filter_sessions_by_mode — Session Count in the Header (session 4, category: correctness)
 
-`run_monitor()` (monitor.py:52-79) ruft jetzt `filter_sessions_by_mode(sessions, mode)` auf, BEVOR es `print_session_status(session_count, ...)` aufruft (monitor.py:72-73 und 77-78).
+`run_monitor()` (monitor.py:52-79) now calls `filter_sessions_by_mode(sessions, mode)` BEFORE calling `print_session_status(session_count, ...)` (monitor.py:72-73 and 77-78).
 
-Vorher: `session_count = len(sessions)` — zählte alle Sessions (main + subagent) unabhängig vom Mode
-Jetzt: `session_count = len(filter_sessions_by_mode(sessions, mode))` — zählt nur die tatsächlich im jeweiligen Mode relevanten Sessions
+Before: `session_count = len(sessions)` — counted all sessions (main + subagent) regardless of mode
+Now: `session_count = len(filter_sessions_by_mode(sessions, mode))` — counts only the sessions actually relevant to that mode
 
-Betrifft Modes: `MODE_MAIN` (nur Non-Agent-Files), `MODE_ALL` (alle). 
-## Evidenz
+Affects modes: `MODE_MAIN` (non-agent files only), `MODE_ALL` (all).
 
-Die `dev/pipeline/`-Suites wurden primär für pipe02-Entscheidungen aufgesetzt; ihre Messergebnisse backen mehrere pipe03-Claims:
+## Evidence
 
-### Poll-Overhead pro 0.5s-Zyklus (IST-1 Kontext)
+The `dev/pipeline/` suites were primarily set up for pipe02 decisions; their measurement results back several pipe03 claims:
 
-`dev/pipeline/io_profile/01_reports/poll_cycle_20260322_152817.md` (Script: `dev/pipeline/io_profile/01_poll_cycle_cost.py`, Dataset: 70 Projekte, 1479 Dateien, 2026-03-22): Discovery-Overhead 9.58ms pro Zyklus (ohne Filter) vs. 0.25ms (mit Project-Filter). Bestätigt dass POLL_INTERVAL=0.5s mit Project-Filter die dominante Wartezeit bleibt (Discovery 0.25ms << 500ms Sleep).
+### Poll Overhead per 0.5s Cycle (context for finding 1)
 
-### tool_use_cache Orphan-Behavior (IST-4 strukturale Evidenz)
+`dev/pipeline/io_profile/01_reports/poll_cycle_20260322_152817.md` (script: `dev/pipeline/io_profile/01_poll_cycle_cost.py`, dataset: 70 projects, 1479 files, 2026-03-22): discovery overhead 9.58ms per cycle (without filter) vs. 0.25ms (with project filter). Confirms that POLL_INTERVAL=0.5s with a project filter remains the dominant wait time (discovery 0.25ms << 500ms sleep).
 
-`dev/pipeline/memory_profile/01_reports/cache_growth_20260322_152818.md` (Script: `dev/pipeline/memory_profile/01_cache_growth.py`, Dataset: Session `35ca8892`, 357 Messages): 1 Orphaned Entry nach 357 Messages (Bash-Call ohne tool_result). `buffered_subagent_calls`-Sektion nicht im Report — Test-Session enthielt keine Subagents. Struktural analoges Verhalten zu `tool_use_caches`.
+### tool_use_cache Orphan Behavior (structural evidence for finding 4)
 
-### Unknown Types / Warnings Coverage (RETIRED — IST-5)
+`dev/pipeline/memory_profile/01_reports/cache_growth_20260322_152818.md` (script: `dev/pipeline/memory_profile/01_cache_growth.py`, dataset: session `35ca8892`, 357 messages): 1 orphaned entry after 357 messages (a Bash call without a tool_result). The `buffered_subagent_calls` section is not in the report — the test session contained no subagents. Structurally analogous behavior to `tool_use_caches`.
 
-`dev/pipeline/format_stability/01_reports/unknown_types_20260322_152802.md` (Script: `dev/pipeline/format_stability/01_unknown_types.py`, Dataset: 1479 Dateien, 222,636 Lines, 2026-03-22): 5 real-world unknown top-level types gefunden (8.1% unbekannt ohne Filter). Belegt dass Warnings-Loop reale Fälle detektiert — historisch korrekt, Feature ist entfernt. Dev-Script bleibt erhalten. Format-Inspektion erfolgt jetzt über das Proxy-Pane (vollständiges Forwarded-Payload sichtbar).
+### Unknown Types / Warnings Coverage (RETIRED — finding 5)
 
-IST-2 (workers-loop 6-step), IST-3 (state table), IST-6 (`filter_sessions_by_mode`), IST-7 (token profiling globals), IST-8 (logging 0) sind code-read-derived — kein dev/-Benchmark backing.
+`dev/pipeline/format_stability/01_reports/unknown_types_20260322_152802.md` (script: `dev/pipeline/format_stability/01_unknown_types.py`, dataset: 1479 files, 222,636 lines, 2026-03-22): 5 real-world unknown top-level types found (8.1% unknown without a filter). Evidence that the warnings loop detected real cases — historically correct, the feature has since been removed. The dev script remains. Format inspection now happens via the proxy pane (full forwarded payload visible).
 
-## Recommendation (SOLL)
+Findings 2 (workers-loop 6-step), 3 (state table), 6 (`filter_sessions_by_mode`), 7 (token-profiling globals), 8 (logging 0) are code-read-derived — no dev/ benchmark backing.
+
+## Recommendation (target state)
 
 Pending — needs evaluation.
 
-## Offene Fragen
+## Open Questions
 
-- `buffered_subagent_calls` hat noch keinen TTL-Cleanup (bleibt offen)
+- `buffered_subagent_calls` still has no TTL cleanup (remains open)
 
-## Quellen
+## Sources
 
 - GitHub anthropics/claude-code #27724: JSONL format undocumented, changes without changelog
-- GitHub anthropics/claude-code #27361: Token counts ~2x too low in JSONL (betrifft `turn_usage_accumulator`)
-- GitHub anthropics/claude-code #33414: FireHose monitoring feature request (kein offizielles Monitoring-API)
+- GitHub anthropics/claude-code #27361: token counts ~2x too low in JSONL (affects `turn_usage_accumulator`)
+- GitHub anthropics/claude-code #33414: FireHose monitoring feature request (no official monitoring API)
