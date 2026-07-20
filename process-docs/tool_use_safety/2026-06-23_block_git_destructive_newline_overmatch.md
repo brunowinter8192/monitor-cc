@@ -23,6 +23,6 @@ New smoke `dev/hook_smoke/test_block_git_destructive.py` — 21 cases (2 FP-regr
 `_strip_quoted` does not strip heredoc bodies. A `cat << 'EOF' ... git commit --amend ... EOF` doc-text triggered a `--amend` block on `2026-06-20` (fire-log). Heredoc-aware stripping is a larger, separate change — left open.
 
 ## Cross-link — same over-match class, different surfaces
-- proxy strip, substring-anywhere → anchored `startswith`: `decisions/OldThemes/message_strip_fp_nuke/bg_launch_ack_anchor.md`
-- proxy strip, plan-mode branch: `decisions/OldThemes/message_strip_fp_nuke/plan_mode_branch.md`
+- proxy strip, substring-anywhere → anchored `startswith`: the bg-launch-ack-anchor entry in message_strip_fp_nuke
+- proxy strip, plan-mode branch: the plan-mode-branch entry in message_strip_fp_nuke
 - safety hook, substring spans newlines → bounded to single line: this file
