@@ -1,52 +1,52 @@
 # Refactor Roadmap — Sequencing (2026-05-28)
 
-> HISTORISCH — Punkt-in-Zeit-Sequencing-Beschluss vom 2026-05-28, kein lebendes Status-Board.
-> Aktives Cross-Session-Tracking läuft über GitHub Issues (bd/dolt-Beads ausgemustert).
-> Stage-Status hier nur, wo nachträglich faktisch korrigiert (Stage 1).
+> HISTORICAL — a point-in-time sequencing decision from 2026-05-28, not a living status board.
+> Active cross-session tracking runs through GitHub Issues (bd/dolt beads retired).
+> Stage status here is only updated where subsequently factually corrected (Stage 1).
 
 ## Decision
 
-Vier Refactor/Fix-Themen laufen SEQUENTIELL, nicht parallel. Reihenfolge:
+Four refactor/fix topics run SEQUENTIALLY, not in parallel. Order:
 
-1. **Menubar** — Controller-Composition-Refactor ✅ ABGESCHLOSSEN (2026-06, B1-B5 alle 6 Controller)
-2. **blank** — Desktop-Targeting Sidecar-Konsolidierung (Weg 2)
-3. **Logging + Proxy** — unified Janitor + decisions/logging.md + count_tokens-Fix + Orphan-Cleanup
-4. **Dolt** — bd↔dolt Lifecycle Hook-Fix
+1. **Menubar** — controller-composition refactor — COMPLETED (2026-06, B1-B5, all 6 controllers)
+2. **blank** — desktop-targeting sidecar consolidation (Path 2)
+3. **Logging + Proxy** — unified janitor + the logging current-state doc + count_tokens fix + orphan cleanup
+4. **Dolt** — bd↔dolt lifecycle hook fix
 
-## Warum sequentiell, nicht parallel
+## Why Sequential, Not Parallel
 
-- **Harte Abhängigkeit Menubar → blank:** blank Weg-2 (`desktop_allocation/D1_blank_sidecar_consolidation.md`) braucht, dass die Menubar ein `cwd → space_id`-Sidecar publiziert (Monitor_CC-Source-Änderung). Am saubersten *nach* dem Controller-Refactor in die dann klare Struktur eingehängt. blank kann nicht fertig werden bevor das Sidecar existiert.
-- **Review-Last:** zwei parallele Refactor-Streams die beide auf `dev` mergen = doppelte Opus-Cross-Model-Review + verschränkte Merge-Topologie + höheres Regressionsrisiko. Sequentiell hält jeden Refactor auf sauberem dev-Stand verifizierbar bevor der nächste startet.
-- **Menubar bereits in flight** (Steps 1-2 merged, 3 läuft, 4-6 pending) — erst fertigmachen für saubere Baseline.
+- **Hard dependency Menubar → blank:** blank's Path 2 (documented in the desktop_allocation area's sidecar-consolidation entry) needs the menubar to publish a `cwd → space_id` sidecar (a Monitor_CC source change). Cleanest to hook this in *after* the controller refactor, into the then-clear structure. blank cannot finish before the sidecar exists.
+- **Review load:** two parallel refactor streams both merging to `dev` = doubled Opus cross-model review + tangled merge topology + higher regression risk. Sequential keeps each refactor verifiable on a clean dev state before the next starts.
+- **Menubar already in flight** (steps 1-2 merged, 3 running, 4-6 pending) — finish it first for a clean baseline.
 
 ## Stages
 
-### 1. Menubar — Controller-Composition-Refactor ✅ ABGESCHLOSSEN
-- OldThemes: `menubar_refactor_v1/`
-- Status: alle 6 Steps merged (B1 Sessions, B2 Bead, B3 Queue, B4 PanelManager, B4b Focus, B5 Hotkey — siehe `menubar_refactor_v1/B5_migration_log.md`). Die dort deferred LOC-Ceiling-Verletzungen (app.py, queue_controller.py) wurden 2026-06-10 in der LOC-Refactor-Kampagne per Standalone-Split aufgelöst (`loc_refactor_campaign.md`).
+### 1. Menubar — Controller-Composition Refactor — COMPLETED
+- Process history: the menubar_refactor_v1 area
+- Status: all 6 steps merged (B1 Sessions, B2 Bead, B3 Queue, B4 PanelManager, B4b Focus, B5 Hotkey — see the B5 migration log in that area). The LOC-ceiling violations deferred there (app.py, queue_controller.py) were resolved 2026-06-10 in the LOC-refactor campaign via a standalone split (documented in this area's LOC-refactor-campaign entry).
 
-### 2. blank — Desktop-Targeting Sidecar-Konsolidierung
-- OldThemes: `desktop_allocation/D1_blank_sidecar_consolidation.md`
-- Depends on: Stage 1 (Menubar publiziert cwd→space_id Sidecar).
-- Scope: Menubar publiziert verifiziertes Detection-Result als Sidecar; blank `desktop_targeting.py` konsumiert es (fragile Namens-Match-Kette entfällt); blank-seitiges Logging für Worker-Spawn + File-Open; detect-before-disturb-Reorder.
+### 2. blank — Desktop-Targeting Sidecar Consolidation
+- Process history: the desktop_allocation area's sidecar-consolidation entry
+- Depends on: Stage 1 (menubar publishes the cwd→space_id sidecar).
+- Scope: menubar publishes the verified detection result as a sidecar; blank's `desktop_targeting.py` consumes it (the fragile name-match chain goes away); blank-side logging for worker-spawn + file-open; detect-before-disturb reorder.
 
-### 3. Logging + Proxy — unified Janitor + count_tokens-Fix
-- OldThemes (Prozess-Vorgeschichte): `log_janitor.md`, `audit_logging/architecture.md`; `decisions/pipe05_proxy_cache.md` (count-30 + Log-Naming)
-- decisions (geplant, neu): `decisions/logging.md` — autoritatives Log-Inventar (Writer/Reader/Zweck/Format/Retention/Janitor), RAG-indexiert als Single Source.
+### 3. Logging + Proxy — Unified Janitor + count_tokens Fix
+- Process history: the logging area's log-janitor entry, the audit_logging area's architecture entry; the proxy-cache pipeline current-state doc (count-30 + log naming)
+- Current-state doc (planned, new at the time): the logging area's authoritative log inventory (writer/reader/purpose/format/retention/janitor), RAG-indexed as the single source.
 - Scope:
-  - **Unified Janitor:** verstreute Logik (`claude_proxy_start.sh` count-30, `log_janitor.py` 7-Tage-Records, `gpu_pane/status.py` TimedRotating, `ccwrap/ansi_log.py` keep-count) in `src/log_janitor.py` als deklaratives LogSpec-Registry zusammenführen. Zwei Trigger bleiben sinnvoll (Proxy-Start für api_requests, Monitor-24h-Tick für Rest).
-  - **count_tokens-Proxy-Fix:** `_is_messages_request` (`src/proxy/addon.py:341-343`) matcht via `path.startswith("/v1/messages")` auch `/v1/messages/count_tokens`. Folge: `_inject_model_override` (`src/proxy/inject_helpers.py:27-28`) injiziert `max_tokens` + `output_config.effort` aus `proxy_rules.json` auch in count_tokens-Vorabprüfungen → 400 `max_tokens: Extra inputs are not permitted` (99 von 102 Error-Payloads). Echte `/v1/messages`-Generierungs-Requests sind unbetroffen (max_tokens dort legal, 200). **Fix (vereinfacht):** count_tokens KOMPLETT aus der Pipeline ausnehmen (`_is_messages_request` exakt auf Messages-Endpoint matchen, nicht Präfix) → CCs count_tokens geht unverändert durch, keine Injektion, kein 400, keine Datei-Flut. Kein Feld-Stripping nötig, weil wir die count_tokens-Zählung nirgends konsumieren (s.u.).
-  - **Token-Counting-Audit (Befund 2026-05-28):** Production-`src/` hat KEIN `tiktoken`, KEINE count_tokens-Response-Konsumierung. Autoritative CC/CR-Zahlen kommen aus Session-JSONL-`usage` (`jsonl/jsonl_extractors.py` → `token_pane`/`proxy_display`/`worker_pane`). Einzige Eigen-Schätzung: `_chars_to_tokens` (chars/3.5) in `proxy_display` für "~Ntok"-Display-Labels — char-basiert, modellunabhängig, keine Buchhaltung. Offen: ob dieses Display-Heuristik bleibt oder raus. count_tokens-Pre-Flight ist CCs eigener Call, von uns nicht konsumiert → kann unangetastet durchlaufen.
-  - **api_error_payload:** Proxy-Writer (`src/proxy/addon.py:235`) von Einzeldatei-pro-Fehler auf rollende `api_errors.jsonl` umstellen → eliminiert Datei-Flut by-design + wird vom bestehenden 7-Tage-Record-Janitor abgedeckt.
-  - **Orphan-Cleanup:** `tool_use_errors.jsonl` (Legacy, kein Writer mehr) + verwaiste `.proxy_live_*`-Verzeichnisse toter Sessions.
-- count-30-Retention für api_requests: bewusst KEINE Größen-Begrenzung — akzeptiert (User-Entscheidung 2026-05-28), 16GB kein Problem.
+  - **Unified janitor:** consolidate scattered logic (`claude_proxy_start.sh` count-30, `log_janitor.py` 7-day records, `gpu_pane/status.py` TimedRotating, `ccwrap/ansi_log.py` keep-count) in `src/log_janitor.py` as a declarative LogSpec registry. Two triggers remain sensible (proxy-start for api_requests, monitor-24h tick for the rest).
+  - **count_tokens proxy fix:** `_is_messages_request` (`src/proxy/addon.py:341-343`) matches `/v1/messages/count_tokens` too via `path.startswith("/v1/messages")`. Consequence: `_inject_model_override` (`src/proxy/inject_helpers.py:27-28`) injects `max_tokens` + `output_config.effort` from `proxy_rules.json` into count_tokens pre-checks too → 400 `max_tokens: Extra inputs are not permitted` (99 of 102 error payloads). Real `/v1/messages` generation requests are unaffected (max_tokens is legal there, 200). **Fix (simplified):** exclude count_tokens from the pipeline entirely (`_is_messages_request` matches the messages endpoint exactly, not by prefix) → CC's count_tokens passes through unmodified, no injection, no 400, no file flood. No field stripping needed because we never consume the count_tokens count anywhere (see below).
+  - **Token-counting audit (finding 2026-05-28):** production `src/` has NO `tiktoken`, NO count_tokens response consumption. Authoritative CC/CR numbers come from session-JSONL `usage` (`jsonl/jsonl_extractors.py` → `token_pane`/`proxy_display`/`worker_pane`). The only own estimate: `_chars_to_tokens` (chars/3.5) in `proxy_display` for "~Ntok" display labels — char-based, model-independent, no accounting. Open: whether this display heuristic stays or goes. The count_tokens pre-flight is CC's own call, not consumed by us → can pass through untouched.
+  - **api_error_payload:** switch the proxy writer (`src/proxy/addon.py:235`) from one file per error to a rolling `api_errors.jsonl` → eliminates the file flood by design + gets covered by the existing 7-day-record janitor.
+  - **Orphan cleanup:** `tool_use_errors.jsonl` (legacy, no writer anymore) + orphaned `.proxy_live_*` directories of dead sessions.
+- count-30 retention for api_requests: deliberately NO size limit — accepted (user decision 2026-05-28), 16GB is not a problem.
 
-### 4. Dolt — bd↔dolt Lifecycle  ✅ GELÖST (2026-05-30) — bd v0.60.0 → v1.0.4 Upgrade
-- OldThemes: `dolt_server_lifecycle.md` (RESOLVED-Block oben in der Datei).
-- Zwei verworfene Theorien: (1) TIME_WAIT-Stau auf fixem Port (2026-05-28); (2) Homebrew-dolt-Zwei-Server-Krieg (2026-05-29 — Red Herring, Loop kam ohne Homebrew zurück).
-- Echte Wurzel: bd-interne per-Command Server-Lifecycle-Instabilität, getrieben vom kontinuierlichen Menubar-bd-Polling (#2655-Klasse). v1.0.4 hält den auto-gestarteten Server am Leben → kein Churn mehr.
-- Fix: bd als kontrollierte Single-Version nach `~/.local/bin/bd` (v1.0.4, checksum-verifiziert), `brew uninstall bd` + `brew pin dolt`, kein Auto-Update. 7 Projekt-DBs in-place migriert (Schema 0.60.0→1.0.4, null Datenverlust, Sandbox-getestet). Loop verifiziert tot (Port+PID stabil, 0 Breaker). Details im RESOLVED-Block.
+### 4. Dolt — bd↔dolt Lifecycle — RESOLVED (2026-05-30) — bd v0.60.0 → v1.0.4 Upgrade
+- Process history: the dolt area's server-lifecycle entry (RESOLVED block at the top of the file).
+- Two discarded theories: (1) TIME_WAIT buildup on a fixed port (2026-05-28); (2) the Homebrew-dolt two-server war (2026-05-29 — a red herring, the loop came back without Homebrew).
+- Real root: an internal bd per-command server-lifecycle instability, driven by continuous menubar bd polling (the #2655 class upstream). v1.0.4 keeps the auto-started server alive → no more churn.
+- Fix: bd pinned as a controlled single version at `~/.local/bin/bd` (v1.0.4, checksum-verified), `brew uninstall bd` + `brew pin dolt`, no auto-update. 7 project DBs migrated in-place (schema 0.60.0→1.0.4, zero data loss, sandbox-tested). Loop verified dead (port+PID stable, 0 breakers). Details in the RESOLVED block of that entry.
 
-## Follow-up (nach Dolt)
+## Follow-Up (After Dolt)
 
-- **Opus-Worker-Rules-Cleanup:** in `~/.claude/shared-rules/opus` die `<20%`-Context-Kill-Schwelle entfernen. Einzige Policy: Worker bis zum Tod nutzen, dann Successor-Handoff (recap-after-stage sichert sauberen committeten State). Kein präemptives Kill bei niedrigem Context — die letzten paar Prozent reichen oft weiter als gedacht. Opus editiert Rule-Files direkt; cross-project, kein Projekt-Bead.
+- **Opus worker-rules cleanup:** remove the `<20%`-context kill threshold in `~/.claude/shared-rules/opus`. Sole policy: use workers until they die, then successor handoff (recap-after-stage secures a clean committed state). No preemptive kill on low context — the last few percent often go further than expected. Opus edits the rule files directly; cross-project, no project tracking task.
