@@ -182,30 +182,6 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_concurrent_timer.py (137 LOC)
-
-**Purpose:** PreToolUse hook (Bash) — enforces **only one background timer at a time** per session. Detects a canonical timer (`run_in_background=True` + `_SLEEP_ONLY_BG` match) and, if a timer already stored for the session has not yet expired, blocks the new one. Rationale: timers are always the 600s canonical form (`rewrite_background_sleep.py` normalizes every sleep-only background command to it), so a second timer request while one is still running is always redundant — it means the agent lost track of an already-running wait instead of going idle for its completion notice. Non-timer commands are entirely ignored (no state write). Exits 2 + stderr on block. Exits 0 on allow, non-timer passthrough, and any IO/parse error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}, session_id}`); `logs/timer_state.jsonl` (per-session stored timer expiry).
-**Writes:** `logs/timer_state.jsonl` (written only when a new timer is allowed — one entry per session, self-pruning at 24h); stderr (block message) on block only.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Registered BEFORE `rewrite_background_sleep.py` — a blocked timer never reaches the rewrite hook. Never imported.
-**Calls out:** `_fire_log.log_fire`; stdlib (`datetime`, `json`, `os`, `re`, `sys`).
-
-**Timer detection:** `run_in_background == True AND _SLEEP_ONLY_BG.match(command)` — same regex as `rewrite_background_sleep.py`: `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`.
-
-**Expiry logic:** on a timer request, `expiry = now + 600s` (hardcoded — never parsed out of the command, since `rewrite_background_sleep.py` guarantees every timer is exactly 600s). If a stored expiry exists for the session AND `now < stored_expiry` → BLOCK (a timer is still running). Otherwise (no stored expiry, or it has passed) → overwrite the stored expiry with the new one and ALLOW.
-
-**State file (`logs/timer_state.jsonl`):** JSONL, one entry per session: `{"ts": "...", "session_id": "...", "expiry": "..."}`. On every allowed timer: read → drop own session entry + drop entries >24h old (by `ts`) → append new entry → overwrite (one-per-session, self-pruning). Non-timer commands and blocked timers never write state. Path overridable via `MONITOR_CC_TIMER_STATE` env var (test isolation).
-
-**Fail-open split:**
-- IO/parse exception on state read (`_READ_ERROR` sentinel) → exit 0 (allow — transient error must not block the worker-wait loop).
-- State read succeeded but no entry found for session, or the stored one has expired → ALLOW (record new expiry).
-
-**Block message:** "A background timer is already running for this session (expires `<ISO timestamp>`). Only one timer may run at a time — wait for its completion notice before setting a new one."
-
-**Smoke:** `dev/hook_smoke/test_block_concurrent_timer.py` (7 cases: (a) first timer → ALLOW, (b) second timer same session while running → BLOCK, (c) timer for a different session → ALLOW, (d) non-timer command → ALLOW + no state write, (e) expired stored timer → next timer ALLOW, (f) IO error → fail-open ALLOW).
-
----
-
 ### block_search_subreddits_limit.py (54 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `reddit-cli search_subreddits` and `cli.py search_subreddits` invocations that carry a `--limit` flag. Subreddit discovery must return the full result set; capping it prematurely hides candidates. Exits 2 + stderr. Exits 0 on any parse error (fail-open).
@@ -689,7 +665,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### hook_setup.py (148 LOC)
+### hook_setup.py (145 LOC)
 
 **Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message (stderr) if running from a worktree — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]` (not only `PreToolUse`), checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source (worktree accident, repo move, etc.). Runs completely silent on success — no stdout output; stderr only for error conditions (worktree guard, JSON parse failure).
 **Reads:** `~/.claude/settings.json`.
@@ -730,4 +706,4 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 - **Cache-bust on settings.json edit.** Editing `~/.claude/settings.json` busts CC's prompt cache — full message rebuild on the next request. Hooks are active immediately after settings.json is written; no CC restart needed.
 - **PreToolUse exit codes.** Exit 0 = allow, exit 2 = block (CC shows stderr to user as the block reason), exit 1 = hook error (CC logs but does not block). This hook uses exit 2 on block, exit 0 on allow and on hook-internal errors.
 - **Subprocess hooks must resolve plugin CLIs by absolute path.** CC's hook execution environment has a stripped PATH that does NOT include `~/.local/bin` or the plugin-cache `bin/` directories. A subprocess-hook invoking a plugin CLI by bare name (e.g. `subprocess.run(['worker-cli', ...])`) receives `FileNotFoundError` → catches it → returns the fail-open default → hook silently never fires. This was a confirmed live bug in `block_worker_kill_while_working`: the kill-guard let working-worker kills through until `_resolve_worker_cli()` was added (`shutil.which` + glob `~/.claude/plugins/cache/.../bin/worker-cli`). **Pattern for any future subprocess-hook:** resolve the binary via `shutil.which` first, then a hardcoded plugin-cache glob fallback; return `None` if unresolvable and fail-open. Never rely on bare PATH.
-- **All 33 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
+- **All 32 hooks log fires via `_fire_log.log_fire()`.** Called at the decision-point only — NOT at hook start and NOT on passthroughs. The shared log `src/logs/hook_firing.jsonl` is append-forever; fail-silent on write errors so logging never breaks hook behavior. New hooks must add a `log_fire()` call at their decision-point as part of the implementation. Use `MONITOR_CC_HOOK_FIRING_LOG` env var in smoke tests to redirect to a temp file and avoid polluting the real log.
