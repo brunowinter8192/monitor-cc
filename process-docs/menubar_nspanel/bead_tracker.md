@@ -25,11 +25,11 @@ Titles (both updated on every `toggleAutoJump_` call and on panel rebuild):
 
 ---
 
-## Layout-Fixes (2026-05-21)
+## Layout Fixes (2026-05-21)
 
 Four UI fixes across bead_panel.py, panel.py, hotkey.py, app.py.
 
-### D1 — Bead-Panel Linksbündige Bead-Zeilen
+### D1 — Bead-Panel Left-Aligned Bead Rows
 
 Root cause: `_make_bead_row` NSView containers had `heightAnchor` constraint but no `widthAnchor` constraint. NSStackView with `NSLayoutAttributeLeading` alignment resolves item widths from `intrinsicContentSize`. NSTextField (project header) has `intrinsicContentSize.width` = text width; NSView container has `{-1, -1}`. Under Auto Layout, NSStackView position each item type differently → inconsistent x-offsets for bead rows.
 
@@ -39,7 +39,7 @@ Fix:
 - `btn_w` reduced by 16 to compensate
 - `x_btn` x-position stays at `pw - _UNTRACK_W` (right container edge, unchanged)
 
-### D2 — Bead-Panel Titel Wrapping
+### D2 — Bead-Panel Title Wrapping
 
 Root cause: `_make_bead_row` used manual char-count truncation (`title[:max_ch - 1] + '…'`) with no AppKit text measurement. Container height was fixed to `_ROW_H - 1 = 20`.
 
@@ -72,73 +72,73 @@ Handler (`_background_panel`): dispatched via `NSOperationQueue.mainQueue().addO
 
 `_close_main_panel` + `_close_tracker_panel`: both reset `_panel_backgrounded = False`. Handles Cmd+→/← cycling: close resets backgrounded state before opening the other panel in foreground.
 
-## UI-Fixes Runde 2 + Cmd+K Debug
+## UI Fixes Round 2 + Cmd+K Debug
 
-### D1 — Bead-Titel linksbündig
+### D1 — Bead Title Left-Alignment
 
-Root cause: `_make_bead_row` setzte kein `setAlignment_` auf `expand_btn.cell()`. NSButtonCell zentriert Text defaultmäßig in der vollen Cell-Breite (`btn_w` ≈ 340pt) — Text landete bei ca. x=indent+btn_w/2 statt bündig am indent-Offset.
+Root cause: `_make_bead_row` set no `setAlignment_` on `expand_btn.cell()`. NSButtonCell centers text by default across the full cell width (`btn_w` ≈ 340pt) — text landed at roughly x=indent+btn_w/2 instead of flush at the indent offset.
 
-Fix: `expand_btn.cell().setAlignment_(0)` (NSTextAlignmentLeft = 0) nach den bestehenden `setWraps_` + `setLineBreakMode_` Aufrufen. Funktioniert mit `NSButtonTypeMomentaryPushIn` + `setBordered_(False)` ohne Cell-Type-Wechsel.
+Fix: `expand_btn.cell().setAlignment_(0)` (NSTextAlignmentLeft = 0) after the existing `setWraps_` + `setLineBreakMode_` calls. Works with `NSButtonTypeMomentaryPushIn` + `setBordered_(False)` without a cell-type change.
 
-### D2 — Expand-Inhalt gewrappt
+### D2 — Expand-Content Wrapping
 
-Root cause: `_make_expand_view` verwendete fixed `row_h = _ROW_H - 1` pro Zeile ohne Wrapping-Aktivierung → lange Zeilen abgeschnitten. `_compute_bead_height` rechnete identisch mit fixed `(_ROW_H - 1)` → Panel zu niedrig für gewrappte Expand-Views.
+Root cause: `_make_expand_view` used a fixed `row_h = _ROW_H - 1` per line without enabling wrapping → long lines got truncated. `_compute_bead_height` computed identically with a fixed `(_ROW_H - 1)` → the panel was too short for wrapped expand views.
 
 Fix in `_make_expand_view`:
-- `line_heights = [_bead_row_height(line or ' ', inner_w) for line in lines]` — per-Zeile Höhe via AppKit-Messung (analog `_make_bead_row`)
-- `total = sum(line_heights)`, Frame und Constraints damit gesetzt
-- Pro tf: `cell().setWraps_(True)` + `cell().setLineBreakMode_(0)` + `setUsesSingleLineMode_(False)` — gleiche Behandlung wie expand_btn in `_make_bead_row`
-- y-Akkumulation: `y = total; y -= lh` vor jedem tf statt fixed step
+- `line_heights = [_bead_row_height(line or ' ', inner_w) for line in lines]` — per-line height via AppKit measurement (analogous to `_make_bead_row`)
+- `total = sum(line_heights)`, frame and constraints set from that
+- Per tf: `cell().setWraps_(True)` + `cell().setLineBreakMode_(0)` + `setUsesSingleLineMode_(False)` — same treatment as expand_btn in `_make_bead_row`
+- y-accumulation: `y = total; y -= lh` before each tf instead of a fixed step
 
-Fix in `_compute_bead_height`: `expand_inner_w = pw - 16` + `sum(_bead_row_height(...) for line in ...)` statt `len(lines) * (_ROW_H - 1)`. Spiegelt `_make_expand_view`-Geometrie exakt wider.
+Fix in `_compute_bead_height`: `expand_inner_w = pw - 16` + `sum(_bead_row_height(...) for line in ...)` instead of `len(lines) * (_ROW_H - 1)`. Mirrors `_make_expand_view`'s geometry exactly.
 
-### D3 — Cmd+K ID-Kollision
+### D3 — Cmd+K ID Collision
 
-Root cause: `_CMD_K_ID = 2` kollidierte mit Cmd+1-Digit (Digit-IDs = `slot + 1`, Slot 1 → ID 2). Digit-Handler (`_ensure_digit_handler`) wird beim Panel-Öffnen installiert — Carbon ruft ihn zuerst auf. Für Cmd+K-Event (id=2): `slot = 2-1 = 1`, `_DIGIT_CALLBACKS.get(1)` findet Cmd+1-Callback (falls ≥1 Session aktiv) → führt ihn aus → `return 0` (consumed). Cmd+K-Handler bekommt das Event nie zu sehen.
+Root cause: `_CMD_K_ID = 2` collided with the Cmd+1 digit (digit IDs = `slot + 1`, slot 1 → ID 2). The digit handler (`_ensure_digit_handler`) is installed when the panel opens — Carbon calls it first. For a Cmd+K event (id=2): `slot = 2-1 = 1`, `_DIGIT_CALLBACKS.get(1)` finds the Cmd+1 callback (if ≥1 session is active) → runs it → `return 0` (consumed). The Cmd+K handler never sees the event.
 
-ID-Belegung: L=1, Digits=2-10 (`slot+1`), Arrow-Right=20, Arrow-Left=21. Freier Slot: 30.
+ID allocation: L=1, digits=2-10 (`slot+1`), arrow-right=20, arrow-left=21. Free slot: 30.
 
-Fix: `_CMD_K_ID = 30`. Einzige Änderung in `hotkey.py` — Konstante, nicht `RegisterEventHotKey`-Keycode. Import-Check bestätigt keine Kollision mehr.
+Fix: `_CMD_K_ID = 30`. The only change is in `hotkey.py` — a constant, not the `RegisterEventHotKey` keycode. An import check confirmed no more collision.
 
-Debug-Prints wurden nicht eingebaut — ID-Kollision war durch statische Code-Analyse eindeutig identifizierbar (slot-Mapping `hkid.id - 1` + ID-Tabelle aller registrierten Hotkeys).
+Debug prints were not added — the ID collision was unambiguously identifiable via static code analysis (the slot mapping `hkid.id - 1` + a table of all registered hotkey IDs).
 
-## Cmd+K orderBack + Sessions-Alignment (Runde 2 Follow-up)
+## Cmd+K orderBack + Sessions Alignment (Round 2 Follow-Up)
 
-### Cmd+K — orderBack_ auf NSStatusWindowLevel wirkungslos
+### Cmd+K — orderBack_ Ineffective on NSStatusWindowLevel
 
-Debug-Prints bestätigten: Registration OK (hk_ref non-null), `kEventHotKeyPressed` feuert (`hkid.id=30`), `_background_panel` wird aufgerufen, State flippt korrekt (`_panel_backgrounded` True↔False). Einziges Problem: `orderBack_(None)` auf einem Panel mit `setLevel_(NSStatusWindowLevel)` (Level ≈ 25) ist visuell wirkungslos. `orderBack_` ordnet das Fenster hinter andere Fenster AUF DEMSELBEN ODER HÖHEREM Level — kein normales App-Fenster liegt bei Level ≥ 25, daher bleibt das Panel sichtbar vorne.
+Debug prints confirmed: registration OK (hk_ref non-null), `kEventHotKeyPressed` fires (`hkid.id=30`), `_background_panel` gets called, state flips correctly (`_panel_backgrounded` True↔False). The only problem: `orderBack_(None)` on a panel with `setLevel_(NSStatusWindowLevel)` (level ≈ 25) is visually ineffective. `orderBack_` orders the window behind other windows AT THE SAME OR HIGHER level — no normal app window sits at level ≥ 25, so the panel stays visibly in front.
 
-Fix: Level temporär absenken vor `orderBack_`, beim Foregrounding wiederherstellen:
+Fix: temporarily lower the level before `orderBack_`, restore it when foregrounding:
 - Background: `panel.setLevel_(0)` (NSNormalWindowLevel) → `panel.orderBack_(None)`
 - Foreground: `panel.setLevel_(25)` (NSStatusWindowLevel) → `panel.orderFrontRegardless()`
 
-Gilt für beide Panels (`_panel` + `_tracker_panel`) symmetrisch.
+Applies symmetrically to both panels (`_panel` + `_tracker_panel`).
 
-`NSStatusWindowLevel` nicht als Konstante in `app.py` importiert — Integer `25` direkt verwendet (entspricht AppKit-Enum-Wert).
+`NSStatusWindowLevel` is not imported as a constant in `app.py` — the integer `25` is used directly (matches the AppKit enum value).
 
-### Bug 5 — Sessions-Spalten-Drift (● vs ASCII)
+### Bug 5 — Sessions Column Drift (● vs ASCII)
 
-`●` (U+25CF, BLACK CIRCLE) rendert in Menlo 13pt mit breiterer Advance-Width als eine Monospace-Zelle → Spalten nach dem Bullet driften je nach Projekt-Kontext leicht. Fix: `●` → `*` (ASCII 0x2A) in beiden Format-Strings in `panel.py` (main-row `_rebuild_panel` + `_update_panel_inplace`). Worker-Prefix (`"      "` 6 Spaces) unverändert. Beide Prefixe jetzt rein ASCII → exakte Menlo-Ausrichtung garantiert.
+`●` (U+25CF, BLACK CIRCLE) renders in Menlo 13pt with a wider advance width than a monospace cell → columns after the bullet drift slightly depending on project context. Fix: `●` → `*` (ASCII 0x2A) in both format strings in `panel.py` (main-row `_rebuild_panel` + `_update_panel_inplace`). The worker prefix (`"      "` 6 spaces) unchanged. Both prefixes are now purely ASCII → exact Menlo alignment guaranteed.
 
 ## Cmd+L Double-Tap Reset (2026-05-21)
 
-**Feature:** Doppel-Tap Cmd+L (zwei Presses < 300ms) setzt das aktive Panel auf Standardgröße zurück (PANEL_WIDTH=380, PANEL_HEIGHT=460). Single-Cmd+L bleibt Toggle.
+**Feature:** double-tapping Cmd+L (two presses < 300ms) resets the active panel to its default size (PANEL_WIDTH=380, PANEL_HEIGHT=460). A single Cmd+L stays a toggle.
 
 **Implementation in `togglePanel_` (`app.py`):**
 - State: `app._last_cmd_l_ts: float = 0.0` (init in `CCMenuBarApp.__init__`)
-- Detection: `is_double_tap = (now - app._last_cmd_l_ts) < 0.3` am Methoden-Einstieg
-- Double-tap-Pfad: `_reset_panel_to_default(app)` + `app._last_cmd_l_ts = 0.0` (Sentinel), dann `return`
-- Single-Pfad: `app._last_cmd_l_ts = now`, dann normales Toggle-Verhalten unverändert
+- Detection: `is_double_tap = (now - app._last_cmd_l_ts) < 0.3` at method entry
+- Double-tap path: `_reset_panel_to_default(app)` + `app._last_cmd_l_ts = 0.0` (sentinel), then `return`
+- Single-tap path: `app._last_cmd_l_ts = now`, then normal toggle behavior unchanged
 
-**`_reset_panel_to_default(app)` (neue Funktion in `app.py`):**
+**`_reset_panel_to_default(app)` (new function in `app.py`):**
 1. `app._panel_width = PANEL_WIDTH`
 2. `app._panel_min_height = PANEL_HEIGHT`
-3. Tracker offen → `_resize_tracker_panel(app, PANEL_HEIGHT)` (importiert aus `bead_panel.py`)
-4. Main offen → `_resize_panel(app, PANEL_HEIGHT)` (aus `panel.py`)
-5. Kein `_save_settings` — Default ist Code-Konstante, kein User-Setting
+3. Tracker open → `_resize_tracker_panel(app, PANEL_HEIGHT)` (imported from `bead_panel.py`)
+4. Main open → `_resize_panel(app, PANEL_HEIGHT)` (from `panel.py`)
+5. No `_save_settings` — the default is a code constant, not a user setting
 
-**Sentinel-Pattern:** Nach Reset wird `_last_cmd_l_ts = 0.0` gesetzt. `now - 0.0 = now ≈ 1.7e9` → weit über 0.3 → nächster Cmd+L ist garantiert kein Double-Tap (triple-press: open+reset+close).
+**Sentinel pattern:** after a reset, `_last_cmd_l_ts = 0.0` is set. `now - 0.0 = now ≈ 1.7e9` → far above 0.3 → the next Cmd+L is guaranteed not to be a double-tap (triple-press: open+reset+close).
 
-**Backgrounded-Panel:** Erster Press restauriert (`orderFrontRegardless`, setzt `_last_cmd_l_ts = now`, return). Zweiter Press findet Panel offen und nicht backgrounded → trifft normal auf Double-Tap-Branch.
+**Backgrounded panel:** the first press restores it (`orderFrontRegardless`, sets `_last_cmd_l_ts = now`, return). The second press finds the panel open and not backgrounded → hits the normal double-tap branch.
 
-**Edge case: keins offen + Double-Tap:** `_reset_panel_to_default` wird nicht aufgerufen (Guard `if _tracker_open or _panel_open`), `_last_cmd_l_ts = 0.0`, return — kein Open, kein Resize.
+**Edge case: nothing open + double-tap:** `_reset_panel_to_default` is not called (guarded by `if _tracker_open or _panel_open`), `_last_cmd_l_ts = 0.0`, return — no open, no resize.
