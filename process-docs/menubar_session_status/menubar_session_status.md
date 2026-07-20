@@ -1,6 +1,6 @@
 # Menubar Session Status Detection
 
-## Status Quo (IST)
+## State as of the sensor-selection work
 
 Session status detection in `src/menubar/` uses separate logic for Workers vs Mains.
 
@@ -34,7 +34,7 @@ Session status detection in `src/menubar/` uses separate logic for Workers vs Ma
 | `ORCHESTRATOR_SIGNAL_BUFFER_SECS` | 60s | signal-grace window — workers with recent worker-cli send/spawn signal treated as working for auto-abort |
 | auto-focus debounce | 3s | `_idle_since_ts` → `_focus_session` |
 
-## Evidenz
+## Evidence
 
 Worker stale-demote sensor selection — three-option probe (`window_activity` vs JSONL mtime vs TTY mtime):
 - Script: `dev/worker_status_probes/` suite
@@ -49,15 +49,15 @@ Worker stale-demote sensor selection — three-option probe (`window_activity` v
 
 Decision: `window_activity` wins on both axes. Empirically refuted the prior "cursor blinks bump window_activity" concern — cursor blinks do NOT touch window_activity. `window_activity` is updated only on actual pane output (byte writes to the PTY), not on cursor rendering.
 
-## Recommendation (SOLL)
+## Recommendation (target state)
 
 Pending — no eval of detection accuracy vs alternative threshold values.
 
-## Offene Fragen
+## Open Questions
 
 - WORKING_THRESHOLD_SECS=10s: is this too short for heavy disk I/O sessions where JSONL write lags?
 - THINKING_OVERRIDE_MAX_SECS=300s: any sessions where thinking >300s causes premature idle display?
 
-## Quellen
+## Sources
 
 None.
