@@ -14,7 +14,7 @@ Observed cache-rebuild events with as much forensic detail as we can capture. Go
 - Proxy sets its own BPs with `ttl:"1h"` (`cc_marker = {"type":"ephemeral","ttl":"1h"}`)
 - BP layout (pre bp-layout-v2): BP1=sys[2], BP2=last tool without defer_loading, BP3+BP4=messages (rolling, move forward each turn)
 - BP layout (bp-layout-v2): BP1 removed; Tools Anchor=prev last non-defer tool (only when tools grew); Tools End=current last non-defer tool; BP3+BP4=messages unchanged
-- BP layout (bp-layout-v3, 2026-04-16, dcb6aea): BP1=sys[2] (NEU, reintroduced); Tools End unchanged; Tools Anchor entfernt; BP3+BP4 unchanged. Begründung: sys[2]-Marker erzeugt Cross-Session Cache Entry der sys[3]-Drift überlebt (sys[3] = CC-injected env mit gitStatus + cwd, nicht im BP1-Prefix). Verifiziert: Fresh Session REQ#1 CR=61,231/CC=0 (2026-04-16).
+- BP layout (bp-layout-v3, 2026-04-16, dcb6aea): BP1=sys[2] (reintroduced); Tools End unchanged; Tools Anchor removed; BP3+BP4 unchanged. Rationale: the sys[2] marker creates a cross-session cache entry that survives sys[3] drift (sys[3] = CC-injected env with gitStatus + cwd, not in the BP1 prefix). Verified: fresh session REQ#1 CR=61,231/CC=0 (2026-04-16).
 - Prefix-hash instrumentation in sent_meta: `prefix_hash_bp1_sys`, `prefix_hash_bp2_tools`, `prefix_hash_bp3_msg`, `prefix_hash_bp4_msg`
 
 ## Case 1 — monitor_cc REQ#33 (2026-04-12)
@@ -111,7 +111,7 @@ The proxy's rule-loader (`_load_global_rules`, `_load_project_rules`) caches on 
 
 **Classification:** Partial-to-full rebuild per event. Root cause = **proxy loads rule content from files with mtime-based reload; editing those files during an active session invalidates the prefix**.
 
-**Mitigation (to be implemented in `Monitor_CC-dye`):**
+**Mitigation (planned):**
 - Fixate sys[2] and msg[0] project_rules block at session start. First request of a session reads the files normally; all subsequent requests use the cached bytes, ignoring mtime. File edits only take effect in the NEXT session.
 - Rule-family: **`rule-file-edit-during-session`** — added to `proj_monitor/monitor-proxy.md` Rule-Family catalog.
 
@@ -260,7 +260,7 @@ Session JSONL usage impact:
 
 **Mechanism:** BP2 picks the last non-defer tool ("Write" in both cases). Logical BP2 position is stable, but byte identity of the prefix before BP2 breaks because alphabetical insert places new defer-tools between existing tools in the array — shifting every subsequent byte.
 
-**Fix:** Proxy tool injection (Monitor_CC-o9b, worker `tool-inject-v2`). ToolSearch stripped entirely from every request. CC deferred built-ins (CronList, ListMcpResourcesTool etc.) go into `TOOL_BLOCKLIST`. iterative-dev schemas injected at REQ#1 from a persistent schema store (`src/logs/mcp_tool_schemas/`). New plugins via `activate_plugin` MCP tool are APPENDED after existing tools — never inserted in the middle. This eliminates the INSERT mutation at its source: the proxy controls `tools[]` from REQ#1, so Claude Code never gets the opportunity to mutate it mid-session.
+**Fix:** Proxy tool injection (worker `tool-inject-v2`). ToolSearch stripped entirely from every request. CC deferred built-ins (CronList, ListMcpResourcesTool etc.) go into `TOOL_BLOCKLIST`. iterative-dev schemas injected at REQ#1 from a persistent schema store (`src/logs/mcp_tool_schemas/`). New plugins via `activate_plugin` MCP tool are APPENDED after existing tools — never inserted in the middle. This eliminates the INSERT mutation at its source: the proxy controls `tools[]` from REQ#1, so Claude Code never gets the opportunity to mutate it mid-session.
 
 **Status:** Merged on branch `tool-inject-v2`, pending Stage 3 live verification (next session).
 

@@ -1,24 +1,36 @@
-# Strip tool_use/tool_result + Cache-BP-Verschiebung
+# Strip tool_use/tool_result + Cache-BP Shift
 
-## Idee
+## Idea
 
-Worker sterben am Context-Limit. `tool_use` + `tool_result`-Blöcke sind die voluminösesten Teile im Message-Array. Spekulation (User): Cache-Breakpoint NACH `tool_use`+`tool_result` setzen, AI-thinking/text drauf laufen lassen, in nächster REQ die tool_*-Blöcke aus messages strippen → Context wächst nicht mehr unbegrenzt, thinking/text als Memory bleibt erhalten.
+Workers die at the context limit. `tool_use` + `tool_result` blocks are the most
+voluminous parts of the message array. Speculation: set the cache breakpoint AFTER
+`tool_use`+`tool_result`, let AI thinking/text run on top, then in the next REQ strip
+the tool_* blocks from messages → context stops growing unbounded, thinking/text as
+memory is preserved.
 
-## Hypothese (Opus, unverifiziert)
+## Hypothesis (unverified)
 
-Würde Cache invalidieren. Cached prefix ist `messages[0..K]` (Bytes bis BP). REQ N enthält `tool_use`+`tool_result` an Index <K → cached. REQ N+1 strippt sie → andere Bytes vor K → Cache-Miss → CC für den ganzen messages-Prefix. `tools`+`system` bleibt cached (separater BP), aber `messages` ist der größte Block. Effekt: 100% messages-Rebuild pro REQ — vermutlich teurer als jetziges Akkumulieren.
+Would invalidate the cache. The cached prefix is `messages[0..K]` (bytes up to BP). REQ
+N contains `tool_use`+`tool_result` at index <K → cached. REQ N+1 strips them → different
+bytes before K → cache miss → CC for the whole messages prefix. `tools`+`system` stay
+cached (separate BP), but `messages` is the largest block. Effect: 100% messages rebuild
+per REQ — likely more expensive than the current accumulation.
 
-## Verifikation nötig (vor Implementation)
+## Verification Needed (before implementation)
 
-- Live-Messung: 2 REQs aufeinander, eine mit normaler Akkumulation, eine mit Strip-and-Move-BP. CR/CC vergleichen.
-- Anthropic Doku `PromptCaching*.md` prüfen — gibt es Mechanismen wo BP "verschoben" werden ohne Rebuild?
+- Live measurement: two consecutive REQs, one with normal accumulation, one with
+  strip-and-move-BP. Compare CR/CC.
+- Check Anthropic's `PromptCaching*.md` docs — is there a mechanism to "shift" a BP
+  without a rebuild?
 
 ## Status
 
-Spec only. Verifikations-Messung nicht durchgeführt. Idee geparkt — Hypothese deutet stark auf "teurer als Akkumulation" hin; bevor Implementation lohnt sich erst die kleine Messung.
+Spec only. Verification measurement not run. Idea parked — the hypothesis strongly
+suggests "more expensive than accumulation"; the small measurement is worth doing before
+any implementation.
 
-## Wo (falls reaktiviert)
+## Where (if reactivated)
 
-- `src/proxy/strip_*.py` (Strip-Hook)
-- `proxy_rules.json` (BP-Steuerung über `sent_cache_breakpoints`)
+- `src/proxy/strip_*.py` (strip hook)
+- `proxy_rules.json` (BP control via `sent_cache_breakpoints`)
 - `sources/PromptCaching*.md`

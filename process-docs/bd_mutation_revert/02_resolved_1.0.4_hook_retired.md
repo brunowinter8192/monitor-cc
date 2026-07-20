@@ -44,11 +44,10 @@ Files deleted:
 
 `hook_setup.py` `_HOOK_SCRIPTS` updated: tuple `("block_batch_bd_close.py", "Bash")` removed → future `hook_setup.py` runs will not re-register it. Live de-registration from `~/.claude/settings.json`: pending (Opus's job — re-run `python3 src/hooks/hook_setup.py` from main repo after merge; `_sweep_stale_hooks()` removes the dead entry automatically).
 
-`decisions/pipe07_safety_hooks.md`:
-- IST: 19 → 18 hooks, 15 → 14 block hooks
-- Hook 19 section: marked RETIRED, technical content preserved as historical record
-- SOLL: updated to reflect retirement
+Hook inventory record updated: 19 → 18 hooks, 15 → 14 block hooks; the retired hook's
+section marked RETIRED, technical content preserved as historical record; SOLL updated
+to reflect retirement.
 
 `src/hooks/DOCS.md`: `block_batch_bd_close.py` module entry removed.
 
-`decisions/OldThemes/bd_mutation_revert/investigation.md`: SUPERSEDED note prepended; original content preserved as historical evidence.
+The companion investigation writeup for this topic: SUPERSEDED note prepended; original content preserved as historical evidence.
