@@ -1,188 +1,176 @@
 # Audit Logging — Two Persistent Logs (2026-05-24)
 
-**Topic:** Build two persistent JSONL logs that capture the data CC currently only
-exposes transient (session-JSONL strings) or in-memory (warnings_pane). Closes the
-audit blindspots for (a) silent hook fires and (b) cross-session tool errors.
-
-**Bead:** `Monitor_CC-8ggr` Thread 2.
+**Topic:** build two persistent JSONL logs that capture data CC only exposed transiently
+(session-JSONL strings) or in-memory (`warnings_pane`) as of 2026-05-24. Closes the audit
+blind spots for (a) silent hook fires and (b) cross-session tool errors.
 
 ---
 
 ## Original Framing (refuted)
 
-Bead-Description framed dies als "Hook output visibility — Opus sieht Rewrite-Hooks
-nicht im API tool_result". GH-Research auf anthropics/claude-code lieferte den
-CC-Output-Channel-Split:
+The initial framing was "hook output visibility — Opus doesn't see rewrite-hooks in the
+API tool_result". Research on `anthropics/claude-code` surfaced the CC output-channel split:
 
 | Field | Routing |
 |---|---|
-| `systemMessage` | Terminal/UI display ONLY (CC pane). NIE im Modell-Kontext. |
-| `hookSpecificOutput.additionalContext` | Wird in Modell-Kontext injected (PreToolUse seit CC 2.1.9, CHANGELOG line 2549). |
-| `stderr` + exit 2 | Block-Error, Modell sieht es. |
+| `systemMessage` | Terminal/UI display ONLY (CC pane). NEVER in model context. |
+| `hookSpecificOutput.additionalContext` | Injected into model context (PreToolUse since CC 2.1.9, CHANGELOG line 2549). |
+| `stderr` + exit 2 | Block-error, model sees it. |
 
-Quellen: anthropics/claude-code issues #41285, #47692, #61109; CHANGELOG lines 929,
+Sources: `anthropics/claude-code` issues #41285, #47692, #61109; CHANGELOG lines 929,
 2549, 3486; `plugins/plugin-dev/skills/hook-development/SKILL.md` lines 130-220.
 
-Damit wäre die Visibility-Asymmetrie technisch lösbar via `additionalContext`-Feld
-in den Rewrite-Hooks. **User-Veto 2026-05-24:** das ist explizit NICHT gewünscht.
-Rewrite-Hooks sollen silent bleiben — der Agent braucht keine Context-Pollution
-darüber dass `git diff dev` zu `git diff dev --` rewritten wurde. Hook-Output zum
-Modell ist nur bei Blocks gerechtfertigt wo der Agent verstehen muss WARUM blockiert
-wurde um anders zu retryen.
+That would make the visibility asymmetry technically solvable via the `additionalContext`
+field in the rewrite hooks. **User veto 2026-05-24:** explicitly NOT wanted. Rewrite hooks
+stay silent — the agent doesn't need context pollution about `git diff dev` being rewritten
+to `git diff dev --`. Hook output to the model is only justified on blocks, where the agent
+needs to understand WHY it was blocked to retry differently.
 
-Original-File-Name aus Bead (`hook_visibility_problem.md`) damit obsolet — der echte
-Pain ist nicht Visibility-für-den-Agent sondern persistentes Audit-Logging als
-Datengrundlage für künftige Analysen. Topic-Name auf `audit_logging.md` korrigiert
-(vorher transient: `hook_firing_audit_log.md`).
+The real pain is not visibility-for-the-agent but persistent audit logging as a data
+foundation for future analyses.
 
 ---
 
-## Reframed Pain — Zwei Blindspots
+## Reframed Pain — Two Blind Spots
 
-**Blindspot 1: Hook-Fires.**
+**Blind spot 1: hook fires.**
 
-| Heutige Quelle | Was sie sieht | Was sie nicht sieht |
+| Current source | What it sees | What it misses |
 |---|---|---|
-| CC Session-JSONLs (`~/.claude/projects/*/*.jsonl`) | Block-Events (greppt `"PreToolUse:<Tool> hook error: ... BLOCKED:"`) | Rewrites (silent updatedInput), Silent-Allow-Passthroughs, Rewrite-FPs der Form "Command kaputt-rewritten" |
+| CC session JSONLs (`~/.claude/projects/*/*.jsonl`) | Block events (greps `"PreToolUse:<Tool> hook error: ... BLOCKED:"`) | Rewrites (silent `updatedInput`), silent allow-passthroughs, rewrite-FPs of the form "command rewritten into breakage" |
 
-Block-Hooks sind nur accidentally audit-bar — CC serialisiert ihre stderr-Outputs in
-die Session-Transkripte. Das ist ein Implementation-Detail-Glück, kein Design.
-Sobald ein Hook silent arbeitet (was per User-Direktive das gewünschte Verhalten ist)
-ist er strukturell unsichtbar. `rewrite_chained_sleep.py` (heute gelandet) ist der
-erste Hook der das demonstriert — wir können nicht messen ob er die 30.4% trivial-sync
-Violations wie geplant rewrited oder ob er FPs produziert die wir nie sehen.
+Block hooks are only accidentally auditable — CC serializes their stderr output into the
+session transcripts. That's implementation-detail luck, not design. As soon as a hook works
+silently (which per user directive is the desired behavior) it is structurally invisible.
+`rewrite_chained_sleep.py` was the first hook to demonstrate this — there was no way to
+measure whether it rewrote the targeted trivial-sync violations as planned or produced FPs
+that went unseen.
 
-**Blindspot 2: Tool-Errors cross-session.**
+**Blind spot 2: tool errors cross-session.**
 
-| Heutige Quelle | Was sie sieht | Was sie nicht sieht |
+| Current source | What it sees | What it misses |
 |---|---|---|
-| Monitor warnings_pane | Tool-Errors der **aktuellen** Session in-memory (Proxy-JSONL `is_error: true` Blocks) | Alles vor Session-Start (gecleared bei jedem Wechsel — `src/panes/warnings_pane.py:213,234`), keine Worker-Session-Aggregation, keine cross-session Historie |
+| Monitor `warnings_pane` | Tool errors of the **current** session, in-memory (proxy-JSONL `is_error: true` blocks) | Everything before session start (cleared on every switch — `src/panes/warnings_pane.py:213,234`), no worker-session aggregation, no cross-session history |
 
-`warnings_pane` extrahiert via `_is_tool_error()` (`src/panes/warnings_parse.py:43`)
-genau die richtige Klasse von Events — aber persistiert sie nirgends. `tool_errors`
-ist eine module-level Liste, append-only innerhalb einer Session, gecleared bei
-Session-Switch. Null Disk-Persistence.
+`warnings_pane` extracts, via `_is_tool_error()` (`src/panes/warnings_parse.py:43`),
+exactly the right class of events — but persists them nowhere. `tool_errors` is a
+module-level list, append-only within a session, cleared on session switch. Zero disk
+persistence.
 
-`dev/tool_use_errors/analyze.py` versucht das Loch zu stopfen durch on-demand-Parse
-der Proxy-JSONLs mit eingebauter Pattern-Classification (18 Failure-Patterns × 6
-Hookability-Buckets). Das ist over-engineered: User-Direktive ist *raw data + ad-hoc
-grep* statt *eingebaute Klassifikation*. Patterns ändern sich, Klassifikation wird
-schnell stale, ein dünnes append-only JSONL ist die robustere Datengrundlage.
+`dev/tool_use_errors/analyze.py` attempted to plug the gap via on-demand parsing of the
+proxy JSONLs with a built-in pattern classification (18 failure patterns × 6 hookability
+buckets). That was over-engineered: the user directive called for *raw data + ad-hoc grep*,
+not *built-in classification*. Patterns change, classification goes stale quickly; a thin
+append-only JSONL is the more robust data foundation.
 
 ---
 
-## Chosen Architecture — Zwei Logs
+## Chosen Architecture — Two Logs
 
 **Log A — Hook Firing Log:** `src/logs/hook_firing.jsonl`
 
-Each hook calls a shared `_fire_log.log_fire()` at its decision point (vor
-`sys.exit(2)` für Blocks, vor `print(json.dumps(...))` für Rewrites). Schema:
+Each hook calls a shared `_fire_log.log_fire()` at its decision point (before `sys.exit(2)`
+for blocks, before `print(json.dumps(...))` for rewrites). Schema:
 
 ```json
 {"ts":"2026-05-24T14:23:11Z","hook":"rewrite_git_ambiguous","decision":"rewrite","tool":"Bash","command":"git diff dev..HEAD","rewritten":"git diff dev..HEAD --","session":"<cc_session_id>"}
 {"ts":"2026-05-24T14:23:45Z","hook":"block_chained_sleep","decision":"block","tool":"Bash","command":"sleep 5 && echo foo","reason":"BLOCKED: chained sleep — use separate calls"}
 ```
 
-`session_id` kommt aus dem CC-stdin-Payload gratis. Cross-Reference mit
-Session-JSONLs damit möglich.
+`session_id` comes free from the CC stdin payload — cross-reference with session JSONLs
+is possible.
 
-Shared-Module: `src/hooks/_fire_log.py` parallel zu `_shell_strip.py`. Fail-silent
-(try/except → drop, Hook läuft normal weiter). 18 aktive Hooks × ~3 Zeilen Change.
-Pattern uniform.
+Shared module: `src/hooks/_fire_log.py`, parallel to `_shell_strip.py`. Fail-silent
+(try/except → drop, hook continues normally). 18 active hooks × ~3 lines of change.
+Uniform pattern.
 
 **Log B — Tool Error Log:** `src/logs/tool_errors.jsonl`
 
-Mirror der `warnings_pane`-Extraktion auf Disk, aber cross-session und cross-worker.
+Mirrors the `warnings_pane` extraction to disk, but cross-session and cross-worker.
 Schema:
 
 ```json
 {"ts":"2026-05-24T14:30:22Z","session_id":"<id>","worker":"main|<worker-name>","tool_name":"Bash","tool_use_id":"<id>","error_preview":"<truncated error text>","error_full":"<complete text>","proxy_file":"src/logs/api_requests_..._....jsonl","request_id":"<rid>"}
 ```
 
-Extraction-Logic ist bereits in `src/panes/warnings_parse._is_tool_error()` etabliert
-— check `type=='tool_result'` UND `is_error is True`. Logic wird in ein neues
-Schreib-Modul mirrored (NICHT in warnings_pane.py selbst eingehängt — warnings_pane
-soll seine in-memory UI-Logik behalten, das Logging ist ein orthogonaler Pfad).
+Extraction logic is already established in `src/panes/warnings_parse._is_tool_error()` —
+checks `type=='tool_result'` AND `is_error is True`. The logic is mirrored into a new
+write module (NOT hooked into `warnings_pane.py` itself — `warnings_pane` keeps its
+in-memory UI logic, the logging is an orthogonal path).
 
-Architektur-Optionen für den Writer (offene Sub-Entscheidung siehe unten):
-1. **Tail-side Daemon:** standalone Process tailt alle Proxy-JSONLs, schreibt
-   Error-Log. Entkoppelt vom Monitor.
-2. **Monitor-side Hook:** warnings_pane (oder eine sister-component) schreibt jeden
-   neu detektierten Error zusätzlich auf Disk. Bestehende UI bleibt unverändert.
-3. **Proxy-side Inline:** Proxy schreibt parallel zur regulären JSONL einen
-   error-only JSONL. Tightest coupling, real-time.
+Writer architecture options considered:
+1. **Tail-side daemon:** standalone process tails all proxy JSONLs, writes the error log.
+   Decoupled from the Monitor.
+2. **Monitor-side hook:** `warnings_pane` (or a sister component) additionally writes each
+   newly detected error to disk. Existing UI stays unchanged.
+3. **Proxy-side inline:** proxy writes an error-only JSONL in parallel with the regular
+   JSONL. Tightest coupling, real-time.
 
-Empfehlung Option 2 — minimalster neuer Code-Footprint, die Extraction-Logic
-existiert bereits an genau einer Stelle, wir hängen einen Schreib-Pfad parallel an.
+Recommendation was option 2 — minimal new code footprint, the extraction logic already
+exists in exactly one place, a write path is attached in parallel.
 
 ---
 
 ## Script Deletion (resolved 2026-05-24)
 
-User-Entscheidung nach Tauglichkeits-Bewertung: BEIDE Scripts werden gelöscht
-sobald die zwei Logs live sind. Begründung in einem Satz: die Meta-FP-Problematik.
-Hooks sind nicht-trivial — ein Script das Hook-Fires analysiert produziert
-genauso viele FPs in seiner Analyse wie die Hooks selbst. Der Script-Layer addiert
-eine zweite Schicht brüchiger Heuristik on top of der ersten.
+Decision after a suitability assessment: BOTH scripts to be deleted once the two logs are
+live. One-sentence rationale: the meta-FP problem. Hooks are non-trivial — a script that
+analyzes hook fires produces just as many FPs in its own analysis as the hooks themselves.
+The script layer adds a second layer of brittle heuristics on top of the first.
 
-| Script | Verdict | Wann |
+| Script | Verdict | When |
 |---|---|---|
-| `dev/hook_firing/analyze.py` | DELETE | Mit dem Log-Build (gleicher Commit) |
-| `dev/hook_firing/DOCS.md` | DELETE | Gleicher Commit |
-| `dev/tool_use_errors/analyze.py` | DELETE | Gleicher Commit |
-| `dev/tool_use_errors/DOCS.md` | DELETE | Gleicher Commit |
-| `dev/hook_firing/reports/*` | KEEP | Historische Snapshots mit konkreten Datum-Findings |
-| `dev/tool_use_errors/reports/*` | KEEP | Gleiche Begründung |
-| `dev/sleep_pattern_analysis/` | KEEP | Audit-Lauf abgeschlossen, Evidenz für `rewrite_chained_sleep.py` Design |
-| `dev/hook_smoke/` | KEEP + EXTEND | Smoke-Tests aktiv, neue Tests für die beiden Logs |
+| `dev/hook_firing/analyze.py` | DELETE | With the log build (same commit) |
+| `dev/hook_firing/DOCS.md` | DELETE | Same commit |
+| `dev/tool_use_errors/analyze.py` | DELETE | Same commit |
+| `dev/tool_use_errors/DOCS.md` | DELETE | Same commit |
+| `dev/hook_firing/reports/*` | KEEP | Historical snapshots with concrete dated findings |
+| `dev/tool_use_errors/reports/*` | KEEP | Same rationale |
+| `dev/sleep_pattern_analysis/` | KEEP | Audit run complete, evidence for `rewrite_chained_sleep.py` design |
+| `dev/hook_smoke/` | KEEP + EXTEND | Smoke tests active, new tests for the two logs |
 
-**Wissens-Erhalt:** die encoded Pattern-Library aus beiden Scripts wandert NICHT
-verloren — `failure_patterns_catalog.md` (gleicher OldThemes-Ordner) archiviert
-die 18 Failure-Class-Fingerprints aus `tool_use_errors/analyze.py` plus die
-per-Hook FP/TP-Heuristiken aus `hook_firing/analyze.py` als statisches
-historisches Wissen.
-
-Detaillierte LOC-Zerlegung pro Script in `script_tauglichkeit.md`.
+**Knowledge preservation:** the encoded pattern library from both scripts is not lost — the
+18 failure-class fingerprints from `tool_use_errors/analyze.py` plus the per-hook FP/TP
+heuristics from `hook_firing/analyze.py` are archived as static historical knowledge in a
+companion catalog.
 
 ## Future Hook-Iteration Workflow (replaces script-driven analysis)
 
-Statt persistenter dev-Scripts ist der Workflow für künftige Hook-Arbeit
-human-in-the-loop auf den zwei Logs:
+Instead of persistent dev scripts, the workflow for future hook work is human-in-the-loop
+on the two logs:
 
-1. **Failure-Klasse picken.** Roh in `tool_errors.jsonl` greppen, eine spezifische
-   Klasse identifizieren (`is_error: true` + Pattern XYZ).
-2. **Konkretes Beispiel ziehen.** Aus dem Log das tool_use_id extrahieren,
-   im entsprechenden Proxy-JSONL aus `src/logs/api_requests_*.jsonl` den
-   vollständigen Tool-Call-Kontext lesen (was hat der Agent davor gemacht, was
-   war der Trigger, was war intentioniert).
-3. **Hook-Reaktion durchdenken.** Wie würde ein Hook auf diese Failure-Klasse
-   reagieren? Welcher Tool-Input würde geblockt/rewritten? Welche Side-Effects?
-4. **Probe-Hook bauen.** Implementiert das Pattern als Hook-Script, wird in
-   `dev/hook_smoke/` mit synthetischen Inputs gegen-getestet.
-5. **Replay auf historische Daten.** Probe-Hook wird gegen die existierenden
-   Proxy-JSONLs in `src/logs/` retroaktiv gefahren — sehen wie oft er gefeuert
-   hätte, in welchem Anteil davon zu Recht, in welchem zu Unrecht.
-6. **FP-Rate-Bewertung.** Wenn die FP-Rate des Probes zu hoch ist → zurück zu
-   Schritt 3. Wenn akzeptabel → Promotion zu echtem Hook, Registration via
-   `hook_setup.py`.
+1. **Pick a failure class.** Grep `tool_errors.jsonl` raw, identify a specific class
+   (`is_error: true` + pattern XYZ).
+2. **Pull a concrete example.** Extract the `tool_use_id` from the log, read the full
+   tool-call context from the matching proxy JSONL in `src/logs/api_requests_*.jsonl`
+   (what did the agent do before, what was the trigger, what was intended).
+3. **Think through the hook reaction.** How would a hook react to this failure class?
+   Which tool input would be blocked/rewritten? What side effects?
+4. **Build a probe hook.** Implement the pattern as a hook script, tested with synthetic
+   inputs in `dev/hook_smoke/`.
+5. **Replay against historical data.** Run the probe hook retroactively against the
+   existing proxy JSONLs in `src/logs/` — see how often it would have fired, and in what
+   share correctly vs incorrectly.
+6. **FP-rate assessment.** If the probe's FP rate is too high → back to step 3. If
+   acceptable → promote to a real hook, register via `hook_setup.py`.
 
-Live-Daten ab Schritt 5 nutzt das neue `hook_firing.jsonl` weiter — der
-Live-Probe-Hook schreibt seine Fires dort hin, wir greppen sie raus.
+Live data from step 5 onward uses `hook_firing.jsonl` — the live probe hook writes its
+fires there and they are grepped out.
 
-Der bisherige Approach (dev-Script analysiert pre-aggregiert Hook-Fires mit
-eingebauten FP/TP-Heuristiken die als Code maintained werden müssen) wird
-explizit verworfen — die Heuristiken sind nicht stabil genug für persistenten
-Code, und der Maintenance-Aufwand für die Patterns hat keinen besseren
-Outcome geliefert als ad-hoc grep + Domain-Wissen im Kopf des Implementierenden.
+The previous approach (a dev script analyzing pre-aggregated hook fires with built-in
+FP/TP heuristics that had to be maintained as code) was explicitly discarded — the
+heuristics were not stable enough for persistent code, and the maintenance overhead for
+the patterns delivered no better outcome than ad-hoc grep + domain knowledge in the
+implementer's head.
 
-## Orphan-Awareness
+## Orphan Awareness
 
-`src/logs/hook_outputs.jsonl` existiert bereits (17MB, 31142 Entries, last write
-2026-04-19) — Relikt eines älteren Logging-Frameworks (Schema mit
-`skill-trigger.py` / `bash-hook.sh` Einträgen, nicht unsere aktuellen Hooks).
-Greppt: kein src/-Modul schreibt mehr darauf. Bei Implementation: Orphan-File
-entweder löschen oder mit eindeutigem Suffix archivieren (`hook_outputs.jsonl.legacy_2026-04`)
-damit Schema-Collisions mit dem neuen `hook_firing.jsonl` ausgeschlossen sind.
+`src/logs/hook_outputs.jsonl` already existed (17MB, 31142 entries, last write 2026-04-19)
+— a relic of an older logging framework (schema with `skill-trigger.py` / `bash-hook.sh`
+entries, not the current hooks). Grep confirmed: no `src/` module writes to it anymore.
+At implementation time: delete the orphan file, or archive it with an unambiguous suffix
+(`hook_outputs.jsonl.legacy_2026-04`) to avoid schema collisions with the new
+`hook_firing.jsonl`.
 
 ---
 
@@ -190,56 +178,55 @@ damit Schema-Collisions mit dem neuen `hook_firing.jsonl` ausgeschlossen sind.
 
 | # | Decision | Resolution |
 |---|---|---|
-| 1 | Log A Pfad | **`src/logs/hook_firing.jsonl`** (User-Direktive 2026-05-24: alle Logs in `src/logs/`) |
-| 4 | Log B Pfad | **`src/logs/tool_errors.jsonl`** (gleiche Direktive) |
+| 1 | Log A path | **`src/logs/hook_firing.jsonl`** (directive 2026-05-24: all logs live in `src/logs/`) |
+| 4 | Log B path | **`src/logs/tool_errors.jsonl`** (same directive) |
 
-## Pending Design Decisions
+## Pending Design Decisions (at time of writing)
 
-**Log A (Hook):**
-2. Schema: oben skizziert (ts/hook/decision/tool/command/reason-or-rewritten/session).
-3. Rotation: append-forever (~10MB/Jahr handhabbar).
+**Log A (hook):**
+2. Schema: sketched above (ts/hook/decision/tool/command/reason-or-rewritten/session).
+3. Rotation: append-forever (~10MB/year, manageable).
 
-**Log B (Tool-Errors):**
-5. Schema: oben skizziert. Frage ob `error_full` (komplettes Error-Text) immer
-   sinnvoll ist oder ob Cap (z.B. 4KB) sinnvoll wäre — manche Tool-Errors sind
-   mehrere KB lang (Python tracebacks, big diffs).
-6. Writer-Architektur: Option 2 (Monitor-side Hook) als Default-Vorschlag.
-7. Backfill: nur forward-from-now (live) ODER initial einmal alle bestehenden
-   Proxy-JSONLs scannen und retroaktiv populaten? Backfill kostet einmalige
-   Compute aber gibt sofort historische Datengrundlage.
+**Log B (tool errors):**
+5. Schema: sketched above. Open question whether `error_full` (complete error text) is
+   always sensible or whether a cap (e.g. 4KB) makes sense — some tool errors run several
+   KB (Python tracebacks, large diffs).
+6. Writer architecture: option 2 (monitor-side hook) as the default proposal.
+7. Backfill: forward-from-now only (live) OR an initial one-time scan of all existing
+   proxy JSONLs to retroactively populate? Backfill costs one-time compute but gives an
+   immediate historical data foundation.
 
 ---
 
-## Open Questions
+## Open Questions (at time of writing)
 
-- Soll `_fire_log.log_fire()` ein hook_setup.py-erzwungener Pflicht-Import sein
-  (Lint/Hook der missing-import abbricht)? Oder Code-Review-Disziplin?
-- Brauchen wir eine `decision="error"` Klasse für Hook-internal-failures
-  (Crashed-Hook), oder reicht fail-silent ohne Audit-Entry?
-- Sollen die Log-Paths via env var konfigurierbar sein (für test-isolation in
-  `dev/hook_smoke/`)? Praktisch ja, aber adds Komplexität.
-- Tool-Error-Log: Worker-vs-Main-Session-Attribution — wie wird `worker_name`
-  resolved aus dem Proxy-JSONL-Path? Aktueller warnings_pane macht das schon
-  (`worker log files` ist in seinem Reads-Set), Logic ist greifbar.
+- Should `_fire_log.log_fire()` be a `hook_setup.py`-enforced mandatory import (a lint/hook
+  that aborts on missing import)? Or code-review discipline?
+- Is a `decision="error"` class needed for hook-internal failures (crashed hook), or is
+  fail-silent without an audit entry enough?
+- Should the log paths be configurable via env var (for test isolation in
+  `dev/hook_smoke/`)? Practical, but adds complexity.
+- Tool-error log: worker-vs-main-session attribution — how is `worker_name` resolved from
+  the proxy-JSONL path? The existing `warnings_pane` already does this (worker log files
+  are in its reads-set), the logic is available.
 
 ---
 
 ## Sources
 
-- Bead Monitor_CC-8ggr (Thread 2)
-- `src/panes/warnings_pane.py` (line 213/234/259: in-memory `tool_errors` ohne
-  Persistence)
+- `src/panes/warnings_pane.py` (line 213/234/259: in-memory `tool_errors` without
+  persistence)
 - `src/panes/warnings_parse.py` (line 43: `_is_tool_error()` extraction logic)
-- `src/panes/DOCS.md` (warnings_pane Architektur)
-- `src/hooks/_shell_strip.py` (Precedent für Shared-Module-Pattern)
-- `src/hooks/rewrite_git_ambiguous.py`, `rewrite_chained_sleep.py` (silent Rewrite-Hooks,
-  blind spot demonstrators)
-- `dev/hook_firing/analyze.py` + DOCS.md (current Block-only audit — Re-Eval pending in `script_tauglichkeit.md`)
-- `dev/tool_use_errors/analyze.py` + DOCS.md (Pattern-Classifier — Re-Eval pending in `script_tauglichkeit.md`)
-- anthropics/claude-code:
+- `src/panes/DOCS.md` (`warnings_pane` architecture)
+- `src/hooks/_shell_strip.py` (precedent for the shared-module pattern)
+- `src/hooks/rewrite_git_ambiguous.py`, `rewrite_chained_sleep.py` (silent rewrite hooks,
+  blind-spot demonstrators)
+- `dev/hook_firing/analyze.py` + DOCS.md (block-only audit at time of writing)
+- `dev/tool_use_errors/analyze.py` + DOCS.md (pattern classifier at time of writing)
+- `anthropics/claude-code`:
   - `plugins/plugin-dev/skills/hook-development/SKILL.md` lines 130-220
-    (Output-Channel-Doc)
+    (output-channel doc)
   - `plugins/plugin-dev/skills/hook-development/references/advanced.md` line 358
-    (Audit-Log-Pattern)
-  - CHANGELOG.md lines 929, 2549, 3486 (additionalContext-Field-History — refuted path)
-  - Issues #41285, #47692, #61109, #61983 (Visibility + Observability-Gaps)
+    (audit-log pattern)
+  - CHANGELOG.md lines 929, 2549, 3486 (`additionalContext` field history — refuted path)
+  - Issues #41285, #47692, #61109, #61983 (visibility + observability gaps)

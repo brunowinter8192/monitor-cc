@@ -1,44 +1,42 @@
 # Failure-Patterns Catalog — Historical Reference (2026-05-24)
 
-**Topic:** Statisches Archiv der Failure-Klassen-Fingerprints und Hook-FP-Heuristiken
-die in den gelöschten Scripts `dev/hook_firing/analyze.py` und
-`dev/tool_use_errors/analyze.py` encoded waren. Reference-Material für
-Hook-Iteration — siehe `architecture.md` "Future Hook-Iteration Workflow" für
-den Workflow der diese Patterns konsumiert.
+**Topic:** static archive of the failure-class fingerprints and hook-FP heuristics that
+were encoded in the deleted scripts `dev/hook_firing/analyze.py` and
+`dev/tool_use_errors/analyze.py`. Reference material for hook iteration.
 
-**Status:** Historical. Wird NICHT als Code maintained, NICHT auto-updated. Bei
-Bedarf vom Implementierenden manuell konsultiert. Snapshot reflects state at
-2026-05-24 (last commit before script deletion).
+**Status:** Historical. NOT maintained as code, NOT auto-updated. Consulted manually by
+the implementer when needed. Snapshot reflects state at 2026-05-24 (last commit before
+script deletion).
 
 ---
 
-## Teil 1 — Failure-Klassen-Fingerprints
-*(ex `dev/tool_use_errors/analyze.py`, 18 Patterns × 6 Hookability-Buckets)*
+## Part 1 — Failure-Class Fingerprints
+*(ex `dev/tool_use_errors/analyze.py`, 18 patterns × 6 hookability buckets)*
 
-Regex/Tag-Konstanten die in `tool_result.content` strings matchen um eine bestimmte
-Failure-Klasse zu identifizieren. `is_error: true` Vorbedingung pro Pattern
-(ausser bei Bash-Command-Pattern wie cat-heredoc die direkt auf `tool_input` matchen).
+Regex/tag constants matched against `tool_result.content` strings to identify a given
+failure class. `is_error: true` precondition per pattern (except for Bash-command
+patterns like the cat-heredoc one, which match directly on `tool_input`).
 
-### Hookability-Buckets
+### Hookability Buckets
 
-| Bucket | Bedeutung |
+| Bucket | Meaning |
 |---|---|
-| `pre-blockable` | Deterministischer Regex-Match auf tool_input → exit-2 Hook möglich |
-| `pre-rewritable` | Pattern detected AND updatedInput Rewrite würde es fixen |
-| `prompt-hook-candidate` | Regex zu brittle, kurze LLM-Check Entscheidung |
-| `not-statically-hookable` | Braucht Session-State der nicht in tool_input ist |
-| `runtime-only` | CC dispatched bevor PreToolUse feuert |
-| `already-hooked` | Pattern hat live `src/hooks/` Script |
+| `pre-blockable` | Deterministic regex match on tool_input → exit-2 hook possible |
+| `pre-rewritable` | Pattern detected AND an updatedInput rewrite would fix it |
+| `prompt-hook-candidate` | Regex too brittle, needs a short LLM-check decision |
+| `not-statically-hookable` | Needs session state not present in tool_input |
+| `runtime-only` | CC dispatches before PreToolUse fires |
+| `already-hooked` | Pattern has a live `src/hooks/` script |
 
 ### Patterns
 
-| ID | Hookability | Hook (falls existent) | Fingerprint |
+| ID | Hookability | Hook (if any) | Fingerprint |
 |---|---|---|---|
 | `parallel-cancel` | runtime-only | — | `is_error AND "Cancelled: parallel tool call" in err` |
 | `read-before-edit` | not-statically-hookable | — | `is_error AND "File has not been read yet" in err` |
 | `file-modified` | not-statically-hookable | — | `is_error AND "File has been modified since read" in err` |
 | `user-rejected` | not-statically-hookable | — | `is_error AND "The user doesn't want to proceed" in err` |
-| `hook-blocked` | already-hooked | (jeder Hook) | `is_error AND regex r'PreToolUse:\w+ hook error:.*BLOCKED'` |
+| `hook-blocked` | already-hooked | (any hook) | `is_error AND regex r'PreToolUse:\w+ hook error:.*BLOCKED'` |
 | `git-ambiguous` | pre-rewritable | rewrite_git_ambiguous.py | `is_error AND regex r'fatal: ambiguous argument'` |
 | `edit-string-not-found` | prompt-hook-candidate | — | `is_error AND ("String to replace not found" OR <tool_use_error> with same)` |
 | `validation-error` | pre-blockable | — | `is_error AND ("Input validation error" OR <tool_use_error> with 'validation')` |
@@ -55,84 +53,78 @@ Failure-Klasse zu identifizieren. `is_error: true` Vorbedingung pro Pattern
 
 ---
 
-## Teil 2 — Per-Hook FP/TP-Heuristiken
+## Part 2 — Per-Hook FP/TP Heuristics
 *(ex `dev/hook_firing/analyze.py:_classify_fp`)*
 
-Diese Heuristiken klassifizierten gefeuerte Block-Events als FP/TP/uncertain.
-Basieren auf konkreten Audit-Befunden zwischen 2026-05-12 und 2026-05-24.
+These heuristics classified fired block events as FP/TP/uncertain. Based on concrete
+audit findings between 2026-05-12 and 2026-05-24.
 
 ### block_chained_sleep
-| Bedingung | Verdict | Begründung |
+| Condition | Verdict | Rationale |
 |---|---|---|
-| `"$(cat <<"` oder `"$( cat <<"` in cmd | **FP** | heredoc-in-$() Scanner-Gap: sleep in $(...) body wird nicht gestrippt |
+| `"$(cat <<"` or `"$( cat <<"` in cmd | **FP** | heredoc-in-$() scanner gap: sleep in $(...) body not stripped |
 | sleep in while/for/until loop body | **TP** | real polling pattern |
-| `run_in_background=true` + non-canonical sleep | **TP** | nicht der canonical `sleep N && echo done` form |
-| `sleep N > 10` in foreground | **TP** | intentional wait, kein Output-Hiding |
-| `sleep N ≤ 5` direkt nach side-effect (pkill/launchctl/kickstart/bootout/`kill -N`/worker-cli kill/systemctl) | **FP** | settling-time vor verification, rule-too-strict |
-| `sleep N ≤ 10` ohne klaren Kontext | **uncertain** | — |
+| `run_in_background=true` + non-canonical sleep | **TP** | not the canonical `sleep N && echo done` form |
+| `sleep N > 10` in foreground | **TP** | intentional wait, no output hiding |
+| `sleep N ≤ 5` directly after a side effect (pkill/launchctl/kickstart/bootout/`kill -N`/worker-cli kill/systemctl) | **FP** | settling-time before verification, rule too strict |
+| `sleep N ≤ 10` without clear context | **uncertain** | — |
 
 ### block_dangerous_kill
-| Bedingung | Verdict |
+| Condition | Verdict |
 |---|---|
-| `"$(cat <<"` in cmd | **FP** (Scanner-Gap) |
+| `"$(cat <<"` in cmd | **FP** (scanner gap) |
 | `pkill -f` in active command | **TP** |
-| sonst | **uncertain** |
+| otherwise | **uncertain** |
 
 ### block_cd_drift
-| Bedingung | Verdict |
+| Condition | Verdict |
 |---|---|
-| `.claude/worktrees/` in cmd | **TP** (cd into worktree ohne cd-back) |
-| sonst | **uncertain** (worktree path nicht visible in trigger) |
+| `.claude/worktrees/` in cmd | **TP** (cd into worktree without cd-back) |
+| otherwise | **uncertain** (worktree path not visible in trigger) |
 
 ### block_read_worktree
-| Bedingung | Verdict |
+| Condition | Verdict |
 |---|---|
 | main-session reads worktree-path | **TP** |
-| worker-session reads worktree-path | **uncertain** (own vs cross worktree unklar) |
+| worker-session reads worktree-path | **uncertain** (own vs cross worktree unclear) |
 
 ### block_broad_grep
-| Bedingung | Verdict |
+| Condition | Verdict |
 |---|---|
-| `git grep` in cmd | **FP** (Hook exempted git grep) |
-| `--include=` in cmd | **FP** (Hook sollte nicht blocken) |
-| sonst | **TP** (recursive grep ohne scope) |
+| `git grep` in cmd | **FP** (hook exempts git grep) |
+| `--include=` in cmd | **FP** (hook should not block) |
+| otherwise | **TP** (recursive grep without scope) |
 
 ### block_unauthorized_background
-| Bedingung | Verdict |
+| Condition | Verdict |
 |---|---|
 | cmd matches `worker-cli send` / `echo` / `true` / `pwd` | **FP** (fast-returning command) |
-| sonst | **TP** (non-canonical bg) |
+| otherwise | **TP** (non-canonical bg) |
 
 ### block_venv_no_redirect
-| Bedingung | Verdict |
+| Condition | Verdict |
 |---|---|
-| venv script + `>` redirect oder `| tee` | **FP** (redirect present) |
-| venv script ohne redirect | **TP** |
-| sonst | **uncertain** |
+| venv script + `>` redirect or `\| tee` | **FP** (redirect present) |
+| venv script without redirect | **TP** |
+| otherwise | **uncertain** |
 
-### Hooks ohne Heuristik
+### Hooks Without a Heuristic
 `block_path_typo`, `block_noop_edit`, `block_read_directory`, `block_read_oversize`,
 `block_dev_imports_src`, `block_except_pass`, `block_git_add_deps`,
 `block_git_destructive`, `block_bd_cli_worker`, `block_worker_spawn_opus`,
-`rewrite_git_ambiguous`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep` —
-kein eingebauter FP-Classifier, immer "uncertain" oder nicht abgedeckt im
-gelöschten Script.
+`rewrite_git_ambiguous`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep` — no
+built-in FP classifier in the deleted script, always "uncertain" or not covered.
 
 ---
 
-## Wie dieser Katalog konsumiert wird
+## How This Catalog Is Consumed
 
-Beim Bauen eines neuen Hooks oder Refinement eines existierenden:
+When building a new hook or refining an existing one:
 
-1. **Lookup im Catalog:** ist die anvisierte Failure-Klasse hier schon dokumentiert?
-   Wenn ja → Pattern + Hookability-Bucket als Startpunkt.
-2. **Heuristik-Lookup für existierende Hooks:** wenn man am bestehenden Hook
-   arbeitet — welche FP/TP-Pattern sind in Audit-Runden festgestellt worden?
-   Direkt aus Teil 2 ablesen.
-3. **Probe-Hook bauen** wie im `architecture.md` Workflow beschrieben.
-4. **Pattern-Update:** wenn eine neue Failure-Klasse während der Hook-Arbeit
-   entdeckt wird — manuell hier in den Catalog appendieren. Append-only,
-   timestamped Edits.
-
-Catalog ist `decisions/OldThemes/` Material — wird automatisch in
-`Monitor_CC-features` RAG-indexed bei `update_docs`.
+1. **Catalog lookup:** is the targeted failure class already documented here? If so →
+   pattern + hookability bucket as a starting point.
+2. **Heuristic lookup for existing hooks:** when working on an existing hook — which
+   FP/TP patterns were established in audit rounds? Read directly from Part 2.
+3. **Build a probe hook** per the hook-iteration workflow.
+4. **Pattern update:** if a new failure class is discovered during hook work — append it
+   here manually. Append-only, timestamped edits.
