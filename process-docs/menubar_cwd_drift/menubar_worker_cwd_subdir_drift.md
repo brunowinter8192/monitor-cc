@@ -7,11 +7,10 @@ panel. Its row is not shown at all (not merely shown with wrong status). A downs
 that the per-project auto-abort of Opus background sleep-timers stops firing for the affected
 project — the timer runs to full expiry instead of being aborted when workers go idle.
 
-See also: `decisions/OldThemes/menubar_focus_cwd_drift.md` — the same JSONL cwd-drift root
-cause previously fixed for **main** sessions (there the consequence was wrong display name +
-broken hotkey focus; fix was `_proc_cwd_for_encoded_dir` in the main-session branch). Workers
-cannot use that fix because they have no stable OS process cwd to fall back on; the fix here
-is instead to extract the stable part of the JSONL cwd itself.
+The same JSONL cwd-drift root cause was previously fixed for **main** sessions (there the
+consequence was wrong display name + broken hotkey focus; the fix was `_proc_cwd_for_encoded_dir`
+in the main-session branch). Workers cannot use that fix because they have no stable OS process
+cwd to fall back on; the fix here is instead to extract the stable part of the JSONL cwd itself.
 
 ## Diagnostic Data
 
