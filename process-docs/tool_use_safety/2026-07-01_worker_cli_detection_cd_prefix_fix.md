@@ -50,4 +50,4 @@ All original cases preserved. All 10 pass.
 - `src/hooks/block_background_sleep_nonworker.py` — regex line 14 + `.search` on line 77
 - `dev/hook_smoke/test_block_background_sleep_nonworker.py` — 3 new cases, count 7→10
 - `src/hooks/DOCS.md` — worker-cli detection line + smoke count
-- `decisions/pipe07_safety_hooks.md` — IST: worker-cli detection line + smoke count
+- The proxy-cache pipeline's safety-hooks current-state doc — worker-cli detection line + smoke count
