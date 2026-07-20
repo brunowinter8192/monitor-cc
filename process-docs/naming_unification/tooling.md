@@ -1,6 +1,6 @@
 # Naming Unification — Plugin Tooling
 
-Part of Bead uoyx.
+Part of the naming-unification cleanup.
 
 ## plugin-publish (current behavior)
 

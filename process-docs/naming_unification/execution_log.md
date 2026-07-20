@@ -1,6 +1,6 @@
 # Naming Unification — Execution Log
 
-Live progress log for the structure migration (Bead uoyx). Resume state for a fresh session.
+Live progress log for the naming-unification structure migration. Resume state for a fresh session.
 
 ## Docker cleanup — DONE (2026-06-02)
 

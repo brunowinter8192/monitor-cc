@@ -1,6 +1,6 @@
 # Naming Unification — Skills
 
-Part of Bead uoyx. Hard rule (user 2026-06-02): **plugins contain ONLY skills** — no commands, no agents, no MCP servers.
+Part of the naming-unification cleanup. Hard rule (user 2026-06-02): **plugins contain ONLY skills** — no commands, no agents, no MCP servers.
 
 ## Skill naming convention (DECISION, user-confirmed 2026-06-02)
 
@@ -13,7 +13,7 @@ Three places MUST be identical per skill (else drift-error, see tooling.md § dr
 
 ## Skill map (current → target)
 
-| Plugin (neu) | Skill folder heute | SKILL.md name heute | → Ziel-Name (alle 3 Stellen) |
+| Plugin (new) | Skill folder (current) | SKILL.md name (current) | → target name (all 3 places) |
 |---|---|---|---|
 | `gh-cli` | `github-search` | `github-search` | `gh-cli-search` |
 | `reddit-cli` | `reddit-search` | `reddit-search` | `reddit-cli-search` |
@@ -41,4 +41,4 @@ Skill renames touch external references, not only the plugin repo:
 - `github-search` skill is activated by name in shared-rules (`github-search` skill gate). Rename → update rule references.
 - `rule-consolidation` deletion → remove its activation reference in shared-rules.
 - Any worker-prompt / rule that names a skill by its old name.
-Folds into the migration's "hardcoded paths nachziehen" step.
+Folds into the migration's "update hardcoded paths" step.

@@ -1,6 +1,6 @@
 # Naming Unification — RAG Collections
 
-Part of Bead uoyx. Collections must follow the source-name schema, all hyphens.
+Part of the naming-unification cleanup. Collections must follow the source-name schema, all hyphens.
 
 ## Rename mechanism (cheap — no reindex)
 

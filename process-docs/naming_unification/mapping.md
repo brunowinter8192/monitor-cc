@@ -1,6 +1,6 @@
 # Naming Unification — Mapping
 
-Cross-cutting cleanup (Bead uoyx). Goal: **Ordner = Remote-Repo = Plugin-Name**, durchgängig, `-` statt `_`, lowercase. Surfaced during version-bump: plugin `iterative-dev` in dir `blank` with remote `Meta` = triple mismatch.
+Cross-cutting cleanup. Goal: **directory = remote repo = plugin name**, consistently, `-` instead of `_`, lowercase. Surfaced during a version bump: plugin `iterative-dev` in dir `blank` with remote `Meta` = triple mismatch.
 
 ## Principle
 
@@ -23,14 +23,14 @@ Exactly 5 plugins, NONE has an MCP server (all former MCP servers retired — sk
 
 ## Mapping (CONVERGED, user-confirmed 2026-06-02)
 
-| Heute Ordner | Heute Remote | Heute Plugin | → Einheitsname | Neuer Pfad |
+| Current dir | Current remote | Current plugin | → unified name | New path |
 |---|---|---|---|---|
 | `MCP/github` | `github-MCP` | `github-research` | `gh-cli` | `cli/gh-cli` |
 | `MCP/RAG` | `RAG` | `rag` | `rag-cli` | `cli/rag-cli` |
 | `MCP/Reddit` | `Reddit-MCP` | `reddit` | `reddit-cli` | `cli/reddit-cli` |
 | `MCP/searxng` | `Websearch-MCP` | `searxng` | `searxng-cli` | `cli/searxng-cli` |
 | `Meta/blank` | `Meta` | `iterative-dev` | `iterative-dev` | `Meta/iterative-dev` |
-| `MCP/claude-plugins` | `claude-plugins` | — | `claude-plugins` (unverändert) | `cli/claude-plugins` |
+| `MCP/claude-plugins` | `claude-plugins` | — | `claude-plugins` (unchanged) | `cli/claude-plugins` |
 | `Monitor_CC` | `ClaudeCode-Monitor` | — | `monitor-cc` | `monitor-cc` |
 | `Trading` | `Trading` | — | `trading` | `trading` |
 | parent `Meta/ClaudeCode/MCP/` | — | — | `cli/` | `Meta/ClaudeCode/cli/` |
@@ -49,4 +49,4 @@ Per entry: rename dir, rename GitHub remote repo, align plugin name (where exist
 
 ## Pending (execution, not done)
 
-Per-project rename sequence (dir → remote → plugin → marketplace manifest → hardcoded paths → verify plugin-publish + cache resolve). Order TBD. This is the prerequisite "clean" step before the beads→gh-issues migration (Bead 4e1b).
+Per-project rename sequence (dir → remote → plugin → marketplace manifest → hardcoded paths → verify plugin-publish + cache resolve). Order TBD. This is the prerequisite "clean" step before the beads→gh-issues migration.
