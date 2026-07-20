@@ -2,7 +2,7 @@
 
 **Status:** CotEditor fixed and re-run (2026-05-31 second pass). CotEditor: all signals confirmed. Ghostty: space detection confirmed; title-match still open (root cause: `open --args --command` not honored).
 
-Continues G2 (`G2_space_move_probe.md`). Goal: determine whether RELIABLE window identification + space determination is possible across three window types WITHOUT a move operation.
+Continues the prior space-move probe. Goal: determine whether RELIABLE window identification + space determination is possible across three window types WITHOUT a move operation.
 
 ## Design
 
