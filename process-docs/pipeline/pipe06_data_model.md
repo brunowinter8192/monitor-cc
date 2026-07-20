@@ -1,6 +1,6 @@
 # Monitor Data Pipeline
 
-## Status Quo (IST)
+## State as of this section's audit
 
 ### Two Data Sources
 
@@ -103,20 +103,20 @@ Reusable analysis in `dev/session_analysis/`:
 
 When adding new analysis: follow existing script patterns in `dev/session_analysis/`.
 
-## Evidenz
+## Evidence
 
-`dev/session_analysis/04_reports/20260416_222700_token_ratios.md` (Script: `dev/session_analysis/06_char_token_ratio.py` / `05_req_breakdown.py`, Proxy-Log: `api_requests_opus_monitor_cc_1776359177.jsonl`, Session: `48273804-df12-42e1-bd5f-dd64fe734f48.jsonl`) — bestätigt IST-2: Streaming-Dedup funktioniert ("Filters: streaming chunks deduplicated"), 84 delta-data-points. IST-1/IST-3: Dual-Source-Pairing bestätigt (positional REQ#N → Nth deduplicated assistant event). Bekannter Prefix-Anchor: 154,550 chars → 41,975 tokens = 3.68 chars/token.
+`dev/session_analysis/04_reports/20260416_222700_token_ratios.md` (script: `dev/session_analysis/06_char_token_ratio.py` / `05_req_breakdown.py`, proxy log: `api_requests_opus_monitor_cc_1776359177.jsonl`, session: `48273804-df12-42e1-bd5f-dd64fe734f48.jsonl`) — confirms the streaming-chunks section: dedup works ("Filters: streaming chunks deduplicated"), 84 delta data points. Confirms the dual-source-pairing (positional REQ#N → Nth deduplicated assistant event) and proxy-fields sections. Known prefix anchor: 154,550 chars → 41,975 tokens = 3.68 chars/token.
 
-IST-4 (CC ● ≠ Cache-Verhalten), IST-5/IST-6 (Cache-Invalidierungs-Patterns + ToolSearch ~27k CC) und IST-7 (ttl=1h aus raw_payload) sind aus Live-Proxy-Log-Inspektion abgeleitet — kein persistentes dev/-Report-MD. IST-5/IST-6 sind in `decisions/pipe05_proxy_cache.md` Evidenz detailliert belegt.
+The cache-control-vs-behavior section, the cache-invalidation-patterns/ToolSearch-~27k-CC sections, and the ttl=1h-from-raw_payload section are derived from live proxy-log inspection — no persistent dev/ report MD. The cache-invalidation findings are documented in more detail in the proxy-cache pipeline section's evidence.
 
-## Recommendation (SOLL)
+## Recommendation (target state)
 
 Pending — needs evaluation.
 
-## Offene Fragen
+## Open Questions
 
 _None._
 
-## Quellen
+## Sources
 
 _None._
