@@ -6,52 +6,45 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _shell_strip import _strip_non_shell_active
 from _fire_log import log_fire
 
 # Mirrors _SLEEP_ONLY_BG in rewrite_background_sleep.py — same signature triggers the block check.
 _SLEEP_ONLY_BG = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$')
-_WORKER_CLI_RE = re.compile(r'(?:^|[;&|\n])\s*worker-cli\b')
-_PRUNE_SECS = 86400  # 24 hours — sessions never outlast this
+_TIMER_SECS = 600  # rewrite_background_sleep.py normalizes every sleep timer to exactly 600s
+_PRUNE_SECS = 86400  # 24 hours — stale entries never outlast this
 
 _STATE_FILE = os.environ.get(
-    "MONITOR_CC_LAST_CMD_STATE",
+    "MONITOR_CC_TIMER_STATE",
     os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        'logs', 'last_cmd_state.jsonl',
+        'logs', 'timer_state.jsonl',
     ),
 )
 
-_BLOCK_MESSAGE = (
-    "Go idle immediately. Stop whatever you are doing and go idle. "
-    "A background Bash task self-notifies via its completion notice — "
-    "do NOT set a timer to wait for it. Timers are ONLY for polling a worker "
-    "you just spawned/messaged (worker-cli).\n"
-)
-
-# Sentinel returned by _get_last_cmd on IO/parse failure → fail-open (distinct from None = not found)
+# Sentinel returned by _get_expiry on IO/parse failure → fail-open (distinct from None = no timer stored)
 _READ_ERROR = object()
 
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; block sleep-only background timers unless the last non-timer command was worker-cli
-def block_background_sleep_nonworker_workflow() -> None:
+# Read Bash tool_input from stdin; block a background sleep-timer if one is already running for this session
+def block_concurrent_timer_workflow() -> None:
     command, run_in_background, session_id = _parse_input()
     if command is None:
         sys.exit(0)
-    is_timer = run_in_background and bool(_SLEEP_ONLY_BG.match(command))
-    if not is_timer:
-        _record_last_cmd(session_id or "", command)
+    if not (run_in_background and _SLEEP_ONLY_BG.match(command)):
         sys.exit(0)
-    last_cmd = _get_last_cmd(session_id or "")
-    if last_cmd is _READ_ERROR:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    stored_expiry = _get_expiry(session_id or "")
+    if stored_expiry is _READ_ERROR:
         sys.exit(0)
-    if _is_worker_cli(last_cmd):
-        sys.exit(0)
-    print(_BLOCK_MESSAGE, file=sys.stderr, end="")
-    log_fire("block_background_sleep_nonworker", "block", "Bash", command, reason=_BLOCK_MESSAGE, session_id=session_id)
-    sys.exit(2)
+    if stored_expiry is not None and now < stored_expiry:
+        message = _block_message(stored_expiry)
+        print(message, file=sys.stderr, end="")
+        log_fire("block_concurrent_timer", "block", "Bash", command, reason=message, session_id=session_id)
+        sys.exit(2)
+    _record_expiry(session_id or "", now + datetime.timedelta(seconds=_TIMER_SECS))
+    sys.exit(0)
 
 
 # FUNCTIONS
@@ -69,15 +62,16 @@ def _parse_input():
     except Exception:
         return None, False, None
 
-# True if shell-stripped cmd starts with worker-cli (any subcommand); False for None/empty
-def _is_worker_cli(cmd) -> bool:
-    if not cmd:
-        return False
-    stripped = _strip_non_shell_active(cmd)
-    return bool(_WORKER_CLI_RE.search(stripped))
+# Build the block message telling the agent a timer is already running until the given expiry
+def _block_message(expiry: datetime.datetime) -> str:
+    return (
+        "A background timer is already running for this session "
+        f"(expires {expiry.strftime('%Y-%m-%dT%H:%M:%SZ')}). Only one timer may run at a time — "
+        "wait for its completion notice before setting a new one.\n"
+    )
 
-# Return stored last non-timer command for session; None if not found; _READ_ERROR on IO/parse failure
-def _get_last_cmd(session_id: str):
+# Return stored timer expiry for session as datetime; None if not found; _READ_ERROR on IO/parse failure
+def _get_expiry(session_id: str):
     try:
         if not os.path.exists(_STATE_FILE):
             return None
@@ -89,7 +83,7 @@ def _get_last_cmd(session_id: str):
                 try:
                     entry = json.loads(line)
                     if entry.get('session_id') == session_id:
-                        return entry.get('cmd')
+                        return datetime.datetime.fromisoformat(entry.get('expiry', '').replace('Z', '+00:00'))
                 except Exception:
                     continue
         return None
@@ -118,8 +112,8 @@ def _read_existing_entries(cutoff: datetime.datetime, exclude_session: str) -> l
         return []
     return entries
 
-# Write command as latest entry for session; prune entries older than _PRUNE_SECS; fail-silent on any error
-def _record_last_cmd(session_id: str, command: str) -> None:
+# Write the new timer expiry as latest entry for session; prune entries older than _PRUNE_SECS; fail-silent on any error
+def _record_expiry(session_id: str, expiry: datetime.datetime) -> None:
     try:
         now = datetime.datetime.now(datetime.timezone.utc)
         cutoff = now - datetime.timedelta(seconds=_PRUNE_SECS)
@@ -127,7 +121,7 @@ def _record_last_cmd(session_id: str, command: str) -> None:
         entries.append({
             'ts': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
             'session_id': session_id,
-            'cmd': command,
+            'expiry': expiry.strftime('%Y-%m-%dT%H:%M:%SZ'),
         })
         state_dir = os.path.dirname(_STATE_FILE)
         if state_dir:
@@ -140,4 +134,4 @@ def _record_last_cmd(session_id: str, command: str) -> None:
 
 
 if __name__ == "__main__":
-    block_background_sleep_nonworker_workflow()
+    block_concurrent_timer_workflow()
