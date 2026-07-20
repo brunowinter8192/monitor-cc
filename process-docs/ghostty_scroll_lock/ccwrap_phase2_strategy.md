@@ -1,13 +1,13 @@
 # ccwrap Phase 2 — Decorative Byte Filter Strategy
 
-## Status (2026-05-29): Deferred — nicht autonom abarbeitbar
+## Status (2026-05-29): Deferred — not autonomously executable
 
-Phase 2 hängt an Phase-1-`.ansi.log`-Sammlung aus einer ECHTEN interaktiven CC-Session in Ghostty (User startet `python3 -m src.ccwrap`, macht mehrere Tool-Calls) → dann Byte-Analyse + die beiden Local-Verify-Gates unten. Das braucht interaktive User-Beteiligung, kein autonomer Worker. Tracking-Bead Monitor_CC-9dxo am 2026-05-29 geschlossen: die vollständige Strategie liegt hier, nichts geht verloren. Wiederaufnahme wenn der User Phase-1-Daten sammeln will; Einstieg über den Drei-Wege-Entscheidungsbaum unten.
+Phase 2 depends on Phase-1 `.ansi.log` collection from a REAL interactive CC session in Ghostty (user runs `python3 -m src.ccwrap`, makes several tool calls) → then byte analysis + the two local-verify gates below. That needs interactive user involvement, not an autonomous worker. The tracking task was closed 2026-05-29: the complete strategy lives here, nothing is lost. Resume when the user wants to collect Phase-1 data; entry point is the three-way decision tree below.
 
 ## Related context
 
-- `decisions/OldThemes/ghostty_scroll_lock/initial.md` — original investigation; Hypothesis 3 (ANSI sequences bypass Ghostty config) is the open thread Phase 2 closes
-- `decisions/OldThemes/ghostty_scroll_lock/ccwrap_phase1_diagnostic.md` — what Phase 1 built; smoke test results; known limitations
+- The original investigation (Hypothesis 3: ANSI sequences bypass Ghostty config) is the open thread Phase 2 closes
+- What Phase 1 built: smoke test results; known limitations
 - `src/ccwrap/DOCS.md` — current package structure, modules, gotchas
 
 ---

@@ -1,41 +1,43 @@
-# cmd+N — Ghostty kommt auf allen Schreibtischen nach vorn (RESOLVED 2026-06-12)
+# cmd+N — Ghostty comes to the front on every desktop (RESOLVED 2026-06-12)
 
 ## Symptom
 
-Ein Session-Wechsel über die Menubar-Hotkeys (cmd+1..9) bzw. Panel-Klick holte Ghostty auf
-JEDEM Schreibtisch in den Vordergrund, statt nur das eine Ziel-Terminal auf seinem Space.
-Erwartet: Switch auf den Ziel-Space + nur dort Ghostty vorn.
+A session switch via the menubar hotkeys (cmd+1..9) or a panel click brought Ghostty to
+the foreground on EVERY desktop, instead of switching to only the one target terminal
+on its space. Expected: switch to the target space + only there does Ghostty come
+forward.
 
-## Ursache
+## Cause
 
-`_focus_session(cwd)` (`src/menubar/system.py`) baute AppleScript
+`_focus_session(cwd)` (`src/menubar/system.py`) built the AppleScript
 `tell application "Ghostty" → activate → focus terminal id "<UUID>"`.
-Das `activate` ist das Cocoa-**App-level** `NSApplication.activate` → macht Ghostty zur
-globalen Vordergrund-App → Ghosttys Fenster floaten auf JEDEM Space nach vorn.
+The `activate` is Cocoa's **app-level** `NSApplication.activate` → makes Ghostty the
+global foreground app → Ghostty's windows float to the front on EVERY space.
 
-## Evidenz (Ghostty sdef + Live-A/B-Test)
+## Evidence (Ghostty sdef + live A/B test)
 
 Ghostty Scripting Dictionary (`/Applications/Ghostty.app/Contents/Resources/Ghostty.sdef`, v1.3.1):
 - `focus` command: *"Focus a terminal, **bringing its window to the front**"* — window-level.
-- `activate window` command: window-level Activate (existiert; wurde nicht gebraucht).
-- Das app-level `activate` im Code ist NICHT Ghosttys Befehl, sondern Cocoa-Standard.
+- `activate window` command: window-level activate (exists; wasn't needed).
+- The app-level `activate` in the code is NOT a Ghostty command, but Cocoa's default.
 
-Live-A/B-Test auf der User-Maschine (2026-06-12):
-- `focus terminal id "<UUID>"` OHNE `activate` → nur das EINE Ziel-Fenster kam nach vorn
-  (User: "nur das fragliche").
-- Funktioniert auch wenn eine ANDERE App (CotEditor) vorn ist → Ghostty kommt drüber.
-- Fazit: das `activate` ist reiner Schaden; `focus` allein reicht und schaltet auf den Space.
+Live A/B test on the user's machine (2026-06-12):
+- `focus terminal id "<UUID>"` WITHOUT `activate` → only the ONE target window came
+  forward (user: "only the one in question").
+- Also works when a DIFFERENT app (CotEditor) is in front → Ghostty comes over it.
+- Conclusion: the `activate` is pure harm; `focus` alone is enough and switches to the
+  space.
 
 ## Fix
 
-`src/menubar/system.py:_focus_session` — die `activate`-Zeile aus BEIDEN AppleScript-Strings
-(Path A UUID + Path B cwd-match) entfernt, sonst nichts. Auf dev gemergt, dann in die compilierte
-py2app-Menubar eingebacken (siehe `menubar_build_consolidation.md`).
+`src/menubar/system.py:_focus_session` — removed the `activate` line from BOTH
+AppleScript strings (Path A UUID + Path B cwd-match), nothing else. Merged to dev, then
+baked into the compiled py2app menubar.
 
-**Live verifiziert** (2026-06-12, compilierte Menubar): cmd+N holt nur das Ziel-Terminal vor,
-andere Schreibtische bleiben unberührt.
+**Live verified** (2026-06-12, compiled menubar): cmd+N brings forward only the target
+terminal, other desktops stay untouched.
 
-## Quellen
+## Sources
 - `src/menubar/system.py:_focus_session`
 - `/Applications/Ghostty.app/Contents/Resources/Ghostty.sdef` (v1.3.1)
-- Commit auf dev: `c29fec8` (merge des `_focus_session`-Fix)
+- Commit on dev: `c29fec8` (merge of the `_focus_session` fix)
