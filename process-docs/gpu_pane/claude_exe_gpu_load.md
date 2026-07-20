@@ -2,7 +2,7 @@
 
 ## Problem
 
-Activity Monitor showed `claude.exe` (Apple type, despite `.exe` name — the CC binary) at **93.3% GPU**, 6.2% CPU, CPU-Zeit 6:36, ranking ABOVE a legit concurrent Python/MinerU convert (90.5% GPU). A Node-CLI pegging the GPU is anomalous. User note: not observed in prior 2.1.176 sessions — possibly new. Status: OBSERVE, no action taken yet (user watching).
+Activity Monitor showed `claude.exe` (Apple type, despite `.exe` name — the CC binary) at **93.3% GPU**, 6.2% CPU, CPU time 6:36, ranking ABOVE a legit concurrent Python/MinerU convert (90.5% GPU). A Node-CLI pegging the GPU is anomalous. User note: not observed in prior 2.1.176 sessions — possibly new. Status: OBSERVE, no action taken yet (user watching).
 
 CC binary: `CLAUDE_CODE_EXECPATH=/Users/brunowinter2000/cc-cache-fix-176/node_modules/@anthropic-ai/claude-code/bin/claude.exe` (a custom "cache-fix" build of 2.1.176).
 
@@ -10,7 +10,7 @@ CC binary: `CLAUDE_CODE_EXECPATH=/Users/brunowinter2000/cc-cache-fix-176/node_mo
 
 ### Process identification — CONFIRMED our session
 
-- `$PPID` of the Bash shell = **2404**; PID 2404 is the orchestrator's claude.exe. Its CPU-Zeit (6:44 at check time) matches the screenshot's 6:36 (minutes older). → the 93% GPU process IS our session.
+- `$PPID` of the Bash shell = **2404**; PID 2404 is the orchestrator's claude.exe. Its CPU time (6:44 at check time) matches the screenshot's 6:36 (minutes older). → the 93% GPU process IS our session.
 - 5 `claude.exe` processes total: 2404 (our orchestrator, 32% CPU at ps-time), 63155 + 72756 (workers, `--model sonnet --dangerously-skip-permissions`), 4687 + 48987 (other sessions). Only 2404 was GPU-active; siblings at 0% CPU / GPU-idle.
 
 ### CPU sample (`sample 2404 3`)

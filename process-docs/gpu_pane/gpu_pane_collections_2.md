@@ -80,5 +80,4 @@ untouched.
 
 - `src/gpu_pane/status.py` — `_discover_preset_names` returns `[]` on failure (220→219 LOC)
 - `src/gpu_pane/pane.py` — footer legend block removed (327→318 LOC)
-- `decisions/gpu_pane_collections.md` — created (IST/Evidenz/SOLL)
 - `src/gpu_pane/DOCS.md` — fallback mentions removed; Gotcha line-85 rewritten; footer hint removed

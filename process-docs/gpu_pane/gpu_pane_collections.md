@@ -1,6 +1,6 @@
 # gpu_pane — Preset Discovery & Collections
 
-## Status Quo (IST)
+## State as of the removal task
 
 `_discover_preset_names()` (`status.py:17`) calls `rag-cli server presets --json` with a 3s
 timeout. On success returns `[p['name'] for p in payload]`. On any failure
@@ -17,9 +17,9 @@ timeout; returns `[{collection, chunks}]` on success, `[]` on any failure. Polle
 `GPU Servers` header with no preset rows. Digit-key handler gate (`idx < len(PRESET_NAMES)`)
 blocks all toggle actions safely. No error marker, no fabricated names.
 
-## Evidenz
+## Evidence
 
-**Real presets today** (from `rag-cli server presets --json` on production RAG):
+**Real presets at the time** (from `rag-cli server presets --json` on production RAG):
 ```
 ['embedding-8b', 'embedding-0.6b', 'reranker-0.6b', 'reranker-8b', 'generator-4b', 'splade']
 ```
@@ -34,17 +34,17 @@ silently shown the 3 stale names instead of the 6 real ones.
 collections block shows `(none indexed)` when empty — no fabricated content. The preset block
 now mirrors this pattern.
 
-## Recommendation (SOLL)
+## Recommendation (target state)
 
-Keep — current IST is the implemented and correct state. `_discover_preset_names` returns `[]`
+Keep — the state described above is the implemented and correct state. `_discover_preset_names` returns `[]`
 on failure; pane renders an empty preset block. No re-hardcoding warranted (any static list
 drifts again on next RAG server addition).
 
-## Offene Fragen
+## Open Questions
 
 None.
 
-## Quellen
+## Sources
 
-`decisions/OldThemes/gpu_pane_collections.md` — feature history (lock-exempt rationale, --json
-flag, 30s cadence) and route-consolidation narrative (masking-fallback removal).
+Feature history (lock-exempt rationale, --json flag, 30s cadence) and route-consolidation
+narrative (masking-fallback removal) — see the companion entry in this area.
