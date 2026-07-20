@@ -6,8 +6,6 @@
     "dev/DOCS.md",
     "dev/*/DOCS.md",
     "dev/*/*/DOCS.md",
-    "decisions/*.md",
-    "decisions/OldThemes/*.md",
-    "decisions/OldThemes/**/*.md"
+    "process-docs/**/*.md"
   ]
 }
