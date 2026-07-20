@@ -1,9 +1,9 @@
-# Watchdog-Scope Phase A v2 Proposal — Box Architecture
+# Watchdog-Scope Phase A v2 Proposal — Box Architecture (as of 2026-05-10)
 
-Retained from v1: IST analysis (file structure, SERVERS dict, rag-locks state, GPU pane contract,
+Retained from v1: current-state analysis (file structure, SERVERS dict, rag-locks state, GPU pane contract,
 empirical disqualification of ESTABLISHED-connection-count and HTTP-poll-latency as idle sources).
 
-## IST Summary
+## Current State Summary (as of 2026-05-10)
 
 ### server_manager.py — key structures
 

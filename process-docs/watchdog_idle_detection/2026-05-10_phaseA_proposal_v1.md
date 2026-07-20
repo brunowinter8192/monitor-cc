@@ -1,6 +1,6 @@
-# Watchdog-Scope Phase A Proposal
+# Watchdog-Scope Phase A Proposal (v1, as of 2026-05-10)
 
-## IST Summary
+## Current State Summary (as of 2026-05-10)
 
 ### SERVERS dict — `server_manager.py:34-70`
 Three fixed entries: `embedding` (port 8081 default / 61974 live), `reranker` (8082), `splade` (8083).
@@ -75,7 +75,7 @@ Rationale:
 - Discovered processes were started outside the managed framework deliberately. The user knows they did it. Applying the same 1h IDLE_TIMEOUT without any touch-timestamp mechanism would kill processes that are merely quiescent (serving infrequent requests) rather than truly idle.
 - `touch_timestamp()` is called from `ensure_ready()` — it only fires when the RAG Python code is the client. One-off probes started from the CLI or a test script will never call `ensure_ready()`, so their timestamp file is never written, `get_last_used()` returns 0.0, and the current watchdog already skips them (`if last_used == 0: continue`). Extending auto-stop to discovered processes would require either (a) writing a synthetic timestamp at discovery time (misleading — "last used" becomes "discovered at") or (b) a different idle mechanism (see Q3).
 - Connection-count via `lsof -sTCP:ESTABLISHED` was probed live: all three servers showed 0 ESTABLISHED connections even for the actively managed embedding server. HTTP connections are transient and cannot reliably distinguish "recently used" from "truly idle" on short polling intervals.
-- The user's stated requirement is **visibility** ("müssen alle erfasst werden"). Stopping is a separate concern. Visibility with manual control satisfies the requirement without risk.
+- The user's stated requirement is **visibility** ("all of them must be tracked"). Stopping is a separate concern. Visibility with manual control satisfies the requirement without risk.
 
 Edge cases:
 - A discovered process on a port that matches a SERVERS entry (e.g., user restarts embedding on 8081 manually): treated as managed, not discovered. Discovery must skip SERVERS-owned ports.
