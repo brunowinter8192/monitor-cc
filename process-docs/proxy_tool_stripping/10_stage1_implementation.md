@@ -1,6 +1,6 @@
 # Stage 1 Implementation — Inline-Span Render (Option B)
 
-Session 2026-06-04. Implements the Option B decision from `09_inline_span_rendering.md` in src/.
+Session 2026-06-04. Implements the Option B decision from the inline-span-rendering probe entry in this area, in src/.
 Scope: system blocks, message blocks, tool-desc path. Stage 2 items (tool name-line color,
 sys content-based unchanged-detection, block-level-delta visibility, marker-label cleanup) deferred.
 
@@ -40,7 +40,7 @@ Three paths, same pattern:
 - Old-format or absent → gray preview + stacked yellow+green (unchanged behavior)
 - `s_spans`/`s_blk`/`s_desc` (flat strings, `_stripped` format unchanged) → stacked DIM_YELLOW_BG below in both paths
 
-**Design tension resolution** (captured also in `09_inline_span_rendering.md`):
+**Design tension resolution** (captured also in the inline-span-rendering probe entry in this area):
 The alternative "store full 3-color merged sequence in `_injected`" was rejected. Per-log Form B
 chosen: `_stripped` stays semantically pure (flat stripped texts), `_injected` stores
 `[(equal,ctx),(injected,text),...]`. No cross-log merge needed in renderer — each log renders

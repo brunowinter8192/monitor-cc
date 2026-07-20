@@ -154,7 +154,7 @@ positive entries per 19 pairs eliminated. Historical logs unchanged (JSONL alrea
 JSONL files retain json_reser false positives (they were written by old code). RAW improvement
 visible only in new logs after proxy restart (marked pending live-verify).
 
-**Per-rule counts vs expectations (Leitplanke 2):**
+**Per-rule counts vs expectations (guardrail 2):**
 
 | Code | Expected | Actual | Status |
 |---|---|---|---|
