@@ -1,46 +1,46 @@
 # Tool-Use Safety — Session 2026-05-12
 
-## Was passierte in der Session
+## What Happened in the Session
 
-Drei Beobachtungen in einer Session bauten den Bead `Monitor_CC-weyg` und das Thema "Tool-Use Safety" auf.
+Three observations in one session built up the "Tool-Use Safety" topic and its tracking task.
 
-### 1. RAG-First-Rule durchsetzen
+### 1. Enforcing the RAG-First Rule
 
-Mid-Session-Code-Exploration auf src/menubar umging die RAG-First-Mandat aus `workers-1.md` § PLAN Step 2. Grund: PLAN Step 2 ist als Teil des formalen PLAN-Zyklus formuliert; mid-session "Scope Extension During IMPLEMENT" mini-scoping erwähnte RAG nicht. Opus sprang direkt zu `find` + `Read src/menubar/menubar.py` + `Read src/menubar/discover.py` (~580 LOC) statt erstmal `src/menubar/DOCS.md` via RAG zu lesen (~500 Tokens, klare Modulübersicht).
+Mid-session code exploration on src/menubar bypassed the RAG-First mandate from `workers-1.md` § PLAN Step 2. Reason: PLAN Step 2 is phrased as part of the formal PLAN cycle; the mid-session "scope extension during IMPLEMENT" mini-scoping didn't mention RAG. Opus jumped straight to `find` + `Read src/menubar/menubar.py` + `Read src/menubar/discover.py` (~580 LOC) instead of first reading `src/menubar/DOCS.md` via RAG (~500 tokens, a clear module overview).
 
-→ Neue Rule "RAG-First on Code Exploration (NON-NEGOTIABLE)" in `workers-1.md` § Core Rules + Anker in `workers-2.md` § Scope Extension Mini-scoping. Live in Production (`~/.claude/shared-rules/opus/workers-1.md`, workers-2.md).
+→ A new rule "RAG-First on Code Exploration (NON-NEGOTIABLE)" added to `workers-1.md` § Core Rules + an anchor in `workers-2.md` § Scope Extension Mini-scoping. Live in production (`~/.claude/shared-rules/opus/workers-1.md`, workers-2.md).
 
-### 2. Worker-Kill durch grep-on-cmdline-Antipattern
+### 2. Worker Kill via the grep-on-cmdline Antipattern
 
-Dreimal in dieser Session denselbe Worker-Tod-Mechanismus:
+Three times in this session, the same worker-death mechanism:
 
-| Worker | Zeitpunkt | Methode |
+| Worker | Time | Method |
 |---|---|---|
 | menubarfix | 2026-05-12 ~17:30 | `ps -A \| grep "workflow.py --mode menubar" \| awk \| xargs kill` |
-| mbarfix2 | 2026-05-12 19:42 | gleiches Pattern |
+| mbarfix2 | 2026-05-12 19:42 | same pattern |
 | mbarlive | 2026-05-12 ~20:15 | `pkill -f "workflow.py --mode menubar"` |
 
-Root-Cause-Mechanik: Worker-Prozess hat `claude.exe --dangerously-skip-permissions # Worker — <FULL PROMPT TEXT>` als cmdline. Prompt-Text enthält oft Strings wie `workflow.py --mode menubar` (z.B. im Smoke-Test-Block). `grep`/`pkill -f` matcht gegen volle cmdline → Worker stirbt mit SIGTERM (Status 143 = 128+15).
+Root-cause mechanics: a worker process has `claude.exe --dangerously-skip-permissions # Worker — <FULL PROMPT TEXT>` as its cmdline. The prompt text often contains strings like `workflow.py --mode menubar` (e.g. in a smoke-test block). `grep`/`pkill -f` matches against the full cmdline → the worker dies with SIGTERM (status 143 = 128+15).
 
-Konvergenz mit `extract_failed.py` Output für heute: 1 Rule-9-Verletzung (`File has not been read yet`), 2 Rule-3-Verletzungen (broad recursive grep), 11 Rule-12-Verletzungen (sleep in worker-cli-send-Prompts — vermutlich False-Positive durch Heredoc-Content matching), 3 Rule-13-Verletzungen.
+Converges with that day's `extract_failed.py` output: 1 Rule-9 violation (`File has not been read yet`), 2 Rule-3 violations (broad recursive grep), 11 Rule-12 violations (sleep in worker-cli-send prompts — likely a false positive from heredoc-content matching), 3 Rule-13 violations.
 
-**Kritisch:** das Pattern feuerte direkt nach Selbst-Erklärung des Antipatterns. Disziplin reichte nicht — strukturelle Prävention nötig.
+**Critical:** the pattern fired directly AFTER self-explaining the antipattern. Discipline wasn't enough — structural prevention needed.
 
-### 3. Quantifizierung über 67 Logs / 6 Tage
+### 3. Quantification Across 67 Logs / 6 Days
 
 ```
 ALL src/logs/api_requests_*.jsonl (2026-05-06 → 2026-05-12):
-- 267 `pkill -f` Calls insgesamt
-- 246 davon konzentriert in EINER Session (searxng 2026-05-08)
-- 18 in heutiger Session 2026-05-12
+- 267 `pkill -f` calls total
+- 246 of those concentrated in ONE session (searxng 2026-05-08)
+- 18 in that day's session 2026-05-12
 - 9 in Monitor_CC 2026-05-09
 ```
 
-Burst-artiger Konzentration: 246/267 = 92% aus einem Tag → wenn der Antipattern losgeht, geht er viele Male los. Mit Hook eingebaut hätten wir alle 246 vermieden.
+Burst-like concentration: 246/267 = 92% from one day → once the antipattern starts, it fires many times. With a hook in place, all 246 would have been avoided.
 
-## Hook-Design-Vorschlag (deferred)
+## Hook-Design Proposal (Deferred)
 
-Geplant aber NICHT umgesetzt — kommt in nächste Session:
+Planned but NOT implemented — to come in the next session:
 
 ```json
 "PreToolUse": [
@@ -55,48 +55,47 @@ Geplant aber NICHT umgesetzt — kommt in nächste Session:
 ]
 ```
 
-Script-Logik: liest tool_input.command von stdin (JSON), regex-Check auf `pkill -f` + `ps.*grep.*kill`-Pipes, bei Match → stderr mit Alternativen (PID-File, `pgrep -x` exact-comm) + exit 1 zum Block.
+Script logic: read `tool_input.command` from stdin (JSON), regex-check for `pkill -f` + `ps.*grep.*kill` pipes, on a match → stderr with alternatives (PID file, `pgrep -x` exact-comm) + exit 1 to block.
 
-### Komplikation — intentional kill
+### Complication — Intentional Kill
 
-User-Feedback: "manchmal haben wir ja auch worker absichtlich gekillt". Bedeutet das Design braucht Nuance:
+User feedback: "sometimes we do intentionally kill workers." Meaning the design needs nuance:
 
-- `worker-cli kill <name>` ist intentional + sicher → soll erlaubt bleiben
-- Manuelle Process-Cleanup (PID bekannt, gezielter Kill) → soll erlaubt sein
-- `pkill -f <pattern>` → blocken weil cmdline-substring matching ist unscharf
-- `ps | grep | kill`-Pipe → blocken
+- `worker-cli kill <name>` is intentional + safe → should stay allowed
+- Manual process cleanup (PID known, targeted kill) → should be allowed
+- `pkill -f <pattern>` → block because cmdline-substring matching is imprecise
+- `ps | grep | kill` pipe → block
 
-Heuristik vermutlich: blockieren wenn das KILL-Target via TEXTUELLEM MATCH (grep) bestimmt wurde statt via PID-Direktreferenz oder kontrolliertem CLI-Wrapper. Konkrete Implementierung in nächster Session.
+Likely heuristic: block when the KILL target was determined via a TEXTUAL MATCH (grep) instead of a direct PID reference or a controlled CLI wrapper. Concrete implementation in the next session.
 
-### Cache-Cost-Hinweis
+### Cache-Cost Note
 
-Edit auf `~/.claude/settings.json` zur Hook-Aktivierung bustet den CC-Prompt-Cache (full message rebuild auf nächstem REQ). Wie bei RAG-First-Rule-Edit heute. User hatte explizit zugestimmt — gleiche Logik beim Hook-Edit.
+Editing `~/.claude/settings.json` to activate the hook busts the CC prompt cache (a full message rebuild on the next REQ). Same as with the RAG-First rule edit that day. The user had explicitly agreed — same logic applies to the hook edit.
 
-## Übergeordnetes Konzept
+## Overarching Concept
 
-User-Vorschlag (in Bead Monitor_CC-weyg festgehalten): `tool-use.md` strukturell aufteilen.
+A user proposal (recorded in the tracking task): split `tool-use.md` structurally.
 
-- "Wie du vorgehen sollst" → bleibt in tool-use.md (positive Anleitungen)
-- "Wie du NICHT vorgehen sollst" → wandert in Hooks (strukturelle Prävention)
+- "How you should proceed" → stays in tool-use.md (positive guidance)
+- "How you should NOT proceed" → moves into hooks (structural prevention)
 
-Vorteile:
-- Spart Input-Tokens jeder REQ (weniger Rule-Text)
-- Strukturell zuverlässig statt disziplin-abhängig
-- Antipatterns die wir nicht selbst diszipliniert vermeiden können (siehe heutige 3-fach-Reproduktion) sind so unmöglich
+Advantages:
+- Saves input tokens on every REQ (less rule text)
+- Structurally reliable instead of discipline-dependent
+- Antipatterns we can't discipline ourselves out of (see today's triple reproduction) become impossible this way
 
-Migration-Pfad (nächste Session): erste Welle 1-2 klare Antipatterns (`pkill -f`-Block) implementieren, entsprechende Negativregeln aus tool-use.md raus, Erfahrung sammeln, dann weitere.
+Migration path (next session): implement a first wave of 1-2 clear antipatterns (`pkill -f` block), remove the corresponding negative rules from tool-use.md, gather experience, then continue.
 
-## Status der Session
+## Session Status
 
-- Bead `Monitor_CC-weyg` offen für Migration-Arbeit
+- A tracking task open for the migration work
 - rule_compliance.py committed in Monitor_CC dev (`dev/tool_use_analysis/rule_compliance.py`)
-- Heute-Report: `dev/tool_use_analysis/20260512_rule_compliance.md`
-- Hook-Design diskutiert + Deferral entschieden
-- Menubar live-update Fix in Arbeit (separat von Tool-Use Safety)
+- That day's report: `dev/tool_use_analysis/20260512_rule_compliance.md`
+- Hook design discussed + deferral decided
+- Menubar live-update fix in progress (separate from tool-use safety)
 
-## Quellen
+## Sources
 
-- Bead `Monitor_CC-weyg` (tracker für Migration)
-- `~/.claude/shared-rules/global/tool-use.md` (Ziel der Migration)
-- `~/.claude/settings.json.hooks-backup` (working hook-Format Referenz vom User)
-- Proxy-Logs `src/logs/api_requests_*.jsonl` 2026-05-06 bis 2026-05-12 (Quantifizierungs-Quelle)
+- `~/.claude/shared-rules/global/tool-use.md` (the migration target)
+- `~/.claude/settings.json.hooks-backup` (a working hook-format reference from the user)
+- Proxy logs `src/logs/api_requests_*.jsonl` 2026-05-06 to 2026-05-12 (the quantification source)
