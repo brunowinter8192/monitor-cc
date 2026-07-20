@@ -23,7 +23,6 @@ _HOOK_SCRIPTS = [
     ("block_unauthorized_background.py",   "Bash"),
     ("block_worker_send_background.py",     "Bash"),
     ("block_busywait_loop.py",              "Bash"),
-    ("block_concurrent_timer.py",           "Bash"),
     ("rewrite_background_sleep.py",        "Bash"),
     ("block_search_subreddits_limit.py", "Bash"),
     ("block_gh_cli_chained.py",          "Bash"),

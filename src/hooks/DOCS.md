@@ -182,30 +182,6 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_concurrent_timer.py (137 LOC)
-
-**Purpose:** PreToolUse hook (Bash) — enforces **only one background timer at a time** per session. Detects a canonical timer (`run_in_background=True` + `_SLEEP_ONLY_BG` match) and, if a timer already stored for the session has not yet expired, blocks the new one. Rationale: timers are always the 600s canonical form (`rewrite_background_sleep.py` normalizes every sleep-only background command to it), so a second timer request while one is still running is always redundant — it means the agent lost track of an already-running wait instead of going idle for its completion notice. Non-timer commands are entirely ignored (no state write). Exits 2 + stderr on block. Exits 0 on allow, non-timer passthrough, and any IO/parse error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}, session_id}`); `logs/timer_state.jsonl` (per-session stored timer expiry).
-**Writes:** `logs/timer_state.jsonl` (written only when a new timer is allowed — one entry per session, self-pruning at 24h); stderr (block message) on block only.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Registered BEFORE `rewrite_background_sleep.py` — a blocked timer never reaches the rewrite hook. Never imported.
-**Calls out:** `_fire_log.log_fire`; stdlib (`datetime`, `json`, `os`, `re`, `sys`).
-
-**Timer detection:** `run_in_background == True AND _SLEEP_ONLY_BG.match(command)` — same regex as `rewrite_background_sleep.py`: `^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$`.
-
-**Expiry logic:** on a timer request, `expiry = now + 600s` (hardcoded — never parsed out of the command, since `rewrite_background_sleep.py` guarantees every timer is exactly 600s). If a stored expiry exists for the session AND `now < stored_expiry` → BLOCK (a timer is still running). Otherwise (no stored expiry, or it has passed) → overwrite the stored expiry with the new one and ALLOW.
-
-**State file (`logs/timer_state.jsonl`):** JSONL, one entry per session: `{"ts": "...", "session_id": "...", "expiry": "..."}`. On every allowed timer: read → drop own session entry + drop entries >24h old (by `ts`) → append new entry → overwrite (one-per-session, self-pruning). Non-timer commands and blocked timers never write state. Path overridable via `MONITOR_CC_TIMER_STATE` env var (test isolation).
-
-**Fail-open split:**
-- IO/parse exception on state read (`_READ_ERROR` sentinel) → exit 0 (allow — transient error must not block the worker-wait loop).
-- State read succeeded but no entry found for session, or the stored one has expired → ALLOW (record new expiry).
-
-**Block message:** "A background timer is already running for this session (expires `<ISO timestamp>`). Only one timer may run at a time — wait for its completion notice before setting a new one."
-
-**Smoke:** `dev/hook_smoke/test_block_concurrent_timer.py` (7 cases: (a) first timer → ALLOW, (b) second timer same session while running → BLOCK, (c) timer for a different session → ALLOW, (d) non-timer command → ALLOW + no state write, (e) expired stored timer → next timer ALLOW, (f) IO error → fail-open ALLOW).
-
----
-
 ### block_search_subreddits_limit.py (54 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `reddit-cli search_subreddits` and `cli.py search_subreddits` invocations that carry a `--limit` flag. Subreddit discovery must return the full result set; capping it prematurely hides candidates. Exits 2 + stderr. Exits 0 on any parse error (fail-open).
