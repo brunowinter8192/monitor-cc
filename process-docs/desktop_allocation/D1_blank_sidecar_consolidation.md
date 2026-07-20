@@ -1,68 +1,65 @@
-# D1 — blank Desktop-Targeting Robustheit via Menubar-Sidecar (2026-05-28)
+# D1 — blank Desktop-Targeting Robustness via Menubar Sidecar (2026-05-28)
 
-**Status:** Entscheidung getroffen, NICHT implementiert. Sequenziert NACH dem Menubar-Refactor (Bead g15z). Cross-repo: Monitor_CC (Menubar publiziert) + Meta/blank (Helper konsumiert).
+**Status:** Decision made, NOT implemented. Sequenced AFTER the menubar refactor. Cross-repo: Monitor_CC (menubar publishes) + Meta/blank (helper consumes).
 
-## Kontext
+## Context
 
-Etappe 3 (Worker-Spawn auf Caller-Desktop) + Etappe 4 (File-Open via `show`) sind in `Meta/blank` commit `cfd0d14` implementiert, aber best-effort. User-Ziel: beide Platzierungen sollen **immer** sitzen, nicht nur best-effort.
+Stage 3 (worker spawn on the caller's desktop) + Stage 4 (file-open via `show`) are implemented in `Meta/blank` commit `cfd0d14`, but best-effort. User goal: both placements should **always** land, not just best-effort.
 
-`Meta/blank/src/desktop/desktop_targeting.py` ist die naive Vorgängerversion der Menubar-Detection. Es bricht reproduzierbar — User verwies auf den `n_cand=0`-Effekt (dokumentiert in `C3_detection_logging.md`).
+`Meta/blank/src/desktop/desktop_targeting.py` is the naive predecessor of the menubar detection. It breaks reproducibly — the user pointed at the `n_cand=0` effect, where AppleScript returns the window name but no matching CGWindow is found after a worker spawn.
 
-## Root-Cause (verifiziert durch Vollständig-Read beider Files, 2026-05-28)
+## Root Cause (verified by a full read of both files, 2026-05-28)
 
-`desktop_targeting.py` fehlen drei Robustheits-Mechanismen, die `src/menubar/desktop_detection.py` (verifiziert, 100% Detection-Rate) hat:
+`desktop_targeting.py` is missing three robustness mechanisms that `src/menubar/desktop_detection.py` (verified, 100% detection rate) has:
 
-| Mechanismus | Menubar `desktop_detection.py` | blank `desktop_targeting.py` |
+| Mechanism | Menubar `desktop_detection.py` | blank `desktop_targeting.py` |
 |---|---|---|
-| Titel-Quelle | `CGSCopyWindowProperty` Key `kCGSWindowTitle` (SkyLight, TCC-bypass) | `kCGWindowName` roh (leer in TCC-Restriction) |
-| Spinner-Normalize | `_normalize_window_title` strippt CC-Spinner-Glyph von beiden Seiten vor Match | keiner → Mismatch sobald Spinner asymmetrisch |
-| Resolver | 3-Stufen: name-unique → space-elimination → OSC-2-Injection (`_resolve_cgwindow_id`) | nur Stufe 1; `len(wids) != 1 → None` |
+| Title source | `CGSCopyWindowProperty` key `kCGSWindowTitle` (SkyLight, TCC-bypass) | raw `kCGWindowName` (empty under TCC restriction) |
+| Spinner normalize | `_normalize_window_title` strips the CC spinner glyph from both sides before matching | none → mismatch as soon as the spinner is asymmetric |
+| Resolver | 3-stage: name-unique → space-elimination → OSC-2 injection (`_resolve_cgwindow_id`) | stage 1 only; `len(wids) != 1 → None` |
 
-Der Spinner-Mismatch allein erzeugt `n_cand=0` unabhängig vom Spawn. Der fehlende Fallback macht jeden Mehrdeutigkeits- oder Cache-Churn-Fall zum Totalausfall.
+The spinner mismatch alone produces `n_cand=0` independent of the spawn. The missing fallback turns every ambiguity or cache-churn case into a total failure.
 
-## Wege erwogen
+## Paths Considered
 
-**Weg 1 — Port der 3 Mechanismen nach blank.** Rein blank-seitig, sofort machbar, kollidiert nicht mit Refactor. Für Single-Caller ist OSC-2-Injection auf die tty des Aufrufers besonders stark (markiert Fenster direkt statt Namens-Raten). Nachteil: dritte Kopie derselben CGS-Logik (Probe / Menubar / blank) → Drift-Hazard.
+**Path 1 — port the 3 mechanisms into blank.** Purely blank-side, immediately feasible, doesn't collide with the refactor. For a single caller, OSC-2 injection into the caller's own tty is especially strong (marks the window directly instead of guessing by name). Downside: a third copy of the same CGS logic (probe / menubar / blank) → drift hazard.
 
-**Weg 2 — Menubar publiziert verifiziertes Ergebnis als Sidecar ← GEWÄHLT.** Menubar detektiert ohnehin alle 10s robust und kennt pro Main die Space-ID. Sie schreibt `cwd → space_id` (last-known-good) in eine JSON; blank-Helper liest nur noch aus, macht selbst keine fragile Detection mehr.
+**Path 2 — menubar publishes a verified result as a sidecar ← CHOSEN.** The menubar already detects robustly every 10s and knows the space ID per main. It writes `cwd → space_id` (last-known-good) to a JSON; the blank helper only reads, no longer runs its own fragile detection.
 
-## Gewählt: Weg 2
+## Chosen: Path 2
 
 **Reasoning:**
-1. Keine dritte Kopie der CGS-Detection — blank konsumiert direkt die geprüfte Pipeline.
-2. Robuster gegen den Spawn-Moment: last-known-good überbrückt den transienten `n_cand=0`-Einbruch (Main-Space-ID ist stabil, Menubar kannte sie aus früheren Cycles).
-3. blank hängt ohnehin schon an der Menubar (liest `ghostty_cwd_uuid.json`) — Weg 2 vertieft die bestehende Kopplung, fügt keine neue hinzu.
+1. No third copy of the CGS detection — blank consumes the already-verified pipeline directly.
+2. More robust against the spawn moment: last-known-good bridges the transient `n_cand=0` dip (the main's space ID is stable, the menubar knew it from earlier cycles).
+3. blank already depends on the menubar (reads `ghostty_cwd_uuid.json`) — Path 2 deepens the existing coupling instead of adding a new one.
 
-Trade-off akzeptiert: braucht Menubar-Source-Änderung → deshalb sequenziert nach dem Refactor (Menubar gerade im Umbau, Kollision vermeiden).
+Trade-off accepted: needs a menubar source change → hence sequenced after the refactor (menubar was mid-rework at the time, to avoid a collision).
 
-## Implementierungs-Skizze (für Pickup nach Refactor)
+## Implementation Sketch (for pickup after the refactor)
 
-**Menubar-Seite (Monitor_CC, Worker-Task — current project):**
-- `desktop_detection.py` / `discover.py`: verifiziertes Result als `cwd → {space_id, desktop_no}` in APP_SUPPORT-Sidecar persistieren (z.B. `cwd_desktop.json` neben `ghostty_cwd_uuid.json`).
-- **Last-known-good:** transientes None NICHT über einen guten space_id schreiben — alten Wert behalten bis neuer gültiger kommt.
-- space_id ist der stabile Identifier für den Move (`CGSMoveWindowsToManagedSpace` nimmt space_id, nicht desktop_no) — muss mit raus, Menubar exponiert ihn bisher nur in-memory.
+**Menubar side (Monitor_CC, worker task — current project):**
+- `desktop_detection.py` / `discover.py`: persist the verified result as `cwd → {space_id, desktop_no}` in an APP_SUPPORT sidecar (e.g. `cwd_desktop.json` next to `ghostty_cwd_uuid.json`).
+- **Last-known-good:** a transient None must NOT overwrite a good space_id — keep the old value until a new valid one arrives.
+- space_id is the stable identifier for the move (`CGSMoveWindowsToManagedSpace` takes space_id, not desktop_no) — must be exported too; at the time the menubar only exposed it in-memory.
 
-**blank-Seite (Meta/blank, Opus direct — cross-repo):**
-- `desktop_targeting.py`: Caller-Identification behalten (parent-walk → claude → lsof → cwd), dann cwd im Menubar-Sidecar nachschlagen → space_id. Fragile Namens-Match-Kette (`_ghostty_uuid_to_window_name` → `_windows_by_name_for_pid` → `len(wids)!=1`) entfällt.
-- Window-Move + New-Window-Polling-Primitiven bleiben (nicht der fragile Teil).
-- **Detect-before-disturb:** Caller-space_id VOR dem auslösenden Open/Spawn ermitteln (Landschaft stabil), danach nur noch neues Fenster pollen + verschieben. Greift bei beiden Wegen; aktuell läuft Detection nach dem Open.
+**blank side (Meta/blank, Opus direct — cross-repo):**
+- `desktop_targeting.py`: keep caller identification (parent-walk → claude → lsof → cwd), then look up cwd in the menubar sidecar → space_id. The fragile name-match chain (`_ghostty_uuid_to_window_name` → `_windows_by_name_for_pid` → `len(wids)!=1`) goes away.
+- Window-move + new-window-polling primitives stay (not the fragile part).
+- **Detect-before-disturb:** determine the caller's space_id BEFORE the triggering open/spawn (landscape stable), then only poll for and move the new window. Applies to both paths; at the time, detection ran after the open.
 
-**Logging (blank-seitig, eigener Sink — NICHT Monitor-Logging):**
-- Separater blank-Log (eigene Datei, nicht `menubar.log`).
-- Für Worker-Spawn (`tmux_spawn.sh:open_tmux_viewer`) UND File-Open (`bin/show`): caller_pid, aufgelöste claude-cwd, space_id aus Sidecar (oder Miss-Grund), Window-Poll-Resultat, Move-Resultat.
-- Ersetzt die aktuelle `>/dev/null 2>&1`-Stille — alle 6 Stufen müssen diagnostizierbar werden.
+**Logging (blank side, its own sink — NOT Monitor logging):**
+- Separate blank log (own file, not `menubar.log`).
+- For worker spawn (`tmux_spawn.sh:open_tmux_viewer`) AND file open (`bin/show`): caller_pid, resolved claude cwd, space_id from the sidecar (or miss reason), window-poll result, move result.
+- Replaces the then-current `>/dev/null 2>&1` silence — all 6 stages need to become diagnosable.
 
-## Offene Fragen
+## Open Questions
 
-- Worker-`show`: ruft ein Worker (kein Main) `show` auf, findet die Caller-Identification den Worker-Claude (cwd=Worktree, nicht im Sidecar). Soll Worker-`show` auf den Worker-Desktop oder den des Eltern-Mains? — noch nicht entschieden.
-- Multi-New-Window: `wait_for_new_windows_and_move` verschiebt ALLE neuen Fenster im Poll-Fenster; bei `app_name=""` (cross-app Poll) Risiko dass unrelated Fenster mitgezogen wird. Disambiguierung offen.
-- Sidecar-Schreibfrequenz vs. Staleness: 10s Detection-Cache der Menubar vs. Spawn-Timing.
+- Worker-`show`: when a worker (not a main) calls `show`, caller identification finds the worker's Claude (cwd=worktree, not in the sidecar). Should worker-`show` target the worker's own desktop or the parent main's? — not yet decided.
+- Multi-new-window: `wait_for_new_windows_and_move` moves ALL new windows within the poll window; with `app_name=""` (cross-app poll) there's a risk an unrelated window gets pulled along. Disambiguation open.
+- Sidecar write frequency vs. staleness: the menubar's 10s detection cache vs. spawn timing.
 
-## Quellen
+## Sources
 
-- `src/menubar/desktop_detection.py` (verifizierte 3-Stufen-Detection — Vorlage)
-- `Meta/blank/src/desktop/desktop_targeting.py` (naive Vorgängerversion — Ziel)
-- `Meta/blank/bin/show`, `Meta/blank/src/spawn/tmux_spawn.sh:open_tmux_viewer` (Aufruf-Pfade)
-- `C3_detection_logging.md` (n_cand=0 Trigger-Doku)
-- `00_design_overview.md` (Etappe 3+4 Kontext)
-- `decisions/OldThemes/file_open_routing.md` (CotEditor + Desktop-Awareness IST)
+- `src/menubar/desktop_detection.py` (verified 3-stage detection — the template)
+- `Meta/blank/src/desktop/desktop_targeting.py` (naive predecessor — the target)
+- `Meta/blank/bin/show`, `Meta/blank/src/spawn/tmux_spawn.sh:open_tmux_viewer` (call paths)
