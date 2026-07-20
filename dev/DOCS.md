@@ -14,7 +14,7 @@ cd Monitor_CC/
 
 - [display/DOCS.md](display/DOCS.md) — Display layer tests + format_cache_tracker differential proof
 - [jsonl/DOCS.md](jsonl/DOCS.md) — extract_cache_turns differential proof harness
-- `hook_firing/reports/` — Historical hook block-event analysis snapshots (read-only archive; `analyze.py` and `DOCS.md` deleted 2026-05-24 — replaced by `src/logs/hook_firing.jsonl` persistent log)
+- `hook_firing/md/` — Historical hook block-event analysis snapshots (read-only archive; `analyze.py` and `DOCS.md` deleted 2026-05-24 — replaced by `src/logs/hook_firing.jsonl` persistent log)
 - [pipeline/DOCS.md](pipeline/DOCS.md) — Pipeline evaluation suite (memory, I/O, parsing, format stability)
 - [session_analysis/DOCS.md](session_analysis/DOCS.md) — Forensic session JSONL + proxy log analysis (cache behavior, rebuild detection, token attribution)
 - [tool_injection/DOCS.md](tool_injection/DOCS.md) — MCP tool schema extraction for proxy-side tool injection
@@ -32,4 +32,4 @@ cd Monitor_CC/
 
 See [session_analysis/DOCS.md](session_analysis/DOCS.md).
 
-6 standalone analysis scripts (01–06) + `04_reports/` for `05_req_breakdown.py` output. No pipeline mapping.
+6 standalone analysis scripts (01–06) + `md/` for `05_req_breakdown.py` output. No pipeline mapping.

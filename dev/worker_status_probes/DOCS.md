@@ -11,7 +11,7 @@ From project root:
 ./venv/bin/python dev/worker_status_probes/run_all.py [--duration N]
 ```
 `run_all.py` discovers the Opus main session dynamically and launches all three probes
-concurrently. Reports land in `01_reports/`.
+concurrently. The comparison report lands in `md/`; raw per-probe CSVs land in `csv/`.
 
 ## Modules
 
@@ -32,7 +32,7 @@ window), launches probe_a/b/c as concurrent subprocesses with a shared timestamp
 1 second. Logs delta=1 when the window received bytes since the last sample, delta=0
 when silent.
 **Reads:** tmux `display-message -t <session>:0 -p '#{window_activity}'` per tick.
-**Writes:** `01_reports/raw_probe_a_<ts>.csv` (cols: elapsed_sec, session, window_activity_ts, delta).
+**Writes:** `csv/raw_probe_a_<ts>.csv` (cols: elapsed_sec, session, window_activity_ts, delta).
 **Called by:** `run_all.py`.
 **Calls out:** tmux CLI only.
 
@@ -44,7 +44,7 @@ when silent.
 `byte_touch.py` which touches an activity file and logs cumulative byte count. Samples both
 every 1 second.
 **Reads:** `/tmp/probe-b-<name>.activity` mtime; `/tmp/probe-b-<name>.bytecount` total.
-**Writes:** `01_reports/raw_probe_b_<ts>.csv` (cols: elapsed_sec, session, activity_mtime, bytecount_total, bytes_last_sec).
+**Writes:** `csv/raw_probe_b_<ts>.csv` (cols: elapsed_sec, session, activity_mtime, bytecount_total, bytes_last_sec).
 **Called by:** `run_all.py`.
 **Calls out:** tmux `pipe-pane`; spawns `byte_touch.py` via pipe-pane.
 
@@ -68,7 +68,7 @@ python3 (stdlib only).
 Reader threads parse `%output` / `%extended-output` events filtered to window 0 pane IDs.
 Samples event+byte counters each second.
 **Reads:** `proc.stdout` line-by-line per session (control mode protocol stream).
-**Writes:** `01_reports/raw_probe_c_<ts>.csv` (cols: elapsed_sec, session, events_last_sec, bytes_last_sec).
+**Writes:** `csv/raw_probe_c_<ts>.csv` (cols: elapsed_sec, session, events_last_sec, bytes_last_sec).
 **Called by:** `run_all.py`.
 **Calls out:** tmux `-C` subprocess; `threading.Thread` per session.
 
@@ -77,10 +77,11 @@ Samples event+byte counters each second.
 ## Output
 
 ```
-01_reports/
+csv/
 ├── raw_probe_a_<ts>.csv    — window_activity timeseries (360 rows for 3 sessions × 120s)
 ├── raw_probe_b_<ts>.csv    — pipe-pane byte timeseries
-├── raw_probe_c_<ts>.csv    — control-mode event timeseries
+└── raw_probe_c_<ts>.csv    — control-mode event timeseries
+md/
 └── comparison_<ts>.md      — side-by-side analysis + per-sensor verdicts + recommendation
 ```
 

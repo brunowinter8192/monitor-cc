@@ -143,7 +143,7 @@ Inlines `_strip_cache_control` (5-line mirror of `logging.py:_strip_cache_contro
 ./venv/bin/python dev/proxy_dual_log/span_inline_probe.py
 ```
 
-**Output:** `dev/proxy_dual_log/span_inline_probe_reports/<YYYYMMDD>.md`
+**Output:** `dev/proxy_dual_log/md/span_inline_probe_<YYYYMMDD>.md`
 
 ---
 
@@ -176,7 +176,7 @@ MONITOR_CC_ROOT=/path/to/monitor-cc \
 
 Default session: `opus_monitor_cc_1780602018`
 
-**Output:** `dev/proxy_dual_log/main_log_elimination_probe_reports/<YYYYMMDD>.md`
+**Output:** `dev/proxy_dual_log/md/main_log_elimination_<YYYYMMDD>.md`
 
 ---
 
@@ -210,7 +210,7 @@ test) to confirm no span explosion and correct whitespace fidelity.
 ./venv/bin/python dev/proxy_dual_log/green_overlay_probe.py
 ```
 
-**Output:** `dev/proxy_dual_log/green_overlay_probe_reports/green_overlay_probe.md`
+**Output:** `dev/proxy_dual_log/md/green_overlay_probe.md`
 
 ---
 
@@ -243,7 +243,7 @@ chars (`"is_error": false}`) are never coloured.
 ./venv/bin/python dev/proxy_dual_log/groundtruth_message_spans_probe.py
 ```
 
-**Output:** `dev/proxy_dual_log/groundtruth_message_spans_probe_reports/groundtruth_spans_<YYYYMMDD_HHMMSS>.md`
+**Output:** `dev/proxy_dual_log/md/groundtruth_spans_<YYYYMMDD_HHMMSS>.md`
 
 ---
 
@@ -270,7 +270,7 @@ the removal range become "stripped"; prior "injected" bytes re-removed disappear
 ./venv/bin/python dev/proxy_dual_log/composition_probe.py
 ```
 
-**Output:** `dev/proxy_dual_log/01_reports/composition_probe_<YYYYMMDD>.md`
+**Output:** `dev/proxy_dual_log/md/composition_probe_<YYYYMMDD>.md`
 
 ---
 
@@ -298,4 +298,4 @@ Auto-detects main repo vs worktree path for dual_log directory.
 ./venv/bin/python dev/proxy_dual_log/attribution_coverage.py
 ```
 
-**Output:** `dev/proxy_dual_log/attribution_coverage_reports/<YYYYMMDD>.md`
+**Output:** `dev/proxy_dual_log/md/attribution_coverage_<YYYYMMDD>.md`

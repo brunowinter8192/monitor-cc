@@ -22,7 +22,7 @@ produces the markdown report.
   1. Builds `tool_use_id → command` map + `uuid → entry` map
   2. Finds `BLOCKED` lines for `block_chained_sleep`, resolves command via tool_use_id
 
-**Writes:** `--out` path (default `01_reports/sleep_audit_<date>.md`).
+**Writes:** `--out` path (default `md/sleep_audit_<date>.md`).
 
 **Called by:** CLI only.
 
@@ -48,7 +48,7 @@ table to an in-progress report line list.
 
 ## Output
 
-`01_reports/sleep_audit_<YYYY-MM-DD>.md` — sections:
+`md/sleep_audit_<YYYY-MM-DD>.md` — sections:
 1. Summary header (event count, sleep count, heredoc FP exclusions, date range)
 2. cmd_before histogram (top 25 tokens, count, %, 3 example snippets each)
 3. cmd_after histogram (top 15 tokens)
@@ -62,7 +62,7 @@ table to an in-progress report line list.
 # From dev/sleep_pattern_analysis/ (required: classify.py must be on sys.path)
 cd dev/sleep_pattern_analysis
 ../../venv/bin/python analyze.py --since 2020-01-01 \
-  --out 01_reports/sleep_audit_$(date +%Y-%m-%d).md
+  --out md/sleep_audit_$(date +%Y-%m-%d).md
 
 # Or from project root:
 cd dev/sleep_pattern_analysis && \
@@ -74,7 +74,7 @@ cd dev/sleep_pattern_analysis && \
 | Flag | Default | Description |
 |---|---|---|
 | `--since YYYY-MM-DD` | 30 days ago | Earliest event timestamp to include. Pass `2020-01-01` for all-time. |
-| `--out PATH` | `01_reports/sleep_audit_2026-05-24.md` | Report output path. |
+| `--out PATH` | `md/sleep_audit_2026-05-24.md` | Report output path. |
 
 ## Notes
 

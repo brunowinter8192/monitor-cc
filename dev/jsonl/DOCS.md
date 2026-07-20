@@ -15,7 +15,7 @@ Differential proof harnesses for `src/jsonl/` module decompositions. Captures ba
 # From project root
 ./venv/bin/python dev/jsonl/A_extract_cache_turns_proof.py --mode capture
 ./venv/bin/python dev/jsonl/A_extract_cache_turns_proof.py --mode verify
-./venv/bin/python dev/jsonl/A_extract_cache_turns_proof.py --mode verify --baseline dev/jsonl/A_extract_cache_turns_proof_reports/baseline_20260610_030515.json
+./venv/bin/python dev/jsonl/A_extract_cache_turns_proof.py --mode verify --baseline dev/jsonl/json/baseline_20260610_030515.json
 ```
 
-**Output:** `A_extract_cache_turns_proof_reports/baseline_<timestamp>.json` — dict of `{session_stem: serialized_turns}` for 10 sessions.
+**Output:** `json/baseline_<timestamp>.json` — dict of `{session_stem: serialized_turns}` for 10 sessions.

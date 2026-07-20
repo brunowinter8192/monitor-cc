@@ -87,7 +87,7 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 
 **Requires:** Menubar running (for detection pipeline), Ghostty running.
 
-**Output:** JSON report in `02_reports/<tag>_<YYYYMMDD_HHMMSS>.json` with context_diagnostics, tcc_state, detection_result, raw_windows.
+**Output:** JSON report in `json/<tag>_<YYYYMMDD_HHMMSS>.json` with context_diagnostics, tcc_state, detection_result, raw_windows.
 
 **Key finding:** `kCGWindowOwnerPID`, `kCGWindowNumber`, `CGSCopySpacesForWindows` work in ALL contexts. `kCGWindowName` returns null without Screen Recording. See `decisions/OldThemes/desktop_allocation/B2_context_comparison_probe.md`.
 
@@ -112,7 +112,7 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 
 **Requires:** Ghostty running.
 
-**Output:** JSON report in `03_reports/<tag>_<YYYYMMDD_HHMMSS>.json` with context_diagnostics, tcc_state, all_field_keys_observed, field_availability_summary, ghostty_windows_detailed, ghostty_as_window_properties.
+**Output:** JSON report in `json/<tag>_<YYYYMMDD_HHMMSS>.json` with context_diagnostics, tcc_state, all_field_keys_observed, field_availability_summary, ghostty_windows_detailed, ghostty_as_window_properties.
 
 **Key findings:** `kCGWindowBounds` fully populated (280/280) in all three contexts including launchd — TCC-unblocked. AS returns `-1728` for `bounds of window N` in all contexts regardless of Screen Recording status — not a TCC issue, simply not implemented in Ghostty's AS dictionary. `kCGWindowBackingLocationVideoMemory` not returned by the API on macOS 15.7.7. See `decisions/OldThemes/desktop_allocation/B3_field_availability_probe.md`.
 
@@ -132,7 +132,7 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 
 **Requires:** Ghostty running with ≥ 1 window on a non-active Mission Control space (≥ 2 spaces total).
 
-**Output:** PASS/FAIL line (`grep "RESULT:"`) + before/after/restore screenshots in `04_reports/` + on-screen WID dump. Precondition-not-met messages if setup is insufficient.
+**Output:** PASS/FAIL line (`grep "RESULT:"`) + before/after/restore screenshots in `png/` + on-screen WID dump in `txt/`. Precondition-not-met messages if setup is insufficient.
 
 **Move direction:** non-active space → active space (positive presence assertion — window appears in `CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly=1, 0)` after the call).
 
@@ -188,7 +188,7 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 
 **Requires:** Ghostty running. CotEditor: probe warm-launches it if not running.
 
-**Output:** per-trial JSON in `05_reports/trial_<type>_<n>_<ts>.json` + stdout summary table (`type × trial × fg/bg × gt_wid × A_agree × B_agree × desktop × space_agree`).
+**Output:** per-trial JSON in `json/trial_<type>_<n>_<ts>.json` + stdout summary table (`type × trial × fg/bg × gt_wid × A_agree × B_agree × desktop × space_agree`).
 
 **Window types:**
 1. `ghostty_tmux` — `open -n -a Ghostty --args --command "tmux attach-session -t <tok>"`, token prefix `p05t`

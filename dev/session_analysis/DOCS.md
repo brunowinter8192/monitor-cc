@@ -131,11 +131,11 @@ python3 dev/session_analysis/04_cache_validation.py src/logs/api_requests_<id>.j
 
 ## 05_req_breakdown.py
 
-**Purpose:** Forensic per-segment token attribution for a specific API request. Uses tiktoken (cl100k_base) to tokenize each system block, tool definition, and message individually and compare against session JSONL ground truth (CR, CC, D, Out). Optional cross-session byte-diff (`--prev-proxy-log`) computes which prefix segments were cache-read vs newly created, enabling root cause attribution for cache rebuilds. Writes a timestamped Markdown report to `04_reports/`.
+**Purpose:** Forensic per-segment token attribution for a specific API request. Uses tiktoken (cl100k_base) to tokenize each system block, tool definition, and message individually and compare against session JSONL ground truth (CR, CC, D, Out). Optional cross-session byte-diff (`--prev-proxy-log`) computes which prefix segments were cache-read vs newly created, enabling root cause attribution for cache rebuilds. Writes a timestamped Markdown report to `md/`.
 
 **Input:** A proxy JSONL log (`--proxy-log`) + a session JSONL (`--session-jsonl`) for the same session. Optionally a previous session's proxy log (`--prev-proxy-log`) for byte-diff attribution when CR > 0.
 
-**Output:** `04_reports/<YYYYMMDD_HHMMSS>_req<N>.md` — report path printed to stdout.
+**Output:** `md/<YYYYMMDD_HHMMSS>_req<N>.md` — report path printed to stdout.
 
 **Usage:**
 ```bash
@@ -167,7 +167,7 @@ python3 dev/session_analysis/05_req_breakdown.py \
 
 **Input:** Proxy JSONL log (positional arg) or `--batch <dir>` for all logs in a directory. Optionally `--session-jsonl` for single-file mode to pair with session JSONL for token data.
 
-**Output:** Markdown table to stdout + persistent report to `04_reports/` (batch mode).
+**Output:** Markdown table to stdout + persistent report to `md/` (batch mode).
 
 **Usage:**
 ```bash
@@ -194,7 +194,7 @@ python3 dev/session_analysis/06_char_token_ratio.py --batch src/logs/
 
 ---
 
-## 04_reports/
+## md/
 
 MD reports written by `05_req_breakdown.py`. One file per run.
 

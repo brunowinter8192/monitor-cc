@@ -65,7 +65,7 @@ Captures all 10 tmux panes of a running Monitor_CC session (5 windows) and combi
 ./venv/bin/python dev/display/A_format_cache_tracker_proof.py --mode verify
 ```
 
-**Output:** `A_format_cache_tracker_proof_reports/baseline_<timestamp>.json` — dict of `{session_stem_HxW: serialized_5tuple}` for 60 cases.
+**Output:** `json/baseline_<timestamp>.json` — dict of `{session_stem_HxW: serialized_5tuple}` for 60 cases.
 
 ## Documentation Tree
 
