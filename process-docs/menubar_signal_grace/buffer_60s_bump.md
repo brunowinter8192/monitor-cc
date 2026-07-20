@@ -51,5 +51,4 @@ scenarios vs the frequency of long thinking phases.
 ## Pending
 
 Long-term fix: replace JSONL-mtime status inference with an explicit working-state file or hook
-heartbeat so the signal-grace buffer can return to a tight value (≤5s). Tracked in
-`decisions/abort_auto.md` SOLL section.
+heartbeat so the signal-grace buffer can return to a tight value (≤5s).

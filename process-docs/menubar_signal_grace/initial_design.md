@@ -84,7 +84,7 @@ This split is architecturally separate from the signal mechanism — it would ha
 
 ## Buffer Tuning
 
-**Note: this 5s analysis is the initial design. The buffer was bumped to 60s — see buffer_60s_bump.md in this folder.**
+**Note: this 5s analysis is the initial design. The buffer was later bumped to 60s (dated follow-up entry in this area).**
 
 `ORCHESTRATOR_SIGNAL_BUFFER_SECS = 5.0` chosen against:
 
@@ -109,5 +109,5 @@ Plugin-publish required for iterative-dev (cache stays stale otherwise). See `~/
 ## Bug 1 — Resolved (2026-05-24)
 
 Resolved via Fix 6 — worker-cli `_worker_detect_status` now reads hooks.json with the same
-demote rule as menubar (see worker_cli_alignment.md). Iterative-dev commit 02efcdb,
-plugin-published. menubar and worker-cli now share the same truth source.
+demote rule as menubar. Iterative-dev commit 02efcdb, plugin-published. menubar and worker-cli
+now share the same truth source.
