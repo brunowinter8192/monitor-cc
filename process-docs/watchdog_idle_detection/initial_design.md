@@ -24,4 +24,4 @@ Three properties make the state file uniquely suited as the idle source:
 
 ## Cross-Project Symmetry
 
-Monitor_CC's GPU pane (`status.py:_log_idle`) previously read the same log-path mtime for the idle countdown display. The parallel fix — renaming `_log_idle` → `_state_file_idle` and switching to state-file mtime — was implemented on Monitor_CC branch `watchdog-idle-state-mtime` (commit `161e7d6`) synchronously with this RAG worker change. Both branches are merged together so the idle source is consistent across the watchdog stop path (RAG) and the display path (Monitor_CC).
+Monitor_CC's GPU pane (`status.py:_log_idle`) previously read the same log-path mtime for the idle countdown display. The parallel fix — renaming `_log_idle` → `_state_file_idle` and switching to state-file mtime — was implemented on Monitor_CC branch `watchdog-idle-state-mtime` (commit `161e7d6`) synchronously with this RAG worker change. Both branches were merged together so the idle source was made consistent across the watchdog stop path (RAG) and the display path (Monitor_CC).

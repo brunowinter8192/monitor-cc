@@ -1,6 +1,6 @@
 # Worker Orchestration — Cross-Worker Persistence Model (2026-06-08)
 
-Status: DISCUSSED. Current model AFFIRMED (rules as-is, no change). Residual tension tracked as a monitor-cc issue.
+Status: Discussed 2026-06-08. Model affirmed as-is (no change) at that time. Residual tension left open (see "Open" section below).
 
 Meta-topic (worker orchestration, not the proxy pipeline) — captured here because it surfaced during the monitor-cc port and this is the active project.
 
@@ -34,6 +34,6 @@ Rejected by user. Reasons:
 
 Opus's 1M context is the structural enabler that removes any need for a disk-based cross-worker plan-report. The existing rules already encode this; no rule change needed.
 
-## Open (tracked as issue)
+## Open
 
 Residual weak point observed this session: a sub-step's size must fit the EXECUTING worker's REMAINING context, not merely be "a sub-stage." Stage 1A was dispatched to a worker already at 24% (post-investigation + addendum) and died mid-stage uncommitted — the recap-after-stage clean-checkpoint guarantee failed because no commit landed before death. Candidate refinements (undecided): (a) pre-dispatch context-budget check before giving an implementation Go to a reused worker; (b) default-separate the investigation worker from the implementation worker (fresh worker for implementation, investigation report carried by Opus); (c) sub-step sizing keyed to remaining context. To decide later.

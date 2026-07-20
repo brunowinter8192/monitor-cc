@@ -32,7 +32,7 @@ Fix (`bin/worker-cli` spawn case, iterative-dev `3767766`): resolve `$3` as REQU
 
 Hook `block_manual_worker_cleanup` blocks `git worktree remove ... .claude/worktrees/` unconditionally (no cwd-skip, no escape) — assumes every `.claude/worktrees/` is worker-cli-managed. For a MANUAL non-worker worktree (the prescribed cross-project target-worktree pattern), the clean removal command is blocked AND `worker-cli kill` can't help (not registered). Workaround NOT matched by the hook: `rm -rf <dir> && git worktree prune`. Low severity (cosmetic orphan); not fixed.
 
-## Status
+## Status (as of 2026-06-23)
 
 - worker-cli fix: committed iterative-dev main, verified, plugin-published (recap).
-- Hook 30: UNCHANGED — still blind to dynamic `$(pwd)` project_path. worker-cli is now the primary backstop; the hook remains a fast pre-filter for explicit-absolute-path cross-project spawns.
+- Hook 30: left unchanged — still blind to dynamic `$(pwd)` project_path. worker-cli was the primary backstop at this point; the hook remained a fast pre-filter for explicit-absolute-path cross-project spawns.

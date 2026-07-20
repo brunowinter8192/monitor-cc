@@ -1,41 +1,41 @@
-# Waste-Call Analyse + Phase F (Git-Wrapper) — Abgeschlossen 2026-04-22
+# Waste-Call Analysis + Phase F (Git Wrapper) — Closed 2026-04-22
 
-## Status Quo (IST)
+## State as of 2026-04-22
 
-Tool-Use Waste-Tracking läuft live im Monitor (Window 4, waste_pane). Ratio-basiert (input_chars / output_chars ≥ threshold). Threshold per Digit-Key 1-9 einstellbar.
+Tool-use waste tracking ran live in the Monitor (Window 4, waste_pane). Ratio-based (input_chars / output_chars ≥ threshold). Threshold adjustable via digit key 1-9.
 
-### Umgesetzte Maßnahmen (Bead 6ja, Sessions 2026-04-21 bis 2026-04-22)
+### Measures implemented (sessions 2026-04-21 to 2026-04-22)
 
-1. **Tool-Description Strip (Phase E):** Proxy strippt `tools[*].description` (top-level + `input_schema.properties[*].description`) zu `""`. Pre-strip Originals im JSONL geloggt. Display zeigt `[STRIPPED]` + dim-yellow Expand. Einsparung: ~15.8k chars pro Request (von ~19.7k strippbar, ~80% Reduktion).
+1. **Tool-description strip (Phase E):** Proxy strips `tools[*].description` (top-level + `input_schema.properties[*].description`) to `""`. Pre-strip originals logged to JSONL. Display shows `[STRIPPED]` + dim-yellow expand. Savings: ~15.8k chars per request (of ~19.7k strippable, ~80% reduction).
 
-2. **sys[3] Strip:** Proxy ersetzt `system[3].text` (claudeMd-Block) durch `"."`. Pre-strip Original geloggt. Display zeigt `[STRIPPED]` + dim-yellow. Einsparung: ~3k chars pro Request.
+2. **sys[3] strip:** Proxy replaces `system[3].text` (claudeMd block) with `"."`. Pre-strip original logged. Display shows `[STRIPPED]` + dim-yellow. Savings: ~3k chars per request.
 
-3. **MCP→CLI Migration:** 4 MCP-Tools (worker_spawn, worker_send, worker_merge, worker_status) zu CLI-Wrappern migriert. MCP-Server + venv gelöscht. Tool-Count im Payload: 11 → 7.
+3. **MCP→CLI migration:** 4 MCP tools (worker_spawn, worker_send, worker_merge, worker_status) migrated to CLI wrappers. MCP server + venv deleted. Tool count in payload: 11 → 7.
 
-4. **tool-use Skill Consolidation (Phase C):** `tool-usage.md` + `git-commit-workflow.md` + `worker-cli` Skill in einen konsolidierten `tool-use` SKILL.md zusammengeführt. 3 Quell-Dateien gelöscht.
+4. **tool-use skill consolidation (Phase C):** `tool-usage.md` + `git-commit-workflow.md` + `worker-cli` skill merged into one consolidated `tool-use` SKILL.md. 3 source files deleted.
 
-5. **`c` Shorthand (aus qfr):** `worker-cli` und `git-check` akzeptieren `c` als project_path Argument (resolves zu aktuellem Git-Root). Eliminiert wiederholte absolute Pfade.
+5. **`c` shorthand:** `worker-cli` and `git-check` accept `c` as project_path argument (resolves to current git root). Eliminates repeated absolute paths.
 
-6. **`worker-cli status --all` (aus qfr):** Snapshot aller aktiven Worker in einem Call statt N einzelne Status-Aufrufe.
+6. **`worker-cli status --all`:** Snapshot of all active workers in one call instead of N individual status calls.
 
-## Phase F — Git-Wrapper-Batterie (gmv, gst, gd, gadd, gp)
+## Phase F — Git Wrapper Battery (gmv, gst, gd, gadd, gp)
 
-### Evidenz
+### Evidence
 
-Waste-Report `dev/tool_use_analysis/20260422_session_waste_patterns.md` (6 Proxy-JSONLs, 562 tool_use Blöcke):
+Waste report `dev/tool_use_analysis/20260422_session_waste_patterns.md` (6 proxy JSONLs, 562 tool_use blocks):
 
-| Wrapper-Kandidat | Count | Total Waste Input | Bewertung |
+| Wrapper candidate | Count | Total waste input | Assessment |
 |---|---|---|---|
-| `gst` (git status + branch) | 3 | 626 chars | Marginal — 3 Aufrufe über 6 Sessions |
-| `gl` (git log --oneline) | opportunistisch | — | Kein messbarer Count |
-| `gmv`, `gd`, `gadd`, `gp` | 0-1 | <200 chars je | Keine Count-basierte Evidenz |
+| `gst` (git status + branch) | 3 | 626 chars | Marginal — 3 calls across 6 sessions |
+| `gl` (git log --oneline) | opportunistic | — | No measurable count |
+| `gmv`, `gd`, `gadd`, `gp` | 0-1 | <200 chars each | No count-based evidence |
 
-### Entscheidung
+### Decision
 
-**Closed — kein Handlungsbedarf.** Die großen Hebel (worker-cli c-shorthand, status --all, Tool-Description-Strip, MCP-Removal) sind umgesetzt. Die verbleibenden Git-Wrapper-Kandidaten haben Count=1-3 über 6 Sessions — kein systematischer Waste-Pattern. Falls sich organisch ein Pattern zeigt (z.B. gst taucht in 5+ Sessions als Top-Offender auf), kann in 5 Minuten ein Wrapper gebaut werden.
+**Closed — no action needed.** The high-leverage items (worker-cli c-shorthand, status --all, tool-description strip, MCP removal) were implemented. The remaining git-wrapper candidates had count=1-3 across 6 sessions — no systematic waste pattern. If a pattern emerges organically (e.g. gst appears in 5+ sessions as top offender), a wrapper can be built in 5 minutes.
 
-### Quellen
+### Sources
 
-- `dev/tool_use_analysis/20260422_session_waste_patterns.md` — Aggregierte Waste-Analyse
-- `dev/tool_use_analysis/extract_patterns.py` — Script für Pattern-Extraktion
-- `dev/ToolsSystemPrompts/_review.md` — Tool-Description Strip-Analyse (Phase B)
+- `dev/tool_use_analysis/20260422_session_waste_patterns.md` — aggregated waste analysis
+- `dev/tool_use_analysis/extract_patterns.py` — pattern-extraction script
+- `dev/ToolsSystemPrompts/_review.md` — tool-description strip analysis (Phase B)
