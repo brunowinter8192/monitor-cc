@@ -38,7 +38,7 @@ class FocusController:
     # Per-project auto-abort fires when all workers of a project are idle for >=5s while a
     # bg timer is running. A worker is 'working' when hook status is working OR worker-cli
     # wrote an orchestrator signal within ORCHESTRATOR_SIGNAL_BUFFER_SECS.
-    # See decisions/OldThemes/menubar_signal_grace/initial_design.md.
+    # See process-docs/menubar_signal_grace/initial_design.md.
     def tick(self, sessions, bg_by_project: dict, now: float) -> None:
         # Auto-focus: debounce idle main sessions (working→idle transition + 3s hold-off)
         if self.app._auto_focus:

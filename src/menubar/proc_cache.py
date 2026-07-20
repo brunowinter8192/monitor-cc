@@ -9,7 +9,7 @@ from typing import Dict, Optional, Tuple
 from .paths import HOOKS_FILE as _HOOK_STATE_FILE, ORCHESTRATOR_SIGNALS_FILE as _ORCHESTRATOR_SIGNALS_FILE
 
 _PROC_REFRESH_INTERVAL = 10.0   # seconds between ps/lsof cache rebuilds (expensive: ps -A + lsof)
-_HOOK_REFRESH_INTERVAL = 1.0    # seconds between hooks.json reads (cheap: 1KB JSON; MUST be < POLL_INTERVAL=1.5s for tick-freshness; see decisions/OldThemes/menubar_signal_grace/initial_design.md)
+_HOOK_REFRESH_INTERVAL = 1.0    # seconds between hooks.json reads (cheap: 1KB JSON; MUST be < POLL_INTERVAL=1.5s for tick-freshness; see process-docs/menubar_signal_grace/initial_design.md)
 _TMUX_REFRESH_INTERVAL = 3.0    # seconds between tmux list-sessions polls
 ORCHESTRATOR_SIGNAL_BUFFER_SECS = 60.0  # 60s = empirical floor for worker producing first JSONL write after signal (covers spawn-initial-thinking and long send-thinking phases). Prevents stale-JSONL demote from killing Opus bg timers during legitimate working state. Tradeoff: dead-worker wakeup delayed ~55s — acceptable vs orchestration poll cadence.
 _TASKS_BASE = Path(f"/tmp/claude-{os.getuid()}")

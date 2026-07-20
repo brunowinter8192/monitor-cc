@@ -7,9 +7,9 @@ Global CC safety hooks — PreToolUse scripts that intercept Bash, Edit, and Rea
 **Two hook classes:**
 
 - **Block hooks** (`block_*.py`) — exit 2 + stderr when detecting damage patterns (irreversible commands, context-flooding outputs). Damage-prevention only.
-- **Rewrite hooks** (`rewrite_*.py` plus the recently-upgraded `block_path_typo.py`) — exit 0 + JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command|file_path}` containing the corrected input. Pattern-class: a broken input has a unique computable corrected form. CC v2.1+ supports this for Bash + Read + Write under `acceptEdits` mode (Issue [#47853](https://github.com/anthropics/claude-code/issues/47853) OP). Edit-Matcher exhibits an anomaly under investigation — see `decisions/OldThemes/tool_use_safety/2026-05-22_block_path_typo_edit_no_fire.md`.
+- **Rewrite hooks** (`rewrite_*.py` plus the recently-upgraded `block_path_typo.py`) — exit 0 + JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.{command|file_path}` containing the corrected input. Pattern-class: a broken input has a unique computable corrected form. CC v2.1+ supports this for Bash + Read + Write under `acceptEdits` mode (Issue [#47853](https://github.com/anthropics/claude-code/issues/47853) OP). Edit-Matcher exhibits an anomaly under investigation — see `process-docs/tool_use_safety/2026-05-22_block_path_typo_edit_no_fire.md`.
 
-Design rationale and statistics: `decisions/OldThemes/tool_use_safety/2026-05-12_session_findings.md`. Hook API capabilities and auto-rewrite conversion: `decisions/OldThemes/tool_use_safety/2026-05-22_hook_api_auto_rewrite_works.md`.
+Design rationale and statistics: `process-docs/tool_use_safety/2026-05-12_session_findings.md`. Hook API capabilities and auto-rewrite conversion: `process-docs/tool_use_safety/2026-05-22_hook_api_auto_rewrite_works.md`.
 
 ## Public Interface
 
@@ -60,7 +60,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ### block_chained_sleep.py.disabled
 
-**Disabled 2026-05-24** — superseded by `rewrite_chained_sleep.py`. Renamed via `git mv` (file still in repo for history). Previously blocked all non-canonical `sleep N` chains. Replaced by a rewrite hook that strips trivial-sync sleeps (`echo`, `true` cmd_before) and passes load-bearing patterns through. See `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md` for audit rationale.
+**Disabled 2026-05-24** — superseded by `rewrite_chained_sleep.py`. Renamed via `git mv` (file still in repo for history). Previously blocked all non-canonical `sleep N` chains. Replaced by a rewrite hook that strips trivial-sync sleeps (`echo`, `true` cmd_before) and passes load-bearing patterns through. See `process-docs/hook_false_positives/sleep_pattern_audit_2026-05-24.md` for audit rationale.
 
 ---
 
@@ -577,7 +577,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 **Edit-specific:** `updatedInput` for Edit carries ALL 4 fields (`file_path`, `old_string`, `new_string`, `replace_all`) per Issue #47853 OP requirements — only `file_path` is rewritten, the other three are passed through unchanged from `tool_input`.
 
-**Edit-Matcher anomaly:** the hook is registered for Edit but evidence suggests it doesn't fire on Edit tool calls (bash + Read confirmed working in same session). See `decisions/OldThemes/tool_use_safety/2026-05-22_block_path_typo_edit_no_fire.md`. The auto-rewrite form is correct; the issue is on the CC-side firing pipeline for Edit.
+**Edit-Matcher anomaly:** the hook is registered for Edit but evidence suggests it doesn't fire on Edit tool calls (bash + Read confirmed working in same session). See `process-docs/tool_use_safety/2026-05-22_block_path_typo_edit_no_fire.md`. The auto-rewrite form is correct; the issue is on the CC-side firing pipeline for Edit.
 
 **Allowed (passthrough):** `.claude/` (correct spelling); `../` (valid parent traversal); quoted strings containing typo patterns (stripped before matching); parse errors (fail-open).
 
