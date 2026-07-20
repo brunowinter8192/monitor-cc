@@ -7,7 +7,8 @@ guarantee full version-robust transparency of CC→proxy→API.
 
 Current: one log/session = the FORWARDED (post-strip) full payload (`raw_payload`). The ORIGINAL
 (CC→proxy) is stored only as per-strip fragments → CC→proxy is NOT fully reconstructable; there are
-gaps (git_status, model_override, blocked_tool_refs — see 02_proxy_modification_completeness.md).
+gaps (git_status, model_override, blocked_tool_refs — see the companion proxy-modification-completeness
+entry in this area).
 Goal: full transparency of BOTH original and forwarded; the difference = our stripping/injection.
 
 ## Architecture (LOCKED)
@@ -42,12 +43,12 @@ Goal: full transparency of BOTH original and forwarded; the difference = our str
 
 ## Storage
 
-≈ today (Log 1 full ≈ today's forwarded-full) + a small Log 2. "Etwas mehr", NOT double.
+≈ today (Log 1 full ≈ today's forwarded-full) + a small Log 2. "A bit more", NOT double.
 
 ## Janitor impact
 
 - `_LOG_REGISTRY` (src/log_janitor.py): the 2 api_requests categories (opus, worker) → 4
-  (opus-original, opus-delta, worker-original, worker-delta). Retention `count-30` UNCHANGED ("30er-Logik").
+  (opus-original, opus-delta, worker-original, worker-delta). Retention `count-30` UNCHANGED (the "keep 30" logic).
 - `count-30` enforcement also lives in the proxy-start bash (`janitor_trigger="proxy-start-bash"`), NOT
   in log_janitor.py itself — BOTH must be updated.
 
