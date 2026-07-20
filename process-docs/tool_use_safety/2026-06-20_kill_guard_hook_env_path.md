@@ -8,7 +8,7 @@ The kill-while-working guard blocks `worker-cli kill <name>` when the worker is 
 
 ## The wrong turn — "reload" hypothesis (stated as proof, then refuted)
 
-First conclusion, wrongly presented as "eindeutig bewiesen": *CC loads hooks at session start; the kill-guard was added to `settings.json` mid-session by the post-merge installer, so it isn't active in the running session.* This was inferred only from "an EXISTING hook (`block_dangerous_kill`) fires, the new one doesn't" — a hypothesis dressed as a conclusion.
+First conclusion, wrongly presented as "clearly proven": *CC loads hooks at session start; the kill-guard was added to `settings.json` mid-session by the post-merge installer, so it isn't active in the running session.* This was inferred only from "an EXISTING hook (`block_dangerous_kill`) fires, the new one doesn't" — a hypothesis dressed as a conclusion.
 
 **Refuted** by building `block_manual_worker_cleanup` (also added mid-session) and testing it immediately → it FIRED on the very next command. CC loads new hooks immediately; mid-session additions are active with no restart. (`src/hooks/DOCS.md` Gotchas already stated this: "Hooks are active immediately after settings.json is written; no CC restart needed.") Therefore the kill-guard WAS loaded for the failed kills → it had a real bug, not a reload problem.
 
@@ -49,5 +49,5 @@ Fixed → working worker (kt3) → `worker-cli kill kt3` **BLOCKED**; idle worke
 
 ## Cross-references
 
-- `decisions/pipe07_safety_hooks.md` — Hook 20 (Hook-env PATH gotcha), Hook 31 (`block_manual_worker_cleanup`, the differential probe)
+- The proxy-cache pipeline's safety-hooks current-state doc — Hook 20 (hook-env PATH gotcha), Hook 31 (`block_manual_worker_cleanup`, the differential probe)
 - `src/hooks/DOCS.md` — Gotchas: subprocess hooks resolve plugin CLIs by absolute path

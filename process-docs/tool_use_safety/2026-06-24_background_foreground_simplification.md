@@ -1,6 +1,6 @@
 # Background/Foreground Simplification — force-all-foreground, remove polling + force-bg hooks (2026-06-24)
 
-Resolves the open question in `2026-06-24_block_log_read_too_broad.md` (narrow vs kill `block_log_read` → **killed**, comprehensively) and converges the foreground-forcing direction left Pending in `2026-06-23_polling_foreground_structural.md`. Status: CONVERGED + SHIPPED (Stage 1 merged to dev `87fb096`, live-verified).
+Resolves the open question in the block-log-read-too-broad entry in this area (narrow vs kill `block_log_read` → **killed**, comprehensively) and converges the foreground-forcing direction left Pending in the polling-foreground-structural entry in this area. Status: CONVERGED + SHIPPED (Stage 1 merged to dev `87fb096`, live-verified).
 
 ## Decision — two-layer model, everything else removed
 
@@ -13,7 +13,7 @@ Polling-prevention + force-to-background hooks DELETED — redundant once foregr
 
 ## Evidence that closed the structural blocker
 
-The prerequisite left open in `2026-06-23_polling_foreground_structural.md`: does CC's auto-background-after-foreground-timeout emit the same ack `strip_bg_launch_ack` catches? **Confirmed YES** (user screenshot, trading session, 2026-06-24): `rag-cli index --collection trading-reference` ran FOREGROUND (`timeout 600000`, no `run_in_background`); after the 10-min foreground timeout CC auto-backgrounded it and emitted `Command running in background with ID: bu15k7bdy. Output is being written to: /private/tmp/claude-501/…` — the exact ack the anchor matches. → Long jobs (index/scrape) ARE covered by the injection model: foreground → CC auto-bg → "go idle" inject → idle → "background done" inject on completion. The earlier "CC kills foreground at 10min" retraction stands; the real behavior (auto-background, emits ack) is what makes the model work.
+The prerequisite left open in the polling-foreground-structural entry in this area: does CC's auto-background-after-foreground-timeout emit the same ack `strip_bg_launch_ack` catches? **Confirmed YES** (user screenshot, trading session, 2026-06-24): `rag-cli index --collection trading-reference` ran FOREGROUND (`timeout 600000`, no `run_in_background`); after the 10-min foreground timeout CC auto-backgrounded it and emitted `Command running in background with ID: bu15k7bdy. Output is being written to: /private/tmp/claude-501/…` — the exact ack the anchor matches. → Long jobs (index/scrape) ARE covered by the injection model: foreground → CC auto-bg → "go idle" inject → idle → "background done" inject on completion. The earlier "CC kills foreground at 10min" retraction stands; the real behavior (auto-background, emits ack) is what makes the model work.
 
 ## What shipped (Stage 1)
 
