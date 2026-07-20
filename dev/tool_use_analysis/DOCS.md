@@ -83,6 +83,19 @@ Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `
 
 **Preceding text extraction:** walks the `parentUuid` chain from the tool_use event back to the nearest preceding assistant text block — gives context for what Opus was trying to accomplish.
 
+## rs_truncation_preserve_replay.py
+
+**Purpose:** Replay-verifies the `_apply_role_system_strip` preserve-guard (`src/proxy/message_passes.py`) — asserts every logged `role='system'` message whose content starts with `[Truncated:` (Read-truncation notice) passes through the pass UNCHANGED, while all other `role='system'` noise (deferred-tools, date-changed, etc.) is still reduced to `"."`.
+
+**Input:** One dual-log `_original.jsonl` path (positional, optional — defaults to `src/logs/dual_log/api_requests_opus_trading_1784579551_original.jsonl`, worktree copy if present else the main-checkout absolute path). Payload key: `payload.messages`.
+
+**Output:** Console PASS/FAIL one-liner (`truncation_preserved=N noise_stripped=M failures=K`) + verbose per-failure table to `dev/tool_use_analysis/md/rs_truncation_preserve_replay_detail.md`.
+
+**Usage:**
+```bash
+./venv/bin/python dev/tool_use_analysis/rs_truncation_preserve_replay.py
+```
+
 ## extract_transcript.py
 
 **Purpose:** Chronological tool_use/tool_result transcript from a proxy-log JSONL snapshot — renders WHAT calls a session made, in order, to trace the workflow and spot redundant call sequences (10 calls where 2 would do). No waste/ratio scoring — a plain timeline dump. Marks `(ERROR)` on tool_results with `is_error` (surfaces skill-load / blocked-call failures directly). Built 2026-06-01 to analyse a capture-worker run.
