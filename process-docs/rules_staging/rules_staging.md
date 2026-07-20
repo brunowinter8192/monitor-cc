@@ -2,7 +2,7 @@
 
 **Purpose:** Holding area for proposed `~/.claude/shared-rules` changes that arose from observed friction but are NOT yet hardened into rules. Rule changes are expensive cross-session infra — codify only after a failure mode RECURS. Each entry: trigger → proposed rule text → target file → status. When a trigger recurs, promote to the actual rule; if it never recurs, drop.
 
-Replaces the old `~/.claude/shared-rules/_staging/` date-file mechanism (deleted 2026-06-01, "fast nur bs drin"). Staging now lives here in Monitor_CC and is RAG-indexed via `Monitor_CC-docs`.
+Replaces the old `~/.claude/shared-rules/_staging/` date-file mechanism (deleted 2026-06-01, "almost nothing but junk in it"). Staging now lives here in Monitor_CC and is RAG-indexed via `Monitor_CC-docs`.
 
 ---
 
@@ -19,7 +19,7 @@ Replaces the old `~/.claude/shared-rules/_staging/` date-file mechanism (deleted
 
 ## 2. Workers do no external research
 
-**Trigger:** A worker was directed to do GitHub research (had to activate github-search). External research via workers "geht immer schief" — worker lacks skill context, burns budget, result unreliable.
+**Trigger:** A worker was directed to do GitHub research (had to activate github-search). External research via workers "always goes wrong" — worker lacks skill context, burns budget, result unreliable.
 
 **Proposed rule** (target: `opus/workers-*.md`):
 > Workers never perform external research. All `gh-cli`, `rag-cli`, web, and forum lookups are done by Opus only. Worker prompts MUST NOT delegate any external-source research; Opus gathers the external evidence and passes findings into the prompt.
