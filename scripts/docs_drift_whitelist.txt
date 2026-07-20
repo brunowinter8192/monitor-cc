@@ -116,7 +116,7 @@ FULL
 SUCCEEDS
 KILL
 
-# --- German ALL_CAPS prose words (decisions/ documents mix DE and EN) ---
+# --- German ALL_CAPS prose words (process-docs/ documents mix DE and EN) ---
 BEIDE
 ALLE
 OHNE

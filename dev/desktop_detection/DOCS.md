@@ -6,7 +6,7 @@
 
 **Manifestation:** No production impact yet (Menubar shows slot-based order, not spatial order). Detection pipeline missing — this investigation builds it.
 
-**Production code status:** No changes yet. Detection probe only. See `decisions/OldThemes/desktop_allocation/` for design and iteration history.
+**Production code status:** No changes yet. Detection probe only. See `process-docs/desktop_allocation/` for design and iteration history.
 
 ## Investigation
 
@@ -89,7 +89,7 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 
 **Output:** JSON report in `json/<tag>_<YYYYMMDD_HHMMSS>.json` with context_diagnostics, tcc_state, detection_result, raw_windows.
 
-**Key finding:** `kCGWindowOwnerPID`, `kCGWindowNumber`, `CGSCopySpacesForWindows` work in ALL contexts. `kCGWindowName` returns null without Screen Recording. See `decisions/OldThemes/desktop_allocation/B2_context_comparison_probe.md`.
+**Key finding:** `kCGWindowOwnerPID`, `kCGWindowNumber`, `CGSCopySpacesForWindows` work in ALL contexts. `kCGWindowName` returns null without Screen Recording. See `process-docs/desktop_allocation/B2_context_comparison_probe.md`.
 
 ### `02_bundle_stub.app/`
 
@@ -114,7 +114,7 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 
 **Output:** JSON report in `json/<tag>_<YYYYMMDD_HHMMSS>.json` with context_diagnostics, tcc_state, all_field_keys_observed, field_availability_summary, ghostty_windows_detailed, ghostty_as_window_properties.
 
-**Key findings:** `kCGWindowBounds` fully populated (280/280) in all three contexts including launchd — TCC-unblocked. AS returns `-1728` for `bounds of window N` in all contexts regardless of Screen Recording status — not a TCC issue, simply not implemented in Ghostty's AS dictionary. `kCGWindowBackingLocationVideoMemory` not returned by the API on macOS 15.7.7. See `decisions/OldThemes/desktop_allocation/B3_field_availability_probe.md`.
+**Key findings:** `kCGWindowBounds` fully populated (280/280) in all three contexts including launchd — TCC-unblocked. AS returns `-1728` for `bounds of window N` in all contexts regardless of Screen Recording status — not a TCC issue, simply not implemented in Ghostty's AS dictionary. `kCGWindowBackingLocationVideoMemory` not returned by the API on macOS 15.7.7. See `process-docs/desktop_allocation/B3_field_availability_probe.md`.
 
 ### `03_bundle_stub.app/`
 
@@ -140,7 +140,7 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 - `_ghostty_wids_all()` filters `kCGWindowName != None` — excludes Ghostty tab-bar strips (33px height, name=None) which cannot be moved between spaces.
 - Two new CFUNCTYPEs: `_FT_0vv` (void, self+sel) for `performWithWMBridgeDelegate`; `_FT_vvvu64` (id, self, sel, NSArray*, uint64) for `initWithWindows:spaceID:`.
 - `performWithWMBridgeDelegate` is inherited from parent `SLSAsynchronousBridgedWindowManagementOperation` (not defined directly on the child class on 26.5).
-- On macOS 26.5: **FAIL** — ObjC chain executes without crash but window does not move. See `decisions/OldThemes/desktop_allocation/G2_space_move_probe.md` for hypotheses.
+- On macOS 26.5: **FAIL** — ObjC chain executes without crash but window does not move. See `process-docs/desktop_allocation/G2_space_move_probe.md` for hypotheses.
 
 ### `06_move_sweep_probe.py` (435 LOC)
 
@@ -174,7 +174,7 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 - All 4 symbols resolve (no MISSING); all 4 calls execute silently without crash.
 - **ALL 4 primitives are no-ops** — `in_after=True` for all, no window left the active Space.
 - Combined with G2 (ObjC `SLSBridgedMoveWindowsToManagedSpaceOperation`): 5/5 move APIs tested on 26.5, 0/5 functional.
-- See `decisions/OldThemes/desktop_allocation/G4_move_sweep_probe.md`.
+- See `process-docs/desktop_allocation/G4_move_sweep_probe.md`.
 
 ### `05_window_detection_probe.py` (527 LOC)
 
@@ -211,4 +211,4 @@ cd /Users/brunowinter2000/Documents/ai/Monitor_CC
 - CotEditor Method A+B (pass 2 fixed): **WORKS** 3/3 — token in filename → kCGWindowName reliable; warm-launch prevents session restore
 - Ghostty Method A: **FAILS** 0/6 — `open --args --command` not honored; Ghostty starts default shell → CWD title
 - Ghostty Method B: **FAILS** 0/6 — probe terminal stays frontmost among Ghostty windows
-- See `decisions/OldThemes/desktop_allocation/G3_window_detection_probe.md` for full analysis.
+- See `process-docs/desktop_allocation/G3_window_detection_probe.md` for full analysis.

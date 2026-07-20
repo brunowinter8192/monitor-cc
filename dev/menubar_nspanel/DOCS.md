@@ -4,8 +4,8 @@
 
 Probe suite for the NSPanel sticky-toggle refactor of the menubar app. Replaces the `NSMenu`-based dropdown (which auto-dismisses on any outside click via `NSEventTrackingRunLoopMode`) with a persistent `NSPanel` that only closes on an explicit Cmd+L toggle or bar-icon click.
 
-Background and design rationale: `decisions/OldThemes/menubar_nspanel/A1.md`.
-Build narrative: `decisions/OldThemes/menubar_nspanel/A2.md`.
+Background and design rationale: `process-docs/menubar_nspanel/A1.md`.
+Build narrative: `process-docs/menubar_nspanel/A2.md`.
 
 ## Scripts
 
