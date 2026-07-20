@@ -52,7 +52,7 @@ Fix would require a follow-up to `strip_vocab.py`: register the two new mod name
 
 ---
 
-## Iteration 3 — Plain Text (current; 903c605)
+## Iteration 3 — Plain Text (903c605)
 
 ### What was built
 
@@ -89,9 +89,9 @@ Parallel to Iteration 3 (same session): `_notify_opus_workers_idle` added to `sr
 
 User decision: **proxy only**. The watchdog approach was architecturally invasive — it types unsolicited text into the Opus pane as a side-effect of the timer-kill path. The proxy replace-in-strip approach (Iteration 3) achieves the same outcome non-invasively: CC's own `strip_bg_completed.py` replaces the kill-notification with `worker idle\n` before Opus sees it, giving Opus the wake-up context in the normal message stream without any out-of-band pane injection.
 
-### Final architecture
+### Architecture as of Iteration 4 (2026-05-22)
 
-Production wake-up path: `strip_bg_completed.py` (`replaced_bg_completed_text`) + `rules.py` `_apply_first_pass` (`replaced_task_notification`). Auto-abort (`_abort_bg_sleep_timers`) remains in the menubar tick loop — it is the trigger that causes the timer to terminate early, which in turn causes CC to deliver the notification that the proxy replaces. The two halves are complementary: menubar kills the timer, proxy delivers the signal.
+Wake-up path at this point: `strip_bg_completed.py` (`replaced_bg_completed_text`) + `rules.py` `_apply_first_pass` (`replaced_task_notification`). Auto-abort (`_abort_bg_sleep_timers`) stayed in the menubar tick loop — it is the trigger that causes the timer to terminate early, which in turn causes CC to deliver the notification that the proxy replaces. The two halves were complementary: menubar kills the timer, proxy delivers the signal.
 
 ---
 
@@ -136,9 +136,8 @@ Two bugs discovered via proxy log inspection during a session debugging "Punkt i
 3. **Dedup:** `_dedup_wakeup_blocks` final pass guarantees ≤ 1 wake-up block per user-message regardless of how many injectors fired.
 4. **Display invariant:** wake-up text never enters `stripped_msg_removed`; proxy-pane renders it as normal content.
 
-### Quellen
+### Sources
 
-- decisions/pipe05_proxy_cache.md (IST reflects `fcfe6c1`).
 - src/proxy/rules.py `_dedup_wakeup_blocks`, `_apply_first_pass`.
 - src/proxy/payload_helpers.py `_strip_task_notification_tags` line 167 (the `"."` placeholder source).
 - src/proxy/strip_bg_completed.py (BGK path, unchanged).

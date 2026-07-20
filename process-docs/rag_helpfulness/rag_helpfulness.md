@@ -14,7 +14,7 @@ Gut feeling from production sessions: valuable for status-quo/decision/DOCS ques
 
 **Queries read like reading-bead-comments.** Queries often mirror the current state of knowledge instead of asking open questions. That leads to confirmation bias in retrieval: what's found is what's already known, not what's still missing. A more useful query strategy would be "what does the index know about X that I don't know yet?" — but that's hard to phrase as a query.
 
-**Consequence:** RAG-First is clearly valuable for decisions/DOCS/architecture questions. For bug diagnosis and investigative questions the added value is more questionable — there, direct `grep` / `Read` dominates because the relevant information sits in code lines, not in prose.
+**Consequence:** RAG-First is clearly valuable for decision-, DOCS-, and architecture-type questions. For bug diagnosis and investigative questions the added value is more questionable — there, direct `grep` / `Read` dominates because the relevant information sits in code lines, not in prose.
 
 ## Eval Plan
 
