@@ -1,4 +1,4 @@
-# RAG Pane — update_docs Progress Reporting (Variante A)
+# RAG Pane — update_docs Progress Reporting (Variant A)
 
 2026-06-09. The menubar RAG pane (`RagController`, reads `~/.rag-locks/rag.lock`) is a LIVE
 indexing-progress indicator. During `rag-cli update_docs` it showed `unknown: 0/0` — `sync.py` never
@@ -6,9 +6,9 @@ called `lock.update_progress`, and update_docs has no single `args.collection`.
 
 ## Decision
 
-**Variante A chosen** — accurate live done/total during any run (incl. update_docs). **Variante B
-rejected** — a persistent "N docs indexed per collection" count in the idle state. User: "wir
-überladen das nicht." The pane stays a live indicator; when nothing runs it shows "no indexing
+**Variant A chosen** — accurate live done/total during any run (incl. update_docs). **Variant B
+rejected** — a persistent "N docs indexed per collection" count in the idle state. User: "let's not
+overload it." The pane stays a live indicator; when nothing runs it shows "no indexing
 currently running".
 
 ## Mechanism (implemented)
@@ -24,5 +24,4 @@ currently running".
 ## Status
 
 Implemented + LIVE-VERIFIED — the lock carried real `done/total/current_document/collection` during a
-real update_docs run (1→4 of 4, collection `monitor-cc-docs`); menubar rendering sample-tested. IST:
-`decisions/menubar_rag_tab.md`, rag-cli `decisions/infra02_lock_and_status.md`.
+real update_docs run (1→4 of 4, collection `monitor-cc-docs`); menubar rendering sample-tested.

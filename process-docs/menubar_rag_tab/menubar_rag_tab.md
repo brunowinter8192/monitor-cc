@@ -1,6 +1,6 @@
 # menubar_rag_tab
 
-## Status Quo (IST)
+## State as of the post-consolidation fix
 
 RAG tab is the second panel in the four-tab ring `Sessions · RAG · Beads · Queue`. Implemented as `RagController` in `src/menubar/rag_controller.py`, instantiated as `app.rag` in `CCMenuBarApp.__init__`.
 
@@ -34,7 +34,7 @@ RAG tab is the second panel in the four-tab ring `Sessions · RAG · Beads · Qu
 - tracker: `Sessions · RAG · [Beads] · Queue     Auto-Jump: {state}`
 - queue: `Sessions · RAG · Beads · [Queue]     Auto-Jump: {state}`
 
-## Evidenz
+## Evidence
 
 **Live lock file schema** (post-two-level-progress, rag-cli `index` command):
 ```json
@@ -67,14 +67,14 @@ RAG tab is the second panel in the four-tab ring `Sessions · RAG · Beads · Qu
 
 **PID staleness:** The RAG repo's own staleness check uses `os.kill(pid, 0)` with `ProcessLookupError → dead`. Mirrored exactly here.
 
-## Recommendation (SOLL)
+## Recommendation (target state)
 
 Keep — feature as corrected, no further eval pending.
 
-## Offene Fragen
+## Open Questions
 
 None.
 
-## Quellen
+## Sources
 
 RAG lock file schema: observed from live indexing run (`gh_reference` collection, 307 documents).
