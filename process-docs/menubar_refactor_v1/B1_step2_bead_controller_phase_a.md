@@ -121,7 +121,7 @@ grep -n "_bead_" src/menubar/app.py   # should show only: self.bead._bead_query_
 ## Resume Instructions (next session)
 
 1. Spawn fresh worker `menubar-refactor-step2` (or reuse if alive) with project path `/Users/brunowinter2000/Documents/ai/Monitor_CC`
-2. Worker prompt: "Read `decisions/OldThemes/menubar_refactor_v1/B1_step2_bead_controller_phase_a.md` and `A1_architecture_decision.md`. Implement Step 2 per the B1 Phase A plan — it is pre-approved by Opus, skip Phase A re-derivation, go directly to implementation. Run the 4 smoke tests. Commit with message `refactor(menubar): introduce BeadController (Step 2/6)`. Output completion checklist + SHA."
+2. Worker prompt: "Read this Phase A plan and the architecture decision doc for this refactor. Implement Step 2 per the B1 Phase A plan — it is pre-approved by Opus, skip Phase A re-derivation, go directly to implementation. Run the 4 smoke tests. Commit with message `refactor(menubar): introduce BeadController (Step 2/6)`. Output completion checklist + SHA."
 3. After commit + merge: continue with Step 3 (QueueController, 11 attrs already pre-mapped in Step 1's Phase A response — see session log)
 
 ## Remaining Steps (3 → 6)

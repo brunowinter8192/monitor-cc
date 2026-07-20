@@ -43,6 +43,4 @@ Step 6/6 complete. All 6 controllers extracted:
 5. `FocusController` (B4b)
 6. `HotkeyController` (B5, this step)
 
-`app.py` is now 495 LOC (down from ~700+ at refactor start). The composition refactor declared in `A1_architecture_decision.md` is fully implemented. Remaining LOC ceiling violation in `app.py` is deferred (residual glue code: `_PanelController`, lifecycle functions, blink/settings helpers — no further concern extraction warranted without overcoupling).
-
-OldThemes trail closed.
+`app.py` is now 495 LOC (down from ~700+ at refactor start). The composition refactor declared in the Phase A architecture decision is fully implemented. Remaining LOC ceiling violation in `app.py` is deferred (residual glue code: `_PanelController`, lifecycle functions, blink/settings helpers — no further concern extraction warranted without overcoupling).
