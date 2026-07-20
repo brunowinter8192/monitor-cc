@@ -28,6 +28,10 @@ from .strip_git_lock import _strip_git_lock_advice, _GIT_LOCK_MARKER
 from .strip_bd_noise import _strip_bd_noise, _BD_NOISE_MARKERS
 from .rule_ops import _ops_from_content_change
 
+# role=system messages starting with this marker are Read-truncation notices (CC 2.1.205+)
+# and must be preserved — the agent needs to know a Read was partial, not silently nuked.
+_TRUNCATION_NOTICE_MARKER = "[Truncated:"
+
 # FUNCTIONS
 
 # Role=system pass — strips entire content of every role='system' message by replacing with '.' — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
@@ -44,6 +48,9 @@ def _apply_role_system_strip(messages: list) -> tuple:
             continue
         old_content = msg.get("content", "")
         if not old_content or old_content == ".":
+            result.append(msg)
+            continue
+        if isinstance(old_content, str) and old_content.startswith(_TRUNCATION_NOTICE_MARKER):
             result.append(msg)
             continue
         result.append({**msg, "content": "."})
