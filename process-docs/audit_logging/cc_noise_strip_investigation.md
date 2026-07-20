@@ -1,65 +1,63 @@
 # CC Noise Prefix Strip — Tool Error Display Investigation (2026-05-24)
 
-**Topic:** Proxy-Display-Layer Stripping von CC-added Noise-Prefixen aus
-Tool-Error-Messages. Initial bekannter Fall: hook-block Errors mit
-`PreToolUse:<Tool> hook error: [python3 <full-path>]: ` Wrapper. Ziel: generalisieren
-auf andere CC Error-Class-Patterns die ähnliches Noise produzieren.
+**Topic:** proxy-display-layer stripping of CC-added noise prefixes from tool-error
+messages. Initial known case: hook-block errors with a
+`PreToolUse:<Tool> hook error: [python3 <full-path>]: ` wrapper. Goal: generalize to
+other CC error-class patterns producing similar noise.
 
-**Status:** ✅ CONCLUDED 2026-05-30 — empirical audit complete. No new strippable patterns.
-`strip_hook_prefix.py` is sufficient. See Evidenz section below.
+**Status:** CONCLUDED 2026-05-30 — empirical audit complete. No new strippable patterns.
+`strip_hook_prefix.py` is sufficient. See Evidence section below.
 
 ---
 
 ## Background
 
-CC wrappt diverse Tool-Error-Messages mit Metadata-Prefixen bevor sie im Agent's
-`tool_result` ankommen. Einige dieser Prefixe sind reine Display-Noise die dem
-Agent beim Debugging nicht helfen. Andere könnten Kontext enthalten der nicht
-weggestrippt werden darf.
+CC wraps various tool-error messages with metadata prefixes before they reach the
+agent's `tool_result`. Some of these prefixes are pure display noise that doesn't help
+the agent debug. Others may contain context that must not be stripped.
 
-**Confirmed noise case:** Hook-Block-Errors bekommen `PreToolUse:<Tool> hook error:
-[python3 <full-path>]: ` prepended zu dem was der Hook auf stderr emittiert. Live
-2026-05-24 demonstriert in `src/logs/hook_firing.jsonl` plus parallel im
-Monitor-Display. Der vollständige Path-Prefix ist visuelles Rauschen — der Hook-Name
-ist redundant verfügbar aus dem Hook-Log, der Filesystem-Path ist nie aktionable
-Info. **Diese eine Pattern-Klasse ist sicher strippbar.**
+**Confirmed noise case:** hook-block errors get `PreToolUse:<Tool> hook error:
+[python3 <full-path>]: ` prepended to what the hook emits on stderr. Demonstrated live
+on 2026-05-24 in `src/logs/hook_firing.jsonl` and in parallel in the Monitor display.
+The full path prefix is visual noise — the hook name is redundantly available from the
+hook log, the filesystem path is never actionable info. **This one pattern class is
+safely strippable.**
 
-**Suspected aber unconfirmed:** weitere CC-added wrapper-Prefixe für andere
-Error-Klassen (MCP-tool-error, parallel-cancel, validation-error). TBD via die
-Investigation unten.
+**Suspected but unconfirmed at the time:** further CC-added wrapper prefixes for other
+error classes (MCP-tool-error, parallel-cancel, validation-error) — resolved via the
+investigation below.
 
-## Investigation Plan (sobald Daten da sind)
+## Investigation Plan (as scoped at the time)
 
-1. **Pattern-Discovery:** Grep über `src/logs/tool_errors.jsonl` Cluster nach
-   distinct Error-Prefix-Shapes. Identifikation der CC-wrapper-Patterns vs
-   agent-relevant content.
-2. **Pro Pattern decide:** pure Noise (strippbar) vs context-bearing (keep). Bias
-   conservativ — im Zweifel KEEP.
-3. **Implementation:** Strip-Logic in der Proxy-Display-Komponente, NICHT in
-   `tool_errors.jsonl` selbst. Audit-Log behält everything; nur Display zeigt
-   gecleante Version.
+1. **Pattern discovery:** grep `src/logs/tool_errors.jsonl` clusters for distinct
+   error-prefix shapes. Identify CC-wrapper patterns vs agent-relevant content.
+2. **Per-pattern decision:** pure noise (strippable) vs context-bearing (keep). Bias
+   conservative — when in doubt, KEEP.
+3. **Implementation:** strip logic in the proxy-display component, NOT in
+   `tool_errors.jsonl` itself. The audit log keeps everything; only the display shows
+   the cleaned version.
 
 ## Implementation Constraints
 
-- Strip MUST sein eindeutig — Pattern muss CC-wrapper-spezifisch sein, keine
-  Collision-Risk mit agent-emitted content.
-- Kein Strippen von Error-Content den der Agent fürs Debugging braucht.
-- Strip happens at proxy display formatting layer, NICHT in `tool_errors.jsonl`
-  itself (Audit-Log behält Originale für künftige Re-Analyse).
-- Wenn ein Pattern unsicher → in OldThemes-Update dokumentieren, NICHT strippen.
+- The strip must be unambiguous — the pattern must be CC-wrapper-specific, no collision
+  risk with agent-emitted content.
+- No stripping of error content the agent needs for debugging.
+- Strip happens at the proxy display formatting layer, NOT in `tool_errors.jsonl` itself
+  (the audit log keeps originals for future re-analysis).
+- An uncertain pattern is documented, not stripped.
 
 ## Data-Source Bootstrap
 
-Aktueller State: `tool_errors.jsonl` startete 2026-05-24 ~23:32 UTC nach Monitor-Restart.
-1-2 Wochen Akkumulation = ~2026-06-07. Bis dahin kein Action.
+At the time: `tool_errors.jsonl` started 2026-05-24 ~23:32 UTC after a Monitor restart.
+1-2 weeks of accumulation = ~2026-06-07 target for the audit.
 
-Cross-Reference: `hook_firing.jsonl` enthält bereits hook-originated Events; für
-die Hook-Prefix-Strip-Frage haben wir damit schon Sample-Daten. Andere CC-Noise-Klassen
-brauchen aber Daten aus `tool_errors.jsonl` die heute noch dünn sind.
+`hook_firing.jsonl` already contained hook-originated events, giving sample data for the
+hook-prefix-strip question early; other CC-noise classes needed data from
+`tool_errors.jsonl` which was still thin at the time.
 
 ---
 
-## Evidenz — Empirical Audit 2026-05-30
+## Evidence — Empirical Audit 2026-05-30
 
 **Script:** `dev/tool_use_errors/A_error_cluster_audit.py`
 **Report:** `dev/tool_use_errors/reports/2026-05-30_error_cluster_audit.md`
@@ -99,8 +97,5 @@ brauchen aber Daten aus `tool_errors.jsonl` die heute noch dünn sind.
 
 ## Sources
 
-- `src/logs/tool_errors.jsonl` (Primärquelle für die Pattern-Discovery)
-- `src/logs/hook_firing.jsonl` (Cross-Reference für hook-originated Errors)
-- `decisions/OldThemes/audit_logging/architecture.md` (Audit-Log-Architektur)
-- `decisions/OldThemes/tool_use_safety/2026-05-24_hook_classification_audit.md`
-  (Hook-Inventar das die CC-wrapper-Surface beeinflusst)
+- `src/logs/tool_errors.jsonl` (primary source for pattern discovery)
+- `src/logs/hook_firing.jsonl` (cross-reference for hook-originated errors)

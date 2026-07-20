@@ -1,23 +1,20 @@
 # Data-Dependent Re-Evaluations — Consolidated Tracker (2026-05-25)
 
-**Topic:** Drei separate Hook-/Strip-Themen die alle auf Akkumulation von Live-Daten
-in `src/logs/hook_firing.jsonl` und/oder `src/logs/tool_errors.jsonl` warten bevor
-Folge-Entscheidungen sinnvoll sind. Konsolidiert in Bead `Monitor_CC-mjkt` weil die
-gemeinsame Trigger-Bedingung "log accumulation reicht für empirische Auswertung"
-bei allen drei identisch ist.
+**Topic:** as of 2026-05-25, three separate hook/strip topics all waited on accumulation of
+live data in `src/logs/hook_firing.jsonl` and/or `src/logs/tool_errors.jsonl` before
+follow-up decisions were meaningful. Consolidated into one tracker because the shared
+trigger condition — "log accumulation is sufficient for empirical evaluation" — was
+identical across all three.
 
 ---
 
-## Re-Eval 1 — CC Noise Prefix Strip (Original mjkt-Scope)
+## Re-Eval 1 — CC Noise Prefix Strip
 
-**Status: ✅ COMPLETE 2026-05-30** — ran early (5 days of data; ~1 week accumulated).
+**Status: COMPLETE 2026-05-30** — ran early (5 days of data; ~1 week accumulated).
 
-**Source:** `decisions/OldThemes/audit_logging/cc_noise_strip_investigation.md`
-
-**Result:** No new strippable patterns. `strip_hook_prefix.py` is sufficient.
+**Result:** No new strippable patterns found. `strip_hook_prefix.py` is sufficient.
 495 entries clustered across 6 buckets; all non-hook-prefixed content is agent-relevant (KEEP).
 Cross-check confirmed strip reaches Anthropic (2,970 requests in 65 available proxy logs).
-Full findings in `cc_noise_strip_investigation.md` Evidenz section.
 
 **Script:** `dev/tool_use_errors/A_error_cluster_audit.py`
 **Report:** `dev/tool_use_errors/reports/2026-05-30_error_cluster_audit.md`
@@ -26,84 +23,77 @@ Full findings in `cc_noise_strip_investigation.md` Evidenz section.
 
 ## Re-Eval 2 — rewrite_chained_sleep Audit
 
-**Source:** `decisions/OldThemes/tool_use_safety/2026-05-24_hook_classification_audit.md`
-(Verdict: MONITOR — jung, Daten fehlen)
+**Verdict at time of writing:** MONITOR — data too young to decide.
 
-**Frage:** War die narrow trivial-sync Allow-Liste (`echo`, `true` als cmd_before)
-das richtige Maß für den Hook? Gibt es load-bearing Patterns die fälschlich
-gestrippt werden, oder trivial-sync Patterns die fälschlich pass-through bleiben?
+**Question:** was the narrow trivial-sync allow-list (`echo`, `true` as `cmd_before`)
+the right scope for the hook? Are there load-bearing patterns wrongly stripped, or
+trivial-sync patterns wrongly passed through?
 
-**Datenquelle:** `src/logs/hook_firing.jsonl` filter auf
+**Data source:** `src/logs/hook_firing.jsonl` filtered on
 `hook=rewrite_chained_sleep AND decision=rewrite`.
 
-**Trigger-Datum:** ab ~2026-06-01 (≥ 7 Tage Live-Daten).
+**Trigger date:** planned from ~2026-06-01 (≥ 7 days of live data).
 
-**Eval-Methode:**
-1. Grep hook_firing.jsonl für alle rewrite_chained_sleep fires
-2. Pro Fire: original command vs rewritten command vergleichen
-3. False-Positives: rewritten command führt zu unerwartetem Verhalten (verify via
-   cross-reference mit dem Session-JSONL des gleichen sessions)
-4. Missed cases: tool_errors.jsonl nach sleep-related Errors greppen die NICHT durch
-   die Allow-Liste gefangen worden wären
-5. Falls FP-Rate > akzeptabel: Allow-Liste enger ziehen ODER zurück zu block-with-hint
-6. Falls coverage zu niedrig: Allow-Liste erweitern um mixed tokens (rag-cli search,
-   bd ohne dolt-start, etc.) per Subcommand-Inspection
+**Eval method:**
+1. Grep `hook_firing.jsonl` for all `rewrite_chained_sleep` fires.
+2. Per fire: compare original command vs rewritten command.
+3. False positives: rewritten command leads to unexpected behavior (verify via
+   cross-reference with the session JSONL of the same session).
+4. Missed cases: grep `tool_errors.jsonl` for sleep-related errors that would NOT
+   have been caught by the allow-list.
+5. If FP rate is unacceptable: tighten the allow-list OR revert to block-with-hint.
+6. If coverage is too low: expand the allow-list with mixed tokens (`rag-cli search`,
+   `bd` without `dolt-start`, etc.) via subcommand inspection.
 
 ---
 
 ## Re-Eval 3 — block_polling_loop Hook Audit
 
-**Source:** `decisions/OldThemes/tool_use_safety/2026-05-25_block_polling_loop_design.md`
-(Angriffsfläche A — single-call signature, gewählt mit explizitem Hinweis dass
-andere Polling-Varianten vorbeischlüpfen können)
+**Design note at time of writing:** built on attack surface A (single-call signature),
+chosen with the explicit caveat that other polling variants could slip through.
 
-**Frage:** Catched die Single-Call-Signature (ps -p + tail -N im selben command) den
-Großteil real-auftretender Polling-Loops? Oder gibt es regelmäßig andere Varianten
-(`while sleep; do tail; done`, reines repeated tail ohne ps-check, Python/jq polling
-pipelines) die durchschlüpfen?
+**Question:** does the single-call signature (`ps -p` + `tail -N` in the same command)
+catch the bulk of real-world polling loops? Or are there recurring other variants
+(`while sleep; do tail; done`, plain repeated `tail` without a `ps` check, Python/jq
+polling pipelines) that slip through?
 
-**Datenquelle:** `src/logs/hook_firing.jsonl` (filter auf
-`hook=block_polling_loop AND decision=block` für gefangene Cases) PLUS gegen-check
-über raw Session-JSONLs (`~/.claude/projects/*/*.jsonl`) für nicht-gefangene Cases
-mit ähnlichem repetition-Pattern.
+**Data source:** `src/logs/hook_firing.jsonl` (filtered on
+`hook=block_polling_loop AND decision=block` for caught cases) PLUS a counter-check
+against raw session JSONLs (`~/.claude/projects/*/*.jsonl`) for uncaught cases with a
+similar repetition pattern.
 
-**Trigger-Datum:** ab ~2026-06-07 (≥ 2 Wochen Live-Daten).
+**Trigger date:** planned from ~2026-06-07 (≥ 2 weeks of live data).
 
-**Eval-Methode:**
-1. Count fires von block_polling_loop — wie oft hat er getroffen?
-2. Forensik der Polling-Anti-Pattern in Session-JSONLs des gleichen Zeitraums:
-   - Grep nach "tail -N /tmp/" mit monoton inkrementierendem N (≥ 5 calls in 60s)
-   - Grep nach "while ... sleep ... done"
-   - Grep nach "for ... do sleep ... done"
-   - Sonstige repetitive Bash-Pattern
-3. False-Negatives: Patterns die in Session-JSONLs sichtbar aber NICHT von Hook
-   gefangen wurden
-4. Falls False-Negative-Rate substantiell:
-   - Angriffsfläche B (cross-call repetition detection via per-session state-file)
-   - ODER Angriffsfläche C (Session-JSONL frequency analysis on each Bash call)
-   - Trade-off-Analyse erneut prüfen mit den dann verfügbaren Daten
+**Eval method:**
+1. Count `block_polling_loop` fires — how often did it trigger?
+2. Forensics on polling anti-patterns in session JSONLs of the same period:
+   - grep for `tail -N /tmp/` with monotonically incrementing N (≥ 5 calls in 60s)
+   - grep for `while ... sleep ... done`
+   - grep for `for ... do sleep ... done`
+   - other repetitive Bash patterns
+3. False negatives: patterns visible in session JSONLs but NOT caught by the hook.
+4. If the false-negative rate is substantial:
+   - attack surface B (cross-call repetition detection via a per-session state file)
+   - OR attack surface C (session-JSONL frequency analysis on each Bash call)
+   - re-run the trade-off analysis with the data then available.
 
 ---
 
-## Gemeinsame Aktion bei Trigger-Datum
+## Combined Action at Trigger Date
 
-Eine einzelne Session in ~2 Wochen kann alle drei Re-Evals auf einmal abarbeiten —
-alle drei Datenquellen sind dann ausreichend gewachsen, alle drei haben dieselbe
-analytische Form (log greppen, pattern detection, FP/FN-Bewertung, Folge-Action
-entscheiden). Konsolidierung in einer Session spart Setup-Overhead.
+A single session in ~2 weeks could work through all three re-evals at once — all three
+data sources would be sufficiently grown by then, and all three share the same analytical
+shape (grep the log, pattern detection, FP/FN assessment, decide the follow-up action).
+Consolidating into one session saves setup overhead.
 
-**Vorschlag:** Beim Re-Eval-Trigger eine Session pro Topic im Konsolidierungs-Mode,
-Output als ein Update zu jeweils der ursprünglichen OldThemes-File (CHANGE-Block
-mit den empirischen Findings + entschiedener Folge-Action). Falls Folge-Action
-substantielle Implementation braucht: Worker-Dispatch pro Topic.
+**Proposal:** at the re-eval trigger, run one session per topic in consolidation mode,
+each producing a CHANGE-block update with the empirical findings and the decided
+follow-up action. If a follow-up action needs substantial implementation: dispatch a
+worker per topic.
 
 ---
 
 ## Sources
 
-- `decisions/OldThemes/audit_logging/cc_noise_strip_investigation.md`
-- `decisions/OldThemes/tool_use_safety/2026-05-24_hook_classification_audit.md`
-- `decisions/OldThemes/tool_use_safety/2026-05-25_block_polling_loop_design.md`
-- `decisions/OldThemes/audit_logging/architecture.md` (Log-Infrastruktur)
-- `src/logs/hook_firing.jsonl` (Datenquelle 1)
-- `src/logs/tool_errors.jsonl` (Datenquelle 2)
+- `src/logs/hook_firing.jsonl` (data source 1)
+- `src/logs/tool_errors.jsonl` (data source 2)

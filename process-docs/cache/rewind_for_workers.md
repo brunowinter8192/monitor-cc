@@ -1,29 +1,37 @@
-# /rewind für Worker — Cache-Behavior
+# /rewind for Workers — Cache Behavior
 
-## Frage
+## Question
 
-Worker sterben am Context-Limit. Anthropic `/rewind` setzt in Main-Session den Conversation-State auf früheren REQ zurück — bei Opus ohne Cache-Rebuild, weil cached prefix im 5-Min-TTL noch existiert. Funktioniert das Feature ähnlich cache-freundlich für Worker?
+Workers die at the context limit. Anthropic `/rewind` resets the conversation state in
+the main session to an earlier REQ — for Opus without a cache rebuild, because the
+cached prefix still exists within the 5-min TTL. Does the feature work similarly
+cache-friendly for workers?
 
-## Hypothesen
+## Hypotheses
 
-- **V1:** Jeder Worker hat eigene conversation_id → eigener Cache-Scope → `/rewind` im Worker nutzt cached prefix wie Main-Opus → Hebel funktioniert.
-- **V2:** Worker und Main teilen Cache-Scope → `/rewind` im Worker referenziert REQ aus anderer Conversation → uncached → Rebuild → kein Hebel.
+- **V1:** each worker has its own conversation_id → own cache scope → `/rewind` in a
+  worker reuses a cached prefix like main-Opus → the lever works.
+- **V2:** worker and main share cache scope → `/rewind` in a worker references a REQ
+  from a different conversation → uncached → rebuild → no lever.
 
-User-Verdacht: V2 ("die worker teilen sich einen cache pro projekt mit dir [Main] weil du der einzige main in dem projekt bist").
+Suspected: V2 — workers share a cache per project with the main session, since main is
+the only main session in the project.
 
-## Verifikations-Test (klein, ungedeckt)
+## Verification Test (small, not run)
 
-1. Worker spawnen, 5–10 REQs Akkumulation aufbauen.
-2. `/rewind` im Worker auf REQ N (z.B. N=3 von 10).
-3. Nächste REQ feuern, `cache_read` messen.
+1. Spawn a worker, accumulate 5-10 REQs.
+2. `/rewind` in the worker to REQ N (e.g. N=3 of 10).
+3. Fire the next REQ, measure `cache_read`.
 4. ≈ prev_REQ_3's prefix → V1. ≈ 0 → V2.
-5. Vergleich zu Main-Session-Rewind als Baseline.
+5. Compare against a main-session rewind as baseline.
 
 ## Status
 
-Spec only. Test nicht ausgeführt. Geparkt — kein hoher Druck, weil Worker-Kontext-Management auch ohne `/rewind`-Hebel handhabbar ist (fresh spawn + AGGRESSIVE REUSE).
+Spec only. Test not executed. Parked — no high pressure, since worker context
+management is manageable without the `/rewind` lever anyway (fresh spawn + aggressive
+reuse).
 
-## Quellen
+## Sources
 
 - Anthropic `/rewind` docs
 - worker-cli / `src/spawn/tmux_spawn.sh`

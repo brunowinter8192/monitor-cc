@@ -118,7 +118,7 @@ opus_req_num = sum(len(t.get('api_calls', [])) for t in turns[:turn_idx])
 - Timestamps clustered within a 60-second window
 - Only the final row has a non-zero `output_tokens` value (the others show `out=0` or a small thinking count)
 
-Bead `13t` tracks the red-background collision marker added to the proxy pane to surface same-number cascades visually. Without the marker, cascades are easy to miss because the REQ rows look like normal consecutive requests until you notice the repeated display number.
+The red-background collision marker in the proxy pane surfaces same-number cascades visually. Without the marker, cascades are easy to miss because the REQ rows look like normal consecutive requests until you notice the repeated display number.
 
 ## Policy
 
@@ -145,7 +145,3 @@ While an Opus (or any model) stream is in flight or a new REQ is imminent:
 - `Monitor_reference/Streaming_Messages2.md:27` — basic streaming `message_start` showing `usage` delivered as first event
 - `Monitor_reference/Streaming_Messages2.md:88` — tool-use streaming `message_start` confirming `usage` pattern
 - `Monitor_reference/Streaming_Refusals.md:25-28` — billing commitment at stream-open; analog for client-side abort
-- Bead `2lm` (closed) — forensic investigation of session 1776977437 that produced the Case 1 data
-- Related beads: `ds5` (background-task orchestration rules), `p8w` (parallel worker spawn control), `13t` (proxy display cascade marker / same-number collision highlighting)
-- `decisions/pipe05_proxy_cache.md` — proxy cache architecture; cache_read billing context and BP layout
-- `decisions/OldThemes/cache_rebuild_cases.md` — companion doc for cache-rebuild forensics; structural pattern reference for this file

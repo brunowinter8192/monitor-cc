@@ -1,6 +1,6 @@
 ## ✅ SUPERSEDED — bd 1.0.4
 
-The auto-import-clobber root cause documented in this file is **disproven on bd 1.0.4**. `maybeAutoImportJSONL` (`cmd/bd/auto_import_upgrade.go`) is emptiness-guarded via `GetStatistics` AND uses `importFromLocalJSONLConflictSkip` (insert-if-new, not UPSERT — GH#3955): a stale JSONL on a non-empty DB is a harmless no-op, categorically not a clobber. `block_batch_bd_close.py` has been retired. Full resolution and evidence: `decisions/OldThemes/bd_mutation_revert/02_resolved_1.0.4_hook_retired.md`.
+The auto-import-clobber root cause documented in this file is **disproven on bd 1.0.4**. `maybeAutoImportJSONL` (`cmd/bd/auto_import_upgrade.go`) is emptiness-guarded via `GetStatistics` AND uses `importFromLocalJSONLConflictSkip` (insert-if-new, not UPSERT — GH#3955): a stale JSONL on a non-empty DB is a harmless no-op, categorically not a clobber. `block_batch_bd_close.py` has been retired.
 
 The root cause below (#4239/#3948/#4135, pre-1.0.4 JSONL auto-import clobbering) was real and valid for the bd versions in use at investigation time. Preserved as historical evidence.
 
@@ -31,7 +31,7 @@ The root cause below (#4239/#3948/#4135, pre-1.0.4 JSONL auto-import clobbering)
 
 ## Fix — two layers
 
-1. **Global hook** `block_batch_bd_close.py` (registered in `~/.claude/settings.json` → fires for ALL projects on this machine): blocks any Bash call carrying >1 bead-mutation unit. Structurally prevents the batch-revert (#4135). Design + classification: `decisions/pipe07_safety_hooks.md` Hook 19; module map: `src/hooks/DOCS.md`. 29 smoke cases (`dev/hook_smoke/test_block_batch_bd_close.py`).
+1. **Global hook** `block_batch_bd_close.py` (registered in `~/.claude/settings.json` → fires for ALL projects on this machine): blocks any Bash call carrying >1 bead-mutation unit. Structurally prevents the batch-revert (#4135). Module map: `src/hooks/DOCS.md`. 29 smoke cases (`dev/hook_smoke/test_block_batch_bd_close.py`).
 2. **Per-repo config** `bd config set export.git-add false`: stops the failing `git add` → auto-export completes reliably (like an explicit `bd export > .beads/issues.jsonl`) → JSONL stays synced → auto-import imports the correct state → no revert. Addresses the single-close revert (#4239). **Per-project** — bd config is stored per-project (`bd config --help`: "stored per-project in the beads database"); no global config exists (`~/.beads/` holds only `registry.json`). Must be set in each bead repo.
 
 ## Härtetest evidence
@@ -53,7 +53,7 @@ The RAG test confirms the fix holds even for repos exhibiting the empty-DB auto-
 
 ## Hook design notes
 
-- **Mutation-unit counting:** id-list mutators (`close`/`done`/`reopen`/`update`/`delete`) → id-count with `max(1, count)`; other mutators (`create`/`set-state`/`todo`/…) → 1 per invocation; infra (`config`/`dolt`) → 0; reads → 0; compound (`comments add`, `dep add/remove`, `find-duplicates --merge`) → 1, view/list forms → 0. Full spec: pipe07 Hook 19 + `src/hooks/DOCS.md`.
+- **Mutation-unit counting:** id-list mutators (`close`/`done`/`reopen`/`update`/`delete`) → id-count with `max(1, count)`; other mutators (`create`/`set-state`/`todo`/…) → 1 per invocation; infra (`config`/`dolt`) → 0; reads → 0; compound (`comments add`, `dep add/remove`, `find-duplicates --merge`) → 1, view/list forms → 0. Full spec: `src/hooks/DOCS.md`.
 - **Refinements landed this session:** (a) `set-state` moved to other-mutator (its state value e.g. `in-progress` matched the bead-id regex → false id count); (b) no-id mutator counts as `max(1,0)=1` (a no-id `bd close` chained with another mutation was slipping through as 0); (c) `config`/`dolt` exempted as infra (were blocking legitimate `bd config set; bd config get` chains); (d) `delete` added to id-list mutators (`bd delete A B` batch was bypassing detection).
 - **KNOWN GAP (tracked):** `bd -C <repo>` / `bd --db <path>` forms place the subcommand at `tokens[2+]`, so `tokens[1]=='-C'` is skipped → batch detection bypassed. `bd -C <repo> close A B` is NOT blocked. Minor (only when operating on another repo's beads via `-C`); a tracking bead exists.
 
