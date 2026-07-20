@@ -14,7 +14,7 @@
 
 ## Investigation History
 
-`decisions/OldThemes/menubar_overhaul_2026-05-19.md` § "NSPanel Cursor Rabbit Hole (4 Iterationen, DEFERRED)" — full iteration log.
+`process-docs/menubar_build/menubar_overhaul_2026-05-19.md` § "NSPanel Cursor Rabbit Hole (4 Iterationen, DEFERRED)" — full iteration log.
 
 ## Scripts
 
