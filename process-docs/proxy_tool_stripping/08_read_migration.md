@@ -23,7 +23,7 @@ falls through to the existing side-channel (`else:` branch) — no crash, no ove
 ## Join Key
 
 Main log and `_stripped`/`_injected` share `request_id` (UUID from `_build_entry` via
-`mc_request_id`, same as 07_stripped_injected_logs.md). Both write-side hooks write in
+`mc_request_id`, same as the four-log architecture entry in this area). Both write-side hooks write in
 response-completion order, so the per-family index is consistent. The pane joins by ATTACHING
 the accumulated state dict to each newly-parsed entry by reference — no explicit per-rid lookup
 needed post-attach (the reference IS the live join).
@@ -110,7 +110,7 @@ Also wired in `render_entry.py` (no-turns fallback) after the divider line.
 Yellow block then green block (stacked). Full-block replacements (sys[2], sys[3], whole tools,
 msg[0] SR) are exact byte copies of the stripped/injected content. Partial within-block edits
 (word-level, ratio ≥ 0.1) are space-joined words with normalized whitespace. Acceptable for a
-monitor; not suitable for byte-exact reconstruction (documented in 07).
+monitor; not suitable for byte-exact reconstruction (documented in the four-log architecture entry in this area).
 
 ## Build Path — WIP Recovery
 
