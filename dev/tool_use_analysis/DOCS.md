@@ -265,7 +265,7 @@ Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `
 # Explicit output path
 ./venv/bin/python3 dev/tool_use_analysis/strip_audit.py \
   src/logs/api_requests_opus_monitor_cc_1776871226.jsonl \
-  --output dev/tool_use_analysis/md/20260422_strip_audit.md
+  --output dev/tool_use_analysis/md/202604221808_strip_audit.md
 ```
 
 | Flag | Description | Default |

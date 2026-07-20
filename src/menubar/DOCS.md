@@ -390,7 +390,7 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 - **Global hotkey Cmd+L** (`hotkey_controller.py`): `register_cmd_l(callback)` wraps the callback in a ctypes `CFUNCTYPE` and registers via Carbon `RegisterEventHotKey`. Returns `(cb_handle, hk_handle)` — caller (`CCMenuBarApp.__init__`) stores both on `self._hotkey_cb` / `self._hotkey_ref` to prevent GC of the C callback. Same pattern for `register_cmd_k` → `self._hotkey_k_cb` / `self._hotkey_k_ref`.
 - `quit_button=None` passed to `rumps.App.__init__` — default rumps quit button is menu-attached and would be orphaned after `setMenu_(None)`. Restart is a footer NSButton wired to `_PanelController.restartApp_`.
 - **Lazy-init timing** (`app.py`): `rumps.App._nsapp` is only populated after `app.run()` starts the AppKit runloop. `setMenu_(None)` + button wiring happens in the first `_tick` call (guarded by `if not self._initialized`).
-- **Diagnostics gating** (`app.py:_tick_log`): tick logging is gated on `MENUBAR_DIAGNOSTICS=1` env var — default OFF. Without the var, `_tick_log` returns immediately (no file I/O). Enable by launching via `dev/menubar_debug.py` (sets the var automatically) or `launchctl setenv MENUBAR_DIAGNOSTICS 1` for the running launchd service. Log path: `_TICK_LOG = '/tmp/menubar-tick.log'`.
+- **Diagnostics gating** (`app.py:_tick_log`): tick logging is gated on `MENUBAR_DIAGNOSTICS=1` env var — default OFF. Without the var, `_tick_log` returns immediately (no file I/O). Enable by launching via `dev/menubar_nspanel/menubar_debug.py` (sets the var automatically) or `launchctl setenv MENUBAR_DIAGNOSTICS 1` for the running launchd service. Log path: `_TICK_LOG = '/tmp/menubar-tick.log'`.
 - Background task detection: `/tmp/claude-<uid>/` uses the numeric Unix UID (`os.getuid()`). `*.output` files with `st_size == 0` = in-progress; `done\n` (5 bytes) = completed.
 - **Abort leaves task file at 0 bytes:** when the sleep child is killed via SIGTERM, the zsh parent exits via `&&` short-circuit (no `echo done` stdout), so CC writes nothing to the task file — it stays 0 bytes indefinitely. `_abort_bg_sleep_timers` (bg_timer.py) explicitly writes `aborted\n` to all 0-byte task files after kill so `_has_active_bg` returns False and the `[B]` badge disappears.
 - **CC uses `zsh -c`, not `bash -c`:** background bash commands are actually `zsh -c "source ... && eval 'cmd' ..."`. `_scan_bg_sleep_timers` correctly matches these because `echo done` appears in the zsh parent's args; the sleep child args are always exactly `sleep N`.
@@ -423,15 +423,15 @@ No cycles. `system.py` has no module-level import of `app.py`; the lazy import i
 
 ## Dev Tools
 
-### dev/menubar_debug.py
+### dev/menubar_nspanel/menubar_debug.py
 
 Foreground debug runner — boots out the launchd service, starts the menubar app directly via venv Python with `MENUBAR_DIAGNOSTICS=1`, and optionally re-registers launchd on exit.
 
 **Usage:**
 ```bash
 # From project root:
-python3 dev/menubar_debug.py               # foreground run; Ctrl-C to stop
-python3 dev/menubar_debug.py --rebootstrap # same + re-registers launchd service on exit
+python3 dev/menubar_nspanel/menubar_debug.py               # foreground run; Ctrl-C to stop
+python3 dev/menubar_nspanel/menubar_debug.py --rebootstrap # same + re-registers launchd service on exit
 ```
 
 **What it does:**
