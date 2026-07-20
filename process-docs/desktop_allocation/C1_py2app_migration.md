@@ -4,7 +4,7 @@
 
 py2app bundle at `dist/Monitor_CC_Menubar.app/` in the worktree. The native Mach-O launcher at `Contents/MacOS/Monitor_CC_Menubar` (86KB arm64 binary) starts the embedded Python (3.14.3) directly — no Bash exec chain. Audit token at `CGWindowListCopyWindowInfo` call time is our bundle identity `com.brunowinter.monitor_cc_menubar`.
 
-This is the production deliverable for Etappe 2. After user install and Screen Recording grant on the new bundle, `kCGWindowName` becomes readable from the launchd-spawned context and the existing three-strategy detection pipeline in `desktop_detection.py` works unchanged.
+This is the production deliverable for Stage 2. After user install and Screen Recording grant on the new bundle, `kCGWindowName` becomes readable from the launchd-spawned context and the existing three-strategy detection pipeline in `desktop_detection.py` works unchanged.
 
 ## Files Changed
 
@@ -12,8 +12,8 @@ This is the production deliverable for Etappe 2. After user install and Screen R
 |---|---|---|
 | `setup_py2app.py` | NEW at project root — py2app build script | 65 |
 | `src/menubar/menubar_main.py` | NEW — thin py2app entry wrapper | 5 |
-| `decisions/OldThemes/desktop_allocation/C1_py2app_migration.md` | NEW — this file | — |
-| `decisions/menubar_desktop_allocation.md` | NEW — first IST file | — |
+| This process-history entry | NEW — this file | — |
+| Companion current-state entry for desktop allocation | NEW — first snapshot | — |
 | `src/menubar/DOCS.md` | UPDATE — new module entries, LOC updates | — |
 
 `setup_menubar.py` (ad-hoc bash bundle builder) is unchanged and preserved as a fallback/reference.
@@ -181,4 +181,4 @@ open ~/Applications/Monitor_CC_Menubar.app
 
 ### Note on LaunchAgent
 
-Production currently runs via `open` (Aqua launch), not launchd. There is no active LaunchAgent plist managing auto-restart. After install you start the app manually via `open`. Auto-restart-on-crash via LaunchAgent is a separate topic for a future session — see `decisions/OldThemes/desktop_allocation/` for context.
+At the time, production ran via `open` (Aqua launch), not launchd. There was no active LaunchAgent plist managing auto-restart. After install, the app was started manually via `open`. Auto-restart-on-crash via LaunchAgent was left as a separate topic for a future session.
