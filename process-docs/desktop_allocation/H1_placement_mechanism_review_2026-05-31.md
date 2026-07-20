@@ -1,78 +1,78 @@
-# H1 — Placement-Mechanismus Review + Redesign-Richtung (2026-05-31)
+# H1 — Placement Mechanism Review + Redesign Direction (2026-05-31)
 
-**Status:** ABGESCHLOSSEN (2026-05-31). Move SIP-frei zwischen nativen Spaces auf 26.5 bewiesen unmöglich (G4: 5/5 Move-APIs no-op MIT vollen AX+SC-Rechten; ökosystemweit bestätigt). Dead-Code-Rollback ausgeführt (Monitor_CC menubar + Meta/iterative-dev-Plugin). Siehe `## Abschluss` unten. Knüpft an G1 (Recherche), G2 (bridged-op Probe → FAIL), G3 (Detection-Probe → gelöst), G4 (Move-Sweep → alle FAIL).
+**Status:** CONCLUDED (2026-05-31). Moving windows SIP-free between native spaces on 26.5 proven impossible (a move-primitive sweep found 5/5 move APIs are no-ops WITH full AX+SC permissions; confirmed ecosystem-wide). Dead-code rollback executed (Monitor_CC menubar + Meta/iterative-dev plugin). See "Conclusion" below. Follows the fresh space-move research (bridged-op technique, macOS version split), the bridged-op probe (FAIL), the window-detection probe (solved), and the move-sweep probe (all FAIL).
 
-## Auslöser
+## Trigger
 
-Nach Tahoe-Update (macOS 26.5, Build 25F71) bridged-Op getestet → FAIL (G2). User-Beobachtung beim Worker-Spawn: neues Fenster landete "auf Main-Space" → Verdacht "geht doch / wir machen irgendwo was falsch, Versions-Blame ist inkohärent". Session = Produktions-Mechanismus auseinandergenommen + zwei vermengte Threads getrennt.
+After the Tahoe update (macOS 26.5, build 25F71) the bridged-op was tested → FAIL. User observation during a worker spawn: the new window "landed on the main's space" → suspicion "it does work / we're doing something wrong somewhere, the version-blame theory is incoherent." This session took the production mechanism apart and separated two threads that had been conflated.
 
-## Zwei getrennte Threads (vorher von Opus vermengt)
+## Two Separate Threads (previously conflated by Opus)
 
-### Thread A — bridged-Op auf Tahoe
+### Thread A — bridged-op on Tahoe
 
-- **Prämisse G1:** bridged-Op (`SLSBridgedMoveWindowsToManagedSpaceOperation` → `initWithWindows:spaceID:` → objekt-eigene `performWithWMBridgeDelegate`) ist SIP-frei, extern validiert auf **26.4.1**: ejbills DockDoor #855 c7 wörtlich *"validated working on macOS 26.4.1"*; yabai #2788; yabai-Maintainer #2784 (läuft auf seinem Tahoe-Daily-Driver).
-- **G2 (diese Session):** Technik korrekt getestet — richtige Klasse, korrektes `initWithWindows:spaceID:` (NSArray von NSNumber<UInt32>), korrektes `performWithWMBridgeDelegate`. Ergebnis: **stiller No-op auf 26.5**. Objekt erzeugt (kein nil), Call ohne Crash, Fenster bewegt sich nicht. Verifiziert über On-Screen-Liste (unverändert) + Screenshot.
-- **Klassen-Introspektion (26.5):** `performWithWMBridgeDelegate` ist vom Parent `SLSAsynchronousBridgedWindowManagementOperation` geerbt; das Kind überschreibt `invokeFallback` (= eigentliche Move-Logik). Beide direkt getestet → beide No-op.
-- **Offen:** Regression 26.4.1→26.5 ODER Kontext/Entitlement-Gap (in welchem Prozess-Kontext validierte ejbills?). Versions-Verdacht ist NICHT inkohärent — die Validierung war versionsspezifisch 26.4.1, und 26.5/25F71 hat belegte WindowServer-Änderungen (DockDoor #1344: WindowServer-Crash auf exakt Build 25F71). 26.4.1-Gegentest versperrt (schon auf 26.5, Downgrade unpraktikabel).
+- **Premise from prior research:** the bridged-op (`SLSBridgedMoveWindowsToManagedSpaceOperation` → `initWithWindows:spaceID:` → the object's own `performWithWMBridgeDelegate`) is SIP-free, externally validated on **26.4.1**: ejbills DockDoor #855 c7 verbatim *"validated working on macOS 26.4.1"*; yabai #2788; yabai maintainer #2784 (runs on their Tahoe daily driver).
+- **This session's probe:** the technique was tested correctly — right class, correct `initWithWindows:spaceID:` (NSArray of NSNumber<UInt32>), correct `performWithWMBridgeDelegate`. Result: **silent no-op on 26.5**. Object created (no nil), call without crash, window doesn't move. Verified via the on-screen list (unchanged) + screenshot.
+- **Class introspection (26.5):** `performWithWMBridgeDelegate` is inherited from the parent `SLSAsynchronousBridgedWindowManagementOperation`; the child overrides `invokeFallback` (= the actual move logic). Both tested directly → both no-op.
+- **Open:** regression 26.4.1→26.5 OR a context/entitlement gap (in which process context did the external validator run?). The version suspicion is NOT incoherent — the validation was version-specific to 26.4.1, and 26.5/25F71 has documented WindowServer changes (a DockDoor issue reports a WindowServer crash on exactly build 25F71). A 26.4.1 counter-test is blocked (already on 26.5, downgrade impractical).
 
-### Thread B — Produktions-Mechanismus (plain CGSMove + Detection)
+### Thread B — Production Mechanism (plain CGSMove + detection)
 
-Produktion (`Meta/blank` + iterative-dev-Plugin-Spiegel, byte-identisch) nutzt **NICHT** den bridged-Op, sondern plain `CGSMoveWindowsToManagedSpace`. Pipeline (spawn + show identisch bis aufs Öffnen):
+Production (`Meta/blank` + the iterative-dev plugin mirror, byte-identical) does **NOT** use the bridged-op, but plain `CGSMoveWindowsToManagedSpace`. Pipeline (spawn + show identical up to the open):
 
-1. **Sidecar** (menubar-gepflegt): `{"<cwd>": {"space_id": N, "desktop_no": N}}`. Helfer macht KEINE eigene Space-Erkennung, vertraut Sidecar.
-2. **find-caller-desktop** (vor dem Öffnen): `$PPID` → `_find_claude_ancestor` → cwd via `lsof` (`_cwd_of_pid`) → Sidecar-Lookup → `space_id`. Log: `sidecar=hit space_id=N`.
-3. **Öffnen:** spawn = `osascript tell Ghostty create window` (**synchron**, blockiert bis Fenster da); show = `open`/`open -a CotEditor` (async).
-4. **wait-and-move-space** (bg): `_wids_for_owner_name` Schnappschuss (`CGWindowListCopyWindowInfo(_CGW_LIST_ALL=0, ...)` = ALLE Spaces, on+off-screen) → Poll-Diff (0.15s) bis neu/Timeout → `_move_windows_to_space` → `CGSMoveWindowsToManagedSpace(cid, [wid], space_id)`.
+1. **Sidecar** (menubar-maintained): `{"<cwd>": {"space_id": N, "desktop_no": N}}`. The helper does NO space detection of its own, trusts the sidecar.
+2. **find-caller-desktop** (before opening): `$PPID` → `_find_claude_ancestor` → cwd via `lsof` (`_cwd_of_pid`) → sidecar lookup → `space_id`. Log: `sidecar=hit space_id=N`.
+3. **Open:** spawn = `osascript tell Ghostty create window` (**synchronous**, blocks until the window exists); show = `open`/`open -a CotEditor` (async).
+4. **wait-and-move-space** (bg): `_wids_for_owner_name` snapshot (`CGWindowListCopyWindowInfo(_CGW_LIST_ALL=0, ...)` = ALL spaces, on+off-screen) → poll-diff (0.15s) until new/timeout → `_move_windows_to_space` → `CGSMoveWindowsToManagedSpace(cid, [wid], space_id)`.
 
 **Bugs:**
 
-- **Detection-Ordering (Hauptbug, spawn systematisch kaputt):** osascript öffnet das Fenster synchron VOR dem `wait-and-move-space`-Schnappschuss → neues Fenster ist schon im "vorher"-Set → `neu = nachher − vorher = ∅` → `move=no-new-window` bei JEDER `op=spawn`-Logzeile. Der Move feuert nie. Show: `open` async → Timing-Rennen, mal `move=1_windows` (Log 17:43), meist `no-new-window`.
-- **Natural-Landing-Illusion:** Fenster gebiert auf aktivem Space; wenn die Main den Spawn auslöst, ist deren Space der aktive → Fenster landet "richtig" OHNE dass der Move etwas tat. "Läuft doch" greift nur solange der Auslöser auf seinem eigenen Space sitzt; aus der Ferne fällt es zusammen.
-- **plain CGSMove auf 26.5 UNBEWIESEN:** "tot/rights-gated" stammt aus F1/Sequoia 15.7 (alte Maschine), nie auf 26.5 nachgetestet. Selbst wenn Detection fixed + Move feuert → kein Beleg dass das Fenster sich tatsächlich bewegt.
+- **Detection ordering (main bug, systematically breaks spawn):** osascript opens the window synchronously BEFORE the `wait-and-move-space` snapshot → the new window is already in the "before" set → `new = after − before = ∅` → `move=no-new-window` on EVERY `op=spawn` log line. The move never fires. Show: `open` is async → a timing race, sometimes `move=1_windows` (seen once in the log), mostly `no-new-window`.
+- **Natural-landing illusion:** a window is born on the active space; when the main that triggers the spawn IS the active space, the window lands "correctly" WITHOUT the move having done anything. "It does work" only holds as long as the trigger sits on its own space; from a distance it falls apart.
+- **plain CGSMove on 26.5 UNPROVEN:** "dead/rights-gated" comes from the earlier Sequoia 15.7 finding (old machine), never retested on 26.5. Even if detection is fixed and the move fires → no evidence the window actually moves.
 
-## Architektur-Erkenntnisse
+## Architecture Findings
 
-- Ein Fenster materialisiert IMMER auf dem aktiven Space; keine API erzeugt ein Fenster direkt auf einem fremden Space → Move-after-open ist der einzige Weg.
-- "Background-Spawn damit User nichts sieht" = `open -g` (kein Fokus-Klau) + schnell wegziehen. Vorbehalt: kurze Materialisierung auf dem aktiven Space ist unvermeidlich.
-- Move-Richtung Produktion: aktiver Space → Caller-Main-Space (nur nötig wenn aktiv ≠ Caller-Space).
+- A window ALWAYS materializes on the active space; no API creates a window directly on a different space → move-after-open is the only way.
+- "Background spawn so the user sees nothing" = `open -g` (no focus steal) + move away quickly. Caveat: brief materialization on the active space is unavoidable.
+- Production move direction: active space → caller-main's space (only needed when active ≠ caller's space).
 
-## Identifikation des neuen Fensters — Designraum
+## Identifying the New Window — Design Space
 
-Kernfrage, die die Detection beantworten muss: WELCHES der vielen Fenster ist das neue?
+The core question detection must answer: WHICH of the many windows is the new one?
 
-- **owner-PID disambiguiert NICHT** — CotEditor/Ghostty = 1 Prozess mit n Fenstern, alle teilen die PID.
-- **(a) Snapshot-Diff** — IST-Verfahren, brüchig (Timing, Ordering-Bug).
-- **(b) Titel-Match** — bekannter eindeutiger Titel (Dateiname / tmux-Session, von UNS vergeben) == `kCGWindowName`. Timing-robust. Vorbehalt: `kCGWindowName` ist in launchd/bundle-Kontext TCC-gestrippt (Etappe-2-Befund), aus CC-/Worker-Kontext aber verfügbar. **Favorit.**
-- **(c) frontmost** — erstes Fenster der App (front-to-back-Ordnung von `CGWindowListCopyWindowInfo`) direkt nach dem Öffnen.
+- **owner-PID does NOT disambiguate** — CotEditor/Ghostty = 1 process with N windows, all sharing the PID.
+- **(a) Snapshot-diff** — the mechanism in place, brittle (timing, ordering bug).
+- **(b) Title match** — a known unique title (filename / tmux session, assigned by US) == `kCGWindowName`. Timing-robust. Caveat: `kCGWindowName` is TCC-stripped in the launchd/bundle context (the Stage-2 finding), but available from the CC/worker context. **Favorite.**
+- **(c) frontmost** — the app's first window (front-to-back order from `CGWindowListCopyWindowInfo`) right after opening.
 
-G3-Probe testet (b)+(c) gegen (a) als Grundwahrheit + sichere Space-Erkennung des neuen Fensters.
+The window-detection probe tests (b)+(c) against (a) as ground truth + reliable space detection of the new window.
 
-## Forward-Plan
+## Forward Plan
 
-1. **G3 (läuft):** Detection-Probe — 3 Fenstertypen (tmux-Ghostty, plain-Ghostty, CotEditor), Methoden (b)+(c) vs (a), + sichere Space-Erkennung des neuen Fensters (CGSGetActiveSpace + On-Screen-Membership + CGSCopySpacesForWindows, gegengecheckt). KEIN Move. Report: Fenster gespawnt/Programm × erkannt/Space.
-2. **Danach:** plain `CGSMoveWindowsToManagedSpace` auf 26.5 isoliert verifizieren (echte Move-Wirkung, On-Screen-Liste + Screenshot) — die in G2 versäumte richtige Primitive.
-3. Wenn (2) wirkt + (1) zuverlässig → Detection-Fix (**Schnappschuss VOR dem Öffnen**, Auftrennung von wait-and-move-space; in blank + Plugin-Spiegel) ist der vollständige Produktions-Fix.
-4. Wenn (2) nicht wirkt → andere Move-Technik nötig, Thread A (Regression vs Kontext) weiterverfolgen.
+1. **Window-detection probe (running):** 3 window types (tmux-Ghostty, plain-Ghostty, CotEditor), methods (b)+(c) vs (a), + reliable space detection of the new window (CGSGetActiveSpace + on-screen membership + CGSCopySpacesForWindows, cross-checked). NO move. Report: window spawned/program × detected/space.
+2. **After that:** verify plain `CGSMoveWindowsToManagedSpace` on 26.5 in isolation (real move effect, on-screen list + screenshot) — the correct primitive the bridged-op probe skipped.
+3. If (2) works + (1) is reliable → the detection fix (**snapshot BEFORE opening**, separating out wait-and-move-space; in blank + the plugin mirror) is the complete production fix.
+4. If (2) doesn't work → a different move technique is needed, continue pursuing Thread A (regression vs context).
 
-## Orchestrierungs-Lehre
+## Orchestration Lesson
 
-G2-Mission war relativ zum G1-Plan KORREKT (bridged-Op war DIE auf 26.4.1 verifizierte Technik, korrekt getestet). Opus-Fehler: G2-Ergebnis + User-Spawn-Beobachtung vermengt → vorschnell "falsche Primitive / Versions-Blame inkohärent". Korrektur: zwei getrennte Threads. Detection-first (User-Direktive) ist der richtige Einstieg, weil Thread B unabhängig von Thread A reparierbar UND verifizierbar ist.
+The prior probe's mission was CORRECT relative to the earlier research plan (the bridged-op was THE technique validated on 26.4.1, tested correctly). Opus's mistake: conflating that probe's result with the user's spawn observation → prematurely concluding "wrong primitive / version-blame incoherent." Correction: two separate threads. Detection-first (user directive) is the right entry point, because Thread B is fixable AND verifiable independent of Thread A.
 
-## Abschluss (2026-05-31)
+## Conclusion (2026-05-31)
 
-### Detection (Thread B) — GELÖST, dann zurückgebaut
-G3 (`G3_window_detection_probe.md`): Schnappschuss-VOR-Öffnen erkennt das neue Fenster zuverlässig (9/9), Space-Bestimmung für Ghostty 6/6 (alle 3 Signale einig). CotEditor-Fix quellbelegt (DockDoor `AppDelegate.performOnLaunchAction` feuert nur bei Kaltstart → `open -n` vermeiden, plain `open` + Dateiname-Match): danach 3/3 erkannt. Robuster Identifikations-Anker = **Dateiname-Match** (z-Order-unabhängig). Detection war also voll machbar — aber sie diente nur dem Move, der unmöglich ist → mit zurückgebaut.
+### Detection (Thread B) — SOLVED, then rolled back
+The window-detection probe: snapshot-BEFORE-opening reliably detects the new window (9/9), space determination for Ghostty 6/6 (all 3 signals agree). The CotEditor fix is source-confirmed (DockDoor `AppDelegate.performOnLaunchAction` only fires on cold launch → avoid `open -n`, use plain `open` + filename match): 3/3 detected afterward. Robust identification anchor = **filename match** (z-order independent). Detection was therefore fully feasible — but it only served the move, which is impossible → rolled back together with it.
 
-### Move (Thread A + B) — BEWIESEN UNMÖGLICH SIP-frei auf 26.5
-G4 (`G4_move_sweep_probe.md`): Permission-Selbsttest zur Laufzeit `AXIsProcessTrusted()=True` UND `CGPreflightScreenCaptureAccess()=True` (echtes Homebrew python3.14, keine TCC-Identitäts-Verwechslung). Trotzdem **alle 5 Move-Primitiven no-op**: bridged-op (G2), `CGSMoveWindowsToManagedSpace`, `SLSMoveWindowsToManagedSpace`, `CGSAddWindowsToSpaces`+`Remove`, `SLSSpaceSetCompatID`+`SLSSetWindowListWorkspace`. → Berechtigung ist NICHT der Gate (Accessibility-Hypothese widerlegt).
+### Move (Threads A + B) — PROVEN IMPOSSIBLE SIP-free on 26.5
+The move-sweep probe: a runtime permission self-check confirmed `AXIsProcessTrusted()=True` AND `CGPreflightScreenCaptureAccess()=True` (real Homebrew python3.14, no TCC identity mix-up). Still, **all 5 move primitives no-op**: the bridged-op, `CGSMoveWindowsToManagedSpace`, `SLSMoveWindowsToManagedSpace`, `CGSAddWindowsToSpaces`+`Remove`, `SLSSpaceSetCompatID`+`SLSSetWindowListWorkspace`. → permissions are NOT the gate (the accessibility hypothesis is refuted).
 
-DockDoor-Entitlements-Beleg: keine privaten `com.apple.private.skylight.*` Entitlements — nur AppleEvents + Sparkle + Kalender. DockDoor verlangt `AXIsProcessTrusted()` (Accessibility) + `CGPreflightScreenCaptureAccess()` (Screen Recording) — beide hatten wir. Also kein Apple-Signing-Geheimnis.
+DockDoor entitlements evidence: no private `com.apple.private.skylight.*` entitlements — only AppleEvents + Sparkle + Calendar. DockDoor requires `AXIsProcessTrusted()` (accessibility) + `CGPreflightScreenCaptureAccess()` (screen recording) — both of which we had. So no Apple-signing secret involved.
 
-Ökosystem-Verdikt (finale gh-Recherche): yabai #2789 — User auf 26.5 findet via LLDB, dass `SLSPerformAsynchronousBridgedWindowManagementOperation` "just doesn't work sometimes", muss ihn auf NULL setzen für Fallback auf Dock-Injektion. yabai #2634 — `move_space` in der 26er-Dock-Binary nicht mehr auffindbar. Hammerspoon #3636 — `moveWindowToSpace` hacky, "unzuverlässig bis Apple eine API liefert". **AeroSpace** (populärer moderner SIP-freier WM) benutzt native Spaces bewusst NICHT ("considerable limitations") und emuliert eigene Workspaces per Off-Screen-Positionierung (Accessibility-Position, SIP-frei) — das ernsthafteste Projekt hat native-Space-Move aufgegeben. Jeder funktionierende Tahoe-Move = SIP-off + Dock-Scripting-Addition (User abgelehnt: kein Sicherheits-Trade-off).
+Ecosystem verdict (final GitHub research): a yabai issue reports that a user on 26.5 found via LLDB that `SLSPerformAsynchronousBridgedWindowManagementOperation` "just doesn't work sometimes," and had to null it out to fall back to Dock injection. Another yabai issue notes `move_space` is no longer findable in the 26.x Dock binary. A Hammerspoon issue calls `moveWindowToSpace` hacky, "unreliable until Apple ships an API." **AeroSpace** (the popular modern SIP-free window manager) deliberately does NOT use native spaces ("considerable limitations") and emulates its own workspaces via off-screen positioning (accessibility-based, SIP-free) — the most serious project in this space has given up on native-space move. Every working Tahoe move = SIP-off + a Dock scripting addition (rejected by the user: no acceptable security trade-off).
 
-**Fazit:** kein SIP-freier, unprivilegierter Weg, ein Fenster zwischen nativen macOS-Spaces auf 26.5 zu verschieben. Bewiesenes Negativ, kein offener Zweifel.
+**Conclusion:** there is no SIP-free, unprivileged way to move a window between native macOS spaces on 26.5. A proven negative, not an open doubt.
 
-### Rollback ausgeführt
-- **Monitor_CC menubar** (commit `466f327`+`f81b283`, gemergt `747e47f`): `desktop_detection.py` gelöscht; `discover.py` Sidecar-Writer + `desktop_no`-Feld raus; `paths.py` `CWD_DESKTOP_FILE` raus; `panel.py`/`panel_manager.py` zurück auf sequenzielle Slot-Nummern `[N]`; `setup_py2app.py` `NSScreenCaptureUsageDescription` raus (Detection-only); DOCS aktualisiert. Import-Smoke grün, −450 Zeilen.
-- **Meta/blank = iterative-dev-Plugin-Source** (commit `1926c50`+`89f1797`, gemergt `3441aaa`, published): `src/desktop/desktop_targeting.py` + Verzeichnis gelöscht; `tmux_spawn.sh` `open_tmux_viewer` Placement raus (Signatur `SESSION`, beide Caller); `bin/show` Placement + totes `app_name` raus. `bash -n` grün, Cache verifiziert placement-frei. Spawn öffnet jetzt das Fenster nur noch (natürliche Aktiv-Space-Platzierung).
-- **Bleibt als Beweis:** `dev/desktop_detection/` Probes 01–06, `decisions/OldThemes/desktop_allocation/` G1–G4 + H1.
+### Rollback Executed
+- **Monitor_CC menubar** (commits, merged): `desktop_detection.py` deleted; `discover.py` sidecar writer + `desktop_no` field removed; `paths.py` `CWD_DESKTOP_FILE` removed; `panel.py`/`panel_manager.py` reverted to sequential slot numbers `[N]`; `setup_py2app.py` `NSScreenCaptureUsageDescription` removed (detection-only). DOCS updated. Import smoke green, −450 lines.
+- **Meta/blank = iterative-dev plugin source** (commits, merged, published): `src/desktop/desktop_targeting.py` + its directory deleted; `tmux_spawn.sh` `open_tmux_viewer` placement removed (signature `SESSION`, both callers); `bin/show` placement + the dead `app_name` removed. `bash -n` green, cache verified placement-free. Spawn now only opens the window (natural active-space placement).
+- **Kept as evidence:** the `dev/desktop_detection/` probes 01-06, and this investigation series' process-history entries.

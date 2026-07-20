@@ -9,15 +9,16 @@ removal — detection, display, AND sidecar went together, even though detection
 worked correctly.
 
 The TCC blocker that previously prevented detection in bundle context — exec chain losing bundle
-identity, `kCGWindowName` stripped by TCC — was solved in `bff8c0e` (2026-05-28) via py2app
-migration (`C1_py2app_migration.md`). That fix is still the current architecture. Detection-only
+identity, `kCGWindowName` stripped by TCC — was solved in `bff8c0e` (2026-05-28) via the py2app
+migration. That fix is still the current architecture. Detection-only
 is therefore fully unblocked: the bundle has the right TCC identity, the py2app-built binary
 holds Screen Recording grant, and `desktop_detection.py`'s three-strategy resolver was proven
-functional (C3, G3).
+functional by two earlier probes.
 
-See `B1_tcc_responsibility_chain.md` (root cause: exec chain → audit-token loss → TCC strips
-`kCGWindowName`) and `H1_placement_mechanism_review_2026-05-31.md` (why move died + what stayed
-functional).
+Root cause of the earlier block: the exec chain caused audit-token loss, so TCC stripped
+`kCGWindowName`. The window-move mechanism was separately proven impossible (SIP-free move APIs
+are no-ops on macOS 26.5), while detection itself stayed functional throughout — hence
+reintroducing detection-only here.
 
 ## What Was Rolled Back vs. What Stays Dead
 
@@ -89,7 +90,7 @@ bundles (the TCC grant must be re-granted by the user after the first rebuild wi
 ## Integration Notes
 
 The current `discover.py` differs from the pre-rollback state by the worker-branch fix
-(`worktree_rest.split('/')[0]` — committed today, issue #18). The detection additions apply
+(`worktree_rest.split('/')[0]` — committed today). The detection additions apply
 only in `list_alive_sessions()` (after the loop) and in the `SessionInfo` NamedTuple — neither
 touches the worker branch. The adaptation is a strict addition, not a rewrite.
 
