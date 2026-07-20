@@ -1,74 +1,74 @@
-# Menübar Overhaul Session — 2026-05-19
+# Menubar Overhaul Session — 2026-05-19
 
-Iteration history und Process-Findings der Session in der die 5 verbleibenden zv6s-Issues abgearbeitet wurden + Modul-Split-Refactor + Skill-Erweiterung. Aktueller IST-Zustand des Codes lebt in `src/menubar/DOCS.md` (post-split: 8 Module). Diese Datei dokumentiert wie wir dahin kamen.
+Iteration history and process findings from the session in which the 5 remaining tracked issues were worked through + a module-split refactor + a skill extension. The state of the code at the time lived in `src/menubar/DOCS.md` (post-split: 8 modules). This file documents how we got there.
 
-## Hook-basierte Activity Detection (löst Issue 1 / Thinking-Phase)
+## Hook-Based Activity Detection (resolves Issue 1 / Thinking Phase)
 
-**Ausgangslage:** discover.py nutzte JSONL-mtime als Working-Indikator (≤10s = working). Während Opus reasont (Anthropic-side, kein streaming output) wird JSONL nicht aktualisiert → fälschlich "idle".
+**Starting point:** discover.py used JSONL mtime as the working indicator (≤10s = working). While Opus reasons (Anthropic-side, no streaming output), the JSONL doesn't update → falsely "idle".
 
-**Iteration 1 (vor dieser Session):** Proxy-Log-mtime als Override. Bedingung war `(now - proxy_mtime) <= 10s`. Funktionierte für die ersten 10s einer Thinking-Phase, danach idle.
+**Iteration 1 (before this session):** proxy-log mtime as an override. Condition was `(now - proxy_mtime) <= 10s`. Worked for the first 10s of a thinking phase, then idle.
 
-**Iteration 2 (gleiche Session):** Bedingung korrigiert zu `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) <= 300s`. Strukturelles Signal: Proxy schreibt Request-Entry bei Empfang BEVOR Response kommt → proxy_mtime steht ahead von jsonl_mtime während der gesamten Thinking-Phase. Hielt für ~30-120s Thinking-Phasen.
+**Iteration 2 (same session):** condition corrected to `proxy_mtime > jsonl_mtime AND (now - proxy_mtime) <= 300s`. Structural signal: the proxy writes a request entry on receipt BEFORE the response comes back → proxy_mtime stays ahead of jsonl_mtime for the entire thinking phase. Held for ~30-120s thinking phases.
 
-**Iteration 3 (final, diese Session):** User-Korrektur: "der proxy schreibt nur wenn reqs durchkommen, in thinking-phasen arbeitet das modell server-seitig bei Anthropic, da kommt nichts durch — wir müssen bewegungen im terminal erfassen". Pivot zu CC-Hook-System (UserPromptSubmit / Stop / StopFailure). Hook-writer.py schreibt Session-Status synchron zu `~/.monitor_cc_menubar_hooks.json`, discover.py liest mit Priority-1 (über JSONL und Proxy-Override). Window zwischen UserPromptSubmit und Stop = working — deckt Thinking + Tool-Use + Response vollständig ab.
+**Iteration 3 (final, this session):** user correction: "the proxy only writes when requests go through; during thinking phases the model works server-side at Anthropic, nothing comes through — we need to capture movement in the terminal." Pivot to the CC hook system (UserPromptSubmit / Stop / StopFailure). hook_writer.py writes session status synchronously to `~/.monitor_cc_menubar_hooks.json`, discover.py reads it with priority 1 (over JSONL and the proxy override). The window between UserPromptSubmit and Stop = working — fully covers thinking + tool-use + response.
 
-**Implementierungs-Detail:** Hook-setup-Script (`src/menubar/hook_setup.py`) installiert idempotent in `~/.claude/settings.json`. Hooks aktivieren erst bei CC-Restart (Catch: aktuelle CC-Session des Users feuert keine Hooks bis sie neu startet).
+**Implementation detail:** the hook-setup script (`src/menubar/hook_setup.py`) installs idempotently into `~/.claude/settings.json`. Hooks only activate on a CC restart (catch: the user's current CC session doesn't fire hooks until it restarts).
 
-**Quelle für den Pattern:** github.com/onikan27/claude-code-monitor — gleicher Ansatz für menubar-Tracker mit Ink-basiertem TUI.
+**Source for the pattern:** github.com/onikan27/claude-code-monitor — the same approach for a menubar tracker with an Ink-based TUI.
 
-## launchd PATH Gotcha (löst Worker-Display-Bug)
+## launchd PATH Gotcha (resolves the worker-display bug)
 
-**Symptom:** Worker werden in discover NICHT angezeigt (n=2 statt n=6 in Tick-Log). Aus Terminal-CLI sieht discover sie korrekt.
+**Symptom:** workers are NOT shown in discover (n=2 instead of n=6 in the tick log). From the terminal CLI, discover sees them correctly.
 
-**Investigation:** Tick-Diagnostik in `_tick()` zeigte `n=2 sessions=['Monitor_CC', 'wise2627']`. discover-CLI-Test gab n=6. Unterschied: launchd-spawned vs Terminal-spawned Python.
+**Investigation:** tick diagnostics in `_tick()` showed `n=2 sessions=['Monitor_CC', 'wise2627']`. The discover-CLI test gave n=6. Difference: launchd-spawned vs terminal-spawned Python.
 
-**Root Cause:** launchd's default PATH = `/usr/bin:/bin:/usr/sbin:/sbin`. Tmux at `/opt/homebrew/bin/tmux` ist NICHT drin. `_tmux_session_exists()` ruft `tmux has-session` → command not found → returns False → Worker filtered out in `_process_project_dir`.
+**Root cause:** launchd's default PATH = `/usr/bin:/bin:/usr/sbin:/sbin`. tmux at `/opt/homebrew/bin/tmux` is NOT in it. `_tmux_session_exists()` calls `tmux has-session` → command not found → returns False → workers filtered out in `_process_project_dir`.
 
-**Fix:** `EnvironmentVariables/PATH` in plist gesetzt auf `/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`. Deckt arm64-Homebrew + Intel-Fallback ab.
+**Fix:** `EnvironmentVariables/PATH` in the plist set to `/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`. Covers arm64 Homebrew + Intel fallback.
 
-**Lesson:** launchd-spawned scripts erben NICHT user-shell PATH. Jeder Subprocess-Call mit nicht-system-Binary muss entweder absoluten Pfad nutzen oder via plist-Env explizit PATH setzen.
+**Lesson:** launchd-spawned scripts do NOT inherit the user-shell PATH. Every subprocess call to a non-system binary must either use an absolute path or explicitly set PATH via the plist env.
 
-## Restart-Button doesn't kill old process (löst Doppel-Bar-Icon)
+## Restart Button Doesn't Kill the Old Process (resolves the double-bar-icon bug)
 
-**Symptom:** Restart-Button klick → zwei Bar-Icons sichtbar. Alter Process überlebt, neuer wird zusätzlich gespawnt.
+**Symptom:** clicking the restart button → two bar icons visible. The old process survives, a new one is additionally spawned.
 
-**Investigation:** Restart rief `launchctl kickstart -k gui/<uid>/<label>`. Das `-k` Flag sendet SIGTERM. Python-Signal-Handler werden von NSApp-Runloop blockiert. Process stirbt nicht, launchd spawnt neuen (KeepAlive=true).
+**Investigation:** restart called `launchctl kickstart -k gui/<uid>/<label>`. The `-k` flag sends SIGTERM. Python signal handlers are blocked by the NSApp runloop. The process doesn't die, launchd spawns a new one (KeepAlive=true).
 
-**Fix:** Restart via `os.execv(sys.executable, [sys.executable] + sys.argv)` — In-place-Replace, gleicher PID, atomic. Kein launchd-Detour, kein Race. fcntl-Lock muss FD_CLOEXEC haben damit der neue execv den Lock re-acquiren kann.
+**Fix:** restart via `os.execv(sys.executable, [sys.executable] + sys.argv)` — an in-place replace, same PID, atomic. No launchd detour, no race. The fcntl lock must have FD_CLOEXEC so the new execv can re-acquire the lock.
 
-**Bonus:** Singleton-Enforcement via fcntl-Lock in `_acquire_singleton_lock()` verhindert parallele Spawns aus anderen Quellen. Exit-Code 0 wenn Lock besetzt — sonst respawnt launchd KeepAlive endlos.
+**Bonus:** singleton enforcement via an fcntl lock in `_acquire_singleton_lock()` prevents parallel spawns from other sources. Exit code 0 when the lock is held — otherwise launchd's KeepAlive respawns endlessly.
 
-## Panel-Grow-Only Resize Semantik (löst Worker-disappear-on-status-change)
+## Panel Grow-Only Resize Semantics (resolves the worker-disappears-on-status-change bug)
 
-**Symptom:** Während User mit Opus tippt verschwinden Worker-Zeilen aus dem Panel, kommen später wieder.
+**Symptom:** while the user types with Opus, worker rows disappear from the panel, then come back later.
 
-**Root Cause:** `_truncate_and_height` mit atomic-Logik (`continue` statt `break`) skippte ganze Projekte wenn Panel zu klein. Bei jedem Status-Flip triggerte `_tick` ein `_rebuild_panel` → Re-Truncation → Monitor-CC-Gruppe (3 Sessions) passte plötzlich nicht mehr → komplett raus.
+**Root cause:** `_truncate_and_height` with atomic logic (`continue` instead of `break`) skipped entire projects when the panel was too small. Every status flip triggered `_tick`'s `_rebuild_panel` → re-truncation → the Monitor-CC group (3 sessions) suddenly no longer fit → dropped entirely.
 
-**Fix Iterations:**
+**Fix iterations:**
 
-**v1:** Atomic-truncation eingebaut (continue statt break). Aber: Status-Change triggert Rebuild → Truncation re-rechnet → Workers verschwinden trotzdem wenn Panel zu klein.
+**v1:** atomic truncation built in (continue instead of break). But: a status change triggers a rebuild → truncation recomputes → workers disappear anyway when the panel is too small.
 
-**v2 (final):** Truncation komplett entfernt. Panel-Größe wird:
-- `max(user_dragged_height, content_required_height)` 
-- Wächst bei neuen Workers (content_required_height steigt)
-- Shrinkt nie (user_dragged_height bleibt als Floor)
-- Status-Change: nur badges via `_update_panel_inplace`, KEIN Rebuild, KEIN Resize
+**v2 (final):** truncation removed entirely. Panel size becomes:
+- `max(user_dragged_height, content_required_height)`
+- Grows with new workers (content_required_height increases)
+- Never shrinks (user_dragged_height stays as the floor)
+- Status change: only badges via `_update_panel_inplace`, NO rebuild, NO resize
 
-`_panel_max_height` umbenannt → `_panel_min_height` (semantisch korrekter Floor statt Cap). `_hidden_count` und `· N hidden` Auto-Jump-Label-Suffix entfernt — kein Hidden-Konzept mehr nötig.
+`_panel_max_height` renamed → `_panel_min_height` (semantically correct floor instead of cap). `_hidden_count` and the `· N hidden` auto-jump label suffix removed — no more hidden concept needed.
 
-## NSPanel Cursor Rabbit Hole (4 Iterationen, DEFERRED)
+## NSPanel Cursor Rabbit Hole (4 iterations, DEFERRED)
 
-**Symptom:** Hover über Panel-Edges zeigt keinen Resize-Cursor (`↕`/`↔`). Bottom funktioniert teilweise (I-Beam switcht zu Arrow), Sides nicht.
+**Symptom:** hovering over panel edges shows no resize cursor (`↕`/`↔`). Bottom works partially (I-Beam switches to arrow), sides don't.
 
-**Iteration 1:** Hypothese `setAcceptsMouseMovedEvents_(True)` fehlt. Eingebaut → 3441 mouseMoved fires geloggt → trotzdem visuell I-Beam.
+**Iteration 1:** hypothesis that `setAcceptsMouseMovedEvents_(True)` is missing. Added → 3441 mouseMoved fires logged → still visually I-Beam.
 
-**Iteration 2:** NSView-Subclass `_PanelContentView` mit `updateTrackingAreas` Override, owner=self. Konfirmierte dass mouseMoved feuert via per-Iteration Log. Cursor visuell unverändert.
+**Iteration 2:** NSView subclass `_PanelContentView` with an `updateTrackingAreas` override, owner=self. Confirmed mouseMoved fires via a per-iteration log. Cursor visually unchanged.
 
-**Iteration 3:** Switch von mouseMoved-NSCursor.set zu kanonischem resetCursorRects-Pattern. NSTextField-Subclass `_CursorlessLabel` mit no-op resetCursorRects gegen I-Beam-Override. Bottom-Edge funktionierte plötzlich, Sides immer noch I-Beam.
+**Iteration 3:** switched from mouseMoved-NSCursor.set to the canonical resetCursorRects pattern. NSTextField subclass `_CursorlessLabel` with a no-op resetCursorRects against the I-Beam override. Bottom edge suddenly worked, sides still I-Beam.
 
-**Iteration 4 (Diagnose):** Detailliertes Logging (x, y, w, branch). Branch `left-right` feuerte 92x bei x<8 oder x>372, aber Cursor visuell nicht gewechselt. Root Cause: Layout deckt Edge-Regionen mit NSStackView/Footer/Top-Bar ab. Unsere cursor rects auf `_PanelContentView` greifen NUR wenn Mouse über LEERE contentView-Pixel ist. Edge-Strips sind covered.
+**Iteration 4 (diagnosis):** detailed logging (x, y, w, branch). The `left-right` branch fired 92x at x<8 or x>372, but the cursor didn't visually change. Root cause: the layout covers edge regions with NSStackView/footer/top-bar. Our cursor rects on `_PanelContentView` only apply when the mouse is over EMPTY contentView pixels. The edge strips are covered.
 
-**Status:** DEFERRED (NICHT accepted). Nächste Session nach Refactor: NSPanel-sendEvent-Override-Pattern probieren ODER cursor-rects auf jeden Leaf-Subview installieren. Aktuell drag-resize funktioniert weiterhin — nur visuelle Anzeige fehlt.
+**Status:** DEFERRED (NOT accepted). Next session after the refactor: try the NSPanel sendEvent-override pattern OR install cursor rects on every leaf subview. Drag-resize currently still works — only the visual indicator is missing.
 
 ## Iteration 5 (2026-05-20) — Probe-based Diagnosis
 
@@ -286,43 +286,43 @@ app._panel.enableCursorRects()
 
 ## launchctl bootstrap I/O Error (Recurring)
 
-**Symptom:** `launchctl bootstrap gui/<uid> <plist>` failed mit `Bootstrap failed: 5: Input/output error` beim ersten Versuch — beim zweiten Versuch direkt nach 1-2s success.
+**Symptom:** `launchctl bootstrap gui/<uid> <plist>` fails with `Bootstrap failed: 5: Input/output error` on the first attempt — succeeds directly on the second attempt after 1-2s.
 
-**Workaround in dieser Session:** Manuelles Retry. Pattern: bootout → bootstrap (fails) → bootstrap (succeeds).
+**Workaround in this session:** manual retry. Pattern: bootout → bootstrap (fails) → bootstrap (succeeds).
 
-**Pending:** Worker C baut `setup_menubar.py` mit Built-in 2nd-try-Retry-Logic. Sollte in jedes plist-Setup-Skript für dieses Projekt rein.
+**Pending:** a worker builds `setup_menubar.py` with built-in 2nd-try retry logic. Should go into every plist-setup script for this project.
 
-## Refactor-Split (Modul-Isolation)
+## Refactor Split (Module Isolation)
 
-**Anlass:** Bug-Iteration auf cursor.py-Code erforderte Reading von hotkey/focus/singleton context — Concerns vermischt. User-O-Ton: "das ist nämlich genau das problem das wir nicht isoliert an bugs arbeiten ohne 1000 sachen zu brechen".
+**Trigger:** bug iteration on cursor.py code required reading hotkey/focus/singleton context — concerns were mixed together. User's own words: "that's exactly the problem, that we can't work on bugs in isolation without breaking 1000 other things."
 
-**menubar.py 590 LOC → 4 Module:** app.py (235), panel.py (259), hotkey.py (54), system.py (75). 15 Imports → ≤6 pro Modul. State distributed über Concern-Module.
+**menubar.py 590 LOC → 4 modules:** app.py (235), panel.py (259), hotkey.py (54), system.py (75). 15 imports → ≤6 per module. State distributed across concern modules.
 
-**discover.py 501 LOC → 4 Module:** discover.py (179), ghostty.py (125), bg_timer.py (96), proc_cache.py (145). 8 Imports → ≤6 pro Modul. proc_cache.py als Blatt des DAG.
+**discover.py 501 LOC → 4 modules:** discover.py (179), ghostty.py (125), bg_timer.py (96), proc_cache.py (145). 8 imports → ≤6 per module. proc_cache.py as a leaf of the DAG.
 
-Beide Splits sind Strukturchanges ohne Behavioral Difference — Tick-Log post-merge zeigt `n=8 sessions` identisch.
+Both splits are structural changes with no behavioral difference — the tick log post-merge shows `n=8 sessions` identically.
 
-**Drei-Lösungen-Pattern bei circular import (split-menubar):**
-- Lazy import in `system.run()` für `from .app import CCMenuBarApp` (bricht app→system→app)
-- `bg_result` explizit übergeben statt im Modul re-scannen (panel.py braucht keinen discover-Import)
-- Hotkey-API refactor: zero-arg callback statt app-Param (hotkey.py kennt keine app-Klasse)
+**Three-solution pattern for circular imports (split-menubar):**
+- Lazy import in `system.run()` for `from .app import CCMenuBarApp` (breaks app→system→app)
+- `bg_result` passed explicitly instead of re-scanned in the module (panel.py needs no discover import)
+- Hotkey-API refactor: zero-arg callback instead of an app param (hotkey.py knows no app class)
 
-## Refactor-Skill Erweiterung
+## Refactor-Skill Extension
 
-`/Users/brunowinter2000/Documents/ai/Meta/blank/skills/refactor/SKILL.md` erweitert um:
+`/Users/brunowinter2000/Documents/ai/Meta/blank/skills/refactor/SKILL.md` extended with:
 
-- **2.5b State Sprawl** — AST-Count Instance-Attrs pro Klasse (≥10 = flag). Hätte CCMenuBarApp 13 Attrs gefangen.
-- **2.5c Constant Concern-Clustering** — Regex prefix-clustering (≥2 Cluster je ≥3 = flag). Hätte UI/SYSTEM/BADGE constants in menubar.py gefangen.
-- **2.6 Operational Hygiene** — 3 Sub-Checks: ungated diagnostics, install friction (placeholder-tokens-no-setup-script), scattered application state.
-- **2.7 Refactor Residue** — dead imports, scripts in library tree, dev-tooling gap.
+- **2.5b State Sprawl** — AST-count instance attrs per class (≥10 = flag). Would have caught CCMenuBarApp's 13 attrs.
+- **2.5c Constant Concern-Clustering** — regex prefix-clustering (≥2 clusters of ≥3 each = flag). Would have caught the UI/SYSTEM/BADGE constants in menubar.py.
+- **2.6 Operational Hygiene** — 3 sub-checks: ungated diagnostics, install friction (placeholder-tokens-no-setup-script), scattered application state.
+- **2.7 Refactor Residue** — dead imports, scripts in the library tree, dev-tooling gap.
 
-Phase 3 Severity-Tabelle entsprechend ergänzt. Abstract formuliert — keine Monitor_CC-Beispiele in der Skill-Definition.
+The phase-3 severity table extended accordingly. Written abstractly — no Monitor_CC examples in the skill definition.
 
-## Bead-Übergang
+## Tracking-Task Transition
 
-`Monitor_CC-zv6s` (3 remaining issues from 2026-05-12) → CLOSED. Alle 6 Issues addressed (4-5 done in dieser Session, 6 als carryover).
+The 3 remaining issues from a prior session (2026-05-12) → CLOSED. All 6 issues addressed (4-5 done in this session, 6 carried over).
 
-`Monitor_CC-q6e5` (NEW): Follow-ups inklusive Cursor-Edges (deferred), Kill-Button (Issue 6 carryover), Refactor-Cleanup (worker C aktiv beim Session-Ende), Column-Alignment, Operational-Hygiene findings.
+A new follow-up tracking item was opened: cursor edges (deferred), kill button (carryover), refactor cleanup (a worker was active at session end), column alignment, operational-hygiene findings.
 
 ## Iteration 8 (2026-05-20) — NSTrackingArea cursorUpdate Pattern (FINAL)
 
