@@ -1,70 +1,70 @@
-# A2 — Restart-Button Fix (2026-05-28)
+# A2 — Restart Button Fix (2026-05-28)
 
 **Status:** Fixed. Commits 089980c + 2a7acd8 on branch `restart-fix`.
 
-## Root Cause (zwei zusammenwirkende Bugs)
+## Root Cause (Two Interacting Bugs)
 
-### Bug 1 — `_BUNDLE_LAUNCHER` zeigt auf nicht-existentes Binary
+### Bug 1 — `_BUNDLE_LAUNCHER` Points at a Non-Existent Binary
 
 `setup_menubar.py:_BUNDLE_LAUNCHER = _BUNDLE / 'Contents' / 'MacOS' / 'menubar'`
 
-`write_plist()` substituiert diesen Pfad in `ProgramArguments` der LaunchAgent-Plist.
-Das installierte py2app-Bundle enthält aber kein `Contents/MacOS/menubar`:
+`write_plist()` substitutes this path into `ProgramArguments` of the LaunchAgent plist.
+But the installed py2app bundle contains no `Contents/MacOS/menubar`:
 
 ```
 ~/Applications/Monitor_CC_Menubar.app/Contents/MacOS/
   Monitor_CC_Menubar   ← py2app native Mach-O
-  python               ← py2app Stub-Python
+  python               ← py2app stub Python
 ```
 
-Verifiziert via `launchctl print gui/<uid>/com.brunowinter.monitor_cc_menubar`:
+Verified via `launchctl print gui/<uid>/com.brunowinter.monitor_cc_menubar`:
 - `program = .../Contents/MacOS/menubar`
 - `active count = 0`, `state = spawn scheduled`
 
-launchd versuchte respawnen; Binary existiert nicht; App lief nur weil manuell via `open` gestartet.
+launchd tried to respawn; the binary doesn't exist; the app only ran because it was started manually via `open`.
 
-### Bug 2 — Helper-Subprocess korrumpiert Info.plist des py2app-Bundles
+### Bug 2 — the Helper Subprocess Corrupts the py2app Bundle's Info.plist
 
-`restartApp_` baute den Helper-Command:
+`restartApp_` built the helper command:
 ```python
 cmd = f'sleep 0.5 && "{sys.executable}" "{_SETUP_PY}"'
 ```
 
-Im py2app-Bundle-Kontext:
-- `sys.executable` = `Contents/MacOS/python` (Bundle-internes Stub-Python)
-- `_SETUP_PY` = `Contents/Resources/lib/python3.14/src/menubar/setup_menubar.py` (Bundle-interne Kopie, verifiziert via `find`)
+In the py2app bundle context:
+- `sys.executable` = `Contents/MacOS/python` (the bundle's internal stub Python)
+- `_SETUP_PY` = `Contents/Resources/lib/python3.14/src/menubar/setup_menubar.py` (the bundle's internal copy, verified via `find`)
 
-Der Helper rief `setup_menubar_workflow()` → `_build_app_bundle()` auf, das:
-1. `~/Applications/Monitor_CC_Menubar.app/Contents/Info.plist` mit dem ad-hoc-Stub überschrieb
-   (`CFBundleExecutable=menubar`, kein `PyRuntimeLocations`, kein `NSScreenCaptureUsageDescription`)
-2. `Contents/MacOS/menubar` (Bash-Launcher) anlegte — neben dem py2app-Native-Binary
+The helper called `setup_menubar_workflow()` → `_build_app_bundle()`, which:
+1. Overwrote `~/Applications/Monitor_CC_Menubar.app/Contents/Info.plist` with the ad-hoc stub
+   (`CFBundleExecutable=menubar`, no `PyRuntimeLocations`, no `NSScreenCaptureUsageDescription`)
+2. Created `Contents/MacOS/menubar` (Bash launcher) — next to the py2app native binary
 
-Nächster `open`-Versuch: py2app-Native-Binary liest korrupte Info.plist →
-"The Info.plist file must have a PyRuntimeLocations array" (fataler Startfehler).
+The next `open` attempt: the py2app native binary reads the corrupt Info.plist →
+"The Info.plist file must have a PyRuntimeLocations array" (fatal startup error).
 
-Severity schärfer als in A1 antizipiert: nicht nur "no-op exit" sondern aktive Bundle-Korruption.
+Severity sharper than anticipated in A1: not just a "no-op exit" but active bundle corruption.
 
-## Fix (Option D — separate Plist-Funktionen, sys.frozen-Gate)
+## Fix (Option D — Separate Plist Functions, sys.frozen Gate)
 
-### Schritt 1: `setup_menubar.py` — `_BUNDLE_EXE` + `write_plist_py2app()`
+### Step 1: `setup_menubar.py` — `_BUNDLE_EXE` + `write_plist_py2app()`
 
 ```python
-_BUNDLE_LAUNCHER = _BUNDLE / 'Contents' / 'MacOS' / 'menubar'           # dev/Bash-Bundle unverändert
+_BUNDLE_LAUNCHER = _BUNDLE / 'Contents' / 'MacOS' / 'menubar'           # dev/Bash bundle unchanged
 _BUNDLE_EXE      = _BUNDLE / 'Contents' / 'MacOS' / 'Monitor_CC_Menubar'  # py2app native binary
 ```
 
-Neue Funktion `write_plist_py2app()` — identisch zu `write_plist()` aber substituiert `_BUNDLE_EXE`
-statt `_BUNDLE_LAUNCHER`. Kein `print()` (kein nützlicher stdout-Empfänger im Bundle-Kontext).
-`_BUNDLE_LAUNCHER` bleibt unverändert → `write_plist()` + dev-Restart weiterhin korrekt.
+New function `write_plist_py2app()` — identical to `write_plist()` but substitutes `_BUNDLE_EXE`
+instead of `_BUNDLE_LAUNCHER`. No `print()` (no useful stdout receiver in the bundle context).
+`_BUNDLE_LAUNCHER` stays unchanged → `write_plist()` + the dev restart remain correct.
 
-### Schritt 2: `app.py:restartApp_` — `sys.frozen`-Gate, kein unbedingter Wrong-Write
+### Step 2: `app.py:restartApp_` — a `sys.frozen` Gate, No Unconditional Wrong-Write
 
 ```python
 def restartApp_(self, sender):
     uid = os.getuid()
     label = 'com.brunowinter.monitor_cc_menubar'
     if getattr(sys, 'frozen', False):
-        # py2app: write_plist_py2app() → reiner launchctl-Cycle
+        # py2app: write_plist_py2app() → a pure launchctl cycle
         from .setup_menubar import write_plist_py2app
         write_plist_py2app()
         dest = str(Path.home() / 'Library' / 'LaunchAgents' / f'{label}.plist')
@@ -81,26 +81,26 @@ def restartApp_(self, sender):
     rumps.quit_application()
 ```
 
-`sys.frozen = 'macosx_app'` wird von `__boot__.py` gesetzt — verifiziert.
-Kein Python-Call im py2app-Helper → Bundle-interne `setup_menubar.py` kann nie anlaufen.
+`sys.frozen = 'macosx_app'` is set by `__boot__.py` — verified.
+No Python call in the py2app helper → the bundle's internal `setup_menubar.py` can never run.
 
-### Warum kein unbedingtes `write_plist()` am Anfang
+### Why Not an Unconditional `write_plist()` at the Top
 
-Erster Entwurf (Commit 089980c) hatte `write_plist()` unbedingt oben, dann `write_plist_py2app()`
-im py2app-Branch: redundanter Wrong-Write (`menubar`-Pfad, sofort überschrieben durch `Monitor_CC_Menubar`).
-Commit 2a7acd8 korrigiert das: jeder Branch ruft genau eine, die richtige Funktion auf.
+The first draft (commit 089980c) had `write_plist()` unconditionally at the top, then `write_plist_py2app()`
+in the py2app branch: a redundant wrong-write (the `menubar` path, immediately overwritten by `Monitor_CC_Menubar`).
+Commit 2a7acd8 corrected this: each branch calls exactly one, the correct, function.
 
-## Offener Footgun (nicht gefixxt — Refactor-Scope)
+## Open Footgun (not fixed — refactor scope)
 
-Dev-Restart (`sys.frozen = False`): `setup_menubar_workflow()` ruft `_build_app_bundle()` auf,
-das `~/Applications/Monitor_CC_Menubar.app/Contents/Info.plist` überschreibt — korrumpiert ein
-installiertes py2app-Bundle. In der Praxis inaktiv: Dev läuft via `dev/menubar_debug.py`,
-kein Restart-Button-Click aus diesem Pfad erwartet. Fix gehört in den `setup_menubar.py`-Refactor-Step
-(Legacy-Pipeline entfernen oder Guard einbauen).
+Dev restart (`sys.frozen = False`): `setup_menubar_workflow()` calls `_build_app_bundle()`,
+which overwrites `~/Applications/Monitor_CC_Menubar.app/Contents/Info.plist` — corrupting an
+installed py2app bundle. Inactive in practice: dev runs via `dev/menubar_debug.py`,
+no restart-button click is expected from that path. The fix belongs in the `setup_menubar.py`
+refactor step (remove the legacy pipeline or add a guard).
 
-## Quellen
+## Sources
 
-- `src/menubar/app.py:restartApp_` (Commits 089980c, 2a7acd8)
+- `src/menubar/app.py:restartApp_` (commits 089980c, 2a7acd8)
 - `src/menubar/setup_menubar.py` (`_BUNDLE_EXE`, `write_plist_py2app`)
-- `decisions/OldThemes/menubar_restart_broken/A1_observed_corruption.md`
-- `decisions/menubar_desktop_allocation.md` § Offene Fragen #4
+- The prior observed-corruption entry in this area
+- The current-state documentation for menubar desktop allocation, § Open Questions #4
