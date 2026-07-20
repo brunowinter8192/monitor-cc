@@ -1,66 +1,66 @@
-# G1 — Space-Move Neu-Recherche: bridged-Op + macOS-Versions-Split (2026-05-30)
+# G1 — Space-Move Fresh Research: bridged-Op + macOS Version Split (2026-05-30)
 
-**Status:** Recherche abgeschlossen. Supersedet F1s „alle Move-APIs tot" teilweise — der bridged-Pfad lebt, aber versionsabhängig. **Probe-Ergebnis (2026-05-31, G2): bridged-Op No-op auf 26.5 — siehe G2 + `H1_placement_mechanism_review_2026-05-31.md` (Regression vs Kontext offen; Produktions-Thread = plain CGSMove + Detection getrennt).**
+**Status:** Research complete. Partially supersedes the earlier "all move APIs are dead" finding — the bridged path is alive, but version-dependent. **Probe result (2026-05-31, G2): bridged-op is a no-op on 26.5** (regression vs context still open; the production thread is plain CGSMove + detection kept separate).
 
-Knüpft an: `F1_cmd_b_books_blocked.md` (Move-API-Sackgasse), `Meta/blank/decisions/OldThemes/desktop_targeting_sidecar.md` (blank-Probe + Sackgassen-Protokoll der Vorsession).
+Follows on from the earlier Cmd+B move-API dead-end finding and a prior blank-side probe + dead-end log from an earlier session.
 
-## Frage
+## Question
 
-F1/Vorsession parkten den Space-Move als „Sackgasse, alle 4 Move-APIs failen, Wiederaufnahme via gh-Recherche". Diese Session hat die gründliche GitHub-Recherche gemacht (Issues + Discussions indexiert über yabai, Hammerspoon, DockDoor, AeroSpace).
+The earlier session parked the space move as "a dead end, all 4 move APIs fail, resume via GitHub research." This session did the thorough GitHub research (issues + discussions indexed across yabai, Hammerspoon, DockDoor, AeroSpace).
 
-## Root Cause (jetzt präzise belegt)
+## Root Cause (now precisely evidenced)
 
-Move-Window-to-Space scheitert auf Sequoia 15.7 wegen **WindowServer-Connection-Rights-Checking**, das Apple in Sequoia eingeführt hat: der Aufrufer muss **Owner des Fensters** sein ODER **Dock.app** (= System-Verwalter aller Spaces; yabais Scripting-Addition injiziert dort hinein → braucht SIP). „Owner" = der Prozess, der das Fenster erzeugt hat (WindowServer vermerkt Owner-PID pro Fenster).
+Move-window-to-space fails on Sequoia 15.7 because of **WindowServer connection rights-checking**, which Apple introduced in Sequoia: the caller must be the **owner of the window** OR **Dock.app** (= the system-wide manager of all spaces; yabai's scripting addition injects into Dock.app → needs SIP). "Owner" = the process that created the window (WindowServer records the owner PID per window).
 
-Unser Verschiebe-Helfer (`desktop_targeting.py`, eigener Python-Prozess) besitzt weder das Ghostty- noch das CotEditor-Fenster → auf Sequoia blockiert. Das ist der eigentliche Grund, nicht „API weg".
+Our move helper (`desktop_targeting.py`, its own Python process) owns neither the Ghostty nor the CotEditor window → blocked on Sequoia. That's the real reason, not "API gone."
 
-Quellen: Hammerspoon #3636 Kommentar 15 (spaces-Extension-Maintainer, wörtlich: *"rights checking on the WindowServer connection. You either need to be the owner of the window, or the system universal owner (Dock.app)"*); yabai-Discussion #803 (Maintainer: *"the entire workspaces functionality is implemented inside Dock.app"*); yabai-Issues #2380/#2425/#2500/#2784 (Move braucht SIP+SA seit Sequoia).
+Sources: Hammerspoon #3636 comment 15 (spaces-extension maintainer, verbatim: *"rights checking on the WindowServer connection. You either need to be the owner of the window, or the system universal owner (Dock.app)"*); yabai discussion #803 (maintainer: *"the entire workspaces functionality is implemented inside Dock.app"*); yabai issues #2380/#2425/#2500/#2784 (move needs SIP+SA since Sequoia).
 
-## Die fehlende Technik (warum unser Probe scheiterte)
+## The Missing Technique (why the earlier probe failed)
 
-Der korrekte Weg ist `SLSBridgedMoveWindowsToManagedSpaceOperation` + die **eigene Methode des Operation-Objekts `performWithWMBridgeDelegate`** — Referenz: `ejbills/DockDoor:DockDoor/Utilities/PrivateApis.swift` `func SLSMoveWindowsToManagedSpace`. Reine ObjC-Runtime (`NSClassFromString` + `initWithWindows:spaceID:` + `performWithWMBridgeDelegate`), kein Mach-O-Parsing.
+The correct path is `SLSBridgedMoveWindowsToManagedSpaceOperation` + the operation object's **own method `performWithWMBridgeDelegate`** — reference: `ejbills/DockDoor:DockDoor/Utilities/PrivateApis.swift` `func SLSMoveWindowsToManagedSpace`. Pure ObjC runtime (`NSClassFromString` + `initWithWindows:spaceID:` + `performWithWMBridgeDelegate`), no Mach-O parsing.
 
-Unser Vorsessions-Probe scheiterte an zwei Dingen:
-1. Es rief `.start` direkt auf der Klasse → SIGSEGV (falscher Selektor).
-2. Es suchte den externen Dispatcher `SLSPerformAsynchronousBridgedWindowManagementOperation` per `dlsym` → MISSING (lokales `_ZL`-Symbol, dlsym findet es nie; yabai resolved es per `macho_find_symbol`, DockDoor umgeht den Dispatcher ganz via `performWithWMBridgeDelegate`).
+The earlier probe failed on two things:
+1. It called `.start` directly on the class → SIGSEGV (wrong selector).
+2. It looked for the external dispatcher `SLSPerformAsynchronousBridgedWindowManagementOperation` via `dlsym` → MISSING (a local `_ZL` symbol, dlsym never finds it; yabai resolves it via `macho_find_symbol`, DockDoor bypasses the dispatcher entirely via `performWithWMBridgeDelegate`).
 
-Der korrekte Selektor `performWithWMBridgeDelegate` wurde im Vorsessions-Probe NIE getestet.
+The correct selector `performWithWMBridgeDelegate` was NEVER tested in the earlier probe.
 
-## macOS-Versions-Split (der Kern)
+## macOS Version Split (the core finding)
 
-| macOS | Move-to-Space (non-owned, SIP-frei) | Beleg |
+| macOS | Move-to-space (non-owned, SIP-free) | Evidence |
 |---|---|---|
-| ≤ 14.4 | ✅ funktioniert | yabai #803, kasper/phoenix |
-| 14.5 (Sonoma) | API geändert, dann ge-NOP't | Hammerspoon #3636 c24, phoenix PHSpace.m („only works prior to 14.5") |
-| 15.x (Sequoia) | ❌ rights-gated (owner-or-Dock); same-display cross-space tot, nur cross-**Display** geht | yabai #2380/#2784 (15.7.5), DockDoor #855/#451/#953 (15.2/15.5) |
-| 26.4.1 (Tahoe) | ✅ **bridged-Op SIP-frei** | yabai #2788 + DockDoor #855 c7 (ejbills validiert, „validated working on macOS 26.4.1"); yabai-Maintainer #2784 c3 (Move läuft auf seinem Tahoe-Daily-Driver) |
+| ≤ 14.4 | works | yabai #803, kasper/phoenix |
+| 14.5 (Sonoma) | API changed, then NOP'd | Hammerspoon #3636 c24, phoenix PHSpace.m ("only works prior to 14.5") |
+| 15.x (Sequoia) | rights-gated (owner-or-Dock); same-display cross-space dead, only cross-**display** works | yabai #2380/#2784 (15.7.5), DockDoor #855/#451/#953 (15.2/15.5) |
+| 26.4.1 (Tahoe) | **bridged-op SIP-free** | yabai #2788 + DockDoor #855 c7 (ejbills validated, "validated working on macOS 26.4.1"); yabai maintainer #2784 c3 (move runs on their Tahoe daily driver) |
 
-yabai = lebender Beweis, dass der bridged-Op auf Tahoe non-owned Fenster verschiebt (yabai managed fremde App-Fenster). Edge-Case (yabai #2789): Move auf einen **leeren** Space failt auf 26.4.1 — unser Ziel (Caller-Desktop) ist nie leer → unbetroffen.
+yabai is living proof that the bridged-op moves non-owned windows on Tahoe (yabai manages other apps' windows). Edge case (yabai #2789): move onto an **empty** space fails on 26.4.1 — our target (the caller's desktop) is never empty → unaffected.
 
-## Verworfene SIP-freie Workarounds (alle disruptiv)
+## Discarded SIP-Free Workarounds (all disruptive)
 
-- Titelleiste greifen + Ctrl+Pfeil (nativer Shortcut, Hammerspoon #3636 jdtsmith-Hack, auf 15.0.1 bestätigt) — wechselt den Space.
-- Mission-Control-Drag-Automation (`mogenson/Drag.spoon`) — reißt Mission Control auf.
-- MC-Keyboard-Shortcuts via osascript/skhd (yabai #803) — wechselt den Space.
+- Grab the title bar + Ctrl-arrow (native shortcut, Hammerspoon #3636 jdtsmith hack, confirmed on 15.0.1) — switches the space.
+- Mission-Control drag automation (`mogenson/Drag.spoon`) — tears open Mission Control.
+- MC keyboard shortcuts via osascript/skhd (yabai #803) — switches the space.
 
-Alle verletzen „lautlos platzieren ohne den User zu stören".
+All violate "place silently without disturbing the user."
 
-## Referenz-Repos + Patterns
+## Reference Repos + Patterns
 
-- `asmvik/yabai` — `src/space_manager.c:665-700` (3 Move-Pfade), `src/yabai.c:149` (macho-Symbol-Resolution für Dispatcher). Issues = Ground-Truth zum SIP/Versions-Status.
-- `ejbills/DockDoor` — `DockDoor/Utilities/PrivateApis.swift` `SLSMoveWindowsToManagedSpace` (saubere Swift-Referenz via `performWithWMBridgeDelegate`). Issue #855 = Validierungs-Quelle.
-- `Hammerspoon/hammerspoon` — #3698/#3636 (spaces-Extension-Status, owner-or-Dock-Erklärung).
-- `nikitabobko/AeroSpace` — vermeidet native Spaces bewusst (Referenz falls „native Spaces aufgeben" je erwogen wird).
+- `asmvik/yabai` — `src/space_manager.c:665-700` (3 move paths), `src/yabai.c:149` (macho symbol resolution for the dispatcher). Issues = ground truth on SIP/version status.
+- `ejbills/DockDoor` — `DockDoor/Utilities/PrivateApis.swift` `SLSMoveWindowsToManagedSpace` (clean Swift reference via `performWithWMBridgeDelegate`). Issue #855 = validation source.
+- `Hammerspoon/hammerspoon` — #3698/#3636 (spaces-extension status, owner-or-Dock explanation).
+- `nikitabobko/AeroSpace` — deliberately avoids native spaces (reference in case "give up on native spaces" is ever reconsidered).
 
-## SOLL / Nächster Schritt
+## Target / Next Step
 
-**Entscheidung User 2026-05-30: Tahoe-Route, kein Sequoia-Tweaking.** Der Sequoia-Probe mit `performWithWMBridgeDelegate` wird NICHT gemacht — Sequoia ist rights-gated, Tahoe ist der einzige bestätigte SIP-freie Weg, Aufwand auf 15.7 lohnt nicht.
+**User decision 2026-05-30: Tahoe route, no Sequoia tweaking.** The Sequoia probe with `performWithWMBridgeDelegate` will NOT be done — Sequoia is rights-gated, Tahoe is the only confirmed SIP-free path, effort on 15.7 doesn't pay off.
 
-1. **Software-Update auf Tahoe 26.4+** (dort bridged-Op SIP-frei bestätigt: yabai #2788, ejbills/DockDoor #855 c7, yabai-Maintainer #2784).
-2. Danach **dev/-Probe auf Tahoe**: real ein non-owned Fenster (Ghostty) auf einen Ziel-Space schieben via `SLSBridgedMoveWindowsToManagedSpaceOperation` + `performWithWMBridgeDelegate` (DockDoor `PrivateApis.swift` als Swift-Referenz). Verlässliche Messung: On-Screen-Liste (`CGWindowListCopyWindowInfo` kCGWindowListOptionOnScreenOnly) + Screenshot, NICHT `SLSCopySpacesForWindows`.
-3. Probe grün → bridged-Op-Technik nach `Meta/blank/src/desktop/desktop_targeting.py` portieren. Probe-First (Worker-Rules §5): erst dev/, dann `src/`.
+1. **Software update to Tahoe 26.4+** (bridged-op confirmed SIP-free there: yabai #2788, ejbills/DockDoor #855 c7, yabai maintainer #2784).
+2. Then a **dev/ probe on Tahoe**: actually move a non-owned window (Ghostty) to a target space via `SLSBridgedMoveWindowsToManagedSpaceOperation` + `performWithWMBridgeDelegate` (DockDoor `PrivateApis.swift` as the Swift reference). Reliable measurement: on-screen list (`CGWindowListCopyWindowInfo` kCGWindowListOptionOnScreenOnly) + screenshot, NOT `SLSCopySpacesForWindows`.
+3. Probe green → port the bridged-op technique into `Meta/blank/src/desktop/desktop_targeting.py`. Probe-first: dev/ first, then `src/`.
 
-## Indexierte Quellen (RAG)
+## Indexed Sources (RAG)
 
 - `github_issues`: yabai (#2380/#2425/#2500/#2636/#2741/#2784/#2788/#2789/#2707/#2634), Hammerspoon (#3698/#3636/#3111/#2111), DockDoor (#855/#451/#953/#466/#9/#1177).
-- `github_discussions`: yabai (#803/#1553/#2667), AeroSpace (native-spaces-Begründung).
+- `github_discussions`: yabai (#803/#1553/#2667), AeroSpace (native-spaces rationale).
