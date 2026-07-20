@@ -1,7 +1,7 @@
-# worker-cli capture — clean+scope redesign (#25 capture-noise, 2026-06-22)
+# worker-cli capture — clean+scope redesign (2026-06-22)
 
 Two-repo feature: `worker-cli capture` redesigned to return clean, scoped output (iterative-dev plugin)
-+ a monitor-cc rewrite hook that strips capture pipe-appendages. Closes the "capture-noise" item of #25.
++ a monitor-cc rewrite hook that strips capture pipe-appendages.
 
 ## Motivation
 `worker-cli capture <name>` dumped the raw tmux pane (boot box, footer chrome, `(ctrl+o to expand)`
@@ -12,18 +12,18 @@ complete output since the last orchestrator prompt) but sourced from the PANE, n
 dying/stuck worker the JSONL has no completed turn, only the pane shows the live state.
 
 ## Design (decided in chat)
-- **Stay with the tmux-pane capture** (NOT JSONL/proxy) — user preference, "sauberer".
+- **Stay with the tmux-pane capture** (NOT JSONL/proxy) — user preference for a cleaner result.
 - Capture default = clean + scoped to last real `❯` prompt; `--raw` = old raw-pane-to-file escape hatch.
 - **Collapse of edit output is DESIRED, not content loss** — for reading a worker the orchestrator only
   needs WHAT it wrote + WHICH files it touched; the full edit content comes from `git diff`. So diff hunk
   bodies are stripped (keep `Update(file)` header + `Added/removed` counter).
-- Constraint (hard, user): **no content loss, some noise acceptable** ("lieber etwas Noise als Content-Verlust").
+- Constraint (hard, user): **no content loss, some noise acceptable** ("some noise is fine, content loss is not").
 - `history-limit 50000` on worker sessions so a long turn's `❯` anchor never scrolls out of scrollback.
 
-## IST (final, both repos)
+## State as of 2026-06-22 (both repos)
 - iterative-dev: `worker_capture_clean()` + `_capture_clean.py` (scope+clean filter) + `--raw` dispatch in
-  `worker-cli`; history-limit at spawn+revive. See `iterative-dev/decisions/spawn.md` + `src/spawn/DOCS.md`.
-- monitor-cc: `rewrite_worker_cli_capture_noise.py` (Hook 32). See `decisions/pipe07_safety_hooks.md`.
+  `worker-cli`; history-limit at spawn+revive. See `src/spawn/DOCS.md`.
+- monitor-cc: `rewrite_worker_cli_capture_noise.py` (Hook 32).
 
 ## Iteration (process — what was tried, fixed, rejected)
 1. **Stage 1 built (pollfix).** _capture_clean.py: scope to last `^❯ <non-empty>` (anchor fix — bare
@@ -51,8 +51,8 @@ dying/stuck worker the JSONL has no completed turn, only the pane shows the live
 5. **Stage 2 hook (capturehook).** `rewrite_worker_cli_capture_noise.py` — near-exact mirror of
    `rewrite_worker_cli_response_noise.py`, three differences: anchor `worker-cli capture`; `_NOISE_RE`
    **pipe-only** `(?<!\|)\|(?!\|)` (NOT redirects — `capture X > file` is a legit full-output save, and
-   `--raw` is a flag that survives); log_fire name. No grep exception (user: "kein Use-Case für grep auf
-   capture"). Live-verified end-to-end: the hook rewrote a real `capture … | tail … | head` command to
+   `--raw` is a flag that survives); log_fire name. No grep exception (user: no use case for grep on
+   capture). Live-verified end-to-end: the hook rewrote a real `capture … | tail … | head` command to
    bare capture (fire-logged).
 
 ## Verification
