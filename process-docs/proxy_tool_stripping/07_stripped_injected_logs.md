@@ -1,36 +1,36 @@
-# Stripped/Injected Delta Logs — Vier-Log-Architektur (Phase 5)
+# Stripped/Injected Delta Logs — Four-Log Architecture (Phase 5)
 
-Build-Schritt 2026-06-03. Zwei neue DELTA-Logs `_stripped` / `_injected` in `src/logs/dual_log/`.
-Neues Modul `src/proxy/diff_engine.py` (144 LOC) extrahiert als single source des Align+Classify-Engine.
+Build step 2026-06-03. Two new DELTA logs `_stripped` / `_injected` in `src/logs/dual_log/`.
+New module `src/proxy/diff_engine.py` (144 LOC) extracted as the single source of the align+classify engine.
 
-## Kontext: Was davor existierte
+## Context: What Existed Before
 
-Nach Phase 4 (05_forwarded_delta.md / 06_strip_inject_diff.md) gab es:
-- `_original` — voll-kumulativ, roher CC-Payload, unberührt.
-- `_forwarded` — Delta-Log: was ans API gesendet wurde (REQ#1 voll, ab REQ#2 Diff).
-- `diff_strip_inject.py` in dev/ — Offline-Analyse, die Original↔Forwarded span-difft.
+After phase 4 (the forwarded-delta build + the strip/inject span-diff verification, both in this area), there was:
+- `_original` — fully cumulative, raw CC payload, untouched.
+- `_forwarded` — a delta log: what was sent to the API (REQ#1 full, from REQ#2 diff).
+- `diff_strip_inject.py` in dev/ — offline analysis that span-diffs original↔forwarded.
 
-Die Klassifikation "was wurde gestrippt / injiziert" war NICHT persistiert — nur durch Offline-Analyse eines DEV/-Skripts ableitbar. Für die Monitor-Leseseite (grün/gelb-Highlighting) wäre das eine Runtime-Berechnung bei jedem Frame-Render — zu teuer. Entscheidung: materialisieren.
+The classification "what was stripped / injected" was NOT persisted — only derivable via offline analysis of a dev/ script. For the monitor read-side (green/yellow highlighting) that would be a runtime computation on every frame render — too expensive. Decision: materialize it.
 
-## Entscheidung: Vier Logs, keine Markierungen
+## Decision: Four Logs, No Annotations
 
-**User-Entscheidung:** Kein Log bekommt Annotationen oder Kommentare. Vier Logs, die einfach gelesen werden.
+**User decision:** no log gets annotations or comments. Four logs, simply read as-is.
 
-**Warum `_stripped` ein eigenes Log braucht:** Der gestrippt Inhalt hat kein anderes Zuhause. In `_forwarded` ist er per Definition nicht (er wurde ja gestrippt). In `_original` liegt er zwar als Bytes — aber die Klassifikation "das hier ist gestrippt" ist nirgends gespeichert, sie muss hergeleitet werden. Materialisieren ist der Wert.
+**Why `_stripped` needs its own log:** the stripped content has no other home. In `_forwarded` it is, by definition, absent (it was stripped after all). In `_original` it sits as bytes — but the classification "this is stripped" is stored nowhere, it has to be derived. Materializing it is the value.
 
-**Warum `_injected` ein eigenes Log braucht:** Symmetrie zu `_stripped` — injizierter Content ist nur in `_forwarded`, nicht in `_original`. Direkt greppbar für Verifikation der Inject-Logik.
+**Why `_injected` needs its own log:** symmetry with `_stripped` — injected content is only in `_forwarded`, not in `_original`. Directly greppable for verifying the inject logic.
 
-**Logische Nicht-Redundanz:** Strip/Inject-Content ist *bytes-redundant* mit Original/Forwarded (die Bytes liegen auch dort), aber **nicht logisch redundant**: die Klassifikation ist nirgendwo gespeichert und muss sonst jedes Mal abgeleitet werden. Persistieren ist der Wert.
+**Logical non-redundancy:** strip/inject content is *bytes-redundant* with original/forwarded (the bytes sit there too), but **not logically redundant**: the classification is stored nowhere else and would otherwise have to be re-derived every time. Persisting it is the value.
 
-## Delta-Encoding für Stripped/Injected
+## Delta Encoding for Stripped/Injected
 
-Stripping ist hochgradig repetitiv: sys[2] CC-Prompt, sys[3], msg[0] SR-Blöcke werden bei jedem Request identisch gestrippt. Als volles Log würde `_stripped` pro Request die gleichen 130k-chars-Regeln wiederholen.
+Stripping is highly repetitive: sys[2] CC prompt, sys[3], msg[0] SR blocks get stripped identically on every request. As a full log, `_stripped` would repeat the same 130k-char rules per request.
 
-**Lösung:** Delta-Encoding analog zu `_build_forwarded_delta`. Per-Location-Hash-Chain (`loc_key → MD5[:10]` der Span-Texte, via `_hash_spans`). REQ#1 (`is_first: true`) schreibt alles. Ab REQ#2: nur Locations, deren Hash sich gegenüber dem vorigen Request geändert hat. Stabile Strips (sys[2] immer die gleichen Rules) erscheinen einmal im ersten Request, dann nie wieder.
+**Solution:** delta encoding analogous to `_build_forwarded_delta`. A per-location hash chain (`loc_key → MD5[:10]` of the span texts, via `_hash_spans`). REQ#1 (`is_first: true`) writes everything. From REQ#2 on: only locations whose hash changed relative to the previous request. Stable strips (sys[2] always the same rules) appear once in the first request, then never again.
 
-Hash-State: `prev_stripped_hashes_by_model` / `prev_injected_hashes_by_model` in `ProxyAddon`, keyed by model_family. Identisch zur `prev_delta_hashes_by_model`-Architektur von `_forwarded`.
+Hash state: `prev_stripped_hashes_by_model` / `prev_injected_hashes_by_model` in `ProxyAddon`, keyed by model_family. Identical to the `prev_delta_hashes_by_model` architecture of `_forwarded`.
 
-**Entry-Form `_stripped` (`type: stripped_delta`):**
+**Entry form `_stripped` (`type: stripped_delta`):**
 ```json
 {
   "type": "stripped_delta",
@@ -46,123 +46,123 @@ Hash-State: `prev_stripped_hashes_by_model` / `prev_injected_hashes_by_model` in
 }
 ```
 
-`_injected` ist identisch aufgebaut (`type: injected_delta`), aber enthält die insert-spans und `fwd_value` in `fields_delta`.
+`_injected` is built identically (`type: injected_delta`), but contains the insert spans and `fwd_value` in `fields_delta`.
 
-## Vollständiger Payload-Diff — Korrektheit bei Top-Level-Feldern
+## Full Payload Diff — Correctness at Top-Level Fields
 
-**Kern-Korrektheitspunkt:** Das Diff deckt ALLE Top-Level-Keys des Payloads ab, nicht nur system/tools/messages.
+**Core correctness point:** the diff covers ALL top-level keys of the payload, not just system/tools/messages.
 
-Konkretes Beispiel: `model`-Override (`claude-opus-4-7` → `claude-opus-4-8`) ist eine Feld-Ebene-Strip+Inject-Operation — exakt derselbe Mechanismus wie sys[2]-Ersetzung, nur auf Feld-Granularität statt Block-Granularität. Wenn `_diff_top_level_fields` fehlte, würde `_injected` behaupten "alles injiziert" während das `model`-Feld still übergangen wird — eine Inkonsistenz/Bug.
+Concrete example: the `model` override (`claude-opus-4-7` → `claude-opus-4-8`) is a field-level strip+inject operation — exactly the same mechanism as the sys[2] replacement, just at field granularity instead of block granularity. If `_diff_top_level_fields` were missing, `_injected` would claim "everything injected" while the `model` field silently slipped through — an inconsistency/bug.
 
-**`_diff_top_level_fields(orig_payload, fwd_payload) -> list`** (in `diff_engine.py`): iteriert alle Keys aus orig ∪ fwd, überspringt `_COLLECTION_KEYS = {"system", "tools", "messages"}`, klassifiziert jeden nicht-Collection-Key als:
-- `stripped` (nur in orig)
-- `injected` (nur in fwd)
-- `replaced` (in beiden, Wert unterschiedlich)
+**`_diff_top_level_fields(orig_payload, fwd_payload) -> list`** (in `diff_engine.py`): iterates all keys from orig ∪ fwd, skips `_COLLECTION_KEYS = {"system", "tools", "messages"}`, classifies each non-collection key as:
+- `stripped` (only in orig)
+- `injected` (only in fwd)
+- `replaced` (in both, value different)
 
-`_build_stripped_injected_deltas` verarbeitet `field_diffs`: ein `replaced`-Eintrag landet sowohl in `s_fields` (`orig`-Wert) als auch in `i_fields` (`fwd`-Wert). Die Engine enumeriert keine Proxy-Operationen; sie difft den ganzen Payload. Jede aktuelle oder zukünftige Top-Level-Modifikation wird automatisch erfasst.
+`_build_stripped_injected_deltas` processes `field_diffs`: a `replaced` entry lands in both `s_fields` (the `orig` value) and `i_fields` (the `fwd` value). The engine doesn't enumerate proxy operations; it diffs the whole payload. Every current or future top-level modification is captured automatically.
 
-## `response()`-Hook-Platzierung — Off the Hot Path
+## `response()` Hook Placement — Off the Hot Path
 
-**Problem:** `request()` ist synchron — mitmproxy wartet auf den Return bevor es forwarded. Ein teurer Diff im `request()`-Hook würde Client-Latenz addieren.
+**Problem:** `request()` is synchronous — mitmproxy waits for the return before forwarding. An expensive diff in the `request()` hook would add client latency.
 
-**Lösung:** Strip/Inject-Diff läuft in `response()` — nach dem upstream-Send (zero forwarding latency).
+**Solution:** the strip/inject diff runs in `response()` — after the upstream send (zero forwarding latency).
 
-**Metadata-Bridge:**
-- `request()` speichert `flow.metadata["mc_original_payload"] = payload` (Referenz auf das vor `apply_modification_rules` geparste Dict) und `flow.metadata["mc_modified_payload"] = modified_payload` (post-cache-ops, fertig).
-- `flow.metadata["mc_model_family"] = model_family` — damit `response()` die richtige Hash-Kette lesen kann.
-- `response()` liest diese drei Felder, ruft `_build_stripped_injected_deltas` auf, schreibt in `_stripped`/`_injected`. Isoliert in eigenem `try/except` — Failure berührt nie Forwarding oder die anderen Logs.
+**Metadata bridge:**
+- `request()` stores `flow.metadata["mc_original_payload"] = payload` (a reference to the dict parsed before `apply_modification_rules`) and `flow.metadata["mc_modified_payload"] = modified_payload` (post-cache-ops, final).
+- `flow.metadata["mc_model_family"] = model_family` — so `response()` can read the right hash chain.
+- `response()` reads these three fields, calls `_build_stripped_injected_deltas`, writes to `_stripped`/`_injected`. Isolated in its own `try/except` — a failure never touches forwarding or the other logs.
 
-## Aliasing-Finding: Referenz ist sicher
+## Aliasing Finding: the Reference Is Safe
 
-**Frage:** `mc_original_payload` ist eine REFERENZ auf das Dict, das später durch `apply_modification_rules` etc. modifiziert wird. Wird der Original-Payload in-place verändert?
+**Question:** `mc_original_payload` is a REFERENCE to the dict that gets modified later by `apply_modification_rules` etc. Is the original payload mutated in place?
 
-**Analyse + Befund: nein.** Die gesamte Modifikations-Pipeline ist funktional:
-- `cache.py` und `rules.py` bauen neue Dicts/Listen (`{**msg, ...}`, `dict(msg)`, frische `new_blocks`/`new_system`-Listen).
-- Kein nested-Objekt, das mit `mc_original_payload` geteilt wird, wird in-place mutiert.
-- Einziger potenzieller Berührungs-Punkt: `cache_control`-Keys. Die werden aber bei der Normalisierung per `_strip_cache_control` vor dem Diff herausgefiltert — selbst wenn in-place mutiert, neutralisiert.
+**Analysis + finding: no.** The entire modification pipeline is functional:
+- `cache.py` and `rules.py` build new dicts/lists (`{**msg, ...}`, `dict(msg)`, fresh `new_blocks`/`new_system` lists).
+- No nested object shared with `mc_original_payload` is mutated in place.
+- The one potential touch point: `cache_control` keys. But those are filtered out by `_strip_cache_control` during normalization before the diff — neutralized even if in-place mutated.
 
-Kein Snapshot nötig. Die Referenz ist stabil bis `response()` sie liest.
+No snapshot needed. The reference stays stable until `response()` reads it.
 
 ## Single-Source Engine: `src/proxy/diff_engine.py`
 
-**Ausgangssituation (06_strip_inject_diff.md):** `diff_strip_inject.py` hatte die Align+Classify-Logik inline (self-contained, keine Imports). Das war korrekt solange die Engine nur im DEV-Skript benötigt wurde.
+**Starting point (the strip/inject span-diff verification entry in this area):** `diff_strip_inject.py` had the align+classify logic inline (self-contained, no imports). That was correct as long as the engine was only needed in the dev script.
 
-**Neue Anforderung:** `_build_stripped_injected_deltas` in `logging.py` braucht dieselbe Engine. Zwei Kopien = zwei Divergenz-Risiken.
+**New requirement:** `_build_stripped_injected_deltas` in `logging.py` needs the same engine. Two copies = two divergence risks.
 
-**Annahme revidiert:** Dev-Module dürfen src/ importieren. `dev/test_cwd_desktop_sidecar.py` macht das bereits (`import src.menubar`). Der `sys.path.insert` in `dev/`-Skripten ist das etablierte Pattern.
+**Assumption revised:** dev modules are allowed to import src/. `dev/test_cwd_desktop_sidecar.py` already does this (`import src.menubar`). The `sys.path.insert` in dev/ scripts is the established pattern.
 
-**Lösung:** Verbatim-Extraktion der Engine aus `diff_strip_inject.py` nach `src/proxy/diff_engine.py` (144 LOC). Alle Aufrufer importieren von dort:
-- `src/proxy/logging.py` — direkter Import (`from .diff_engine import ...`)
-- `dev/proxy_dual_log/verify_strip_inject.py` — via `sys.path.insert(0, parents[2])`, dann `from src.proxy.diff_engine import ...`
-- `dev/proxy_dual_log/diff_strip_inject.py` — analog
+**Solution:** verbatim extraction of the engine from `diff_strip_inject.py` into `src/proxy/diff_engine.py` (144 LOC). All callers import from there:
+- `src/proxy/logging.py` — direct import (`from .diff_engine import ...`)
+- `dev/proxy_dual_log/verify_strip_inject.py` — via `sys.path.insert(0, parents[2])`, then `from src.proxy.diff_engine import ...`
+- `dev/proxy_dual_log/diff_strip_inject.py` — analogous
 
-Die OldThemes-06-Verifikation (ratio-Threshold, span-Klassifikation, Alignment-Strategie) bleibt gültig — git-History ist die eingefrorene Referenz, keine zweite Kopie nötig.
+The earlier verification (ratio threshold, span classification, alignment strategy) documented in the strip/inject span-diff entry stays valid — git history is the frozen reference, no second copy needed.
 
-## cache_control-Normalisierung vor dem Diff
+## cache_control Normalization Before the Diff
 
-**Problem:** Original-Payload enthält CC's `cache_control`-Marker, Forwarded-Payload enthält die des Proxy (nach `_strip_all_cache_control` + `_set_cache_breakpoints`). Ein naiver Diff würde cache_control-Repositionierung als Strip/Inject-Spans melden — Rauschen. BP3/BP4-Wanderung würde bei jedem Request 1–2 Messages fälschlich als "gestrippt und injiziert" erscheinen lassen (weil sie je nach Turn BP tragen oder nicht).
+**Problem:** the original payload contains CC's `cache_control` markers, the forwarded payload contains the proxy's own (after `_strip_all_cache_control` + `_set_cache_breakpoints`). A naive diff would report cache_control repositioning as strip/inject spans — noise. BP3/BP4 movement would make 1–2 messages per request falsely appear "stripped and injected" (because they carry a BP depending on the turn or not).
 
-**Lösung:** `_strip_cache_control` wird **an der Aufrufstelle** auf BEIDE Payloads angewendet (call site in `_build_stripped_injected_deltas`, nicht in der Engine). Die Engine bekommt cache_control-freie Inputs. Cache_control-Forensik liegt im `sent_meta`-Log, kein Informationsverlust.
+**Solution:** `_strip_cache_control` is applied **at the call site** to BOTH payloads (the call site is in `_build_stripped_injected_deltas`, not in the engine). The engine gets cache_control-free inputs. cache_control forensics live in the `sent_meta` log, no information loss.
 
-## Whitespace-Fidelität (dokumentierte Limitation)
+## Whitespace Fidelity (Documented Limitation)
 
-Word-level-Spans (ratio >= 0.1, echte Partial-Edits) werden als space-joined Words zurückgebaut. Interword-Whitespace wird dabei normalisiert (mehrere Spaces → ein Space). Whole-block-2-Span-Ersetzungen (ratio < 0.1, z.B. sys[2]: CC-Prompt → Rules) preservieren den exakten Text.
+Word-level spans (ratio >= 0.1, real partial edits) are rebuilt as space-joined words. Interword whitespace gets normalized in the process (multiple spaces → one space). Whole-block two-span replacements (ratio < 0.1, e.g. sys[2]: CC prompt → rules) preserve the exact text.
 
-Für die primären Use-Cases (sys[2]-Strip, Tool-Whole-Strip, msg[0]-Block-Strips) ist das unproblematisch — diese sind alle ratio < 0.1 (Whole-Block). Cache_control-Suffix-Edits (ratio ≈ 1.0) verlieren evtl. internal whitespace in der Span-Text-Repräsentation. Für Monitor-Highlighting ausreichend, für byte-genaue Rekonstruktion nicht geeignet.
+For the primary use cases (sys[2] strip, tool whole-strip, msg[0] block strips) this is unproblematic — all of those are ratio < 0.1 (whole-block). cache_control suffix edits (ratio ≈ 1.0) may lose internal whitespace in the span-text representation. Sufficient for monitor highlighting, not suitable for byte-exact reconstruction.
 
-## Korrelations-Key: flow_id
+## Correlation Key: flow_id
 
-**Problem (live-gefunden):** Die vier Dual-Logs hatten keinen gemeinsamen Join-Key:
-- `_original` und `_forwarded` tragen `request_id: ""` — CC sendet kein `x-request-id`-Header im Request; dieses kommt erst im API-Response.
-- `_stripped` und `_injected` tragen eine UUID aus dem `_build_entry`-Fallback (`flow.request.headers.get("x-request-id") or str(uuid.uuid4())`), gespeichert via `mc_request_id`. Unterschiedlich von `""`, aber auch kein verlässlicher Join über alle vier.
+**Problem (found live):** the four dual-logs had no shared join key:
+- `_original` and `_forwarded` carry `request_id: ""` — CC sends no `x-request-id` header on the request; that only comes back in the API response.
+- `_stripped` and `_injected` carry a UUID from the `_build_entry` fallback (`flow.request.headers.get("x-request-id") or str(uuid.uuid4())`), stored via `mc_request_id`. Different from `""`, but also not a reliable join across all four.
 
-**Warum ORDER allein bricht:** `_original`/`_forwarded` werden in `request()` geschrieben (Request-Reihenfolge). `_stripped`/`_injected` werden in `response()` geschrieben (Response-Completion-Reihenfolge). Bei gleichzeitigen Requests divergieren diese Reihenfolgen. Realistischer Trigger: CC's Haiku-Title-Gen-Request (läuft concurrent zum Opus-Hauptrequest) — Request-order ≠ Response-order → Per-Request-Join anhand Position falsch.
+**Why ORDER alone breaks:** `_original`/`_forwarded` are written in `request()` (request order). `_stripped`/`_injected` are written in `response()` (response-completion order). Under concurrent requests these orders diverge. Realistic trigger: CC's Haiku title-gen request (runs concurrently with the Opus main request) — request order ≠ response order → per-request join by position is wrong.
 
-**Fix:** `flow.id` ist mitmproxys stabiles Per-Flow-UUID (`str(uuid.uuid4())` bei Flow-Erstellung, unveränderlich). Dasselbe `flow`-Objekt wird an `request()`, `responseheaders()` und `response()` übergeben — kein `flow.metadata`-Relay nötig.
+**Fix:** `flow.id` is mitmproxy's stable per-flow UUID (`str(uuid.uuid4())` at flow creation, immutable). The same `flow` object is passed to `request()`, `responseheaders()`, and `response()` — no `flow.metadata` relay needed.
 
-Implementiert als **dediziertes Feld `"flow_id": flow.id`** (Stamp an der Aufrufstelle) auf allen vier Dual-Log-Entries:
-- `_original`: im Dict-Literal in `request()`
-- `_forwarded`: `delta_entry["flow_id"] = flow.id` nach `_build_forwarded_delta` return, vor `_write_entry`
-- `_stripped`/`_injected`: `s_entry["flow_id"] = flow.id` / `i_entry["flow_id"] = flow.id` nach `_build_stripped_injected_deltas` return, vor `_write_entry`
+Implemented as a **dedicated field `"flow_id": flow.id`** (stamped at the call site) on all four dual-log entries:
+- `_original`: in the dict literal in `request()`
+- `_forwarded`: `delta_entry["flow_id"] = flow.id` after the `_build_forwarded_delta` return, before `_write_entry`
+- `_stripped`/`_injected`: `s_entry["flow_id"] = flow.id` / `i_entry["flow_id"] = flow.id` after the `_build_stripped_injected_deltas` return, before `_write_entry`
 
-`request_id` bleibt in allen vier unberührt — semantisch "Anthropic-API-x-request-id", kann später aus dem Response-Header backgefüllt werden. `flow_id` ist der Read-Side-Join-Key. Kein Eingriff in Funktionssignaturen, Hash-Logik oder Main-Log.
+`request_id` stays untouched in all four — semantically "Anthropic API x-request-id", can later be backfilled from the response header. `flow_id` is the read-side join key. No change to function signatures, hash logic, or the main log.
 
-**Code-Review-verifiziert.** Live-four-log-flow_id-join (Read-Side) wird bei der Monitor-Lese-Migration bestätigt.
+**Code-review-verified.** Live four-log flow_id join (read-side) gets confirmed during the monitor read-side migration.
 
-## Verifikationsstatus — LIVE-VERIFIZIERT
+## Verification Status — LIVE-VERIFIED
 
-**`verify_strip_inject.py`** (dev/proxy_dual_log/, 345 LOC) — Vollständigkeitsbeweis:
-- **Check 1 (Span-Rekonstruktion):** Für jeden Block wo `orig_text != fwd_text` rekonstruiert die Engine `orig_text` aus (equal + stripped) und `fwd_text` aus (equal + injected) spans.
-- **Check 2 (Field-Coverage):** Jedes non-collection Top-Level-Feld das sich unterscheidet erscheint in `fields_delta`.
-- **Check 3 (Model-Cross-Check):** `injected fields_delta["model"]` matcht das `model`-Feld im `_forwarded`-Delta-Entry.
+**`verify_strip_inject.py`** (dev/proxy_dual_log/, 345 LOC) — completeness proof:
+- **Check 1 (span reconstruction):** for every block where `orig_text != fwd_text`, the engine reconstructs `orig_text` from (equal + stripped) and `fwd_text` from (equal + injected) spans.
+- **Check 2 (field coverage):** every non-collection top-level field that differs appears in `fields_delta`.
+- **Check 3 (model cross-check):** `injected fields_delta["model"]` matches the `model` field in the `_forwarded` delta entry.
 
-**Offline-Lauf auf `api_requests_opus_monitor_cc_1780497198`:** PASS 46/46.
+**Offline run against `api_requests_opus_monitor_cc_1780497198`:** PASS 46/46.
 
-**LIVE-Verifikation: Session `api_requests_opus_monitor_cc_1780507825`** — 6 Requests (2 Haiku title-gen + 4 Opus), alle vier Logs jeweils 6 Zeilen, balanciert.
+**LIVE verification: session `api_requests_opus_monitor_cc_1780507825`** — 6 requests (2 Haiku title-gen + 4 Opus), all four logs each 6 lines, balanced.
 
-Befunde:
+Findings:
 
-**Model-Override korrekt erfasst (REQ#3, erster Opus):**
-- `_stripped fields_delta.model` = `"claude-opus-4-7"` ✓
-- `_injected fields_delta.model` = `"claude-opus-4-8"` ✓
+**Model override correctly captured (REQ#3, first Opus):**
+- `_stripped fields_delta.model` = `"claude-opus-4-7"`
+- `_injected fields_delta.model` = `"claude-opus-4-8"`
 
-**Vollständiger-Payload-Diff fängt mehr als nur model (REQ#3):** Derselbe Request zeigte zusätzlich in `fields_delta`:
+**Full-payload diff catches more than just model (REQ#3):** the same request additionally showed in `fields_delta`:
 - `max_tokens`: 64000 (stripped) → 128000 (injected)
-- `output_config`: komplett rewritten
-- `thinking`: komplett rewritten
+- `output_config`: fully rewritten
+- `thinking`: fully rewritten
 
-Das sind stille Feld-Modifikationen, die das alte Logging nie aufgezeichnet hatte. Validiert die Entscheidung für `_diff_top_level_fields` — ohne sie wären diese Felder unbemerkt in `fields_delta` gefehlt.
+These are silent field modifications the old logging never recorded. Validates the decision for `_diff_top_level_fields` — without it, these fields would have been missing from `fields_delta` unnoticed.
 
 **sys[2] byte-exact (REQ#3):**
-- Stripped span: 7471 chars — exakt der CC-System-Prompt.
-- Injected span: 130441 chars — der Rules-Blob; bestätigt NICHT im Original vorhanden.
+- Stripped span: 7471 chars — exactly the CC system prompt.
+- Injected span: 130441 chars — the rules blob; confirmed NOT present in the original.
 
-**Delta-Suppression (REQs 4–6):** Leere `system_delta`, `tools_delta`, `fields_delta` (stabile Strips nach erstem Opus-Request supprimiert). Nur neue Messages erscheinen: REQ#5 `msg[2]`, REQ#6 `msg[4]`.
+**Delta suppression (REQs 4–6):** empty `system_delta`, `tools_delta`, `fields_delta` (stable strips suppressed after the first Opus request). Only new messages appear: REQ#5 `msg[2]`, REQ#6 `msg[4]`.
 
-**Haiku:** Eigene `is_first`-Kette, unabhängig von Opus.
+**Haiku:** its own `is_first` chain, independent of Opus.
 
-Monitor-Leseseite (Highlighting) bleibt deferred bis Read-Migration.
+The monitor read-side (highlighting) stays deferred until the read migration.
 
-## Follow-Up: Janitor-Integration noch offen
+## Follow-Up: Janitor Integration Still Open
 
-`_stripped` und `_injected` sind noch **nicht** in `_LOG_REGISTRY` / der count-30-Rotation in `claude_proxy_start.sh` eingetragen. Sie akkumulieren unbegrenzt bis dieser Follow-up erledigt ist. Betrifft nur Platzverwaltung, nicht Korrektheit.
+`_stripped` and `_injected` are **not yet** entered into `_LOG_REGISTRY` / the count-30 rotation in `claude_proxy_start.sh`. They accumulate unbounded until this follow-up is done. Affects only space management, not correctness.

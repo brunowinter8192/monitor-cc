@@ -2,7 +2,7 @@
 
 **Status:** Probe run. bridged-op ObjC chain executes cleanly (no crash, no nil) but window does NOT move. Root cause: unknown — possible entitlement gate or regression between 26.4.1 (validated) and 26.5.
 
-Continues G1 (`G1_space_move_research_2026-05-30.md`) which established the technique and macOS version table.
+Continues the prior space-move research, which established the technique and the macOS version table.
 
 ## What we built
 

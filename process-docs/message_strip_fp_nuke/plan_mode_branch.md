@@ -1,65 +1,65 @@
-# Message-Strip False-Positive — File-Reads auf Placeholder genukt
+# Message-Strip False Positive — File Reads Nuked to a Placeholder
 
-Session 2026-06-22/23 (Opus). **Root Cause bestätigt (Ground-Truth), Fix angewandt, Live-Verify in nächster Session offen.**
+Session 2026-06-22/23 (Opus). **Root cause confirmed (ground-truth), fix applied, live-verify open for the next session.**
 
 ## Problem (Symptom)
 
-Datei-Reads über das Read-Tool kamen als nuked Placeholder statt mit Inhalt zurück. Reproduzierbar an `decisions/pipe05_proxy_cache.md`: vollständiges Lesen → genukt; `pipe02`/`pipe04` lasen sich normal. Ursache-Ebene: der laufende Monitor-Proxy modifiziert ausgehende Anthropic-Requests via `apply_modification_rules()` (`rules.py`); der Read-tool_result wandert als Teil des nächsten Requests durch den Proxy und wird ersetzt → das Modell sieht nur den Placeholder.
+File reads via the Read tool came back as a nuked placeholder instead of content. Reproducible on the proxy-cache pipeline documentation file: reading it fully → nuked; two sibling pipeline docs read normally. Cause layer: the running Monitor proxy modifies outgoing Anthropic requests via `apply_modification_rules()` (`rules.py`); the Read tool_result travels as part of the next request through the proxy and gets replaced → the model only sees the placeholder.
 
-## Root Cause — BESTÄTIGT: `_apply_first_pass` Plan-Mode-Branch
+## Root Cause — CONFIRMED: `_apply_first_pass` Plan-Mode Branch
 
-Nicht `_apply_role_system_strip` (war der Verdacht der vorherigen Session, widerlegt — siehe unten). Schuldig ist der **Plan-Mode-Branch** in `_apply_first_pass` (`message_passes.py`).
+NOT `_apply_role_system_strip` (that was the suspicion from the previous session, refuted — see below). The culprit is the **plan-mode branch** in `_apply_first_pass` (`message_passes.py`).
 
-Mechanik:
-1. Detection via `_content_contains(content, "Plan mode is active")` — diese Funktion **steigt in `tool_result`-Content ab** (nicht top-level-only).
-2. pipe05 enthält den String `"Plan mode is active"` **genau einmal**, in **Zeile 13** (Doku der Strip-Regel `removed_plan_mode_sr`: „text-block drop bei \"Plan mode is active\""). Liegt in Z1–104.
-3. Branch feuert auf dem dokumentierten String, obwohl gar kein echter `<system-reminder>`-Plan-Mode-Block da ist. `_strip_plan_mode_blocks` findet keinen echten Block → `else`-Zweig **ersetzt die ganze Message** unkonditional (`"(plan-mode reminder stripped by proxy)"`), der Read-Inhalt ist weg.
+Mechanism:
+1. Detection via `_content_contains(content, "Plan mode is active")` — this function **descends into `tool_result` content** (not top-level only).
+2. The proxy-cache pipeline doc contains the string `"Plan mode is active"` **exactly once**, on **line 13** (documenting the strip rule `removed_plan_mode_sr`: "text-block drop on \"Plan mode is active\""). Sits within lines 1-104.
+3. The branch fires on the documented string, even though there is no real `<system-reminder>` plan-mode block present. `_strip_plan_mode_blocks` finds no real block → the `else` branch **unconditionally replaces the whole message** (`"(plan-mode reminder stripped by proxy)"`), and the Read content is gone.
 
-Das erklärt die content-abhängige Bisektion der Vorsession (nur Z1–104 genukt, Rest überlebt): nur Z1–104 enthält den Marker (Z13).
+This explains the content-dependent bisection from the prior session (only lines 1-104 nuked, the rest survived): only lines 1-104 contain the marker (line 13).
 
-### Ground Truth — `_stripped.jsonl` fn_map (Session `opus_monitor_cc_1782163188`)
+### Ground Truth — `_stripped.jsonl` fn_map (session `opus_monitor_cc_1782163188`)
 
-`fn_map` attribuiert pro Strip-Entry die verantwortliche Funktion AT WRITE TIME. Scan über alle 41 Requests:
+`fn_map` attributes the responsible function per strip entry AT WRITE TIME. Scan over all 41 requests:
 
 | Request (msg idx) | Content | fn_map |
 |---|---|---|
-| 82a75a0b (msg 20) | pipe05 Read (numbered) | `_apply_first_pass` |
-| d4022f94 (msg 22) | pipe05 head/wc | `_apply_first_pass` |
-| 8dccc584 (msg 33) | pipe05 file-type/od | `_apply_first_pass` |
-| bb3858c5 (msg 46) | pipe05 trigger-lines | `_apply_first_pass` |
-| f996b733 (msg 64) | pipe05 Read | `_apply_first_pass` |
+| 82a75a0b (msg 20) | pipeline-doc Read (numbered) | `_apply_first_pass` |
+| d4022f94 (msg 22) | pipeline-doc head/wc | `_apply_first_pass` |
+| 8dccc584 (msg 33) | pipeline-doc file-type/od | `_apply_first_pass` |
+| bb3858c5 (msg 46) | pipeline-doc trigger-lines | `_apply_first_pass` |
+| f996b733 (msg 64) | pipeline-doc Read | `_apply_first_pass` |
 
-`_apply_role_system_strip` trifft in DEMSELBEN Log ausschließlich echte Noise: die „task tools haven't been used recently"-Nag und `<new-diagnostics>`-Blöcke (CC 2.1.176 liefert die als eigene `role=system`-Messages). Kein FP bei role_system. role=system ist konsistent Noise → der content-blinde `.`-Nuke dort ist gewollt und korrekt.
+`_apply_role_system_strip` hits ONLY genuine noise in the same log: the "task tools haven't been used recently" nag and `<new-diagnostics>` blocks (CC 2.1.176 delivers these as their own `role=system` messages). No FP at role_system. role=system is consistently noise → the content-blind `.` nuke there is intentional and correct.
 
-### Branch-Marker-Check pipe05
+### Branch-Marker Check on the Pipeline Doc
 
-`grep -c` über pipe05 für die `_apply_first_pass`-Branch-Marker: `Plan mode is active` = **1** (Z13), `task tools haven` = 0, `deferred tools are now available via ToolSearch` = 0, `user sent a new message while you were working` = 0. Nur der Plan-Mode-Branch konnte matchen.
+`grep -c` over the pipeline doc for the `_apply_first_pass` branch markers: `Plan mode is active` = **1** (line 13), `task tools haven` = 0, `deferred tools are now available via ToolSearch` = 0, `user sent a new message while you were working` = 0. Only the plan-mode branch could match.
 
-### Warum nur Plan-Mode FP-nukt, die anderen Branches nicht
+### Why Only Plan-Mode FP-Nukes, Not the Other Branches
 
-Die übrigen `_apply_first_pass`-Branches gaten zwar auch via `_content_contains` (Substring, steigt in tool_result ab), strippen aber via `_strip_system_reminder` (template-anchored) — findet sich kein echter SR-Block, bleibt der Content unverändert (`new_msg["content"] != old_content` ist False → keine Änderung). Der Plan-Mode-Branch ist der einzige mit einem destruktiven `else`, der die ganze Message ersetzt, wenn kein echter Block gefunden wird. Das ist der Defekt.
+The other `_apply_first_pass` branches also gate via `_content_contains` (substring, descends into tool_result), but strip via `_strip_system_reminder` (template-anchored) — if no real SR block is found, the content stays unchanged (`new_msg["content"] != old_content` is False → no change). The plan-mode branch is the only one with a destructive `else` that replaces the whole message when no real block is found. That is the defect.
 
-## Fix — angewandt (diese Session, direkt, kein Worker)
+## Fix — Applied (this session, direct, no worker)
 
-- `message_passes.py`: Plan-Mode-Branch komplett aus `_apply_first_pass` entfernt (erstes `if` raus, folgendes `elif` → `if`); unbenutzten Import `_strip_plan_mode_blocks` entfernt; Funktions-Doc-Kommentar angepasst.
-- `rules.py`: `_passes` = alle 10 Passes (inkl. `_apply_role_system_strip` = #1 wieder an); `_dedup_wakeup_blocks`-Aufruf wieder einkommentiert; Temp-Disable-Kommentar entfernt.
-- Kein Capability-Verlust: echte Plan-Mode-SR-Blöcke (falls je) werden weiterhin von `_apply_final_sr_pass` via template-anchored Matching gestrippt, das nicht auf Doku-Strings FP-matcht. User nutzt Plan-Mode ohnehin nie.
-- `py_compile` grün. Committet + gepusht auf `main`.
+- `message_passes.py`: the plan-mode branch removed entirely from `_apply_first_pass` (the first `if` removed, the following `elif` → `if`); the unused `_strip_plan_mode_blocks` import removed; the function's doc comment updated.
+- `rules.py`: `_passes` = all 10 passes (incl. `_apply_role_system_strip` = #1 back on); the `_dedup_wakeup_blocks` call re-enabled; the temp-disable comment removed.
+- No capability loss: real plan-mode SR blocks (if they ever occur) are still stripped by `_apply_final_sr_pass` via template-anchored matching, which does not FP-match on doc strings. The user never uses plan mode anyway.
+- `py_compile` clean. Committed + pushed to `main`.
 
-## Offen — Live-Verify nächste Session
+## Open — Live-Verify Next Session
 
-Proxy lädt erst nach Restart die neue Source (frische Live-Copy). Nächste Session:
-1. pipe05 voll lesen → kein Nuke mehr (Placeholder weg, echter Inhalt da).
-2. role=system-Noise (task-tools-nag, new-diagnostics) wird weiterhin korrekt auf `.` gestrippt.
-3. Gewollte Strips (SR-Noise, BG, etc.) funktionieren, keine doppelten Wake-Up-Blöcke (Dedup aktiv).
-4. Danach: IST in `decisions/pipe05_proxy_cache.md` korrigieren (`removed_plan_mode_sr`-Abschnitt — Regel entfernt), dann den abgebrochenen Count-Audit (Issue Doku-Drift pipe02/04/05) fortsetzen.
+The proxy only loads the new source after a restart (fresh live copy). Next session:
+1. Read the full pipeline doc → no more nuke (placeholder gone, real content there).
+2. role=system noise (task-tools-nag, new-diagnostics) still correctly stripped to `.`.
+3. Intended strips (SR noise, BG, etc.) work, no duplicate wake-up blocks (dedup active).
+4. Afterward: correct the current-state docs for the proxy-cache pipeline (the `removed_plan_mode_sr` section — rule removed), then resume the interrupted doc-drift count audit for the pipeline docs.
 
-## Relevante Symbole / Pfade
+## Relevant Symbols / Paths
 
-- `_apply_first_pass()` (`src/proxy/message_passes.py`) — elif-Chain, Plan-Mode-Branch entfernt
-- `_content_contains()` (`src/proxy/payload_helpers.py`) — Substring-Detection, steigt in tool_result ab (Grund für FP-Gate)
-- `_strip_plan_mode_blocks()` (`src/proxy/strip_sr.py`) — bleibt definiert, nicht mehr importiert/genutzt
-- `_apply_role_system_strip()` (`src/proxy/message_passes.py`) — content-blinder `.`-Nuke auf role=system, korrekt, NICHT der FP
-- `apply_modification_rules()` / `_passes` (`src/proxy/rules.py`) — Pass-Orchestrator, alle 10 + Dedup aktiv
-- Ground-Truth-Log: `src/logs/dual_log/api_requests_opus_monitor_cc_1782163188_stripped.jsonl` (Feld `fn_map`)
-- Commit-Historie: `40e071d` (role=system-Strip eingeführt — als FP-Verdacht widerlegt)
+- `_apply_first_pass()` (`src/proxy/message_passes.py`) — elif chain, plan-mode branch removed
+- `_content_contains()` (`src/proxy/payload_helpers.py`) — substring detection, descends into tool_result (reason for the FP gate)
+- `_strip_plan_mode_blocks()` (`src/proxy/strip_sr.py`) — stays defined, no longer imported/used
+- `_apply_role_system_strip()` (`src/proxy/message_passes.py`) — content-blind `.` nuke on role=system, correct, NOT the FP
+- `apply_modification_rules()` / `_passes` (`src/proxy/rules.py`) — pass orchestrator, all 10 + dedup active
+- Ground-truth log: `src/logs/dual_log/api_requests_opus_monitor_cc_1782163188_stripped.jsonl` (field `fn_map`)
+- Commit history: `40e071d` (introduced the role=system strip — refuted as the FP suspect)

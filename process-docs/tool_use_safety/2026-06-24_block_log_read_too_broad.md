@@ -1,6 +1,6 @@
 # block_log_read Too Broad — Narrow vs Kill (2026-06-24)
 
-Design discussion. Status: OPEN (Pending — decide next session with fire-log evidence). Extends `2026-06-23_polling_foreground_structural.md`.
+Design discussion. Status: OPEN (Pending — decide next session with fire-log evidence). Extends the polling-foreground-structural entry in this area.
 
 ## Trigger — collateral block (call#187)
 A legitimate short launch-and-verify command was blocked by `block_log_read` (Hook 33):
@@ -17,11 +17,11 @@ It LAUNCHES a process and reads its `.log` ONCE for startup verification — not
 
 ## The two REAL pain cases (everything else is collateral)
 Polling that actually burns budget happens on LONG background jobs whose only progress signal is a growing log:
-1. **Indexing** — `rag-cli index` long-job; the anti-pattern is repeated `tail/cat <index>.log` (Docling 1h-poll history: `2026-05-25_block_polling_loop_design.md` § 2026-06-22).
+1. **Indexing** — `rag-cli index` long-job; the anti-pattern is repeated `tail/cat <index>.log` (Docling 1h-poll history: the block-polling-loop-design entry in this area, § 2026-06-22).
 2. **Searxng scraping** — the `searxng-cli-capture-and-index` skill launches scraping in the BACKGROUND; the poll is separate `.log` tailing. A chain-block (`block_rag_cli_chained`) does NOT catch a separate later `tail`; this is exactly what `block_log_read` covers. (Exact poll shape to be verified from the skill next session.)
 
 ## Why the log-read funnel is the lever (10-min premise, re-confirmed)
-Foreground-forcing CANNOT structurally prevent long-job polling: CC Bash auto-backgrounds a foreground command after an UNVERIFIED threshold — NOT a kill (the earlier "CC kills foreground at 10min" was retracted, see `2026-06-23_polling_foreground_structural.md`). CC then reintroduces a pollable background handle for long jobs. So for jobs longer than the threshold the anti-poll property must come from the log-read funnel (or launch→idle→external-wake discipline), not from foreground occupation. → Indexing + scraping logs are precisely the long-job case where a `.log` block matters.
+Foreground-forcing CANNOT structurally prevent long-job polling: CC Bash auto-backgrounds a foreground command after an UNVERIFIED threshold — NOT a kill (the earlier "CC kills foreground at 10min" was retracted, see the polling-foreground-structural entry in this area). CC then reintroduces a pollable background handle for long jobs. So for jobs longer than the threshold the anti-poll property must come from the log-read funnel (or launch→idle→external-wake discipline), not from foreground occupation. → Indexing + scraping logs are precisely the long-job case where a `.log` block matters.
 
 ## Options
 - **A — NARROW `block_log_read` (recommended, Pending evidence):** allow a launch-and-incidental-read form — a command that LAUNCHES a process (`nohup ... &` / trailing `&`) AND reads its `.log` once in the same command (the call#187 shape) — while keeping standalone repeated `tail/cat <x>.log` blocked. Removes the call#187 friction without losing the anti-poll funnel for the two long-job logs.
@@ -37,7 +37,7 @@ A (narrow), not a naked kill. The collateral the user wants gone is the launch-a
 - Orchestrator self-poll residual stays rule-only (unchanged).
 
 ## Sources
-- `decisions/OldThemes/tool_use_safety/2026-06-23_polling_foreground_structural.md`
-- `decisions/OldThemes/tool_use_safety/2026-05-25_block_polling_loop_design.md`
-- `decisions/pipe07_safety_hooks.md`, `src/hooks/DOCS.md` (hook IST)
+- The polling-foreground-structural entry in this area
+- The block-polling-loop-design entry in this area
+- `src/hooks/DOCS.md` (current hook state)
 - `searxng-cli: skills/searxng-cli-capture-and-index/SKILL.md`

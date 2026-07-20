@@ -11,7 +11,7 @@ Menubar RAG pane showed `{collection}: 0/0 · {elapsed}` during a large index ru
 | A — menubar reads DB | menubar queries the same Postgres signal as `rag-cli progress` (collection from lock, done/total from DB) | REJECTED — adds a DB query / `rag-cli` subprocess into the 1.5s GUI tick; violates the deliberate menubar design (pure JSON-file read, no IPC/subprocess — see `planning.md` § Lock file vs pgrep) |
 | B — rag-cli logs both levels into the lock | `index_json_workflow` writes chunk-level progress into the lock per batch; menubar stays a pure lock reader | CHOSEN — single source of truth (the lock), menubar role unchanged, `rag-cli status` also benefits |
 
-User ask: "rag-cli loggt vollumfänglich, die Menubar macht nur den Ablese-Teil." → Option B.
+User ask: "rag-cli logs the full detail, the menubar just does the reading part." → Option B.
 
 ## Why two levels
 Both granularities are needed because the queue mix varies:
@@ -54,6 +54,6 @@ Mock-verification (pre-deploy, retained): rag-cli `update_progress` writes/omits
 
 **Chunk-cadence finding (decided: leave as-is):** `chunks_done` advances per embedding batch (batch size 32, ~50s/batch on the 8B embedder), so the chunk number jumps +32 ~once/min while elapsed ticks every 1.5s — looks static over short watching windows. Not a bug: a 32-chunk batch is one atomic embedding call, no sub-batch progress exists. Smoother counting would require smaller batches → embedding-throughput cost. User: "good enough", leave as-is.
 
-## IST
-- Menubar: `decisions/menubar_rag_tab.md`
-- rag-cli lock/status: rag-cli `decisions/infra02_lock_and_status.md`
+## Sources
+- Menubar RAG-tab current-state documentation (this area)
+- rag-cli lock/status: rag-cli's own process history for the lock-and-status infrastructure

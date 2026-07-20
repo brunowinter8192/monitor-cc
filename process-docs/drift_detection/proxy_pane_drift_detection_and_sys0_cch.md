@@ -1,6 +1,6 @@
 # Proxy-Pane Drift Detection + sys[0] cch Cache-Break Theory
 
-Archive of bead `Monitor_CC-7df`, closed 2026-04-23 after new session evidence revised the original cache-break hypothesis.
+Archive of a tracking task closed 2026-04-23 after new session evidence revised the original cache-break hypothesis.
 
 ## Original Findings (REQ#30 Forensic, session 1776552429, 2026-04-19)
 
@@ -111,7 +111,7 @@ When a CR:0 rebuild appears in an active session with a byte-identical prefix (t
 3. Check sent_meta's `prefix_hash_bp1..bp4` — if all four differ despite stable content, it's a proxy-side hash computation issue. If only sys-hash differs (via sys[0]), it's the benign case.
 4. If prefix genuinely drifted at a message index, use `msg_hashes` array to localize — but only after ruling out (1)–(3).
 
-## Quellen
+## Sources
 
 - Session 1776552429, REQ#30 — original observation (2026-04-19)
 - Session 1776956156, 141 opus REQs — sys[0] uniqueness measurement (2026-04-23)

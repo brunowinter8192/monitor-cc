@@ -2,20 +2,20 @@
 
 ## Trigger
 
-Cross-project Timer-Attribution observed: Monitor_CC opus `sleep N && echo done` background timer wurde der searxng Session-Row zugeordnet statt Monitor_CC. Symptom: `[B M:SS]` Countdown unter falscher Project-Row im Menubar Panel. Konsequenz: searxng's worker-idle Auto-Abort killte Monitor_CC's Timer.
+Cross-project timer attribution observed: Monitor_CC opus's `sleep N && echo done` background timer was attributed to the searxng session row instead of Monitor_CC. Symptom: the `[B M:SS]` countdown appeared under the wrong project row in the menubar panel. Consequence: searxng's worker-idle auto-abort killed Monitor_CC's timer.
 
-Zweites Symptom: globaler "abort timer" Button am Panel-Top — bei click killt er ALLE Timer cross-project.
+Second symptom: a global "abort timer" button at the panel top — clicking it kills ALL timers cross-project.
 
-## Attribution-Investigation
+## Attribution Investigation
 
-Live ps-Tree captured während aktiver Worker-Session:
+Live ps-tree captured during an active worker session:
 
 ```
 PID    PPID   ARGS
 sleep-pid → zsh-pid (eval 'sleep N && echo done') → CC-pid
 ```
 
-Chain depth = 2 in normal case (ppid_of_zsh = CC process pid).
+Chain depth = 2 in the normal case (ppid_of_zsh = the CC process pid).
 
 `bg_timer.py:_scan_bg_sleep_timers` attribution path:
 
@@ -27,35 +27,35 @@ cwd = cc_entry[1] if cc_entry else ''
 project_name = cwd_to_project.get(cwd, 'unknown')
 ```
 
-**Scenarios diskutiert:**
+**Scenarios discussed:**
 
-| Scenario | Pattern | Attribution-Result | Wahrscheinlichkeit |
+| Scenario | Pattern | Attribution result | Likelihood |
 |---|---|---|---|
-| A | CC → sh -c → zsh → sleep (3-Layer chain) | gppid = sh, miss → `'unknown'` | Niedrig (CC normalerweise direct zsh exec) |
-| B | PID recycling: CC exits + other project's CC reuses PID + cache TTL window | gppid maps to OLD project that owned PID before recycle | Narrow timing window — produziert das genau-observed cross-project symptom |
+| A | CC → sh -c → zsh → sleep (3-layer chain) | gppid = sh, miss → `'unknown'` | Low (CC normally execs zsh directly) |
+| B | PID recycling: CC exits + another project's CC reuses the PID + the cache TTL window | gppid maps to the OLD project that owned the PID before the recycle | A narrow timing window — produces exactly the observed cross-project symptom |
 
-`_auto_abort_check` (app.py 217-237) ist BEREITS per-project — operates on `bg_by_project` dict. Nur globaler manueller Abort-Button war strukturell das eigentliche cross-project Problem.
+`_auto_abort_check` (app.py 217-237) is ALREADY per-project — it operates on the `bg_by_project` dict. Only the global manual abort button was structurally the actual cross-project problem.
 
-## UI Options diskutiert
+## UI Options Discussed
 
-| Option | Layout | Höhen-Kosten | Implementierung |
+| Option | Layout | Height cost | Implementation |
 |---|---|---|---|
-| A | Abort-Row direkt unter project separator | +21pt pro Project mit Timer | Einfach (NSButton-as-subview-in-stackview) |
-| B | Abort-Button im Separator-View, rechts inline | 0pt | Separator-View interaktiv machen |
-| C | Abort-Row unter Session-Rows pro Project | +21pt pro Project mit Timer | Logisch "belongs to project" |
+| A | Abort row directly under the project separator | +21pt per project with a timer | Simple (NSButton-as-subview-in-stackview) |
+| B | Abort button in the separator view, inline right | 0pt | Make the separator view interactive |
+| C | Abort row under the session rows per project | +21pt per project with a timer | Logically "belongs to project" |
 
-User-Vote: **B** ("inline bei jedem project name").
+User vote: **B** ("inline next to each project name").
 
-## Empfohlener Fix-Scope
+## Recommended Fix Scope
 
-- **Ancestry-chain walk** (depth ≤ 5) in `_scan_bg_sleep_timers` — fängt Scenario A ab (intermediate shell layers)
-- **bg_by_project Dict pass-through** statt `_aggregate_bg` in panel.py + app.py
-- **Per-project NSButton im separator** (Option B layout)
-- **PID-recycling (Scenario B) nicht direkt gefixt** — zsh-args-Parsing der `/tmp/claude-XXX-cwd` Datei wäre der robuste Weg, "more invasive", deferred. Per-project UI begrenzt blast radius auf einen Project-Bucket.
+- **Ancestry-chain walk** (depth ≤ 5) in `_scan_bg_sleep_timers` — catches Scenario A (intermediate shell layers)
+- **bg_by_project dict pass-through** instead of `_aggregate_bg` in panel.py + app.py
+- **Per-project NSButton in the separator** (Option B layout)
+- **PID recycling (Scenario B) not directly fixed** — parsing the zsh args of the `/tmp/claude-XXX-cwd` file would be the robust way, "more invasive," deferred. The per-project UI limits the blast radius to one project bucket.
 
-## Quellen
+## Sources
 
 - `src/menubar/bg_timer.py:_scan_bg_sleep_timers`
 - `src/menubar/panel.py:_make_separator_view`
 - `src/menubar/app.py:_PanelController.abortBgTimer_`
-- Live ps-tree captured Session 2026-05-20
+- Live ps-tree captured 2026-05-20

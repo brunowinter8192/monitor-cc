@@ -26,7 +26,7 @@ Don't detect the bad pattern — make it impossible. ONE sanctioned `.log` reade
 reads; cap the sanctioned reader cumulatively (no time window → timing fully irrelevant). Keep it simple,
 scope `.log`-only (the observed failure was read-only on `.log`); extend later if other patterns appear.
 
-## IST — two rules (Hook 33 `block_log_read.py`, per-segment)
+## State (at the time) — two rules (Hook 33 `block_log_read.py`, per-segment)
 **Rule A — cap `logread`:** `logread <file>` counted per (session, file), CUMULATIVE, no time window. 1st + 2nd
 read pass, **3rd read of the same file in the session → hard block** with `"go idle immediately! stop
 whatever you do, go idle!"`. State `src/logs/logread_state.jsonl` ({ts, session_id, file}), 24 h prune is

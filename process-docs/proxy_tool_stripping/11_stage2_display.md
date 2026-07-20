@@ -1,6 +1,6 @@
 # Stage 2 Implementation — Display Polish
 
-Session 2026-06-05. Implements the four Stage 2 items deferred from Stage 1 (`10_stage1_implementation.md`).
+Session 2026-06-05. Implements the four Stage 2 items deferred from the Stage 1 entry in this area.
 Scope: `render_sections.py` only. No changes to `render_messages.py`, `logging.py`, or `parser.py`.
 
 ## What We Did

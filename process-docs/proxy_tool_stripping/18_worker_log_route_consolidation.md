@@ -1,8 +1,8 @@
 # Worker Log Route Consolidation
 
-Continuation of `15_main_log_elimination.md`. That file documented the Stage-3 elimination of
-the main-log write path. This file documents the corresponding read-side cleanup: collapsing
-`find_worker_proxy_log` from three routes to one.
+Continuation of the main-log-elimination entry in this area. That entry documented the Stage-3
+elimination of the main-log write path. This file documents the corresponding read-side cleanup:
+collapsing `find_worker_proxy_log` from three routes to one.
 
 ## Context
 
@@ -56,7 +56,7 @@ Route 1 matches every file the write path currently produces. **PRIMARY.**
 
 - Glob: `logs/` top-level, `api_requests_worker_{...}*.jsonl`
 - Write side (`addon.py:_resolve_dual_log_file`, line 319) always writes to `logs/dual_log/`.
-  Stage 3 (`15_main_log_elimination.md`) removed the top-level main-log write path entirely.
+  Stage 3 (documented in the main-log-elimination entry in this area) removed the top-level main-log write path entirely.
 - On-disk: `ls src/logs/api_requests_worker_*.jsonl` → no matches. Zero top-level worker files.
 - **Classification: (a) DEAD. Safe to remove.**
 

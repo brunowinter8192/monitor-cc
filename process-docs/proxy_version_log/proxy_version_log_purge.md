@@ -1,6 +1,6 @@
 # Proxy Version-Aware Dual-Log Purge
 
-Issue #13 (closed). 2026-06-09. The proxy-start janitor (`claude_proxy_start.sh`) now purges stale
+2026-06-09. The proxy-start janitor (`claude_proxy_start.sh`) now purges stale
 dual-logs of a PREVIOUS proxy version on a version change, so a fix-restart no longer leaves
 old-version renderings in the proxy pane (which caused false "fix failed" conclusions).
 
@@ -29,7 +29,7 @@ behavioral; a schema change alters the forwarded payload). `__pycache__/*.pyc`, 
 EXCLUDED (recompile noise / docs — would trigger false version changes).
 
 **Live-session protection = the 60min-mtime rule IS the mechanism, not a fallback** (user, 2026-06-09:
-"räume alle Logs ab außer es gab einen Eintrag < 60min"). A running session writes its logs
+"clear all logs except ones with an entry < 60min"). A running session writes its logs
 continuously → fresh mtime → survives the purge even on a version change; a session idle > 60min is
 treated as dead. Rejected the deterministic alternative (pgrep + `ps`-env mapping of running
 mitmdumps): fragile macOS `ps`-parsing, and any crash-safe liveness signal (sentinel/marker) needs a
@@ -43,5 +43,5 @@ manual deletion.
 ## Status
 
 Implemented in `claude_proxy_start.sh` (`_compute_proxy_hash` + `_janitor_version_purge_jsonl_logs`).
-Smoke: `dev/hook_smoke/test_version_purge.sh` (4 cases, 8/8). IST: `decisions/logging.md`
-(Trigger 1 / Phase 0). LIVE-VERIFY pending — requires a real proxy code change + restart.
+Smoke: `dev/hook_smoke/test_version_purge.sh` (4 cases, 8/8). Documented in the logging
+current-state docs (Trigger 1 / Phase 0). LIVE-VERIFY pending — requires a real proxy code change + restart.

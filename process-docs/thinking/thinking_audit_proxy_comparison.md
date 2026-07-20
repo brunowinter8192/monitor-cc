@@ -1,31 +1,31 @@
-# Thinking-Audit: proxy-on vs proxy-off Vergleich
+# Thinking Audit: proxy-on vs proxy-off Comparison
 
-## Status Quo (IST)
+## Status Quo
 
-Bauchgefühl in einer Session 2026-04-28: Thinking wird in proxy-on Sessions häufiger oder länger getriggered als in proxy-off Sessions. Aktuell keine empirischen Daten dazu — kein dev-Script, das pro REQ aus den Session-JSONLs in `~/.claude/projects/` die `type=thinking`-Block-Längen extrahiert und Verteilungs-Statistik (mean/median/p90/p99/% mit thinking>0) liefert.
+Gut feeling in a session on 2026-04-28: thinking seems to trigger more often or for longer in proxy-on sessions than in proxy-off sessions. No empirical data on this at the time — no dev script that extracts `type=thinking` block lengths per REQ from the session JSONLs in `~/.claude/projects/` and delivers distribution statistics (mean/median/p90/p99/% with thinking>0).
 
-## Evidenz
+## Evidence
 
-Anecdotal only. Keine Messung. Kein A/B-Vergleich.
+Anecdotal only. No measurement. No A/B comparison.
 
-## Recommendation (SOLL)
+## Recommendation (target state)
 
-**Parked — keine weitere Arbeit geplant.**
+**Parked — no further work planned.**
 
-Grund: der Proxy wird in jeder Session permanent genutzt (Strip-Logik, Logging, Cache-Display, Worker-Konfiguration etc. hängen alle daran). Ein Vergleich proxy-on vs proxy-off ist akademisch — es gibt keinen Realfall, in dem wir auf den Proxy verzichten würden. Selbst wenn die Vermutung stimmt (Proxy → mehr/längeres Thinking), wäre die Konsequenz nicht "Proxy abschalten" sondern eine Proxy-interne Optimierung, die unabhängig vom Vergleich planbar ist.
+Reason: the proxy is used permanently in every session (strip logic, logging, cache display, worker configuration etc. all depend on it). A proxy-on vs proxy-off comparison is academic — there is no real case where we'd go without the proxy. Even if the hypothesis is true (proxy → more/longer thinking), the consequence wouldn't be "turn off the proxy" but a proxy-internal optimization, which is plannable independent of the comparison.
 
-Wenn doch mal ein Run interessant wird (z.B. Proxy-Modifikations-Variante A vs B), ist die Implementierung trivial:
+If a run does become interesting at some point (e.g. proxy-modification variant A vs B), the implementation is trivial:
 - `dev/thinking_audit/audit.py`
-- Liest Session-JSONL aus `~/.claude/projects/-Users-brunowinter2000-Documents-ai-Monitor_CC/<session>.jsonl`
-- Geht durch Assistant-Turn-Entries, sammelt aus `.message.content[]` alle `type=thinking`-Blöcke, summiert `len(thinking.text)` pro REQ
-- Token-Counts aus `.message.usage` (output_tokens; thinking_tokens-Reservation bei adaptive ist in cache_creation_input_tokens enthalten)
-- CLI `--session <id>`, `--compare <a> <b>`, Output Markdown mit Aggregat
-- Self-contained, eine Datei, keine src/-Änderung
+- Reads the session JSONL from `~/.claude/projects/-Users-brunowinter2000-Documents-ai-Monitor_CC/<session>.jsonl`
+- Walks assistant-turn entries, collects all `type=thinking` blocks from `.message.content[]`, sums `len(thinking.text)` per REQ
+- Token counts from `.message.usage` (output_tokens; the thinking-tokens reservation under adaptive is included in cache_creation_input_tokens)
+- CLI `--session <id>`, `--compare <a> <b>`, output markdown with aggregates
+- Self-contained, one file, no src/ change
 
-## Offene Fragen
+## Open Questions
 
-Keine — Topic ist parked.
+None — the topic is parked.
 
-## Quellen
+## Sources
 
-- Bead Monitor_CC-jwr (geschlossen 2026-04-28, parked statt implementiert)
+- A closed tracking task from 2026-04-28, parked instead of implemented

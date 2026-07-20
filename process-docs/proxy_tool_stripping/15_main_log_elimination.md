@@ -249,7 +249,7 @@ sidecars would have received real `#N` labels.
 - Synthetic retry (messages_added=0): `#1` → `#1.1` → `#2` ✓
 - Synthetic non-haiku sidecar (sonnet, sys=0, tools=0): label `'S'`, counter unchanged ✓
 
-**(b) SR/TN header badges (#4 — RESOLVED):** Re-sourced via `flow_id` join on the `_stripped`/`_injected` dual-log `fn_map`. `accumulate_dual_log` maintains `_fns_by_flow_id: {flow_id → set(fn_names)}` per family (strip + inject separately), cleared in-place on `is_first`; appends `set(fn_map.values())` keyed by `flow_id` per line. Forwarded entries carry `flow_id` (mitmproxy UUID4 per-flow). Pane attaches `_strip_fns_lookup` / `_inject_fns_lookup` (references to per-family `_fns_by_flow_id` dicts) to each entry. Render emits a count badge: `{n}strip` (YELLOW) / `{n}inj` (GREEN) on the REQ header, where n = `len(lookup.get(flow_id, set()))`; only non-zero parts shown; both-zero → no badge. `_aggregate_entry_tags` removed entirely. `flow_id` join chosen over positional index: 4xx/5xx responses skip the `_stripped`/`_injected` write in `response()` — positional alignment would break on error responses.
+**(b) SR/TN header badges (RESOLVED):** Re-sourced via `flow_id` join on the `_stripped`/`_injected` dual-log `fn_map`. `accumulate_dual_log` maintains `_fns_by_flow_id: {flow_id → set(fn_names)}` per family (strip + inject separately), cleared in-place on `is_first`; appends `set(fn_map.values())` keyed by `flow_id` per line. Forwarded entries carry `flow_id` (mitmproxy UUID4 per-flow). Pane attaches `_strip_fns_lookup` / `_inject_fns_lookup` (references to per-family `_fns_by_flow_id` dicts) to each entry. Render emits a count badge: `{n}strip` (YELLOW) / `{n}inj` (GREEN) on the REQ header, where n = `len(lookup.get(flow_id, set()))`; only non-zero parts shown; both-zero → no badge. `_aggregate_entry_tags` removed entirely. `flow_id` join chosen over positional index: 4xx/5xx responses skip the `_stripped`/`_injected` write in `response()` — positional alignment would break on error responses.
 
 **(c) Stage 3 (write-side removal) not started.**
 
@@ -258,7 +258,7 @@ sidecars would have received real `#N` labels.
 
 ---
 
-### #4 SOLL: per-function strip/inject warnings (fn_map-driven)
+### Target: per-function strip/inject warnings (fn_map-driven)
 
 **Direction chosen + implemented:** drop the four aggregate tag badges (SR/TN/PO/ND) and replace with a count badge showing how many distinct strip/inject functions fired per request. COUNT (not named per-function warnings) was built — `{n}strip` (YELLOW) / `{n}inj` (GREEN) on the REQ header.
 
@@ -391,4 +391,4 @@ Requires a fresh monitor-cc proxy restart (new code on dev). Three checks:
 2. Tab 0:main renders tool outputs with NO strip underlays (no coloured highlights), green call/response headers intact, no crash.
 3. Tab 1:proxy and Tab 2:workers (worker-proxy via new find_worker_proxy_log dual-log discovery) render normally.
 
-On all green: close issue #4 and sync dev to main.
+On all green: close the tracking task and sync dev to main.

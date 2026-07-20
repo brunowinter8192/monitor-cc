@@ -71,7 +71,7 @@ Derived from sources/*.md scan on 2026-07-16. 60 of 69 source files read fully o
 - **What it is:** When compaction fires, the summary becomes new content requiring a fresh cache write. Adding `cache_control` on the system prompt (separate from messages) prevents the system prompt cache from being invalidated when a compaction occurs — system stays cached while only the compaction summary block needs to be written.
 - **Source file(s):** `Monitor_reference/Compaction3.md`
 - **Current status in Monitor_CC:** proxy already places BP1 on system. This interaction is already handled correctly IF the proxy runs when compaction occurs.
-- **Monitor_CC feature idea:** Document in `decisions/pipe05_proxy_cache.md` — the existing BP1-sys placement is already optimal for compaction compatibility. No code change needed; knowledge capture only.
+- **Monitor_CC feature idea:** No code change needed — the existing BP1-sys placement is already optimal for compaction compatibility. Knowledge capture only.
 - **Effort:** —
 - **Value:** low — existing proxy design already optimal.
 

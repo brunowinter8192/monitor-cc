@@ -137,5 +137,5 @@ Results: 12 passed, 0 failed
 
 - `src/claude_proxy_start.sh` — `_proxy_pid_is_live()`, write guards, heartbeat, cleanup
 - `dev/proxy/marker_race_repro.sh` — repro probe (NEW)
-- `decisions/OldThemes/proxy_marker_race.md` — this file (NEW)
-- `decisions/pipe05_proxy_cache.md` — Marker Lifecycle IST section added
+- This process-history entry (NEW)
+- The proxy-cache pipeline's current-state documentation — Marker Lifecycle section added

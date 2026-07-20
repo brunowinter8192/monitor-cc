@@ -21,7 +21,7 @@ Traced the full resolution chain before touching anything: `known_marketplaces.j
 
 ### 3. Borderline legacy names — RENAMED
 - Log: `reddit_mcp.log` → `reddit-cli.log` (`cli.py` FileHandler + 5 doc refs). Log file did not exist on disk (runtime-created) → zero data loss.
-- Decision file: `decisions/delivery01_mcp_tools.md` → `delivery01_cli_tools.md` via `git mv` (history preserved) + 2 inbound refs (DOCS.md tree, oauth_read_migration.md).
+- Decision file (reddit-cli project): `delivery01_mcp_tools.md` → `delivery01_cli_tools.md` via `git mv` (history preserved) + 2 inbound refs (DOCS.md tree, oauth_read_migration.md).
 
 ### 4. Obsolete READMEs — DELETED, not rewritten (scope change by user)
 User decision: not building for external, no per-feature README maintenance → delete all project-owned READMEs everywhere. Removed 7 files: `monitor-cc/README.md` + `monitor-cc/src/menubar/README.md`; `reddit-cli` + `rag-cli` + `searxng-cli` READMEs; `iterative-dev/README.md` + `iterative-dev/CLAUDE.md`. Vendored READMEs untouched (tmux `repo/`, rag-cli `llama.cpp/`, all `.venv`/`dist`/`build`). gh-cli had no README.

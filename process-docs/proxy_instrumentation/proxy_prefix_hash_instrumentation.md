@@ -1,48 +1,48 @@
 # Proxy Prefix-Hash Instrumentation (Removed)
 
-Demoted from `decisions/pipe05_proxy_cache.md` IST — feature built, shipped, then removed as dead code.
+Demoted from the proxy-cache pipeline's current-state documentation — feature built, shipped, then removed as dead code.
 
 **Built:** commit `feat/prefix-hash-instrumentation` (2026-04-19 refactor, `_build_sent_meta` in `src/proxy/hash_meta.py`, called from `addon.py`)
-**Removed:** commit `e2af735` ("Block A: remove dead logging fns + hash_meta.py", 2026-06-06) — reason: no callers. `_build_sent_meta` lost all callers when main-log write path was eliminated. `decisions/logging.md:111` documents the deletion explicitly: "no callers".
+**Removed:** commit `e2af735` ("Block A: remove dead logging fns + hash_meta.py", 2026-06-06) — reason: no callers. `_build_sent_meta` lost all callers when the main-log write path was eliminated. The logging current-state doc documents the deletion explicitly: "no callers".
 
 ---
 
 ## Prefix-Hash Instrumentation
 
-`_build_sent_meta` (seit Refactor 2026-04-19 in `src/proxy/hash_meta.py`, aufgerufen aus `addon.py`) schreibt vier zusätzliche Felder pro `sent_meta`-Entry:
+`_build_sent_meta` (since the 2026-04-19 refactor in `src/proxy/hash_meta.py`, called from `addon.py`) wrote four additional fields per `sent_meta` entry:
 
-- `prefix_hash_bp1_sys` — MD5[:10] von `json.dumps(system[0:bp1_idx+1])`
-- `prefix_hash_bp2_tools` — MD5[:10] von `json.dumps({"system":..., "tools": tools[0:bp2_idx+1]})`
-- `prefix_hash_bp3_msg` — MD5[:10] inkl. `messages[0:bp3_idx+1]`
-- `prefix_hash_bp4_msg` — MD5[:10] inkl. `messages[0:bp4_idx+1]`
+- `prefix_hash_bp1_sys` — MD5[:10] of `json.dumps(system[0:bp1_idx+1])`
+- `prefix_hash_bp2_tools` — MD5[:10] of `json.dumps({"system":..., "tools": tools[0:bp2_idx+1]})`
+- `prefix_hash_bp3_msg` — MD5[:10] incl. `messages[0:bp3_idx+1]`
+- `prefix_hash_bp4_msg` — MD5[:10] incl. `messages[0:bp4_idx+1]`
 
-Serialisierung via `json.dumps(...).encode("utf-8")` — matcht byte-genau was mitmproxy in Zeile 80 von `request()` ans API-Wire schickt.
+Serialization via `json.dumps(...).encode("utf-8")` — matched byte-for-byte what mitmproxy sends to the API wire in line 80 of `request()`.
 
-Zweck: Byte-genauer Vergleich von BP-Prefix-Bytes zwischen aufeinanderfolgenden Requests, um zu unterscheiden ob Cache-Misses durch Byte-Drift im Prefix (dann sichtbar als Hash-Änderung) oder durch etwas außerhalb des Payloads (Header, Account-State, Fingerprint — dann alle Hashes gleich trotz Cache-Miss) verursacht werden.
+Purpose: a byte-exact comparison of BP-prefix bytes between consecutive requests, to distinguish whether cache misses were caused by byte drift in the prefix (then visible as a hash change) or by something outside the payload (headers, account state, fingerprint — then all hashes stay the same despite the cache miss).
 
-Nutzung: Dev-Script liest `sent_meta`-Einträge aus `api_requests_*.jsonl`, vergleicht paarweise `prefix_hash_bp*` pro Request-Boundary.
+Usage: a dev script read `sent_meta` entries from `api_requests_*.jsonl`, comparing `prefix_hash_bp*` pairwise per request boundary.
 
 ## Granular Hash Fields + Drift Report
 
-`_build_sent_meta` schreibt zusätzlich pro-Element-Hashes und einen automatischen Drift-Report:
+`_build_sent_meta` additionally wrote per-element hashes and an automatic drift report:
 
-**Hash-Felder:**
-- `sys_block_hashes: list[str]` — MD5[:10] pro System-Block (Index 0..N-1). Erkennt wenn ein einzelner Block sich ändert.
-- `tool_hashes: list[str]` — MD5[:10] pro Tool. Erkennt Tool-Änderungen (nicht nur Append am Ende).
-- `msg_hashes: list[dict]` — Kompaktes Message-Hash-Array:
-  - First 10 Messages: `{"idx": i, "role": "user|assistant", "hash": "xxxxxxxxxx"}`
-  - Middle (idx 10 bis N-6): `{"idx": "10-N-6", "role": "middle", "hash": "count=K,rolling=xxxxxxxxxx"}` — rolling = MD5[:10] der verketteten middle-Hashes
-  - Last 5 Messages: einzeln wie first 10
-  - Bei N≤15: kein middle-Eintrag, alles einzeln
-- `msg0_block_hashes: list[str]` — MD5[:10] pro Content-Block in messages[0]. Block 0 = injizierter project-rules Block (sollte nach Fixation session-stabil sein).
+**Hash fields:**
+- `sys_block_hashes: list[str]` — MD5[:10] per system block (index 0..N-1). Detects when a single block changes.
+- `tool_hashes: list[str]` — MD5[:10] per tool. Detects tool changes (not just append at the end).
+- `msg_hashes: list[dict]` — a compact message-hash array:
+  - First 10 messages: `{"idx": i, "role": "user|assistant", "hash": "xxxxxxxxxx"}`
+  - Middle (idx 10 to N-6): `{"idx": "10-N-6", "role": "middle", "hash": "count=K,rolling=xxxxxxxxxx"}` — rolling = MD5[:10] of the concatenated middle hashes
+  - Last 5 messages: individually, like the first 10
+  - At N≤15: no middle entry, everything individual
+- `msg0_block_hashes: list[str]` — MD5[:10] per content block in messages[0]. Block 0 = the injected project-rules block (should be session-stable after fixation).
 
-**Drift-Report:**
-- `drift_report: dict` — Automatischer Vergleich gegen vorherigen Request (aus `self.prev_sent_hashes_by_model`):
-  - Erster Request der Session: `{"initial": True}`
-  - Folge-Requests: `{"sys": [geänderte_indices], "tools": [geänderte_indices], "msgs": [geänderte_indices], "msg0_blocks": [geänderte_indices]}`
-  - `sys`: alle Indices mit Byte-Änderung
-  - `tools`: nur Indices < min(len(prev), len(curr)) — neue Tools am Ende sind expected, werden nicht gemeldet
-  - `msgs`: nur Indices < N-2 (letzte 2 Messages = neuer Turn, expected)
-  - `msg0_blocks`: alle Indices — Block 0 sollte nach Fixation immer leer sein
+**Drift report:**
+- `drift_report: dict` — an automatic comparison against the previous request (from `self.prev_sent_hashes_by_model`):
+  - First request of the session: `{"initial": True}`
+  - Subsequent requests: `{"sys": [changed_indices], "tools": [changed_indices], "msgs": [changed_indices], "msg0_blocks": [changed_indices]}`
+  - `sys`: all indices with a byte change
+  - `tools`: only indices < min(len(prev), len(curr)) — new tools at the end are expected, not reported
+  - `msgs`: only indices < N-2 (the last 2 messages = a new turn, expected)
+  - `msg0_blocks`: all indices — block 0 should always be empty after fixation
 
-Zweck: Drift in should-be-stable Prefix-Feldern wird automatisch pro Request sichtbar. Kein manuelles Pairwise-Vergleichen im Dev-Script nötig. Ein `drift_report.sys != []` oder `drift_report.msg0_blocks != [0]` nach dem ersten Request ist ein direktes Signal für ein Fixation-Problem.
+Purpose: drift in should-be-stable prefix fields becomes automatically visible per request. No manual pairwise comparison in a dev script needed. A `drift_report.sys != []` or `drift_report.msg0_blocks != [0]` after the first request is a direct signal of a fixation problem.

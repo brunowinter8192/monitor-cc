@@ -1,6 +1,6 @@
-# C3 — Detection Logging: Log-Pfad-Bug + Transition-Observability
+# C3 — Detection Logging: Log-Path Bug + Transition Observability
 
-## Log-Pfad-Bug (menubar_log.py)
+## Log-Path Bug (menubar_log.py)
 
 ### Root Cause
 
@@ -10,74 +10,77 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MENUBAR_LOG  = PROJECT_ROOT / 'src' / 'logs' / 'menubar.log'
 ```
 
-In py2app-Bundle ist `__file__` für `menubar_log.py`:
+In the py2app bundle, `__file__` for `menubar_log.py` is:
 ```
 .../Monitor_CC_Menubar.app/Contents/Resources/lib/python3.14/src/menubar/menubar_log.py
 ```
 → `parents[2]` = `.../Contents/Resources/lib/python3.14/`
 → `MENUBAR_LOG` = `.../lib/python3.14/src/logs/menubar.log`
 
-Das ist innerhalb des `.app`-Bundles — durch `_prune_bundle_bloat()` geleert, für den
-User nie sichtbar, niemals lesbar. Dev-Modus trifft zufällig den korrekten Pfad (Projekt-Root /
-`src/logs/menubar.log`), Bundle-Modus schreibt stillschweigend in einen unzugänglichen Pfad.
+That is inside the `.app` bundle — wiped by `_prune_bundle_bloat()`, never visible to the
+user, never readable. Dev mode happens to hit the correct path (project root /
+`src/logs/menubar.log`); bundle mode silently writes to an inaccessible path.
 
-Alle anderen APP_SUPPORT-Dateien (settings.json, hooks.json, menubar.pid, etc.) nutzen korrekt
-`_APP_SUPPORT = ~/Library/Application Support/com.brunowinter.monitor_cc_menubar` aus `paths.py`.
+All other APP_SUPPORT files (settings.json, hooks.json, menubar.pid, etc.) correctly use
+`_APP_SUPPORT = ~/Library/Application Support/com.brunowinter.monitor_cc_menubar` from
+`paths.py`.
 
 ### Fix
 
-`menubar_log.py` importiert `_APP_SUPPORT` aus `.paths`:
+`menubar_log.py` imports `_APP_SUPPORT` from `.paths`:
 ```python
 from .paths import _APP_SUPPORT
 MENUBAR_LOG = _APP_SUPPORT / 'menubar.log'
 ```
 
-Kein Zirkel: `paths.py` importiert nichts aus dem menubar-Package. `_migrate_from_dotfiles()`
-läuft beim `paths.py`-Import und erstellt `_APP_SUPPORT` bereits — `MENUBAR_LOG.parent.mkdir()`
-in `log_menubar()` wird No-op. Dev + Bundle schreiben beide nach
+No circularity: `paths.py` imports nothing from the menubar package. `_migrate_from_dotfiles()`
+runs on `paths.py` import and already creates `_APP_SUPPORT` — `MENUBAR_LOG.parent.mkdir()`
+in `log_menubar()` becomes a no-op. Dev + bundle both write to
 `~/Library/Application Support/com.brunowinter.monitor_cc_menubar/menubar.log`.
 
 ---
 
-## Logging zu grob — Partial-Failure unsichtbar
+## Logging Too Coarse — Partial Failure Invisible
 
-### IST (pre-fix)
+### State (pre-fix)
 
-`detect_main_desktop_numbers` (desktop_detection.py) loggt nur:
-- `all_failed` — wenn ALLE Mains None sind (Zeile 94)
-- Sub-Resolution-Events in `_resolve_cgwindow_id` (`resolve_no_name_match`, `resolve_no_tty`,
-  osc2-Events) — pro-Call, ohne cwd-Kontext, ohne Transition-Gating → Spam bei stabiler Situation
+`detect_main_desktop_numbers` (desktop_detection.py) only logs:
+- `all_failed` — when ALL mains are None (line 94)
+- Sub-resolution events in `_resolve_cgwindow_id` (`resolve_no_name_match`, `resolve_no_tty`,
+  osc2 events) — per-call, without cwd context, without transition-gating → spam under a
+  stable situation
 
-Wenn ein einzelnes Main seine Nummer verliert (Monitor_CC `[2]` → None, während andere Mains
-sichtbar bleiben): **kein Log**. Ebenso: Erfolg / Wiederherstellung wird nie geloggt.
+When a single main loses its number (Monitor_CC `[2]` → None, while other mains stay
+visible): **no log**. Likewise: success / recovery is never logged.
 
-### Bestätigter Trigger (User, 2026-05-28)
+### Confirmed Trigger (user, 2026-05-28)
 
-Jede Worker-Task (Worker-Spawn UND `worker-cli send` an existierenden Worker) lässt die
-Desktop-Nummer sofort verschwinden. Erwartetes Transition-Log-Pattern:
+Every worker task (worker spawn AND `worker-cli send` to an existing worker) makes the
+desktop number disappear immediately. Expected transition-log pattern:
 
 ```
 [detection] transition Monitor_CC/Monitor_CC 2->None win='Monitor_CC — Claude Code' n_cand=0
 ```
 
-`n_cand=0` bedeutet: AppleScript liefert den Ghostty-Window-Namen, aber nach dem Worker-Spawn
-findet `_cgwindow_list_ghostty` kein CGWindow mit diesem Titel. Hypothese: Worker-Spawn öffnet
-ein neues Ghostty-Fenster → Window-Landschaft ändert sich → SkyLight-Title-Cache des bisherigen
-Fensters wird kurzzeitig ungültig oder das CGWindowList-Snapshot kommt im falschen Moment.
+`n_cand=0` means: AppleScript returns the Ghostty window name, but after the worker
+spawn `_cgwindow_list_ghostty` finds no CGWindow with that title. Hypothesis: the worker
+spawn opens a new Ghostty window → the window landscape changes → the SkyLight title
+cache of the existing window becomes briefly invalid, or the CGWindowList snapshot
+lands at the wrong moment.
 
-Recovery: Nach dem nächsten erfolgreichen 10s-Cycle (oder wenn der User das Tab fokussiert):
+Recovery: after the next successful 10s cycle (or when the user focuses the tab):
 ```
 [detection] transition Monitor_CC/Monitor_CC None->2 win='Monitor_CC — Claude Code' n_cand=1
 ```
 
-### Fix: Transition-Logging
+### Fix: Transition Logging
 
-Modul-Level: `_last_result: Dict[str, Optional[int]] = {}` in `desktop_detection.py`.
+Module-level: `_last_result: Dict[str, Optional[int]] = {}` in `desktop_detection.py`.
 
-Im Orchestrator-Loop: `_cwd_ctx[cwd] = {'win': win_name, 'n_cand': len(candidates)}` pro cwd
-nach `_resolve_cgwindow_id()` (keine Signatur-Änderung an der Funktion).
+In the orchestrator loop: `_cwd_ctx[cwd] = {'win': win_name, 'n_cand': len(candidates)}`
+per cwd after `_resolve_cgwindow_id()` (no signature change to the function).
 
-Post-Loop Transition-Check (vor Cache-Update):
+Post-loop transition check (before the cache update):
 ```python
 for cwd, new_no in result.items():
     old_no = _last_result.get(cwd)
@@ -90,11 +93,11 @@ for cwd, new_no in result.items():
 _last_result = dict(result)
 ```
 
-Transition-gated: bei stabilem Zustand kein Log. `_cwd_ctx` ist lokal pro Cycle (kein
-State-Leak). Bei Exception (Ghostty down / error) bleibt `_cwd_ctx` leer → `detail = win=''
-n_cand=?` (signalisiert: Info nicht verfügbar, Fehler-Pfad).
+Transition-gated: no log for a stable state. `_cwd_ctx` is local per cycle (no state
+leak). On an exception (Ghostty down / error), `_cwd_ctx` stays empty → `detail = win=''
+n_cand=?` (signals: info unavailable, error path).
 
-**Nicht implementiert:** Strategy-used (`name-unique / space-elim / osc2`) als Nice-to-have
-zurückgestellt — würde Return-Tuple-Änderung an `_resolve_cgwindow_id` + alle 5 Exit-Paths
-erfordern. `n_cand` reicht als erster Diagnose-Schritt: `n_cand=0` isoliert den CGWindowList-
-Mismatch, `n_cand>1` würde auf Space-Elimination / OSC2-Fallback zeigen.
+**Not implemented:** strategy-used (`name-unique / space-elim / osc2`) parked as a
+nice-to-have — would require a return-tuple change to `_resolve_cgwindow_id` + all 5
+exit paths. `n_cand` is enough as a first diagnostic step: `n_cand=0` isolates the
+CGWindowList mismatch, `n_cand>1` would point at space-elimination / OSC2 fallback.

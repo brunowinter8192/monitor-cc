@@ -1,29 +1,29 @@
-# RAM-Research für Monitor_CC Pane-Stack — 2026-04-25
+# RAM Research for the Monitor_CC Pane Stack — 2026-04-25
 
-Recherche-Notizen aus der Session in der wir festgestellt haben dass unsere RAM-Diagnose oberflächlich war (Listen-Cap statt der echten Ursachen: `f.read()`-Peak, O(N²) cumulative messages, pymalloc-Retention). Ziel: konkrete Tools und Patterns aus der Community sammeln BEVOR wir wieder Code anfassen.
+Research notes from the session where we found our RAM diagnosis had been superficial (list-cap instead of the real causes: `f.read()` peak, O(N²) cumulative messages, pymalloc retention). Goal: collect concrete tools and patterns from the community BEFORE touching code again.
 
-## mitmproxy/mitmproxy — direkter Stack-Match
+## mitmproxy/mitmproxy — direct stack match
 
-**Issue [#4456](https://github.com/mitmproxy/mitmproxy/issues/4456) — "mitmdump memory usage is always constantly growing"** (33 Kommentare, closed 2021)
+**Issue [#4456](https://github.com/mitmproxy/mitmproxy/issues/4456) — "mitmdump memory usage is always constantly growing"** (33 comments, closed 2021)
 
-Gleicher Stack, gleiches Problem: long-running mitmdump RSS wächst ~500 MB/Stunde, sägezahn-Pattern bis OOM oder manueller Restart. Mehrere User berichten dasselbe (#1447 closed, #2713 closed, #3191 closed, #6620 open, #7208 open, #7760 closed). Es ist kein einzelner Bug, sondern eine wiederkehrende Klasse — long-running mitm-Setups halten Flow-Objekte länger als erwartet im Speicher.
+Same stack, same problem: long-running mitmdump RSS grows ~500 MB/hour, sawtooth pattern until OOM or a manual restart. Several users report the same thing (#1447 closed, #2713 closed, #3191 closed, #6620 open, #7208 open, #7760 closed). It's not a single bug but a recurring class — long-running mitm setups hold flow objects in memory longer than expected.
 
-### Lessons aus #4456
+### Lessons from #4456
 
-mitmproxy hält per Design ALLE Flows im RAM bis sie auf Disk geschrieben sind oder der Prozess endet — das ist beabsichtigtes Verhalten für UI/Replay-Funktionen. Wer das nicht braucht, muss explizit Flows freigeben.
+mitmproxy holds ALL flows in RAM by design until they're written to disk or the process ends — this is intended behavior for UI/replay functions. Anyone who doesn't need that must explicitly release flows.
 
-**`stream_large_bodies` config option:** oberhalb der Schwelle werden response bodies gestreamt statt gepuffert. Das Beispiel-Addon `examples/addons/http-stream-simple.py` (15 Zeilen, im mitmproxy repo) macht im `responseheaders`-Hook einfach:
+**`stream_large_bodies` config option:** above the threshold, response bodies are streamed instead of buffered. The example addon `examples/addons/http-stream-simple.py` (15 lines, in the mitmproxy repo) simply does this in the `responseheaders` hook:
 
 ```python
 def responseheaders(flow):
     flow.response.stream = True
 ```
 
-Das eliminiert Body-Buffering komplett für ALLE responses. Direkt anwendbar auf unser `src/proxy/addon.py` weil wir Bodies in JSONL persistieren und nach dem Schreiben nicht mehr im Speicher brauchen.
+This eliminates body buffering entirely for ALL responses. Directly applicable to our `src/proxy/addon.py` because we persist bodies to JSONL and don't need them in memory after writing.
 
-### Diagnose-Pattern — das was wir nicht gemacht haben
+### Diagnostic Pattern — What We Did NOT Do
 
-mhils (mitmproxy maintainer) hat einen SIGUSR1-Handler im Addon empfohlen. Bei Signal-Eingang läuft folgende Sequenz:
+mhils (mitmproxy maintainer) recommended a SIGUSR1 handler in the addon. On signal, the following sequence runs:
 
 ```python
 import collections, gc, signal
@@ -58,62 +58,62 @@ def load(loader):
     signal.signal(signal.SIGUSR1, debug)
 ```
 
-Das gibt dir: Klassen-Verteilung der mitmproxy-Objekte (zeigt wo das RAM hin wandert) plus Reference-Chain vom ersten Flow-Object aufwärts (zeigt WER die Refs hält). Bei mhils' Diagnose hat sich rausgestellt: das `Save`-Addon hat errored Flows nicht discarded → fix in #4461.
+This gives you: a class distribution of mitmproxy objects (shows where the RAM is going) plus a reference chain from the first flow object upward (shows WHO holds the refs). In mhils's diagnosis it turned out: the `Save` addon hadn't discarded errored flows → fixed in #4461.
 
-**Übertragen auf uns:** wir können dasselbe in unseren Pane-Prozessen machen. SIGUSR1-Handler einbauen der Counter-by-class über `gc.get_objects()` läuft, gefiltert auf `Pair`/`HTTPFlow`/Dict/etc. Plus Referrer-Walk um Holder zu identifizieren. 30 Zeilen Code, 5 Minuten Setup, bringt direkten Aufschluss WAS in den Panes RAM frisst.
+**Applied to us:** we can do the same in our pane processes. Add a SIGUSR1 handler that runs a class-count via `gc.get_objects()`, filtered on `Pair`/`HTTPFlow`/dict/etc. Plus a referrer walk to identify holders. 30 lines of code, 5 minutes of setup, gives direct insight into WHAT is eating RAM in the panes.
 
-## Textualize/textual — GC pause beim Render
+## Textualize/textual — GC pause during render
 
-**Issue [#6381](https://github.com/Textualize/textual/issues/6381) — "MarkdownViewer stutters every 1-2s while scrolling — Python GC gen2 pause"** (9 Kommentare, OPEN, 2026-02)
+**Issue [#6381](https://github.com/Textualize/textual/issues/6381) — "MarkdownViewer stutters every 1-2s while scrolling — Python GC gen2 pause"** (9 comments, OPEN, 2026-02)
 
-Symptom: UI freezed 50–200ms beim Scrollen, ungefähr alle 1-2 Sekunden. Root cause: Python's cyclic GC (gen2). Workaround: `gc.disable()` beim Startup eliminiert die Pause vollständig — mit dem Trade-off dass cyclic references manuell gemanaged werden müssen oder per `gc.collect()` an non-blocking Zeitpunkten getriggert.
+Symptom: UI freezes 50-200ms while scrolling, roughly every 1-2 seconds. Root cause: Python's cyclic GC (gen2). Workaround: `gc.disable()` at startup eliminates the pause entirely — with the trade-off that cyclic references must be managed manually or triggered via `gc.collect()` at non-blocking points.
 
-**Übertragen auf uns:** plausibel dass unsere Panes mit großen retained Object-Sets denselben Effekt haben. Hover/Click reagiert dann zwar latenz-arm dank D5 select-wake, aber wenn gen2 mid-render läuft, blockiert es trotzdem. Zwei Ansätze testbar:
+**Applied to us:** plausible that our panes have the same effect with large retained object sets. Hover/click reacts with low latency thanks to D5 select-wake, but if gen2 runs mid-render, it blocks anyway. Two approaches to test:
 
 ```python
 import gc
 
-# Option A: gc komplett aus, manuell triggern in idle phasen
+# Option A: gc off entirely, manually triggered in idle phases
 gc.disable()
-# ... in der idle-zone des poll loops:
+# ... in the idle zone of the poll loop:
 if time_since_last_collect > 30:
     gc.collect()
 
-# Option B: nur gen2 verzögern, gen0/1 weiter laufen
-gc.set_threshold(700, 10, 100000)  # default ist (700, 10, 10) — gen2 nun sehr selten
+# Option B: only delay gen2, let gen0/1 keep running
+gc.set_threshold(700, 10, 100000)  # default is (700, 10, 10) — gen2 now very rare
 ```
 
-## nicolargo/glances — long-running monitor TUI mit RAM-Wachstum
+## nicolargo/glances — long-running monitor TUI with RAM growth
 
-**Issue [#1447](https://github.com/nicolargo/glances/issues/1447) — "Memory Leak"** (21 Kommentare, closed)
+**Issue [#1447](https://github.com/nicolargo/glances/issues/1447) — "Memory Leak"** (21 comments, closed)
 
-Nah an unserer Klasse: long-running Python-Monitor-TUI mit graduellem RSS-Wachstum.
+Close to our class: a long-running Python monitor TUI with gradual RSS growth.
 
 Lessons:
-- **`memory_profiler`** (PyPI: `memory-profiler`) als Diagnose-Tool: `@profile` Decorator gibt Zeile-für-Zeile Memory-Allocation aus für eine Funktion. Granularer als tracemalloc für die Frage "wo genau in dieser Funktion wird allokiert".
-- Library-Swap brachte real RSS-Reduktion: `requests` → `urllib3` 1.24.1, `json` → `ujson`. Beide Standard-Bibliotheken können in long-running Prozessen kumulative Allokations-Patterns haben.
-- Glances bietet `--disable-history` als RAM-bounded-Mode. Architektonisch: User entscheidet ob Historie gebraucht wird. Wir könnten analog pro Pane einen `--no-history` Flag oder ähnliches einführen.
+- **`memory_profiler`** (PyPI: `memory-profiler`) as a diagnostic tool: the `@profile` decorator outputs line-by-line memory allocation for a function. More granular than tracemalloc for the question "where exactly in this function does the allocation happen."
+- A library swap brought real RSS reduction: `requests` → `urllib3` 1.24.1, `json` → `ujson`. Both standard libraries can have cumulative allocation patterns in long-running processes.
+- Glances offers `--disable-history` as a RAM-bounded mode. Architecturally: the user decides whether history is needed. We could introduce an analogous `--no-history` flag or similar per pane.
 
-## Diagnose-Tool-Inventar — was wir alles nicht angefasst haben
+## Diagnostic Tool Inventory — Everything We Didn't Touch
 
-| Tool | Quelle | Zweck |
+| Tool | Source | Purpose |
 |---|---|---|
 | `tracemalloc` | stdlib | Snapshot peak/current allocations, top allocators by file:line |
-| `memory_profiler` mit `@profile` | PyPI | Line-level Memory-Allocation in einer Funktion |
-| `gc.get_objects()` + `Counter` | stdlib | Class-Distribution der live-objects |
-| `gc.get_referrers()` walk | stdlib | Findet Holder die einen Object pinnen |
-| `objgraph` | PyPI | Visualisiert reference cycles, top types growing over time |
+| `memory_profiler` with `@profile` | PyPI | Line-level memory allocation in a function |
+| `gc.get_objects()` + `Counter` | stdlib | Class distribution of live objects |
+| `gc.get_referrers()` walk | stdlib | Finds holders pinning an object |
+| `objgraph` | PyPI | Visualizes reference cycles, top types growing over time |
 | `pympler` | PyPI | Heap profiler with object-type-aware breakdown, leak detection |
-| SIGUSR1-Handler | mhils Pattern | On-demand dump im laufenden Prozess ohne Restart |
+| SIGUSR1 handler | mhils pattern | On-demand dump in the running process without a restart |
 
-Hätten wir EINE dieser Quellen in Phase 1 angezapft, wäre uns die O(N²)-Cumulative-Messages-Wurzel sofort sichtbar geworden statt erst nach mehreren falschen Iterationen.
+Had we tapped just ONE of these sources in phase 1, the O(N²) cumulative-messages root cause would have been visible immediately instead of only after several wrong iterations.
 
-## Konkrete Action-Items für nächste RAM-Investigation-Session
+## Concrete Action Items for the Next RAM Investigation Session
 
-1. SIGUSR1-Handler in `src/panes/waste_pane.py` einbauen (30 LOC). Erst measuren WAS retained wird, dann fixen.
-2. `flow.response.stream = True` in `src/proxy/addon.py` `responseheaders`-Hook ergänzen — eliminiert Body-Buffering für unsere mitmdump-Instanz (separates Problem vom pane-RAM, aber weiterer Win).
-3. `gc.disable()` + manuelle `gc.collect()` in idle-Phasen testen für warnings/waste panes — ob das Render-Stutter erkennbar reduziert.
-4. `memory_profiler` mit `@profile` auf `_parse_log_file`, `_scan_proxy_entries_for_errors`, `_merge_new_events` für line-level Allocation-Profil.
-5. Architektonisch: glances-Pattern „User-konfigurierbarer No-History-Mode pro Pane" für die Panes wo Historie nicht zwingend ist.
+1. Add a SIGUSR1 handler to `src/panes/waste_pane.py` (30 LOC). Measure WHAT is retained first, then fix.
+2. Add `flow.response.stream = True` to the `responseheaders` hook in `src/proxy/addon.py` — eliminates body buffering for our mitmdump instance (separate problem from pane RAM, but a further win).
+3. Test `gc.disable()` + manual `gc.collect()` in idle phases for warnings/waste panes — whether that noticeably reduces render stutter.
+4. Run `memory_profiler` with `@profile` on `_parse_log_file`, `_scan_proxy_entries_for_errors`, `_merge_new_events` for a line-level allocation profile.
+5. Architecturally: the glances-style "user-configurable no-history mode per pane" pattern for panes where history isn't strictly needed.
 
-Diese fünf Aktionen alle in einer Investigation-First-Session, BEVOR wieder Code-Worker dispatched werden.
+All five of these actions belong in one investigation-first session, BEFORE dispatching code workers again.

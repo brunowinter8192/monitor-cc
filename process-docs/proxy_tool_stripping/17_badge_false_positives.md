@@ -105,6 +105,6 @@ rules. Not a phantom.
 3. `strip_sr.py:147` — preserve the original trailing-`\n` state.
 4. `logging.py` ~330-341 — skip the `i_fn_map` attribution when the injected text is just ".". ✅ Done (was message-path only; migrated to `strip_inject_delta.py` when logging.py was refactored)
 5. Verify on real `_injected`/`_stripped` logs: field-only reqs → no badge; the `</system-reminder>\n`
-   and `.` phantoms gone; bg-exit + real content injects still badge. Update IST: `src/proxy/DOCS.md`,
-   `src/proxy_display/DOCS.md`, `decisions/logging.md`. ✅ Done
+   and `.` phantoms gone; bg-exit + real content injects still badge. Update current-state docs:
+   `src/proxy/DOCS.md`, `src/proxy_display/DOCS.md`. ✅ Done
 6. Extend `"."` skip to system + tools-desc sections in `strip_inject_delta.py`. ✅ Done (2026-06-12)

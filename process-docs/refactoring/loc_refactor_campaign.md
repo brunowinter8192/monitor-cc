@@ -27,13 +27,13 @@ that masks a normal-operation failure.
 - **`parser.py:find_worker_proxy_log`** — 3 routes → 1. Route 3 (legacy pre-Stage-3 main-log glob)
   and Route 2 (unprefixed forwarded glob) proven (a) DEAD: writer always session-id-prefixes worker
   logs (`tmux_spawn.sh:422`, `md5(project_root)[:8]` = same formula as reader `parser.py:22`); caller
-  never invokes with empty `project_filter`. Collapsed to the single prefixed route. See
-  `proxy_tool_stripping/18_worker_log_route_consolidation.md`.
+  never invokes with empty `project_filter`. Collapsed to the single prefixed route. Documented in
+  the worker-log-route-consolidation entry in the proxy_tool_stripping area.
 - **`gpu_pane/status.py:_discover_preset_names`** — hardcoded `['embedding','reranker','splade']`
   fallback on rag-cli failure proven (c) MASKING (already drifted: real presets are 6 versioned names,
   only `splade` overlapped). Removed → returns `[]` on failure; pane shows empty preset block, no
-  fabricated names (mirrors `_fetch_collections`). Also removed the GPU-pane footer legend. See
-  `gpu_pane_collections.md` + `decisions/gpu_pane_collections.md`.
+  fabricated names (mirrors `_fetch_collections`). Also removed the GPU-pane footer legend. Documented
+  in the gpu_pane area's collections entries.
 - **`menubar/discover.py`** — flagged by textual scan but reviewed as a FALSE POSITIVE: the worker-name
   fallback is documented graceful degradation (lossy name only when cwd unreadable, no aliveness impact);
   the status detection is a priority cascade (hook→JSONL→proxy), not redundant derivation. Left untouched.

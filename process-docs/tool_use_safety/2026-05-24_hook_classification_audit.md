@@ -1,63 +1,61 @@
-# Hook Classification + FP-Potenzial Audit — 2026-05-24
+# Hook Classification + FP-Potential Audit — 2026-05-24
 
-**Topic:** Strukturierte Klassifikation aller 19 aktiven Hooks nach Purpose, Decision-Type,
-Trigger-Specificity und FP-Risk. Output: drei Buckets — KEEP (solider Purpose + niedriges
-FP-Risiko, kein Handlungsbedarf), MONITOR (jung, Daten fehlen) und REPORT (bekannte FP
-oder kritisches Kipp-Status, braucht User-Entscheidung).
+**Topic:** structured classification of all 19 active hooks by purpose, decision type,
+trigger specificity, and FP risk. Output: three buckets — KEEP (solid purpose + low
+FP risk, no action needed), MONITOR (young, data missing), and REPORT (known FP
+or a critical flip-status, needs a user decision).
 
-**Bead:** `Monitor_CC-8ggr` Thread 1.
-
-**Prinzip (User-Direktive 2026-05-24):** Anzahl der Hooks ist KEIN Qualitäts-Indikator.
-Eine schmale Hook pro selten-feuerndem Command ist besser als eine breite Hook die
-versucht alles zu fangen und mehr bricht als repariert. Bewertet wird pro Hook:
-solider Purpose + akzeptables FP-Risiko = KEEP, ansonsten Review.
+**Principle (user directive 2026-05-24):** hook count is NOT a quality indicator.
+A narrow hook per rarely-firing command is better than a broad hook that tries to
+catch everything and breaks more than it fixes. Evaluated per hook: solid purpose
++ acceptable FP risk = KEEP, otherwise review.
 
 ---
 
-## Klassifikations-Dimensionen
+## Classification Dimensions
 
-### A) Purpose-Klasse
+### A) Purpose Class
 
-| Klasse | Bedeutung |
+| Class | Meaning |
 |---|---|
-| **Damage-Prevention** | Verhindert irreversible Operationen (wrong-process-killed, force-pushed, amended) |
-| **Context-Flood** | Verhindert Output das den Agent-Kontext zerstört (oversize Reads, recursive grep, background-hidden output) |
-| **State-Corruption** | Verhindert Writes die State zerstören (worktree-cd-drift, bd-from-worktree, wrong --repo bd-init, dep-symlinks in git-add) |
-| **Workflow-Friction-Prevention** | Surfaced Errors die CC sonst per round-trip wirft (noop edit, read-on-directory, path-typo, git-ambiguous) |
-| **Code-Style** | Erzwingt Projekt-Konventionen (dev/ imports src/, except: pass) |
-| **Cost/Correctness** | Wirtschaftlich kritische Operationen (Opus als Worker = 20-40× Billing-Burn) |
+| **Damage-Prevention** | Prevents irreversible operations (wrong-process-killed, force-pushed, amended) |
+| **Context-Flood** | Prevents output that destroys agent context (oversize reads, recursive grep, background-hidden output) |
+| **State-Corruption** | Prevents writes that destroy state (worktree-cd-drift, bd-from-worktree, wrong --repo bd-init, dep-symlinks in git-add) |
+| **Workflow-Friction-Prevention** | Surfaces errors CC would otherwise throw via a round-trip (noop edit, read-on-directory, path-typo, git-ambiguous) |
+| **Code-Style** | Enforces project conventions (dev/ imports src/, except: pass) |
+| **Cost/Correctness** | Economically critical operations (Opus as a worker = 20-40× billing burn) |
 
-### B) Decision-Type
+### B) Decision Type
 
-| Type | Mechanism | Reversibilität |
+| Type | Mechanism | Reversibility |
 |---|---|---|
-| **block-stderr** | exit 2 + stderr, Agent sieht Reason | Agent kann anders retryen |
-| **silent-rewrite** | exit 0 + updatedInput JSON, Agent sieht NICHTS | Rewrite ist final, Agent retryt nicht |
+| **block-stderr** | exit 2 + stderr, agent sees the reason | agent can retry differently |
+| **silent-rewrite** | exit 0 + updatedInput JSON, agent sees NOTHING | rewrite is final, agent doesn't retry |
 
-### C) Trigger-Specificity (primärer FP-Indikator)
+### C) Trigger Specificity (Primary FP Indicator)
 
-| Stufe | Charakteristik | FP-Risiko |
+| Level | Characteristic | FP risk |
 |---|---|---|
-| **Field-Check** | Einzelnes Bool/String-Feld checken (`run_in_background=true`, `isdir(path)`, `file_size > 256KB`, `old == new`) | **NULL** — deterministic |
-| **Narrow-Regex** | Exakte Form-Match (`worker-cli spawn ... opus`, `except [Type]:\n    pass`, `git push --force`) | **Sehr niedrig** |
-| **Pattern-mit-Exceptions** | Breitere Pattern mit expliziten Allow-Lists (broad-grep mit git-grep + --include= exemption) | **Niedrig** wenn Exemptions vollständig |
-| **Heuristik-Pattern** | Pattern das fundamental rät (sleep cmd_before Semantik, bare-ref vs path) | **Mittel-Hoch** — bewertungsabhängig |
+| **Field-Check** | Checks a single bool/string field (`run_in_background=true`, `isdir(path)`, `file_size > 256KB`, `old == new`) | **NULL** — deterministic |
+| **Narrow-Regex** | Exact form match (`worker-cli spawn ... opus`, `except [Type]:\n    pass`, `git push --force`) | **Very low** |
+| **Pattern-With-Exceptions** | Broader pattern with explicit allow-lists (broad-grep with git-grep + --include= exemption) | **Low** when exemptions are complete |
+| **Heuristic-Pattern** | A pattern that fundamentally guesses (sleep cmd_before semantics, bare-ref vs path) | **Medium-high** — evaluation-dependent |
 
-### D) Damage-on-Miss (Severity wenn der Hook eine echte Violation durchließe)
+### D) Damage-on-Miss (Severity If the Hook Let a Real Violation Through)
 
-| Stufe | Beispiel |
+| Level | Example |
 |---|---|
-| **Workflow-Friction** | API Round-Trip wasted (noop edit, read-directory) |
-| **Context-Flood** | 10MB+ Output, 256KB+ Read, CLAUDE.md re-injection |
-| **Data-Damage** | Wrong process killed, force-pushed branch, corrupted bd-state |
+| **Workflow-Friction** | Wasted API round-trip (noop edit, read-directory) |
+| **Context-Flood** | 10MB+ output, 256KB+ read, CLAUDE.md re-injection |
+| **Data-Damage** | Wrong process killed, force-pushed branch, corrupted bd state |
 
 ---
 
-## Pro-Hook Klassifikation
+## Per-Hook Classification
 
 ### Damage-Prevention (3 Hooks)
 
-| Hook | Decision | Specificity | Damage-on-Miss | FP-Status | Verdict |
+| Hook | Decision | Specificity | Damage-on-Miss | FP Status | Verdict |
 |---|---|---|---|---|---|
 | `block_dangerous_kill` | block | Narrow-Regex + explicit allow-list (pkill -x, numeric kill, worker-cli kill) | catastrophic (wrong process killed) | known scanner-gap heredoc-in-$() (catalog) | **KEEP** |
 | `block_git_destructive` | block | Narrow-Regex (--amend, --force, --no-verify, --allow-empty, config-modify) | data-damage (history loss) | zero — explicit destructive flag matching | **KEEP** |
@@ -65,76 +63,74 @@ solider Purpose + akzeptables FP-Risiko = KEEP, ansonsten Review.
 
 ### Context-Flood (5 Hooks)
 
-| Hook | Decision | Specificity | Damage-on-Miss | FP-Status | Verdict |
+| Hook | Decision | Specificity | Damage-on-Miss | FP Status | Verdict |
 |---|---|---|---|---|---|
 | `block_read_oversize` | block | Field-Check (size + offset/limit/pages absent) | context-flood (256KB+) | zero — deterministic | **KEEP** |
-| `block_read_worktree` | block | Path-Check + cwd-equality (own-worktree exemption) | context-flood (~50KB CLAUDE.md re-injection) | own-worktree exemption handles primary FP | **KEEP** |
-| `block_broad_grep` | block | Pattern-mit-Exceptions (git-grep + --include= + file-target alle exempted) | context-flood (10MB+) | low — Exemptions explicit | **KEEP** |
+| `block_read_worktree` | block | Path-check + cwd-equality (own-worktree exemption) | context-flood (~50KB CLAUDE.md re-injection) | own-worktree exemption handles the primary FP | **KEEP** |
+| `block_broad_grep` | block | Pattern-with-exceptions (git-grep + --include= + file-target all exempted) | context-flood (10MB+) | low — exemptions explicit | **KEEP** |
 | `block_venv_no_redirect` | block | Pattern (venv python .py without > redirect / `| tee`) | context-flood (python verbose output) | low — redirect/tee exemption | **KEEP** |
-| `block_unauthorized_background` | block | Field-Check (run_in_background=true) + Narrow-Regex (canonical sleep N && echo done allowed) | context-flood (silent bg hides output) | **DOCUMENTED FP — Catalog: worker-cli send/echo/true/pwd in bg sind fast-returning legitimate** | **REPORT** |
+| `block_unauthorized_background` | block | Field-Check (run_in_background=true) + Narrow-Regex (canonical sleep N && echo done allowed) | context-flood (silent bg hides output) | **DOCUMENTED FP — catalog: worker-cli send/echo/true/pwd in bg are fast-returning, legitimate** | **REPORT** |
 
 ### State-Corruption (4 Hooks)
 
-| Hook | Decision | Specificity | Damage-on-Miss | FP-Status | Verdict |
+| Hook | Decision | Specificity | Damage-on-Miss | FP Status | Verdict |
 |---|---|---|---|---|---|
-| `block_bd_cli_worker` | block | Conditional (only from worktree CWD) | silent bead corruption on merge | should be near-zero — bd in worktree IS wrong | **KEEP** |
+| `block_bd_cli_worker` | block | Conditional (only from worktree CWD) | silent bead corruption on merge | should be near-zero — bd in a worktree IS wrong | **KEEP** |
 | `block_git_add_deps` | block | Narrow-Pattern (git add + venv|.venv|node_modules target) | broken merge (circular symlinks) | very low | **KEEP** |
-| `rewrite_bd_invalid_repo` | rewrite | Field-Validation (path exists + has .beads/) | silent .beads/ init at wrong path | near-zero — validation deterministic | **KEEP** |
-| `block_cd_drift` | block | Pattern (cd worktree as LAST cd target without cd-back) | wrong-dir-ops in next Bash call | **KIPP-KANDIDAT** (per pipe07_safety_hooks): "borderline could lead to wrong-dir-ops but rare" — unklare aktuelle Relevanz | **REPORT** |
+| `rewrite_bd_invalid_repo` | rewrite | Field-Validation (path exists + has .beads/) | silent .beads/ init at the wrong path | near-zero — validation deterministic | **KEEP** |
+| `block_cd_drift` | block | Pattern (cd worktree as the LAST cd target without cd-back) | wrong-dir-ops in the next Bash call | **FLIP CANDIDATE** (per the safety-hooks current-state doc): "borderline could lead to wrong-dir-ops but rare" — current relevance unclear | **REPORT** |
 
 ### Workflow-Friction-Prevention (4 Hooks)
 
-| Hook | Decision | Specificity | Damage-on-Miss | FP-Status | Verdict |
+| Hook | Decision | Specificity | Damage-on-Miss | FP Status | Verdict |
 |---|---|---|---|---|---|
-| `block_noop_edit` | block | Field-Check (old_string == new_string) | API round-trip wasted | zero — deterministic equality | **KEEP** |
-| `block_read_directory` | block | Field-Check (os.path.isdir) | API round-trip wasted | zero — deterministic | **KEEP** |
-| `block_path_typo` | rewrite (since 2026-05-22) | Narrow-Pattern (.claire/, ..letter) | retry with corrected path | very low — Edit-Matcher Anomalie dokumentiert betrifft NICHT-Firing nicht FP | **KEEP** |
-| `rewrite_git_ambiguous` | rewrite | Heuristik-Pattern (bare-ref vs path-only detection + chain-op-position for `--` insertion) | confusing git error | **DOCUMENTED ACTIVE BUG (Bead Thread 1)** — inserted `--` an falscher Shell-Position wenn Command nicht mit `git` startet (variable-assignment, chained command) → produziert "command not found: --" | **REPORT** |
+| `block_noop_edit` | block | Field-Check (old_string == new_string) | wasted API round-trip | zero — deterministic equality | **KEEP** |
+| `block_read_directory` | block | Field-Check (os.path.isdir) | wasted API round-trip | zero — deterministic | **KEEP** |
+| `block_path_typo` | rewrite (since 2026-05-22) | Narrow-Pattern (.claire/, ..letter) | retry with corrected path | very low — the documented Edit-matcher anomaly affects non-firing, not FP | **KEEP** |
+| `rewrite_git_ambiguous` | rewrite | Heuristic-Pattern (bare-ref vs path-only detection + chain-op position for `--` insertion) | confusing git error | **DOCUMENTED ACTIVE BUG** — inserts `--` at the wrong shell position when the command doesn't start with `git` (variable assignment, chained command) → produces "command not found: --" | **REPORT** |
 
-### Context-Flood — Rewrite (1 Hook, gerade gelandet)
+### Context-Flood — Rewrite (1 Hook, Just Landed)
 
-| Hook | Decision | Specificity | Damage-on-Miss | FP-Status | Verdict |
+| Hook | Decision | Specificity | Damage-on-Miss | FP Status | Verdict |
 |---|---|---|---|---|---|
-| `rewrite_chained_sleep` | rewrite | Heuristik-Pattern mit explicit narrow allow-list (nur `echo`+`true` cmd_before, loop-bodies + load-bearing pass-through) | output-hiding via missed sleep | low (narrow allow-list per audit) — **2026-05-24 gelandet, keine live Daten** | **MONITOR** |
+| `rewrite_chained_sleep` | rewrite | Heuristic-Pattern with an explicit narrow allow-list (only `echo`+`true` cmd_before, loop-bodies + load-bearing pass-through) | output-hiding via missed sleep | low (narrow allow-list per audit) — **landed 2026-05-24, no live data yet** | **MONITOR** |
 
 ### Code-Style (2 Hooks)
 
-| Hook | Decision | Specificity | Damage-on-Miss | FP-Status | Verdict |
+| Hook | Decision | Specificity | Damage-on-Miss | FP Status | Verdict |
 |---|---|---|---|---|---|
-| `block_dev_imports_src` | block | Pattern (file_path matches /dev/ + content has `^from src\.` or `^import src\.`) | dev/ script becomes non-runnable | very low — clear architectural rule | **KEEP** |
-| `block_except_pass` | block | Narrow-Regex (`except [Type]:\n    pass`) | silent exception swallow | very low — bare except-pass ist universal bad | **KEEP** |
+| `block_dev_imports_src` | block | Pattern (file_path matches /dev/ + content has `^from src\.` or `^import src\.`) | dev/ script becomes non-runnable | very low — a clear architectural rule | **KEEP** |
+| `block_except_pass` | block | Narrow-Regex (`except [Type]:\n    pass`) | silent exception swallow | very low — bare except-pass is universally bad | **KEEP** |
 
 ---
 
-## Verdict-Summary
+## Verdict Summary
 
 | Verdict | Count | Hooks |
 |---|---|---|
-| **KEEP** (solider Purpose + niedriges FP-Risk, kein Action) | 15 | block_dangerous_kill, block_git_destructive, block_worker_spawn_opus, block_read_oversize, block_read_worktree, block_broad_grep, block_venv_no_redirect, block_bd_cli_worker, block_git_add_deps, rewrite_bd_invalid_repo, block_noop_edit, block_read_directory, block_path_typo, block_dev_imports_src, block_except_pass |
-| **MONITOR** (jung, Daten fehlen — 1-2 Wochen abwarten) | 1 | rewrite_chained_sleep |
-| **REPORT** (dokumentierte FP oder Kipp-Status, braucht User-Entscheidung) | 3 | rewrite_git_ambiguous, block_unauthorized_background, block_cd_drift |
+| **KEEP** (solid purpose + low FP risk, no action) | 15 | block_dangerous_kill, block_git_destructive, block_worker_spawn_opus, block_read_oversize, block_read_worktree, block_broad_grep, block_venv_no_redirect, block_bd_cli_worker, block_git_add_deps, rewrite_bd_invalid_repo, block_noop_edit, block_read_directory, block_path_typo, block_dev_imports_src, block_except_pass |
+| **MONITOR** (young, data missing — wait 1-2 weeks) | 1 | rewrite_chained_sleep |
+| **REPORT** (documented FP or flip status, needs a user decision) | 3 | rewrite_git_ambiguous, block_unauthorized_background, block_cd_drift |
 
-15 von 19 Hooks haben soliden Purpose ohne nennenswerte FP-Wahrscheinlichkeit — diese
-brauchen keine weitere Diskussion. Per User-Prinzip: KEEP, fertig.
+15 of 19 hooks have a solid purpose with no notable FP probability — these
+need no further discussion. Per the user principle: KEEP, done.
 
-`rewrite_chained_sleep` ist heute (2026-05-24) gelandet, hat noch keine Live-Daten. Audit
-basiert auf historischen Sleep-Patterns (`dev/sleep_pattern_analysis/`), narrow Allow-Liste
-(`echo`/`true` cmd_before only) hält theoretisches FP-Risiko niedrig. Re-Eval in ~7 Tagen
-sobald Live-Daten im neuen `hook_firing.jsonl` (Bead Thread 2) sichtbar sind.
+`rewrite_chained_sleep` landed today (2026-05-24), has no live data yet. The audit
+is based on historical sleep patterns (`dev/sleep_pattern_analysis/`); the narrow allow-list
+(`echo`/`true` cmd_before only) keeps the theoretical FP risk low. Re-eval in ~7 days
+once live data is visible in the new `hook_firing.jsonl`.
 
-Die 3 REPORT-Hooks werden separat im Chat mit Detail-Analyse und Entscheidungs-Optionen
-an den User vorgelegt.
+The 3 REPORT hooks are presented separately in chat with a detailed analysis and
+decision options for the user.
 
 ---
 
-## Quellen
+## Sources
 
-- `src/hooks/DOCS.md` (komplette Hook-Map, Purpose/Reads/Writes/Allowed/Blocked Patterns
-  pro Hook)
-- `decisions/pipe07_safety_hooks.md` (Hook IST + KIPP-Kandidaten-Liste 2026-05-22)
-- `decisions/OldThemes/tool_use_safety/2026-05-22_hook_principle_block_vs_allow.md`
-  (Klassifikations-Vorgänger: TILT-Hooks vs KIPP-Kandidaten)
-- `decisions/OldThemes/audit_logging/failure_patterns_catalog.md` (per-Hook
-  FP/TP-Heuristiken die heutige FP-Status-Spalte fundieren)
-- Bead `Monitor_CC-8ggr` Thread 1 Description (konkret bekannter rewrite_git_ambiguous
-  Bug — shell-position FP bei variable-assignment-prefix)
+- `src/hooks/DOCS.md` (the complete hook map, purpose/reads/writes/allowed/blocked patterns
+  per hook)
+- The proxy-cache pipeline's safety-hooks current-state doc (hook state + flip-candidate list as of 2026-05-22)
+- The hook-principle-block-vs-allow entry in this area (classification predecessor: TILT hooks vs flip candidates)
+- The failure-patterns-catalog entry in the audit_logging area (per-hook FP/TP heuristics that ground today's FP-status column)
+- A closed tracking task's thread 1 description (a concretely known rewrite_git_ambiguous
+  bug — shell-position FP on a variable-assignment prefix)

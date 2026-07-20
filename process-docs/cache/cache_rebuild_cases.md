@@ -8,7 +8,7 @@ Observed cache-rebuild events with as much forensic detail as we can capture. Go
 - **Partial rebuild** = BP1 still hits (CR ≈ 30k from cross-session rules) but BP2/BP3/BP4 miss
 - **Full rebuild** = CR=0 or near-zero, nothing cached
 
-## Status Quo (IST)
+## State as of 2026-04-16 (bp-layout-v3)
 
 - Proxy strips all CC cache_control markers via `_strip_all_cache_control()` in `src/proxy/cache.py`
 - Proxy sets its own BPs with `ttl:"1h"` (`cc_marker = {"type":"ephemeral","ttl":"1h"}`)

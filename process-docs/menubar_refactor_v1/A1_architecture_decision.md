@@ -6,7 +6,7 @@
 
 **Goal:** Composition-with-per-Concern-Controllers. Six controllers each own a subset of state and behavior. `CCMenuBarApp` becomes a slim Coordinator: holds the 6 controller refs, the `@rumps.App` binding (cannot move), and `_tick` as delegating orchestrator.
 
-**Constraint:** Pure refactor. Zero functional change. `decisions/menubar_desktop_allocation.md` and `decisions/menubar_session_status.md` ISTs are NOT touched.
+**Constraint:** Pure refactor. Zero functional change. The current-state documentation for menubar desktop allocation and menubar session status is NOT touched.
 
 ---
 
@@ -181,8 +181,8 @@ class SessionsController:
 ## What This Refactor Explicitly Does NOT Change
 
 - Session discovery logic (`discover.py`, `proc_cache.py`) — untouched
-- Status detection thresholds — untouched (`decisions/menubar_session_status.md` IST unchanged)
-- Desktop allocation / py2app bundle — untouched (`decisions/menubar_desktop_allocation.md` IST unchanged)
+- Status detection thresholds — untouched (current-state documentation for menubar session status unchanged)
+- Desktop allocation / py2app bundle — untouched (current-state documentation for menubar desktop allocation unchanged)
 - `_PanelController` ObjC selectors and action-handler logic — untouched
 - All panel rendering (panel.py, bead_panel.py, queue_panel.py) — untouched in Step 1
 - Auto-abort logic, auto-focus logic — untouched in Step 1
@@ -232,11 +232,9 @@ Expected: 0 new findings (DOCS.md updated with new module entry and updated Stat
 
 ---
 
-## OldThemes Continuation
+## Continuation
 
-Subsequent worker dispatches append to this folder:
-- `B1_migration_log.md` — BeadController (Step 2)
-- `B2_migration_log.md` — QueueController (Step 3)
-- etc.
-
-Final summary doc (after all 6 steps): `README.md` in this folder — lists all dev probes run (none for this pure-refactor sequence), final controller inventory, and any architectural learnings.
+Subsequent worker dispatches append further migration-log entries to this area, one per
+controller step (BeadController, QueueController, PanelManager, FocusController,
+HotkeyController), plus a final summary once all 6 steps land — dev probes run (none for this
+pure-refactor sequence), final controller inventory, and any architectural learnings.

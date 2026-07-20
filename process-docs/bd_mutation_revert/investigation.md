@@ -34,7 +34,7 @@ The root cause below (#4239/#3948/#4135, pre-1.0.4 JSONL auto-import clobbering)
 1. **Global hook** `block_batch_bd_close.py` (registered in `~/.claude/settings.json` → fires for ALL projects on this machine): blocks any Bash call carrying >1 bead-mutation unit. Structurally prevents the batch-revert (#4135). Module map: `src/hooks/DOCS.md`. 29 smoke cases (`dev/hook_smoke/test_block_batch_bd_close.py`).
 2. **Per-repo config** `bd config set export.git-add false`: stops the failing `git add` → auto-export completes reliably (like an explicit `bd export > .beads/issues.jsonl`) → JSONL stays synced → auto-import imports the correct state → no revert. Addresses the single-close revert (#4239). **Per-project** — bd config is stored per-project (`bd config --help`: "stored per-project in the beads database"); no global config exists (`~/.beads/` holds only `registry.json`). Must be set in each bead repo.
 
-## Härtetest evidence
+## Stress-test evidence
 
 Method: throwaway bead → close → 20 auto-import triggers (`bd show`/`bd list` ×10) → confirm CLOSED → `bd dolt stop` + fresh start → confirm CLOSED → delete.
 

@@ -1,50 +1,50 @@
 # RAG Indexing Architecture
 
-## Status Quo (IST)
+## State as of this audit
 
-Monitor_CC nutzt zwei separate Indexing-Pfade der RAG-Infrastruktur. Welcher Pfad gilt hängt ab davon ob Content im Projekt-Repo lebt oder zentral in der RAG-Infrastruktur.
+Monitor_CC uses two separate indexing paths of the RAG infrastructure. Which path applies depends on whether content lives in the project repo or centrally in the RAG infrastructure.
 
-**Pfad 1 — project-local** via `.rag-docs.json` am Repo-Root + `rag-cli update_docs .`. Hash-basierte Sync gegen die im Manifest deklarierten Globs. Files leben IM Projekt-Repo. Multi-Collection-Format erlaubt mehrere Collections pro Projekt. Wird bei jedem Session-Recap ausgeführt um Doku-Änderungen einzusyncen.
+**Path 1 — project-local** via `.rag-docs.json` at the repo root + `rag-cli update_docs .`. Hash-based sync against the globs declared in the manifest. Files live IN the project repo. The multi-collection format allows several collections per project. Run on every session recap to sync in doc changes.
 
-**Pfad 2 — central reference** via `rag-cli index --collection <name>` im RAG-Projekt. Files leben in `Meta/ClaudeCode/cli/rag-cli/data/documents/<collection_name>/`, dort gitignored (`data/` im RAG-`.gitignore`). Collection-Name = Subdirectory-Name. Wird einmalig pro Reference-Material-Hinzufügung gefahren, nicht hash-synced. `workflow.py` existiert nicht mehr — Einstiegspunkt ist ausschliesslich `cli.py` (via `rag-cli` wrapper).
+**Path 2 — central reference** via `rag-cli index --collection <name>` in the RAG project. Files live in `Meta/ClaudeCode/cli/rag-cli/data/documents/<collection_name>/`, gitignored there (`data/` in RAG's `.gitignore`). Collection name = subdirectory name. Run once per reference-material addition, not hash-synced. `workflow.py` no longer exists — the entry point is exclusively `cli.py` (via the `rag-cli` wrapper).
 
-Monitor_CC hat aktuell drei Collections:
+Monitor_CC currently has three collections:
 
-| Collection | Pfad | Chunks | Inhalt |
+| Collection | Path | Chunks | Content |
 |---|---|---|---|
-| Monitor_CC-meta | local via .rag-docs.json | 185 | DOCS.md (22), decisions/*.md (8) |
-| Monitor_CC-features | local via .rag-docs.json | 125 | decisions/OldThemes/<topic>/*.md (14 files in 11 Subfoldern) |
-| Monitor_reference | central via rag-cli index | 337 | 88 Anthropic API Doc Mirrors in `Meta/.../Monitor_reference/` |
+| Monitor_CC-meta | local via .rag-docs.json | 185 | DOCS.md (22), process-docs/*.md (8) |
+| Monitor_CC-features | local via .rag-docs.json | 125 | process-docs area docs (14 files in 11 subfolders) |
+| Monitor_reference | central via rag-cli index | 337 | 88 Anthropic API doc mirrors in `Meta/.../Monitor_reference/` |
 
-`.rag-docs.json` Manifest enthält nur zwei Collections (-meta + -features). Die dritte (Monitor_reference) ist nicht im Manifest weil ihre Files nicht im Repo leben — sie wird über den `rag-cli index`-Pfad gewartet.
+The `.rag-docs.json` manifest contains only two collections (-meta + -features). The third (Monitor_reference) is not in the manifest because its files don't live in the repo — it's maintained via the `rag-cli index` path.
 
-## Evidenz
+## Evidence
 
-`cli/rag-cli/src/rag/sync.py` — `sync_docs_workflow` walkt `.rag-docs.json` Globs, hash-synced per `(collection, document)`-Key, akzeptiert Single- oder Multi-Collection-Format (via `update_docs` subcommand in `cli.py`).
+`cli/rag-cli/src/rag/sync.py` — `sync_docs_workflow` walks `.rag-docs.json` globs, hash-syncs per `(collection, document)` key, accepts single- or multi-collection format (via the `update_docs` subcommand in `cli.py`).
 
-`cli/rag-cli/cli.py:95-101` — `index` subcommand nimmt `--collection` (required), liest ausschliesslich `data/documents/<collection>/*.md`. Kein `--input`-Flag; `workflow.py` existiert nicht mehr.
+`cli/rag-cli/cli.py:95-101` — the `index` subcommand takes `--collection` (required), reads exclusively `data/documents/<collection>/*.md`. No `--input` flag; `workflow.py` no longer exists.
 
-Session 2026-05-11 Lesson: die ersten 92 API-Mirror-Files lagen falscherweise in `Monitor_CC/sources/` flach. Korrektur: `mv` der 91 Files cross-repo nach `Meta/.../Monitor_reference/`, `git rm` in Monitor_CC, Collection via `workflow.py index-dir` neu aufgebaut (historisch — seither durch rag-cli Konsolidierung abgelöst).
+Session 2026-05-11 lesson: the first 92 API-mirror files sat incorrectly flat in `Monitor_CC/sources/`. Correction: `mv` the 91 files cross-repo to `Meta/.../Monitor_reference/`, `git rm` in Monitor_CC, rebuilt the collection via `workflow.py index-dir` (historical — since superseded by the rag-cli consolidation).
 
-Session 2026-06-10: `workflow.py` bei rag-cli Konsolidierung entfernt. gh-cli (`index_issues/releases/discussions.py`) und searxng SKILL.md haben toten `workflow.py index-dir`-Aufruf durch `rag-cli index --collection <name>` ersetzt. Input-Model unverändert: gh-cli schreibt MDs nach `data/documents/<collection>/` (war schon korrekt), searxng setzt die Ausgabe-Directory auf `$RAG_ROOT/data/documents/$COLLECTION` direkt.
+Session 2026-06-10: `workflow.py` removed during the rag-cli consolidation. gh-cli (`index_issues/releases/discussions.py`) and searxng's SKILL.md had their dead `workflow.py index-dir` call replaced with `rag-cli index --collection <name>`. Input model unchanged: gh-cli writes MDs to `data/documents/<collection>/` (was already correct), searxng sets the output directory directly to `$RAG_ROOT/data/documents/$COLLECTION`.
 
-## Recommendation (SOLL)
+## Recommendation (target state)
 
-Keep — kein Architektur-Change nötig. Drei Konventionen sollen konsistent eingehalten werden.
+Keep — no architecture change needed. Three conventions should be kept consistent.
 
-**Konvention 1: Was wohin gehört.** Generische externe Reference (Anthropic API Mirror, Paper-PDFs, Vendor-Docs ohne project-spezifischen Decision-Bezug) → central via `rag-cli index --collection`. Project-spezifische Docs (DOCS.md, decisions/, OldThemes-Narrative) → local via `.rag-docs.json`. Project-interne Research-Reports (z.B. RAM_research) sind decisions/-Material, gehen nach `decisions/OldThemes/<topic>/`.
+**Convention 1: what goes where.** Generic external reference (Anthropic API mirror, paper PDFs, vendor docs with no project-specific decision context) → central via `rag-cli index --collection`. Project-specific docs (DOCS.md, process-docs, area-doc narratives) → local via `.rag-docs.json`. Project-internal research reports (e.g. RAM_research) are process-docs material, go into `process-docs/<topic>/`.
 
-**Konvention 2: Collection-Naming.** Project-local: `<Project>-meta` und `<Project>-features`. Central Reference: `<Project>_reference` (mit Underscore statt Dash, peer-Konvention zu `RAG_reference`, `searxng_reference`). Monitor_CC weicht hier ab: die zentrale Collection heißt `Monitor_reference` ohne `_CC` weil bereits angelegt — beibehalten.
+**Convention 2: collection naming.** Project-local: `<Project>-meta` and `<Project>-features`. Central reference: `<Project>_reference` (underscore instead of dash, matching the peer convention of `RAG_reference`, `searxng_reference`). Monitor_CC deviates here: the central collection is named `Monitor_reference` without `_CC` because it was already created that way — kept as-is.
 
-## Offene Fragen
+## Open Questions
 
-`.txt` Files im central store werden vom `index-dir` `.md`-only Filter übersprungen — 3 Files betroffen (ExtendedThinking5.txt, ExtendedThinking6.txt, PDF_support1.txt). Akzeptiert weil .md-Geschwister den Inhalt abdecken. Falls perfekte Coverage gebraucht: index-dir um `.txt` erweitern oder Files in `.md` umbenennen.
+`.txt` files in the central store are skipped by the `index-dir` `.md`-only filter — 3 files affected (ExtendedThinking5.txt, ExtendedThinking6.txt, PDF_support1.txt). Accepted because `.md` siblings cover the content. If perfect coverage is needed: extend index-dir to `.txt` or rename the files to `.md`.
 
-Cache-Read-Cost beim mehrfach-pro-Session-Run von `rag-cli update_docs .`: nicht gemessen. Skip-by-default sollte zero-cost-Run nach Initial-Index sein, aber bei Doku-Edits werden alle geänderten Files re-embedded.
+Cache-read cost of running `rag-cli update_docs .` multiple times per session: not measured. Skip-by-default should make it a zero-cost run after the initial index, but doc edits cause all changed files to be re-embedded.
 
-## Quellen
+## Sources
 
 - `cli/rag-cli/src/rag/sync.py` — update_docs / sync_docs_workflow implementation
 - `cli/rag-cli/cli.py` — index subcommand (lines 95-101, 198-323)
-- Session 2026-05-11 — empirisches Beispiel für die zwei-Pfad-Trennung
-- Session 2026-06-10 — rag-cli Konsolidierung (workflow.py entfernt, index-command-Wechsel)
+- Session 2026-05-11 — empirical example of the two-path separation
+- Session 2026-06-10 — rag-cli consolidation (workflow.py removed, index-command switch)

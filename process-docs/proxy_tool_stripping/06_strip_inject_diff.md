@@ -1,81 +1,81 @@
-# Strip/Inject Span-Diff — Original↔Forwarded (Step 2+3 Verifikation)
+# Strip/Inject Span-Diff — Original↔Forwarded (Step 2+3 Verification)
 
-Build step 2026-06-02. Reine dev/-Analyse — keine src/-Änderung, keine Monitor-Änderung.
-Verifiziert am frischen Paar `api_requests_opus_monitor_cc_1780442876`.
+Build step 2026-06-02. Pure dev/ analysis — no src/ change, no monitor change.
+Verified against the fresh pair `api_requests_opus_monitor_cc_1780442876`.
 
-## Kern-Erkenntnis: Ein Diff, beide Farben
+## Core Finding: One Diff, Both Colors
 
-Strip-Highlighting (gelb) und Inject-Highlighting (grün) kommen aus DEMSELBEN Diff:
-Original↔Forwarded. Delete-Spans = gestrippt (gelb), Insert-Spans = injiziert (grün).
-Block-level-Vergleich (`original_block vs forwarded_block`) hätte nicht gereicht — sys[2]
-z.B. **strippt** den CC-Prompt UND **injiziert** die Rules im gleichen Block. Erst der
-Text-Span-Diff innerhalb eines ausgerichteten Block-Paares trennt Strip von Inject sauber.
+Strip highlighting (yellow) and inject highlighting (green) come from the SAME diff:
+original↔forwarded. Delete spans = stripped (yellow), insert spans = injected (green).
+A block-level comparison (`original_block vs forwarded_block`) would not have been enough — sys[2]
+e.g. **strips** the CC prompt AND **injects** the rules in the same block. Only the
+text-span diff within an aligned block pair separates strip from inject cleanly.
 
-## Alignment-Strategie
+## Alignment Strategy
 
-- **system:** per Index. Extra-Orig-Index = ganz gestrippt; extra-Fwd-Index = ganz injiziert.
-- **tools:** per Name. Nur-in-Orig = Tool komplett gestrippt; Nur-in-Fwd = Tool komplett injiziert;
-  In-beiden = Description/Schema span-diffen.
-- **messages:** per Index (outer). Within-message (wenn content beides listen): per Block-Position
-  (inner). Extra-Orig-Block = gestrippt; Extra-Fwd-Block = injiziert.
+- **system:** by index. An extra orig index = fully stripped; an extra fwd index = fully injected.
+- **tools:** by name. Only-in-orig = the tool fully stripped; only-in-fwd = the tool fully injected;
+  in-both = description/schema span-diffed.
+- **messages:** by index (outer). Within-message (when content is a list on both sides): by block
+  position (inner). Extra-orig-block = stripped; extra-fwd-block = injected.
 
-## difflib-Granularität
+## difflib Granularity
 
-**Wort-Ebene wenn `SequenceMatcher.ratio() >= 0.1`** (echte Teil-Edits, z.B. cache_control-Suffix
-an einem 55k-base64-Bild-Block angefügt — ratio ≈ 1.0, nur die letzten Wörter ändern sich).
+**Word-level when `SequenceMatcher.ratio() >= 0.1`** (real partial edits, e.g. a cache_control suffix
+appended to a 55k base64-image block — ratio ≈ 1.0, only the last words change).
 
-**Zwei-Span-Voll-Ersetzung wenn `ratio < 0.1`** (ein stripped-Span + ein injected-Span für den
-ganzen Block). Begründung: sys[2] hat ratio ≈ 0.0038 (CC-Prompt vs Rules — kein gemeinsamer Text
-der inhaltlich relevant wäre). Wort-level würde tausende sinnlose Einzel-Wort-Spans erzeugen.
-Unabhängige Verifikation (Opus Spot-Check): ratio 0.0038 bestätigt + Identität von stripped-Text
-(CC-Prompt) und injected-Text (Rules) bestätigt.
+**Two-span full replacement when `ratio < 0.1`** (one stripped span + one injected span for the
+whole block). Rationale: sys[2] has ratio ≈ 0.0038 (CC prompt vs rules — no shared text that would be
+content-relevant). Word-level would produce thousands of meaningless individual-word spans.
+Independent verification (Opus spot-check): ratio 0.0038 confirmed + identity of the stripped text
+(CC prompt) and injected text (rules) confirmed.
 
-## Verifikationsergebnisse auf Paar 1780442876 (8 Requests, 2 haiku + 6 opus)
+## Verification Results on Pair 1780442876 (8 Requests, 2 Haiku + 6 Opus)
 
 **sys[2] (REPLACED, ratio≈0.0038):**
 - stripped: -7471 chars — `\nYou are an interactive agent that helps users with software engineering tasks…`
 - injected: +130375 chars — `# Communication\n\nTwo principles for chat with the user: **drive** and **be honest**…`
 
 **sys[3] (REPLACED):**
-- stripped: -5511 chars — CC CLAUDE.md/gitStatus block
-- injected: +1 char — `"."` (Proxy-Ersatz)
+- stripped: -5511 chars — the CC CLAUDE.md/gitStatus block
+- injected: +1 char — `"."` (proxy replacement)
 
-**Haiku sys[2] (REPLACED):** Gleiche Behandlung — Title-Generation-Prompt (-1159c) → `"."` (+1c).
+**Haiku sys[2] (REPLACED):** same treatment — the title-generation prompt (-1159c) → `"."` (+1c).
 
-**model (OVERRIDE, jeder opus-Request):** `claude-opus-4-7` → `claude-opus-4-8` sichtbar als Feld-Diff.
+**model (OVERRIDE, every opus request):** `claude-opus-4-7` → `claude-opus-4-8` visible as a field diff.
 
-**tools:** 4 komplett gestrippt (Agent, AskUserQuestion, ScheduleWakeup, ToolSearch);
-5 Descriptions auf "" reduziert (Bash -10665c, Edit -1094c, Read -1782c, Skill -1315c, Write -618c).
-Keine injizierten MCP-Tools in dieser Session.
+**tools:** 4 fully stripped (Agent, AskUserQuestion, ScheduleWakeup, ToolSearch);
+5 descriptions reduced to "" (Bash -10665c, Edit -1094c, Read -1782c, Skill -1315c, Write -618c).
+No injected MCP tools in this session.
 
-**msg[0] pro Request (3 SR-Blöcke → Platzhalter):**
+**msg[0] per request (3 SR blocks → placeholders):**
 - block[0]: SR deferred-tools (-599c) → `"."` (+1c)
 - block[1]: SR skills (-5777c) → `"."` (+1c)
 - block[2]: SR env-context (-373c) → `"\n"` (+1c)
-- block[3]: user-text IDENTICAL ✓
+- block[3]: user text IDENTICAL
 
-**REQ#5+ msg[4] (hook-error-prefix-Strip erkannt):**
-- stripped: `"PreToolUse:Read hook error: [python3 …]:` Prefix — korrekt als Strip-Span isoliert
-- injected: sauberer PDF-Pfad
+**REQ#5+ msg[4] (hook-error-prefix strip detected):**
+- stripped: the `"PreToolUse:Read hook error: [python3 …]:` prefix — correctly isolated as a strip span
+- injected: the clean PDF path
 
-**REQ#8 msg[8] block[4] (55k-base64-Bild, ratio≈1.0 → wort-level):**
-Vier vorangehende Blöcke IDENTICAL (130359c, 194243c, 204439c, 204439c).
-Word-level-Diff isoliert korrekt nur den cache_control-JSON-Suffix als geändert
+**REQ#8 msg[8] block[4] (55k base64 image, ratio≈1.0 → word-level):**
+Four preceding blocks IDENTICAL (130359c, 194243c, 204439c, 204439c).
+Word-level diff correctly isolates only the cache_control JSON suffix as changed
 (`false}` → `false, "cache_control": {"type": "ephemeral", "ttl": "1h"}}`).
-Wort-Level trägt hier: ratio ~1.0, einzelne Wortänderung am Ende — kein Block-Replace.
+Word-level carries here: ratio ~1.0, a single word change at the end — no block replace.
 
-**Span-Counts pro opus-Request:** sys -2/+2 | tools -9/+0 | msgs -3…-9/+3…+9 (wächst mit neuen Turns).
+**Span counts per opus request:** sys -2/+2 | tools -9/+0 | msgs -3…-9/+3…+9 (grows with new turns).
 
 ## Tool
 
-`dev/proxy_dual_log/diff_strip_inject.py` — reine Analyse, nur lesend.
-Reconstruction: inline der verify_delta.py-Kettenlogik (self-contained, kein Import).
-Matching: per request_id; Fallback chain-order per model_family.
+`dev/proxy_dual_log/diff_strip_inject.py` — pure analysis, read-only.
+Reconstruction: inlines the verify_delta.py chain logic (self-contained, no import).
+Matching: by request_id; fallback chain-order by model_family.
 
-## Ausblick
+## Outlook
 
-Diese Engine (ratio-Threshold + block-alignment + span-Klassifikation) ist die Grundlage für
-grün/gelb im Monitor-Proxy-Pane: strip_vocab.py + proxy_display wissen bereits welche
-Modifikationen aufgetreten sind (`modifications[]` im log entry) — der Span-Diff liefert
-jetzt die TEXT-Koordinaten für die Färbung. Nächste Iteration: Monitor-Leseseite konsumiert
-`_original` als Basis und `_forwarded` für die Overlay-Farben.
+This engine (ratio threshold + block alignment + span classification) is the foundation for
+green/yellow in the monitor's proxy pane: strip_vocab.py + proxy_display already know which
+modifications occurred (`modifications[]` in the log entry) — the span diff now delivers
+the TEXT coordinates for the coloring. Next iteration: the monitor read-side consumes
+`_original` as the base and `_forwarded` for the overlay colors.

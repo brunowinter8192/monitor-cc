@@ -1,6 +1,6 @@
 # pipe07 — Safety Hooks (PreToolUse)
 
-## Status Quo (IST)
+## State as of this section's audit
 
 36 safety hooks registered globally in `~/.claude/settings.json`. All 36 call `log_fire()` (from shared `src/hooks/_fire_log.py`) at their decision-point, appending fire-events to `src/logs/hook_firing.jsonl` (append-forever, fail-silent). Passthroughs are not logged. Rewrite hooks (exit 0 + `updatedInput` JSON): `rewrite_background_sleep`, `rewrite_bd_invalid_repo`, `rewrite_chained_sleep`, `rewrite_rag_cli_search_noise`, `rewrite_searxng_scrape_noise`, `rewrite_worker_cli_capture_noise`, `rewrite_worker_cli_response_noise`; additionally `block_path_typo` and `block_unauthorized_background` use rewrite semantics (exit 0 + `updatedInput`) despite their `block_` prefix names. Disabled (renamed `.py.disabled`): `block_chained_sleep`, `block_polling_loop`, `block_log_read`, `rewrite_reddit_index_background`, `rewrite_pipe_background`.
 
@@ -578,7 +578,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 **Fail-open:** exits 0 when CWD is a worktree; exits 0 on path-resolution failure; exits 0 on any parse error.
 
-**Known limitation (2026-06-23):** static command-string analysis is blind to a dynamic `project_path` — `worker-cli spawn ... "$(pwd)"` (after a `cd <other>`) is seen as the literal `"$(pwd)"`, resolves to the hook's own cwd git-root, and fail-opens. Only EXPLICIT absolute paths to another project are caught. Primary enforcement moved to `worker-cli spawn` itself (forces the home worktree into `PROXY_PROJECT_PATH` at runtime); this hook remains a fast pre-filter. See `decisions/OldThemes/worker_spawn_placement_enforcement.md`.
+**Known limitation (2026-06-23):** static command-string analysis is blind to a dynamic `project_path` — `worker-cli spawn ... "$(pwd)"` (after a `cd <other>`) is seen as the literal `"$(pwd)"`, resolves to the hook's own cwd git-root, and fail-opens. Only EXPLICIT absolute paths to another project are caught. Primary enforcement moved to `worker-cli spawn` itself (forces the home worktree into `PROXY_PROJECT_PATH` at runtime); this hook remains a fast pre-filter.
 
 ---
 
@@ -730,7 +730,7 @@ Non-broad (pass-through): `.`, relative paths, specific project paths, `~/Docume
 
 ---
 
-## Evidenz
+## Evidence
 
 **2026-05-22 hook-block analysis** (`dev/hook_firing/reports/2026-05-22_012326.md`, 7 days of CC sessions across all projects):
 
@@ -765,7 +765,7 @@ Logs: 5 most recent `api_requests_opus_monitor_cc_*.jsonl` (script superseded by
 
 ---
 
-**2026-05-12 session findings** (`decisions/OldThemes/tool_use_safety/2026-05-12_session_findings.md`, 67 proxy logs, 2026-05-06 → 2026-05-12):
+**2026-05-12 session findings** (67 proxy logs, 2026-05-06 → 2026-05-12):
 
 | Metric | Value |
 |---|---|
@@ -779,23 +779,23 @@ Root-cause mechanism: CC worker processes carry `claude.exe --dangerously-skip-p
 
 Burst characteristic: 246/267 = 92% of calls came from ONE session. Once the antipattern fires, it fires many times. A hook would have blocked all 246 in that session.
 
-## Recommendation (SOLL)
+## Recommendation (target state)
 
-**Background/foreground simplification (2026-06-24) — SHIPPED, IST = SOLL.** Model: force ALL non-timer background → foreground (Hook 3, whitelist trimmed to sleep-timer only); the two proxy injections (`strip_bg_launch_ack` "go idle" + `strip_bg_completed` "background done") carry all signalling. Removed Hooks 8/21/33 (polling + log-read blockers) and 25/26 (force-to-bg). Backed by smoke 9/9 (`dev/hook_smoke/test_block_unauthorized_background.py`), live-verify (`.log` read passes; zero stale registrations post-merge → no Bash lockout), and the auto-background evidence (CC auto-backgrounds a long foreground job emitting the catchable ack). No shell-`&` foreground hook built — see Offene Fragen. Full narrative: `decisions/OldThemes/tool_use_safety/2026-06-24_background_foreground_simplification.md`.
+**Background/foreground simplification (2026-06-24) — SHIPPED, target state reached.** Model: force ALL non-timer background → foreground (Hook 3, whitelist trimmed to sleep-timer only); the two proxy injections (`strip_bg_launch_ack` "go idle" + `strip_bg_completed` "background done") carry all signalling. Removed Hooks 8/21/33 (polling + log-read blockers) and 25/26 (force-to-bg). Backed by smoke 9/9 (`dev/hook_smoke/test_block_unauthorized_background.py`), live-verify (`.log` read passes; zero stale registrations post-merge → no Bash lockout), and the auto-background evidence (CC auto-backgrounds a long foreground job emitting the catchable ack). No shell-`&` foreground hook built — see Open Questions.
 
-Remaining hooks — Keep + audit logging. Pending:
-- `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from 2026-05-24 audit) show safe strip pattern for read-only subcommands, expand `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`. Audit: `decisions/OldThemes/hook_false_positives/sleep_pattern_audit_2026-05-24.md`.
+Remaining hooks — keep + audit logging. Pending:
+- `rewrite_chained_sleep` (Hook 2): re-audit in ~5–7 days. If `rag-cli`, `bd`, `worker-cli` (mixed tokens from the 2026-05-24 audit) show a safe strip pattern for read-only subcommands, expand the `_TRIVIAL` set. Script: `dev/sleep_pattern_analysis/analyze.py`.
 - Next candidate: Rule-9 violations (Read before Edit) — requires session state, not statically detectable from a single payload → likely NOT hookable.
 
-## Offene Fragen
+## Open Questions
 
-- **shell-`&` work-hiding (accepted residual, 2026-06-24):** Hook 3 forces only the CC `run_in_background` flag → foreground; a shell-level `cmd &` (incl. `nohup … &`) bypasses it, produces NO CC ack, NO proxy injection, runs detached/invisible. A `work-cmd &` could thus be polled unguarded (block_polling_loop / block_log_read removed). NOT closed: forcing shell-`&` foreground would break legit `nohup`/launchd daemon launches (daemon never completes → no wake). No frequency evidence → block-on-evidence principle → revisit with a targeted hook only if fire-log shows real `work-cmd &` polling. See `decisions/OldThemes/tool_use_safety/2026-06-24_background_foreground_simplification.md`.
-- **Next antipattern:** Rule-9 (Read before Edit/Write) — 1 violation in 2026-05-20 run; requires session state to detect (which files were read this session), not hookable from a single tool_input payload alone.
+- **shell-`&` work-hiding (accepted residual, 2026-06-24):** Hook 3 forces only the CC `run_in_background` flag → foreground; a shell-level `cmd &` (incl. `nohup … &`) bypasses it, produces NO CC ack, NO proxy injection, runs detached/invisible. A `work-cmd &` could thus be polled unguarded (block_polling_loop / block_log_read removed). NOT closed: forcing shell-`&` foreground would break legit `nohup`/launchd daemon launches (daemon never completes → no wake). No frequency evidence → block-on-evidence principle → revisit with a targeted hook only if the fire-log shows real `work-cmd &` polling.
+- **Next antipattern:** Rule-9 (Read before Edit/Write) — 1 violation in the 2026-05-20 run; requires session state to detect (which files were read this session), not hookable from a single tool_input payload alone.
 - **Migration threshold:** when is a negative rule in `tool-use.md` mature enough to be retired in favour of a hook? Proposed criterion: pattern fires ≥3× in a 7-day window AND can be reliably regex-captured without false positives.
 - **Worker-local suppression:** should workers running in worktrees be able to suppress specific hooks? Currently no mechanism — global registration means all hooks fire everywhere.
 
-## Quellen
+## Sources
 
-- `decisions/OldThemes/tool_use_safety/2026-05-12_session_findings.md` — session findings, 267-call quantification, hook design rationale
+- Session findings from a 2026-05-12 audit — 267-call quantification, hook design rationale
 - `src/menubar/hook_setup.py` — registration pattern mirrored by `src/hooks/hook_setup.py`
 - Anthropic PreToolUse hook reference: exit-code semantics (0 = allow, 2 = block with stderr, 1 = hook error)

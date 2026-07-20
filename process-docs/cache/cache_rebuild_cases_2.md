@@ -58,7 +58,7 @@ REQ#71 immediately recovered (CR=194,826) — cache was freshly written at REQ#7
 
 Only the `cch=` 5-char hash differs. Cross-session validation: across all 108 proxy requests in this Opus session, **107 of 108 had a different `cch` from the previous request** (cch transitions on virtually every request). If `cch` were the cache key, we would observe ~107 rebuilds. Actual rebuilds in this session: 4 total — 3 at session start (REQ#1–#3, normal initial cache creation) + this one at REQ#70. **`cch` is NOT the cache key from Anthropic's perspective** — either the proxy normalizes it on the way out (not visible in the modifications list) or Anthropic's cache hashing ignores this billing header. Either way, the sys_block[0] hash divergence does NOT explain the rebuild.
 
-**Falsification of user-proposed hypothesis:** "Proxy-Ports rumgemacht" — the user suspected that local diagnostic activity around mitmdump's port 8080 (lsof, curl probes through HTTPS_PROXY) caused the rebuild. Timing disproves this: REQ#70 at 15:57:49 UTC = 17:57:49 local, port-diagnostic activity began at 17:58 (worker's bot-start failure investigation, after REQ#70 had already completed). Port-related actions happened AFTER, not before, the rebuild.
+**Falsification of user-proposed hypothesis:** "fiddled with the proxy ports" — the user suspected that local diagnostic activity around mitmdump's port 8080 (lsof, curl probes through HTTPS_PROXY) caused the rebuild. Timing disproves this: REQ#70 at 15:57:49 UTC = 17:57:49 local, port-diagnostic activity began at 17:58 (worker's bot-start failure investigation, after REQ#70 had already completed). Port-related actions happened AFTER, not before, the rebuild.
 
 **Classification:** Full rebuild. Root cause = **server-side cache eviction by Anthropic** (most likely interpretation). Same pattern as Case 7.
 
@@ -80,7 +80,7 @@ None for the rebuild itself — server-side eviction is outside proxy control. I
 
 Operational lesson reinforced (already known): worker spawn must use worktrees by default. The `--no-worktree` choice in this session caused Token-Pane mislabeling in the Monitor_CC display (worker JSONL and Opus JSONL both landed in the same `~/.claude/projects/-Users-...-Trading/` dir, monitor's "newest session" heuristic confused which is which).
 
-**Cross-ref:** `Case 7 (monitor_cc REQ#92, 2026-04-16)` — same diagnostic pattern (identical sent_meta hashes, ~20s gap, server-side eviction conclusion). Eighth case overall, second one classified as pure server-side eviction.
+Same diagnostic pattern as a prior server-side-eviction case (identical sent_meta hashes, ~20s gap, server-side eviction conclusion). Eighth case overall, second one classified as pure server-side eviction.
 
 ---
 

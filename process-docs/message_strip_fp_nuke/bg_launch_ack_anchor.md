@@ -1,6 +1,6 @@
 # bg_launch_ack Strip — FP-Nuke Fix (Anchor on Prefix), 2026-06-23
 
-Sibling of `plan_mode_branch.md` — SAME class (over-broad strip replaces whole block content with `.`), DIFFERENT pass.
+Sibling of a companion fix in this area — SAME class (over-broad strip replaces whole block content with `.`), DIFFERENT pass.
 
 ## Symptom
 Live in-session: user `tool_result` blocks AND user-typed/pasted messages collapsed to `.` whenever the content contained the phrase `running in background with ID` ANYWHERE. Surfaced mid-session once RAG/Bash outputs about background/polling topics (which quote the marker) started flowing; a pasted copy of the strip source itself was nuked.
@@ -48,5 +48,5 @@ Proxy restarted on the anchored fix (`3ba9932` merged to `main`; `dev == main`).
 ### 2. FP-regression — committed `4827e9c` (worker, TEST-ONLY)
 4 new cases in `dev/proxy_176_bg_launch_ack_tests.py`, one per content shape, marker mid-content → preserved: `test_fp_tool_result_str_mid_content`, `test_fp_user_str_mid_content`, `test_fp_text_block_mid_content`, `test_fp_tool_result_list_mid_content`. Fixtures contain the marker substring (so the caller fast-path gate DOES fire) but none starts with the prefix → the anchored decision preserves them — exactly the bug class. Full suite now 26 checks, all PASS.
 
-### 3. IST sync — done (orchestrator-written)
-`decisions/pipe05_proxy_cache.md` BL entry + `src/proxy/DOCS.md` (pass-sequence inline + `strip_bg_launch_ack.py` Purpose) now describe the anchored `startswith` on `Command running in background with ID:` and the FP-fix rationale, replacing the old substring-anywhere wording. `_BG_LAUNCH_ACK_MARKER` documented as the caller-side fast-path gate only.
+### 3. Current-state docs sync — done (orchestrator-written)
+`src/proxy/DOCS.md` (pass-sequence inline + `strip_bg_launch_ack.py` Purpose) now describes the anchored `startswith` on `Command running in background with ID:` and the FP-fix rationale, replacing the old substring-anywhere wording. `_BG_LAUNCH_ACK_MARKER` documented as the caller-side fast-path gate only.

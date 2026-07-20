@@ -18,7 +18,7 @@ Real open per project: monitor-cc 4, gh-cli 7, rag-cli 4, iterative-dev 7, tradi
 
 | bead | → repo / issue |
 |---|---|
-| Monitor_CC-pxn7 | brunowinter8192/monitor-cc #2 |
+| Monitor_CC-pxn7 | brunowinter8192/monitor-cc |
 | github-0a7 | brunowinter8192/gh-cli #6 |
 | github-1hp | brunowinter8192/gh-cli #7 |
 | RAG-3a0 | brunowinter8192/rag-cli #5 |

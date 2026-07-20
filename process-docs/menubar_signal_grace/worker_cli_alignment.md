@@ -65,9 +65,6 @@ using the same truth source (hooks.json) with the same demote rule. Bug 1 closed
 ## Cross-references
 
 - iterative-dev commit: `02efcdb` (Meta/blank repo, plugin-published this session)
-- Related OldThemes in this folder:
-  - `initial_design.md` — original Bug 1 deferred section (now resolved), Buffer Tuning table (5s, superseded)
-  - `buffer_60s_bump.md` — 5s→60s rationale and live-data evidence
 
 ## Status
 

@@ -1,83 +1,83 @@
 # RAG Helpfulness Evaluation
 
-## Status quo
+## Status Quo
 
-Hard rule in `~/.claude/shared-rules/opus/workers-1.md` § "RAG-First on Code Exploration": RAG-cli search before any explicit `ls`/`grep`/`Read` chain when exploring unfamiliar code territory. Rationale: DOCS.md + decisions/ + CLAUDE.md are indexed — RAG gives architecture-level context in one call that would take 5-10 tool calls to reconstruct manually.
+Hard rule in `~/.claude/shared-rules/opus/workers-1.md` § "RAG-First on Code Exploration": RAG-cli search before any explicit `ls`/`grep`/`Read` chain when exploring unfamiliar code territory. Rationale: DOCS.md + process-docs + CLAUDE.md are indexed — RAG gives architecture-level context in one call that would take 5-10 tool calls to reconstruct manually.
 
-Bauchgefühl aus production sessions: wertvoll für Status-quo/decisions/DOCS-Fragen ("warum ist X so", "wo steht Y"). Weniger wertvoll wenn die Dateiposition bereits bekannt (dann `Read` direkt billiger). Noch unklar: wie gut deckt RAG Fragen ab, bei denen mehrere Konzepte kombiniert werden müssen oder bei denen der Suchbegriff nicht klar im Index-Text steht.
+Gut feeling from production sessions: valuable for status-quo/decision/DOCS questions ("why is X this way", "where does Y live"). Less valuable when the file location is already known (then `Read` directly is cheaper). Still unclear: how well RAG covers questions that require combining multiple concepts, or where the search term isn't clearly present in the index text.
 
-## Beobachtungen aus production sessions
+## Observations from Production Sessions
 
-**Queries oft zu spezifisch.** Beobachtetes Muster: Opus formuliert queries die wie "bead-comments lesen" wirken — sehr nah am unmittelbaren task-kontext, wenig semantische Variation. Beispiel: statt "NSPanel cursor rects non-key window" eher "enableCursorRects NonactivatingPanel". Das trifft Dokumente mit exakt dieser Phrase, lässt aber thematisch verwandte Chunks durch.
+**Queries are often too specific.** Observed pattern: Opus phrases queries that read like "reading bead comments" — very close to the immediate task context, little semantic variation. Example: instead of "NSPanel cursor rects non-key window" more like "enableCursorRects NonactivatingPanel". That hits documents with exactly this phrase, but lets thematically related chunks slip through.
 
-**Single-query-topics lassen viel durchrutschen.** Ein einziger query pro topic deckt nur einen semantischen Winkel ab. Bei mehrstufigen Sachverhalten (z.B. "warum feuert cursorUpdate_ nicht") gibt es oft keinen Chunk der alle relevanten Aspekte enthält — die Antwort setzt mehrere Chunks voraus die unterschiedliche queries triggern würden. Wenn Opus nur einen query abfeuert, bleibt Recall niedrig.
+**Single-query topics let a lot slip through.** One query per topic covers only one semantic angle. For multi-step matters (e.g. "why doesn't cursorUpdate_ fire") there is often no single chunk containing all relevant aspects — the answer requires several chunks that different queries would trigger. If Opus only fires one query, recall stays low.
 
-**Queries wirken wie bead-comments-lesen.** Queries spiegeln oft den aktuellen Erkenntnisstand statt offene Fragen zu stellen. Das führt zu confirmation-bias im Retrieval: gefunden wird was man schon weiß, nicht was noch fehlt. Nützlichere Query-Strategie wäre "was weiß der Index über X dass ich noch nicht weiß?" — aber das lässt sich schlecht als query formulieren.
+**Queries read like reading-bead-comments.** Queries often mirror the current state of knowledge instead of asking open questions. That leads to confirmation bias in retrieval: what's found is what's already known, not what's still missing. A more useful query strategy would be "what does the index know about X that I don't know yet?" — but that's hard to phrase as a query.
 
-**Konsequenz:** RAG-First ist für decisions/DOCS/architecture-Fragen klar wertvoll. Für bug-diagnosis und investigative Fragen ist der Mehrwert fraglicher — dort dominiert direktes `grep` / `Read` weil die relevante Information in code-Zeilen steckt, nicht in prose.
+**Consequence:** RAG-First is clearly valuable for decisions/DOCS/architecture questions. For bug diagnosis and investigative questions the added value is more questionable — there, direct `grep` / `Read` dominates because the relevant information sits in code lines, not in prose.
 
-## Eval-Plan
+## Eval Plan
 
-**Schritt 1 — Datenextraktion aus Proxy-Logs**
+**Step 1 — Data extraction from proxy logs**
 
-Quelle: `src/logs/api_requests_*.jsonl` — enthalten alle rag-cli tool-calls der Opus-Sessions als JSON payloads. Extrahieren via dev/-script:
+Source: `src/logs/api_requests_*.jsonl` — contain all rag-cli tool calls of Opus sessions as JSON payloads. Extract via a dev/ script:
 
-- Alle `rag-cli search_hybrid` / `search` / `search_keyword` Aufrufe
-- Pro Aufruf: query-text, collection, top-k, session-timestamp
-- Aggregieren nach topic (session-cluster): wieviele queries pro topic, welche collections, top-k Verteilung
-- Signal: wieviele topics wurden mit single-query abgehandelt vs mehrfach reformuliert
+- All `rag-cli search_hybrid` / `search` / `search_keyword` calls
+- Per call: query text, collection, top-k, session timestamp
+- Aggregate by topic (session cluster): how many queries per topic, which collections, top-k distribution
+- Signal: how many topics were handled with a single query vs reformulated multiple times
 
-**Schritt 2 — Eval-Methodologie**
+**Step 2 — Eval methodology**
 
-Drei Bewertungsdimensionen pro query-result:
+Three scoring dimensions per query result:
 
-| Dimension | Messung | Signal |
+| Dimension | Measurement | Signal |
 |---|---|---|
-| Hit-rate | Kam brauchbares im top-k zurück? | Ja/Nein per query |
-| Follow-up-rate | Musste Opus nachhaken (gleicher topic, weiterer query)? | Count follow-up queries per topic |
-| Recall-proxy | Wurde das relevante Dokument gefunden das hätte gefunden werden müssen? | Requires ground-truth — manuell für Sample |
+| Hit rate | Did something usable come back in the top-k? | Yes/No per query |
+| Follow-up rate | Did Opus have to follow up (same topic, another query)? | Count of follow-up queries per topic |
+| Recall proxy | Was the relevant document found that should have been found? | Requires ground truth — manual for a sample |
 
-Für automatische Auswertung: hit-rate + follow-up-rate aus Proxy-Logs ableitbar. Recall-proxy erfordert manuelle Annotation eines Samples (10-20 topics).
+For automatic evaluation: hit rate + follow-up rate derivable from proxy logs. Recall proxy requires manual annotation of a sample (10-20 topics).
 
-Output: report-MD mit per-session query-Inventar + Bewertung pro query (Brauchbar / Zu-eng / Zu-breit / Miss).
+Output: a report MD with per-session query inventory + a rating per query (Useful / Too-narrow / Too-broad / Miss).
 
-**Schritt 3 — Klassifizierung WIN-RAG vs WIN-Direct vs Tie**
+**Step 3 — Classify WIN-RAG vs WIN-Direct vs Tie**
 
-Nach Annotation: pro topic entscheiden ob RAG oder direktes `Read`/`grep` die effizientere Strategie gewesen wäre:
+After annotation: per topic, decide whether RAG or a direct `Read`/`grep` would have been the more efficient strategy:
 
-- **WIN-RAG:** RAG lieferte im ersten query ausreichende Antwort; direkter Ansatz hätte 3+ tool calls gekostet
-- **WIN-Direct:** Dateiposition war bekannt oder einfach inferierbar; RAG kostete zusätzliche query-round ohne Mehrwert
-- **Tie:** Beides wäre vergleichbar gewesen
+- **WIN-RAG:** RAG delivered a sufficient answer on the first query; the direct approach would have cost 3+ tool calls
+- **WIN-Direct:** the file location was known or easily inferable; RAG cost an extra query round with no added value
+- **Tie:** both would have been comparable
 
-Ziel: Regelverfeinerung "RAG-First wenn ..., direct wenn ..." mit empirischer Basis statt Bauchgefühl.
+Goal: refine the rule "RAG-First when ..., direct when ..." with an empirical basis instead of a gut feeling.
 
-## Trade-off Kern
+## Core Trade-off
 
-**Specificity vs noise.** Spezifische queries haben hohe Precision (was zurückkommt ist relevant) aber niedrigen Recall (was fehlt wird nicht bemerkt). Breite queries erhöhen Recall auf Kosten von Noise im result-set. Mit reranker mitigierbar, aber nur wenn gute Chunks im retrieval-set sind.
+**Specificity vs noise.** Specific queries have high precision (what comes back is relevant) but low recall (what's missing goes unnoticed). Broad queries increase recall at the cost of noise in the result set. Mitigable with a reranker, but only when good chunks are in the retrieval set.
 
-**Single-query vs reformulation rounds.** 2-3 komplementäre queries pro topic (z.B. eine technische + eine konzeptuelle + eine problem-orientierte) erhöhen Recall erheblich. Kosten: 2-3x mehr tool calls für retrieval. Netto oft billiger als eine Runde `Read`-drilling, teurer als ein direktes `grep` wenn die Antwort in einer bekannten Datei steht.
+**Single-query vs reformulation rounds.** 2-3 complementary queries per topic (e.g. one technical + one conceptual + one problem-oriented) substantially increase recall. Cost: 2-3x more tool calls for retrieval. Net often cheaper than one round of `Read`-drilling, more expensive than a direct `grep` when the answer sits in a known file.
 
-**Bekannte Dateiposition als switch.** Der stärkste Prädiktor für "direct beats RAG" ist ob Opus bereits weiß welche Datei betroffen ist. Wenn ja: `Read` + `grep` direkt. Wenn nein (architecture-Frage, cross-cutting concern, "wo steht X überhaupt"): RAG-First bleibt die richtige Wahl.
+**Known file location as the switch.** The strongest predictor of "direct beats RAG" is whether Opus already knows which file is affected. If yes: `Read` + `grep` directly. If no (architecture question, cross-cutting concern, "where does X even live"): RAG-First remains the right choice.
 
-## Open questions
+## Open Questions
 
-- Welche Sample-Größe ist ausreichend für statistisch belastbare Aussagen? Schätzung: 30-50 topics aus ~10 sessions.
-- Welche Topics nehmen? Repräsentativ über query-Typen (architecture / bug-diagnosis / lookup) oder gezielt die schwachen Klassen?
-- Wie scoren ohne ground-truth? Proxy-Signal: follow-up-query-rate als Recall-Proxy (hohe follow-up-rate = erster query war zu eng). Limitation: Opus reformuliert nicht immer explizit.
-- Muss als dev/-script orchestriert werden (nicht ad-hoc) um reproduzierbar zu sein. Output: report-MD mit per-session Inventar.
-- Ist die RAG-First-Regel für workers genauso sinnvoll wie für Opus? Workers haben engeren task-scope — möglicherweise dominiert dort "bekannte Dateiposition" stärker.
+- What sample size is sufficient for statistically robust conclusions? Estimate: 30-50 topics from ~10 sessions.
+- Which topics to take? Representative across query types (architecture / bug-diagnosis / lookup) or targeted at the weak classes?
+- How to score without ground truth? Proxy signal: follow-up-query rate as a recall proxy (a high follow-up rate = the first query was too narrow). Limitation: Opus doesn't always explicitly reformulate.
+- Must be orchestrated as a dev/ script (not ad-hoc) to be reproducible. Output: a report MD with a per-session inventory.
+- Is the RAG-First rule as sensible for workers as for Opus? Workers have a narrower task scope — "known file location" may dominate more strongly there.
 
 ## Phase B — Auto-Metrics Run (2026-05-20)
 
 ### Implementation
 
-`dev/tool_use_analysis/rag_query_audit.py` (350 LOC, commit `36b2c54`) — extracts all `rag-cli search_hybrid/search/search_keyword` calls from proxy logs, clusters per session via greedy chain-link (token-Jaccard ≥ 0.20, stopwords excluded), computes auto-metrics, writes report-MD mit manual annotation columns left as `_`.
+`dev/tool_use_analysis/rag_query_audit.py` (350 LOC, commit `36b2c54`) — extracts all `rag-cli search_hybrid/search/search_keyword` calls from proxy logs, clusters per session via greedy chain-link (token-Jaccard ≥ 0.20, stopwords excluded), computes auto-metrics, writes a report MD with manual annotation columns left as `_`.
 
 Auto-metrics: `query_count`, `follow_up` (bool: count > 1), `result_chars`, `chunk_count` (per query, from tool_result content), `top_k`, `collection`, `truncated` (CC 5k/5k split signature).
 
-Manual columns für Review: `hit_quality` (Brauchbar / Zu-eng / Zu-breit / Miss) per query, `classification` (WIN-RAG / WIN-Direct / Tie) per topic.
+Manual columns for review: `hit_quality` (Useful / Too-narrow / Too-broad / Miss) per query, `classification` (WIN-RAG / WIN-Direct / Tie) per topic.
 
-CLI: `--jaccard T` (default 0.20) — User kann bei Review mit anderen Thresholds re-runnen.
+CLI: `--jaccard T` (default 0.20) — the user can re-run with different thresholds during review.
 
 ### Run-Output Snapshot
 
@@ -85,7 +85,7 @@ Report: `dev/tool_use_analysis/20260520_rag_query_audit.md`.
 
 | Metric | Value |
 |---|---|
-| Sessions analyzed | 15 (10 mit rag-cli usage, 5 mit 0 calls) |
+| Sessions analyzed | 15 (10 with rag-cli usage, 5 with 0 calls) |
 | Total events | 2957 |
 | Unique rag-cli calls | 44 |
 | Unique topics (jaccard ≥ 0.20) | 36 |
@@ -94,92 +94,91 @@ Report: `dev/tool_use_analysis/20260520_rag_query_audit.md`.
 | Calls in follow-up rounds | 13 / 44 (29%) |
 | Misses (chunk_count = 0) | 8 |
 | Truncated results | 1 |
-| Calls ohne tool_result | 13 (data gap — vermutlich Bash compound calls verlieren tool_use_id pairing) |
+| Calls without tool_result | 13 (data gap — likely Bash compound calls lose tool_use_id pairing) |
 | Collections | Monitor_CC-meta (30), Monitor_CC-features (12), RAG-meta (2) |
 
-Sampling-Bias: alle 44 calls sind `search_hybrid`. `search_keyword` / `search_dense` wurde nie genutzt. RAG-Multi-Model nicht.
+Sampling bias: all 44 calls are `search_hybrid`. `search_keyword` / `search_dense` was never used. RAG multi-model wasn't either.
 
-### Was direkt sichtbar (vor Manual-Annotation)
+### What Was Directly Visible (before manual annotation)
 
-- Spitzenreiter Follow-up: **T024** mit 4 queries (cursor rects/edges) — wahrscheinlichstes "RAG couldn't find" Signal
-- **T028** (DOCS pattern audit, 3 queries, alle 0 chunks) — strong WIN-Direct candidate
-- Echte Misses (kleine result_chars + 0 chunks): T001, T002, T013, T015, T020, T028 (3 queries)
+- Top follow-up: **T024** with 4 queries (cursor rects/edges) — the most likely "RAG couldn't find" signal
+- **T028** (DOCS pattern audit, 3 queries, all 0 chunks) — a strong WIN-Direct candidate
+- Real misses (small result_chars + 0 chunks): T001, T002, T013, T015, T020, T028 (3 queries)
 
-### Was noch offen
+### What Remained Open
 
-- Manual annotation der `hit_quality` + `classification` Spalten in `20260520_rag_query_audit.md` — Folge-Session
-- Daraus Regelverfeinerung "RAG-First wenn X, direct wenn Y" in `workers-1.md` § RAG-First on Code Exploration
-- Daten-Gap-Investigation: 13/44 (30%) calls ohne tool_result — bei Re-Run prüfen ob Extractor Bug (Bash compound mit mehreren rag-cli's) oder echtes "result missing in log"
+- Manual annotation of the `hit_quality` + `classification` columns in `20260520_rag_query_audit.md` — a follow-up session
+- From that: rule refinement "RAG-First when X, direct when Y" in `workers-1.md` § RAG-First on Code Exploration
+- Data-gap investigation: 13/44 (30%) calls without tool_result — on re-run, check whether it's an extractor bug (Bash compound with multiple rag-cli's) or a genuine "result missing in log"
 
 ## Sources
 
-- `src/logs/api_requests_opus_monitor_cc_*.jsonl` — Proxy-Log Datenquelle für rag-cli Aufruf-Extraktion
+- `src/logs/api_requests_opus_monitor_cc_*.jsonl` — proxy-log data source for rag-cli call extraction
 - `dev/tool_use_analysis/rag_query_audit.py` — extraction + clustering + metrics + report writer
-- `dev/tool_use_analysis/20260520_rag_query_audit.md` — run-output (auto-metrics + leere manual columns)
-- `~/.claude/shared-rules/opus/workers-1.md` § RAG-First on Code Exploration — aktuelle Hard Rule
-- Bead `Monitor_CC-3d7y` — tracker (offen für manual annotation)
+- `dev/tool_use_analysis/20260520_rag_query_audit.md` — run output (auto-metrics + empty manual columns)
+- `~/.claude/shared-rules/opus/workers-1.md` § RAG-First on Code Exploration — the hard rule at the time
 
 ## Session 2026-05-23 — Tool Inventory + Use-Case Audit
 
-### CLI-Tool-Inventur (post-reduction)
+### CLI Tool Inventory (Post-Reduction)
 
-`rag-cli` auf 9 Subcommands reduziert (war 11). `search` (pure semantic) und `search_keyword` (BM25) entfernt — in 44 Calls über 15 Sessions nie genutzt.
+`rag-cli` reduced to 9 subcommands (was 11). `search` (pure semantic) and `search_keyword` (BM25) removed — never used in 44 calls across 15 sessions.
 
 | Subcommand | Purpose |
 |---|---|
-| `search_hybrid` | Dense + sparse Fusion; default für alle Queries |
-| `list_collections` | Collections auflisten mit `--filter` |
-| `list_documents` | Dokumente in Collection auflisten (`--filter`, `--document`) |
-| `progress` | Indexierungs-Fortschritt |
-| `read_document` | Chunk-Kontext lesen (`--before N`, `--after N`) |
-| `delete` | Collection oder Dokument löschen |
-| `status` | Server-Health (Embedding/Reranker/Splade) |
-| `update_docs` | Re-Indexierung aus `.rag-docs.json` |
-| `server` | Server-Presets verwalten (start/stop/restart/list/status) |
-| ~~`search`~~ | REMOVED — pure semantic, 0/44 Calls |
-| ~~`search_keyword`~~ | REMOVED — BM25-only, 0/44 Calls |
+| `search_hybrid` | Dense + sparse fusion; default for all queries |
+| `list_collections` | List collections with `--filter` |
+| `list_documents` | List documents in a collection (`--filter`, `--document`) |
+| `progress` | Indexing progress |
+| `read_document` | Read chunk context (`--before N`, `--after N`) |
+| `delete` | Delete a collection or document |
+| `status` | Server health (embedding/reranker/splade) |
+| `update_docs` | Re-index from `.rag-docs.json` |
+| `server` | Manage server presets (start/stop/restart/list/status) |
+| ~~`search`~~ | REMOVED — pure semantic, 0/44 calls |
+| ~~`search_keyword`~~ | REMOVED — BM25-only, 0/44 calls |
 
-### Standard-Use-Case-Profil
+### Standard Use-Case Profile
 
-Befunde aus Phase-B-Auswertung (44 Calls, 15 Sessions, 36 Topics):
+Findings from the Phase-B evaluation (44 calls, 15 sessions, 36 topics):
 
-- **100 % hybrid** — alle 44 Calls `search_hybrid`; Removal von `search`/`search_keyword` datengetrieben
-- **86 % single-query** (31/36 Topics) — Opus reformuliert selten; Recall-Lücken durch fehlende Follow-ups
-- **14 % multi-query** (5/36 Topics, 13 der 44 Calls) — Follow-up-Rate als Recall-Proxy-Signal
-- **8 echte Misses** (chunk_count = 0): T001, T002, T013, T015, T020, T028
-- **Collection-Split:** Monitor_CC-meta 30 Calls (68 %), Monitor_CC-features 12 Calls (27 %), RAG-meta 2 Calls (5 %)
-- **13 Calls ohne tool_result** (29 %) — Data-Gap, wahrscheinlich Bash-compound-ID-Mismatch im Extractor
+- **100% hybrid** — all 44 calls `search_hybrid`; removal of `search`/`search_keyword` was data-driven
+- **86% single-query** (31/36 topics) — Opus rarely reformulates; recall gaps from missing follow-ups
+- **14% multi-query** (5/36 topics, 13 of the 44 calls) — follow-up rate as a recall-proxy signal
+- **8 real misses** (chunk_count = 0): T001, T002, T013, T015, T020, T028
+- **Collection split:** Monitor_CC-meta 30 calls (68%), Monitor_CC-features 12 calls (27%), RAG-meta 2 calls (5%)
+- **13 calls without tool_result** (29%) — data gap, likely a Bash-compound ID mismatch in the extractor
 
-### Collection-Inhalts-Mapping
+### Collection Content Mapping
 
-| Collection | Inhalt | Usage (44 Calls) |
+| Collection | Content | Usage (44 calls) |
 |---|---|---|
-| `Monitor_CC-meta` | decisions/, DOCS.md-Dateien, CLAUDE.md, sources/sources.md | 30 (68 %) |
-| `Monitor_CC-features` | decisions/OldThemes/ | 12 (27 %) |
-| `Monitor_reference` | 337 Chunks Anthropic API Docs (s.u.) | 0 (0 %) |
+| `Monitor_CC-meta` | process-docs, DOCS.md files, CLAUDE.md, sources/sources.md | 30 (68%) |
+| `Monitor_CC-features` | process-docs (old area docs) | 12 (27%) |
+| `Monitor_reference` | 337 chunks of Anthropic API docs (see below) | 0 (0%) |
 
-### Reference-Collection als Hebel
+### The Reference Collection as an Untapped Lever
 
-`Monitor_reference` enthält 337 Chunks Anthropic API Docs: AdaptiveThinking, PromptCaching, ExtendedThinking, ContextEditing, ProgToolCalling, Citations, Files, ContextWindow, Compaction, FastMode, FineGrained, Effort, Msgs, PDF_support u.a. In keinem der 44 Calls je befragt — 0 % Nutzungsrate.
+`Monitor_reference` contains 337 chunks of Anthropic API docs: AdaptiveThinking, PromptCaching, ExtendedThinking, ContextEditing, ProgToolCalling, Citations, Files, ContextWindow, Compaction, FastMode, FineGrained, Effort, Msgs, PDF_support among others. Never queried in any of the 44 calls — 0% usage rate.
 
-Use-Case-Beispiele für Misses die dort Treffer hätten ergeben können: T001/T002 (Prompt-Caching-Verhalten → `PromptCaching`-Chunks vorhanden), T015/T020 (Context-Window-Verhalten → `ContextWindow`/`Compaction`-Chunks). Die Collection ist indexiert und bereit — fehlend ist die Rule, sie aktiv bei API-Docs-Fragen zu befragen.
+Use-case examples for misses that could have hit there: T001/T002 (prompt-caching behavior → `PromptCaching` chunks exist), T015/T020 (context-window behavior → `ContextWindow`/`Compaction` chunks exist). The collection is indexed and ready — what's missing is the rule to actively query it for API-docs questions.
 
-### Naming-Drift
+### Naming Drift
 
-`Monitor_reference` weicht vom Konsistenz-Pattern ab: `RAG_reference`, `searxng_reference` → korrekte Form wäre `Monitor_CC_reference`. `_CC` beim initialen Reindex weggelassen. Fix: beim nächsten Reindex Collection umbenennen → `Monitor_CC_reference`.
+`Monitor_reference` deviates from the consistency pattern: `RAG_reference`, `searxng_reference` → the correct form would be `Monitor_CC_reference`. `_CC` was omitted at the initial reindex. Fix: rename the collection at the next reindex → `Monitor_CC_reference`.
 
-### Best-prod-Config (aus RAG-Projekt-Eval)
+### Best Production Config (from the RAG project's own eval)
 
-| Parameter | Wert | Evidenz |
+| Parameter | Value | Evidence |
 |---|---|---|
-| Fusion | CC α=0.8 | +3 pp Snippet Recall vs RRF — `decisions/retrieval03_fusion.md (RAG)` |
-| Reranking | False (default off) | Technische Docs: −8.5 pp NDCG@3; Doc Recall +4 pp, Snippet −1 pp + ~2 s Latenz — trade-off rejected — `decisions/retrieval04_reranking.md (RAG)` |
+| Fusion | CC α=0.8 | +3 pp snippet recall vs RRF — from rag-cli's own fusion-decision record |
+| Reranking | False (default off) | Technical docs: −8.5 pp NDCG@3; doc recall +4 pp, snippet −1 pp + ~2s latency — trade-off rejected — from rag-cli's own reranking-decision record |
 | HYBRID_CANDIDATES | 50 dense + 50 sparse | — |
-| top-k Default | 12 | Korrigiert von "20 (10–50 valid)" in shared-rule |
+| top-k default | 12 | Corrected from "20 (10–50 valid)" in the shared rule |
 
-### Pending (Folge-Session)
+### Pending (Follow-On Session)
 
-- **Manual Annotation** — 36 Topics in `dev/tool_use_analysis/20260520_rag_query_audit.md`; `hit_quality` + `classification` Spalten ausfüllen → Regelverfeinerung "RAG-First wenn X, direct wenn Y"
-- **Audit-Script Bug-Fix** — 13/44 Calls (29 %) ohne tool_result in `dev/tool_use_analysis/rag_query_audit.py` klären (Bash-compound-ID-Mismatch?)
-- **Replay-Probe der 8 Misses** — dieselben Queries gegen `Monitor_reference` feuern; prüfen ob Anthropic-Docs-Chunks die Lücken schließen
-- **Collection Rename** — `Monitor_reference` → `Monitor_CC_reference` beim nächsten Reindex
+- **Manual annotation** — 36 topics in `dev/tool_use_analysis/20260520_rag_query_audit.md`; fill in the `hit_quality` + `classification` columns → rule refinement "RAG-First when X, direct when Y"
+- **Audit-script bug fix** — clarify the 13/44 calls (29%) without tool_result in `dev/tool_use_analysis/rag_query_audit.py` (Bash-compound ID mismatch?)
+- **Replay probe of the 8 misses** — fire the same queries against `Monitor_reference`; check whether Anthropic-docs chunks close the gaps
+- **Collection rename** — `Monitor_reference` → `Monitor_CC_reference` at the next reindex

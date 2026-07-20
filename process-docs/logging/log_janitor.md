@@ -103,42 +103,42 @@ Changes made:
 
 ---
 
-## Stage 3 — Unified Janitor + count_tokens-Fix (2026-05-29)
+## Stage 3 — Unified Janitor + count_tokens Fix (2026-05-29)
 
-### count_tokens-Prädikat-Befund
+### count_tokens Predicate Finding
 
-`_is_messages_request()` (addon.py) nutzte `flow.request.path.startswith("/v1/messages")`. Aus 108 `api_error_payload_*.json`-Dateien:
-- 105 × `request_url` = `.../v1/messages/count_tokens?beta=true` → count_tokens wurde als Messages-Request klassifiziert
-- 3 × `request_url` = `.../v1/messages?beta=true` → echte Messages (400 durch base64-Fehler, korrekt erfasst)
+`_is_messages_request()` (addon.py) used `flow.request.path.startswith("/v1/messages")`. From 108 `api_error_payload_*.json` files:
+- 105 × `request_url` = `.../v1/messages/count_tokens?beta=true` → count_tokens was classified as a messages request
+- 3 × `request_url` = `.../v1/messages?beta=true` → real messages (400 from a base64 error, correctly captured)
 
-CC sendet count_tokens immer mit Query-String `?beta=true`. Echte Messages ebenfalls. Prädikat-Fix: exakter Match auf den Messages-Endpoint:
+CC always sends count_tokens with the query string `?beta=true`. Real messages do too. Predicate fix: exact match on the messages endpoint:
 ```python
 path == MESSAGES_PATH or path.startswith(MESSAGES_PATH + "?")
 ```
-Damit läuft `/v1/messages/count_tokens?...` KOMPLETT unverändert durch die Proxy-Pipeline — kein Inject, kein Log-Entry, keine 400er.
+With this, `/v1/messages/count_tokens?...` runs COMPLETELY unmodified through the proxy pipeline — no inject, no log entry, no 400s.
 
-### api_errors.jsonl-Format
+### api_errors.jsonl Format
 
-Rollende JSONL statt Einzeldateien. Felder: `ts` (nicht `timestamp`, damit `cleanup_old_jsonl` greift), `status_code`, `error_response`, `request_url`, `request_payload`. Writer: `_write_entry(self.log_file.parent / "api_errors.jsonl", error_data)`.
+Rolling JSONL instead of individual files. Fields: `ts` (not `timestamp`, so `cleanup_old_jsonl` applies), `status_code`, `error_response`, `request_url`, `request_payload`. Writer: `_write_entry(self.log_file.parent / "api_errors.jsonl", error_data)`.
 
-### LogSpec-Registry-Design
+### LogSpec Registry Design
 
-**Analyse sweep-fähig vs extern:**
+**Analysis: sweep-eligible vs external:**
 
-| Policy | Warum sweep-fähig / nicht |
+| Policy | Why sweep-eligible / not |
 |---|---|
-| tool_errors, hook_firing, api_errors | ts-basierter Record-Drop via `cleanup_old_jsonl` — trivial, Python, monitor-24h ✅ |
-| api_requests opus/worker count-30 | count-basiert, Bash, vor Monitor-Start nötig ❌ |
-| gpu_pane.log | `TimedRotatingFileHandler` im gpu_pane-Prozess selbst — kein externer Sweep möglich ❌ |
-| ccwrap *.bin/*.ansi.log | `rotate_logs` ist Caller-getriggert (kein Alter-Sweep) ❌ |
+| tool_errors, hook_firing, api_errors | ts-based record drop via `cleanup_old_jsonl` — trivial, Python, monitor-24h — eligible |
+| api_requests opus/worker count-30 | count-based, Bash, needed before Monitor start — not eligible |
+| gpu_pane.log | `TimedRotatingFileHandler` inside the gpu_pane process itself — no external sweep possible — not eligible |
+| ccwrap *.bin/*.ansi.log | `rotate_logs` is caller-triggered (no age sweep) — not eligible |
 
-**Entscheidung:** Registry inventarisiert ALLE Logs als `LogSpec`-Einträge. `sweep_eligible=True` für die drei ts-record-Logs. `sweep_eligible_specs()` gibt nur diese zurück. `monitor.py` iteriert über Registry statt Pfade hardzukodieren — neue sweep-fähige Logs werden durch Registreintrag automatisch eingeschlossen.
+**Decision:** the registry inventories ALL logs as `LogSpec` entries. `sweep_eligible=True` for the three ts-record logs. `sweep_eligible_specs()` returns only those. `monitor.py` iterates over the registry instead of hardcoding paths — new sweep-eligible logs are automatically included by adding a registry entry.
 
-### Orphan-Cleanup — Verankerung
+### Orphan Cleanup — Anchoring
 
-Alle drei Orphan-Typen in `_janitor_cleanup_jsonl_logs` (proxy-start-bash), idempotent:
-- `api_error_payload_*.json` → `find ... -delete` (writer entfernt → no-op ab zweitem Start)
-- `proxy_errors_*.log` → `find ... -delete` (writer auf `2>/dev/null` seit Stage 2 → no-op ab zweitem Start)
-- `tool_use_errors.jsonl` → `rm -f` (kein Writer — permanent no-op nach erstem Lauf)
+All three orphan types in `_janitor_cleanup_jsonl_logs` (proxy-start-bash), idempotent:
+- `api_error_payload_*.json` → `find ... -delete` (writer removed → no-op from the second start on)
+- `proxy_errors_*.log` → `find ... -delete` (writer set to `2>/dev/null` since Stage 2 → no-op from the second start on)
+- `tool_use_errors.jsonl` → `rm -f` (no writer — permanent no-op after the first run)
 
-Vorherige `find ... -mtime +7 -delete` Zeile (post-mitmdump) entfernt — Cleanup vollständig in `_janitor_cleanup_jsonl_logs` konsolidiert.
+The previous `find ... -mtime +7 -delete` line (post-mitmdump) removed — cleanup fully consolidated into `_janitor_cleanup_jsonl_logs`.

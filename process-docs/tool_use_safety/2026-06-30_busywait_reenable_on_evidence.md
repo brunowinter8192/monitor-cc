@@ -1,6 +1,6 @@
 # Re-enable block_busywait_loop on evidence (2026-06-30)
 
-Triggers the revisit condition left explicit in `2026-06-24_background_foreground_simplification.md`:
+Triggers the revisit condition left explicit in the background-foreground-simplification entry in this area:
 "an agent could shell-background a work job and poll it unguarded … revisit with a targeted hook only
 if fire-log shows it." Evidence now observed → block_busywait_loop re-enabled.
 

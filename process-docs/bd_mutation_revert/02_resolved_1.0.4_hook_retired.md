@@ -45,8 +45,8 @@ Files deleted:
 `hook_setup.py` `_HOOK_SCRIPTS` updated: tuple `("block_batch_bd_close.py", "Bash")` removed → future `hook_setup.py` runs will not re-register it. Live de-registration from `~/.claude/settings.json`: pending (Opus's job — re-run `python3 src/hooks/hook_setup.py` from main repo after merge; `_sweep_stale_hooks()` removes the dead entry automatically).
 
 Hook inventory record updated: 19 → 18 hooks, 15 → 14 block hooks; the retired hook's
-section marked RETIRED, technical content preserved as historical record; SOLL updated
-to reflect retirement.
+section marked RETIRED, technical content preserved as historical record; target state
+updated to reflect retirement.
 
 `src/hooks/DOCS.md`: `block_batch_bd_close.py` module entry removed.
 

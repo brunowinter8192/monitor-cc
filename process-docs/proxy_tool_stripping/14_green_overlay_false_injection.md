@@ -174,4 +174,4 @@ Plumbing:
 - `_STANDALONE_SR_RE`, `_ENV_CONTEXT_RE` in `src/proxy/strip_sr.py`
 - span render: `src/proxy_display/render_messages.py`, `src/proxy_display/render_sections.py`
 - probe scripts: `dev/proxy_dual_log/green_overlay_probe.py`, `dev/proxy_dual_log/groundtruth_message_spans_probe.py`
-- prior span-model work: `09_inline_span_rendering.md` (Form B equal-anchor spans)
+- prior span-model work: the inline-span-rendering probe entry in this area (Form B equal-anchor spans)

@@ -1,49 +1,49 @@
 # A1 — Hook Design Principle: Use-Case-Specificity Over Generality (2026-05-28)
 
-**Status:** Design-Prinzip, etabliert nach Spillover-Incident in dieser Session.
+**Status:** design principle, established after a spillover incident in this session.
 
-## Prinzip
+## Principle
 
-Hooks MÜSSEN extrem use-case-spezifisch geschrieben werden, NIEMALS allgemein. Generic Hooks erzeugen Spillover-Bugs die zur Build-Zeit nicht abschätzbar sind — was heute ein "korrekt geblocktes Anti-Pattern" ist, kann in zwei Wochen einen legitimen Workflow blockieren weil sich die Tool-Surface erweitert hat.
+Hooks MUST be written extremely use-case-specific, NEVER general. Generic hooks produce spillover bugs that can't be estimated at build time — what is a "correctly blocked anti-pattern" today can block a legitimate workflow in two weeks once the tool surface has expanded.
 
-Konkret bedeutet das:
+Concretely, that means:
 
-1. **Pattern-Match auf die exakte Anti-Pattern-Signatur**, nicht auf einen umliegenden Kontext. Wenn z.B. ein Hook `sleep N` im Background blockieren soll, dann matche nur auf `run_in_background=true + sleep + numerischer Argument`. NICHT auf "background + irgendwas".
+1. **Pattern-match on the exact anti-pattern signature**, not on surrounding context. If, for example, a hook should block `sleep N` in the background, match only on `run_in_background=true + sleep + numeric argument`. NOT on "background + anything".
 
-2. **Erlaubte-Liste vor Verbots-Liste.** Wenn klar ist welche Patterns OK sind, explizit whitelist. Wenn klar ist nur welche NICHT OK sind, schmal-spezifisch blocken und alles andere durchlassen.
+2. **Allow-list before block-list.** If it's clear which patterns are OK, whitelist them explicitly. If it's only clear which patterns are NOT OK, block narrowly and let everything else through.
 
-3. **Kein Tool-Class-weites Wrappen.** Ein Hook der ALLE Bash-Calls intercepted und transformiert ist per Definition zu allgemein. Hooks müssen auf der Granularität einzelner Befehl-Pattern operieren, nicht auf der Tool-Klasse.
+3. **No tool-class-wide wrapping.** A hook that intercepts and transforms ALL Bash calls is by definition too general. Hooks must operate at the granularity of individual command patterns, not the tool class.
 
-4. **Spillover-Test vor Aktivierung.** Bevor ein neuer Hook in die Production-Pipeline geht: schreibt der Author min. 3 Beispiele auf wo der Hook NICHT feuern soll, und verifiziert dass jedes davon durchgeht.
+4. **Spillover test before activation.** Before a new hook goes into the production pipeline: the author writes down at least 3 examples where the hook should NOT fire, and verifies each one passes through.
 
-## Trigger-Incident (2026-05-28)
+## Trigger Incident (2026-05-28)
 
-Während der Refactor-Skill-Phase-2-Scans hat Opus mehrere Python-Subprocess-Aufrufe gemacht (`python3 /tmp/refactor_funclen.py`, `python3 /tmp/refactor_state.py`, etc.) — alle als FOREGROUND-Tool-Calls (kein `run_in_background=true` gesetzt). Die Skripte sind pure AST-Walks, Laufzeit <2s pro Aufruf.
+During the refactor-skill phase-2 scans, Opus made several Python subprocess calls (`python3 /tmp/refactor_funclen.py`, `python3 /tmp/refactor_state.py`, etc.) — all as FOREGROUND tool calls (no `run_in_background=true` set). The scripts are pure AST walks, runtime <2s per call.
 
-Mehrere dieser Calls wurden vom Hook `block_unauthorized_background` (oder einem verwandten) auto-rewritten in Background-Execution. Symptome:
-- Tool-Result zeigte "Command was manually backgrounded by user with ID: ..." obwohl Opus nicht `run_in_background=true` gesetzt hatte
-- Output der Skripte kam nicht direkt zurück, sondern in /private/tmp/.../tasks/<id>.output
-- Python-Subprocess-Prozesse hingen nach Bash-Tool-Return weiterhin in der Prozess-Tabelle (PIDs 49345, 56850, 56852, 63997, 63999 wurden manuell mit `kill` aufgeräumt)
-- Drei Refactor-Subscans (scripts-in-lib, dev-tooling-gap) konnten nicht durchlaufen weil der Output strukturell nicht zurück kam
+Several of these calls were auto-rewritten into background execution by the `block_unauthorized_background` hook (or a related one). Symptoms:
+- The tool result showed "Command was manually backgrounded by user with ID: ..." even though Opus had not set `run_in_background=true`
+- Script output didn't come back directly, but landed in `/private/tmp/.../tasks/<id>.output`
+- Python subprocess processes kept sitting in the process table after the Bash tool returned (PIDs 49345, 56850, 56852, 63997, 63999 were manually cleaned up with `kill`)
+- Three refactor sub-scans (scripts-in-lib, dev-tooling-gap) could not complete because the output didn't come back in the expected structure
 
-Per User-Feedback: "es gibt bei hooks so schnell so krasse spill overs und ich kann vorher nie abschätzen was wir in 2 wochen für prozesse haben und ob bestehende hooks sie blockierne."
+Per user feedback: "hooks produce spillovers this severe this fast, and I can never estimate in advance what processes we'll have in two weeks or whether existing hooks will block them."
 
-## Konsequenzen / TODOs
+## Consequences / TODOs
 
-1. **Audit bestehender Hooks in `src/hooks/`** auf Über-Generalität. Welche Hooks würden 3+ legitime Workflows in den nächsten Wochen blockieren?
+1. **Audit existing hooks in `src/hooks/`** for over-generality. Which hooks would block 3+ legitimate workflows in the coming weeks?
 
-2. **Konkret zu reviewen — `block_unauthorized_background`:** das Pattern-Matching ist zu breit, fängt Foreground-Calls. Entweder schärfer auf "background-marker + non-canonical-sleep" einschränken oder als Klassen-Hook deaktivieren und Use-Case-spezifisch ersetzen.
+2. **Concretely to review — `block_unauthorized_background`:** the pattern matching is too broad, catches foreground calls. Either narrow it sharply to "background-marker + non-canonical-sleep" or disable it as a class-wide hook and replace it with use-case-specific ones.
 
-3. **Konkret zu reviewen — `block_broad_grep` etc.:** alle "block_*"-Hooks gegen den 3-Beispiele-Spillover-Test laufen lassen.
+3. **Concretely to review — `block_broad_grep` etc.:** run all `block_*` hooks against the 3-example spillover test.
 
-4. **Neuer Hook-Design-Standard in iterative-dev Plugin:** vor jedem neuen Hook MUSS der Author die 3-Whitelist-Beispiele dokumentieren. CI-Check optional.
+4. **New hook-design standard in the iterative-dev plugin:** before every new hook, the author MUST document the 3 whitelist examples. CI check optional.
 
 ## Cross-Reference
 
-Dieses Prinzip ist plugin-übergreifend relevant (iterative-dev, Monitor_CC src/hooks, andere Projekt-Hook-Sammlungen). Sollte ggf. als geteilte Regel in `~/.claude/shared-rules/` materialisieren, wenn das Prinzip in mehreren Projekten unabhängig verifiziert wurde.
+This principle is relevant across plugins (iterative-dev, Monitor_CC `src/hooks`, other project hook collections). Should potentially be materialized as a shared rule in `~/.claude/shared-rules/` once the principle has been independently verified across multiple projects.
 
-## Quellen
+## Sources
 
-- Session 2026-05-28: Refactor-Skill-Phase-2 Spillover-Beobachtung (siehe Session-Log)
-- User-Statement: "hooks in zukunft nur noch extrem use case spezifisch und niemals allgemein"
-- Project hooks: `src/hooks/block_unauthorized_background.py`, `src/hooks/block_broad_grep.py`, weitere `block_*.py` siehe `src/hooks/DOCS.md`
+- Session 2026-05-28: refactor-skill phase-2 spillover observation (see session log)
+- User statement: "hooks going forward should be extremely use-case-specific and never general"
+- Project hooks: `src/hooks/block_unauthorized_background.py`, `src/hooks/block_broad_grep.py`, further `block_*.py` — see `src/hooks/DOCS.md`

@@ -1,32 +1,32 @@
-# F1 — Cmd+B "Books auf aktuellen Desktop" — BLOCKED (Sackgasse)
+# F1 — Cmd+B "Books to current desktop" — BLOCKED (dead end)
 
-**Datum:** 2026-05-29 · **Status:** Zurückgestellt, blockiert durch tote Move-API · **Tracking-Bead Monitor_CC-e2it geschlossen.**
+**Date:** 2026-05-29 · **Status:** Parked, blocked by a dead move API · **Tracking task closed.**
 
-## Feature-Absicht
+## Feature Intent
 
-Globaler Carbon-Hotkey Cmd+B, der die macOS Books-App auf den aktuell aktiven Desktop des Users holt — egal wo Books gerade lebt. Nicht nur Foreground: wenn Books-Fenster auf Desktop 1 liegen und der User auf Desktop 2 Cmd+B drückt, sollen die Books auf Desktop 2 erscheinen.
+A global Carbon hotkey Cmd+B that brings the macOS Books app to the user's currently active desktop — regardless of where Books currently lives. Not just foreground: if Books windows sit on desktop 1 and the user presses Cmd+B on desktop 2, the Books windows should appear on desktop 2.
 
-## Geplante Implementierung (NICHT gebaut)
+## Planned Implementation (NOT built)
 
-- `src/menubar/hotkey.py`: `register_cmd_b()` analog zu `register_cmd_k` (Carbon-Pattern)
-- `src/menubar/app.py`: Init-Hook für Registration + Callback-Wiring
-- Neues Modul `src/menubar/desktop_actions.py` (~80 LOC): `CGSGetActiveSpace` → `CGWindowList` filter `kCGWindowOwnerName==Books` → `CGSMoveWindowsToManagedSpace` zu active_space → `osascript activate Books`
+- `src/menubar/hotkey.py`: `register_cmd_b()` analogous to `register_cmd_k` (Carbon pattern)
+- `src/menubar/app.py`: init hook for registration + callback wiring
+- New module `src/menubar/desktop_actions.py` (~80 LOC): `CGSGetActiveSpace` → `CGWindowList` filter `kCGWindowOwnerName==Books` → `CGSMoveWindowsToManagedSpace` to active_space → `osascript activate Books`
 
-## Blocker — warum Sackgasse
+## Blocker — Why It's a Dead End
 
-Der Plan steht und fällt mit `CGSMoveWindowsToManagedSpace` (Fenster auf den aktiven Space schieben). Diese API ist auf **macOS 15.7 tot** — empirisch nachgewiesen 2026-05-29 (Probe + unabhängige Screenshot-/on-screen-Verifikation). Der Bead nahm an, das einzige Risiko sei TCC (`kCGWindowOwnerName` braucht kein Screen-Recording) — aber das eigentliche Problem ist die API selbst, nicht die Berechtigung. Cmd+B würde Books aktivieren, das Fenster bliebe aber auf seinem alten Desktop.
+The plan lives and dies with `CGSMoveWindowsToManagedSpace` (moving a window to the active space). This API is **dead on macOS 15.7** — empirically demonstrated 2026-05-29 (probe + independent screenshot/on-screen verification). The plan had assumed the only risk was TCC (`kCGWindowOwnerName` needs no screen recording) — but the actual problem is the API itself, not permissions. Cmd+B would activate Books, but the window would stay on its old desktop.
 
-**Vollständige Sackgassen-Doku** (alle vier Move-APIs FAIL, yabai-Bridged-Op-Dispatcher fehlt auf 15.7, kein nicht-SIP-Weg): `Meta/blank/decisions/OldThemes/desktop_targeting_sidecar.md`.
+All four move APIs tested FAIL on macOS 15.7; no yabai-style bridged-op dispatcher is available on this OS version, and there is no non-SIP-disabling path found.
 
-## Verworfene Auswege (User-Entscheidung 2026-05-29)
+## Discarded Workarounds (user decision, 2026-05-29)
 
-- `activate` ohne Move = User wird auf Books' Desktop gesprungen → abgelehnt (Umschalten unerwünscht)
-- Dock-Scripting-Addition + SIP-Teilabschaltung (yabai-Weg) → abgelehnt (kein Sicherheits-Trade-off)
+- `activate` without move = the user gets jumped to Books' desktop instead → rejected (unwanted desktop switch)
+- Dock-scripting addition + partial SIP disable (yabai path) → rejected (no acceptable security trade-off)
 
-## Wiederaufnahme
+## Resumption
 
-Gemeinsam mit dem übrigen Desktop-Move-Thema, sobald die Reddit-/gh-cli-Recherchewerkzeuge ausgereifter sind → Neu-Recherche zu macOS-15-Space-Placement. Bis dahin nicht bauen — sonst baut ein Worker denselben toten Pfad nach.
+Together with the rest of the desktop-move topic, once the Reddit/gh-cli research tooling is more mature → fresh research into macOS-15 space placement. Until then, do not build — otherwise a worker rebuilds the same dead path.
 
-## Architektur-Schuld (falls je gebaut)
+## Architecture Debt (if ever built)
 
-CGS-Bridging läge dann in drei Stellen: `src/menubar/desktop_detection.py`, `src/menubar/desktop_actions.py`, `Meta/blank/src/desktop/desktop_targeting.py`. Cleanup-Idee: gemeinsames Helper-Modul oder Monitor_CC src/ als Single-Source-of-Truth, blank/ shellt dorthin.
+CGS bridging would then live in three places: `src/menubar/desktop_detection.py`, `src/menubar/desktop_actions.py`, `Meta/blank/src/desktop/desktop_targeting.py`. Cleanup idea: a shared helper module, or Monitor_CC's `src/` as the single source of truth with `blank/` shelling out to it.
