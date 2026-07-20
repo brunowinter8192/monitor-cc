@@ -8,7 +8,7 @@ from pathlib import Path
 _LABEL       = 'com.brunowinter.monitor_cc_menubar'
 _GUI_TARGET  = f'gui/{os.getuid()}/{_LABEL}'
 _PLIST       = Path.home() / 'Library' / 'LaunchAgents' / f'{_LABEL}.plist'
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _WORKFLOW    = _PROJECT_ROOT / 'workflow.py'
 _PYTHON      = _PROJECT_ROOT / 'venv' / 'bin' / 'python3'
 

@@ -15,7 +15,7 @@ via available proxy logs whether `strip_hook_prefix.py` modifications reach Anth
 
 ```bash
 ./venv/bin/python dev/tool_use_errors/A_error_cluster_audit.py
-# Output: dev/tool_use_errors/reports/YYYY-MM-DD_error_cluster_audit.md
+# Output: dev/tool_use_errors/md/YYYY-MM-DD_error_cluster_audit.md
 ```
 
 **Buckets produced:**
@@ -34,7 +34,7 @@ modification entries to confirm the proxy strip reaches Anthropic. Also compares
 
 ## Reports
 
-Output: `reports/2026-05-30_error_cluster_audit.md` (first run; subsequent runs add `YYYY-MM-DD_error_cluster_audit.md`)
+Output: `md/2026-05-30_error_cluster_audit.md` (first run; subsequent runs add `YYYY-MM-DD_error_cluster_audit.md`)
 
 **Key findings (2026-05-30 run):**
 - 495 entries total; no new strippable patterns found

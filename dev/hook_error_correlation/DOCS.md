@@ -22,7 +22,7 @@ Overlay `tool_errors.jsonl` (hook errors) against proxy logs to extract exact tr
 
 ```bash
 ./venv/bin/python dev/hook_error_correlation/analyze.py
-# Output: dev/hook_error_correlation/reports/YYYY-MM-DD.md
+# Output: dev/hook_error_correlation/md/YYYY-MM-DD.md
 ```
 
 **Output report answers three questions:**

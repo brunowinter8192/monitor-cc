@@ -8,7 +8,7 @@ Run from project root:
 """
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from proxy.tools import _strip_unused_tools
 from proxy.message_passes import _apply_role_system_strip
