@@ -8,7 +8,7 @@ Run from project root:
 """
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from proxy.message_passes import _apply_cumulative_sr_strips
 from proxy.strip_inject_delta import _process_messages_section, _MSG_CODE_TO_FN
