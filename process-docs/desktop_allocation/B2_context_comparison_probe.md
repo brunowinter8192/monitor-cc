@@ -89,7 +89,7 @@ All metadata except title is available without Screen Recording. A new detection
 - AppleScript `bounds of window <wid>` ← needs verification (separate investigation)
 - Match via window bounds (`kCGWindowBounds` ↔ AppleScript bounds) without needing titles
 
-This path would make Etappe 2 work without any compilation step, from the current launchd/bash-exec context. `kCGWindowBounds` availability (without Screen Recording) is the open question.
+This path would make Stage 2 work without any compilation step, from the current launchd/bash-exec context. `kCGWindowBounds` availability (without Screen Recording) is the open question.
 
 **Path C — Shell helper (B1's workaround option)**  
 Still valid; unchanged from B1 analysis.

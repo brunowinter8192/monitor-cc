@@ -1,88 +1,88 @@
-# B1 — TCC Responsibility Chain Investigation (Etappe 2 Blocker)
+# B1 — TCC Responsibility Chain Investigation (Stage 2 Blocker)
 
-**Status:** Etappe 2 (Menubar zeigt Desktop-Nr als [N] Slot-Prefix) ON ICE wegen unauflösbarem macOS TCC-Issue. Detection-Pipeline funktioniert perfekt — blockiert nur im launchd-spawned Menubar-Process. Etappe 1, 3, 4 unaffected (laufen aus User-Shell-Kontext).
+**Status:** Stage 2 (menubar shows desktop number as an `[N]` slot prefix) ON ICE due to an unresolvable macOS TCC issue. The detection pipeline works perfectly — blocked only inside the launchd-spawned menubar process. Stages 1, 3, 4 unaffected (run from the user-shell context).
 
 ## Symptom
 
-Menubar im Live-Betrieb: `cgwindow_by_name` Dict aus `_cgwindow_list_ghostty()` ist immer leer. Granular-Logs zeigen `cgw_list_empty pid=1250 iterated=264 no_names_returned` — CGWindowListCopyWindowInfo iteriert 264 Windows, ZERO matchen die Ghostty-PID. Konsequenz: alle Mains kriegen `desktop_no=None`, kein `[N]` Prefix, Cmd+digit-Allocation fällt zurück auf arbiträre Slot-Logik (aber Hotkey-Registration findet nichts → keine Funktion).
+Menubar in live operation: the `cgwindow_by_name` dict from `_cgwindow_list_ghostty()` is always empty. Granular logs show `cgw_list_empty pid=1250 iterated=264 no_names_returned` — CGWindowListCopyWindowInfo iterates 264 windows, ZERO match the Ghostty PID. Consequence: all mains get `desktop_no=None`, no `[N]` prefix, Cmd+digit allocation falls back to arbitrary slot logic (but hotkey registration finds nothing → no function).
 
-Standalone-Test aus User-Shell mit identischem Python-Code: `cgwindow_by_name` enthält 3 Ghostty-Window-Names korrekt, Detection 100%.
+Standalone test from a user shell with identical Python code: `cgwindow_by_name` correctly contains 3 Ghostty window names, detection 100%.
 
 ## Root Cause
 
-macOS TCC (Transparency, Consent, Control) gated `CGWindowListCopyWindowInfo` so dass Owner-PIDs für Windows ANDERER Apps NICHT exposed werden ohne Screen-Recording-Permission. Die Permission wird per **audit token** zur API-Call-Zeit gecheckt — die Audit Token enthält die Binary-Identity (Bundle-ID + Pfad + Code-Signature) des CURRENT-executing Process.
+macOS TCC (Transparency, Consent, Control) gates `CGWindowListCopyWindowInfo` so that owner PIDs for windows of OTHER apps are NOT exposed without screen-recording permission. The permission is checked per **audit token** at API-call time — the audit token contains the binary identity (bundle ID + path + code signature) of the CURRENTLY-executing process.
 
-Im Menubar-Kontext: launchd → `~/Applications/Monitor_CC_Menubar.app/Contents/MacOS/menubar` (Bash) → `exec` → `/opt/homebrew/.../Python.app/Contents/MacOS/Python` → Audit Token bei API-Call ist Python.app's Identity, NICHT unsere Bundle-Identity. `exec` replaced den Process — Bundle-Identity geht verloren.
+In the menubar context: launchd → `~/Applications/Monitor_CC_Menubar.app/Contents/MacOS/menubar` (Bash) → `exec` → `/opt/homebrew/.../Python.app/Contents/MacOS/Python` → the audit token at API-call time is Python.app's identity, NOT our bundle identity. `exec` replaces the process — bundle identity is lost.
 
-Im User-Shell-Kontext: CC (Claude Code) hat eine eigene App-Identity mit Screen-Recording-Grant. CC spawnt Bash, Bash spawnt Python — Responsibility-Chain wurzelt bei CC, TCC-Lookup findet den Grant.
+In the user-shell context: CC (Claude Code) has its own app identity with a screen-recording grant. CC spawns Bash, Bash spawns Python — the responsibility chain roots at CC, the TCC lookup finds the grant.
 
-## Was wir versucht haben (alle gefailed)
+## What Was Tried (all failed)
 
-| Versuch | Was | Ergebnis | Begründung |
+| Attempt | What | Result | Reason |
 |---|---|---|---|
-| 1 | Screen-Recording an Homebrew `Python.app` im System Settings granten | Funktioniert in User-Shell-Kontext, NICHT im launchd-Kontext | TCC checkt nicht nur die Binary sondern auch den Responsibility-Parent — bei launchd kein User-Grant in der Kette |
-| 2 | `CGSCopyWindowProperty` (private SkyLight-API) statt `kCGWindowName` aus CGWindowList | In Shell-Kontext: liefert Titel korrekt. In launchd: identische Failure-Rate | TCC-Gate sitzt nicht auf API-Ebene sondern auf Process-Visibility-Ebene — egal welche API, Owner-PID-Filter bringt 0 Treffer weil andere Apps' Windows komplett unsichtbar sind |
-| 3 | Spinner-Glyph-Normalisierung (`✻` `⠂` `✳` Prefix strippen vor Window-Name-Match) | Orthogonaler Fix der echte Edge-Cases adressiert (race zwischen AppleScript-Read und CGS-Read), aber nicht TCC-blocker | Bleibt drin als Hardening |
-| 4 | Menubar in eigene `.app` Bundle wrappen, ad-hoc codesignen, User grants Screen-Recording auf das Bundle | TCC-Listing registriert das Bundle, Toggle aktiviert, trotzdem nicht effektiv | Bash-Launcher im Bundle exec'd zu generic Python — Audit-Token bei CGWindowList-Call ist Python, nicht Bundle. Bundle-Identity geht beim `exec` verloren |
-| 5 | Launch via `open -na` aus Finder-Kontext (statt launchd) | Identische Failure-Rate | Auch hier: Bundle-Launcher exec'd zu Python → Audit-Token = Python |
+| 1 | Grant screen recording to Homebrew `Python.app` in System Settings | Works in the user-shell context, NOT in the launchd context | TCC checks not just the binary but also the responsibility parent — under launchd there is no user grant in the chain |
+| 2 | `CGSCopyWindowProperty` (private SkyLight API) instead of `kCGWindowName` from CGWindowList | In shell context: returns the title correctly. Under launchd: identical failure rate | The TCC gate sits not at the API level but at the process-visibility level — regardless of API, the owner-PID filter returns 0 hits because other apps' windows are entirely invisible |
+| 3 | Spinner-glyph normalization (strip `✻` `⠂` `✳` prefix before window-name match) | An orthogonal fix that addresses real edge cases (race between the AppleScript read and the CGS read), but not the TCC blocker | Kept as hardening |
+| 4 | Wrap the menubar in its own `.app` bundle, ad-hoc codesign, user grants screen recording to the bundle | TCC listing registers the bundle, toggle activated, still not effective | The Bash launcher inside the bundle execs to generic Python — the audit token at CGWindowList-call time is Python, not the bundle. Bundle identity is lost on `exec` |
+| 5 | Launch via `open -na` from Finder context (instead of launchd) | Identical failure rate | Here too: the bundle launcher execs to Python → audit token = Python |
 
-## Empirische Verifikation der Root-Cause
+## Empirical Verification of the Root Cause
 
-CGWindowList-Counts in den getesteten Kontexten:
+CGWindowList counts across the tested contexts:
 
-| Launch-Kontext | Total Windows | Owned by Ghostty PID 1250 |
+| Launch context | Total windows | Owned by Ghostty PID 1250 |
 |---|---|---|
-| User-Shell (CC-Bash subprocess) | 271 | 19 ✅ |
-| launchd → Bundle-Wrapper → Python | 264 | 0 ❌ |
-| Finder `open -na` → Bundle → Python | 271 | 0 ❌ |
+| User shell (CC-Bash subprocess) | 271 | 19 |
+| launchd → bundle wrapper → Python | 264 | 0 |
+| Finder `open -na` → bundle → Python | 271 | 0 |
 
-Bestätigt: TCC-Filter applied **basierend auf Caller-Identity**, nicht auf API-Auswahl oder Launch-Method.
+Confirmed: the TCC filter is applied **based on caller identity**, not API choice or launch method.
 
-## Zukunfts-Pfade (für nächste Session)
+## Future Paths (for the next session)
 
-Drei Optionen, vom kleinsten zum größten Refactor:
+Three options, from smallest to largest refactor:
 
-### A) py2app — Menubar als natives Bundle mit embedded Python
+### A) py2app — menubar as a native bundle with embedded Python
 
-py2app bundlet Python + Code + dependencies in eine richtige `.app` Struktur. Resulting Binary ist ein nativer Mach-O Executable (kein generic Python-Wrapper). Audit Token bei API-Calls = unsere Bundle-Identity. User grants Screen-Recording → tatsächlich effektiv.
+py2app bundles Python + code + dependencies into a real `.app` structure. The resulting binary is a native Mach-O executable (no generic Python wrapper). The audit token at API-call time = our bundle identity. User grants screen recording → actually effective.
 
-Aufwand: ~30-60 min Setup. py2app ist mature, gut dokumentiert. Bestehendes `~/Applications/Monitor_CC_Menubar.app` Bundle ist eine Foundation die nur den Launcher ersetzt bekommt.
+Effort: ~30-60 min setup. py2app is mature, well documented. The existing `~/Applications/Monitor_CC_Menubar.app` bundle is a foundation that just needs its launcher replaced.
 
-### B) nuitka — Python zu nativem Binary kompilieren
+### B) nuitka — compile Python to a native binary
 
-Ähnlich py2app aber kompiliert tatsächlich. Resulting ist single Mach-O Executable mit unserer Identity. Mehr Compile-Zeit, etwas weniger Setup-Friction als py2app.
+Similar to py2app but actually compiles. Result is a single Mach-O executable with our identity. More compile time, somewhat less setup friction than py2app.
 
-### C) Separate Helper-Process aus User-Shell-Kontext
+### C) Separate helper process from the user-shell context
 
-Helper-Script läuft permanent aus User-Shell-Context (Auto-Start via `~/.zshrc` Hook oder Login Items). Schreibt Detection-Resultate alle 5s in JSON-File. Menubar (launchd) liest nur das File — kein direkter CGS-Call aus launchd-Kontext.
+A helper script runs permanently from the user-shell context (auto-start via a `~/.zshrc` hook or Login Items). Writes detection results to a JSON file every 5s. The menubar (launchd) only reads that file — no direct CGS call from the launchd context.
 
-Vorteil: kein Bundle-Refactor. Nachteil: zusätzlicher Process der laufen muss, IPC via File.
+Advantage: no bundle refactor. Disadvantage: an extra process must keep running, IPC via file.
 
-## Aktueller Code-State (preserved für Refactor)
+## Code State at the Time (preserved for the refactor)
 
-- `src/menubar/desktop_detection.py` (275 LOC): vollständige Detection-Pipeline, drei-Strategie-Resolver (name-unique → space-elimination → OSC-2), CGSCopyWindowProperty-bypass-attempt, Spinner-Normalize. **Funktioniert im Shell-Kontext** (Etappe 3+4 nutzen das transparent via `Meta/blank/src/desktop/desktop_targeting.py`).
-- `src/menubar/setup_menubar.py`: erweitert um `_build_app_bundle()` + `_codesign_bundle()`. Bundle-Build ist idempotent — Re-Run überschreibt sauber. Foundation für py2app-Refactor.
-- `~/Applications/Monitor_CC_Menubar.app/`: ad-hoc signed Bundle mit `com.brunowinter.monitor_cc_menubar` Identity. Bash-Launcher in `Contents/MacOS/menubar`. Stub für py2app — bei dem Refactor wird der Bash-Launcher durch native Mach-O ersetzt.
-- LaunchAgent-Plist: ProgramArguments zeigt auf Bundle-Launcher, nicht mehr direkt auf python. Bundle wrapped die TCC-Identity sauber up für späteren Refactor.
-- Granular Diagnostic-Logs in `_cgwindow_list_ghostty` / `_cgwindow_title` / `_resolve_cgwindow_id`: bleiben drin — beim nächsten Session-Start helfen sie sofort zu verifizieren ob ein Refactor TCC funktional gemacht hat.
+- `src/menubar/desktop_detection.py` (275 LOC): complete detection pipeline, three-strategy resolver (name-unique → space-elimination → OSC-2), CGSCopyWindowProperty-bypass attempt, spinner normalize. **Works in the shell context** (stages 3+4 use it transparently via `Meta/blank/src/desktop/desktop_targeting.py`).
+- `src/menubar/setup_menubar.py`: extended with `_build_app_bundle()` + `_codesign_bundle()`. Bundle build is idempotent — re-run overwrites cleanly. Foundation for the py2app refactor.
+- `~/Applications/Monitor_CC_Menubar.app/`: ad-hoc signed bundle with the `com.brunowinter.monitor_cc_menubar` identity. Bash launcher in `Contents/MacOS/menubar`. Stub for py2app — in that refactor the Bash launcher gets replaced by native Mach-O.
+- LaunchAgent plist: ProgramArguments points at the bundle launcher, no longer directly at python. The bundle wraps the TCC identity cleanly for a later refactor.
+- Granular diagnostic logs in `_cgwindow_list_ghostty` / `_cgwindow_title` / `_resolve_cgwindow_id`: kept in place — they immediately help verify at the next session start whether a refactor made TCC functional.
 
-## Was JETZT noch funktioniert
+## What Worked At The Time
 
-- **Etappe 1**: Probe `dev/desktop_detection/01_probe.py` läuft aus Shell-Kontext, 100% Erfolg. Verifiziert dass die Detection-Logik korrekt ist.
-- **Etappe 3**: Worker-Spawn (`Meta/blank/src/spawn/tmux_spawn.sh:open_tmux_viewer`) ruft `desktop_targeting.py wait-and-move` aus CC-Bash-Kontext auf. TCC-Vererbung von CC → funktioniert.
-- **Etappe 4**: `show <file>` (`Meta/blank/bin/show`) ruft `desktop_targeting.py wait-and-move` aus CC-Bash-Kontext auf. Identisch funktional.
-- **Hotkey-Logging, Cwd-Drift-Fix, Main-Exit-Detection** (alle separaten Bug-Fixes von dieser Session): vollständig funktional, unabhängig von TCC.
+- **Stage 1**: probe `dev/desktop_detection/01_probe.py` runs from the shell context, 100% success. Verified the detection logic is correct.
+- **Stage 3**: worker spawn (`Meta/blank/src/spawn/tmux_spawn.sh:open_tmux_viewer`) calls `desktop_targeting.py wait-and-move` from the CC-Bash context. TCC inheritance from CC → works.
+- **Stage 4**: `show <file>` (`Meta/blank/bin/show`) calls `desktop_targeting.py wait-and-move` from the CC-Bash context. Identically functional.
+- **Hotkey logging, cwd-drift fix, main-exit detection** (all separate bug fixes from this session): fully functional, independent of TCC.
 
-## Was JETZT NICHT funktioniert
+## What Did NOT Work At The Time
 
-- **Etappe 2 — Menubar zeigt Desktop-Nr `[N]` Prefix für Mains**: alle desktop_no=None, Slot-Spalte bleibt leer. Cmd+digit-Allocation greift nicht. User-Experience: Mains werden gezeigt aber ohne Slot-Nummer, Cmd+1..9 macht nix.
+- **Stage 2 — menubar shows the desktop-number `[N]` prefix for mains**: all desktop_no=None, the slot column stayed empty. Cmd+digit allocation didn't engage. User experience: mains were shown but without a slot number, Cmd+1..9 did nothing.
 
-## Quellen
+## Sources
 
-- `src/menubar/desktop_detection.py` (Detection-Pipeline, Diagnostic-Logs)
-- `src/menubar/setup_menubar.py` (Bundle-Build-Pipeline)
-- `~/Applications/Monitor_CC_Menubar.app/` (Bundle-Stub)
-- `dev/desktop_detection/01_probe.py` (Detection-Probe, Shell-Kontext-Validation)
-- `Meta/blank/src/desktop/desktop_targeting.py` (Helper für Etappe 3+4)
-- `src/logs/menubar.log` — `[detection]` category enthält Live-Diagnostics aus dem aktuellen Run
-- External: `lwouis/alt-tab-macos:src/macos/api-wrappers/CGWindowID.swift` (CGSCopyWindowProperty Pattern), `ejbills/DockDoor:DockDoor/Utilities/PrivateApis.swift` (SkyLight private APIs reference)
+- `src/menubar/desktop_detection.py` (detection pipeline, diagnostic logs)
+- `src/menubar/setup_menubar.py` (bundle-build pipeline)
+- `~/Applications/Monitor_CC_Menubar.app/` (bundle stub)
+- `dev/desktop_detection/01_probe.py` (detection probe, shell-context validation)
+- `Meta/blank/src/desktop/desktop_targeting.py` (helper for stages 3+4)
+- `src/logs/menubar.log` — `[detection]` category holds live diagnostics from the run at the time
+- External: `lwouis/alt-tab-macos:src/macos/api-wrappers/CGWindowID.swift` (CGSCopyWindowProperty pattern), `ejbills/DockDoor:DockDoor/Utilities/PrivateApis.swift` (SkyLight private APIs reference)
