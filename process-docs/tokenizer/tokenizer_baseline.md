@@ -78,7 +78,7 @@ Anthropic's tokenizer differs noticeably across model families (Haiku/Sonnet/Opu
 
 ### Option C — Accept 3.68 as Working Ratio
 
-- Document in `decisions/pipe05_proxy_cache.md` as baseline assumption
+- Document in the proxy-cache pipeline current-state doc as a baseline assumption
 - Mark as "approximate, based on pre-Opus-4.7 data"
 - Sufficient for decisions like "strip X → save X/3.68 tokens"
 - Per-segment breakdowns remain pending
@@ -106,7 +106,3 @@ Anthropic's tokenizer differs noticeably across model families (Haiku/Sonnet/Opu
 - `Monitor_reference/TokenCounting1.md`, `TokenCounting2.md` — Anthropic docs on token counting
 - `Monitor_reference/ExtendedThinking*.md` — thinking blocks, signatures, billing semantics
 - `Monitor_reference/AdaptiveThinking1.md`, `AdaptiveThinking2.md` — adaptive thinking on Opus 4.7
-
-## Related Bead
-
-- `Monitor_CC-fyl` — tokenizer-baseline (parked with this decision file)
