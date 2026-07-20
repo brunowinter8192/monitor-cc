@@ -32,9 +32,9 @@ tmux session list → `worker_tmux` (discover workers, detect status, find JSONL
 
 ---
 
-### worker_format.py (169 LOC)
+### worker_format.py (172 LOC)
 
-**Purpose:** Extract token sums, context-% and tool call lists from worker JSONL files; render the full workers pane block with per-worker rows, status, context-%, model, token counts, and expanded cache tracker. `extract_worker_context_pct(jsonl_path)` mirrors the `worker-cli context_pct` bash formula: scans assistant messages for the latest `cache_read_input_tokens` value and returns `(100 * (200000 - cr)) // 200000` as remaining context percentage (None if no JSONL data yet).
+**Purpose:** Extract token sums, context-% and tool call lists from worker JSONL files; render the full workers pane block with per-worker rows, status, context-%, model, token counts, and expanded cache tracker. `extract_worker_context_pct(jsonl_path)` mirrors the `worker-cli context_pct` bash formula: scans assistant messages for the latest `cache_read_input_tokens` value and returns `(100 * (_WORKER_CONTEXT_WINDOW - cr)) // _WORKER_CONTEXT_WINDOW` as remaining context percentage (None if no JSONL data yet). `_WORKER_CONTEXT_WINDOW = 1000000` — flat 1M window, no per-model lookup; the worker fleet runs exclusively on 1M-context models (opus-4-8, sonnet-5, fable-5), haiku-4-5 (200k) is never a worker.
 **Reads:** Worker JSONL file (full read for token/tool extraction); worker list + expand/scroll state dicts (for rendering).
 **Writes:** Nothing — returns token summary dict, tool call list, or formatted TUI string.
 **Called by:** `src/workers/worker_pane.py`
