@@ -2,6 +2,12 @@
 
 Forensic extraction and analysis of tool_use blocks from Claude Code sessions. `extract_long_calls.py` for full Markdown reports; `extract_zeros.py` for zero-result search detection. Each script is standalone (no shared library — helpers inlined per script). Error/failure analysis and rule-compliance scoring have moved to `dev/tool_use_errors/`.
 
+## Report Convention
+
+- **Script docstring (mandatory):** every script opens with a module docstring — one-sentence purpose + `Input:` (JSONL source/pattern) + `Output:` (report path under `md/`, or stdout).
+- **Report Source block (mandatory):** every generated report opens, right after its title, with a `## Source JSONLs` block — one line per JSONL passed to `load_proxy()`, each with its event count (lines with `raw_payload != null`) and deduplicated tool_use-block count, then a total sessions/blocks line. Glob patterns are expanded to the individual files.
+- **No shared library:** each script is standalone; 10–30 LOC of inlined helpers (JSONL parse, tool_use extraction, char counting) is acceptable — do not extract a shared forensic module.
+
 ## extract_long_calls.py
 
 **Purpose:** Reads one or more Proxy JSONL files from `src/logs/`, collects every `tool_use` block from `raw_payload.messages[].content[]`, deduplicates by `tool_use.id` (each unique call counted once), measures the JSON-serialized `input` dict in characters, and outputs a Markdown report ranked by input size. Used to identify which tool calls burn the most context budget.
