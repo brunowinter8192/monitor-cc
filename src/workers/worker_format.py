@@ -11,6 +11,9 @@ from ..jsonl import read_new_lines, parse_jsonl_lines, get_message_content, is_t
 
 INDENT = '  '
 
+# Worker fleet is all 1M-context models (opus-4-8, sonnet-5, fable-5); haiku-4-5 (200k) is never a worker.
+_WORKER_CONTEXT_WINDOW = 1000000
+
 # FUNCTIONS
 
 # Derive worker project name from project path (worktree-aware, matches tmux_spawn.sh logic)
@@ -45,7 +48,7 @@ def extract_worker_context_pct(jsonl_path) -> Optional[int]:
             cr = val
     if cr is None:
         return None
-    return (100 * (200000 - cr)) // 200000
+    return (100 * (_WORKER_CONTEXT_WINDOW - cr)) // _WORKER_CONTEXT_WINDOW
 
 # Extract tool call list from a worker's JSONL file
 def extract_worker_tool_calls(jsonl_path) -> List[dict]:
