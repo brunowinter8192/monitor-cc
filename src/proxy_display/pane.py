@@ -46,6 +46,7 @@ _last_full_parse_ts: float = 0.0  # timestamp of last re-init to position 0 (tim
 _proxy_just_expanded = None  # line_map key set by mouse handler on expand; cleared by _build_proxy_output
 _proxy_current_main_session: Optional[str] = None  # tracks session change for full state reset
 _proxy_session_start_ts: Optional[str] = None  # filters new entries to current session window
+_proxy_undo_stack: list = []  # (key, prev_state) tuples for 'u' expand/collapse undo, capped at 200
 
 # ORCHESTRATOR
 
@@ -75,6 +76,9 @@ def run_proxy_loop() -> None:
                     if event is not None:
                         if _handle_proxy_mouse(*event):
                             input_changed = True
+                elif char == 'u':
+                    if _undo_proxy_expand():
+                        input_changed = True
 
             now = time.time()
             input_changed, last_data_refresh = _refresh_proxy_data(
@@ -180,7 +184,7 @@ def _proxy_ram_state() -> list:
 # Process one mouse event; returns True if display should refresh
 def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
     global proxy_expand_states, proxy_scroll_offset, proxy_hover_row
-    global _proxy_just_expanded, _copy_feedback_until
+    global _proxy_just_expanded, _copy_feedback_until, _proxy_undo_stack
     if button == 0:
         key = proxy_line_map.get(row)
         if key is None:
@@ -197,6 +201,9 @@ def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
             if entry_idx is not None:
                 _copy_feedback_until[entry_idx] = time.time() + 1.5
         else:
+            _proxy_undo_stack.append((key, proxy_expand_states.get(key, False)))
+            if len(_proxy_undo_stack) > 200:
+                _proxy_undo_stack.pop(0)
             new_state = not proxy_expand_states.get(key, False)
             proxy_expand_states[key] = new_state
             if new_state:
@@ -224,6 +231,15 @@ def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
         return True
     return False
 
+# Undo the last expand/collapse toggle from _proxy_undo_stack; returns True if one was applied
+def _undo_proxy_expand() -> bool:
+    global proxy_expand_states, _proxy_undo_stack
+    if not _proxy_undo_stack:
+        return False
+    key, prev_state = _proxy_undo_stack.pop()
+    proxy_expand_states[key] = prev_state
+    return True
+
 # Tick-boundary proxy data refresh; returns (input_changed, new_last_data_refresh)
 def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global proxy_entries, proxy_expand_states, proxy_line_map, proxy_scroll_offset, proxy_hover_row
@@ -232,6 +248,7 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
     global _proxy_log_path, _last_full_parse_ts
     global _proxy_current_main_session, _proxy_session_start_ts
     global _proxy_stripped_pos, _proxy_injected_pos, _proxy_acc_stripped, _proxy_acc_injected
+    global _proxy_undo_stack
     if now - last_data_refresh < POLL_INTERVAL:
         return input_changed, last_data_refresh
     newest = monitor._get_newest_main_session()
@@ -242,6 +259,7 @@ def _refresh_proxy_data(now: float, input_changed: bool, last_data_refresh: floa
             _proxy_session_start_ts = datetime.utcnow().isoformat() + 'Z'
         proxy_entries.clear()
         proxy_expand_states.clear()
+        _proxy_undo_stack.clear()
         proxy_line_map.clear()
         proxy_log_position = 0
         proxy_scroll_offset = 0
