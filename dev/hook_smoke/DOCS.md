@@ -136,6 +136,21 @@ python3 dev/hook_smoke/test_rewrite_worker_cli_capture_noise.py
 
 ---
 
+### test_rewrite_gh_cli_read_noise.py (127 LOC)
+
+**Purpose:** 12-case smoke for `rewrite_gh_cli_read_noise.py`. Verifies 5 positive-strip cases (`get_issue | tail -40`, `2>&1 | tail -40` with `2>&1` preserved, `list_issues | head`, `| tail ; echo done` chain, `cd && get_issue | tail` chain prefix), 2 redirect-preserved no-op cases (`> /tmp/x`, `>> /tmp/x` both UNCHANGED), 2 out-of-scope-command no-op cases (`create_issue | tail`, `update_issue | tail` — writes, not covered), 2 bare no-op cases (`get_issue`/`list_issues` with no pipe), and 1 quoted-string no-op case (`worker-cli send w "... gh-cli get_issue x | tail"` UNCHANGED).
+
+**Critical assertions:** `> /tmp/x` UNCHANGED (redirect preserved), `create_issue`/`update_issue` UNCHANGED (anchor excludes writes), quoted send-message UNCHANGED (shell-strip blanks quoted region).
+
+**Usage (from project root):**
+```bash
+python3 dev/hook_smoke/test_rewrite_gh_cli_read_noise.py
+```
+
+**Expected output:** `All 12 tests passed.` (exit 0). HOOK path is relative — must be run from project root.
+
+---
+
 ### test_rewrite_worker_cli_response_noise.py (144 LOC)
 
 **Purpose:** 16-case smoke for `rewrite_worker_cli_response_noise.py`. Verifies 9 positive-strip cases (`| head`, `| tail`, `| grep`, `> redirect`, `2>&1`, `2>&1 | head`, `cd &&` chain, trailing `; bd list` chain, `|| echo fail` chain) and 7 negative no-op cases (bare response, **`worker-cli capture X | tail -40` critical pass-through**, `worker-cli status`, `worker-cli list`, cd chain no noise, trailing chain no pipe, response inside quoted echo).
