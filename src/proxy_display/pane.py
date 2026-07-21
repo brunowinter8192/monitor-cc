@@ -321,6 +321,9 @@ def _build_proxy_output() -> str:
         turns=_proxy_cache_turns, item_positions_out=item_positions,
         copy_feedback=_copy_feedback_until, copy_rows_out=_proxy_copy_rows,
     )
+    viewport_lines_n = pane_height - 1
+    max_scroll = max(0, total_lines - viewport_lines_n)
+    proxy_scroll_offset = min(proxy_scroll_offset, max_scroll)
     if _proxy_just_expanded is not None and _proxy_just_expanded in item_positions:
         item_line = item_positions[_proxy_just_expanded]
         viewport_lines_n = pane_height - 1
