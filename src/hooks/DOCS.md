@@ -433,17 +433,9 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_read_oversize.py (53 LOC)
+### block_read_oversize.py.disabled
 
-**Purpose:** PreToolUse hook (Read) — blocks Read calls on files >256KB when no `offset`, `limit`, or `pages` parameter is provided. CC rejects reads above 256KB with a size error — the hook surfaces this before the round-trip and suggests `grep` + targeted Read. Exits 2 + stderr with file size and fix. Exits 0 on any parse/stat error (fail-open).
-**Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {file_path, offset?, limit?, pages?}}`).
-**Writes:** stderr (block message with grep + offset/limit fix) on violation only.
-**Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Read entry). Never imported.
-**Calls out:** stdlib only (`json`, `os`).
-
-**Blocked patterns:** `file_path` is an existing file >256KB AND none of `offset`/`limit`/`pages` present in `tool_input`.
-
-**Allowed patterns:** file ≤256KB; offset/limit/pages present (user already scoped); nonexistent file; stat error (all fail-open).
+**Disabled 2026-07-22** — pre-empted CC's own >256KB Read rejection (redundant), pinned to a CC-internal size number that goes stale on CC updates, and its "grep the file first" advice contradicts the just-added `block_po_read.py` (which forbids partial shell-reads of persisted-output exports — the two hooks disagreed on the correct escape for an oversize file). Renamed via `git mv` (file still in repo for history, not registered in `_HOOK_SCRIPTS`). Not replaced by another hook — CC's native size rejection is left to fire on its own.
 
 ---
 
@@ -709,7 +701,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### hook_setup.py (145 LOC)
+### hook_setup.py (146 LOC)
 
 **Purpose:** Idempotent installer with two defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message (stderr) if running from a worktree — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]` (not only `PreToolUse`), checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. Re-running heals stale entries from any source (worktree accident, repo move, etc.). Runs completely silent on success — no stdout output; stderr only for error conditions (worktree guard, JSON parse failure).
 **Reads:** `~/.claude/settings.json`.
