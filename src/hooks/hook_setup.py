@@ -50,6 +50,7 @@ _HOOK_SCRIPTS = [
     ("block_except_pass.py",             "Write"),
     ("block_except_pass.py",             "Edit"),
     ("block_manual_worker_cleanup.py",   "Bash"),
+    ("block_po_read.py",                 "Bash"),
 ]
 _HOOK_ENTRIES = [(f"python3 {_HOOKS_DIR / s}", m) for s, m in _HOOK_SCRIPTS]
 
