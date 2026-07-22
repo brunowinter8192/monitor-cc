@@ -74,7 +74,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 **Allowlist:**
 - `_TRIVIAL` (first token of preceding segment): `echo`, `true`, `grep`, `cat`, `ls`, `wc`, `head`, `tail`, `find`
-- `_TRIVIAL_PAIRS` (`(tokens[0], tokens[1])` exact pair): `(git,status)`, `(git,log)`, `(git,diff)`, `(git,show)`, `(rag-cli,search_hybrid)`, `(worker-cli,status)`, `(worker-cli,list)`, `(worker-cli,response)`
+- `_TRIVIAL_PAIRS` (`(tokens[0], tokens[1])` exact pair): `(git,status)`, `(git,log)`, `(git,diff)`, `(git,show)`, `(rag-cli,search)`, `(worker-cli,status)`, `(worker-cli,list)`, `(worker-cli,response)`
 
 **Strip condition (ALL must hold):**
 1. A chain operator (`&&`, `||`, `;`) immediately precedes `sleep N` (only whitespace between op and sleep)
@@ -94,22 +94,22 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ### rewrite_rag_cli_search_noise.py (~95 LOC)
 
-**Purpose:** PreToolUse hook (Bash) — **rewrites** `rag-cli search_hybrid` invocations by stripping downstream noise inside the logical command segment: pipes (`| head`, `| tail`, `| grep`, etc.), redirects (`>`, `>>`, `&>`, `<`, `2>&1`, `2>`), and single backgrounding `&`. Chains around the segment (`cd && rag-cli ...`, `rag-cli ... ; bd list`, `rag-cli ... || echo fail`) are preserved — only the rag-cli segment is cleaned. Scope is `search_hybrid` only; `read_document`, `list_collections`, `server`, etc. pass through unchanged. Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
+**Purpose:** PreToolUse hook (Bash) — **rewrites** `rag-cli search` invocations by stripping downstream noise inside the logical command segment: pipes (`| head`, `| tail`, `| grep`, etc.), redirects (`>`, `>>`, `&>`, `<`, `2>&1`, `2>`), and single backgrounding `&`. Chains around the segment (`cd && rag-cli ...`, `rag-cli ... ; bd list`, `rag-cli ... || echo fail`) are preserved — only the rag-cli segment is cleaned. Scope is `search` only; `read_document`, `list_collections`, `server`, etc. pass through unchanged. Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
 **Writes:** stdout (JSON `hookSpecificOutput.permissionDecision: "allow"` + `updatedInput.command`) when noise was stripped; nothing when no-op.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** `_shell_strip._strip_non_shell_active` (same-dir import via `sys.path` insert).
 
 **Strip mechanic:**
-1. Find `\brag-cli\s+search_hybrid\b` matches in the shell-stripped command.
+1. Find `\brag-cli\s+search\b` matches in the shell-stripped command.
 2. For each match, determine its segment-end by scanning forward for `;`, `&&`, `||`, `)`, `\n`, or single `&` (not part of `&&`, `&>`, or `2>&1`).
 3. Within `[match_end, segment_end)`, find the first noise marker (`|` excluding `||`, any redirect, or `2>&1`).
 4. Strip from the noise marker through segment-end. If segment-end equals end-of-command, also eat leading whitespace before the noise (avoids trailing-space artifact); otherwise preserve it as separator to the trailing chain.
 
 **Pass-through (no-op) conditions:**
-- `rag-cli search_hybrid` invocation has no pipe/redirect inside its segment
-- `rag-cli` subcommand is not `search_hybrid` (out of scope)
-- `rag-cli search_hybrid` token appears inside a quoted string (blanked by `_strip_non_shell_active`)
+- `rag-cli search` invocation has no pipe/redirect inside its segment
+- `rag-cli` subcommand is not `search` (out of scope)
+- `rag-cli search` token appears inside a quoted string (blanked by `_strip_non_shell_active`)
 
 **Smoke:** `dev/hook_smoke/test_rewrite_rag_cli_search_noise.py` (15 cases: 9 positive strip, 6 negative no-op).
 
@@ -376,28 +376,28 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ### block_rag_docs_layer.py (119 LOC)
 
-**Purpose:** PreToolUse hook (Bash) — blocks `rag-cli search_hybrid` calls on any `*-docs` collection that lack a `--document` or `--exclude` filter naming `process-docs`. The `<Project>-docs` RAG collections mix `process-docs/**` (process history) and `**/DOCS.md` (code module map); an unscoped search dilutes results across both layers. Process-layer search: `--document 'process-docs/%'` (or a specific `process-docs/<area>/%'`). Code-layer search: `--exclude 'process-docs/%'`. Exits 2 + stderr on violation. Exits 0 on any parse/tokenization error (fail-open).
+**Purpose:** PreToolUse hook (Bash) — blocks `rag-cli search` calls on any `*-docs` collection that lack a `--document` or `--exclude` filter naming `process-docs`. The `<Project>-docs` RAG collections mix `process-docs/**` (process history) and `**/DOCS.md` (code module map); an unscoped search dilutes results across both layers. Process-layer search: `--document 'process-docs/%'` (or a specific `process-docs/<area>/%'`). Code-layer search: `--exclude 'process-docs/%'`. Exits 2 + stderr on violation. Exits 0 on any parse/tokenization error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_input: {command}}`).
 **Writes:** stderr (block message with the two valid filter forms) on violation only.
 **Called by:** CC hook system (`type: command` in `~/.claude/settings.json` PreToolUse/Bash entry). Never imported.
 **Calls out:** `_shell_strip._strip_non_shell_active`, `_fire_log.log_fire`; stdlib (`json`, `re`, `shlex`).
 
 **Blocked patterns:**
-- `rag-cli search_hybrid "q" monitor-cc-docs` — no filter at all
-- `cd /x && rag-cli search_hybrid "q" foo-docs` — collection ends `-docs`, no filter, after a leading cd
-- `rag-cli search_hybrid "q" monitor-cc-docs --document 'src/search/%'` — filter present but value doesn't contain `process-docs` (known edge case, see Gotchas)
+- `rag-cli search "q" monitor-cc-docs` — no filter at all
+- `cd /x && rag-cli search "q" foo-docs` — collection ends `-docs`, no filter, after a leading cd
+- `rag-cli search "q" monitor-cc-docs --document 'src/search/%'` — filter present but value doesn't contain `process-docs` (known edge case, see Gotchas)
 
 **Allowed patterns:**
-- `rag-cli search_hybrid "q" monitor-cc-docs --document 'process-docs/%'` — process-layer filter
-- `rag-cli search_hybrid "q" monitor-cc-docs --exclude 'process-docs/%'` — code-layer filter
-- `rag-cli search_hybrid "q" monitor-cc-docs --document='process-docs/%'` — `=`-form filter
-- `rag-cli search_hybrid "q" monitor-cc-reference` — collection doesn't end `-docs`, rule inapplicable
-- `rag-cli list_documents monitor-cc-docs` — not `search_hybrid`, out of scope
-- `rag-cli search_hybrid` token inside a quoted string — blanked by `_strip_non_shell_active`, anchor fails
+- `rag-cli search "q" monitor-cc-docs --document 'process-docs/%'` — process-layer filter
+- `rag-cli search "q" monitor-cc-docs --exclude 'process-docs/%'` — code-layer filter
+- `rag-cli search "q" monitor-cc-docs --document='process-docs/%'` — `=`-form filter
+- `rag-cli search "q" monitor-cc-reference` — collection doesn't end `-docs`, rule inapplicable
+- `rag-cli list_documents monitor-cc-docs` — not `search`, out of scope
+- `rag-cli search` token inside a quoted string — blanked by `_strip_non_shell_active`, anchor fails
 
-**Segment extraction.** Same technique as `rewrite_rag_cli_search_noise.py`: `_RAG_RE` (`\brag-cli\s+search_hybrid\b`) is matched against the shell-stripped command; the segment end is found via the same chain-operator/noise regexes. Because `_strip_non_shell_active` is position-preserving, the match indices are then sliced out of the **original** (unstripped) command — recovering real quoted argument values (e.g. `'process-docs/%'`) for `shlex.split` tokenization, rather than the blanked stripped form.
+**Segment extraction.** Same technique as `rewrite_rag_cli_search_noise.py`: `_RAG_RE` (`\brag-cli\s+search\b`) is matched against the shell-stripped command; the segment end is found via the same chain-operator/noise regexes. Because `_strip_non_shell_active` is position-preserving, the match indices are then sliced out of the **original** (unstripped) command — recovering real quoted argument values (e.g. `'process-docs/%'`) for `shlex.split` tokenization, rather than the blanked stripped form.
 
-**Predicate.** `_segment_violates()`: `shlex.split` the original segment → find `collection` (2 tokens after the `search_hybrid` literal) → if it doesn't end with `-docs`, no violation → else violation unless any `--document`/`--exclude` token (space-separated or `--flag=value` form) has a value containing the substring `process-docs`.
+**Predicate.** `_segment_violates()`: `shlex.split` the original segment → find `collection` (2 tokens after the `search` literal) → if it doesn't end with `-docs`, no violation → else violation unless any `--document`/`--exclude` token (space-separated or `--flag=value` form) has a value containing the substring `process-docs`.
 
 **Known edge case:** a code SUB-area search like `--document 'src/search/%'` does not contain `process-docs`, so it is blocked under this predicate — the correct form for scoped code search is `--exclude 'process-docs/%'` (broad code-layer exclusion), not a positive `--document` on a code subpath. A more permissive predicate (e.g. accepting any `--document` value NOT starting with `process-docs` as implicitly code-layer) was intentionally not implemented — deferred pending real usage data.
 

@@ -8,66 +8,66 @@ HOOK = "src/hooks/rewrite_rag_cli_search_noise.py"
 # (description, command, expected_rewrite_or_None)
 # None = no rewrite expected (hook should emit nothing and exit 0)
 CASES = [
-    # --- positive: noise inside the search_hybrid segment is stripped ---
+    # --- positive: noise inside the search segment is stripped ---
     (
         "2>&1 alone — strip",
-        'rag-cli search_hybrid "x" RAG-docs 2>&1',
-        'rag-cli search_hybrid "x" RAG-docs',
+        'rag-cli search "x" RAG-docs 2>&1',
+        'rag-cli search "x" RAG-docs',
     ),
     (
         "| head -120 — strip",
-        'rag-cli search_hybrid "x" RAG-docs | head -120',
-        'rag-cli search_hybrid "x" RAG-docs',
+        'rag-cli search "x" RAG-docs | head -120',
+        'rag-cli search "x" RAG-docs',
     ),
     (
         "2>&1 | head -120 — strip both",
-        'rag-cli search_hybrid "x" RAG-docs 2>&1 | head -120',
-        'rag-cli search_hybrid "x" RAG-docs',
+        'rag-cli search "x" RAG-docs 2>&1 | head -120',
+        'rag-cli search "x" RAG-docs',
     ),
     (
         "| tail -50 — strip",
-        'rag-cli search_hybrid "x" RAG-docs | tail -50',
-        'rag-cli search_hybrid "x" RAG-docs',
+        'rag-cli search "x" RAG-docs | tail -50',
+        'rag-cli search "x" RAG-docs',
     ),
     (
         "| grep score — strip (filters the result)",
-        'rag-cli search_hybrid "x" RAG-docs | grep score',
-        'rag-cli search_hybrid "x" RAG-docs',
+        'rag-cli search "x" RAG-docs | grep score',
+        'rag-cli search "x" RAG-docs',
     ),
     (
         "> /tmp/file redirect — strip",
-        'rag-cli search_hybrid "x" RAG-docs > /tmp/out.txt',
-        'rag-cli search_hybrid "x" RAG-docs',
+        'rag-cli search "x" RAG-docs > /tmp/out.txt',
+        'rag-cli search "x" RAG-docs',
     ),
     (
         "cd /path && rag-cli ... | head — strip only the pipe, keep cd chain",
-        'cd /path && rag-cli search_hybrid "x" RAG-docs | head',
-        'cd /path && rag-cli search_hybrid "x" RAG-docs',
+        'cd /path && rag-cli search "x" RAG-docs | head',
+        'cd /path && rag-cli search "x" RAG-docs',
     ),
     (
         "rag-cli ... | head ; bd list — strip pipe, keep trailing chain",
-        'rag-cli search_hybrid "x" RAG-docs | head ; bd list',
-        'rag-cli search_hybrid "x" RAG-docs ; bd list',
+        'rag-cli search "x" RAG-docs | head ; bd list',
+        'rag-cli search "x" RAG-docs ; bd list',
     ),
     (
         "rag-cli ... | head || echo fail — strip pipe, keep || chain",
-        'rag-cli search_hybrid "x" RAG-docs | head || echo fail',
-        'rag-cli search_hybrid "x" RAG-docs || echo fail',
+        'rag-cli search "x" RAG-docs | head || echo fail',
+        'rag-cli search "x" RAG-docs || echo fail',
     ),
     # --- negative: nothing to strip, hook is no-op ---
     (
-        "bare search_hybrid — no-op",
-        'rag-cli search_hybrid "x" RAG-docs',
+        "bare search — no-op",
+        'rag-cli search "x" RAG-docs',
         None,
     ),
     (
         "cd /path && rag-cli ... bare — no-op (chain preserved)",
-        'cd /path && rag-cli search_hybrid "x" RAG-docs',
+        'cd /path && rag-cli search "x" RAG-docs',
         None,
     ),
     (
         "rag-cli ... ; bd list — no-op (trailing chain, no pipe)",
-        'rag-cli search_hybrid "x" RAG-docs ; bd list',
+        'rag-cli search "x" RAG-docs ; bd list',
         None,
     ),
     (
@@ -81,8 +81,8 @@ CASES = [
         None,
     ),
     (
-        "search_hybrid inside quoted echo — no-op (token in string, not active)",
-        'echo "rag-cli search_hybrid foo bar | head"',
+        "search inside quoted echo — no-op (token in string, not active)",
+        'echo "rag-cli search foo bar | head"',
         None,
     ),
 ]

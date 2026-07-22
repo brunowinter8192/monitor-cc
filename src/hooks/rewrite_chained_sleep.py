@@ -18,7 +18,7 @@ _TRIVIAL_PAIRS = frozenset({
     ('git',        'log'),
     ('git',        'diff'),
     ('git',        'show'),
-    ('rag-cli',    'search_hybrid'),
+    ('rag-cli',    'search'),
     ('worker-cli', 'status'),
     ('worker-cli', 'list'),
     ('worker-cli', 'response'),

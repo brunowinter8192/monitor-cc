@@ -8,9 +8,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
 from _fire_log import log_fire
 
-# Anchor for the rag-cli search invocation. Only `search_hybrid` is in scope —
+# Anchor for the rag-cli search invocation. Only `search` is in scope —
 # `read_document`, `list_collections`, `server`, etc. remain untouched.
-_RAG_RE = re.compile(r'\brag-cli\s+search_hybrid\b')
+_RAG_RE = re.compile(r'\brag-cli\s+search\b')
 
 # Segment-end operators: terminate the rag-cli logical command.
 # `(?<!>)&(?![&>])` matches a single backgrounding `&` but NOT `&&` (chain),
@@ -24,7 +24,7 @@ _NOISE_RE = re.compile(r'2>&1|2>|&>|>>|<<|>|<|(?<!\|)\|(?!\|)')
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; for each `rag-cli search_hybrid` invocation,
+# Read Bash tool_input from stdin; for each `rag-cli search` invocation,
 # strip any downstream pipes/redirects/2>&1 inside its logical segment.
 # Chains around the segment (cd && ..., ... ; bd list) are preserved.
 def rewrite_rag_cli_search_noise_workflow() -> None:

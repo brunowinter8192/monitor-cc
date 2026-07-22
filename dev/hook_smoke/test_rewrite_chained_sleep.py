@@ -111,9 +111,9 @@ CASES = [
     ),
     # --- positive: new _TRIVIAL_PAIRS (rag-cli, worker-cli) ---
     (
-        "rag-cli search_hybrid before sleep — strip",
-        'rag-cli search_hybrid "query" collection; sleep 2; echo done',
-        'rag-cli search_hybrid "query" collection; echo done',
+        "rag-cli search before sleep — strip",
+        'rag-cli search "query" collection; sleep 2; echo done',
+        'rag-cli search "query" collection; echo done',
     ),
     (
         "worker-cli status before sleep — strip",

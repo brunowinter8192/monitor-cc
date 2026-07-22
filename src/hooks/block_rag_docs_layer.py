@@ -9,23 +9,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
 from _fire_log import log_fire
 
-# Anchor for the rag-cli search invocation. Only `search_hybrid` is in scope —
+# Anchor for the rag-cli search invocation. Only `search` is in scope —
 # `read_document`, `list_documents`, `list_collections`, etc. remain untouched.
-_RAG_RE = re.compile(r'\brag-cli\s+search_hybrid\b')
+_RAG_RE = re.compile(r'\brag-cli\s+search\b')
 
 # Segment-end operators: terminate the rag-cli logical command (same set as
 # rewrite_rag_cli_search_noise.py's chain-boundary detection).
 _SEGMENT_END_RE = re.compile(r'&&|\|\||[;)\n]|(?<!>)&(?![&>])')
 
 # Noise inside the segment: pipes (excluding `||`) and redirects. First match
-# position also bounds the segment — a piped/redirected search_hybrid must not
+# position also bounds the segment — a piped/redirected search must not
 # pull unrelated trailing tokens into the argument scan.
 _NOISE_RE = re.compile(r'2>&1|2>|&>|>>|<<|>|<|(?<!\|)\|(?!\|)')
 
 _LAYER_FILTER_FLAGS = ("--document", "--exclude")
 
 _BLOCK_MESSAGE = (
-    "rag-cli search_hybrid on a *-docs collection must carry a --document or --exclude "
+    "rag-cli search on a *-docs collection must carry a --document or --exclude "
     "filter whose value contains 'process-docs' — this scopes the search to one layer. "
     "Use --document 'process-docs/%' (or 'process-docs/<area>/%') for process-history "
     "search, or --exclude 'process-docs/%' for code-module search.\n"
@@ -34,7 +34,7 @@ _BLOCK_MESSAGE = (
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; exit 2 + stderr if a rag-cli search_hybrid call
+# Read Bash tool_input from stdin; exit 2 + stderr if a rag-cli search call
 # targets a *-docs collection without a --document/--exclude filter naming
 # 'process-docs'. Fail-open on any parse error.
 def block_rag_docs_layer_workflow() -> None:
@@ -69,7 +69,7 @@ def _parse_command():
         return None, None
 
 
-# Return end index of the logical rag-cli segment starting after the search_hybrid
+# Return end index of the logical rag-cli segment starting after the search
 # match, bounded by the first chain operator or the first pipe/redirect noise token.
 def _segment_end(stripped: str, rag_end: int) -> int:
     end_m = _SEGMENT_END_RE.search(stripped, rag_end)
@@ -80,7 +80,7 @@ def _segment_end(stripped: str, rag_end: int) -> int:
     return seg_end
 
 
-# Return True if this rag-cli search_hybrid segment targets a *-docs collection
+# Return True if this rag-cli search segment targets a *-docs collection
 # without a --document/--exclude filter whose value contains 'process-docs'.
 # Fail-open (False) on any tokenization error or unexpected shape.
 def _segment_violates(original_segment: str) -> bool:
@@ -94,10 +94,10 @@ def _segment_violates(original_segment: str) -> bool:
     return not _has_layer_filter(tokens)
 
 
-# Return the collection token (two positions after 'search_hybrid'), or None
+# Return the collection token (two positions after 'search'), or None
 def _find_collection(tokens: list) -> str | None:
     for i, tok in enumerate(tokens):
-        if tok == 'search_hybrid' and i + 2 < len(tokens):
+        if tok == 'search' and i + 2 < len(tokens):
             return tokens[i + 2]
     return None
 
