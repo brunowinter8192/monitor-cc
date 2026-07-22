@@ -237,3 +237,16 @@ normalization. Does NOT require a live mitmproxy process — uses minimal mock h
 
 **Expected output:** `13/13 passed` (exit 0). Imports `_filter_response_headers` directly from
 `src/proxy/addon` via `sys.path.insert` on `src/`.
+
+---
+
+### test_block_po_read.py (90 LOC)
+
+**Purpose:** 14-case smoke for `block_po_read.py`. Verifies 7 blocked cases (`head`/`tail`/`grep`/`cat`/`sed`/`rg` each on a `~/.claude/.../tool-results/<id>.txt` persisted-output path, plus the piped `cat <path> | head -20` case) and 7 no-op cases (reader on a normal file, reader on a `.log` file, reader on `/tmp/foo.txt` not under `.claude/`, reader on a `.claude/` path not ending `.txt`, redirect-write to a PO path, PO path only inside a quoted string, malformed-JSON stdin fail-open).
+
+**Usage (from project root):**
+```bash
+python3 dev/hook_smoke/test_block_po_read.py
+```
+
+**Expected output:** `All 14 tests passed.` (exit 0). HOOK path is relative — must be run from project root.
