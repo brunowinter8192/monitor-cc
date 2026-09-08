@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+from .discovery import stem_identity
 from .reader import local_datetime
 from .timeline import request_markers, _system_block_chars, _tool_chars, _BILLING_HEADER_SYS_INDEX
 
@@ -22,18 +23,24 @@ def fmt_timestamp(timestamp: str) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S") if dt else "?"
 
 
-# One line per session, newest first
+# One line per session, newest first. PROJECT (2026-09-10, replaces CONTEXT) is the real project
+# directory `discovery.project_for_stem` resolved — a path can run much longer than the old
+# `worker/<label>/<name>` rendering ever did, so the column WIDENS to fit the longest one rather
+# than truncating (right-trimming a path is not acceptable — a wide column is). SESSION prints the
+# stem's DISPLAY form (`discovery.display_stem`, sid8 stripped for a worker) — the on-disk stem is
+# unchanged, this is presentation only, and `resolve_stem` already accepts a substring of either
+# form, so a name copied from this column resolves.
 def render_sessions(sessions: list) -> str:
     if not sessions:
         return "no sessions found\n"
-    context_width = max(len(s["context"]) for s in sessions)
+    project_width = max(len(s["project"]) for s in sessions)
     # SESSION is the last column — left unpadded so no line carries trailing whitespace
-    lines = [f"{'START':19}  {'CONTEXT':{context_width}}  SESSION"]
+    lines = [f"{'START':19}  {'PROJECT':{project_width}}  SESSION"]
     for session in sessions:
         lines.append(
             f"{fmt_timestamp(session['start']):19}  "
-            f"{session['context']:{context_width}}  "
-            f"{session['stem']}"
+            f"{session['project']:{project_width}}  "
+            f"{session['display_stem']}"
         )
     lines.append("")
     lines.append(f"{len(sessions)} sessions")
@@ -473,14 +480,14 @@ def _req_line(marker: dict, tag: str = "", gap_tail: str = "", usage_tail: str =
     return f"REQ {marker['number']:<{_REQ_NUMBER_WIDTH}}{_clock(marker['timestamp'])}{tag_part}{gap_tail}{usage_tail}"
 
 
-# The session's own short --merged tag: its context after the LAST "/" — a worker's name
-# ("worker/monitor_cc/proxy-tn-wrap" -> "proxy-tn-wrap") or a main session's project
-# ("opus/monitor_cc" -> "monitor_cc") — no shape-specific branching needed, both contexts happen
-# to put the identifying piece last. Falls back to the stem when context is empty (never crashes
-# on a context with no "/" at all — rsplit on a slash-free string returns it unchanged).
+# The session's own short --merged tag: a worker's name or a main session's project label — read
+# straight off the STEM via `discovery.stem_identity` (2026-09-10, replaces the old
+# `context.rsplit("/", 1)[-1]` — the rendered CONTEXT string it read is gone) rather than through
+# any project-path lookup, since identity's own third element IS the tag, worker or main alike.
+# Falls back to the raw stem when `stem_identity` cannot parse it at all.
 def _session_tag(session: dict) -> str:
-    context = session.get("context") or ""
-    return context.rsplit("/", 1)[-1] if context else session.get("stem", "")
+    identity = stem_identity(session.get("stem", ""))
+    return identity[-1] if identity else session.get("stem", "")
 
 
 # One session's own markers as [(dt, marker, tag, usage, prev_usage), …], in msg-index order
@@ -696,7 +703,7 @@ def render_expand_full(data: dict, anchor: int, start: int, end: int,
              f"{_window_date(data, anchor)}")
     lines = [
         f"session   {data['session']['stem']}",
-        f"context   {data['session']['context']}",
+        f"project   {data['session']['project']}",
         f"window    {scope}" + (f", only {only}" if only else ""),
         "",
     ]

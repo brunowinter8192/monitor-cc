@@ -15,8 +15,9 @@ two sessions' REQs interleave in strict chronological order under one `merged <N
 each tagged with its own session; combined with `--gap`, a within-session gap bridged by another
 session's request does NOT qualify (the merge only ever compares GLOBAL chronological neighbors),
 while a gap that exists only ACROSS sessions does; and `filter_by_family` keeping only
-`opus/`-prefixed sessions for `--main`, only `worker/`-prefixed for `--worker`, and the list
-unchanged when neither flag is set.
+opus-identifying stems for `--main`, only worker-identifying stems for `--worker` (2026-09-10:
+reads `stem_identity` directly now, the rendered CONTEXT string it used to check having been
+removed), and the list unchanged when neither flag is set.
 
 `request_boundaries` is exercised end to end against a real temp `_forwarded.jsonl`-shaped file —
 no dual-log directory or MONITOR_CC_ROOT required.
@@ -90,8 +91,12 @@ def _boundaries(entries: list) -> list:
         path.unlink()
 
 
-def _session(stem: str, context: str = "") -> dict:
-    return {"stem": stem, "context": context}
+# A session dict carrying only what render_reqs/render_reqs_merged actually read (2026-09-10: no
+# "context" field any more — `_session_tag` now derives the --merged tag straight from the STEM
+# via `discovery.stem_identity`, so a realistic stem is what a fixture needs, not a fake context
+# string).
+def _session(stem: str) -> dict:
+    return {"stem": stem}
 
 
 # A session's REQ lines carry exactly the numbers and clock times `msgs`' own separators print.
@@ -101,7 +106,7 @@ def test_single_session_req_lines_match_msgs_numbering() -> None:
         _delta_entry("f1", "2026-09-04T20:16:40Z", 5),
         _delta_entry("f2", "2026-09-04T20:17:10Z", 9),
     ])
-    session = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788545000", "worker/monitor_cc/proxy-tn-wrap")
+    session = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788545000")
     got = render_reqs([(session, boundaries)])
     # The milestone's own example shows these UTC instants rendering as LOCAL time (verified
     # against the real proxy pane: the same instant read 20:16:02 there, local, against 18:16:02
@@ -255,7 +260,7 @@ def test_gap_threshold_boundary() -> None:
 
 # --merged: two sessions' REQs interleave in TIME, not in listing order — the merged output must
 # follow strict chronological order across sessions, each line carrying its own session's tag
-# (context after the last "/").
+# (read straight off its stem — a worker's name, a main session's project label).
 def test_merged_order_interleaved_across_sessions() -> None:
     boundaries_a = _boundaries([
         _delta_entry("a0", "2026-09-04T10:00:00Z", 2, is_first=True),
@@ -265,8 +270,8 @@ def test_merged_order_interleaved_across_sessions() -> None:
         _delta_entry("b0", "2026-09-04T10:10:00Z", 2, is_first=True),
         _delta_entry("b1", "2026-09-04T10:30:00Z", 5),
     ])
-    session_a = _session("s_a", "opus/monitor_cc")
-    session_b = _session("s_b", "worker/monitor_cc/proxy-tn-wrap")
+    session_a = _session("api_requests_opus_monitor_cc_1788500000")
+    session_b = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788500001")
     got = render_reqs_merged([(session_a, boundaries_a), (session_b, boundaries_b)])
     expected = (
         "merged 2 sessions\n"
@@ -291,8 +296,8 @@ def test_merged_gap_bridged_by_another_session_does_not_qualify() -> None:
     boundaries_b = _boundaries([
         _delta_entry("b0", "2026-09-04T10:30:00Z", 2, is_first=True),  # +30m after a0, +65m before a1
     ])
-    session_a = _session("s_a", "opus/monitor_cc")
-    session_b = _session("s_b", "worker/monitor_cc/proxy-tn-wrap")
+    session_a = _session("api_requests_opus_monitor_cc_1788500000")
+    session_b = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788500001")
     got = render_reqs_merged([(session_a, boundaries_a), (session_b, boundaries_b)], gap_minutes=90)
     check("the within-session gap is bridged — no qualifying pair, header only",
           got == "merged 2 sessions\n", got)
@@ -303,8 +308,8 @@ def test_merged_gap_bridged_by_another_session_does_not_qualify() -> None:
 def test_merged_gap_across_sessions_qualifies() -> None:
     boundaries_a = _boundaries([_delta_entry("a0", "2026-09-04T10:00:00Z", 2, is_first=True)])
     boundaries_b = _boundaries([_delta_entry("b0", "2026-09-04T11:40:00Z", 2, is_first=True)])  # +100m
-    session_a = _session("s_a", "opus/monitor_cc")
-    session_b = _session("s_b", "worker/monitor_cc/proxy-tn-wrap")
+    session_a = _session("api_requests_opus_monitor_cc_1788500000")
+    session_b = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788500001")
     got = render_reqs_merged([(session_a, boundaries_a), (session_b, boundaries_b)], gap_minutes=90)
     expected = (
         "merged 2 sessions\n"
@@ -381,11 +386,11 @@ def test_merged_drop_predecessor_stays_within_session() -> None:
         _delta_entry("a1", "2026-09-04T10:20:00Z", 5),
     ])
     boundaries_b = _boundaries([_delta_entry("b0", "2026-09-04T10:10:00Z", 2, is_first=True)])
-    session_a = _session("s_a", "opus/monitor_cc")
-    session_b = _session("s_b", "worker/monitor_cc/proxy-tn-wrap")
+    session_a = _session("api_requests_opus_monitor_cc_1788500000")
+    session_b = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788500001")
     usage_by_stem = {
-        "s_a": {"a0": (100, 200), "a1": (250, 10)},
-        "s_b": {"b0": (5, 5)},
+        session_a["stem"]: {"a0": (100, 200), "a1": (250, 10)},
+        session_b["stem"]: {"b0": (5, 5)},
     }
     got = render_reqs_merged(
         [(session_a, boundaries_a), (session_b, boundaries_b)],
@@ -437,7 +442,7 @@ def test_no_rebuild_no_drop_output_unchanged() -> None:
         _delta_entry("f0", "2026-09-04T20:16:02Z", 2, is_first=True),
         _delta_entry("f1", "2026-09-04T20:16:40Z", 5),
     ])
-    session = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788545000", "worker/monitor_cc/proxy-tn-wrap")
+    session = _session("api_requests_worker_25c51a2e_proxy-tn-wrap_1788545000")
     usage_by_stem = {session["stem"]: {"f0": (5, 5), "f1": (100, 200)}}
     got = render_reqs([(session, boundaries)], usage_by_stem=usage_by_stem)
     expected = (
@@ -449,24 +454,26 @@ def test_no_rebuild_no_drop_output_unchanged() -> None:
           got == expected, got)
 
 
-# filter_by_family: --main keeps only opus/-prefixed, --worker keeps only worker/-prefixed,
-# neither flag returns the list unchanged.
+# filter_by_family: --main keeps only opus-identifying stems, --worker keeps only
+# worker-identifying stems (2026-09-10: reads stem_identity directly, no CONTEXT field involved
+# at all), neither flag returns the list unchanged.
 def test_filter_by_family() -> None:
     sessions = [
-        _session("s1", "opus/monitor_cc"),
-        _session("s2", "worker/monitor_cc/foo"),
-        _session("s3", "opus/websearch"),
-        _session("s4", "worker/websearch/bar"),
+        _session("api_requests_opus_monitor_cc_1788000001"),
+        _session("api_requests_worker_11111111_foo_1788000002"),
+        _session("api_requests_opus_websearch_1788000003"),
+        _session("api_requests_worker_22222222_bar_1788000004"),
     ]
+    stems = [s["stem"] for s in sessions]
     main_only = filter_by_family(sessions, main=True)
-    check("--main keeps only opus/-prefixed sessions",
-          [s["stem"] for s in main_only] == ["s1", "s3"], main_only)
+    check("--main keeps only opus-identifying sessions",
+          [s["stem"] for s in main_only] == [stems[0], stems[2]], main_only)
     worker_only = filter_by_family(sessions, worker=True)
-    check("--worker keeps only worker/-prefixed sessions",
-          [s["stem"] for s in worker_only] == ["s2", "s4"], worker_only)
+    check("--worker keeps only worker-identifying sessions",
+          [s["stem"] for s in worker_only] == [stems[1], stems[3]], worker_only)
     unfiltered = filter_by_family(sessions)
     check("neither flag set returns the list unchanged",
-          [s["stem"] for s in unfiltered] == ["s1", "s2", "s3", "s4"], unfiltered)
+          [s["stem"] for s in unfiltered] == stems, unfiltered)
 
 
 # ORCHESTRATOR

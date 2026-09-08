@@ -1,15 +1,17 @@
 """dual_log_cli — read-only inspector for src/logs/dual_log/.
 
 Commands:
-    sessions                 list every session (start, context, stem), newest first
-    sessions <context>       keep only sessions whose context contains that text (substring, any case)
+    sessions                 list every session (start, real project path, display stem), newest
+                             first — a worker's stem is shown with its sid8 segment stripped
+    sessions <project>       keep only sessions whose real project path OR stem contains that text
+                             (substring, any case, e.g. "trading" or a full path)
     sessions --since D --until D   bound that listing by start day, inclusive, YYYY-MM-DD
     search <term> [scope]    find a term across the deduplicated timelines, each match reported once
-                             scope matches a session's context OR stem; omit it to search all
+                             scope matches a session's real project path OR stem; omit it to search all
                              --only restricts hits to one classifier (role, type, or role/type)
     reqs [scope]             per session: a REQ number + time line per request, nothing else —
-                             scope matches context OR stem like search; --main/--worker (mutually
-                             exclusive) keep only opus/ or worker/ sessions
+                             scope matches project path OR stem like search; --main/--worker
+                             (mutually exclusive) keep only main or worker sessions
     reqs [scope] --gap M     only the REQs bracketing a gap of >= M minutes between consecutive
                              requests; the after-REQ carries "  +Nm"; a session with no qualifying
                              gap prints only its "session" header line
@@ -92,7 +94,7 @@ from .discovery import (
     resolve_stem,
 )
 from .overlay import build_overlay, build_sys_tool_overlay
-from .project_map import build_project_map
+from .project_map import build_project_index
 from .render import (
     render_expand_full,
     render_msgs,
@@ -151,8 +153,9 @@ def _parse_args(argv: list) -> argparse.Namespace:
     )
     sub = parser.add_subparsers(dest="command", required=True)
     sessions = sub.add_parser("sessions", help="list all sessions, newest first")
-    sessions.add_argument("context", nargs="?", default="", metavar="CONTEXT",
-                          help="only sessions whose context contains this text, e.g. websearch")
+    sessions.add_argument("context", nargs="?", default="", metavar="PROJECT",
+                          help="only sessions whose real project path OR stem contains this text, "
+                               "e.g. trading or a full path")
     sessions.add_argument("--since", default="", metavar="YYYY-MM-DD",
                           help="only sessions started on or after this day (inclusive)")
     sessions.add_argument("--until", default="", metavar="YYYY-MM-DD",
@@ -235,7 +238,7 @@ def _parse_args(argv: list) -> argparse.Namespace:
     search = sub.add_parser("search", help="find a term across the deduplicated timelines")
     search.add_argument("term", help="literal term to look for (no regex)")
     search.add_argument("scope", nargs="?", default="", metavar="SCOPE",
-                        help="only sessions whose context OR stem contains this text; omit to search all")
+                        help="only sessions whose real project path OR stem contains this text; omit to search all")
     search.add_argument("--since", default="", metavar="YYYY-MM-DD",
                         help="only sessions started on or after this day (inclusive)")
     search.add_argument("--until", default="", metavar="YYYY-MM-DD",
@@ -260,8 +263,8 @@ def _parse_args(argv: list) -> argparse.Namespace:
             "the prompt cache hangs on the shared system/tools prefix every worker of a project "
             "sends, so a request from ANY session in scope keeps it warm for every other; a "
             "`merged <N> sessions` header replaces the per-session `session <stem>` lines, and each "
-            "REQ line carries `  <tag>` (its context after the last `/` — a worker's name, or a "
-            "main session's project). --merged --gap evaluates the SAME bracketing rule over the "
+            "REQ line carries `  <tag>` (a worker's name, or a main session's project label, read "
+            "off the stem). --merged --gap evaluates the SAME bracketing rule over the "
             "merged chain, so a within-session gap another session's request happens to fall "
             "inside no longer qualifies, and a gap that only exists ACROSS sessions does. "
             "--rebuild keeps only REQs where CC > CR (the request's own cache write outweighed "
@@ -276,14 +279,14 @@ def _parse_args(argv: list) -> argparse.Namespace:
         ),
     )
     reqs.add_argument("scope", nargs="?", default="", metavar="SCOPE",
-                      help="only sessions whose context OR stem contains this text; omit to search all")
+                      help="only sessions whose real project path OR stem contains this text; omit to search all")
     reqs.add_argument("--since", default="", metavar="YYYY-MM-DD",
                       help="only sessions started on or after this day (inclusive)")
     reqs.add_argument("--until", default="", metavar="YYYY-MM-DD",
                       help="only sessions started on or before this day (inclusive)")
     reqs_family = reqs.add_mutually_exclusive_group()
-    reqs_family.add_argument("--main", action="store_true", help="only main sessions (context starts with opus/)")
-    reqs_family.add_argument("--worker", action="store_true", help="only worker sessions (context starts with worker/)")
+    reqs_family.add_argument("--main", action="store_true", help="only main sessions (stem identifies as opus)")
+    reqs_family.add_argument("--worker", action="store_true", help="only worker sessions (stem identifies as worker)")
     reqs.add_argument("--gap", type=int, default=None, metavar="MINUTES",
                       help="show only the REQs bracketing a consecutive gap of at least this many minutes")
     reqs.add_argument("--merged", action="store_true",
@@ -335,7 +338,7 @@ def _load_for(dual_log_dir, session_arg: str) -> tuple:
     except (AmbiguousSessionError, UnknownSessionError) as exc:
         print(str(exc), file=sys.stderr)
         return None, 2
-    session = build_session(stem, group_streams(dual_log_dir)[stem], build_project_map())
+    session = build_session(stem, group_streams(dual_log_dir)[stem], build_project_index())
     return load_timeline(session), 0
 
 
@@ -375,8 +378,9 @@ def _run_search(dual_log_dir, args: argparse.Namespace) -> int:
 
 
 # reqs — scoped like `search`, same per-session last-request reconstruction (skip-on-unloadable,
-# not fatal), plus --main/--worker narrowing to sessions whose context starts with "opus/" or
-# "worker/". No matcher, no hit filtering — every session that loads contributes its own REQ list,
+# not fatal), plus --main/--worker narrowing to sessions whose STEM identifies as "opus" or
+# "worker" (discovery.filter_by_family, via stem_identity — 2026-09-10, no longer a rendered
+# CONTEXT prefix check). No matcher, no hit filtering — every session that loads contributes its own REQ list,
 # optionally reduced to only the REQs bracketing a qualifying --gap, optionally merged across
 # every session in scope into one chronological chain (--merged) — session SELECTION is identical
 # either way, only which render function turns `results` into text differs. --rebuild/--drop
