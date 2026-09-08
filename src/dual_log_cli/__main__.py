@@ -27,6 +27,17 @@ Commands:
                              shortfall). --rebuild/--drop combine with each other (AND), with
                              --gap (filtering the lines --gap would print), and with --merged (the
                              "previous" request is then the merged chain's, across sessions)
+    reqs [scope] --turns     group each session's own REQ lines under turn separators
+                             ("── turn n  HH:MM:SS  SPAN  <preview> ──", SPAN = last send − first
+                             send within the turn) instead of a flat list; every REQ line but a
+                             turn's own first carries "  +<elapsed>" since the PREVIOUS request of
+                             the SAME turn — no transcript join anywhere, only send times a session
+                             already has. A session with no turn opener prints its REQ lines with
+                             the same elapsed tail but no separators. Usage error together with
+                             --merged/--gap/--rebuild/--drop (turns are computed per session, from
+                             send times alone — combining with any of those would need either a
+                             cross-session turn concept or a transcript join this flag deliberately
+                             has neither of)
     msgs <session>           request groups: a REQ separator (with CR/CC prompt-cache usage when
                              resolvable) listing the system blocks and tools that request sent —
                              in full for the family's first request, else only what changed or is
@@ -39,16 +50,6 @@ Commands:
     msgs <session> --req F [T]   the same, restricted to REQ numbers F..T (T defaults to F) — the
                              same numbers the REQ separators already print, translated into the
                              msg-index range that covers them; mutually exclusive with F T above
-    turns <session>          one line per turn (everything between two prompts the human/
-                             orchestrator typed): turn number, the clock of its first request,
-                             total duration split into model time (time spent generating) and tool
-                             time (time spent running tools between requests), request count,
-                             summed output tokens, and a preview of the prompt that opened it — "?"
-                             for the duration/model/tool/token columns when the transcript join
-                             this needs does not resolve for the turn
-    turns <session> N        one line per REQUEST of turn N instead: REQ number/clock, model
-                             seconds, tool seconds (none for the turn's own last request), output
-                             tokens, and the tool_use names of that request's own reply
     expand <s> <msg>         full content of that msg, plus what the proxy stripped/injected there
     expand <s> <msg> [--before N] [--after N] [--only X]   full content of the window around it
 
@@ -61,12 +62,11 @@ Usage (from project root, or via bin/duallog once symlinked into PATH):
     ./venv/bin/python -m src.dual_log_cli reqs websearch --merged --gap 30
     ./venv/bin/python -m src.dual_log_cli reqs websearch --merged --rebuild
     ./venv/bin/python -m src.dual_log_cli reqs websearch --drop
+    ./venv/bin/python -m src.dual_log_cli reqs websearch --turns
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 700 740
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 --req 259
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 --req 259 261
-    ./venv/bin/python -m src.dual_log_cli turns websearch_1787924727
-    ./venv/bin/python -m src.dual_log_cli turns websearch_1787924727 1
     ./venv/bin/python -m src.dual_log_cli expand websearch_1787924727 721
     ./venv/bin/python -m src.dual_log_cli expand websearch_1787924727 721 --before 2 --after 1
 
@@ -102,22 +102,16 @@ from .render import (
     render_reqs_merged,
     render_search,
     render_sessions,
-    render_turn_detail,
-    render_turns,
 )
 from .search import find_matches
 from .timeline import (
     AmbiguousRequestNumberError,
     UnknownRequestNumberError,
-    UnknownTurnNumberError,
-    build_turn_requests,
-    build_turn_rows,
     full_turn,
     load_timeline,
     resolve_req_range,
-    turn_openers,
 )
-from .usage import build_request_times_by_flow, build_usage_by_flow
+from .usage import build_usage_by_flow
 
 # ORCHESTRATOR
 
@@ -136,8 +130,6 @@ def main(argv: list) -> int:
         return _run_reqs(dual_log_dir, args)
     if args.command == "msgs":
         return _run_msgs(dual_log_dir, args)
-    if args.command == "turns":
-        return _run_turns(dual_log_dir, args)
     return _run_expand(dual_log_dir, args)
 
 
@@ -190,31 +182,6 @@ def _parse_args(argv: list) -> argparse.Namespace:
     msgs.add_argument("--req", nargs="+", type=int, default=None, metavar="F [T]",
                       help="REQ number range instead of msg indices, T defaults to F; "
                            "mutually exclusive with FROM/TO")
-    turns = sub.add_parser(
-        "turns",
-        help="one line per turn: duration split into model time and tool wall time",
-        description=(
-            "Prints one line per turn of a session, in order — a turn is what happens between "
-            "two prompts the human (or, for a worker, the orchestrator via `worker-cli send`) "
-            "typed: the model runs many requests, each followed by tool execution, until it "
-            "answers with text and goes idle. Each line carries the turn number, the local clock "
-            "of its first request, total duration, model time (summed stream time per request), "
-            "tool time (summed gap between one request's stream end and the next request's send — "
-            "the turn's last request contributes none), request count, summed output tokens, and "
-            "a one-line preview of the prompt that opened the turn. The duration/model/tool/token "
-            "columns print \"?\" for a turn whose requests do not all resolve against CC's own "
-            "transcript (the same join `msgs`' CR/CC separator uses) — the clock and request "
-            "count still print, since they need no transcript join at all. Give a turn number N "
-            "(as printed by the bare listing) to see one line per REQUEST of that turn instead: "
-            "REQ number/clock, model seconds, tool seconds (next request's send minus this "
-            "stream end; the turn's own last request shows none), output tokens, and the "
-            "tool_use names of that request's own reply (e.g. `Bash`, or nothing for a "
-            "text-only reply) — each column resolves independently, \"?\" only where it does not."
-        ),
-    )
-    turns.add_argument("session", help="session stem or unambiguous substring")
-    turns.add_argument("turn", nargs="?", type=int, default=None, metavar="N",
-                       help="show one line per request of turn N instead of the bare per-turn listing")
     expand = sub.add_parser(
         "expand",
         help="full content of one msg, or of a window around it",
@@ -275,7 +242,14 @@ def _parse_args(argv: list) -> argparse.Namespace:
             "Every line --rebuild/--drop prints carries a `  CR c  CC c` tail; --drop also appends "
             "`  −N` (the shortfall, CR(n-1)+CC(n-1) − CR(n)). Both combine with each other (AND), "
             "with --gap (filtering exactly the lines --gap would print, before-line included), and "
-            "with --merged; a REQ whose usage does not resolve is skipped under either flag."
+            "with --merged; a REQ whose usage does not resolve is skipped under either flag. "
+            "--turns groups each session's OWN REQ lines under `── turn n  HH:MM:SS  SPAN  "
+            "<preview> ──` separators instead of a flat list — a turn is what happens between two "
+            "prompts the human/orchestrator typed, SPAN is that turn's last REQ send minus its "
+            "first (no transcript join, only send times), and every REQ line but a turn's own "
+            "first carries `  +<elapsed>` since the previous REQ of the SAME turn. A session with "
+            "no turn opener prints its REQ lines with the same elapsed tail but no separators. "
+            "--turns is a usage error together with --merged/--gap/--rebuild/--drop."
         ),
     )
     reqs.add_argument("scope", nargs="?", default="", metavar="SCOPE",
@@ -295,6 +269,9 @@ def _parse_args(argv: list) -> argparse.Namespace:
                       help="only REQs where CC > CR; every printed line carries a CR/CC tail")
     reqs.add_argument("--drop", action="store_true",
                       help="only REQs whose predecessor's cached prefix was not fully read back; carries a CR/CC + shortfall tail")
+    reqs.add_argument("--turns", action="store_true",
+                      help="group each session's REQ lines under turn separators, with a "
+                           "+<elapsed> tail per request; usage error with --merged/--gap/--rebuild/--drop")
     return parser.parse_args(argv)
 
 
@@ -386,7 +363,14 @@ def _run_search(dual_log_dir, args: argparse.Namespace) -> int:
 # either way, only which render function turns `results` into text differs. --rebuild/--drop
 # additionally need each contributing session's own CR/CC map (`usage.build_usage_by_flow`, the
 # SAME per-request join `msgs` already resolves) — built only when either flag is set, so a plain
-# `reqs` run never pays for the transcript-store join at all.
+# `reqs` run never pays for the transcript-store join at all. --turns (2026-09-10, replaces the
+# removed `turns` subcommand) is rejected up front, before any session even loads, when combined
+# with --merged/--gap/--rebuild/--drop — turns are computed per session from send times alone, and
+# none of those other flags' own cross-session or transcript-joined semantics has an equivalent
+# for that; when accepted, the per-session load loop additionally keeps `data["turns"]` (built by
+# `load_timeline` regardless, just not normally RETAINED past the loop — see this function's own
+# Gotcha in DOCS.md) in a `turns_by_stem` map, the ONE thing `--turns` needs beyond what every
+# other `reqs` mode already collects.
 def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
     code = _reject_bad_days(args)
     if code:
@@ -394,6 +378,13 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
     if args.gap is not None and args.gap < 0:
         print("--gap must be 0 or greater", file=sys.stderr)
         return 2
+    if args.turns:
+        if args.merged:
+            print("--turns cannot be combined with --merged (turns are computed per session)", file=sys.stderr)
+            return 2
+        if args.gap is not None or args.rebuild or args.drop:
+            print("--turns cannot be combined with --gap/--rebuild/--drop", file=sys.stderr)
+            return 2
     sessions = filter_sessions(
         list_sessions(dual_log_dir),
         scope=args.scope,
@@ -402,6 +393,7 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
     )
     sessions = filter_by_family(sessions, main=args.main, worker=args.worker)
     results, skipped = [], 0
+    turns_by_stem = {} if args.turns else None
     for session in sessions:
         try:
             data = load_timeline(session)
@@ -409,6 +401,11 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
             skipped += 1
             continue
         results.append((session, data["boundaries"]))
+        if turns_by_stem is not None:
+            turns_by_stem[session["stem"]] = data["turns"]
+    if args.turns:
+        sys.stdout.write(render_reqs(results, skipped, turns_by_stem=turns_by_stem))
+        return 0
     usage_by_stem = None
     if args.rebuild or args.drop:
         usage_by_stem = {
@@ -464,38 +461,6 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
     overlay = build_overlay(data["session"], data["family"], data["boundaries"])
     sys_tool_overlay = build_sys_tool_overlay(data["session"], data["family"], data["boundaries"])
     sys.stdout.write(render_msgs(data, start, end, usage_by_flow, overlay, sys_tool_overlay))
-    return 0
-
-
-# turns — a single session, like msgs/expand (no scope, no date window): the transcript join
-# (usage.build_request_times_by_flow, the SAME per-request join `msgs`' CR/CC resolves, joined by
-# requestId rather than by cache figures) feeds timeline.build_turn_rows, which does the turn
-# grouping and duration arithmetic; render_turns only lays the rows out. `turns <session> N`
-# (2026-09-09) routes the SAME loaded data + times_by_flow through timeline.build_turn_requests
-# instead, for one line per request of turn N — UnknownTurnNumberError (raised for N outside
-# 1..total, the SAME range `turn_openers` itself defines) is caught and its own message printed,
-# mirroring `msgs --req`'s UnknownRequestNumberError handling above.
-def _run_turns(dual_log_dir, args: argparse.Namespace) -> int:
-    data, code = _load_for(dual_log_dir, args.session)
-    if data is None:
-        return code
-    if not data["turns"]:
-        print("session carries no msgs", file=sys.stderr)
-        return 2
-    if not turn_openers(data["turns"]):
-        print("session carries no turn-opening msgs", file=sys.stderr)
-        return 2
-    times_by_flow = build_request_times_by_flow(data["session"], data["boundaries"])
-    if args.turn is None:
-        rows = build_turn_rows(data["turns"], data["boundaries"], times_by_flow)
-        sys.stdout.write(render_turns(rows))
-        return 0
-    try:
-        detail_rows = build_turn_requests(data["turns"], data["boundaries"], times_by_flow, args.turn)
-    except UnknownTurnNumberError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    sys.stdout.write(render_turn_detail(detail_rows))
     return 0
 
 
