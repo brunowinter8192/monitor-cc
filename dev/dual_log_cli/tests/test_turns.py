@@ -1,8 +1,8 @@
 """
 Regression suite for `duallog turns` (src/dual_log_cli/timeline.py's `_is_turn_opener`/
-`turn_openers`/`_turn_preview`/`build_turn_rows`, src/dual_log_cli/usage.py's
+`turn_openers`/`_turn_preview`/`build_turn_rows`/`build_turn_requests`, src/dual_log_cli/usage.py's
 `_transcript_stream_ends`/`build_request_times_by_flow`, and src/dual_log_cli/render.py's
-`render_turns`/`_fmt_duration`/`_fmt_tokens`).
+`render_turns`/`render_turn_detail`/`_fmt_duration`/`_fmt_tokens`).
 
 Covers: turn-opener classification (a `user` msg with a `text` block and no `tool_result` block
 opens a turn; a tool_result-carrying user msg, an assistant msg, and a str-content pseudo-block
@@ -16,8 +16,14 @@ turn's LAST request contributing no tool time; the three `?`-gating conditions (
 `times_by_flow` for the whole session, one request's flow absent from it, an unparseable stream-end
 timestamp) collapsing a turn's four numeric columns to `None` while the request count and preview
 still print; `_transcript_stream_ends`'s last-record-timestamp / first-record-output-tokens rule;
-`build_request_times_by_flow` end to end against a fixture `~/.claude/projects/`-shaped tree; and
-`_fmt_duration`'s three duration bands plus its "?" passthrough.
+`build_request_times_by_flow` end to end against a fixture `~/.claude/projects/`-shaped tree;
+`_fmt_duration`'s three duration bands plus its "?" passthrough; and (Milestone 2, 2026-09-09) the
+per-request path `turns <session> N`: `build_turn_requests`' independent-per-column resolution
+(unlike the aggregate row, a request missing only its token count still shows model/tool seconds),
+its tool_use-name extraction from the NEXT request's own delta range (not bounded to this turn —
+the reply exists regardless of which turn later claims the following request), the turn's own last
+request never getting a tool-seconds value even when a later turn's first request would otherwise
+supply one, and `UnknownTurnNumberError` for a turn number outside `1..len(openers)`.
 
 Run (from project root):
     ./venv/bin/python dev/dual_log_cli/tests/test_turns.py
@@ -36,10 +42,12 @@ _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 
 from src.dual_log_cli.reader import local_datetime
-from src.dual_log_cli.render import _fmt_duration, _fmt_tokens, render_turns
+from src.dual_log_cli.render import _fmt_duration, _fmt_tokens, render_turn_detail, render_turns
 from src.dual_log_cli.timeline import (
+    UnknownTurnNumberError,
     _is_turn_opener,
     _turn_preview,
+    build_turn_requests,
     build_turn_rows,
     request_boundaries,
     turn_openers,
@@ -64,8 +72,9 @@ def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
 
 
-def _block(type_: str, preview: str = "") -> dict:
-    return {"label": type_, "type": type_, "chars": 10, "sig_chars": 0, "preview": preview}
+def _block(type_: str, preview: str = "", label_override: str = None) -> dict:
+    return {"label": label_override if label_override is not None else type_,
+            "type": type_, "chars": 10, "sig_chars": 0, "preview": preview}
 
 
 def _turn(index: int, role: str, blocks: list) -> dict:
@@ -320,6 +329,153 @@ def test_render_turns_empty() -> None:
     check("no rows -> 'no turns found'", render_turns([]) == "no turns found\n")
 
 
+# --- build_turn_requests: tool_use names from the NEXT request's delta, and last-of-turn suppression
+
+def test_turn_requests_tool_names_and_last_of_group_suppression() -> None:
+    # Turn 1: req1's reply is [assistant tool_use Read, tool_result] -> visible in req2's delta.
+    # req2's reply is [assistant tool_use Bash, tool_result] -> visible in req3's delta. req3's
+    # reply is a plain TEXT idle answer (ending turn 1) bundled together with turn 2's own opener
+    # into req4's send -- the exact M1 edge case, reused here to prove req3 (turn1's own last
+    # request) never gets a tool_seconds value even though req4 (a later turn's own first request)
+    # exists and would otherwise supply one.
+    turns = [
+        _turn(0, "user", [_block("text", "go")]),                       # turn 1 opener
+        _turn(1, "assistant", [_block("tool_use", preview="", label_override="tool_use[Read]")]),
+        _turn(2, "user", [_block("tool_result")]),
+        _turn(3, "assistant", [_block("tool_use", preview="", label_override="tool_use[Bash]")]),
+        _turn(4, "user", [_block("tool_result")]),
+        _turn(5, "assistant", [_block("text", "done")]),                # req3's reply, text-only
+        _turn(6, "user", [_block("text", "next")]),                     # turn 2 opener
+    ]
+    boundaries = _boundaries([
+        _delta_entry("f1", "2026-09-06T10:00:00Z", 1, is_first=True),
+        _delta_entry("f2", "2026-09-06T10:01:00Z", 3),
+        _delta_entry("f3", "2026-09-06T10:02:00Z", 5),
+        _delta_entry("f4", "2026-09-06T10:10:00Z", 7),
+    ])
+    times_by_flow = {
+        "f1": ("2026-09-06T10:00:05Z", 100),
+        "f2": ("2026-09-06T10:01:10Z", 200),
+        "f3": ("2026-09-06T10:02:20Z", 300),
+        "f4": ("2026-09-06T10:10:05Z", 400),
+    }
+    rows = build_turn_requests(turns, boundaries, times_by_flow, 1)
+    check("turn 1 has exactly 3 requests", len(rows) == 3, rows)
+
+    req1, req2, req3 = rows
+    check("req1's tool_names come from ITS OWN reply (msgs 1-2), not req2's own",
+          req1["tool_names"] == ["Read"], req1)
+    check("req2's tool_names come from its own reply (msgs 3-4)",
+          req2["tool_names"] == ["Bash"], req2)
+    check("req3's reply is text-only -> empty tool_names, not '?'", req3["tool_names"] == [], req3)
+
+    check("req1 tool_seconds = req2's send minus req1's own stream end (55s)",
+          req1["tool_seconds"] == 55.0, req1)
+    check("req2 tool_seconds = req3's send minus req2's own stream end (50s)",
+          req2["tool_seconds"] == 50.0, req2)
+    check("req3 (turn 1's own LAST request) gets NO tool_seconds, even though req4 "
+          "(turn 2's own first request) exists and would otherwise supply one",
+          req3["tool_seconds"] is None, req3)
+
+
+def test_turn_requests_multiple_tool_use_names_in_order() -> None:
+    turns = [
+        _turn(0, "user", [_block("text", "go")]),
+        _turn(1, "assistant", [
+            _block("tool_use", label_override="tool_use[Read]"),
+            _block("tool_use", label_override="tool_use[Edit]"),
+        ]),
+        _turn(2, "user", [_block("tool_result")]),
+    ]
+    boundaries = _boundaries([
+        _delta_entry("f1", "2026-09-06T10:00:00Z", 1, is_first=True),
+        _delta_entry("f2", "2026-09-06T10:01:00Z", 3),
+    ])
+    rows = build_turn_requests(turns, boundaries, {}, 1)
+    check("both tool_use names captured, in block order",
+          rows[0]["tool_names"] == ["Read", "Edit"], rows)
+
+
+# --- independent per-column resolution (no all-or-nothing gate, unlike the aggregate row) -------
+
+def test_turn_requests_columns_resolve_independently() -> None:
+    turns = [_turn(0, "user", [_block("text", "go")])]
+    boundaries = _boundaries([
+        _delta_entry("f1", "2026-09-06T10:00:00Z", 1, is_first=True),
+        _delta_entry("f2", "2026-09-06T10:01:00Z", 2),
+        _delta_entry("f3", "2026-09-06T10:02:00Z", 3),
+    ])
+    times_by_flow = {
+        "f1": ("2026-09-06T10:00:10Z", None),   # end resolves, output_tokens does not
+        # f2 entirely absent -- everything for req2 stays unresolved
+    }
+    rows = build_turn_requests(turns, boundaries, times_by_flow, 1)
+    req1, req2, req3 = rows
+    check("req1 model_seconds resolves even though its own tokens do not",
+          req1["model_seconds"] == 10.0, req1)
+    check("req1 tokens stay None ('?') when output_tokens itself is None", req1["tokens"] is None, req1)
+    check("req1 tool_seconds resolves independently of the missing tokens (50s)",
+          req1["tool_seconds"] == 50.0, req1)
+    check("req2 (flow entirely absent from times_by_flow) has all three numeric fields None",
+          req2["model_seconds"] is None and req2["tool_seconds"] is None and req2["tokens"] is None, req2)
+    check("req2's tool_names still resolve with no join at all (empty, text-only conversation)",
+          req2["tool_names"] == [], req2)
+
+
+# --- out-of-range turn number ------------------------------------------------------------------
+
+def test_turn_requests_out_of_range_raises() -> None:
+    turns = [
+        _turn(0, "user", [_block("text", "go")]),
+        _turn(1, "user", [_block("text", "next")]),
+    ]
+    boundaries = _boundaries([
+        _delta_entry("f1", "2026-09-06T10:00:00Z", 1, is_first=True),
+        _delta_entry("f2", "2026-09-06T10:01:00Z", 2),
+    ])
+    raised_low = raised_high = None
+    try:
+        build_turn_requests(turns, boundaries, {}, 0)
+    except UnknownTurnNumberError as exc:
+        raised_low = str(exc)
+    try:
+        build_turn_requests(turns, boundaries, {}, 3)
+    except UnknownTurnNumberError as exc:
+        raised_high = str(exc)
+    check("turn 0 raises UnknownTurnNumberError", raised_low is not None and "1..2" in raised_low, raised_low)
+    check("turn 3 (one past the last) raises UnknownTurnNumberError",
+          raised_high is not None and "1..2" in raised_high, raised_high)
+
+
+# --- render_turn_detail ---------------------------------------------------------------------
+
+def test_render_turn_detail_line_shape() -> None:
+    rows = [{
+        "number": 42, "timestamp": "2026-09-06T22:43:38Z", "model_seconds": 5,
+        "tool_seconds": 582, "tokens": 193, "tool_names": ["Bash"],
+    }]
+    got = render_turn_detail(rows)
+    expected = (
+        f"REQ 42  {_local_clock('2026-09-06T22:43:38Z')}  model       5s  tool    9m42s"
+        f"        193 tok  Bash\n"
+    )
+    check("turn-detail line matches the exact expected layout", got == expected, got)
+
+
+def test_render_turn_detail_unresolved_and_text_only() -> None:
+    rows = [{
+        "number": 77, "timestamp": "2026-09-06T23:09:03Z", "model_seconds": 12,
+        "tool_seconds": None, "tokens": 973, "tool_names": [],
+    }]
+    got = render_turn_detail(rows)
+    check("unresolved tool_seconds renders '?', empty tool_names trails with nothing",
+          "?" in got and got.rstrip().endswith("tok"), got)
+
+
+def test_render_turn_detail_empty() -> None:
+    check("no rows -> 'no requests found'", render_turn_detail([]) == "no requests found\n")
+
+
 # ORCHESTRATOR
 
 def test_turns_workflow() -> None:
@@ -336,6 +492,13 @@ def test_turns_workflow() -> None:
     test_render_turns_line_shape()
     test_render_turns_unresolved_row_shows_question_marks()
     test_render_turns_empty()
+    test_turn_requests_tool_names_and_last_of_group_suppression()
+    test_turn_requests_multiple_tool_use_names_in_order()
+    test_turn_requests_columns_resolve_independently()
+    test_turn_requests_out_of_range_raises()
+    test_render_turn_detail_line_shape()
+    test_render_turn_detail_unresolved_and_text_only()
+    test_render_turn_detail_empty()
 
     total = len(PASS_LIST) + len(FAIL_LIST)
     print(f"{len(PASS_LIST)}/{total} checks passed")

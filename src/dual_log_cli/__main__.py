@@ -44,6 +44,9 @@ Commands:
                              summed output tokens, and a preview of the prompt that opened it — "?"
                              for the duration/model/tool/token columns when the transcript join
                              this needs does not resolve for the turn
+    turns <session> N        one line per REQUEST of turn N instead: REQ number/clock, model
+                             seconds, tool seconds (none for the turn's own last request), output
+                             tokens, and the tool_use names of that request's own reply
     expand <s> <msg>         full content of that msg, plus what the proxy stripped/injected there
     expand <s> <msg> [--before N] [--after N] [--only X]   full content of the window around it
 
@@ -61,6 +64,7 @@ Usage (from project root, or via bin/duallog once symlinked into PATH):
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 --req 259
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 --req 259 261
     ./venv/bin/python -m src.dual_log_cli turns websearch_1787924727
+    ./venv/bin/python -m src.dual_log_cli turns websearch_1787924727 1
     ./venv/bin/python -m src.dual_log_cli expand websearch_1787924727 721
     ./venv/bin/python -m src.dual_log_cli expand websearch_1787924727 721 --before 2 --after 1
 
@@ -96,12 +100,15 @@ from .render import (
     render_reqs_merged,
     render_search,
     render_sessions,
+    render_turn_detail,
     render_turns,
 )
 from .search import find_matches
 from .timeline import (
     AmbiguousRequestNumberError,
     UnknownRequestNumberError,
+    UnknownTurnNumberError,
+    build_turn_requests,
     build_turn_rows,
     full_turn,
     load_timeline,
@@ -194,10 +201,17 @@ def _parse_args(argv: list) -> argparse.Namespace:
             "a one-line preview of the prompt that opened the turn. The duration/model/tool/token "
             "columns print \"?\" for a turn whose requests do not all resolve against CC's own "
             "transcript (the same join `msgs`' CR/CC separator uses) — the clock and request "
-            "count still print, since they need no transcript join at all."
+            "count still print, since they need no transcript join at all. Give a turn number N "
+            "(as printed by the bare listing) to see one line per REQUEST of that turn instead: "
+            "REQ number/clock, model seconds, tool seconds (next request's send minus this "
+            "stream end; the turn's own last request shows none), output tokens, and the "
+            "tool_use names of that request's own reply (e.g. `Bash`, or nothing for a "
+            "text-only reply) — each column resolves independently, \"?\" only where it does not."
         ),
     )
     turns.add_argument("session", help="session stem or unambiguous substring")
+    turns.add_argument("turn", nargs="?", type=int, default=None, metavar="N",
+                       help="show one line per request of turn N instead of the bare per-turn listing")
     expand = sub.add_parser(
         "expand",
         help="full content of one msg, or of a window around it",
@@ -452,7 +466,11 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
 # turns — a single session, like msgs/expand (no scope, no date window): the transcript join
 # (usage.build_request_times_by_flow, the SAME per-request join `msgs`' CR/CC resolves, joined by
 # requestId rather than by cache figures) feeds timeline.build_turn_rows, which does the turn
-# grouping and duration arithmetic; render_turns only lays the rows out.
+# grouping and duration arithmetic; render_turns only lays the rows out. `turns <session> N`
+# (2026-09-09) routes the SAME loaded data + times_by_flow through timeline.build_turn_requests
+# instead, for one line per request of turn N — UnknownTurnNumberError (raised for N outside
+# 1..total, the SAME range `turn_openers` itself defines) is caught and its own message printed,
+# mirroring `msgs --req`'s UnknownRequestNumberError handling above.
 def _run_turns(dual_log_dir, args: argparse.Namespace) -> int:
     data, code = _load_for(dual_log_dir, args.session)
     if data is None:
@@ -464,8 +482,16 @@ def _run_turns(dual_log_dir, args: argparse.Namespace) -> int:
         print("session carries no turn-opening msgs", file=sys.stderr)
         return 2
     times_by_flow = build_request_times_by_flow(data["session"], data["boundaries"])
-    rows = build_turn_rows(data["turns"], data["boundaries"], times_by_flow)
-    sys.stdout.write(render_turns(rows))
+    if args.turn is None:
+        rows = build_turn_rows(data["turns"], data["boundaries"], times_by_flow)
+        sys.stdout.write(render_turns(rows))
+        return 0
+    try:
+        detail_rows = build_turn_requests(data["turns"], data["boundaries"], times_by_flow, args.turn)
+    except UnknownTurnNumberError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    sys.stdout.write(render_turn_detail(detail_rows))
     return 0
 
 
