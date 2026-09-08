@@ -22,6 +22,10 @@ class AmbiguousRequestNumberError(Exception):
     pass
 
 
+class UnknownTurnNumberError(Exception):
+    pass
+
+
 # FUNCTIONS
 
 
@@ -488,17 +492,11 @@ def _turn_preview(turn: dict) -> str:
     return preview
 
 
-# Per-turn rows for `turns <session>`: number, first-request send timestamp, request count,
-# preview, and — when every request of the turn resolves against `times_by_flow` — total
-# duration, model time, tool time and summed output tokens.
-#
-# `times_by_flow` is `usage.build_request_times_by_flow`'s `{flow_id: (stream_end_iso,
-# output_tokens)}` — the SAME transcript join `usage.build_usage_by_flow` performs, joined by
-# requestId, keyed here the same way `msgs`' CR/CC map is. A request whose flow is absent from it
-# (transcript join failed for the session, or this one request's own usage never resolved) makes
-# the WHOLE turn's duration/model/tool/tokens print as "?" — never a partial number computed from
-# only the requests that DID resolve, since a partial sum over a subset would be silently wrong
-# rather than visibly missing. The request count and preview/clock print regardless.
+# Shared turn-assignment walk for `build_turn_rows` (per-turn summary) and `build_turn_requests`
+# (per-request detail, 2026-09-09) — split out so both read the identical grouping rather than
+# risking the two drifting apart. Returns `(markers, openers, groups)`: `markers` is
+# `request_markers`' own `{msg_index: marker}`, `openers` is `turn_openers`' own msg-index list,
+# `groups[i]` is the SORTED list of msg-index keys (== request order) belonging to turn `i+1`.
 #
 # Turn ASSIGNMENT is the one non-obvious part (see Gotchas in DOCS.md): a request's msg-index KEY
 # in `request_markers` (its `start_index`, the smallest index its OWN send first reveals) is NOT
@@ -511,20 +509,37 @@ def _turn_preview(turn: dict) -> str:
 # openers already contained in that request's own payload. Verified against two real sessions:
 # using `start_index` instead over-counted `reldist-power`'s turn 1 by exactly the one request
 # whose send bundled the turn's own idle-text reply together with the next turn's new prompt.
-def build_turn_rows(turns: list, boundaries: list, times_by_flow: dict) -> list:
+def _group_markers_by_turn(turns: list, boundaries: list) -> tuple:
     markers = request_markers(boundaries or [])
     openers = turn_openers(turns)
+    groups = [[] for _ in openers]
+    if openers:
+        for msg_index in sorted(markers):
+            marker = markers[msg_index]
+            position = bisect.bisect_right(openers, marker["message_count"] - 1)
+            position = max(1, min(position, len(openers))) - 1
+            groups[position].append(msg_index)
+    return markers, openers, groups
+
+
+# Per-turn rows for `turns <session>`: number, first-request send timestamp, request count,
+# preview, and — when every request of the turn resolves against `times_by_flow` — total
+# duration, model time, tool time and summed output tokens.
+#
+# `times_by_flow` is `usage.build_request_times_by_flow`'s `{flow_id: (stream_end_iso,
+# output_tokens)}` — the SAME transcript join `usage.build_usage_by_flow` performs, joined by
+# requestId, keyed here the same way `msgs`' CR/CC map is. A request whose flow is absent from it
+# (transcript join failed for the session, or this one request's own usage never resolved) makes
+# the WHOLE turn's duration/model/tool/tokens print as "?" — never a partial number computed from
+# only the requests that DID resolve, since a partial sum over a subset would be silently wrong
+# rather than visibly missing. The request count and preview/clock print regardless.
+def build_turn_rows(turns: list, boundaries: list, times_by_flow: dict) -> list:
+    markers, openers, groups = _group_markers_by_turn(turns, boundaries)
     if not openers:
         return []
-    groups = [[] for _ in openers]
-    for msg_index in sorted(markers):
-        marker = markers[msg_index]
-        position = bisect.bisect_right(openers, marker["message_count"] - 1)
-        position = max(1, min(position, len(openers))) - 1
-        groups[position].append(marker)
     rows = []
     for position, opener in enumerate(openers):
-        group = groups[position]
+        group = [markers[msg_index] for msg_index in groups[position]]
         row = {
             "number": position + 1,
             "timestamp": group[0]["timestamp"] if group else None,
@@ -557,6 +572,90 @@ def build_turn_rows(turns: list, boundaries: list, times_by_flow: dict) -> list:
                 for i in range(len(resolved) - 1)
             )
             row["tokens"] = sum(tokens for _, _, tokens in resolved)
+        rows.append(row)
+    return rows
+
+
+# "tool_use[Name]" -> "Name" (see `timeline._block_label` — the ONLY place this label shape is
+# produced). Distinct from `render._tool_name_from_label`'s "tool[Name]" (a request's
+# system_delta/tools_delta line label, a different bracket text entirely).
+def _tool_use_name_from_label(label: str) -> str:
+    return label[len("tool_use["):-1]
+
+
+# The tool_use names an ASSISTANT reply carries, in block order, over msg indices [start, end) —
+# `build_turn_requests`' per-request tool column. Empty for a text-only reply (nothing tagged
+# assistant/tool_use in the range) — never "?", since this reads only the timeline data already
+# loaded, no transcript join involved.
+def _tool_use_names(turns: list, start: int, end: int) -> list:
+    names = []
+    for msg in turns[start:end]:
+        if msg.get("role") != "assistant":
+            continue
+        for block in msg.get("blocks", []):
+            if block.get("type") == "tool_use":
+                names.append(_tool_use_name_from_label(block.get("label", "")))
+    return names
+
+
+# Per-request rows for `turns <session> N` (2026-09-09) — one line per request of turn `N` (1-based,
+# as the bare `turns` listing itself numbers them): REQ number/clock, model seconds, tool seconds,
+# output tokens, and the tool_use names of THIS request's own reply.
+#
+# Unlike `build_turn_rows`' all-or-nothing aggregate, each of model_seconds/tool_seconds/tokens
+# resolves INDEPENDENTLY here — there is no sum to protect from a silent partial, so a request
+# missing only its token count still shows its model/tool seconds. `tool_seconds` additionally
+# needs the reply's own stream-end time (`times_by_flow`, this request) AND the SEND time of the
+# request right after it (`request_markers`' own timestamp — no transcript join needed for that
+# half) — but is deliberately left unresolved (`?`, same symbol as a genuine join failure) for the
+# turn's OWN LAST request, mirroring `build_turn_rows`' "the turn's last request contributes no
+# tool time": even when a later turn's own first request exists and would otherwise supply a
+# next-send time, that gap belongs to the NEXT turn's accounting, not this one's.
+#
+# `tool_names` is read from THIS request's OWN reply — the msg range `[this request's own
+# message_count, the NEXT request's message_count)` — the reply that request produced.
+# Deliberately the NEXT request GLOBALLY (not bounded to this turn): a reply is a real thing that
+# exists regardless of which turn the FOLLOWING request later gets assigned to (the exact M1
+# finding — an idle text reply can be bundled into the next TURN's own opening request). Never
+# "?": a text-only reply legitimately shows no names, which reads identically to data that could
+# not be resolved, but this column needs no transcript join at all, so that ambiguity never
+# actually arises against real data.
+def build_turn_requests(turns: list, boundaries: list, times_by_flow: dict, turn_number: int) -> list:
+    markers, openers, groups = _group_markers_by_turn(turns, boundaries)
+    if turn_number < 1 or turn_number > len(openers):
+        raise UnknownTurnNumberError(f"turn {turn_number} out of range (1..{len(openers)})")
+    all_indices = sorted(markers)
+    position_of = {msg_index: position for position, msg_index in enumerate(all_indices)}
+    group = groups[turn_number - 1]
+    rows = []
+    for msg_index in group:
+        marker = markers[msg_index]
+        position = position_of[msg_index]
+        next_index = all_indices[position + 1] if position + 1 < len(all_indices) else None
+        next_marker = markers[next_index] if next_index is not None else None
+        reply_end = next_marker["message_count"] if next_marker else len(turns)
+        row = {
+            "number": marker["number"],
+            "timestamp": marker["timestamp"],
+            "model_seconds": None,
+            "tool_seconds": None,
+            "tokens": None,
+            "tool_names": _tool_use_names(turns, marker["message_count"], reply_end),
+        }
+        times = (times_by_flow or {}).get(marker.get("flow_id"))
+        if times is not None:
+            send = local_datetime(marker["timestamp"])
+            end = local_datetime(times[0])
+            output_tokens = times[1]
+            if send is not None and end is not None:
+                row["model_seconds"] = (end - send).total_seconds()
+            if output_tokens is not None:
+                row["tokens"] = output_tokens
+            is_last_of_group = msg_index == group[-1]
+            if end is not None and not is_last_of_group and next_marker is not None:
+                next_send = local_datetime(next_marker["timestamp"])
+                if next_send is not None:
+                    row["tool_seconds"] = (next_send - end).total_seconds()
         rows.append(row)
     return rows
 

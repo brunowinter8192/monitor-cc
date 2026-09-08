@@ -804,3 +804,28 @@ def _turn_line(row: dict) -> str:
         f"{duration}  model {model}  tool {tool}  "
         f"{row['requests']:>3} reqs  {tokens} tok  {row['preview']}"
     )
+
+
+# turns <session> N (2026-09-09): one line per request of turn N — `rows` is
+# `timeline.build_turn_requests`'s own list, one entry per REQ in msg-index (== chronological)
+# order. Each of model/tool seconds and tokens resolves and prints "?" INDEPENDENTLY (unlike the
+# bare listing's all-or-nothing aggregate row — there is no sum here to protect from a partial),
+# including the turn's own last request's tool column, which `build_turn_requests` leaves
+# unresolved by design (see its own Purpose) — same "?" symbol either way, since a reader digging
+# into a slow turn needs "no number here" more than which of the two reasons produced it. The
+# tool_use names are space-joined in reply order, empty (not "?") for a text-only reply.
+def render_turn_detail(rows: list) -> str:
+    if not rows:
+        return "no requests found\n"
+    return "\n".join(_turn_detail_line(row) for row in rows) + "\n"
+
+
+def _turn_detail_line(row: dict) -> str:
+    model = f"{_fmt_duration(row['model_seconds']):>{_TURN_DURATION_WIDTH}}"
+    tool = f"{_fmt_duration(row['tool_seconds']):>{_TURN_DURATION_WIDTH}}"
+    tokens = f"{_fmt_tokens(row['tokens']):>9}"
+    tools = " ".join(row["tool_names"])
+    return (
+        f"REQ {row['number']:<{_REQ_NUMBER_WIDTH}}{_clock(row['timestamp'])}  "
+        f"model {model}  tool {tool}  {tokens} tok  {tools}"
+    )
