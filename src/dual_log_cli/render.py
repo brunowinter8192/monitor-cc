@@ -390,149 +390,139 @@ def _skipped_lines(skipped: int) -> list:
 _REQ_NUMBER_WIDTH = 4
 
 
-# reqs: one line per session ("session <stem>"), then one "REQ n   HH:MM:SS" line per request —
-# the exact numbers and timestamps `msgs`' own separators print, in the SAME order (msg-index
-# order, which is also chronological order within the session) — re-fires already collapsed and a
-# restart already handled exactly the way `request_markers` handles it for `msgs`, since this is
-# the SAME dict, just walked here instead of interleaved with msg lines. No other columns, no
-# counts, no CR/CC — `results` is [(session, boundaries), …] in listing order (already scope/date/
-# family-filtered and skip-on-unloadable exactly like `search`), `skipped` the same trailing note.
-#
-# `gap_minutes` (2026-09-04, `--gap MINUTES`) is additive and `None` by default, reproducing the
-# plain listing byte-for-byte. When set, `_gap_lines` replaces the full per-session listing with
-# only the REQs bracketing a qualifying gap — see `_bracket_gap_lines` for the exact rule.
-#
-# `rebuild`/`drop` (later addition, both `False` by default — reproduces the pre-existing listing
-# byte-for-byte when neither is set, `usage_by_stem` unused in that case) route through the
-# `_entries_for_session`/`_rebuild_drop_lines`/`_rebuild_drop_gap_lines` path instead — see the
-# comment above `_rebuild_drop_qualifies` for the shared predicate both this and `render_reqs_merged`
-# apply. `--drop`'s predecessor is always the SAME session's own previous REQ (`_entries_for_session`
-# precomputes it while still walking one session in isolation) — trivially true here since this
-# function never merges sessions to begin with.
-#
-# `turns_by_stem` (2026-09-10, `--turns`) is `None` by default, reproducing every pre-existing
-# output byte-for-byte — when set (a `{stem: data["turns"]}` map, built only when `--turns` is
-# given, see `__main__.py`), it takes its OWN branch entirely, ahead of the `filtering` one above,
-# routing each session's `(turns, boundaries)` through `_turn_grouped_lines` instead. `--turns` is
-# a usage error together with `--merged`/`--gap`/`--rebuild`/`--drop` (enforced in `__main__.py`,
-# before this function ever runs), so `gap_minutes`/`rebuild`/`drop` are never meaningfully set
-# alongside a non-`None` `turns_by_stem` in practice.
-def render_reqs(results: list, skipped: int = 0, gap_minutes: int = None,
+# reqs (2026-09-16, M6 redesign — one fixed line form, every flag a pure filter/selector over it):
+# per session, `session <stem>` then every REQ under its turn separator — turn grouping is now
+# ALWAYS on (the M5 `--turns` behavior, no longer opt-in; a session with no turn opener at all
+# prints its REQ lines with no separators, see `_session_entries_and_separators`) — every REQ line
+# carrying `CR c  CC c` via `usage.build_usage_by_flow` (always joined now, not only under
+# `--rebuild`/`--drop` — see `__main__.py`), `CR ?  CC ?` when the flow does not resolve. `--turn N`
+# keeps only that turn (a session missing it prints its header only); `--gap MINUTES`/`--rebuild`/
+# `--drop` are pure filters over the SAME per-session REQ sequence, applied AFTER `--turn` narrows
+# it (`_apply_filters`) — and a turn's separator prints only when at least one of ITS OWN REQ lines
+# survives every active filter; the separator's own content (clock/span/preview) is always the
+# WHOLE turn's, never recomputed from whatever subset of its REQs happened to survive (verified:
+# `reqs k-ratio --gap 60`'s surviving REQ 46/47/393/394 print under turn 4/5/15/16's own separators,
+# each showing that turn's real span even though only one of its REQs is printed). `results` is
+# `[(session, boundaries), …]`, already scope/date/family-filtered and skip-on-unloadable exactly
+# like `search`; `turns_by_stem`/`usage_by_stem` are `{stem: data["turns"]}` / `{stem: {flow_id:
+# (cr, cc)}}`, built once per loaded session in `__main__.py` regardless of which flags are set.
+def render_reqs(results: list, skipped: int = 0, turn: int = None, gap_minutes: int = None,
                 usage_by_stem: dict = None, rebuild: bool = False, drop: bool = False,
                 turns_by_stem: dict = None) -> str:
     if not results:
         lines = ["no sessions found"]
         return "\n".join(lines + _skipped_lines(skipped)) + "\n"
-    if turns_by_stem is not None:
-        lines = []
-        for session, boundaries in results:
-            lines.append(f"session {session['stem']}")
-            turns = turns_by_stem.get(session.get("stem", ""), [])
-            lines.extend(_turn_grouped_lines(turns, boundaries))
-            lines.append("")
-        return "\n".join(lines[:-1] + _skipped_lines(skipped)) + "\n"
-    filtering = rebuild or drop
     lines = []
     for session, boundaries in results:
-        lines.append(f"session {session['stem']}")
-        markers = request_markers(boundaries or [])
-        if filtering:
-            usage_map = (usage_by_stem or {}).get(session.get("stem", ""), {})
-            entries = _entries_for_session(markers, usage_map)
-            if gap_minutes is None:
-                lines.extend(_rebuild_drop_lines(entries, rebuild, drop))
-            else:
-                lines.extend(_rebuild_drop_gap_lines(entries, gap_minutes, rebuild, drop))
-        else:
-            ordered = [(msg_index, markers[msg_index]) for msg_index in sorted(markers)]
-            if gap_minutes is None:
-                lines.extend(_req_line(marker) for _msg_index, marker in ordered)
-            else:
-                lines.extend(_gap_lines(ordered, gap_minutes))
+        stem = session.get("stem", "")
+        lines.append(f"session {stem}")
+        usage_map = (usage_by_stem or {}).get(stem, {})
+        turns = (turns_by_stem or {}).get(stem, [])
+        entries, separators = _session_entries_and_separators(boundaries, turns, usage_map, stem)
+        entries = _apply_filters(entries, turn, gap_minutes, rebuild, drop)
+        lines.extend(_grouped_lines(entries, separators, merged=False))
         lines.append("")
     return "\n".join(lines[:-1] + _skipped_lines(skipped)) + "\n"
 
 
-# reqs --merged (2026-09-04): ALL sessions in scope combined into ONE chronological REQ chain,
-# instead of one listing per session — because the prompt cache hangs on the shared prefix (system
-# blocks + tools) every worker of a project sends, so a request from ANY session in scope keeps
-# that prefix warm for every OTHER one; the gap that actually matters for cache health is between
-# consecutive requests of ANY session, not within one. "merged <N> sessions" header (N = sessions
-# that actually loaded, i.e. `len(results)` — `skipped` is reported separately, as always), then
-# either every REQ across every session as a `_req_line` tagged with its own session (plain
-# listing), or, with `gap_minutes` set, `_bracket_gap_lines` over that SAME merged, globally-sorted
-# sequence — which is what makes a within-session gap that a DIFFERENT session's request happens
-# to fall inside no longer qualify (its two new neighbors are the bridging request, not each
-# other), and a gap that only exists ACROSS sessions qualify correctly, with no special-casing
-# either way: both are just consequences of pairing GLOBAL chronological neighbors.
-#
-# `rebuild`/`drop` route through the SAME filtered entry list, `usage_by_stem` threaded into
-# `_merged_entries` (which threads it further into each session's own `_entries_for_session` call).
-# `--drop`'s predecessor stays the SAME session's own previous REQ even here — the merged chain only
-# changes ORDER (chronological interleaving) and adds the `  <tag>` column; the shared prefix a
-# cache-drop is measuring is system blocks + tools, never the conversation itself, so comparing one
-# session's CR against a DIFFERENT session's CR+CC is not meaningful (see Gotchas). `--gap` is the
-# one thing that DOES use cross-session chronological neighbors here, via `_bracket_gap_positions`
-# reading `entries[i][0]` (the dt) — unaffected by this, since gap health and drop health measure
-# different things.
-def render_reqs_merged(results: list, skipped: int = 0, gap_minutes: int = None,
-                       usage_by_stem: dict = None, rebuild: bool = False, drop: bool = False) -> str:
+# reqs --merged: every session in scope folded into ONE chronological REQ chain instead of one
+# listing per session — the prompt cache is shared across a project's workers, so the gap that
+# matters spans every session, not one. "merged <N> sessions" header (N = sessions that actually
+# loaded, `len(results)`) replaces the per-session `session <stem>` lines; every REQ line AND every
+# turn separator carries the session's own tag (`_session_tag`, placed right after the span on a
+# separator, right after the clock on a REQ line) — turn numbers stay PER SESSION
+# (`_session_entries_and_separators` computes them before the merge), so the tag is what
+# disambiguates a repeated turn number across sessions. `--gap` pairs GLOBAL chronological
+# neighbors across every session (`_apply_filters`/`_bracket_gap_positions` read only `entries[i][0]`,
+# the dt, over the merged, sorted sequence); `--drop`'s predecessor stays the SAME session's own
+# previous REQ regardless (`_entries_for_session` precomputes it per session, before the merge).
+def render_reqs_merged(results: list, skipped: int = 0, turn: int = None, gap_minutes: int = None,
+                       usage_by_stem: dict = None, rebuild: bool = False, drop: bool = False,
+                       turns_by_stem: dict = None) -> str:
     if not results:
         lines = ["no sessions found"]
         return "\n".join(lines + _skipped_lines(skipped)) + "\n"
-    filtering = rebuild or drop
-    entries = _merged_entries(results, usage_by_stem if filtering else None)
+    entries, separators = _merged_entries(results, turns_by_stem, usage_by_stem)
+    entries = _apply_filters(entries, turn, gap_minutes, rebuild, drop)
     lines = [f"merged {len(results)} sessions"]
-    if filtering:
-        if gap_minutes is None:
-            lines.extend(_rebuild_drop_lines(entries, rebuild, drop))
-        else:
-            lines.extend(_rebuild_drop_gap_lines(entries, gap_minutes, rebuild, drop))
-    elif gap_minutes is None:
-        lines.extend(_req_line(marker, tag=tag) for _dt, marker, tag, _usage, _prev_usage in entries)
-    else:
-        lines.extend(_bracket_gap_lines(entries, gap_minutes))
+    lines.extend(_grouped_lines(entries, separators, merged=True))
     return "\n".join(lines + _skipped_lines(skipped)) + "\n"
 
 
-# One "REQ n   HH:MM:SS" line, optionally carrying "  <tag>" (--merged, e.g. a worker name), then
-# "  +Nm" (--gap, on the AFTER line of a qualifying pair), then "  CR c  CC c[  −N]" (--rebuild/
-# --drop) — clock, tag, gap tail, usage tail, in that order, so every combination reads as a single
-# growing tail rather than needing its own layout.
-def _req_line(marker: dict, tag: str = "", gap_tail: str = "", usage_tail: str = "") -> str:
+# One "REQ n   HH:MM:SS[  tag]  CR c  CC c" line — tag only under --merged, CR padded to
+# `cr_width` (left-justified, see `_cr_width_by_stem`) so the CC column lines up across every REQ
+# of the same session; "?" for either figure when `usage` is None (the flow never resolved).
+def _req_line(marker: dict, tag: str, usage, cr_width: int) -> str:
     tag_part = f"  {tag}" if tag else ""
-    return f"REQ {marker['number']:<{_REQ_NUMBER_WIDTH}}{_clock(marker['timestamp'])}{tag_part}{gap_tail}{usage_tail}"
+    return f"REQ {marker['number']:<{_REQ_NUMBER_WIDTH}}{_clock(marker['timestamp'])}{tag_part}{_usage_part(usage, cr_width)}"
+
+
+# "  CR <padded>  CC <val>" — cache_read_input_tokens / cache_creation_input_tokens, digit-grouped
+# like every other chars/token figure in this package, "?" for either when usage is None.
+def _usage_part(usage, cr_width: int) -> str:
+    cr_str = f"{usage[0]:,}" if usage else "?"
+    cc_str = f"{usage[1]:,}" if usage else "?"
+    return f"  CR {cr_str:<{cr_width}}  CC {cc_str}"
 
 
 # The session's own short --merged tag: a worker's name or a main session's project label — read
-# straight off the STEM via `discovery.stem_identity` (2026-09-10, replaces the old
-# `context.rsplit("/", 1)[-1]` — the rendered CONTEXT string it read is gone) rather than through
-# any project-path lookup, since identity's own third element IS the tag, worker or main alike.
-# Falls back to the raw stem when `stem_identity` cannot parse it at all.
+# straight off the STEM via `discovery.stem_identity` rather than through any project-path lookup,
+# since identity's own third element IS the tag, worker or main alike. Falls back to the raw stem
+# when `stem_identity` cannot parse it at all.
 def _session_tag(session: dict) -> str:
     identity = stem_identity(session.get("stem", ""))
     return identity[-1] if identity else session.get("stem", "")
 
 
-# One session's own markers as [(dt, marker, tag, usage, prev_usage), …], in msg-index order
-# (already chronological within a session) — the shared entry shape `_rebuild_drop_lines`/
-# `_rebuild_drop_gap_lines`/`_bracket_gap_positions` all consume, whether built here for a single
-# session or flattened across many by `_merged_entries`. `usage` is `usage_map.get(marker's
-# flow_id)`, `None` when the map is empty/absent or the flow never resolved — exactly what
-# `_rebuild_drop_qualifies` reads as "unresolved, skip". `prev_usage` is PRECOMPUTED here, while
-# this function is still walking ONE session in msg-index order — it is this marker's own session's
-# immediately preceding request's `usage` (`None` for the session's own first request) — and stays
-# fixed on the tuple from this point on, regardless of whatever order the entry later ends up in
-# once `_merged_entries` flattens and re-sorts across sessions by `dt`. This is what makes a
-# `--drop` predecessor always the SAME session's own previous request, even under `--merged`: the
-# shared prompt-cache prefix a cache drop is measuring is system blocks + tools, never the
-# conversation itself, so comparing one session's CR against a DIFFERENT session's CR+CC would be
-# meaningless (see Gotchas — this was corrected after an initial cut compared cross-session
-# chronological neighbors instead). A marker whose timestamp fails to parse is dropped, same as
-# `_merged_entries` already does for its own chronological-ordering need — real dual-log timestamps
-# are never malformed, so this never fires on genuine data; such a drop also skips one position in
-# the same-session `prev_usage` chain, exactly like a genuine `_is_sidecar` exclusion would.
-def _entries_for_session(markers: dict, usage_map: dict, tag: str = "") -> list:
+# One session's REQ entries plus its turn separators, both built off the SAME
+# `_group_markers_by_turn` walk (turn assignment unchanged since 2026-09-08/10 — see
+# timeline.py's own Gotchas). `separators` is `{(stem, turn_number): text}`, `text` always the
+# WHOLE turn's own clock/span/preview (`_fmt_duration` for the span, `_turn_preview` for the
+# preview) — filtering downstream only decides whether a turn's text prints at all, never what it
+# says. `tag` (non-empty only under --merged) is baked into the separator text right after the
+# span, and into every entry, for `_req_line`'s own tag column. A session with no turn opener at
+# all yields an empty `separators` dict — its entries all carry `turn_number=None`, a key
+# `_grouped_lines` never finds in `separators`, so no separator ever prints for it (the "no opener
+# -> no separators" case falls out of that lookup, no special case needed).
+def _session_entries_and_separators(boundaries: list, turns: list, usage_map: dict,
+                                    stem: str, tag: str = "") -> tuple:
+    markers, openers, groups = _group_markers_by_turn(turns or [], boundaries or [])
+    turn_by_msg_index = {}
+    separators = {}
+    for position, opener in enumerate(openers):
+        group = groups[position]
+        if not group:
+            continue
+        turn_number = position + 1
+        for msg_index in group:
+            turn_by_msg_index[msg_index] = turn_number
+        group_markers = [markers[msg_index] for msg_index in group]
+        first_dt = local_datetime(group_markers[0]["timestamp"])
+        last_dt = local_datetime(group_markers[-1]["timestamp"])
+        span = (last_dt - first_dt).total_seconds() if first_dt and last_dt else None
+        tag_part = f"  {tag}" if tag else ""
+        separators[(stem, turn_number)] = (
+            f"── turn {turn_number}  {_clock(group_markers[0]['timestamp'])}  "
+            f"{_fmt_duration(span)}{tag_part}  {_turn_preview(turns[opener])} ──"
+        )
+    entries = _entries_for_session(markers, usage_map, turn_by_msg_index, stem, tag)
+    return entries, separators
+
+
+# One session's own markers as [(dt, stem, marker, tag, turn_number, usage, prev_usage), …], in
+# msg-index order (already chronological within a session) — the shared entry shape every filter
+# and `_grouped_lines` consumes, whether built here for a single session or flattened across many
+# by `_merged_entries`. `usage` is `usage_map.get(marker's flow_id)`, `None` when the map is
+# empty/absent or the flow never resolved. `prev_usage` is PRECOMPUTED here, while this function is
+# still walking ONE session in msg-index order — this marker's own session's immediately preceding
+# request's `usage` (`None` for the session's own first request) — and stays fixed on the tuple
+# from this point on, regardless of whatever order the entry later ends up in once `_merged_entries`
+# flattens and re-sorts across sessions by `dt`. This is what makes a `--drop` predecessor always
+# the SAME session's own previous request, even under `--merged`. A marker whose timestamp fails to
+# parse is dropped, same as `_merged_entries` already does for its own chronological-ordering need
+# — real dual-log timestamps are never malformed, so this never fires on genuine data.
+def _entries_for_session(markers: dict, usage_map: dict, turn_by_msg_index: dict,
+                         stem: str, tag: str = "") -> list:
     entries = []
     prev_usage = None
     for msg_index in sorted(markers):
@@ -541,42 +531,42 @@ def _entries_for_session(markers: dict, usage_map: dict, tag: str = "") -> list:
         if dt is None:
             continue
         usage = (usage_map or {}).get(marker.get("flow_id"))
-        entries.append((dt, marker, tag, usage, prev_usage))
+        turn_number = turn_by_msg_index.get(msg_index)
+        entries.append((dt, stem, marker, tag, turn_number, usage, prev_usage))
         prev_usage = usage
     return entries
 
 
-# --merged's flattened, chronologically SORTED [(dt, marker, tag, usage, prev_usage), …] across
-# every session in `results` — the merge point every render (plain, --gap, and --rebuild/--drop)
-# built on top of it shares. `usage_by_stem` (a --rebuild/--drop-only param, `None` for the
-# plain/--gap paths, which never read the usage/prev_usage elements) is `{session_stem: {flow_id:
-# (cr, cc)}}` — looked up once per session here rather than per marker, then threaded through
-# `_entries_for_session`, which computes `prev_usage` PER SESSION before this function's own sort
-# ever runs — the sort below only ever reorders entries for DISPLAY/--gap purposes, it never
-# recomputes or reassigns which predecessor a --drop check reads.
-def _merged_entries(results: list, usage_by_stem: dict = None) -> list:
+# --merged's flattened, chronologically SORTED entries plus every session's own separators, merged
+# into one dict (keys already disambiguated by `stem`, so no collision is possible even when two
+# sessions share a turn NUMBER). `usage_by_stem`/`turns_by_stem` are `{stem: ...}` maps, looked up
+# once per session here rather than per marker, then threaded into `_session_entries_and_separators`,
+# which computes `prev_usage`/turn assignment PER SESSION before this function's own sort ever runs
+# — the sort below only ever reorders entries for DISPLAY/--gap purposes, it never recomputes or
+# reassigns which predecessor a --drop check reads or which turn a REQ belongs to.
+def _merged_entries(results: list, turns_by_stem: dict = None, usage_by_stem: dict = None) -> tuple:
     entries = []
+    separators = {}
     for session, boundaries in results:
+        stem = session.get("stem", "")
         tag = _session_tag(session)
-        usage_map = (usage_by_stem or {}).get(session.get("stem", ""), {}) if usage_by_stem else {}
-        markers = request_markers(boundaries or [])
-        entries.extend(_entries_for_session(markers, usage_map, tag))
+        usage_map = (usage_by_stem or {}).get(stem, {})
+        turns = (turns_by_stem or {}).get(stem, [])
+        session_entries, session_separators = _session_entries_and_separators(
+            boundaries, turns, usage_map, stem, tag)
+        entries.extend(session_entries)
+        separators.update(session_separators)
     entries.sort(key=lambda entry: entry[0])
-    return entries
+    return entries, separators
 
 
-# `--gap MINUTES`'s candidate POSITIONS, as {position: gap_tail} — the pure selection half of
-# `_bracket_gap_lines`, split out so `--rebuild`/`--drop` can filter the exact same candidate set
-# ("the lines --gap would print, before-line included") before rendering, rather than duplicating
-# the pairing walk. For every consecutive pair whose elapsed time is >= gap_minutes (whole minutes,
-# floored — `total_seconds() // 60`, never rounded, so a boundary case is exact: a gap of precisely
-# N minutes qualifies for `--gap N`, one second less does not), both positions are recorded — the
-# before position only if not already recorded (so a position that is already the AFTER of an
-# earlier qualifying pair keeps that tail rather than being reset to tail-less), the after position
-# always with `  +{elapsed}m`. `entries` is `[(dt, marker, tag, usage, prev_usage), …]`, already
-# sorted and already stripped of unparseable timestamps by the caller — this function reads ONLY
-# `dt` (chronological, cross-session neighbors are exactly what `--gap` wants to measure, unlike
-# `--drop`, whose predecessor never crosses a session boundary — see `_entries_for_session`).
+# `--gap MINUTES`'s candidate POSITIONS, as {position: None} — the pure selection half of the old
+# `--gap` renderer, kept as the shared pairing walk now that no line carries a gap-specific tail of
+# its own: every position bracketing a qualifying pause of >= gap_minutes (whole minutes, floored —
+# `total_seconds() // 60`, never rounded, so a boundary case is exact) is recorded, before and
+# after alike — `_apply_filters` only reads the KEY set (`sorted(positions)`). `entries` is already
+# sorted, already stripped of unparseable timestamps by the caller — this function reads ONLY `dt`
+# (index 0), chronological, cross-session neighbors under --merged included, exactly as before.
 def _bracket_gap_positions(entries: list, gap_minutes: int) -> dict:
     positions = {}
     for i in range(len(entries) - 1):
@@ -585,49 +575,13 @@ def _bracket_gap_positions(entries: list, gap_minutes: int) -> dict:
         elapsed = int((dt_after - dt_before).total_seconds() // 60)
         if elapsed < gap_minutes:
             continue
-        positions.setdefault(i, "")
-        positions[i + 1] = f"  +{elapsed}m"
+        positions.setdefault(i, None)
+        positions[i + 1] = None
     return positions
 
 
-# `--gap MINUTES`: only the REQs bracketing a qualifying CONSECUTIVE gap, in chronological order —
-# shared core for both the per-session path (`_gap_lines`, tag always "") and `--merged`
-# (`render_reqs_merged`, tag is each entry's own session). Positions come from
-# `_bracket_gap_positions`; iterating them in ascending order reproduces the exact print order the
-# original single-pass walk did — a REQ that is the AFTER of one qualifying pair and the BEFORE of
-# the next appears exactly once (it is the SAME dict key either way), carrying only its AFTER tail,
-# since `_bracket_gap_positions` never resets an already-recorded position back to tail-less.
-#
-# Fewer than two entries (a lone session with 0-1 requests, or an empty merge) yields `[]` here —
-# the caller still prints its own header line(s), just no REQ lines beneath, which is what lets a
-# reader see a session (or the whole merge) WAS checked rather than silently vanishing.
-def _bracket_gap_lines(entries: list, gap_minutes: int) -> list:
-    positions = _bracket_gap_positions(entries, gap_minutes)
-    lines = []
-    for position in sorted(positions):
-        _dt, marker, tag, _usage, _prev_usage = entries[position]
-        lines.append(_req_line(marker, tag=tag, gap_tail=positions[position]))
-    return lines
-
-
-# `--gap MINUTES`, per-session path: `ordered` is [(msg_index, marker), …] sorted by msg index
-# (chronological within one session) — normalised into `_bracket_gap_lines`' shared entry shape
-# (untagged, usage-less; unparseable timestamps dropped here, same as `_merged_entries` does,
-# rather than skipping only the PAIRS touching them — the two valid neighbors either side of a bad
-# one end up compared to each other directly instead of neither being compared at all; real
-# dual-log timestamps are never malformed, so this only changes a never-observed theoretical case).
-def _gap_lines(ordered: list, gap_minutes: int) -> list:
-    entries = []
-    for _msg_index, marker in ordered:
-        dt = local_datetime(marker["timestamp"])
-        if dt is None:
-            continue
-        entries.append((dt, marker, "", None, None))
-    return _bracket_gap_lines(entries, gap_minutes)
-
-
-# `--rebuild`/`--drop`: usage-driven REQ filtering, orthogonal to `--gap`/`--merged`/scope. Both
-# read the SAME per-request CR/CC `msgs` resolves via `usage.build_usage_by_flow`
+# `--rebuild`/`--drop`: usage-driven REQ predicate, orthogonal to `--gap`/`--merged`/scope/--turn.
+# Both read the SAME per-request CR/CC `msgs` resolves via `usage.build_usage_by_flow`
 # (cache_read_input_tokens / cache_creation_input_tokens) — never re-derived here.
 #
 # `--rebuild` keeps only REQs where CC > CR (this request's own cache write outweighs what it read
@@ -635,83 +589,84 @@ def _gap_lines(ordered: list, gap_minutes: int) -> list:
 # where CR(n) < CR(n-1) + CC(n-1) — part of the prefix the PREVIOUS request had cached (its own
 # read plus what it just wrote) was NOT read again by n, meaning the cache actually cooled between
 # them; exactly equal does NOT qualify (`>=` fails the condition — the STRICT inequality is what
-# "not fully read back" means). "previous" is `n`'s own PRECOMPUTED `prev_usage` (the 5th tuple
-# element `_entries_for_session` set while walking that request's own session in isolation) —
-# ALWAYS the same session's own previous REQ, `--merged` or not: the shared prompt-cache prefix a
-# cache drop is measuring is system blocks + tools, never the conversation, so comparing one
-# session's CR against a DIFFERENT session's CR+CC would be meaningless (see Gotchas — this is a
-# 2026-09-04 correction; an initial cut used the chronological neighbor in the merged chain
-# instead, which could be a different session, and produced nonsensical shortfalls like
-# `capture-crosssession`'s REQ 1 measured against `duallog-search-chars`' totals). REQ 1 of a
-# session — the entry whose own `prev_usage` is `None` — never qualifies for `--drop`, regardless
-# of where it lands in a `--merged` chain's chronological order.
+# "not fully read back" means). "previous" is `n`'s own PRECOMPUTED `prev_usage` (`_entries_for_session`'s
+# same-session predecessor) — ALWAYS the same session's own previous REQ, `--merged` or not: the
+# shared prompt-cache prefix a cache drop is measuring is system blocks + tools, never the
+# conversation, so comparing one session's CR against a DIFFERENT session's CR+CC would be
+# meaningless (see Gotchas). REQ 1 of a session — the entry whose own `prev_usage` is `None` —
+# never qualifies for `--drop`, regardless of where it lands in a `--merged` chain's chronological
+# order.
 #
 # Both flags combine with AND: a REQ must satisfy every active one. A REQ whose own usage (or, for
-# `--drop`, its predecessor's) does not resolve is skipped under either flag — never shown
-# tail-less, never guessed. Returns `None` when the entry does not qualify, else `(cache_read,
-# cache_creation, shortfall)` — `shortfall` is `None` unless `--drop` matched, in which case it is
-# `CR(n-1) + CC(n-1) − CR(n)` (always positive, since the qualifying branch already proved it).
-def _rebuild_drop_qualifies(usage, prev_usage, rebuild: bool, drop: bool):
+# `--drop`, its predecessor's) does not resolve fails — never kept tail-less, never guessed
+# (2026-09-16: this predicate used to also compute a printed shortfall figure; the M6 redesign
+# dropped every tail, so it now returns a plain bool).
+def _rebuild_drop_qualifies(usage, prev_usage, rebuild: bool, drop: bool) -> bool:
     if usage is None:
-        return None
+        return False
     cache_read, cache_creation = usage
     if rebuild and not (cache_creation > cache_read):
-        return None
-    shortfall = None
+        return False
     if drop:
         if prev_usage is None:
-            return None
+            return False
         prev_read, prev_creation = prev_usage
-        prev_total = prev_read + prev_creation
-        if cache_read >= prev_total:
-            return None
-        shortfall = prev_total - cache_read
-    return cache_read, cache_creation, shortfall
+        if cache_read >= prev_read + prev_creation:
+            return False
+    return True
 
 
-# "  CR c  CC c", optionally followed by "  −N" (`--drop`'s shortfall — the real minus sign U+2212,
-# digit-grouped like every other count `_delta_tail` appends, though this one counts tokens rather
-# than chars).
-def _usage_tail(cache_read: int, cache_creation: int, shortfall) -> str:
-    tail = f"  {_fmt_usage(cache_read, cache_creation)}"
-    if shortfall is not None:
-        tail += f"  −{shortfall:,}"
-    return tail
+# The shared filter pipeline every `reqs` flag composes through (2026-09-16, M6): `--turn` narrows
+# FIRST (keeping only entries whose OWN turn number equals it — a session missing that turn
+# contributes nothing, which is what makes it print its header only), then `--gap` (via
+# `_bracket_gap_positions` over whatever survived the narrowing), then `--rebuild`/`--drop` (via
+# `_rebuild_drop_qualifies`, each candidate checked against its OWN precomputed `prev_usage`,
+# independent of whichever entry a `--gap` pairing happened to bracket it with). Every stage is a
+# no-op when its own flag is unset, so a bare call returns `entries` unchanged.
+def _apply_filters(entries: list, turn: int, gap_minutes: int, rebuild: bool, drop: bool) -> list:
+    if turn is not None:
+        entries = [entry for entry in entries if entry[4] == turn]
+    if gap_minutes is not None:
+        positions = _bracket_gap_positions(entries, gap_minutes)
+        entries = [entries[i] for i in sorted(positions)]
+    if rebuild or drop:
+        entries = [entry for entry in entries if _rebuild_drop_qualifies(entry[5], entry[6], rebuild, drop)]
+    return entries
 
 
-# `--rebuild`/`--drop` with NO `--gap`: every entry of the chronological sequence that
-# `_rebuild_drop_qualifies` accepts, in order, each carrying its own `_usage_tail` — no pairing, no
-# gap tail at all. `prev_usage` is read straight off the tuple (`_entries_for_session`'s own
-# same-session precomputation), never re-derived from list position.
-def _rebuild_drop_lines(entries: list, rebuild: bool, drop: bool) -> list:
+# The widest CR figure ("?" counts as 1 char) actually being printed, per session (`stem`) — what
+# `_req_line` pads every CR value to, so the CC column lines up down the page. Computed from
+# exactly the entries about to be rendered (post every filter), not from the session's full,
+# unfiltered REQ list — a narrowed listing (`--turn`/`--gap`/`--rebuild`/`--drop`) reads as its own
+# tight table rather than carrying padding sized for lines it never prints.
+def _cr_width_by_stem(entries: list) -> dict:
+    widths = {}
+    for _dt, stem, _marker, _tag, _turn, usage, _prev_usage in entries:
+        cr_str = f"{usage[0]:,}" if usage else "?"
+        widths[stem] = max(widths.get(stem, 0), len(cr_str))
+    return widths
+
+
+# Renders the (already filtered) entry sequence: a turn separator whenever the (session, turn)
+# key changes from the previous entry AND that key has separator text (a no-opener session's
+# entries all carry `turn_number=None`, a key never present in `separators`, so they render as a
+# flat, separator-free list — no special case needed), then that entry's own `_req_line`. `merged`
+# controls only whether the tag column prints — the per-session listing's own entries already
+# carry `tag=""` throughout, so this is a belt-and-braces switch rather than one this module
+# currently needs to disambiguate.
+def _grouped_lines(entries: list, separators: dict, merged: bool) -> list:
+    cr_width_by_stem = _cr_width_by_stem(entries)
     lines = []
-    for _dt, marker, tag, usage, prev_usage in entries:
-        qualifies = _rebuild_drop_qualifies(usage, prev_usage, rebuild, drop)
-        if qualifies is None:
-            continue
-        cache_read, cache_creation, shortfall = qualifies
-        lines.append(_req_line(marker, tag=tag, usage_tail=_usage_tail(cache_read, cache_creation, shortfall)))
-    return lines
-
-
-# `--rebuild`/`--drop` combined with `--gap M`: "the flags filter the lines --gap would print,
-# before-line included" — `_bracket_gap_positions` gives that exact candidate set (with each
-# position's own gap tail, if any) FIRST, then each candidate is tested against
-# `_rebuild_drop_qualifies` against its OWN `prev_usage` (the tuple's precomputed same-session
-# predecessor — see `_entries_for_session`), which is independent of whichever entry the GAP
-# pairing happens to bracket it with (the two can differ: a `--gap`-qualifying neighbor can be a
-# DIFFERENT session's request, while a `--drop` predecessor never is).
-def _rebuild_drop_gap_lines(entries: list, gap_minutes: int, rebuild: bool, drop: bool) -> list:
-    positions = _bracket_gap_positions(entries, gap_minutes)
-    lines = []
-    for position in sorted(positions):
-        _dt, marker, tag, usage, prev_usage = entries[position]
-        qualifies = _rebuild_drop_qualifies(usage, prev_usage, rebuild, drop)
-        if qualifies is None:
-            continue
-        cache_read, cache_creation, shortfall = qualifies
-        usage_tail = _usage_tail(cache_read, cache_creation, shortfall)
-        lines.append(_req_line(marker, tag=tag, gap_tail=positions[position], usage_tail=usage_tail))
+    current_key = None
+    for _dt, stem, marker, tag, turn_number, usage, _prev_usage in entries:
+        key = (stem, turn_number)
+        if key != current_key:
+            text = separators.get(key)
+            if text is not None:
+                lines.append(text)
+            current_key = key
+        cr_width = cr_width_by_stem.get(stem, 1)
+        lines.append(_req_line(marker, tag if merged else "", usage, cr_width))
     return lines
 
 
@@ -789,8 +744,9 @@ def _window_date(data: dict, anchor: int) -> str:
 # unresolved duration — same width class as a real value once printed via `{:>N}`.
 #
 # Originally built for the `turns` command's transcript-joined durations (removed 2026-09-10, see
-# process-docs/dual_log_cli/) — kept for `reqs --turns`, which reuses it for the send-time-only
-# turn span and per-request elapsed tail below, the ONE thing that survived the pivot.
+# process-docs/dual_log_cli/) — kept for `reqs`' own turn separator (`_session_entries_and_separators`),
+# which reuses it for the send-time-only turn span, the ONE thing that survived both the 2026-09-10
+# pivot and the 2026-09-16 M6 redesign (the per-request elapsed tail this once also fed did not).
 def _fmt_duration(seconds) -> str:
     if seconds is None:
         return "?"
@@ -802,71 +758,3 @@ def _fmt_duration(seconds) -> str:
     if minutes:
         return f"{minutes}m{secs:02d}s"
     return f"{secs}s"
-
-
-# reqs --turns (2026-09-10, replaces the removed `turns` subcommand — see process-docs/dual_log_cli/
-# for the pivot): groups one session's own REQ lines under turn separators instead of listing them
-# flat. `turns`/`boundaries` are the SAME per-session values `render_reqs` already has (`turns` is
-# `data["turns"]`, only ever built when `--turns` is set — see `__main__.py`'s Purpose). NO
-# transcript join anywhere in this path: the only timing the dual log ever has is a request's own
-# SEND time (`request_markers`' own `timestamp`), and the gap between two consecutive sends is
-# exactly the approximation of "how long the model plus its tool call took" the milestone asked
-# for — nothing more precise is available without the join the removed `turns` command paid for
-# and this one deliberately does not.
-#
-# A separator reads `── turn n  HH:MM:SS  SPAN  <preview> ──` — same `── … ──` framing
-# `render._req_separator` uses for `msgs`' own REQ separators. `n` is 1-based
-# (`_group_markers_by_turn`'s own numbering), the clock is the turn's FIRST request's send, `SPAN`
-# is that same group's LAST send minus its FIRST send (`_fmt_duration`, no join needed at all —
-# unlike the removed `turns`' duration figure, which needed each request's STREAM-END time), and
-# the preview is `timeline._turn_preview`'s existing one-line prompt extract. A turn whose group
-# ends up empty (not observed in the corpus, defensively handled) prints neither a separator nor
-# any REQ lines — there is nothing to show a span or preview for.
-#
-# Every REQ line under a turn carries `  +<elapsed>` since the PREVIOUS request of the SAME turn,
-# via `_elapsed_req_lines` — unconditional (not opt-in like `--gap`), and reset at each turn's own
-# first request, which therefore never carries a tail (see the milestone's own worked example: REQ
-# 78, a turn's first request, carries no `+Nm`, even though REQ 77 immediately precedes it in the
-# whole session). A session with NO turn opener at all (`openers` empty) prints its full REQ list
-# through the SAME `_elapsed_req_lines` walk, tail still unconditional, just with no separators —
-# "a session with no opener prints its REQ lines without separators."
-def _turn_grouped_lines(turns: list, boundaries: list) -> list:
-    markers, openers, groups = _group_markers_by_turn(turns, boundaries)
-    if not openers:
-        return _elapsed_req_lines(sorted(markers), markers)
-    lines = []
-    for position, opener in enumerate(openers):
-        group = groups[position]
-        if not group:
-            continue
-        group_markers = [markers[msg_index] for msg_index in group]
-        first_dt = local_datetime(group_markers[0]["timestamp"])
-        last_dt = local_datetime(group_markers[-1]["timestamp"])
-        span = (last_dt - first_dt).total_seconds() if first_dt and last_dt else None
-        lines.append(
-            f"── turn {position + 1}  {_clock(group_markers[0]['timestamp'])}  "
-            f"{_fmt_duration(span)}  {_turn_preview(turns[opener])} ──"
-        )
-        lines.extend(_elapsed_req_lines(group, markers))
-    return lines
-
-
-# One `_req_line` per msg-index in `ordered` (already sorted, chronological), each carrying
-# `  +<elapsed>` since the PREVIOUS entry of `ordered` — the FIRST entry never carries one, which
-# is what makes a turn's own first REQ tail-less and a no-opener session's very first REQ tail-less
-# too. Reuses `_req_line`'s existing `gap_tail` slot (never combined with `--gap` itself in
-# practice, since the two flags are mutually exclusive at the CLI level) rather than adding a new
-# parameter to it — the rendering mechanism is identical, only the compact `_fmt_duration` unit
-# differs from `--gap`'s own whole-minutes `+Nm`.
-def _elapsed_req_lines(ordered: list, markers: dict) -> list:
-    lines = []
-    prev_dt = None
-    for msg_index in ordered:
-        marker = markers[msg_index]
-        dt = local_datetime(marker["timestamp"])
-        tail = ""
-        if prev_dt is not None and dt is not None:
-            tail = f"  +{_fmt_duration((dt - prev_dt).total_seconds())}"
-        lines.append(_req_line(marker, gap_tail=tail))
-        prev_dt = dt
-    return lines

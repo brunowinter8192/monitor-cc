@@ -9,35 +9,30 @@ Commands:
     search <term> [scope]    find a term across the deduplicated timelines, each match reported once
                              scope matches a session's real project path OR stem; omit it to search all
                              --only restricts hits to one classifier (role, type, or role/type)
-    reqs [scope]             per session: a REQ number + time line per request, nothing else —
-                             scope matches project path OR stem like search; --main/--worker
-                             (mutually exclusive) keep only main or worker sessions
-    reqs [scope] --gap M     only the REQs bracketing a gap of >= M minutes between consecutive
-                             requests; the after-REQ carries "  +Nm"; a session with no qualifying
-                             gap prints only its "session" header line
+    reqs [scope]             per session: every REQ grouped under its turn separator
+                             ("── turn n  HH:MM:SS  SPAN  <preview> ──", SPAN = that turn's last
+                             send minus its first), each REQ line carrying "  CR c  CC c" (prompt-
+                             cache usage, "CR ?  CC ?" when it does not resolve) — a session with
+                             no turn opener at all prints its REQ lines with no separators; scope
+                             matches project path OR stem like search; --main/--worker (mutually
+                             exclusive) keep only main or worker sessions
+    reqs [scope] --turn N    keep only turn N of each session in scope (its separator plus its own
+                             REQ lines); a session missing that turn prints only its "session" line
+    reqs [scope] --gap M     keep only the REQs bracketing a gap of >= M minutes between
+                             consecutive requests (same session unless --merged); a turn's
+                             separator prints only when at least one of its own REQs survives
     reqs [scope] --merged    merge every session in scope into ONE chronological REQ chain (the
                              prompt cache is shared across a project's workers) instead of one
-                             listing per session; each line tagged with its worker/project;
-                             combines with --gap, evaluated over the merged chain
-    reqs [scope] --rebuild   only REQs where CC > CR (this request's own cache write outweighs
-                             what it read back); every printed line carries a "  CR c  CC c" tail
-    reqs [scope] --drop      only REQs n where CR(n) < CR(n-1) + CC(n-1) — part of the prefix the
-                             PREVIOUS request had cached was not read again; REQ 1 of a chain never
-                             qualifies (no predecessor); the line also carries "  −N" (the
-                             shortfall). --rebuild/--drop combine with each other (AND), with
-                             --gap (filtering the lines --gap would print), and with --merged (the
-                             "previous" request is then the merged chain's, across sessions)
-    reqs [scope] --turns     group each session's own REQ lines under turn separators
-                             ("── turn n  HH:MM:SS  SPAN  <preview> ──", SPAN = last send − first
-                             send within the turn) instead of a flat list; every REQ line but a
-                             turn's own first carries "  +<elapsed>" since the PREVIOUS request of
-                             the SAME turn — no transcript join anywhere, only send times a session
-                             already has. A session with no turn opener prints its REQ lines with
-                             the same elapsed tail but no separators. Usage error together with
-                             --merged/--gap/--rebuild/--drop (turns are computed per session, from
-                             send times alone — combining with any of those would need either a
-                             cross-session turn concept or a transcript join this flag deliberately
-                             has neither of)
+                             listing per session; every REQ line and every turn separator carries
+                             the session's own tag; turn numbers stay per session; --gap pairs
+                             chronological neighbors across every session in the merged chain
+    reqs [scope] --rebuild   keep only REQs where CC > CR (this request's own cache write
+                             outweighed what it read back)
+    reqs [scope] --drop      keep only REQs n where CR(n) < CR(n-1) + CC(n-1) — part of the prefix
+                             the PREVIOUS request (same session, even under --merged) had cached
+                             was not read again; REQ 1 of a session never qualifies (no
+                             predecessor). --rebuild/--drop/--gap/--turn all combine (AND), --turn
+                             narrowing first, then the rest filtering within it
     msgs <session>           request groups: a REQ separator (with CR/CC prompt-cache usage when
                              resolvable) listing the system blocks and tools that request sent —
                              in full for the family's first request, else only what changed or is
@@ -58,11 +53,11 @@ Usage (from project root, or via bin/duallog once symlinked into PATH):
     ./venv/bin/python -m src.dual_log_cli search "worker-cli merge" gh_cli_1787939513
     ./venv/bin/python -m src.dual_log_cli search Reißleine websearch --since 2026-08-28
     ./venv/bin/python -m src.dual_log_cli reqs websearch --main
+    ./venv/bin/python -m src.dual_log_cli reqs websearch --turn 2
     ./venv/bin/python -m src.dual_log_cli reqs websearch --gap 30
     ./venv/bin/python -m src.dual_log_cli reqs websearch --merged --gap 30
     ./venv/bin/python -m src.dual_log_cli reqs websearch --merged --rebuild
     ./venv/bin/python -m src.dual_log_cli reqs websearch --drop
-    ./venv/bin/python -m src.dual_log_cli reqs websearch --turns
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 700 740
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 --req 259
@@ -215,41 +210,36 @@ def _parse_args(argv: list) -> argparse.Namespace:
     search.add_argument("--case-sensitive", action="store_true", help="match case exactly (default: ignore case)")
     reqs = sub.add_parser(
         "reqs",
-        help="one REQ number + time per line, per session",
+        help="one fixed REQ listing, turn-grouped, every flag a filter over it",
         description=(
-            "Prints, per session, a `session <stem>` line followed by one `REQ n   HH:MM:SS` line "
-            "per request — the exact numbers and timestamps `msgs`' own separators print, in the "
-            "same order (re-fires collapsed, a restart handled exactly the way `msgs` handles it). "
-            "No other columns, no counts, no CR/CC. --gap MINUTES replaces the full per-session "
-            "listing with only the REQs bracketing a consecutive gap of at least that many whole "
-            "minutes — the after-REQ of each qualifying gap carries `  +Nm`; a REQ that is both the "
-            "end of one qualifying gap and the start of the next prints once; a session with no "
-            "qualifying gap prints only its `session` header line, so the reader sees it was "
-            "checked. Omitting --gap reproduces the plain listing exactly. --merged combines every "
-            "session in scope into ONE chronological REQ chain instead of one listing per session — "
-            "the prompt cache hangs on the shared system/tools prefix every worker of a project "
-            "sends, so a request from ANY session in scope keeps it warm for every other; a "
-            "`merged <N> sessions` header replaces the per-session `session <stem>` lines, and each "
-            "REQ line carries `  <tag>` (a worker's name, or a main session's project label, read "
-            "off the stem). --merged --gap evaluates the SAME bracketing rule over the "
-            "merged chain, so a within-session gap another session's request happens to fall "
-            "inside no longer qualifies, and a gap that only exists ACROSS sessions does. "
-            "--rebuild keeps only REQs where CC > CR (the request's own cache write outweighed "
-            "what it read back); --drop keeps only REQs n where CR(n) < CR(n-1) + CC(n-1), i.e. "
-            "part of the prefix the PREVIOUS request had cached was NOT read again by n — the "
-            "previous request is the previous one in the same session, or in the merged chain when "
-            "--merged is given; REQ 1 of a chain never qualifies for --drop (no predecessor). "
-            "Every line --rebuild/--drop prints carries a `  CR c  CC c` tail; --drop also appends "
-            "`  −N` (the shortfall, CR(n-1)+CC(n-1) − CR(n)). Both combine with each other (AND), "
-            "with --gap (filtering exactly the lines --gap would print, before-line included), and "
-            "with --merged; a REQ whose usage does not resolve is skipped under either flag. "
-            "--turns groups each session's OWN REQ lines under `── turn n  HH:MM:SS  SPAN  "
-            "<preview> ──` separators instead of a flat list — a turn is what happens between two "
-            "prompts the human/orchestrator typed, SPAN is that turn's last REQ send minus its "
-            "first (no transcript join, only send times), and every REQ line but a turn's own "
-            "first carries `  +<elapsed>` since the previous REQ of the SAME turn. A session with "
-            "no turn opener prints its REQ lines with the same elapsed tail but no separators. "
-            "--turns is a usage error together with --merged/--gap/--rebuild/--drop."
+            "Prints, per session, a `session <stem>` line, then every REQ grouped under its own "
+            "turn separator (`── turn n  HH:MM:SS  SPAN  <preview> ──` — a turn is what happens "
+            "between two prompts the human/orchestrator typed, SPAN is that turn's last REQ send "
+            "minus its first, no transcript join, only send times a session already has) — turn "
+            "grouping is ALWAYS on; a session with no turn opener at all prints its REQ lines with "
+            "no separators. Every `REQ n   HH:MM:SS` line carries `  CR c  CC c` (prompt-cache "
+            "usage, joined via the same transcript-store lookup `msgs` uses), `CR ?  CC ?` when "
+            "the flow does not resolve. Every other flag is a pure filter or selector over this "
+            "SAME fixed form, and they all combine (AND). --turn N narrows FIRST, keeping only "
+            "turn N of each session in scope (its separator plus its own REQ lines) — a session "
+            "missing that turn prints only its `session` header line. --gap MINUTES then keeps "
+            "only the REQs bracketing a consecutive gap of at least that many whole minutes "
+            "(same session unless --merged, in which case chronological neighbors across every "
+            "session in scope); a turn's separator prints only when at least one of its OWN REQ "
+            "lines survives — the separator's own clock/span/preview are always that turn's WHOLE "
+            "figures, never recomputed from whichever REQs a filter happened to keep. --rebuild "
+            "keeps only REQs where CC > CR (the request's own cache write outweighed what it read "
+            "back); --drop keeps only REQs n where CR(n) < CR(n-1) + CC(n-1), i.e. part of the "
+            "prefix the PREVIOUS request had cached was NOT read again by n — the previous request "
+            "is always the SAME session's own previous one, --merged or not; REQ 1 of a session "
+            "never qualifies for --drop (no predecessor). A REQ whose usage (or, for --drop, its "
+            "predecessor's) does not resolve fails --rebuild/--drop outright. --merged combines "
+            "every session in scope into ONE chronological REQ chain instead of one listing per "
+            "session — the prompt cache hangs on the shared system/tools prefix every worker of a "
+            "project sends, so a request from ANY session in scope keeps it warm for every other; "
+            "a `merged <N> sessions` header replaces the per-session `session <stem>` lines, and "
+            "every REQ line AND every turn separator carries `  <tag>` (a worker's name, or a main "
+            "session's project label, read off the stem) — turn numbers stay per session."
         ),
     )
     reqs.add_argument("scope", nargs="?", default="", metavar="SCOPE",
@@ -261,17 +251,16 @@ def _parse_args(argv: list) -> argparse.Namespace:
     reqs_family = reqs.add_mutually_exclusive_group()
     reqs_family.add_argument("--main", action="store_true", help="only main sessions (stem identifies as opus)")
     reqs_family.add_argument("--worker", action="store_true", help="only worker sessions (stem identifies as worker)")
+    reqs.add_argument("--turn", type=int, default=None, metavar="N",
+                      help="keep only turn N of each session (its separator plus its own REQ lines)")
     reqs.add_argument("--gap", type=int, default=None, metavar="MINUTES",
-                      help="show only the REQs bracketing a consecutive gap of at least this many minutes")
+                      help="keep only the REQs bracketing a consecutive gap of at least this many minutes")
     reqs.add_argument("--merged", action="store_true",
-                      help="merge every session in scope into one chronological REQ chain, each line tagged by session")
+                      help="merge every session in scope into one chronological REQ chain, each line/separator tagged by session")
     reqs.add_argument("--rebuild", action="store_true",
-                      help="only REQs where CC > CR; every printed line carries a CR/CC tail")
+                      help="keep only REQs where CC > CR")
     reqs.add_argument("--drop", action="store_true",
-                      help="only REQs whose predecessor's cached prefix was not fully read back; carries a CR/CC + shortfall tail")
-    reqs.add_argument("--turns", action="store_true",
-                      help="group each session's REQ lines under turn separators, with a "
-                           "+<elapsed> tail per request; usage error with --merged/--gap/--rebuild/--drop")
+                      help="keep only REQs whose predecessor's cached prefix was not fully read back")
     return parser.parse_args(argv)
 
 
@@ -356,21 +345,20 @@ def _run_search(dual_log_dir, args: argparse.Namespace) -> int:
 
 # reqs — scoped like `search`, same per-session last-request reconstruction (skip-on-unloadable,
 # not fatal), plus --main/--worker narrowing to sessions whose STEM identifies as "opus" or
-# "worker" (discovery.filter_by_family, via stem_identity — 2026-09-10, no longer a rendered
-# CONTEXT prefix check). No matcher, no hit filtering — every session that loads contributes its own REQ list,
-# optionally reduced to only the REQs bracketing a qualifying --gap, optionally merged across
-# every session in scope into one chronological chain (--merged) — session SELECTION is identical
-# either way, only which render function turns `results` into text differs. --rebuild/--drop
-# additionally need each contributing session's own CR/CC map (`usage.build_usage_by_flow`, the
-# SAME per-request join `msgs` already resolves) — built only when either flag is set, so a plain
-# `reqs` run never pays for the transcript-store join at all. --turns (2026-09-10, replaces the
-# removed `turns` subcommand) is rejected up front, before any session even loads, when combined
-# with --merged/--gap/--rebuild/--drop — turns are computed per session from send times alone, and
-# none of those other flags' own cross-session or transcript-joined semantics has an equivalent
-# for that; when accepted, the per-session load loop additionally keeps `data["turns"]` (built by
-# `load_timeline` regardless, just not normally RETAINED past the loop — see this function's own
-# Gotcha in DOCS.md) in a `turns_by_stem` map, the ONE thing `--turns` needs beyond what every
-# other `reqs` mode already collects.
+# "worker" (discovery.filter_by_family, via stem_identity). No matcher, no hit filtering — every
+# session that loads contributes its own turn-grouped, CR/CC-annotated REQ list; --turn/--gap/
+# --rebuild/--drop are pure filters `render.py`'s `_apply_filters` applies over that SAME list —
+# session SELECTION is identical regardless of which flags are set, only which render function
+# (`render_reqs` vs `render_reqs_merged`, on --merged) turns `results` into text differs.
+#
+# Turn grouping is now the DEFAULT, always-on behavior (2026-09-16, M6 — replaces the old opt-in
+# `--turns` flag), so `data["turns"]` (already built by `load_timeline` regardless, genuinely free
+# to retain) is ALWAYS collected into a `turns_by_stem` map, for every `reqs` invocation. CR/CC is
+# likewise now unconditional per-line output rather than a `--rebuild`/`--drop`-only tail, so
+# `usage_by_stem` (`usage.build_usage_by_flow`, the SAME per-request join `msgs` already resolves)
+# is ALWAYS built too, one join per loaded session — a plain `reqs` run now pays the
+# `~/.claude/projects/` transcript-store cost every time, which it did not before this milestone
+# (see DOCS.md's Gotchas for the cost tradeoff this decision made).
 def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
     code = _reject_bad_days(args)
     if code:
@@ -378,13 +366,6 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
     if args.gap is not None and args.gap < 0:
         print("--gap must be 0 or greater", file=sys.stderr)
         return 2
-    if args.turns:
-        if args.merged:
-            print("--turns cannot be combined with --merged (turns are computed per session)", file=sys.stderr)
-            return 2
-        if args.gap is not None or args.rebuild or args.drop:
-            print("--turns cannot be combined with --gap/--rebuild/--drop", file=sys.stderr)
-            return 2
     sessions = filter_sessions(
         list_sessions(dual_log_dir),
         scope=args.scope,
@@ -393,7 +374,7 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
     )
     sessions = filter_by_family(sessions, main=args.main, worker=args.worker)
     results, skipped = [], 0
-    turns_by_stem = {} if args.turns else None
+    turns_by_stem = {}
     for session in sessions:
         try:
             data = load_timeline(session)
@@ -401,21 +382,17 @@ def _run_reqs(dual_log_dir, args: argparse.Namespace) -> int:
             skipped += 1
             continue
         results.append((session, data["boundaries"]))
-        if turns_by_stem is not None:
-            turns_by_stem[session["stem"]] = data["turns"]
-    if args.turns:
-        sys.stdout.write(render_reqs(results, skipped, turns_by_stem=turns_by_stem))
-        return 0
-    usage_by_stem = None
-    if args.rebuild or args.drop:
-        usage_by_stem = {
-            session["stem"]: build_usage_by_flow(session, boundaries)
-            for session, boundaries in results
-        }
+        turns_by_stem[session["stem"]] = data["turns"]
+    usage_by_stem = {
+        session["stem"]: build_usage_by_flow(session, boundaries)
+        for session, boundaries in results
+    }
     if args.merged:
-        sys.stdout.write(render_reqs_merged(results, skipped, args.gap, usage_by_stem, args.rebuild, args.drop))
+        sys.stdout.write(render_reqs_merged(
+            results, skipped, args.turn, args.gap, usage_by_stem, args.rebuild, args.drop, turns_by_stem))
     else:
-        sys.stdout.write(render_reqs(results, skipped, args.gap, usage_by_stem, args.rebuild, args.drop))
+        sys.stdout.write(render_reqs(
+            results, skipped, args.turn, args.gap, usage_by_stem, args.rebuild, args.drop, turns_by_stem))
     return 0
 
 

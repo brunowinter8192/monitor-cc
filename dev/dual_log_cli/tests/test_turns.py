@@ -1,23 +1,26 @@
 """
-Regression suite for `reqs --turns` (2026-09-10, replaces the removed `turns` subcommand — see
-process-docs/dual_log_cli/ for the pivot): src/dual_log_cli/timeline.py's `_is_turn_opener`/
-`turn_openers`/`_turn_preview`/`_group_markers_by_turn`, src/dual_log_cli/render.py's
-`_turn_grouped_lines`/`_elapsed_req_lines`/`_fmt_duration`/`render_reqs`'s `turns_by_stem` branch,
-and src/dual_log_cli/__main__.py's `_run_reqs` usage-error validation.
+Regression suite for `reqs`' turn grouping — rewritten 2026-09-16 for the M6 redesign: turn
+grouping is now the DEFAULT, always-on shape of `reqs` output (no more opt-in `--turns` flag), and
+a turn's own separator carries no per-request elapsed tail any more (removed along with every other
+ADD-output tail) — only the amendment-kept span figure. Covers: src/dual_log_cli/timeline.py's
+`_is_turn_opener`/`turn_openers`/`_turn_preview`/`_group_markers_by_turn` (unchanged by this
+milestone — still the turn CONCEPT and assignment rule `render.py` groups by),
+src/dual_log_cli/render.py's `_session_entries_and_separators`/`_grouped_lines`/`_fmt_duration`/
+`render_reqs`'s always-on turn-grouping branch, and `--turn N` selection.
 
-Covers: turn-opener classification (a `user` msg with a `text` block and no `tool_result` block
-opens a turn; a tool_result-carrying user msg, an assistant msg, and a str-content pseudo-block
-msg — e.g. `system-reminder` — do not); the preview is the LAST `text`-type block of the opener,
-not the first; the turn-ASSIGNMENT rule this area's investigation found and `_group_markers_by_turn`
-still owns — a request whose msg-index KEY (`start_index`) sits before the next opener but whose
-OWN `message_count` already reaches past it belongs to the NEXT turn; `_fmt_duration`'s three
-duration bands plus its "?" passthrough; `_turn_grouped_lines`' separator format (turn number,
-first-request clock, SPAN = last send minus first send within the turn, preview) reproducing the
-milestone's own worked example byte-for-byte; the elapsed tail's per-turn RESET (a turn's own
-first REQ never carries `+<elapsed>`, every other REQ carries it since the PREVIOUS request of the
-SAME turn); a session with no turn opener falling back to a flat, still-tailed REQ list with no
-separators; and `_run_reqs` rejecting `--turns` combined with `--merged`/`--gap`/`--rebuild`/
-`--drop` before ever touching the filesystem.
+Covers: turn-opener classification (unchanged); the preview is the LAST `text`-type block of the
+opener, not the first (unchanged); the turn-ASSIGNMENT rule this area's investigation found and
+`_group_markers_by_turn` still owns — a request whose msg-index KEY (`start_index`) sits before the
+next opener but whose OWN `message_count` already reaches past it belongs to the NEXT turn
+(unchanged); `_fmt_duration`'s three duration bands plus its "?" passthrough (unchanged);
+`_session_entries_and_separators`' separator format (turn number, first-request clock, SPAN = last
+send minus first send within the turn, preview) reproducing the milestone's own worked example
+byte-for-byte, now ALWAYS on rather than gated by a flag; a session with no turn opener falling
+back to a flat, separator-free REQ list; `--turn N` selecting exactly one turn's separator plus its
+own REQ lines, and printing only the session header when the session has no turn N; and the
+separator-survival rule — a turn's separator prints only when at least one of its own REQ lines
+survives an active `--gap`/`--rebuild`/`--drop` filter, and its own clock/span/preview never change
+because of that filtering.
 
 Run (from project root):
     ./venv/bin/python dev/dual_log_cli/tests/test_turns.py
@@ -27,9 +30,6 @@ Exit 0 = all checks pass. Exit 1 = at least one failure (printed by name).
 
 # INFRASTRUCTURE
 
-import argparse
-import contextlib
-import io
 import json
 import sys
 import tempfile
@@ -38,7 +38,6 @@ from pathlib import Path
 _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 
-from src.dual_log_cli.__main__ import _run_reqs
 from src.dual_log_cli.reader import local_datetime
 from src.dual_log_cli.render import _fmt_duration, render_reqs
 from src.dual_log_cli.timeline import (
@@ -101,7 +100,7 @@ def _boundaries(entries: list) -> list:
         path.unlink()
 
 
-# --- turn-opener classification -------------------------------------------------------------
+# --- turn-opener classification (unchanged by this milestone) --------------------------------
 
 def test_opener_classification() -> None:
     opener = _turn(0, "user", [_block("text", "hello")])
@@ -122,7 +121,7 @@ def test_opener_classification() -> None:
     check("turn_openers keeps only msg 0", turn_openers(turns) == [0], turn_openers(turns))
 
 
-# --- preview: last text block wins, not first ------------------------------------------------
+# --- preview: last text block wins, not first --------------------------------------------------
 
 def test_preview_uses_last_text_block() -> None:
     spawn_prompt = _turn(0, "user", [_block("text", "<system-reminder>"), _block("text", "You are a WORKER.")])
@@ -140,9 +139,7 @@ def test_preview_uses_last_text_block() -> None:
 
 def test_assignment_uses_message_count_not_start_index() -> None:
     # opener1 at msg 0, opener2 at msg 5. req3's OWN start_index (4) sits before opener2 (5), but
-    # its message_count (7) already reaches past it -- it must land in turn 2, not turn 1, exactly
-    # the reldist-power case this area's investigation found (an idle text reply bundled together
-    # with the next prompt in one send).
+    # its message_count (7) already reaches past it -- it must land in turn 2, not turn 1.
     turns = [
         _turn(0, "user", [_block("text", "start")]),
         _turn(1, "assistant", [_block("text", "hi")]),
@@ -173,7 +170,7 @@ def test_group_markers_by_turn_no_openers() -> None:
     check("markers themselves still resolve normally", len(markers) == 1, markers)
 
 
-# --- _fmt_duration bands (unchanged by this milestone, still used by --turns) ------------------
+# --- _fmt_duration bands (unchanged; kept for the turn separator's SPAN figure) ------------------
 
 def test_fmt_duration_bands() -> None:
     check("under a minute", _fmt_duration(58) == "58s", _fmt_duration(58))
@@ -182,12 +179,12 @@ def test_fmt_duration_bands() -> None:
     check("None passes through as '?'", _fmt_duration(None) == "?")
 
 
-# --- render_reqs(turns_by_stem=...): the milestone's own worked example, byte-for-byte ---------
+# --- render_reqs: turn grouping is now the DEFAULT, always-on shape -----------------------------
 
+# The milestone's own worked example, byte-for-byte — no flag needed any more to get turn
+# separators; every REQ line also carries CR/CC (always-on since M6), not just the elapsed tail
+# turn grouping used to add.
 def test_turns_render_matches_milestones_worked_example() -> None:
-    # Two turns: turn 1 has 3 requests (REQ1 opener, REQ2 +9s, REQ43-shaped +9m46s), turn 2 has 2
-    # (REQ78 opener, REQ79 +8s) -- msg-index/message_count shapes mirror the real reldist-power
-    # session's own turn-1/turn-2 boundary (idle text reply bundled with the next prompt).
     turns = [
         _turn(0, "user", [_block("text", "You are a WORKER.")]),   # turn 1 opener
         _turn(1, "assistant", [_block("text", "ack")]),
@@ -206,40 +203,24 @@ def test_turns_render_matches_milestones_worked_example() -> None:
     session = {"stem": "api_requests_worker_reldist-power_1788726467"}
     results = [(session, boundaries)]
     turns_by_stem = {session["stem"]: turns}
-    got = render_reqs(results, turns_by_stem=turns_by_stem)
+    usage_by_stem = {session["stem"]: {"f1": (7771, 5496), "f2": (13267, 7006), "f3": (323412, 980)}}
+    got = render_reqs(results, turns_by_stem=turns_by_stem, usage_by_stem=usage_by_stem)
+    # CR is padded to the widest value across every REQ this call prints — turn 1's own two REQs
+    # AND turn 2's (no --turn narrowing here) — so REQ 3's 7-char "323,412" widens REQ 1/2's own
+    # padding too; this reproduces the milestone's own worked example literally.
     expected = (
         "session api_requests_worker_reldist-power_1788726467\n"
         f"── turn 1  {_local_clock('2026-09-06T22:27:49Z')}  9s  You are a WORKER. ──\n"
-        f"REQ 1   {_local_clock('2026-09-06T22:27:49Z')}\n"
-        f"REQ 2   {_local_clock('2026-09-06T22:27:58Z')}  +9s\n"
+        f"REQ 1   {_local_clock('2026-09-06T22:27:49Z')}  CR 7,771    CC 5,496\n"
+        f"REQ 2   {_local_clock('2026-09-06T22:27:58Z')}  CR 13,267   CC 7,006\n"
         f"── turn 2  {_local_clock('2026-09-06T22:37:44Z')}  0s  recap ──\n"
-        f"REQ 3   {_local_clock('2026-09-06T22:37:44Z')}\n"
+        f"REQ 3   {_local_clock('2026-09-06T22:37:44Z')}  CR 323,412  CC 980\n"
     )
-    check("turn separators, clocks, spans, previews and elapsed tails match exactly",
+    check("turn separators (no flag needed), clocks, spans, previews and CR/CC match exactly",
           got == expected, got)
 
 
-def test_turns_elapsed_tail_resets_at_turn_boundary() -> None:
-    # The exact detail the milestone's own example calls out: REQ 78 (a turn's own FIRST request)
-    # carries NO elapsed tail, even though the immediately preceding REQ (77, the previous turn's
-    # last) is only seconds earlier in absolute session time.
-    turns = [
-        _turn(0, "user", [_block("text", "go")]),
-        _turn(1, "assistant", [_block("text", "idle")]),
-        _turn(2, "user", [_block("text", "next")]),
-    ]
-    boundaries = _boundaries([
-        _delta_entry("f1", "2026-09-06T23:09:00Z", 1, is_first=True),
-        _delta_entry("f2", "2026-09-06T23:10:14Z", 3),   # start=1 < opener2=2, but count=3 -> turn 2
-    ])
-    session = {"stem": "s"}
-    got = render_reqs([(session, boundaries)], turns_by_stem={"s": turns})
-    lines = [l for l in got.split("\n") if l.startswith("REQ")]
-    check("turn 2's own first REQ carries no elapsed tail despite following turn 1 by ~74s",
-          lines[-1] == f"REQ 2   {_local_clock('2026-09-06T23:10:14Z')}", lines)
-
-
-def test_turns_no_opener_prints_flat_tailed_list_no_separators() -> None:
+def test_turns_no_opener_prints_flat_list_no_separators() -> None:
     turns = [_turn(0, "user", [_block("tool_result")])]  # no opener anywhere
     boundaries = _boundaries([
         _delta_entry("f1", "2026-09-06T10:00:00Z", 1, is_first=True),
@@ -248,66 +229,71 @@ def test_turns_no_opener_prints_flat_tailed_list_no_separators() -> None:
     session = {"stem": "s"}
     got = render_reqs([(session, boundaries)], turns_by_stem={"s": turns})
     check("no '── turn' separator anywhere", "── turn" not in got, got)
-    check("REQ 1 has no tail, REQ 2 carries +9s (elapsed tail stays unconditional)",
-          f"REQ 1   {_local_clock('2026-09-06T10:00:00Z')}\n" in got
-          and f"REQ 2   {_local_clock('2026-09-06T10:00:09Z')}  +9s\n" in got, got)
+    check("both REQ lines print, CR/CC unresolved",
+          f"REQ 1   {_local_clock('2026-09-06T10:00:00Z')}  CR ?  CC ?\n" in got
+          and f"REQ 2   {_local_clock('2026-09-06T10:00:09Z')}  CR ?  CC ?\n" in got, got)
 
 
-def test_turns_by_stem_none_reproduces_plain_listing() -> None:
+def test_turns_by_stem_none_reproduces_flat_listing() -> None:
     boundaries = _boundaries([_delta_entry("f1", "2026-09-06T10:00:00Z", 1, is_first=True)])
     session = {"stem": "s"}
-    plain = render_reqs([(session, boundaries)])
-    check("turns_by_stem=None (the default) is the pre-existing plain listing, unchanged",
-          plain == f"session s\nREQ 1   {_local_clock('2026-09-06T10:00:00Z')}\n", plain)
+    got = render_reqs([(session, boundaries)])
+    check("turns_by_stem=None (the default) is a flat, separator-free listing",
+          got == f"session s\nREQ 1   {_local_clock('2026-09-06T10:00:00Z')}  CR ?  CC ?\n", got)
 
 
-# --- _run_reqs: --turns usage errors, validated before any filesystem access -------------------
+# --- --turn N: select exactly one turn -----------------------------------------------------------
 
-def _reqs_args(**overrides) -> argparse.Namespace:
-    base = {"scope": "", "since": "", "until": "", "main": False, "worker": False,
-            "gap": None, "merged": False, "rebuild": False, "drop": False, "turns": False}
-    base.update(overrides)
-    return argparse.Namespace(**base)
-
-
-def _run_reqs_capturing_stderr(args: argparse.Namespace) -> tuple:
-    stderr, stdout = io.StringIO(), io.StringIO()
-    # The validation this exercises runs BEFORE `list_sessions`/`filter_sessions` ever touch the
-    # filesystem, so a nonexistent directory is safe to pass here -- if that ordering regresses,
-    # this call would raise or hang instead of returning 2, which is itself a useful failure mode.
-    with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
-        code = _run_reqs(Path("/nonexistent-dual-log-dir-for-testing"), args)
-    return code, stderr.getvalue()
-
-
-def test_turns_rejects_merged() -> None:
-    code, err = _run_reqs_capturing_stderr(_reqs_args(turns=True, merged=True))
-    check("--turns + --merged exits 2", code == 2, code)
-    check("--turns + --merged prints a usage message naming --merged", "--merged" in err, err)
+def _two_turn_fixture() -> tuple:
+    turns = [
+        _turn(0, "user", [_block("text", "You are a WORKER.")]),
+        _turn(1, "assistant", [_block("text", "ack")]),
+        _turn(2, "user", [_block("tool_result")]),
+        _turn(3, "assistant", [_block("text", "done, going idle")]),
+        _turn(4, "system", [_block("system")]),
+        _turn(5, "user", [_block("text", "recap")]),
+        _turn(6, "assistant", [_block("thinking")]),
+    ]
+    boundaries = _boundaries([
+        _delta_entry("f1", "2026-09-06T22:27:49Z", 1, is_first=True),
+        _delta_entry("f2", "2026-09-06T22:27:58Z", 4),
+        _delta_entry("f3", "2026-09-06T22:37:44Z", 7),
+    ])
+    return turns, boundaries
 
 
-def test_turns_rejects_gap() -> None:
-    code, err = _run_reqs_capturing_stderr(_reqs_args(turns=True, gap=5))
-    check("--turns + --gap exits 2", code == 2, code)
-    check("--turns + --gap prints a usage message", "--gap" in err, err)
+def test_turn_selects_exactly_one_turn() -> None:
+    turns, boundaries = _two_turn_fixture()
+    session = {"stem": "s"}
+    got = render_reqs([(session, boundaries)], turn=2, turns_by_stem={"s": turns})
+    expected = (
+        "session s\n"
+        f"── turn 2  {_local_clock('2026-09-06T22:37:44Z')}  0s  recap ──\n"
+        f"REQ 3   {_local_clock('2026-09-06T22:37:44Z')}  CR ?  CC ?\n"
+    )
+    check("--turn 2 keeps only turn 2's separator and its own REQ", got == expected, got)
 
 
-def test_turns_rejects_rebuild_and_drop() -> None:
-    code_rebuild, err_rebuild = _run_reqs_capturing_stderr(_reqs_args(turns=True, rebuild=True))
-    code_drop, err_drop = _run_reqs_capturing_stderr(_reqs_args(turns=True, drop=True))
-    check("--turns + --rebuild exits 2", code_rebuild == 2, code_rebuild)
-    check("--turns + --drop exits 2", code_drop == 2, code_drop)
-    check("both print a usage message", "--rebuild" in err_rebuild and "--drop" in err_drop,
-          (err_rebuild, err_drop))
+def test_turn_missing_from_session_prints_header_only() -> None:
+    turns, boundaries = _two_turn_fixture()
+    session = {"stem": "s"}
+    got = render_reqs([(session, boundaries)], turn=99, turns_by_stem={"s": turns})
+    check("a turn number the session never reaches -> header only", got == "session s\n", got)
 
 
-def test_turns_alone_is_not_rejected_by_the_combination_check() -> None:
-    # --turns alone (or with --main/--worker/--since/--until/scope) must NOT hit the combination
-    # check -- it only runs past validation into the (nonexistent-directory) session-loading step,
-    # which is a separate, expected failure mode (an empty session list, not a usage error).
-    code, err = _run_reqs_capturing_stderr(_reqs_args(turns=True))
-    check("--turns alone is not a usage error (falls through to session loading)",
-          code == 0, (code, err))
+# --- separator-survival rule: a turn's separator prints only when a REQ of its own survives -----
+
+def test_separator_survives_only_when_a_req_of_its_own_does() -> None:
+    turns, boundaries = _two_turn_fixture()
+    session = {"stem": "s"}
+    usage_by_stem = {"s": {"f1": (5, 5), "f2": (5, 5), "f3": (10, 40)}}  # only REQ 3 passes --rebuild
+    got = render_reqs([(session, boundaries)], turns_by_stem={"s": turns},
+                      usage_by_stem=usage_by_stem, rebuild=True)
+    check("turn 1's separator is absent (neither of its REQs qualifies)",
+          "── turn 1" not in got, got)
+    check("turn 2's separator prints (REQ 3 qualifies) with its OWN full-turn span, not recomputed",
+          f"── turn 2  {_local_clock('2026-09-06T22:37:44Z')}  0s  recap ──\n"
+          f"REQ 3   {_local_clock('2026-09-06T22:37:44Z')}  CR 10  CC 40\n" in got, got)
 
 
 # ORCHESTRATOR
@@ -319,13 +305,11 @@ def test_turns_workflow() -> None:
     test_group_markers_by_turn_no_openers()
     test_fmt_duration_bands()
     test_turns_render_matches_milestones_worked_example()
-    test_turns_elapsed_tail_resets_at_turn_boundary()
-    test_turns_no_opener_prints_flat_tailed_list_no_separators()
-    test_turns_by_stem_none_reproduces_plain_listing()
-    test_turns_rejects_merged()
-    test_turns_rejects_gap()
-    test_turns_rejects_rebuild_and_drop()
-    test_turns_alone_is_not_rejected_by_the_combination_check()
+    test_turns_no_opener_prints_flat_list_no_separators()
+    test_turns_by_stem_none_reproduces_flat_listing()
+    test_turn_selects_exactly_one_turn()
+    test_turn_missing_from_session_prints_header_only()
+    test_separator_survives_only_when_a_req_of_its_own_does()
 
     total = len(PASS_LIST) + len(FAIL_LIST)
     print(f"{len(PASS_LIST)}/{total} checks passed")
