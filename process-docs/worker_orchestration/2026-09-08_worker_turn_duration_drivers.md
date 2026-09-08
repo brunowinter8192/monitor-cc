@@ -1,8 +1,8 @@
-# Worker turn duration — measured drivers, 2026-09-09
+# Worker turn duration — measured drivers, 2026-09-08
 
 Two trading-project worker sessions from 2026-09-06 (`k-ratio`, `reldist-power`) were measured with
-the `duallog turns` command built for this purpose (see `process-docs/dual_log_cli/` for the
-command's own entries). The question was why a worker turn ran for tens of minutes: model
+a `duallog turns` command built for this purpose and removed the same day; its turn grouping lives
+on in `duallog reqs` (see `process-docs/dual_log_cli/` for the command's own entries). The question was why a worker turn ran for tens of minutes: model
 generation, shell commands, or token intake.
 
 ## Method
