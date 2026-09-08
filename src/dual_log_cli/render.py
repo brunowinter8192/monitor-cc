@@ -749,3 +749,58 @@ def _window_date(data: dict, anchor: int) -> str:
     stamp = data.get("turn_times", {}).get(anchor) or data["session"].get("start", "")
     dt = local_datetime(stamp)
     return dt.strftime("%Y-%m-%d") if dt else "?"
+
+
+# Fixed width of the turn number field — same narrow-default convention `reqs`' own REQ number
+# field uses.
+_TURN_NUMBER_WIDTH = 4
+_TURN_DURATION_WIDTH = 8
+
+
+# Compact human duration: "58s" under a minute, "41m24s" under an hour, "1h05m30s" at or past one
+# — grep-friendly (a letter suffix per unit, no spaces) and fixed-width only where cheap (seconds
+# always 2 digits once a coarser unit is present; the leading unit is not padded, since padding it
+# would widen every row for a session whose turns never reach double-digit hours). "?" for an
+# unresolved duration — same width class as a real value once printed via `{:>N}`.
+def _fmt_duration(seconds) -> str:
+    if seconds is None:
+        return "?"
+    total = int(round(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
+# "102,389" digit-grouped like every other count this package renders, "?" when unresolved.
+def _fmt_tokens(tokens) -> str:
+    return f"{tokens:,}" if tokens is not None else "?"
+
+
+# turns <session>: one line per turn — number, the local clock of the turn's FIRST request, total
+# duration, model time, tool time, request count, summed output tokens, and the prompt preview
+# that opened the turn. `rows` is `timeline.build_turn_rows`'s own list — this function only lays
+# it out, exactly the same division of labor `render_reqs` already has with `request_markers`. A
+# row whose duration/model/tool/tokens are `None` (the turn's requests did not all resolve against
+# the transcript join — see `timeline.build_turn_rows`) prints "?" in every one of those four
+# columns, never a partial number; the clock and request count print regardless, since a marker's
+# own send timestamp needs no transcript join at all.
+def render_turns(rows: list) -> str:
+    if not rows:
+        return "no turns found\n"
+    return "\n".join(_turn_line(row) for row in rows) + "\n"
+
+
+def _turn_line(row: dict) -> str:
+    duration = f"{_fmt_duration(row['duration']):>{_TURN_DURATION_WIDTH}}"
+    model = f"{_fmt_duration(row['model_time']):>{_TURN_DURATION_WIDTH}}"
+    tool = f"{_fmt_duration(row['tool_time']):>{_TURN_DURATION_WIDTH}}"
+    tokens = f"{_fmt_tokens(row['tokens']):>9}"
+    return (
+        f"turn {row['number']:<{_TURN_NUMBER_WIDTH}}{_clock(row['timestamp'])}  "
+        f"{duration}  model {model}  tool {tool}  "
+        f"{row['requests']:>3} reqs  {tokens} tok  {row['preview']}"
+    )

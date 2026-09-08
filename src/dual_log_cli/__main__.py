@@ -37,6 +37,13 @@ Commands:
     msgs <session> --req F [T]   the same, restricted to REQ numbers F..T (T defaults to F) — the
                              same numbers the REQ separators already print, translated into the
                              msg-index range that covers them; mutually exclusive with F T above
+    turns <session>          one line per turn (everything between two prompts the human/
+                             orchestrator typed): turn number, the clock of its first request,
+                             total duration split into model time (time spent generating) and tool
+                             time (time spent running tools between requests), request count,
+                             summed output tokens, and a preview of the prompt that opened it — "?"
+                             for the duration/model/tool/token columns when the transcript join
+                             this needs does not resolve for the turn
     expand <s> <msg>         full content of that msg, plus what the proxy stripped/injected there
     expand <s> <msg> [--before N] [--after N] [--only X]   full content of the window around it
 
@@ -53,6 +60,7 @@ Usage (from project root, or via bin/duallog once symlinked into PATH):
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 700 740
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 --req 259
     ./venv/bin/python -m src.dual_log_cli msgs websearch_1787924727 --req 259 261
+    ./venv/bin/python -m src.dual_log_cli turns websearch_1787924727
     ./venv/bin/python -m src.dual_log_cli expand websearch_1787924727 721
     ./venv/bin/python -m src.dual_log_cli expand websearch_1787924727 721 --before 2 --after 1
 
@@ -88,16 +96,19 @@ from .render import (
     render_reqs_merged,
     render_search,
     render_sessions,
+    render_turns,
 )
 from .search import find_matches
 from .timeline import (
     AmbiguousRequestNumberError,
     UnknownRequestNumberError,
+    build_turn_rows,
     full_turn,
     load_timeline,
     resolve_req_range,
+    turn_openers,
 )
-from .usage import build_usage_by_flow
+from .usage import build_request_times_by_flow, build_usage_by_flow
 
 # ORCHESTRATOR
 
@@ -116,6 +127,8 @@ def main(argv: list) -> int:
         return _run_reqs(dual_log_dir, args)
     if args.command == "msgs":
         return _run_msgs(dual_log_dir, args)
+    if args.command == "turns":
+        return _run_turns(dual_log_dir, args)
     return _run_expand(dual_log_dir, args)
 
 
@@ -167,6 +180,24 @@ def _parse_args(argv: list) -> argparse.Namespace:
     msgs.add_argument("--req", nargs="+", type=int, default=None, metavar="F [T]",
                       help="REQ number range instead of msg indices, T defaults to F; "
                            "mutually exclusive with FROM/TO")
+    turns = sub.add_parser(
+        "turns",
+        help="one line per turn: duration split into model time and tool wall time",
+        description=(
+            "Prints one line per turn of a session, in order — a turn is what happens between "
+            "two prompts the human (or, for a worker, the orchestrator via `worker-cli send`) "
+            "typed: the model runs many requests, each followed by tool execution, until it "
+            "answers with text and goes idle. Each line carries the turn number, the local clock "
+            "of its first request, total duration, model time (summed stream time per request), "
+            "tool time (summed gap between one request's stream end and the next request's send — "
+            "the turn's last request contributes none), request count, summed output tokens, and "
+            "a one-line preview of the prompt that opened the turn. The duration/model/tool/token "
+            "columns print \"?\" for a turn whose requests do not all resolve against CC's own "
+            "transcript (the same join `msgs`' CR/CC separator uses) — the clock and request "
+            "count still print, since they need no transcript join at all."
+        ),
+    )
+    turns.add_argument("session", help="session stem or unambiguous substring")
     expand = sub.add_parser(
         "expand",
         help="full content of one msg, or of a window around it",
@@ -415,6 +446,26 @@ def _run_msgs(dual_log_dir, args: argparse.Namespace) -> int:
     overlay = build_overlay(data["session"], data["family"], data["boundaries"])
     sys_tool_overlay = build_sys_tool_overlay(data["session"], data["family"], data["boundaries"])
     sys.stdout.write(render_msgs(data, start, end, usage_by_flow, overlay, sys_tool_overlay))
+    return 0
+
+
+# turns — a single session, like msgs/expand (no scope, no date window): the transcript join
+# (usage.build_request_times_by_flow, the SAME per-request join `msgs`' CR/CC resolves, joined by
+# requestId rather than by cache figures) feeds timeline.build_turn_rows, which does the turn
+# grouping and duration arithmetic; render_turns only lays the rows out.
+def _run_turns(dual_log_dir, args: argparse.Namespace) -> int:
+    data, code = _load_for(dual_log_dir, args.session)
+    if data is None:
+        return code
+    if not data["turns"]:
+        print("session carries no msgs", file=sys.stderr)
+        return 2
+    if not turn_openers(data["turns"]):
+        print("session carries no turn-opening msgs", file=sys.stderr)
+        return 2
+    times_by_flow = build_request_times_by_flow(data["session"], data["boundaries"])
+    rows = build_turn_rows(data["turns"], data["boundaries"], times_by_flow)
+    sys.stdout.write(render_turns(rows))
     return 0
 
 
