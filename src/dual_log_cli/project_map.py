@@ -68,11 +68,12 @@ def _project_cwd_dirs(projects_root: Path) -> dict:
 
 
 # One walk of the transcript store, in two shapes a caller can join stem parts against without
-# re-walking: `cwd_to_dir` for a main stem's label match (`usage.py` filters every cwd whose
-# `project_label` equals the stem's label), `sid_to_cwd` for a worker stem's sid8 lookup (the same
-# md5(project_path)[:8] hash `build_project_map` uses, kept as the real path here instead of
-# collapsing it to a label, since `usage.py` needs the path to derive the worker's OWN worktree
-# cwd from it).
+# re-walking: `cwd_to_dir` for a main stem's label match (`discovery.project_for_stem` filters
+# every cwd whose `project_label` equals the stem's label), `sid_to_cwd` for a worker stem's sid8
+# lookup — the proxy's own `md5(project_path)[:8]` hash, mapped here to the real PROJECT path
+# rather than collapsed to a label (2026-09-10: `discovery.project_for_stem` prints this path
+# directly as `sessions`' PROJECT column; `usage.py` additionally derives the worker's OWN
+# worktree cwd from it by appending the worktree suffix).
 def build_project_index(projects_root=None) -> dict:
     root = Path(projects_root) if projects_root else _PROJECTS_ROOT
     cwd_to_dir = _project_cwd_dirs(root)
@@ -80,12 +81,3 @@ def build_project_index(projects_root=None) -> dict:
     for cwd in cwd_to_dir:
         sid_to_cwd.setdefault(_proxy_session_id_for_project(cwd), cwd)
     return {"cwd_to_dir": cwd_to_dir, "sid_to_cwd": sid_to_cwd}
-
-
-# Map the proxy's md5(project_path)[:8] session id to a project label, for every project CC knows.
-# The id is hashed with the production helper (src/proxy_display/forwarded_parser), which is the
-# single source shared with addon.py's _derive_session_id — never re-derived here.
-# Returns {} on any failure; an empty map degrades rendering to the <sid8> fallback, never an error.
-def build_project_map(projects_root=None) -> dict:
-    index = build_project_index(projects_root)
-    return {sid: project_label(cwd) for sid, cwd in index["sid_to_cwd"].items()}

@@ -40,8 +40,8 @@ def _epoch_from_iso(timestamp: str):
 
 # The project directories a session's stem could possibly have a transcript in — derived from the
 # stem alone, never a store-wide scan. A worker stem's sid8 resolves to its project's cwd (the
-# same md5(project_path)[:8] hash build_project_map uses), and the worker's OWN cwd is that
-# project's cwd plus the worktree layout every worker runs under
+# same md5(project_path)[:8] hash `discovery.project_for_stem` resolves for `sessions`' PROJECT
+# column), and the worker's OWN cwd is that project's cwd plus the worktree layout every worker runs under
 # (".claude/worktrees/<name>"). A main stem's label is matched against every known cwd's label —
 # plural on purpose, since two different projects can share a basename. Empty when the stem does
 # not parse or its cwd/label matches no known directory.

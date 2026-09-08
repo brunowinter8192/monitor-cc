@@ -3,7 +3,7 @@ import os
 import re
 from pathlib import Path
 
-from .project_map import build_project_map
+from .project_map import build_project_index, project_label
 from .reader import infer_family, iter_jsonl, local_datetime
 
 STREAM_SUFFIXES = ("original", "forwarded", "stripped", "injected", "response", "errors")
@@ -45,31 +45,11 @@ def resolve_dual_log_dir() -> Path:
     return direct
 
 
-# Render a session stem as "<family>/<project>" for a main session, or "worker/<project>/<name>"
-# for a worker. A worker stem carries its project only as md5(project_path)[:8]; project_map
-# resolves that id to the label main sessions already use, so ONE context filter term catches a
-# project's main sessions and its workers together. An id the map cannot resolve renders as
-# "worker/<sid8>/<name>" — still filterable, by the id itself.
-# project_map is injected rather than looked up here, which keeps this function pure and testable
-# without a filesystem; pass {} to force the fallback rendering everywhere.
-def context_for_stem(stem: str, project_map: dict = None) -> str:
-    body = stem[len(_STEM_PREFIX):] if stem.startswith(_STEM_PREFIX) else stem
-    body = _TRAILING_EPOCH_RE.sub("", body)
-    if body.startswith("worker_"):
-        match = _WORKER_BODY_RE.match(body[len("worker_"):])
-        if not match:
-            return f"worker/{body[len('worker_'):]}"
-        sid, name = match.group("sid"), match.group("name")
-        project = (project_map or {}).get(sid) or sid
-        return f"worker/{project}/{name}"
-    head, _, tail = body.partition("_")
-    return f"{head}/{tail}" if tail else head
-
-
-# Parse a stem into its raw identity, the same split context_for_stem renders into a string:
-# ("worker", sid8, name) or ("main", family_head, label). None when a "worker_" body does not
-# match the expected shape. usage.py uses this to locate a session's CC project directory from
-# the stem alone, without touching context_for_stem's own rendering path.
+# Parse a stem into its raw identity: ("worker", sid8, name) or ("main", family_head, label).
+# None when a "worker_" body does not match the expected shape, or a non-worker body carries no
+# "_" at all. The one place every stem-derived value in this package (the real project PATH via
+# `project_for_stem`, the sid8-stripped `display_stem`, `usage.py`'s transcript-directory lookup,
+# `filter_by_family`'s opus/worker split) starts from — never re-parsed a second way.
 def stem_identity(stem: str):
     body = stem[len(_STEM_PREFIX):] if stem.startswith(_STEM_PREFIX) else stem
     body = _TRAILING_EPOCH_RE.sub("", body)
@@ -82,6 +62,54 @@ def stem_identity(stem: str):
     if not tail:
         return None
     return ("main", head, tail)
+
+
+# The REAL project directory a session ran in, as CC's own transcript records it (`sessions`'
+# PROJECT column, `expand`'s project header, 2026-09-10 — replaces the old `worker/<label>/<name>`
+# CONTEXT rendering entirely). A worker stem carries only md5(project_path)[:8] (its `sid8`);
+# `project_index["sid_to_cwd"]` (`project_map.build_project_index`) resolves that to the PROJECT's
+# own cwd — NOT the worker's own worktree cwd, which is that path plus
+# ".claude/worktrees/<name>" (see `usage.py`'s `_candidate_dirs`, the same sid8→cwd lookup used to
+# find a worker's transcript). A main stem carries only the readable LABEL
+# (`project_map.project_label`'s own spelling, e.g. "monitor_cc"); resolving it to a path means
+# scanning every known cwd for the one whose label matches — ambiguous when two different projects
+# share a basename, in which case the alphabetically first cwd wins (arbitrary but deterministic,
+# not otherwise observed in the corpus). Falls back to the sid8 (worker, unresolved) or the label
+# (main, unresolved) — the row still carries what IS known rather than an empty column — and to
+# the raw stem when `stem_identity` cannot parse it at all.
+def project_for_stem(stem: str, project_index: dict = None) -> str:
+    identity = stem_identity(stem)
+    if identity is None:
+        return stem
+    index = project_index or {}
+    if identity[0] == "worker":
+        _, sid, _name = identity
+        return index.get("sid_to_cwd", {}).get(sid) or sid
+    _, _head, label = identity
+    for cwd in sorted(index.get("cwd_to_dir", {})):
+        if project_label(cwd) == label:
+            return cwd
+    return label
+
+
+# The stem as `sessions`/`resolve_stem` DISPLAY it: a worker's sid8 segment removed
+# (`api_requests_worker_1dda1c81_reldist-power_1788726467` ->
+# `api_requests_worker_reldist-power_1788726467`), a main stem unchanged. Display-only — the
+# on-disk file names (and every OTHER function in this package that reads a stem) never change;
+# this exists purely so a name copied out of the `sessions` table resolves via `resolve_stem`. The
+# epoch suffix is preserved by re-extracting it from the stem directly (`stem_identity`'s own
+# `name` never carries it, having already stripped it to compute the identity) rather than
+# reconstructing the whole stem from parts.
+def display_stem(stem: str) -> str:
+    identity = stem_identity(stem)
+    if identity is None or identity[0] != "worker":
+        return stem
+    _, _sid, name = identity
+    has_prefix = stem.startswith(_STEM_PREFIX)
+    body = stem[len(_STEM_PREFIX):] if has_prefix else stem
+    epoch_match = _TRAILING_EPOCH_RE.search(body)
+    epoch = epoch_match.group(0) if epoch_match else ""
+    return f"{_STEM_PREFIX if has_prefix else ''}worker_{name}{epoch}"
 
 
 # Group every *.jsonl in the directory by session stem → {stream: Path}
@@ -104,7 +132,7 @@ def group_streams(dual_log_dir: Path) -> dict:
 # `requests_main` and `last_message_count` the same way, so this inventory's request count means
 # the same thing `timeline.request_boundaries` counts. Its timestamp still extends `start`/`end`,
 # since those describe the file's real wall-clock span, unrelated to what counts as a request.
-def build_session(stem: str, streams: dict, project_map: dict = None) -> dict:
+def build_session(stem: str, streams: dict, project_index: dict = None) -> dict:
     total_bytes = sum(p.stat().st_size for p in streams.values())
     requests = 0
     start_ts = ""
@@ -131,7 +159,8 @@ def build_session(stem: str, streams: dict, project_map: dict = None) -> dict:
     main_family = _main_family(families)
     return {
         "stem": stem,
-        "context": context_for_stem(stem, project_map),
+        "display_stem": display_stem(stem),
+        "project": project_for_stem(stem, project_index),
         "start": start_ts,
         "end": end_ts,
         "requests": requests,
@@ -151,23 +180,27 @@ def _main_family(families: dict) -> str:
     return max(ranked)[1]
 
 
-# All sessions in the directory, newest first. The project map is built once and shared across
+# All sessions in the directory, newest first. The project index is built once and shared across
 # every session rather than per stem — it costs one scan of CC's transcript store.
-def list_sessions(dual_log_dir: Path, project_map: dict = None) -> list:
-    if project_map is None:
-        project_map = build_project_map()
-    sessions = [build_session(stem, streams, project_map)
+def list_sessions(dual_log_dir: Path, project_index: dict = None) -> list:
+    if project_index is None:
+        project_index = build_project_index()
+    sessions = [build_session(stem, streams, project_index)
                 for stem, streams in group_streams(dual_log_dir).items()]
     sessions.sort(key=lambda s: (s["start"], s["stem"]), reverse=True)
     return sessions
 
 
-# Keep the sessions matching every active criterion (AND). Two selector flavours, both optional
-# and both case-insensitive substrings:
-#   context — matches the rendered context value only. `sessions <CONTEXT>` uses this.
-#   scope   — matches the context OR the stem, so one argument covers both "a whole project incl.
-#             its workers" and "this one session". `search <term> <SCOPE>`/`reqs <SCOPE>` use this.
-# Plus an inclusive [since, until] window on the start day.
+# Keep the sessions matching every active criterion (AND). `context` (from `sessions <CONTEXT>`)
+# and `scope` (from `search <SCOPE>`/`reqs <SCOPE>`) are functionally identical selectors now
+# (2026-09-10: both used to differ — `context` matched only the rendered `worker/<label>/<name>`
+# string, `scope` also fell back to the stem — but that string is gone, and the PROJECT path it
+# has been replaced with is exactly what both commands' filter term is meant to catch, whether the
+# session is a worker or a main one) — kept as two separate parameters only because `sessions` and
+# `search`/`reqs` keep their own CLI wording, never both set on the same call. Each is a
+# case-insensitive substring matched against the session's PROJECT path OR its stem, so `trading`,
+# `ai/trading`, or a full path all work, and a name copied from the SESSION column still matches
+# via the stem. Plus an inclusive [since, until] window on the start day.
 #
 # Days are compared on the LOCAL calendar day of the start timestamp (2026-09-04: was the RAW
 # UTC YYYY-MM-DD prefix, lexicographic order over that being equal to UTC calendar order — but
@@ -185,9 +218,9 @@ def filter_sessions(sessions: list, context: str = "", scope: str = "",
     scope_needle = scope.lower()
     kept = []
     for session in sessions:
-        if needle and needle not in session.get("context", "").lower():
+        if needle and not _matches_project_or_stem(session, needle):
             continue
-        if scope_needle and not _matches_scope(session, scope_needle):
+        if scope_needle and not _matches_project_or_stem(session, scope_needle):
             continue
         if since or until:
             dt = local_datetime(session.get("start") or "")
@@ -202,29 +235,44 @@ def filter_sessions(sessions: list, context: str = "", scope: str = "",
     return kept
 
 
-# True when the lowercased scope needle appears in the session's context or in its stem
-def _matches_scope(session: dict, scope_needle: str) -> bool:
-    return (scope_needle in session.get("context", "").lower()
-            or scope_needle in session.get("stem", "").lower())
+# True when the lowercased needle appears in the session's real PROJECT path or in its stem
+def _matches_project_or_stem(session: dict, needle: str) -> bool:
+    return (needle in session.get("project", "").lower()
+            or needle in session.get("stem", "").lower())
 
 
-# Keep only sessions whose context starts with "opus/" (main) or "worker/" (worker) — the
-# --main/--worker filter `reqs` uses. Mutually exclusive at the CLI level (an argparse group), so
-# at most one of the two is ever True here; neither set returns `sessions` unchanged.
+# Keep only sessions whose STEM identifies as "opus" (main) or "worker" — the --main/--worker
+# filter `reqs` uses (2026-09-10: reads the stem via `stem_identity` directly now, since the
+# `worker/`/`opus/` CONTEXT prefix this used to check no longer exists). Mutually exclusive at the
+# CLI level (an argparse group), so at most one of the two is ever True here; neither set returns
+# `sessions` unchanged.
 def filter_by_family(sessions: list, main: bool = False, worker: bool = False) -> list:
     if main:
-        return [s for s in sessions if s.get("context", "").startswith("opus/")]
+        return [s for s in sessions if _stem_family(s.get("stem", "")) == "main"]
     if worker:
-        return [s for s in sessions if s.get("context", "").startswith("worker/")]
+        return [s for s in sessions if _stem_family(s.get("stem", "")) == "worker"]
     return sessions
 
 
-# Resolve a stem or unambiguous substring to exactly one session stem
+# "main"/"worker"/"" from stem_identity's own first element — "" (never a stem_identity result)
+# for an unparseable stem, so it matches neither --main nor --worker rather than raising.
+def _stem_family(stem: str) -> str:
+    identity = stem_identity(stem)
+    return identity[0] if identity else ""
+
+
+# Resolve a stem or unambiguous substring to exactly one session stem. The query may be a
+# substring of the FULL on-disk stem OR of its DISPLAYED form (`display_stem`, sid8 stripped for a
+# worker) — 2026-09-10, so a name copied straight out of the `sessions` table's SESSION column
+# resolves here without the reader having to guess the hidden sid8 back in. Ambiguity is judged
+# over the UNION of both match sets — a query could in principle match one stem's raw form and a
+# DIFFERENT stem's displayed form, which is exactly the kind of collision this function exists to
+# refuse rather than silently pick one.
 def resolve_stem(dual_log_dir: Path, query: str) -> str:
     stems = sorted(group_streams(dual_log_dir))
     if query in stems:
         return query
-    matches = [s for s in stems if query in s]
+    matches = [s for s in stems if query in s or query in display_stem(s)]
     if not matches:
         raise UnknownSessionError(f"no session matches {query!r} in {dual_log_dir}")
     if len(matches) > 1:
