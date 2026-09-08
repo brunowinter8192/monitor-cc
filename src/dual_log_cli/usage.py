@@ -127,16 +127,19 @@ def _transcript_usage(transcript_path: Path) -> dict:
     return usage
 
 
-# The shared three-hop preamble both `build_usage_by_flow` and `build_request_times_by_flow`
-# (2026-09-08) need before they can each read their OWN kind of record out of the same transcript:
-# `_response` -> {flow_id: (request_id, status)}, the first non-haiku boundary's request id as
-# anchor, the stem-derived candidate directories, and the one transcript file the anchor's literal
-# `"requestId":"<id>"` fragment is found in. Returns (transcript_path, flow_status) — `flow_status`
-# is `{}` only when the `_response` stream itself could not be read at all (every other failure
-# still returns whatever `flow_status` WAS resolved, since a caller needing only the status map,
-# not the transcript, should not lose it for a resolution failure of the LATER hops); the caller
-# reads `transcript_path is None` as "degrade to {}", same threshold every failure inside here
-# already used before this was split out.
+# The three-hop preamble `build_usage_by_flow` needs before it can read `type == "assistant"`
+# records out of CC's own transcript: `_response` -> {flow_id: (request_id, status)}, the first
+# non-haiku boundary's request id as anchor, the stem-derived candidate directories, and the one
+# transcript file the anchor's literal `"requestId":"<id>"` fragment is found in. Returns
+# (transcript_path, flow_status) — `flow_status` is `{}` only when the `_response` stream itself
+# could not be read at all (every other failure still returns whatever `flow_status` WAS resolved,
+# since a caller needing only the status map, not the transcript, should not lose it for a
+# resolution failure of the LATER hops); the caller reads `transcript_path is None` as "degrade to
+# {}". Split out from `build_usage_by_flow`'s own body 2026-09-08 for a second join
+# (`build_request_times_by_flow`, `turns`) that read the SAME transcript for different fields;
+# that command and its join were removed 2026-09-10 (see process-docs/dual_log_cli/ — `reqs
+# --turns` replaced it with a send-time-only view needing no transcript at all), but the split
+# stays: `_resolve_session_transcript` is still a clean single-purpose preamble on its own.
 def _resolve_session_transcript(session: dict, boundaries: list, projects_root: Path = None) -> tuple:
     if not boundaries:
         return None, {}
@@ -189,65 +192,3 @@ def build_usage_by_flow(session: dict, boundaries: list, projects_root: Path = N
         if usage is not None:
             usage_by_flow[flow_id] = usage
     return usage_by_flow
-
-
-# {request_id: [stream_end_iso, output_tokens]} from one transcript's assistant records — what
-# `build_request_times_by_flow` (`turns`, 2026-09-08) joins against, the SAME transcript
-# `build_usage_by_flow` reads, parsed for different fields. CC writes an assistant record at
-# STREAM END (verified: a trivial tool's own `tool_result` record follows by ~0.1s — never at
-# first byte, unlike `_response`'s own `responseheaders`-time write, see `src/proxy/addon.py`
-# lines 141-161), and one API request produces several streaming records sharing one requestId —
-# `timestamp` is therefore OVERWRITTEN on every sighting (ending on the LAST record's, the actual
-# stream end), while `output_tokens` is kept from the FIRST sighting only (observed identical
-# across every record of the same requestId in the corpus this was checked against, matching the
-# reference probe's own dedup rule exactly). `[ts, tokens]` stays a list, not a tuple, precisely so
-# the timestamp slot can be mutated in place across repeat sightings.
-def _transcript_stream_ends(transcript_path: Path) -> dict:
-    ends = {}
-    try:
-        with open(transcript_path, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if entry.get("type") != "assistant":
-                    continue
-                request_id = entry.get("requestId")
-                if not request_id:
-                    continue
-                timestamp = entry.get("timestamp")
-                if request_id not in ends:
-                    message_usage = entry.get("message", {}).get("usage", {}) or {}
-                    ends[request_id] = [timestamp, message_usage.get("output_tokens")]
-                else:
-                    ends[request_id][0] = timestamp
-    except Exception:
-        return {}
-    return ends
-
-
-# {flow_id: (stream_end_iso, output_tokens)} for one session — what `timeline.build_turn_rows`
-# (`turns`, 2026-09-08) sums per turn. Same join, same degrade-to-{} conditions and same 200-status
-# filter as `build_usage_by_flow` (an errored request carries no completed stream either) — only
-# the transcript-record fields read differ. A flow whose end timestamp or output_tokens did not
-# resolve is dropped entirely rather than included with a `None` half, so a caller never has to
-# special-case a half-resolved pair.
-def build_request_times_by_flow(session: dict, boundaries: list, projects_root: Path = None) -> dict:
-    transcript_path, flow_status = _resolve_session_transcript(session, boundaries, projects_root)
-    if transcript_path is None:
-        return {}
-    ends_by_request_id = _transcript_stream_ends(transcript_path)
-    if not ends_by_request_id:
-        return {}
-    times_by_flow = {}
-    for flow_id, (request_id, status) in flow_status.items():
-        if status != 200 or not request_id:
-            continue
-        ends = ends_by_request_id.get(request_id)
-        if ends is not None and ends[0] is not None and ends[1] is not None:
-            times_by_flow[flow_id] = (ends[0], ends[1])
-    return times_by_flow

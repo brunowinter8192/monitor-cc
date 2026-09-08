@@ -1,7 +1,14 @@
 # INFRASTRUCTURE
 from .discovery import stem_identity
 from .reader import local_datetime
-from .timeline import request_markers, _system_block_chars, _tool_chars, _BILLING_HEADER_SYS_INDEX
+from .timeline import (
+    request_markers,
+    _BILLING_HEADER_SYS_INDEX,
+    _group_markers_by_turn,
+    _system_block_chars,
+    _tool_chars,
+    _turn_preview,
+)
 
 # FUNCTIONS
 
@@ -402,11 +409,28 @@ _REQ_NUMBER_WIDTH = 4
 # apply. `--drop`'s predecessor is always the SAME session's own previous REQ (`_entries_for_session`
 # precomputes it while still walking one session in isolation) — trivially true here since this
 # function never merges sessions to begin with.
+#
+# `turns_by_stem` (2026-09-10, `--turns`) is `None` by default, reproducing every pre-existing
+# output byte-for-byte — when set (a `{stem: data["turns"]}` map, built only when `--turns` is
+# given, see `__main__.py`), it takes its OWN branch entirely, ahead of the `filtering` one above,
+# routing each session's `(turns, boundaries)` through `_turn_grouped_lines` instead. `--turns` is
+# a usage error together with `--merged`/`--gap`/`--rebuild`/`--drop` (enforced in `__main__.py`,
+# before this function ever runs), so `gap_minutes`/`rebuild`/`drop` are never meaningfully set
+# alongside a non-`None` `turns_by_stem` in practice.
 def render_reqs(results: list, skipped: int = 0, gap_minutes: int = None,
-                usage_by_stem: dict = None, rebuild: bool = False, drop: bool = False) -> str:
+                usage_by_stem: dict = None, rebuild: bool = False, drop: bool = False,
+                turns_by_stem: dict = None) -> str:
     if not results:
         lines = ["no sessions found"]
         return "\n".join(lines + _skipped_lines(skipped)) + "\n"
+    if turns_by_stem is not None:
+        lines = []
+        for session, boundaries in results:
+            lines.append(f"session {session['stem']}")
+            turns = turns_by_stem.get(session.get("stem", ""), [])
+            lines.extend(_turn_grouped_lines(turns, boundaries))
+            lines.append("")
+        return "\n".join(lines[:-1] + _skipped_lines(skipped)) + "\n"
     filtering = rebuild or drop
     lines = []
     for session, boundaries in results:
@@ -758,17 +782,15 @@ def _window_date(data: dict, anchor: int) -> str:
     return dt.strftime("%Y-%m-%d") if dt else "?"
 
 
-# Fixed width of the turn number field — same narrow-default convention `reqs`' own REQ number
-# field uses.
-_TURN_NUMBER_WIDTH = 4
-_TURN_DURATION_WIDTH = 8
-
-
 # Compact human duration: "58s" under a minute, "41m24s" under an hour, "1h05m30s" at or past one
 # — grep-friendly (a letter suffix per unit, no spaces) and fixed-width only where cheap (seconds
 # always 2 digits once a coarser unit is present; the leading unit is not padded, since padding it
 # would widen every row for a session whose turns never reach double-digit hours). "?" for an
 # unresolved duration — same width class as a real value once printed via `{:>N}`.
+#
+# Originally built for the `turns` command's transcript-joined durations (removed 2026-09-10, see
+# process-docs/dual_log_cli/) — kept for `reqs --turns`, which reuses it for the send-time-only
+# turn span and per-request elapsed tail below, the ONE thing that survived the pivot.
 def _fmt_duration(seconds) -> str:
     if seconds is None:
         return "?"
@@ -782,57 +804,69 @@ def _fmt_duration(seconds) -> str:
     return f"{secs}s"
 
 
-# "102,389" digit-grouped like every other count this package renders, "?" when unresolved.
-def _fmt_tokens(tokens) -> str:
-    return f"{tokens:,}" if tokens is not None else "?"
+# reqs --turns (2026-09-10, replaces the removed `turns` subcommand — see process-docs/dual_log_cli/
+# for the pivot): groups one session's own REQ lines under turn separators instead of listing them
+# flat. `turns`/`boundaries` are the SAME per-session values `render_reqs` already has (`turns` is
+# `data["turns"]`, only ever built when `--turns` is set — see `__main__.py`'s Purpose). NO
+# transcript join anywhere in this path: the only timing the dual log ever has is a request's own
+# SEND time (`request_markers`' own `timestamp`), and the gap between two consecutive sends is
+# exactly the approximation of "how long the model plus its tool call took" the milestone asked
+# for — nothing more precise is available without the join the removed `turns` command paid for
+# and this one deliberately does not.
+#
+# A separator reads `── turn n  HH:MM:SS  SPAN  <preview> ──` — same `── … ──` framing
+# `render._req_separator` uses for `msgs`' own REQ separators. `n` is 1-based
+# (`_group_markers_by_turn`'s own numbering), the clock is the turn's FIRST request's send, `SPAN`
+# is that same group's LAST send minus its FIRST send (`_fmt_duration`, no join needed at all —
+# unlike the removed `turns`' duration figure, which needed each request's STREAM-END time), and
+# the preview is `timeline._turn_preview`'s existing one-line prompt extract. A turn whose group
+# ends up empty (not observed in the corpus, defensively handled) prints neither a separator nor
+# any REQ lines — there is nothing to show a span or preview for.
+#
+# Every REQ line under a turn carries `  +<elapsed>` since the PREVIOUS request of the SAME turn,
+# via `_elapsed_req_lines` — unconditional (not opt-in like `--gap`), and reset at each turn's own
+# first request, which therefore never carries a tail (see the milestone's own worked example: REQ
+# 78, a turn's first request, carries no `+Nm`, even though REQ 77 immediately precedes it in the
+# whole session). A session with NO turn opener at all (`openers` empty) prints its full REQ list
+# through the SAME `_elapsed_req_lines` walk, tail still unconditional, just with no separators —
+# "a session with no opener prints its REQ lines without separators."
+def _turn_grouped_lines(turns: list, boundaries: list) -> list:
+    markers, openers, groups = _group_markers_by_turn(turns, boundaries)
+    if not openers:
+        return _elapsed_req_lines(sorted(markers), markers)
+    lines = []
+    for position, opener in enumerate(openers):
+        group = groups[position]
+        if not group:
+            continue
+        group_markers = [markers[msg_index] for msg_index in group]
+        first_dt = local_datetime(group_markers[0]["timestamp"])
+        last_dt = local_datetime(group_markers[-1]["timestamp"])
+        span = (last_dt - first_dt).total_seconds() if first_dt and last_dt else None
+        lines.append(
+            f"── turn {position + 1}  {_clock(group_markers[0]['timestamp'])}  "
+            f"{_fmt_duration(span)}  {_turn_preview(turns[opener])} ──"
+        )
+        lines.extend(_elapsed_req_lines(group, markers))
+    return lines
 
 
-# turns <session>: one line per turn — number, the local clock of the turn's FIRST request, total
-# duration, model time, tool time, request count, summed output tokens, and the prompt preview
-# that opened the turn. `rows` is `timeline.build_turn_rows`'s own list — this function only lays
-# it out, exactly the same division of labor `render_reqs` already has with `request_markers`. A
-# row whose duration/model/tool/tokens are `None` (the turn's requests did not all resolve against
-# the transcript join — see `timeline.build_turn_rows`) prints "?" in every one of those four
-# columns, never a partial number; the clock and request count print regardless, since a marker's
-# own send timestamp needs no transcript join at all.
-def render_turns(rows: list) -> str:
-    if not rows:
-        return "no turns found\n"
-    return "\n".join(_turn_line(row) for row in rows) + "\n"
-
-
-def _turn_line(row: dict) -> str:
-    duration = f"{_fmt_duration(row['duration']):>{_TURN_DURATION_WIDTH}}"
-    model = f"{_fmt_duration(row['model_time']):>{_TURN_DURATION_WIDTH}}"
-    tool = f"{_fmt_duration(row['tool_time']):>{_TURN_DURATION_WIDTH}}"
-    tokens = f"{_fmt_tokens(row['tokens']):>9}"
-    return (
-        f"turn {row['number']:<{_TURN_NUMBER_WIDTH}}{_clock(row['timestamp'])}  "
-        f"{duration}  model {model}  tool {tool}  "
-        f"{row['requests']:>3} reqs  {tokens} tok  {row['preview']}"
-    )
-
-
-# turns <session> N (2026-09-09): one line per request of turn N — `rows` is
-# `timeline.build_turn_requests`'s own list, one entry per REQ in msg-index (== chronological)
-# order. Each of model/tool seconds and tokens resolves and prints "?" INDEPENDENTLY (unlike the
-# bare listing's all-or-nothing aggregate row — there is no sum here to protect from a partial),
-# including the turn's own last request's tool column, which `build_turn_requests` leaves
-# unresolved by design (see its own Purpose) — same "?" symbol either way, since a reader digging
-# into a slow turn needs "no number here" more than which of the two reasons produced it. The
-# tool_use names are space-joined in reply order, empty (not "?") for a text-only reply.
-def render_turn_detail(rows: list) -> str:
-    if not rows:
-        return "no requests found\n"
-    return "\n".join(_turn_detail_line(row) for row in rows) + "\n"
-
-
-def _turn_detail_line(row: dict) -> str:
-    model = f"{_fmt_duration(row['model_seconds']):>{_TURN_DURATION_WIDTH}}"
-    tool = f"{_fmt_duration(row['tool_seconds']):>{_TURN_DURATION_WIDTH}}"
-    tokens = f"{_fmt_tokens(row['tokens']):>9}"
-    tools = " ".join(row["tool_names"])
-    return (
-        f"REQ {row['number']:<{_REQ_NUMBER_WIDTH}}{_clock(row['timestamp'])}  "
-        f"model {model}  tool {tool}  {tokens} tok  {tools}"
-    )
+# One `_req_line` per msg-index in `ordered` (already sorted, chronological), each carrying
+# `  +<elapsed>` since the PREVIOUS entry of `ordered` — the FIRST entry never carries one, which
+# is what makes a turn's own first REQ tail-less and a no-opener session's very first REQ tail-less
+# too. Reuses `_req_line`'s existing `gap_tail` slot (never combined with `--gap` itself in
+# practice, since the two flags are mutually exclusive at the CLI level) rather than adding a new
+# parameter to it — the rendering mechanism is identical, only the compact `_fmt_duration` unit
+# differs from `--gap`'s own whole-minutes `+Nm`.
+def _elapsed_req_lines(ordered: list, markers: dict) -> list:
+    lines = []
+    prev_dt = None
+    for msg_index in ordered:
+        marker = markers[msg_index]
+        dt = local_datetime(marker["timestamp"])
+        tail = ""
+        if prev_dt is not None and dt is not None:
+            tail = f"  +{_fmt_duration((dt - prev_dt).total_seconds())}"
+        lines.append(_req_line(marker, gap_tail=tail))
+        prev_dt = dt
+    return lines
