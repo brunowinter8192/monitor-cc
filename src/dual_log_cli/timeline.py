@@ -1,10 +1,11 @@
 # INFRASTRUCTURE
+import bisect
 import json
 from pathlib import Path
 
 from ..proxy.logging import _delta_hash
 from ..proxy.message_summary import _summarize_message
-from .reader import infer_family, iter_jsonl, load_last_request
+from .reader import infer_family, iter_jsonl, load_last_request, local_datetime
 
 PREVIEW_CHARS = 100
 # The per-request billing header: a hash plus the previous request id, changing on every request
@@ -350,10 +351,15 @@ def build_turn_times(boundaries: list) -> dict:
 
 
 # Which request opened each msg index -> {msg_index: {number, timestamp, refires, flow_id,
-# sys_lines, tool_lines}}. flow_id is the owner's — what `usage.build_usage_by_flow` keys its
-# {flow_id: (cr, cc)} map by, so a separator can look up its own request's prompt-cache usage
-# without a second index. sys_lines/tool_lines are the OWNER boundary's own — a re-fire group
+# sys_lines, tool_lines, message_count}}. flow_id is the owner's — what `usage.build_usage_by_flow`
+# keys its {flow_id: (cr, cc)} map by, so a separator can look up its own request's prompt-cache
+# usage without a second index. sys_lines/tool_lines are the OWNER boundary's own — a re-fire group
 # shows only the owner's delta, matching the timestamp and usage the separator already carries.
+# message_count (2026-09-08, for `turns`) is the owner's OWN total msg count as SENT — the msg
+# count this request's payload already carried, which can run past the msg-index KEY this marker
+# is grouped under (see `build_turn_rows`'s Gotcha: a request whose own send bundles the previous
+# turn's idle text reply together with the NEXT turn's new prompt keys a LOW msg index here but its
+# message_count already covers the next turn's opener).
 #
 # Boundaries are grouped by the index they open. Several land on one index when a request re-fired
 # without adding a msg (a retry/abort re-send) or when a restart reset the index to 0. At most ONE
@@ -380,6 +386,7 @@ def request_markers(boundaries: list) -> dict:
             "flow_id": boundaries[owner].get("flow_id", ""),
             "sys_lines": boundaries[owner].get("sys_lines", []),
             "tool_lines": boundaries[owner].get("tool_lines", []),
+            "message_count": boundaries[owner].get("message_count", 0),
         }
     return markers
 
@@ -449,6 +456,109 @@ def request_msg_range(markers: dict, req_from: int, req_to: int, last_msg_index:
 def resolve_req_range(boundaries: list, req_from: int, req_to: int, last_msg_index: int) -> tuple:
     markers = request_markers(boundaries or [])
     return request_msg_range(markers, req_from, req_to, last_msg_index)
+
+
+# True for a turn-OPENING user msg (`turns`, 2026-09-08): a `user`-role msg carrying a `text`
+# block and NO `tool_result` block — a real human/orchestrator prompt, never CC's own
+# tool-result relay. A str-content pseudo-block (`system-reminder`/`task-notification`/etc, see
+# `build_turns`) never carries the literal type `"text"`, so it is excluded for free, without a
+# separate type-name check.
+def _is_turn_opener(turn: dict) -> bool:
+    if turn.get("role") != "user":
+        return False
+    types = {block.get("type") for block in turn.get("blocks", [])}
+    return "text" in types and "tool_result" not in types
+
+
+# Msg indices of every turn-opening msg, in msg-index (== chronological) order.
+def turn_openers(turns: list) -> list:
+    return [turn["index"] for turn in turns if _is_turn_opener(turn)]
+
+
+# The preview text a turn's opener contributes — the LAST `text`-type block's own preview, not
+# the first. A spawn prompt (verified: the only multi-text-block opener in the corpus this was
+# checked against) carries a leading `<system-reminder>`-wrapped block ahead of the real prompt;
+# taking the last text block is what surfaces "You are a WORKER." instead of the reminder wrapper,
+# and is a no-op for every other opener observed (all single-text-block).
+def _turn_preview(turn: dict) -> str:
+    preview = ""
+    for block in turn.get("blocks", []):
+        if block.get("type") == "text":
+            preview = block.get("preview", "")
+    return preview
+
+
+# Per-turn rows for `turns <session>`: number, first-request send timestamp, request count,
+# preview, and — when every request of the turn resolves against `times_by_flow` — total
+# duration, model time, tool time and summed output tokens.
+#
+# `times_by_flow` is `usage.build_request_times_by_flow`'s `{flow_id: (stream_end_iso,
+# output_tokens)}` — the SAME transcript join `usage.build_usage_by_flow` performs, joined by
+# requestId, keyed here the same way `msgs`' CR/CC map is. A request whose flow is absent from it
+# (transcript join failed for the session, or this one request's own usage never resolved) makes
+# the WHOLE turn's duration/model/tool/tokens print as "?" — never a partial number computed from
+# only the requests that DID resolve, since a partial sum over a subset would be silently wrong
+# rather than visibly missing. The request count and preview/clock print regardless.
+#
+# Turn ASSIGNMENT is the one non-obvious part (see Gotchas in DOCS.md): a request's msg-index KEY
+# in `request_markers` (its `start_index`, the smallest index its OWN send first reveals) is NOT
+# what decides which turn it belongs to — a request that answers with plain text and goes idle is
+# never itself sent onward, so its reply only becomes visible bundled into the NEXT request's
+# delta, which can carry a LOW start_index while its own `message_count` already reaches past the
+# NEXT turn's opener. The correct test is therefore against `message_count` (this request's own
+# SENT payload size, i.e. which openers its own send already carries), not `start_index`:
+# `bisect_right(openers, message_count - 1)` gives the 1-based turn number directly — the count of
+# openers already contained in that request's own payload. Verified against two real sessions:
+# using `start_index` instead over-counted `reldist-power`'s turn 1 by exactly the one request
+# whose send bundled the turn's own idle-text reply together with the next turn's new prompt.
+def build_turn_rows(turns: list, boundaries: list, times_by_flow: dict) -> list:
+    markers = request_markers(boundaries or [])
+    openers = turn_openers(turns)
+    if not openers:
+        return []
+    groups = [[] for _ in openers]
+    for msg_index in sorted(markers):
+        marker = markers[msg_index]
+        position = bisect.bisect_right(openers, marker["message_count"] - 1)
+        position = max(1, min(position, len(openers))) - 1
+        groups[position].append(marker)
+    rows = []
+    for position, opener in enumerate(openers):
+        group = groups[position]
+        row = {
+            "number": position + 1,
+            "timestamp": group[0]["timestamp"] if group else None,
+            "requests": len(group),
+            "preview": _turn_preview(turns[opener]),
+            "duration": None,
+            "model_time": None,
+            "tool_time": None,
+            "tokens": None,
+        }
+        resolved = []
+        ok = bool(group)
+        for marker in group:
+            send = local_datetime(marker["timestamp"])
+            times = (times_by_flow or {}).get(marker.get("flow_id"))
+            if send is None or times is None:
+                ok = False
+                break
+            end = local_datetime(times[0])
+            output_tokens = times[1]
+            if end is None or output_tokens is None:
+                ok = False
+                break
+            resolved.append((send, end, output_tokens))
+        if ok:
+            row["duration"] = (resolved[-1][1] - resolved[0][0]).total_seconds()
+            row["model_time"] = sum((end - send).total_seconds() for send, end, _ in resolved)
+            row["tool_time"] = sum(
+                (resolved[i + 1][0] - resolved[i][1]).total_seconds()
+                for i in range(len(resolved) - 1)
+            )
+            row["tokens"] = sum(tokens for _, _, tokens in resolved)
+        rows.append(row)
+    return rows
 
 
 # Load everything a command needs for one session: the last request's payload plus its msg rows
