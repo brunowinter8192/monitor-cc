@@ -15,22 +15,17 @@ from ..input.click_handler import (
 from ..format.token_format import format_cache_tracker
 from ..utils import truncate_visible
 from ..ram_audit import register_ram_dump
-# From pane_error_log.py: shared exception-safe pane-error sink
 from ..pane_error_log import log_pane_error
-# From token_search.py: real-render-based search matcher (turn/call force-expanded content)
 from .token_search import build_token_search_matches
-# From search_bar.py: shared search-bar mechanics (state, key/mouse handling, drag-select,
-# BG-restore sentinel resolution) — rollout sub-milestone 4, retrofitting the tokens pane onto
-# the proxy pane's reference implementation
 from .. import search_bar
 
 cache_expand_states: Dict[tuple, bool] = {}
 cache_line_map: Dict[int, tuple] = {}
 cache_hover_row: Optional[int] = None
 cache_scroll_offset: int = 0
-cache_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by _build_tokens_output
-_cache_copy_feedback_until: Dict[tuple, float] = {}  # (turn_idx, call_idx) → expiry timestamp for ✓ flash
-_cache_pane_width: int = 80  # updated each render cycle; used by click handler for copy-button column check
+cache_copy_rows: Set[int] = set()
+_cache_copy_feedback_until: Dict[tuple, float] = {}
+_cache_pane_width: int = 80
 
 _cache_jsonl_position: int = 0
 _cache_turns: list = []
@@ -38,21 +33,14 @@ _cache_current_filepath = None
 _response_log_pos: int = 0
 _response_rid_map: dict = {}
 
-_TOKENS_SEARCH_BAR_LINES = 1  # fixed-height search bar row; the sticky header (below it) is separate and conditional
+_TOKENS_SEARCH_BAR_LINES = 1
 _TOKENS_SEARCH_BAR_LABEL = 'search: '
 
-# Search state — permanent row-1 search bar. .matches holds (turn_idx, call_idx) [call content]
-# or ('turn', turn_idx) [turn prompt] keys, ordered by position — see token_search.py.
 _tokens_search: search_bar.SearchState = search_bar.SearchState()
-# key -> absolute line index (+ 'total_lines') from format_cache_tracker's nav_out, refreshed
-# every render — used by _ensure_tokens_match_visible's jump-to-match scroll math (mirrors
-# core/monitor_display.py's _search_all_line_offsets/_search_total_lines; not part of
-# SearchState since it's pane-specific, not a generic search-bar mechanic).
 _tokens_nav: dict = {}
 
 # ORCHESTRATOR
 
-# Runs cache tracker display loop (for dedicated tokens tmux pane)
 def run_tokens_loop() -> None:
     global cache_expand_states, cache_line_map, cache_hover_row, cache_scroll_offset
     global _cache_jsonl_position, _cache_turns, _cache_current_filepath, _cache_copy_feedback_until
@@ -95,10 +83,6 @@ def run_tokens_loop() -> None:
 
 # FUNCTIONS
 
-# Drain and dispatch all pending keyboard/mouse input for one tick; returns True if the display
-# needs to redraw. Stays physically in this module (bare-name read_keypress/read_mouse_event
-# calls — dev/pane_error_log's exception-survival probe and dev/pane_search's search-bar probes
-# monkeypatch these as module attributes of token_pane itself).
 def _poll_tokens_input() -> bool:
     input_changed = False
     while True:
@@ -111,10 +95,9 @@ def _poll_tokens_input() -> bool:
                 if _handle_tokens_mouse(*event):
                     input_changed = True
             elif event is not None:
-                # (-1,-1,-1) release sentinel — no-op unless a row-1 drag was active
                 if _handle_tokens_search_release():
                     input_changed = True
-            elif _tokens_search.focused:  # bare ESC → cancel search
+            elif _tokens_search.focused:
                 if _handle_tokens_search_cancel():
                     input_changed = True
         elif _tokens_search.focused:
@@ -131,7 +114,6 @@ def _poll_tokens_input() -> bool:
                 input_changed = True
     return input_changed
 
-# Serialize a tokens-pane API call to full untruncated text for clipboard
 def _serialize_tokens(key: tuple) -> str:
     import json
     turn_idx, call_idx = key
@@ -158,7 +140,6 @@ def _serialize_tokens(key: tuple) -> str:
             parts.append(f"\n--- thinking ({blk.get('chars', 0):,}c) ---")
     return '\n'.join(parts)
 
-# Return module-level state snapshot for RAM audit
 def _tokens_ram_state() -> list:
     return [
         ('cache_expand_states',     cache_expand_states),
@@ -172,13 +153,11 @@ def _tokens_ram_state() -> list:
         ('_tokens_search_matches',  _tokens_search.matches),
     ]
 
-# Process one mouse event; returns True if display should refresh
 def _handle_tokens_mouse(button: int, col: int, row: int) -> bool:
     global cache_hover_row, cache_scroll_offset, cache_expand_states, _cache_copy_feedback_until
     if button == 0:
-        if row == 1:  # search bar row — focuses; also anchors a potential drag-select
+        if row == 1:
             return search_bar.handle_search_mouse_press(_tokens_search, col, _TOKENS_SEARCH_BAR_LABEL)
-        # Click elsewhere (sticky-header row or body) clears any lingering drag-selection
         had_selection = _tokens_search.sel_anchor is not None
         search_bar.clear_selection(_tokens_search)
         key = cache_line_map.get(row)
@@ -196,14 +175,13 @@ def _handle_tokens_mouse(button: int, col: int, row: int) -> bool:
     if button == 65:
         cache_scroll_offset = max(0, cache_scroll_offset - 3)
         return True
-    if button == 32 and _tokens_search.dragging:  # motion with left button held (0+32), row-1 drag active
+    if button == 32 and _tokens_search.dragging:
         return search_bar.handle_search_mouse_motion(_tokens_search, col, _TOKENS_SEARCH_BAR_LABEL)
     if button >= 32:
         cache_hover_row = row
         return True
     return False
 
-# Process one non-escape key event; returns True if display should refresh
 def _handle_tokens_key(char: str) -> bool:
     if char == 'y':
         key = resolve_parent_key(cache_line_map, cache_hover_row)
@@ -212,31 +190,18 @@ def _handle_tokens_key(char: str) -> bool:
         return False
     return False
 
-# Cancel active search on bare ESC while focused; bar stays visible with an empty query.
-# Thin wrapper — search_bar.handle_search_cancel resets query/focused/matches/match_set/
-# selection all at once, identical across every pane.
 def _handle_tokens_search_cancel() -> bool:
     return search_bar.handle_search_cancel(_tokens_search)
 
-# Handle keyboard input while the search bar is focused; returns True if input_changed. Thin
-# wrapper over search_bar.handle_search_input — _tokens_search_on_commit is the pane-specific
-# "run the actual search" callback.
 def _handle_tokens_search_input(char: str) -> bool:
     return search_bar.handle_search_input(_tokens_search, char, on_commit=_tokens_search_on_commit)
 
-# on_commit callback for search_bar.handle_search_input (fires on Enter): data is always fully
-# loaded incrementally (no windowing, no reconstruction step, unlike the proxy panes) — just
-# builds matches over what's already in memory via token_search.build_token_search_matches.
-# Always re-runs (not gated on query-unchanged) — the pane's own data never needs a separate
-# reconstruction step, so there's no reason to skip it, matching the proxy panes' convention.
 def _tokens_search_on_commit(state: search_bar.SearchState) -> None:
     state.matches = build_token_search_matches(state.query, _cache_turns, _cache_pane_width, _response_rid_map)
     state.match_set = set(state.matches)
     state.current_idx = 0
     _ensure_tokens_match_visible()
 
-# Jump to the next (forward=True) or previous search match, wrapping around; returns True if
-# a jump happened (False when there are no matches, e.g. before the first Enter)
 def _jump_tokens_search_match(forward: bool) -> bool:
     if not _tokens_search.matches:
         return False
@@ -244,11 +209,6 @@ def _jump_tokens_search_match(forward: bool) -> bool:
     _ensure_tokens_match_visible()
     return True
 
-# Adjust cache_scroll_offset so the current match's line is visible (2 lines context above) —
-# mirrors core/monitor_display.py's ensure_match_visible (no defer-to-next-render dance like the
-# proxy panes' _proxy_just_expanded, since token_pane has no lazy-load to interleave with a
-# scroll; positions in _tokens_nav don't depend on scroll/search state, only on
-# _cache_turns/cache_expand_states, so the last render's cached positions are always accurate).
 def _ensure_tokens_match_visible() -> None:
     global cache_scroll_offset
     if not _tokens_search.matches or _tokens_search.current_idx >= len(_tokens_search.matches):
@@ -263,24 +223,16 @@ def _ensure_tokens_match_visible() -> None:
         pane_height = term.lines - 1
     except OSError:
         pane_height = 50
-    viewport_lines = (pane_height - _TOKENS_SEARCH_BAR_LINES) - 1  # mirrors _build_tokens_output's own content_height/-1 math
-    new_start = max(0, target_line - 2)  # 2 lines context above match
+    viewport_lines = (pane_height - _TOKENS_SEARCH_BAR_LINES) - 1
+    new_start = max(0, target_line - 2)
     cache_scroll_offset = max(0, total_lines - viewport_lines - new_start)
 
-# Finalize a row-1 drag on SGR mouse release; returns True if a redraw is needed. No-op (False)
-# unless a row-1 drag was actually in progress. Thin wrapper — release-copies-to-clipboard is
-# identical across every pane.
 def _handle_tokens_search_release() -> bool:
     return search_bar.handle_search_mouse_release(_tokens_search, copy_to_clipboard)
 
-# Render the always-visible search bar (row 1). Thin wrapper binding this pane's own label.
 def _render_tokens_search_bar(pane_width: int) -> str:
     return search_bar.render_search_bar(_tokens_search, pane_width, label=_TOKENS_SEARCH_BAR_LABEL)
 
-# Tick-boundary token data refresh; also runs the 24h log janitor (this pane is always active
-# and runs from the main checkout, unlike the menubar bundle — see process-docs/logging/
-# log_janitor.md and process-docs/main_pane/ for why the janitor moved here from the now-removed
-# main pane). Returns (input_changed, new_last_data_refresh, new_last_janitor_ts).
 def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: float, last_janitor_ts: float) -> tuple:
     from ..core import monitor as _monitor
     from ..proxy_display.parser import find_response_log_path
@@ -293,7 +245,6 @@ def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: flo
     main_sessions = _monitor.get_main_session_files()
     filepath = main_sessions[0] if main_sessions else None
     if filepath != _cache_current_filepath:
-        # Session changed — reset all incremental state
         _cache_current_filepath = filepath
         _cache_jsonl_position = 0
         _cache_turns = []
@@ -302,9 +253,6 @@ def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: flo
         cache_hover_row = None
         _response_log_pos = 0
         _response_rid_map.clear()
-        # A stale _tokens_search.matches list holds keys into the turns just cleared above —
-        # reset query/focused/matches/selection (mirrors every other pane's session-change
-        # reset) plus the pane-specific nav cache (positions are now meaningless).
         search_bar.handle_search_cancel(_tokens_search)
         _tokens_nav.clear()
     if filepath is not None:
@@ -322,7 +270,6 @@ def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: flo
         last_janitor_ts = now
     return True, now, last_janitor_ts
 
-# Format, clip viewport, and render token turns to ANSI string; updates cache_line_map
 def _build_tokens_output() -> str:
     global cache_line_map, cache_copy_rows, _cache_pane_width
     try:
@@ -333,7 +280,7 @@ def _build_tokens_output() -> str:
         pane_height = 50
         pane_width = 80
     _cache_pane_width = pane_width
-    content_height = pane_height - _TOKENS_SEARCH_BAR_LINES  # search bar always wins row 1; format_cache_tracker's own -1 (sticky-header slot) is untouched, now operating on this reduced value
+    content_height = pane_height - _TOKENS_SEARCH_BAR_LINES
     current_match_key = (
         _tokens_search.matches[_tokens_search.current_idx]
         if _tokens_search.matches and _tokens_search.current_idx < len(_tokens_search.matches)
@@ -359,10 +306,6 @@ def _build_tokens_output() -> str:
     return '\n'.join(result_lines)
 
 
-# Render the visible slice's rows with zebra/hover backgrounds; mutates cache_line_map/
-# cache_copy_rows in place (dict/set mutation, not a scalar global rebind — safe to live in a
-# helper per the monkeypatch constraint). Returns the rendered ANSI lines (search bar/sticky
-# header NOT included — the caller prepends them).
 def _render_tokens_rows(visible_lines: list, visible_keys: list, phys_row: int, parent_count: int,
                          pane_width: int, hover_row, cache_line_map: dict, cache_copy_rows: set) -> list:
     result_lines = []
@@ -375,7 +318,7 @@ def _render_tokens_rows(visible_lines: list, visible_keys: list, phys_row: int, 
         is_hovered = (key is not None and hover_row is not None and phys_row == hover_row)
         if is_hovered:
             chosen_bg = HOVER_BG
-        elif LIGHT_RED_BG in line:  # substring, not prefix — a search-match wrap may now precede it
+        elif LIGHT_RED_BG in line:
             chosen_bg = LIGHT_RED_BG
         else:
             chosen_bg = zebra_bg

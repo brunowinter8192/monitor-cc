@@ -12,18 +12,11 @@ from ..colors import (
 from ..constants import WARNINGS_POLL_INTERVAL
 from ..utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
 from ..format.strip_marker import highlight_stripped
-# From search_bar.py: shared BG-restore sentinel (2026-08-18, rollout sub-milestone 6) — this
-# module doesn't know a row's eventual chosen_bg (zebra/hover) at embed time, only its own row
-# loop (below) does, once computed; same pattern as format/token_format.py
 from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
 INDENT = '  '
 
 # FUNCTIONS
 
-# True when an error's own searchable text (tool_name, worker_name, tool_call_input, full_text)
-# contains query, case-insensitive — checked against the underlying dict fields directly rather
-# than re-rendering (this pane's render is trivial, no branching to risk diverging from), and
-# covers the FULL untruncated full_text regardless of collapsed/expanded display state.
 def _error_matches_query(err: dict, q: str) -> bool:
     if q in err.get('tool_name', '').lower():
         return True
@@ -36,18 +29,12 @@ def _error_matches_query(err: dict, q: str) -> bool:
         return True
     return False
 
-# Build the ordered list of err_idx whose content matches query (case-insensitive) — the match
-# key IS the bare int err_idx (matches error_line_map/_serialize_warnings' own key shape, no
-# nesting needed — this pane has only one expand level).
 def build_warnings_search_matches(query: str, tool_errors: list) -> List[int]:
     if not query:
         return []
     q = query.lower()
     return [i for i, err in enumerate(tool_errors) if _error_matches_query(err, q)]
 
-# Build header line showing refresh key, last refresh time, poll interval, and a [refresh] button;
-# when regions_out given, registers the button's (start_col,end_col,phys_row=1) -> 'refresh'
-# region — only when it fits pane_width (no button appended, no region, when it doesn't)
 def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, regions_out: Optional[dict] = None) -> str:
     if regions_out is not None:
         regions_out.clear()
@@ -68,14 +55,6 @@ def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, region
     return text + '  ' + f"{WHITE}{label}{RESET}"
 
 
-# Build the header line + optional expanded-detail lines for ONE error — the part of
-# _format_warnings_pane's overall render (see that function's own comment for the full contract)
-# that handles a single error entry. A match's header line is container-marked UNCONDITIONALLY
-# (marker+line+_BG_RESTORE_SENTINEL, mirrors token_format's turn-header treatment) -- BEFORE
-# append_copy_symbol, so the copy button stays outside the marked span. When expanded, the
-# matching detail lines (tool_call_input k/v + full_text body) ADDITIONALLY get browser-find
-# substring-highlighted via utils.highlight_query_in_line. Returns (lines, keys) -- keys[0] is
-# ('error', err_idx) for the header line, None for every detail line.
 def _build_one_warning_lines(err_idx: int, err: dict, is_expanded: bool,
                               search_match_set: Optional[set], search_current_key, search_query: str,
                               copy_feedback: Optional[dict], pane_width: int) -> tuple:
@@ -116,8 +95,6 @@ def _build_one_warning_lines(err_idx: int, err: dict, is_expanded: bool,
     return lines, keys
 
 
-# Build all_lines/all_keys for the whole tool_errors list -- section header + one
-# _build_one_warning_lines call per error, or the "No warnings." placeholder.
 def _build_warnings_lines(tool_errors: list, error_expand_states: dict, copy_feedback: Optional[dict],
                            pane_width: int, search_match_set: Optional[set], search_current_key,
                            search_query: str) -> tuple:
@@ -140,8 +117,6 @@ def _build_warnings_lines(tool_errors: list, error_expand_states: dict, copy_fee
     return all_lines, all_keys
 
 
-# Render the visible slice's rows with zebra/hover backgrounds. Returns (rendered_lines,
-# new_error_line_map); copy_rows_out, if given, is populated in place (caller clears it first).
 def _render_warnings_rows(visible_lines: list, visible_keys: list, phys_row: int, parent_count: int,
                            pane_width: int, hover_row, copy_rows_out: Optional[set]) -> tuple:
     new_error_line_map = {}
@@ -171,12 +146,6 @@ def _render_warnings_rows(visible_lines: list, visible_keys: list, phys_row: int
     return rendered, new_error_line_map
 
 
-# Render all warning sections; returns (rendered_str, new_error_line_map). Thin orchestrator over
-# _build_warnings_lines (section content) + _render_warnings_rows (viewport clip + zebra/hover).
-# (2026-08-18, rollout sub-milestone 6) header_lines (default 1, preserves every pre-existing
-# caller's exact behavior) generalizes the previously-hardcoded single-header-row assumption --
-# warnings_pane.py passes 2 (search bar + [refresh] header). search_match_set/search_current_key
-# hold bare int err_idx (no nesting -- this pane has one expand level).
 def _format_warnings_pane(
     tool_errors: list,
     error_expand_states: dict,
@@ -199,7 +168,7 @@ def _format_warnings_pane(
         tool_errors, error_expand_states, copy_feedback, pane_width,
         search_match_set, search_current_key, search_query,
     )
-    header_offset = 1 + header_lines  # row 1..header_lines = header rows, body starts after
+    header_offset = 1 + header_lines
     visible_lines = all_lines[error_scroll_offset:error_scroll_offset + content_height]
     visible_keys = all_keys[error_scroll_offset:error_scroll_offset + content_height]
     parent_count = sum(1 for k in all_keys[:error_scroll_offset] if k is not None)
@@ -210,7 +179,6 @@ def _format_warnings_pane(
     return header + '\n' + '\n'.join(rendered), new_error_line_map
 
 
-# Serialize a warnings-pane entry to full untruncated text for clipboard; key is the bare int error_line_map stores
 def _serialize_warnings(key, tool_errors: list) -> str:
     if isinstance(key, int) and 0 <= key < len(tool_errors):
         err = tool_errors[key]

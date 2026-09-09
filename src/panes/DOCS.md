@@ -30,7 +30,7 @@ core/monitor.run_monitor(mode=X)
 
 ## Modules
 
-### token_pane.py (389 LOC)
+### token_pane.py (333 LOC)
 
 **Purpose:** Token/cache tracker pane — incrementally reads session JSONL (via `cache_turns.build_cache_turns`), renders interactive expand/collapse/scroll view with CR/CC/D per request. Owns the zebra/hover/truncation render loop: calls `format_cache_tracker` for logical lines, then applies `ZEBRA_BG_A/B`, `HOVER_BG` priority, and `truncate_visible` per line. Loop follows drain-refresh-render pattern; private helpers `_tokens_ram_state`, `_handle_tokens_mouse`, `_handle_tokens_key`, `_refresh_tokens_data`, `_build_tokens_output` extracted from loop body. Also polls `_response` dual-log incrementally via `find_response_log_path` + `read_response_log` (from `proxy_display.parser`), accumulates `_response_rid_map: {request_id → headers}` for rate-limit display; resets on session change alongside other state. **(2026-07-31) The `while True:` body is wrapped in its own `try/except Exception:`** — an uncaught exception is caught, logged via `pane_error_log.log_pane_error('tokens')`, and the loop continues after `wait_for_input(INPUT_POLL_INTERVAL)`; `KeyboardInterrupt`/`SystemExit` still propagate, `finally: disable_mouse(); restore_terminal()` still runs. **(2026-07-30) Copy-by-click on the ⎘ symbol:** `format_cache_tracker` is called with `copy_feedback=_cache_copy_feedback_until` (button-region pattern, mirrors `proxy_display`'s `_proxy_copy_rows`); `_build_tokens_output` detects the rendered `⎘`/`✓` substring per row and populates `cache_copy_rows`. `_handle_tokens_mouse` checks `col >= _cache_pane_width - 2 and row in cache_copy_rows` FIRST (before the pre-existing expand-toggle) — a hit calls `copy_to_clipboard(_serialize_tokens(key))` and sets a 1.5s `✓`-flash entry, identical to the `y` key's `_serialize_tokens` call for the same row.
 
@@ -59,7 +59,7 @@ always-active and runs from the main checkout (unlike the menubar bundle, which 
 
 ---
 
-### cache_turns.py (65 LOC, new 2026-09, panes-split milestone)
+### cache_turns.py (57 LOC, new 2026-09, panes-split milestone)
 
 **Purpose:** `build_cache_turns(filepath, last_position, existing_turns) -> (turns, new_position)` — incrementally reads new lines from a session JSONL since `last_position`, parses them, and merges the resulting cache turns into `existing_turns`. Split out of `token_pane.py` (moved, not rewritten) because it is a pure JSONL-turn accumulation/merge function with no pane-loop or module-state coupling — a data concern, shared by `proxy_display/pane.py` and `proxy_display/worker_proxy_pane.py` in addition to `token_pane.py` itself, not a pane concern. `build_cache_turns` (was 53 LOC) dropped under 50 by extracting the duplicate-call merge block (the "last existing turn was incomplete — merge its api_calls with the fresh parse" branch) into `_merge_duplicate_turn(existing_turns, new_turns) -> list`.
 **Reads:** Session JSONL file at `filepath` (via `jsonl.read_new_lines`/`jsonl.get_current_position`) — parameters only, no module state.
@@ -69,7 +69,7 @@ always-active and runs from the main checkout (unlike the menubar bundle, which 
 
 ---
 
-### token_search.py (49 LOC, new 2026-08-18, rollout sub-milestone 4)
+### token_search.py (35 LOC, new 2026-08-18, rollout sub-milestone 4)
 
 **Purpose:** `build_token_search_matches(query, turns, pane_width, response_rid_map=None)` — the ordered list of match keys whose content matches `query` (case-insensitive). Mirrors `proxy_display/search.py`'s role/shape exactly (parallel structure across the two search-enabled pane families) — uses the REAL render functions (`token_format._format_turn_header_line`, `_format_cache_call`, `_render_expanded_call_lines`), not a duplicated serializer, so a match can never diverge from what `token_format.py` actually renders. For each turn: checks the turn's own header line (`('turn', turn_idx)` on match). For each call within it: FORCE-renders the call's header (fixed `▼` symbol, arbitrary — the glyph itself is never searched) plus its expanded detail content, ignoring the call's own `cache_expand_states` toggle (`(turn_idx, call_idx)` on match — the whole point is to also find matches in currently-collapsed calls). No `expand_states` param (unlike `proxy_display.search.build_search_matches`) — calls have no nested sub-toggles to force-expand as-is.
 **Reads:** Turns list, pane width, optional response_rid_map — parameters only, no module state.
@@ -79,7 +79,7 @@ always-active and runs from the main checkout (unlike the menubar bundle, which 
 
 ---
 
-### warnings_pane.py (385 LOC)
+### warnings_pane.py (332 LOC)
 
 **Purpose:** Warnings pane event loop and module-level state owner. Reads tool errors directly from the `_errors` dual-log (current proxy session, via `find_errors_log_path`) and from worker `_errors` dual-logs (via `scan_worker_errors_logs`); no proxy-log scanning. `_errors_record_to_display(rec)` converts raw `_errors` records to display dicts; `_read_errors_log(path, last_pos)` does incremental line-by-line reads. On project/session change, all state is reset and positions cleared. Loop follows drain-refresh-render pattern; private helpers `_warnings_ram_state`, `_handle_warnings_mouse`, `_handle_warnings_key`, `_refresh_warnings_data`, `_build_warnings_output` extracted from loop body. No zero_results, schema_warnings, or dedup sets. **(2026-07-31) The `while True:` body is wrapped in its own `try/except Exception:`** — an uncaught exception is caught, logged via `pane_error_log.log_pane_error('warnings')`, and the loop continues after `wait_for_input(INPUT_POLL_INTERVAL)`; `KeyboardInterrupt`/`SystemExit` still propagate, `finally: disable_mouse(); restore_terminal()` still runs. **(2026-07-30) Copy-by-click on the ⎘ symbol:** `_build_warnings_output` passes `copy_feedback=_error_copy_feedback_until, copy_rows_out=error_copy_rows` into `_format_warnings_pane`. `_handle_warnings_mouse` checks `col >= _error_pane_width - 2 and row in error_copy_rows` FIRST (before the pre-existing expand-toggle) — a hit calls `copy_to_clipboard(_serialize_warnings(ekey, tool_errors))` and sets a 1.5s `✓`-flash entry. This surfaced a pre-existing `y`-key bug (see `warnings_render.py`): `error_line_map` stores a bare int, but `_serialize_warnings` expected a `('error', idx)` tuple — `y` silently copied `''` for every row until fixed here. **(2026-07-30) `[refresh]` header button:** `_build_warnings_output` now computes `header = _format_warnings_header(_last_refresh_ts, pane_width, _warnings_header_regions)` ONCE and threads it into `_format_warnings_pane` as a plain `header: str` param (replacing that function's own internal `last_refresh_ts`-based header construction) — `_build_warnings_output` now returns `(output, header)`, and `run_warnings_loop`'s overdraw print reuses that SAME returned header instead of recomputing `_format_warnings_header` a second time with different args (which would have silently dropped the button on the overdraw pass).
 
@@ -93,7 +93,7 @@ always-active and runs from the main checkout (unlike the menubar bundle, which 
 
 ---
 
-### warnings_render.py (223 LOC)
+### warnings_render.py (192 LOC)
 
 **Purpose:** Pure rendering helpers — formats the warnings pane from caller-supplied state. `_format_warnings_pane(tool_errors, error_expand_states, error_hover_row, error_scroll_offset, pane_height, pane_width, header, copy_feedback=None, copy_rows_out=None, header_lines=1, search_match_set=None, search_current_key=None, search_query='')` returns `(rendered_str, new_error_line_map)` 2-tuple; no globals written. Takes the already-built `header: str` directly (caller-owned, see `warnings_pane.py`) instead of a `last_refresh_ts` float. When `copy_feedback` is given, appends a `⎘`/`✓` symbol to each error row via `utils.append_copy_symbol` and, when `copy_rows_out` is given, registers the row (substring-detected, same pattern as `proxy_display.format._apply_row_backgrounds`). `_format_warnings_header(last_refresh_ts, pane_width=80, regions_out=None)` builds the header line — **(2026-07-30)** now also appends a `[refresh]` button (WHITE, next to the pre-existing `[r]efresh · last: ... · polling: ...` text, unchanged) and, when `regions_out` given, registers its `(start_col,end_col,phys_row=1)` region (relative to its OWN top — shifted externally by `warnings_pane.py` since 2026-08-18) — but ONLY when it fits `pane_width`; when it doesn't, neither the button text nor the region is added. `_serialize_warnings(key, tool_errors)` formats clipboard output for a single error entry — **(2026-07-30 fix)** `key` is the bare `int` `error_line_map` actually stores, NOT the internal `('error', idx)` tuple `_format_warnings_pane`'s own `all_keys` uses.
 
@@ -107,9 +107,24 @@ always-active and runs from the main checkout (unlike the menubar bundle, which 
 
 ---
 
-### log_janitor.py (170 LOC)
+### log_janitor.py (167 LOC)
 
 **Purpose:** `LogSpec` registry (12 entries) + `sweep_eligible_specs()` + `cleanup_old_jsonl(path)` — authoritative log inventory; 7-day JSONL sweep triggered from `token_pane.py::run_tokens_loop` every 24h. Moved here 2026-09 from `src/log_janitor.py` because `token_pane.py` is its only in-tree importer and no external entry point loaded it at root (see `process-docs/main_pane/` and `process-docs/logging/` for why it left the now-removed main pane originally).
+
+**`LogSpec` field table:**
+
+| Field | Meaning |
+|---|---|
+| `name` | identifier |
+| `path_pattern` | relative to `src/logs/` (`gpu_pane` + `ccwrap` use explicit subdir paths) |
+| `writer` | `"module.py:symbol"` |
+| `purpose` | one-liner |
+| `fmt` | `jsonl` / `log` / `bin+ansi` |
+| `retention` | `7d-ts-records` / `count-30` / `7d-timed-rotation` / `count-10-pairs` / `unbounded-plain-text-low-volume` |
+| `janitor_trigger` | `monitor-24h` / `proxy-start-bash` / `live-handler` / `ccwrap-caller` / `monitor-janitor-self` |
+| `sweep_eligible` | `True` = `cleanup_old_jsonl` applies via the monitor-24h tick |
+
+`monitor_sweep.log` is plain text (a few lines/day), so `cleanup_old_jsonl`'s ts-field parse does not apply and it has no rotation.
 **Reads:** JSONL log files passed in as `path` arguments — no shared/module state.
 **Writes:** Rewrites the passed JSONL file in place (drops records older than 7 days by `ts` field); exception-safe (never raises).
 **Called by:** `panes/token_pane.py` (lazy import inside `_refresh_tokens_data`, gated every 24h); `dev/hook_smoke/test_log_janitor.py` (smoke test, direct import via `sys.path.insert`).
@@ -138,3 +153,4 @@ Each pane module owns its own module-level scroll/expand/hover state. State is N
 - **Header + Body pane contract:** panes that render a fixed header above a scrolling body MUST overdraw the header after printing the body, using `print(f"\033[H{header}\033[K", end='', flush=True)`. Without the overdraw, long body lines that wrap visually push the header off the top of the pane. Empty-body test cases pass trivially — always verify with real (non-empty) data. Applies to `warnings_pane`. Does NOT apply to `token_pane` (nor `core/monitor.py`) — both deliberately truncate every line (`truncate_visible`) rather than wrap, so the precondition that triggers the header-pushed-off-top symptom never occurs; `token_pane`'s new row-1 search bar was added WITHOUT an overdraw for this reason.
 - `token_pane.py`'s `_handle_tokens_mouse` checks `row == 1` (search bar) FIRST, before the `cache_line_map` body lookup — no collision possible since `cache_line_map` never gets a row-1 entry (`phys_row` starts at `1 + _TOKENS_SEARCH_BAR_LINES + ...`, never 1).
 - **(2026-08-18)** `warnings_pane.py`'s search-bar migration is the ONLY one in this rollout that needed ZERO sentinel-detection collateral fix — `warnings_render.py`'s `DIM_YELLOW_BG in line` check already used the substring form before this milestone touched it (verified by reading the source directly, per the milestone's own explicit requirement — see `process-docs/pane_search/`). `ZEBRA_BG_A == ''` still required `search_bar.resolve_bg_restore` in that same loop, same as every other pane.
+- Wheel direction is inverted relative to `token_pane`: `warnings_pane` renders top-to-bottom (`visible = lines[offset:offset+height]`) so button 64 (wheel-up) DECREASES `error_scroll_offset` and 65 increases it; `token_pane` renders bottom-to-top and adds 3 on 64.

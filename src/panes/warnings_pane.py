@@ -8,7 +8,6 @@ import time
 from ..constants import INPUT_POLL_INTERVAL, WARNINGS_POLL_INTERVAL
 from ..utils import format_timestamp
 from ..ram_audit import register_ram_dump
-# From pane_error_log.py: shared exception-safe pane-error sink
 from ..pane_error_log import log_pane_error
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
@@ -19,9 +18,6 @@ from .warnings_render import (
     _format_warnings_pane, _format_warnings_header, _serialize_warnings,
     build_warnings_search_matches,
 )
-# From search_bar.py: shared search-bar mechanics (state, key/mouse handling, drag-select) --
-# rollout sub-milestone 6, retrofitting the warnings pane onto the proxy pane's reference
-# implementation
 from .. import search_bar
 
 tool_errors: list = []
@@ -29,28 +25,25 @@ error_expand_states: Dict[int, bool] = {}
 error_line_map: Dict[int, int] = {}
 error_hover_row: Optional[int] = None
 error_scroll_offset: int = 0
-error_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by _format_warnings_pane
-_error_copy_feedback_until: Dict[int, float] = {}  # err_idx → expiry timestamp for ✓ flash
-_error_pane_width: int = 80  # updated each render cycle; used by click handler for copy-button column check
-_warnings_header_regions: Dict[Tuple[int, int, int], str] = {}  # (start_col,end_col,phys_row) → 'refresh'; row shifted by _WARNINGS_SEARCH_BAR_LINES since 2026-08-18
+error_copy_rows: Set[int] = set()
+_error_copy_feedback_until: Dict[int, float] = {}
+_error_pane_width: int = 80
+_warnings_header_regions: Dict[Tuple[int, int, int], str] = {}
 _last_project_filter: Optional[str] = None
 _last_refresh_ts: float = 0.0
 _force_refresh: bool = False
 _monitor_start_ts: float = 0.0
-_errors_log_pos: int = 0               # byte position in current session _errors log
-_errors_log_path: Optional[Path] = None  # resolved path for change-detection
-_worker_errors_positions: Dict[str, int] = {}  # per-file byte positions for worker _errors logs
+_errors_log_pos: int = 0
+_errors_log_path: Optional[Path] = None
+_worker_errors_positions: Dict[str, int] = {}
 
-_WARNINGS_SEARCH_BAR_LINES = 1  # fixed-height search bar row; the [refresh] header (below it) is separate and always exactly 1 line
+_WARNINGS_SEARCH_BAR_LINES = 1
 _WARNINGS_SEARCH_BAR_LABEL = 'search: '
 
-# Search state -- permanent row-1 search bar. .matches holds bare int err_idx (no nesting --
-# this pane has one expand level, matches error_line_map's own key shape).
 _warnings_search: search_bar.SearchState = search_bar.SearchState()
 
 # ORCHESTRATOR
 
-# Runs warnings-only display loop (for dedicated warnings tmux pane)
 def run_warnings_loop() -> None:
     global tool_errors, error_expand_states, error_line_map, error_hover_row
     global error_scroll_offset, _last_project_filter, _error_copy_feedback_until
@@ -97,10 +90,6 @@ def run_warnings_loop() -> None:
 
 # FUNCTIONS
 
-# Drain and dispatch all pending keyboard/mouse input for one tick; returns True if the display
-# needs to redraw. Stays physically in this module (bare-name read_keypress/read_mouse_event
-# calls — dev/pane_error_log's exception-survival probe and dev/pane_search's search-bar probes
-# monkeypatch these as module attributes of warnings_pane itself).
 def _poll_warnings_input() -> bool:
     input_changed = False
     while True:
@@ -113,10 +102,9 @@ def _poll_warnings_input() -> bool:
                 if _handle_warnings_mouse(*event):
                     input_changed = True
             elif event is not None:
-                # (-1,-1,-1) release sentinel -- no-op unless a row-1 drag was active
                 if _handle_warnings_search_release():
                     input_changed = True
-            elif _warnings_search.focused:  # bare ESC -> cancel search
+            elif _warnings_search.focused:
                 if _handle_warnings_search_cancel():
                     input_changed = True
         elif _warnings_search.focused:
@@ -133,12 +121,10 @@ def _poll_warnings_input() -> bool:
                 input_changed = True
     return input_changed
 
-# Prime monitor_sessions so the pane has fresh session state on startup
 def load_historical_warnings() -> None:
     from ..core import monitor as _monitor
     _monitor.monitor_sessions()
 
-# Return module-level state snapshot for RAM audit
 def _warnings_ram_state() -> list:
     return [
         ('tool_errors',                  tool_errors),
@@ -157,14 +143,11 @@ def _warnings_ram_state() -> list:
         ('_warnings_search_matches',     _warnings_search.matches),
     ]
 
-# Process one mouse event; returns True if display should refresh
 def _handle_warnings_mouse(button: int, col: int, row: int) -> bool:
     global error_hover_row, error_scroll_offset, error_expand_states, _error_copy_feedback_until, _force_refresh
     if button == 0:
-        if row == 1:  # search bar row -- focuses; also anchors a potential drag-select
+        if row == 1:
             return search_bar.handle_search_mouse_press(_warnings_search, col, _WARNINGS_SEARCH_BAR_LABEL)
-        # Click elsewhere ([refresh] badge, error row, or unmapped) clears any lingering
-        # drag-selection highlight
         had_selection = _warnings_search.sel_anchor is not None
         search_bar.clear_selection(_warnings_search)
         for (sc, ec, er), action in _warnings_header_regions.items():
@@ -183,25 +166,18 @@ def _handle_warnings_mouse(button: int, col: int, row: int) -> bool:
         error_expand_states[ekey] = not error_expand_states.get(ekey, False)
         return True
     if button == 64:
-        # tmux.h: MOUSE_WHEEL_UP=64 → scroll viewport up → offset decreases.
-        # NOTE: token_pane uses offset+3 for button 64 because it renders
-        # bottom-to-top (start = len-height-offset). warnings_pane renders
-        # top-to-bottom (visible = lines[offset:offset+height]), so directions
-        # are opposite: wheel-up must decrease offset here.
         error_scroll_offset = max(0, error_scroll_offset - 3)
         return True
     if button == 65:
-        # tmux.h: MOUSE_WHEEL_DOWN=65 → scroll viewport down → offset increases
         error_scroll_offset = error_scroll_offset + 3
         return True
-    if button == 32 and _warnings_search.dragging:  # motion with left button held (0+32), row-1 drag active
+    if button == 32 and _warnings_search.dragging:
         return search_bar.handle_search_mouse_motion(_warnings_search, col, _WARNINGS_SEARCH_BAR_LABEL)
     if button >= 32:
         error_hover_row = row
         return True
     return False
 
-# Process one non-escape key event; returns True if display should refresh
 def _handle_warnings_key(char: str) -> bool:
     global _force_refresh
     if char == 'y':
@@ -214,51 +190,29 @@ def _handle_warnings_key(char: str) -> bool:
         return True
     return False
 
-# Cancel active search on bare ESC while focused; bar stays visible with an empty query.
-# Thin wrapper -- search_bar.handle_search_cancel resets query/focused/matches/match_set/
-# selection all at once, identical across every pane.
 def _handle_warnings_search_cancel() -> bool:
     return search_bar.handle_search_cancel(_warnings_search)
 
-# Handle keyboard input while the search bar is focused; returns True if input_changed. Thin
-# wrapper over search_bar.handle_search_input -- _warnings_search_on_commit is the pane-specific
-# "run the actual search" callback.
 def _handle_warnings_search_input(char: str) -> bool:
     return search_bar.handle_search_input(_warnings_search, char, on_commit=_warnings_search_on_commit)
 
-# on_commit callback for search_bar.handle_search_input (fires on Enter): data is always fully
-# loaded (tool_errors accumulates every polled error, no windowing) -- just builds matches over
-# what's already in memory via build_warnings_search_matches. Always re-runs (not gated on
-# query-unchanged), matching the proxy panes' convention.
 def _warnings_search_on_commit(state: search_bar.SearchState) -> None:
     state.matches = build_warnings_search_matches(state.query, tool_errors)
     state.match_set = set(state.matches)
     state.current_idx = 0
 
-# Cycle the current match (updating which occurrence gets SEARCH_CURRENT_BG vs SEARCH_MATCH_BG,
-# and the N/M counter) -- NO jump/scroll call, unlike every other pane in this rollout. This
-# pane's own scroll (error_scroll_offset) genuinely exists (unlike gpu/news, which have none at
-# all) but per the approved decision, cycling current_idx alone is the full extent of n/N here;
-# a real jump-to-match would additionally need to auto-expand + compute a scroll target the way
-# workers_pane's jump does, deliberately out of scope for this bundled milestone. Returns True
-# if a cycle happened (False when there are no matches, e.g. before the first Enter).
 def _jump_warnings_search_match(forward: bool) -> bool:
     if not _warnings_search.matches:
         return False
     _warnings_search.current_idx = (_warnings_search.current_idx + (1 if forward else -1)) % len(_warnings_search.matches)
     return True
 
-# Finalize a row-1 drag on SGR mouse release; returns True if a redraw is needed. No-op (False)
-# unless a row-1 drag was actually in progress. Thin wrapper -- release-copies-to-clipboard is
-# identical across every pane.
 def _handle_warnings_search_release() -> bool:
     return search_bar.handle_search_mouse_release(_warnings_search, copy_to_clipboard)
 
-# Render the always-visible search bar (row 1). Thin wrapper binding this pane's own label.
 def _render_warnings_search_bar(pane_width: int) -> str:
     return search_bar.render_search_bar(_warnings_search, pane_width, label=_WARNINGS_SEARCH_BAR_LABEL)
 
-# Convert one _errors-log record to a tool_errors display dict.
 def _errors_record_to_display(rec: dict) -> dict:
     worker_field = rec.get('worker', '')
     worker_name = worker_field[len('worker:'):] if worker_field.startswith('worker:') else \
@@ -278,7 +232,6 @@ def _errors_record_to_display(rec: dict) -> dict:
         '_request_id': rec.get('request_id', ''),
     }
 
-# Read new records from an _errors log file starting at last_pos. Returns (records, new_pos).
 def _read_errors_log(path: Path, last_pos: int) -> tuple:
     records: list = []
     try:
@@ -299,7 +252,6 @@ def _read_errors_log(path: Path, last_pos: int) -> tuple:
     except OSError:
         return records, last_pos
 
-# Tick-boundary warnings data refresh; returns (input_changed, new_last_data_refresh)
 def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
     from ..core import monitor as _monitor
     from ..proxy_display.parser import (
@@ -330,13 +282,11 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
         error_hover_row = None
         _last_project_filter = project_filter
 
-    # Read main session _errors log (current-session-only by design; starts at pos 0 per session)
     new_errors: list = []
     if errors_path and errors_path.exists():
         raw_recs, _errors_log_pos = _read_errors_log(errors_path, _errors_log_pos)
         new_errors.extend(_errors_record_to_display(r) for r in raw_recs)
 
-    # Read worker _errors dual-logs
     _worker_sid = proxy_session_id_for_project(project_filter) if project_filter else ''
     worker_recs, _worker_errors_positions = scan_worker_errors_logs(
         _worker_errors_positions, _worker_sid, min_mtime=_monitor_start_ts,
@@ -347,7 +297,6 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
     _last_refresh_ts = now
     return True, now
 
-# Render warnings pane to ANSI string; updates error_line_map; returns (output, header) for overdraw
 def _build_warnings_output() -> tuple:
     global error_line_map, error_copy_rows, _error_pane_width, _warnings_header_regions
     try:
@@ -359,8 +308,6 @@ def _build_warnings_output() -> tuple:
         pane_width = 80
     _error_pane_width = pane_width
     refresh_header = _format_warnings_header(_last_refresh_ts, pane_width, _warnings_header_regions)
-    # _format_warnings_header registers the [refresh] region at its own row 1 -- shift by
-    # _WARNINGS_SEARCH_BAR_LINES since the search bar now owns physical row 1.
     if _warnings_header_regions:
         shifted = {
             (sc, ec, er + _WARNINGS_SEARCH_BAR_LINES): action

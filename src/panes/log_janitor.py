@@ -11,17 +11,16 @@ _RETENTION = 7 * 86400
 
 @dataclass(frozen=True)
 class LogSpec:
-    name: str            # identifier
-    path_pattern: str    # relative to src/logs/ (gpu_pane + ccwrap use explicit subdir paths)
-    writer: str          # "module.py:symbol"
-    purpose: str         # one-liner
-    fmt: str             # "jsonl" | "log" | "bin+ansi"
-    retention: str       # "7d-ts-records" | "count-30" | "7d-timed-rotation" | "count-10-pairs" | "unbounded-plain-text-low-volume"
-    janitor_trigger: str # "monitor-24h" | "proxy-start-bash" | "live-handler" | "ccwrap-caller" | "monitor-janitor-self"
-    sweep_eligible: bool # True = cleanup_old_jsonl applies via monitor-24h tick
+    name: str
+    path_pattern: str
+    writer: str
+    purpose: str
+    fmt: str
+    retention: str
+    janitor_trigger: str
+    sweep_eligible: bool
 
 
-# Authoritative log inventory — single source for all Monitor_CC log policies
 _LOG_REGISTRY: tuple = (
     LogSpec(
         name="hook_firing",
@@ -129,14 +128,13 @@ _LOG_REGISTRY: tuple = (
         writer="monitor_janitor.py:log_sweep_line",
         purpose="Daily tmux-session sweep decisions (session, age, KILLED/SPARED) for monitor_cc_* sessions",
         fmt="log",
-        retention="unbounded-plain-text-low-volume",  # a few lines/day (one per live monitor_cc_* session); no rotation built yet
+        retention="unbounded-plain-text-low-volume",
         janitor_trigger="monitor-janitor-self",
-        sweep_eligible=False,  # plain text, not JSONL — cleanup_old_jsonl's 'ts'-field parse doesn't apply
+        sweep_eligible=False,
     ),
 )
 
 
-# Return (spec, resolved_path) pairs for logs the monitor-24h sweep handles via cleanup_old_jsonl
 def sweep_eligible_specs(logs_dir: Path) -> list:
     return [
         (spec, logs_dir / spec.path_pattern)
@@ -145,7 +143,6 @@ def sweep_eligible_specs(logs_dir: Path) -> list:
     ]
 
 
-# Drop records older than 7 days from a JSONL file by 'ts' field; exception-safe; rewrites atomically
 def cleanup_old_jsonl(path: Path) -> None:
     try:
         if not path.exists():
@@ -160,11 +157,11 @@ def cleanup_old_jsonl(path: Path) -> None:
                 ts_raw = json.loads(line).get('ts', '')
                 if ts_raw:
                     ts_dt = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
-                    if ts_dt < cutoff:   # TypeError if naive ts → caught below → keep
+                    if ts_dt < cutoff:
                         continue
-            except Exception:  # unparseable ts or naive/aware mismatch → keep (fail-safe)
+            except Exception:
                 pass
             kept.append(line)
         path.write_text(''.join(kept), encoding='utf-8')
-    except Exception:  # janitor must never raise into the monitor event loop
+    except Exception:
         pass

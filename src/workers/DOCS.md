@@ -33,7 +33,7 @@ also stays in `worker_pane.py` — see that module's own entry and `process-docs
 
 ## Modules
 
-### worker_tmux.py (94 LOC)
+### worker_tmux.py (89 LOC)
 
 **Purpose:** Discover active Claude Code worker sessions via `tmux list-sessions`, detect per-worker status, and locate each worker's most recent session JSONL file.
 **Reads:** tmux session list (via subprocess); tmux pane/window state for status detection; worker CWD from tmux env.
@@ -43,7 +43,7 @@ also stays in `worker_pane.py` — see that module's own entry and `process-docs
 
 ---
 
-### worker_format.py (266 LOC)
+### worker_format.py (227 LOC)
 
 **Purpose:** Extract token sums, context-% and tool call lists from worker JSONL files; render the full workers pane block with per-worker rows, status, context-%, model, token counts, and expanded cache tracker. `extract_worker_context_pct(jsonl_path)` scans assistant messages for the latest `cache_read_input_tokens` value and returns `(100 * (_WORKER_CONTEXT_WINDOW - cr)) // _WORKER_CONTEXT_WINDOW` as remaining context percentage (None if no JSONL data yet). `_WORKER_CONTEXT_WINDOW = 1000000` — flat 1M window, no per-model lookup; the worker fleet runs exclusively on 1M-context models (opus-4-8, sonnet-5, fable-5), haiku-4-5 (200k) is never a worker. **(2026-07-30) Copy symbol on both row kinds:** `format_workers_block` takes `copy_feedback: Optional[dict] = None` — a flat dict mixing `str` name keys (worker header row) and `(name,turn_idx,call_idx)` tuple keys (expanded cache-call rows). Header row: `append_copy_symbol(header_line, ..., pane_width)` when `copy_feedback` given. Cache rows: `_worker_cache_copy_feedback(copy_feedback, name)` filters the flat dict down to a `(turn_idx,call_idx)→expiry` sub-dict scoped to THIS worker (avoids cross-worker key collision — `format_cache_tracker`'s own key format is the 2-tuple, and multiple workers can be expanded simultaneously, each with independent turn/call indices) before passing it to `format_cache_tracker(..., copy_feedback=...)`. **(2026-07-30) `[LIVE]`/`[FROZEN]` badge as the freeze button:** `regions_out: Optional[dict] = None` param — when given, registers `regions_out['freeze'] = (start_col, end_col)` (COLUMN SPAN ONLY, no row — `format_workers_block` doesn't know the final phys_row, that's resolved by the caller after viewport clipping, see `worker_pane.py`), width-guarded (`pane_width` computed BEFORE the `if not workers:` early return, so both branches can use it): the badge text itself is pre-existing, ALWAYS rendered regardless; only the region registration is gated on whether it fits.
 
@@ -68,7 +68,7 @@ New private helpers (same module): `_register_freeze_region`, `_build_worker_hea
 
 ---
 
-### worker_selection.py (27 LOC, new 2026-09, split out of `worker_pane.py` — see `process-docs/proxy_display/` for the split-methodology precedent)
+### worker_selection.py (25 LOC, new 2026-09, split out of `worker_pane.py` — see `process-docs/proxy_display/` for the split-methodology precedent)
 
 **Purpose:** Selection IPC — `get_selection_file_path(project_filter)` builds the
 `/tmp/monitor_cc_selected_worker_<hash>.txt` path (md5 of the normalized project path, or
@@ -85,7 +85,7 @@ import path `proxy_display/worker_proxy_pane.py` uses — still resolves unchang
 
 ---
 
-### worker_clipboard.py (40 LOC, new 2026-09, split out of `worker_pane.py`)
+### worker_clipboard.py (34 LOC, new 2026-09, split out of `worker_pane.py`)
 
 **Purpose:** `_serialize_workers(key, worker_turns)` — full untruncated clipboard text for a
 worker-header row (`key: str`, identity + turn/call counts) or an expanded cache-call row
@@ -102,7 +102,7 @@ effect, via `copy_to_clipboard`'s captured output).
 
 ---
 
-### worker_render.py (126 LOC, new 2026-09, split out of `worker_pane.py`)
+### worker_render.py (97 LOC, new 2026-09, split out of `worker_pane.py`)
 
 **Purpose:** Pure viewport/row-rendering + jump-scroll helpers with no module state — every
 function takes the caller's own dicts/scalars as explicit parameters and either returns a value
@@ -130,7 +130,7 @@ when non-`None`). None of these five are referenced by exact name in any dev pro
 
 ---
 
-### worker_search.py (48 LOC, new 2026-09, split out of `worker_pane.py`)
+### worker_search.py (36 LOC, new 2026-09, split out of `worker_pane.py`)
 
 **Purpose:** `workers_search_on_commit(state, workers, project_filter, pane_width, worker_turns,
 load_turns_fn, jump_fn)` — the search bar's on_commit body (fires on Enter), moved out of
@@ -154,7 +154,7 @@ separate, independently-bound name). Three match-key shapes: bare `name` (worker
 
 ---
 
-### worker_pane.py (398 LOC, split by concern 2026-09 — see `worker_selection.py`/`worker_clipboard.py`/`worker_render.py`/`worker_search.py` entries above and `process-docs/proxy_display/` for the split-methodology precedent)
+### worker_pane.py (330 LOC, split by concern 2026-09 — see `worker_selection.py`/`worker_clipboard.py`/`worker_render.py`/`worker_search.py` entries above and `process-docs/proxy_display/` for the split-methodology precedent)
 
 **Purpose:** Workers pane event loop — keyboard/mouse input, periodic data refresh, viewport-clipped screen rendering, and IPC selection file write for cross-pane coordination. Structured as drain-refresh-render: `run_workers_loop` (ORCHESTRATOR) delegates to private helpers: `_poll_workers_input` (the per-tick input-drain loop, extracted 2026-09 — kept local since `read_keypress`/`read_mouse_event` are `dev/pane_error_log`'s monkeypatch targets on this module), `_handle_workers_mouse` (dispatches to `_handle_workers_body_click` for `button==0` body clicks and to `worker_render.apply_scroll` for the wheel), `_handle_workers_key` (drain keyboard: y-copy via `worker_render._resolve_workers_hover_key`, f-freeze, digit-select), `_refresh_workers_data` (tick-boundary `list_workers` + `worker_turns` build via `_parse_worker_turns`; partial-expand branch on input_changed), `_build_workers_output` (calls `format_workers_block` then `worker_render._workers_terminal_size`/`_compute_viewport`/`_render_workers_rows` for the viewport-clip + zebra/hover render, updates `worker_line_map`/`worker_cache_line_map`). `_workers_ram_state` is a module-level function (was a closure) registered with `register_ram_dump`. `_load_worker_turns(session)` / `_parse_worker_turns(jsonl_path)` (2026-09) consolidate the `find_worker_jsonl` → `read_new_lines` → `parse_jsonl_lines` → `extract_cache_turns` chain that `_workers_search_on_commit`, `_jump_to_workers_match`, and `_refresh_workers_data` used to repeat inline — `_load_worker_turns` is the ONE place doing the `find_worker_jsonl(...)` call (`dev/pane_search/p7`'s monkeypatch target), so it stays in this module and is passed BY REFERENCE into `worker_search.workers_search_on_commit` as an injected callable (mirrors `copy_to_clipboard`'s own injected-parameter pattern into `search_bar.handle_search_mouse_release`) — `worker_search.py` itself never imports `find_worker_jsonl`. **The `while True:` body has always been wrapped in its own `try/except Exception:`** — the reference pattern the other 7 pane loops were retrofitted to match (2026-07-31). **(2026-07-31 fix)** the except clause previously wrote the traceback with an inline `open('/tmp/monitor_cc_error.log', 'a')` — a failing write (disk full, permissions) would have propagated out of the except block itself and killed the loop, since nothing wrapped it; now delegates to `pane_error_log.log_pane_error('workers')`, which is exception-safe end to end and shared by all 8 pane loops. **(2026-07-30) Row click now selects, not just expands:** `_handle_workers_mouse` takes `project_filter` and, on a `worker_line_map` row hit (the pre-existing whole-row hit area — header line + purpose line, both mapped to the worker name in `format_workers_block`), now also sets `worker_selected_name = name` and calls `_write_selection(project_filter, name)` — matching `_handle_workers_key`'s digit-key branch exactly (toggle expand/collapse AND select, unconditionally, even when collapsing). Call site (`run_workers_loop`) passes `_monitor.active_project_filter`. No column check — the entire row width is the hit area; does not touch the `worker_cache_line_map` branch (cache-call toggle only, no selection) or the scroll/hover branches (different SGR button codes, no collision). Visual affordance unchanged — the row already renders `[idx] name` (CYAN) with a `>>` selected-prefix and `[+]`/`[-]` toggle, the same bracket-button convention used elsewhere; the click wiring makes that existing look-clickable marker actually clickable. **(2026-07-30) Copy-by-click on the ⎘ symbol, both row kinds:** `_handle_workers_body_click` (the `button==0` body of `_handle_workers_mouse` since the 2026-09 split) checks `col >= _worker_pane_width - 2 and row in worker_copy_rows` FIRST on BOTH the `worker_cache_line_map` branch and the `worker_line_map` branch (ahead of the milestone-1 select/expand logic) — a hit calls `copy_to_clipboard(_serialize_workers(key, worker_turns))`, never touches selection state. `worker_copy_rows` is one flat `Set[int]`, populated by `_build_workers_output` (via `worker_render._render_workers_rows`) by substring-detecting `⎘`/`✓` in the rendered line (same pattern as `proxy_display.format._apply_row_backgrounds`), so it naturally covers both row kinds with no type dispatch needed. **Bug found + fixed in the same pass:** `_handle_workers_key`'s `y`-branch used to try `resolve_parent_key(worker_line_map, hover_row)` first, falling back to `worker_cache_line_map` only on `None` — but `resolve_parent_key` walks backward to row 1, so it ALWAYS finds the owning worker's header/purpose row above any cache-call row, making the cache-map fallback dead code (`y` while hovering an expanded cache row silently copied the parent worker's identity summary, never the specific call). Replaced with `worker_render._resolve_workers_hover_key` (moved out of this module 2026-09, see that module's entry), which compares which map's nearest ancestor row is CLOSER to `hover_row` and prefers that one — correctly resolves a cache-row hover to the specific `(name,turn_idx,call_idx)` while still resolving a subsequent worker's own header/purpose hover to that worker's name (not a prior worker's trailing cache row). **(2026-07-30) Freeze badge as a clickable button:** `_handle_workers_mouse`'s SIGNATURE CHANGED — now takes `frozen: bool` and returns `(input_changed, updated_frozen)` instead of a bare bool (mirrors `_handle_workers_key`'s existing `(changed, frozen)` contract); `run_workers_loop`'s call site unpacks the tuple the same way it already did for the key path. On `button == 0`, checks `_worker_header_regions` (populated by `_build_workers_output` from `format_workers_block`'s `regions_out['freeze']` column span, resolved to a phys_row) FIRST, ahead of the cache/copy/select checks — a hit returns `(True, not frozen)`, exactly what pressing `f` does. The freeze line is always `all_lines[0]` in `format_workers_block`'s output, but this pane has NO separate fixed header (unlike `proxy_display`/`worker_proxy_pane`) — it's part of the same scrollable content everything else is, so `_build_workers_output` only registers the region when that first line actually survived viewport clipping (`vp_start == 0`); with many workers and default (bottom-anchored) scroll, the badge can scroll out of view like any other early row — a pre-existing characteristic of this pane's layout, not fixed here (deliverable was "don't redesign layout").
 
