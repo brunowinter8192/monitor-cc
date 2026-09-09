@@ -3,6 +3,37 @@ import argparse
 
 from .classifier import ONLY_FORMS
 
+_REQS_DESCRIPTION = (
+    "Prints, per session, a `session <stem>` line, then every REQ grouped under its own "
+    "turn separator (`── turn n  HH:MM:SS  SPAN  <preview> ──` — a turn is what happens "
+    "between two prompts the human/orchestrator typed, SPAN is that turn's last REQ send "
+    "minus its first, no transcript join, only send times a session already has) — turn "
+    "grouping is ALWAYS on; a session with no turn opener at all prints its REQ lines with "
+    "no separators. Every `REQ n   HH:MM:SS` line carries `  CR c  CC c` (prompt-cache "
+    "usage, joined via the same transcript-store lookup `msgs` uses), `CR ?  CC ?` when "
+    "the flow does not resolve. Every other flag is a pure filter or selector over this "
+    "SAME fixed form, and they all combine (AND). --turn N narrows FIRST, keeping only "
+    "turn N of each session in scope (its separator plus its own REQ lines) — a session "
+    "missing that turn prints only its `session` header line. --gap MINUTES then keeps "
+    "only the REQs bracketing a consecutive gap of at least that many whole minutes "
+    "(same session unless --merged, in which case chronological neighbors across every "
+    "session in scope); a turn's separator prints only when at least one of its OWN REQ "
+    "lines survives — the separator's own clock/span/preview are always that turn's WHOLE "
+    "figures, never recomputed from whichever REQs a filter happened to keep. --rebuild "
+    "keeps only REQs where CC > CR (the request's own cache write outweighed what it read "
+    "back); --drop keeps only REQs n where CR(n) < CR(n-1) + CC(n-1), i.e. part of the "
+    "prefix the PREVIOUS request had cached was NOT read again by n — the previous request "
+    "is always the SAME session's own previous one, --merged or not; REQ 1 of a session "
+    "never qualifies for --drop (no predecessor). A REQ whose usage (or, for --drop, its "
+    "predecessor's) does not resolve fails --rebuild/--drop outright. --merged combines "
+    "every session in scope into ONE chronological REQ chain instead of one listing per "
+    "session — the prompt cache hangs on the shared system/tools prefix every worker of a "
+    "project sends, so a request from ANY session in scope keeps it warm for every other; "
+    "a `merged <N> sessions` header replaces the per-session `session <stem>` lines, and "
+    "every REQ line AND every turn separator carries `  <tag>` (a worker's name, or a main "
+    "session's project label, read off the stem) — turn numbers stay per session."
+)
+
 # FUNCTIONS
 
 
@@ -111,36 +142,7 @@ def _add_reqs_subparser(sub) -> None:
     reqs = sub.add_parser(
         "reqs",
         help="one fixed REQ listing, turn-grouped, every flag a filter over it",
-        description=(
-            "Prints, per session, a `session <stem>` line, then every REQ grouped under its own "
-            "turn separator (`── turn n  HH:MM:SS  SPAN  <preview> ──` — a turn is what happens "
-            "between two prompts the human/orchestrator typed, SPAN is that turn's last REQ send "
-            "minus its first, no transcript join, only send times a session already has) — turn "
-            "grouping is ALWAYS on; a session with no turn opener at all prints its REQ lines with "
-            "no separators. Every `REQ n   HH:MM:SS` line carries `  CR c  CC c` (prompt-cache "
-            "usage, joined via the same transcript-store lookup `msgs` uses), `CR ?  CC ?` when "
-            "the flow does not resolve. Every other flag is a pure filter or selector over this "
-            "SAME fixed form, and they all combine (AND). --turn N narrows FIRST, keeping only "
-            "turn N of each session in scope (its separator plus its own REQ lines) — a session "
-            "missing that turn prints only its `session` header line. --gap MINUTES then keeps "
-            "only the REQs bracketing a consecutive gap of at least that many whole minutes "
-            "(same session unless --merged, in which case chronological neighbors across every "
-            "session in scope); a turn's separator prints only when at least one of its OWN REQ "
-            "lines survives — the separator's own clock/span/preview are always that turn's WHOLE "
-            "figures, never recomputed from whichever REQs a filter happened to keep. --rebuild "
-            "keeps only REQs where CC > CR (the request's own cache write outweighed what it read "
-            "back); --drop keeps only REQs n where CR(n) < CR(n-1) + CC(n-1), i.e. part of the "
-            "prefix the PREVIOUS request had cached was NOT read again by n — the previous request "
-            "is always the SAME session's own previous one, --merged or not; REQ 1 of a session "
-            "never qualifies for --drop (no predecessor). A REQ whose usage (or, for --drop, its "
-            "predecessor's) does not resolve fails --rebuild/--drop outright. --merged combines "
-            "every session in scope into ONE chronological REQ chain instead of one listing per "
-            "session — the prompt cache hangs on the shared system/tools prefix every worker of a "
-            "project sends, so a request from ANY session in scope keeps it warm for every other; "
-            "a `merged <N> sessions` header replaces the per-session `session <stem>` lines, and "
-            "every REQ line AND every turn separator carries `  <tag>` (a worker's name, or a main "
-            "session's project label, read off the stem) — turn numbers stay per session."
-        ),
+        description=_REQS_DESCRIPTION,
     )
     reqs.add_argument("scope", nargs="?", default="", metavar="SCOPE",
                       help="only sessions whose real project path OR stem contains this text; omit to search all")

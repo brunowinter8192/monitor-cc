@@ -128,7 +128,7 @@ other's globals to make `epilog=__doc__` work. Argument construction (`cli_args.
 
 ---
 
-### cli_args.py (163 LOC, split out of `__main__.py` 2026-09)
+### cli_args.py (165 LOC, split out of `__main__.py` 2026-09)
 
 **Purpose:** The argparse parser construction — `_parse_args(argv, epilog)` builds the top-level
 parser (`prog`, `description`, `RawDescriptionHelpFormatter`, the caller-supplied `epilog`) and its
@@ -140,6 +140,10 @@ how many flags a given command grows. `_add_msgs_subparser`/`_add_expand_subpars
 this module has beyond `argparse` itself. Every subparser's own argument set, help text and mutual-
 exclusivity group (`reqs`' `--main`/`--worker`, the ONLY one enforced natively by argparse) are
 unchanged from before the split — this module is pure relocation, not a rewrite.
+**(2026-09, remaining-thresholds milestone):** `_add_reqs_subparser` was 54 LOC — its long
+`description=(...)` string moved to a module-level constant, `_REQS_DESCRIPTION`, referenced by
+the `sub.add_parser(..., description=_REQS_DESCRIPTION)` call. `python -m src.dual_log_cli reqs
+--help` output verified byte-identical before/after (diff empty).
 **Reads:** Nothing — pure parser construction.
 **Writes:** Nothing — returns an `argparse.Namespace` (via `parser.parse_args(argv)`).
 **Called by:** `__main__.py` (`_parse_args`, aliased there as `_build_args`).
