@@ -66,6 +66,7 @@ mod_search_bar = importlib.import_module(f'{_ROOT_PKG}.search_bar')
 mod_constants = importlib.import_module(f'{_ROOT_PKG}.constants')
 mod_monitor = importlib.import_module(f'{_ROOT_PKG}.core.monitor')
 mod_parser = importlib.import_module(f'{_ROOT_PKG}.proxy_display.parser')
+mod_side_logs = importlib.import_module(f'{_ROOT_PKG}.proxy_display.side_logs')
 
 PANE_WIDTH = 100
 _RESULTS = []
@@ -441,16 +442,16 @@ def test_session_change_resets_search_state():
     fake_new_session = Path('/tmp/pane_search_p6_fake_session_new.jsonl')
     orig_get_sessions = mod_monitor.get_main_session_files
     orig_find_resp = mod_parser.find_response_log_path
-    orig_read_resp = mod_parser.read_response_log
+    orig_read_resp = mod_side_logs.read_response_log
     mod_monitor.get_main_session_files = lambda: [fake_new_session]
     mod_parser.find_response_log_path = lambda pf: None
-    mod_parser.read_response_log = lambda path, pos: ({}, pos)
+    mod_side_logs.read_response_log = lambda path, pos: ({}, pos)
     try:
         mod_tp._refresh_tokens_data(10_000_000.0, False, 0.0, 10_000_000.0)
     finally:
         mod_monitor.get_main_session_files = orig_get_sessions
         mod_parser.find_response_log_path = orig_find_resp
-        mod_parser.read_response_log = orig_read_resp
+        mod_side_logs.read_response_log = orig_read_resp
 
     check("session actually changed", mod_tp._cache_current_filepath == fake_new_session)
     check("query cleared by the session change", mod_tp._tokens_search.query == '')

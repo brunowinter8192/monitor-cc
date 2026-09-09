@@ -8,7 +8,7 @@ from ..constants import (
 )
 from ..format.token_format import _format_k
 from ..utils import truncate_visible
-from .parser import _chars_to_tokens
+from .proxy_badge import _chars_to_tokens
 # From search_bar.py: shared BG-restore sentinel + substitution (2026-08-18 extraction — was
 # defined locally here, now the single source for every pane that embeds a search-highlight span
 # it can't resolve to a real color at render time)

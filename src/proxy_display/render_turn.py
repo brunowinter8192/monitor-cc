@@ -8,7 +8,7 @@ from ..constants import (
 from ..utils import _ANSI_ESCAPE_RE, _cell_width, highlight_query_in_line
 from .format import _shorten_model, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
 from .render_messages import _aggregate_req_buckets
-from .parser import badge_flags
+from .proxy_badge import badge_flags
 # From search_bar.py: shared BG-restore sentinel (2026-08-18 extraction — single source, see
 # format.py's import comment)
 from ..search_bar import _BG_RESTORE_SENTINEL

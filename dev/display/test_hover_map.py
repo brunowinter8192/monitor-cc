@@ -343,7 +343,7 @@ def test_workers_scroll_reset_on_expand() -> None:
 def test_stripped_msg_pair_alignment() -> None:
     print("\n[render_messages] Stripped-msg lines/keys exact pairing (no line_map drift)")
     from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
-    from src.proxy_display.parser import accumulate_dual_log
+    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     from src.proxy_display.render_messages import render_messages
     from pathlib import Path
 

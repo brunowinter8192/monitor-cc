@@ -20,7 +20,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 from src.proxy_display.render_sections import _render_whole_stripped_tool, render_tools
-from src.proxy_display.parser import _find_original_log_path, accumulate_original_tools
+from src.proxy_display.parser import _find_original_log_path
+from src.proxy_display.dual_log_accumulator import accumulate_original_tools
 
 PASS = []
 FAIL = []

@@ -46,7 +46,7 @@ def _resolve_prev_same(entries: list, k: int):
 # after reading the whole dual-log (accumulator is cumulative + attached by reference).
 def _build_entries_and_spans(entries: list, line_idx: int):
     from src.proxy_display.forwarded_parser import _lazy_load_messages_forwarded, _infer_model_family
-    from src.proxy_display.parser import accumulate_dual_log
+    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     target = entries[line_idx]
     prev_idx = _resolve_prev_same(entries, line_idx)
     assert prev_idx is not None, "no prev_same entry resolved"
