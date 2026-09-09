@@ -7,11 +7,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
 from _fire_log import log_fire
 
-# Match: optional `cd && ` prefix, then `./venv/bin/python <X>.py` or `venv/bin/python <X>.py`
 _VENV_SCRIPT = re.compile(r'\.?\.?/?venv/bin/python\s+\S+\.py\b')
-# Any file redirect counts: > /tmp/x.md, >> file, > x.log, etc.
 _REDIRECT = re.compile(r'>\s*\S+')
-# `| tee FILE` also captures output to disk — treat as compliant
 _TEE = re.compile(r'\|\s*tee\b')
 
 _BLOCK_MESSAGE = "add redirect: `./venv/bin/python script.py > /tmp/name.md 2>&1`\n"
@@ -19,7 +16,6 @@ _BLOCK_MESSAGE = "add redirect: `./venv/bin/python script.py > /tmp/name.md 2>&1
 
 # ORCHESTRATOR
 
-# Read Bash tool_input; exit 2 + stderr if venv-python script call has no file redirect.
 def block_venv_no_redirect_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
@@ -36,7 +32,6 @@ def block_venv_no_redirect_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
