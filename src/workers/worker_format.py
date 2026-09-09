@@ -22,6 +22,13 @@ INDENT = '  '
 # Worker fleet is all 1M-context models (opus-4-8, sonnet-5, fable-5); haiku-4-5 (200k) is never a worker.
 _WORKER_CONTEXT_WINDOW = 1000000
 
+_STATUS_COLORS = {
+    'working': GREEN,
+    'idle': YELLOW,
+    'exited': RED,
+    'unknown': WHITE,
+}
+
 # FUNCTIONS
 
 # Derive worker project name from project path (worktree-aware, matches tmux_spawn.sh logic)
@@ -105,6 +112,110 @@ def _scope_current_key_to_worker(current_key, name: str):
         return ('turn', current_key[2]) if current_key[1] == 'turn' else (current_key[1], current_key[2])
     return None
 
+# Freeze badge always sits on the FIRST line ("Workers [LIVE]"/"[FROZEN]") — the pane has no
+# separate fixed header, this line is part of the scrollable content (see worker_pane.py's DOCS
+# gotcha); the caller resolves whether it survived viewport clipping and, if so, which phys_row
+# it landed on. Column span only, no row — width-guarded, same as append_copy_symbol.
+def _register_freeze_region(regions_out: dict, frozen: bool, pane_width: int) -> None:
+    regions_out.clear()
+    badge = "[FROZEN]" if frozen else "[LIVE]"
+    start_col = len("Workers") + 1
+    end_col = start_col + len(badge) - 1
+    if end_col < pane_width:
+        regions_out['freeze'] = (start_col + 1, end_col + 1)
+
+# Build one worker's header line: toggle/select prefix, status, context-%, spawned/model/tokens
+# suffixes, search-match container-mark, trailing copy symbol.
+def _build_worker_header_line(w: dict, idx: int, name: str, is_expanded: bool, selected_name: Optional[str],
+                               copy_feedback: Optional[dict], pane_width: int,
+                               search_match_set: Optional[set], search_current_key) -> str:
+    status = w.get('status', 'unknown')
+    sc = _STATUS_COLORS.get(status, WHITE)
+    spawned = w.get('spawned', '')
+    toggle_symbol = "[-]" if is_expanded else "[+]"
+    spawned_str = f"  {WHITE}{spawned}{SOFT_RESET}" if spawned else ''
+    model = w.get('model', '')
+    model_str = f"  {PASTEL_PURPLE}{model}{SOFT_RESET}" if model else ''
+    tokens = w.get('tokens', {})
+    tok_out = tokens.get('output', 0)
+    tokens_str = f"  {WHITE}{_format_k(tok_out)}out{SOFT_RESET}" if tok_out else ''
+    pct = w.get('context_pct')
+    if pct is None:
+        pct_str = f"  {DIM}—%{SOFT_RESET}"
+    else:
+        pct_color = GREEN if pct >= 60 else (YELLOW if pct >= 40 else RED)
+        pct_str = f"  {pct_color}{pct:3d}%{SOFT_RESET}"
+    is_selected = selected_name is not None and name == selected_name
+    sel_prefix = f"{GREEN}>>{SOFT_RESET} " if is_selected else "   "
+    header_line = f"{sel_prefix}{toggle_symbol} {CYAN}[{idx}] {name}{SOFT_RESET}  {sc}{status.upper()}{SOFT_RESET}{pct_str}{spawned_str}{model_str}{tokens_str}"
+    if search_match_set and name in search_match_set:
+        marker = SEARCH_CURRENT_BG if name == search_current_key else SEARCH_MATCH_BG
+        header_line = f"{marker}{header_line}{_BG_RESTORE_SENTINEL}"
+    if copy_feedback is not None:
+        is_flash = copy_feedback.get(name, 0) > time.time()
+        header_line = append_copy_symbol(header_line, '✓' if is_flash else '⎘', pane_width)
+    return header_line
+
+# Build one worker's purpose line — full text when expanded, truncated to 60 chars otherwise
+def _build_worker_purpose_line(purpose: str, is_expanded: bool) -> str:
+    if is_expanded:
+        return f"{INDENT}{WHITE}{purpose}{SOFT_RESET}"
+    truncated = purpose[:60] + ('...' if len(purpose) > 60 else '')
+    return f"{INDENT}{WHITE}{truncated}{SOFT_RESET}"
+
+# Render one expanded worker's nested cache-tracker view (or the "(no token data yet)" stand-in),
+# returning (lines, keys) with cache-call keys re-tagged (name, turn_idx, call_idx)
+def _render_worker_expanded_view(name: str, worker_turns: dict, scroll_offsets: Optional[dict],
+                                  cache_expand_states: Optional[dict], copy_feedback: Optional[dict],
+                                  pane_width: int, search_match_set: Optional[set], search_current_key,
+                                  search_query: str) -> tuple:
+    lines = []
+    keys = []
+    turns = worker_turns.get(name, [])
+    if not turns:
+        lines.append(f"{INDENT}{YELLOW}(no token data yet){SOFT_RESET}")
+        keys.append(name)
+        return lines, keys
+    scroll_offset = (scroll_offsets or {}).get(name, 0)
+    per_worker_expand = (cache_expand_states or {}).get(name, {})
+    visible_lines, visible_keys, _, _, _ = format_cache_tracker(
+        turns, per_worker_expand, 15, pane_width - 4, scroll_offset,
+        copy_feedback=_worker_cache_copy_feedback(copy_feedback, name),
+        search_match_set=_scope_matches_to_worker(search_match_set, name),
+        search_current_key=_scope_current_key_to_worker(search_current_key, name),
+        search_query=search_query,
+    )
+    for cl, ck in zip(visible_lines, visible_keys):
+        lines.append(f"  {cl}")
+        keys.append((name, ck[0], ck[1]) if ck is not None else None)
+    return lines, keys
+
+# Render one worker's full row block (header + purpose + expanded view + trailing blank),
+# returning (lines, keys)
+def _render_worker_row(w: dict, idx: int, expand_states: dict, worker_turns: dict, scroll_offsets: Optional[dict],
+                        cache_expand_states: Optional[dict], selected_name: Optional[str], copy_feedback: Optional[dict],
+                        pane_width: int, search_match_set: Optional[set], search_current_key, search_query: str) -> tuple:
+    lines = []
+    keys = []
+    name = w.get('name', '?')
+    purpose = w.get('purpose', '')
+    is_expanded = expand_states.get(name, False)
+    lines.append(_build_worker_header_line(w, idx, name, is_expanded, selected_name, copy_feedback, pane_width, search_match_set, search_current_key))
+    keys.append(name)
+    if purpose:
+        lines.append(_build_worker_purpose_line(purpose, is_expanded))
+        keys.append(name)
+    if is_expanded:
+        e_lines, e_keys = _render_worker_expanded_view(
+            name, worker_turns, scroll_offsets, cache_expand_states, copy_feedback,
+            pane_width, search_match_set, search_current_key, search_query,
+        )
+        lines.extend(e_lines)
+        keys.extend(e_keys)
+    lines.append('')
+    keys.append(None)
+    return lines, keys
+
 # Build flat (all_lines, line_keys) for workers pane; keys: str=worker name, 3-tuple=cache entry,
 # None=non-clickable. (2026-08-18, rollout sub-milestone 5) search_match_set/search_current_key
 # hold worker-TAGGED keys (str name / (name,'turn',turn_idx) / (name,turn_idx,call_idx) — same
@@ -123,113 +234,30 @@ def format_workers_block(workers: list, expand_states: dict = None, worker_turns
     except OSError:
         pane_width = 80
 
-    # Freeze badge always sits on the FIRST line ("Workers [LIVE]"/"[FROZEN]") — the pane has no
-    # separate fixed header, this line is part of the scrollable content (see worker_pane.py's
-    # DOCS gotcha); the caller resolves whether it survived viewport clipping and, if so, which
-    # phys_row it landed on. Column span only, no row — width-guarded, same as append_copy_symbol.
     if regions_out is not None:
-        regions_out.clear()
-        badge = "[FROZEN]" if frozen else "[LIVE]"
-        start_col = len("Workers") + 1
-        end_col = start_col + len(badge) - 1
-        if end_col < pane_width:
-            regions_out['freeze'] = (start_col + 1, end_col + 1)
-
-    all_lines: List[str] = []
-    line_keys: List = []
+        _register_freeze_region(regions_out, frozen, pane_width)
 
     if not workers:
-        all_lines.append(f"{WHITE}Workers{SOFT_RESET}{freeze_indicator}")
-        line_keys.append(None)
-        all_lines.append('')
-        line_keys.append(None)
-        all_lines.append(f"{YELLOW}No active workers{SOFT_RESET}")
-        line_keys.append(None)
-        return all_lines, line_keys
+        return (
+            [f"{WHITE}Workers{SOFT_RESET}{freeze_indicator}", '', f"{YELLOW}No active workers{SOFT_RESET}"],
+            [None, None, None],
+        )
 
     if expand_states is None:
         expand_states = {}
     if worker_turns is None:
         worker_turns = {}
 
-    status_colors = {
-        'working': GREEN,
-        'idle': YELLOW,
-        'exited': RED,
-        'unknown': WHITE,
-    }
-
-    all_lines.append(f"{WHITE}Workers{SOFT_RESET}{freeze_indicator}")
-    line_keys.append(None)
-    all_lines.append('')
-    line_keys.append(None)
+    all_lines: List[str] = [f"{WHITE}Workers{SOFT_RESET}{freeze_indicator}", '']
+    line_keys: List = [None, None]
 
     for idx, w in enumerate(workers, 1):
-        status = w.get('status', 'unknown')
-        sc = status_colors.get(status, WHITE)
-        name = w.get('name', '?')
-        spawned = w.get('spawned', '')
-        purpose = w.get('purpose', '')
-        is_expanded = expand_states.get(name, False)
-        toggle_symbol = "[-]" if is_expanded else "[+]"
-
-        spawned_str = f"  {WHITE}{spawned}{SOFT_RESET}" if spawned else ''
-        model = w.get('model', '')
-        model_str = f"  {PASTEL_PURPLE}{model}{SOFT_RESET}" if model else ''
-        tokens = w.get('tokens', {})
-        tok_out = tokens.get('output', 0)
-        tokens_str = f"  {WHITE}{_format_k(tok_out)}out{SOFT_RESET}" if tok_out else ''
-        pct = w.get('context_pct')
-        if pct is None:
-            pct_str = f"  {DIM}—%{SOFT_RESET}"
-        else:
-            pct_color = GREEN if pct >= 60 else (YELLOW if pct >= 40 else RED)
-            pct_str = f"  {pct_color}{pct:3d}%{SOFT_RESET}"
-        is_selected = selected_name is not None and name == selected_name
-        sel_prefix = f"{GREEN}>>{SOFT_RESET} " if is_selected else "   "
-        header_line = f"{sel_prefix}{toggle_symbol} {CYAN}[{idx}] {name}{SOFT_RESET}  {sc}{status.upper()}{SOFT_RESET}{pct_str}{spawned_str}{model_str}{tokens_str}"
-        if search_match_set and name in search_match_set:
-            marker = SEARCH_CURRENT_BG if name == search_current_key else SEARCH_MATCH_BG
-            header_line = f"{marker}{header_line}{_BG_RESTORE_SENTINEL}"
-        if copy_feedback is not None:
-            is_flash = copy_feedback.get(name, 0) > time.time()
-            header_line = append_copy_symbol(header_line, '✓' if is_flash else '⎘', pane_width)
-        all_lines.append(header_line)
-        line_keys.append(name)
-
-        if purpose:
-            if is_expanded:
-                purpose_line = f"{INDENT}{WHITE}{purpose}{SOFT_RESET}"
-            else:
-                truncated = purpose[:60] + ('...' if len(purpose) > 60 else '')
-                purpose_line = f"{INDENT}{WHITE}{truncated}{SOFT_RESET}"
-            all_lines.append(purpose_line)
-            line_keys.append(name)
-
-        if is_expanded:
-            turns = worker_turns.get(name, [])
-            if not turns:
-                all_lines.append(f"{INDENT}{YELLOW}(no token data yet){SOFT_RESET}")
-                line_keys.append(name)
-            else:
-                scroll_offset = (scroll_offsets or {}).get(name, 0)
-                per_worker_expand = (cache_expand_states or {}).get(name, {})
-                visible_lines, visible_keys, _, _, _ = format_cache_tracker(
-                    turns, per_worker_expand, 15, pane_width - 4, scroll_offset,
-                    copy_feedback=_worker_cache_copy_feedback(copy_feedback, name),
-                    search_match_set=_scope_matches_to_worker(search_match_set, name),
-                    search_current_key=_scope_current_key_to_worker(search_current_key, name),
-                    search_query=search_query,
-                )
-                for cl, ck in zip(visible_lines, visible_keys):
-                    all_lines.append(f"  {cl}")
-                    if ck is not None:
-                        line_keys.append((name, ck[0], ck[1]))
-                    else:
-                        line_keys.append(None)
-
-        all_lines.append('')
-        line_keys.append(None)
+        w_lines, w_keys = _render_worker_row(
+            w, idx, expand_states, worker_turns, scroll_offsets, cache_expand_states,
+            selected_name, copy_feedback, pane_width, search_match_set, search_current_key, search_query,
+        )
+        all_lines.extend(w_lines)
+        line_keys.extend(w_keys)
 
     while all_lines and all_lines[-1] == '':
         all_lines.pop()
