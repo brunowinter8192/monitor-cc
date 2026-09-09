@@ -14,6 +14,10 @@ from src.panes import run_warnings_loop    # tool errors pane
 `panes/token_search.py` has no `__init__.py` export — imported directly by `token_pane.py`
 (`from .token_search import build_token_search_matches`).
 
+`panes/log_janitor.py` has no `__init__.py` export — imported directly by `token_pane.py`
+(`from .log_janitor import cleanup_old_jsonl, sweep_eligible_specs`) and by
+`dev/hook_smoke/test_log_janitor.py` (via `sys.path.insert`, bare `from log_janitor import`).
+
 ## Flow
 
 ```
@@ -84,6 +88,16 @@ always-active and runs from the main checkout (unlike the menubar bundle, which 
 **Writes:** Nothing — returns rendered string and new line-map dict; no mutation of arguments (`copy_rows_out`/`regions_out`, if given, ARE mutated in place — cleared then repopulated, same contract as `proxy_display.format`'s `copy_rows_out`).
 **Called by:** `panes.warnings_pane` (`run_warnings_loop`, `_build_warnings_output`, `build_warnings_search_matches`).
 **Calls out:** `format.strip_marker` (`highlight_stripped`), `utils` (`truncate_visible`, `first_word_of_call`, `format_worker_prefix`, `append_copy_symbol`, `highlight_query_in_line`, `_ANSI_ESCAPE_RE`), `search_bar` (`_BG_RESTORE_SENTINEL`, `resolve_bg_restore`), `constants`.
+
+---
+
+### log_janitor.py (170 LOC, moved here 2026-09 from `src/log_janitor.py` — its only in-tree importer is `panes/token_pane.py`, and no external entry point loaded it at root)
+
+**Purpose:** `LogSpec` registry (12 entries) + `sweep_eligible_specs()` + `cleanup_old_jsonl(path)` — authoritative log inventory; 7-day JSONL sweep triggered from `token_pane.py::run_tokens_loop` every 24h (see `process-docs/main_pane/` and `process-docs/logging/log_janitor.md` for why it left the now-removed main pane originally).
+**Reads:** JSONL log files passed in as `path` arguments — no shared/module state.
+**Writes:** Rewrites the passed JSONL file in place (drops records older than 7 days by `ts` field); exception-safe (never raises).
+**Called by:** `panes/token_pane.py` (lazy import inside `_refresh_tokens_data`, gated every 24h); `dev/hook_smoke/test_log_janitor.py` (smoke test, direct import via `sys.path.insert`).
+**Calls out:** none — stdlib only (`json`, `dataclasses`, `datetime`, `pathlib`).
 
 ---
 

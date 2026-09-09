@@ -5,8 +5,8 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-# add src/ to path so log_janitor is importable without 'from src.' prefix
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
+# add src/panes/ to path so log_janitor is importable without 'from src.' prefix
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src' / 'panes'))
 from log_janitor import cleanup_old_jsonl  # noqa: E402
 
 _now = datetime.now(timezone.utc)
