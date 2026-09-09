@@ -14,9 +14,10 @@ from AppKit import (NSAttributedString, NSFontAttributeName,
                     NSWindowStyleMaskNonactivatingPanel, NSWindowStyleMaskResizable)
 from Foundation import NSMakeRect, NSMakeSize
 
+# From panel_dims.py: main-panel outer dimensions (PANEL_* constant cluster)
+from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
 # From panel.py: UI constants, factories, helpers shared across panels
-from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
-                    PANEL_GAP, _TOP_BAR_H, _LABEL_H, _MENLO,
+from .panel import (_TOP_BAR_H, _LABEL_H, _MENLO,
                     _CursorlessButton, _KeyablePanel,
                     _make_line_separator, _make_header_label)
 
@@ -158,14 +159,14 @@ class RagController:
         for sv in list(self._rag_sv.arrangedSubviews()):
             self._rag_sv.removeView_(sv)
             sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists without this
-        pw    = app._panel_width
-        state = 'ON' if app._auto_focus else 'OFF'
+        pw    = app.settings.panel_width
+        state = 'ON' if app.settings.auto_focus else 'OFF'
         self._rag_toggle_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
                 f'Sessions \u00b7 [RAG] \u00b7 Models     Auto-Jump: {state}',
                 {NSFontAttributeName: _MENLO()}))
         required_h = _TOP_BAR_H + _LABEL_H + _LABEL_H   # top-bar + separator + status line
-        self._resize_rag_panel(max(app._panel_min_height, required_h))
+        self._resize_rag_panel(max(app.settings.panel_min_height, required_h))
         self._rag_sv.addView_inGravity_(_make_line_separator(pw), 1)
         status = _read_rag_status()
         label  = _make_header_label(status, pw)
@@ -174,7 +175,7 @@ class RagController:
 
     # Resize RAG panel anchored at top edge; mirrors panel_manager._resize_panel pattern
     def _resize_rag_panel(self, new_h: float) -> None:
-        w     = self.app._panel_width
+        w     = self.app.settings.panel_width
         frame = self._rag_panel.frame()
         top_y = frame.origin.y + frame.size.height
         self._rag_panel.setFrame_display_(

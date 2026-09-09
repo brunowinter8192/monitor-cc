@@ -15,7 +15,7 @@ class FocusController:
     # Auto-focus: debounce idle main sessions (working→idle transition + 3s hold-off).
     # self._last_statuses holds the OLD snapshot — update_statuses() is called at tick-end.
     def tick(self, sessions, now: float) -> None:
-        if not self.app._auto_focus:
+        if not self.app.settings.auto_focus:
             return
         for s in sessions:
             if s.is_worker or not s.cwd:

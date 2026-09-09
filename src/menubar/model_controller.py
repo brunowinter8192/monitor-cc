@@ -110,14 +110,14 @@ class ModelController:
         for sv in list(self._models_sv.arrangedSubviews()):
             self._models_sv.removeView_(sv)
             sv.removeFromSuperview()   # removeView_ removes from arrangedSubviews only; view persists without this
-        pw    = app._panel_width
-        state = 'ON' if app._auto_focus else 'OFF'
+        pw    = app.settings.panel_width
+        state = 'ON' if app.settings.auto_focus else 'OFF'
         self._models_toggle_btn.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
                 f'Sessions · RAG · [Models]     Auto-Jump: {state}',
                 {NSFontAttributeName: _MENLO()}))
         required_h = _TOP_BAR_H + _LABEL_H + 6 * _ROW_H + 22   # top-bar + separator + 6 cycle rows + apply row
-        self._resize_models_panel(max(app._panel_min_height, required_h))
+        self._resize_models_panel(max(app.settings.panel_min_height, required_h))
         self._models_sv.addView_inGravity_(_make_line_separator(pw), 1)
         self._buttons.build(self._models_sv, pw, app._panel_controller)
         self._buttons.refresh_titles(self._pending)
@@ -235,7 +235,7 @@ class ModelController:
 
     # Resize Models NSPanel anchored at top edge; mirrors rag_controller._resize_rag_panel pattern
     def _resize_models_panel(self, new_h: float) -> None:
-        w     = self.app._panel_width
+        w     = self.app.settings.panel_width
         frame = self._models_panel.frame()
         top_y = frame.origin.y + frame.size.height
         self._models_panel.setFrame_display_(

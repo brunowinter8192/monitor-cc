@@ -3,7 +3,7 @@ import json
 import os
 
 from .paths import SETTINGS_FILE as _SETTINGS_PATH
-from .panel import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
+from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT
 
 # FUNCTIONS
 

@@ -23,33 +23,15 @@ from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSCursor, NSFo
 from Foundation import NSMakeRect, NSMakeSize, NSRange
 
 from .menubar_log import log_menubar
+# From panel_dims.py: main-panel outer dimensions (PANEL_* constant cluster, menubar milestone B)
+from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
 
-ICON_NORMAL          = '◉'
-ICON_BLINK           = '●'
-ICON_BASELINE_OFFSET = 1.0   # pts — vertical offset applied via NSBaselineOffsetAttributeName; adjust if icon drifts
 _NAME_WIDTH    = 22     # chars for left-justified name column
 _MENLO         = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
 
 _BADGE_WORKING = '[*]'   # green — ASCII fixed-width, no emoji drift
 _BADGE_IDLE    = '[ ]'   # red
 
-# Grid column widths (pts) — 6-column main-panel layout, measured from Menlo 13pt char widths
-_GRID_COL0_W  = 40   # slot "[N]"/conflict "[!N]" (up to 4 chars × 7.8pt + buffer)
-_GRID_COL1_W  = 17   # star "* " (2 chars × 7.8pt + buffer)
-_GRID_COL3_W  = 25   # dot "[ ]"/"[*]" (3 chars × 7.8pt + buffer)
-_GRID_COL4_W  = 72   # badge "[B M:SS]" max 9 chars × 7.8pt + buffer
-_GRID_COL5_W  = 40   # monitor "mon" button, main rows only (3 chars × 7.8pt + buffer, same budget as col0)
-_GRID_COL_SPC = 2    # column spacing (pts between adjacent columns)
-
-# PANEL_WIDTH = old 380 + (_GRID_COL5_W + _GRID_COL_SPC) = 422 — the monitor column's own width
-# plus the one extra inter-column gap it introduces, so the flexible name column (col2) keeps
-# the exact same effective width it had before the column was added (verified: fixed-column +
-# spacing budget grows by precisely 42pt on both sides of the subtraction).
-PANEL_WIDTH      = 422   # pts
-PANEL_HEIGHT     = 460   # pts — initial height; floor for first-run (no settings)
-PANEL_MIN_WIDTH  = 250   # pts — minimum width enforced by setContentMinSize_
-PANEL_MIN_HEIGHT = 120   # pts — minimum height enforced by setContentMinSize_
-PANEL_GAP        = 4     # pts below the status bar button
 _FOOTER_H        = 30    # pts — fixed footer height for Restart button
 _TOP_BAR_H       = 21    # pts — fixed top-bar height for Auto-Jump button (analog to footer, at top edge)
 _ROW_H           = 21    # pts — session NSButton row (20) + 1pt NSStackView spacing
@@ -215,6 +197,33 @@ def _format_bg_badge(remaining) -> str:
     mins, secs = divmod(remaining, 60)
     return f'[B {mins}:{secs:02d}]'
 
+# Fixed footer (bottom edge): Kill (left) + Restart (right) buttons, width-sizable container
+def _make_panel_footer(pw: int):
+    footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw, _FOOTER_H))
+    footer.setAutoresizingMask_(2)   # NSViewWidthSizable
+    quit_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(pw - 86, 4, 78, 22))
+    quit_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored
+    quit_btn.setTitle_('Restart')
+    quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
+    footer.addSubview_(quit_btn)
+    kill_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(pw - 86 - 78 - 8, 4, 78, 22))
+    kill_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored, 8pt gap left of Restart
+    kill_btn.setTitle_('Kill')
+    kill_btn.setBezelStyle_(1)   # NSBezelStyleRounded
+    footer.addSubview_(kill_btn)
+    return footer, quit_btn, kill_btn
+
+# Fixed top bar (top edge): Auto-Jump toggle button, width-sizable + top-anchored container
+def _make_panel_top_bar(pw: int):
+    top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, pw, _TOP_BAR_H))
+    top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable(2) | NSViewMinYMargin(8) — bottom margin flexible → stays at top edge on resize
+    toggle_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, pw - 22, _TOP_BAR_H - 1))
+    toggle_btn.setBordered_(False)
+    toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+    toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with top_bar
+    top_bar.addSubview_(toggle_btn)
+    return top_bar, toggle_btn
+
 # Build NSPanel + fixed footer (Kill + Restart) + fixed top_bar (Auto-Jump) + NSStackView (sessions, middle)
 # Returns (panel, stack_view, quit_btn, toggle_btn, kill_btn) — stored on app instance; ObjC objects reject Python attrs
 # Layout (y=0 = bottom of contentView):
@@ -239,26 +248,9 @@ def _make_nspanel():
     # automatically → cursor-rect dispatch is silently disabled (no cursor changes anywhere).
     # Explicit call here restores dispatch; confirmed via dev/cursor_edges/probe.py --fix.
     panel.enableCursorRects()
-    footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
-    footer.setAutoresizingMask_(2)   # NSViewWidthSizable
-    quit_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86, 4, 78, 22))
-    quit_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored
-    quit_btn.setTitle_('Restart')
-    quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
-    footer.addSubview_(quit_btn)
-    kill_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(PANEL_WIDTH - 86 - 78 - 8, 4, 78, 22))
-    kill_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored, 8pt gap left of Restart
-    kill_btn.setTitle_('Kill')
-    kill_btn.setBezelStyle_(1)   # NSBezelStyleRounded
-    footer.addSubview_(kill_btn)
+    footer, quit_btn, kill_btn = _make_panel_footer(PANEL_WIDTH)
     cv.addSubview_(footer)
-    top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
-    top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable(2) | NSViewMinYMargin(8) — bottom margin flexible → stays at top edge on resize
-    toggle_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
-    toggle_btn.setBordered_(False)
-    toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
-    toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with top_bar
-    top_bar.addSubview_(toggle_btn)
+    top_bar, toggle_btn = _make_panel_top_bar(PANEL_WIDTH)
     cv.addSubview_(top_bar)
     stack_h = PANEL_HEIGHT - _FOOTER_H - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(
