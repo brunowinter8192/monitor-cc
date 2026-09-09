@@ -68,8 +68,7 @@ def all_statuses() -> tuple[list[dict], list[dict]]:
             except ProcessLookupError:
                 _warn('dead_pid', f'stale state file: pid {pid} dead', str(sf))
                 continue
-            except PermissionError:
-                pass  # PID alive, different owner
+            except PermissionError: pass
 
         name = state.get('name')
         if name in PRESET_NAMES:
