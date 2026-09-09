@@ -295,9 +295,10 @@ def _read_errors_log(path: Path, last_pos: int) -> tuple:
 def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
     from ..core import monitor as _monitor
     from ..proxy_display.parser import (
-        find_errors_log_path, scan_worker_errors_logs,
+        find_errors_log_path,
         proxy_session_id_for_project, get_proxy_session_start_ts,
     )
+    from ..proxy_display.side_logs import scan_worker_errors_logs
     global tool_errors, error_expand_states, error_line_map, error_scroll_offset, error_hover_row
     global _last_project_filter, _last_refresh_ts, _force_refresh, _monitor_start_ts
     global _errors_log_pos, _errors_log_path, _worker_errors_positions

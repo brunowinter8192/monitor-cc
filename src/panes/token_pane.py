@@ -329,7 +329,8 @@ def _render_tokens_search_bar(pane_width: int) -> str:
 # main pane). Returns (input_changed, new_last_data_refresh, new_last_janitor_ts).
 def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: float, last_janitor_ts: float) -> tuple:
     from ..core import monitor as _monitor
-    from ..proxy_display.parser import find_response_log_path, read_response_log
+    from ..proxy_display.parser import find_response_log_path
+    from ..proxy_display.side_logs import read_response_log
     global _cache_current_filepath, _cache_jsonl_position, _cache_turns
     global cache_expand_states, cache_scroll_offset, cache_hover_row
     global _response_log_pos, _response_rid_map

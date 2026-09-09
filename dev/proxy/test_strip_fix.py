@@ -1160,7 +1160,7 @@ def _deltas_for_single_msg(role: str, old_content, new_content, full_replace: bo
 # flow through the real accumulate_dual_log, attach the four per-flow lookups exactly as
 # pane.py does, then ask the real parser.badge_flags. Returns (show_strip, show_inject).
 def _badge_for(s_entry: dict, i_entry: dict, flow_id: str = 'f1') -> tuple:
-    from src.proxy_display.parser import badge_flags
+    from src.proxy_display.proxy_badge import badge_flags
     _hc_s, acc_s = _accumulate(s_entry, flow_id)
     _hc_i, acc_i = _accumulate(i_entry, flow_id)
     entry = {
@@ -1176,7 +1176,7 @@ def _badge_for(s_entry: dict, i_entry: dict, flow_id: str = 'f1') -> tuple:
 # Run one delta entry through the REAL accumulate_dual_log; returns (has_content, acc_for_family)
 def _accumulate(entry: dict, flow_id: str = 'f1') -> tuple:
     import tempfile
-    from src.proxy_display.parser import accumulate_dual_log
+    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     entry = {**entry, 'flow_id': flow_id}
     with tempfile.NamedTemporaryFile('w', suffix='.jsonl', delete=False) as f:
         f.write(json.dumps(entry) + '\n')
@@ -1337,7 +1337,7 @@ def tt09_rendered_header_badge_words():
     _ansi = _re.compile(r'\x1b\[[0-9;]*m')
 
     def _words(s_entry, i_entry):
-        from src.proxy_display.parser import badge_flags  # noqa: F401 (same path badge_flags takes)
+        from src.proxy_display.proxy_badge import badge_flags  # noqa: F401 (same path badge_flags takes)
         _hc_s, acc_s = _accumulate(s_entry, 'f1')
         _hc_i, acc_i = _accumulate(i_entry, 'f1')
         entry = {
@@ -1461,7 +1461,7 @@ def tt12_two_trailing_messages_in_one_delta_stays_quiet():
 # whose text is a nudge-prefixed tag now qualifies (previously only the bare tag did); a
 # real-content blk still does not, preserving the marker guard the lag correction depends on.
 def tt13_lag_classifier_widens_for_nudge_shape():
-    from src.proxy_display.parser import _is_total_tokens_nuke
+    from src.proxy_display.proxy_badge import _is_total_tokens_nuke
     check('TT13_bare_tag_still_qualifies',
           _is_total_tokens_nuke({'0': [_TT_MSG]}) is True)
     check('TT13_single_nudge_qualifies',

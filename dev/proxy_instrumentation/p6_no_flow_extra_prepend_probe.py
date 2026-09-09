@@ -72,7 +72,7 @@ _ACC_KEYS = ('system', 'tools', 'messages', 'fields', '_has_content_by_flow_id',
 # Load one recorded session the way pane.py assembles it, messages retained for every entry
 def _load_session(stem: str) -> list:
     from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
-    from src.proxy_display.parser import accumulate_dual_log
+    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     entries, _ = _parse_forwarded_log(LOG_DIR / f'{stem}_forwarded.jsonl', 0, {}, keep_last=None)
     acc_s: dict = {}
     acc_i: dict = {}
@@ -142,7 +142,7 @@ def _render_all(entries: list) -> dict:
 # the raw dual-log lines — the same verdict the badge rests on
 def _substantial_touches(stem: str) -> dict:
     import json
-    from src.proxy_display.parser import _msg_delta_entry_is_substantial
+    from src.proxy_display.proxy_badge import _msg_delta_entry_is_substantial
     verdicts: dict = {}
     for side, is_injected in (('stripped', False), ('injected', True)):
         for raw in (LOG_DIR / f'{stem}_{side}.jsonl').read_text(encoding='utf-8').splitlines():
@@ -201,7 +201,7 @@ def _removed_symbols_absent() -> tuple:
 
 # One session: render, assert the four invariants, return (rows, stats)
 def _check_session(stem: str) -> tuple:
-    from src.proxy_display.parser import badge_flags
+    from src.proxy_display.proxy_badge import badge_flags
     entries = _load_session(stem)
     rendered = _render_all(entries)
 

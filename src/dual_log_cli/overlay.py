@@ -4,7 +4,7 @@
 # per-coordinate span accumulation AND the write-side attribution lag correction
 # (_lag_msg_idx_by_flow_id), which credits a trailing-msg total_tokens strip to the request that
 # performed it instead of the one whose delta line happens to carry it.
-from ..proxy_display.parser import accumulate_dual_log
+from ..proxy_display.dual_log_accumulator import accumulate_dual_log
 # From timeline_markers.py: {flow_id: REQ number}, the same numbering `msgs` prints
 from .timeline_markers import request_numbers_by_flow
 

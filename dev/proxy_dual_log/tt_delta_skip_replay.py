@@ -48,7 +48,7 @@ LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 # the block above) and reused this way inside `_is_tt_msg`, mirroring `replay()`'s own late-import
 # convention below (src imports deferred so this file can be inspected without src/ importable).
 def _shape_classifier():
-    from src.proxy_display.parser import _is_total_tokens_nuke_text
+    from src.proxy_display.proxy_badge import _is_total_tokens_nuke_text
     return _is_total_tokens_nuke_text
 
 
@@ -119,11 +119,11 @@ def replay(stem: str) -> list:
 # Run the REAL read-side accumulator over the replayed entries -> {flow_id: has_content}.
 # baseline=True restores the pre-fix rule (any non-empty messages_delta badges).
 def has_content_map(entries: list, which: int, baseline: bool = False) -> dict:  # noqa: C901
-    from src.proxy_display import parser as _parser
-    from src.proxy_display.parser import accumulate_dual_log
-    saved = _parser._msgs_delta_is_substantial
+    from src.proxy_display import dual_log_accumulator as _accumulator
+    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
+    saved = _accumulator._msgs_delta_is_substantial
     if baseline:
-        _parser._msgs_delta_is_substantial = lambda md, et: bool(md)
+        _accumulator._msgs_delta_is_substantial = lambda md, et: bool(md)
     with tempfile.NamedTemporaryFile('w', suffix='.jsonl', delete=False) as f:
         for row in entries:
             f.write(json.dumps(row[which]) + '\n')
@@ -133,7 +133,7 @@ def has_content_map(entries: list, which: int, baseline: bool = False) -> dict: 
         accumulate_dual_log(tmp, 0, acc)
     finally:
         tmp.unlink()
-        _parser._msgs_delta_is_substantial = saved
+        _accumulator._msgs_delta_is_substantial = saved
     merged: dict = {}
     for fam in acc.values():
         merged.update(fam.get('_has_content_by_flow_id', {}))
@@ -142,7 +142,7 @@ def has_content_map(entries: list, which: int, baseline: bool = False) -> dict: 
 
 # {flow_id: set(msg_idx)} for one side, via the same real accumulator
 def msg_idx_map(entries: list, which: int) -> dict:
-    from src.proxy_display.parser import accumulate_dual_log
+    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     with tempfile.NamedTemporaryFile('w', suffix='.jsonl', delete=False) as f:
         for row in entries:
             f.write(json.dumps(row[which]) + '\n')
@@ -160,7 +160,7 @@ def msg_idx_map(entries: list, which: int) -> dict:
 
 # The badge pair the REQ header actually renders, via the real parser.badge_flags
 def badge_maps(entries: list) -> tuple:
-    from src.proxy_display.parser import badge_flags
+    from src.proxy_display.proxy_badge import badge_flags
     hc_s = has_content_map(entries, 1)
     hc_i = has_content_map(entries, 2)
     mi_s = msg_idx_map(entries, 1)
