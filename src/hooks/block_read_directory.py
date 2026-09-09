@@ -9,7 +9,6 @@ _BLOCK_MESSAGE = "Read cannot read directories — use `ls <path>` instead\n"
 
 # ORCHESTRATOR
 
-# Read Read tool_input from stdin; exit 2 + stderr if file_path points to a directory
 def block_read_directory_workflow() -> None:
     path, session_id = _parse_path()
     if path is None:
@@ -22,7 +21,6 @@ def block_read_directory_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (file_path, session_id); (None, None) on any error or missing field (fail-open)
 def _parse_path():
     try:
         payload = json.loads(sys.stdin.read())
@@ -31,7 +29,6 @@ def _parse_path():
     except Exception:
         return None, None
 
-# True if path resolves to a directory; False on any filesystem error (fail-open)
 def _is_directory(path: str) -> bool:
     try:
         return os.path.isdir(path)

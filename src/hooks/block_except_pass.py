@@ -6,15 +6,12 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _fire_log import log_fire
 
-# Bare exception swallow: except [OptionalType]: <newline> pass
-# Covers: except: pass, except Exception: pass, except SomeError: pass
 _EXCEPT_PASS = re.compile(r'except\s*(?:\w+\s*)?:\s*[\r\n]+\s*pass\b', re.MULTILINE)
 
 _BLOCK_MESSAGE = "replace `except ...: pass` with `raise` or `logger.error(e); raise`\n"
 
 # ORCHESTRATOR
 
-# Read Write or Edit tool_input; exit 2 + stderr if content contains a bare except-pass block
 def block_except_pass_workflow() -> None:
     content, file_path, session_id = _parse_content()
     if content is None:
@@ -27,7 +24,6 @@ def block_except_pass_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (content, file_path, session_id); (None, None, None) on error
 def _parse_content():
     try:
         payload = json.loads(sys.stdin.read())

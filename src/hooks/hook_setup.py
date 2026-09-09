@@ -13,10 +13,6 @@ _HOOK_TIMEOUT  = 5
 _MAIN_BRANCH   = "main"
 _DEFAULT_EVENT = "PreToolUse"
 
-# Hook scripts to install: (script_filename, matcher) — registers under PreToolUse — or
-# (script_filename, matcher, event) to register under another hook event.
-# block_path_typo registers under Bash + Read + Write + Edit — the same hook script
-# inspects tool_name internally to pick the right field (command vs file_path).
 _HOOK_SCRIPTS = [
     ("block_dangerous_kill.py",          "Bash"),
     ("rewrite_chained_sleep.py",         "Bash"),
@@ -57,8 +53,6 @@ _HOOK_SCRIPTS = [
 
 # ORCHESTRATOR
 
-# Install safety hooks into ~/.claude/settings.json; idempotent; supports mixed matchers
-# (Bash/Edit/Read/Write) and mixed events (PreToolUse, PostToolUseFailure)
 def hook_setup_workflow() -> None:
     _guard_not_worktree()
     settings = _load_settings()
@@ -81,23 +75,6 @@ def hook_setup_workflow() -> None:
 
 # FUNCTIONS
 
-# Pure: partition hook_scripts into (installable [(script, matcher)], skipped [(script, matcher, reason)]).
-# A script installs only when BOTH hold:
-#   1. git_query_fn(script) -> True (committed on main) — False (confirmed absent) and None (query
-#      could not be answered: no git, no main ref, subprocess error/timeout) both route to skip.
-#      Fail-safe: never install a script whose main-branch presence is unverified.
-#   2. tree_query_fn(script) -> True (present in the CURRENT working tree at the path that will
-#      actually be registered) — this is the mirror-image check: main-branch presence alone does not
-#      guarantee the working-tree path exists NOW (a branch could have deleted/renamed a script that
-#      is still committed on main and still listed in _HOOK_SCRIPTS).
-# Either failure produces the same class of outcome — a dead absolute path in the GLOBAL
-# ~/.claude/settings.json, breaking every Bash call on the machine — so both are gated before install,
-# not just one. Main-branch presence is checked first; a script failing it never reaches the tree
-# check, so "missing from BOTH" reports the main-branch reason.
-# Decision is cached per script filename — multiple matcher entries for the same script (e.g.
-# block_path_typo.py under Bash/Read/Write/Edit) run each query once and share the verdict.
-# Entries pass through in the SHAPE they arrived — a 2-tuple stays a 2-tuple, a 3-tuple keeps its
-# event — so the gate stays agnostic of the event dimension it does not judge.
 def decide_entries(hook_scripts: list, git_query_fn, tree_query_fn) -> tuple:
     to_install, skipped, cache = [], [], {}
     for entry in hook_scripts:
@@ -112,13 +89,11 @@ def decide_entries(hook_scripts: list, git_query_fn, tree_query_fn) -> tuple:
     return to_install, skipped
 
 
-# Normalize a _HOOK_SCRIPTS entry to (script, matcher, event); a 2-tuple means PreToolUse
 def _unpack_entry(entry) -> tuple:
     script, matcher = entry[0], entry[1]
     event = entry[2] if len(entry) > 2 else _DEFAULT_EVENT
     return script, matcher, event
 
-# Resolve one script's install verdict: (True, None) to install, or (False, reason) to skip.
 def _script_verdict(script: str, git_query_fn, tree_query_fn) -> tuple:
     present = git_query_fn(script)
     if present is False:
@@ -135,7 +110,6 @@ def _script_verdict(script: str, git_query_fn, tree_query_fn) -> tuple:
             f"— not registered (would be a dead absolute path immediately)")
     return True, None
 
-# Print one line per skipped script to stderr (deduped by script — one line even with multiple matchers)
 def _report_skipped(skipped: list) -> None:
     seen = set()
     for script, _matcher, reason in skipped:
@@ -144,8 +118,6 @@ def _report_skipped(skipped: list) -> None:
         seen.add(script)
         print(f"SKIPPED: {reason}", file=sys.stderr)
 
-# True if 'main' resolves to a real ref in this repo; cached — called once per hook_setup_workflow run
-# regardless of how many scripts are checked.
 @functools.lru_cache(maxsize=None)
 def _main_branch_resolves() -> bool:
     try:
@@ -157,9 +129,6 @@ def _main_branch_resolves() -> bool:
     except Exception:
         return False
 
-# Real git-query for decide_entries: True if src/hooks/<script_filename> exists in the tree at the
-# tip of 'main'; False if 'main' resolves but the path is absent there; None if 'main' itself does
-# not resolve, git is missing, or the subprocess errors/times out (query unanswerable).
 def _script_on_main(script_filename: str):
     if not _main_branch_resolves():
         return None
@@ -173,12 +142,9 @@ def _script_on_main(script_filename: str):
     except Exception:
         return None
 
-# Real tree-query for decide_entries: True if the script exists at the exact path that will be
-# registered (_HOOKS_DIR / script_filename) — i.e. the current working tree, right now.
 def _script_in_worktree(script_filename: str) -> bool:
     return os.path.exists(_HOOKS_DIR / script_filename)
 
-# Refuse to run if this script is executing from inside a worktree path
 def _guard_not_worktree() -> None:
     parts = Path(__file__).resolve().parts
     for i in range(len(parts) - 1):
@@ -191,7 +157,6 @@ def _guard_not_worktree() -> None:
             )
             sys.exit(2)
 
-# Remove hook entries whose python3 script path no longer exists; drop now-empty groups
 def _sweep_stale_hooks(settings: dict) -> int:
     hooks = settings.get("hooks", {})
     swept = 0
@@ -212,7 +177,6 @@ def _sweep_stale_hooks(settings: dict) -> int:
         hooks[event] = new_groups
     return swept
 
-# True if a hook entry with the given (command, matcher) pair already exists under PreToolUse
 def _already_installed(pre_tool_use: list, command: str, matcher: str) -> bool:
     for group in pre_tool_use:
         if group.get("matcher") != matcher:
@@ -222,14 +186,12 @@ def _already_installed(pre_tool_use: list, command: str, matcher: str) -> bool:
                 return True
     return False
 
-# Append a new matcher group to the PreToolUse list with the given matcher
 def _add_hook(pre_tool_use: list, command: str, matcher: str) -> None:
     pre_tool_use.append({
         "matcher": matcher,
         "hooks": [{"type": "command", "command": command, "timeout": _HOOK_TIMEOUT}],
     })
 
-# Read settings.json; return empty dict if absent; exit on parse error
 def _load_settings() -> dict:
     try:
         return json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
@@ -239,7 +201,6 @@ def _load_settings() -> dict:
         print(f"ERROR: cannot parse {_SETTINGS_FILE}: {e}", file=sys.stderr)
         sys.exit(1)
 
-# Atomically write settings back via temp file
 def _save_settings(settings: dict) -> None:
     tmp = _SETTINGS_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(settings, indent=2), encoding="utf-8")

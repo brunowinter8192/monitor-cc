@@ -1,21 +1,15 @@
 # INFRASTRUCTURE
-# (no imports — pure stdlib logic)
 
 
 # FUNCTIONS
 
-# Sentinel raised by _strip_impl on unclosed constructs
 class _StripError(Exception):
     pass
 
 
-_CMD_SUBST = '$('   # two-char command-substitution prefix used in _strip_impl checks
+_CMD_SUBST = '$('
 
 
-# Return command with heredoc bodies, single-quoted, double-quoted, and ANSI-C-quoted regions
-# replaced by spaces. Command substitutions $(...) and backtick substitutions are kept
-# shell-active (may contain real patterns that should be blocked).
-# Returns original command unchanged on any parse failure (fail-open).
 def _strip_non_shell_active(command: str) -> str:
     try:
         return _strip_impl(command)
@@ -23,16 +17,15 @@ def _strip_non_shell_active(command: str) -> str:
         return command
 
 
-# Scan heredoc starting at i; returns (fragment, new_i). Raises _StripError on unclosed heredoc.
 def _scan_heredoc(command: str, i: int, n: int) -> tuple:
     parts = []
     j = i + 2
     if j < n and command[j] == '-':
-        j += 1                                # <<- strip-tabs variant
+        j += 1
     while j < n and command[j] in (' ', '\t'):
         j += 1
     q = None
-    if j < n and command[j] in ("'", '"'):    # quoted marker: <<'EOF' or <<"EOF"
+    if j < n and command[j] in ("'", '"'):
         q = command[j]
         j += 1
     mk = []
@@ -43,19 +36,19 @@ def _scan_heredoc(command: str, i: int, n: int) -> tuple:
         mk.append(command[j])
         j += 1
     marker = ''.join(mk)
-    if not marker:                            # unparseable marker — keep char, move on
+    if not marker:
         return command[i], i + 1
-    while i < j:                             # keep the <<MARKER redirect token itself
+    while i < j:
         parts.append(command[i])
         i += 1
-    while i < n and command[i] != '\n':      # keep rest of current line (shell-active)
+    while i < n and command[i] != '\n':
         parts.append(command[i])
         i += 1
     if i < n:
         parts.append('\n')
         i += 1
     found_term = False
-    while i < n:                             # consume body: replace lines with spaces
+    while i < n:
         ls = i
         while i < n and command[i] != '\n':
             i += 1
@@ -74,7 +67,6 @@ def _scan_heredoc(command: str, i: int, n: int) -> tuple:
     return ''.join(parts), i
 
 
-# Scan ANSI-C quote $'...' starting at i; returns (fragment, new_i). Raises on unclosed.
 def _scan_ansi_c_quote(command: str, i: int, n: int) -> tuple:
     parts = ['  ']
     i += 2
@@ -96,7 +88,6 @@ def _scan_ansi_c_quote(command: str, i: int, n: int) -> tuple:
     return ''.join(parts), i
 
 
-# Scan command substitution $(...) starting at i; returns (fragment, new_i).
 def _scan_cmd_subst(command: str, i: int, n: int) -> tuple:
     parts = [_CMD_SUBST]
     i += 2
@@ -115,7 +106,6 @@ def _scan_cmd_subst(command: str, i: int, n: int) -> tuple:
     return ''.join(parts), i
 
 
-# Scan backtick substitution `...` starting at i; returns (fragment, new_i).
 def _scan_backtick(command: str, i: int, n: int) -> tuple:
     parts = ['`']
     i += 1
@@ -128,7 +118,6 @@ def _scan_backtick(command: str, i: int, n: int) -> tuple:
     return ''.join(parts), i
 
 
-# Scan single-quoted string '...' starting at i; returns (fragment, new_i). Raises on unclosed.
 def _scan_single_quote(command: str, i: int, n: int) -> tuple:
     parts = [' ']
     i += 1
@@ -142,7 +131,6 @@ def _scan_single_quote(command: str, i: int, n: int) -> tuple:
     return ''.join(parts), i
 
 
-# Scan double-quoted string "..." starting at i; returns (fragment, new_i). Raises on unclosed.
 def _scan_double_quote(command: str, i: int, n: int) -> tuple:
     parts = [' ']
     i += 1
@@ -164,7 +152,6 @@ def _scan_double_quote(command: str, i: int, n: int) -> tuple:
     return ''.join(parts), i
 
 
-# Single-pass character scanner: strip non-shell-active regions, keep shell-active ones.
 def _strip_impl(command: str) -> str:
     out = []
     i = 0

@@ -9,17 +9,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
 from _fire_log import log_fire
 
-# Anchor for the rag-cli search invocation. Only `search` is in scope —
-# `read_document`, `list_documents`, `list_collections`, etc. remain untouched.
 _RAG_RE = re.compile(r'\brag-cli\s+search\b')
 
-# Segment-end operators: terminate the rag-cli logical command (same set used across the
-# rag-cli/gh-cli/websearch/worker-cli chained-CLI block hooks' chain-boundary detection).
 _SEGMENT_END_RE = re.compile(r'&&|\|\||[;)\n]|(?<!>)&(?![&>])')
 
-# Noise inside the segment: pipes (excluding `||`) and redirects. First match
-# position also bounds the segment — a piped/redirected search must not
-# pull unrelated trailing tokens into the argument scan.
 _NOISE_RE = re.compile(r'2>&1|2>|&>|>>|<<|>|<|(?<!\|)\|(?!\|)')
 
 _LAYER_FILTER_FLAGS = ("--document", "--exclude")
@@ -34,9 +27,6 @@ _BLOCK_MESSAGE = (
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; exit 2 + stderr if a rag-cli search call
-# targets a *-docs collection without a --document/--exclude filter naming
-# 'process-docs'. Fail-open on any parse error.
 def block_rag_docs_layer_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
@@ -59,7 +49,6 @@ def block_rag_docs_layer_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
@@ -69,8 +58,6 @@ def _parse_command():
         return None, None
 
 
-# Return end index of the logical rag-cli segment starting after the search
-# match, bounded by the first chain operator or the first pipe/redirect noise token.
 def _segment_end(stripped: str, rag_end: int) -> int:
     end_m = _SEGMENT_END_RE.search(stripped, rag_end)
     seg_end = end_m.start() if end_m else len(stripped)
@@ -80,9 +67,6 @@ def _segment_end(stripped: str, rag_end: int) -> int:
     return seg_end
 
 
-# Return True if this rag-cli search segment targets a *-docs collection
-# without a --document/--exclude filter whose value contains 'process-docs'.
-# Fail-open (False) on any tokenization error or unexpected shape.
 def _segment_violates(original_segment: str) -> bool:
     try:
         tokens = shlex.split(original_segment)
@@ -94,7 +78,6 @@ def _segment_violates(original_segment: str) -> bool:
     return not _has_layer_filter(tokens)
 
 
-# Return the collection token (two positions after 'search'), or None
 def _find_collection(tokens: list) -> str | None:
     for i, tok in enumerate(tokens):
         if tok == 'search' and i + 2 < len(tokens):
@@ -102,8 +85,6 @@ def _find_collection(tokens: list) -> str | None:
     return None
 
 
-# Return True if tokens contain a --document/--exclude flag whose value
-# contains the substring 'process-docs' (space-separated or --flag=value form)
 def _has_layer_filter(tokens: list) -> bool:
     for i, tok in enumerate(tokens):
         if tok in _LAYER_FILTER_FLAGS:

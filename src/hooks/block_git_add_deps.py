@@ -6,16 +6,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _fire_log import log_fire
 
-# git add invocation (with optional -C path flag)
 _GIT_ADD = re.compile(r'\bgit\s+(?:-C\s+\S+\s+)?add\b')
-# Dependency directory names as explicit targets (with or without trailing slash)
 _DEP_TARGET = re.compile(r'\b(?:venv|\.venv|node_modules)/?(?:\s|$)')
 
 _BLOCK_MESSAGE = "venv/, .venv/, node_modules/ must never be staged — add to .gitignore if not already there\n"
 
 # ORCHESTRATOR
 
-# Read Bash tool_input; exit 2 + stderr if command stages a dependency directory
 def block_git_add_deps_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
@@ -29,7 +26,6 @@ def block_git_add_deps_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
@@ -38,7 +34,6 @@ def _parse_command():
     except Exception:
         return None, None
 
-# Strip content inside single/double quotes to avoid matching quoted dependency dir names
 def _strip_quoted(s: str) -> str:
     out, i, n = [], 0, len(s)
     while i < n:

@@ -27,7 +27,6 @@ _TRIVIAL_PAIRS = frozenset({
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; strip trivial-sync sleeps; emit allow+updatedInput if any stripped
 def rewrite_chained_sleep_workflow() -> None:
     command, run_in_background, session_id = _parse_command()
     if command is None:
@@ -49,7 +48,6 @@ def rewrite_chained_sleep_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
@@ -60,7 +58,6 @@ def _parse_command():
     except Exception:
         return None, False, None
 
-# Return list of (start, end) spans in command to remove (trivial-sync sleep + preceding chain op)
 def _find_strip_ranges(command: str, stripped: str) -> list:
     ops    = list(_CHAIN_RE.finditer(stripped))
     ranges = []
@@ -69,16 +66,14 @@ def _find_strip_ranges(command: str, stripped: str) -> list:
         s_start = sleep_m.start()
         s_end   = sleep_m.end()
 
-        # Find the chain op immediately before this sleep (only whitespace between op and sleep)
         prec = None
         for op in reversed(ops):
             if op.end() <= s_start and not stripped[op.end():s_start].strip():
                 prec = op
                 break
         if prec is None:
-            continue  # sleep-first chain — intent is timing, not sync; do not strip
+            continue
 
-        # cmd_before: first token of the segment immediately preceding prec
         seg_start = 0
         for op in reversed(ops):
             if op.end() <= prec.start():
@@ -91,11 +86,9 @@ def _find_strip_ranges(command: str, stripped: str) -> list:
         if tokens[0] not in _TRIVIAL and not (len(tokens) >= 2 and (tokens[0], tokens[1]) in _TRIVIAL_PAIRS):
             continue
 
-        # Skip when sleep is inside a loop body
         if _in_loop(stripped, s_start):
             continue
 
-        # Removal span: preceding op through end of sleep (+ trailing whitespace)
         r_end = s_end
         while r_end < len(command) and command[r_end] in ' \t':
             r_end += 1
@@ -103,7 +96,6 @@ def _find_strip_ranges(command: str, stripped: str) -> list:
 
     return ranges
 
-# True if pos falls inside a for/while/until...done span in stripped
 def _in_loop(stripped: str, pos: int) -> bool:
     for lm in _LOOP_RE.finditer(stripped):
         if lm.start() > pos:
@@ -113,7 +105,6 @@ def _in_loop(stripped: str, pos: int) -> bool:
             return True
     return False
 
-# Remove non-overlapping (merged) ranges from command and return result
 def _apply_ranges(command: str, ranges: list) -> str:
     merged: list = []
     for s, e in sorted(ranges):
@@ -128,7 +119,6 @@ def _apply_ranges(command: str, ranges: list) -> str:
     parts.append(command[pos:])
     return ''.join(parts)
 
-# Build allow+updatedInput dict; return it (caller handles print)
 def _emit_rewrite(rewritten: str, run_in_background: bool) -> dict:
     return {
         "hookSpecificOutput": {

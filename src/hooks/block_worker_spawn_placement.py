@@ -9,7 +9,6 @@ from _fire_log import log_fire
 
 _WORKTREE_FRAGMENT = '.claude/worktrees/'
 
-# 3rd positional after 'spawn': worker-cli spawn <name> <prompt_file> <project_path> [model] [--no-worktree]
 _SPAWN_RE       = re.compile(r'\bworker-cli\s+spawn\s+(\S+)\s+(\S+)\s+(\S+)', re.DOTALL)
 _NO_WORKTREE_RE = re.compile(r'\bworker-cli\s+spawn\b.*--no-worktree\b', re.DOTALL)
 
@@ -28,8 +27,6 @@ _NO_WORKTREE_MSG    = (
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; exit 2 + stderr if spawn targets a different project or uses --no-worktree.
-# Skipped entirely when the hook runs from inside a worktree (worker sessions don't spawn workers).
 def block_worker_spawn_placement_workflow() -> None:
     if _WORKTREE_FRAGMENT in os.getcwd():
         sys.exit(0)
@@ -61,7 +58,6 @@ def block_worker_spawn_placement_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
@@ -71,9 +67,6 @@ def _parse_command():
         return None, None
 
 
-# Resolve path to its git-root after stripping any /.claude/worktrees/<name> suffix.
-# Applies os.path.realpath to normalise symlink components (/Users vs /System/Volumes/Data/Users).
-# Returns None when no .git root is found (caller treats as fail-open).
 def _resolve_project_root(path: str) -> str | None:
     p = os.path.abspath(os.path.expanduser(path))
     idx = p.find('/' + _WORKTREE_FRAGMENT)
@@ -83,7 +76,6 @@ def _resolve_project_root(path: str) -> str | None:
     return _find_git_root(p)
 
 
-# Walk up from start until a directory containing .git is found; return that directory or None.
 def _find_git_root(start: str) -> str | None:
     p = start
     while True:

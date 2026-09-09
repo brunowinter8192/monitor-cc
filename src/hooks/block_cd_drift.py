@@ -14,8 +14,6 @@ _BLOCK_MESSAGE = "use `git -C <worktree> diff` instead of `cd <worktree>`\n"
 
 # ORCHESTRATOR
 
-# Read Bash tool_input; exit 2 + stderr if a worktree cd lacks a cd-back, exit 0 otherwise.
-# Skipped when the hook itself runs from inside a worktree (worker session — they live there).
 def block_cd_drift_workflow() -> None:
     if _WORKTREE_FRAGMENT in os.getcwd():
         sys.exit(0)
@@ -38,7 +36,6 @@ def block_cd_drift_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
@@ -48,7 +45,6 @@ def _parse_command():
         return None, None
 
 
-# Strip content inside single/double quotes so quoted text cannot trigger pattern matches.
 def _strip_quoted(s: str) -> str:
     out, i, n = [], 0, len(s)
     while i < n:

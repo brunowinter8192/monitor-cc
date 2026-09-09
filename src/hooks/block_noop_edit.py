@@ -9,7 +9,6 @@ _BLOCK_MESSAGE = "old_string == new_string — re-read the file first before ret
 
 # ORCHESTRATOR
 
-# Read Edit tool_input from stdin; exit 2 + stderr if old_string == new_string
 def block_noop_edit_workflow() -> None:
     old_string, new_string, file_path, session_id = _parse_input()
     if old_string is None or new_string is None:
@@ -22,7 +21,6 @@ def block_noop_edit_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (old_string, new_string, file_path, session_id); (None, None, None, None) on error (fail-open)
 def _parse_input():
     try:
         payload = json.loads(sys.stdin.read())

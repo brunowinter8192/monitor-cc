@@ -10,12 +10,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
 from _fire_log import log_fire
 
-# worker-cli kill with a name token: [\w.-]+ excludes trailing shell metacharacters so
-# 'worker-cli kill foo;' / 'worker-cli kill foo && x' capture 'foo', not 'foo;'.
-# Known accepted residual: a shell comment carrying the literal kill + a live-working-worker-name
-# blocks — same non-comment-stripping class as the whole hook family (none of the existing
-# hooks strip shell comments). The double-gate (regex + live status check) makes a comment-FP
-# require both the comment text to name a real worker AND that worker to be actively working.
 _KILL_RE = re.compile(r'\bworker-cli\s+kill\s+([\w.-]+)')
 
 _BLOCK_MESSAGE = (
@@ -24,7 +18,6 @@ _BLOCK_MESSAGE = (
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; exit 2 + stderr if command kills a currently-working worker
 def block_worker_kill_while_working_workflow() -> None:
     try:
         command, session_id = _parse_command()
@@ -43,11 +36,6 @@ def block_worker_kill_while_working_workflow() -> None:
 
 # FUNCTIONS
 
-# Pure decision: strip command, find kill-name(s), check each via status_fn.
-# Returns (should_block: bool, blocking_name: str | None).
-# Blocks iff any captured name returns exactly 'working' as the first whitespace token.
-# status_fn exceptions → '' (allow). Testable: real entrypoint wires _live_worker_status;
-# smoke tests inject a stub.
 def decide(command: str, status_fn) -> tuple:
     stripped = _strip_non_shell_active(command)
     names = _KILL_RE.findall(stripped)
@@ -63,8 +51,6 @@ def decide(command: str, status_fn) -> tuple:
             return True, name
     return False, None
 
-# Resolve absolute path to worker-cli: shutil.which first, then plugin-cache glob fallback.
-# Returns None if unresolvable (hook PATH lacks plugin bin — confirmed diagnosis).
 def _resolve_worker_cli() -> str:
     found = shutil.which('worker-cli')
     if found:
@@ -74,7 +60,6 @@ def _resolve_worker_cli() -> str:
     ))
     return sorted(candidates)[-1] if candidates else None
 
-# Run 'worker-cli status <name>' with 3s timeout; return stdout or '' on any error/non-zero exit
 def _live_worker_status(name: str) -> str:
     try:
         binary = _resolve_worker_cli()
@@ -88,7 +73,6 @@ def _live_worker_status(name: str) -> str:
     except Exception:
         return ''
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())

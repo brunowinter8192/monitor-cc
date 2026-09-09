@@ -8,33 +8,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
 from _fire_log import log_fire
 
-# Fast-path anchor: skip commands with no rag-cli index call at all
 _RAG_INDEX_RE = re.compile(r'\brag-cli\s+index\b')
-# One `VAR=value` shell assignment token (value = any non-whitespace run)
 _ASSIGN_TOKEN = r'[A-Za-z_][A-Za-z0-9_]*=\S*'
-# Zero or more assignment tokens, space-separated, as an env-var prefix on a command
 _ASSIGN_PREFIX = rf'(?:{_ASSIGN_TOKEN}\s+)*'
-# A segment is the rag-cli index call itself, optionally env-var-prefixed
-# (redirects stay part of the segment)
 _RAG_INDEX_SEGMENT_RE = re.compile(rf'^{_ASSIGN_PREFIX}rag-cli\s+index\b')
-# A segment is a leading cd — allowed alongside rag-cli index
 _CD_SEGMENT_RE = re.compile(r'^cd\b')
-# A segment is one or more bare shell variable assignments and nothing else — allowed
-# alongside rag-cli index (e.g. `RAG_ROOT=~/path` on its own line before `cd "$RAG_ROOT"`)
 _ASSIGNMENT_ONLY_SEGMENT_RE = re.compile(rf'^(?:{_ASSIGN_TOKEN}\s*)+$')
-# Shell command separators: && || ; newline | (single, after ||) and bare & (background).
-# Order matters — && before single &, || before |. Single & excludes `&&`/`&>`/`N>&M`
-# (2>&1) via lookaround on both sides — no whitespace requirement, since bash treats
-# `x&tail` (no spaces at all) identically to `x & tail` as two commands.
 _SEPARATOR_RE = re.compile(r'&&|\|\||;|\n|\||(?<![&>])&(?![&>])')
-# Backslash+newline is a shell line continuation, not a separator — collapsed before split
 _LINE_CONTINUATION_RE = re.compile(r'\\\n')
-# Any command/process substitution anywhere blocks outright when rag-cli index is present —
-# checked against the RAW (unstripped) command: _strip_non_shell_active keeps $()/backticks
-# shell-active outside quotes, but its double-quote scanner blanks them INSIDE "..." even
-# though real bash still evaluates $(...) there (`cd "$(pwd)"` really runs pwd) — a bare
-# raw-text search closes that gap too. Plain `$VAR`/`${VAR}` expansion does not match (no
-# literal `(` follows `$`).
 _SUBSHELL_RE = re.compile(r'\$\(|`|<\(|>\(')
 
 _BLOCK_MESSAGE = (
@@ -48,8 +29,6 @@ _BLOCK_MESSAGE = (
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; exit 2 + stderr if a rag-cli index call shares the Bash
-# invocation with anything other than assignments, a cd, and itself. Fail-open on any parse error.
 def block_rag_cli_index_isolated_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
@@ -76,7 +55,6 @@ def block_rag_cli_index_isolated_workflow() -> None:
 
 # FUNCTIONS
 
-# Print block message, log the fire event, exit 2
 def _block(command: str, session_id: str) -> None:
     print(_BLOCK_MESSAGE, file=sys.stderr, end="")
     log_fire("block_rag_cli_index_isolated", "block", "Bash", command,
@@ -84,7 +62,6 @@ def _block(command: str, session_id: str) -> None:
     sys.exit(2)
 
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
