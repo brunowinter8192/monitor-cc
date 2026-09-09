@@ -7,10 +7,10 @@ from AppKit import (NSLayoutAttributeLeading, NSStatusWindowLevel,
                     NSWindowStyleMaskNonactivatingPanel, NSWindowStyleMaskResizable)
 from Foundation import NSMakeRect, NSMakeSize
 
+# From panel_dims.py: main-panel outer dimensions (PANEL_* constant cluster)
+from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
 # From panel.py: UI constants, factories, helpers shared across panels
-from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
-                    PANEL_GAP, _TOP_BAR_H, _ROW_H,
-                    _CursorlessButton, _KeyablePanel)
+from .panel import _TOP_BAR_H, _ROW_H, _CursorlessButton, _KeyablePanel
 
 # Apply button dimensions + success-feedback constants. Width/title are kept as separate constants
 # (not composed inline) specifically so a future fallback — a shorter title at constant width, if

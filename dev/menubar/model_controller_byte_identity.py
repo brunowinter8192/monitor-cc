@@ -6,8 +6,9 @@ NSPanel-construction concern split into sibling modules).
 seeded from a copy of the real ~/.claude/shared-rules/proxy_rules.json if present, else a
 synthetic minimal fixture) — load, cycle main/worker model/effort/max_tokens through a fixed
 sequence, write; hashes both written files' raw bytes.
-(2) UI: instantiates ModelController with a minimal fake app (_panel_width, _panel_min_height,
-_auto_focus, _panel_controller = a plain NSObject subclass instance), calls open() then each
+(2) UI: instantiates ModelController with a minimal fake app (settings = a SimpleNamespace with
+panel_width/panel_min_height/auto_focus, per menubar milestone B's PanelSettings split;
+_panel_controller = a plain NSObject subclass instance), calls open() then each
 handle_cycle_* once, dumping every arranged subview's class/frame/title/attributedTitle/tag/action
 after each step; hashes the dump. Does NOT call handle_apply — that writes the REAL shared-rules
 files, and this harness must never touch them; open()/handle_cycle_* are read-only with respect to
@@ -30,6 +31,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
@@ -152,9 +154,7 @@ def _hash_ui(mc) -> str:
 
     class _FakeApp:
         def __init__(self):
-            self._panel_width = 422
-            self._panel_min_height = 460
-            self._auto_focus = False
+            self.settings = SimpleNamespace(panel_width=422, panel_min_height=460, auto_focus=False)
             self._panel_controller = _FakePanelController.alloc().init()
 
     digest = hashlib.sha256()
@@ -184,9 +184,7 @@ def _smoke_import_and_open(mc) -> None:
 
     class _FakeApp:
         def __init__(self):
-            self._panel_width = 422
-            self._panel_min_height = 460
-            self._auto_focus = False
+            self.settings = SimpleNamespace(panel_width=422, panel_min_height=460, auto_focus=False)
             self._panel_controller = _FakePanelController.alloc().init()
 
     controller = mc.ModelController(_FakeApp())

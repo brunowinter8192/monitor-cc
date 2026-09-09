@@ -3,6 +3,7 @@ import importlib
 import sys
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from Foundation import NSMakeRect
@@ -128,10 +129,7 @@ class _SyncOperationQueue:
 # driven by a minimal attribute-only app double — no rumps.App/run-loop needed for ring logic.
 class _FakeApp:
     def __init__(self, panel_manager, rag_controller, model_controller):
-        self._panel_width = 380
-        self._panel_min_height = 460
-        self._auto_focus = False
-        self._panel_backgrounded = False
+        self.settings = SimpleNamespace(panel_width=380, panel_min_height=460, auto_focus=False)
         self._panel_controller = None
         self._nsapp = _FakeNSApp()
         self.hotkey = _FakeHotkey()

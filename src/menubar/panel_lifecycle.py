@@ -20,7 +20,7 @@ from .model_panel_ui import _reposition_models_panel
 # would otherwise re-center the panel under the status bar icon on every cycle).
 def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) -> None:
     try:
-        if from_panel == 'main':  from_obj = app.panel._panel
+        if from_panel == 'main':  from_obj = app.panel._widgets.panel
         elif from_panel == 'rag': from_obj = app.rag._rag_panel
         else:                     from_obj = app.models._models_panel
         from_frame = from_obj.frame()   # capture before close
@@ -30,7 +30,7 @@ def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) ->
         if to_panel == 'main':    _open_main_panel(app)
         elif to_panel == 'rag':   _open_rag_panel(app)
         else:                     _open_models_panel(app)
-        if to_panel == 'main':    to_obj = app.panel._panel
+        if to_panel == 'main':    to_obj = app.panel._widgets.panel
         elif to_panel == 'rag':   to_obj = app.rag._rag_panel
         else:                     to_obj = app.models._models_panel
         to_obj.setFrame_display_(from_frame, True)   # restore position; display:True flushes immediately
@@ -42,29 +42,29 @@ def _deferred_close_open(app: 'CCMenuBarApp', from_panel: str, to_panel: str) ->
 # Cycling (Cmd+→/←) resets _panel_backgrounded via _close_main/rag/models_panel before opening the other.
 def _background_panel(app: 'CCMenuBarApp') -> None:
     try:
-        if app._panel_backgrounded:
+        if app.panel._panel_backgrounded:
             if app.panel._panel_open:
-                app.panel._panel.setLevel_(25)   # NSStatusWindowLevel — restore before foregrounding
-                app.panel._panel.orderFrontRegardless()
+                app.panel._widgets.panel.setLevel_(25)   # NSStatusWindowLevel — restore before foregrounding
+                app.panel._widgets.panel.orderFrontRegardless()
             elif app.rag._rag_open:
                 app.rag._rag_panel.setLevel_(25)   # NSStatusWindowLevel
                 app.rag._rag_panel.orderFrontRegardless()
             elif app.models._models_open:
                 app.models._models_panel.setLevel_(25)   # NSStatusWindowLevel
                 app.models._models_panel.orderFrontRegardless()
-            app._panel_backgrounded = False
+            app.panel._panel_backgrounded = False
         elif app.panel._panel_open:
-            app.panel._panel.setLevel_(0)   # NSNormalWindowLevel — allows orderBack_ to work
-            app.panel._panel.orderBack_(None)
-            app._panel_backgrounded = True
+            app.panel._widgets.panel.setLevel_(0)   # NSNormalWindowLevel — allows orderBack_ to work
+            app.panel._widgets.panel.orderBack_(None)
+            app.panel._panel_backgrounded = True
         elif app.rag._rag_open:
             app.rag._rag_panel.setLevel_(0)   # NSNormalWindowLevel
             app.rag._rag_panel.orderBack_(None)
-            app._panel_backgrounded = True
+            app.panel._panel_backgrounded = True
         elif app.models._models_open:
             app.models._models_panel.setLevel_(0)   # NSNormalWindowLevel
             app.models._models_panel.orderBack_(None)
-            app._panel_backgrounded = True
+            app.panel._panel_backgrounded = True
     except Exception as e:
         print(f'[menubar] Cmd+K deferred-block error: {e}', file=sys.stderr)
 
@@ -75,11 +75,11 @@ def _open_main_panel(app: 'CCMenuBarApp') -> None:
     sessions = app.sessions.refresh()
     bg_by_project = app.sessions.bg_by_project
     app.panel.rebuild(sessions, bg_by_project)
-    _reposition_panel(app.panel._panel, app._nsapp.nsstatusitem)
-    app.panel._panel.orderFrontRegardless()
-    app.panel._panel.enableCursorRects()
+    _reposition_panel(app.panel._widgets.panel, app._nsapp.nsstatusitem)
+    app.panel._widgets.panel.orderFrontRegardless()
+    app.panel._widgets.panel.enableCursorRects()
     app.panel._panel_open = True
-    app.hotkey.reregister_digits(app.panel._desktop_to_cwd)
+    app.hotkey.reregister_digits(app.panel._lookups.desktop_to_cwd)
     app.hotkey.register_arrow_right(
         lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
             lambda: _deferred_close_open(app, 'main', 'rag')))
@@ -89,9 +89,9 @@ def _open_main_panel(app: 'CCMenuBarApp') -> None:
 
 # Close main panel: hide + unregister Cmd+→ + Cmd+← + Cmd+1..9
 def _close_main_panel(app: 'CCMenuBarApp') -> None:
-    app.panel._panel.orderOut_(None)
+    app.panel._widgets.panel.orderOut_(None)
     app.panel._panel_open = False
-    app._panel_backgrounded = False
+    app.panel._panel_backgrounded = False
     app.hotkey.unregister_digits()
     app.hotkey.unregister_arrow_right()
     app.hotkey.unregister_arrow_left()
@@ -114,7 +114,7 @@ def _open_rag_panel(app: 'CCMenuBarApp') -> None:
 def _close_rag_panel(app: 'CCMenuBarApp') -> None:
     app.rag._rag_panel.orderOut_(None)
     app.rag._rag_open = False
-    app._panel_backgrounded = False
+    app.panel._panel_backgrounded = False
     app.hotkey.unregister_arrow_right()
     app.hotkey.unregister_arrow_left()
 
@@ -136,6 +136,6 @@ def _open_models_panel(app: 'CCMenuBarApp') -> None:
 def _close_models_panel(app: 'CCMenuBarApp') -> None:
     app.models._models_panel.orderOut_(None)
     app.models._models_open = False
-    app._panel_backgrounded = False
+    app.panel._panel_backgrounded = False
     app.hotkey.unregister_arrow_right()
     app.hotkey.unregister_arrow_left()
