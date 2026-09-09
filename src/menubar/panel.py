@@ -23,20 +23,19 @@ from AppKit import (NSAttributedString, NSBox, NSButton, NSColor, NSCursor, NSFo
 from Foundation import NSMakeRect, NSMakeSize, NSRange
 
 from .menubar_log import log_menubar
-# From panel_dims.py: main-panel outer dimensions (PANEL_* constant cluster, menubar milestone B)
 from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
 
-_NAME_WIDTH    = 22     # chars for left-justified name column
+_NAME_WIDTH    = 22
 _MENLO         = lambda: NSFont.fontWithName_size_('Menlo', 13.0)
 
-_BADGE_WORKING = '[*]'   # green — ASCII fixed-width, no emoji drift
-_BADGE_IDLE    = '[ ]'   # red
+_BADGE_WORKING = '[*]'
+_BADGE_IDLE    = '[ ]'
 
-_FOOTER_H        = 30    # pts — fixed footer height for Restart button
-_TOP_BAR_H       = 21    # pts — fixed top-bar height for Auto-Jump button (analog to footer, at top edge)
-_ROW_H           = 21    # pts — session NSButton row (20) + 1pt NSStackView spacing
-_LABEL_H         = 19    # pts — header/separator NSTextField (18) + 1pt NSStackView spacing
-EDGE             = 8     # pts — cursor-zone width at L/R/bottom edges
+_FOOTER_H        = 30
+_TOP_BAR_H       = 21
+_ROW_H           = 21
+_LABEL_H         = 19
+EDGE             = 8
 _TA_TRACKING_OPTS = (NSTrackingCursorUpdate | NSTrackingMouseMoved |
                      NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways |
                      NSTrackingInVisibleRect)
@@ -49,12 +48,6 @@ def _cursor_log(msg: str) -> None:
         return
     log_menubar('cursor', msg)
 
-# NSView contentView — tracking-area event detection + state-driven cursor rects (winit pattern)
-# mouseMoved_ (via NSTrackingArea) detects edge and calls _set_hovered_edge, which calls
-# invalidateCursorRectsForView_ on the window. AppKit then calls resetCursorRects which
-# installs a single full-bounds rect with the cursor for the current edge state.
-# _CursorlessButton/Label suppress child-view resetCursorRects so they cannot override ours.
-# areCursorRectsEnabled override keeps cursor-rect dispatch active for non-key windows.
 class _PanelContentView(NSView):
 
     def initWithFrame_(self, frame):
@@ -134,7 +127,6 @@ class _PanelContentView(NSView):
         _cursor_log('mouseExited_  → clear edge')
         self._set_hovered_edge(None)
 
-    # Claim L/R/bottom edge zones for self; interior falls through to child views
     def hitTest_(self, point):
         local = self.convertPoint_fromView_(point, self.superview())
         w = self.bounds().size.width
@@ -147,28 +139,17 @@ class _PanelContentView(NSView):
         _cursor_log(f'hitTest_  loc=({local.x:.1f},{local.y:.1f})  → super (interior)')
         return objc.super(_PanelContentView, self).hitTest_(point)
 
-# NSTextField subclass that suppresses the default I-Beam cursor rect installation
-# NSTextField.resetCursorRects installs I-Beam over its full frame; no-op override prevents
-# child-view I-Beam from winning over the panel edge cursors defined in _PanelContentView
 class _CursorlessLabel(NSTextField):
     def resetCursorRects(self): pass
 
-# NSButton subclass that suppresses default cursor rect installation
-# NSButton.resetCursorRects would install rects that override ContentView edge cursors at edges
 class _CursorlessButton(NSButton):
     def resetCursorRects(self): pass
 
-# NSPanel subclass that allows the panel to become key window while keeping NSWindowStyleMaskNonactivatingPanel.
-# The mask prevents the APPLICATION from activating (Ghostty stays foreground); canBecomeKeyWindow is a separate
-# gate that controls whether the PANEL can receive keyboard events. Without this override the default ObjC
-# implementation returns False for NonactivatingPanel masks, silently making makeFirstResponder_ a no-op.
 class _KeyablePanel(NSPanel):
     def canBecomeKeyWindow(self):
         return True
 
     def performKeyEquivalent_(self, event):
-        # Cmd-only: route clipboard/edit key equivalents to first responder.
-        # rumps.App has no main menu Edit items so Cmd+V/C/X/A/Z would fall through otherwise.
         flags = event.modifierFlags() & NSEventModifierFlagDeviceIndependentFlagsMask
         if flags == NSEventModifierFlagCommand:
             ch = (event.charactersIgnoringModifiers() or "").lower()
@@ -180,7 +161,6 @@ class _KeyablePanel(NSPanel):
                 if sel and responder.respondsToSelector_(sel):
                     responder.performSelector_withObject_(sel, None)
                     return True
-        # Shift+Cmd+Z → redo
         if flags == (NSEventModifierFlagCommand | NSEventModifierFlagShift):
             ch = (event.charactersIgnoringModifiers() or "").lower()
             if ch == "z":
@@ -190,46 +170,37 @@ class _KeyablePanel(NSPanel):
                     return True
         return objc.super(_KeyablePanel, self).performKeyEquivalent_(event)
 
-# Badge for sessions with active background tasks: [B M:SS] if timer running, [B] otherwise
 def _format_bg_badge(remaining) -> str:
     if remaining is None:
         return '[B]'
     mins, secs = divmod(remaining, 60)
     return f'[B {mins}:{secs:02d}]'
 
-# Fixed footer (bottom edge): Kill (left) + Restart (right) buttons, width-sizable container
 def _make_panel_footer(pw: int):
     footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, pw, _FOOTER_H))
-    footer.setAutoresizingMask_(2)   # NSViewWidthSizable
+    footer.setAutoresizingMask_(2)
     quit_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(pw - 86, 4, 78, 22))
-    quit_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored
+    quit_btn.setAutoresizingMask_(1)
     quit_btn.setTitle_('Restart')
-    quit_btn.setBezelStyle_(1)   # NSBezelStyleRounded
+    quit_btn.setBezelStyle_(1)
     footer.addSubview_(quit_btn)
     kill_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(pw - 86 - 78 - 8, 4, 78, 22))
-    kill_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored, 8pt gap left of Restart
+    kill_btn.setAutoresizingMask_(1)
     kill_btn.setTitle_('Kill')
-    kill_btn.setBezelStyle_(1)   # NSBezelStyleRounded
+    kill_btn.setBezelStyle_(1)
     footer.addSubview_(kill_btn)
     return footer, quit_btn, kill_btn
 
-# Fixed top bar (top edge): Auto-Jump toggle button, width-sizable + top-anchored container
 def _make_panel_top_bar(pw: int):
     top_bar = NSView.alloc().initWithFrame_(NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, pw, _TOP_BAR_H))
-    top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable(2) | NSViewMinYMargin(8) — bottom margin flexible → stays at top edge on resize
+    top_bar.setAutoresizingMask_(10)
     toggle_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, pw - 22, _TOP_BAR_H - 1))
     toggle_btn.setBordered_(False)
-    toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
-    toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable — stretches with top_bar
+    toggle_btn.setButtonType_(7)
+    toggle_btn.setAutoresizingMask_(2)
     top_bar.addSubview_(toggle_btn)
     return top_bar, toggle_btn
 
-# Build NSPanel + fixed footer (Kill + Restart) + fixed top_bar (Auto-Jump) + NSStackView (sessions, middle)
-# Returns (panel, stack_view, quit_btn, toggle_btn, kill_btn) — stored on app instance; ObjC objects reject Python attrs
-# Layout (y=0 = bottom of contentView):
-#   [0, 0,                       pw, _FOOTER_H]   footer   mask=2  — widthSizable, bottom-anchored at y=0
-#   [0, _FOOTER_H,               pw, stack_h]     stack    mask=18 — width+height sizable, fills middle
-#   [0, PANEL_HEIGHT-_TOP_BAR_H, pw, _TOP_BAR_H]  top_bar  mask=10 — widthSizable|minYMargin, top-anchored
 def _make_nspanel():
     panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
@@ -240,13 +211,10 @@ def _make_nspanel():
         NSWindowCollectionBehaviorIgnoresCycle)
     panel.setHasShadow_(True)
     panel.setOpaque_(False)
-    panel.setAcceptsMouseMovedEvents_(True)   # required — without this NSWindow suppresses mouseMoved dispatch → _hovered_edge never updates → no resize cursors
+    panel.setAcceptsMouseMovedEvents_(True)
     panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
     cv = _PanelContentView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT))
     panel.setContentView_(cv)
-    # NonactivatingPanel never calls becomeKeyWindow → enableCursorRects() is never invoked
-    # automatically → cursor-rect dispatch is silently disabled (no cursor changes anywhere).
-    # Explicit call here restores dispatch; confirmed via dev/cursor_edges/probe.py --fix.
     panel.enableCursorRects()
     footer, quit_btn, kill_btn = _make_panel_footer(PANEL_WIDTH)
     cv.addSubview_(footer)
@@ -255,44 +223,37 @@ def _make_nspanel():
     stack_h = PANEL_HEIGHT - _FOOTER_H - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(
         NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, stack_h))
-    stack.setAutoresizingMask_(18)   # NSViewWidthSizable|NSViewHeightSizable — auto-fills middle on resize
+    stack.setAutoresizingMask_(18)
     stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
     stack.setAlignment_(NSLayoutAttributeLeading)
     stack.setSpacing_(1.0)
-    stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas — required for addView_inGravity_ to work
+    stack.setDistribution_(-1)
     cv.addSubview_(stack)
-    # Child views (NSView/NSStackView) have no cursorUpdate_ handler — AppKit dispatches
-    # cursorUpdate_ only to the topmost view with a handler, skipping our ContentView.
-    # Fix: install a tracking area on each child with owner=cv so AppKit fires cursorUpdate_
-    # on cv regardless of which child the cursor is over.
     for child in (footer, top_bar, stack):
         ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
             child.bounds(), _TA_CURSOR_OPTS, cv, None)
         child.addTrackingArea_(ta)
     return panel, stack, quit_btn, toggle_btn, kill_btn
 
-# Position panel flush below the NSStatusItem button; reads current panel dimensions (set by _resize_panel)
 def _reposition_panel(panel, nsstatusitem) -> None:
-    w  = panel.frame().size.width    # dynamic — updated by _resize_panel on each rebuild
+    w  = panel.frame().size.width
     h  = panel.frame().size.height
-    sr = nsstatusitem.button().window().frame()   # button window is already in screen coords
+    sr = nsstatusitem.button().window().frame()
     px = sr.origin.x + sr.size.width / 2.0 - w / 2.0
     py = sr.origin.y - h - PANEL_GAP
     panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
 
-# Borderless Menlo-font NSButton for a single NSGridView cell
 def _make_grid_cell_btn(text: str, color=None) -> NSButton:
     attrs = {NSFontAttributeName: _MENLO()}
     if color is not None:
         attrs[NSForegroundColorAttributeName] = color
     btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, 60, _ROW_H - 1))
     btn.setBordered_(False)
-    btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+    btn.setButtonType_(7)
     btn.setAttributedTitle_(
         NSAttributedString.alloc().initWithString_attributes_(text, attrs))
     return btn
 
-# Non-interactive Menlo-font NSTextField for plain text labels (e.g. "No active sessions")
 def _make_header_label(text: str, panel_width: int) -> NSTextField:
     tf = _CursorlessLabel.labelWithString_('')
     tf.setFrame_(NSMakeRect(0, 0, panel_width - 22, 18))
@@ -301,35 +262,29 @@ def _make_header_label(text: str, panel_width: int) -> NSTextField:
             text, {NSFontAttributeName: _MENLO()}))
     return tf
 
-# NSBox (1pt horizontal rule) spanning content width; used as top-level separator between toggle and sessions
-# panel_width - 22: 22pt total horizontal margin matches row-button and label frames (consistent inset across all stack items)
 def _make_line_separator(panel_width: int) -> NSView:
     w = panel_width - 22
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, 18))
-    container.heightAnchor().constraintEqualToConstant_(18.0).setActive_(True)   # explicit height — NSView has no intrinsicContentSize; without this NSStackView collapses it to 0 under Auto Layout
+    container.heightAnchor().constraintEqualToConstant_(18.0).setActive_(True)
     line = NSBox.alloc().initWithFrame_(NSMakeRect(0, 9, w, 1))
-    line.setBoxType_(2)   # NSBoxSeparator — 1pt system-colored horizontal rule
+    line.setBoxType_(2)
     container.addSubview_(line)
     return container
 
-# NSBox (1pt horizontal rule) with NSTextField label overlay — project name masks the line behind it
-# label background = NSColor.windowBackgroundColor() to opaquely cover the NSBox behind the text
-# If proj_min_remaining is not None, adds an inline abort button at the right end (Option B).
-# Returns (container_view, abort_NSButton_or_None); caller sets target/action on the button.
 def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining=None):
     w = panel_width - 22
     container = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, w, 18))
-    container.heightAnchor().constraintEqualToConstant_(18.0).setActive_(True)   # explicit height — NSGridView turns off TAMIC on content views; without this height=0 → subviews bleed into row above
+    container.heightAnchor().constraintEqualToConstant_(18.0).setActive_(True)
     line = NSBox.alloc().initWithFrame_(NSMakeRect(0, 9, w, 1))
-    line.setBoxType_(2)   # NSBoxSeparator
+    line.setBoxType_(2)
     container.addSubview_(line)
     abort_btn = None
     if proj_min_remaining is not None:
         btn_text = 'abort'
-        btn_w = len(btn_text) * 8 + 8   # approx Menlo char width; right-anchored
+        btn_w = len(btn_text) * 8 + 8
         abort_btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(w - btn_w, 0, btn_w, 18))
         abort_btn.setBordered_(False)
-        abort_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+        abort_btn.setButtonType_(7)
         abort_btn.setWantsLayer_(True)
         abort_btn.setBackgroundColor_(NSColor.windowBackgroundColor())
         abort_btn.setAttributedTitle_(
@@ -346,21 +301,18 @@ def _make_separator_view(project_name: str, panel_width: int, proj_min_remaining
     container.addSubview_(tf)
     return container, abort_btn
 
-# Effective desktop number for a project: min desktop_no across its mains, None if all-None.
 def _project_desktop_no(sessions, project_name: str):
     vals = [s.desktop_no for s in sessions
             if not s.is_worker and s.project_name == project_name
             and s.desktop_no is not None]
     return min(vals) if vals else None
 
-# Compute exact panel height needed to display all sessions; no truncation.
-# Abort buttons (Option B) are embedded in separator views — zero height cost.
 def _compute_required_height(sorted_sessions) -> int:
-    h = _FOOTER_H + _TOP_BAR_H + _LABEL_H   # footer + top-bar (Auto-Jump) + separator-in-stack
+    h = _FOOTER_H + _TOP_BAR_H + _LABEL_H
     if not sorted_sessions:
-        return h + _LABEL_H                   # "No active sessions" label
+        return h + _LABEL_H
     for _, group_iter in groupby(sorted_sessions, key=lambda s: s.project_name):
         h += _LABEL_H
         for s in group_iter:
-            h += _ROW_H   # session row
+            h += _ROW_H
     return h

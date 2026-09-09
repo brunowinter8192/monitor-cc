@@ -5,22 +5,18 @@ import subprocess
 import time
 from typing import Dict, List, Optional
 
-# From paths.py: canonical APP_SUPPORT dir
 from .paths import _APP_SUPPORT
-# From proc_cache.py: CC process cache for tty→cwd lookups
 from .proc_cache import _cc_proc_cache, cc_proc_cache_snapshot
 
-_GHOSTTY_TTY_REFRESH_INTERVAL = 10.0   # cooldown between new-TTY probe cycles
-_GHOSTTY_MARKER_PREFIX = '__GHT_'      # OSC 2 title marker prefix (not used by CC)
+_GHOSTTY_TTY_REFRESH_INTERVAL = 10.0
+_GHOSTTY_MARKER_PREFIX = '__GHT_'
 
-# tty→Ghostty terminal UUID; populated by OSC 2 title-marker probe (incremental)
 _ghostty_tty_to_id: Dict[str, str] = {}
 _ghostty_tty_last_refresh: float = 0.0
-_ghostty_cwd_uuid_last: dict = {}   # previous write state for change-detection
+_ghostty_cwd_uuid_last: dict = {}
 
 # ORCHESTRATOR
 
-# Probe new Ghostty TTYs via OSC 2 marker + AppleScript; merge into _ghostty_tty_to_id
 def _refresh_ghostty_tty_to_id(now: float) -> None:
     global _ghostty_tty_to_id, _ghostty_tty_last_refresh
     if now - _ghostty_tty_last_refresh < _GHOSTTY_TTY_REFRESH_INTERVAL:
@@ -29,33 +25,19 @@ def _refresh_ghostty_tty_to_id(now: float) -> None:
     if not ghostty_pid:
         return
     all_ttys = _ghostty_child_ttys(ghostty_pid)
-    # Stale cleanup: remove cache entries for closed Ghostty terminals
     for tty in list(_ghostty_tty_to_id):
         if tty not in all_ttys:
             del _ghostty_tty_to_id[tty]
-    # Only probe TTYs not yet mapped — avoids title-flash on already-known terminals
     new_ttys = [t for t in all_ttys if t not in _ghostty_tty_to_id]
     if not new_ttys:
-        # 2026-08 (hotkey_latency M3): re-arm the TTL here too — this is the STEADY-STATE branch
-        # (every cycle once all live TTYs are mapped), so leaving the timestamp unset meant the
-        # TTL guard above never re-armed and _ghostty_pid()+_ghostty_child_ttys() (2 ps -A calls)
-        # ran on every single discovery cycle instead of once per _GHOSTTY_TTY_REFRESH_INTERVAL.
-        # Measured live (process-docs/hotkey_latency/): ~150-165ms of ghostty-phase cost on nearly
-        # every cycle. Accepted trade-off: a newly-opened terminal's tty→uuid mapping may now lag
-        # up to _GHOSTTY_TTY_REFRESH_INTERVAL (10s) instead of being probed on the very next cycle.
         _ghostty_tty_last_refresh = now
         return
-    # NOTE: the `if not ghostty_pid: return` branch above has the identical shape of bug (never
-    # re-arms the TTL either) — NOT fixed here, out of this milestone's scope (only fires when
-    # Ghostty itself isn't running, not the measured steady-state case).
     tty_marker = _write_markers(new_ttys)
     time.sleep(0.12)
     r3 = _query_terminal_names()
-    # Cleanup: restore shell-default title on all probed TTYs
     _clear_markers(tty_marker)
     if not r3 or r3.returncode != 0:
         return
-    # Parse output and merge new tty→id entries into cache
     name_to_id: Dict[str, str] = {}
     for line in r3.stdout.strip().split('\n'):
         if '|||' in line:
@@ -68,7 +50,6 @@ def _refresh_ghostty_tty_to_id(now: float) -> None:
 
 # FUNCTIONS
 
-# Write a unique OSC 2 marker into each new TTY; returns [(tty, marker), ...] for later matching
 def _write_markers(new_ttys: List[str]) -> List[tuple]:
     tty_marker: List[tuple] = []
     for tty in new_ttys:
@@ -80,7 +61,6 @@ def _write_markers(new_ttys: List[str]) -> List[tuple]:
         except OSError: pass
     return tty_marker
 
-# Query Ghostty for id|||name pairs (newline-separated); None on subprocess failure
 def _query_terminal_names():
     osa = (
         'tell application "Ghostty"\n'
@@ -99,7 +79,6 @@ def _query_terminal_names():
     except Exception:
         return None
 
-# Restore shell-default title (best-effort) on all probed TTYs
 def _clear_markers(tty_marker: List[tuple]) -> None:
     for tty, _ in tty_marker:
         try:
@@ -107,7 +86,6 @@ def _clear_markers(tty_marker: List[tuple]) -> None:
                 fh.write(b'\033]2;\007')
         except OSError: pass
 
-# Return PID string of running Ghostty.app process, or None
 def _ghostty_pid() -> Optional[str]:
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
@@ -122,7 +100,6 @@ def _ghostty_pid() -> Optional[str]:
     except Exception:
         return None
 
-# Return TTY names for all direct children of ghostty_pid (one ps call)
 def _ghostty_child_ttys(ghostty_pid: str) -> List[str]:
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,ppid=,tty='],
@@ -137,35 +114,21 @@ def _ghostty_child_ttys(ghostty_pid: str) -> List[str]:
     except Exception:
         return []
 
-# Return tty for the CC process with the given cwd; None if not in cache.
-# 2026-08 (hotkey_latency M3): reads via cc_proc_cache_snapshot() (lock-protected copy), NOT
-# _cc_proc_cache directly — this is called from system.py:_focus_session on the main thread
-# (click/hotkey), while the background discovery thread mutates _cc_proc_cache concurrently;
-# iterating the live dict here would risk `RuntimeError: dictionary changed size during
-# iteration` if a bg-thread refresh lands mid-loop.
 def _tty_for_cwd(cwd: str) -> Optional[str]:
     for pid, (tty, proc_cwd) in cc_proc_cache_snapshot().items():
         if proc_cwd == cwd:
             return tty
     return None
 
-# Return Ghostty terminal UUID for a main CC session's cwd, or None if not mapped
 def get_ghostty_terminal_id(cwd: str) -> Optional[str]:
     tty = _tty_for_cwd(cwd)
     if tty is None:
         return None
     return _ghostty_tty_to_id.get(tty)
 
-# Return Ghostty terminal UUID for a known tty, or None if not mapped — used by
-# system.py:_focus_worker (worker-viewer click-to-focus, 2026-08). Single-key .get() on
-# _ghostty_tty_to_id: GIL-safe cross-thread read, no lock needed (see proc_cache.py's
-# cc_proc_cache_snapshot() docstring for why plain .get() differs from dict iteration here).
 def get_ghostty_terminal_id_for_tty(tty: str) -> Optional[str]:
     return _ghostty_tty_to_id.get(tty)
 
-# Write {cwd: uuid} map to APP_SUPPORT/ghostty_cwd_uuid.json (external/future consumers)
-# Called from discover.py:list_alive_sessions() after both caches are refreshed
-# Skips write when mapping unchanged (change-detection via _ghostty_cwd_uuid_last)
 def _write_cwd_uuid_map() -> None:
     global _ghostty_cwd_uuid_last
     mapping: Dict[str, str] = {}

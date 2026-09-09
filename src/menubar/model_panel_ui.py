@@ -7,24 +7,17 @@ from AppKit import (NSLayoutAttributeLeading, NSStatusWindowLevel,
                     NSWindowStyleMaskNonactivatingPanel, NSWindowStyleMaskResizable)
 from Foundation import NSMakeRect, NSMakeSize
 
-# From panel_dims.py: main-panel outer dimensions (PANEL_* constant cluster)
 from .panel_dims import PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT, PANEL_GAP
-# From panel.py: UI constants, factories, helpers shared across panels
 from .panel import _TOP_BAR_H, _ROW_H, _CursorlessButton, _KeyablePanel
 
-# Apply button dimensions + success-feedback constants. Width/title are kept as separate constants
-# (not composed inline) specifically so a future fallback — a shorter title at constant width, if
-# NSStackView's intrinsic-sizing turns out to fight the widened frame in the live app — is a 2-line
-# change: just lower _APPLY_SUCCESS_W and shorten _APPLY_SUCCESS_TITLE, nothing else moves.
-_APPLY_BTN_W          = 78    # matches _make_apply_btn's original fixed width
+_APPLY_BTN_W          = 78
 _APPLY_BTN_H          = 22
 _APPLY_SUCCESS_TITLE  = 'Applied successfully'
-_APPLY_SUCCESS_W      = 160   # wide enough for _APPLY_SUCCESS_TITLE at the button's default system font
-_APPLY_SUCCESS_DURATION = 1.5   # seconds before the Apply button reverts to its normal title/width
+_APPLY_SUCCESS_W      = 160
+_APPLY_SUCCESS_DURATION = 1.5
 
 # FUNCTIONS
 
-# Build NSPanel for the Models panel; returns (panel, stack, toggle_btn) — mirrors _make_rag_nspanel
 def _make_models_nspanel():
     panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
@@ -41,25 +34,24 @@ def _make_models_nspanel():
     panel.enableCursorRects()
     top_bar = NSView.alloc().initWithFrame_(
         NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
-    top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable | NSViewMinYMargin — stays at top edge
+    top_bar.setAutoresizingMask_(10)
     toggle_btn = _CursorlessButton.alloc().initWithFrame_(
         NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
     toggle_btn.setBordered_(False)
-    toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
-    toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable
+    toggle_btn.setButtonType_(7)
+    toggle_btn.setAutoresizingMask_(2)
     top_bar.addSubview_(toggle_btn)
     cv.addSubview_(top_bar)
     stack_h = PANEL_HEIGHT - _TOP_BAR_H
     stack = NSStackView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, stack_h))
-    stack.setAutoresizingMask_(18)   # NSViewWidthSizable | NSViewHeightSizable
+    stack.setAutoresizingMask_(18)
     stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
     stack.setAlignment_(NSLayoutAttributeLeading)
     stack.setSpacing_(1.0)
-    stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas
+    stack.setDistribution_(-1)
     cv.addSubview_(stack)
     return panel, stack, toggle_btn
 
-# Position Models panel flush below the NSStatusItem button (same logic as the RAG/main panel)
 def _reposition_models_panel(panel, nsstatusitem) -> None:
     btn_win = nsstatusitem.button().window()
     if btn_win is None:
@@ -71,16 +63,14 @@ def _reposition_models_panel(panel, nsstatusitem) -> None:
     py = sr.origin.y - h - PANEL_GAP
     panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
 
-# Full-width borderless Menlo-font row button (cycle rows) — mirrors panel.py's toggle_btn style
 def _make_model_row_btn(panel_width: int):
     btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, panel_width - 22, _ROW_H - 1))
     btn.setBordered_(False)
-    btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+    btn.setButtonType_(7)
     return btn
 
-# Bordered rounded push-button (Apply) — mirrors panel.py's Restart/Kill footer-button style exactly
 def _make_apply_btn():
     btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, _APPLY_BTN_W, _APPLY_BTN_H))
     btn.setTitle_('Apply')
-    btn.setBezelStyle_(1)   # NSBezelStyleRounded
+    btn.setBezelStyle_(1)
     return btn

@@ -9,12 +9,10 @@ _HOOK_WRITER    = Path(__file__).resolve().parent / "hook_writer.py"
 _HOOK_COMMAND   = f"python3 {_HOOK_WRITER}"
 _HOOK_TIMEOUT   = 5
 
-# Events → status mapping mirroring hook_writer._WORKING_EVENTS / _IDLE_EVENTS
 _HOOK_EVENTS = ["UserPromptSubmit", "Stop", "StopFailure"]
 
 # ORCHESTRATOR
 
-# Install activity-monitor hooks into ~/.claude/settings.json; idempotent
 def hook_setup_workflow() -> None:
     _guard_not_worktree()
     settings = _load_settings()
@@ -39,7 +37,6 @@ def hook_setup_workflow() -> None:
 
 # FUNCTIONS
 
-# Refuse to run if this script is executing from inside a worktree path
 def _guard_not_worktree() -> None:
     parts = Path(__file__).resolve().parts
     for i in range(len(parts) - 1):
@@ -52,7 +49,6 @@ def _guard_not_worktree() -> None:
             )
             sys.exit(2)
 
-# Remove hook entries whose python3 script path no longer exists; drop now-empty groups
 def _sweep_stale_hooks(settings: dict) -> int:
     hooks = settings.get("hooks", {})
     swept = 0
@@ -79,7 +75,6 @@ def _sweep_stale_hooks(settings: dict) -> int:
         print("Sweep clean — no stale hooks found")
     return swept
 
-# True if a hook entry for _HOOK_COMMAND already exists under event
 def _already_installed(hooks: dict, event: str) -> bool:
     for group in hooks.get(event, []):
         for h in group.get("hooks", []):
@@ -87,14 +82,12 @@ def _already_installed(hooks: dict, event: str) -> bool:
                 return True
     return False
 
-# Append a new hook group for event to the hooks dict
 def _add_hook(hooks: dict, event: str) -> None:
     hooks.setdefault(event, []).append({
         "hooks": [{"type": "command", "command": _HOOK_COMMAND,
                    "timeout": _HOOK_TIMEOUT, "async": True}]
     })
 
-# Read settings.json; exit on fatal parse error
 def _load_settings() -> dict:
     try:
         return json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
@@ -104,7 +97,6 @@ def _load_settings() -> dict:
         print(f"ERROR: cannot parse {_SETTINGS_FILE}: {e}", file=sys.stderr)
         sys.exit(1)
 
-# Atomically write settings back
 def _save_settings(settings: dict) -> None:
     tmp = _SETTINGS_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(settings, indent=2), encoding="utf-8")

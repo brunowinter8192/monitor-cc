@@ -5,14 +5,13 @@ import subprocess
 import time
 from typing import Dict, List, Optional, Set, Tuple
 
-# From menubar_log.py: unified log sink for menubar diagnostic categories
 from .menubar_log import log_menubar
 
 _GHOSTTY_DET_PREFIX = '__DET_'
-_CGS_SPACE_MASK     = 0x7   # all regular spaces
-_CGW_LIST_ALL       = 0     # kCGWindowListOptionAll — all windows incl. off-screen spaces
-_CGW_NULL_WID       = 0     # kCGNullWindowID
-_DET_CACHE_TTL      = 10.0  # seconds between full detection runs
+_CGS_SPACE_MASK     = 0x7
+_CGW_LIST_ALL       = 0
+_CGW_NULL_WID       = 0
+_DET_CACHE_TTL      = 10.0
 
 _CG  = ctypes.CDLL('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
 _OBJ = ctypes.CDLL('/usr/lib/libobjc.A.dylib')
@@ -22,7 +21,6 @@ _OBJ.sel_registerName.argtypes = [ctypes.c_char_p]
 _OBJ.objc_getClass.restype     = ctypes.c_void_p
 _OBJ.objc_getClass.argtypes    = [ctypes.c_char_p]
 
-# CFUNCTYPE refs at module level — GC-safe (GC'ing these corrupts the IMP pointer table → SIGSEGV)
 _FT_vv   = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 _FT_vvv  = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 _FT_vvcp = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p)
@@ -50,15 +48,11 @@ _det_cache: Dict[str, Optional[int]] = {}
 _det_cache_ts: float = 0.0
 _det_cache_cwds: frozenset = frozenset()
 _cgw_title_diag_logged: bool = False
-_last_result: Dict[str, Optional[int]] = {}  # previous cycle result for transition detection
-_cwd_desktop_lkg: Dict[str, dict] = {}       # last-known-good {cwd: {"space_id": int, "desktop_no": int}}; updated only on successful resolution — None result never clobbers
+_last_result: Dict[str, Optional[int]] = {}
+_cwd_desktop_lkg: Dict[str, dict] = {}
 
 # ORCHESTRATOR
 
-# Return {cwd: desktop_no} for each cwd in cwd_uuid_map; None = detection failed.
-# Single AppleScript round-trip + CGWindowList snapshot for the whole batch.
-# Cached for _DET_CACHE_TTL seconds; force-invalidated when cwd set changes.
-# All errors (Ghostty down, AppleScript failure, CGS error) → log once + return all-None.
 def detect_main_desktop_numbers(
     cwd_uuid_map: Dict[str, str],
     cwd_tty_map:  Dict[str, str],
@@ -78,15 +72,12 @@ def detect_main_desktop_numbers(
 
 # FUNCTIONS
 
-# Per-cwd resolution: LKG cleanup + Ghostty/CGS window→space lookup for the whole batch.
-# All errors (Ghostty down, AppleScript failure, CGS error) → log once + return all-None.
 def _resolve_cwds_to_desktops(
     cwd_uuid_map: Dict[str, str],
     cwd_tty_map:  Dict[str, str],
 ) -> Tuple[Dict[str, Optional[int]], Dict[str, dict]]:
     cwds = frozenset(cwd_uuid_map.keys())
     result: Dict[str, Optional[int]] = {cwd: None for cwd in cwds}
-    # Remove LKG entries for cwds no longer in the active set (session closed)
     for gone in [c for c in _cwd_desktop_lkg if c not in cwds]:
         del _cwd_desktop_lkg[gone]
     cwd_ctx: Dict[str, dict] = {}
@@ -125,7 +116,6 @@ def _resolve_cwds_to_desktops(
         log_menubar('detection', f'all_failed n_mains={len(cwds)} reason=error:{reason}')
     return result, cwd_ctx
 
-# Log per-cwd desktop-number transitions since the previous cycle; updates _last_result.
 def _log_transitions(result: Dict[str, Optional[int]], cwd_ctx: Dict[str, dict]) -> None:
     global _last_result
     for cwd, new_no in result.items():
@@ -149,9 +139,6 @@ def _nsstr(s: str):
     cls = _OBJ.objc_getClass(b"NSString")
     return _msg1cp(cls, "stringWithUTF8String:", s.encode())
 
-# Strip Claude Code spinner glyph (single non-ASCII char + space) from start of title;
-# spinner cycles ~250ms (✻ ⠂ ⠐ ✳ etc) and creates false-mismatch between AppleScript-
-# returned name and CGSCopyWindowProperty-returned title even with sub-second delta.
 def _normalize_window_title(t: Optional[str]) -> Optional[str]:
     if t is None or len(t) < 2:
         return t
@@ -174,7 +161,6 @@ def _dict_long(d, key: str) -> Optional[int]:
     v = _dict_val(d, key)
     return _msgl(v, "intValue") if v else None
 
-# Build NSMutableArray of unsigned-int values for CGSCopySpacesForWindows window list
 def _make_uint_array(values: List[int]):
     NSMutableArray = _OBJ.objc_getClass(b"NSMutableArray")
     NSNumber       = _OBJ.objc_getClass(b"NSNumber")
@@ -184,7 +170,6 @@ def _make_uint_array(values: List[int]):
         ctypes.cast(_IMP, _FT_nvv)(arr, _sel("addObject:"), n)
     return arr
 
-# Return int PID of running Ghostty.app process, or None
 def _ghostty_pid_int() -> Optional[int]:
     r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
                        capture_output=True, text=True,
@@ -196,7 +181,6 @@ def _ghostty_pid_int() -> Optional[int]:
                 return int(pid_str)
     return None
 
-# AppleScript one-call: traverse all Ghostty windows/tabs → {uuid: ghostty_win_id} + {win_id: win_name}
 def _applescript_uuid_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
     osa = (
         'tell application "Ghostty"\n'
@@ -228,9 +212,6 @@ def _applescript_uuid_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
             win_to_name[win_id] = _normalize_window_title(win_name)
     return uuid_to_win, win_to_name
 
-# Read window title via private SkyLight API CGSCopyWindowProperty (key=kCGSWindowTitle).
-# Bypasses TCC Screen Recording gate that affects kCGWindowName for other-app windows
-# in launchd-spawned processes (alt-tab-macos / DockDoor pattern).
 def _cgwindow_title(cid: int, wid: int) -> Optional[str]:
     global _cgw_title_diag_logged
     out_ref = ctypes.c_void_p(0)
@@ -245,7 +226,6 @@ def _cgwindow_title(cid: int, wid: int) -> Optional[str]:
     s = _msgp(out_ref.value, "UTF8String")
     return s.decode() if s else None
 
-# Return {window_name: [wid, ...]} for all layer-0 named Ghostty-owned CGWindows across all spaces
 def _cgwindow_list_ghostty(ghostty_pid_int: int, cid: int) -> Dict[str, List[int]]:
     arr   = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
     count = _cf_count(arr)
@@ -259,7 +239,7 @@ def _cgwindow_list_ghostty(ghostty_pid_int: int, cid: int) -> Dict[str, List[int
         wid = _dict_long(d, "kCGWindowNumber")
         if wid is None:
             continue
-        name = _normalize_window_title(_cgwindow_title(cid, wid))   # via SkyLight (TCC-bypass) + spinner-strip
+        name = _normalize_window_title(_cgwindow_title(cid, wid))
         if name is None:
             continue
         by_name.setdefault(name, []).append(wid)
@@ -268,7 +248,6 @@ def _cgwindow_list_ghostty(ghostty_pid_int: int, cid: int) -> Dict[str, List[int
                                  f'no_names_returned')
     return by_name
 
-# Build {space_id: (display_id_abbrev, desktop_no_1based)} for all managed display spaces
 def _build_space_map(cid: int) -> Dict[int, Tuple[str, int]]:
     dsp_arr    = _CG.CGSCopyManagedDisplaySpaces(cid)
     n_displays = _cf_count(dsp_arr)
@@ -290,7 +269,6 @@ def _build_space_map(cid: int) -> Dict[int, Tuple[str, int]]:
                 space_map[sid] = (abbrev, si + 1)
     return space_map
 
-# Return space_id list for a single CGWindowID
 def _spaces_for_wid(cid: int, wid: int) -> List[int]:
     wid_arr    = _make_uint_array([wid])
     result_arr = _CG.CGSCopySpacesForWindows(cid, _CGS_SPACE_MASK, wid_arr)
@@ -304,10 +282,6 @@ def _spaces_for_wid(cid: int, wid: int) -> List[int]:
             spaces.append(sid)
     return spaces
 
-# Inject unique OSC-2 marker to tty, re-check kCGSWindowTitle via SkyLight after 500ms
-# (Ghostty's title→window-server propagation latency); effective ONLY when the CC tab is
-# the currently focused tab in its Ghostty window — background tabs do not propagate
-# OSC-2 to kCGSWindowTitle, their session remains unresolvable until user focuses the tab.
 def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int], cid: int) -> Optional[int]:
     marker = f'{_GHOSTTY_DET_PREFIX}{os.urandom(4).hex()}'
     try:
@@ -321,7 +295,7 @@ def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int], ci
     matched = by_name.get(marker, [])
     try:
         with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
-            fh.write(b'\033]2;\007')   # restore shell-default title (best-effort)
+            fh.write(b'\033]2;\007')
     except OSError as e:
         log_menubar('detection', f'osc2_restore_failed tty={tty} err={repr(e)[:80]}')
     if not matched:
@@ -337,7 +311,6 @@ def _osc2_inject_match(tty: str, ghostty_pid_int: int, candidates: List[int], ci
     log_menubar('detection', f'osc2_ambiguous tty={tty} matched={matched} overlap={overlap}')
     return None
 
-# Resolve CGWindowID via three strategies: name-unique → space-elimination → OSC-2 injection
 def _resolve_cgwindow_id(
     window_name: str,
     cgwindow_by_name: Dict[str, List[int]],

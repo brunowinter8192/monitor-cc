@@ -7,25 +7,15 @@ from .hotkey_carbon import (
     _load_carbon, _log_queue_delay, _eventNotHandledErr,
 )
 
-# Cmd+→/← arrow-hotkey registration — split out of hotkey_controller.py (menubar milestone C,
-# _ARROW_* constant cluster). _CMD_RIGHT_ID/_CMD_LEFT_ID moved here too (peeled off the old
-# _CMD_* naming cluster) — they're consumed exclusively by this module's persistent handler
-# dispatch and registration, never by Cmd+L/Cmd+K. The `global` rebinds below stay in this
-# module because this module owns the persistent handler state they mutate.
-_CMD_RIGHT_ID        = 20           # EventHotKeyID.id for Cmd+→ (kVK_RightArrow = 0x7C)
-_CMD_LEFT_ID         = 21           # EventHotKeyID.id for Cmd+← (kVK_LeftArrow = 0x7B)
+_CMD_RIGHT_ID        = 20
+_CMD_LEFT_ID         = 21
 
-# Persistent module-level state for the arrow-key handler.
-# Same pattern as digits: CFUNCTYPE + handler_ref live at module scope forever.
-# Per-call CFUNCTYPE (old pattern) let Carbon hold a dangling pointer after cb=None GC → SIGABRT
-# on the next hotkey event. register/unregister only touch hk_ref + this dict.
-_ARROW_CALLBACKS    = {}     # {_CMD_RIGHT_ID: callable, _CMD_LEFT_ID: callable}
-_ARROW_HANDLER_CB   = None   # persistent CFUNCTYPE — module-anchored
-_ARROW_HANDLER_REF  = None   # handler_ref from InstallEventHandler
+_ARROW_CALLBACKS    = {}
+_ARROW_HANDLER_CB   = None
+_ARROW_HANDLER_REF  = None
 
 # FUNCTIONS
 
-# Install the arrow-key handler exactly once; subsequent calls are no-ops
 def _ensure_arrow_handler():
     global _ARROW_HANDLER_CB, _ARROW_HANDLER_REF
     if _ARROW_HANDLER_CB is not None:
@@ -44,7 +34,7 @@ def _ensure_arrow_handler():
             log_menubar('hotkey', name)
             _log_queue_delay(carbon, event, _entry_t, name)
             fn()
-        except Exception:  # log-safe: Carbon handler must not raise
+        except Exception:
             pass
         return 0
 
@@ -55,8 +45,6 @@ def _ensure_arrow_handler():
         None, ctypes.byref(handler_ref))
     _ARROW_HANDLER_REF = handler_ref
 
-# Register Cmd+→ (kVK_RightArrow = 0x7C) via the persistent module-level arrow handler.
-# Returns (None, hk_ref) — None because module holds the CFUNCTYPE anchor (no per-call GC risk).
 def register_cmd_arrow_right(callback) -> tuple:
     _ensure_arrow_handler()
     _ARROW_CALLBACKS[_CMD_RIGHT_ID] = callback
@@ -69,8 +57,6 @@ def register_cmd_arrow_right(callback) -> tuple:
         target, 0, ctypes.byref(hk_ref))
     return None, hk_ref
 
-# Register Cmd+← (kVK_LeftArrow = 0x7B) via the persistent module-level arrow handler.
-# Returns (None, hk_ref) — None because module holds the CFUNCTYPE anchor (no per-call GC risk).
 def register_cmd_arrow_left(callback) -> tuple:
     _ensure_arrow_handler()
     _ARROW_CALLBACKS[_CMD_LEFT_ID] = callback
@@ -83,13 +69,11 @@ def register_cmd_arrow_left(callback) -> tuple:
         target, 0, ctypes.byref(hk_ref))
     return None, hk_ref
 
-# Unregister Cmd+→: clear callback from dispatch table + unregister hotkey registration
 def unregister_cmd_arrow_right(hk_ref) -> None:
     _ARROW_CALLBACKS.pop(_CMD_RIGHT_ID, None)
     if hk_ref is not None:
         _load_carbon().UnregisterEventHotKey(hk_ref)
 
-# Unregister Cmd+←: clear callback from dispatch table + unregister hotkey registration
 def unregister_cmd_arrow_left(hk_ref) -> None:
     _ARROW_CALLBACKS.pop(_CMD_LEFT_ID, None)
     if hk_ref is not None:
