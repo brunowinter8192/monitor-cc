@@ -4,7 +4,6 @@ from .message_summary import _has_cache_control
 
 # FUNCTIONS
 
-# Collapse single-text-block list to plain string for user messages
 def _normalize_user_content_shape(msg: dict) -> dict:
     if msg.get("role") != "user":
         return msg
@@ -19,7 +18,6 @@ def _normalize_user_content_shape(msg: dict) -> dict:
     return msg
 
 
-# Remove ALL cache_control markers from payload (system, tools, messages)
 def _strip_all_cache_control(payload: dict) -> dict:
     result = dict(payload)
 
@@ -60,9 +58,6 @@ def _strip_all_cache_control(payload: dict) -> dict:
     return result
 
 
-# BP1: system[2] — cross-session cache anchor for system blocks 0..2. sys[3] carries gitStatus +
-# cwd (drifts between commits/sessions) and is excluded from this prefix. Mutates result["system"]
-# in place when it fires; returns True/False (bp_count contribution).
 def _apply_bp1_system(result: dict, cc_marker: dict) -> bool:
     system = result.get("system", [])
     if isinstance(system, list) and len(system) >= 3 and isinstance(system[2], dict):
@@ -73,7 +68,6 @@ def _apply_bp1_system(result: dict, cc_marker: dict) -> bool:
     return False
 
 
-# BP2: last non-defer tool (end of tools section). Mutates result["tools"] in place.
 def _apply_bp2_tools(result: dict, cc_marker: dict) -> bool:
     tools = result.get("tools", [])
     if not tools:
@@ -92,7 +86,6 @@ def _apply_bp2_tools(result: dict, cc_marker: dict) -> bool:
     return hit
 
 
-# BP3: last message that is UNCHANGED from previous request. Returns (messages, hit).
 def _apply_bp3_unchanged_tail(messages: list, prev_mod_messages, cc_marker: dict) -> tuple:
     if not messages or prev_mod_messages is None:
         return messages, False
@@ -107,7 +100,6 @@ def _apply_bp3_unchanged_tail(messages: list, prev_mod_messages, cc_marker: dict
     return messages, False
 
 
-# BP4: last message (for next request's cache). Returns (messages, hit).
 def _apply_bp4_last_message(messages: list, cc_marker: dict) -> tuple:
     if not messages:
         return messages, False
@@ -119,8 +111,6 @@ def _apply_bp4_last_message(messages: list, cc_marker: dict) -> tuple:
     return messages, False
 
 
-# Set our own cache_control breakpoints (max 4) on the already-modified, stripped payload.
-# prev_mod_messages: summaries from the PREVIOUS request's modified payload (for BP3).
 def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dict:
     result = dict(payload)
     bp_count = 0
@@ -143,7 +133,6 @@ def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dic
     return result
 
 
-# Add cache_control to the last content block of a message
 def _add_cache_control_to_message(msg: dict, cc_marker: dict) -> dict:
     new_msg = dict(msg)
     content = new_msg.get("content", "")

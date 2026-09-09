@@ -1,4 +1,13 @@
-"""dual_log_cli — read-only inspector for src/logs/dual_log/.
+# INFRASTRUCTURE
+import argparse
+import os
+import sys
+
+from .cli_args import _parse_args as _build_args
+from .commands import _run_expand, _run_msgs, _run_reqs, _run_search, _run_sessions
+from .discovery import resolve_dual_log_dir
+
+_USAGE_EPILOG = """dual_log_cli — read-only inspector for src/logs/dual_log/.
 
 Commands:
     sessions                 list every session (start, real project path, display stem), newest
@@ -70,15 +79,6 @@ MONITOR_CC_ROOT, else from the repo root, else from the main checkout when run i
 Every access is read-only — nothing under src/logs/dual_log/ is written, created or locked.
 """
 
-# INFRASTRUCTURE
-import argparse
-import os
-import sys
-
-from .cli_args import _parse_args as _build_args
-from .commands import _run_expand, _run_msgs, _run_reqs, _run_search, _run_sessions
-from .discovery import resolve_dual_log_dir
-
 # ORCHESTRATOR
 
 
@@ -103,15 +103,10 @@ def main(argv: list) -> int:
 
 
 def _parse_args(argv: list) -> argparse.Namespace:
-    return _build_args(argv, __doc__)
+    return _build_args(argv, _USAGE_EPILOG)
 
 
 if __name__ == "__main__":
-    # Piped into `head`/`less`, the reader closes the pipe early. The EPIPE can surface at the
-    # write itself OR at the interpreter's shutdown flush, and only the first is catchable here —
-    # so stdout is flushed INSIDE the guard, and on failure its fd is redirected to /dev/null so
-    # the shutdown flush has nothing left that can fail. Without the redirect Python prints
-    # "Exception ignored while flushing sys.stdout" after main() has already returned.
     exit_code = 0
     try:
         exit_code = main(sys.argv[1:])

@@ -4,11 +4,6 @@ import re
 
 _PO_OPEN_TAG = '<persisted-output>'
 
-# Match a PO block that has the standard "Preview (first N...)" section.
-# group 'open'    = open tag line + "Output too large" header line
-# group 'preview' = blank line + "Preview (first NKB):" label + preview content
-# group 'close'   = optional leading newline + close tag
-# Malformed PO blocks (no "Output too large" / no "Preview" header) do NOT match — left untouched.
 _PO_PREVIEW_RE = re.compile(
     r'(?P<open><persisted-output>\nOutput too large[^\n]+)'
     r'(?P<preview>\n+Preview \(first [^\n]+\):\n.*?)'
@@ -19,9 +14,6 @@ _PO_PREVIEW_RE = re.compile(
 
 # ORCHESTRATOR
 
-# Strip Preview sections from all PO blocks across all 4 content shapes.
-# Returns (new_content, removed_chunks) — removed_chunks is a list of stripped Preview texts,
-# each starting with "Preview (first " for attribute_chunk PP-rule attribution.
 def _strip_persisted_output_previews(content):
     removed = []
     if isinstance(content, str):
@@ -60,7 +52,6 @@ def _strip_persisted_output_previews(content):
 
 # FUNCTIONS
 
-# Strip all Preview sections from PO blocks in a single string; appends removed chunks to out_removed.
 def _strip_po_preview_from_text(text, out_removed):
     if _PO_OPEN_TAG not in text:
         return text

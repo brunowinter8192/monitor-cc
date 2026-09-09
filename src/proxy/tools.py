@@ -13,7 +13,6 @@ _DEFERRED_SR_RE = re.compile(r'(?m)^<system-reminder>(.*?)</system-reminder>', r
 
 # FUNCTIONS
 
-# Remove blocklisted tools from payload. Returns (modified_payload, count_removed, removed_names).
 def _strip_unused_tools(payload: dict) -> tuple:
     tools = payload.get("tools", [])
     if not tools:
@@ -27,7 +26,6 @@ def _strip_unused_tools(payload: dict) -> tuple:
     modified["tools"] = kept
     return modified, removed, removed_names
 
-# Scan user messages in payload for deferred-tools SR; return deduplicated tool name list, or [].
 def _extract_deferred_tool_names(payload: dict) -> list:
     messages = payload.get("messages", [])
     names = []

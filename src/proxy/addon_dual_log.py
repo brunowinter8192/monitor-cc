@@ -11,7 +11,7 @@ from .strip_inject_delta import _build_stripped_injected_deltas
 
 # FUNCTIONS
 
-# Resolve dual-log file path in src/logs/dual_log/ subfolder with given suffix (e.g. "original", "forwarded")
+
 def _resolve_dual_log_file(suffix: str) -> Path:
     root = os.environ.get("MONITOR_CC_ROOT")
     log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID")
@@ -21,14 +21,12 @@ def _resolve_dual_log_file(suffix: str) -> Path:
     return Path("/tmp") / "dual_log" / filename
 
 
-# Append log entry as a single JSONL line, creating parent dirs if needed
 def _write_entry(log_file: Path, entry: dict) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
 
-# Write original-payload entry to dual-log; swallows write errors.
 def _log_original_request(log_file: Path, flow, payload: dict) -> None:
     try:
         _write_entry(log_file, {
@@ -42,7 +40,6 @@ def _log_original_request(log_file: Path, flow, payload: dict) -> None:
         print(f"[dual_log] original write failed: {e}", file=sys.stderr)
 
 
-# Build and write forwarded-delta entry; returns curr_delta on success, None on error.
 def _log_forwarded_delta(log_file: Path, modified_payload: dict, flow, prev_delta) -> Optional[dict]:
     try:
         delta_entry, curr_delta = _build_forwarded_delta(
@@ -60,7 +57,6 @@ def _log_forwarded_delta(log_file: Path, modified_payload: dict, flow, prev_delt
         return None
 
 
-# Build and write error entries; returns updated seen_ids set on success (if any written), None on error.
 def _log_errors_entries(log_file: Path, payload: dict, mc_request_id: str, mc_timestamp: str,
                         prev_seen_ids: set, worker_context: str, session_id: str, flow_id: str) -> Optional[set]:
     try:
@@ -80,7 +76,6 @@ def _log_errors_entries(log_file: Path, payload: dict, mc_request_id: str, mc_ti
         return None
 
 
-# Write the forwarded-delta and errors dual-log entries for one request; updates delta_state.
 def _write_request_dual_logs(flow, payload: dict, modified_payload: dict, model_family: str,
                               mc_request_id: str, mc_timestamp: str, paths, delta_state, identity) -> None:
     curr_delta = _log_forwarded_delta(
@@ -99,18 +94,16 @@ def _write_request_dual_logs(flow, payload: dict, modified_payload: dict, model_
         delta_state.error_ids_by_model[model_family] = new_seen
 
 
-# Build and write the api_errors.jsonl entry for a 4xx API response; swallows nothing — any
-# exception propagates to response()'s own outer try/except, same as before extraction.
 def _log_4xx_error(flow, errors_log_file: Path) -> None:
     resp_body = ""
     try:
         resp_body = flow.response.content.decode("utf-8", errors="replace")[:2000]
-    except Exception:  # decode failure — log empty string, never crash
+    except Exception:
         resp_body = ""
     req_payload = None
     try:
         req_payload = json.loads(flow.request.content.decode("utf-8", errors="replace"))
-    except Exception:  # body not valid JSON — log None, never crash
+    except Exception:
         req_payload = None
     error_data = {
         "ts": datetime.now(timezone.utc).isoformat() + "Z",
@@ -124,7 +117,6 @@ def _log_4xx_error(flow, errors_log_file: Path) -> None:
     print(f"[proxy_addon] API {flow.response.status_code} error — logged to api_errors.jsonl", file=sys.stderr)
 
 
-# Build and write stripped/injected dual-log entries from the metadata bridge; updates delta_state.
 def _write_stripped_injected(flow, delta_state, paths) -> None:
     orig_payload = flow.metadata.get("mc_original_payload")
     mod_payload = flow.metadata.get("mc_modified_payload")

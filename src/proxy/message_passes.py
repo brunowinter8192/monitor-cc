@@ -25,24 +25,10 @@ from .strip_bg_completed import _WAKEUP_TEXT
 from .rule_ops import _ops_from_content_change
 from .message_passes_wakeup import _unwrap_full_sr_wrapper
 
-# role=system messages starting with this marker are Read-truncation notices (CC 2.1.205+)
-# and must be preserved — the agent needs to know a Read was partial, not silently nuked.
 _TRUNCATION_NOTICE_MARKER = "[Truncated:"
 
-# role=system messages starting with this marker are CC 2.1.223+'s mid-turn user message
-# delivery (a user typing while the session is working, or worker-cli send to a working worker —
-# same mechanism) and must be preserved whole — pre-223 this content arrived as a role='user'
-# <system-reminder> ('user-interrupt' template in strip_sr.py, PARTIAL mode: IMPORTANT line
-# stripped, user body preserved); the 223 role=system form bypasses that SR-based guard entirely
-# and was falling through to this pass's unconditional '.' replacement, silently dropping the
-# user's message before it ever reached the model (issue #61). Whole-message preserve, not a
-# partial trim like the SR-era guard — losing the user's text is the failure mode this closes,
-# the few extra lines of CC's own boilerplate explainer are harmless noise by comparison.
 _MID_TURN_USER_MSG_MARKER = "The user sent a new message while you were working:"
 
-# Markers driving _apply_cumulative_sr_strips' 3 identical-shape SR-strip checks (Skills,
-# agent-types, claudeMd) — the 4th check (pyright) has its own config-gated + different-strip-fn
-# shape and stays inline in that function.
 _SKILLS_MARKER = "The following skills are available for use with the Skill tool"
 _AGENT_TYPES_MARKER = "Available agent types for the Agent tool"
 _CLAUDEMD_MARKER = "# claudeMd"
@@ -54,13 +40,6 @@ _CUMULATIVE_SR_MARKERS = (
 
 # FUNCTIONS
 
-# Role=system pass — strips entire content of every role='system' message by replacing with '.',
-# EXCEPT role=system messages carrying a <task-notification> tag (CC delivers bg-task wake-ups as
-# a plain-str role='system' message on some paths, alongside the known role='user' path) — those
-# are left untouched here and fall through to `_apply_sn_notice_strip` + `_apply_first_pass`'s TN
-# branch (both widened to accept role='system'), which own TN wake-up construction exclusively —
-# and EXCEPT mid-turn user messages (_MID_TURN_USER_MSG_MARKER, CC 2.1.223+), preserved whole —
-# returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
 def _apply_role_system_strip(messages: list) -> tuple:
     result = []
     pass_mods = []
@@ -89,14 +68,10 @@ def _apply_role_system_strip(messages: list) -> tuple:
         changed_indices.append(idx)
         pass_mods.append("stripped_role_system_msg")
         pass_removed_by_idx[idx] = [old_content if isinstance(old_content, str) else str(old_content)]
-        # full_replace=True: content unconditionally set to the literal "." regardless of shape
-        # (line 66) — unambiguous whole-content replacement, no caveat needed.
         pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, ".", full_replace=True)
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
-# Apply one (marker, mod_name) SR-strip check from _CUMULATIVE_SR_MARKERS — the 3 identical-shape
-# checks (Skills / agent-types / claudeMd) share this body. Returns (new_content, mod_name_or_None).
 def _apply_marker_sr_strip(content, marker: str, mod_name: str) -> tuple:
     if not _top_level_content_contains(content, marker):
         return content, None
@@ -106,7 +81,6 @@ def _apply_marker_sr_strip(content, marker: str, mod_name: str) -> tuple:
     return new_content, mod_name
 
 
-# Cumulative second pass — strips Skills, agent-types, claudeMd, pyright, ENV-context SRs from every user message including those already touched by pass 1 — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
 def _apply_cumulative_sr_strips(messages: list) -> tuple:
     pyright_enabled = _load_config().get("pyright_diagnostics_strip", {}).get("enabled", False)
     result = []
@@ -148,7 +122,6 @@ def _apply_cumulative_sr_strips(messages: list) -> tuple:
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
-# Final SR pass — strips all remaining system-reminder blocks from every user message — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
 def _apply_final_sr_pass(messages: list) -> tuple:
     result = []
     pass_mods = []
@@ -176,19 +149,11 @@ def _apply_final_sr_pass(messages: list) -> tuple:
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
-# TN branch of _apply_first_pass — accepts role='system' too (CC delivers bg-task wake-ups as a
-# plain-str role='system' message on some paths; _apply_role_system_strip's TN guard leaves those
-# untouched so they reach here). Builds the wake-up + optional Output:/ID: replacement, strips a
-# nested task-tools-nag SR if present, unwraps a full <system-reminder> wrap if present.
-# Returns (new_msg, mod_names, removed, injected_text).
 def _handle_tn_message(msg: dict, old_content) -> tuple:
     new_msg = dict(msg)
     is_failed_bg = _content_contains(old_content, "<status>failed</status>")
     also_stripped_nag = False
     mod_names = []
-    # Both failed and completed: single block = wakeup + optional Output line + optional ID
-    # line; summary and status dropped. Each optional line is omitted (not emitted empty)
-    # when its <task-notification> tag is absent — never "ID: None", never a dangling label.
     output_path = _extract_task_notification_output_file(old_content)
     task_id = _extract_task_notification_task_id(old_content)
     _tn_lines = [_WAKEUP_TEXT.rstrip('\n')]
@@ -213,9 +178,6 @@ def _handle_tn_message(msg: dict, old_content) -> tuple:
     return new_msg, mod_names, removed, injected_text
 
 
-# Shared body for the NAG and DEF elif branches of _apply_first_pass — both strip a single
-# <system-reminder> by marker via _strip_system_reminder, differing only in marker/mod_name.
-# Returns (new_msg, changed, removed_or_None).
 def _apply_sr_marker_branch(msg: dict, old_content, marker: str) -> tuple:
     new_msg = dict(msg)
     new_msg["content"] = _strip_system_reminder(old_content, marker)
@@ -224,8 +186,6 @@ def _apply_sr_marker_branch(msg: dict, old_content, marker: str) -> tuple:
     return new_msg, changed, removed
 
 
-# UI (user-interrupt, partial mode) branch of _apply_first_pass — strips the IMPORTANT line only,
-# preserving the user's own body. Returns (new_msg, changed, removed_or_None).
 def _handle_ui_message(msg: dict, old_content) -> tuple:
     marker = "user sent a new message while you were working"
     new_msg = dict(msg)
@@ -238,9 +198,6 @@ def _handle_ui_message(msg: dict, old_content) -> tuple:
     return new_msg, changed, removed
 
 
-# Commit a simple (non-TN) branch's result into the shared accumulator dict — the tail every one
-# of NAG/DEF/UI/REJECTION repeats once its own (new_msg, changed, removed) is computed. No-op when
-# changed is False (matches every branch's own pre-existing "only record on real change" gate).
 def _commit_simple_branch(idx: int, new_msg: dict, old_content, changed: bool, mod_name: str, removed, acc: dict, full_replace: bool = False) -> None:
     if not changed:
         return
@@ -250,22 +207,12 @@ def _commit_simple_branch(idx: int, new_msg: dict, old_content, changed: bool, m
     acc["pass_ops_by_msg_blk"][idx] = _ops_from_content_change(old_content, new_msg["content"], full_replace=full_replace)
 
 
-# REJECTION branch of _apply_first_pass — returns (new_msg, changed).
-# full_replace=True: _strip_rejection_message (content_strip.py) mutates PER-BLOCK for list
-# content, not the whole message at once — but every block it actually changes is wholesale-set
-# to the literal "." (content_strip.py:43, {**block, "content": "."}), never partially edited in
-# place; every block it leaves alone is appended by identity (content_strip.py:45), so bt==at
-# exactly for those and _extract_block_op's before==after check returns [] before full_replace is
-# even consulted. The message-level flag is therefore safe here specifically because this pass
-# has no per-block PARTIAL-edit path to protect — the str branch (content_strip.py:31) is
-# unambiguously full-replace too.
 def _handle_rejection_message(msg: dict, old_content) -> tuple:
     new_msg = dict(msg)
     new_msg["content"] = _strip_rejection_message(old_content)
     return new_msg, new_msg["content"] != old_content
 
 
-# First-pass message loop — elif-chain strips task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
 def _apply_first_pass(messages: list) -> tuple:
     result = []
     acc = {"pass_mods": [], "pass_removed_by_idx": {}, "pass_ops_by_msg_blk": {}, "changed_indices": []}

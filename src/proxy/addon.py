@@ -18,11 +18,6 @@ from .addon_dual_log import (
 )
 
 
-# Suppress noise from `NotImplementedError: HTTP trailers are not implemented yet.`
-# mitmproxy 12.x hardcodes this raise in proxy/layers/http/_http1.py:118 when an HTTP/1.1
-# upstream sends Transfer-Encoding chunked with trailers. Crashes the single connection
-# only (other flows unaffected). Filter the LogRecord before it reaches stderr — keeps
-# legitimate "mitmproxy has crashed!" messages with other exceptions visible.
 class _TrailerCrashFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if record.exc_info:
@@ -110,7 +105,6 @@ class ProxyAddon:
             print(f"[proxy_addon] Error: {e}", file=sys.stderr)
 
     def responseheaders(self, flow: http.HTTPFlow) -> None:
-        """Pass streaming responses through without buffering — preserves CC token streaming."""
         try:
             if not _is_messages_request(flow):
                 return
@@ -132,7 +126,6 @@ class ProxyAddon:
             print(f"[dual_log] response write failed: {e}", file=sys.stderr)
 
     def response(self, flow: http.HTTPFlow) -> None:
-        """Log 4xx errors; write stripped/injected dual-log entries on success."""
         try:
             if not _is_messages_request(flow):
                 return
@@ -150,7 +143,6 @@ class ProxyAddon:
 
 # FUNCTIONS
 
-# Capture fixation on the first request seen per model_family, else replay the fixated snapshot.
 def _apply_sys_fixation(fixation_state, model_family: str, modified_payload: dict, modifications: list) -> dict:
     if model_family not in fixation_state.fixated:
         fixation_state.fixated[model_family] = _capture_fixation(modified_payload, modifications)
@@ -158,10 +150,6 @@ def _apply_sys_fixation(fixation_state, model_family: str, modified_payload: dic
     return _apply_fixation(modified_payload, modifications, fixation_state.fixated[model_family])
 
 
-# Run the 7 post-fixation modification steps; returns (modified_payload, modifications).
-# fixated_model_override: ProxyAddon.fixation.model_params_fixated, threaded into
-# _inject_model_override so effort/thinking/max_tokens pin to the first request's resolved value
-# for the process lifetime.
 def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, model_family: str, project_path: str, fixated_model_override: dict) -> tuple:
     modified_payload, stripped_count, _ = _strip_unused_tools(modified_payload)
     if stripped_count > 0:
@@ -184,8 +172,6 @@ def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, mod
     return modified_payload, modifications
 
 
-# Derive request_id and timestamp for downstream dual-log writes (replaces _build_entry); stashes
-# the per-request metadata bridge fields onto the flow. Returns (mc_request_id, mc_timestamp).
 def _stamp_request_metadata(flow, stripped_msg_removed, injected_msg_added, all_ops) -> tuple:
     mc_request_id = flow.request.headers.get("x-request-id") or str(uuid.uuid4())
     now_ts = datetime.now(timezone.utc)
@@ -197,8 +183,6 @@ def _stamp_request_metadata(flow, stripped_msg_removed, injected_msg_added, all_
     return mc_request_id, mc_timestamp
 
 
-# Strip cache_control, set fresh breakpoints, and update the per-model message summary used by
-# BP3 unchanged-prefix detection on the NEXT request. Mutates delta_state.messages_by_model.
 def _finalize_cache_state(delta_state, model_family: str, modified_payload: dict) -> dict:
     prev_mod_msgs = delta_state.messages_by_model.get(model_family)
     modified_payload = _strip_all_cache_control(modified_payload)
@@ -209,7 +193,6 @@ def _finalize_cache_state(delta_state, model_family: str, modified_payload: dict
     return modified_payload
 
 
-# Map model name string to "haiku", "sonnet", or "opus"
 def _infer_model_family(model: str) -> str:
     m = model.lower()
     if "haiku" in m:
@@ -223,7 +206,6 @@ _RESPONSE_HEADER_EXACT = frozenset({"request-id", "retry-after", "anthropic-orga
 _RESPONSE_HEADER_PREFIXES = ("anthropic-ratelimit-", "anthropic-priority-", "anthropic-fast-")
 
 
-# Filter Anthropic rate-limit + identity response headers; normalize keys to lowercase
 def _filter_response_headers(headers) -> dict:
     result = {}
     for k, v in headers.items():
@@ -233,7 +215,6 @@ def _filter_response_headers(headers) -> dict:
     return result
 
 
-# Check if flow is a POST to exactly /v1/messages (with optional query string) on api.anthropic.com — excludes /v1/messages/count_tokens and other sub-paths
 def _is_messages_request(flow: http.HTTPFlow) -> bool:
     path = flow.request.path
     return (
@@ -243,7 +224,6 @@ def _is_messages_request(flow: http.HTTPFlow) -> bool:
     )
 
 
-# Decode request body, decompressing gzip if needed
 def _decode_body(request: http.Request) -> Optional[bytes]:
     content = request.content
     if not content:
@@ -256,7 +236,6 @@ def _decode_body(request: http.Request) -> Optional[bytes]:
     return content
 
 
-# Parse JSON payload from bytes
 def _parse_payload(body: bytes) -> Optional[dict]:
     try:
         return json.loads(body)
@@ -264,7 +243,6 @@ def _parse_payload(body: bytes) -> Optional[dict]:
         return None
 
 
-# Derive proxy session_id from PROXY_PROJECT_PATH env — md5(project_path)[:8], empty string if absent
 def _derive_session_id() -> str:
     project_path = os.environ.get("PROXY_PROJECT_PATH", "")
     if project_path:
@@ -272,8 +250,6 @@ def _derive_session_id() -> str:
     return ""
 
 
-# Derive worker context string from PROXY_LOG_ID env — "worker:<name>" or "main"
-# Worker log_ids follow the pattern worker_<hash>_<name>_<ts>; main log_ids do not start with worker_
 def _derive_worker_context() -> str:
     log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID") or ""
     if log_id.startswith("worker_"):

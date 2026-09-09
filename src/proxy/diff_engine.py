@@ -7,7 +7,6 @@ _COLLECTION_KEYS = frozenset({"system", "tools", "messages"})
 
 # FUNCTIONS
 
-# Extract text string from a system/tool/message block
 def _get_text(element) -> str:
     if element is None:
         return ""
@@ -21,7 +20,6 @@ def _get_text(element) -> str:
     return json.dumps(element, ensure_ascii=False)
 
 
-# Span diff: equal / stripped / injected. ratio < RATIO_THRESHOLD → whole-block 2 spans.
 def _diff_text(orig_text: str, fwd_text: str) -> list:
     if orig_text == fwd_text:
         return [("equal", orig_text)]
@@ -47,7 +45,6 @@ def _diff_text(orig_text: str, fwd_text: str) -> list:
     return spans
 
 
-# Inner content text for GT span building — avoids JSON-wrap on tool_result blocks
 def _get_inner_text(block) -> str:
     if isinstance(block, str):
         return block
@@ -67,9 +64,6 @@ def _get_inner_text(block) -> str:
     return json.dumps(block, ensure_ascii=False)
 
 
-# Step 1 of build_message_spans: split orig_text at stripped_chunk positions into equal_segs +
-# stripped_segs (equal_segs is only used for its LENGTH downstream, never emitted as an "equal"
-# span — see build_message_spans' own step-2 comment). Returns (equal_segs, stripped_segs, flags).
 def _split_stripped_segments(orig_text: str, stripped_chunks: list) -> tuple:
     equal_segs: list = []
     stripped_segs: list = []
@@ -90,9 +84,6 @@ def _split_stripped_segments(orig_text: str, stripped_chunks: list) -> tuple:
     return equal_segs, stripped_segs, flags
 
 
-# Step 3 of build_message_spans: decompose fwd_text into injected vs equal spans using recorded
-# injected_chunks — green spans come ONLY from injected_chunks, no gap inference from fwd
-# positions. Returns (spans, flags).
 def _build_fwd_spans(fwd_text: str, injected_chunks: list) -> tuple:
     spans: list = []
     flags: list = []
@@ -120,9 +111,7 @@ def _build_fwd_spans(fwd_text: str, injected_chunks: list) -> tuple:
     return spans, flags
 
 
-# Build ground-truth spans from exact stripped chunks recorded by apply_modification_rules
 def build_message_spans(orig_text: str, fwd_text: str, stripped_chunks: list, injected_chunks: list = None) -> tuple:
-    """Returns (spans, flags) — tags: 'equal' / 'stripped' / 'injected'."""
     if not stripped_chunks:
         if orig_text == fwd_text:
             return [("equal", orig_text)] if orig_text else [], []
@@ -130,8 +119,6 @@ def build_message_spans(orig_text: str, fwd_text: str, stripped_chunks: list, in
 
     equal_segs, stripped_segs, flags = _split_stripped_segments(orig_text, stripped_chunks)
 
-    # Emit stripped spans (yellow path — unchanged from orig-split); equal_segs itself is never
-    # emitted as an "equal" span, only its length (via enumerate) drives the stripped-span count.
     spans: list = []
     for i, _eq in enumerate(equal_segs):
         if i > 0:
@@ -143,15 +130,11 @@ def build_message_spans(orig_text: str, fwd_text: str, stripped_chunks: list, in
     return spans, flags
 
 
-# Count stripped and injected spans
 def _span_counts(spans: list) -> tuple:
     return (sum(1 for t, _ in spans if t == "stripped"),
             sum(1 for t, _ in spans if t == "injected"))
 
 
-# Apply one edit op (offset_in_Ck, removed, injected) to a span list over C0
-# Ck = "".join(t for tag,t in spans if tag in ("equal","injected"))
-# "equal" bytes in [offset, offset+len(removed)) → "stripped"; "injected" bytes in that range disappear
 def apply_edit_to_spans(spans: list, offset: int, removed: str, injected: str) -> list:
     if not removed and not injected:
         return spans
@@ -185,7 +168,6 @@ def apply_edit_to_spans(spans: list, offset: int, removed: str, injected: str) -
                 new_spans.append((tag, prefix_t))
             if mid_t and tag == "equal":
                 new_spans.append(("stripped", mid_t))
-            # mid_t with tag="injected" disappears (prior injection re-removed)
             if not inject_emitted:
                 new_spans.append(("injected", injected))
                 inject_emitted = True
@@ -197,8 +179,6 @@ def apply_edit_to_spans(spans: list, offset: int, removed: str, injected: str) -
     return new_spans
 
 
-# Compose accumulated per-block ops (offset, removed, injected) into a span list over C0
-# Inv1: "".join(equal+stripped) == C0_text; Inv2: "".join(equal+injected) == Cfwd_text
 def compose_block(c0_text: str, block_ops: list) -> list:
     spans = [("equal", c0_text)] if c0_text else []
     for off, rem, inj in block_ops:
@@ -206,7 +186,6 @@ def compose_block(c0_text: str, block_ops: list) -> list:
     return spans
 
 
-# Diff system blocks by index
 def _diff_system(orig_sys: list, fwd_sys: list) -> list:
     n = max(len(orig_sys), len(fwd_sys)) if (orig_sys or fwd_sys) else 0
     diffs = []
@@ -218,7 +197,6 @@ def _diff_system(orig_sys: list, fwd_sys: list) -> list:
     return diffs
 
 
-# Diff tools by name: whole-stripped, whole-injected, description-changed
 def _diff_tools(orig_tools: list, fwd_tools: list) -> dict:
     orig_by_name = {t.get("name", "?"): t for t in orig_tools if isinstance(t, dict)}
     fwd_by_name  = {t.get("name", "?"): t for t in fwd_tools  if isinstance(t, dict)}
@@ -242,7 +220,6 @@ def _diff_tools(orig_tools: list, fwd_tools: list) -> dict:
     return {"stripped": stripped, "injected": injected, "desc_changes": desc_changes, "identical": identical}
 
 
-# Diff messages by index, within each message by block position
 def _diff_messages(orig_msgs: list, fwd_msgs: list) -> list:
     n = max(len(orig_msgs), len(fwd_msgs)) if (orig_msgs or fwd_msgs) else 0
     result = []
@@ -279,7 +256,6 @@ def _diff_messages(orig_msgs: list, fwd_msgs: list) -> list:
     return result
 
 
-# Diff all non-collection top-level payload keys by value equality — returns list of change records
 def _diff_top_level_fields(orig_payload: dict, fwd_payload: dict) -> list:
     result = []
     all_keys = set(orig_payload.keys()) | set(fwd_payload.keys())

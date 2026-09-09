@@ -8,7 +8,6 @@ from .strip_vocab import attribute_chunk as _attribute_chunk
 from .logging import _strip_cache_control, _normalize_msg_shape_for_hash, _delta_hash
 from .payload_helpers import _top_level_content_contains
 
-# fn attribution maps for fn_map field in _build_stripped_injected_deltas
 _SYS_FN: dict[int, str] = {1: '_apply_system_passes', 2: '_apply_system_passes', 3: '_strip_sys3'}
 _FIELD_STRIP_FN: dict[str, str] = {
     'model': '_inject_model_override', 'max_tokens': '_inject_model_override',
@@ -36,18 +35,14 @@ _MSG_CODE_TO_FN: dict[str, str] = {
 
 # FUNCTIONS
 
-# MD5[:10] of pipe-joined span texts — stable identity for a set of stripped texts
 def _hash_spans(texts: list) -> str:
     return hashlib.md5("|".join(texts).encode("utf-8")).hexdigest()[:10]
 
 
-# MD5[:10] of ordered span sequence — stable identity for equal+injected span list (new _injected format)
 def _hash_span_sequence(spans: list) -> str:
     return hashlib.md5("|".join(f"{tag}:{text}" for tag, text in spans).encode("utf-8")).hexdigest()[:10]
 
 
-# System section: stripped/injected texts, hashes, fn attribution per system block
-# Returns (s_sys, i_sys, s_hashes, i_hashes, s_fn, i_fn)
 def _process_system_section(sys_diffs, is_first, prev_stripped, prev_injected):
     s_sys: dict = {}
     i_sys: dict = {}
@@ -79,8 +74,6 @@ def _process_system_section(sys_diffs, is_first, prev_stripped, prev_injected):
     return s_sys, i_sys, s_hashes, i_hashes, s_fn, i_fn
 
 
-# Tools section: whole-tool and description-level stripped/injected, hashes, fn attribution
-# Returns (s_tools, i_tools, s_hashes, i_hashes, s_fn, i_fn)
 def _process_tools_section(tools_diff, is_first, prev_stripped, prev_injected):
     s_tools: dict = {}
     i_tools: dict = {}
@@ -125,8 +118,6 @@ def _process_tools_section(tools_diff, is_first, prev_stripped, prev_injected):
     return s_tools, i_tools, s_hashes, i_hashes, s_fn, i_fn
 
 
-# C0 text for one block-diff's before-side — list content indexes into o_content_raw via
-# _get_inner_text; string content only has a block 0; anything else is empty.
 def _block_c0_text(bd: dict, o_content_raw) -> str:
     bidx_int = bd["bidx"]
     if isinstance(o_content_raw, list):
@@ -137,8 +128,6 @@ def _block_c0_text(bd: dict, o_content_raw) -> str:
     return ""
 
 
-# Record one message block's stripped span (if any, and if new/changed vs prev_stripped) into
-# s_hashes/s_fn; returns the s_texts to store under s_blks[bidx], or None to store nothing.
 def _record_stripped_msg_block(lk: str, s_texts: list, om_norm: dict, o_content_raw, is_first: bool,
                                 prev_stripped, s_hashes: dict, s_fn: dict):
     if not s_texts:
@@ -147,10 +136,6 @@ def _record_stripped_msg_block(lk: str, s_texts: list, om_norm: dict, o_content_
     s_hashes[lk] = h
     if not (is_first or (prev_stripped or {}).get(lk) != h):
         return None
-    # role='system' is 'RS' (blanket nuke) EXCEPT the TN-carrying subset that
-    # _apply_role_system_strip now leaves untouched for _apply_first_pass's TN
-    # branch to handle — same boundary check as that pass's own TN guard, so
-    # attribution follows whichever function actually touched the content.
     if om_norm.get("role") == "system" and not _top_level_content_contains(o_content_raw, "<task-notification>"):
         code = 'RS'
     else:
@@ -159,8 +144,6 @@ def _record_stripped_msg_block(lk: str, s_texts: list, om_norm: dict, o_content_
     return s_texts
 
 
-# Record one message block's injected spans (if any, and if new/changed vs prev_injected) into
-# i_hashes/i_fn; returns the i_spans to store under i_blks[bidx], or None to store nothing.
 def _record_injected_msg_block(lk: str, i_spans: list, is_first: bool, prev_injected, i_hashes: dict, i_fn: dict):
     has_i = any(tag == "injected" for tag, _ in i_spans)
     if not has_i:
@@ -171,7 +154,7 @@ def _record_injected_msg_block(lk: str, i_spans: list, is_first: bool, prev_inje
         return None
     i_text = " ".join(t for tag, t in i_spans if tag == "injected" and t)
     if i_text == ".":
-        pass  # empty-block placeholder — not a real injection, skip badge
+        pass
     elif "background done" in i_text:
         i_fn[lk] = "_apply_bg_exit_strip"
     else:
@@ -180,8 +163,6 @@ def _record_injected_msg_block(lk: str, i_spans: list, is_first: bool, prev_inje
     return i_spans
 
 
-# Messages section: block-level stripped/injected spans, hashes, fn attribution
-# Returns (s_msgs, i_msgs, s_hashes, i_hashes, s_fn, i_fn)
 def _process_messages_section(msg_diffs, orig_msgs_norm, is_first, prev_stripped, prev_injected, all_ops):
     s_msgs: dict = {}
     i_msgs: dict = {}
@@ -217,8 +198,6 @@ def _process_messages_section(msg_diffs, orig_msgs_norm, is_first, prev_stripped
     return s_msgs, i_msgs, s_hashes, i_hashes, s_fn, i_fn
 
 
-# Top-level fields section: stripped/injected field values and hashes (no fn attribution for fields)
-# Returns (s_fields, i_fields, s_hashes, i_hashes)
 def _process_fields_section(field_diffs, is_first, prev_stripped, prev_injected):
     s_fields: dict = {}
     i_fields: dict = {}
@@ -240,8 +219,6 @@ def _process_fields_section(field_diffs, is_first, prev_stripped, prev_injected)
     return s_fields, i_fields, s_hashes, i_hashes
 
 
-# Normalize both payloads and compute all 4 section diffs — returns
-# (sys_diffs, tools_diff, orig_msgs_norm, msg_diffs, field_diffs, counts)
 def _compute_all_diffs(orig_payload: dict, fwd_payload: dict) -> tuple:
     orig_norm = _strip_cache_control(orig_payload)
     fwd_norm = _strip_cache_control(fwd_payload)
@@ -263,7 +240,6 @@ def _compute_all_diffs(orig_payload: dict, fwd_payload: dict) -> tuple:
     return sys_diffs, tools_diff, orig_msgs_norm, msg_diffs, field_diffs, counts
 
 
-# Build one stripped_delta/injected_delta entry dict
 def _build_delta_entry(entry_type: str, request_id: str, timestamp: str, model: str, is_first: bool,
                         counts: dict, system_delta: dict, tools_delta: dict, messages_delta: dict,
                         fields_delta: dict, fn_map: dict) -> dict:
@@ -282,12 +258,6 @@ def _build_delta_entry(entry_type: str, request_id: str, timestamp: str, model: 
     }
 
 
-# Build stripped_delta and injected_delta entries and updated hash states
-# Both payloads are normalized (cache_control stripped) at call site before passing here.
-# prev_stripped / prev_injected: flat dicts of loc_key → hash from previous request (None = first).
-# Returns (stripped_entry, injected_entry, new_stripped_hashes, new_injected_hashes).
-# fn_map: top-level dict (loc_key → responsible fn) attached to both entries at write time.
-# Old entries without fn_map (pre-materialization) are read-side safe — field simply absent.
 def _build_stripped_injected_deltas(
     orig_payload: dict,
     fwd_payload: dict,

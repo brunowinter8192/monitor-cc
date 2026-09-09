@@ -5,7 +5,6 @@ from .tool_injection import _load_active_plugins
 
 # FUNCTIONS
 
-# Capture fixation values from first modified payload — sys[2] text, msg[0] project-rules block, active_plugins
 def _capture_fixation(payload: dict, modifications: list) -> dict:
     fixated = {}
     system = payload.get("system", [])
@@ -31,7 +30,6 @@ def _capture_fixation(payload: dict, modifications: list) -> dict:
     return fixated
 
 
-# Apply fixated content to payload — replaces sys[2] text, msg[0] rules block; updates active_plugins fixation if changed
 def _apply_fixation(payload: dict, modifications: list, fixated: dict) -> dict:
     if not fixated:
         return payload

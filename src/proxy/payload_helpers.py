@@ -11,9 +11,6 @@ from constants import TOOL_BLOCKLIST
 
 # FUNCTIONS
 
-# Extract <system-reminder> blocks containing marker from str or top-level list[type=='text']
-# content — matches _strip_system_reminders' non-descent into tool_result (SR family no longer
-# strips there, so bookkeeping must not count tool_result blocks as removed either)
 def _find_system_reminder_blocks(content, marker: str) -> list:
     pat = re.compile(r'(?m)^<system-reminder>.*?' + re.escape(marker) + r'.*?</system-reminder>\n?', re.DOTALL)
     if isinstance(content, str):
@@ -29,8 +26,6 @@ def _find_system_reminder_blocks(content, marker: str) -> list:
     return []
 
 
-# Extract ALL <system-reminder>...</system-reminder> blocks from str or top-level list[type=='text']
-# content — same non-descent rationale as _find_system_reminder_blocks above.
 def _find_all_system_reminder_blocks(content) -> list:
     pat = re.compile(r'(?m)^<system-reminder>.*?</system-reminder>\n?', re.DOTALL)
     if isinstance(content, str):
@@ -46,7 +41,6 @@ def _find_all_system_reminder_blocks(content) -> list:
     return []
 
 
-# Extract <task-notification>...</task-notification> blocks from str or list content (incl. tool_result)
 def _find_task_notification_blocks(content) -> list:
     pat = re.compile(r'(?m)^<task-notification>.*?</task-notification>', re.DOTALL)
     if isinstance(content, str):
@@ -70,7 +64,6 @@ def _find_task_notification_blocks(content) -> list:
     return []
 
 
-# Remove tool_reference blocks for blocked tools from tool_result content blocks
 def _strip_blocked_tool_references(payload: dict) -> dict:
     messages = payload.get("messages", [])
     new_messages = []
@@ -109,7 +102,6 @@ def _strip_blocked_tool_references(payload: dict) -> dict:
     return result
 
 
-# Check if message content (str or list of blocks incl. tool_result) contains a given substring
 def _content_contains(content, substring: str) -> bool:
     if isinstance(content, str):
         return substring in content
@@ -130,7 +122,6 @@ def _content_contains(content, substring: str) -> bool:
     return False
 
 
-# Extract <output-file> path from the first <task-notification> block in content (str or list); returns '' if absent
 def _extract_task_notification_output_file(content) -> str:
     _OUTPUT_FILE_PAT = re.compile(r'<output-file>(.*?)</output-file>', re.DOTALL)
     for block_text in _find_task_notification_blocks(content):
@@ -140,7 +131,6 @@ def _extract_task_notification_output_file(content) -> str:
     return ''
 
 
-# Extract <task-id> from the first <task-notification> block in content (str or list); returns '' if absent
 def _extract_task_notification_task_id(content) -> str:
     _TASK_ID_PAT = re.compile(r'<task-id>(.*?)</task-id>', re.DOTALL)
     for block_text in _find_task_notification_blocks(content):
@@ -150,11 +140,9 @@ def _extract_task_notification_task_id(content) -> str:
     return ''
 
 
-# Replace <task-notification>...</task-notification> blocks inline with replacement_text (no separate append)
-# Uses lambda form of re.sub to avoid backslash-sequence interpretation in replacement_text.
 def _replace_task_notification_tags(content, replacement_text: str):
     _NOTIF_PAT = re.compile(r'(?m)^<task-notification>.*?</task-notification>\n?', re.DOTALL)
-    _repl = lambda m: replacement_text  # noqa: E731
+    _repl = lambda m: replacement_text
     if isinstance(content, str):
         return _NOTIF_PAT.sub(_repl, content) or '.'
     if isinstance(content, list):
@@ -173,7 +161,6 @@ def _replace_task_notification_tags(content, replacement_text: str):
     return content
 
 
-# Check if content (str or top-level text blocks only — does NOT descend into tool_result) contains substring
 def _top_level_content_contains(content, substring: str) -> bool:
     if isinstance(content, str):
         return substring in content
@@ -186,15 +173,6 @@ def _top_level_content_contains(content, substring: str) -> bool:
     return False
 
 
-# Shared block walk for a "predicate matches whole text -> replace whole text" strip, covering
-# all 4 content shapes (str, list[text], list[tool_result:str], list[tool_result:list[text]]).
-# Used by strip_bg_launch_ack.py and strip_interrupt_marker.py, whose walks were byte-identical
-# in shape (only the predicate and replace_fn differed) — verified before folding. predicate(text)
-# -> bool; replace_fn(text) -> new_text. Returns (new_content, removed_chunks) — removed_chunks:
-# original text of every block/sub-block that matched.
-# Process one tool_result block for _walk_replace_marker_blocks: str content, or list content
-# with nested text sub-blocks. Appends matched originals to removed (in place); returns the
-# (possibly rewritten) block.
 def _walk_tool_result_inner(block, predicate, replace_fn, removed):
     inner = block.get('content', '')
     if isinstance(inner, str):
@@ -246,4 +224,3 @@ def _walk_replace_marker_blocks(content, predicate, replace_fn):
                 result.append(block)
         return result, removed
     return content, removed
-
