@@ -1,12 +1,5 @@
 # INFRASTRUCTURE
 
-# Colors — Catppuccin Mocha palette (https://catppuccin.com/palette/)
-# Truecolor ANSI \033[38;2;R;G;Bm (FG) / \033[48;2;R;G;Bm (BG)
-# Semantic mapping:
-#   text=Text, title=Mauve, title-soft=Lavender
-#   error=Red, warning=Yellow, success=Green, info=Blue
-#   accent=Sky, accent-warm=Peach
-#   hover-bg=Surface1, zebra-bg=Surface0, error-bg=Red, stripped-bg=custom mustard
 RESET = '\033[0m'
 RED = '\033[38;2;243;139;168m'
 GREEN = '\033[38;2;166;227;161m'
@@ -30,5 +23,5 @@ COLLISION_BG = '\033[48;2;80;30;40m'
 ZEBRA_BG_A = ''
 ZEBRA_BG_B = '\033[48;2;49;50;68m'
 SOFT_RESET = '\033[39m'
-SEARCH_MATCH_BG   = '\033[48;2;62;55;0m'    # dark amber — search match row BG
-SEARCH_CURRENT_BG = '\033[48;2;130;95;0m'   # warm amber — current search match row BG
+SEARCH_MATCH_BG   = '\033[48;2;62;55;0m'
+SEARCH_CURRENT_BG = '\033[48;2;130;95;0m'

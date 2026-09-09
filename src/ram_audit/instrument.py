@@ -14,7 +14,6 @@ from typing import Callable
 
 # FUNCTIONS
 
-# RSS bytes/MB summary line — psutil if available, else resource.getrusage (macOS/Linux normalized)
 def _rss_line() -> str:
     pid = os.getpid()
     try:
@@ -28,7 +27,6 @@ def _rss_line() -> str:
     rss_str = f'{rss:,} bytes ({rss // 1024 // 1024} MB) [{rss_src}]'
     return f'rss:       {rss_str}'
 
-# Top-30 gc objects by class — 2-column table (class name | count)
 def _gc_top_lines() -> list:
     lines = ['## Top-30 gc objects by class']
     counts = Counter(type(o).__name__ for o in gc.get_objects()).most_common(30)
@@ -38,7 +36,6 @@ def _gc_top_lines() -> list:
         lines.append(f'{cls:<40}  {cnt:>8}')
     return lines
 
-# Top-30 tracemalloc by lineno — 3-column table (file:line | size_bytes | count)
 def _tracemalloc_lines() -> list:
     lines = ['## Top-30 tracemalloc by lineno']
     if tracemalloc.is_tracing():
@@ -54,7 +51,6 @@ def _tracemalloc_lines() -> list:
         lines.append('## tracemalloc not active (set MONITOR_CC_RAM_AUDIT=1 to enable)')
     return lines
 
-# Pane module state — containers as len=N sizeof=M, scalars as name = value
 def _module_state_lines(module_state_provider: Callable[[], list]) -> list:
     lines = []
     for name, val in module_state_provider():
@@ -64,7 +60,6 @@ def _module_state_lines(module_state_provider: Callable[[], list]) -> list:
             lines.append(f'{name:<40}  {val}')
     return lines
 
-# Resolve (and create) the dump file's path under dev/ram_audit/dumps/
 def _resolve_dump_path(pane_name: str, ts: str) -> Path:
     root = os.environ.get('MONITOR_CC_ROOT', '')
     if not root:
@@ -73,20 +68,7 @@ def _resolve_dump_path(pane_name: str, ts: str) -> Path:
     dump_dir.mkdir(parents=True, exist_ok=True)
     return dump_dir / f'{ts}_{pane_name}.txt'
 
-# Wire up tracemalloc + SIGUSR1 dump handler for a pane — call once at run-loop entry
 def register_ram_dump(pane_name: str, module_state_provider: Callable[[], list]) -> None:
-    """Wire up tracemalloc + SIGUSR1 + dump handler for the calling pane.
-
-    Call once at the entry of the pane's run_*_loop function (after global declarations).
-
-    pane_name: short slug used in PID-file path (/tmp/.monitor_cc_pid_<slug>) and dump filename
-               (dev/ram_audit/dumps/<ts>_<slug>.txt). Must match across panes (no collisions).
-
-    module_state_provider: callable returning a list of (name, value) tuples.
-        Containers (list/dict/set): rendered as `len=N sizeof=M`.
-        Scalars: rendered as `name = value`.
-        Walks done by the helper.
-    """
     if os.environ.get('MONITOR_CC_RAM_AUDIT') == '1':
         if not tracemalloc.is_tracing():
             tracemalloc.start(25)

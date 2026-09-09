@@ -4,7 +4,6 @@ import signal
 import sys
 from typing import Optional
 
-# From colors.py: Colors
 from .colors import RESET, GREEN
 
 # ORCHESTRATOR
@@ -18,17 +17,14 @@ def parse_arguments() -> argparse.Namespace:
 
 # FUNCTIONS
 
-# Setup signal handlers for graceful shutdown
 def setup_signal_handlers() -> None:
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
-# Handle shutdown signals
 def handle_shutdown(signum, frame) -> None:
     print_shutdown_message()
     sys.exit(0)
 
-# Print startup message
 def print_startup_message(project_filter: Optional[str] = None, mode: str = 'all') -> None:
     print(f"{GREEN}Monitor_CC - Claude Code Tool Monitor{RESET}")
 
@@ -43,6 +39,5 @@ def print_startup_message(project_filter: Optional[str] = None, mode: str = 'all
 
     print("Press Ctrl+C to stop\n")
 
-# Print shutdown message
 def print_shutdown_message() -> None:
     print(f"\n{GREEN}Monitor stopped{RESET}")

@@ -28,7 +28,7 @@ stopped displaying non-tool-call event types.
 
 ## Modules
 
-### strip_marker.py (24 LOC)
+### strip_marker.py (20 LOC)
 
 **Purpose:** Proxy-strip content highlighting helper — `highlight_stripped` wraps found chunks in `DIM_YELLOW_BG`/`SOFT_RESET` inline. `get_stripped_data`, `build_tool_result_strip_lookup`, and `build_tool_id_strip_lookup` deleted in Stage 3 (main-pane strip overlay removed).
 **Reads:** Chunk strings passed as arguments. No I/O, no shared state.
@@ -38,7 +38,7 @@ stopped displaying non-tool-call event types.
 
 ---
 
-### token_format.py (352 LOC)
+### token_format.py (307 LOC)
 
 **Purpose:** Build logical lines for the token/cache tracker — groups API calls into turns with CR/CC/D counts, handles expand/collapse and viewport clipping. Returns a 5-tuple `(visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count)` — return arity UNCHANGED since 2026-08-18 (see below). The fifth element `initial_parent_count` is the number of collapsed parent rows before the current viewport — used by `token_pane.py` to keep expand/collapse key assignments stable across scrolls. Does NOT render (no zebra, no hover, no truncation) — that is `token_pane.py`'s job. Also provides `_format_k` for compact token counts. `format_cache_tracker` accepts an optional `response_rid_map: dict` (keyed by `request_id`); when a call's `request_id` matches, renders (1) usage-extras lines above the content-blocks loop (5m/1h TTL split, web_search/web_fetch if non-zero, tier/speed/geo, iteration count) and (2) rate-limit header lines (`rl: 5h:X%→HH:MM  7d:X%→…`; status/overage in YELLOW when non-nominal). Graceful when map absent or request_id not matched. **(2026-07-30) Optional `copy_feedback: Optional[dict] = None`** (keyed by `(turn_idx,call_idx)`, same as `line_keys`) — when given, appends a `⎘`/`✓` symbol to the call-summary line via `utils.append_copy_symbol`; `None` (the default, used by every pre-existing caller) skips the branch entirely, byte-identical to before.
 

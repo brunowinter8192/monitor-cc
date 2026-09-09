@@ -39,7 +39,7 @@ on startup and every poll tick — session-file add/remove tracking only, not to
 
 ## Modules
 
-### modes.py (10 LOC, new 2026-09, constants-split milestone)
+### modes.py (8 LOC, new 2026-09, constants-split milestone)
 
 **Purpose:** `MODE_*` constants (`MODE_ALL`/`MODE_WARNINGS`/`MODE_TOKENS`/`MODE_WORKERS`/`MODE_PROXY`/`MODE_WORKER_PROXY`) — split out of `src/constants.py`'s `MODE_*` cluster. `monitor.py` is this cluster's sole importer anywhere in `src/`/`dev/`, so it moved into this package rather than staying at root.
 **Reads:** nothing.
@@ -49,7 +49,7 @@ on startup and every poll tick — session-file add/remove tracking only, not to
 
 ---
 
-### monitor.py (121 LOC)
+### monitor.py (107 LOC)
 
 **Purpose:** Session discovery + mode dispatcher. `run_monitor` sets `active_project_filter`/
 `active_mode`, calls `initialize_file_positions()`, then dispatches by `mode` to the matching pane
