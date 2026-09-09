@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 import time
 
+from ..colors import RESET, YELLOW, DIM
 from ..constants import (
-    RESET, YELLOW, DIM,
     POLL_INTERVAL, INPUT_POLL_INTERVAL,
     PROXY_REPARSE_INTERVAL_SECONDS,
 )

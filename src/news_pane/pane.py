@@ -5,10 +5,11 @@ import re
 import subprocess
 import time
 
-from ..constants import (
+from ..colors import (
     RESET, GREEN, YELLOW, DIM, CYAN,
-    INPUT_POLL_INTERVAL, SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
+    SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
+from ..constants import INPUT_POLL_INTERVAL
 from ..input.click_handler import (
     setup_keyboard_input, restore_terminal, read_keypress, wait_for_input,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard,

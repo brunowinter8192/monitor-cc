@@ -135,7 +135,7 @@ def test_proxy_turns_always_expanded() -> None:
 
 def test_proxy_hover_matches_row() -> None:
     print("\n[proxy] Hover applied at correct terminal row")
-    from src.constants import HOVER_BG
+    from src.colors import HOVER_BG
     entries = [_make_entry(i) for i in range(3)]
     turns = _make_turns(1)
     for e in entries:
@@ -221,7 +221,7 @@ def test_no_expanded_worker_overflow() -> None:
 def test_proxy_hover_wrap_header() -> None:
     print("\n[proxy] Header wrap: hover row adjusted by header_lines")
     from src.utils import visual_line_count
-    from src.constants import HOVER_BG
+    from src.colors import HOVER_BG
     # Build a header that wraps at narrow pane width
     # Simulate what _format_worker_proxy_header produces: 'WORKER-PROXY  [1*]alpha [2]beta [3]gamma [4]delta [5]epsilon'
     # Use narrow pane (64 chars) so header wraps to ≥2 lines

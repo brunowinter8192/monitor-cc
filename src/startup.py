@@ -4,8 +4,8 @@ import signal
 import sys
 from typing import Optional
 
-# From constants.py: Colors
-from .constants import RESET, GREEN
+# From colors.py: Colors
+from .colors import RESET, GREEN
 
 # ORCHESTRATOR
 def parse_arguments() -> argparse.Namespace:

@@ -51,11 +51,11 @@ mod_pane = importlib.import_module(f'{_ROOT_PKG}.proxy_display.pane')
 mod_format = importlib.import_module(f'{_ROOT_PKG}.proxy_display.format')
 mod_search = importlib.import_module(f'{_ROOT_PKG}.proxy_display.search')
 mod_fwd = importlib.import_module(f'{_ROOT_PKG}.proxy_display.forwarded_parser')
-mod_constants = importlib.import_module(f'{_ROOT_PKG}.constants')
+mod_colors = importlib.import_module(f'{_ROOT_PKG}.colors')
 mod_click = importlib.import_module(f'{_ROOT_PKG}.input.click_handler')
 
-SEARCH_MATCH_BG = mod_constants.SEARCH_MATCH_BG
-SEARCH_CURRENT_BG = mod_constants.SEARCH_CURRENT_BG
+SEARCH_MATCH_BG = mod_colors.SEARCH_MATCH_BG
+SEARCH_CURRENT_BG = mod_colors.SEARCH_CURRENT_BG
 _BG_RESTORE_SENTINEL = mod_format._BG_RESTORE_SENTINEL
 
 PANE_WIDTH = 120
@@ -227,7 +227,7 @@ def test_sentinel_resolves_to_default_bg_not_empty_string_on_zebra_a_rows():
     line2 = f"    {SEARCH_CURRENT_BG}matched{_BG_RESTORE_SENTINEL} trailing"
     out2 = mod_format._apply_row_backgrounds([line2], [('msg', 6, 0)], set(), None, None, 120, 1)
     check("non-empty chosen_bg (ZEBRA_BG_B) case unaffected by the fix",
-          mod_constants.ZEBRA_BG_B in out2[0] and out2[0].count(mod_constants.ZEBRA_BG_B) >= 2)
+          mod_colors.ZEBRA_BG_B in out2[0] and out2[0].count(mod_colors.ZEBRA_BG_B) >= 2)
 
 
 def test_n_N_ordering():

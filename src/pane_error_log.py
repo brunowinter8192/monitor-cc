@@ -3,7 +3,11 @@ from datetime import datetime
 import os
 import traceback
 
-from .constants import PANE_ERROR_LOG_PATH, PANE_ERROR_LOG_MAX_BYTES, PANE_ERROR_LOG_KEEP_BYTES
+# Split out of src/constants.py (PANE_ERROR_LOG_* constant cluster) — this module already owns
+# the concern these describe.
+PANE_ERROR_LOG_PATH = '/tmp/monitor_cc_error.log'
+PANE_ERROR_LOG_MAX_BYTES = 2_000_000   # size that triggers truncation on next write
+PANE_ERROR_LOG_KEEP_BYTES = 500_000    # tail bytes kept after truncation
 
 # FUNCTIONS
 

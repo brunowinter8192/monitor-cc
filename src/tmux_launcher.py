@@ -6,7 +6,7 @@ import subprocess
 import sys
 from typing import Optional
 
-# From constants.py: Colors and config values
+# From constants.py: Config values
 from .constants import TMUX_HISTORY_LIMIT
 
 # Layout definition for self-healing pane recreation (mirrors launch_split_screen)

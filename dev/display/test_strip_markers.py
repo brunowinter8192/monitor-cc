@@ -17,7 +17,11 @@ from src.format.strip_marker import (
     build_tool_result_strip_lookup,
     build_tool_id_strip_lookup,
 )
-from src.constants import DIM_YELLOW_BG, SOFT_RESET, RESET, DIM, ZEBRA_BG_B
+def _load_colors():
+    from src.colors import DIM_YELLOW_BG, SOFT_RESET, RESET, DIM, ZEBRA_BG_B
+    return DIM_YELLOW_BG, SOFT_RESET, RESET, DIM, ZEBRA_BG_B
+
+DIM_YELLOW_BG, SOFT_RESET, RESET, DIM, ZEBRA_BG_B = _load_colors()
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 

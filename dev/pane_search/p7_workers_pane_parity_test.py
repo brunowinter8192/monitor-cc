@@ -58,7 +58,7 @@ _ROOT_PKG = 'src'
 mod_wp = importlib.import_module(f'{_ROOT_PKG}.workers.worker_pane')
 mod_wf = importlib.import_module(f'{_ROOT_PKG}.workers.worker_format')
 mod_search_bar = importlib.import_module(f'{_ROOT_PKG}.search_bar')
-mod_constants = importlib.import_module(f'{_ROOT_PKG}.constants')
+mod_colors = importlib.import_module(f'{_ROOT_PKG}.colors')
 
 PANE_WIDTH = 100
 _RESULTS = []
@@ -320,7 +320,7 @@ def test_worker_level_match_and_scoping():
         check("w1 auto-expanded by the jump", mod_wp.worker_expand_states.get('w1') is True)
         check("w2 NOT auto-expanded (not a match)", mod_wp.worker_expand_states.get('w2', False) is False)
         output = mod_wp._build_workers_output(workers, frozen=False)
-        check("w1's header line is container-marked", mod_constants.SEARCH_CURRENT_BG in output)
+        check("w1's header line is container-marked", mod_colors.SEARCH_CURRENT_BG in output)
         check("no unsubstituted _BG_RESTORE_SENTINEL leaks into the final output",
               mod_search_bar._BG_RESTORE_SENTINEL not in output)
     finally:
@@ -353,11 +353,11 @@ def test_call_level_match_collapsed_container_marked_and_scoped():
         output = mod_wp._build_workers_output(workers, frozen=False)
         row = next(r for r, k in mod_wp.worker_cache_line_map.items() if k == ('w1', 0, 0))
         w1_call_line = output.splitlines()[row - 1]
-        check("w1's collapsed call header is container-marked", mod_constants.SEARCH_CURRENT_BG in w1_call_line)
+        check("w1's collapsed call header is container-marked", mod_colors.SEARCH_CURRENT_BG in w1_call_line)
         check("the marker text itself does NOT leak into the collapsed row", 'unique_marker_x' not in w1_call_line)
         w2_lines = '\n'.join(l for l in output.splitlines() if 'totally_different_call_content' in l)
         check("w2's own (non-matching) expanded content carries NO search highlight",
-              mod_constants.SEARCH_CURRENT_BG not in w2_lines and mod_constants.SEARCH_MATCH_BG not in w2_lines)
+              mod_colors.SEARCH_CURRENT_BG not in w2_lines and mod_colors.SEARCH_MATCH_BG not in w2_lines)
     finally:
         _cleanup_worker_jsonls(orig_find)
 
@@ -380,7 +380,7 @@ def test_light_red_bg_still_detected_when_call_is_also_a_match():
         row = next(r for r, k in mod_wp.worker_cache_line_map.items() if k == ('w1', 0, 0))
         header_line = output.splitlines()[row - 1]
         check("row's OUTER chosen_bg is still LIGHT_RED_BG despite the search-marker wrap preceding it",
-              header_line.startswith(mod_constants.LIGHT_RED_BG))
+              header_line.startswith(mod_colors.LIGHT_RED_BG))
     finally:
         _cleanup_worker_jsonls(orig_find)
 

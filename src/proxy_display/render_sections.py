@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 from typing import Optional
 
-from ..constants import (
+from ..colors import (
     SOFT_RESET, RED, DIM, DIM_YELLOW_BG, DIM_GREEN_BG,
 )
 from .format import _format_k

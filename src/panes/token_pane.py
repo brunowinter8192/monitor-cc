@@ -4,7 +4,8 @@ from pathlib import Path
 import os
 import time
 
-from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL, RESET, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
+from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL
+from ..colors import RESET, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
 from .cache_turns import build_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,

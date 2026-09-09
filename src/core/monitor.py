@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# From constants.py: Mode constants
-from ..constants import MODE_ALL, MODE_WARNINGS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_WORKER_PROXY
+# From modes.py: Mode constants (split out of ..constants — sole importer)
+from .modes import MODE_ALL, MODE_WARNINGS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_WORKER_PROXY
 
 # From session_finder.py: Discover active Claude Code sessions
 from ..session_finder import find_active_sessions

@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import re
 from collections import Counter
-from ..constants import (
+from ..colors import (
     SOFT_RESET, RED, WHITE, DIM, DIM_YELLOW_BG, DIM_GREEN_BG, LIGHT_RED_BG, RESET,
 )
 from ..proxy.strip_vocab import attribute_chunk, classify_req

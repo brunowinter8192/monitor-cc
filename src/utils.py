@@ -3,8 +3,10 @@ from datetime import datetime
 import re
 import unicodedata
 
-# From constants.py: Unified color palette
-from .constants import RESET, YELLOW, WORKER_COL_WIDTH
+# From colors.py: Unified color palette
+from .colors import RESET, YELLOW
+# From constants.py: Config values
+from .constants import WORKER_COL_WIDTH
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 

@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from ..constants import DIM_YELLOW_BG, SOFT_RESET
+from ..colors import DIM_YELLOW_BG, SOFT_RESET
 
 # FUNCTIONS
 

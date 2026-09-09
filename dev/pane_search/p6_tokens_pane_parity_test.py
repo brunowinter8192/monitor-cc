@@ -63,7 +63,7 @@ mod_tp = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
 mod_ts = importlib.import_module(f'{_ROOT_PKG}.panes.token_search')
 mod_tf = importlib.import_module(f'{_ROOT_PKG}.format.token_format')
 mod_search_bar = importlib.import_module(f'{_ROOT_PKG}.search_bar')
-mod_constants = importlib.import_module(f'{_ROOT_PKG}.constants')
+mod_colors = importlib.import_module(f'{_ROOT_PKG}.colors')
 mod_monitor = importlib.import_module(f'{_ROOT_PKG}.core.monitor')
 mod_parser = importlib.import_module(f'{_ROOT_PKG}.proxy_display.parser')
 mod_side_logs = importlib.import_module(f'{_ROOT_PKG}.proxy_display.side_logs')
@@ -289,7 +289,7 @@ def test_call_level_match_collapsed_container_marked():
     row = next(r for r, k in mod_tp.cache_line_map.items() if k == (0, 0))
     header_line = output.splitlines()[row - 1]
     check("collapsed call header line is container-marked (SEARCH_CURRENT_BG present)",
-          mod_constants.SEARCH_CURRENT_BG in header_line)
+          mod_colors.SEARCH_CURRENT_BG in header_line)
     check("the marker text itself does NOT leak into the collapsed row (still collapsed)",
           'unique_marker_x' not in header_line)
 
@@ -306,9 +306,9 @@ def test_call_level_match_expanded_substring_marked():
     header_row = next(r for r, k in mod_tp.cache_line_map.items() if k == (0, 0))
     header_line = output.splitlines()[header_row - 1]
     check("header line STILL container-marked when expanded (uniform, orientation-preserving)",
-          mod_constants.SEARCH_CURRENT_BG in header_line)
+          mod_colors.SEARCH_CURRENT_BG in header_line)
     check("the matched substring itself is browser-find highlighted somewhere in the output",
-          f"{mod_constants.SEARCH_CURRENT_BG}unique_marker_x\033[49m" in output)
+          f"{mod_colors.SEARCH_CURRENT_BG}unique_marker_x\033[49m" in output)
     check("no unsubstituted _BG_RESTORE_SENTINEL leaks into the final output",
           mod_search_bar._BG_RESTORE_SENTINEL not in output)
 
@@ -322,7 +322,7 @@ def test_turn_level_match():
     check("real search found the turn", mod_tp._tokens_search.matches == [('turn', 0)])
     output = mod_tp._build_tokens_output()
     check("turn header is container-marked in the rendered output",
-          mod_constants.SEARCH_CURRENT_BG in output and 'unique_turn_marker' in output)
+          mod_colors.SEARCH_CURRENT_BG in output and 'unique_turn_marker' in output)
     check("no ('turn', 0) key leaked into cache_line_map (turn headers stay non-interactive)",
           ('turn', 0) not in mod_tp.cache_line_map.values())
 
@@ -381,7 +381,7 @@ def test_sentinel_resolves_to_default_bg_not_empty_string():
           "must resolve to an explicit \\033[49m on a detail line, not be deleted outright "
           "(which would flood the search highlight color to the rest of the row)")
     check("ZEBRA_BG_A is indeed the empty string (confirms the trap applies here)",
-          mod_constants.ZEBRA_BG_A == '')
+          mod_colors.ZEBRA_BG_A == '')
     _reset_state('unique_marker_z')
     mod_tp._cache_turns.append(_make_turn(0, call_marker='unique_marker_z'))
     mod_tp.cache_expand_states[(0, 0)] = True
@@ -405,7 +405,7 @@ def test_light_red_bg_still_detected_when_call_is_also_a_match():
     row = next(r for r, k in mod_tp.cache_line_map.items() if k == (0, 0))
     header_line = output.splitlines()[row - 1]
     check("row's OUTER chosen_bg is still LIGHT_RED_BG despite the search-marker wrap preceding it",
-          header_line.startswith(mod_constants.LIGHT_RED_BG))
+          header_line.startswith(mod_colors.LIGHT_RED_BG))
 
 
 def test_jump_to_match_moves_scroll_offset():
