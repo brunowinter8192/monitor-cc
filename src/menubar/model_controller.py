@@ -1,235 +1,90 @@
 # INFRASTRUCTURE
-import json
-import os
 import sys
 import threading
 
 from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
-                    NSForegroundColorAttributeName,
-                    NSLayoutAttributeLeading, NSStatusWindowLevel,
-                    NSStackView, NSView,
-                    NSUserInterfaceLayoutOrientationVertical,
-                    NSWindowCollectionBehaviorCanJoinAllSpaces,
-                    NSWindowCollectionBehaviorIgnoresCycle,
-                    NSWindowStyleMaskNonactivatingPanel, NSWindowStyleMaskResizable)
-from Foundation import NSMakeRect, NSMakeSize, NSOperationQueue
+                    NSForegroundColorAttributeName)
+from Foundation import NSMakeRect, NSOperationQueue
 
-# From panel.py: UI constants, factories, helpers shared across panels
-from .panel import (PANEL_WIDTH, PANEL_HEIGHT, PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT,
-                    PANEL_GAP, _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO,
-                    _CursorlessButton, _KeyablePanel, _make_line_separator)
-# From paths.py: on-disk locations of the model-selection + proxy-rules files
-from .paths import MODEL_SELECTION_FILE, PROXY_RULES_FILE
+# From panel.py: UI constants + helpers shared across panels
+from .panel import _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator
+# From model_selection.py: pure model-selection persistence (load/cycle/write, no AppKit) — the
+# dev/model_selector/verify_model_cycle_and_io.py contract for these names now targets that
+# module directly (re-pointed, not re-exported here — none of them are called from this module).
+from .model_selection import _PendingSelection
+# From model_panel_ui.py: NSPanel/NSButton construction factories + Apply button constants
+from .model_panel_ui import (_make_models_nspanel, _make_model_row_btn, _make_apply_btn,
+                             _APPLY_BTN_W, _APPLY_SUCCESS_TITLE, _APPLY_SUCCESS_W,
+                             _APPLY_SUCCESS_DURATION)
 
-# Fixed cycle order; clicking a row button steps forward through this tuple and wraps
-_MODEL_CHOICES = ("claude-opus-5", "claude-fable-5", "claude-fable-5-1", "claude-sonnet-5")
-_DEFAULT_MAIN   = _MODEL_CHOICES[0]
-_DEFAULT_WORKER = _MODEL_CHOICES[3]
+# ORCHESTRATOR
 
-# Fixed cycle orders for the per-model parameter rows. 'max' is deliberately excluded from
-# effort — it is valid only on specific Opus models and would hard-fail requests elsewhere.
-_EFFORT_CHOICES = ("low", "medium", "high")
-_MAXTOK_CHOICES = (32000, 64000, 128000)
-# Defaults for a model with NO model_params entry — NOT the first cycle value. A missing entry
-# means the proxy injects nothing at all, and omitting effort behaves like 'high' per the API;
-# 64000 is what every existing entry carries. Displaying the first cycle value (low/32000) would
-# misrepresent the effective on-disk state, and an accidental Apply would silently downgrade the
-# model. _next_in's unrecognized-current -> first-choice behavior is unrelated cycle mechanics
-# and stays unchanged.
-_DEFAULT_EFFORT     = "high"
-_DEFAULT_MAX_TOKENS = 64000
-_DEFAULT_THINKING   = {"type": "adaptive", "display": "summarized"}
+# Set of the 7 Models-panel row-button NSButton refs + the two AppKit operations that touch all
+# of them together: (re)build (create + wire target/action + add to stack view) and title refresh.
+class _ModelRowButtons:
+    def __init__(self):
+        self.main_cycle    = None   # NSButton; set on first build
+        self.main_effort   = None   # NSButton; set on first build
+        self.main_maxtok   = None   # NSButton; set on first build
+        self.worker_cycle  = None   # NSButton; set on first build
+        self.worker_effort = None   # NSButton; set on first build
+        self.worker_maxtok = None   # NSButton; set on first build
+        self.apply         = None   # NSButton; set on first build
 
-# Apply button dimensions + success-feedback constants. Width/title are kept as separate constants
-# (not composed inline) specifically so a future fallback — a shorter title at constant width, if
-# NSStackView's intrinsic-sizing turns out to fight the widened frame in the live app — is a 2-line
-# change: just lower _APPLY_SUCCESS_W and shorten _APPLY_SUCCESS_TITLE, nothing else moves.
-_APPLY_BTN_W          = 78    # matches _make_apply_btn's original fixed width
-_APPLY_BTN_H          = 22
-_APPLY_SUCCESS_TITLE  = 'Applied successfully'
-_APPLY_SUCCESS_W      = 160   # wide enough for _APPLY_SUCCESS_TITLE at the button's default system font
-_APPLY_SUCCESS_DURATION = 1.5   # seconds before the Apply button reverts to its normal title/width
+    # Create all 7 buttons, wire target/action (fixed ObjC selectors), add to stack view — in
+    # that exact order (create-all, wire-all, add-all), matching the pre-split rebuild() body.
+    def build(self, sv, pw: int, target) -> None:
+        self.main_cycle    = _make_model_row_btn(pw)
+        self.main_effort   = _make_model_row_btn(pw)
+        self.main_maxtok   = _make_model_row_btn(pw)
+        self.worker_cycle  = _make_model_row_btn(pw)
+        self.worker_effort = _make_model_row_btn(pw)
+        self.worker_maxtok = _make_model_row_btn(pw)
+        self.apply         = _make_apply_btn()
+        self.main_cycle.setTarget_(target)
+        self.main_cycle.setAction_(b'cycleMainModel:')
+        self.main_effort.setTarget_(target)
+        self.main_effort.setAction_(b'cycleMainEffort:')
+        self.main_maxtok.setTarget_(target)
+        self.main_maxtok.setAction_(b'cycleMainMaxTokens:')
+        self.worker_cycle.setTarget_(target)
+        self.worker_cycle.setAction_(b'cycleWorkerModel:')
+        self.worker_effort.setTarget_(target)
+        self.worker_effort.setAction_(b'cycleWorkerEffort:')
+        self.worker_maxtok.setTarget_(target)
+        self.worker_maxtok.setAction_(b'cycleWorkerMaxTokens:')
+        self.apply.setTarget_(target)
+        self.apply.setAction_(b'applyModelSelection:')
+        for btn in (self.main_cycle, self.main_effort, self.main_maxtok,
+                    self.worker_cycle, self.worker_effort, self.worker_maxtok, self.apply):
+            sv.addView_inGravity_(btn, 1)
 
-# FUNCTIONS
+    # Update all 6 cycle-button titles from pending state; no full rebuild. The two MODEL rows
+    # (Main/Worker) render in NSColor.systemOrangeColor() — same established attribute pattern
+    # panel.py:_make_grid_cell_btn's attrs-dict shape uses for session rows; the 4 parameter rows
+    # keep the plain Menlo-only look.
+    def refresh_titles(self, pending: _PendingSelection) -> None:
+        self.main_cycle.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'Main:    {pending.main}',
+                {NSFontAttributeName: _MENLO(), NSForegroundColorAttributeName: NSColor.systemOrangeColor()}))
+        self.main_effort.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'  Main effort:      {pending.main_effort}', {NSFontAttributeName: _MENLO()}))
+        self.main_maxtok.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'  Main max_tokens:  {pending.main_max_tokens}', {NSFontAttributeName: _MENLO()}))
+        self.worker_cycle.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'Worker:  {pending.worker}',
+                {NSFontAttributeName: _MENLO(), NSForegroundColorAttributeName: NSColor.systemOrangeColor()}))
+        self.worker_effort.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'  Worker effort:    {pending.worker_effort}', {NSFontAttributeName: _MENLO()}))
+        self.worker_maxtok.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'  Worker max_tokens:{pending.worker_max_tokens}', {NSFontAttributeName: _MENLO()}))
 
-# Build NSPanel for the Models panel; returns (panel, stack, toggle_btn) — mirrors _make_rag_nspanel
-def _make_models_nspanel():
-    panel = _KeyablePanel.alloc().initWithContentRect_styleMask_backing_defer_(
-        NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
-        NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskResizable, 2, True)
-    panel.setLevel_(NSStatusWindowLevel)
-    panel.setCollectionBehavior_(
-        NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorIgnoresCycle)
-    panel.setHasShadow_(True)
-    panel.setOpaque_(False)
-    panel.setAcceptsMouseMovedEvents_(True)
-    panel.setContentMinSize_(NSMakeSize(PANEL_MIN_WIDTH, PANEL_MIN_HEIGHT))
-    cv = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT))
-    panel.setContentView_(cv)
-    panel.enableCursorRects()
-    top_bar = NSView.alloc().initWithFrame_(
-        NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
-    top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable | NSViewMinYMargin — stays at top edge
-    toggle_btn = _CursorlessButton.alloc().initWithFrame_(
-        NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
-    toggle_btn.setBordered_(False)
-    toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
-    toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable
-    top_bar.addSubview_(toggle_btn)
-    cv.addSubview_(top_bar)
-    stack_h = PANEL_HEIGHT - _TOP_BAR_H
-    stack = NSStackView.alloc().initWithFrame_(NSMakeRect(0, 0, PANEL_WIDTH, stack_h))
-    stack.setAutoresizingMask_(18)   # NSViewWidthSizable | NSViewHeightSizable
-    stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
-    stack.setAlignment_(NSLayoutAttributeLeading)
-    stack.setSpacing_(1.0)
-    stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas
-    cv.addSubview_(stack)
-    return panel, stack, toggle_btn
-
-# Position Models panel flush below the NSStatusItem button (same logic as the RAG/main panel)
-def _reposition_models_panel(panel, nsstatusitem) -> None:
-    btn_win = nsstatusitem.button().window()
-    if btn_win is None:
-        return
-    w  = panel.frame().size.width
-    h  = panel.frame().size.height
-    sr = btn_win.frame()
-    px = sr.origin.x + sr.size.width / 2.0 - w / 2.0
-    py = sr.origin.y - h - PANEL_GAP
-    panel.setFrame_display_(NSMakeRect(px, py, w, h), False)
-
-# Full-width borderless Menlo-font row button (cycle rows) — mirrors panel.py's toggle_btn style
-def _make_model_row_btn(panel_width: int):
-    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, panel_width - 22, _ROW_H - 1))
-    btn.setBordered_(False)
-    btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
-    return btn
-
-# Bordered rounded push-button (Apply) — mirrors panel.py's Restart/Kill footer-button style exactly
-def _make_apply_btn():
-    btn = _CursorlessButton.alloc().initWithFrame_(NSMakeRect(0, 0, _APPLY_BTN_W, _APPLY_BTN_H))
-    btn.setTitle_('Apply')
-    btn.setBezelStyle_(1)   # NSBezelStyleRounded
-    return btn
-
-# Advance current to the next value in a fixed choice tuple, wrapping; an unrecognized current
-# value (e.g. a hand-edited file) starts the cycle at the first choice
-def _next_in(choices: tuple, current):
-    try:
-        idx = choices.index(current)
-    except ValueError:
-        idx = -1
-    return choices[(idx + 1) % len(choices)]
-
-# Advance current model to the next value in the fixed cycle order, wrapping
-def _next_model(current: str) -> str:
-    return _next_in(_MODEL_CHOICES, current)
-
-# Advance current effort to the next value in the fixed cycle order, wrapping
-def _next_effort(current: str) -> str:
-    return _next_in(_EFFORT_CHOICES, current)
-
-# Advance current max_tokens to the next value in the fixed cycle order, wrapping
-def _next_max_tokens(current: int) -> int:
-    return _next_in(_MAXTOK_CHOICES, current)
-
-# Read model_selection.json; returns (main, worker) verbatim as stored — an unrecognized model
-# ID is preserved as-is, NOT replaced (only Apply after an actual cycle click changes a value).
-# Missing/unreadable/malformed file, or an individual missing key, falls back to the default pair.
-def _load_model_selection(path=MODEL_SELECTION_FILE):
-    try:
-        d = json.loads(path.read_text(encoding="utf-8"))
-        return d.get("main", _DEFAULT_MAIN), d.get("worker", _DEFAULT_WORKER)
-    except Exception:
-        return _DEFAULT_MAIN, _DEFAULT_WORKER
-
-# Atomic write of the model-selection pair: tempfile + os.replace, mirrors app_settings.py's
-# write pattern. No try/except here — a failed Apply must not be silently swallowed; the caller
-# (ModelController.handle_apply, the AppKit-safety boundary) catches and logs explicitly.
-def _write_model_selection(main: str, worker: str, path=MODEL_SELECTION_FILE) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + '.tmp')
-    tmp.write_text(json.dumps({'main': main, 'worker': worker}), encoding='utf-8')
-    os.replace(tmp, path)
-
-# Read proxy_rules.json verbatim as a dict; missing/unreadable/malformed file falls back to {}
-# (Apply then writes a fresh minimal model_params-only file — see _write_proxy_rules_model_params).
-def _load_proxy_rules(path=PROXY_RULES_FILE) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-# Read (effort, max_tokens) for one model from proxy_rules.json's model_params table. Each key is
-# independently defaulted (mirrors inject_helpers.py's own "each key independently optional"
-# handling) — a missing file/section/entry/key all fall back the same way, to _DEFAULT_EFFORT /
-# _DEFAULT_MAX_TOKENS (NOT the first cycle value — see the module-level comment on those constants).
-def _load_model_params_for(model_id: str, path=PROXY_RULES_FILE) -> tuple:
-    config = _load_proxy_rules(path)
-    params = config.get("model_params", {}).get(model_id, {})
-    return params.get("effort", _DEFAULT_EFFORT), params.get("max_tokens", _DEFAULT_MAX_TOKENS)
-
-# Re-indent every line but the first of a json.dumps(..., indent=2) block by one extra level —
-# used to splice a value serialized on its own into a line that already carries its key.
-def _reindent_nested(text: str, prefix: str) -> str:
-    lines = text.split('\n')
-    return '\n'.join([lines[0]] + [prefix + line for line in lines[1:]])
-
-# Render the model_params section as one compact single-line JSON object per model entry, inside
-# an indent=2 object — matches the on-disk convention already established in proxy_rules.json
-# (confirmed by diff: every other section is byte-identical to plain json.dumps(indent=2); only
-# model_params uses this compact-per-entry style). Preserves model_params key order.
-def _render_model_params(model_params: dict) -> str:
-    lines = ['  "model_params": {']
-    entries = list(model_params.items())
-    for i, (model_id, params) in enumerate(entries):
-        comma = ',' if i < len(entries) - 1 else ''
-        lines.append(f'    "{model_id}": {json.dumps(params)}{comma}')
-    lines.append('  }')
-    return '\n'.join(lines)
-
-# Serialize proxy_rules.json preserving its on-disk convention: standard indent=2 for every
-# top-level section except model_params (rendered via _render_model_params). Round-tripping an
-# untouched config through this function reproduces the original bytes exactly — the mechanism
-# that keeps an Apply's diff scoped to only the two changed leaf values.
-def _dumps_proxy_rules(config: dict) -> str:
-    keys = list(config.keys())
-    lines = ['{']
-    for i, key in enumerate(keys):
-        comma = ',' if i < len(keys) - 1 else ''
-        if key == "model_params":
-            lines.append(_render_model_params(config[key]) + comma)
-        else:
-            value_text = _reindent_nested(json.dumps(config[key], indent=2), '  ')
-            lines.append(f'  "{key}": {value_text}{comma}')
-    lines.append('}')
-    return '\n'.join(lines) + '\n'
-
-# Read-modify-write proxy_rules.json's model_params table for the two selected models: updates
-# ONLY .effort/.max_tokens on each model's entry, leaving its 'thinking' block and every other
-# section/key byte-identical. A missing entry is created mirroring the established shape (a
-# 'thinking' block copied from that shape, plus the given effort/max_tokens). Atomic tempfile +
-# os.replace, no try/except — same AppKit-safety-boundary split as _write_model_selection.
-def _write_proxy_rules_model_params(main: str, main_effort: str, main_max_tokens: int,
-                                     worker: str, worker_effort: str, worker_max_tokens: int,
-                                     path=PROXY_RULES_FILE) -> None:
-    config = _load_proxy_rules(path)
-    model_params = dict(config.get("model_params", {}))
-    for model_id, effort, max_tokens in (
-        (main, main_effort, main_max_tokens),
-        (worker, worker_effort, worker_max_tokens),
-    ):
-        entry = dict(model_params.get(model_id) or {"thinking": dict(_DEFAULT_THINKING)})
-        entry["effort"] = effort
-        entry["max_tokens"] = max_tokens
-        model_params[model_id] = entry
-    config = dict(config)
-    config["model_params"] = model_params
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + '.tmp')
-    tmp.write_text(_dumps_proxy_rules(config), encoding='utf-8')
-    os.replace(tmp, path)
 
 # Per-concern controller for the Models panel: state ownership, panel render, cycle + apply actions
 class ModelController:
@@ -237,22 +92,13 @@ class ModelController:
         self.app = app
         self._models_open: bool = False
         self._models_panel, self._models_sv, self._models_toggle_btn = _make_models_nspanel()
-        self._pending_main, self._pending_worker = _load_model_selection()
-        self._pending_main_effort, self._pending_main_max_tokens = _load_model_params_for(self._pending_main)
-        self._pending_worker_effort, self._pending_worker_max_tokens = _load_model_params_for(self._pending_worker)
-        self._main_cycle_btn    = None   # NSButton; set on first rebuild
-        self._main_effort_btn   = None   # NSButton; set on first rebuild
-        self._main_maxtok_btn   = None   # NSButton; set on first rebuild
-        self._worker_cycle_btn  = None   # NSButton; set on first rebuild
-        self._worker_effort_btn = None   # NSButton; set on first rebuild
-        self._worker_maxtok_btn = None   # NSButton; set on first rebuild
-        self._apply_btn         = None   # NSButton; set on first rebuild
+        self._pending = _PendingSelection()
+        self._pending.load()
+        self._buttons = _ModelRowButtons()
 
     # Reload pending state from disk and rebuild; used by _open_models_panel
     def open(self) -> None:
-        self._pending_main, self._pending_worker = _load_model_selection()
-        self._pending_main_effort, self._pending_main_max_tokens = _load_model_params_for(self._pending_main)
-        self._pending_worker_effort, self._pending_worker_max_tokens = _load_model_params_for(self._pending_worker)
+        self._pending.load()
         self.rebuild()
 
     # Full rebuild of Models panel: clear sv, set header, add separator + 6 cycle rows + apply row
@@ -273,70 +119,16 @@ class ModelController:
         required_h = _TOP_BAR_H + _LABEL_H + 6 * _ROW_H + 22   # top-bar + separator + 6 cycle rows + apply row
         self._resize_models_panel(max(app._panel_min_height, required_h))
         self._models_sv.addView_inGravity_(_make_line_separator(pw), 1)
-        self._main_cycle_btn    = _make_model_row_btn(pw)
-        self._main_effort_btn   = _make_model_row_btn(pw)
-        self._main_maxtok_btn   = _make_model_row_btn(pw)
-        self._worker_cycle_btn  = _make_model_row_btn(pw)
-        self._worker_effort_btn = _make_model_row_btn(pw)
-        self._worker_maxtok_btn = _make_model_row_btn(pw)
-        self._apply_btn         = _make_apply_btn()
-        self._main_cycle_btn.setTarget_(app._panel_controller)
-        self._main_cycle_btn.setAction_(b'cycleMainModel:')
-        self._main_effort_btn.setTarget_(app._panel_controller)
-        self._main_effort_btn.setAction_(b'cycleMainEffort:')
-        self._main_maxtok_btn.setTarget_(app._panel_controller)
-        self._main_maxtok_btn.setAction_(b'cycleMainMaxTokens:')
-        self._worker_cycle_btn.setTarget_(app._panel_controller)
-        self._worker_cycle_btn.setAction_(b'cycleWorkerModel:')
-        self._worker_effort_btn.setTarget_(app._panel_controller)
-        self._worker_effort_btn.setAction_(b'cycleWorkerEffort:')
-        self._worker_maxtok_btn.setTarget_(app._panel_controller)
-        self._worker_maxtok_btn.setAction_(b'cycleWorkerMaxTokens:')
-        self._apply_btn.setTarget_(app._panel_controller)
-        self._apply_btn.setAction_(b'applyModelSelection:')
-        self._models_sv.addView_inGravity_(self._main_cycle_btn, 1)
-        self._models_sv.addView_inGravity_(self._main_effort_btn, 1)
-        self._models_sv.addView_inGravity_(self._main_maxtok_btn, 1)
-        self._models_sv.addView_inGravity_(self._worker_cycle_btn, 1)
-        self._models_sv.addView_inGravity_(self._worker_effort_btn, 1)
-        self._models_sv.addView_inGravity_(self._worker_maxtok_btn, 1)
-        self._models_sv.addView_inGravity_(self._apply_btn, 1)
-        self._refresh_cycle_titles()
-
-    # Update all 6 cycle-button titles from current pending state; no full rebuild. The two MODEL
-    # rows (Main/Worker) render in NSColor.systemOrangeColor() — same established attribute pattern
-    # panel_manager.py uses for session rows (panel.py:_make_grid_cell_btn's attrs-dict shape); the
-    # 4 parameter rows keep the plain Menlo-only look.
-    def _refresh_cycle_titles(self) -> None:
-        self._main_cycle_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                f'Main:    {self._pending_main}',
-                {NSFontAttributeName: _MENLO(), NSForegroundColorAttributeName: NSColor.systemOrangeColor()}))
-        self._main_effort_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                f'  Main effort:      {self._pending_main_effort}', {NSFontAttributeName: _MENLO()}))
-        self._main_maxtok_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                f'  Main max_tokens:  {self._pending_main_max_tokens}', {NSFontAttributeName: _MENLO()}))
-        self._worker_cycle_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                f'Worker:  {self._pending_worker}',
-                {NSFontAttributeName: _MENLO(), NSForegroundColorAttributeName: NSColor.systemOrangeColor()}))
-        self._worker_effort_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                f'  Worker effort:    {self._pending_worker_effort}', {NSFontAttributeName: _MENLO()}))
-        self._worker_maxtok_btn.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(
-                f'  Worker max_tokens:{self._pending_worker_max_tokens}', {NSFontAttributeName: _MENLO()}))
+        self._buttons.build(self._models_sv, pw, app._panel_controller)
+        self._buttons.refresh_titles(self._pending)
 
     # Advance pending main model to the next fixed-order value; refreshes the main effort/
     # max_tokens rows to the new model's current on-disk values (or defaults). In-place title
     # update only. AppKit-safety boundary: catches + logs, never raises — same shape as handle_apply.
     def handle_cycle_main(self) -> None:
         try:
-            self._pending_main = _next_model(self._pending_main)
-            self._pending_main_effort, self._pending_main_max_tokens = _load_model_params_for(self._pending_main)
-            self._refresh_cycle_titles()
+            self._pending.cycle_main()
+            self._buttons.refresh_titles(self._pending)
         except Exception as exc:
             print(f'[menubar] model cycle (main) failed: {exc}', file=sys.stderr)
 
@@ -345,9 +137,8 @@ class ModelController:
     # update only. AppKit-safety boundary: catches + logs, never raises — same shape as handle_apply.
     def handle_cycle_worker(self) -> None:
         try:
-            self._pending_worker = _next_model(self._pending_worker)
-            self._pending_worker_effort, self._pending_worker_max_tokens = _load_model_params_for(self._pending_worker)
-            self._refresh_cycle_titles()
+            self._pending.cycle_worker()
+            self._buttons.refresh_titles(self._pending)
         except Exception as exc:
             print(f'[menubar] model cycle (worker) failed: {exc}', file=sys.stderr)
 
@@ -355,8 +146,8 @@ class ModelController:
     # AppKit-safety boundary: catches + logs, never raises — same shape as handle_apply.
     def handle_cycle_main_effort(self) -> None:
         try:
-            self._pending_main_effort = _next_effort(self._pending_main_effort)
-            self._refresh_cycle_titles()
+            self._pending.cycle_main_effort()
+            self._buttons.refresh_titles(self._pending)
         except Exception as exc:
             print(f'[menubar] model effort cycle (main) failed: {exc}', file=sys.stderr)
 
@@ -364,8 +155,8 @@ class ModelController:
     # AppKit-safety boundary: catches + logs, never raises — same shape as handle_apply.
     def handle_cycle_main_max_tokens(self) -> None:
         try:
-            self._pending_main_max_tokens = _next_max_tokens(self._pending_main_max_tokens)
-            self._refresh_cycle_titles()
+            self._pending.cycle_main_max_tokens()
+            self._buttons.refresh_titles(self._pending)
         except Exception as exc:
             print(f'[menubar] model max_tokens cycle (main) failed: {exc}', file=sys.stderr)
 
@@ -373,8 +164,8 @@ class ModelController:
     # AppKit-safety boundary: catches + logs, never raises — same shape as handle_apply.
     def handle_cycle_worker_effort(self) -> None:
         try:
-            self._pending_worker_effort = _next_effort(self._pending_worker_effort)
-            self._refresh_cycle_titles()
+            self._pending.cycle_worker_effort()
+            self._buttons.refresh_titles(self._pending)
         except Exception as exc:
             print(f'[menubar] model effort cycle (worker) failed: {exc}', file=sys.stderr)
 
@@ -382,8 +173,8 @@ class ModelController:
     # AppKit-safety boundary: catches + logs, never raises — same shape as handle_apply.
     def handle_cycle_worker_max_tokens(self) -> None:
         try:
-            self._pending_worker_max_tokens = _next_max_tokens(self._pending_worker_max_tokens)
-            self._refresh_cycle_titles()
+            self._pending.cycle_worker_max_tokens()
+            self._buttons.refresh_titles(self._pending)
         except Exception as exc:
             print(f'[menubar] model max_tokens cycle (worker) failed: {exc}', file=sys.stderr)
 
@@ -395,22 +186,19 @@ class ModelController:
     # confirmation, with no separate success flag needed.
     def handle_apply(self) -> None:
         try:
-            _write_model_selection(self._pending_main, self._pending_worker)
-            _write_proxy_rules_model_params(
-                self._pending_main, self._pending_main_effort, self._pending_main_max_tokens,
-                self._pending_worker, self._pending_worker_effort, self._pending_worker_max_tokens)
+            self._pending.write()
             self._show_apply_success()
         except Exception as exc:
             print(f'[menubar] model selection apply failed: {exc}', file=sys.stderr)
 
     # Flash the Apply button to a success confirmation, then schedule its revert. Runs synchronously
-    # on the main thread (called from the same ObjC action dispatch as the click), so self._apply_btn
+    # on the main thread (called from the same ObjC action dispatch as the click), so self._buttons.apply
     # is guaranteed live here — the stale-ref concern only applies to the DELAYED revert below.
     # Own try/except (same shape as every other handler in this file) so a pure UI-feedback hiccup
     # here can never get mislabeled as an apply failure by the caller's try block.
     def _show_apply_success(self) -> None:
         try:
-            btn = self._apply_btn
+            btn = self._buttons.apply
             if btn is None:
                 return
             frame = btn.frame()
@@ -427,15 +215,15 @@ class ModelController:
     def _schedule_apply_revert(self) -> None:
         NSOperationQueue.mainQueue().addOperationWithBlock_(self._revert_apply_button)
 
-    # Revert the Apply button to its normal title/width. Looks up self._apply_btn DYNAMICALLY at
+    # Revert the Apply button to its normal title/width. Looks up self._buttons.apply DYNAMICALLY at
     # fire time rather than closing over the button object captured at flash time — if a rebuild()
-    # happened in between, self._apply_btn now points at a freshly-built button whose title is
+    # happened in between, self._buttons now points at a freshly-built button set whose apply title is
     # already 'Apply' (_make_apply_btn's own default), so reverting it is a harmless no-op, never a
     # crash on a detached/replaced object. Own try/except: an AppKit call failing here (or the panel
     # having been torn down some other way) must not propagate into the timer-thread callback chain.
     def _revert_apply_button(self) -> None:
         try:
-            btn = self._apply_btn
+            btn = self._buttons.apply
             if btn is None:
                 return
             frame = btn.frame()

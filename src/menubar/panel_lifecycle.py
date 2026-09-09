@@ -7,8 +7,8 @@ from Foundation import NSOperationQueue
 from .panel import _reposition_panel
 # From rag_controller.py: RAG panel repositioning
 from .rag_controller import _reposition_rag_panel
-# From model_controller.py: Models panel repositioning
-from .model_controller import _reposition_models_panel
+# From model_panel_ui.py: Models panel repositioning
+from .model_panel_ui import _reposition_models_panel
 
 # FUNCTIONS
 
