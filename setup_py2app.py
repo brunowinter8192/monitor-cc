@@ -48,14 +48,18 @@ OPTIONS = {
     # rumps: explicit inclusion guards against modulegraph missing it via transitive paths.
     'packages': ['src.menubar', 'rumps'],
 
-    # session_finder + constants + tmux_launcher + monitor_janitor are outside src.menubar
-    # (imported via ..) — 'packages': ['src.menubar'] copies that whole subpackage's source
-    # wholesale without running modulegraph's import scanner over its contents (that's WHY it
-    # needs 'packages' at all — see the comment above), so nothing imported from inside it is
+    # session_finder + colors + constants + tmux_launcher + monitor_janitor are outside
+    # src.menubar (imported via ..) — 'packages': ['src.menubar'] copies that whole subpackage's
+    # source wholesale without running modulegraph's import scanner over its contents (that's WHY
+    # it needs 'packages' at all — see the comment above), so nothing imported from inside it is
     # auto-discovered; each cross-package target needs its own explicit include.
+    # colors: session_finder.py's own colors (2026-09, constants-split milestone — session_finder
+    # moved from `from .constants import RESET, ...` to `from .colors import RESET, ...`).
+    # constants: still needed independently — tmux_launcher.py itself imports TMUX_HISTORY_LIMIT
+    # from constants.py, unaffected by the split.
     # tmux_launcher: system.py's per-project monitor button (generate_session_name,
     # check_session_exists). monitor_janitor: monitor_sweep_scheduler.py's daily tmux sweep.
-    'includes': ['src.session_finder', 'src.constants', 'src.tmux_launcher', 'src.monitor_janitor'],
+    'includes': ['src.session_finder', 'src.colors', 'src.constants', 'src.tmux_launcher', 'src.monitor_janitor'],
 
     # Exclude heavy non-menubar packages present in the venv.
     # modulegraph won't trace them from our entry chain, but belt-and-suspenders.
@@ -91,14 +95,21 @@ OPTIONS = {
 
 # Whitelist: every src.X the menubar imports directly or transitively outside src.menubar.
 # discover.py: from ..session_finder → session_finder.py
-# session_finder.py: from .constants → constants.py
+# session_finder.py: from .colors → colors.py (2026-09, constants-split milestone — was
+#   `from .constants import RESET, ...`; constants.py itself is STILL needed below, independently,
+#   because tmux_launcher.py imports TMUX_HISTORY_LIMIT from it, unaffected by the split)
 # system.py: from ..tmux_launcher → tmux_launcher.py
+# tmux_launcher.py: from .constants → constants.py
 # monitor_sweep_scheduler.py: from ..monitor_janitor → monitor_janitor.py
 # monitor_janitor.py: from .tmux_launcher → tmux_launcher.py (already kept above)
+# Checked whether any other menubar-transitive import now touches a constants-split destination
+# module (pane_error_log.py, core/modes.py): NO — menubar's only cross-package import outside
+# this chain is discover.py's session_finder.py; pane_error_log.py and core/ are never imported
+# by anything menubar reaches, transitively or otherwise (grep-confirmed).
 # Independent of OPTIONS['includes'] above — this prunes by name regardless of how a file
 # landed under the bundle's src/, so a module missing here gets deleted post-build even if
 # modulegraph did trace it.
-_BUNDLE_SRC_KEEP = {'menubar', 'session_finder.py', 'constants.py', 'tmux_launcher.py',
+_BUNDLE_SRC_KEEP = {'menubar', 'session_finder.py', 'colors.py', 'constants.py', 'tmux_launcher.py',
                     'monitor_janitor.py', '__init__.py', '__pycache__'}
 
 

@@ -4,7 +4,7 @@ import signal
 import sys
 from typing import Optional
 
-# From constants.py: Colors
+# From colors.py: Colors
 from .colors import RESET, GREEN
 
 # ORCHESTRATOR
