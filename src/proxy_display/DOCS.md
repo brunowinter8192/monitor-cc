@@ -223,7 +223,7 @@ Plus five NEW shared functions (2026-09), each replacing a block that was duplic
 
 ---
 
-### format.py (197 LOC)
+### format.py (224 LOC)
 
 **Purpose:** `format_proxy_block` — groups proxy entries by turn (turns always expanded, no turn-level header row emitted), applies scroll/viewport windowing, delegates rendering to `render_turn`, returns `(ansi_string, total_lines)` for scroll math. Accepts optional `copy_feedback: dict` (entry_idx→expiry) and `copy_rows_out: set` — both forwarded to `render_turn_expanded`; in the visible-slice loop, `copy_rows_out` is populated with phys_rows of REQ header lines that contain ⎘ or ✓ (detected via substring check on the raw line before background processing). Turn-groups are separated by a single empty line; all visible rows are REQ-level or deeper. Helpers: `_fmt_effort(s) → 'hig'/'med'/'lo'/'-'`; `_fmt_thinking_budget(n) → 'Nk'/'N'/'-'` — both used by `render_turn.py` for per-REQ header fields. Also exports `_is_standalone_entry(entry) -> bool` — shared predicate used by `render_turn` backward walks to skip structurally-separate entries (haiku or zero-context). Content discriminator: `haiku OR (sys_chars==0 AND tools_chars==0)`. Real main-session requests always carry the full CC system prompt and tool list (`sys_chars>0`, `tools_chars>0`); CC title/summary and haiku sidecars have neither. Sidecar detection is intentional: walking past them gives the right prev_same for ⚠T and for the expand-block unchanged comparison. **Request numbering:** `#N` (fresh) when `(entry.get('diff_from_prev') or {}).get('messages_added', 1) > 0`; retry/abort re-send (`messages_added==0`) → `#N.M`. Sidecars excluded via `_is_standalone_entry`: haiku → `'H'`, non-haiku sidecar (sys=0, tools=0) → `'S'`; neither increments the counter. `opus_req_num` threads continuously via `render_turn_expanded`'s return value — NOT reseeded from `api_calls` per turn-group. `format_proxy_block` accepts optional `search_match_set`/`search_current_entry_idx`/`search_query` kwargs, forwarded to `render_turn_expanded` — all default `None`/`''`, so every caller that doesn't pass them (`worker_proxy_pane.py`) sees zero behavior change. Owns the row-background priority chain applied in the final render loop: **hover > `DIM_YELLOW_BG` > `DIM_GREEN_BG` > collision > zebra** — back to the pre-2026-08 order. Collision detection is a Record-during-Render pass: `rendered_opus_labels: list[(entry_idx, num_label)]` is passed into `render_turn_expanded`, which appends each non-standalone REQ's generated label; after all rows are rendered, a `Counter` over the labels identifies duplicates and produces `collision_entry_idxs: set[int]`. Any REQ-header row whose `entry_idx` is in that set gets `COLLISION_BG` — the same-#N abort-cascade marker (see `process-docs/abort_cascade/background_task_abort_cascade.md`). Helper `_fmt_thinking_budget(n: Optional[int]) -> str` — None→`'-'`, n<1000→`str(n)`, n≥1000→`'Nk'`; used by REQ-header only (via `render_turn.py`). Milestone 3 briefly added `_format_proxy_header` here to build the proxy pane's `[undo]` header button; reverted 2026-07-30 (see `pane.py` above) — that specific function stays gone; the search-bar header is rendered entirely in `pane.py` (`_render_proxy_search_bar`), not here.
 
@@ -238,13 +238,39 @@ Plus five NEW shared functions (2026-09), each replacing a block that was duplic
 **Calls out:** `format` (token_format), `search_bar` (`_BG_RESTORE_SENTINEL`, `resolve_bg_restore`)
 New private helpers (same module): `_assign_turns_to_entries`, `_apply_row_backgrounds`.
 
+**(2026-09, helper-extraction milestone) `format_proxy_block` split into four helpers to stay
+under the 50-LOC function threshold** — `_render_all_groups` (the per-turn-group render loop,
+threads `opus_req_num`/`sub_req_num`, fills `item_positions_out`, appends the blank-line
+separator), `_compute_collision_idxs` (the `Counter`-over-`rendered_opus_labels` step),
+`_trim_trailing_blank` (drops trailing empty turn-separator lines, mutates in place),
+`_slice_viewport` (scroll-clamp + viewport slice + `line_map` fill + `initial_parent_count`
+carry-in for zebra parity). `format_proxy_block` itself is now a thin sequence of these four
+calls plus `_apply_row_backgrounds`. Byte-identical — verified via
+`dev/proxy_display/render_byte_identity.py` and `dev/proxy_dual_log/A_render_refactor_proof.py`.
+
 ---
 
-### forwarded_parser.py (314 LOC)
+### forwarded_parser.py (334 LOC)
 
 **Purpose:** Forwarded-log delta reconstruction — the functions that parse `_forwarded` dual-log JSONL and rebuild per-request entries. `_infer_model_family(model)` maps model name to haiku/sonnet/opus. `_summarize_fwd_message(msg)` builds a summary dict with `content_tail`. `_dict_to_list_fwd` / `_apply_delta_to_list` convert index-keyed delta dicts into lists. `_extract_forwarded_fields(fwd_entry, system, tools, summaries, delta_messages)` builds the full entry dict (stamps `_fwd_req_idx`, `flow_id`, `anthropic_beta`, `context_management`, `diagnostics`, `cache_breakpoints=[]`, `has_thinking_delta`). **`has_thinking_delta` (2026-08-28, brain-marker milestone):** bool, `any(block.type == 'thinking' for msg in delta_messages for block in msg.blocks)` — driven by `delta_messages` (the summaries for ONLY the messages THIS request's `messages_delta` newly added/changed), NOT the full accumulated `message_summaries` list; computed once in `_extract_forwarded_fields` and baked into the entry, so it survives later `messages=None` truncation the same way `messages_total_chars` does. `is_first` requests have no narrower "newly added" slice (a proxy-session restart re-sends the whole history in one shot) so the entire message list stands in as the delta for that one request — a deliberate, documented edge case, not a bug: it can make the badge light up once on such a restart even though no assistant turn just happened. `_parse_forwarded_log(fwd_path, last_pos, acc_by_family, keep_last=PROXY_MESSAGES_KEEP_LAST)` reads `forwarded_delta` JSONL incrementally, accumulates system/tools/message deltas per model family (deque-bounded: last `keep_last` entries get `messages`, rest carry `messages=None`; `keep_last=None` retains ALL entries — added 2026-08-18 for the search feature's one-sweep reconstruction, default preserves every pre-existing call site byte-for-byte), stamps `diff_from_prev` via `_compute_diff`, builds `delta_summaries` (the per-request `has_thinking_delta` input) alongside the accumulated `new_summaries` in the same loop. `reconstruct_all_messages(fwd_path)` (new 2026-08-18) — thin wrapper: one `_parse_forwarded_log(fwd_path, 0, {}, keep_last=None)` call, returns `{flow_id: messages}` for a caller to merge by `flow_id`. `parse_proxy_log_forwarded(project_filter, last_pos, acc_by_family)` resolves the `_forwarded` log path via marker file and delegates to `_parse_forwarded_log`. Leaf module — does NOT import from `parser.py`; contains a local `_proxy_session_id_for_project` copy (same 1-line md5 logic) to avoid circular import.
 
 **`_lazy_load_messages_forwarded(entry, fwd_path)` — matches by `flow_id`, not `_fwd_req_idx` (fixed 2026-08-18).** Replays the forwarded stream from byte 0, stopping when `fwd_e.get('flow_id') == entry['flow_id']`. Was previously `req_idx == entry['_fwd_req_idx']` — see Gotcha below for why that was wrong; the fix is a same-signature internal change, zero caller-side updates needed.
+
+**(2026-09, helper-extraction milestone) Duplicated reconstruction logic factored into shared
+helpers, all four over-50-LOC functions in this file dropped under the threshold:**
+`_build_system_blocks(system)` / `_build_tools_fields(tools)` — the two list/dict-comprehension
+blocks `_extract_forwarded_fields` used to build inline, now called and `dict.update`-merged in.
+`_build_first_summaries(messages_delta, msg_cnt)` (the is_first branch: `_dict_to_list_fwd` then
+summarize each) and `_apply_messages_delta(prev_summaries, messages_delta, msg_cnt)` (the
+non-first branch: overwrite at delta indices, pad/trim to `msg_cnt`, returns
+`(new_summaries, delta_summaries)`) are each called from BOTH `_parse_forwarded_log` (via
+`_reconstruct_first_request`/`_reconstruct_delta_request`, which additionally handle
+system/tools) and `_lazy_load_messages_forwarded` (messages only — that function never touches
+system/tools) — previously two independent, drifting copies of each branch. `_process_forwarded_entry(fwd_e, req_idx, acc_by_family)` is `_parse_forwarded_log`'s own per-line
+body (family inference through `diff_from_prev` stamping), extracted so the function itself is
+just the `while True:` read loop plus deque bookkeeping. All four extractions verified
+byte-identical via `dev/proxy_display/render_byte_identity.py` and
+`dev/proxy_dual_log/A_render_refactor_proof.py`.
 **Reads:** `_forwarded` dual-log JSONL files (incremental by byte position).
 **Writes:** Nothing — returns `(entry_list, new_position)`, `True`/`False`, or `{flow_id: messages}` dict.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py` (direct imports, 2026-09 — the `parser.py` re-export shim that used to sit between them was removed, see `process-docs/proxy_display/`), `src/proxy_display/parser.py` (`_proxy_session_id_for_project`, genuinely used there), `src/proxy_display/proxy_pane_shared.py` (`_lazy_load_messages_forwarded`, `reconstruct_all_messages`), `src/dual_log_cli/project_map.py` (`_proxy_session_id_for_project` — unaffected by this split)
@@ -307,7 +333,7 @@ unchanged (same fail-safe fallthrough either way).
 
 ---
 
-### render_turn.py (177 LOC)
+### render_turn.py (178 LOC)
 
 **Purpose:** Render all per-request rows for an expanded turn group, numbering requests and delegating system/tools/messages rendering to section modules. REQ-header format: `▶/▼ #N model Nmsg [eff:X] [think:Nk] [mods] [warns] [tag badge]`. **Brain badge (2026-08-28):** `tag_badge` gains a third slot, green `🧠`, shown when `entry['has_thinking_delta']` is True (flat field from `forwarded_parser._extract_forwarded_fields` — see that module's entry). Boolean only, no count, no color threshold (unlike the token pane's `🧠Nk` — see `format/token_format.py::_format_cache_call`, which this milestone deliberately does not touch). Order in `tag_badge`: `strip inject 🧠`. Never true for haiku (no haiku response ever carries a `thinking` block in this codebase's data). No padding-math change needed — the existing `sum(_cell_width(ch) for ch in stripped)` pad computation in `_build_req_header_line` already treats 🧠 (U+1F9E0) as 2 cells generically via `utils._cell_width`'s `0x1F000–0x1FAFF` range check. **Numbering:** `_is_standalone_entry` gate: haiku → `'H'`, non-haiku sidecar (sys=0, tools=0) → `'S'`; for real requests: `#N` when `(entry.get('diff_from_prev') or {}).get('messages_added', 1) > 0` (fresh message list added), `#N.M` when `messages_added==0` (retry/abort re-send of same list). Copy ⎘-symbol right-aligned at `pane_width-1` in each REQ header when `copy_feedback` is not None and there is room (visible_len ≤ pane_width-1-sym_cells); flashes ✓ for 1.5s after click using `copy_feedback.get(entry_idx)` expiry. Visible width computed via `sum(_cell_width(ch))` to handle wide chars (⚠ = 2 cells, ✓ = 2 cells, ⎘ = 1 cell) consistently with `truncate_visible`. `eff:X` shown when entry has a non-None `effort_value` (uses flat field via `_fmt_effort`; 'high'→'hig', 'low'→'lo', 'medium'→'med'). `think:Nk` shown for non-haiku entries when `max_tokens > 0` (sources from the request output cap, formatted via `_fmt_thinking_budget`; never shown for haiku). Emits word badge on REQ-header: `strip` (YELLOW) and/or `inject` (GREEN), shown when this request's stripped/injected delta carried ANY content — resolved via `proxy_badge.badge_flags(entry)`, which reads the per-flow `_strip_fns_lookup` / `_inject_fns_lookup` / `_inject_msgs_lookup` dicts attached by `pane.py` / `worker_proxy_pane.py` (booleans derived from `_has_content_by_flow_id`, NOT `fn_map`); no numeric count, no badge when both False. **As of 2026-08-29 the header and the expanded view are one-to-one for every class EXCEPT the per-request total_tokens nuke**, which shows neither badge word — the one deliberate divergence, because that class occurs on nearly every request and would otherwise make the badge meaningless. Since 2026-08-30 that divergence is WIDER, in the other direction: the expanded body is the request's payload delta only, so a strip landing outside that delta — nag, deferred-tools, date-changed, mid-conversation — renders nothing at all while the header still badges it. In-window strips DO show their olive/green spans, which for the per-request total_tokens nuke means the request's own trailing msg: characteristically in-window, and rendering correctly only since the write-side attribution lag was corrected on 2026-08-30 (until then it drew a bare `.`, contradicting this very sentence). See `render_messages.py`'s entry and the invisible-strip Gotcha for what that means for a reader chasing a badge. Every other `"."`-nuke (task-tools nag, deferred-tools, date-changed, mid-conversation) still renders `strip inject`. The coordination that separates the two lives in `proxy_badge.badge_flags` — see that module's entry and `process-docs/proxy_tool_stripping/`. When a REQ is expanded, emits a second line with aggregated bucket signals (`INERT:X  IDX:N  LEAK:<TN>  SUS:<PO>`) computed via `_aggregate_req_buckets` (counter-delta semantics for INERT, mirrors strip_audit._classify_req); collapsed header unchanged. `prev_same` (reference for ⚠T and expanded-section comparisons) is computed via `_resolve_prev_same_family(entries, entry_idx)` (module-level function, extracted 2026-08-18 from what was previously inlined in `render_turn_expanded`'s loop — same family-matched (haiku vs non-haiku) backward walk skipping `format._is_standalone_entry` candidates, now also reused by `search.py`'s match-index build so search matching can never diverge from what the real render computes). **Warn badges:** only `⚠T` (`tools_hash` differs from `prev_same`) — the `⚠S` (`system_total_chars` differs) badge was removed 2026-08 (system_total_chars drift alone was noise; `strip`/`inject` word badge + expanded diff already surface real content changes). Expanded-REQ downstream calls — `_aggregate_req_buckets`, `render_fields_delta`, `render_system_blocks`, `render_tools`, `render_messages` — all use `_section_ref = None if is_standalone else prev_same`. Order: `render_fields_delta` (payload-level field changes) is called FIRST, above `render_system_blocks` — no-ops when `_stripped_spans` absent or fields dicts empty. Accepts optional `rendered_opus_labels: list` param; when non-None, appends `(entry_idx, num_label)` per non-haiku non-standalone opus REQ so `format.py` can post-process the list into `collision_entry_idxs` for the COLLISION_BG marker.
 
@@ -317,16 +343,14 @@ unchanged (same fail-safe fallthrough either way).
 **Reads:** Group dict, all entries, expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys, opus_req_num, sub_req_num)` tuple.
 **Called by:** `src/proxy_display/format.py`; `src/proxy_display/search.py` (imports `_render_req_expanded`, `_resolve_prev_same_family`)
-**Calls out:** `render_messages` (`_aggregate_req_buckets`), `render_sections` (`render_fields_delta`, `render_beta`, `render_directives`, `render_system_blocks`, `render_tools`), `format` (`_BG_RESTORE_SENTINEL`), `utils` (`highlight_query_in_line`)
+**Calls out:** `render_messages` (`_aggregate_req_buckets`), `render_sections` (`render_fields_delta`, `render_beta`, `render_directives`, `render_tools`), `render_sections_system` (`render_system_blocks` — moved here 2026-09, see that module's own entry), `format` (`_BG_RESTORE_SENTINEL`), `utils` (`highlight_query_in_line`)
 New private helpers (same module): `_resolve_prev_same_family`, `_compute_req_mods_str`, `_build_req_header_line`, `_mark_search_lines`, `_render_req_expanded`.
 
 ---
 
-### render_sections.py (397 LOC)
+### render_sections.py (340 LOC, `render_system_blocks` split out to `render_sections_system.py` 2026-09 — see that module's entry and `process-docs/proxy_display/`)
 
-**Purpose:** Render system blocks, tools, fields-delta, and beta-flags sections for an expanded request entry. All three span-based functions share the same dual-color sentinel: `use_dual = '_stripped_spans' in entry` / `if '_stripped_spans' in entry:`. New path uses `entry['_stripped_spans']` / `entry['_injected_spans']` span data from the dual-log accumulator; `else:` path keeps the old side-channel unchanged (worker pane has no `_stripped_spans`).
-
-`render_system_blocks`: per-block delta visibility — unchanged detection is content-based (`sb.get('preview','') == prev.get('preview','')`) per block; first request shows all blocks; subsequent requests skip unchanged blocks entirely (no `(unchanged)` placeholder). Block header coloring: DIM_YELLOW_BG when `s_spans` present, DIM_GREEN_BG when `i_spans` present, gray otherwise. No text labels. On expand (use_dual path): if `i_spans` is new-format (`isinstance(i_spans[0], (list, tuple))`), renders inline — equal=DIM gray, injected=DIM_GREEN_BG green; then `s_spans` (flat strings) DIM_YELLOW_BG stacked below. Old-format or no i_spans: gray preview + stacked yellow/green (legacy path, backward-compat). Old path (no dual): hardcoded sys[2]/sys[3] detection via `mods`, yellow `original_text`.
+**Purpose:** Render tools, fields-delta, beta-flags, and directives sections for an expanded request entry. The tools functions share the same dual-color sentinel as `render_sections_system.py`: `use_dual = '_stripped_spans' in entry`. New path uses `entry['_stripped_spans']` / `entry['_injected_spans']` span data from the dual-log accumulator; legacy path keeps the old side-channel unchanged (worker pane has no `_stripped_spans`).
 
 `render_tools`: tool NAME line is gray for all forwarded and desc-only-changed tools; DIM_GREEN_BG only for whole-injected tools (`i_tool.get('whole')`). No text labels on name lines. Unchanged tools section: when tools hash unchanged (non-first request), the entire section is omitted — `render_tools` returns `([], [])` immediately before the header append; header, whole-stripped rows, and deferred rows are all absent. Desc-changes path: if `i_desc` is new-format, inline render (equal=DIM, injected=DIM_GREEN_BG); `s_desc` stacked yellow below. Old-format i_desc: forwarded description + stacked yellow/green (legacy path). **Whole-stripped extra rows (2026-09, Milestone 2 — expandable, was name-only until this milestone):** delegates to `_render_whole_stripped_tool(entry_idx, name, tool_def, expand_states)` with `tool_def = entry.get('_original_tools_by_name', {}).get(name)`. Collapsed row is byte-identical to the pre-milestone static row (`DIM_YELLOW_BG ▶ {name}`) — only the `keys` entry changed from `None` to `('stripped_tool', entry_idx, name)`, so it is now a real click target. Expanded: same shape as `_render_tool_legacy`'s expanded body (description, then per-param `name[*]: type — desc`), entirely `DIM_YELLOW_BG` since this content never reached the wire at all. `tool_def=None` (worker proxy pane, which never gets `_original_tools_by_name` attached — see `pane.py`; or the `_original` accumulator hasn't caught up yet) renders a single `(original definition unavailable)` fallback line instead — row stays expandable either way, never crashes. The original def is sourced from the SAME session's `_original` dual-log (the last request's own `tools` list, not the stripped stream, which only ever records `{"whole": true}` — no text) — measured 2026-09-04 (`process-docs/dual_log_cli/2026-09-04_sys_tool_original_chars_and_whole_strip_lines.md`): 336/336 whole-stripped tool name-instances found there across 42 sessions, 0 hash mismatches comparing any earlier request's tool-by-name content against the last request's across 45 sessions — tool defs never change mid-session, so serving the latest snapshot is always correct. Byte-identical regression confirmed via `dev/proxy_dual_log/A_render_refactor_proof.py` (13/14 fixture cases unchanged; the 14th, `expand_fixpoint`, legitimately gains the new expanded content once its whole-stripped `read_file` row's new key gets iterated to True — inspected manually, diff is exactly the new line and nothing else). Deferred rows (`deferred_tools_names`) are untouched — CC's own SR-based deferral notice, not a `TOOL_BLOCKLIST` strip, out of this milestone's scope. Old (non-dual) path: `stripped_original`, `stripped_unused_tools_names` — untouched.
 
@@ -335,15 +359,72 @@ New private helpers (same module): `_resolve_prev_same_family`, `_compute_req_mo
 `render_beta`: collapsible `('beta', entry_idx)` header showing `beta: N flags`; when expanded, one line per flag from `entry['anthropic_beta']`. No-ops when list is empty/absent. Wired in `render_turn_expanded` after `render_fields_delta`, before `render_system_blocks`.
 
 `render_directives`: renders `context_management` + `diagnostics` fields extracted from `_forwarded`. Two sub-sections, both no-op when absent: (a) `ctx:` collapsible `('ctx', entry_idx)` drill-down — only when `context_management.edits` is non-empty; collapsed shows `▶ ctx: N edits`, expanded shows one line per edit `type` (e.g. `clear_thinking_20251015`); (b) `diag:` non-collapsible single line — only when `diagnostics.previous_message_id` is truthy; shows `diag: <pmid[:14]>`. Wired in `render_turn_expanded` immediately after `render_beta`, before `render_system_blocks`. Parser sets `entry['context_management'] = fwd_entry.get('context_management')` and `entry['diagnostics'] = fwd_entry.get('diagnostics')` in `_extract_forwarded_fields` (after `anthropic_beta` line).
+
+**(2026-09, helper-extraction milestone) `render_system_blocks` (85 LOC) moved to a new sibling
+module `render_sections_system.py`** — the ONLY function whose module changed; `render_tools` and
+`_render_whole_stripped_tool` stay HERE under their existing names (dev-script importers keep
+their `from src.proxy_display.render_sections import ...` line unchanged; `render_turn.py`'s
+import line was the only internal caller that needed re-pointing). The 3x-repeated "split text on
+`\n`, `expandtabs(8)`, emit `{indent}{bg}{DIM}{line}{SOFT_RESET}` per line" block (the
+bare-`{bg}{DIM}{SOFT_RESET}`-for-empty-line spelling and the `raw_line or ''` spelling verified to
+produce identical strings) now goes through the shared `render_line_helpers._emit_text_lines` /
+`_emit_span_lines` / `_emit_inline_spans` — the same three helpers `render_sections_system.py`
+uses, which is why they live in their own module rather than either render-section module.
+`render_tools` itself was split into `_compute_tools_delta` (added/removed name sets +
+first-request/changed flags), `_render_tool_defs_list` (per-tool-def dispatch loop),
+`_render_whole_stripped_extras` (the whole-stripped-tool extra rows), `_render_tools_body` (wires
+the three together plus the removed/deferred one-liners). `_render_tool_dual` gained
+`_render_tool_desc` (its own inline-vs-legacy description dispatch); `_render_tool_dual`,
+`_render_tool_legacy`, and `_render_whole_stripped_tool` all now share `_extract_schema_props`
+(the `input_schema.get('properties'/'required')` pull, repeated 3x verbatim) and
+`_render_tool_params` (the param-listing loop, shared by the dual and whole-stripped paths;
+`_render_tool_legacy` keeps its own `_render_legacy_tool_params` since it alone has the
+`orig_param_desc` fallback branch). All extractions verified byte-identical via
+`dev/proxy_display/render_byte_identity.py` and `dev/proxy_dual_log/A_render_refactor_proof.py`.
 **Reads:** Entry dict, previous entry, expand states, pane width, modifications list.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
-**Called by:** `src/proxy_display/render_turn.py`
-**Calls out:** —
-New private helpers (same module): `_render_tool_dual`, `_render_tool_legacy`, `_render_whole_stripped_tool` (2026-09, Milestone 2).
+**Called by:** `src/proxy_display/render_turn.py`; `dev/proxy_tool_stripping/tests/test_whole_stripped_tool_expand.py` (`_render_whole_stripped_tool`, `render_tools` — both stayed in this module specifically so this import line didn't need to change)
+**Calls out:** `render_line_helpers` (`_emit_text_lines`, `_emit_span_lines`, `_emit_inline_spans`)
+New private helpers (same module): `_extract_schema_props`, `_render_tool_params`,
+`_render_tool_desc`, `_render_legacy_tool_params`, `_compute_tools_delta`,
+`_render_tool_defs_list`, `_render_whole_stripped_extras`, `_render_tools_body`, plus the
+pre-existing `_render_tool_dual`, `_render_tool_legacy`, `_render_whole_stripped_tool` (2026-09,
+Milestone 2).
 
 ---
 
-### render_messages.py (332 LOC)
+### render_sections_system.py (109 LOC, new 2026-09, split out of `render_sections.py` — see `process-docs/proxy_display/`)
+
+**Purpose:** `render_system_blocks(entry_idx, entry, prev_entry_for_delta, expand_states, pane_width, mods)` — the system-blocks section of an expanded request entry. Per-block delta visibility — unchanged detection is content-based (`sb.get('preview','') == prev.get('preview','')`) per block; first request shows all blocks; subsequent requests skip unchanged blocks entirely (no `(unchanged)` placeholder). Block header coloring: DIM_YELLOW_BG when `s_spans` present, DIM_GREEN_BG when `i_spans` present, gray otherwise. No text labels. On expand (use_dual path): if `i_spans` is new-format (`isinstance(i_spans[0], (list, tuple))`), renders inline — equal=DIM gray, injected=DIM_GREEN_BG green; then `s_spans` (flat strings) DIM_YELLOW_BG stacked below. Old-format or no i_spans: gray preview + stacked yellow/green (legacy path, backward-compat). Old path (no dual): hardcoded sys[2]/sys[3] detection via `mods`, yellow `original_text`. Split into `_render_sys_blocks_body` (per-block loop, skip-unchanged), `_sys_block_spans` (dual vs legacy span lookup for one block coordinate), `_render_one_sys_block` (header + expand dispatch for one block), `_render_sys_block_content` (the expanded body itself — inline vs gray-preview-plus-stacked). Moved here verbatim from `render_sections.py` (2026-09, helper-extraction milestone) purely to keep that file under the 400-LOC limit once its own tool-section helpers were added — `render_turn.py` is the only caller and re-points its import here; no dev-script or other module referenced `render_system_blocks` by name before the move.
+**Reads:** Entry dict, previous entry, expand states, modifications list.
+**Writes:** Nothing — returns `(lines, keys)` tuple.
+**Called by:** `src/proxy_display/render_turn.py`
+**Calls out:** `format` (`_format_k`), `render_line_helpers` (`_emit_text_lines`, `_emit_span_lines`, `_emit_inline_spans`)
+
+---
+
+### render_line_helpers.py (42 LOC, new 2026-09, shared by `render_sections.py` and `render_sections_system.py` — see `process-docs/proxy_display/`)
+
+**Purpose:** The one repeated line-emission primitive both render-section modules used to spell
+out inline many times over: split text on `\n`, `expandtabs(8)`, emit one
+`f"{indent}{bg}{DIM}{line}{SOFT_RESET}"` per line with a `None` key. `_emit_text_lines(text,
+indent, bg='', transform=None)` is the base case (`transform`, when given, is applied to every
+raw line — safe unconditionally since a regex `.sub` on `''` is a no-op — used nowhere in THIS
+milestone's callers, kept generic for a future caller that needs suspect-tag-style highlighting
+without re-deriving the empty-line handling). `_emit_span_lines(span_texts, indent, bg)` — same bg
+for every chunk in a flat stripped/injected span list (the "for span_text in (s_desc or
+[]): ..." shape). `_emit_inline_spans(pairs, indent, injected_bg, transform=None)` — the
+new-format `(tag, text)` inline-render shape, `tag=="injected"` gets `injected_bg`, everything
+else renders with no bg. Utility module — no ORCHESTRATOR/FUNCTIONS split (all three are equally
+primitive, none calls another).
+**Reads:** Parameters only.
+**Writes:** Nothing — returns `(lines, keys)` tuples.
+**Called by:** `src/proxy_display/render_sections.py`, `src/proxy_display/render_sections_system.py`
+**Calls out:** `constants` (`SOFT_RESET`, `DIM`)
+
+---
+
+### render_messages.py (349 LOC)
 
 **Purpose:** Render new/modified/removed messages for an expanded request entry — handles added messages (full block content) and diffs (content_tail). Dual-color sentinel: `use_dual = '_stripped_spans' in entry`. Span content rendering (inline new-format vs legacy stacked) lives in the shared `_render_span_content(full_text, i_blk, s_blk, indent, highlight_suspect=True)` — used by BOTH the per-block path (`_render_block_spans`, indent 8 spaces, `highlight_suspect=True`, preserves prior byte-identical block output) and the two block-less paths (content-less messages whose forwarded content collapsed from a block-list to a plain string — e.g. a strip+inject replacement — look up spans at block index `"0"` via `_lookup_spans`, indent 6 spaces, `highlight_suspect=False` to avoid retroactively suspect-tag-highlighting plain content that never had it before). If `i_blk` is new-format (`isinstance(i_blk[0], (list, tuple))`): inline render — iterates `[(tag, text), ...]`, equal=DIM gray (with suspect-tag highlight, always on for this branch), injected=DIM_GREEN_BG green; `s_blk` (flat strings) stacked DIM_YELLOW_BG below; gray `full_text` block suppressed. Old-format or no i_blk: gray `full_text` (highlighted only when `highlight_suspect`), then stacked s_blk yellow + i_blk green (legacy path, backward-compat). Both branches of the outer msg-count conditional (`prev_msg_count < len(messages)` vs `else`) carry identical inline-vs-legacy dispatch for both the block and block-less cases. `_render_stripped_block` calls (old side-channel) guarded with `and not use_dual`. EFF:RULE attribution kept in old path only. Also exports `_aggregate_req_buckets(entry, prev_entry)` (5-bucket classify_req delegate). `_SUSPECT_TAG_RE` highlights 4 suspect tags with `LIGHT_RED_BG`.
 
@@ -352,11 +433,20 @@ New private helpers (same module): `_render_tool_dual`, `_render_tool_legacy`, `
 **The body is the request's payload delta, and nothing else (2026-08-30).** `render_messages()` returns one of the two window renderers directly: `_render_new_messages` for `prev_msg_count < len(messages)`, else `_render_modified_messages`. There is no third source of lines. Between 2026-08-07 and 2026-08-30 there was one — `_render_flow_extra_messages` PREPENDED the message indices this entry's own flow had touched below the rendered window, so a strip that landed outside the delta (CC's mid-conversation system-message overwrites: task-tools nag, deferred-tools notice, date-changed) still showed its olive/green spans somewhere. That mechanism, its `_own_msgs` helper, the parser's `_msg_idx_sub_by_flow_id` subset and the `_strip_msgs_sub_lookup`/`_inject_msgs_sub_lookup` pane attachments are all gone; `_render_modified_messages` went back to returning `(lines, keys)` since `diff_start` existed only to feed it. See the Gotcha below for what that costs — it is real and was accepted deliberately.
 
 **Thinking-block drill-down + wrapping (2026-08-28, thinking-expander milestone):** `_render_block_spans` gained `entry_idx: int, expand_states: dict, pane_width: int` — consulted ONLY for `btype == 'thinking'`; every other block type ignores all three and renders byte-identical to before (verified against the pre-change code, see `dev/thinking/render_thinking_expander.py`). A thinking block builds `think_key = ('think', entry_idx, msg_idx, bidx)`, defaults COLLAPSED (`expand_states.get(think_key, False)`), header line gets a `▶`/`▼` prefix; collapsed emits ONLY the header line (no content, no key besides `think_key` itself — matches every other drill-down's collapsed shape). Expanded: `_wrap_thinking_text(full_text, _BLOCK_CONTENT_INDENT, pane_width)` word-wraps to `pane_width - len(indent)` cells via the new `utils.wrap_visible` (the repo's first wrap helper, cell-aware like `_cell_width`/`truncate_visible`, NOT character-count-based) — existing `\n` breaks kept as paragraph boundaries, each paragraph wrapped independently, rejoined with `\n`, then fed into the UNCHANGED `_render_span_content` as its `full_text` arg. **KNOWN LIMITATION (unmeasured, do not treat as ruled out):** `_render_span_content` ignores its `full_text` argument entirely whenever `i_blk` is new-format span data — it renders `i_blk`'s own `span_text` chunks instead. A thinking block that carries strip/inject spans at its own `(msg_idx, bidx)` coordinate would therefore render those spans UNWRAPPED, silently bypassing the wrap above. A probe against the real dual-log used for this milestone found zero such coordinates, but the probe's own correctness was never independently verified — recorded as a known, unmeasured gap, not as evidence the case cannot occur. See `process-docs/thinking/` for the full note. Plumbing: `entry_idx`/`expand_states`/`pane_width` now thread through `_render_new_messages`, `_render_modified_messages`, `_render_flow_extra_messages`, and `render_messages` (which gained a leading `entry_idx: int` param — caller is `render_turn._render_req_expanded`, which already had it in scope). `pane.py`'s `_entry_idx_from_key` and `worker_proxy_pane`'s `_wp_entry_idx_from_key` need no change — their existing `isinstance(key[0], str): return key[1]` branch already covers the 4-tuple `think_key` (verified directly, not assumed).
+**(2026-09, helper-extraction milestone) `_render_modified_messages` (was 51 LOC) split to drop
+under the 50-LOC threshold — three helpers, two shared with `_render_new_messages`:**
+`_render_prestripped_range(entry, messages, fdi, upper, stripped_indices, use_dual, show_chars)` —
+the "pre-render stripped messages skipped by the main window loop" block, previously duplicated
+between `_render_new_messages` (`upper=prev_msg_count`, `show_chars=True`) and
+`_render_modified_messages` (`upper=diff_start`, `show_chars=False`), now one function called by
+both. `_compute_diff_start(messages, prev_messages)` — the backward-walk-from-the-tail loop that
+finds where curr/prev messages diverge, extracted out of `_render_modified_messages` on its own.
+`_render_removed_tail(messages, prev_messages)` — the trailing `removed:` marker-line loop.
 **Reads:** Entry dict, previous entry, all entries, expand states, pane width.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`
 **Calls out:** `proxy.strip_vocab` (`attribute_chunk`, `classify_tags`, `code_for_rule`, `classify_req`), `utils` (`wrap_visible`, thinking-block wrapping only)
-New private helpers (same module): `_render_stripped_block`, `_render_span_content`, `_lookup_spans`, `_render_block_spans`, `_wrap_thinking_text`, `_render_new_messages`, `_render_modified_messages`.
+New private helpers (same module): `_render_stripped_block`, `_render_span_content`, `_lookup_spans`, `_render_block_spans`, `_wrap_thinking_text`, `_render_prestripped_range`, `_render_new_messages`, `_compute_diff_start`, `_render_removed_tail`, `_render_modified_messages`.
 
 ---
 

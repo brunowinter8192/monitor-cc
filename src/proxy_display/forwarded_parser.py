@@ -39,6 +39,40 @@ def _summarize_fwd_message(msg: dict) -> dict:
         s['content_tail'] = ''
     return s
 
+# Build the system_blocks list — one dict per system block with idx/chars/has_cc/preview
+def _build_system_blocks(system) -> list:
+    sys_list = system if isinstance(system, list) else []
+    return [
+        {
+            'idx': i,
+            'chars': len(b.get('text', '')),
+            'has_cc': bool(b.get('cache_control')),
+            'preview': b.get('text', ''),
+        }
+        for i, b in enumerate(sys_list) if isinstance(b, dict)
+    ]
+
+# Build the tools_* entry fields (total_chars, count, hash, names, defs) from a tools list
+def _build_tools_fields(tools) -> dict:
+    tools_list = [t for t in (tools if isinstance(tools, list) else []) if isinstance(t, dict)]
+    return {
+        'tools_total_chars': sum(len(json.dumps(t)) for t in tools_list),
+        'tools_count': len(tools_list),
+        'tools_hash': hashlib.md5(
+            json.dumps(sorted(t.get('name', '') for t in tools_list)).encode()
+        ).hexdigest()[:8],
+        'tools_names': [t.get('name', '') for t in tools_list],
+        'tools_defs': [
+            {
+                'name': t.get('name', ''),
+                'description': t.get('description', ''),
+                'input_schema': t.get('input_schema', {}),
+                'stripped_original': None,
+            }
+            for t in tools_list
+        ],
+    }
+
 # Expand {idx_str: elem} delta dict into a list of exactly count elements (None-padded gaps)
 def _dict_to_list_fwd(delta_dict: dict, count: int) -> list:
     lst = [None] * count
@@ -61,6 +95,54 @@ def _apply_delta_to_list(prev_list: list, delta_dict: dict, count: int) -> list:
     elif len(lst) < count:
         lst.extend([None] * (count - len(lst)))
     return lst
+
+# is_first branch: the entire message list stands in as its own delta (no narrower "newly added"
+# slice — see _extract_forwarded_fields docstring for why). Shared by _parse_forwarded_log and
+# _lazy_load_messages_forwarded's own is_first branches.
+def _build_first_summaries(messages_delta: dict, msg_cnt: int) -> list:
+    raw_msgs = _dict_to_list_fwd(messages_delta or {}, msg_cnt)
+    return [
+        _summarize_fwd_message(m) if isinstance(m, dict) else {}
+        for m in raw_msgs
+    ]
+
+# Non-is_first branch: overwrite prev_summaries at the delta's indices, pad/trim to msg_cnt.
+# Returns (new_summaries, delta_summaries) — delta_summaries is just the touched-index subset,
+# ignored by callers (_lazy_load_messages_forwarded) that only need the accumulated list itself.
+# Shared by _parse_forwarded_log and _lazy_load_messages_forwarded's own non-is_first branches.
+def _apply_messages_delta(prev_summaries: list, messages_delta: dict, msg_cnt: int) -> tuple:
+    new_summaries = list(prev_summaries)
+    delta_summaries = []
+    for idx_str, raw_msg in (messages_delta or {}).items():
+        i = int(idx_str)
+        while len(new_summaries) <= i:
+            new_summaries.append({})
+        new_summaries[i] = _summarize_fwd_message(raw_msg) if isinstance(raw_msg, dict) else {}
+        delta_summaries.append(new_summaries[i])
+    if len(new_summaries) > msg_cnt:
+        new_summaries = new_summaries[:msg_cnt]
+    elif len(new_summaries) < msg_cnt:
+        new_summaries.extend([{}] * (msg_cnt - len(new_summaries)))
+    return new_summaries, delta_summaries
+
+# Reconstruct system/tools/messages for an is_first forwarded_delta line — every section starts
+# fresh from this line's own delta dict (proxy-session restart). Returns
+# (new_system, new_tools, new_summaries, delta_summaries) — delta_summaries IS new_summaries here.
+def _reconstruct_first_request(fwd_e: dict, sys_cnt: int, tools_cnt: int, msg_cnt: int) -> tuple:
+    new_system = _dict_to_list_fwd(fwd_e.get('system_delta') or {}, sys_cnt)
+    new_tools = _dict_to_list_fwd(fwd_e.get('tools_delta') or {}, tools_cnt)
+    new_summaries = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
+    return new_system, new_tools, new_summaries, new_summaries
+
+# Reconstruct system/tools/messages for a non-is_first forwarded_delta line — overlays this
+# line's delta dicts onto prev_acc's accumulated lists. Returns
+# (new_system, new_tools, new_summaries, delta_summaries).
+def _reconstruct_delta_request(prev_acc: Optional[dict], fwd_e: dict, sys_cnt: int, tools_cnt: int, msg_cnt: int) -> tuple:
+    prev = prev_acc if prev_acc else {'system': [], 'tools': [], 'messages': []}
+    new_system = _apply_delta_to_list(prev['system'], fwd_e.get('system_delta') or {}, sys_cnt)
+    new_tools = _apply_delta_to_list(prev['tools'], fwd_e.get('tools_delta') or {}, tools_cnt)
+    new_summaries, delta_summaries = _apply_messages_delta(prev['messages'], fwd_e.get('messages_delta') or {}, msg_cnt)
+    return new_system, new_tools, new_summaries, delta_summaries
 
 # Build a proxy-display entry dict from a forwarded_delta header + reconstructed section data.
 # message_summaries: list of summary dicts (for messages_total_chars; messages key NOT set here —
@@ -89,34 +171,9 @@ def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, messag
         for s in delta_messages if isinstance(s, dict)
     )
 
-    sys_list = system if isinstance(system, list) else []
-    entry['system_blocks'] = [
-        {
-            'idx': i,
-            'chars': len(b.get('text', '')),
-            'has_cc': bool(b.get('cache_control')),
-            'preview': b.get('text', ''),
-        }
-        for i, b in enumerate(sys_list) if isinstance(b, dict)
-    ]
+    entry['system_blocks'] = _build_system_blocks(system)
     entry['system_total_chars'] = sum(b['chars'] for b in entry['system_blocks'])
-
-    tools_list = [t for t in (tools if isinstance(tools, list) else []) if isinstance(t, dict)]
-    entry['tools_total_chars'] = sum(len(json.dumps(t)) for t in tools_list)
-    entry['tools_count'] = len(tools_list)
-    entry['tools_hash'] = hashlib.md5(
-        json.dumps(sorted(t.get('name', '') for t in tools_list)).encode()
-    ).hexdigest()[:8]
-    entry['tools_names'] = [t.get('name', '') for t in tools_list]
-    entry['tools_defs'] = [
-        {
-            'name': t.get('name', ''),
-            'description': t.get('description', ''),
-            'input_schema': t.get('input_schema', {}),
-            'stripped_original': None,
-        }
-        for t in tools_list
-    ]
+    entry.update(_build_tools_fields(tools))
 
     # Placeholders for main-log-only fields; use_dual overlay path handles display when
     # _stripped_spans/_injected_spans are attached by the pane's accumulate_dual_log calls.
@@ -140,6 +197,33 @@ def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, messag
 # _fwd_req_idx: 0-based within THIS call only — NOT a stable global identifier across incremental
 #   polling calls (each call restarts req_idx at 0 for whatever new lines it reads). Use flow_id
 #   (globally unique, always populated) to correlate an entry back to its forwarded-log line.
+# Reconstruct one forwarded_delta line into a full entry dict, updating acc_by_family in place.
+# Capture prev summaries for diff_from_prev BEFORE updating the accumulator — is_first=True means
+# a proxy session reset, treated as first-ever request for this family. Returns (entry, new_summaries).
+def _process_forwarded_entry(fwd_e: dict, req_idx: int, acc_by_family: dict) -> tuple:
+    family = _infer_model_family(fwd_e.get('model', ''))
+    is_first = fwd_e.get('is_first', False)
+    counts = fwd_e.get('counts', {})
+    sys_cnt = counts.get('system', 0)
+    tools_cnt = counts.get('tools', 0)
+    msg_cnt = counts.get('messages', 0)
+    prev_acc = acc_by_family.get(family)
+    prev_messages_for_diff = None if is_first else (prev_acc['messages'] if prev_acc else None)
+    if is_first:
+        new_system, new_tools, new_summaries, delta_summaries = _reconstruct_first_request(fwd_e, sys_cnt, tools_cnt, msg_cnt)
+    else:
+        new_system, new_tools, new_summaries, delta_summaries = _reconstruct_delta_request(prev_acc, fwd_e, sys_cnt, tools_cnt, msg_cnt)
+    acc_by_family[family] = {
+        'system': new_system,
+        'tools': new_tools,
+        'messages': new_summaries,
+    }
+    entry = _extract_forwarded_fields(fwd_e, new_system, new_tools, new_summaries, delta_summaries)
+    entry['_fwd_req_idx'] = req_idx
+    entry['flow_id'] = fwd_e.get('flow_id', '')
+    entry['diff_from_prev'] = _compute_diff(prev_messages_for_diff, new_summaries)
+    return entry, new_summaries
+
 def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict, keep_last: int = PROXY_MESSAGES_KEEP_LAST) -> tuple:
     entries: list = []
     recent_window: deque = deque()
@@ -160,55 +244,7 @@ def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict, kee
                     continue
                 if fwd_e.get('type') != 'forwarded_delta':
                     continue
-                family = _infer_model_family(fwd_e.get('model', ''))
-                is_first = fwd_e.get('is_first', False)
-                counts = fwd_e.get('counts', {})
-                sys_cnt = counts.get('system', 0)
-                tools_cnt = counts.get('tools', 0)
-                msg_cnt = counts.get('messages', 0)
-                # Capture prev summaries for diff_from_prev BEFORE updating accumulator.
-                # is_first=True means proxy session reset → treat as first-ever request for this family.
-                prev_acc = acc_by_family.get(family)
-                prev_messages_for_diff = None if is_first else (prev_acc['messages'] if prev_acc else None)
-                if is_first:
-                    new_system = _dict_to_list_fwd(fwd_e.get('system_delta') or {}, sys_cnt)
-                    new_tools = _dict_to_list_fwd(fwd_e.get('tools_delta') or {}, tools_cnt)
-                    raw_msgs = _dict_to_list_fwd(fwd_e.get('messages_delta') or {}, msg_cnt)
-                    new_summaries = [
-                        _summarize_fwd_message(m) if isinstance(m, dict) else {}
-                        for m in raw_msgs
-                    ]
-                    # is_first has no narrower "newly added" slice — a proxy-session restart
-                    # mid-conversation re-sends the whole history in one shot, so the entire
-                    # list stands in as the delta (see _extract_forwarded_fields docstring).
-                    delta_summaries = new_summaries
-                else:
-                    prev = prev_acc if prev_acc else {'system': [], 'tools': [], 'messages': []}
-                    new_system = _apply_delta_to_list(prev['system'], fwd_e.get('system_delta') or {}, sys_cnt)
-                    new_tools = _apply_delta_to_list(prev['tools'], fwd_e.get('tools_delta') or {}, tools_cnt)
-                    new_summaries = list(prev['messages'])
-                    delta_summaries = []
-                    for idx_str, raw_msg in (fwd_e.get('messages_delta') or {}).items():
-                        i = int(idx_str)
-                        while len(new_summaries) <= i:
-                            new_summaries.append({})
-                        new_summaries[i] = (
-                            _summarize_fwd_message(raw_msg) if isinstance(raw_msg, dict) else {}
-                        )
-                        delta_summaries.append(new_summaries[i])
-                    if len(new_summaries) > msg_cnt:
-                        new_summaries = new_summaries[:msg_cnt]
-                    elif len(new_summaries) < msg_cnt:
-                        new_summaries.extend([{}] * (msg_cnt - len(new_summaries)))
-                acc_by_family[family] = {
-                    'system': new_system,
-                    'tools': new_tools,
-                    'messages': new_summaries,
-                }
-                entry = _extract_forwarded_fields(fwd_e, new_system, new_tools, new_summaries, delta_summaries)
-                entry['_fwd_req_idx'] = req_idx
-                entry['flow_id'] = fwd_e.get('flow_id', '')
-                entry['diff_from_prev'] = _compute_diff(prev_messages_for_diff, new_summaries)
+                entry, new_summaries = _process_forwarded_entry(fwd_e, req_idx, acc_by_family)
                 entries.append(entry)
                 recent_window.append((entry, new_summaries))
                 if keep_last is not None and len(recent_window) > keep_last:
@@ -255,27 +291,11 @@ def _lazy_load_messages_forwarded(entry: dict, fwd_path: Path) -> bool:
                 counts = fwd_e.get('counts', {})
                 msg_cnt = counts.get('messages', 0)
                 if is_first:
-                    raw_msgs = _dict_to_list_fwd(fwd_e.get('messages_delta') or {}, msg_cnt)
-                    summaries = [
-                        _summarize_fwd_message(m) if isinstance(m, dict) else {}
-                        for m in raw_msgs
-                    ]
-                    temp_acc[e_family] = summaries
+                    summaries = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
                 else:
                     prev_summaries = temp_acc.get(e_family, [])
-                    summaries = list(prev_summaries)
-                    for idx_str, raw_msg in (fwd_e.get('messages_delta') or {}).items():
-                        i = int(idx_str)
-                        while len(summaries) <= i:
-                            summaries.append({})
-                        summaries[i] = (
-                            _summarize_fwd_message(raw_msg) if isinstance(raw_msg, dict) else {}
-                        )
-                    if len(summaries) > msg_cnt:
-                        summaries = summaries[:msg_cnt]
-                    elif len(summaries) < msg_cnt:
-                        summaries.extend([{}] * (msg_cnt - len(summaries)))
-                    temp_acc[e_family] = summaries
+                    summaries, _ = _apply_messages_delta(prev_summaries, fwd_e.get('messages_delta') or {}, msg_cnt)
+                temp_acc[e_family] = summaries
                 if fwd_e.get('flow_id') == target_flow_id:
                     reconstructed = temp_acc.get(family, [])
                     entry['messages'] = list(reconstructed)

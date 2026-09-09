@@ -209,16 +209,23 @@ def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entr
     keys.extend(content_keys)
     return lines, keys
 
-# Branch-1 body: new messages in range [prev_msg_count, len(messages)), returning (lines, keys)
-# Also pre-renders stripped messages from [fdi, prev_msg_count) skipped by the main loop
-def _render_new_messages(entry_idx: int, entry: dict, messages: list, prev_msg_count: int, fdi: int, stripped_indices: set, use_dual: bool, expand_states: dict, pane_width: int) -> tuple:
+# Pre-render stripped messages in [fdi, upper) skipped by the main window loop (both branches'
+# window starts after this range) — no-op when use_dual (spans render inline in the main loop
+# instead) or when fdi is negative (no diff info). Returning (lines, keys)
+def _render_prestripped_range(entry: dict, messages: list, fdi: int, upper: int, stripped_indices: set, use_dual: bool, show_chars: bool) -> tuple:
     lines = []
     keys = []
     if fdi >= 0 and not use_dual:
-        for msg_idx in sorted(s for s in stripped_indices if fdi <= s < prev_msg_count):
-            s_lines, s_keys = _render_stripped_block(entry, msg_idx, messages[msg_idx], show_chars=True)
+        for msg_idx in sorted(s for s in stripped_indices if fdi <= s < upper):
+            s_lines, s_keys = _render_stripped_block(entry, msg_idx, messages[msg_idx], show_chars=show_chars)
             lines.extend(s_lines)
             keys.extend(s_keys)
+    return lines, keys
+
+# Branch-1 body: new messages in range [prev_msg_count, len(messages)), returning (lines, keys)
+# Also pre-renders stripped messages from [fdi, prev_msg_count) skipped by the main loop
+def _render_new_messages(entry_idx: int, entry: dict, messages: list, prev_msg_count: int, fdi: int, stripped_indices: set, use_dual: bool, expand_states: dict, pane_width: int) -> tuple:
+    lines, keys = _render_prestripped_range(entry, messages, fdi, prev_msg_count, stripped_indices, use_dual, show_chars=True)
     for msg_idx in range(prev_msg_count, len(messages)):
         msg = messages[msg_idx]
         is_stripped = msg_idx in stripped_indices
@@ -247,12 +254,9 @@ def _render_new_messages(entry_idx: int, entry: dict, messages: list, prev_msg_c
             keys.extend(content_keys)
     return lines, keys
 
-# Branch-2 body: modified messages in range [diff_start, len(messages)) + removed tail, returning (lines, keys)
-# Also pre-renders stripped messages from [fdi, diff_start) skipped by the main loop
-def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_entry_for_delta, fdi: int, stripped_indices: set, use_dual: bool, expand_states: dict, pane_width: int) -> tuple:
-    lines = []
-    keys = []
-    prev_messages = prev_entry_for_delta.get('messages', []) if prev_entry_for_delta is not None else []
+# Walk backward from the tail while curr/prev messages still match (same chars + type) — the
+# first index where they diverge is where the rendered window starts.
+def _compute_diff_start(messages: list, prev_messages: list) -> int:
     diff_start = len(messages)
     for j in range(1, min(len(messages), len(prev_messages)) + 1):
         curr_msg = messages[-j]
@@ -261,11 +265,29 @@ def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_
             diff_start = len(messages) - j
         else:
             break
-    if fdi >= 0 and not use_dual:
-        for msg_idx in sorted(s for s in stripped_indices if fdi <= s < diff_start):
-            s_lines, s_keys = _render_stripped_block(entry, msg_idx, messages[msg_idx], show_chars=False)
-            lines.extend(s_lines)
-            keys.extend(s_keys)
+    return diff_start
+
+# Messages present in prev_messages beyond the current list's own length — rendered as a
+# "removed:" tail marker line each, returning (lines, keys)
+def _render_removed_tail(messages: list, prev_messages: list) -> tuple:
+    lines = []
+    keys = []
+    removed_from_prev = prev_messages[len(messages):]
+    for m_offset, msg in enumerate(removed_from_prev):
+        m_idx = len(messages) + m_offset
+        role = msg.get('role', '?')[:4]
+        m_type = msg.get('type', 'text')
+        m_chars = msg.get('chars', 0)
+        lines.append(f"    {RED}removed:{SOFT_RESET} {DIM}[{m_idx:3d}] {role:<4}  {m_type:<20} {m_chars:,}c{SOFT_RESET}")
+        keys.append(None)
+    return lines, keys
+
+# Branch-2 body: modified messages in range [diff_start, len(messages)) + removed tail, returning (lines, keys)
+# Also pre-renders stripped messages from [fdi, diff_start) skipped by the main loop
+def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_entry_for_delta, fdi: int, stripped_indices: set, use_dual: bool, expand_states: dict, pane_width: int) -> tuple:
+    prev_messages = prev_entry_for_delta.get('messages', []) if prev_entry_for_delta is not None else []
+    diff_start = _compute_diff_start(messages, prev_messages)
+    lines, keys = _render_prestripped_range(entry, messages, fdi, diff_start, stripped_indices, use_dual, show_chars=False)
     for msg_idx in range(diff_start, len(messages)):
         msg = messages[msg_idx]
         is_stripped = msg_idx in stripped_indices
@@ -291,14 +313,9 @@ def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_
             content_lines, content_keys = _render_span_content(tail, i_blk, s_blk, "      ", highlight_suspect=False)
             lines.extend(content_lines)
             keys.extend(content_keys)
-    removed_from_prev = prev_messages[len(messages):]
-    for m_offset, msg in enumerate(removed_from_prev):
-        m_idx = len(messages) + m_offset
-        role = msg.get('role', '?')[:4]
-        m_type = msg.get('type', 'text')
-        m_chars = msg.get('chars', 0)
-        lines.append(f"    {RED}removed:{SOFT_RESET} {DIM}[{m_idx:3d}] {role:<4}  {m_type:<20} {m_chars:,}c{SOFT_RESET}")
-        keys.append(None)
+    r_lines, r_keys = _render_removed_tail(messages, prev_messages)
+    lines.extend(r_lines)
+    keys.extend(r_keys)
     return lines, keys
 
 # Render new/modified/removed messages for an expanded request entry, returning (lines, keys).

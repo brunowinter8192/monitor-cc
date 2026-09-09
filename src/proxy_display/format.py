@@ -132,53 +132,57 @@ def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_en
         result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
     return result_lines
 
-# Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
-# search_match_set/search_current_entry_idx/search_query: optional — omitted by every caller
-# that doesn't have a search feature (worker_proxy_pane.py), zero behavior change for them.
-def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '') -> tuple:
+# Render every turn-group's rows via render_turn_expanded, threading opus/sub request numbering
+# across groups; fills item_positions_out (body-relative, before viewport slicing) and appends a
+# blank-line separator after each group — returning (all_lines, line_keys, rendered_opus_labels)
+def _render_all_groups(entries: list, groups: list, expand_states: dict, pane_width: int, turns, item_positions_out: Optional[dict], copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query: str) -> tuple:
     from .render_turn import render_turn_expanded
-    if not entries:
-        return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
-    if expand_states is None:
-        expand_states = {}
     all_lines = []
     line_keys = []
-    if turns:
-        groups = _assign_turns_to_entries(entries, turns)
-    else:
-        groups = [{'turn_idx': 0, 'timestamp': '', 'entry_pairs': list(enumerate(entries))}]
+    rendered_opus_labels = []
     opus_req_num = 0
     sub_req_num = 0
-    rendered_opus_labels = []
-    if groups:
-        for group in groups:
-            turn_idx = group['turn_idx']
-            sub_req_num = 0
-            t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
-                group, entries, expand_states, pane_width,
-                opus_req_num, sub_req_num,
-                turns=turns, turn_idx=turn_idx,
-                rendered_opus_labels=rendered_opus_labels,
-                copy_feedback=copy_feedback,
-                copy_rows_out=copy_rows_out,
-                search_match_set=search_match_set,
-                search_current_entry_idx=search_current_entry_idx,
-                search_query=search_query,
-            )
-            all_lines.extend(t_lines)
-            line_keys.extend(t_keys)
-            if item_positions_out is not None:
-                base = len(all_lines) - len(t_lines)
-                for i, key in enumerate(t_keys):
-                    if key is not None:
-                        item_positions_out[key] = base + i
-            all_lines.append('')
-            line_keys.append(None)
-    _label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
-    collision_entry_idxs = {idx for idx, lbl in rendered_opus_labels if _label_counts[lbl] >= 2}
+    for group in groups:
+        turn_idx = group['turn_idx']
+        sub_req_num = 0
+        t_lines, t_keys, opus_req_num, sub_req_num = render_turn_expanded(
+            group, entries, expand_states, pane_width,
+            opus_req_num, sub_req_num,
+            turns=turns, turn_idx=turn_idx,
+            rendered_opus_labels=rendered_opus_labels,
+            copy_feedback=copy_feedback,
+            copy_rows_out=copy_rows_out,
+            search_match_set=search_match_set,
+            search_current_entry_idx=search_current_entry_idx,
+            search_query=search_query,
+        )
+        all_lines.extend(t_lines)
+        line_keys.extend(t_keys)
+        if item_positions_out is not None:
+            base = len(all_lines) - len(t_lines)
+            for i, key in enumerate(t_keys):
+                if key is not None:
+                    item_positions_out[key] = base + i
+        all_lines.append('')
+        line_keys.append(None)
+    return all_lines, line_keys, rendered_opus_labels
+
+# Duplicate request-number labels (abort-cascade re-sends landing on the same #N) mark every
+# entry_idx that shares its label with another — returning the set of colliding entry_idx
+def _compute_collision_idxs(rendered_opus_labels: list) -> set:
+    label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
+    return {idx for idx, lbl in rendered_opus_labels if label_counts[lbl] >= 2}
+
+# Drop the trailing turn-group blank-line separators — in place, mutates both lists
+def _trim_trailing_blank(all_lines: list, line_keys: list) -> None:
     while all_lines and all_lines[-1] == '':
         all_lines.pop()
         line_keys.pop()
+
+# Clamp scroll_offset, slice the visible viewport, fill line_map (visible rows only) and compute
+# the zebra parity carried in from above the viewport — returning
+# (visible_lines, visible_keys, initial_parent_count, total_lines)
+def _slice_viewport(all_lines: list, line_keys: list, pane_height: int, pane_width: int, scroll_offset: int, line_map: Optional[dict]) -> tuple:
     total_lines = len(all_lines)
     viewport_lines = max(1, pane_height - 1)
     max_scroll = max(0, len(all_lines) - viewport_lines)
@@ -193,5 +197,28 @@ def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict
             if key is not None:
                 line_map[row_idx + 1] = key
     initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
+    return visible_lines, visible_keys, initial_parent_count, total_lines
+
+# Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
+# search_match_set/search_current_entry_idx/search_query: optional — omitted by every caller
+# that doesn't have a search feature (worker_proxy_pane.py), zero behavior change for them.
+def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '') -> tuple:
+    if not entries:
+        return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)
+    if expand_states is None:
+        expand_states = {}
+    if turns:
+        groups = _assign_turns_to_entries(entries, turns)
+    else:
+        groups = [{'turn_idx': 0, 'timestamp': '', 'entry_pairs': list(enumerate(entries))}]
+    all_lines, line_keys, rendered_opus_labels = _render_all_groups(
+        entries, groups, expand_states, pane_width, turns, item_positions_out,
+        copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query,
+    )
+    collision_entry_idxs = _compute_collision_idxs(rendered_opus_labels)
+    _trim_trailing_blank(all_lines, line_keys)
+    visible_lines, visible_keys, initial_parent_count, total_lines = _slice_viewport(
+        all_lines, line_keys, pane_height, pane_width, scroll_offset, line_map
+    )
     result_lines = _apply_row_backgrounds(visible_lines, visible_keys, collision_entry_idxs, hover_row, copy_rows_out, pane_width, initial_parent_count)
     return '\n'.join(result_lines), total_lines
