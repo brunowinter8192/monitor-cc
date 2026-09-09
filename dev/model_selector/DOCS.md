@@ -62,7 +62,7 @@ the real `~/.claude/shared-rules/model_selection.json` or `~/.claude/shared-rule
 
 ---
 
-### verify_three_tab_ring.py (145 LOC)
+### verify_three_tab_ring.py (143 LOC)
 
 **Purpose:** Milestone 2 — the three-tab Cmd+→/← ring (Sessions/RAG/Models). Drives the REAL,
 unmocked `_open_main_panel`/`_open_rag_panel`/`_open_models_panel`/`_close_*_panel`/
@@ -72,6 +72,11 @@ confirmed these construct and respond to geometry calls without a running AppKit
 `rumps.App`). Only `Foundation.NSOperationQueue`'s async-dispatch wrapper is patched to run
 synchronously, so the captured hotkey callbacks execute inline; the ring logic itself is never
 mocked. Verifies both directions land correctly: main→rag→models→main and the reverse.
+**(2026-09, menubar milestone B):** `_FakeApp`'s flat `_panel_width`/`_panel_min_height`/
+`_auto_focus`/`_panel_backgrounded` attrs replaced with `.settings` (a `SimpleNamespace` with
+`panel_width`/`panel_min_height`/`auto_focus`) — `PanelManager`/`RagController`/`ModelController`
+now read `app.settings.*` instead of flat `app.*` attrs; `_panel_backgrounded` dropped entirely
+from `_FakeApp` since it moved onto `PanelManager` itself, which now initializes its own copy.
 **Reads:** nothing persistent.
 **Writes:** `md/verify_three_tab_ring.md`.
 **Called by:** run manually — regression guard; re-run after any ring-wiring change in
