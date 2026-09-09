@@ -17,9 +17,10 @@ that writes `dev/ram_audit/dumps/<ts>_<pane_name>.txt`.
 
 ## Modules
 
-### instrument.py (101 LOC)
+### instrument.py (121 LOC)
 
 **Purpose:** Shared RAM-dump helper — tracemalloc start, PID file write, SIGUSR1 handler registration, dump file writer.
+**(2026-09, remaining-thresholds milestone):** `register_ram_dump`/`_handle_ram_dump` were 84/60 LOC — split into module-level report-section helpers, each returning a line list (or, for RSS, a single line): `_rss_line()`, `_gc_top_lines()`, `_tracemalloc_lines()`, `_module_state_lines(provider)`, plus `_resolve_dump_path(pane_name, ts)` (dump-dir/`MONITOR_CC_ROOT` resolution, needed in addition to the 4 report-section helpers to get `register_ram_dump` itself under 50 LOC). `_handle_ram_dump` stays a closure (still needs `pane_name`/`module_state_provider` from its enclosing scope) but shrank to header-line assembly + 4 helper calls + write. Byte-identical dump structure verified via `dev/ram_audit/dump_byte_identity.py` (real memory-state rows — gc counts, tracemalloc stats — are inherently non-deterministic across runs and normalized out by that harness; the report's fixed structure and the fully-deterministic module-state section are what's actually hashed).
 **Reads:** `module_state_provider()` callback for pane globals; `/proc/<pid>` or macOS `resource.getrusage` for RSS.
 **Writes:** `/tmp/.monitor_cc_pid_<pane_name>` (PID file on entry, removed on exit); `dev/ram_audit/dumps/<YYYYmmdd_HHMMSS>_<pane_name>.txt` (dump on SIGUSR1).
 **Called by:** `src/core/monitor.py`, `src/panes/token_pane.py`, `src/panes/warnings_pane.py`, `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/workers/worker_pane.py`.
