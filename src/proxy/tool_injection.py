@@ -4,22 +4,19 @@ import os
 import sys
 from pathlib import Path
 
-_SCHEMA_STORE_CACHE = None  # dict: {plugin_name: [schema_dict, ...]}
-_ACTIVE_PLUGINS_CACHE = None  # list[str] — last loaded active plugin list
-_ACTIVE_PLUGINS_MTIME = None  # float — mtime at last load
-_ACTIVE_PLUGINS_PATH = None  # str — path used for last load (per process)
+_SCHEMA_STORE_CACHE = None
+_ACTIVE_PLUGINS_CACHE = None
+_ACTIVE_PLUGINS_MTIME = None
+_ACTIVE_PLUGINS_PATH = None
 
-# iterative-dev is always injected regardless of active_plugins.json
 _ALWAYS_INJECTED_PLUGIN = "iterative-dev"
 
 # ORCHESTRATOR
 
-# Inject MCP tool schemas into payload["tools"]: iterative-dev always first, active plugins appended.
 def inject_mcp_tools(payload: dict, project_path: str) -> dict:
     if _is_project_excluded(project_path):
         return payload
 
-    # Skip injection when request carries no tools — e.g. Haiku title-gen calls send empty tools list
     if not payload.get("tools"):
         return payload
 
@@ -54,7 +51,6 @@ def inject_mcp_tools(payload: dict, project_path: str) -> dict:
 
 # FUNCTIONS
 
-# Read all src/logs/mcp_tool_schemas/<plugin>/*.json into {plugin: [schemas...]}. One-time load per process.
 def _load_schema_store() -> dict:
     global _SCHEMA_STORE_CACHE
     if _SCHEMA_STORE_CACHE is not None:
@@ -95,7 +91,6 @@ def _load_schema_store() -> dict:
     return _SCHEMA_STORE_CACHE
 
 
-# Read <project_path>/.claude/active_plugins.json with mtime check. Default: [iterative-dev].
 def _load_active_plugins(project_path: str) -> list:
     global _ACTIVE_PLUGINS_CACHE, _ACTIVE_PLUGINS_MTIME, _ACTIVE_PLUGINS_PATH
 
@@ -139,7 +134,6 @@ def _load_active_plugins(project_path: str) -> list:
     return _ACTIVE_PLUGINS_CACHE
 
 
-# Resolve path to schema store using MONITOR_CC_ROOT env var or module-relative fallback.
 def _resolve_schema_store_path() -> Path:
     root = os.environ.get("MONITOR_CC_ROOT")
     if root:
@@ -147,7 +141,6 @@ def _resolve_schema_store_path() -> Path:
     return Path(__file__).parent / "schemas"
 
 
-# Substring-match project_path against tool_injection.exclude_projects in ~/.claude/shared-rules/proxy_rules.json
 def _is_project_excluded(project_path: str) -> bool:
     if not project_path:
         return False

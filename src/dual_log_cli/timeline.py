@@ -6,7 +6,6 @@ from .timeline_turns import build_turns
 # FUNCTIONS
 
 
-# Load everything a command needs for one session: the last request's payload plus its msg rows
 def load_timeline(session: dict) -> dict:
     original = session["streams"].get("original")
     if original is None:

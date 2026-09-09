@@ -3,9 +3,6 @@ import json
 
 # FUNCTIONS
 
-# Build the summary dict for a single content block — chars/preview/full_text/has_cc plus
-# type-specific extra keys (sig_chars for thinking, id for tool_use, is_error/tool_use_id for
-# tool_result).
 def _summarize_block(block: dict) -> dict:
     btype = block.get("type", "text")
     has_cc = bool(block.get("cache_control"))
@@ -56,7 +53,6 @@ def _summarize_block(block: dict) -> dict:
     return block_dict
 
 
-# Build a summary dict for a single message
 def _summarize_message(msg: dict) -> dict:
     role = msg.get("role", "unknown")
     content = msg.get("content", "")
@@ -77,7 +73,6 @@ def _summarize_message(msg: dict) -> dict:
     }
 
 
-# Check if message or any content block has cache_control set
 def _has_cache_control(msg: dict) -> bool:
     if msg.get("cache_control"):
         return True
@@ -87,7 +82,6 @@ def _has_cache_control(msg: dict) -> bool:
     return False
 
 
-# Classify message content — returns (type, total_chars, preview_text)
 def _classify_content(role: str, content) -> tuple:
     if role == "system":
         if isinstance(content, str):
@@ -106,7 +100,6 @@ def _classify_content(role: str, content) -> tuple:
     return "text", 0, ""
 
 
-# Classify plain text by checking for known special tag prefixes
 def _classify_text(text: str) -> str:
     if "<system-reminder>" in text:
         return "system-reminder"
@@ -117,9 +110,6 @@ def _classify_text(text: str) -> str:
     return "text"
 
 
-# Extract tool_result content into (chars, parts) — parts is one string per non-empty text
-# (str content: the whole string if non-empty; list content: one entry per non-empty sub-block
-# text), falling back to the single "[tool_result]" marker when nothing was appended.
 def _extract_tool_result_parts(result_content) -> tuple:
     total_chars = 0
     parts = []
@@ -139,7 +129,6 @@ def _extract_tool_result_parts(result_content) -> tuple:
     return total_chars, parts
 
 
-# Classify a list of content blocks — returns (primary_type, total_chars, preview_text)
 def _classify_blocks(blocks: list) -> tuple:
     total_chars = 0
     parts = []

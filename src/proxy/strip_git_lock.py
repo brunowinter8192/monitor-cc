@@ -2,11 +2,8 @@ import re
 
 # INFRASTRUCTURE
 
-# Fast-path marker — cheap contains check before literal match
 _GIT_LOCK_MARKER = 'Another git process seems to be running'
 
-# Exact 5-line git advice block — hardcoded in git's lockfile.c, constant across all repos/versions.
-# Strip this block only; the variable 'Warning: auto-export: ...' line above it is preserved.
 _GIT_LOCK_ADVICE = (
     "Another git process seems to be running in this repository, e.g.\n"
     "an editor opened by 'git commit'. Please make sure all processes\n"
@@ -18,9 +15,6 @@ _GIT_LOCK_ADVICE = (
 
 # ORCHESTRATOR
 
-# Strip git index.lock advice block from all 4 content shapes.
-# Returns (new_content, removed_chunks) — removed_chunks is a list of stripped block strings,
-# one per match, for stripped_git_lock_advice mod attribution via attribute_chunk.
 def _strip_git_lock_advice(content):
     removed = []
     if isinstance(content, str):
@@ -59,8 +53,6 @@ def _strip_git_lock_advice(content):
 
 # FUNCTIONS
 
-# Strip git lock advice block from a single string; append removed block(s) to out_removed.
-# Tries with trailing newline first (standard git output), then without (edge case).
 def _strip_git_lock_from_text(text, out_removed):
     if _GIT_LOCK_MARKER not in text:
         return text

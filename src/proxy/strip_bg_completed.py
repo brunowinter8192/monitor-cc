@@ -4,30 +4,19 @@ import re
 
 _BG_CMD_MARKER = 'Background command "'
 
-# Match kill-notification lines in both known forms:
-#   "failed with exit code 143/137"
-#   "Background command "CMD" completed (exit code 143/137)"
-# HTML-encoded && (&amp;&amp;) is handled transparently — regex matches any command text.
-# Trailing newline consumed if present. Does NOT match exit code 0 (legitimate timer-done signal).
 _BG_EXIT_RE = re.compile(
     r'Background command "[^"]*" '
     r'(?:failed with exit code (?:143|137)|completed \(exit code (?:143|137)\))\n?'
 )
 
-# Plain-text wake-up hint for any backgrounded task completion or kill, injected in
-# place of the first matched notification. Trailing newline keeps it cleanly separated.
 _WAKEUP_TEXT = 'background done — check worker or other process\n'
 
 
 # ORCHESTRATOR
 
-# Replace the first Background-command kill notification with _WAKEUP_TEXT; strip any further ones.
-# Traverses all 4 content shapes. Returns (new_content, removed_chunks) — removed_chunks is a list
-# of the original notification strings (each starting with 'Background command "') for BGK rule
-# attribution via attribute_chunk. Interface unchanged from the pure-strip version.
 def _strip_bg_exit_notifications(content):
     removed = []
-    injected = [False]  # mutable flag: True after first kill-notification has been replaced
+    injected = [False]
     if isinstance(content, str):
         return _strip_bg_from_text(content, removed, injected), removed
     if isinstance(content, list):
@@ -41,7 +30,6 @@ def _strip_bg_exit_notifications(content):
                 new_text = _strip_bg_from_text(block.get('text', ''), removed, injected)
                 result.append({**block, 'text': new_text or '.'})
             else:
-                # tool_result and all other block types — never contain genuine BG notifications
                 result.append(block)
         return result, removed
     return content, removed
@@ -49,10 +37,6 @@ def _strip_bg_exit_notifications(content):
 
 # FUNCTIONS
 
-# Replace the first BG-exit kill notification in text with _WAKEUP_TEXT; strip subsequent ones.
-# injected_holder is a [False] list — shared across all _strip_bg_from_text calls in one traversal
-# so the wake-up text is injected at most once per _strip_bg_exit_notifications call.
-# Returns text unchanged if no match fires (avoids touching unrelated BG-cmd lines).
 def _strip_bg_from_text(text, out_removed, injected_holder):
     if _BG_CMD_MARKER not in text:
         return text
@@ -67,5 +51,5 @@ def _strip_bg_from_text(text, out_removed, injected_holder):
 
     result = _BG_EXIT_RE.sub(_replace, text)
     if len(out_removed) == before:
-        return text  # BG marker present but no kill-exit-code matched — leave unchanged
+        return text
     return result.strip() or '.'

@@ -11,7 +11,6 @@ _PROJECTS_ROOT = Path("~/.claude/projects").expanduser()
 # FUNCTIONS
 
 
-# {flow_id: (request_id, status_code)} for every line of one session's _response stream
 def _flow_status_ids(response_path: Path) -> dict:
     result = {}
     for entry in iter_jsonl(response_path):
@@ -22,29 +21,11 @@ def _flow_status_ids(response_path: Path) -> dict:
     return result
 
 
-# Epoch seconds of an ISO timestamp, tolerant of the dual log's two shapes ("...998Z" and
-# "...998+00:00Z" — the latter from addon.py appending "Z" to an isoformat() that already carries
-# an offset). None on anything unparseable, which the caller reads as "don't filter by time".
-# 2026-09-04: delegates to `reader.local_datetime` (the one shared UTC-aware parse this package
-# now uses everywhere) rather than its own inline parsing — `.timestamp()` on an AWARE datetime is
-# timezone-independent (correct regardless of which zone the datetime is expressed in), so this
-# still returns the exact same epoch value as before; only the duplicate parsing logic is gone.
-# Audited for a UTC-vs-local bug during that same-day work and found already correct: the ORIGINAL
-# inline version explicitly appended "+00:00" whenever the cleaned string carried no offset of its
-# own, so the "...998Z"-only case (the common one) was already parsed as AWARE UTC, never as a
-# naive-assumed-local datetime.
 def _epoch_from_iso(timestamp: str):
     dt = local_datetime(timestamp)
     return dt.timestamp() if dt else None
 
 
-# The project directories a session's stem could possibly have a transcript in — derived from the
-# stem alone, never a store-wide scan. A worker stem's sid8 resolves to its project's cwd (the
-# same md5(project_path)[:8] hash `discovery.project_for_stem` resolves for `sessions`' PROJECT
-# column), and the worker's OWN cwd is that project's cwd plus the worktree layout every worker runs under
-# (".claude/worktrees/<name>"). A main stem's label is matched against every known cwd's label —
-# plural on purpose, since two different projects can share a basename. Empty when the stem does
-# not parse or its cwd/label matches no known directory.
 def _candidate_dirs(stem: str, index: dict) -> list:
     identity = stem_identity(stem)
     if identity is None:
@@ -62,12 +43,6 @@ def _candidate_dirs(stem: str, index: dict) -> list:
     return [directory for cwd, directory in cwd_to_dir.items() if project_label(cwd) == label]
 
 
-# The first file (name order) under `directories`, with mtime at or after `since_epoch`, whose
-# content contains the literal fragment `"requestId":"<id>"` — WITH the key, never a bare id (a
-# tool_result can quote one, which a bare-id search would wrongly treat as that record's own).
-# Stops at the first match rather than hunting for or rejecting a second one: a full-store sweep
-# of the corpus on disk found zero sessions where the same request id appears in two transcripts.
-# None when no candidate file matches or a candidate cannot be read.
 def _find_transcript(request_id: str, directories: list, since_epoch=None) -> Path:
     fragment = f'"requestId":"{request_id}"'
     candidates = []
@@ -96,9 +71,6 @@ def _find_transcript(request_id: str, directories: list, since_epoch=None) -> Pa
     return None
 
 
-# {request_id: (cache_read_input_tokens, cache_creation_input_tokens)} from one transcript's
-# assistant records. One API request produces several streaming assistant records with identical
-# input-side usage, so only the first record per requestId is kept.
 def _transcript_usage(transcript_path: Path) -> dict:
     usage = {}
     try:
@@ -127,19 +99,6 @@ def _transcript_usage(transcript_path: Path) -> dict:
     return usage
 
 
-# The three-hop preamble `build_usage_by_flow` needs before it can read `type == "assistant"`
-# records out of CC's own transcript: `_response` -> {flow_id: (request_id, status)}, the first
-# non-haiku boundary's request id as anchor, the stem-derived candidate directories, and the one
-# transcript file the anchor's literal `"requestId":"<id>"` fragment is found in. Returns
-# (transcript_path, flow_status) — `flow_status` is `{}` only when the `_response` stream itself
-# could not be read at all (every other failure still returns whatever `flow_status` WAS resolved,
-# since a caller needing only the status map, not the transcript, should not lose it for a
-# resolution failure of the LATER hops); the caller reads `transcript_path is None` as "degrade to
-# {}". Split out from `build_usage_by_flow`'s own body 2026-09-08 for a second join
-# (`build_request_times_by_flow`, `turns`) that read the SAME transcript for different fields;
-# that command and its join were removed 2026-09-10 (see process-docs/dual_log_cli/ — `reqs
-# --turns` replaced it with a send-time-only view needing no transcript at all), but the split
-# stays: `_resolve_session_transcript` is still a clean single-purpose preamble on its own.
 def _resolve_session_transcript(session: dict, boundaries: list, projects_root: Path = None) -> tuple:
     if not boundaries:
         return None, {}
@@ -168,15 +127,6 @@ def _resolve_session_transcript(session: dict, boundaries: list, projects_root: 
     return transcript_path, flow_status
 
 
-# {flow_id: (cache_read_input_tokens, cache_creation_input_tokens)} for one session — what
-# render._req_separator looks its CR/CC figures up by, keyed on the group owner's flow_id from
-# timeline.request_markers.
-#
-# Degrades to {} (every separator renders value-less, never a placeholder) when the _response
-# stream is missing, no boundary's flow_id resolves to a request id, the stem does not resolve to
-# a known project directory, no candidate file in it matches, or the matched transcript yields no
-# usable usage lines. A flow whose _response status is not 200 is dropped even when its request id
-# would otherwise resolve — an errored request carries no meaningful cache figures.
 def build_usage_by_flow(session: dict, boundaries: list, projects_root: Path = None) -> dict:
     transcript_path, flow_status = _resolve_session_transcript(session, boundaries, projects_root)
     if transcript_path is None:

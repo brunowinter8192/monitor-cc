@@ -8,8 +8,6 @@ from .message_summary import _summarize_message
 
 # FUNCTIONS
 
-# Count modified messages (role/type/chars differ) over the shared prefix — returns
-# (modified_count, first_diff_index_or_None)
 def _diff_modified_count(prev: list, curr: list, min_len: int) -> tuple:
     modified = 0
     first_diff = None
@@ -22,7 +20,6 @@ def _diff_modified_count(prev: list, curr: list, min_len: int) -> tuple:
     return modified, first_diff
 
 
-# Build the human-readable diff summary string
 def _build_diff_summary(added: int, removed: int, modified: int, first_diff: int) -> str:
     parts = []
     if added:
@@ -34,7 +31,6 @@ def _build_diff_summary(added: int, removed: int, modified: int, first_diff: int
     return ", ".join(parts) + f" (first diff at [{first_diff}])"
 
 
-# Compute diff between previous and current message summaries
 def _compute_diff(prev: Optional[list], curr: list) -> dict:
     if prev is None:
         return {
@@ -72,7 +68,6 @@ def _compute_diff(prev: Optional[list], curr: list) -> dict:
     }
 
 
-# Recursively strip cache_control keys from dicts/lists — for stable comparison hashing only
 def _strip_cache_control(obj):
     if isinstance(obj, dict):
         return {k: _strip_cache_control(v) for k, v in obj.items() if k != "cache_control"}
@@ -81,9 +76,6 @@ def _strip_cache_control(obj):
     return obj
 
 
-# Mirror of cache._normalize_user_content_shape — collapses single-text-block list to plain string
-# for user messages after cache_control has been stripped; applied only for hash comparison, never
-# to the written element. Cannot import from cache.py (circular: cache imports from logging).
 def _normalize_msg_shape_for_hash(msg: dict) -> dict:
     if msg.get("role") != "user":
         return msg
@@ -98,7 +90,6 @@ def _normalize_msg_shape_for_hash(msg: dict) -> dict:
     return msg
 
 
-# MD5[:10] of element with cache_control stripped and message shape normalized — stable across BP shifts
 def _delta_hash(element) -> str:
     normalized = _strip_cache_control(element)
     if isinstance(normalized, dict) and "role" in normalized:
@@ -106,7 +97,6 @@ def _delta_hash(element) -> str:
     return hashlib.md5(json.dumps(normalized).encode("utf-8")).hexdigest()[:10]
 
 
-# Per-element delta hashes for the system/tools/messages sections of one payload
 def _compute_delta_hashes(system_list: list, tools: list, messages: list) -> dict:
     return {
         "system": [_delta_hash(b) for b in system_list],
@@ -115,8 +105,6 @@ def _compute_delta_hashes(system_list: list, tools: list, messages: list) -> dic
     }
 
 
-# Build the {idx_str: element} delta dicts for each section — every element on is_first, only
-# changed-hash elements otherwise. Returns (system_delta, tools_delta, messages_delta).
 def _build_section_deltas(system_list: list, tools: list, messages: list, curr_hashes: dict, prev_hashes: Optional[dict]) -> tuple:
     if prev_hashes is None:
         return (
@@ -147,7 +135,6 @@ def _forwarded_timestamp() -> str:
     return f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"
 
 
-# Build forwarded delta entry and current hash state for _forwarded dual-log writes
 def _build_forwarded_delta(payload: dict, request_id: str, prev_hashes: Optional[dict]) -> tuple:
     system = payload.get("system", []) or []
     tools = payload.get("tools", []) or []
@@ -181,7 +168,6 @@ def _build_forwarded_delta(payload: dict, request_id: str, prev_hashes: Optional
     return entry, curr_hashes
 
 
-# Extract full text from a tool_result content value — handles plain string and list-of-blocks
 def _extract_tool_result_text(content) -> str:
     if isinstance(content, str):
         return content
@@ -196,7 +182,6 @@ def _extract_tool_result_text(content) -> str:
     return str(content) if content is not None else ""
 
 
-# Build tool_use_id -> tool_name map from all tool_use blocks in the conversation
 def _build_tool_use_name_map(messages: list) -> dict:
     tu_name_map: dict = {}
     for msg in messages:
@@ -211,7 +196,6 @@ def _build_tool_use_name_map(messages: list) -> dict:
     return tu_name_map
 
 
-# Build one tool_error record dict ready for _write_entry
 def _build_error_entry(blk: dict, tid: str, tu_name_map: dict, request_id: str, timestamp: str,
                         worker_context: str, session_id: str, proxy_file: str) -> dict:
     error_full = _extract_tool_result_text(blk.get("content", ""))
@@ -229,9 +213,6 @@ def _build_error_entry(blk: dict, tid: str, tu_name_map: dict, request_id: str, 
     }
 
 
-# Scan payload messages for new is_error==True tool_result blocks not yet in seen_ids.
-# Returns list of error record dicts ready for _write_entry; does NOT mutate seen_ids.
-# tool_name is resolved by scanning all tool_use blocks in the payload for id→name mapping.
 def _build_errors_entries(
     payload: dict,
     request_id: str,

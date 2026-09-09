@@ -37,10 +37,6 @@ _REQS_DESCRIPTION = (
 # FUNCTIONS
 
 
-# Build and run the top-level argparse parser; `epilog` is __main__.py's own module docstring,
-# passed in explicitly rather than read via this module's own `__doc__` — the parser construction
-# lives here, but the usage text it shows is __main__.py's, and neither module needs to import the
-# other's globals to make that work.
 def _parse_args(argv: list, epilog: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m src.dual_log_cli",
@@ -90,7 +86,6 @@ def _add_msgs_subparser(sub) -> None:
             "separators already print — and is mutually exclusive with the FROM/TO positionals."
         ),
     )
-    # "from" is a Python keyword, so the code-side name has to differ from the user-facing one
     msgs.add_argument("session", help="session stem or unambiguous substring")
     msgs.add_argument("from_msg", nargs="?", type=int, default=None, metavar="FROM",
                       help="first msg index (inclusive, default 0)")

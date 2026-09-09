@@ -3,7 +3,6 @@ _REJECTION_MARKER = "The user doesn't want to proceed with this tool use"
 
 # FUNCTIONS
 
-# Check if user message content contains a tool_result block with the rejection marker
 def _message_has_rejection(content) -> bool:
     if isinstance(content, str):
         return _REJECTION_MARKER in content
@@ -25,7 +24,6 @@ def _message_has_rejection(content) -> bool:
     return False
 
 
-# Replace rejection tool_result block content with '.'
 def _strip_rejection_message(content):
     if isinstance(content, str):
         return "."
@@ -47,7 +45,6 @@ def _strip_rejection_message(content):
     return content
 
 
-# Extract SessionStart system-reminder block from MSG[0] content. Returns (modified_content, extracted_text_or_None).
 def _extract_session_start_block(content):
     _RULES_MARKER = "SessionStart hook additional context:"
     _TAG_OPEN = "<system-reminder>"
@@ -82,7 +79,6 @@ def _extract_session_start_block(content):
     return content, None
 
 
-# Remove '# Session-specific guidance' section from text, keeping '# Environment' onward.
 def _strip_session_guidance(text: str) -> str:
     marker = "# Session-specific guidance"
     env_marker = "# Environment"
@@ -95,7 +91,6 @@ def _strip_session_guidance(text: str) -> str:
     return (text[:start] + text[env_idx:]).strip()
 
 
-# Strip gitStatus section (always at bottom of sys[3]) from text — everything from 'gitStatus:' to end.
 def _strip_git_status(text: str) -> str:
     marker = "gitStatus:"
     idx = text.find(marker)
@@ -104,10 +99,6 @@ def _strip_git_status(text: str) -> str:
     return text[:idx].rstrip()
 
 
-# Strip description fields from all tools in payload.tools[] — top-level description and all
-# input_schema.properties[*].description. Returns (modified_payload, count_stripped, originals_dict).
-# originals_dict = {tool_name: {"description": "...", "params": {param_name: "..."}}} — only tools
-# where anything was actually stripped; only keys present when non-empty. Idempotent.
 def _strip_tool_descriptions(payload: dict) -> tuple:
     tools = payload.get("tools", [])
     if not tools:
@@ -150,8 +141,6 @@ def _strip_tool_descriptions(payload: dict) -> tuple:
     return {**payload, "tools": new_tools}, stripped, originals
 
 
-# Replace sys[3].text with "." — strips claudeMd context block from system prompt.
-# Returns (modified_payload, was_stripped: bool, original_text_or_None). Idempotent: skips if already ".".
 def _strip_sys3(payload: dict) -> tuple:
     system = payload.get("system", [])
     if not isinstance(system, list) or len(system) < 4:

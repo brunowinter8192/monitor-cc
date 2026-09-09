@@ -4,10 +4,6 @@ from .render_format import _clock, _window_date, fmt_chars
 # FUNCTIONS
 
 
-# expand: the complete content of each selected msg in the window, plus the proxy's own
-# transformations of it when an overlay is supplied. `overlay` is {(msg, blk): {stripped, injected,
-# req}} from overlay.py; an empty/absent one renders exactly the pre-overlay output, which is what
-# keeps an untouched msg byte-identical.
 def render_expand_full(data: dict, anchor: int, start: int, end: int,
                        only: str, dumped: list, overlay: dict = None) -> str:
     msgs = data["turns"]
@@ -37,9 +33,6 @@ def render_expand_full(data: dict, anchor: int, start: int, end: int,
     return "\n".join(lines) + "\n"
 
 
-# The proxy's transformations of one block: what it removed from the text above, and what it put
-# there instead. Labels carry the meaning — this output is read by agents through pipes, so there
-# is no colour anywhere in it. Empty for a block the proxy never touched.
 def _overlay_lines(slot) -> list:
     if not slot:
         return []

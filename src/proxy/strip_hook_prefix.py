@@ -2,11 +2,8 @@ import re
 
 # INFRASTRUCTURE
 
-# Fast-path marker — cheap contains check before regex
 _HOOK_PREFIX_MARKER = 'PreToolUse:'
 
-# Match CC's hook-error wrapper line: PreToolUse:<Tool> hook error: [python3 <path>]: <msg>
-# re.MULTILINE so ^ anchors at line start; count=1 strips only the first occurrence per block.
 _HOOK_PREFIX_RE = re.compile(
     r'^PreToolUse:\w+ hook error: \[python3 [^\]]+\]:\s*',
     re.MULTILINE,
@@ -15,9 +12,6 @@ _HOOK_PREFIX_RE = re.compile(
 
 # ORCHESTRATOR
 
-# Strip hook-error prefix from all 4 content shapes.
-# Returns (new_content, removed_chunks) — removed_chunks is a list of stripped prefix strings,
-# one per match, for stripped_hook_error_prefix mod attribution via attribute_chunk.
 def _strip_hook_prefix(content):
     removed = []
     if isinstance(content, str):
@@ -56,7 +50,6 @@ def _strip_hook_prefix(content):
 
 # FUNCTIONS
 
-# Strip hook-error prefix from a single string; append removed prefix(es) to out_removed.
 def _strip_from_text(text, out_removed):
     if _HOOK_PREFIX_MARKER not in text:
         return text

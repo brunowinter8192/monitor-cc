@@ -7,7 +7,6 @@ PREVIEW_CHARS = 100
 # FUNCTIONS
 
 
-# One-line preview: first non-empty line of the text, whitespace-collapsed and truncated
 def _preview(text: str, limit: int = PREVIEW_CHARS) -> str:
     if not text:
         return ""
@@ -21,7 +20,6 @@ def _preview(text: str, limit: int = PREVIEW_CHARS) -> str:
     return line[:limit] + ("…" if len(line) > limit else "")
 
 
-# Display label for one content block
 def _block_label(block: dict) -> str:
     btype = block.get("type", "text")
     if btype == "tool_use":
@@ -31,7 +29,6 @@ def _block_label(block: dict) -> str:
     return btype
 
 
-# Preview text for one content block — tool_use shows its input, not just the tool name
 def _block_preview(block: dict) -> str:
     full = block.get("full_text", "") or ""
     if block.get("type") == "tool_use":
@@ -40,9 +37,6 @@ def _block_preview(block: dict) -> str:
     return _preview(full)
 
 
-# Compact rows for every message of a payload. full_text is dropped here — only the msgs of the
-# expand window are re-summarized for their content dump, so peak memory stays near the parsed
-# payload.
 def build_turns(payload: dict) -> list:
     turns = []
     for index, message in enumerate(payload.get("messages", []) or []):
@@ -58,7 +52,6 @@ def build_turns(payload: dict) -> list:
             for block in summary.get("blocks", [])
         ]
         if not blocks:
-            # str content (CC delivers role='system' messages that way) — no block list exists
             blocks = [{
                 "label": summary.get("type", "text"),
                 "type": summary.get("type", "text"),
@@ -76,13 +69,6 @@ def build_turns(payload: dict) -> list:
     return turns
 
 
-# Stream every block of every message as {turn, role, block_types, block, label, text, chars}.
-# `block_types` is every block type the MESSAGE carries, so a caller can apply a block-level
-# --only to whole messages without re-summarizing them. `chars` is the same original-payload chars
-# value `build_turns`/`full_turn` read off the block (`block.get("chars", 0)`, or `summary["chars"]`
-# for the no-blocks pseudo-block) — search reports it unchanged, never re-measuring `text`. A
-# generator, so a 14 MB payload is never doubled by holding all full_text values at once —
-# build_turns drops them for exactly the same reason.
 def iter_block_texts(payload: dict):
     for index, message in enumerate(payload.get("messages", []) or []):
         summary = _summarize_message(message)
@@ -112,7 +98,6 @@ def iter_block_texts(payload: dict):
             }
 
 
-# Full content of one turn: [(label, chars, full_text), ...]
 def full_turn(payload: dict, turn_index: int) -> list:
     messages = payload.get("messages", []) or []
     if turn_index < 0 or turn_index >= len(messages):

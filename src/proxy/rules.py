@@ -7,17 +7,15 @@ from pathlib import Path
 _src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
 sys.path.insert(0, _src_dir)
 
-from .payload_helpers import _strip_blocked_tool_references  # re-exported for addon.py
+from .payload_helpers import _strip_blocked_tool_references
 from .content_strip import _strip_session_guidance, _strip_git_status
 from .rules_config import _load_system2_rules
-# Structural passes (their own logic) — see message_passes.py's own module entry
 from .message_passes import (
     _apply_role_system_strip,
     _apply_first_pass,
     _apply_cumulative_sr_strips,
     _apply_final_sr_pass,
 )
-# Template passes (generic pass runner + declarative spec) — see message_passes_simple.py
 from .message_passes_simple import (
     _apply_sn_notice_strip,
     _apply_po_preview_strip,
@@ -28,31 +26,20 @@ from .message_passes_simple import (
     _apply_bd_noise_strip,
     _apply_interrupt_marker_strip,
 )
-# Wake-up concern — see message_passes_wakeup.py
 from .message_passes_wakeup import _dedup_wakeup_blocks
 from .rule_ops import _merge_ops
 
 _WORKTREE_PATH_PATTERN = re.compile(r'(/[^\s]+)/\.claude/worktrees/[^/\s]+')
 
-# Exact CC boilerplate text at system[1] — redundant once sys[2] (our injected rules) already
-# establishes the agent's role. Exact-match guarded: an unexpected value at index 1 (future CC
-# version changing this line) passes through untouched, never blindly nuked by index alone.
 _SYS1_BOILERPLATE_TEXT = "You are Claude Code, Anthropic's official CLI for Claude."
 
 # ORCHESTRATOR
 
-# Apply all proxy modification rules — worker_context has two jobs: it selects the system2 rule
-# set by session ROLE ("worker:<name>" -> worker rules, anything else incl. absent -> main rules,
-# see _load_system2_rules) and it selects the bg-launch-ack replacement wording ("main" -> sharper
-# idle-until-notice wording, anything else -> unchanged default, see strip_bg_launch_ack.py)
-# — returns (modified_payload, list_of_applied_rules, original_system2_text, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added)
 def apply_modification_rules(payload: dict, model_family: str = "opus", project_path: str = "", worker_context: str = "") -> tuple:
     system_rules = _load_system2_rules(model_family, project_path, worker_context)
     messages_to_process = list(payload.get("messages", []))
 
     is_main = worker_context == "main"
-    # Closure swapped in at the SAME position _apply_bg_launch_ack_strip always occupied — keeps
-    # pipeline order unchanged, only this one pass needs the extra is_main argument.
     _bg_launch_ack_pass = lambda msgs: _apply_bg_launch_ack_strip(msgs, is_main=is_main)
 
     _passes = [
@@ -93,10 +80,6 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
 
 # FUNCTIONS
 
-# Run the pipeline's message-level passes in order, accumulating modifications/stripped/injected
-# bookkeeping across all of them — the loop body apply_modification_rules used to inline. Returns
-# (new_messages, modifications, changed, stripped_msg_indices, stripped_msg_originals,
-# stripped_msg_removed, injected_msg_added, all_ops).
 def _run_message_passes(messages_to_process: list, passes: list) -> tuple:
     modifications = []
     changed = False
@@ -121,8 +104,6 @@ def _run_message_passes(messages_to_process: list, passes: list) -> tuple:
     return (new_messages, modifications, changed, stripped_msg_indices, stripped_msg_originals,
             stripped_msg_removed, injected_msg_added, all_ops)
 
-# System-block passes — strips system1 boilerplate, injects system2 rules, and normalizes
-# system3 session-guidance / worktree paths — returns (new_system, original_system2_text, mods, sys_changed)
 def _apply_system_passes(system, system_rules: str) -> tuple:
     new_system = list(system) if isinstance(system, list) else system
     original_system2_text = None

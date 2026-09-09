@@ -110,17 +110,20 @@ plain terminal text to stdout.
 
 ## Modules
 
-### __main__.py (122 LOC)
+### __main__.py (117 LOC)
 
 **Purpose:** `main()` dispatch to the five subcommands (`sessions`, `msgs`, `expand`, `search`,
-`reqs`) plus the top-level module docstring (the full usage text, `--help`'s epilog) and the
-`if __name__` broken-pipe guard. `_parse_args(argv)` is a thin wrapper — `cli_args._parse_args(argv,
-__doc__)` — that hands the docstring to the parser builder as an explicit parameter rather than
-having `cli_args.py` read its own `__doc__`: the docstring physically stays in `__main__.py` (this
-is the entry point a reader expects to carry it), and the two modules never need to import each
-other's globals to make `epilog=__doc__` work. Argument construction (`cli_args.py`) and the five
-`_run_*` command bodies plus their shared validators (`commands.py`) both moved out entirely
-(2026-09, LOC-limit split — see `process-docs/dual_log_cli/`).
+`reqs`) plus the module-level `_USAGE_EPILOG` constant (the full usage text, `--help`'s epilog —
+converted from a module docstring to a plain constant during the phase2 comment/docstring
+conformance pass, since `epilog=__doc__` is the one place in this package a docstring is runtime
+data, not documentation) and the `if __name__` broken-pipe guard. `_parse_args(argv)` is a thin
+wrapper — `cli_args._parse_args(argv, _USAGE_EPILOG)` — that hands the epilog text to the parser
+builder as an explicit parameter rather than having `cli_args.py` read a module-level `__doc__` of
+its own: the text physically stays in `__main__.py` (this is the entry point a reader expects to
+carry it), and the two modules never need to import each other's globals to make it work. `--help`
+output verified byte-identical before/after the docstring→constant conversion. Argument
+construction (`cli_args.py`) and the five `_run_*` command bodies plus their shared validators
+(`commands.py`) both moved out entirely (2026-09, LOC-limit split — see `process-docs/dual_log_cli/`).
 **Reads:** `sys.argv`; the resolved dual_log directory via `discovery`.
 **Writes:** stdout (rendered text), stderr (resolution, range and empty-term errors). Never touches the log directory.
 **Called by:** the user, via `python -m src.dual_log_cli` or `bin/duallog`.
@@ -128,7 +131,7 @@ other's globals to make `epilog=__doc__` work. Argument construction (`cli_args.
 
 ---
 
-### cli_args.py (165 LOC, split out of `__main__.py` 2026-09)
+### cli_args.py (160 LOC, split out of `__main__.py` 2026-09)
 
 **Purpose:** The argparse parser construction — `_parse_args(argv, epilog)` builds the top-level
 parser (`prog`, `description`, `RawDescriptionHelpFormatter`, the caller-supplied `epilog`) and its
@@ -151,7 +154,7 @@ the `sub.add_parser(..., description=_REQS_DESCRIPTION)` call. `python -m src.du
 
 ---
 
-### commands.py (242 LOC, split out of `__main__.py` 2026-09)
+### commands.py (212 LOC, split out of `__main__.py` 2026-09)
 
 **Purpose:** The five `_run_*` command implementations (`_run_sessions`, `_run_search`, `_run_reqs`,
 `_run_msgs`, `_run_expand`) plus their shared validators (`_valid_day`, `_reject_bad_days`,
@@ -212,7 +215,7 @@ regardless of whether it renders PROJECT at all (only `expand` does).
 
 ---
 
-### project_map.py (83 LOC, 2026-08-29, extended 2026-09-03, `build_project_map` removed 2026-09-08)
+### project_map.py (66 LOC, 2026-08-29, extended 2026-09-03, `build_project_map` removed 2026-09-08)
 
 **Purpose:** Resolves the proxy's `md5(project_path)[:8]` session id — the only trace of a worker's project in its stem — to that project's real cwd. Scans `~/.claude/projects/*/`, takes the first `cwd` record out of the newest transcript per directory, and hashes those real paths with the production helper. Reads CC's transcript store, never the dual logs. `build_project_index` (added 2026-09-02 for `usage.py`) does that walk ONCE and returns it in two shapes: `cwd_to_dir` (a main stem's label match — `project_label(cwd) == label`) and `sid_to_cwd` (a worker stem's sid8 lookup, keeping the real PROJECT path rather than collapsing it to a label — 2026-09-08: `discovery.project_for_stem` now prints this path directly as `sessions`' PROJECT column, and it is what `usage.py` derives a worker's OWN worktree cwd from by appending the worktree suffix). `build_project_map` — the `{sid8: label}` reduction this index used to feed `discovery.context_for_stem`'s `worker/<label>/<name>` rendering — was removed 2026-09-08 along with that rendering: `project_for_stem` reads `build_project_index`'s own two shapes directly, and nothing else called the reduction.
 **Reads:** `~/.claude/projects/<encoded>/<uuid>.jsonl` (first ~40 lines of up to 3 newest transcripts per project dir).
@@ -222,7 +225,7 @@ regardless of whether it renders PROJECT at all (only `expand` does).
 
 ---
 
-### classifier.py (50 LOC, 2026-08-29)
+### classifier.py (40 LOC, 2026-08-29)
 
 **Purpose:** The `--only` vocabulary and its two operations, shared by `expand` and `search`. `ROLES` (3) and `TYPES` (9) are the BLOCK types a msg can carry — the real content blocks (text, thinking, tool_use, tool_result, image) plus the pseudo-types a str-content msg contributes as its single synthetic block; `parse_only` turns a spec into a `(role, type)` pair or raises `BadClassifierError`; `matches_only` applies it, matching the type side against ANY of a msg's block types. `ONLY_FORMS` is the accepted-forms sentence, interpolated into both `--help` texts so the syntax is documented where it is used.
 **Reads:** Nothing — pure vocabulary and predicates.
@@ -232,7 +235,7 @@ regardless of whether it renders PROJECT at all (only `expand` does).
 
 ---
 
-### discovery.py (281 LOC)
+### discovery.py (204 LOC)
 
 **Purpose:** Log-directory resolution, stem grouping, stem parsing (`stem_identity` — the ONE place every stem-derived value starts from: `("worker", sid8, name)` or `("main", family_head, label)`, `None` when unparseable), the session inventory (`build_session`'s `requests`/`requests_main`/`messages` figures skip a zero-tool non-haiku line the same way `timeline_boundaries._is_sidecar` does, since 2026-09-03 — see Gotchas), all session selection in one place (`filter_sessions` — a `context` substring for `sessions`, a `scope` substring for `search`/`reqs`, functionally identical since 2026-09-08 — both match the session's real PROJECT path OR its stem, case-insensitive — plus an inclusive start-day window, all ANDed; the day window compares each session's LOCAL calendar day since 2026-09-04, via `reader.local_datetime`, not the raw UTC day prefix it used to slice off the ISO string), `filter_by_family` (`reqs`' `--main`/`--worker`, reading `stem_identity`'s own family element directly since 2026-09-08 — see Gotchas for what this replaced), and stem/substring resolution with explicit ambiguity and unknown errors (`AmbiguousSessionError`, `UnknownSessionError`). **`project_for_stem`/`display_stem` (2026-09-08, replacing `context_for_stem`):** `project_for_stem` resolves a stem to the REAL project directory CC's own transcript records — a worker's sid8 through `project_map.build_project_index`'s `sid_to_cwd` (the PROJECT's own cwd, never the worker's own worktree cwd — see Gotchas), a main stem's label through a `cwd_to_dir` scan (the alphabetically first cwd wins on a shared-basename collision) — falling back to the sid8 (worker), the label (main), or the raw stem (unparseable) when nothing resolves, so a row always carries what IS known. `display_stem` is presentation only: a worker's sid8 segment removed (trailing epoch re-extracted and preserved), a main stem returned unchanged — the on-disk stem itself, and every OTHER function's reading of it, never changes. `resolve_stem` (2026-09-08) matches a query against EITHER the raw stem or its `display_stem` form, so a name copied out of `sessions`' own SESSION column resolves.
 **Reads:** `MONITOR_CC_ROOT`; the dual_log directory listing; each stem's `_forwarded.jsonl` in full; `stat().st_size` of all six streams.
@@ -242,7 +245,7 @@ regardless of whether it renders PROJECT at all (only `expand` does).
 
 ---
 
-### reader.py (137 LOC)
+### reader.py (105 LOC)
 
 **Purpose:** The read-only file primitives. Reverse chunked line-offset scanner, cheap model sniff, last-conversation-request loader, small-file JSONL iterator, `infer_family` (the haiku/sonnet/else→opus rule shared with `addon.py` and `dev/proxy_dual_log/`), and (2026-09-04) `local_datetime` — the ONE place every UTC `"...Z"` dual-log timestamp gets parsed and converted to this machine's LOCAL, DST-correct time (`.astimezone()` with no explicit `tz=`, resolving via the OS's own tzdata for whichever specific date is being converted — never a fixed offset). Every renderer/filter in this package that shows or compares a time or a day calls this ONE function rather than slicing the raw ISO string itself (the pre-2026-09-04 approach, which showed UTC everywhere — verified: the same instant read 18:16:02 in `reqs`, UTC, against 20:16:02 in the proxy pane, local). Returns `None` for an empty/unparseable string rather than raising; every caller already had a `"?"`/drop-the-session fallback for that case. `load_last_request` (since 2026-09-03) also skips a zero-tool non-haiku line — the same sidecar shape `timeline_boundaries._is_sidecar` excludes — after parsing it, since telling it apart from a real conversation line needs the parsed payload (see Gotchas).
 **Reads:** `_original` (byte ranges only, never whole-file) and any small stream line by line.
@@ -252,7 +255,7 @@ regardless of whether it renders PROJECT at all (only `expand` does).
 
 ---
 
-### timeline.py (31 LOC, reduced to the assembly point 2026-09 — see `process-docs/dual_log_cli/`)
+### timeline.py (30 LOC, reduced to the assembly point 2026-09 — see `process-docs/dual_log_cli/`)
 
 **Purpose:** `load_timeline(session)` — the one call that assembles everything a render needs for
 one session: parses the last non-haiku `_original` line (`reader.load_last_request`), infers its
@@ -272,7 +275,7 @@ respectively (2026-09, LOC-limit split), each importable and testable on its own
 
 ---
 
-### timeline_turns.py (124 LOC, split out of `timeline.py` 2026-09)
+### timeline_turns.py (109 LOC, split out of `timeline.py` 2026-09)
 
 **Purpose:** Turn-row construction for one payload — `build_turns` (the compact `{index, role,
 type, chars, blocks}` rows `msgs`/`expand` iterate), `iter_block_texts` (the block-text generator
@@ -290,7 +293,7 @@ non-`expand` consumers.
 
 ---
 
-### timeline_boundaries.py (222 LOC, split out of `timeline.py` 2026-09)
+### timeline_boundaries.py (141 LOC, split out of `timeline.py` 2026-09)
 
 **Purpose:** Request-boundary derivation from the `_forwarded` delta stream — `request_boundaries`
 (since 2026-09-03) skips a `_is_sidecar` entry — `counts.tools == 0` on a `forwarded_delta` line —
@@ -328,7 +331,7 @@ that point unmapped (renders as `"?"`).
 
 ---
 
-### timeline_markers.py (120 LOC, split out of `timeline.py` 2026-09)
+### timeline_markers.py (76 LOC, split out of `timeline.py` 2026-09)
 
 **Purpose:** Request markers and numbering. `request_markers` (boundaries →
 `{msg_index: {number, timestamp, refires, flow_id, sys_lines, tool_lines, message_count}}`, what
@@ -358,7 +361,7 @@ that group's owner is assigned the SAME number as the group before it.
 
 ---
 
-### timeline_grouping.py (68 LOC, split out of `timeline.py` 2026-09, for `reqs`'s turn grouping)
+### timeline_grouping.py (38 LOC, split out of `timeline.py` 2026-09, for `reqs`'s turn grouping)
 
 **Purpose:** `turn_openers`/`_is_turn_opener`/`_turn_preview`/`_group_markers_by_turn` (2026-09-08,
 for `reqs`'s turn grouping — opt-in as `--turns` from 2026-09-08, always-on since the 2026-09-08 M6
@@ -388,7 +391,7 @@ consume this — `build_turn_rows`/`build_turn_requests`, both removed).
 
 ---
 
-### overlay.py (170 LOC, new 2026-08-30, sys/tool overlay added 2026-09-04)
+### overlay.py (121 LOC, new 2026-08-30, sys/tool overlay added 2026-09-04)
 
 **Purpose:** Builds the strip/inject overlay `expand` AND (since 2026-09-03) `msgs` both read: `{(msg_idx, blk_idx): {stripped, injected, req}}` for one session, by running the session's `_stripped`/`_injected` delta streams through `proxy_display.parser.accumulate_dual_log` — REUSED, not re-implemented, so duallog inherits both the per-coordinate accumulation and the write-side attribution-lag correction (`_lag_msg_idx_by_flow_id`) that credits a trailing-msg total_tokens strip to the request that performed it. `_owners_by_index` resolves each coordinate to its performing flow (lag set wins over the raw recorder), `timeline_markers.request_numbers_by_flow` turns that into the REQ number a reader already sees in `msgs`, and `_texts` normalises the two recorded shapes (stripped = flat strings; injected = `(tag, text)` pairs of which only the `injected` ones are new content, the `equal` parts being the surviving original already on screen). `msgs` uses only the char LENGTHS of `stripped`/`injected` (its delta tail is a size, not a content dump), never the text itself. **`build_sys_tool_overlay(session, family, boundaries)` (2026-09-04)** is a sibling for `msgs`' sys/tool delta lines, returning `(sys_overlay, tools_overlay)` — `sys_overlay` keyed by system index (str), `tools_overlay` keyed by tool name, both `{stripped, injected, req, flow_id}` (tools also carry `whole: bool`, set when the stripped side recorded `{"whole": True}` — a tool the proxy removed ENTIRELY rather than trimming its description, which carries no text to measure at all). It reuses `_texts` for both system's plain span-list shape and a tool's `{"desc": [...]}` shape, and shares a new `_owners_by_flow_key` helper with a refactored `_owners_by_index` (pure refactor — `build_overlay`'s own behavior is unchanged, re-verified against `test_msgs_overlay.py`). **No lag correction for system/tools, unlike messages** — `_diff_system`/`_diff_tools` (`src/proxy/diff_engine.py`) compute a direct same-request diff of that request's own original vs. forwarded halves, never a historical ops chain the way messages' `compose_block` does, so there is no shape-ambiguity window for a strip to land one request late; verified on `opus_monitor_cc_1788464543`'s first real request, where the stripped/injected stream's own system_delta line carries the SAME flow_id `request_boundaries` marks as that request's owner. Calls `accumulate_dual_log` a SECOND time (its own independent accumulator, not shared with `build_overlay`'s) when a caller needs both — an extra ~11 ms per the wire-delta-tail measurement, negligible.
 **Reads:** The session's `_stripped.jsonl` and `_injected.jsonl` (delta JSONL, 64-336 KB per session — negligible beside the `_original` stream this package deliberately never parses whole).
@@ -398,7 +401,7 @@ consume this — `build_turn_rows`/`build_turn_requests`, both removed).
 
 ---
 
-### usage.py (194 LOC, new 2026-09-03, `_epoch_from_iso` delegated to `reader.local_datetime` 2026-09-04, second join added 2026-09-08 and removed 2026-09-08)
+### usage.py (144 LOC, new 2026-09-03, `_epoch_from_iso` delegated to `reader.local_datetime` 2026-09-04, second join added 2026-09-08 and removed 2026-09-08)
 
 **Purpose:** Builds `msgs`' `{flow_id: (cache_read_input_tokens, cache_creation_input_tokens)}` map — the CR/CC figures a REQ separator shows for the group owner. The dual log never carries the response body, so the join runs through THREE stores, the middle one SCOPED rather than store-wide: the session's `_response` stream gives `{flow_id: (request_id, status_code)}`; the first non-haiku boundary whose flow resolves there is the anchor — `boundaries` already excludes a sidecar call (`timeline_boundaries._is_sidecar`, since 2026-09-03), so the anchor can no longer land on one and search CC's transcript store for an id that was never a conversation turn (see the Gotchas below: this was the root cause of the "200 status, no transcript record" shortfall three sessions used to show). `_candidate_dirs` resolves the session's STEM alone (via `discovery.stem_identity` and `project_map.build_project_index`) to the one or few `~/.claude/projects/` directories that could possibly hold its transcript — a worker stem's sid8 gives its project's cwd, to which `/.claude/worktrees/<name>` is appended for the worker's OWN cwd; a main stem's label is matched against every known cwd's label (plural on purpose — two projects can share a basename). `_find_transcript` then reads, in Python, only the `.jsonl` files in those directories whose mtime is at or after the session's start, stopping at the first one containing the literal fragment `"requestId":"<id>"` (never a bare id — a tool_result can quote one, which would silently resolve to the wrong transcript). This whole preamble — `_response` → anchor → candidate dirs → transcript path — is `_resolve_session_transcript`, split out 2026-09-08 for a second join (`build_request_times_by_flow`, `turns`) that read the SAME transcript for different fields; that command and its join were removed 2026-09-08 (a `turns` transcript-joined duration split was the wrong question — see process-docs/dual_log_cli/ for the pivot to `reqs --turns`, a send-time-only view needing no transcript at all), but the split itself stayed, since it is still a clean single-purpose preamble on its own. That transcript's `type == "assistant"` records give `{request_id: (cr, cc)}` (`_transcript_usage`, keeping only the FIRST record per id since one API request produces several identical-usage streaming chunks). `build_usage_by_flow` then keeps only flows whose `_response` status is 200, so an errored owner degrades to no figures rather than a wrong pair.
 **Reads:** The session's `_response.jsonl`; a small, stem-derived subset of `~/.claude/projects/*/*.jsonl` — the project-index walk (delegated to `project_map`) plus, typically, one candidate transcript actually read for content.
@@ -410,7 +413,7 @@ consume this — `build_turn_rows`/`build_turn_requests`, both removed).
 
 ---
 
-### search.py (38 LOC)
+### search.py (27 LOC)
 
 **Purpose:** The literal-substring matcher over one session's deduplicated timeline. Returns one hit per matching (turn, block), each carrying that block's original-payload chars (from `timeline_turns.iter_block_texts`, the same value `msgs`/`expand` show for the block) — since 2026-09-04, no occurrence count and no text snippet; a block with several occurrences of the term still stays exactly one hit.
 **Reads:** The parsed payload, streamed block by block via `timeline_turns.iter_block_texts`.
@@ -420,7 +423,7 @@ consume this — `build_turn_rows`/`build_turn_requests`, both removed).
 
 ---
 
-### render_format.py (67 LOC, split out of `render.py` 2026-09)
+### render_format.py (47 LOC, split out of `render.py` 2026-09)
 
 **Purpose:** The shared formatters every renderer imports from — the ONE place every timestamp this
 package renders is converted to LOCAL time, not UTC (2026-09-04): `fmt_chars` (a char count as a
@@ -440,7 +443,7 @@ pre-2026-09-04 output WIDTH (`fmt_timestamp` 19 chars, `_clock` 8) — only the 
 
 ---
 
-### render_sessions.py (28 LOC, split out of `render.py` 2026-09)
+### render_sessions.py (20 LOC, split out of `render.py` 2026-09)
 
 **Purpose:** `render_sessions` — one line per session, newest first. PROJECT (2026-09-10, replaces
 CONTEXT) is the real project directory `discovery.project_for_stem` resolved — a path can run much
@@ -456,7 +459,7 @@ substring of either form, so a name copied from this column resolves.
 
 ---
 
-### render_msgs.py (297 LOC, split out of `render.py` 2026-09)
+### render_msgs.py (169 LOC, split out of `render.py` 2026-09)
 
 **Purpose:** `msgs`' request-grouped classifier listing (`render_msgs` — a `── REQ n  HH:MM:SS ──` separator per request group via `_req_separator`, widened to `── REQ n  HH:MM:SS  CR c  CC c ──` when an optional `usage_by_flow` map (from `usage.build_usage_by_flow`, `{flow_id: (cr, cc)}`) resolves the group owner's flow_id — an unresolved or absent map renders the plain pre-feature separator, never a placeholder — then, since 2026-09-03, `_req_delta_lines`: one indented `sys[i]`/`tool[name]` line per entry in that request's `system_delta`/`tools_delta` (the marker's own `sys_lines`/`tool_lines` from `timeline_markers.request_markers`), same indent/column layout as a block sub-line, tagged `  changed`/`  new` for a later request and untagged for the family's first — a marker with neither carries no such lines at all, which is what keeps a delta-free separator byte-identical to the pre-2026-09-03 output; a tool item can also carry `chars is None` (the name-based tool comparison's `"removed"` tag, third revision) — that item skips the numeric chars column entirely, printing `tool[Name]  removed` rather than a size for content that no longer exists — then one `[idx] role type chars` line per msg, a multi-block msg followed by one indented sub-line per block via `_block_sub_lines` (label + chars, chars right-aligned to the same column the parent line uses), and NOTHING else: no totals, no previews; `_governing_marker` gives a mid-group FROM its separator, and its sys/tool lines, back). Since 2026-09-03 a msg or block line the proxy transformed additionally carries `  −N +M → Wc` (chars stripped, chars injected, resulting wire size — real minus sign U+2212, digit-grouped like every other chars figure) via `_delta_tail`, fed by an optional `overlay` param (`overlay.build_overlay`'s `{(msg_idx, blk_idx): {stripped, injected, req}}`, reused from `expand`): `_block_overlay_totals` sums one coordinate's stripped/injected chars (`None` when untouched, which is what keeps an untouched line byte-identical), `_msg_delta_tail` sums those over ALL of a msg's blocks for the parent line, and both add ` by REQ n` only when the transforming request differs from the msg's OWN group (`group_req`, threaded through from `render_msgs`' marker loop) — omitted on the parent line specifically when a msg's touched blocks disagree on which request touched them, since summarizing that with one REQ number would be a guess (unobserved in the corpus: 0 of 1949 transformed msgs, measured).
 
@@ -468,7 +471,7 @@ Since 2026-09-04 a sys/tool line's OWN chars semantics changed to match: `_req_d
 
 ---
 
-### render_search.py (35 LOC, split out of `render.py` 2026-09)
+### render_search.py (24 LOC, split out of `render.py` 2026-09)
 
 **Purpose:** `render_search` — search results across one or more sessions (one term line overall, then a `session <stem>` line plus its hit lines per matching session, blank-line separated, with an optional skipped-sessions note). Since 2026-09-04 a hit line is `#msg role label  chars` (the block's original-payload chars, digit-grouped like a `msgs` block sub-line, right-aligned across the whole result set the same way `label` already was), replacing the earlier `×N` occurrence count plus a whitespace-collapsed snippet — the chars value alone is enough to tell a small genuine artifact from a large prose hit without opening either.
 **Reads:** `(session, hits)` pairs (from `commands._run_search`) — parameters only.
@@ -478,7 +481,7 @@ Since 2026-09-04 a sys/tool line's OWN chars semantics changed to match: `_req_d
 
 ---
 
-### render_reqs.py (294 LOC, split out of `render.py` 2026-09)
+### render_reqs.py (178 LOC, split out of `render.py` 2026-09)
 
 **Purpose:** `reqs`' turn-grouped, CR/CC-annotated REQ listing (2026-09-04, redesigned 2026-09-08 as
 M6 — one FIXED line form, every flag a pure filter/selector over it — see process-docs/dual_log_cli/
@@ -528,7 +531,7 @@ unchanged since 2026-09-08.
 
 ---
 
-### render_expand.py (55 LOC, split out of `render.py` 2026-09)
+### render_expand.py (48 LOC, split out of `render.py` 2026-09)
 
 **Purpose:** `render_expand_full` — `expand`'s full-content window dump (a `session`/`project`/`window` header block — 2026-09-08: the second line reads `project   <path>` off `data["session"]["project"]`, replacing the old `context   <string>` line — then `▶` anchor mark and an HH:MM:SS request-time column in each msg header, then one `── block i ──` header plus the raw text per block, each block optionally followed by `── stripped by REQ n ──` / `── injected by REQ n ──` sections via `_overlay_lines`). `overlay` is `{(msg, blk): {stripped, injected, req}}` from `overlay.py`; an empty/absent one renders exactly the pre-overlay output, which is what keeps an untouched msg byte-identical. The overlay sections are plain text with no ANSI anywhere — this output is read by agents through pipes, so the labels carry the meaning colour carries in the proxy pane.
 **Reads:** The dict produced by `timeline.load_timeline`, plus `dumped` (already-selected msg/block rows from `commands._run_expand`).
@@ -1014,6 +1017,11 @@ pushes its own line out by one (12 of 1417, 2 of them overlapping the first case
 means both still read correctly, they just sit one column off their neighbours. Widening the
 columns would trade that for permanent extra padding on every short line; the narrow default was
 chosen deliberately.
+
+**`_BLOCK_INDENT` is exactly 8 spaces so a block sub-line never matches `^\[` — `grep '^\['` keeps
+selecting msg lines only.** The `_MSG_*` widths keep a sub-line's chars right-aligned to the parent
+line's chars column; the 6-wide chars column fits up to 99,999c, a wider value pushes its own line
+out by one character rather than truncating.
 
 **A block sub-line's chars column is anchored to the PARENT line's chars column, not to a fixed
 sub-line width of its own (added 2026-08-31).** `_BLOCK_LABEL_WIDTH` is derived —
