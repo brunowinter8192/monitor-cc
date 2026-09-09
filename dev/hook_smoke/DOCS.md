@@ -105,7 +105,7 @@ python3 dev/hook_smoke/test_block_read_worktree.py
 
 ### test_log_janitor.py (75 LOC)
 
-**Purpose:** 4-case smoke for `src/log_janitor.cleanup_old_jsonl`. Verifies: old record >7 days dropped,
+**Purpose:** 4-case smoke for `src/panes/log_janitor.cleanup_old_jsonl`. Verifies: old record >7 days dropped,
 recent record <7 days kept, empty `ts` kept (fail-safe), naive-ts without TZ kept (TypeError on
 aware/naive comparison → fail-safe keep).
 
@@ -114,7 +114,7 @@ aware/naive comparison → fail-safe keep).
 python3 dev/hook_smoke/test_log_janitor.py
 ```
 
-**Expected output:** `All 4 tests passed.` (exit 0). Uses `sys.path.insert` on `src/` + `from log_janitor import` to avoid the `from src.` import restriction.
+**Expected output:** `All 4 tests passed.` (exit 0). Uses `sys.path.insert` on `src/panes/` + `from log_janitor import` to avoid the `from src.` import restriction.
 
 ---
 

@@ -360,7 +360,7 @@ def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: flo
     new_entries, _response_log_pos = read_response_log(resp_path, _response_log_pos)
     _response_rid_map.update(new_entries)
     if now - last_janitor_ts >= 86400:
-        from ..log_janitor import cleanup_old_jsonl, sweep_eligible_specs
+        from .log_janitor import cleanup_old_jsonl, sweep_eligible_specs
         _logs = Path(__file__).parent.parent / 'logs'
         for _, _path in sweep_eligible_specs(_logs):
             cleanup_old_jsonl(_path)
