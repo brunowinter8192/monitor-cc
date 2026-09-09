@@ -28,7 +28,7 @@ from src.ccwrap.wrapper import run
 
 ## Modules
 
-### __init__.py (1 LOC)
+### __init__.py (0 LOC)
 
 **Purpose:** Package marker.
 **Reads:** nothing. **Writes:** nothing.
@@ -37,7 +37,7 @@ from src.ccwrap.wrapper import run
 
 ---
 
-### __main__.py (31 LOC)
+### __main__.py (27 LOC)
 
 **Purpose:** CLI entry point — parses `--project <path>` from argv, passes remaining args as passthrough to `claude_proxy_start.sh`, invokes `wrapper.run()`.
 **Reads:** `sys.argv`.
@@ -47,7 +47,7 @@ from src.ccwrap.wrapper import run
 
 ---
 
-### wrapper.py (145 LOC)
+### wrapper.py (132 LOC)
 
 **Purpose:** PTY lifecycle manager. `run()` forks a child into a PTY, manages bidirectional I/O via `select`, forwards SIGWINCH resizes, waits for child exit, and propagates exit code. Owns stdin raw-mode management (set/restore via `termios`).
 **Reads:** `sys.stdin` (raw keystrokes in interactive mode); child PTY output via master_fd.
@@ -57,7 +57,7 @@ from src.ccwrap.wrapper import run
 
 ---
 
-### ansi_log.py (77 LOC)
+### ansi_log.py (69 LOC)
 
 **Purpose:** ANSI byte-stream parser and log-file manager. `parse_sequences()` extracts named ANSI tokens (CSI, OSC, ESC+char, C0) from a byte chunk using a compiled regex. `rotate_logs()` deletes oldest `.bin`/`.ansi.log` pairs beyond the keep-count. `open_log_pair()` opens a `.bin` + `.ansi.log` file pair. `write_sequences()` appends `<unix_ts>\t<name>\t<hex>` lines to the ansi.log.
 **Reads:** nothing from disk at runtime (rotation reads dir listings via `glob`).

@@ -4,7 +4,6 @@ from typing import Optional
 
 # FUNCTIONS
 
-# Parse user message content; returns (has_tool_result, text).
 def _parse_user_message_text(message: dict) -> tuple:
     content = message.get('message', {}).get('content', '')
     has_tool_result = False
@@ -23,7 +22,6 @@ def _parse_user_message_text(message: dict) -> tuple:
         text = content
     return has_tool_result, text
 
-# Convert raw CC content blocks to simplified block dicts; output_tokens threaded into thinking blocks.
 def _extract_content_blocks(content_blocks: list, output_tokens: int) -> list:
     blocks = []
     for block in content_blocks:
@@ -41,7 +39,6 @@ def _extract_content_blocks(content_blocks: list, output_tokens: int) -> list:
             blocks.append({'type': 'text', 'preview': block.get('text', '')})
     return blocks
 
-# Build a new API call dict from usage data + content blocks. _input_key set by caller.
 def _build_api_call(usage: dict, blocks: list, request_id: str) -> dict:
     return {
         'cache_read':        usage.get('cache_read_input_tokens', 0),
@@ -58,7 +55,6 @@ def _build_api_call(usage: dict, blocks: list, request_id: str) -> dict:
         'iterations':        usage.get('iterations') or [],
     }
 
-# Merge new blocks into prev_call (dedup path); updates prev_call output_tokens and current_turn thinking counters.
 def _merge_duplicate_call(prev_call: dict, blocks: list, current_turn: dict, output_tokens: int) -> None:
     prev_call['output_tokens'] = max(prev_call['output_tokens'], output_tokens)
     seen_types = set()
@@ -83,9 +79,6 @@ def _merge_duplicate_call(prev_call: dict, blocks: list, current_turn: dict, out
                 current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + b.get('chars', 0)
                 current_turn['thinking_sig_chars'] = current_turn.get('thinking_sig_chars', 0) + b.get('sig_chars', 0)
 
-# External-user-message branch: starts a new turn (skill-command or plain prompt), or leaves
-# current_turn unchanged for a tool-result/empty/skill-preamble/duplicate-timestamp message.
-# Returns the (possibly unchanged) current_turn.
 def _start_turn_from_user(message: dict, current_turn: Optional[dict], turns: list) -> Optional[dict]:
     has_tool_result, text = _parse_user_message_text(message)
     stripped = text.strip()
@@ -115,8 +108,6 @@ def _start_turn_from_user(message: dict, current_turn: Optional[dict], turns: li
     turns.append(new_turn)
     return new_turn
 
-# Assistant-message branch: dedup-merges into the last call (same input_key) or appends a new
-# api_call to current_turn. Mutates current_turn in place; no return value.
 def _absorb_assistant_call(message: dict, current_turn: dict) -> None:
     usage = message.get('message', {}).get('usage', {})
     cache_read = usage.get('cache_read_input_tokens', 0)
@@ -142,7 +133,6 @@ def _absorb_assistant_call(message: dict, current_turn: dict) -> None:
         current_turn['thinking_chars'] = current_turn.get('thinking_chars', 0) + sum(b.get('chars', 0) for b in blocks if b['type'] == 'thinking')
         current_turn['thinking_sig_chars'] = current_turn.get('thinking_sig_chars', 0) + sum(b.get('sig_chars', 0) for b in blocks if b['type'] == 'thinking')
 
-# Extract per-turn cache tracking data grouped by user prompts
 def extract_cache_turns(messages: list) -> list:
     turns = []
     current_turn = None

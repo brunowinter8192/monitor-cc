@@ -34,7 +34,7 @@ callers: `panes.token_pane`, `workers` (`read_new_lines`/`parse_jsonl_lines`/`ex
 
 ## Modules
 
-### jsonl_parser.py (56 LOC)
+### jsonl_parser.py (51 LOC)
 
 **Purpose:** Core session JSONL reader — reads new lines incrementally by byte offset and parses
 them into message dicts, flagging malformed lines.
@@ -47,7 +47,7 @@ no higher-level "parse tool calls" entry point anymore, see Role above).
 
 ---
 
-### jsonl_cache_turns.py (164 LOC)
+### jsonl_cache_turns.py (154 LOC)
 
 **Purpose:** Extract per-turn cache tracking data grouped by user prompts; each turn contains a list of requests with CR/CC/D/Out token metrics. Implements streaming-snapshot dedup: CC sometimes writes multiple assistant messages for the same request as incremental snapshots (partial thinking + final output). The dedup logic uses a `seen_types` set of `(type, identifier)` tuples (`('tool_use', tool_name)`, `('thinking',)`, `('text', preview)`) to skip blocks already counted in an earlier snapshot of the same response — preventing double-counting of thinking_chars across snapshots. Each `api_call` dict carries 6 usage extras from the `usage` object: `cache_creation_ttl` (dict `{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`), `server_tool_use` (dict `{web_search_requests, web_fetch_requests}`), `service_tier` (str), `speed` (str), `inference_geo` (str, often `""`), `iterations` (list of per-iteration breakdown dicts).
 **(2026-09, tokens-data-render-helpers milestone):** `extract_cache_turns` was 65 LOC — split into `_start_turn_from_user(message, current_turn, turns) -> Optional[dict]` (the external-user-message branch: starts a new turn for a skill-command or a plain prompt, or returns `current_turn` unchanged for a tool-result/empty/skill-preamble/duplicate-timestamp message — every early-exit path in the original just fell through to `continue` without touching `current_turn`, so the helper's "unchanged" return reproduces that exactly) and `_absorb_assistant_call(message, current_turn) -> None` (the assistant branch: dedup-merge into the last call or append a new one — mutates `current_turn` in place, same as before the split). `extract_cache_turns` itself is now a 2-branch dispatch loop calling these, byte-identical (`dev/panes/render_byte_identity.py`'s `build_cache_turns` incremental-chunk check, hash unchanged before/after).

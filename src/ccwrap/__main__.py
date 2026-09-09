@@ -8,7 +8,7 @@ from .wrapper import run, _DEFAULT_PROJECT, _SCRIPT_REL, _LOG_DIR
 # ORCHESTRATOR
 
 
-# Parse argv, build the shell command, invoke the PTY wrapper
+# FUNCTIONS
 def main() -> None:
     args = sys.argv[1:]
     project = _DEFAULT_PROJECT

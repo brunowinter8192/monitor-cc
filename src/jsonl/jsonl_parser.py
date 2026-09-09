@@ -5,7 +5,6 @@ from typing import List, Tuple
 
 # FUNCTIONS
 
-# Read new lines from file since last position
 def read_new_lines(filepath: Path, last_position: int) -> List[str]:
     if not filepath.exists():
         return []
@@ -19,11 +18,9 @@ def read_new_lines(filepath: Path, last_position: int) -> List[str]:
             lines = lines[:-1]
         return lines
 
-# Get current file position for next read
 def get_current_position(filepath: Path) -> int:
     return filepath.stat().st_size
 
-# Parse JSONL lines into message objects
 def parse_jsonl_lines(lines: List[str]) -> Tuple[List[dict], List[dict]]:
     messages = []
     malformed_lines = []
@@ -41,7 +38,6 @@ def parse_jsonl_lines(lines: List[str]) -> Tuple[List[dict], List[dict]]:
             })
     return messages, malformed_lines
 
-# Get message content blocks
 def get_message_content(message: dict) -> List[dict]:
     if 'message' in message and isinstance(message['message'], dict):
         content = message['message'].get('content', [])
@@ -51,6 +47,5 @@ def get_message_content(message: dict) -> List[dict]:
         return content
     return []
 
-# Check if content block is tool_use
 def is_tool_use(block: dict) -> bool:
     return block.get('type') == 'tool_use'

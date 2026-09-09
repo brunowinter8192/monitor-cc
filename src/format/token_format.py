@@ -7,17 +7,11 @@ from ..colors import (
     RED, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
-# From utils.py: right-align a ⎘/✓ copy symbol at the pane edge, width-guarded; browser-find-style
-# inline substring highlight
 from ..utils import append_copy_symbol, highlight_query_in_line
-# From search_bar.py: shared BG-restore sentinel (2026-08-18, rollout sub-milestone 4) — this
-# module doesn't know a row's eventual chosen_bg (zebra/hover) at embed time, only
-# token_pane.py's own render loop does, once computed; same pattern as proxy_display/format.py
 from ..search_bar import _BG_RESTORE_SENTINEL
 
 # FUNCTIONS
 
-# Shorten MCP tool names for display (mcp__plugin_xxx_yyy__tool_name → tool_name)
 def shorten_tool_name(name: str) -> str:
     if name.startswith('mcp__'):
         parts = name.split('__')
@@ -25,13 +19,11 @@ def shorten_tool_name(name: str) -> str:
             return parts[-1]
     return name
 
-# Format token count as compact "Xk" or "X.Xk" string
 def _format_k(n: int) -> str:
     if n >= 1000:
         return f"{n / 1000:.0f}k" if n >= 10000 else f"{n / 1000:.1f}k"
     return str(n)
 
-# Format a single API call line for cache tracker (wide or compact based on pane width)
 def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bool, req_num: int = 0, has_thinking: bool = False, sig_chars: int = 0) -> str:
     cc_broken = cc > cr
     bg = LIGHT_RED_BG if cc_broken else ''
@@ -49,27 +41,21 @@ def _format_cache_call(symbol: str, cr: int, cc: int, d: int, out: int, wide: bo
         return f"{bg}  {symbol} REQ #{req_num}  CR: {cr:>7,}  CC: {cc:>7,}  D: {d:>5,}  ({_format_k(out)} out){think_indicator}"
     return f"{bg} {symbol} #{req_num} {_format_k(cr)}/{_format_k(cc)}/{_format_k(d)} ({_format_k(out)} out){think_indicator}"
 
-# Compute (has_thinking, sig_chars) for a call's content_blocks — extracted 2026-08-18 (rollout
-# sub-milestone 4) so the real render loop and token_search.py's matcher can never disagree on
-# which calls show the 🧠 indicator / think_color threshold.
 def _call_thinking_meta(call: dict) -> tuple:
     has_thinking = any(b.get('type') == 'thinking' for b in call.get('content_blocks', []))
     sig_chars = sum(b.get('sig_chars', 0) for b in call.get('content_blocks', []) if b.get('type') == 'thinking')
     return has_thinking, sig_chars
 
-# Extract first meaningful value from tool input dict for preview
 def _get_tool_preview(input_data: dict) -> str:
     for key in ('file_path', 'pattern', 'command', 'subagent_type', 'prompt', 'query'):
         if key in input_data:
             return str(input_data[key]).replace('\n', ' ')
     return ''
 
-# Format timestamp for display (import lazily to avoid circular at module level)
 def _format_ts(timestamp: str) -> str:
     from ..utils import format_timestamp
     return format_timestamp(timestamp)
 
-# Format rate-limit reset epoch string for display (HH:MM same-day, or DayName HH:MM otherwise)
 def _fmt_rl_reset_time(epoch_str: str) -> str:
     try:
         ts = datetime.datetime.fromtimestamp(int(epoch_str))
@@ -80,7 +66,6 @@ def _fmt_rl_reset_time(epoch_str: str) -> str:
     except (ValueError, OSError):
         return epoch_str
 
-# TTL split / web_search-fetch / tier-speed-geo / iteration-count lines; returns (lines, keys).
 def _render_usage_extras_lines(call: dict) -> tuple:
     lines = []
     keys = []
@@ -112,8 +97,6 @@ def _render_usage_extras_lines(call: dict) -> tuple:
         keys.append(None)
     return lines, keys
 
-# Rate-limit `rl:` line (5h/7d utilization+reset) + YELLOW warn line (non-allowed status/overage);
-# returns (lines, keys). No-op (empty) when the call's request_id has no response_rid_map entry.
 def _render_rate_limit_lines(call: dict, response_rid_map: dict) -> tuple:
     lines = []
     keys = []
@@ -148,7 +131,6 @@ def _render_rate_limit_lines(call: dict, response_rid_map: dict) -> tuple:
         keys.append(None)
     return lines, keys
 
-# Content-blocks loop (tool_use / thinking / text); returns (lines, keys).
 def _render_content_block_lines(call: dict) -> tuple:
     lines = []
     keys = []
@@ -183,7 +165,6 @@ def _render_content_block_lines(call: dict) -> tuple:
             keys.append(None)
     return lines, keys
 
-# Render expanded detail lines for one API call; returns (lines, keys).
 def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
     lines = []
     keys = []
@@ -196,7 +177,6 @@ def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
         keys.extend(group_keys)
     return lines, keys
 
-# Compute viewport slice, sticky header, and initial_parent_count; returns the 5-tuple.
 def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, pane_width: int, scroll_offset: int) -> tuple:
     viewport_lines = pane_height - 1
     max_scroll = max(0, len(all_lines) - viewport_lines)
@@ -222,9 +202,6 @@ def _compute_cache_viewport(all_lines: list, line_keys: list, pane_height: int, 
     initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
     return visible_lines, visible_keys, sticky_header, start, initial_parent_count
 
-# Format one turn's header line (prompt truncation + timestamp + thinking-count badge) —
-# extracted 2026-08-18 (rollout sub-milestone 4) so the real render loop and
-# token_search.py's matcher can never disagree on what a turn's own line actually says.
 def _format_turn_header_line(turn_idx: int, turn: dict, pane_width: int) -> str:
     wide = pane_width >= 60
     prompt_max = min(pane_width - 15, 60) if wide else min(pane_width - 8, 30)
@@ -236,24 +213,6 @@ def _format_turn_header_line(turn_idx: int, turn: dict, pane_width: int) -> str:
     think_str = f" ({thinking_calls}/{len(api_calls)} 🧠)" if thinking_calls > 0 else ""
     return f"{PASTEL_PURPLE}Turn {turn_idx + 1} [{timestamp}]{think_str}: \"{truncated}\"{SOFT_RESET}"
 
-# Format cache tracker — returns (visible_lines, visible_keys, sticky_header, viewport_start, initial_parent_count)
-# (2026-08-18, rollout sub-milestone 4) search_match_set/search_current_key/search_query embed
-# search highlights at construction time via _BG_RESTORE_SENTINEL — a MATCH key is either
-# (turn_idx, call_idx) [container-marked whole line, unconditionally, regardless of expand
-# state — mirrors proxy_display's REQ-header "text extent" marking] or ('turn', turn_idx)
-# [same whole-line container mark, since a turn has no expand state to distinguish]. An
-# expanded matching call ADDITIONALLY gets its specific matching detail line(s) browser-find
-# substring-highlighted via utils.highlight_query_in_line — the header stays marked too
-# (uniform, keeps orientation when scrolling, same decision proxy made). nav_out, when given,
-# is populated (NOT returned — cleared+rewritten in place, same contract as
-# proxy_display.format's copy_rows_out) with {key: absolute_line_idx, ..., 'total_lines': N}
-# for the caller's own jump-to-match scroll math — deliberately kept OUT of line_keys so
-# ('turn', idx) keys never reach cache_line_map/click handling (turn headers stay
-# non-interactive for clicks, exactly as before) and workers/worker_format.py's own reuse of
-# this function (which assumes every non-None key is a plain 2-int-tuple) is unaffected.
-# Per-call summary-line build: symbol + _format_cache_call + search-marker-wrap + copy-symbol.
-# Returns (call_line, key, marker) — marker is None unless this call is a search match; the
-# caller uses it to decide whether/how to highlight this call's expanded detail lines.
 def _render_call_line(turn_idx: int, call_idx: int, call: dict, is_expanded: bool, request_num: int,
                       wide: bool, pane_width: int, search_match_set: Optional[set],
                       search_current_key, copy_feedback: Optional[dict]) -> tuple:
@@ -275,10 +234,6 @@ def _render_call_line(turn_idx: int, call_idx: int, call: dict, is_expanded: boo
         call_line = append_copy_symbol(call_line, '✓' if is_flash else '⎘', pane_width)
     return call_line, key, marker
 
-# Appends one turn's header + all its call lines + trailing blank line directly into the
-# caller's all_lines/line_keys (in-place — same contract nav_out already uses, keeps nav_out's
-# absolute line-index bookkeeping correct without threading an offset). Returns the updated
-# request_num (a running counter across turns).
 def _render_turn_lines(turn_idx: int, turn: dict, expand_states: dict, pane_width: int, wide: bool,
                        request_num: int, response_rid_map: dict, copy_feedback: Optional[dict],
                        search_match_set: Optional[set], search_current_key, search_query: str,
