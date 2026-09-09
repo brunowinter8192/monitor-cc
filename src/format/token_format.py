@@ -3,7 +3,7 @@ import datetime
 import time
 import re as _re
 from typing import Optional
-from ..constants import (
+from ..colors import (
     RED, GREEN, YELLOW, WHITE, PASTEL_PURPLE, PASTEL_ORANGE, LIGHT_RED_BG, DIM, SOFT_RESET,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )

@@ -50,7 +50,7 @@ mod_wrender = importlib.import_module(f'{_ROOT_PKG}.panes.warnings_render')
 mod_gpu = importlib.import_module(f'{_ROOT_PKG}.gpu_pane.pane')
 mod_news = importlib.import_module(f'{_ROOT_PKG}.news_pane.pane')
 mod_search_bar = importlib.import_module(f'{_ROOT_PKG}.search_bar')
-mod_constants = importlib.import_module(f'{_ROOT_PKG}.constants')
+mod_colors = importlib.import_module(f'{_ROOT_PKG}.colors')
 
 PANE_WIDTH = 100
 _RESULTS = []
@@ -278,15 +278,15 @@ def test_warnings_collapsed_container_mark_and_expanded_substring_mark():
     output, _ = mod_wpane._build_warnings_output()
     row = next(r for r, idx in mod_wpane.error_line_map.items() if idx == 0)
     header_line = output.splitlines()[row - 1]
-    check("collapsed header line is container-marked", mod_constants.SEARCH_CURRENT_BG in header_line)
+    check("collapsed header line is container-marked", mod_colors.SEARCH_CURRENT_BG in header_line)
     check("the marker text itself does NOT leak into the collapsed row (only 'echo' shows)",
           'unique_marker_x' not in header_line)
 
     mod_wpane.error_expand_states[0] = True
     output2, _ = mod_wpane._build_warnings_output()
-    check("header line STILL container-marked when expanded", mod_constants.SEARCH_CURRENT_BG in output2)
+    check("header line STILL container-marked when expanded", mod_colors.SEARCH_CURRENT_BG in output2)
     check("the matched substring itself is browser-find highlighted",
-          f"{mod_constants.SEARCH_CURRENT_BG}unique_marker_x\033[49m" in output2)
+          f"{mod_colors.SEARCH_CURRENT_BG}unique_marker_x\033[49m" in output2)
     check("no unsubstituted _BG_RESTORE_SENTINEL leaks into the final output",
           mod_search_bar._BG_RESTORE_SENTINEL not in output2)
 
@@ -294,7 +294,7 @@ def test_warnings_collapsed_container_mark_and_expanded_substring_mark():
 def test_warnings_sentinel_resolves_to_default_bg_not_empty_string():
     print("\n[sentinel fix] ZEBRA_BG_A=='' applies here too -- an explicit \\033[49m must appear "
           "after a highlighted detail line, not a raw leaked sentinel")
-    check("ZEBRA_BG_A is indeed the empty string", mod_constants.ZEBRA_BG_A == '')
+    check("ZEBRA_BG_A is indeed the empty string", mod_colors.ZEBRA_BG_A == '')
     _reset_warnings_state('unique_marker_z')
     mod_wpane.tool_errors.append(_make_error(input_marker='unique_marker_z'))
     mod_wpane.error_expand_states[0] = True
@@ -420,9 +420,9 @@ def test_gpu_highlight_only_match_no_sentinel_needed():
                                    search_match_line_set=mod_gpu._gpu_search.match_set,
                                    search_current_line=current_match_line)
     check("matched line is highlighted with SEARCH_CURRENT_BG",
-          mod_constants.SEARCH_CURRENT_BG in output.splitlines()[current_match_line])
+          mod_colors.SEARCH_CURRENT_BG in output.splitlines()[current_match_line])
     check("the query substring itself is wrapped exactly (browser-find style)",
-          f"{mod_constants.SEARCH_CURRENT_BG}unique_preset_marker\033[49m" in output)
+          f"{mod_colors.SEARCH_CURRENT_BG}unique_preset_marker\033[49m" in output)
 
 
 def test_gpu_n_N_cycles_current_idx_no_scroll_infra():
@@ -489,9 +489,9 @@ def test_news_highlight_only_match():
                                     search_match_line_set=mod_news._news_search.match_set,
                                     search_current_line=current_match_line)
     check("matched line is highlighted with SEARCH_CURRENT_BG",
-          mod_constants.SEARCH_CURRENT_BG in output.splitlines()[current_match_line])
+          mod_colors.SEARCH_CURRENT_BG in output.splitlines()[current_match_line])
     check("collection name substring wrapped exactly (browser-find style)",
-          f"{mod_constants.SEARCH_CURRENT_BG}{mod_news.TARGET_COLLECTION}\033[49m" in output)
+          f"{mod_colors.SEARCH_CURRENT_BG}{mod_news.TARGET_COLLECTION}\033[49m" in output)
 
 
 def test_news_drag_select_and_n_N():

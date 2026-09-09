@@ -4,11 +4,12 @@ import json
 import time
 from typing import List, Optional
 
-from ..constants import (
+from ..colors import (
     YELLOW, RED, DIM, WHITE, RESET, HOVER_BG, ZEBRA_BG_A, ZEBRA_BG_B, SOFT_RESET,
-    DIM_YELLOW_BG, WARNINGS_POLL_INTERVAL,
+    DIM_YELLOW_BG,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )
+from ..constants import WARNINGS_POLL_INTERVAL
 from ..utils import truncate_visible, first_word_of_call, format_worker_prefix, append_copy_symbol, highlight_query_in_line, _ANSI_ESCAPE_RE
 from ..format.strip_marker import highlight_stripped
 # From search_bar.py: shared BG-restore sentinel (2026-08-18, rollout sub-milestone 6) — this

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Optional
 
 # From constants.py: Colors
-from .constants import RESET, RED, GREEN, YELLOW, BLUE
+from .colors import RESET, RED, GREEN, YELLOW, BLUE
 
 CLAUDE_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 

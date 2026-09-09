@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 from typing import List, Optional, Set
 
-from .constants import RESET, WHITE, CYAN
+from .colors import RESET, WHITE, CYAN
 from .utils import _cell_width, truncate_visible
 
 # Private search-bar colors (not in the main palette — shared across every pane's search bar).

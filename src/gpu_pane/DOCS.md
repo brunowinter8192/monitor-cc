@@ -53,7 +53,7 @@ Standalone tmux Window 4 pane that monitors RAG GPU servers and indexed collecti
 **Reads:** `_toggle_state` (imported from `gpu_actions`, for `_status_text`); all other state passed as function arguments.
 **Writes:** `_button_regions` (cleared and rebuilt every `_render_pane` call) — returns rendered string; no other mutation.
 **Called by:** `pane.py` (`_render_pane` directly; `_gpu_search_on_commit`'s own baseline render); `dev/click_ui/p4_gpu_news_button_probe.py` (`_render_pane` directly, standalone).
-**Calls out:** `gpu_actions` (`_toggle_state`), `utils` (`format_timestamp`, `compute_header_rule_len`, `highlight_query_in_line`), `constants`.
+**Calls out:** `gpu_actions` (`_toggle_state`), `utils` (`format_timestamp`, `compute_header_rule_len`, `highlight_query_in_line`), `colors` (2026-09 constants-split milestone — re-pointed from `constants`, all 8 imported names are colors).
 
 ---
 

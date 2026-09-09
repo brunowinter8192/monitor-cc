@@ -2,7 +2,7 @@
 from collections import Counter
 from typing import Optional
 
-from ..constants import (
+from ..colors import (
     RESET, SOFT_RESET, DIM, YELLOW, HOVER_BG,
     DIM_YELLOW_BG, DIM_GREEN_BG, ZEBRA_BG_A, ZEBRA_BG_B, COLLISION_BG,
 )

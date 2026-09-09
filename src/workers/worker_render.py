@@ -2,7 +2,7 @@
 from typing import Optional
 import os
 
-from ..constants import RESET, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
+from ..colors import RESET, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
 from ..utils import truncate_visible
 from .. import search_bar
 # From token_format.py: format_cache_tracker's nav_out param, called directly (not through

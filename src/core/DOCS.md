@@ -39,6 +39,16 @@ on startup and every poll tick — session-file add/remove tracking only, not to
 
 ## Modules
 
+### modes.py (10 LOC, new 2026-09, constants-split milestone)
+
+**Purpose:** `MODE_*` constants (`MODE_ALL`/`MODE_WARNINGS`/`MODE_TOKENS`/`MODE_WORKERS`/`MODE_PROXY`/`MODE_WORKER_PROXY`) — split out of `src/constants.py`'s `MODE_*` cluster. `monitor.py` is this cluster's sole importer anywhere in `src/`/`dev/`, so it moved into this package rather than staying at root.
+**Reads:** nothing.
+**Writes:** nothing.
+**Called by:** `monitor.py` only.
+**Calls out:** nothing.
+
+---
+
 ### monitor.py (121 LOC)
 
 **Purpose:** Session discovery + mode dispatcher. `run_monitor` sets `active_project_filter`/
@@ -58,7 +68,8 @@ here from the now-deleted `monitor_session.py`) compute where a tracked file's b
 `from ..core import monitor as _monitor`, reading `active_project_filter`/`active_mode`/
 `get_main_session_files`/`_get_newest_main_session`/`_get_session_start_ts`/`monitor_sessions`).
 **Calls out:** `session_finder`, `jsonl` (`parse_jsonl_lines`, `read_new_lines`, for
-`_get_session_start_ts`); lazy: `workers`, `panes`, `proxy_display` (mode-dispatch imports).
+`_get_session_start_ts`); `.modes` (`MODE_*`, 2026-09 constants-split milestone — re-pointed from
+`..constants`); lazy: `workers`, `panes`, `proxy_display` (mode-dispatch imports).
 
 ---
 

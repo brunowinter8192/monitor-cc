@@ -2,7 +2,7 @@
 import os
 import time
 
-from ..constants import RESET, DIM, YELLOW, RED
+from ..colors import RESET, DIM, YELLOW, RED
 from .log_parser import (
     find_log_file, find_current_run_lines, filter_events, parse_line,
 )

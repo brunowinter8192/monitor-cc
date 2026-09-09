@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 import os
 import time
 
-from ..constants import (
+from ..colors import (
     GREEN, RED, YELLOW, WHITE, CYAN,
     DIM, PASTEL_PURPLE, SOFT_RESET,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,

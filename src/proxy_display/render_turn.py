@@ -1,7 +1,7 @@
 # INFRASTRUCTURE
 import time
 from typing import Optional
-from ..constants import (
+from ..colors import (
     SOFT_RESET, RED, GREEN, WHITE, YELLOW, DIM,
     SEARCH_MATCH_BG, SEARCH_CURRENT_BG,
 )

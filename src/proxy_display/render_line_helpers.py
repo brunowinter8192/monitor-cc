@@ -1,5 +1,5 @@
 # INFRASTRUCTURE
-from ..constants import SOFT_RESET, DIM
+from ..colors import SOFT_RESET, DIM
 
 # Split text on '\n', expandtabs(8), emit one f"{indent}{bg}{DIM}{line}{SOFT_RESET}" per line
 # with a None key. An empty line (after expandtabs) renders with nothing between DIM and

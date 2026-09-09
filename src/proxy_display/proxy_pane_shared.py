@@ -2,7 +2,8 @@
 import os
 from typing import Dict, Optional, Tuple
 
-from ..constants import RESET, YELLOW, DIM, WHITE, PROXY_MESSAGES_KEEP_LAST
+from ..colors import RESET, YELLOW, DIM, WHITE
+from ..constants import PROXY_MESSAGES_KEEP_LAST
 from .format import _is_standalone_entry
 from .forwarded_parser import _lazy_load_messages_forwarded, reconstruct_all_messages
 from .parser import _find_dual_log_paths

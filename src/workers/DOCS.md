@@ -126,7 +126,7 @@ when non-`None`). None of these five are referenced by exact name in any dev pro
 **Reads:** Parameters only.
 **Writes:** Nothing directly — mutates `line_map_out`/`cache_line_map_out`/`copy_rows_out`/`worker_scroll_offsets` arguments in place where documented above.
 **Called by:** `src/workers/worker_pane.py`
-**Calls out:** `constants`, `utils` (`truncate_visible`), `search_bar` (`resolve_bg_restore`), `format.token_format` (`format_cache_tracker`)
+**Calls out:** `colors` (`RESET`, `ZEBRA_BG_A`, `ZEBRA_BG_B`, `HOVER_BG`, `LIGHT_RED_BG` — 2026-09 constants-split milestone, re-pointed from `constants`), `utils` (`truncate_visible`), `search_bar` (`resolve_bg_restore`), `format.token_format` (`format_cache_tracker`)
 
 ---
 

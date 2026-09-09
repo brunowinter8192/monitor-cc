@@ -2,7 +2,7 @@
 import os
 import re
 
-from ..constants import RESET, GREEN, YELLOW, RED, DIM, ORANGE, SEARCH_MATCH_BG, SEARCH_CURRENT_BG
+from ..colors import RESET, GREEN, YELLOW, RED, DIM, ORANGE, SEARCH_MATCH_BG, SEARCH_CURRENT_BG
 from ..utils import format_timestamp, compute_header_rule_len, highlight_query_in_line
 from .gpu_actions import _toggle_state
 

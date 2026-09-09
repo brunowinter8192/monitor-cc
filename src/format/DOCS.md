@@ -34,7 +34,7 @@ stopped displaying non-tool-call event types.
 **Reads:** Chunk strings passed as arguments. No I/O, no shared state.
 **Writes:** Returns strings. No stdout, no file writes.
 **Called by:** `panes.warnings_render`.
-**Calls out:** `constants` only.
+**Calls out:** `colors` only (`DIM_YELLOW_BG`, `SOFT_RESET` — 2026-09 constants-split milestone, re-pointed from `constants`).
 
 ---
 

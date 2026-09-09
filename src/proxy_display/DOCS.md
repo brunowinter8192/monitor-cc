@@ -219,7 +219,7 @@ Plus five NEW shared functions (2026-09), each replacing a block that was duplic
 **Reads:** Parameters only.
 **Writes:** Nothing — returns values; several functions mutate an argument in place (`_strip_inactive_messages` the `entries` list, `_attach_overlay_references`/`_accumulate_dual_logs_and_attach` the entries + accumulator dicts, `_shift_line_map_and_copy_rows`/`_render_and_scroll_body` the `line_map`/`copy_rows` arguments) — documented per-function above, never a hidden side effect on a name not in the parameter list.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py` exclusively.
-**Calls out:** `constants` (`RESET`, `YELLOW`, `DIM`, `WHITE`, `PROXY_MESSAGES_KEEP_LAST`), `proxy_display.format` (`_is_standalone_entry`), `proxy_display.forwarded_parser` (`_lazy_load_messages_forwarded`, `reconstruct_all_messages`), `proxy_display.parser` (`_find_dual_log_paths`), `proxy_display.dual_log_accumulator` (`accumulate_dual_log`), `proxy_display.search` (`build_search_matches`), `search_bar` (`handle_search_mouse_motion`), `utils` (`_ANSI_ESCAPE_RE`)
+**Calls out:** `colors` (`RESET`, `YELLOW`, `DIM`, `WHITE` — 2026-09 constants-split milestone, re-pointed from `constants`), `constants` (`PROXY_MESSAGES_KEEP_LAST`), `proxy_display.format` (`_is_standalone_entry`), `proxy_display.forwarded_parser` (`_lazy_load_messages_forwarded`, `reconstruct_all_messages`), `proxy_display.parser` (`_find_dual_log_paths`), `proxy_display.dual_log_accumulator` (`accumulate_dual_log`), `proxy_display.search` (`build_search_matches`), `search_bar` (`handle_search_mouse_motion`), `utils` (`_ANSI_ESCAPE_RE`)
 
 ---
 
@@ -420,7 +420,7 @@ primitive, none calls another).
 **Reads:** Parameters only.
 **Writes:** Nothing — returns `(lines, keys)` tuples.
 **Called by:** `src/proxy_display/render_sections.py`, `src/proxy_display/render_sections_system.py`
-**Calls out:** `constants` (`SOFT_RESET`, `DIM`)
+**Calls out:** `colors` (`SOFT_RESET`, `DIM` — 2026-09 constants-split milestone, re-pointed from `constants`)
 
 ---
 
