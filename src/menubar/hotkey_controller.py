@@ -97,6 +97,11 @@ class HotkeyController:
         self._hotkey_digits_refs = []     # hk_refs for active Cmd+1..9 registrations
         self._hotkey_arr_right_ref = None   # hk_ref for active Cmd+→ registration
         self._hotkey_arr_left_ref  = None   # hk_ref for active Cmd+← registration
+        # GC anchors for the two always-on Carbon hotkeys (Cmd+L, Cmd+K) — set by CCMenuBarApp
+        # right after register_cmd_l/register_cmd_k; (cmd_l_cb, cmd_l_ref, cmd_k_cb, cmd_k_ref).
+        # Must stay alive for as long as the registration is active, or GC corrupts the IMP
+        # pointer table.
+        self.global_handles = None
 
     # Register (or re-register) Cmd+1..9 hotkeys mapped by desktop slot → cwd
     def reregister_digits(self, desktop_to_cwd: dict) -> None:

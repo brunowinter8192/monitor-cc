@@ -221,15 +221,6 @@ class PanelSettings:
         self.panel_width = panel_width
         self.panel_min_height = panel_min_height
 
-# GC anchors for the two always-on Carbon hotkeys (Cmd+L, Cmd+K) — ctypes CFUNCTYPE + hk_ref must
-# stay alive for as long as the registration is active, or GC corrupts the IMP pointer table.
-class _GlobalHotkeys:
-    def __init__(self, cmd_l_cb, cmd_l_ref, cmd_k_cb, cmd_k_ref):
-        self.cmd_l_cb = cmd_l_cb
-        self.cmd_l_ref = cmd_l_ref
-        self.cmd_k_cb = cmd_k_cb
-        self.cmd_k_ref = cmd_k_ref
-
 # monotonic ts of last cleanup_old_lines() run (0 → fires on first tick); module-scope since the
 # menubar app is a singleton process (same pattern as discovery_worker.py's _snapshot and
 # monitor_sweep_scheduler.py's _last_sweep_ts).
@@ -258,12 +249,12 @@ class CCMenuBarApp(rumps.App):
             except Exception:
                 pass
 
+        self.hotkey = HotkeyController(self)
         cmd_l_cb, cmd_l_ref = register_cmd_l(_on_hotkey)
         cmd_k_cb, cmd_k_ref = register_cmd_k(
             lambda: NSOperationQueue.mainQueue().addOperationWithBlock_(
                 lambda: _background_panel(self)))
-        self._global_hotkeys = _GlobalHotkeys(cmd_l_cb, cmd_l_ref, cmd_k_cb, cmd_k_ref)
-        self.hotkey = HotkeyController(self)
+        self.hotkey.global_handles = (cmd_l_cb, cmd_l_ref, cmd_k_cb, cmd_k_ref)
         self.rag    = RagController(self)           # RAG status panel controller; owns all _rag_* state
         self.models = ModelController(self)          # Models panel controller; owns all _models_* state
         self.sessions = SessionsController(self)   # session snapshot cache; refresh() + .data property
