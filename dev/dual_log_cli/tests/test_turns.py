@@ -39,12 +39,13 @@ _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 
 from src.dual_log_cli.reader import local_datetime
-from src.dual_log_cli.render import _fmt_duration, render_reqs
-from src.dual_log_cli.timeline import (
+from src.dual_log_cli.render_format import _fmt_duration
+from src.dual_log_cli.render_reqs import render_reqs
+from src.dual_log_cli.timeline_boundaries import request_boundaries
+from src.dual_log_cli.timeline_grouping import (
     _group_markers_by_turn,
     _is_turn_opener,
     _turn_preview,
-    request_boundaries,
     turn_openers,
 )
 

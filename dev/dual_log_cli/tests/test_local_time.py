@@ -34,7 +34,7 @@ sys.path.insert(0, str(_HERE.parents[2]))
 
 from src.dual_log_cli.discovery import filter_sessions
 from src.dual_log_cli.reader import local_datetime
-from src.dual_log_cli.render import _clock, _window_date, fmt_timestamp
+from src.dual_log_cli.render_format import _clock, _window_date, fmt_timestamp
 from src.dual_log_cli.usage import _epoch_from_iso
 
 PASS_LIST = []

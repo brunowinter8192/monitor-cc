@@ -26,7 +26,7 @@ from pathlib import Path
 _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 
-from src.dual_log_cli.render import render_search
+from src.dual_log_cli.render_search import render_search
 from src.dual_log_cli.search import find_matches
 
 PASS_LIST = []
