@@ -47,6 +47,12 @@ before/after hash comparison is only reliable if those files don't change betwee
 (i.e. nobody clicks Apply on a live running menubar app in between). No writes ever happen in the
 UI check itself.
 
+Status: `PERSISTENCE_HASH: 650d5b77aafc3c718a08a033b5a56530336a9308552eb842499d5c12d3bc8b06`,
+`UI_HASH: 52efdd84205e590eedd0663ee8b21d2bb0db8cd386e48907d865071832e1f2d7` — both identical before
+and after the split.
+
+---
+
 ### panel_manager_byte_identity.py (211 LOC, new 2026-09, menubar milestone B)
 
 **Purpose:** Byte-identity harness for the menubar milestone B `PanelManager` class-attribute
@@ -78,6 +84,41 @@ the post-split `_widgets`/`_lookups` layout), mirroring
 A. A future `PanelManager` change must re-verify this hash still matches, updating the accessor
 code first if the internal attribute names move again.
 
-Status: `PERSISTENCE_HASH: 650d5b77aafc3c718a08a033b5a56530336a9308552eb842499d5c12d3bc8b06`,
-`UI_HASH: 52efdd84205e590eedd0663ee8b21d2bb0db8cd386e48907d865071832e1f2d7` — both identical before
-and after the split.
+---
+
+### discover_byte_identity.py (177 LOC, new 2026-09, menubar milestone C)
+
+**Purpose:** Byte-identity harness for `src/menubar/discover.py:_process_project_dir` (86-LOC
+function extraction into `_worker_session_info`/`_main_session_info`/`_hook_freshness`).
+Monkeypatches every I/O boundary the function touches (`_newest_jsonl`, `_has_active_bg`,
+`_read_hook_state`, `_cwd_from_jsonl`, `_worker_tmux_session`, `_tmux_session_exists`,
+`_tmux_window_activity`, `_proc_cwd_for_encoded_dir`, `_proxy_log_newest_mtime`) directly on the
+live module object — `discover.py`'s own functions resolve these as module globals at call time,
+so reassigning the attribute redirects every internal caller, no `Path.stat` patching needed
+(the fake jsonl object supplies its own `.stat()`). Drives 4 scenarios through the real,
+unmocked `_process_project_dir`/`_classify_encoded_dir`/`_decode_dir_name` logic and hashes the
+resulting `SessionInfo` tuples: `worker_fresh_working_stale_activity` (crash-safety demote
+working→idle via stale tmux window activity), `worker_no_worktree_old_mtime` (alive guard fails,
+returns `None`), `main_fresh_hook` (status taken directly from a fresh hook), `main_idle_proxy_override`
+(JSONL says idle, a newer proxy-log mtime within `THINKING_OVERRIDE_MAX_SECS` overrides to
+working). Each scenario's fakes are installed, the call made, then restored, so scenarios don't
+leak into each other.
+**Reads:** nothing external — all fixtures are constructed inline.
+**Writes:** nothing — stdout only (`HASH: <hex>`).
+**Run:** `./venv/bin/python dev/menubar/discover_byte_identity.py`
+**Calls out:** `src.menubar.discover` (`_process_project_dir`, `SessionInfo`) — imported via a
+dedicated function (`_import_discover`), not a module-level `from src.` line, per
+`block_dev_imports_src`.
+
+**Determinism note:** the same top-level entry point (`_process_project_dir`) is called
+regardless of how its internals are decomposed, so this harness needs no accessor-code update
+across the milestone C split — unlike `panel_manager_byte_identity.py`'s `_widgets`/`_lookups`
+rename. Baseline hash (pre-split) and post-split hash both matched:
+`0395eddc436c042aea4b5fa2ca313f207248dc6efc70679e15520ecf6c636a37`.
+
+`detect_main_desktop_numbers` (`desktop_detection.py`) and `_refresh_ghostty_tty_to_id`
+(`ghostty.py`) have no equivalent harness — both call CGS/AppleScript/tty I/O with no clean
+monkeypatch seam comparable to `discover.py`'s plain-function boundaries (CGS is `ctypes` CDLL
+calls, not overridable Python names in the same way); import smoke (`IMPORT_OK` in the behavior
+proof) plus `discover.py:list_alive_sessions`'s existing caller check (both functions are called
+from there on every discovery cycle) were used instead, per this milestone's own scope.
