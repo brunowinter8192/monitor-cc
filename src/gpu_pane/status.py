@@ -11,8 +11,6 @@ from pathlib import Path
 RAG_LOCKS_DIR = Path.home() / '.rag-locks'
 
 
-# Discovered once per process via `rag-cli server presets --json`; returns [] on any
-# failure. Process is respawned by Monitor's Ctrl+R, re-imports module → new presets.
 def _discover_preset_names() -> list[str]:
     try:
         r = subprocess.run(
@@ -29,8 +27,8 @@ def _discover_preset_names() -> list[str]:
 
 PRESET_NAMES = _discover_preset_names()
 
-_last_anomalies: list[dict] = []  # reset each tick by all_statuses()
-_legacy_warned: bool = False       # log legacy port-file warning once per session
+_last_anomalies: list[dict] = []
+_legacy_warned: bool = False
 
 _logger = logging.getLogger('gpu_pane')
 if not _logger.handlers:
@@ -47,7 +45,6 @@ if not _logger.handlers:
 
 # ORCHESTRATOR
 
-# Return (preset_statuses, arbitrary_statuses). Anomalies logged to gpu_pane.log; readable via get_anomalies()
 def all_statuses() -> tuple[list[dict], list[dict]]:
     global _last_anomalies
     _last_anomalies = []
@@ -71,8 +68,7 @@ def all_statuses() -> tuple[list[dict], list[dict]]:
             except ProcessLookupError:
                 _warn('dead_pid', f'stale state file: pid {pid} dead', str(sf))
                 continue
-            except PermissionError:
-                pass  # PID alive, different owner
+            except PermissionError: pass
 
         name = state.get('name')
         if name in PRESET_NAMES:
@@ -91,12 +87,10 @@ def all_statuses() -> tuple[list[dict], list[dict]]:
 
 # FUNCTIONS
 
-# Return anomalies from the last all_statuses() call
 def get_anomalies() -> list[dict]:
     return list(_last_anomalies)
 
 
-# Build stopped status for a preset (state=None) or delegate to _status_for_state
 def _status_for_preset(name: str, state: dict | None) -> dict:
     if state is None:
         return {
@@ -108,7 +102,6 @@ def _status_for_preset(name: str, state: dict | None) -> dict:
     return _status_for_state(state, kind='preset')
 
 
-# Build display-ready status from a live state file dict
 def _status_for_state(state: dict, kind: str = 'arbitrary') -> dict:
     port = state.get('port')
     pid = state.get('pid')
@@ -136,12 +129,6 @@ def _status_for_state(state: dict, kind: str = 'arbitrary') -> dict:
     }
 
 
-# Seconds since state-file mtime; None if port unknown or file unreachable.
-# The state file at ~/.rag-locks/server-port-{port}.json is the canonical "last used"
-# anchor: server start writes it, real client requests (embedder/sparse_embedder/reranker)
-# touch its mtime, /health probes do NOT touch it. Replaces the previous log-mtime
-# source which was broken by (a) splade uvicorn logging /health probes and
-# (b) worktree-stale log_path entries.
 def _state_file_idle(port: int | None) -> float | None:
     if port is None:
         return None
@@ -151,7 +138,6 @@ def _state_file_idle(port: int | None) -> float | None:
         return None
 
 
-# GET /health on port; True if 200, False on any error
 def _check_health_port(port: int | None) -> bool:
     if port is None:
         return False
@@ -163,7 +149,6 @@ def _check_health_port(port: int | None) -> bool:
         return False
 
 
-# ps -o rss= for PID; return MB; None on failure
 def _read_rss_mb(pid: int | None) -> int | None:
     if pid is None:
         return None
@@ -177,7 +162,6 @@ def _read_rss_mb(pid: int | None) -> int | None:
     return None
 
 
-# Fetch [{collection, chunks}] via lock-exempt rag-cli list_collections --json; [] on any failure
 def _fetch_collections() -> list[dict]:
     try:
         r = subprocess.run(
@@ -191,7 +175,6 @@ def _fetch_collections() -> list[dict]:
     return []
 
 
-# Append anomaly to _last_anomalies and log warning (best-effort)
 def _warn(kind: str, message: str, source: str) -> None:
     _last_anomalies.append({'kind': kind, 'message': message, 'source': source})
     try:
@@ -200,7 +183,6 @@ def _warn(kind: str, message: str, source: str) -> None:
         pass
 
 
-# Detect legacy rag-server-*.port files; add to anomalies; log once per session
 def _check_legacy_files() -> None:
     global _legacy_warned
     legacy = list(RAG_LOCKS_DIR.glob('rag-server-*.port'))

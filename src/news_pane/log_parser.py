@@ -10,7 +10,6 @@ TARGET_COLLECTION = 'searxng_crypto'
 RUN_START_MARKER = '=== coindesk pipeline started ==='
 RUN_END_MARKER   = '=== coindesk pipeline complete ==='
 
-# Log line format: [YYYY-MM-DD HH:MM:SS] LEVEL message
 _LOG_LINE_RE = re.compile(r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(\w+)\s+(.*)')
 
 _WHITELIST = [
@@ -25,13 +24,11 @@ _WHITELIST = [
 
 # FUNCTIONS
 
-# Return Path to newest news_coindesk_*.log by mtime; None if none found
 def find_log_file() -> Path | None:
     candidates = sorted(LOG_DIR.glob('news_coindesk_*.log'), key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
-# Return stripped timestamp string from LAST_RUN_FILE; None if missing or unreadable
 def read_last_run_ts() -> str | None:
     try:
         return LAST_RUN_FILE.read_text().strip() or None
@@ -39,7 +36,6 @@ def read_last_run_ts() -> str | None:
         return None
 
 
-# Return all lines after the last RUN_START_MARKER in log_path; [] if file unreadable
 def find_current_run_lines(log_path: Path) -> list[str]:
     try:
         text = log_path.read_text(errors='replace')
@@ -55,7 +51,6 @@ def find_current_run_lines(log_path: Path) -> list[str]:
     return lines[last_start:]
 
 
-# Parse a structured log line; return (hh:mm:ss, level, message) or None if unrecognized
 def parse_line(line: str) -> tuple[str, str, str] | None:
     m = _LOG_LINE_RE.match(line)
     if not m:
@@ -63,7 +58,6 @@ def parse_line(line: str) -> tuple[str, str, str] | None:
     return (m.group(1)[11:], m.group(2).upper(), m.group(3))
 
 
-# Return lines from current_run_lines that match the whitelist or are WARNING/ERROR level
 def filter_events(lines: list[str]) -> list[str]:
     result = []
     for line in lines:

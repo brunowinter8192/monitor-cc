@@ -2,13 +2,12 @@
 import subprocess
 import time
 
-TOGGLE_TIMEOUT = 120   # seconds before [starting…]/[stopping…] label expires
+TOGGLE_TIMEOUT = 120
 
-_toggle_state: dict = {}   # preset name or 'port-{N}' → ('starting'|'stopping', float ts)
+_toggle_state: dict = {}
 
 # FUNCTIONS
 
-# Remove _toggle_state entries when action completed or timed out
 def _expire_toggle_states(presets: list, arbitrary: list) -> None:
     now = time.time()
     for key in list(_toggle_state.keys()):
@@ -32,7 +31,6 @@ def _expire_toggle_states(presets: list, arbitrary: list) -> None:
             del _toggle_state[key]
 
 
-# Fire-and-forget action via rag-cli; target is preset name or 'port-{N}' for arbitrary
 def _fire_button(action: str, target: str) -> None:
     devnull = subprocess.DEVNULL
     if target.startswith('port-'):

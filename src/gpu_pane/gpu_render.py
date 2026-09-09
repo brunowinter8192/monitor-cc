@@ -9,23 +9,20 @@ from .gpu_actions import _toggle_state
 IDLE_TIMEOUT = int(os.getenv("RAG_SERVER_IDLE_TIMEOUT", "3600"))
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mKHJABCDEFGsuTXP]')
 
-_button_regions: dict = {} # (start_col, end_col, phys_row) → (action, target_str); phys_row shifted by _GPU_SEARCH_BAR_LINES since 2026-08-18
+_button_regions: dict = {}
 
 # FUNCTIONS
 
-# Remove ANSI escape codes to calculate visual display width
 def _strip_ansi(s: str) -> str:
     return _ANSI_RE.sub('', s)
 
 
-# Return colored status badge
 def _badge(s: dict) -> str:
     if not s['running']:
         return f"{RED}○{RESET}"
     return f"{GREEN}●{RESET}" if s['healthy'] else f"{YELLOW}◐{RESET}"
 
 
-# Return status label; shows [starting…]/[stopping…] while toggle in flight
 def _status_text(s: dict) -> str:
     key = s['name'] if s['kind'] == 'preset' else f'port-{s["port"]}'
     if key in _toggle_state:
@@ -34,7 +31,6 @@ def _status_text(s: dict) -> str:
     return "running" if s['running'] else "stopped"
 
 
-# Return countdown string from status dict; "" if stopped, "?" if state file missing
 def _format_countdown(s: dict) -> str:
     if not s['running']:
         return ""
@@ -56,7 +52,6 @@ def _format_countdown(s: dict) -> str:
     return f"stops in {m:02d}:{sec:02d}"
 
 
-# Return context-dependent button label; arbitrary rows always [stop]
 def _button_label(s: dict) -> str:
     if s['kind'] == 'arbitrary':
         return '[stop]'
@@ -65,8 +60,6 @@ def _button_label(s: dict) -> str:
     return '[stop]' if s['healthy'] else '[restart]'
 
 
-# Build one status row (preset or arbitrary — the only difference is prefix/name_width/button/
-# action/target, all caller-supplied); registers its own _button_regions entry.
 def _build_status_row(s: dict, prefix: str, name_width: int, btn: str, action: str, target: str,
                        error_counts: dict, pane_width: int, phys_row: int) -> str:
     badge      = _badge(s)
@@ -88,7 +81,6 @@ def _build_status_row(s: dict, prefix: str, name_width: int, btn: str, action: s
     return content + ' ' * pad + btn
 
 
-# Header line + optional [refresh] button; registers its own _button_regions entry when it fits.
 def _render_gpu_header(pane_width: int) -> list:
     header_prefix = '  GPU Servers'
     refresh_btn = '[refresh]'
@@ -102,7 +94,6 @@ def _render_gpu_header(pane_width: int) -> list:
     return [header_text + ' ' * header_pad + refresh_btn]
 
 
-# Preset block — always len(presets) rows, digit-keyed [1]/[2]/[3]
 def _render_preset_rows(presets: list, error_counts: dict, pane_width: int, start_row: int) -> list:
     rows = []
     for i, s in enumerate(presets):
@@ -113,8 +104,6 @@ def _render_preset_rows(presets: list, error_counts: dict, pane_width: int, star
     return rows
 
 
-# Arbitrary block — dynamic, sorted by port, no digit keys; empty (no divider either) when there
-# are no arbitrary servers.
 def _render_arbitrary_rows(arbitrary: list, error_counts: dict, pane_width: int, start_row: int) -> list:
     if not arbitrary:
         return []
@@ -163,9 +152,6 @@ def _render_anomalies_line(anomalies: list) -> list:
             f"(see logs/gpu_pane.log){RESET}"]
 
 
-# HIGHLIGHT-ONLY, applied as a single post-loop pass right before the final join — no per-row
-# background/zebra/hover loop exists in this pane, so utils.highlight_query_in_line's default
-# restore_bg is directly correct (same simple case as core/monitor_display.py's main pane).
 def _apply_gpu_search_highlight(lines: list, search_query: str, search_match_line_set,
                                  search_current_line) -> None:
     if search_query and search_match_line_set:
@@ -175,11 +161,6 @@ def _apply_gpu_search_highlight(lines: list, search_query: str, search_match_lin
                 lines[idx] = highlight_query_in_line(lines[idx], search_query, marker)
 
 
-# Build full pane content; updates _button_regions as side effect. _button_regions' OWN row
-# numbering stays relative to THIS function's own top (row 1 = its own first line) — callers that
-# prepend a search bar shift it externally (see gpu_pane.pane.run_gpu_loop), so this function
-# stays a reusable, standalone, directly-testable unit (dev/click_ui/p4_gpu_news_button_probe.py
-# calls it directly and needs zero changes).
 def _render_pane(pane_width: int, pane_height: int,
                  presets: list, arbitrary: list, anomalies: list,
                  today_errors: list, error_counts: dict,

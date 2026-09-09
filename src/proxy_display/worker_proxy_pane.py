@@ -21,16 +21,12 @@ from ..input.click_handler import (
 )
 from ..utils import visual_line_count
 from ..ram_audit import register_ram_dump
-# From pane_error_log.py: shared exception-safe pane-error sink
 from ..pane_error_log import log_pane_error
 from .proxy_pane_shared import (
     _format_worker_proxy_header, _entry_idx_from_key, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _terminal_size, _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body,
     _accumulate_dual_logs_and_attach,
 )
-# From search_bar.py: shared search-bar mechanics (state, key/mouse handling, drag-select) —
-# rollout sub-milestone 3, retrofitting the worker-proxy pane onto the proxy pane's reference
-# implementation (src/proxy_display/pane.py, this pane's closest structural twin)
 from .. import search_bar
 
 worker_proxy_entries: List[dict] = []
@@ -39,32 +35,28 @@ worker_proxy_line_map: Dict[int, int] = {}
 worker_proxy_hover_row, worker_proxy_scroll_offset, worker_proxy_log_position = None, 0, 0
 
 _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_workers, _worker_proxy_force_reload = 0, [], [], False
-_worker_proxy_fwd_pos: int = 0          # forwarded-log byte position for incremental reads
-_worker_proxy_acc_fwd: dict = {}        # family accumulator for _parse_forwarded_log
-_worker_proxy_log_path: Optional[Path] = None  # current log file path, updated each poll cycle for lazy-reload
-_worker_proxy_pane_width: int = 80  # updated each render cycle; used by click handler for copy-button column check
-_worker_proxy_copy_rows: Set[int] = set()  # phys_rows where ⎘ copy button is rendered; populated by format_proxy_block
-_worker_copy_feedback_until: Dict[int, float] = {}  # entry_idx → expiry timestamp for ✓ flash
-_worker_proxy_last_full_parse_ts: float = 0.0  # timestamp of last re-init to position 0 (time-triggered reset)
-_wp_just_expanded = None  # line_map key set by mouse handler on expand; cleared by _build_worker_proxy_output
-_worker_proxy_last_worker_name: Optional[str] = None  # tracks worker change for full state reset
-_worker_proxy_stripped_pos: int = 0    # dual-log read position for _stripped.jsonl
-_worker_proxy_injected_pos: int = 0    # dual-log read position for _injected.jsonl
-_worker_proxy_acc_stripped: dict = {}  # family → {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}}
-_worker_proxy_acc_injected: dict = {}  # same; entries hold Python refs so in-place updates propagate
-_worker_proxy_header_regions: Dict[Tuple[int, int, int], str] = {}  # (start_col,end_col,phys_row) → worker name; header marker click targets
+_worker_proxy_fwd_pos: int = 0
+_worker_proxy_acc_fwd: dict = {}
+_worker_proxy_log_path: Optional[Path] = None
+_worker_proxy_pane_width: int = 80
+_worker_proxy_copy_rows: Set[int] = set()
+_worker_copy_feedback_until: Dict[int, float] = {}
+_worker_proxy_last_full_parse_ts: float = 0.0
+_wp_just_expanded = None
+_worker_proxy_last_worker_name: Optional[str] = None
+_worker_proxy_stripped_pos: int = 0
+_worker_proxy_injected_pos: int = 0
+_worker_proxy_acc_stripped: dict = {}
+_worker_proxy_acc_injected: dict = {}
+_worker_proxy_header_regions: Dict[Tuple[int, int, int], str] = {}
 
-_WP_SEARCH_BAR_LINES = 1  # fixed-height search bar row; unlike the worker-switcher header below it, this never wraps
-_WP_SEARCH_BAR_LABEL = 'search: '  # matches the proxy pane's label — this pane's closest structural twin
+_WP_SEARCH_BAR_LINES = 1
+_WP_SEARCH_BAR_LABEL = 'search: '
 
-# Search state — permanent row-1 search bar, shifting the worker-switcher header (variable
-# height, click-region table) down by _WP_SEARCH_BAR_LINES. .matches holds entry_idx values,
-# ordered by position in worker_proxy_entries — same shape/mechanics as pane.py's _proxy_search.
 _worker_proxy_search: search_bar.SearchState = search_bar.SearchState()
 
 # ORCHESTRATOR
 
-# Runs worker-proxy pane — reads selected worker's proxy log and shows expandable entries
 def run_worker_proxy_loop() -> None:
     from ..core import monitor as _monitor
     global _worker_copy_feedback_until
@@ -100,9 +92,6 @@ def run_worker_proxy_loop() -> None:
 
 # FUNCTIONS
 
-# Drain the keyboard/mouse queue for one tick; returns True if any event changed display
-# state. Stays LOCAL (not shared) — dev/pane_error_log monkeypatches read_keypress directly on
-# THIS module, which only works while the call site is a bare-name lookup inside it.
 def _poll_worker_proxy_input(monitor) -> bool:
     input_changed = False
     while True:
@@ -115,10 +104,9 @@ def _poll_worker_proxy_input(monitor) -> bool:
                 if _handle_worker_proxy_mouse(*event, monitor):
                     input_changed = True
             elif event is not None:
-                # (-1,-1,-1) release sentinel — no-op unless a row-1 drag was active
                 if _handle_worker_proxy_search_release():
                     input_changed = True
-            elif _worker_proxy_search.focused:  # bare ESC → cancel search
+            elif _worker_proxy_search.focused:
                 if _handle_worker_proxy_search_cancel():
                     input_changed = True
         elif _worker_proxy_search.focused:
@@ -135,7 +123,6 @@ def _poll_worker_proxy_input(monitor) -> bool:
                 input_changed = True
     return input_changed
 
-# Return module-level state snapshot for RAM audit
 def _worker_proxy_ram_state() -> list:
     return [
         ('worker_proxy_entries',          worker_proxy_entries),
@@ -158,27 +145,22 @@ def _worker_proxy_ram_state() -> list:
         ('_worker_proxy_search_matches',  _worker_proxy_search.matches),
     ]
 
-# Body-row copy click: lazy-load+serialize half is shared (proxy_pane_shared._prepare_copy_text).
 def _handle_worker_proxy_copy_click(key, entry_idx: Optional[int]) -> None:
     global _worker_copy_feedback_until
     copy_to_clipboard(_prepare_copy_text(key, entry_idx, worker_proxy_entries, _worker_proxy_log_path))
     if entry_idx is not None:
         _worker_copy_feedback_until[entry_idx] = time.time() + 1.5
 
-# Body-row expand click: delegates to proxy_pane_shared._toggle_expand_and_lazy_load.
 def _handle_worker_proxy_expand_click(key, entry_idx: Optional[int]) -> None:
     global _wp_just_expanded
     if _toggle_expand_and_lazy_load(key, entry_idx, worker_proxy_entries, _worker_proxy_log_path, worker_proxy_expand_states):
         _wp_just_expanded = key
 
-# Process one mouse event; returns True if display should refresh
 def _handle_worker_proxy_mouse(button: int, col: int, row: int, monitor) -> bool:
     global worker_proxy_scroll_offset, worker_proxy_hover_row, _worker_proxy_force_reload
     if button == 0:
-        if row == 1:  # search bar row — focuses; also anchors a potential drag-select
+        if row == 1:
             return search_bar.handle_search_mouse_press(_worker_proxy_search, col, _WP_SEARCH_BAR_LABEL)
-        # Click elsewhere (header markers or body) clears any lingering drag-selection highlight
-        # (before the header-region/body lookups below, so even a click on an unmapped row clears it)
         had_selection = _worker_proxy_search.sel_anchor is not None
         search_bar.clear_selection(_worker_proxy_search)
         for (sc, ec, er), name in _worker_proxy_header_regions.items():
@@ -197,32 +179,19 @@ def _handle_worker_proxy_mouse(button: int, col: int, row: int, monitor) -> bool
         else:
             _handle_worker_proxy_expand_click(key, entry_idx)
         return True
-    # Scroll wheel / row-1 drag motion / generic hover — shared with pane.py.
     handled, worker_proxy_scroll_offset, worker_proxy_hover_row = _handle_scroll_or_hover(
         button, col, row, _worker_proxy_search, _WP_SEARCH_BAR_LABEL, worker_proxy_scroll_offset, worker_proxy_hover_row)
     return handled
 
-# Cancel active search on bare ESC while focused; bar stays visible with an empty query.
-# Returns True (always triggers redraw). Thin wrapper — search_bar.handle_search_cancel resets
-# query/focused/matches/match_set/selection all at once, identical across every pane.
 def _handle_worker_proxy_search_cancel() -> bool:
     return search_bar.handle_search_cancel(_worker_proxy_search)
 
-# Handle keyboard input while the search bar is focused; returns True if input_changed. Thin
-# wrapper over search_bar.handle_search_input — _worker_proxy_search_on_commit is the
-# pane-specific "run the actual search" callback, injected so the shared module stays
-# data-model-agnostic.
 def _handle_worker_proxy_search_input(char: str) -> bool:
     return search_bar.handle_search_input(_worker_proxy_search, char, on_commit=_worker_proxy_search_on_commit)
 
-# on_commit callback for search_bar.handle_search_input (fires on Enter) — shared half lives
-# in proxy_pane_shared._run_pane_search (with pane.py); always re-runs, no unchanged-query gate
-# (no main-pane-style gate ever existed here to correct).
 def _worker_proxy_search_on_commit(state: search_bar.SearchState) -> None:
     _run_pane_search(state, worker_proxy_entries, worker_proxy_expand_states, _worker_proxy_pane_width, _worker_proxy_log_path, _jump_to_wp_search_match)
 
-# Jump to the next (forward=True) or previous search match, wrapping around; returns True if
-# a jump happened (False when there are no matches, e.g. before the first Enter)
 def _jump_worker_search_match(forward: bool) -> bool:
     if not _worker_proxy_search.matches:
         return False
@@ -230,29 +199,17 @@ def _jump_worker_search_match(forward: bool) -> bool:
     _jump_to_wp_search_match()
     return True
 
-# Set the scroll-jump target to the current search match's REQ header row — reuses the EXISTING
-# _wp_just_expanded/worker_item_positions/scroll-clamp mechanics in _build_worker_proxy_output
-# (same anchor for both collapsed and expanded matches; ('req', idx) is always in item_positions
-# regardless of expand state, since render_turn.py appends req_key unconditionally)
 def _jump_to_wp_search_match() -> None:
     global _wp_just_expanded
     target_entry_idx = _worker_proxy_search.matches[_worker_proxy_search.current_idx]
     _wp_just_expanded = ('req', target_entry_idx)
 
-# Finalize a row-1 drag on SGR mouse release; returns True if a redraw is needed. No-op (False)
-# unless a row-1 drag was actually in progress — safe to call unconditionally on EVERY release
-# sentinel, including releases after a plain click elsewhere (never armed) or after a normal
-# header-marker/expand click (never armed either, dragging only set True by a row-1 press).
-# Thin wrapper — release-copies-to-clipboard is identical across every pane.
 def _handle_worker_proxy_search_release() -> bool:
     return search_bar.handle_search_mouse_release(_worker_proxy_search, copy_to_clipboard)
 
-# Render the always-visible search bar (row 1). Thin wrapper binding this pane's own label.
 def _render_worker_proxy_search_bar(pane_width: int) -> str:
     return search_bar.render_search_bar(_worker_proxy_search, pane_width, label=_WP_SEARCH_BAR_LABEL)
 
-# Read the currently-selected worker name from the IPC selection file — shared by
-# _refresh_worker_proxy_data and _build_worker_proxy_header_block.
 def _read_selected_worker_name(monitor) -> Optional[str]:
     sel_path = get_selection_file_path(monitor.active_project_filter)
     try:
@@ -261,7 +218,6 @@ def _read_selected_worker_name(monitor) -> Optional[str]:
     except OSError:
         return None
 
-# Process one digit-key event; writes worker selection via IPC; returns True if display should refresh
 def _handle_worker_proxy_key(char: str, monitor) -> bool:
     global _worker_proxy_force_reload
     idx = parse_digit_key(char)
@@ -271,10 +227,6 @@ def _handle_worker_proxy_key(char: str, monitor) -> bool:
         return True
     return False
 
-# The parse-position/accumulator reset both worker-proxy resets clear IDENTICALLY — reparse
-# resets only this; worker-selection resets this PLUS its own extra fields (below). Factored
-# out 2026-09 (LOC-limit split) since reparse's own reset was a strict line-for-line subset of
-# selection-change's.
 def _reset_worker_proxy_positions(now: float) -> None:
     global worker_proxy_log_position, _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_fwd_pos
     global _worker_proxy_last_full_parse_ts, _worker_proxy_stripped_pos, _worker_proxy_injected_pos
@@ -285,24 +237,16 @@ def _reset_worker_proxy_positions(now: float) -> None:
     _worker_proxy_last_full_parse_ts = now
     _worker_proxy_stripped_pos = _worker_proxy_injected_pos = 0
 
-# Worker-selection reset: clears every piece of incremental state tied to the previous
-# selected worker (entries, positions, accumulators, search).
 def _reset_worker_proxy_selection_state(now: float, worker_name: Optional[str]) -> None:
     global _worker_proxy_log_path, _worker_proxy_last_worker_name, worker_proxy_scroll_offset, worker_proxy_hover_row
     _reset_worker_proxy_positions(now)
     worker_proxy_expand_states.clear()
     worker_proxy_scroll_offset, worker_proxy_hover_row, _worker_proxy_log_path, _worker_proxy_last_worker_name = 0, None, None, worker_name
-    # A stale _worker_proxy_search.matches list holds entry_idx values into the log just
-    # switched away from — reset query/focused/matches/selection (mirrors pane.py's
-    # session-change reset). Whether the switch came from a digit key or a header-marker
-    # click, both converge here.
     search_bar.handle_search_cancel(_worker_proxy_search)
 
-# Hourly reparse reset: re-runs the log from position 0 without disturbing which worker is selected.
 def _reset_worker_proxy_reparse_state(now: float) -> None:
     _reset_worker_proxy_positions(now)
 
-# Tick-boundary worker-proxy data refresh; returns (input_changed, new_last_data_refresh)
 def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refresh: float, monitor) -> tuple:
     global _worker_proxy_jsonl_position, _worker_proxy_cache_turns, _worker_proxy_fwd_pos, _worker_proxy_log_path
     global _worker_proxy_last_full_parse_ts, _worker_proxy_workers, _worker_proxy_force_reload, _worker_proxy_stripped_pos, _worker_proxy_injected_pos
@@ -343,15 +287,10 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
             _worker_proxy_cache_turns, _worker_proxy_jsonl_position = build_cache_turns(worker_jsonl, _worker_proxy_jsonl_position, _worker_proxy_cache_turns)
     return True, now
 
-# Build and shift the search-bar + worker-switcher header block; returns (header, total_header_lines, current_worker).
 def _build_worker_proxy_header_block(monitor, pane_width: int) -> tuple:
     current_worker = _read_selected_worker_name(monitor)
     search_bar_line = _render_worker_proxy_search_bar(pane_width)
     worker_header = _format_worker_proxy_header(_worker_proxy_workers, current_worker, pane_width, _worker_proxy_header_regions)
-    # _format_worker_proxy_header computes region rows RELATIVE to its own top (row 1 = its own
-    # first line) — shift them by _WP_SEARCH_BAR_LINES so they become physical rows, now that
-    # the search bar takes row 1 and the worker header starts one row lower. Rebuilt fresh every
-    # call (the helper itself clears regions_out), so this shift never accumulates.
     if _worker_proxy_header_regions:
         shifted_regions = {(sc, ec, er + _WP_SEARCH_BAR_LINES): name for (sc, ec, er), name in _worker_proxy_header_regions.items()}
         _worker_proxy_header_regions.clear()
@@ -359,15 +298,9 @@ def _build_worker_proxy_header_block(monitor, pane_width: int) -> tuple:
     total_header_lines = _WP_SEARCH_BAR_LINES + visual_line_count(worker_header, pane_width)
     return search_bar_line + '\n' + worker_header, total_header_lines, current_worker
 
-# Render the entries body — scroll clamp/row-shift/just-expanded rescroll shared via
-# proxy_pane_shared._render_and_scroll_body (with pane.py).
 def _render_worker_proxy_body(pane_width: int, content_height: int, total_header_lines: int, body_hover) -> str:
     global worker_proxy_scroll_offset, _worker_proxy_copy_rows
     _worker_proxy_copy_rows.clear()
-    # format_proxy_block is called with content_height as its own pane_height argument and
-    # internally derives its real viewport as max(1, pane_height - 1) — mirror that exact
-    # value here (once) so both clamp sites below match what the renderer actually shows,
-    # never content_height itself.
     viewport_lines_n = max(1, content_height - 1)
     matches = _worker_proxy_search.matches
     current_match_entry_idx = matches[_worker_proxy_search.current_idx] if matches and _worker_proxy_search.current_idx < len(matches) else None
@@ -382,7 +315,6 @@ def _render_worker_proxy_body(pane_width: int, content_height: int, total_header
         _render, worker_proxy_line_map, _worker_proxy_copy_rows, total_header_lines, _wp_just_expanded, worker_proxy_scroll_offset, viewport_lines_n)
     return body
 
-# Build ANSI output for worker-proxy pane with header+body split; returns (output, header) for overdraw
 def _build_worker_proxy_output(monitor) -> tuple:
     global _worker_proxy_pane_width, worker_proxy_hover_row, _wp_just_expanded
     pane_height, pane_width = _terminal_size()
