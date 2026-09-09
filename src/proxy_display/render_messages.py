@@ -5,11 +5,8 @@ from ..colors import (
     SOFT_RESET, RED, WHITE, DIM, DIM_YELLOW_BG, DIM_GREEN_BG, LIGHT_RED_BG, RESET,
 )
 from ..proxy.strip_vocab import attribute_chunk, classify_req
-# From utils.py: cell-aware word-wrap (thinking-block content only — see _wrap_thinking_text)
 from ..utils import wrap_visible
 
-# Indent used for a block's content lines (thinking + every other block type) — kept as a
-# module constant since _wrap_thinking_text needs its exact cell width to size the wrap.
 _BLOCK_CONTENT_INDENT = "        "
 
 _SUSPECT_TAG_RE = re.compile(
@@ -18,9 +15,6 @@ _SUSPECT_TAG_RE = re.compile(
 
 # FUNCTIONS
 
-# Render header + stripped chunks for one message, returning (lines, keys) with len==len
-# show_chars=True adds chars_fmt to the header line (Branch 1 style); False omits it (Branch 2 style)
-# Header key is appended last (matches render_messages loop convention)
 def _render_stripped_block(entry: dict, msg_idx: int, msg: dict, show_chars: bool = True) -> tuple:
     lines = []
     keys = []
@@ -64,21 +58,13 @@ def _render_stripped_block(entry: dict, msg_idx: int, msg: dict, show_chars: boo
                     continue
                 lines.append(f"      {DIM_YELLOW_BG}{DIM}{raw_line}{SOFT_RESET}")
                 keys.append(None)
-    keys.append(None)  # key for header line
+    keys.append(None)
     return lines, keys
 
-# Emit strip/inject-highlighted content lines for one block or block-less message body.
-# Dispatches new-format inline render (i_blk holds (tag, text) tuples) vs legacy stacked
-# render (full_text in DIM, then s_blk chunks in yellow, then i_blk chunks in green).
-# indent: leading whitespace — block path nests one level deeper than block-less messages.
-# highlight_suspect: apply _SUSPECT_TAG_RE to the plain (no-span) full_text render — True for
-# the block path (existing behavior, preserved exactly); False for block-less callers, whose
-# plain-content rendering never highlighted suspect tags before this fix and must not start now.
 def _render_span_content(full_text: str, i_blk: list, s_blk: list, indent: str, highlight_suspect: bool = True) -> tuple:
     lines = []
     keys = []
     if i_blk and isinstance(i_blk[0], (list, tuple)):
-        # New format: inline render — equal=DIM, injected=DIM_GREEN_BG, no gray preview
         for tag, span_text in i_blk:
             bg = DIM_GREEN_BG if tag == "injected" else ""
             for raw_line in span_text.split('\n'):
@@ -123,21 +109,6 @@ def _render_span_content(full_text: str, i_blk: list, s_blk: list, indent: str, 
                 keys.append(None)
     return lines, keys
 
-# Look up the (injected, stripped) span lists recorded for one message/block coordinate.
-# Returns ([], []) when use_dual is False (legacy log — no dual-log spans available).
-# Scoped to THIS entry's own flow_id when the ownership lookups (_strip_msgs_lookup /
-# _inject_msgs_lookup, attached by pane.py/worker_proxy_pane.py) are present on the entry —
-# the acc dicts behind _stripped_spans/_injected_spans are shared-by-reference and cumulative
-# across all entries of a family, so without this an entry can render a later/neighbor
-# request's span at a coordinate it never touched itself. Entries without the ownership
-# lookups (e.g. synthetic test fixtures) fall back to the unscoped lookup.
-#
-# `_lag_msgs_lookup` (2026-08-30) widens ownership by the indices the delta writer attributed one
-# request too late — a request's own fresh trailing total_tokens msg, which it demonstrably
-# stripped (its forwarded payload carries the ".") but which only the NEXT line records. The
-# parser derives that set under a marker-shape guard, so this can only ever admit the message the
-# entry itself nuked, never a neighbour's differing content at the same index. Both sides consult
-# the one set: the class is a stripped total_tokens plus its injected "." at the same coordinate.
 def _lookup_spans(entry: dict, msg_idx: int, bidx, use_dual: bool) -> tuple:
     if not use_dual:
         return [], []
@@ -152,20 +123,6 @@ def _lookup_spans(entry: dict, msg_idx: int, bidx, use_dual: bool) -> tuple:
         s_blk = []
     return i_blk, s_blk
 
-# Wrap thinking-block full_text to pane_width cells (indent-aware — the caller's indent is
-# prepended to every rendered line by _render_span_content, so the wrap budget subtracts it).
-# Existing '\n' breaks are kept as paragraph boundaries; each paragraph is word-wrapped on its
-# own via utils.wrap_visible. Real thinking text is typically one paragraph with no newlines,
-# but the reconstruction never guarantees that.
-# KNOWN LIMITATION (unmeasured): the string this function returns feeds into
-# _render_span_content as its full_text argument, but that function IGNORES full_text entirely
-# whenever i_blk is new-format span data (a list of (tag, text) tuples) — it renders i_blk's own
-# span_text chunks instead. A thinking block that carries strip/inject spans at its own
-# (msg_idx, bidx) coordinate would therefore render those spans UNWRAPPED, silently bypassing
-# this wrap. A probe of the real dual-log for this milestone found zero such coordinates, but
-# the probe's own correctness was never independently verified — this is recorded as a known,
-# unmeasured gap, not as evidence the case cannot occur. Not fixed here (out of this
-# milestone's scope — see process-docs/thinking/ for the full note).
 def _wrap_thinking_text(full_text: str, indent: str, pane_width: int) -> str:
     width_cells = max(1, pane_width - len(indent))
     out_lines = []
@@ -173,13 +130,6 @@ def _wrap_thinking_text(full_text: str, indent: str, pane_width: int) -> str:
         out_lines.extend(wrap_visible(para.expandtabs(8), width_cells))
     return '\n'.join(out_lines)
 
-# Render block-header + span content for one block, returning (lines, keys).
-# entry_idx/expand_states/pane_width: consulted ONLY for btype=='thinking' — builds the
-# ('think', entry_idx, msg_idx, bidx) drill-down key (default COLLAPSED, header-only) and
-# wraps the content to pane_width when expanded, via _wrap_thinking_text. Every other block
-# type ignores these three params entirely and renders exactly as before this milestone
-# (same header string, same unconditional _render_span_content call, unwrapped) — see
-# DOCS.md's byte-identical guarantee for this path.
 def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entry: dict, use_dual: bool, expand_states: dict, pane_width: int) -> tuple:
     lines = []
     keys = []
@@ -209,9 +159,6 @@ def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entr
     keys.extend(content_keys)
     return lines, keys
 
-# Pre-render stripped messages in [fdi, upper) skipped by the main window loop (both branches'
-# window starts after this range) — no-op when use_dual (spans render inline in the main loop
-# instead) or when fdi is negative (no diff info). Returning (lines, keys)
 def _render_prestripped_range(entry: dict, messages: list, fdi: int, upper: int, stripped_indices: set, use_dual: bool, show_chars: bool) -> tuple:
     lines = []
     keys = []
@@ -222,8 +169,6 @@ def _render_prestripped_range(entry: dict, messages: list, fdi: int, upper: int,
             keys.extend(s_keys)
     return lines, keys
 
-# Branch-1 body: new messages in range [prev_msg_count, len(messages)), returning (lines, keys)
-# Also pre-renders stripped messages from [fdi, prev_msg_count) skipped by the main loop
 def _render_new_messages(entry_idx: int, entry: dict, messages: list, prev_msg_count: int, fdi: int, stripped_indices: set, use_dual: bool, expand_states: dict, pane_width: int) -> tuple:
     lines, keys = _render_prestripped_range(entry, messages, fdi, prev_msg_count, stripped_indices, use_dual, show_chars=True)
     for msg_idx in range(prev_msg_count, len(messages)):
@@ -254,8 +199,6 @@ def _render_new_messages(entry_idx: int, entry: dict, messages: list, prev_msg_c
             keys.extend(content_keys)
     return lines, keys
 
-# Walk backward from the tail while curr/prev messages still match (same chars + type) — the
-# first index where they diverge is where the rendered window starts.
 def _compute_diff_start(messages: list, prev_messages: list) -> int:
     diff_start = len(messages)
     for j in range(1, min(len(messages), len(prev_messages)) + 1):
@@ -267,8 +210,6 @@ def _compute_diff_start(messages: list, prev_messages: list) -> int:
             break
     return diff_start
 
-# Messages present in prev_messages beyond the current list's own length — rendered as a
-# "removed:" tail marker line each, returning (lines, keys)
 def _render_removed_tail(messages: list, prev_messages: list) -> tuple:
     lines = []
     keys = []
@@ -282,8 +223,6 @@ def _render_removed_tail(messages: list, prev_messages: list) -> tuple:
         keys.append(None)
     return lines, keys
 
-# Branch-2 body: modified messages in range [diff_start, len(messages)) + removed tail, returning (lines, keys)
-# Also pre-renders stripped messages from [fdi, diff_start) skipped by the main loop
 def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_entry_for_delta, fdi: int, stripped_indices: set, use_dual: bool, expand_states: dict, pane_width: int) -> tuple:
     prev_messages = prev_entry_for_delta.get('messages', []) if prev_entry_for_delta is not None else []
     diff_start = _compute_diff_start(messages, prev_messages)
@@ -318,10 +257,6 @@ def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_
     keys.extend(r_keys)
     return lines, keys
 
-# Render new/modified/removed messages for an expanded request entry, returning (lines, keys).
-# The body is EXACTLY this request's payload delta and nothing else (2026-08-30): out-of-window
-# messages that only THIS flow touched are no longer prepended. See DOCS.md's Gotcha for the
-# consequence that buys — the badge words become the sole in-pane trace of such a strip.
 def render_messages(entry_idx: int, entry: dict, prev_entry_for_delta, entries: list, expand_states: dict, pane_width: int) -> tuple:
     messages = entry.get('messages', [])
     stripped_indices = set(entry.get('stripped_msg_indices', []))
@@ -336,9 +271,6 @@ def render_messages(entry_idx: int, entry: dict, prev_entry_for_delta, entries: 
     return _render_modified_messages(entry_idx, entry, messages, prev_entry_for_delta, fdi, stripped_indices, use_dual, expand_states, pane_width)
 
 
-# Compute aggregated strip bucket signals for an expanded REQ header (INERT/IDX/LEAK/SUS)
-# Delegates to classify_req; effective chunks are not used here (per-chunk attribution
-# happens inline in the render loop above)
 def _aggregate_req_buckets(entry: dict, prev_entry) -> dict:
     cls = classify_req(entry, prev_entry)
     return {

@@ -12,30 +12,19 @@ from .status import all_statuses, get_anomalies, PRESET_NAMES, _fetch_collection
 from .errors import errors_today, errors_today_by_server
 from .gpu_actions import _toggle_state, _expire_toggle_states, _fire_button
 from .gpu_render import _button_regions, _render_pane, _strip_ansi
-# From pane_error_log.py: shared exception-safe pane-error sink
 from ..pane_error_log import log_pane_error
-# From search_bar.py: shared search-bar mechanics (state, key/mouse handling, drag-select) --
-# rollout sub-milestone 7, retrofitting the gpu pane onto the proxy pane's reference
-# implementation. HIGHLIGHT-ONLY here (per the approved decision) -- no scroll/viewport exists
-# in this pane at all (grepped: pane_height is accepted by _render_pane but never read), so
-# there is no jump-to-match; n/N still cycles current_idx (which on-screen match gets
-# SEARCH_CURRENT_BG vs SEARCH_MATCH_BG, and the N/M counter) with zero scroll call.
 from .. import search_bar
 
-GPU_POLL_INTERVAL         = 2.0   # seconds between server data refreshes
-COLLECTIONS_POLL_INTERVAL = 30.0  # seconds between RAG collection count refreshes
+GPU_POLL_INTERVAL         = 2.0
+COLLECTIONS_POLL_INTERVAL = 30.0
 
-_GPU_SEARCH_BAR_LINES = 1  # fixed-height search bar row; the rule+[refresh] header (below it) shifts down by exactly this
+_GPU_SEARCH_BAR_LINES = 1
 _GPU_SEARCH_BAR_LABEL = 'search: '
 
-# Search state -- permanent row-1 search bar. .matches holds 0-based indices into _render_pane's
-# OWN (unshifted) lines list -- no click-interactivity concept for matches here (only buttons
-# are clickable), so no coupling to physical row numbers at all.
 _gpu_search: search_bar.SearchState = search_bar.SearchState()
 
 # ORCHESTRATOR
 
-# GPU pane event loop — 2s tick, keyboard toggle 1/2/3, r=refresh
 def run_gpu_loop() -> None:
     last_output = None
     last_data_refresh = 0.0
@@ -77,10 +66,6 @@ def run_gpu_loop() -> None:
 
 # FUNCTIONS
 
-# Toggle preset server by 0-based index; context-dependent stop/restart/start. Stays physically in
-# this module (reads the module-level PRESET_NAMES bare-name) — dev/click_ui/p4_gpu_news_button_probe.py
-# monkeypatches `mod_gpu.PRESET_NAMES` directly and calls `_toggle_server(idx, presets)`; a copy of
-# PRESET_NAMES imported into another module would not see that monkeypatch.
 def _toggle_server(idx: int, presets: list) -> None:
     name = PRESET_NAMES[idx]
     s = next((p for p in presets if p['name'] == name), None)
@@ -101,10 +86,6 @@ def _toggle_server(idx: int, presets: list) -> None:
         _toggle_state[name] = ('starting', time.time())
 
 
-# Drain and dispatch all pending keyboard/mouse input for one tick; returns (input_changed,
-# force_refresh). Stays physically in this module (bare-name read_keypress/read_mouse_event calls
-# — dev/pane_error_log's exception-survival probe monkeypatches these as module attributes of
-# pane.py itself).
 def _poll_gpu_input(presets: list, arbitrary: list, anomalies: list, today_errors: list,
                      error_counts: dict, collections: list) -> tuple:
     input_changed = False
@@ -123,10 +104,9 @@ def _poll_gpu_input(presets: list, arbitrary: list, anomalies: list, today_error
                 if refresh_hit:
                     force_refresh = True
             elif event is not None:
-                # (-1,-1,-1) release sentinel -- no-op unless a row-1 drag was active
                 if search_bar.handle_search_mouse_release(_gpu_search, copy_to_clipboard):
                     input_changed = True
-            elif _gpu_search.focused:  # bare ESC -> cancel search
+            elif _gpu_search.focused:
                 if search_bar.handle_search_cancel(_gpu_search):
                     input_changed = True
         elif _gpu_search.focused:
@@ -153,16 +133,10 @@ def _poll_gpu_input(presets: list, arbitrary: list, anomalies: list, today_error
     return input_changed, force_refresh
 
 
-# Process one real mouse button event (press or drag-motion); returns (input_changed,
-# force_refresh_hit). Stays physically in this module (calls copy_to_clipboard indirectly via
-# _fire_button's own subprocess side effect is elsewhere, but this function itself is the bare-name
-# call site dev/pane_search's probes exercise through _button_regions/_toggle_state).
 def _handle_gpu_mouse(button: int, col: int, row: int) -> tuple:
     if button == 0:
-        if row == 1:  # search bar row -- focuses; also anchors a potential drag-select
+        if row == 1:
             return search_bar.handle_search_mouse_press(_gpu_search, col, _GPU_SEARCH_BAR_LABEL), False
-        # Click elsewhere ([refresh]/toggle buttons or unmapped) clears any lingering
-        # drag-selection highlight
         had_selection = _gpu_search.sel_anchor is not None
         search_bar.clear_selection(_gpu_search)
         for (sc, ec, er), (action, target) in list(_button_regions.items()):
@@ -174,18 +148,11 @@ def _handle_gpu_mouse(button: int, col: int, row: int) -> tuple:
                     return True, False
                 break
         return had_selection, False
-    if button == 32 and _gpu_search.dragging:  # motion with left button held (0+32), row-1 drag active
+    if button == 32 and _gpu_search.dragging:
         return search_bar.handle_search_mouse_motion(_gpu_search, col, _GPU_SEARCH_BAR_LABEL), False
     return False, False
 
 
-# on_commit callback for search_bar.handle_search_input (fires on Enter): calls _render_pane
-# ONCE without search kwargs (plain baseline) to get the exact same lines the real render would
-# show, splits on '\n', ANSI-strips each, and collects the 0-based indices whose text contains
-# query, case-insensitive -- "exactly what's rendered" without needing a separate matcher
-# function, since this pane has no collapse/expand state to force-open (everything is always
-# fully shown). Always re-runs (not gated on query-unchanged), matching every other pane's
-# convention.
 def _gpu_search_on_commit(state: search_bar.SearchState, presets: list, arbitrary: list,
                            anomalies: list, today_errors: list, error_counts: dict,
                            collections: list) -> None:
@@ -204,26 +171,16 @@ def _gpu_search_on_commit(state: search_bar.SearchState, presets: list, arbitrar
     state.match_set = set(matches)
     state.current_idx = 0
 
-# Cycle the current match (updating which occurrence gets SEARCH_CURRENT_BG vs SEARCH_MATCH_BG,
-# and the N/M counter) -- NO jump/scroll call, per the approved decision: this pane has no
-# scroll/viewport infra at all (pane_height is accepted by _render_pane but never read), so
-# there is nothing to jump to -- everything is either on screen (highlighted) or it isn't.
-# Returns True if a cycle happened (False when there are no matches, e.g. before the first Enter).
 def _jump_gpu_search_match(forward: bool) -> bool:
     if not _gpu_search.matches:
         return False
     _gpu_search.current_idx = (_gpu_search.current_idx + (1 if forward else -1)) % len(_gpu_search.matches)
     return True
 
-# Render the always-visible search bar (row 1). Thin wrapper binding this pane's own label.
 def _render_gpu_search_bar(pane_width: int) -> str:
     return search_bar.render_search_bar(_gpu_search, pane_width, label=_GPU_SEARCH_BAR_LABEL)
 
 
-# Tick-boundary status + collections data refresh; returns (presets, arbitrary, anomalies,
-# today_errors, error_counts, collections, new_last_data_refresh, new_last_collections_refresh,
-# changed). Each section only overwrites its own outputs when its own interval (or force_refresh)
-# fires -- unfired sections pass their current values straight through.
 def _refresh_gpu_data(now: float, force_refresh: bool, last_data_refresh: float,
                        last_collections_refresh: float, presets: list, arbitrary: list,
                        anomalies: list, today_errors: list, error_counts: dict,
@@ -245,8 +202,6 @@ def _refresh_gpu_data(now: float, force_refresh: bool, last_data_refresh: float,
             last_data_refresh, last_collections_refresh, changed)
 
 
-# Render + shift _button_regions past the search bar + diff-and-print; returns the new last_output
-# (unchanged when the rendered output didn't change, matching the pre-split print-gate).
 def _build_gpu_output(presets: list, arbitrary: list, anomalies: list, today_errors: list,
                        error_counts: dict, collections: list, last_output) -> str:
     try:
@@ -267,11 +222,6 @@ def _build_gpu_output(presets: list, arbitrary: list, anomalies: list, today_err
                         search_query=_gpu_search.query,
                         search_match_line_set=_gpu_search.match_set,
                         search_current_line=current_match_line)
-    # _render_pane's own _button_regions rows are relative to ITS OWN top (row 1 = its own first
-    # line) -- shift by _GPU_SEARCH_BAR_LINES since the search bar now owns physical row 1
-    # (mirrors worker_proxy_pane's identical rebuild-then-shift pattern; _render_pane itself stays
-    # unshifted/reusable, unaffected by callers that don't prepend a search bar -- see
-    # dev/click_ui/p4_gpu_news_button_probe.py, which calls it directly).
     shifted = {(sc, ec, er + _GPU_SEARCH_BAR_LINES): v for (sc, ec, er), v in _button_regions.items()}
     _button_regions.clear()
     _button_regions.update(shifted)

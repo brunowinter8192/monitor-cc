@@ -12,11 +12,9 @@ from ..proxy.logging import _compute_diff
 
 # FUNCTIONS
 
-# Single source — parser.py imports this; defined here so forwarded_parser.py stays a leaf (no import from parser.py)
 def _proxy_session_id_for_project(project_path: str) -> str:
     return hashlib.md5(project_path.encode()).hexdigest()[:8]
 
-# Infer model family from model name string (matches addon.py logic)
 def _infer_model_family(model: str) -> str:
     m = model.lower()
     if 'haiku' in m:
@@ -25,9 +23,6 @@ def _infer_model_family(model: str) -> str:
         return 'sonnet'
     return 'opus'
 
-# Build a message summary dict with content_tail enrichment from the raw message object.
-# Wraps _summarize_message (from proxy/message_summary.py) and adds content_tail for
-# full-text display in the proxy pane expand view.
 def _summarize_fwd_message(msg: dict) -> dict:
     s = _summarize_message(msg)
     content = msg.get('content', '')
@@ -39,7 +34,6 @@ def _summarize_fwd_message(msg: dict) -> dict:
         s['content_tail'] = ''
     return s
 
-# Build the system_blocks list — one dict per system block with idx/chars/has_cc/preview
 def _build_system_blocks(system) -> list:
     sys_list = system if isinstance(system, list) else []
     return [
@@ -52,7 +46,6 @@ def _build_system_blocks(system) -> list:
         for i, b in enumerate(sys_list) if isinstance(b, dict)
     ]
 
-# Build the tools_* entry fields (total_chars, count, hash, names, defs) from a tools list
 def _build_tools_fields(tools) -> dict:
     tools_list = [t for t in (tools if isinstance(tools, list) else []) if isinstance(t, dict)]
     return {
@@ -73,7 +66,6 @@ def _build_tools_fields(tools) -> dict:
         ],
     }
 
-# Expand {idx_str: elem} delta dict into a list of exactly count elements (None-padded gaps)
 def _dict_to_list_fwd(delta_dict: dict, count: int) -> list:
     lst = [None] * count
     for idx_str, elem in delta_dict.items():
@@ -82,7 +74,6 @@ def _dict_to_list_fwd(delta_dict: dict, count: int) -> list:
             lst[i] = elem
     return lst
 
-# Shallow-copy prev_list, apply delta dict overwrites, resize to count
 def _apply_delta_to_list(prev_list: list, delta_dict: dict, count: int) -> list:
     lst = list(prev_list)
     for idx_str, elem in delta_dict.items():
@@ -96,9 +87,6 @@ def _apply_delta_to_list(prev_list: list, delta_dict: dict, count: int) -> list:
         lst.extend([None] * (count - len(lst)))
     return lst
 
-# is_first branch: the entire message list stands in as its own delta (no narrower "newly added"
-# slice — see _extract_forwarded_fields docstring for why). Shared by _parse_forwarded_log and
-# _lazy_load_messages_forwarded's own is_first branches.
 def _build_first_summaries(messages_delta: dict, msg_cnt: int) -> list:
     raw_msgs = _dict_to_list_fwd(messages_delta or {}, msg_cnt)
     return [
@@ -106,10 +94,6 @@ def _build_first_summaries(messages_delta: dict, msg_cnt: int) -> list:
         for m in raw_msgs
     ]
 
-# Non-is_first branch: overwrite prev_summaries at the delta's indices, pad/trim to msg_cnt.
-# Returns (new_summaries, delta_summaries) — delta_summaries is just the touched-index subset,
-# ignored by callers (_lazy_load_messages_forwarded) that only need the accumulated list itself.
-# Shared by _parse_forwarded_log and _lazy_load_messages_forwarded's own non-is_first branches.
 def _apply_messages_delta(prev_summaries: list, messages_delta: dict, msg_cnt: int) -> tuple:
     new_summaries = list(prev_summaries)
     delta_summaries = []
@@ -125,18 +109,12 @@ def _apply_messages_delta(prev_summaries: list, messages_delta: dict, msg_cnt: i
         new_summaries.extend([{}] * (msg_cnt - len(new_summaries)))
     return new_summaries, delta_summaries
 
-# Reconstruct system/tools/messages for an is_first forwarded_delta line — every section starts
-# fresh from this line's own delta dict (proxy-session restart). Returns
-# (new_system, new_tools, new_summaries, delta_summaries) — delta_summaries IS new_summaries here.
 def _reconstruct_first_request(fwd_e: dict, sys_cnt: int, tools_cnt: int, msg_cnt: int) -> tuple:
     new_system = _dict_to_list_fwd(fwd_e.get('system_delta') or {}, sys_cnt)
     new_tools = _dict_to_list_fwd(fwd_e.get('tools_delta') or {}, tools_cnt)
     new_summaries = _build_first_summaries(fwd_e.get('messages_delta'), msg_cnt)
     return new_system, new_tools, new_summaries, new_summaries
 
-# Reconstruct system/tools/messages for a non-is_first forwarded_delta line — overlays this
-# line's delta dicts onto prev_acc's accumulated lists. Returns
-# (new_system, new_tools, new_summaries, delta_summaries).
 def _reconstruct_delta_request(prev_acc: Optional[dict], fwd_e: dict, sys_cnt: int, tools_cnt: int, msg_cnt: int) -> tuple:
     prev = prev_acc if prev_acc else {'system': [], 'tools': [], 'messages': []}
     new_system = _apply_delta_to_list(prev['system'], fwd_e.get('system_delta') or {}, sys_cnt)
@@ -144,14 +122,6 @@ def _reconstruct_delta_request(prev_acc: Optional[dict], fwd_e: dict, sys_cnt: i
     new_summaries, delta_summaries = _apply_messages_delta(prev['messages'], fwd_e.get('messages_delta') or {}, msg_cnt)
     return new_system, new_tools, new_summaries, delta_summaries
 
-# Build a proxy-display entry dict from a forwarded_delta header + reconstructed section data.
-# message_summaries: list of summary dicts (for messages_total_chars; messages key NOT set here —
-# assigned from the deque window after parse completes).
-# delta_messages: summary dicts for ONLY the messages THIS request newly added/changed (not the
-# full accumulated list) — drives has_thinking_delta. is_first requests treat the entire message
-# list as "delta" (deliberate: a proxy-session restart mid-conversation re-sends everything in one
-# shot, so there is no narrower "newly added" slice to point at; this can make the brain badge
-# light up once on such a restart even though no assistant turn just happened — accepted edge case).
 def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, message_summaries: list, delta_messages: list) -> dict:
     entry: dict = {}
     entry['timestamp'] = fwd_entry.get('timestamp', '')
@@ -175,31 +145,15 @@ def _extract_forwarded_fields(fwd_entry: dict, system: list, tools: list, messag
     entry['system_total_chars'] = sum(b['chars'] for b in entry['system_blocks'])
     entry.update(_build_tools_fields(tools))
 
-    # Placeholders for main-log-only fields; use_dual overlay path handles display when
-    # _stripped_spans/_injected_spans are attached by the pane's accumulate_dual_log calls.
     entry['modifications'] = []
     entry['stripped_unused_tools_names'] = []
     entry['deferred_tools_names'] = []
     entry['stripped_msg_indices'] = []
-    entry['cache_breakpoints'] = []   # always empty; BP:N removed from display
-    entry['messages'] = None           # assigned by caller from deque window
+    entry['cache_breakpoints'] = []
+    entry['messages'] = None
 
     return entry
 
-# Parse new forwarded_delta entries from fwd_path starting at last_pos.
-# acc_by_family: persisted across calls {family: {system: [...], tools: [...], messages: [summaries]}}.
-#   is_first resets the family state; subsequent entries apply deltas onto the accumulated lists.
-#   Unchanged message dicts are SHARED across consecutive summary lists (shallow copy) — O(M) total
-#   unique summary objects, not O(N^2).
-# Deque bound: only the last keep_last entries have entry['messages'] populated; earlier entries
-#   carry messages=None (lazy-loadable via _lazy_load_messages_forwarded). keep_last=None retains
-#   ALL entries' messages — the one-sweep search-reconstruction variant (see reconstruct_all_messages).
-# _fwd_req_idx: 0-based within THIS call only — NOT a stable global identifier across incremental
-#   polling calls (each call restarts req_idx at 0 for whatever new lines it reads). Use flow_id
-#   (globally unique, always populated) to correlate an entry back to its forwarded-log line.
-# Reconstruct one forwarded_delta line into a full entry dict, updating acc_by_family in place.
-# Capture prev summaries for diff_from_prev BEFORE updating the accumulator — is_first=True means
-# a proxy session reset, treated as first-ever request for this family. Returns (entry, new_summaries).
 def _process_forwarded_entry(fwd_e: dict, req_idx: int, acc_by_family: dict) -> tuple:
     family = _infer_model_family(fwd_e.get('model', ''))
     is_first = fwd_e.get('is_first', False)
@@ -258,13 +212,6 @@ def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict, kee
         win_entry['messages_total_chars'] = sum(s.get('chars', 0) for s in summaries)
     return entries, new_pos
 
-# Replay _forwarded log from byte 0 to reconstruct messages for a stripped entry.
-# Matches by entry['flow_id'] (globally unique, always populated) — NOT entry['_fwd_req_idx'],
-# which is only unique WITHIN one incremental parse call and collides across polling batches
-# (verified 2026-08-18: _fwd_req_idx-based matching returned wrong content for 158/158 entries
-# in a simulated 2-batch session — see process-docs/pane_search/).
-# Returns True if entry['messages'] was populated; False on any failure.
-# Cost: O(fwd_file_size) — acceptable for the small delta log.
 def _lazy_load_messages_forwarded(entry: dict, fwd_path: Path) -> bool:
     target_flow_id = entry.get('flow_id')
     if not target_flow_id or fwd_path is None or not fwd_path.exists():
@@ -305,17 +252,10 @@ def _lazy_load_messages_forwarded(entry: dict, fwd_path: Path) -> bool:
         return False
     return False
 
-# One-sweep reconstruction: full pass over fwd_path retaining messages for EVERY entry
-# (keep_last=None). Returns {flow_id: messages} for the caller to merge into its own entries
-# list by flow_id (NOT _fwd_req_idx — see _lazy_load_messages_forwarded's docstring).
-# Cost: ~35ms / 190 entries measured on a real 6.8MB forwarded log (process-docs/pane_search/).
 def reconstruct_all_messages(fwd_path: Path) -> dict:
     entries, _ = _parse_forwarded_log(fwd_path, 0, {}, keep_last=None)
     return {e['flow_id']: e['messages'] for e in entries if e.get('flow_id')}
 
-# Read new proxy-log entries for the monitored project from the _forwarded dual-log.
-# acc_by_family: persisted at caller (pane) across polling cycles for delta reconstruction.
-# Returns (entries, new_fwd_pos); graceful empty return if _forwarded file is absent.
 def parse_proxy_log_forwarded(project_filter: Optional[str], last_pos: int, acc_by_family: dict) -> tuple:
     root = os.environ.get('MONITOR_CC_ROOT', '') or str(Path(__file__).parent.parent.parent)
     if not project_filter:

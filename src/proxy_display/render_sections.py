@@ -9,14 +9,11 @@ from .render_line_helpers import _emit_text_lines, _emit_span_lines, _emit_inlin
 
 # FUNCTIONS
 
-# Pull (properties, required) out of a tool's input_schema — repeated identically across every
-# tool-render path (dual, legacy, whole-stripped).
 def _extract_schema_props(input_schema) -> tuple:
     props = input_schema.get('properties', {}) if isinstance(input_schema, dict) else {}
     required_props = input_schema.get('required', []) if isinstance(input_schema, dict) else []
     return props, required_props
 
-# Render one param-per-line listing (`name[*]: type — desc`), same bg throughout — returning (lines, keys)
 def _render_tool_params(props: dict, required_props: list, indent: str, bg: str) -> tuple:
     lines = []
     keys = []
@@ -32,8 +29,6 @@ def _render_tool_params(props: dict, required_props: list, indent: str, bg: str)
             keys.append(None)
     return lines, keys
 
-# Render a dual-spans tool's description: new-format inline (equal=DIM, injected=DIM_GREEN_BG) or
-# legacy (forwarded description + stacked yellow/green) — returning (lines, keys)
 def _render_tool_desc(tool_def: dict, s_desc: list, i_desc: list, bg: str) -> tuple:
     lines = []
     keys = []
@@ -58,7 +53,6 @@ def _render_tool_desc(tool_def: dict, s_desc: list, i_desc: list, bg: str) -> tu
     keys.extend(i_keys)
     return lines, keys
 
-# Render one tool entry in dual-spans mode (header + expanded desc/schema), returning (lines, keys)
 def _render_tool_dual(tool_idx: int, t_name: str, tool_def: dict, entry: dict, expand_states: dict, entry_idx: int) -> tuple:
     lines = []
     keys = []
@@ -84,8 +78,6 @@ def _render_tool_dual(tool_idx: int, t_name: str, tool_def: dict, entry: dict, e
         keys.extend(p_keys)
     return lines, keys
 
-# Render one legacy tool's param listing — required-but-missing desc falls back to
-# stripped_original's own param desc, in yellow (the one shape _render_tool_params doesn't cover)
 def _render_legacy_tool_params(props: dict, required_props: list, stripped_original, bg: str) -> tuple:
     lines = []
     keys = []
@@ -108,7 +100,6 @@ def _render_legacy_tool_params(props: dict, required_props: list, stripped_origi
             keys.append(None)
     return lines, keys
 
-# Render one tool entry in legacy (no dual-spans) mode (header + expanded desc/schema), returning (lines, keys)
 def _render_tool_legacy(tool_idx: int, t_name: str, tool_def: dict, expand_states: dict, entry_idx: int) -> tuple:
     lines = []
     keys = []
@@ -136,11 +127,6 @@ def _render_tool_legacy(tool_idx: int, t_name: str, tool_def: dict, expand_state
         keys.extend(p_keys)
     return lines, keys
 
-# Render one whole-stripped tool row (yellow, expandable) — original def sourced from the same
-# session's own _original dual-log (entry['_original_tools_by_name'], see pane.py's
-# accumulate_original_tools), since the stripped stream itself only records {"whole": true} with
-# no text. tool_def is None when the lookup hasn't resolved yet or was never attached (worker
-# proxy pane) — degrades to a plain unavailable notice, row stays expandable either way.
 def _render_whole_stripped_tool(entry_idx: int, name: str, tool_def: Optional[dict], expand_states: dict) -> tuple:
     lines = []
     keys = []
@@ -165,8 +151,6 @@ def _render_whole_stripped_tool(entry_idx: int, name: str, tool_def: Optional[di
         keys.extend(p_keys)
     return lines, keys
 
-# Compute the added/removed tool-name sets against prev_entry_for_delta plus the
-# first-request/changed flags that gate the whole section — returning a dict
 def _compute_tools_delta(tools_hash: str, tools_names: list, prev_entry_for_delta) -> dict:
     prev_tools_hash = prev_entry_for_delta.get('tools_hash', '') if prev_entry_for_delta else ''
     prev_tools_names = prev_entry_for_delta.get('tools_names', []) if prev_entry_for_delta else []
@@ -181,7 +165,6 @@ def _compute_tools_delta(tools_hash: str, tools_names: list, prev_entry_for_delt
         'removed': removed,
     }
 
-# Render one row per new/changed tool def (dual or legacy dispatch), returning (lines, keys)
 def _render_tool_defs_list(tools_defs: list, entry: dict, expand_states: dict, entry_idx: int, delta: dict, use_dual: bool) -> tuple:
     lines = []
     keys = []
@@ -198,8 +181,6 @@ def _render_tool_defs_list(tools_defs: list, entry: dict, expand_states: dict, e
         keys.extend(t_keys)
     return lines, keys
 
-# Render the whole-stripped-tool extra rows (dual-spans mode only) — a forwarded-absent tool
-# name marked `{"whole": true}` on the stripped side, returning (lines, keys)
 def _render_whole_stripped_extras(entry: dict, tools_names: list, expand_states: dict, entry_idx: int) -> tuple:
     lines = []
     keys = []
@@ -212,8 +193,6 @@ def _render_whole_stripped_extras(entry: dict, tools_names: list, expand_states:
             keys.extend(t_keys)
     return lines, keys
 
-# Render the expanded tools-section body: removed markers, tool defs, whole-stripped-or-unused
-# extras, deferred markers — returning (lines, keys)
 def _render_tools_body(entry_idx: int, entry: dict, expand_states: dict, tools_names: list, delta: dict) -> tuple:
     lines = []
     keys = []
@@ -238,7 +217,6 @@ def _render_tools_body(entry_idx: int, entry: dict, expand_states: dict, tools_n
         keys.append(None)
     return lines, keys
 
-# Render tools section for an expanded request entry, returning (lines, keys)
 def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_states: dict, pane_width: int) -> tuple:
     lines = []
     keys = []
@@ -263,7 +241,6 @@ def render_tools(entry_idx: int, entry: dict, prev_entry_for_delta, expand_state
         keys.extend(b_keys)
     return lines, keys
 
-# Render beta flags section for an expanded request entry, returning (lines, keys)
 def render_beta(entry_idx: int, entry: dict, expand_states: dict) -> tuple:
     lines = []
     keys = []
@@ -282,7 +259,6 @@ def render_beta(entry_idx: int, entry: dict, expand_states: dict) -> tuple:
     return lines, keys
 
 
-# Render context_management + diagnostics directives section for an expanded request entry, returning (lines, keys)
 def render_directives(entry_idx: int, entry: dict, expand_states: dict) -> tuple:
     lines = []
     keys = []
@@ -306,7 +282,6 @@ def render_directives(entry_idx: int, entry: dict, expand_states: dict) -> tuple
     return lines, keys
 
 
-# Render fields delta section for an expanded request entry, returning (lines, keys)
 def render_fields_delta(entry_idx: int, entry: dict, expand_states: dict, pane_width: int) -> tuple:
     lines = []
     keys = []

@@ -9,25 +9,19 @@ from ..colors import (
 from ..format.token_format import _format_k
 from ..utils import truncate_visible
 from .proxy_badge import _chars_to_tokens
-# From search_bar.py: shared BG-restore sentinel + substitution (2026-08-18 extraction — was
-# defined locally here, now the single source for every pane that embeds a search-highlight span
-# it can't resolve to a real color at render time)
 from ..search_bar import _BG_RESTORE_SENTINEL, resolve_bg_restore
 
 # FUNCTIONS
 
-# Format token estimate as compact string with ~ prefix
 def _format_tok_est(chars: int) -> str:
     return f"~{_format_k(_chars_to_tokens(chars))}tok"
 
-# Format effort string as compact label: 'high'→'hig', 'medium'→'med', 'low'→'lo', None→'-'
 def _fmt_effort(s: Optional[str]) -> str:
     if s is None:
         return '-'
     return {'high': 'hig', 'medium': 'med', 'low': 'lo'}.get(s, s[:3])
 
 
-# Format thinking budget as compact string: None→'-', <1000→str(n), ≥1000→'Nk'
 def _fmt_thinking_budget(n: Optional[int]) -> str:
     if n is None:
         return '-'
@@ -36,7 +30,6 @@ def _fmt_thinking_budget(n: Optional[int]) -> str:
     return f'{n // 1000}k'
 
 
-# Shorten full model name to family label
 def _shorten_model(model: str) -> str:
     m = model.lower()
     if 'haiku' in m:
@@ -47,11 +40,6 @@ def _shorten_model(model: str) -> str:
         return 'opus'
     return model[:8] if model else '?'
 
-# True when entry is a structural sidecar (haiku or zero-context: no system AND no tools).
-# cache_breakpoints is always [] for forwarded entries, so the old bp-guard logic is replaced
-# by system/tools presence: a real main-session request always carries a full system prompt
-# and tool list (sys_chars>0, tools_chars>0); CC title/summary and haiku sidecars have neither.
-# Backward-compatible: old main-log entries with bp=[0] had sys_chars>0 too, so they still pass.
 def _is_standalone_entry(entry: dict) -> bool:
     sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
@@ -61,7 +49,6 @@ def _is_standalone_entry(entry: dict) -> bool:
     )
 
 
-# Assign each proxy entry to the matching turn based on timestamp comparison
 def _assign_turns_to_entries(entries: list, turns: list) -> list:
     if not turns or not entries:
         return []
@@ -78,18 +65,6 @@ def _assign_turns_to_entries(entries: list, turns: list) -> list:
             groups[0]['entry_pairs'].append((entry_idx, entry))
     return [g for g in groups if g['entry_pairs']]
 
-# Apply per-row background priority: hover > DIM_YELLOW_BG > DIM_GREEN_BG > collision > zebra
-# (back to the pre-2026-08 order — search highlights are no longer part of this hoist chain;
-# see below). initial_parent_count preserves zebra parity continuity across the scroll viewport
-# boundary.
-#
-# Search highlights (2026-08-18, revised): NOT a row-level background choice anymore — a search
-# hit is an independent inline overlay applied ON TOP of whichever chosen_bg wins above (hover,
-# strip/inject, collision, or zebra), everywhere, browser-find style. render_turn.py embeds the
-# highlighted span with _BG_RESTORE_SENTINEL in place of the "resume normal background" code
-# (it doesn't know chosen_bg at embed time); once chosen_bg IS known here, every sentinel
-# occurrence in the line is substituted for it — so text after a highlighted match correctly
-# resumes the row's real background instead of the terminal's raw default.
 def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_entry_idxs: set, hover_row, copy_rows_out, pane_width: int, initial_parent_count: int) -> list:
     parent_count = initial_parent_count
     result_lines = []
@@ -120,21 +95,11 @@ def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_en
             chosen_bg = COLLISION_BG
         else:
             chosen_bg = zebra_bg
-        # search_bar.resolve_bg_restore substitutes any _BG_RESTORE_SENTINEL for chosen_bg,
-        # falling back to an explicit '\033[49m' when chosen_bg is '' (ZEBRA_BG_A rows) — a
-        # bare '' substitution would DELETE the sentinel outright, leaving the search-highlight
-        # BG active with nothing to close it before the trailing \033[K erase-to-EOL, flooding
-        # the rest of the row (2026-08-18 live bug, reproduced byte-for-byte; see
-        # search_bar.py's resolve_bg_restore for the full reasoning on why the LEADING
-        # f'{chosen_bg}{trunc}' position doesn't need the same fix).
         line = resolve_bg_restore(line, chosen_bg)
         trunc = truncate_visible(line, pane_width)
         result_lines.append(f"{chosen_bg}{trunc}\033[K{RESET}")
     return result_lines
 
-# Render every turn-group's rows via render_turn_expanded, threading opus/sub request numbering
-# across groups; fills item_positions_out (body-relative, before viewport slicing) and appends a
-# blank-line separator after each group — returning (all_lines, line_keys, rendered_opus_labels)
 def _render_all_groups(entries: list, groups: list, expand_states: dict, pane_width: int, turns, item_positions_out: Optional[dict], copy_feedback, copy_rows_out, search_match_set, search_current_entry_idx, search_query: str) -> tuple:
     from .render_turn import render_turn_expanded
     all_lines = []
@@ -167,21 +132,15 @@ def _render_all_groups(entries: list, groups: list, expand_states: dict, pane_wi
         line_keys.append(None)
     return all_lines, line_keys, rendered_opus_labels
 
-# Duplicate request-number labels (abort-cascade re-sends landing on the same #N) mark every
-# entry_idx that shares its label with another — returning the set of colliding entry_idx
 def _compute_collision_idxs(rendered_opus_labels: list) -> set:
     label_counts = Counter(lbl for _, lbl in rendered_opus_labels)
     return {idx for idx, lbl in rendered_opus_labels if label_counts[lbl] >= 2}
 
-# Drop the trailing turn-group blank-line separators — in place, mutates both lists
 def _trim_trailing_blank(all_lines: list, line_keys: list) -> None:
     while all_lines and all_lines[-1] == '':
         all_lines.pop()
         line_keys.pop()
 
-# Clamp scroll_offset, slice the visible viewport, fill line_map (visible rows only) and compute
-# the zebra parity carried in from above the viewport — returning
-# (visible_lines, visible_keys, initial_parent_count, total_lines)
 def _slice_viewport(all_lines: list, line_keys: list, pane_height: int, pane_width: int, scroll_offset: int, line_map: Optional[dict]) -> tuple:
     total_lines = len(all_lines)
     viewport_lines = max(1, pane_height - 1)
@@ -199,9 +158,6 @@ def _slice_viewport(all_lines: list, line_keys: list, pane_height: int, pane_wid
     initial_parent_count = sum(1 for k in line_keys[:start] if k is not None)
     return visible_lines, visible_keys, initial_parent_count, total_lines
 
-# Format proxy pane with API request entries grouped by turn, expand/collapse, scroll, hover
-# search_match_set/search_current_entry_idx/search_query: optional — omitted by every caller
-# that doesn't have a search feature (worker_proxy_pane.py), zero behavior change for them.
 def format_proxy_block(entries: list, expand_states: dict = None, line_map: dict = None, hover_row: Optional[int] = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, turns: list = None, item_positions_out: Optional[dict] = None, copy_feedback: Optional[dict] = None, copy_rows_out: Optional[set] = None, search_match_set: Optional[set] = None, search_current_entry_idx: Optional[int] = None, search_query: str = '') -> tuple:
     if not entries:
         return (f"{YELLOW}No API requests logged yet{SOFT_RESET}", 0)

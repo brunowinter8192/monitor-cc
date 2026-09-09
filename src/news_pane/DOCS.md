@@ -21,7 +21,7 @@ Standalone tmux Window 5 "news" pane pair that controls and observes the CoinDes
 
 ## Modules
 
-### pane.py (354 LOC)
+### pane.py (302 LOC)
 
 **Purpose:** Left control pane event loop. Collection stats display, SGR mouse button click dispatch, subprocess launch, running-state indicator. `NEWS_POLL_INTERVAL = 2.0` s; `LOG_RUNNING_RECENT_SECS = 60`. **(2026-07-31) The `while True:` body is wrapped in its own `try/except Exception:`** — an uncaught exception (this pane previously had none) is caught, logged via `pane_error_log.log_pane_error('news')`, and the loop continues after `wait_for_input(INPUT_POLL_INTERVAL)`; `KeyboardInterrupt`/`SystemExit` still propagate, `finally: disable_mouse(); restore_terminal()` still runs. **(2026-07-30) New `[refresh]` header button:** appended to the `CoinDesk News Pipeline` title line (row 1, disjoint from the `[run pipeline]`/`[running…]` button which starts several rows down), registered under `('refresh', 'refresh')`. `_handle_news_mouse` special-cases `action == 'refresh'` (returns `force_refresh_hit=True`) BEFORE the pre-existing `if not _is_running(): _fire_pipeline()` branch — previously that branch fired UNCONDITIONALLY on any matched region regardless of `action`/`target` (there was only ever one button, so this never mattered before). Width-guarded with a real gate — no button text, no region, when it doesn't fit. **(2026-07-30 review fix) Decoration yields to the button, not the reverse:** the `'═' * min(pane_width, 52)` rule used to be computed at FULL length regardless of whether `[refresh]` fit, so the button silently disappeared at pane_width < 86 even though the title text needed only 25 cols — `utils.compute_header_rule_len('  CoinDesk News Pipeline', '[refresh]', 52, pane_width)` now shrinks the rule first (down to a 4-char minimum) to make room for the button. Crossover: button visible from pane_width >= 38 (was 86); title text always renders regardless of width. Verified with a width sweep in `dev/click_ui/p4_gpu_news_button_probe.py` spanning both sides of the crossover, down to well below today's live pane width (107).
 
@@ -35,7 +35,7 @@ Standalone tmux Window 5 "news" pane pair that controls and observes the CoinDes
 
 ---
 
-### log_pane.py (83 LOC)
+### log_pane.py (79 LOC)
 
 **Purpose:** Right log-tail pane. Polls newest log file every 0.5s; extracts current-run lines; filters to whitelist events; renders top-anchored (events grow top-down from the header, newest visible on overflow). No mouse (tmux native scroll active). `LOG_POLL_INTERVAL = 0.5` s; `MAX_LOG_LINES = 40`. **(2026-07-31) The `while True:` body is wrapped in its own `try/except Exception:`** — the 8th pane loop missed in the initial 2026-07-31 sweep (window 5 has two panes, so this one dying silently leaves pane 5.1 blank rather than killing the whole tmux window, which is why it wasn't caught by the tmux-status-bar symptom that motivated the sweep). An uncaught exception is caught, logged via `pane_error_log.log_pane_error('news_log')`, and the loop continues after `time.sleep(LOG_POLL_INTERVAL)` (this loop has no `wait_for_input`, no keyboard/mouse setup, and — unlike the other 8 — no `finally:` block; none was added, since it never had one and none of its resources need pane-loop-style cleanup).
 **Reads:** log file via `find_log_file()` + `find_current_run_lines()` + `filter_events()` (every 0.5s).
@@ -45,7 +45,7 @@ Standalone tmux Window 5 "news" pane pair that controls and observes the CoinDes
 
 ---
 
-### log_parser.py (82 LOC)
+### log_parser.py (76 LOC)
 
 **Purpose:** Pure parsing helper + package-level path constants. Provides `WEBSEARCH_ROOT`, `LOG_DIR`, `LAST_RUN_FILE`, `TARGET_COLLECTION`, run boundary markers, whitelist regex list. Functions are side-effect-free (no I/O beyond file reads).
 **Reads:** `LOG_DIR/news_coindesk_*.log` (via `find_log_file`); `LAST_RUN_FILE` (via `read_last_run_ts`); log file text (via `find_current_run_lines`).

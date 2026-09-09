@@ -9,15 +9,10 @@ from ..utils import _ANSI_ESCAPE_RE, _cell_width, highlight_query_in_line
 from .format import _shorten_model, _format_k, _is_standalone_entry, _fmt_thinking_budget, _fmt_effort
 from .render_messages import _aggregate_req_buckets
 from .proxy_badge import badge_flags
-# From search_bar.py: shared BG-restore sentinel (2026-08-18 extraction — single source, see
-# format.py's import comment)
 from ..search_bar import _BG_RESTORE_SENTINEL
 
 # FUNCTIONS
 
-# Walk backward from entry_idx-1 for the first non-standalone entry of the SAME family
-# (haiku vs non-haiku) — the reference used for ⚠T / section-diff rendering. None for
-# standalone entries (haiku/zero-context) or when no matching predecessor exists.
 def _resolve_prev_same_family(entries: list, entry_idx: int) -> Optional[dict]:
     entry = entries[entry_idx]
     if _is_standalone_entry(entry):
@@ -29,7 +24,6 @@ def _resolve_prev_same_family(entries: list, entry_idx: int) -> Optional[dict]:
             return entries[i]
     return None
 
-# Compute tool-mod string (🔧+N / -N / ±N) comparing entry tools to prev_same, or ''
 def _compute_req_mods_str(entry: dict, prev_same) -> str:
     _curr = entry.get('tools_names', [])
     _prev = prev_same.get('tools_names', []) if prev_same is not None else []
@@ -43,14 +37,6 @@ def _compute_req_mods_str(entry: dict, prev_same) -> str:
         return f" {YELLOW}🔧-{removed}{SOFT_RESET}"
     return ''
 
-# Build the request header line string with haiku_info, eff/think, tag_badge, copy ⎘/✓ right-pad
-# is_search_current wins over is_search_match — wraps only the header's own TEXT EXTENT (from
-# req_symbol through the last badge, i.e. the "body" below) in a search-highlight BG span with a
-# _BG_RESTORE_SENTINEL close — NOT the leading 2-space indent and NOT the copy-button padding
-# appended after this function returns, so the highlight never reaches the right pane edge.
-# _apply_row_backgrounds substitutes the sentinel for the row's real chosen_bg once known.
-# Header stays marked for a search hit regardless of expand state (uniform, keeps orientation
-# when scrolling inside a long expanded request).
 def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symbol: str, model_short: str, msg_count: int, mods_str: str, warn_str: str, pane_width: int, copy_feedback, is_search_match: bool = False, is_search_current: bool = False) -> str:
     e_sys = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     e_tools = entry.get('tools_total_chars', entry.get('tools_chars', 0))
@@ -78,25 +64,17 @@ def _build_req_header_line(entry: dict, entry_idx: int, num_label: str, req_symb
         is_flash = copy_feedback.get(entry_idx, 0) > time.time()
         copy_sym = '✓' if is_flash else '⎘'
         sym_cells = _cell_width(copy_sym)
-        pad = pane_width - 1 - sym_cells - visible_len  # 1 space + sym_cells
+        pad = pane_width - 1 - sym_cells - visible_len
         if pad >= 0:
             return header_raw + ' ' * pad + ' ' + copy_sym
     return header_raw
 
-# Highlight ONLY the literal query substring occurrence(s) within each line (browser-find
-# style, via utils.highlight_query_in_line) — NOT the whole line/row. Uses _BG_RESTORE_SENTINEL
-# as the restore code so _apply_row_backgrounds can substitute the row's real chosen_bg
-# (zebra/hover/strip/collision) once known, instead of blowing a hole to the terminal default.
-# A line not containing the query is returned unchanged (highlight_query_in_line's own no-op).
 def _mark_search_lines(lines: list, query: str, is_current: bool) -> list:
     if not query:
         return lines
     marker = SEARCH_CURRENT_BG if is_current else SEARCH_MATCH_BG
     return [highlight_query_in_line(line, query, marker, _BG_RESTORE_SENTINEL) for line in lines]
 
-# Render expanded section for one request entry (buckets, fields, beta, directives, sys, tools, messages)
-# search_query/is_search_current: when query is truthy, every rendered line containing it
-# (case-insensitive) gets a search-highlight BG marker — "exactly what this expanded view shows".
 def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalone: bool, prev_same, expand_states: dict, pane_width: int, search_query: str = '', is_search_current: bool = False) -> tuple:
     from .render_sections import render_tools, render_fields_delta, render_beta, render_directives
     from .render_sections_system import render_system_blocks
@@ -134,10 +112,6 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     lines = _mark_search_lines(lines, search_query, is_search_current)
     return lines, keys
 
-# Render all per-request rows for an expanded turn group, returning (lines, keys, opus_req_num, sub_req_num)
-# search_match_set/search_current_entry_idx/search_query: optional — None/empty (defaults) means
-# search is inactive and every entry renders exactly as before (no behavior change for callers
-# that don't pass these, e.g. worker_proxy_pane.py).
 def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_width: int, opus_req_num: int, sub_req_num: int, turns=None, turn_idx: int = 0, rendered_opus_labels: list = None, copy_feedback=None, copy_rows_out=None, search_match_set: set = None, search_current_entry_idx: int = None, search_query: str = '') -> tuple:
     lines = []
     keys = []

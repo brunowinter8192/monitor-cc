@@ -8,11 +8,9 @@ from .forwarded_parser import _proxy_session_id_for_project
 
 # FUNCTIONS
 
-# Public wrapper — used by panes to build project-scoped worker log globs
 def proxy_session_id_for_project(project_path: str) -> str:
     return _proxy_session_id_for_project(project_path)
 
-# Find the most recent worker proxy log for the given worker name
 def find_worker_proxy_log(worker_name: str, project_filter: Optional[str] = None) -> Optional[Path]:
     root = os.environ.get("MONITOR_CC_ROOT", "")
     if not root:
@@ -27,9 +25,8 @@ def find_worker_proxy_log(worker_name: str, project_filter: Optional[str] = None
         return None
     best = max(fwd_matches, key=lambda f: f.stat().st_mtime)
     stem = best.stem[:-len("_forwarded")]
-    return logs_dir / f"{stem}.jsonl"  # synthetic path — stem is the log_id
+    return logs_dir / f"{stem}.jsonl"
 
-# Return epoch float of proxy session start (marker file mtime); falls back silently to time.time()
 def get_proxy_session_start_ts(project_filter: str) -> float:
     root = os.environ.get("MONITOR_CC_ROOT", "")
     if not root:
@@ -41,11 +38,10 @@ def get_proxy_session_start_ts(project_filter: str) -> float:
             mtime = marker_file.stat().st_mtime
         except OSError:
             mtime = None
-        if mtime is not None and time.time() - mtime < 86400:  # stale guard: >24h → fallback
+        if mtime is not None and time.time() - mtime < 86400:
             return mtime
     return time.time()
 
-# Locate current proxy JSONL via marker file; returns Path or None
 def find_proxy_log_path(project_filter: Optional[str]) -> Optional[Path]:
     if not project_filter:
         return None
@@ -64,18 +60,16 @@ def find_proxy_log_path(project_filter: Optional[str]) -> Optional[Path]:
             log_id = lines[1].strip()
     return Path(root) / "src" / "logs" / f"api_requests_{log_id}.jsonl"
 
-# Derive stripped/injected dual-log paths from the resolved main log path
 def _find_dual_log_paths(main_log_path: Optional[Path]) -> tuple:
     if main_log_path is None:
         return None, None
     dual_dir = main_log_path.parent / 'dual_log'
-    stem = main_log_path.stem  # e.g. api_requests_<log_id>
+    stem = main_log_path.stem
     return (
         dual_dir / f'{stem}_stripped.jsonl',
         dual_dir / f'{stem}_injected.jsonl',
     )
 
-# Derive the _original dual-log path from the resolved main log path
 def _find_original_log_path(main_log_path: Optional[Path]) -> Optional[Path]:
     if main_log_path is None:
         return None
@@ -83,8 +77,6 @@ def _find_original_log_path(main_log_path: Optional[Path]) -> Optional[Path]:
     stem = main_log_path.stem
     return dual_dir / f'{stem}_original.jsonl'
 
-# Resolve the _errors dual-log path for the current proxy session of project_filter.
-# Returns None if project_filter is empty; path may not exist (callers check .exists()).
 def find_errors_log_path(project_filter: Optional[str]) -> Optional[Path]:
     if not project_filter:
         return None
@@ -98,8 +90,6 @@ def find_errors_log_path(project_filter: Optional[str]) -> Optional[Path]:
             log_id = lines[1].strip()
     return Path(root) / 'src' / 'logs' / 'dual_log' / f'api_requests_{log_id}_errors.jsonl'
 
-# Resolve the _response dual-log path for the current proxy session of project_filter.
-# Returns None if project_filter is empty; path may not exist (callers check .exists()).
 def find_response_log_path(project_filter: Optional[str]) -> Optional[Path]:
     if not project_filter:
         return None

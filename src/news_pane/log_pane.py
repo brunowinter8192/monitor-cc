@@ -6,7 +6,6 @@ from ..colors import RESET, DIM, YELLOW, RED
 from .log_parser import (
     find_log_file, find_current_run_lines, filter_events, parse_line,
 )
-# From pane_error_log.py: shared exception-safe pane-error sink
 from ..pane_error_log import log_pane_error
 
 LOG_POLL_INTERVAL = 0.5
@@ -14,7 +13,6 @@ MAX_LOG_LINES     = 40
 
 # ORCHESTRATOR
 
-# News log pane loop — tails pipeline log, no mouse (tmux scroll active)
 def run_news_log_loop() -> None:
     last_output = None
     while True:
@@ -44,7 +42,6 @@ def run_news_log_loop() -> None:
 
 # FUNCTIONS
 
-# Format a single filtered log line for display; truncates to max_width
 def _format_event_line(raw: str, max_width: int) -> str:
     parsed = parse_line(raw)
     if parsed is None:
@@ -62,7 +59,6 @@ def _format_event_line(raw: str, max_width: int) -> str:
     return f"{prefix}{msg}"
 
 
-# Build full log pane content; events top-anchored, newest visible on overflow
 def _render_log_pane(pane_width: int, pane_height: int,
                      log_path, events: list[str]) -> str:
     lines: list[str] = []

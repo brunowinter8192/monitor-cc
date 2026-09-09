@@ -5,7 +5,6 @@ from .render_line_helpers import _emit_text_lines, _emit_span_lines, _emit_inlin
 
 # FUNCTIONS
 
-# Render system blocks section for an expanded request entry, returning (lines, keys)
 def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expand_states: dict, pane_width: int, mods: list) -> tuple:
     lines = []
     keys = []
@@ -24,8 +23,6 @@ def render_system_blocks(entry_idx: int, entry: dict, prev_entry_for_delta, expa
         keys.extend(b_keys)
     return lines, keys
 
-# Render every changed system block (skips blocks whose preview matches the prior request's,
-# unless this is the first request for the family) — returning (lines, keys)
 def _render_sys_blocks_body(entry_idx: int, entry: dict, sys_blocks: list, prev_entry_for_delta, expand_states: dict, mods: list) -> tuple:
     lines = []
     keys = []
@@ -41,8 +38,6 @@ def _render_sys_blocks_body(entry_idx: int, entry: dict, sys_blocks: list, prev_
         keys.extend(blk_keys)
     return lines, keys
 
-# Look up the (stripped, injected) span markers for one system block coordinate — new dual-log
-# path reads real span data; old side-channel path derives a marker-only True from `mods`.
 def _sys_block_spans(entry: dict, bidx: int, use_dual: bool, mods: list) -> tuple:
     if use_dual:
         s_spans = entry['_stripped_spans']['system'].get(str(bidx))
@@ -53,7 +48,6 @@ def _sys_block_spans(entry: dict, bidx: int, use_dual: bool, mods: list) -> tupl
         i_spans = None
     return s_spans, i_spans
 
-# Render one system block: header (yellow/green/gray by span presence) + expanded content, returning (lines, keys)
 def _render_one_sys_block(entry_idx: int, entry: dict, sb: dict, use_dual: bool, expand_states: dict, mods: list) -> tuple:
     lines = []
     keys = []
@@ -72,8 +66,6 @@ def _render_one_sys_block(entry_idx: int, entry: dict, sb: dict, use_dual: bool,
         keys.extend(c_keys)
     return lines, keys
 
-# Render one expanded system block's content — new-format inline spans, or gray preview + stacked
-# yellow/green (dual) / yellow original_text (legacy) — returning (lines, keys)
 def _render_sys_block_content(sb: dict, s_spans, i_spans, use_dual: bool) -> tuple:
     lines = []
     keys = []

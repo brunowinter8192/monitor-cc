@@ -6,8 +6,6 @@ from typing import Optional
 
 # FUNCTIONS
 
-# Read new _response entries from last_pos; returns ({request_id: headers_dict}, new_pos).
-# Silently ignores missing/unreadable file and malformed lines.
 def read_response_log(path: Optional[Path], last_pos: int) -> tuple:
     if path is None or not path.exists():
         return {}, last_pos
@@ -33,9 +31,6 @@ def read_response_log(path: Optional[Path], last_pos: int) -> tuple:
     except OSError:
         return {}, last_pos
 
-# Glob dual_log/api_requests_worker_{project_session_id}_*_errors.jsonl, read new records per
-# file by byte-pos. worker_name extracted from filename (mirrors scan_worker_logs naming logic).
-# Unprefixed fallback when project_session_id is empty. Returns (records, new_positions).
 def scan_worker_errors_logs(last_positions: dict, project_session_id: str = '',
                             min_mtime: float = 0) -> tuple:
     root = os.environ.get('MONITOR_CC_ROOT', '') or str(Path(__file__).parent.parent.parent)
@@ -70,7 +65,6 @@ def scan_worker_errors_logs(last_positions: dict, project_session_id: str = '',
                         rec = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    # Extract worker_name: stem = api_requests_worker_[{hash}_]{name}_{ts}_errors
                     stem = fpath.stem
                     remaining = stem.replace('api_requests_worker_', '')
                     if remaining.endswith('_errors'):
