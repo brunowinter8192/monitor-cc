@@ -31,7 +31,7 @@ sys.path.insert(0, str(_HERE.parents[2]))
 
 from src.dual_log_cli.discovery import build_session
 from src.dual_log_cli.reader import load_last_request
-from src.dual_log_cli.timeline import request_boundaries
+from src.dual_log_cli.timeline_boundaries import request_boundaries
 
 PASS_LIST = []
 FAIL_LIST = []

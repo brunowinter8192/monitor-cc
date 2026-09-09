@@ -1,6 +1,6 @@
 # INFRASTRUCTURE
 from .classifier import matches_only
-from .timeline import iter_block_texts
+from .timeline_turns import iter_block_texts
 
 # FUNCTIONS
 

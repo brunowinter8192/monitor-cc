@@ -40,7 +40,8 @@ from src.dual_log_cli.discovery import (
     project_for_stem,
     resolve_stem,
 )
-from src.dual_log_cli.render import render_expand_full, render_sessions
+from src.dual_log_cli.render_expand import render_expand_full
+from src.dual_log_cli.render_sessions import render_sessions
 from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
 
 PASS_LIST = []

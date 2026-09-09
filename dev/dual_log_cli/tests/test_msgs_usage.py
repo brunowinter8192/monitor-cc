@@ -27,7 +27,7 @@ _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 
 from src.dual_log_cli.reader import local_datetime
-from src.dual_log_cli.render import render_msgs
+from src.dual_log_cli.render_msgs import render_msgs
 from src.dual_log_cli.usage import build_usage_by_flow, _find_transcript
 from src.proxy_display.forwarded_parser import _proxy_session_id_for_project
 

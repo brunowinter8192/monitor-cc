@@ -30,10 +30,10 @@ from pathlib import Path
 _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 
-from src.dual_log_cli.timeline import (
+from src.dual_log_cli.timeline_boundaries import request_boundaries
+from src.dual_log_cli.timeline_markers import (
     AmbiguousRequestNumberError,
     UnknownRequestNumberError,
-    request_boundaries,
     request_markers,
     request_msg_range,
     resolve_req_range,
