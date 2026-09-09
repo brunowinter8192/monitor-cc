@@ -48,19 +48,19 @@ _FIXTURE_RAW = '''{
 # write (format fidelity, foreign-content preservation, missing-entry creation, malformed-file
 # fallback) — all against temp paths, never the real ~/.claude/shared-rules/.
 def verify_model_cycle_and_io_workflow() -> None:
-    mc = _load_model_controller()
+    ms = _load_model_selection_module()
     lines = [f"# Models tab — cycle + I/O verification — {datetime.now().isoformat(timespec='seconds')}", ""]
 
-    _verify_model_cycle(mc, lines)
-    _verify_effort_cycle(mc, lines)
-    _verify_max_tokens_cycle(mc, lines)
+    _verify_model_cycle(ms, lines)
+    _verify_effort_cycle(ms, lines)
+    _verify_max_tokens_cycle(ms, lines)
 
     with tempfile.TemporaryDirectory() as tmp:
-        _verify_model_selection_write(mc, lines, tmp)
-        _verify_model_selection_readback(mc, lines, tmp)
-        _verify_proxy_rules_format_fidelity(mc, lines)
-        _verify_proxy_rules_read_modify_write(mc, lines, tmp)
-        _verify_proxy_rules_malformed_fallback(mc, lines, tmp)
+        _verify_model_selection_write(ms, lines, tmp)
+        _verify_model_selection_readback(ms, lines, tmp)
+        _verify_proxy_rules_format_fidelity(ms, lines)
+        _verify_proxy_rules_read_modify_write(ms, lines, tmp)
+        _verify_proxy_rules_malformed_fallback(ms, lines, tmp)
 
     lines.append("")
     lines.append("RESULT: PASS — model/effort/max_tokens cycles step + wrap correctly; "
@@ -78,74 +78,78 @@ def verify_model_cycle_and_io_workflow() -> None:
 
 # FUNCTIONS
 
-# Load the real src.menubar.model_controller module via importlib (dev/ probes must not
+# Load the real src.menubar.model_selection module via importlib (dev/ probes must not
 # write a literal 'from src.' / 'import src.' statement; a dynamic import_module call is not
-# that statement and is needed here anyway — model_controller.py has package-relative imports
-# that only resolve when loaded as part of the src.menubar package).
-def _load_model_controller():
-    module_name = '.'.join(['src', 'menubar', 'model_controller'])
+# that statement and is needed here anyway — model_selection.py has a package-relative import
+# that only resolves when loaded as part of the src.menubar package). (2026-09, menubar
+# milestone A: every symbol this script touches — the cycle constants/functions and the
+# model_selection.json/proxy_rules.json load/write functions — moved out of model_controller.py
+# into this pure persistence module; re-pointed here rather than re-exported from
+# model_controller.py, which no longer calls any of them directly.)
+def _load_model_selection_module():
+    module_name = '.'.join(['src', 'menubar', 'model_selection'])
     return importlib.import_module(module_name)
 
 # Section 1: the 4-value model cycle (all 4 values step correctly, wraps, unrecognized -> first)
-def _verify_model_cycle(mc, lines) -> None:
+def _verify_model_cycle(ms, lines) -> None:
     lines.append("## 1. Model cycle logic (4 values)")
-    choices = mc._MODEL_CHOICES
+    choices = ms._MODEL_CHOICES
     assert len(choices) == 4, f"expected 4 model choices, got {len(choices)}: {choices}"
     for start in choices:
-        nxt = mc._next_model(start)
+        nxt = ms._next_model(start)
         expected = choices[(choices.index(start) + 1) % len(choices)]
         assert nxt == expected, f"{start} -> {nxt}, expected {expected}"
         lines.append(f"{start} -> {nxt}")
-    fourth_wraps = mc._next_model(choices[-1]) == choices[0]
+    fourth_wraps = ms._next_model(choices[-1]) == choices[0]
     assert fourth_wraps
     lines.append(f"Fourth value wraps to first: {fourth_wraps}")
-    unknown_next = mc._next_model("some-unrecognized-id")
+    unknown_next = ms._next_model("some-unrecognized-id")
     assert unknown_next == choices[0]
     lines.append(f"Unrecognized current value starts cycle at first choice: {unknown_next!r}")
 
 # Section 2: the effort cycle (low -> medium -> high -> wraps; 'max' deliberately absent)
-def _verify_effort_cycle(mc, lines) -> None:
+def _verify_effort_cycle(ms, lines) -> None:
     lines.append("")
     lines.append("## 2. Effort cycle logic")
-    choices = mc._EFFORT_CHOICES
+    choices = ms._EFFORT_CHOICES
     assert choices == ("low", "medium", "high"), f"unexpected effort choices: {choices}"
     assert "max" not in choices, "'max' must stay excluded — valid only on specific Opus models"
     for start in choices:
-        nxt = mc._next_effort(start)
+        nxt = ms._next_effort(start)
         expected = choices[(choices.index(start) + 1) % len(choices)]
         assert nxt == expected, f"{start} -> {nxt}, expected {expected}"
         lines.append(f"{start} -> {nxt}")
-    wraps = mc._next_effort(choices[-1]) == choices[0]
+    wraps = ms._next_effort(choices[-1]) == choices[0]
     assert wraps
     lines.append(f"Last value wraps to first: {wraps}")
-    unknown_next = mc._next_effort("some-unrecognized-effort")
+    unknown_next = ms._next_effort("some-unrecognized-effort")
     assert unknown_next == choices[0]
     lines.append(f"Unrecognized current value starts cycle at first choice: {unknown_next!r}")
 
 # Section 3: the max_tokens cycle (32000 -> 64000 -> 128000 -> wraps)
-def _verify_max_tokens_cycle(mc, lines) -> None:
+def _verify_max_tokens_cycle(ms, lines) -> None:
     lines.append("")
     lines.append("## 3. max_tokens cycle logic")
-    choices = mc._MAXTOK_CHOICES
+    choices = ms._MAXTOK_CHOICES
     assert choices == (32000, 64000, 128000), f"unexpected max_tokens choices: {choices}"
     for start in choices:
-        nxt = mc._next_max_tokens(start)
+        nxt = ms._next_max_tokens(start)
         expected = choices[(choices.index(start) + 1) % len(choices)]
         assert nxt == expected, f"{start} -> {nxt}, expected {expected}"
         lines.append(f"{start} -> {nxt}")
-    wraps = mc._next_max_tokens(choices[-1]) == choices[0]
+    wraps = ms._next_max_tokens(choices[-1]) == choices[0]
     assert wraps
     lines.append(f"Last value wraps to first: {wraps}")
-    unknown_next = mc._next_max_tokens(999)
+    unknown_next = ms._next_max_tokens(999)
     assert unknown_next == choices[0]
     lines.append(f"Unrecognized current value starts cycle at first choice: {unknown_next!r}")
 
 # Section 4: model_selection.json atomic write — unchanged behavior for existing callers
-def _verify_model_selection_write(mc, lines, tmp) -> None:
+def _verify_model_selection_write(ms, lines, tmp) -> None:
     lines.append("")
     lines.append("## 4. model_selection.json atomic write")
     tmp_path = Path(tmp) / "model_selection.json"
-    mc._write_model_selection("claude-fable-5", "claude-opus-5", path=tmp_path)
+    ms._write_model_selection("claude-fable-5", "claude-opus-5", path=tmp_path)
     raw = json.loads(tmp_path.read_text())
     lines.append(f"Written file contents: {raw}")
     assert set(raw.keys()) == {"main", "worker"}, f"unexpected keys: {raw.keys()}"
@@ -155,54 +159,54 @@ def _verify_model_selection_write(mc, lines, tmp) -> None:
     lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
 
 # Section 5: model_selection.json read-back + fallback — unchanged behavior for existing callers
-def _verify_model_selection_readback(mc, lines, tmp) -> None:
+def _verify_model_selection_readback(ms, lines, tmp) -> None:
     lines.append("")
     lines.append("## 5. model_selection.json read-back + fallback")
     tmp_path = Path(tmp) / "model_selection.json"
-    main, worker = mc._load_model_selection(path=tmp_path)
+    main, worker = ms._load_model_selection(path=tmp_path)
     lines.append(f"Valid file -> {(main, worker)}")
     assert (main, worker) == ("claude-fable-5", "claude-opus-5")
 
     missing_path = Path(tmp) / "does_not_exist.json"
-    main, worker = mc._load_model_selection(path=missing_path)
+    main, worker = ms._load_model_selection(path=missing_path)
     lines.append(f"Missing file -> {(main, worker)} (expected default pair, no raise)")
-    assert (main, worker) == (mc._DEFAULT_MAIN, mc._DEFAULT_WORKER)
+    assert (main, worker) == (ms._DEFAULT_MAIN, ms._DEFAULT_WORKER)
 
     malformed_path = Path(tmp) / "malformed.json"
     malformed_path.write_text("{not valid json", encoding="utf-8")
-    main, worker = mc._load_model_selection(path=malformed_path)
+    main, worker = ms._load_model_selection(path=malformed_path)
     lines.append(f"Malformed file -> {(main, worker)} (expected default pair, no raise)")
-    assert (main, worker) == (mc._DEFAULT_MAIN, mc._DEFAULT_WORKER)
+    assert (main, worker) == (ms._DEFAULT_MAIN, ms._DEFAULT_WORKER)
 
     # Correction from review (milestone 2): an unrecognized-but-valid on-disk value must be
     # preserved verbatim on display, NOT silently replaced by the default.
     odd_path = Path(tmp) / "odd_value.json"
     odd_path.write_text(json.dumps({"main": "claude-hand-edited-9000", "worker": "claude-opus-5"}),
                         encoding="utf-8")
-    main, worker = mc._load_model_selection(path=odd_path)
+    main, worker = ms._load_model_selection(path=odd_path)
     lines.append(f"Unrecognized-but-valid value file -> {(main, worker)} (expected preserved verbatim)")
     assert main == "claude-hand-edited-9000", f"unrecognized value was replaced: {main!r}"
     assert worker == "claude-opus-5"
 
-    mc._write_model_selection(main, worker, path=odd_path)
-    main2, worker2 = mc._load_model_selection(path=odd_path)
+    ms._write_model_selection(main, worker, path=odd_path)
+    main2, worker2 = ms._load_model_selection(path=odd_path)
     lines.append(f"Apply without cycling round-trips unchanged -> {(main2, worker2)}")
     assert (main2, worker2) == ("claude-hand-edited-9000", "claude-opus-5")
 
 # Section 6: the custom proxy_rules.json serializer reproduces the real file's own convention
 # byte-for-byte on an unmodified round-trip — the mechanism the read-modify-write below relies on.
-def _verify_proxy_rules_format_fidelity(mc, lines) -> None:
+def _verify_proxy_rules_format_fidelity(ms, lines) -> None:
     lines.append("")
     lines.append("## 6. proxy_rules.json serializer format fidelity")
     config = json.loads(_FIXTURE_RAW)
-    roundtrip = mc._dumps_proxy_rules(config)
+    roundtrip = ms._dumps_proxy_rules(config)
     identical = roundtrip == _FIXTURE_RAW
     lines.append(f"Unmodified round-trip byte-identical to fixture: {identical}")
     assert identical, "serializer does not reproduce the established on-disk convention"
 
 # Section 7: Apply's read-modify-write — foreign sections/keys/models byte-preserved, missing
 # per-model entry created with the established thinking-block shape, touched entries updated.
-def _verify_proxy_rules_read_modify_write(mc, lines, tmp) -> None:
+def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
     lines.append("")
     lines.append("## 7. proxy_rules.json read-modify-write")
     path = Path(tmp) / "proxy_rules.json"
@@ -210,7 +214,7 @@ def _verify_proxy_rules_read_modify_write(mc, lines, tmp) -> None:
 
     # main = claude-opus-5 (existing entry, gets new effort/max_tokens)
     # worker = claude-sonnet-5 (NOT in the fixture — must be created)
-    mc._write_proxy_rules_model_params(
+    ms._write_proxy_rules_model_params(
         "claude-opus-5", "medium", 128000,
         "claude-sonnet-5", "low", 32000,
         path=path)
@@ -222,8 +226,8 @@ def _verify_proxy_rules_read_modify_write(mc, lines, tmp) -> None:
     expected_config["model_params"]["claude-opus-5"]["effort"] = "medium"
     expected_config["model_params"]["claude-opus-5"]["max_tokens"] = 128000
     expected_config["model_params"]["claude-sonnet-5"] = {
-        "thinking": dict(mc._DEFAULT_THINKING), "effort": "low", "max_tokens": 32000}
-    expected_raw = mc._dumps_proxy_rules(expected_config)
+        "thinking": dict(ms._DEFAULT_THINKING), "effort": "low", "max_tokens": 32000}
+    expected_raw = ms._dumps_proxy_rules(expected_config)
 
     exact_match = written_raw == expected_raw
     lines.append(f"Full-file output matches expected read-modify-write exactly: {exact_match}")
@@ -260,13 +264,13 @@ def _verify_proxy_rules_read_modify_write(mc, lines, tmp) -> None:
     lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
 
 # Section 8: a malformed proxy_rules.json degrades to a fresh minimal file, never raises
-def _verify_proxy_rules_malformed_fallback(mc, lines, tmp) -> None:
+def _verify_proxy_rules_malformed_fallback(ms, lines, tmp) -> None:
     lines.append("")
     lines.append("## 8. proxy_rules.json malformed-file fallback")
     path = Path(tmp) / "proxy_rules_malformed.json"
     path.write_text("{not valid json", encoding="utf-8")
 
-    mc._write_proxy_rules_model_params(
+    ms._write_proxy_rules_model_params(
         "claude-opus-5", "high", 64000,
         "claude-sonnet-5", "high", 64000,
         path=path)
