@@ -185,3 +185,61 @@ def _top_level_content_contains(content, substring: str) -> bool:
                 return True
     return False
 
+
+# Shared block walk for a "predicate matches whole text -> replace whole text" strip, covering
+# all 4 content shapes (str, list[text], list[tool_result:str], list[tool_result:list[text]]).
+# Used by strip_bg_launch_ack.py and strip_interrupt_marker.py, whose walks were byte-identical
+# in shape (only the predicate and replace_fn differed) — verified before folding. predicate(text)
+# -> bool; replace_fn(text) -> new_text. Returns (new_content, removed_chunks) — removed_chunks:
+# original text of every block/sub-block that matched.
+def _walk_replace_marker_blocks(content, predicate, replace_fn):
+    removed = []
+    if isinstance(content, str):
+        if predicate(content):
+            removed.append(content)
+            return replace_fn(content), removed
+        return content, removed
+    if isinstance(content, list):
+        result = []
+        for block in content:
+            if not isinstance(block, dict):
+                result.append(block)
+                continue
+            btype = block.get('type')
+            if btype == 'text':
+                text = block.get('text', '')
+                if predicate(text):
+                    removed.append(text)
+                    result.append({**block, 'text': replace_fn(text)})
+                else:
+                    result.append(block)
+            elif btype == 'tool_result':
+                inner = block.get('content', '')
+                if isinstance(inner, str):
+                    if predicate(inner):
+                        removed.append(inner)
+                        result.append({**block, 'content': replace_fn(inner)})
+                    else:
+                        result.append(block)
+                elif isinstance(inner, list):
+                    new_sub = []
+                    sub_changed = False
+                    for sub in inner:
+                        if isinstance(sub, dict) and sub.get('type') == 'text':
+                            text = sub.get('text', '')
+                            if predicate(text):
+                                removed.append(text)
+                                new_sub.append({**sub, 'text': replace_fn(text)})
+                                sub_changed = True
+                            else:
+                                new_sub.append(sub)
+                        else:
+                            new_sub.append(sub)
+                    result.append({**block, 'content': new_sub} if sub_changed else block)
+                else:
+                    result.append(block)
+            else:
+                result.append(block)
+        return result, removed
+    return content, removed
+

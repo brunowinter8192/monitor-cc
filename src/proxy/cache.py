@@ -60,6 +60,65 @@ def _strip_all_cache_control(payload: dict) -> dict:
     return result
 
 
+# BP1: system[2] — cross-session cache anchor for system blocks 0..2. sys[3] carries gitStatus +
+# cwd (drifts between commits/sessions) and is excluded from this prefix. Mutates result["system"]
+# in place when it fires; returns True/False (bp_count contribution).
+def _apply_bp1_system(result: dict, cc_marker: dict) -> bool:
+    system = result.get("system", [])
+    if isinstance(system, list) and len(system) >= 3 and isinstance(system[2], dict):
+        new_system = list(system)
+        new_system[2] = {**new_system[2], "cache_control": cc_marker}
+        result["system"] = new_system
+        return True
+    return False
+
+
+# BP2: last non-defer tool (end of tools section). Mutates result["tools"] in place.
+def _apply_bp2_tools(result: dict, cc_marker: dict) -> bool:
+    tools = result.get("tools", [])
+    if not tools:
+        return False
+    new_tools = list(tools)
+    end_idx = -1
+    for ti in range(len(new_tools) - 1, -1, -1):
+        if isinstance(new_tools[ti], dict) and not new_tools[ti].get("defer_loading"):
+            end_idx = ti
+            break
+    hit = False
+    if end_idx >= 0:
+        new_tools[end_idx] = {**new_tools[end_idx], "cache_control": cc_marker}
+        hit = True
+    result["tools"] = new_tools
+    return hit
+
+
+# BP3: last message that is UNCHANGED from previous request. Returns (messages, hit).
+def _apply_bp3_unchanged_tail(messages: list, prev_mod_messages, cc_marker: dict) -> tuple:
+    if not messages or prev_mod_messages is None:
+        return messages, False
+    curr_summaries = [_summarize_message(m) for m in messages]
+    diff = _compute_diff(prev_mod_messages, curr_summaries)
+    first_diff = diff.get("first_diff_index", -1)
+    if first_diff > 0:
+        bp3_idx = first_diff - 1
+        messages = list(messages)
+        messages[bp3_idx] = _add_cache_control_to_message(messages[bp3_idx], cc_marker)
+        return messages, True
+    return messages, False
+
+
+# BP4: last message (for next request's cache). Returns (messages, hit).
+def _apply_bp4_last_message(messages: list, cc_marker: dict) -> tuple:
+    if not messages:
+        return messages, False
+    last_idx = len(messages) - 1
+    if not _has_cache_control(messages[last_idx]):
+        messages = list(messages) if not isinstance(messages, list) else messages
+        messages[last_idx] = _add_cache_control_to_message(messages[last_idx], cc_marker)
+        return messages, True
+    return messages, False
+
+
 # Set our own cache_control breakpoints (max 4) on the already-modified, stripped payload.
 # prev_mod_messages: summaries from the PREVIOUS request's modified payload (for BP3).
 def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dict:
@@ -67,54 +126,18 @@ def _set_cache_breakpoints(payload: dict, prev_mod_messages: list = None) -> dic
     bp_count = 0
     cc_marker = {"type": "ephemeral", "ttl": "1h"}
 
-    # BP1: system[2] — cross-session cache anchor for system blocks 0..2.
-    # sys[3] carries gitStatus + cwd (drifts between commits/sessions) and is excluded from this prefix.
-    system = result.get("system", [])
-    if isinstance(system, list) and len(system) >= 3 and isinstance(system[2], dict):
-        new_system = list(system)
-        new_system[2] = {**new_system[2], "cache_control": cc_marker}
-        result["system"] = new_system
+    if _apply_bp1_system(result, cc_marker):
+        bp_count += 1
+    if _apply_bp2_tools(result, cc_marker):
         bp_count += 1
 
-    # BP2: last non-defer tool (end of tools section).
-    tools = result.get("tools", [])
-    if tools:
-        new_tools = list(tools)
-        n = len(new_tools)
-
-        # Find end index: last non-defer tool
-        end_idx = -1
-        for ti in range(n - 1, -1, -1):
-            if isinstance(new_tools[ti], dict) and not new_tools[ti].get("defer_loading"):
-                end_idx = ti
-                break
-
-        if end_idx >= 0:
-            new_tools[end_idx] = {**new_tools[end_idx], "cache_control": cc_marker}
-            bp_count += 1
-
-        result["tools"] = new_tools
-
-    # BP3: last message that is UNCHANGED from previous request
     messages = result.get("messages", [])
-    if messages and prev_mod_messages is not None:
-        curr_summaries = [_summarize_message(m) for m in messages]
-        diff = _compute_diff(prev_mod_messages, curr_summaries)
-        first_diff = diff.get("first_diff_index", -1)
-
-        if first_diff > 0:
-            bp3_idx = first_diff - 1
-            messages = list(messages)
-            messages[bp3_idx] = _add_cache_control_to_message(messages[bp3_idx], cc_marker)
-            bp_count += 1
-
-    # BP4: last message (for next request's cache)
-    if messages:
-        last_idx = len(messages) - 1
-        if not _has_cache_control(messages[last_idx]):
-            messages = list(messages) if not isinstance(messages, list) else messages
-            messages[last_idx] = _add_cache_control_to_message(messages[last_idx], cc_marker)
-            bp_count += 1
+    messages, hit3 = _apply_bp3_unchanged_tail(messages, prev_mod_messages, cc_marker)
+    if hit3:
+        bp_count += 1
+    messages, hit4 = _apply_bp4_last_message(messages, cc_marker)
+    if hit4:
+        bp_count += 1
 
     result["messages"] = messages
     return result

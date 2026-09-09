@@ -99,6 +99,33 @@ def code_for_rule(full_name: str) -> str | None:
     return _FULL_NAME_TO_CODE.get(full_name)
 
 
+# Collect scannable text from delta-range messages — blocks[*].full_text (fallback preview) plus
+# content_preview/content_tail — the same text set classify_tags scans for tag literals.
+def _collect_delta_texts(messages: list) -> list[str]:
+    texts: list[str] = []
+    for msg in messages:
+        for blk in msg.get('blocks', []):
+            t = blk.get('full_text', blk.get('preview', ''))
+            if t:
+                texts.append(t)
+        for field in ('content_preview', 'content_tail'):
+            t = msg.get(field, '')
+            if t:
+                texts.append(t)
+    return texts
+
+
+# One tag's LEAK/SUS verdict: None when tag_literal isn't present at all; 'LEAK:<code>' when the
+# relevant strip rule fired in the delta range (unless leak_on_strip=False — PO's wrapper-preserved
+# case, which is a silent no-op rather than a leak); 'SUS:<code>' otherwise.
+def _tag_signal(combined: str, tag_literal: str, code: str, strip_marker: str, tag_strip_fn, leak_on_strip: bool = True):
+    if tag_literal not in combined:
+        return None
+    if tag_strip_fn(strip_marker):
+        return f'LEAK:<{code}>' if leak_on_strip else None
+    return f'SUS:<{code}>'
+
+
 # Scan delta messages (monitor format) for leaked/suspect tag literals
 # Returns (leak_signals, sus_signals) — compact LEAK:<TAG> / SUS:<TAG> strings
 # Delta-scoped: only truly new messages [prev_message_count, message_count).
@@ -124,46 +151,69 @@ def classify_tags(entry: dict) -> tuple[list[str], list[str]]:
                     return True
         return False
 
-    texts: list[str] = []
-    for msg in messages:
-        for blk in msg.get('blocks', []):
-            t = blk.get('full_text', blk.get('preview', ''))
-            if t:
-                texts.append(t)
-        for field in ('content_preview', 'content_tail'):
-            t = msg.get(field, '')
-            if t:
-                texts.append(t)
-
-    combined = '\n'.join(texts)
+    combined = '\n'.join(_collect_delta_texts(messages))
     leak_signals: list[str] = []
     sus_signals: list[str] = []
-
-    if '<task-notification>' in combined:
-        if _tag_strip_in_delta('<task-notification>'):
-            leak_signals.append('LEAK:<TN>')
-        else:
-            sus_signals.append('SUS:<TN>')
-
-    if '<new-diagnostics>' in combined:
-        if _tag_strip_in_delta('<new-diagnostics>'):
-            leak_signals.append('LEAK:<ND>')
-        else:
-            sus_signals.append('SUS:<ND>')
-
-    if '<system-reminder>' in combined:
-        if _tag_strip_in_delta('<system-reminder>'):
-            leak_signals.append('LEAK:<SR>')
-        else:
-            sus_signals.append('SUS:<SR>')
-
-    if '<persisted-output>' in combined:
-        if _tag_strip_in_delta('Preview (first '):
-            pass  # PP strip ran — wrapper preserved by design, not a leak
-        else:
-            sus_signals.append('SUS:<PO>')
+    for sig in (
+        _tag_signal(combined, '<task-notification>', 'TN', '<task-notification>', _tag_strip_in_delta),
+        _tag_signal(combined, '<new-diagnostics>', 'ND', '<new-diagnostics>', _tag_strip_in_delta),
+        _tag_signal(combined, '<system-reminder>', 'SR', '<system-reminder>', _tag_strip_in_delta),
+        _tag_signal(combined, '<persisted-output>', 'PO', 'Preview (first ', _tag_strip_in_delta, leak_on_strip=False),
+    ):
+        if sig is None:
+            continue
+        (leak_signals if sig.startswith('LEAK') else sus_signals).append(sig)
 
     return leak_signals, sus_signals
+
+
+# EFFECTIVE — new/changed chunks (not already in prev_removed) attributed to a rule code.
+# Returns (rule_to_chunks, unattributed).
+def _compute_effective_chunks(curr_removed: dict, prev_removed: dict) -> tuple:
+    prev_pairs: set[tuple[str, str]] = set()
+    for idx_str, chunks in prev_removed.items():
+        for chunk in (chunks or []):
+            prev_pairs.add((idx_str, chunk))
+    rule_to_chunks: dict[str, list[tuple[int, str]]] = {}
+    unattributed: list[tuple[int, str]] = []
+    for idx_str, chunks in curr_removed.items():
+        for chunk in (chunks or []):
+            if (idx_str, chunk) in prev_pairs:
+                continue
+            code = attribute_chunk(chunk)
+            if code:
+                rule_to_chunks.setdefault(code, []).append((int(idx_str), chunk))
+            else:
+                unattributed.append((int(idx_str), chunk))
+    return rule_to_chunks, unattributed
+
+
+# INERT — rule codes with counter-delta > 0 but 0 captured chunks in ALL curr chunks
+def _compute_inert_codes(entry: dict, prev_entry, curr_removed: dict) -> list:
+    prev_mods_ctr = Counter((prev_entry or {}).get('modifications', []))
+    curr_mods_ctr = Counter(entry.get('modifications', []))
+    new_strip_codes = {
+        code_for_rule(rule)
+        for rule in curr_mods_ctr
+        if curr_mods_ctr[rule] > prev_mods_ctr.get(rule, 0)
+        and code_for_rule(rule) is not None
+        and code_for_rule(rule) in STRIP_RULE_CODES
+    }
+    codes_with_any_chunks: set[str] = set()
+    for idx_str, chunks in curr_removed.items():
+        for chunk in (chunks or []):
+            c = attribute_chunk(chunk)
+            if c:
+                codes_with_any_chunks.add(c)
+    return sorted(c for c in new_strip_codes if c not in codes_with_any_chunks)
+
+
+# IDX — new stripped_msg_indices entries with no chunks in stripped_msg_removed
+def _compute_idx_msgs(entry: dict, prev_entry, curr_removed: dict) -> list:
+    prev_smi = set((prev_entry or {}).get('stripped_msg_indices', []))
+    curr_smi = set(entry.get('stripped_msg_indices', []))
+    new_smi = curr_smi - prev_smi
+    return [idx for idx in sorted(new_smi) if not curr_removed.get(str(idx))]
 
 
 # Classify one REQ into 5 buckets; EFFECTIVE uses chunk-diff against prev_removed
@@ -184,50 +234,9 @@ def classify_req(entry: dict, prev_entry: dict | None) -> dict:
     curr_removed = entry.get('stripped_msg_removed') or {}
     prev_removed = (prev_entry or {}).get('stripped_msg_removed') or {}
 
-    # Build set of (idx_str, chunk) pairs that already existed in prev
-    prev_pairs: set[tuple[str, str]] = set()
-    for idx_str, chunks in prev_removed.items():
-        for chunk in (chunks or []):
-            prev_pairs.add((idx_str, chunk))
-
-    # EFFECTIVE — only new/changed chunks (not in prev_pairs)
-    rule_to_chunks: dict[str, list[tuple[int, str]]] = {}
-    unattributed: list[tuple[int, str]] = []
-    for idx_str, chunks in curr_removed.items():
-        for chunk in (chunks or []):
-            if (idx_str, chunk) in prev_pairs:
-                continue
-            code = attribute_chunk(chunk)
-            if code:
-                rule_to_chunks.setdefault(code, []).append((int(idx_str), chunk))
-            else:
-                unattributed.append((int(idx_str), chunk))
-
-    # INERT — counter-delta > 0 but rule has NO chunks at all in curr (not just new)
-    prev_mods_ctr = Counter((prev_entry or {}).get('modifications', []))
-    curr_mods_ctr = Counter(entry.get('modifications', []))
-    new_strip_codes = {
-        code_for_rule(rule)
-        for rule in curr_mods_ctr
-        if curr_mods_ctr[rule] > prev_mods_ctr.get(rule, 0)
-        and code_for_rule(rule) is not None
-        and code_for_rule(rule) in STRIP_RULE_CODES
-    }
-    codes_with_any_chunks: set[str] = set()
-    for idx_str, chunks in curr_removed.items():
-        for chunk in (chunks or []):
-            c = attribute_chunk(chunk)
-            if c:
-                codes_with_any_chunks.add(c)
-    inert_codes = sorted(c for c in new_strip_codes if c not in codes_with_any_chunks)
-
-    # IDX — new smi indices with no chunks
-    prev_smi = set((prev_entry or {}).get('stripped_msg_indices', []))
-    curr_smi = set(entry.get('stripped_msg_indices', []))
-    new_smi = curr_smi - prev_smi
-    idx_msgs = [idx for idx in sorted(new_smi) if not curr_removed.get(str(idx))]
-
-    # LEAK / SUS — delegate to classify_tags (monitor-format messages)
+    rule_to_chunks, unattributed = _compute_effective_chunks(curr_removed, prev_removed)
+    inert_codes = _compute_inert_codes(entry, prev_entry, curr_removed)
+    idx_msgs = _compute_idx_msgs(entry, prev_entry, curr_removed)
     leak_signals, sus_signals = classify_tags(entry)
 
     return {

@@ -3,6 +3,59 @@ import json
 
 # FUNCTIONS
 
+# Build the summary dict for a single content block — chars/preview/full_text/has_cc plus
+# type-specific extra keys (sig_chars for thinking, id for tool_use, is_error/tool_use_id for
+# tool_result).
+def _summarize_block(block: dict) -> dict:
+    btype = block.get("type", "text")
+    has_cc = bool(block.get("cache_control"))
+    sig_chars = 0
+    if btype == "text":
+        text = block.get("text", "")
+        bchars = len(text)
+        bpreview = text.split('\n')[0][:60]
+        bfull = text
+    elif btype == "tool_use":
+        name = block.get("name", "")
+        bchars = len(name) + len(json.dumps(block.get("input", {})))
+        bpreview = name
+        bfull = name + "\n" + json.dumps(block.get("input", {}))
+    elif btype == "tool_result":
+        rc = block.get("content", "")
+        if isinstance(rc, str):
+            bchars = len(rc)
+            bpreview = rc.split('\n')[0][:60]
+            bfull = rc
+        elif isinstance(rc, list):
+            bchars = sum(len(s.get("text", "")) for s in rc if isinstance(s, dict))
+            bpreview = next((s.get("text", "").split('\n')[0][:60] for s in rc if isinstance(s, dict) and s.get("text")), "")
+            bfull = "\n".join(s.get("text", "") for s in rc if isinstance(s, dict) and s.get("text"))
+        else:
+            bchars = 0
+            bpreview = ""
+            bfull = ""
+    elif btype == "thinking":
+        thinking_text = block.get("thinking", "")
+        signature = block.get("signature", "")
+        bchars = len(thinking_text)
+        bpreview = thinking_text.split('\n')[0][:60]
+        bfull = thinking_text
+        sig_chars = len(signature)
+    else:
+        bchars = len(json.dumps(block))
+        bpreview = btype
+        bfull = json.dumps(block)
+    block_dict = {"type": btype, "chars": bchars, "preview": bpreview, "full_text": bfull, "has_cc": has_cc}
+    if btype == "thinking":
+        block_dict["sig_chars"] = sig_chars
+    if btype == "tool_use":
+        block_dict["id"] = block.get("id", "")
+    if btype == "tool_result":
+        block_dict["is_error"] = bool(block.get("is_error", False))
+        block_dict["tool_use_id"] = block.get("tool_use_id", "")
+    return block_dict
+
+
 # Build a summary dict for a single message
 def _summarize_message(msg: dict) -> dict:
     role = msg.get("role", "unknown")
@@ -13,53 +66,7 @@ def _summarize_message(msg: dict) -> dict:
         for block in content:
             if not isinstance(block, dict):
                 continue
-            btype = block.get("type", "text")
-            has_cc = bool(block.get("cache_control"))
-            sig_chars = 0
-            if btype == "text":
-                text = block.get("text", "")
-                bchars = len(text)
-                bpreview = text.split('\n')[0][:60]
-                bfull = text
-            elif btype == "tool_use":
-                name = block.get("name", "")
-                bchars = len(name) + len(json.dumps(block.get("input", {})))
-                bpreview = name
-                bfull = name + "\n" + json.dumps(block.get("input", {}))
-            elif btype == "tool_result":
-                rc = block.get("content", "")
-                if isinstance(rc, str):
-                    bchars = len(rc)
-                    bpreview = rc.split('\n')[0][:60]
-                    bfull = rc
-                elif isinstance(rc, list):
-                    bchars = sum(len(s.get("text", "")) for s in rc if isinstance(s, dict))
-                    bpreview = next((s.get("text", "").split('\n')[0][:60] for s in rc if isinstance(s, dict) and s.get("text")), "")
-                    bfull = "\n".join(s.get("text", "") for s in rc if isinstance(s, dict) and s.get("text"))
-                else:
-                    bchars = 0
-                    bpreview = ""
-                    bfull = ""
-            elif btype == "thinking":
-                thinking_text = block.get("thinking", "")
-                signature = block.get("signature", "")
-                bchars = len(thinking_text)
-                bpreview = thinking_text.split('\n')[0][:60]
-                bfull = thinking_text
-                sig_chars = len(signature)
-            else:
-                bchars = len(json.dumps(block))
-                bpreview = btype
-                bfull = json.dumps(block)
-            block_dict = {"type": btype, "chars": bchars, "preview": bpreview, "full_text": bfull, "has_cc": has_cc}
-            if btype == "thinking":
-                block_dict["sig_chars"] = sig_chars
-            if btype == "tool_use":
-                block_dict["id"] = block.get("id", "")
-            if btype == "tool_result":
-                block_dict["is_error"] = bool(block.get("is_error", False))
-                block_dict["tool_use_id"] = block.get("tool_use_id", "")
-            blocks.append(block_dict)
+            blocks.append(_summarize_block(block))
     return {
         "role": role,
         "type": msg_type,
@@ -110,6 +117,28 @@ def _classify_text(text: str) -> str:
     return "text"
 
 
+# Extract tool_result content into (chars, parts) — parts is one string per non-empty text
+# (str content: the whole string if non-empty; list content: one entry per non-empty sub-block
+# text), falling back to the single "[tool_result]" marker when nothing was appended.
+def _extract_tool_result_parts(result_content) -> tuple:
+    total_chars = 0
+    parts = []
+    if isinstance(result_content, str):
+        total_chars += len(result_content)
+        if result_content:
+            parts.append(result_content)
+    elif isinstance(result_content, list):
+        for sub in result_content:
+            if isinstance(sub, dict):
+                t = sub.get("text", "")
+                total_chars += len(t)
+                if t:
+                    parts.append(t)
+    if not parts:
+        parts.append("[tool_result]")
+    return total_chars, parts
+
+
 # Classify a list of content blocks — returns (primary_type, total_chars, preview_text)
 def _classify_blocks(blocks: list) -> tuple:
     total_chars = 0
@@ -139,23 +168,9 @@ def _classify_blocks(blocks: list) -> tuple:
 
         elif btype == "tool_result":
             primary_type = "tool_result"
-            result_content = block.get("content", "")
-            result_appended = False
-            if isinstance(result_content, str):
-                total_chars += len(result_content)
-                if result_content:
-                    parts.append(result_content)
-                    result_appended = True
-            elif isinstance(result_content, list):
-                for sub in result_content:
-                    if isinstance(sub, dict):
-                        t = sub.get("text", "")
-                        total_chars += len(t)
-                        if t:
-                            parts.append(t)
-                            result_appended = True
-            if not result_appended:
-                parts.append("[tool_result]")
+            chars_delta, result_parts = _extract_tool_result_parts(block.get("content", ""))
+            total_chars += chars_delta
+            parts.extend(result_parts)
 
         elif btype == "thinking":
             if primary_type == "text":

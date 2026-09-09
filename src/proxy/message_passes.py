@@ -1,5 +1,4 @@
 # INFRASTRUCTURE
-import re
 from .strip_sr import (
     _strip_all_system_reminders,
     _strip_system_reminder,
@@ -22,15 +21,9 @@ from .payload_helpers import (
     _replace_task_notification_tags,
 )
 from .rules_config import _load_config
-from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
-from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER, _WAKEUP_TEXT
-from .strip_bg_launch_ack import _strip_bg_launch_ack, _BG_LAUNCH_ACK_MARKER, _BG_LAUNCH_ACK_MARKER_2
-from .strip_hook_prefix import _strip_hook_prefix, _HOOK_PREFIX_MARKER
-from .strip_git_lock import _strip_git_lock_advice, _GIT_LOCK_MARKER
-from .strip_bd_noise import _strip_bd_noise, _BD_NOISE_MARKERS
-from .strip_sn_notice import _strip_sn_notice, _SN_NOTICE_MARKER
-from .strip_interrupt_marker import _strip_interrupt_marker, _INTERRUPT_MARKERS
+from .strip_bg_completed import _WAKEUP_TEXT
 from .rule_ops import _ops_from_content_change
+from .message_passes_wakeup import _unwrap_full_sr_wrapper
 
 # role=system messages starting with this marker are Read-truncation notices (CC 2.1.205+)
 # and must be preserved — the agent needs to know a Read was partial, not silently nuked.
@@ -46,6 +39,18 @@ _TRUNCATION_NOTICE_MARKER = "[Truncated:"
 # partial trim like the SR-era guard — losing the user's text is the failure mode this closes,
 # the few extra lines of CC's own boilerplate explainer are harmless noise by comparison.
 _MID_TURN_USER_MSG_MARKER = "The user sent a new message while you were working:"
+
+# Markers driving _apply_cumulative_sr_strips' 3 identical-shape SR-strip checks (Skills,
+# agent-types, claudeMd) — the 4th check (pyright) has its own config-gated + different-strip-fn
+# shape and stays inline in that function.
+_SKILLS_MARKER = "The following skills are available for use with the Skill tool"
+_AGENT_TYPES_MARKER = "Available agent types for the Agent tool"
+_CLAUDEMD_MARKER = "# claudeMd"
+_CUMULATIVE_SR_MARKERS = (
+    (_SKILLS_MARKER, "stripped_skills_sr"),
+    (_AGENT_TYPES_MARKER, "stripped_agent_types_sr"),
+    (_CLAUDEMD_MARKER, "stripped_claudemd_sr"),
+)
 
 # FUNCTIONS
 
@@ -90,244 +95,20 @@ def _apply_role_system_strip(messages: list) -> tuple:
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
-# Remove duplicate _WAKEUP_TEXT injections from messages — keeps first occurrence per message.
-# TN path appends {text: _WAKEUP_TEXT} with trailing \n; BGK path inlines via _strip_bg_from_text
-# which calls result.strip(), producing _WAKEUP_TEXT.rstrip('\n'). Both forms count as one wake-up.
-# Comparison uses rstrip('\n') so both variants are matched as duplicates of each other.
-# Returns (new_messages, ops_by_msg_blk) — ops record the removal of each duplicate wakeup block.
-def _dedup_wakeup_blocks(messages: list) -> tuple:
-    _wakeup_core = _WAKEUP_TEXT.rstrip('\n')
-    result = []
-    ops_by_msg_blk: dict = {}
-    for idx, msg in enumerate(messages):
-        content = msg.get("content", "")
-        if isinstance(content, list):
-            seen = False
-            new_content = []
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text" and block.get("text", "").rstrip('\n') == _wakeup_core:
-                    if not seen:
-                        seen = True
-                        new_content.append(block)
-                else:
-                    new_content.append(block)
-            if len(new_content) != len(content):
-                result.append({**msg, "content": new_content})
-                ops_by_msg_blk[idx] = _ops_from_content_change(content, new_content)
-            else:
-                result.append(msg)
-        elif isinstance(content, str) and content.count(_wakeup_core) > 1:
-            first = content.index(_wakeup_core)
-            end = first + len(_wakeup_core)
-            if end < len(content) and content[end] == '\n':
-                end += 1
-            new_content_str = content[:end]
-            result.append({**msg, "content": new_content_str})
-            ops_by_msg_blk[idx] = _ops_from_content_change(content, new_content_str)
-        else:
-            result.append(msg)
-    return result, ops_by_msg_blk
-
-
-# SN-notice pass — strips the bare 4-line "[SYSTEM NOTIFICATION - NOT USER INPUT]" paragraph CC
-# injects ahead of <task-notification> tags in background-task wake-ups, from top-level str/text-block
-# content only. Runs BEFORE _apply_first_pass so the TN branch's top-level tag-contains guard and
-# tag-replacement operate on an already-cleaned prefix — the two concerns (paragraph noise vs. TN-tag
-# consumption) stay decoupled. role='system' is in scope ONLY when the message also carries a
-# <task-notification> tag (the TN wake-ups _apply_role_system_strip's TN guard leaves untouched) —
-# a role='system' message without a TN tag stays out of scope here, same as before, even if called
-# in isolation ahead of _apply_role_system_strip (defensive boundary, not just a pipeline-order fact).
-# Returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
-def _apply_sn_notice_strip(messages: list) -> tuple:
-    result = []
-    pass_mods = []
-    pass_removed_by_idx = {}
-    pass_injected_by_idx = {}
-    pass_ops_by_msg_blk: dict = {}
-    changed_indices = []
-    for idx, msg in enumerate(messages):
-        role = msg.get("role")
-        if role not in ("user", "system"):
-            result.append(msg)
-            continue
-        old_content = msg.get("content", "")
-        if role == "system" and not _top_level_content_contains(old_content, "<task-notification>"):
-            result.append(msg)
-            continue
-        if not _top_level_content_contains(old_content, _SN_NOTICE_MARKER):
-            result.append(msg)
-            continue
-        new_content, sn_removed = _strip_sn_notice(old_content)
-        if sn_removed:
-            result.append({**msg, "content": new_content})
-            pass_mods.append("stripped_sn_notice_paragraph")
-            changed_indices.append(idx)
-            pass_removed_by_idx[idx] = sn_removed
-            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
-        else:
-            result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
-
-
-# Anchored full-wrap detector — CC (2026-09+) sometimes delivers a background-task wake-up as a
-# SINGLE <system-reminder> block wrapping BOTH the SN-notice paragraph AND the <task-notification>
-# tag (previously always arrived as one or the other, unwrapped) — same anchored-not-substring
-# rationale as strip_sn_notice.py / strip_bg_launch_ack.py (FP-nuke class, see
-# process-docs/message_strip_fp_nuke/). Matches only when the ENTIRE str (or a single list[text]
-# block's own text) is exactly one <system-reminder>...</system-reminder> wrap — a wrap that is
-# only PART of a larger message, or a tool_result quoting this shape, never matches (list content
-# is walked per-block, tool_result blocks are skipped by construction — same non-descent as
-# strip_sn_notice.py).
-_SR_FULL_WRAP_RE = re.compile(r'\A<system-reminder>\n(.*)</system-reminder>\s*\Z', re.DOTALL)
-
-
-# Strip a top-level <system-reminder> wrapper (and any SN-notice paragraph inside it) around
-# already-TN-processed content — CC's wrapped bg-task wake-up shape (2026-09+, see
-# _SR_FULL_WRAP_RE above) hides the SN paragraph from strip_sn_notice.py's anchored
-# lstrip().startswith() check (the wrapper, not the paragraph, sits at position 0), so
-# _apply_sn_notice_strip is a no-op on it and the wrapper survives _apply_first_pass's TN-tag
-# replace untouched — left in place, _apply_final_sr_pass later full-strips the ENTIRE
-# <system-reminder> block (wrapper AND the just-injected wake-up text) because the paragraph-
-# prefixed inner text matches the 'system-notification' SR template (strip_sr.py, mode 'full').
-# Called AFTER _replace_task_notification_tags, on content that no longer carries the TN tag
-# itself — only needs to detect+remove the wrapper here; _strip_sn_notice (imported above) does
-# the paragraph removal. No-op for the unwrapped shape (content doesn't start with
-# '<system-reminder>') or any other content, str or list[text] alike — byte-identical output for
-# every case this doesn't apply to. Returns (new_content, removed_chunks).
-def _unwrap_full_sr_wrapper(content):
-    if isinstance(content, str):
-        m = _SR_FULL_WRAP_RE.match(content)
-        if not m:
-            return content, []
-        inner, sn_removed = _strip_sn_notice(m.group(1))
-        return inner, sn_removed
-    if isinstance(content, list):
-        result = []
-        removed = []
-        changed = False
-        for block in content:
-            if isinstance(block, dict) and block.get('type') == 'text':
-                m = _SR_FULL_WRAP_RE.match(block.get('text', ''))
-                if m:
-                    inner, sn_removed = _strip_sn_notice(m.group(1))
-                    result.append({**block, 'text': inner})
-                    removed.extend(sn_removed)
-                    changed = True
-                    continue
-            result.append(block)
-        return (result, removed) if changed else (content, [])
-    return content, []
-
-
-# First-pass message loop — elif-chain strips task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
-def _apply_first_pass(messages: list) -> tuple:
-    result = []
-    pass_mods = []
-    pass_removed_by_idx = {}
-    pass_injected_by_idx = {}
-    pass_ops_by_msg_blk: dict = {}
-    changed_indices = []
-    for idx, msg in enumerate(messages):
-        # TN branch accepts role='system' too — CC delivers bg-task wake-ups as a plain-str
-        # role='system' message on some paths; _apply_role_system_strip's TN guard leaves those
-        # untouched so they reach here. All other branches below stay role='user'-only (no
-        # role='system' occurrence measured for nag/deferred/user-interrupt/rejection).
-        if msg.get("role") in ("user", "system") and _top_level_content_contains(msg.get("content", ""), "<task-notification>"):
-            old_content = msg.get("content", "")
-            new_msg = dict(msg)
-            is_failed_bg = _content_contains(old_content, "<status>failed</status>")
-            also_stripped_nag = False
-            # Both failed and completed: single block = wakeup + optional Output line + optional ID
-            # line; summary and status dropped. Each optional line is omitted (not emitted empty)
-            # when its <task-notification> tag is absent — never "ID: None" / a dangling label.
-            output_path = _extract_task_notification_output_file(old_content)
-            task_id = _extract_task_notification_task_id(old_content)
-            _tn_lines = [_WAKEUP_TEXT.rstrip('\n')]
-            if output_path:
-                _tn_lines.append('Output: ' + output_path)
-            if task_id:
-                _tn_lines.append('ID: ' + task_id)
-            injected_text = '\n'.join(_tn_lines) + '\n'
-            new_msg["content"] = _replace_task_notification_tags(old_content, injected_text)
-            if _top_level_content_contains(new_msg["content"], "task tools haven"):
-                new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
-                pass_mods.append("stripped_task_tools_nag")
-                also_stripped_nag = True
-            new_msg["content"], wrapper_removed = _unwrap_full_sr_wrapper(new_msg["content"])
-            result.append(new_msg)
-            if new_msg["content"] != old_content:
-                changed_indices.append(idx)
-                mod_name = "replaced_task_notification" if is_failed_bg else "trimmed_task_notification"
-                pass_mods.append(mod_name)
-                removed = _find_task_notification_blocks(old_content) + wrapper_removed
-                if also_stripped_nag:
-                    removed = removed + _find_system_reminder_blocks(old_content, "task tools haven")
-                pass_removed_by_idx[idx] = removed
-                pass_injected_by_idx[idx] = [injected_text]
-                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
-        elif msg.get("role") == "user" and _top_level_content_contains(msg.get("content", ""), "task tools haven"):
-            old_content = msg.get("content", "")
-            new_msg = dict(msg)
-            new_msg["content"] = _strip_system_reminder(old_content, "task tools haven")
-            result.append(new_msg)
-            if new_msg["content"] != old_content:
-                changed_indices.append(idx)
-                pass_mods.append("stripped_task_tools_nag")
-                pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "task tools haven")
-                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
-        elif msg.get("role") == "user" and _top_level_content_contains(msg.get("content", ""), "deferred tools are now available via ToolSearch"):
-            old_content = msg.get("content", "")
-            new_msg = dict(msg)
-            new_msg["content"] = _strip_system_reminder(old_content, "deferred tools are now available via ToolSearch")
-            result.append(new_msg)
-            if new_msg["content"] != old_content:
-                changed_indices.append(idx)
-                pass_mods.append("stripped_deferred_tools_sr")
-                pass_removed_by_idx[idx] = _find_system_reminder_blocks(old_content, "deferred tools are now available via ToolSearch")
-                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
-        elif msg.get("role") == "user" and _top_level_content_contains(msg.get("content", ""), "user sent a new message while you were working"):
-            old_content = msg.get("content", "")
-            new_msg = dict(msg)
-            new_msg["content"] = _strip_user_interrupt_sr(old_content, "user sent a new message while you were working")
-            result.append(new_msg)
-            if new_msg["content"] != old_content:
-                changed_indices.append(idx)
-                pass_mods.append("stripped_user_interrupt_sr")
-                _ui_blocks = _find_system_reminder_blocks(old_content, "user sent a new message while you were working")
-                pass_removed_by_idx[idx] = [
-                    line for block in _ui_blocks for line in _IMP_LINE_RE.findall(block)
-                ] or _ui_blocks
-                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"])
-        elif msg.get("role") == "user" and _message_has_rejection(msg.get("content", "")):
-            old_content = msg.get("content", "")
-            new_msg = dict(msg)
-            new_msg["content"] = _strip_rejection_message(old_content)
-            result.append(new_msg)
-            if new_msg["content"] != old_content:
-                changed_indices.append(idx)
-                pass_mods.append("stripped_rejection_message")
-                pass_removed_by_idx[idx] = ["(rejection marker stripped by proxy)"]
-                # full_replace=True: _strip_rejection_message (content_strip.py) mutates PER-BLOCK
-                # for list content, not the whole message at once — but every block it actually
-                # changes is wholesale-set to the literal "." (content_strip.py:43,
-                # {**block, "content": "."}), never partially edited in place; every block it
-                # leaves alone is appended by identity (content_strip.py:45), so bt==at exactly
-                # for those and _extract_block_op's before==after check returns [] before
-                # full_replace is even consulted. The message-level flag is therefore safe here
-                # specifically because this pass has no per-block PARTIAL-edit path to protect —
-                # the str branch (content_strip.py:31) is unambiguously full-replace too.
-                pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_msg["content"], full_replace=True)
-        else:
-            result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
+# Apply one (marker, mod_name) SR-strip check from _CUMULATIVE_SR_MARKERS — the 3 identical-shape
+# checks (Skills / agent-types / claudeMd) share this body. Returns (new_content, mod_name_or_None).
+def _apply_marker_sr_strip(content, marker: str, mod_name: str) -> tuple:
+    if not _top_level_content_contains(content, marker):
+        return content, None
+    new_content = _strip_system_reminder(content, marker)
+    if new_content == content:
+        return content, None
+    return new_content, mod_name
 
 
 # Cumulative second pass — strips Skills, agent-types, claudeMd, pyright, ENV-context SRs from every user message including those already touched by pass 1 — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
 def _apply_cumulative_sr_strips(messages: list) -> tuple:
-    _SKILLS_MARKER = "The following skills are available for use with the Skill tool"
-    _AGENT_TYPES_MARKER = "Available agent types for the Agent tool"
-    _CLAUDEMD_MARKER = "# claudeMd"
-    _PYRIGHT_ENABLED = _load_config().get("pyright_diagnostics_strip", {}).get("enabled", False)
+    pyright_enabled = _load_config().get("pyright_diagnostics_strip", {}).get("enabled", False)
     result = []
     pass_mods = []
     pass_removed_by_idx = {}
@@ -344,22 +125,11 @@ def _apply_cumulative_sr_strips(messages: list) -> tuple:
             continue
         original_before_pass = content
         cur_pass_mods = []
-        if _top_level_content_contains(content, _SKILLS_MARKER):
-            new_content = _strip_system_reminder(content, _SKILLS_MARKER)
-            if new_content != content:
-                content = new_content
-                cur_pass_mods.append("stripped_skills_sr")
-        if _top_level_content_contains(content, _AGENT_TYPES_MARKER):
-            new_content = _strip_system_reminder(content, _AGENT_TYPES_MARKER)
-            if new_content != content:
-                content = new_content
-                cur_pass_mods.append("stripped_agent_types_sr")
-        if _top_level_content_contains(content, _CLAUDEMD_MARKER):
-            new_content = _strip_system_reminder(content, _CLAUDEMD_MARKER)
-            if new_content != content:
-                content = new_content
-                cur_pass_mods.append("stripped_claudemd_sr")
-        if _PYRIGHT_ENABLED and _top_level_content_contains(content, "<new-diagnostics>"):
+        for marker, mod_name in _CUMULATIVE_SR_MARKERS:
+            content, mod = _apply_marker_sr_strip(content, marker, mod_name)
+            if mod:
+                cur_pass_mods.append(mod)
+        if pyright_enabled and _top_level_content_contains(content, "<new-diagnostics>"):
             new_content = _strip_pyright_diagnostics(content)
             if new_content != content:
                 content = new_content
@@ -406,211 +176,130 @@ def _apply_final_sr_pass(messages: list) -> tuple:
     return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
 
 
-# PO-preview pass — strips Preview sections from persisted-output blocks in user messages — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
-def _apply_po_preview_strip(messages: list) -> tuple:
+# TN branch of _apply_first_pass — accepts role='system' too (CC delivers bg-task wake-ups as a
+# plain-str role='system' message on some paths; _apply_role_system_strip's TN guard leaves those
+# untouched so they reach here). Builds the wake-up + optional Output:/ID: replacement, strips a
+# nested task-tools-nag SR if present, unwraps a full <system-reminder> wrap if present.
+# Returns (new_msg, mod_names, removed, injected_text).
+def _handle_tn_message(msg: dict, old_content) -> tuple:
+    new_msg = dict(msg)
+    is_failed_bg = _content_contains(old_content, "<status>failed</status>")
+    also_stripped_nag = False
+    mod_names = []
+    # Both failed and completed: single block = wakeup + optional Output line + optional ID
+    # line; summary and status dropped. Each optional line is omitted (not emitted empty)
+    # when its <task-notification> tag is absent — never "ID: None", never a dangling label.
+    output_path = _extract_task_notification_output_file(old_content)
+    task_id = _extract_task_notification_task_id(old_content)
+    _tn_lines = [_WAKEUP_TEXT.rstrip('\n')]
+    if output_path:
+        _tn_lines.append('Output: ' + output_path)
+    if task_id:
+        _tn_lines.append('ID: ' + task_id)
+    injected_text = '\n'.join(_tn_lines) + '\n'
+    new_msg["content"] = _replace_task_notification_tags(old_content, injected_text)
+    if _top_level_content_contains(new_msg["content"], "task tools haven"):
+        new_msg["content"] = _strip_system_reminder(new_msg["content"], "task tools haven")
+        mod_names.append("stripped_task_tools_nag")
+        also_stripped_nag = True
+    new_msg["content"], wrapper_removed = _unwrap_full_sr_wrapper(new_msg["content"])
+    removed = []
+    if new_msg["content"] != old_content:
+        mod_name = "replaced_task_notification" if is_failed_bg else "trimmed_task_notification"
+        mod_names.append(mod_name)
+        removed = _find_task_notification_blocks(old_content) + wrapper_removed
+        if also_stripped_nag:
+            removed = removed + _find_system_reminder_blocks(old_content, "task tools haven")
+    return new_msg, mod_names, removed, injected_text
+
+
+# Shared body for the NAG and DEF elif branches of _apply_first_pass — both strip a single
+# <system-reminder> by marker via _strip_system_reminder, differing only in marker/mod_name.
+# Returns (new_msg, changed, removed_or_None).
+def _apply_sr_marker_branch(msg: dict, old_content, marker: str) -> tuple:
+    new_msg = dict(msg)
+    new_msg["content"] = _strip_system_reminder(old_content, marker)
+    changed = new_msg["content"] != old_content
+    removed = _find_system_reminder_blocks(old_content, marker) if changed else None
+    return new_msg, changed, removed
+
+
+# UI (user-interrupt, partial mode) branch of _apply_first_pass — strips the IMPORTANT line only,
+# preserving the user's own body. Returns (new_msg, changed, removed_or_None).
+def _handle_ui_message(msg: dict, old_content) -> tuple:
+    marker = "user sent a new message while you were working"
+    new_msg = dict(msg)
+    new_msg["content"] = _strip_user_interrupt_sr(old_content, marker)
+    changed = new_msg["content"] != old_content
+    removed = None
+    if changed:
+        _ui_blocks = _find_system_reminder_blocks(old_content, marker)
+        removed = [line for block in _ui_blocks for line in _IMP_LINE_RE.findall(block)] or _ui_blocks
+    return new_msg, changed, removed
+
+
+# Commit a simple (non-TN) branch's result into the shared accumulator dict — the tail every one
+# of NAG/DEF/UI/REJECTION repeats once its own (new_msg, changed, removed) is computed. No-op when
+# changed is False (matches every branch's own pre-existing "only record on real change" gate).
+def _commit_simple_branch(idx: int, new_msg: dict, old_content, changed: bool, mod_name: str, removed, acc: dict, full_replace: bool = False) -> None:
+    if not changed:
+        return
+    acc["changed_indices"].append(idx)
+    acc["pass_mods"].append(mod_name)
+    acc["pass_removed_by_idx"][idx] = removed
+    acc["pass_ops_by_msg_blk"][idx] = _ops_from_content_change(old_content, new_msg["content"], full_replace=full_replace)
+
+
+# REJECTION branch of _apply_first_pass — returns (new_msg, changed).
+# full_replace=True: _strip_rejection_message (content_strip.py) mutates PER-BLOCK for list
+# content, not the whole message at once — but every block it actually changes is wholesale-set
+# to the literal "." (content_strip.py:43, {**block, "content": "."}), never partially edited in
+# place; every block it leaves alone is appended by identity (content_strip.py:45), so bt==at
+# exactly for those and _extract_block_op's before==after check returns [] before full_replace is
+# even consulted. The message-level flag is therefore safe here specifically because this pass
+# has no per-block PARTIAL-edit path to protect — the str branch (content_strip.py:31) is
+# unambiguously full-replace too.
+def _handle_rejection_message(msg: dict, old_content) -> tuple:
+    new_msg = dict(msg)
+    new_msg["content"] = _strip_rejection_message(old_content)
+    return new_msg, new_msg["content"] != old_content
+
+
+# First-pass message loop — elif-chain strips task-notification, task-tools-nag, deferred-tools, user-interrupt, rejection SRs — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
+def _apply_first_pass(messages: list) -> tuple:
     result = []
-    pass_mods = []
-    pass_removed_by_idx = {}
+    acc = {"pass_mods": [], "pass_removed_by_idx": {}, "pass_ops_by_msg_blk": {}, "changed_indices": []}
     pass_injected_by_idx = {}
-    pass_ops_by_msg_blk: dict = {}
-    changed_indices = []
     for idx, msg in enumerate(messages):
-        if msg.get("role") != "user":
-            result.append(msg)
-            continue
-        old_content = msg.get("content", "")
-        if not _content_contains(old_content, _PO_OPEN_TAG):
-            result.append(msg)
-            continue
-        new_content, po_removed = _strip_persisted_output_previews(old_content)
-        if po_removed:
-            result.append({**msg, "content": new_content})
-            pass_mods.append("stripped_po_preview")
-            changed_indices.append(idx)
-            pass_removed_by_idx[idx] = po_removed
-            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
+        content = msg.get("content", "")
+        role = msg.get("role")
+        if role in ("user", "system") and _top_level_content_contains(content, "<task-notification>"):
+            new_msg, mod_names, removed, injected_text = _handle_tn_message(msg, content)
+            result.append(new_msg)
+            acc["pass_mods"].extend(mod_names)
+            if new_msg["content"] != content:
+                acc["changed_indices"].append(idx)
+                acc["pass_removed_by_idx"][idx] = removed
+                pass_injected_by_idx[idx] = [injected_text]
+                acc["pass_ops_by_msg_blk"][idx] = _ops_from_content_change(content, new_msg["content"])
+        elif role == "user" and _top_level_content_contains(content, "task tools haven"):
+            new_msg, changed, removed = _apply_sr_marker_branch(msg, content, "task tools haven")
+            result.append(new_msg)
+            _commit_simple_branch(idx, new_msg, content, changed, "stripped_task_tools_nag", removed, acc)
+        elif role == "user" and _top_level_content_contains(content, "deferred tools are now available via ToolSearch"):
+            new_msg, changed, removed = _apply_sr_marker_branch(msg, content, "deferred tools are now available via ToolSearch")
+            result.append(new_msg)
+            _commit_simple_branch(idx, new_msg, content, changed, "stripped_deferred_tools_sr", removed, acc)
+        elif role == "user" and _top_level_content_contains(content, "user sent a new message while you were working"):
+            new_msg, changed, removed = _handle_ui_message(msg, content)
+            result.append(new_msg)
+            _commit_simple_branch(idx, new_msg, content, changed, "stripped_user_interrupt_sr", removed, acc)
+        elif role == "user" and _message_has_rejection(content):
+            new_msg, changed = _handle_rejection_message(msg, content)
+            result.append(new_msg)
+            _commit_simple_branch(idx, new_msg, content, changed, "stripped_rejection_message",
+                                   ["(rejection marker stripped by proxy)"], acc, full_replace=True)
         else:
             result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
-
-
-# BG-exit-notification pass — strips "Background command "..." failed with exit code 143/137" lines from user messages — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
-def _apply_bg_exit_strip(messages: list) -> tuple:
-    result = []
-    pass_mods = []
-    pass_removed_by_idx = {}
-    pass_injected_by_idx = {}
-    pass_ops_by_msg_blk: dict = {}
-    changed_indices = []
-    for idx, msg in enumerate(messages):
-        if msg.get("role") != "user":
-            result.append(msg)
-            continue
-        old_content = msg.get("content", "")
-        if not _top_level_content_contains(old_content, _BG_CMD_MARKER):
-            result.append(msg)
-            continue
-        new_content, bg_removed = _strip_bg_exit_notifications(old_content)
-        if bg_removed:
-            result.append({**msg, "content": new_content})
-            pass_mods.append("replaced_bg_completed_text")
-            changed_indices.append(idx)
-            pass_removed_by_idx[idx] = bg_removed
-            pass_injected_by_idx[idx] = [_WAKEUP_TEXT]
-            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
-        else:
-            result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
-
-
-# Hook-prefix pass — strips PreToolUse:<Tool> hook error: [python3 <path>]: prefix from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
-def _apply_hook_prefix_strip(messages: list) -> tuple:
-    result = []
-    pass_mods = []
-    pass_removed_by_idx = {}
-    pass_injected_by_idx = {}
-    pass_ops_by_msg_blk: dict = {}
-    changed_indices = []
-    for idx, msg in enumerate(messages):
-        if msg.get("role") != "user":
-            result.append(msg)
-            continue
-        old_content = msg.get("content", "")
-        if not _content_contains(old_content, _HOOK_PREFIX_MARKER):
-            result.append(msg)
-            continue
-        new_content, hp_removed = _strip_hook_prefix(old_content)
-        if hp_removed:
-            result.append({**msg, "content": new_content})
-            pass_mods.append("stripped_hook_error_prefix")
-            changed_indices.append(idx)
-            pass_removed_by_idx[idx] = hp_removed
-            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
-        else:
-            result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
-
-
-# Git-lock-advice pass — strips constant git index.lock advice block from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
-def _apply_git_lock_strip(messages: list) -> tuple:
-    result = []
-    pass_mods = []
-    pass_removed_by_idx = {}
-    pass_injected_by_idx = {}
-    pass_ops_by_msg_blk: dict = {}
-    changed_indices = []
-    for idx, msg in enumerate(messages):
-        if msg.get("role") != "user":
-            result.append(msg)
-            continue
-        old_content = msg.get("content", "")
-        if not _content_contains(old_content, _GIT_LOCK_MARKER):
-            result.append(msg)
-            continue
-        new_content, gl_removed = _strip_git_lock_advice(old_content)
-        if gl_removed:
-            result.append({**msg, "content": new_content})
-            pass_mods.append("stripped_git_lock_advice")
-            changed_indices.append(idx)
-            pass_removed_by_idx[idx] = gl_removed
-            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
-        else:
-            result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
-
-
-# BG-launch-ack pass — replaces content of background-command launch-ack blocks with '.' —
-# is_main selects the replacement wording (see strip_bg_launch_ack.py) — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
-def _apply_bg_launch_ack_strip(messages: list, is_main: bool = False) -> tuple:
-    result = []
-    pass_mods = []
-    pass_removed_by_idx = {}
-    pass_injected_by_idx: dict = {}
-    pass_ops_by_msg_blk: dict = {}
-    changed_indices = []
-    for idx, msg in enumerate(messages):
-        if msg.get("role") != "user":
-            result.append(msg)
-            continue
-        old_content = msg.get("content", "")
-        if not (_content_contains(old_content, _BG_LAUNCH_ACK_MARKER)
-                or _content_contains(old_content, _BG_LAUNCH_ACK_MARKER_2)):
-            result.append(msg)
-            continue
-        new_content, ack_removed = _strip_bg_launch_ack(old_content, is_main)
-        if ack_removed:
-            result.append({**msg, "content": new_content})
-            pass_mods.append("stripped_bg_launch_ack")
-            changed_indices.append(idx)
-            pass_removed_by_idx[idx] = ack_removed
-            # full_replace=True: _strip_bg_launch_ack sets a matched block's whole text/content
-            # field to _build_launch_ack_replacement(text) wholesale (strip_bg_launch_ack.py) —
-            # every block it leaves alone is appended by identity, so bt==at for those (same
-            # early-return safety as the other two full_replace sites).
-            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content, full_replace=True)
-        else:
-            result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
-
-
-# BD-noise pass — strips bd informational auto-import/export lines from user message tool_result content — returns (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
-def _apply_bd_noise_strip(messages: list) -> tuple:
-    result = []
-    pass_mods = []
-    pass_removed_by_idx = {}
-    pass_injected_by_idx = {}
-    pass_ops_by_msg_blk: dict = {}
-    changed_indices = []
-    for idx, msg in enumerate(messages):
-        if msg.get("role") != "user":
-            result.append(msg)
-            continue
-        old_content = msg.get("content", "")
-        if not any(_content_contains(old_content, m) for m in _BD_NOISE_MARKERS):
-            result.append(msg)
-            continue
-        new_content, bd_removed = _strip_bd_noise(old_content)
-        if bd_removed:
-            result.append({**msg, "content": new_content})
-            pass_mods.append("stripped_bd_noise")
-            changed_indices.append(idx)
-            pass_removed_by_idx[idx] = bd_removed
-            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content)
-        else:
-            result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
-
-
-# Interrupt-marker pass — replaces block content with '.' for blocks whose (whitespace-stripped)
-# text IS EXACTLY one of the interrupt-marker wordings (CC's rendering of the proxy's
-# bg_escape.py tmux-Escape into a worker's pane, not a genuine user interrupt) — returns
-# (new_messages, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk)
-def _apply_interrupt_marker_strip(messages: list) -> tuple:
-    result = []
-    pass_mods = []
-    pass_removed_by_idx = {}
-    pass_injected_by_idx = {}
-    pass_ops_by_msg_blk: dict = {}
-    changed_indices = []
-    for idx, msg in enumerate(messages):
-        if msg.get("role") != "user":
-            result.append(msg)
-            continue
-        old_content = msg.get("content", "")
-        if not any(_content_contains(old_content, m) for m in _INTERRUPT_MARKERS):
-            result.append(msg)
-            continue
-        new_content, im_removed = _strip_interrupt_marker(old_content)
-        if im_removed:
-            result.append({**msg, "content": new_content})
-            pass_mods.append("stripped_interrupt_marker")
-            changed_indices.append(idx)
-            pass_removed_by_idx[idx] = im_removed
-            # full_replace=True: _strip_interrupt_marker sets a matched block's whole text/content
-            # field to the literal '.' wholesale — every block it leaves alone is appended by
-            # identity, so bt==at for those (same early-return safety as the other full_replace
-            # sites: strip_bg_launch_ack, _apply_role_system_strip, _strip_rejection_message).
-            pass_ops_by_msg_blk[idx] = _ops_from_content_change(old_content, new_content, full_replace=True)
-        else:
-            result.append(msg)
-    return result, pass_mods, pass_removed_by_idx, changed_indices, pass_injected_by_idx, pass_ops_by_msg_blk
+    return (result, acc["pass_mods"], acc["pass_removed_by_idx"], acc["changed_indices"],
+            pass_injected_by_idx, acc["pass_ops_by_msg_blk"])

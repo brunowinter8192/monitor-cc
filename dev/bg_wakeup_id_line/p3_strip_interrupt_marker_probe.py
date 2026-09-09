@@ -28,7 +28,7 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
 from proxy.strip_interrupt_marker import _strip_interrupt_marker
-from proxy.message_passes import _apply_interrupt_marker_strip
+from proxy.message_passes_simple import _apply_interrupt_marker_strip
 from proxy.rules import apply_modification_rules
 from proxy.strip_vocab import attribute_chunk, RULES
 from proxy.strip_inject_delta import _MSG_CODE_TO_FN, _build_stripped_injected_deltas

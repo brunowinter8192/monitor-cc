@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from proxy.message_passes import _apply_bg_launch_ack_strip
+from proxy.message_passes_simple import _apply_bg_launch_ack_strip
 from proxy.strip_inject_delta import _process_messages_section, _MSG_CODE_TO_FN
 from proxy.diff_engine import _diff_messages, compose_block
 from proxy.logging import _normalize_msg_shape_for_hash

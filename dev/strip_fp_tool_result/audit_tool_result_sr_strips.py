@@ -47,17 +47,20 @@ os.environ.setdefault('MONITOR_CC_ROOT', os.path.join(os.path.dirname(__file__),
 # Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
 import importlib as _il
 _mp = _il.import_module('src.proxy.message_passes')
+# Structural passes (own logic) stayed in message_passes.py; template passes (generic pass
+# runner + declarative spec) moved to message_passes_simple.py (2026-09, helper-extraction milestone).
+_mp2 = _il.import_module('src.proxy.message_passes_simple')
 _apply_role_system_strip = _mp._apply_role_system_strip
-_apply_sn_notice_strip = _mp._apply_sn_notice_strip
+_apply_sn_notice_strip = _mp2._apply_sn_notice_strip
 _apply_first_pass = _mp._apply_first_pass
 _apply_cumulative_sr_strips = _mp._apply_cumulative_sr_strips
 _apply_final_sr_pass = _mp._apply_final_sr_pass
-_apply_po_preview_strip = _mp._apply_po_preview_strip
-_apply_bg_exit_strip = _mp._apply_bg_exit_strip
-_apply_bg_launch_ack_strip = _mp._apply_bg_launch_ack_strip
-_apply_hook_prefix_strip = _mp._apply_hook_prefix_strip
-_apply_git_lock_strip = _mp._apply_git_lock_strip
-_apply_bd_noise_strip = _mp._apply_bd_noise_strip
+_apply_po_preview_strip = _mp2._apply_po_preview_strip
+_apply_bg_exit_strip = _mp2._apply_bg_exit_strip
+_apply_bg_launch_ack_strip = _mp2._apply_bg_launch_ack_strip
+_apply_hook_prefix_strip = _mp2._apply_hook_prefix_strip
+_apply_git_lock_strip = _mp2._apply_git_lock_strip
+_apply_bd_noise_strip = _mp2._apply_bd_noise_strip
 
 _sr_mod = _il.import_module('src.proxy.strip_sr')
 _INNER_SR_RE = _sr_mod._INNER_SR_RE
@@ -75,7 +78,7 @@ _block_inner_text = _ro_mod._block_inner_text
 _gl_mod = _il.import_module('src.proxy.strip_git_lock')
 _GIT_LOCK_MARKER = _gl_mod._GIT_LOCK_MARKER
 _GIT_LOCK_ADVICE = _gl_mod._GIT_LOCK_ADVICE
-del _il, _mp, _sr_mod, _cs_mod, _ro_mod, _gl_mod
+del _il, _mp, _mp2, _sr_mod, _cs_mod, _ro_mod, _gl_mod
 
 # Actual runtime dual-log location (main checkout, not this worktree — src/logs/ is gitignored
 # per-worktree; the corpus only exists here).

@@ -1,5 +1,7 @@
 import re
 
+from .payload_helpers import _walk_replace_marker_blocks
+
 # INFRASTRUCTURE
 
 # Fast-path markers — cheap contains check before block walk. Two CC wordings measured
@@ -74,60 +76,16 @@ def _is_bg_launch_ack(text):
 # same 3-line hold message (msg + optional Output: + optional ID:, recovered from the ack itself)
 # — both wordings produce identical output shape. Anchored (not substring-anywhere): legitimate
 # content that merely contains either phrase is kept.
-# Covers all 4 content shapes: str, list[text], list[tool_result+str], list[tool_result+list].
+# Covers all 4 content shapes: str, list[text], list[tool_result+str], list[tool_result+list] —
+# via the shared payload_helpers._walk_replace_marker_blocks walk (folded 2026-09, byte-identical
+# shape to strip_interrupt_marker.py's own walk, verified before folding).
 # is_main selects the replacement wording (_BG_LAUNCH_ACK_MSG_MAIN vs the shared default) —
 # False preserves the exact wording every existing caller already expects.
 # Returns (new_content, removed_chunks) — removed_chunks: original texts of replaced blocks.
 def _strip_bg_launch_ack(content, is_main=False):
-    removed = []
-    if isinstance(content, str):
-        if _is_bg_launch_ack(content):
-            removed.append(content)
-            return _build_launch_ack_replacement(content, is_main), removed
-        return content, removed
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict):
-                result.append(block)
-                continue
-            btype = block.get('type')
-            if btype == 'text':
-                text = block.get('text', '')
-                if _is_bg_launch_ack(text):
-                    removed.append(text)
-                    result.append({**block, 'text': _build_launch_ack_replacement(text, is_main)})
-                else:
-                    result.append(block)
-            elif btype == 'tool_result':
-                inner = block.get('content', '')
-                if isinstance(inner, str):
-                    if _is_bg_launch_ack(inner):
-                        removed.append(inner)
-                        result.append({**block, 'content': _build_launch_ack_replacement(inner, is_main)})
-                    else:
-                        result.append(block)
-                elif isinstance(inner, list):
-                    new_sub = []
-                    sub_changed = False
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get('type') == 'text':
-                            text = sub.get('text', '')
-                            if _is_bg_launch_ack(text):
-                                removed.append(text)
-                                new_sub.append({**sub, 'text': _build_launch_ack_replacement(text, is_main)})
-                                sub_changed = True
-                            else:
-                                new_sub.append(sub)
-                        else:
-                            new_sub.append(sub)
-                    result.append({**block, 'content': new_sub} if sub_changed else block)
-                else:
-                    result.append(block)
-            else:
-                result.append(block)
-        return result, removed
-    return content, removed
+    return _walk_replace_marker_blocks(
+        content, _is_bg_launch_ack, lambda text: _build_launch_ack_replacement(text, is_main)
+    )
 
 
 # FUNCTIONS

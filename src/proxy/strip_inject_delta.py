@@ -125,6 +125,61 @@ def _process_tools_section(tools_diff, is_first, prev_stripped, prev_injected):
     return s_tools, i_tools, s_hashes, i_hashes, s_fn, i_fn
 
 
+# C0 text for one block-diff's before-side — list content indexes into o_content_raw via
+# _get_inner_text; string content only has a block 0; anything else is empty.
+def _block_c0_text(bd: dict, o_content_raw) -> str:
+    bidx_int = bd["bidx"]
+    if isinstance(o_content_raw, list):
+        ob = o_content_raw[bidx_int] if bidx_int < len(o_content_raw) else None
+        return _get_inner_text(ob) if ob is not None else ""
+    if bidx_int == 0:
+        return o_content_raw if isinstance(o_content_raw, str) else ""
+    return ""
+
+
+# Record one message block's stripped span (if any, and if new/changed vs prev_stripped) into
+# s_hashes/s_fn; returns the s_texts to store under s_blks[bidx], or None to store nothing.
+def _record_stripped_msg_block(lk: str, s_texts: list, om_norm: dict, o_content_raw, is_first: bool,
+                                prev_stripped, s_hashes: dict, s_fn: dict):
+    if not s_texts:
+        return None
+    h = _hash_spans(s_texts)
+    s_hashes[lk] = h
+    if not (is_first or (prev_stripped or {}).get(lk) != h):
+        return None
+    # role='system' is 'RS' (blanket nuke) EXCEPT the TN-carrying subset that
+    # _apply_role_system_strip now leaves untouched for _apply_first_pass's TN
+    # branch to handle — same boundary check as that pass's own TN guard, so
+    # attribution follows whichever function actually touched the content.
+    if om_norm.get("role") == "system" and not _top_level_content_contains(o_content_raw, "<task-notification>"):
+        code = 'RS'
+    else:
+        code = _attribute_chunk("\n".join(s_texts))
+    s_fn[lk] = _MSG_CODE_TO_FN.get(code, "unknown") if code else "unknown"
+    return s_texts
+
+
+# Record one message block's injected spans (if any, and if new/changed vs prev_injected) into
+# i_hashes/i_fn; returns the i_spans to store under i_blks[bidx], or None to store nothing.
+def _record_injected_msg_block(lk: str, i_spans: list, is_first: bool, prev_injected, i_hashes: dict, i_fn: dict):
+    has_i = any(tag == "injected" for tag, _ in i_spans)
+    if not has_i:
+        return None
+    h = _hash_span_sequence(i_spans)
+    i_hashes[lk] = h
+    if not (is_first or (prev_injected or {}).get(lk) != h):
+        return None
+    i_text = " ".join(t for tag, t in i_spans if tag == "injected" and t)
+    if i_text == ".":
+        pass  # empty-block placeholder — not a real injection, skip badge
+    elif "background done" in i_text:
+        i_fn[lk] = "_apply_bg_exit_strip"
+    else:
+        code = _attribute_chunk(i_text) if i_text else None
+        i_fn[lk] = _MSG_CODE_TO_FN.get(code, "unknown") if code else "unknown"
+    return i_spans
+
+
 # Messages section: block-level stripped/injected spans, hashes, fn attribution
 # Returns (s_msgs, i_msgs, s_hashes, i_hashes, s_fn, i_fn)
 def _process_messages_section(msg_diffs, orig_msgs_norm, is_first, prev_stripped, prev_injected, all_ops):
@@ -142,49 +197,19 @@ def _process_messages_section(msg_diffs, orig_msgs_norm, is_first, prev_stripped
         o_content_raw = om_norm.get("content", "") if isinstance(om_norm, dict) else ""
         msg_ops = (all_ops or {}).get(md["idx"], {})
         for bd in md["block_diffs"]:
-            bidx_int = bd["bidx"]
-            bidx = str(bidx_int)
-            if isinstance(o_content_raw, list):
-                ob = o_content_raw[bidx_int] if bidx_int < len(o_content_raw) else None
-                c0_text = _get_inner_text(ob) if ob is not None else ""
-            elif bidx_int == 0:
-                c0_text = o_content_raw if isinstance(o_content_raw, str) else ""
-            else:
-                c0_text = ""
-            block_ops = msg_ops.get(bidx_int, [])
+            bidx = str(bd["bidx"])
+            c0_text = _block_c0_text(bd, o_content_raw)
+            block_ops = msg_ops.get(bd["bidx"], [])
             spans = compose_block(c0_text, block_ops)
             s_texts = [t for tag, t in spans if tag == "stripped" and t]
             i_spans = [(tag, t) for tag, t in spans if tag in ("equal", "injected") and t]
-            has_i = any(tag == "injected" for tag, _ in i_spans)
-            if s_texts:
-                lk = f"msg.{md['idx']}.{bd['bidx']}"
-                h = _hash_spans(s_texts)
-                s_hashes[lk] = h
-                if is_first or (prev_stripped or {}).get(lk) != h:
-                    s_blks[bidx] = s_texts
-                    # role='system' is 'RS' (blanket nuke) EXCEPT the TN-carrying subset that
-                    # _apply_role_system_strip now leaves untouched for _apply_first_pass's TN
-                    # branch to handle — same boundary check as that pass's own TN guard, so
-                    # attribution follows whichever function actually touched the content.
-                    if om_norm.get("role") == "system" and not _top_level_content_contains(o_content_raw, "<task-notification>"):
-                        code = 'RS'
-                    else:
-                        code = _attribute_chunk("\n".join(s_texts))
-                    s_fn[lk] = _MSG_CODE_TO_FN.get(code, "unknown") if code else "unknown"
-            if has_i:
-                lk = f"msg.{md['idx']}.{bd['bidx']}"
-                h = _hash_span_sequence(i_spans)
-                i_hashes[lk] = h
-                if is_first or (prev_injected or {}).get(lk) != h:
-                    i_blks[bidx] = i_spans
-                    i_text = " ".join(t for tag, t in i_spans if tag == "injected" and t)
-                    if i_text == ".":
-                        pass  # empty-block placeholder — not a real injection, skip badge
-                    elif "background done" in i_text:
-                        i_fn[lk] = "_apply_bg_exit_strip"
-                    else:
-                        code = _attribute_chunk(i_text) if i_text else None
-                        i_fn[lk] = _MSG_CODE_TO_FN.get(code, "unknown") if code else "unknown"
+            lk = f"msg.{md['idx']}.{bd['bidx']}"
+            stored_s = _record_stripped_msg_block(lk, s_texts, om_norm, o_content_raw, is_first, prev_stripped, s_hashes, s_fn)
+            if stored_s is not None:
+                s_blks[bidx] = stored_s
+            stored_i = _record_injected_msg_block(lk, i_spans, is_first, prev_injected, i_hashes, i_fn)
+            if stored_i is not None:
+                i_blks[bidx] = stored_i
         if s_blks:
             s_msgs[midx] = s_blks
         if i_blks:
@@ -215,6 +240,48 @@ def _process_fields_section(field_diffs, is_first, prev_stripped, prev_injected)
     return s_fields, i_fields, s_hashes, i_hashes
 
 
+# Normalize both payloads and compute all 4 section diffs — returns
+# (sys_diffs, tools_diff, orig_msgs_norm, msg_diffs, field_diffs, counts)
+def _compute_all_diffs(orig_payload: dict, fwd_payload: dict) -> tuple:
+    orig_norm = _strip_cache_control(orig_payload)
+    fwd_norm = _strip_cache_control(fwd_payload)
+
+    orig_sys = [b for b in (orig_norm.get("system", []) or []) if isinstance(b, dict)]
+    fwd_sys = [b for b in (fwd_norm.get("system", []) or []) if isinstance(b, dict)]
+    orig_tools = orig_norm.get("tools", []) or []
+    fwd_tools = fwd_norm.get("tools", []) or []
+    orig_msgs = orig_norm.get("messages", []) or []
+    fwd_msgs = fwd_norm.get("messages", []) or []
+
+    sys_diffs = _diff_system(orig_sys, fwd_sys)
+    tools_diff = _diff_tools(orig_tools, fwd_tools)
+    orig_msgs_norm = [_normalize_msg_shape_for_hash(m) for m in orig_msgs]
+    fwd_msgs_norm = [_normalize_msg_shape_for_hash(m) for m in fwd_msgs]
+    msg_diffs = _diff_messages(orig_msgs_norm, fwd_msgs_norm)
+    field_diffs = _diff_top_level_fields(orig_norm, fwd_norm)
+    counts = {"system": len(fwd_sys), "tools": len(fwd_tools), "messages": len(fwd_msgs)}
+    return sys_diffs, tools_diff, orig_msgs_norm, msg_diffs, field_diffs, counts
+
+
+# Build one stripped_delta/injected_delta entry dict
+def _build_delta_entry(entry_type: str, request_id: str, timestamp: str, model: str, is_first: bool,
+                        counts: dict, system_delta: dict, tools_delta: dict, messages_delta: dict,
+                        fields_delta: dict, fn_map: dict) -> dict:
+    return {
+        "type": entry_type,
+        "request_id": request_id,
+        "timestamp": timestamp,
+        "model": model,
+        "is_first": is_first,
+        "counts": counts,
+        "system_delta": system_delta,
+        "tools_delta": tools_delta,
+        "messages_delta": messages_delta,
+        "fields_delta": fields_delta,
+        "fn_map": fn_map,
+    }
+
+
 # Build stripped_delta and injected_delta entries and updated hash states
 # Both payloads are normalized (cache_control stripped) at call site before passing here.
 # prev_stripped / prev_injected: flat dicts of loc_key → hash from previous request (None = first).
@@ -230,23 +297,7 @@ def _build_stripped_injected_deltas(
     model: str,
     all_ops: Optional[dict] = None,
 ) -> tuple:
-    orig_norm = _strip_cache_control(orig_payload)
-    fwd_norm = _strip_cache_control(fwd_payload)
-
-    orig_sys = [b for b in (orig_norm.get("system", []) or []) if isinstance(b, dict)]
-    fwd_sys = [b for b in (fwd_norm.get("system", []) or []) if isinstance(b, dict)]
-    orig_tools = orig_norm.get("tools", []) or []
-    fwd_tools = fwd_norm.get("tools", []) or []
-    orig_msgs = orig_norm.get("messages", []) or []
-    fwd_msgs = fwd_norm.get("messages", []) or []
-
-    sys_diffs = _diff_system(orig_sys, fwd_sys)
-    tools_diff = _diff_tools(orig_tools, fwd_tools)
-    orig_msgs_norm = [_normalize_msg_shape_for_hash(m) for m in orig_msgs]
-    fwd_msgs_norm  = [_normalize_msg_shape_for_hash(m) for m in fwd_msgs]
-    msg_diffs = _diff_messages(orig_msgs_norm, fwd_msgs_norm)
-    field_diffs = _diff_top_level_fields(orig_norm, fwd_norm)
-
+    sys_diffs, tools_diff, orig_msgs_norm, msg_diffs, field_diffs, counts = _compute_all_diffs(orig_payload, fwd_payload)
     is_first = prev_stripped is None
 
     s_sys, i_sys, s_sys_h, i_sys_h, s_sys_fn, i_sys_fn = _process_system_section(
@@ -265,32 +316,7 @@ def _build_stripped_injected_deltas(
 
     now = datetime.now(timezone.utc)
     timestamp = f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"
-    counts = {"system": len(fwd_sys), "tools": len(fwd_tools), "messages": len(fwd_msgs)}
 
-    stripped_entry = {
-        "type": "stripped_delta",
-        "request_id": request_id,
-        "timestamp": timestamp,
-        "model": model,
-        "is_first": is_first,
-        "counts": counts,
-        "system_delta": s_sys,
-        "tools_delta": s_tools,
-        "messages_delta": s_msgs,
-        "fields_delta": s_fields,
-        "fn_map": s_fn_map,
-    }
-    injected_entry = {
-        "type": "injected_delta",
-        "request_id": request_id,
-        "timestamp": timestamp,
-        "model": model,
-        "is_first": is_first,
-        "counts": counts,
-        "system_delta": i_sys,
-        "tools_delta": i_tools,
-        "messages_delta": i_msgs,
-        "fields_delta": i_fields,
-        "fn_map": i_fn_map,
-    }
+    stripped_entry = _build_delta_entry("stripped_delta", request_id, timestamp, model, is_first, counts, s_sys, s_tools, s_msgs, s_fields, s_fn_map)
+    injected_entry = _build_delta_entry("injected_delta", request_id, timestamp, model, is_first, counts, i_sys, i_tools, i_msgs, i_fields, i_fn_map)
     return stripped_entry, injected_entry, new_s, new_i
