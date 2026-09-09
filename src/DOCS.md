@@ -22,7 +22,7 @@ Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output fil
 | `workers/` | Workers pane (tmux session discovery + status display) | 878 | 3 |
 | `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering, subprocess-parse, copy-button) | 2892 | 8 |
 | `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 3074 | 18 |
-| `ram_audit/` | SIGUSR1 RAM-dump helper, gated by MONITOR_CC_RAM_AUDIT env | 101 | 1 |
+| `ram_audit/` | SIGUSR1 RAM-dump helper, gated by MONITOR_CC_RAM_AUDIT env | 121 | 1 |
 | `menubar/` | macOS status-bar app showing live CC sessions (rumps/AppKit) | 4155 | 25 |
 | `gpu_pane/` | GPU server monitor pane (cross-project, reads RAG state) | 734 | 3 |
 | `news_pane/` | CoinDesk news pipeline control (left) + live log tail (right) | 501 | 3 |

@@ -14,6 +14,65 @@ from typing import Callable
 
 # FUNCTIONS
 
+# RSS bytes/MB summary line — psutil if available, else resource.getrusage (macOS/Linux normalized)
+def _rss_line() -> str:
+    pid = os.getpid()
+    try:
+        import psutil as _psutil
+        rss = _psutil.Process(pid).memory_info().rss
+        rss_src = 'psutil'
+    except ImportError:
+        raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        rss = raw if sys.platform == 'darwin' else raw * 1024
+        rss_src = 'resource'
+    rss_str = f'{rss:,} bytes ({rss // 1024 // 1024} MB) [{rss_src}]'
+    return f'rss:       {rss_str}'
+
+# Top-30 gc objects by class — 2-column table (class name | count)
+def _gc_top_lines() -> list:
+    lines = ['## Top-30 gc objects by class']
+    counts = Counter(type(o).__name__ for o in gc.get_objects()).most_common(30)
+    lines.append(f'{"class":<40}  {"count":>8}')
+    lines.append('-' * 52)
+    for cls, cnt in counts:
+        lines.append(f'{cls:<40}  {cnt:>8}')
+    return lines
+
+# Top-30 tracemalloc by lineno — 3-column table (file:line | size_bytes | count)
+def _tracemalloc_lines() -> list:
+    lines = ['## Top-30 tracemalloc by lineno']
+    if tracemalloc.is_tracing():
+        snapshot = tracemalloc.take_snapshot()
+        stats = snapshot.statistics('lineno')[:30]
+        lines.append(f'{"file:line":<60}  {"size_bytes":>12}  {"count":>8}')
+        lines.append('-' * 84)
+        for stat in stats:
+            frame_ = stat.traceback[0]
+            loc = f'{frame_.filename}:{frame_.lineno}'
+            lines.append(f'{loc:<60}  {stat.size:>12,}  {stat.count:>8,}')
+    else:
+        lines.append('## tracemalloc not active (set MONITOR_CC_RAM_AUDIT=1 to enable)')
+    return lines
+
+# Pane module state — containers as len=N sizeof=M, scalars as name = value
+def _module_state_lines(module_state_provider: Callable[[], list]) -> list:
+    lines = []
+    for name, val in module_state_provider():
+        if isinstance(val, (list, dict, set)):
+            lines.append(f'{name:<40}  len={len(val):>6}  sizeof={sys.getsizeof(val):>10,}')
+        else:
+            lines.append(f'{name:<40}  {val}')
+    return lines
+
+# Resolve (and create) the dump file's path under dev/ram_audit/dumps/
+def _resolve_dump_path(pane_name: str, ts: str) -> Path:
+    root = os.environ.get('MONITOR_CC_ROOT', '')
+    if not root:
+        root = str(Path(__file__).resolve().parent.parent.parent)
+    dump_dir = Path(root) / 'dev' / 'ram_audit' / 'dumps'
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    return dump_dir / f'{ts}_{pane_name}.txt'
+
 # Wire up tracemalloc + SIGUSR1 dump handler for a pane — call once at run-loop entry
 def register_ram_dump(pane_name: str, module_state_provider: Callable[[], list]) -> None:
     """Wire up tracemalloc + SIGUSR1 + dump handler for the calling pane.
@@ -41,59 +100,20 @@ def register_ram_dump(pane_name: str, module_state_provider: Callable[[], list])
         now = datetime.now()
         ts = now.strftime('%Y%m%d_%H%M%S')
         pid = os.getpid()
-
-        root = os.environ.get('MONITOR_CC_ROOT', '')
-        if not root:
-            root = str(Path(__file__).resolve().parent.parent.parent)
-        dump_dir = Path(root) / 'dev' / 'ram_audit' / 'dumps'
-        dump_dir.mkdir(parents=True, exist_ok=True)
-        dump_path = dump_dir / f'{ts}_{pane_name}.txt'
-
-        try:
-            import psutil as _psutil
-            rss = _psutil.Process(pid).memory_info().rss
-            rss_src = 'psutil'
-        except ImportError:
-            raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-            rss = raw if sys.platform == 'darwin' else raw * 1024
-            rss_src = 'resource'
-        rss_str = f'{rss:,} bytes ({rss // 1024 // 1024} MB) [{rss_src}]'
+        dump_path = _resolve_dump_path(pane_name, ts)
 
         out = []
         out.append(f'# {pane_name} RAM dump')
         out.append(f'timestamp: {now.isoformat()}')
         out.append(f'pid:       {pid}')
-        out.append(f'rss:       {rss_str}')
+        out.append(_rss_line())
         out.append('')
-
-        out.append('## Top-30 gc objects by class')
-        counts = Counter(type(o).__name__ for o in gc.get_objects()).most_common(30)
-        out.append(f'{"class":<40}  {"count":>8}')
-        out.append('-' * 52)
-        for cls, cnt in counts:
-            out.append(f'{cls:<40}  {cnt:>8}')
+        out.extend(_gc_top_lines())
         out.append('')
-
-        out.append('## Top-30 tracemalloc by lineno')
-        if tracemalloc.is_tracing():
-            snapshot = tracemalloc.take_snapshot()
-            stats = snapshot.statistics('lineno')[:30]
-            out.append(f'{"file:line":<60}  {"size_bytes":>12}  {"count":>8}')
-            out.append('-' * 84)
-            for stat in stats:
-                frame_ = stat.traceback[0]
-                loc = f'{frame_.filename}:{frame_.lineno}'
-                out.append(f'{loc:<60}  {stat.size:>12,}  {stat.count:>8,}')
-        else:
-            out.append('## tracemalloc not active (set MONITOR_CC_RAM_AUDIT=1 to enable)')
+        out.extend(_tracemalloc_lines())
         out.append('')
-
         out.append(f'## {pane_name} module state')
-        for name, val in module_state_provider():
-            if isinstance(val, (list, dict, set)):
-                out.append(f'{name:<40}  len={len(val):>6}  sizeof={sys.getsizeof(val):>10,}')
-            else:
-                out.append(f'{name:<40}  {val}')
+        out.extend(_module_state_lines(module_state_provider))
 
         dump_path.write_text('\n'.join(out) + '\n', encoding='utf-8')
         print(f'[ram-dump] wrote {dump_path}', file=sys.stderr, flush=True)

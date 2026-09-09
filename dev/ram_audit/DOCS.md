@@ -51,3 +51,26 @@ kill -USR1 $(cat /tmp/.monitor_cc_pid_<pane>)
 kill -USR1 $(cat /tmp/.monitor_cc_pid_proxy)
 kill -USR1 $(cat /tmp/.monitor_cc_pid_warnings)
 ```
+
+### dump_byte_identity.py (114 LOC, new 2026-09, remaining-thresholds milestone)
+
+**Purpose:** Byte-identity harness for `register_ram_dump`/`_handle_ram_dump`'s function-LOC
+split into module-level report-section helpers. Calls `register_ram_dump` with a fake pane name
+and a fixed `module_state_provider` (one container, one scalar), sends `SIGUSR1` to itself, reads
+the resulting dump file, then normalizes out every inherently-non-deterministic line (`timestamp:`/
+`pid:`/`rss:` header lines; the actual gc object-count rows and tracemalloc size/count rows — real
+process memory state varies run to run, kept only as section headers/structure) before hashing
+what remains — the report's fixed structure plus the fully-deterministic module-state section.
+Verified stable across 3 independent runs on the unmodified code before recording the baseline.
+**Reads:** Its own freshly-written dump file under `dev/ram_audit/dumps/`.
+**Writes:** `/tmp/.monitor_cc_pid_byteidentity` and `dev/ram_audit/dumps/<ts>_byteidentity.txt` —
+both deleted before the script exits (dump-dir `*.txt` files are gitignored either way, but this
+harness cleans up proactively so a full run leaves the directory untouched). Stdout: one
+`HASH: <hex>` line (plus `register_ram_dump`'s own `[ram-dump] wrote <path>` line on stderr).
+**Run:** `./venv/bin/python dev/ram_audit/dump_byte_identity.py`
+**Calls out:** `src.ram_audit.instrument` (`register_ram_dump`) — imported via a dedicated function
+(`_import_instrument`), not a module-level `from src.` line, per `block_dev_imports_src`.
+
+Status: hash `7f7f0d224b2eb5b19ee5eae33471f60614d6def9c2a00c720e295e9e26a4322d` — identical before
+and after the `register_ram_dump`/`_handle_ram_dump` split (remaining-thresholds milestone,
+2026-09).
