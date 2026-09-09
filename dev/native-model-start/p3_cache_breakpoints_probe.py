@@ -132,7 +132,7 @@ def _replay_session(tag: str, stem: str, tmp_root: str) -> list:
         "MONITOR_CC_ROOT": tmp_root,
     }, clear=False):
         addon = ProxyAddon()
-        addon._worker_context = _derive_worker_context()
+        addon.identity.worker_context = _derive_worker_context()
         records = []
         for seq, (flow_id, payload) in enumerate(requests):
             flow = _FakeFlow(payload, flow_id or f'seq{seq}')

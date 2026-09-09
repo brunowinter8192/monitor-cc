@@ -238,7 +238,7 @@ def test_failure_isolation():
     addon = ProxyAddon()
     with mock.patch.dict(os.environ, {"PROXY_LOG_ID": "worker_deadbeef_isolation-check_1785000000",
                                        "PROXY_PROJECT_PATH": str(WORKTREE_ROOT)}, clear=False):
-        addon._worker_context = _derive_worker_context()
+        addon.identity.worker_context = _derive_worker_context()
         with mock.patch.object(bg_escape.subprocess, "run", side_effect=FileNotFoundError("no such file: tmux")):
             addon.request(flow)
     check("real ProxyAddon.request() still forwards (flow.request.content set) with tmux binary absent",
