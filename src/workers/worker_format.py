@@ -10,16 +10,11 @@ from ..colors import (
 )
 from ..format.token_format import _format_k, format_cache_tracker
 from ..jsonl import read_new_lines, parse_jsonl_lines, get_message_content, is_tool_use
-# From utils.py: right-align a ⎘/✓ copy symbol at the pane edge, width-guarded
 from ..utils import append_copy_symbol
-# From search_bar.py: shared BG-restore sentinel (2026-08-18, rollout sub-milestone 5) — this
-# module doesn't know a row's eventual chosen_bg (zebra/hover) at embed time, only
-# worker_pane.py's own render loop does, once computed; same pattern as format/token_format.py
 from ..search_bar import _BG_RESTORE_SENTINEL
 
 INDENT = '  '
 
-# Worker fleet is all 1M-context models (opus-4-8, sonnet-5, fable-5); haiku-4-5 (200k) is never a worker.
 _WORKER_CONTEXT_WINDOW = 1000000
 
 _STATUS_COLORS = {
@@ -31,14 +26,12 @@ _STATUS_COLORS = {
 
 # FUNCTIONS
 
-# Derive worker project name from project path (worktree-aware, matches tmux_spawn.sh logic)
 def get_worker_project_name(project_path: str) -> str:
     if '/.claude/worktrees/' in project_path:
         base = project_path.split('/.claude/worktrees/')[0]
         return os.path.basename(base)
     return os.path.basename(os.path.normpath(project_path))
 
-# Extract all tool_use entries from a worker's JSONL file
 def extract_worker_tokens(jsonl_path) -> dict:
     lines = read_new_lines(jsonl_path, 0)
     messages, _ = parse_jsonl_lines(lines)
@@ -50,7 +43,6 @@ def extract_worker_tokens(jsonl_path) -> dict:
         total_output += usage.get('output_tokens', 0)
     return {'output': total_output}
 
-# Extract remaining context percentage from a worker's JSONL (mirrors worker-cli context_pct formula)
 def extract_worker_context_pct(jsonl_path) -> Optional[int]:
     lines = read_new_lines(jsonl_path, 0)
     messages, _ = parse_jsonl_lines(lines)
@@ -65,7 +57,6 @@ def extract_worker_context_pct(jsonl_path) -> Optional[int]:
         return None
     return (100 * (_WORKER_CONTEXT_WINDOW - cr)) // _WORKER_CONTEXT_WINDOW
 
-# Extract tool call list from a worker's JSONL file
 def extract_worker_tool_calls(jsonl_path) -> List[dict]:
     lines = read_new_lines(jsonl_path, 0)
     messages, _ = parse_jsonl_lines(lines)
@@ -85,18 +76,12 @@ def extract_worker_tool_calls(jsonl_path) -> List[dict]:
                 })
     return calls
 
-# Filter a flat copy-feedback dict (str name keys + (name,turn_idx,call_idx) tuple keys) down to
-# this worker's (turn_idx, call_idx)→expiry sub-dict, for format_cache_tracker's own key format
 def _worker_cache_copy_feedback(copy_feedback: Optional[dict], name: str) -> Optional[dict]:
     if copy_feedback is None:
         return None
     return {(k[1], k[2]): exp for k, exp in copy_feedback.items()
             if isinstance(k, tuple) and len(k) == 3 and k[0] == name}
 
-# Scope a flat search-match set (worker-tagged keys: str name / (name,'turn',turn_idx) /
-# (name,turn_idx,call_idx)) down to THIS worker's own token_format-shape keys
-# (('turn',turn_idx) / (turn_idx,call_idx)) — a match belonging to a DIFFERENT worker must never
-# highlight in this worker's own nested cache-tracker view.
 def _scope_matches_to_worker(matches, name: str) -> set:
     scoped = set()
     for k in matches or ():
@@ -104,18 +89,11 @@ def _scope_matches_to_worker(matches, name: str) -> set:
             scoped.add(('turn', k[2]) if k[1] == 'turn' else (k[1], k[2]))
     return scoped
 
-# Scope the current match key to THIS worker's own token_format-shape key, or None when the
-# current match belongs to a different worker (or is the bare worker-level key itself, which
-# format_cache_tracker has no concept of).
 def _scope_current_key_to_worker(current_key, name: str):
     if isinstance(current_key, tuple) and len(current_key) == 3 and current_key[0] == name:
         return ('turn', current_key[2]) if current_key[1] == 'turn' else (current_key[1], current_key[2])
     return None
 
-# Freeze badge always sits on the FIRST line ("Workers [LIVE]"/"[FROZEN]") — the pane has no
-# separate fixed header, this line is part of the scrollable content (see worker_pane.py's DOCS
-# gotcha); the caller resolves whether it survived viewport clipping and, if so, which phys_row
-# it landed on. Column span only, no row — width-guarded, same as append_copy_symbol.
 def _register_freeze_region(regions_out: dict, frozen: bool, pane_width: int) -> None:
     regions_out.clear()
     badge = "[FROZEN]" if frozen else "[LIVE]"
@@ -124,8 +102,6 @@ def _register_freeze_region(regions_out: dict, frozen: bool, pane_width: int) ->
     if end_col < pane_width:
         regions_out['freeze'] = (start_col + 1, end_col + 1)
 
-# Build one worker's header line: toggle/select prefix, status, context-%, spawned/model/tokens
-# suffixes, search-match container-mark, trailing copy symbol.
 def _build_worker_header_line(w: dict, idx: int, name: str, is_expanded: bool, selected_name: Optional[str],
                                copy_feedback: Optional[dict], pane_width: int,
                                search_match_set: Optional[set], search_current_key) -> str:
@@ -156,15 +132,12 @@ def _build_worker_header_line(w: dict, idx: int, name: str, is_expanded: bool, s
         header_line = append_copy_symbol(header_line, '✓' if is_flash else '⎘', pane_width)
     return header_line
 
-# Build one worker's purpose line — full text when expanded, truncated to 60 chars otherwise
 def _build_worker_purpose_line(purpose: str, is_expanded: bool) -> str:
     if is_expanded:
         return f"{INDENT}{WHITE}{purpose}{SOFT_RESET}"
     truncated = purpose[:60] + ('...' if len(purpose) > 60 else '')
     return f"{INDENT}{WHITE}{truncated}{SOFT_RESET}"
 
-# Render one expanded worker's nested cache-tracker view (or the "(no token data yet)" stand-in),
-# returning (lines, keys) with cache-call keys re-tagged (name, turn_idx, call_idx)
 def _render_worker_expanded_view(name: str, worker_turns: dict, scroll_offsets: Optional[dict],
                                   cache_expand_states: Optional[dict], copy_feedback: Optional[dict],
                                   pane_width: int, search_match_set: Optional[set], search_current_key,
@@ -190,8 +163,6 @@ def _render_worker_expanded_view(name: str, worker_turns: dict, scroll_offsets: 
         keys.append((name, ck[0], ck[1]) if ck is not None else None)
     return lines, keys
 
-# Render one worker's full row block (header + purpose + expanded view + trailing blank),
-# returning (lines, keys)
 def _render_worker_row(w: dict, idx: int, expand_states: dict, worker_turns: dict, scroll_offsets: Optional[dict],
                         cache_expand_states: Optional[dict], selected_name: Optional[str], copy_feedback: Optional[dict],
                         pane_width: int, search_match_set: Optional[set], search_current_key, search_query: str) -> tuple:
@@ -216,16 +187,6 @@ def _render_worker_row(w: dict, idx: int, expand_states: dict, worker_turns: dic
     keys.append(None)
     return lines, keys
 
-# Build flat (all_lines, line_keys) for workers pane; keys: str=worker name, 3-tuple=cache entry,
-# None=non-clickable. (2026-08-18, rollout sub-milestone 5) search_match_set/search_current_key
-# hold worker-TAGGED keys (str name / (name,'turn',turn_idx) / (name,turn_idx,call_idx) — same
-# shape state.matches in worker_pane.py holds). A worker-level match (bare name) container-marks
-# the header_line unconditionally (marker+line+sentinel, mirrors token_format's turn-header
-# treatment) — BEFORE append_copy_symbol, so the copy button stays outside the marked span. A
-# turn/call-level match is scoped down (_scope_matches_to_worker/_scope_current_key_to_worker)
-# to THIS worker's own token_format-shape keys and threaded into format_cache_tracker, which
-# does ALL the collapsed-container-mark / expanded-substring-highlight work internally — zero
-# new highlighting logic needed for the nested view.
 def format_workers_block(workers: list, expand_states: dict = None, worker_turns: dict = None, scroll_offsets: dict = None, cache_expand_states: dict = None, frozen: bool = False, selected_name: Optional[str] = None, copy_feedback: Optional[dict] = None, regions_out: Optional[dict] = None, search_match_set: Optional[set] = None, search_current_key=None, search_query: str = '') -> tuple:
     freeze_indicator = f" {YELLOW}[FROZEN]{SOFT_RESET}" if frozen else f" {CYAN}[LIVE]{SOFT_RESET}"
 

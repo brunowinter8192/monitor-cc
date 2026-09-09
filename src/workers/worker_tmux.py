@@ -5,12 +5,10 @@ import subprocess
 import time
 
 from ..session_finder import encode_project_path
-# From worker_format.py: Derive project name from path
 from .worker_format import get_worker_project_name
 
 # FUNCTIONS
 
-# Read a single env var from a tmux session
 def get_tmux_env(session: str, var: str) -> str:
     result = subprocess.run(
         ["tmux", "show-environment", "-t", session, var],
@@ -20,7 +18,6 @@ def get_tmux_env(session: str, var: str) -> str:
         return result.stdout.strip().split('=', 1)[1]
     return ''
 
-# Detect worker status: working, idle, exited, or unknown
 def detect_worker_status(session: str) -> str:
     dead = subprocess.run(
         ["tmux", "display-message", "-t", f"{session}:^", "-p", "#{pane_dead}"],
@@ -43,7 +40,6 @@ def detect_worker_status(session: str) -> str:
         return "idle"
     return "working"
 
-# List all workers for the current project
 def list_workers(project_path: str) -> List[dict]:
     project = get_worker_project_name(project_path)
     prefix = f"worker-{project}-"
@@ -71,7 +67,6 @@ def list_workers(project_path: str) -> List[dict]:
         })
     return workers
 
-# Find the most recent JSONL file for a worker's Claude Code session
 def find_worker_jsonl(session_name: str) -> Optional[Path]:
     result = subprocess.run(
         ["tmux", "display-message", "-t", f"{session_name}:^", "-p", "#{pane_current_path}"],

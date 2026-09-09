@@ -3,9 +3,6 @@ from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
 
 # FUNCTIONS
 
-# The last existing turn was incomplete (streaming) when it was previously read — merge its
-# api_calls with the freshly-parsed continuation of that same turn (matched by identical prompt).
-# Returns the merged existing_turns list (last turn replaced, rest untouched).
 def _merge_duplicate_turn(existing_turns: list, new_turns: list) -> list:
     merged = dict(existing_turns[-1])
     merged_calls = list(merged.get('api_calls', []))
@@ -27,7 +24,6 @@ def _merge_duplicate_turn(existing_turns: list, new_turns: list) -> list:
         if dup_idx is None:
             merged_calls.append(call)
         else:
-            # Update output_tokens in case streaming advanced
             prev = dict(merged_calls[dup_idx])
             prev['output_tokens'] = max(prev.get('output_tokens', 0), call.get('output_tokens', 0))
             merged_calls[dup_idx] = prev
@@ -35,7 +31,6 @@ def _merge_duplicate_turn(existing_turns: list, new_turns: list) -> list:
     return existing_turns[:-1] + [merged] + new_turns[1:]
 
 
-# Build cache turns incrementally — only reads new lines since last_position
 def build_cache_turns(filepath, last_position: int, existing_turns: list):
     from ..jsonl import get_current_position
     lines = read_new_lines(filepath, last_position)
@@ -45,9 +40,6 @@ def build_cache_turns(filepath, last_position: int, existing_turns: list):
     messages, _ = parse_jsonl_lines(lines)
     new_turns = extract_cache_turns(messages)
     if not new_turns and existing_turns and messages:
-        # No user message in this batch → mid-turn requests (user message was read in a prior cycle)
-        # Synthesize a user message from the last existing turn so extract_cache_turns
-        # can set current_turn and process the assistant messages in this batch
         last_turn = existing_turns[-1]
         synthetic_user = {
             'type': 'user',

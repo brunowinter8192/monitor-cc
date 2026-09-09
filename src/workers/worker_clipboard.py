@@ -3,12 +3,8 @@ import json
 
 # FUNCTIONS
 
-# Serialize a worker entry to full untruncated text for clipboard. worker_turns passed explicitly
-# (was a module-global read in worker_pane.py before the split) — mirrors
-# proxy_pane_shared._serialize_proxy_entry(key, entries)'s own explicit-argument shape.
 def _serialize_workers(key, worker_turns: dict) -> str:
     if isinstance(key, tuple):
-        # Cache call: (worker_name, turn_idx, call_idx)
         w_name, t_idx, c_idx = key
         turns = worker_turns.get(w_name, [])
         if t_idx >= len(turns):
@@ -31,8 +27,6 @@ def _serialize_workers(key, worker_turns: dict) -> str:
                 parts.append(blk.get('preview', ''))
         return '\n'.join(parts)
     else:
-        # Worker name — serialize status info from current workers list
-        # worker_turns holds the turns for this worker; we just emit identity info
         name = str(key)
         turns = worker_turns.get(name, [])
         n_turns = len(turns)
