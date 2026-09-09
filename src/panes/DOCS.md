@@ -91,9 +91,9 @@ always-active and runs from the main checkout (unlike the menubar bundle, which 
 
 ---
 
-### log_janitor.py (170 LOC, moved here 2026-09 from `src/log_janitor.py` — its only in-tree importer is `panes/token_pane.py`, and no external entry point loaded it at root)
+### log_janitor.py (170 LOC)
 
-**Purpose:** `LogSpec` registry (12 entries) + `sweep_eligible_specs()` + `cleanup_old_jsonl(path)` — authoritative log inventory; 7-day JSONL sweep triggered from `token_pane.py::run_tokens_loop` every 24h (see `process-docs/main_pane/` and `process-docs/logging/log_janitor.md` for why it left the now-removed main pane originally).
+**Purpose:** `LogSpec` registry (12 entries) + `sweep_eligible_specs()` + `cleanup_old_jsonl(path)` — authoritative log inventory; 7-day JSONL sweep triggered from `token_pane.py::run_tokens_loop` every 24h. Moved here 2026-09 from `src/log_janitor.py` because `token_pane.py` is its only in-tree importer and no external entry point loaded it at root (see `process-docs/main_pane/` and `process-docs/logging/` for why it left the now-removed main pane originally).
 **Reads:** JSONL log files passed in as `path` arguments — no shared/module state.
 **Writes:** Rewrites the passed JSONL file in place (drops records older than 7 days by `ts` field); exception-safe (never raises).
 **Called by:** `panes/token_pane.py` (lazy import inside `_refresh_tokens_data`, gated every 24h); `dev/hook_smoke/test_log_janitor.py` (smoke test, direct import via `sys.path.insert`).
