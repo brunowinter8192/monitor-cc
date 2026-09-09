@@ -7,13 +7,15 @@ import os
 import sys
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 from mitmproxy import http
 
-from .logging import _build_forwarded_delta, _build_errors_entries
-from .strip_inject_delta import _build_stripped_injected_deltas
+from .addon_state import DualLogPaths, DeltaState, FixationState, SessionIdentity
+from .addon_dual_log import (
+    _resolve_dual_log_file, _write_entry, _log_original_request,
+    _write_request_dual_logs, _log_4xx_error, _write_stripped_injected,
+)
 
 
 # Suppress noise from `NotImplementedError: HTTP trailers are not implemented yet.`
@@ -47,21 +49,20 @@ MESSAGES_PATH = "/v1/messages"
 
 class ProxyAddon:
     def __init__(self):
-        self.original_log_file = _resolve_dual_log_file("original")
-        self.forwarded_log_file = _resolve_dual_log_file("forwarded")
-        self.stripped_log_file = _resolve_dual_log_file("stripped")
-        self.injected_log_file = _resolve_dual_log_file("injected")
-        self.errors_log_file = _resolve_dual_log_file("errors")
-        self.response_log_file = _resolve_dual_log_file("response")
-        self.prev_messages_by_model: Dict[str, list] = {}
-        self.fixated: dict = {}  # model_family → {"sys2_text": str, "msg0_pr_block": str}
-        self.prev_delta_hashes_by_model: dict = {}  # model_family → {"system": [...], "tools": [...], "messages": [...]} for forwarded delta
-        self.prev_stripped_hashes_by_model: dict = {}  # model_family → flat loc_key → hash dict for stripped delta
-        self.prev_injected_hashes_by_model: dict = {}  # model_family → flat loc_key → hash dict for injected delta
-        self.prev_error_ids_by_model: Dict[str, set] = {}  # model_family → set of tool_use_ids already written to _errors
-        self.model_params_fixated: Dict[str, dict] = {}  # exact model_id → resolved model_params/legacy-override snapshot, pinned after the first request per model id (see inject_helpers._inject_model_override)
-        self._session_id = _derive_session_id()
-        self._worker_context = _derive_worker_context()
+        self.paths = DualLogPaths(
+            original=_resolve_dual_log_file("original"),
+            forwarded=_resolve_dual_log_file("forwarded"),
+            stripped=_resolve_dual_log_file("stripped"),
+            injected=_resolve_dual_log_file("injected"),
+            errors=_resolve_dual_log_file("errors"),
+            response=_resolve_dual_log_file("response"),
+        )
+        self.delta = DeltaState()
+        self.fixation = FixationState()
+        self.identity = SessionIdentity(
+            session_id=_derive_session_id(),
+            worker_context=_derive_worker_context(),
+        )
 
     def request(self, flow: http.HTTPFlow) -> None:
         try:
@@ -80,56 +81,26 @@ class ProxyAddon:
             model_family = _infer_model_family(payload.get("model", ""))
             project_path = os.environ.get("PROXY_PROJECT_PATH", "")
 
-            _log_original_request(self.original_log_file, flow, payload)
+            _log_original_request(self.paths.original, flow, payload)
 
-            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, all_ops = apply_modification_rules(payload, model_family, project_path, self._worker_context)
+            modified_payload, modifications, original_system2, stripped_msg_indices, stripped_msg_originals, stripped_msg_removed, injected_msg_added, all_ops = apply_modification_rules(payload, model_family, project_path, self.identity.worker_context)
             deferred_tool_names = _extract_deferred_tool_names(payload)
 
-            if model_family not in self.fixated:
-                self.fixated[model_family] = _capture_fixation(modified_payload, modifications)
-            else:
-                modified_payload = _apply_fixation(modified_payload, modifications, self.fixated[model_family])
+            modified_payload = _apply_sys_fixation(self.fixation, model_family, modified_payload, modifications)
 
             modified_payload, modifications = _run_post_fixation_pipeline(
-                modified_payload, modifications, model_family, project_path, self.model_params_fixated
+                modified_payload, modifications, model_family, project_path, self.fixation.model_params_fixated
             )
 
-            # Derive request_id and timestamp for downstream dual-log writes (replaces _build_entry)
-            mc_request_id = flow.request.headers.get("x-request-id") or str(uuid.uuid4())
-            now_ts = datetime.now(timezone.utc)
-            mc_timestamp = f"{now_ts.strftime('%Y-%m-%dT%H:%M:%S.')}{now_ts.microsecond // 1000:03d}Z"
-            flow.metadata["mc_request_id"] = mc_request_id
-            flow.metadata["mc_stripped_msg_removed"] = stripped_msg_removed
-            flow.metadata["mc_injected_msg_added"] = injected_msg_added
-            flow.metadata["mc_all_ops"] = all_ops
+            mc_request_id, mc_timestamp = _stamp_request_metadata(flow, stripped_msg_removed, injected_msg_added, all_ops)
 
             try:
-                _trigger_bg_escape(stripped_msg_removed, self._worker_context, project_path)
+                _trigger_bg_escape(stripped_msg_removed, self.identity.worker_context, project_path)
             except Exception as e:
                 print(f"[proxy_addon] bg_escape trigger failed: {e}", file=sys.stderr)
 
-            prev_mod_msgs = self.prev_messages_by_model.get(model_family)
-            modified_payload = _strip_all_cache_control(modified_payload)
-            modified_payload = _set_cache_breakpoints(modified_payload, prev_mod_msgs)
-
-            self.prev_messages_by_model[model_family] = [
-                _summarize_message(m) for m in modified_payload.get("messages", [])
-            ]
-
-            curr_delta = _log_forwarded_delta(
-                self.forwarded_log_file, modified_payload, flow,
-                self.prev_delta_hashes_by_model.get(model_family),
-            )
-            if curr_delta is not None:
-                self.prev_delta_hashes_by_model[model_family] = curr_delta
-
-            new_seen = _log_errors_entries(
-                self.errors_log_file, payload, mc_request_id, mc_timestamp,
-                self.prev_error_ids_by_model.get(model_family, set()),
-                self._worker_context, self._session_id, flow.id,
-            )
-            if new_seen is not None:
-                self.prev_error_ids_by_model[model_family] = new_seen
+            modified_payload = _finalize_cache_state(self.delta, model_family, modified_payload)
+            _write_request_dual_logs(flow, payload, modified_payload, model_family, mc_request_id, mc_timestamp, self.paths, self.delta, self.identity)
 
             flow.metadata["mc_modified_payload"] = modified_payload
             flow.metadata["mc_model_family"] = model_family
@@ -156,7 +127,7 @@ class ProxyAddon:
                     "status_code": flow.response.status_code,
                     "headers": _filter_response_headers(flow.response.headers),
                 }
-                _write_entry(self.response_log_file, entry)
+                _write_entry(self.paths.response, entry)
         except Exception as e:
             print(f"[dual_log] response write failed: {e}", file=sys.stderr)
 
@@ -166,47 +137,11 @@ class ProxyAddon:
             if not _is_messages_request(flow):
                 return
             if flow.response and 400 <= flow.response.status_code < 500:
-                resp_body = ""
-                try:
-                    resp_body = flow.response.content.decode("utf-8", errors="replace")[:2000]
-                except Exception:  # decode failure — log empty string, never crash
-                    resp_body = ""
-                req_payload = None
-                try:
-                    req_payload = json.loads(flow.request.content.decode("utf-8", errors="replace"))
-                except Exception:  # body not valid JSON — log None, never crash
-                    req_payload = None
-                error_data = {
-                    "ts": datetime.now(timezone.utc).isoformat() + "Z",
-                    "status_code": flow.response.status_code,
-                    "error_response": resp_body,
-                    "request_url": flow.request.pretty_url,
-                    "request_payload": req_payload,
-                }
-                errors_log = self.errors_log_file.parent.parent / "api_errors.jsonl"
-                _write_entry(errors_log, error_data)
-                print(f"[proxy_addon] API {flow.response.status_code} error — logged to api_errors.jsonl", file=sys.stderr)
+                _log_4xx_error(flow, self.paths.errors)
                 return
             if flow.response and flow.response.status_code < 400:
                 try:
-                    orig_payload = flow.metadata.get("mc_original_payload")
-                    mod_payload = flow.metadata.get("mc_modified_payload")
-                    mf = flow.metadata.get("mc_model_family")
-                    request_id = flow.metadata.get("mc_request_id", "")
-                    if orig_payload is not None and mod_payload is not None and mf is not None:
-                        prev_s = self.prev_stripped_hashes_by_model.get(mf)
-                        prev_i = self.prev_injected_hashes_by_model.get(mf)
-                        model_str = mod_payload.get("model", "")
-                        all_ops = flow.metadata.get("mc_all_ops") or {}
-                        s_entry, i_entry, new_s, new_i = _build_stripped_injected_deltas(
-                            orig_payload, mod_payload, request_id, prev_s, prev_i, model_str, all_ops,
-                        )
-                        s_entry["flow_id"] = flow.id
-                        i_entry["flow_id"] = flow.id
-                        _write_entry(self.stripped_log_file, s_entry)
-                        _write_entry(self.injected_log_file, i_entry)
-                        self.prev_stripped_hashes_by_model[mf] = new_s
-                        self.prev_injected_hashes_by_model[mf] = new_i
+                    _write_stripped_injected(flow, self.delta, self.paths)
                 except Exception as e:
                     print(f"[dual_log] stripped/injected write failed: {e}", file=sys.stderr)
         except Exception as e:
@@ -215,47 +150,18 @@ class ProxyAddon:
 
 # FUNCTIONS
 
-# Build and write error entries; returns updated seen_ids set on success (if any written), None on error.
-def _log_errors_entries(log_file: Path, payload: dict, mc_request_id: str, mc_timestamp: str,
-                        prev_seen_ids: set, worker_context: str, session_id: str, flow_id: str) -> Optional[set]:
-    try:
-        err_entries = _build_errors_entries(
-            payload, mc_request_id, mc_timestamp, prev_seen_ids, worker_context, session_id, "",
-        )
-        for err_entry in err_entries:
-            err_entry["flow_id"] = flow_id
-            _write_entry(log_file, err_entry)
-        if err_entries:
-            new_seen = set(prev_seen_ids)
-            new_seen.update(e["tool_use_id"] for e in err_entries)
-            return new_seen
-        return None
-    except Exception as e:
-        print(f"[dual_log] errors write failed: {e}", file=sys.stderr)
-        return None
-
-
-# Build and write forwarded-delta entry; returns curr_delta on success, None on error.
-def _log_forwarded_delta(log_file: Path, modified_payload: dict, flow, prev_delta) -> Optional[dict]:
-    try:
-        delta_entry, curr_delta = _build_forwarded_delta(
-            modified_payload,
-            flow.request.headers.get("x-request-id", ""),
-            prev_delta,
-        )
-        delta_entry["flow_id"] = flow.id
-        raw_beta = flow.request.headers.get("anthropic-beta", "")
-        delta_entry["anthropic_beta"] = [f.strip() for f in raw_beta.split(",") if f.strip()]
-        _write_entry(log_file, delta_entry)
-        return curr_delta
-    except Exception as e:
-        print(f"[dual_log] forwarded write failed: {e}", file=sys.stderr)
-        return None
+# Capture fixation on the first request seen per model_family, else replay the fixated snapshot.
+def _apply_sys_fixation(fixation_state, model_family: str, modified_payload: dict, modifications: list) -> dict:
+    if model_family not in fixation_state.fixated:
+        fixation_state.fixated[model_family] = _capture_fixation(modified_payload, modifications)
+        return modified_payload
+    return _apply_fixation(modified_payload, modifications, fixation_state.fixated[model_family])
 
 
 # Run the 7 post-fixation modification steps; returns (modified_payload, modifications).
-# fixated_model_override: ProxyAddon.model_params_fixated, threaded into _inject_model_override so
-# effort/thinking/max_tokens pin to the first request's resolved value for the process lifetime.
+# fixated_model_override: ProxyAddon.fixation.model_params_fixated, threaded into
+# _inject_model_override so effort/thinking/max_tokens pin to the first request's resolved value
+# for the process lifetime.
 def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, model_family: str, project_path: str, fixated_model_override: dict) -> tuple:
     modified_payload, stripped_count, _ = _strip_unused_tools(modified_payload)
     if stripped_count > 0:
@@ -278,18 +184,29 @@ def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, mod
     return modified_payload, modifications
 
 
-# Write original-payload entry to dual-log; swallows write errors.
-def _log_original_request(log_file: Path, flow, payload: dict) -> None:
-    try:
-        _write_entry(log_file, {
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-            "flow_id": flow.id,
-            "request_id": flow.request.headers.get("x-request-id", ""),
-            "model": payload.get("model", ""),
-            "payload": payload,
-        })
-    except Exception as e:
-        print(f"[dual_log] original write failed: {e}", file=sys.stderr)
+# Derive request_id and timestamp for downstream dual-log writes (replaces _build_entry); stashes
+# the per-request metadata bridge fields onto the flow. Returns (mc_request_id, mc_timestamp).
+def _stamp_request_metadata(flow, stripped_msg_removed, injected_msg_added, all_ops) -> tuple:
+    mc_request_id = flow.request.headers.get("x-request-id") or str(uuid.uuid4())
+    now_ts = datetime.now(timezone.utc)
+    mc_timestamp = f"{now_ts.strftime('%Y-%m-%dT%H:%M:%S.')}{now_ts.microsecond // 1000:03d}Z"
+    flow.metadata["mc_request_id"] = mc_request_id
+    flow.metadata["mc_stripped_msg_removed"] = stripped_msg_removed
+    flow.metadata["mc_injected_msg_added"] = injected_msg_added
+    flow.metadata["mc_all_ops"] = all_ops
+    return mc_request_id, mc_timestamp
+
+
+# Strip cache_control, set fresh breakpoints, and update the per-model message summary used by
+# BP3 unchanged-prefix detection on the NEXT request. Mutates delta_state.messages_by_model.
+def _finalize_cache_state(delta_state, model_family: str, modified_payload: dict) -> dict:
+    prev_mod_msgs = delta_state.messages_by_model.get(model_family)
+    modified_payload = _strip_all_cache_control(modified_payload)
+    modified_payload = _set_cache_breakpoints(modified_payload, prev_mod_msgs)
+    delta_state.messages_by_model[model_family] = [
+        _summarize_message(m) for m in modified_payload.get("messages", [])
+    ]
+    return modified_payload
 
 
 # Map model name string to "haiku", "sonnet", or "opus"
@@ -345,23 +262,6 @@ def _parse_payload(body: bytes) -> Optional[dict]:
         return json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
-
-
-# Resolve dual-log file path in src/logs/dual_log/ subfolder with given suffix (e.g. "original", "forwarded")
-def _resolve_dual_log_file(suffix: str) -> Path:
-    root = os.environ.get("MONITOR_CC_ROOT")
-    log_id = os.environ.get("PROXY_LOG_ID") or os.environ.get("PROXY_SESSION_ID")
-    filename = f"api_requests_{log_id}_{suffix}.jsonl" if log_id else f"api_requests_{suffix}.jsonl"
-    if root:
-        return Path(root) / "src" / "logs" / "dual_log" / filename
-    return Path("/tmp") / "dual_log" / filename
-
-
-# Append log entry as a single JSONL line, creating parent dirs if needed
-def _write_entry(log_file: Path, entry: dict) -> None:
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
 
 
 # Derive proxy session_id from PROXY_PROJECT_PATH env — md5(project_path)[:8], empty string if absent

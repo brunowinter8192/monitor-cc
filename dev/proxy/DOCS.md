@@ -51,6 +51,40 @@ and after the milestone A split (60 real payloads × 2 worker_contexts, pinned s
 
 ---
 
+### addon_hook_byte_identity.py (202 LOC, new 2026-09, proxy addon-split milestone)
+
+**Purpose:** Byte-identity regression harness for the `ProxyAddon` HOOK METHODS themselves
+(`request`, `responseheaders`, `response`) — `pipeline_byte_identity.py` above only exercises the
+pure-function pipeline `request()` calls into; nothing else in `dev/` drives the hook methods on a
+real `ProxyAddon()` instance end-to-end the way this does. Constructs a real `ProxyAddon` with
+`MONITOR_CC_ROOT` pointed at a fresh temp dir, drives all three hooks with a minimal fake mitmproxy
+flow (`_FakeHeaders`/`_FakeRequest`/`_FakeResponse`/`_FakeFlow` — request-side shape reused from
+`dev/native-model-start/p3_cache_breakpoints_probe.py` / `dev/bg_wakeup_id_line/p2_bg_escape_probe.py`,
+extended with a response side) over a bounded prefix (60 lines) of a real `*_original.jsonl`: every
+payload gets a 2xx `request()`+`responseheaders()`+`response()` sequence, plus one dedicated 4xx
+flow to exercise `_log_4xx_error`. `x-request-id` is pinned per request in the fake headers so
+`uuid.uuid4()` is never invoked (no monkeypatch needed for that); `timestamp`/`ts` JSONL fields are
+normalized to a fixed sentinel post-write, and the tempdir's own random path is stripped out of the
+captured stderr before hashing (the `tool_injection` "schema store missing" warning embeds it
+verbatim — the #1 source of accidental non-determinism found while building this harness). Hashes
+the concatenated contents of all six dual-log files plus the normalized stderr.
+**Reads:** One `*_original.jsonl` file — newest under `/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log/`
+by default, or `$ADDON_HOOK_BYTE_IDENTITY_LOG` when set.
+**Writes:** Nothing outside its own tempdir (cleaned up on exit) — stdout only (`source`, `payloads`, one `HASH: <hex>` line).
+**Run:** `./venv/bin/python dev/proxy/addon_hook_byte_identity.py`
+**Calls out:** `src.proxy.addon` (`ProxyAddon`) — imported at module scope specifically because
+`src/proxy/payload_helpers.py` resolves its own `sys.path` insert from `MONITOR_CC_ROOT` at import
+time, so importing AFTER repointing `MONITOR_CC_ROOT` at the tempdir would break the `constants`
+import; see the module's own comment on `_import_proxy_addon`.
+
+**`ADDON_HOOK_BYTE_IDENTITY_LOG` env var** — same override convention and same pitfall class as
+`pipeline_byte_identity.py`'s `PROXY_PIPELINE_BYTE_IDENTITY_LOG` (see its own entry above).
+
+Status: hash `dd771ac18157443ff2a69ec067126bdc861dcd5fee3dff67a75a419d2345796a` — identical before
+and after the addon-split milestone (17 real payloads + 1 synthetic 4xx flow, pinned snapshot).
+
+---
+
 ### proxy_bgcomplete_tests.py (173 LOC)
 
 **Purpose:** Smoke tests (B01–B04) for the task-notification wakeup-injection single-block fix —

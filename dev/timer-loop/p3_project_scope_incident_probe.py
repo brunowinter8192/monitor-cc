@@ -190,7 +190,7 @@ def test_writer_stamps_project_e2e():
                                            "PROXY_PROJECT_PATH": "/Users/x/Websearch",
                                            "MONITOR_CC_ROOT": tmp_root}, clear=False):
             addon = ProxyAddon()
-            addon._worker_context = _derive_worker_context()
+            addon.identity.worker_context = _derive_worker_context()
             addon.request(_FakeFlow(_payload_with_user_text(_ack_text("incident_e2e"))))
             state = _read_state_file()
         check("armed entry has project == 'websearch' (from PROXY_PROJECT_PATH=/Users/x/Websearch)",
