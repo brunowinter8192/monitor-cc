@@ -67,15 +67,115 @@ def _format_warnings_header(last_refresh_ts: float, pane_width: int = 80, region
     return text + '  ' + f"{WHITE}{label}{RESET}"
 
 
-# Render all warning sections; returns (rendered_str, new_error_line_map).
+# Build the header line + optional expanded-detail lines for ONE error — the part of
+# _format_warnings_pane's overall render (see that function's own comment for the full contract)
+# that handles a single error entry. A match's header line is container-marked UNCONDITIONALLY
+# (marker+line+_BG_RESTORE_SENTINEL, mirrors token_format's turn-header treatment) -- BEFORE
+# append_copy_symbol, so the copy button stays outside the marked span. When expanded, the
+# matching detail lines (tool_call_input k/v + full_text body) ADDITIONALLY get browser-find
+# substring-highlighted via utils.highlight_query_in_line. Returns (lines, keys) -- keys[0] is
+# ('error', err_idx) for the header line, None for every detail line.
+def _build_one_warning_lines(err_idx: int, err: dict, is_expanded: bool,
+                              search_match_set: Optional[set], search_current_key, search_query: str,
+                              copy_feedback: Optional[dict], pane_width: int) -> tuple:
+    symbol = '\u25bc' if is_expanded else '\u25b6'
+    tool_col = f"{WHITE}{err['tool_name']:<16}{SOFT_RESET}"
+    w_prefix = format_worker_prefix(err.get('worker_name', ''))
+    inline = first_word_of_call(err['tool_name'], err.get('tool_call_input', {}))
+    line = f"{DIM}{symbol} {err['timestamp']}  {w_prefix}{tool_col}  {DIM}{inline}{SOFT_RESET}"
+    is_match = bool(search_match_set) and err_idx in search_match_set
+    marker = None
+    if is_match:
+        marker = SEARCH_CURRENT_BG if err_idx == search_current_key else SEARCH_MATCH_BG
+        line = f"{marker}{line}{_BG_RESTORE_SENTINEL}"
+    if copy_feedback is not None:
+        is_flash = copy_feedback.get(err_idx, 0) > time.time()
+        line = append_copy_symbol(line, '\u2713' if is_flash else '\u2398', pane_width)
+    lines = [line]
+    keys = [('error', err_idx)]
+    if is_expanded:
+        for k, v in err.get('tool_call_input', {}).items():
+            val_str = str(v).replace('\n', ' ')
+            detail_line = f"    {DIM}{k}: {val_str}{SOFT_RESET}"
+            if is_match and search_query:
+                detail_line = highlight_query_in_line(detail_line, search_query, marker, _BG_RESTORE_SENTINEL)
+            lines.append(detail_line)
+            keys.append(None)
+        pre_strip = err.get('_pre_strip_text')
+        chunks = err.get('_stripped_chunks', [])
+        raw_text = err['full_text']
+        display_text = highlight_stripped(pre_strip, chunks) if pre_strip else raw_text
+        for raw_line in display_text.split('\n'):
+            raw_line = raw_line.expandtabs(8)
+            detail_line = f"    {DIM}{raw_line}{SOFT_RESET}" if raw_line else ''
+            if is_match and search_query and detail_line:
+                detail_line = highlight_query_in_line(detail_line, search_query, marker, _BG_RESTORE_SENTINEL)
+            lines.append(detail_line)
+            keys.append(None)
+    return lines, keys
+
+
+# Build all_lines/all_keys for the whole tool_errors list -- section header + one
+# _build_one_warning_lines call per error, or the "No warnings." placeholder.
+def _build_warnings_lines(tool_errors: list, error_expand_states: dict, copy_feedback: Optional[dict],
+                           pane_width: int, search_match_set: Optional[set], search_current_key,
+                           search_query: str) -> tuple:
+    all_lines: list = []
+    all_keys: list = []
+    if tool_errors:
+        all_lines.append(f"{RED}TOOL ERRORS ({len(tool_errors)}){SOFT_RESET}")
+        all_keys.append(None)
+        for err_idx, err in enumerate(tool_errors):
+            is_expanded = error_expand_states.get(err_idx, False)
+            lines, keys = _build_one_warning_lines(
+                err_idx, err, is_expanded, search_match_set, search_current_key, search_query,
+                copy_feedback, pane_width,
+            )
+            all_lines.extend(lines)
+            all_keys.extend(keys)
+    else:
+        all_lines.append(f"{DIM}No warnings.{SOFT_RESET}")
+        all_keys.append(None)
+    return all_lines, all_keys
+
+
+# Render the visible slice's rows with zebra/hover backgrounds. Returns (rendered_lines,
+# new_error_line_map); copy_rows_out, if given, is populated in place (caller clears it first).
+def _render_warnings_rows(visible_lines: list, visible_keys: list, phys_row: int, parent_count: int,
+                           pane_width: int, hover_row, copy_rows_out: Optional[set]) -> tuple:
+    new_error_line_map = {}
+    rendered: list = []
+    for line, key in zip(visible_lines, visible_keys):
+        if key is not None:
+            zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
+            parent_count += 1
+        else:
+            zebra_bg = ZEBRA_BG_A
+        is_hovered = (key is not None and hover_row is not None and phys_row == hover_row)
+        if is_hovered:
+            chosen_bg = HOVER_BG
+        elif DIM_YELLOW_BG in line:
+            chosen_bg = DIM_YELLOW_BG
+        else:
+            chosen_bg = zebra_bg
+        line = resolve_bg_restore(line, chosen_bg)
+        if key is not None:
+            key_type, key_idx = key
+            if key_type == 'error':
+                new_error_line_map[phys_row] = key_idx
+                if copy_rows_out is not None and ('⎘' in line or '✓' in line):
+                    copy_rows_out.add(phys_row)
+        rendered.append(f"{chosen_bg}{truncate_visible(line, pane_width)}\033[K{RESET}")
+        phys_row += 1
+    return rendered, new_error_line_map
+
+
+# Render all warning sections; returns (rendered_str, new_error_line_map). Thin orchestrator over
+# _build_warnings_lines (section content) + _render_warnings_rows (viewport clip + zebra/hover).
 # (2026-08-18, rollout sub-milestone 6) header_lines (default 1, preserves every pre-existing
 # caller's exact behavior) generalizes the previously-hardcoded single-header-row assumption --
 # warnings_pane.py passes 2 (search bar + [refresh] header). search_match_set/search_current_key
-# hold bare int err_idx (no nesting -- this pane has one expand level). A match's header line is
-# container-marked UNCONDITIONALLY (marker+line+_BG_RESTORE_SENTINEL, mirrors token_format's
-# turn-header treatment) -- BEFORE append_copy_symbol, so the copy button stays outside the
-# marked span. When expanded, the matching detail lines (tool_call_input k/v + full_text body)
-# ADDITIONALLY get browser-find substring-highlighted via utils.highlight_query_in_line.
+# hold bare int err_idx (no nesting -- this pane has one expand level).
 def _format_warnings_pane(
     tool_errors: list,
     error_expand_states: dict,
@@ -92,86 +192,20 @@ def _format_warnings_pane(
     search_query: str = '',
 ) -> tuple:
     content_height = max(1, pane_height - header_lines)
-    all_lines = []
-    # each key is None or ('error', idx)
-    all_keys = []
     if copy_rows_out is not None:
         copy_rows_out.clear()
-
-    if tool_errors:
-        all_lines.append(f"{RED}TOOL ERRORS ({len(tool_errors)}){SOFT_RESET}")
-        all_keys.append(None)
-        for err_idx, err in enumerate(tool_errors):
-            is_expanded = error_expand_states.get(err_idx, False)
-            symbol = '\u25bc' if is_expanded else '\u25b6'
-            tool_col = f"{WHITE}{err['tool_name']:<16}{SOFT_RESET}"
-            w_prefix = format_worker_prefix(err.get('worker_name', ''))
-            inline = first_word_of_call(err['tool_name'], err.get('tool_call_input', {}))
-            line = f"{DIM}{symbol} {err['timestamp']}  {w_prefix}{tool_col}  {DIM}{inline}{SOFT_RESET}"
-            is_match = bool(search_match_set) and err_idx in search_match_set
-            marker = None
-            if is_match:
-                marker = SEARCH_CURRENT_BG if err_idx == search_current_key else SEARCH_MATCH_BG
-                line = f"{marker}{line}{_BG_RESTORE_SENTINEL}"
-            if copy_feedback is not None:
-                is_flash = copy_feedback.get(err_idx, 0) > time.time()
-                line = append_copy_symbol(line, '\u2713' if is_flash else '\u2398', pane_width)
-            all_lines.append(line)
-            all_keys.append(('error', err_idx))
-            if is_expanded:
-                for k, v in err.get('tool_call_input', {}).items():
-                    val_str = str(v).replace('\n', ' ')
-                    detail_line = f"    {DIM}{k}: {val_str}{SOFT_RESET}"
-                    if is_match and search_query:
-                        detail_line = highlight_query_in_line(detail_line, search_query, marker, _BG_RESTORE_SENTINEL)
-                    all_lines.append(detail_line)
-                    all_keys.append(None)
-                pre_strip = err.get('_pre_strip_text')
-                chunks = err.get('_stripped_chunks', [])
-                raw_text = err['full_text']
-                display_text = highlight_stripped(pre_strip, chunks) if pre_strip else raw_text
-                for raw_line in display_text.split('\n'):
-                    raw_line = raw_line.expandtabs(8)
-                    detail_line = f"    {DIM}{raw_line}{SOFT_RESET}" if raw_line else ''
-                    if is_match and search_query and detail_line:
-                        detail_line = highlight_query_in_line(detail_line, search_query, marker, _BG_RESTORE_SENTINEL)
-                    all_lines.append(detail_line)
-                    all_keys.append(None)
-
-    if not tool_errors:
-        all_lines.append(f"{DIM}No warnings.{SOFT_RESET}")
-        all_keys.append(None)
-
-    new_error_line_map = {}
+    all_lines, all_keys = _build_warnings_lines(
+        tool_errors, error_expand_states, copy_feedback, pane_width,
+        search_match_set, search_current_key, search_query,
+    )
     header_offset = 1 + header_lines  # row 1..header_lines = header rows, body starts after
     visible_lines = all_lines[error_scroll_offset:error_scroll_offset + content_height]
     visible_keys = all_keys[error_scroll_offset:error_scroll_offset + content_height]
-    rendered: list = []
     parent_count = sum(1 for k in all_keys[:error_scroll_offset] if k is not None)
-    phys_row = header_offset
-    for i, (line, key) in enumerate(zip(visible_lines, visible_keys)):
-        if key is not None:
-            zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
-            parent_count += 1
-        else:
-            zebra_bg = ZEBRA_BG_A
-        is_hovered = (key is not None and error_hover_row is not None
-                      and phys_row == error_hover_row)
-        if is_hovered:
-            chosen_bg = HOVER_BG
-        elif DIM_YELLOW_BG in line:
-            chosen_bg = DIM_YELLOW_BG
-        else:
-            chosen_bg = zebra_bg
-        line = resolve_bg_restore(line, chosen_bg)
-        if key is not None:
-            key_type, key_idx = key
-            if key_type == 'error':
-                new_error_line_map[phys_row] = key_idx
-                if copy_rows_out is not None and ('⎘' in line or '✓' in line):
-                    copy_rows_out.add(phys_row)
-        rendered.append(f"{chosen_bg}{truncate_visible(line, pane_width)}\033[K{RESET}")
-        phys_row += 1
+    rendered, new_error_line_map = _render_warnings_rows(
+        visible_lines, visible_keys, header_offset, parent_count, pane_width,
+        error_hover_row, copy_rows_out,
+    )
     return header + '\n' + '\n'.join(rendered), new_error_line_map
 
 

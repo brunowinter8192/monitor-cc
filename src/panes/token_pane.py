@@ -5,7 +5,7 @@ import os
 import time
 
 from ..constants import POLL_INTERVAL, INPUT_POLL_INTERVAL, RESET, ZEBRA_BG_A, ZEBRA_BG_B, HOVER_BG, LIGHT_RED_BG
-from ..jsonl import read_new_lines, parse_jsonl_lines, extract_cache_turns
+from .cache_turns import build_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event,
@@ -65,35 +65,7 @@ def run_tokens_loop() -> None:
     try:
         while True:
             try:
-                input_changed = False
-                while True:
-                    char = read_keypress()
-                    if char is None:
-                        break
-                    if char == '\033':
-                        event = read_mouse_event(char)
-                        if event is not None and event[0] != -1:
-                            if _handle_tokens_mouse(*event):
-                                input_changed = True
-                        elif event is not None:
-                            # (-1,-1,-1) release sentinel — no-op unless a row-1 drag was active
-                            if _handle_tokens_search_release():
-                                input_changed = True
-                        elif _tokens_search.focused:  # bare ESC → cancel search
-                            if _handle_tokens_search_cancel():
-                                input_changed = True
-                    elif _tokens_search.focused:
-                        if _handle_tokens_search_input(char):
-                            input_changed = True
-                    elif char == '/':
-                        _tokens_search.focused = True
-                        input_changed = True
-                    elif char in ('n', 'N'):
-                        if _jump_tokens_search_match(forward=(char == 'n')):
-                            input_changed = True
-                    else:
-                        if _handle_tokens_key(char):
-                            input_changed = True
+                input_changed = _poll_tokens_input()
 
                 now = time.time()
                 input_changed, last_data_refresh, last_janitor_ts = _refresh_tokens_data(
@@ -122,60 +94,41 @@ def run_tokens_loop() -> None:
 
 # FUNCTIONS
 
-# Build cache turns incrementally — only reads new lines since last_position
-def build_cache_turns(filepath, last_position: int, existing_turns: list):
-    from ..jsonl import get_current_position
-    lines = read_new_lines(filepath, last_position)
-    new_position = get_current_position(filepath) if filepath.exists() else last_position
-    if not lines:
-        return existing_turns, last_position
-    messages, _ = parse_jsonl_lines(lines)
-    new_turns = extract_cache_turns(messages)
-    if not new_turns and existing_turns and messages:
-        # No user message in this batch → mid-turn requests (user message was read in a prior cycle)
-        # Synthesize a user message from the last existing turn so extract_cache_turns
-        # can set current_turn and process the assistant messages in this batch
-        last_turn = existing_turns[-1]
-        synthetic_user = {
-            'type': 'user',
-            'userType': 'external',
-            'message': {'content': last_turn.get('prompt', '')},
-            'timestamp': last_turn.get('timestamp', ''),
-        }
-        new_turns = extract_cache_turns([synthetic_user] + messages)
-    if not new_turns:
-        return existing_turns, new_position
-    if existing_turns and new_turns[0].get('prompt') == existing_turns[-1].get('prompt'):
-        # Last existing turn was incomplete (streaming) — merge its api_calls with fresh parse
-        merged = dict(existing_turns[-1])
-        merged_calls = list(merged.get('api_calls', []))
-        for call in new_turns[0].get('api_calls', []):
-            new_rid = call.get('request_id', '')
-            if new_rid:
-                dup_idx = next(
-                    (i for i, c in enumerate(merged_calls) if c.get('request_id') == new_rid),
-                    None
-                )
-            else:
-                dup_idx = next(
-                    (i for i, c in enumerate(merged_calls)
-                     if c.get('cache_read') == call.get('cache_read')
-                     and c.get('cache_creation') == call.get('cache_creation')
-                     and c.get('direct') == call.get('direct')),
-                    None
-                )
-            if dup_idx is None:
-                merged_calls.append(call)
-            else:
-                # Update output_tokens in case streaming advanced
-                prev = dict(merged_calls[dup_idx])
-                prev['output_tokens'] = max(prev.get('output_tokens', 0), call.get('output_tokens', 0))
-                merged_calls[dup_idx] = prev
-        merged['api_calls'] = merged_calls
-        result = existing_turns[:-1] + [merged] + new_turns[1:]
-    else:
-        result = existing_turns + new_turns
-    return result, new_position
+# Drain and dispatch all pending keyboard/mouse input for one tick; returns True if the display
+# needs to redraw. Stays physically in this module (bare-name read_keypress/read_mouse_event
+# calls — dev/pane_error_log's exception-survival probe and dev/pane_search's search-bar probes
+# monkeypatch these as module attributes of token_pane itself).
+def _poll_tokens_input() -> bool:
+    input_changed = False
+    while True:
+        char = read_keypress()
+        if char is None:
+            break
+        if char == '\033':
+            event = read_mouse_event(char)
+            if event is not None and event[0] != -1:
+                if _handle_tokens_mouse(*event):
+                    input_changed = True
+            elif event is not None:
+                # (-1,-1,-1) release sentinel — no-op unless a row-1 drag was active
+                if _handle_tokens_search_release():
+                    input_changed = True
+            elif _tokens_search.focused:  # bare ESC → cancel search
+                if _handle_tokens_search_cancel():
+                    input_changed = True
+        elif _tokens_search.focused:
+            if _handle_tokens_search_input(char):
+                input_changed = True
+        elif char == '/':
+            _tokens_search.focused = True
+            input_changed = True
+        elif char in ('n', 'N'):
+            if _jump_tokens_search_match(forward=(char == 'n')):
+                input_changed = True
+        else:
+            if _handle_tokens_key(char):
+                input_changed = True
+    return input_changed
 
 # Serialize a tokens-pane API call to full untruncated text for clipboard
 def _serialize_tokens(key: tuple) -> str:
@@ -398,15 +351,27 @@ def _build_tokens_output() -> str:
     cache_line_map.clear()
     cache_copy_rows.clear()
     phys_row = 1 + _TOKENS_SEARCH_BAR_LINES + (1 if sticky_header is not None else 0)
-    parent_count = initial_parent_count
+    result_lines.extend(_render_tokens_rows(
+        visible_lines, visible_keys, phys_row, initial_parent_count, pane_width,
+        cache_hover_row, cache_line_map, cache_copy_rows,
+    ))
+    return '\n'.join(result_lines)
+
+
+# Render the visible slice's rows with zebra/hover backgrounds; mutates cache_line_map/
+# cache_copy_rows in place (dict/set mutation, not a scalar global rebind — safe to live in a
+# helper per the monkeypatch constraint). Returns the rendered ANSI lines (search bar/sticky
+# header NOT included — the caller prepends them).
+def _render_tokens_rows(visible_lines: list, visible_keys: list, phys_row: int, parent_count: int,
+                         pane_width: int, hover_row, cache_line_map: dict, cache_copy_rows: set) -> list:
+    result_lines = []
     for line, key in zip(visible_lines, visible_keys):
         if key is not None:
             zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A
             parent_count += 1
         else:
             zebra_bg = ZEBRA_BG_A
-        is_hovered = (key is not None and cache_hover_row is not None
-                      and phys_row == cache_hover_row)
+        is_hovered = (key is not None and hover_row is not None and phys_row == hover_row)
         if is_hovered:
             chosen_bg = HOVER_BG
         elif LIGHT_RED_BG in line:  # substring, not prefix — a search-match wrap may now precede it
@@ -421,4 +386,4 @@ def _build_tokens_output() -> str:
         if key is not None:
             cache_line_map[phys_row] = key
         phys_row += 1
-    return '\n'.join(result_lines)
+    return result_lines
