@@ -173,77 +173,92 @@ def _process_project_dir(project_dir: Path, now: float) -> Optional[SessionInfo]
     hook_state = _read_hook_state(now)
 
     if is_worker:
-        cwd = _cwd_from_jsonl(jsonl)
-        tmux_session = ''
-        display_name = worker_name   # fallback: lossy encoded-dir name (underscores → hyphens)
-        if cwd and '/.claude/worktrees/' in cwd:
-            project_path, _, worktree_rest = cwd.partition('/.claude/worktrees/')
-            # First component after the marker = worktree leaf name; stable even when worker cd's into subdirs.
-            # os.path.basename(cwd) is wrong when cwd drifts deeper: yields subdir name, not worktree name.
-            display_name = worktree_rest.split('/')[0] or worker_name
-            # Live project dir basename overrides stale decoded-dir name; fallback keeps decode value
-            project_name = os.path.basename(project_path) or project_name
-            # Worker alive iff its tmux session exists (consistent with worker-cli)
-            tmux_session = _worker_tmux_session(cwd, display_name) or ''
-            if not tmux_session or not _tmux_session_exists(tmux_session):
-                return None
-        else:
-            # cwd unavailable — alive guard via JSONL age
-            if now - mtime > ALIVE_WINDOW_SECS:
-                return None
-        hook_entry = hook_state.get(session_id)
-        hook_fresh = (hook_entry is not None
-                      and (now - hook_entry.get('updated_ts', 0)) <= ALIVE_WINDOW_SECS)
-        if hook_fresh:
-            status = hook_entry['status']
-            # Crash-safety: 'working' hook + no recent pane activity = CC crashed or context-limited
-            # before Stop-hook fired. window_activity tracks spinner ticks → stays fresh through
-            # thinking phases (unlike JSONL mtime which only updates on message completion).
-            # Skip demote when tmux_session is empty (cwd-unavailable fallback — no activity signal).
-            if status == 'working' and tmux_session:
-                wa = _tmux_window_activity(tmux_session)
-                if wa == 0 or (now - wa) > WORKING_THRESHOLD_SECS:
-                    status = 'idle'
-        else:
-            status = 'idle'
-        return SessionInfo(name=display_name, status=status, has_bg=has_bg,
-                           encoded_dir=encoded_dir, project_name=project_name,
-                           is_worker=True, cwd='', session_id=session_id,
-                           tmux_session_name=tmux_session)
-    else:
-        # Main session alive ONLY if a live claude process exists for it.
-        # Without this, exited mains stay visible until JSONL > 1h (ALIVE_WINDOW_SECS).
-        proc_cwd = _proc_cwd_for_encoded_dir(encoded_dir)
-        if proc_cwd is None:
+        return _worker_session_info(jsonl, mtime, encoded_dir, project_name, worker_name,
+                                    session_id, has_bg, hook_state, now)
+    return _main_session_info(encoded_dir, session_id, has_bg, hook_state, mtime, now)
+
+# hook_entry/hook_fresh check duplicated identically in both the worker and main branches below
+def _hook_freshness(hook_state: dict, session_id: str, now: float) -> tuple:
+    hook_entry = hook_state.get(session_id)
+    hook_fresh = (hook_entry is not None
+                  and (now - hook_entry.get('updated_ts', 0)) <= ALIVE_WINDOW_SECS)
+    return hook_entry, hook_fresh
+
+# Build SessionInfo for a worker session; None if the worker's tmux session/JSONL age fails the
+# alive guard
+def _worker_session_info(jsonl: Path, mtime: float, encoded_dir: str, project_name: str,
+                         worker_name: str, session_id: str, has_bg: bool, hook_state: dict,
+                         now: float) -> Optional[SessionInfo]:
+    cwd = _cwd_from_jsonl(jsonl)
+    tmux_session = ''
+    display_name = worker_name   # fallback: lossy encoded-dir name (underscores → hyphens)
+    if cwd and '/.claude/worktrees/' in cwd:
+        project_path, _, worktree_rest = cwd.partition('/.claude/worktrees/')
+        # First component after the marker = worktree leaf name; stable even when worker cd's into subdirs.
+        # os.path.basename(cwd) is wrong when cwd drifts deeper: yields subdir name, not worktree name.
+        display_name = worktree_rest.split('/')[0] or worker_name
+        # Live project dir basename overrides stale decoded-dir name; fallback keeps decode value
+        project_name = os.path.basename(project_path) or project_name
+        # Worker alive iff its tmux session exists (consistent with worker-cli)
+        tmux_session = _worker_tmux_session(cwd, display_name) or ''
+        if not tmux_session or not _tmux_session_exists(tmux_session):
             return None
-        # Live cwd basename overrides stale decoded-dir name (encode path never physically renamed)
-        project_name = os.path.basename(proc_cwd.rstrip('/'))
-        # proc-cwd is launch cwd (stable); JSONL cwd drifts when user `cd`s in chat.
-        cwd = proc_cwd
-        name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
-        # Priority 1: hook state (real-time signal from CC's UserPromptSubmit/Stop hooks).
-        # Covers thinking phase from T=0 and holds 'working' for the full turn duration.
-        # Falls back to JSONL+proxy when hook state is absent (hooks not installed) or stale.
-        hook_entry  = hook_state.get(session_id)
-        hook_fresh  = (hook_entry is not None
-                       and (now - hook_entry.get('updated_ts', 0)) <= ALIVE_WINDOW_SECS)
-        if hook_fresh:
-            status = hook_entry['status']
-        else:
-            # Priority 2: JSONL mtime (TTY mtime removed — cursor blinks cause false-working)
-            status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
-            # Priority 3: proxy log newer than JSONL → request in flight (reasoning phase).
-            # Old condition was (now - proxy_mtime) <= 10s — only fired for first 10s of
-            # thinking. Correct signal: proxy_mtime > mtime (request sent after last JSONL
-            # write). After response the proxy latency entry lands ~0.1s before CC writes
-            # JSONL, so proxy_mtime drops just below mtime → no false positive.
-            if status == 'idle':
-                project_key = project_name.lower().replace('-', '_').replace(' ', '_')
-                proxy_mtime = _proxy_log_newest_mtime(project_key, now)
-                if (proxy_mtime is not None and proxy_mtime > mtime
-                        and (now - proxy_mtime) <= THINKING_OVERRIDE_MAX_SECS):
-                    status = 'working'
-        return SessionInfo(name=name, status=status, has_bg=has_bg,
-                           encoded_dir=encoded_dir, project_name=project_name,
-                           is_worker=False, cwd=cwd or '', session_id=session_id,
-                           tmux_session_name='')
+    else:
+        # cwd unavailable — alive guard via JSONL age
+        if now - mtime > ALIVE_WINDOW_SECS:
+            return None
+    hook_entry, hook_fresh = _hook_freshness(hook_state, session_id, now)
+    if hook_fresh:
+        status = hook_entry['status']
+        # Crash-safety: 'working' hook + no recent pane activity = CC crashed or context-limited
+        # before Stop-hook fired. window_activity tracks spinner ticks → stays fresh through
+        # thinking phases (unlike JSONL mtime which only updates on message completion).
+        # Skip demote when tmux_session is empty (cwd-unavailable fallback — no activity signal).
+        if status == 'working' and tmux_session:
+            wa = _tmux_window_activity(tmux_session)
+            if wa == 0 or (now - wa) > WORKING_THRESHOLD_SECS:
+                status = 'idle'
+    else:
+        status = 'idle'
+    return SessionInfo(name=display_name, status=status, has_bg=has_bg,
+                       encoded_dir=encoded_dir, project_name=project_name,
+                       is_worker=True, cwd='', session_id=session_id,
+                       tmux_session_name=tmux_session)
+
+# Build SessionInfo for a main session; None if no live claude process exists for it
+def _main_session_info(encoded_dir: str, session_id: str, has_bg: bool, hook_state: dict,
+                       mtime: float, now: float) -> Optional[SessionInfo]:
+    # Main session alive ONLY if a live claude process exists for it.
+    # Without this, exited mains stay visible until JSONL > 1h (ALIVE_WINDOW_SECS).
+    proc_cwd = _proc_cwd_for_encoded_dir(encoded_dir)
+    if proc_cwd is None:
+        return None
+    # Live cwd basename overrides stale decoded-dir name (encode path never physically renamed)
+    project_name = os.path.basename(proc_cwd.rstrip('/'))
+    # proc-cwd is launch cwd (stable); JSONL cwd drifts when user `cd`s in chat.
+    cwd = proc_cwd
+    name = os.path.basename(cwd.rstrip('/')) if cwd else project_name
+    # Priority 1: hook state (real-time signal from CC's UserPromptSubmit/Stop hooks).
+    # Covers thinking phase from T=0 and holds 'working' for the full turn duration.
+    # Falls back to JSONL+proxy when hook state is absent (hooks not installed) or stale.
+    hook_entry, hook_fresh = _hook_freshness(hook_state, session_id, now)
+    if hook_fresh:
+        status = hook_entry['status']
+    else:
+        # Priority 2: JSONL mtime (TTY mtime removed — cursor blinks cause false-working)
+        status = 'working' if (now - mtime) <= WORKING_THRESHOLD_SECS else 'idle'
+        # Priority 3: proxy log newer than JSONL → request in flight (reasoning phase).
+        # Old condition was (now - proxy_mtime) <= 10s — only fired for first 10s of
+        # thinking. Correct signal: proxy_mtime > mtime (request sent after last JSONL
+        # write). After response the proxy latency entry lands ~0.1s before CC writes
+        # JSONL, so proxy_mtime drops just below mtime → no false positive.
+        if status == 'idle':
+            project_key = project_name.lower().replace('-', '_').replace(' ', '_')
+            proxy_mtime = _proxy_log_newest_mtime(project_key, now)
+            if (proxy_mtime is not None and proxy_mtime > mtime
+                    and (now - proxy_mtime) <= THINKING_OVERRIDE_MAX_SECS):
+                status = 'working'
+    return SessionInfo(name=name, status=status, has_bg=has_bg,
+                       encoded_dir=encoded_dir, project_name=project_name,
+                       is_worker=False, cwd=cwd or '', session_id=session_id,
+                       tmux_session_name='')

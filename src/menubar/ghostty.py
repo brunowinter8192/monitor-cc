@@ -48,41 +48,11 @@ def _refresh_ghostty_tty_to_id(now: float) -> None:
     # NOTE: the `if not ghostty_pid: return` branch above has the identical shape of bug (never
     # re-arms the TTL either) — NOT fixed here, out of this milestone's scope (only fires when
     # Ghostty itself isn't running, not the measured steady-state case).
-    # Write unique OSC 2 marker into each new TTY
-    tty_marker: List[tuple] = []
-    for tty in new_ttys:
-        marker = f'{_GHOSTTY_MARKER_PREFIX}{os.urandom(4).hex()}'
-        tty_marker.append((tty, marker))
-        try:
-            with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
-                fh.write(f'\033]2;{marker}\007'.encode())
-        except OSError:
-            pass
+    tty_marker = _write_markers(new_ttys)
     time.sleep(0.12)
-    # Query Ghostty for id|||name pairs (newline-separated)
-    osa = (
-        'tell application "Ghostty"\n'
-        '  set pairs to {}\n'
-        '  repeat with t in every terminal\n'
-        '    set end of pairs to (id of t) & "|||" & (name of t)\n'
-        '  end repeat\n'
-        '  set AppleScript\'s text item delimiters to ASCII character 10\n'
-        '  return pairs as text\n'
-        'end tell'
-    )
-    try:
-        r3 = subprocess.run(['osascript', '-e', osa],
-                            capture_output=True, text=True,
-                            encoding='utf-8', errors='replace', timeout=3)
-    except Exception:
-        r3 = None
+    r3 = _query_terminal_names()
     # Cleanup: restore shell-default title on all probed TTYs
-    for tty, _ in tty_marker:
-        try:
-            with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
-                fh.write(b'\033]2;\007')
-        except OSError:
-            pass
+    _clear_markers(tty_marker)
     if not r3 or r3.returncode != 0:
         return
     # Parse output and merge new tty→id entries into cache
@@ -97,6 +67,45 @@ def _refresh_ghostty_tty_to_id(now: float) -> None:
     _ghostty_tty_last_refresh = now
 
 # FUNCTIONS
+
+# Write a unique OSC 2 marker into each new TTY; returns [(tty, marker), ...] for later matching
+def _write_markers(new_ttys: List[str]) -> List[tuple]:
+    tty_marker: List[tuple] = []
+    for tty in new_ttys:
+        marker = f'{_GHOSTTY_MARKER_PREFIX}{os.urandom(4).hex()}'
+        tty_marker.append((tty, marker))
+        try:
+            with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
+                fh.write(f'\033]2;{marker}\007'.encode())
+        except OSError: pass
+    return tty_marker
+
+# Query Ghostty for id|||name pairs (newline-separated); None on subprocess failure
+def _query_terminal_names():
+    osa = (
+        'tell application "Ghostty"\n'
+        '  set pairs to {}\n'
+        '  repeat with t in every terminal\n'
+        '    set end of pairs to (id of t) & "|||" & (name of t)\n'
+        '  end repeat\n'
+        '  set AppleScript\'s text item delimiters to ASCII character 10\n'
+        '  return pairs as text\n'
+        'end tell'
+    )
+    try:
+        return subprocess.run(['osascript', '-e', osa],
+                              capture_output=True, text=True,
+                              encoding='utf-8', errors='replace', timeout=3)
+    except Exception:
+        return None
+
+# Restore shell-default title (best-effort) on all probed TTYs
+def _clear_markers(tty_marker: List[tuple]) -> None:
+    for tty, _ in tty_marker:
+        try:
+            with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
+                fh.write(b'\033]2;\007')
+        except OSError: pass
 
 # Return PID string of running Ghostty.app process, or None
 def _ghostty_pid() -> Optional[str]:

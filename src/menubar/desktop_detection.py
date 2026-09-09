@@ -64,16 +64,32 @@ def detect_main_desktop_numbers(
     cwd_tty_map:  Dict[str, str],
     now: float,
 ) -> Dict[str, Optional[int]]:
-    global _det_cache, _det_cache_ts, _det_cache_cwds, _cgw_title_diag_logged, _last_result, _cwd_desktop_lkg
+    global _det_cache, _det_cache_ts, _det_cache_cwds, _cgw_title_diag_logged
     _cgw_title_diag_logged = False
     cwds = frozenset(cwd_uuid_map.keys())
     if cwds == _det_cache_cwds and (now - _det_cache_ts) < _DET_CACHE_TTL:
         return _det_cache
+    result, cwd_ctx = _resolve_cwds_to_desktops(cwd_uuid_map, cwd_tty_map)
+    _log_transitions(result, cwd_ctx)
+    _det_cache = result
+    _det_cache_ts = now
+    _det_cache_cwds = cwds
+    return result
+
+# FUNCTIONS
+
+# Per-cwd resolution: LKG cleanup + Ghostty/CGS window→space lookup for the whole batch.
+# All errors (Ghostty down, AppleScript failure, CGS error) → log once + return all-None.
+def _resolve_cwds_to_desktops(
+    cwd_uuid_map: Dict[str, str],
+    cwd_tty_map:  Dict[str, str],
+) -> Tuple[Dict[str, Optional[int]], Dict[str, dict]]:
+    cwds = frozenset(cwd_uuid_map.keys())
     result: Dict[str, Optional[int]] = {cwd: None for cwd in cwds}
     # Remove LKG entries for cwds no longer in the active set (session closed)
     for gone in [c for c in _cwd_desktop_lkg if c not in cwds]:
         del _cwd_desktop_lkg[gone]
-    _cwd_ctx: Dict[str, dict] = {}
+    cwd_ctx: Dict[str, dict] = {}
     try:
         ghostty_pid_int = _ghostty_pid_int()
         if ghostty_pid_int is not None:
@@ -88,7 +104,7 @@ def detect_main_desktop_numbers(
                 tty            = cwd_tty_map.get(cwd)
                 cgwindow_id    = _resolve_cgwindow_id(win_name, cgwindow_by_name, claimed,
                                                       cid, tty, ghostty_pid_int)
-                _cwd_ctx[cwd]  = {'win': win_name,
+                cwd_ctx[cwd]  = {'win': win_name,
                                    'n_cand': len(cgwindow_by_name.get(win_name, []))}
                 if cgwindow_id is not None:
                     spaces = _spaces_for_wid(cid, cgwindow_id)
@@ -107,21 +123,20 @@ def detect_main_desktop_numbers(
     except Exception as exc:
         reason = repr(exc)[:80].replace('\n', ' ')
         log_menubar('detection', f'all_failed n_mains={len(cwds)} reason=error:{reason}')
+    return result, cwd_ctx
+
+# Log per-cwd desktop-number transitions since the previous cycle; updates _last_result.
+def _log_transitions(result: Dict[str, Optional[int]], cwd_ctx: Dict[str, dict]) -> None:
+    global _last_result
     for cwd, new_no in result.items():
         old_no = _last_result.get(cwd)
         if new_no == old_no:
             continue
         label  = os.path.basename(os.path.dirname(cwd)) + '/' + os.path.basename(cwd)
-        ctx    = _cwd_ctx.get(cwd, {})
+        ctx    = cwd_ctx.get(cwd, {})
         detail = f'win={repr(ctx.get("win", ""))[:40]} n_cand={ctx.get("n_cand", "?")}'
         log_menubar('detection', f'transition {label} {old_no}->{new_no} {detail}')
     _last_result = dict(result)
-    _det_cache = result
-    _det_cache_ts = now
-    _det_cache_cwds = cwds
-    return result
-
-# FUNCTIONS
 
 def _sel(s: str):                      return _OBJ.sel_registerName(s.encode())
 def _msg1v(obj, s: str, a):            return ctypes.cast(_IMP, _FT_vvv)(obj, _sel(s), a)
