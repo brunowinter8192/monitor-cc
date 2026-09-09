@@ -51,7 +51,6 @@ def run_news_loop() -> None:
     global _pipeline_proc
     last_output       = None
     last_data_refresh = 0.0
-    force_refresh     = False
     status: dict      = {}
 
     setup_keyboard_input()
@@ -59,58 +58,7 @@ def run_news_loop() -> None:
     try:
         while True:
             try:
-                input_changed = False
-
-                while True:
-                    char = read_keypress()
-                    if char is None:
-                        break
-                    if char == '\033':
-                        event = read_mouse_event(char)
-                        if event is not None and event[0] != -1:
-                            button, col, row = event
-                            if button == 0:
-                                if row == 1:  # search bar row -- focuses; also anchors a potential drag-select
-                                    if search_bar.handle_search_mouse_press(_news_search, col, _NEWS_SEARCH_BAR_LABEL):
-                                        input_changed = True
-                                else:
-                                    # Click elsewhere ([refresh]/[run pipeline] or unmapped) clears
-                                    # any lingering drag-selection highlight
-                                    if _news_search.sel_anchor is not None:
-                                        input_changed = True
-                                    search_bar.clear_selection(_news_search)
-                                    for (sc, ec, er), (action, target) in list(_button_regions.items()):
-                                        if row == er and sc <= col <= ec:
-                                            if action == 'refresh':
-                                                force_refresh = True
-                                                input_changed = True
-                                            elif not _is_running():
-                                                _fire_pipeline()
-                                                input_changed = True
-                                            break
-                            elif button == 32 and _news_search.dragging:  # motion with left button held (0+32), row-1 drag active
-                                if search_bar.handle_search_mouse_motion(_news_search, col, _NEWS_SEARCH_BAR_LABEL):
-                                    input_changed = True
-                        elif event is not None:
-                            # (-1,-1,-1) release sentinel -- no-op unless a row-1 drag was active
-                            if search_bar.handle_search_mouse_release(_news_search, copy_to_clipboard):
-                                input_changed = True
-                        elif _news_search.focused:  # bare ESC -> cancel search
-                            if search_bar.handle_search_cancel(_news_search):
-                                input_changed = True
-                    elif _news_search.focused:
-                        on_commit = lambda state: _news_search_on_commit(state, status)
-                        if search_bar.handle_search_input(_news_search, char, on_commit=on_commit):
-                            input_changed = True
-                    elif char == '/':
-                        _news_search.focused = True
-                        input_changed = True
-                    elif char in ('n', 'N'):
-                        if _jump_news_search_match(forward=(char == 'n')):
-                            input_changed = True
-                    elif char in ('r', 'R'):
-                        force_refresh = True
-                        input_changed = True
+                input_changed, force_refresh = _poll_news_input(status)
 
                 now = time.time()
                 if force_refresh or now - last_data_refresh >= NEWS_POLL_INTERVAL:
@@ -118,38 +66,8 @@ def run_news_loop() -> None:
                     last_data_refresh = now
                     input_changed = True
 
-                force_refresh = False
-
                 if input_changed:
-                    try:
-                        term = os.get_terminal_size()
-                        pane_width  = term.columns
-                        pane_height = term.lines - 1
-                    except OSError:
-                        pane_width, pane_height = 80, 24
-                    running = _is_running()
-                    current_match_line = (
-                        _news_search.matches[_news_search.current_idx]
-                        if _news_search.matches and _news_search.current_idx < len(_news_search.matches)
-                        else None
-                    )
-                    body = _render_pane(pane_width, pane_height, status, running,
-                                        search_query=_news_search.query,
-                                        search_match_line_set=_news_search.match_set,
-                                        search_current_line=current_match_line)
-                    # _render_pane's own _button_regions rows are relative to ITS OWN top --
-                    # shift by _NEWS_SEARCH_BAR_LINES since the search bar now owns physical row
-                    # 1 (mirrors gpu_pane's identical pattern; _render_pane itself stays
-                    # unshifted/reusable -- dev/click_ui/p4_gpu_news_button_probe.py calls it
-                    # directly and needed zero changes).
-                    shifted = {(sc, ec, er + _NEWS_SEARCH_BAR_LINES): v for (sc, ec, er), v in _button_regions.items()}
-                    _button_regions.clear()
-                    _button_regions.update(shifted)
-                    output = _render_news_search_bar(pane_width) + '\n' + body
-                    if output != last_output:
-                        print('\033[2J\033[3J\033[H', end='', flush=True)
-                        print(output, end='', flush=True)
-                        last_output = output
+                    last_output = _build_news_output(status, last_output)
 
                 wait_for_input(INPUT_POLL_INTERVAL)
             except Exception:
@@ -160,6 +78,106 @@ def run_news_loop() -> None:
         restore_terminal()
 
 # FUNCTIONS
+
+# Drain and dispatch all pending keyboard/mouse input for one tick; returns (input_changed,
+# force_refresh). Stays physically in this module (bare-name read_keypress/read_mouse_event
+# calls -- dev/pane_error_log's exception-survival probe monkeypatches these as module
+# attributes of pane.py itself).
+def _poll_news_input(status: dict) -> tuple:
+    input_changed = False
+    force_refresh = False
+    while True:
+        char = read_keypress()
+        if char is None:
+            break
+        if char == '\033':
+            event = read_mouse_event(char)
+            if event is not None and event[0] != -1:
+                button, col, row = event
+                changed, refresh_hit = _handle_news_mouse(button, col, row)
+                if changed:
+                    input_changed = True
+                if refresh_hit:
+                    force_refresh = True
+            elif event is not None:
+                # (-1,-1,-1) release sentinel -- no-op unless a row-1 drag was active
+                if search_bar.handle_search_mouse_release(_news_search, copy_to_clipboard):
+                    input_changed = True
+            elif _news_search.focused:  # bare ESC -> cancel search
+                if search_bar.handle_search_cancel(_news_search):
+                    input_changed = True
+        elif _news_search.focused:
+            on_commit = lambda state: _news_search_on_commit(state, status)
+            if search_bar.handle_search_input(_news_search, char, on_commit=on_commit):
+                input_changed = True
+        elif char == '/':
+            _news_search.focused = True
+            input_changed = True
+        elif char in ('n', 'N'):
+            if _jump_news_search_match(forward=(char == 'n')):
+                input_changed = True
+        elif char in ('r', 'R'):
+            force_refresh = True
+            input_changed = True
+    return input_changed, force_refresh
+
+
+# Process one real mouse button event (press or drag-motion); returns (input_changed,
+# force_refresh_hit).
+def _handle_news_mouse(button: int, col: int, row: int) -> tuple:
+    if button == 0:
+        if row == 1:  # search bar row -- focuses; also anchors a potential drag-select
+            return search_bar.handle_search_mouse_press(_news_search, col, _NEWS_SEARCH_BAR_LABEL), False
+        # Click elsewhere ([refresh]/[run pipeline] or unmapped) clears any lingering
+        # drag-selection highlight
+        had_selection = _news_search.sel_anchor is not None
+        search_bar.clear_selection(_news_search)
+        for (sc, ec, er), (action, target) in list(_button_regions.items()):
+            if row == er and sc <= col <= ec:
+                if action == 'refresh':
+                    return True, True
+                if not _is_running():
+                    _fire_pipeline()
+                    return True, False
+                break
+        return had_selection, False
+    if button == 32 and _news_search.dragging:  # motion with left button held (0+32), row-1 drag active
+        return search_bar.handle_search_mouse_motion(_news_search, col, _NEWS_SEARCH_BAR_LABEL), False
+    return False, False
+
+
+# Render + shift _button_regions past the search bar + diff-and-print; returns the new
+# last_output (unchanged when the rendered output didn't change, matching the pre-split print gate).
+def _build_news_output(status: dict, last_output):
+    try:
+        term = os.get_terminal_size()
+        pane_width  = term.columns
+        pane_height = term.lines - 1
+    except OSError:
+        pane_width, pane_height = 80, 24
+    running = _is_running()
+    current_match_line = (
+        _news_search.matches[_news_search.current_idx]
+        if _news_search.matches and _news_search.current_idx < len(_news_search.matches)
+        else None
+    )
+    body = _render_pane(pane_width, pane_height, status, running,
+                        search_query=_news_search.query,
+                        search_match_line_set=_news_search.match_set,
+                        search_current_line=current_match_line)
+    # _render_pane's own _button_regions rows are relative to ITS OWN top -- shift by
+    # _NEWS_SEARCH_BAR_LINES since the search bar now owns physical row 1 (mirrors gpu_pane's
+    # identical pattern; _render_pane itself stays unshifted/reusable -- dev/click_ui/
+    # p4_gpu_news_button_probe.py calls it directly and needed zero changes).
+    shifted = {(sc, ec, er + _NEWS_SEARCH_BAR_LINES): v for (sc, ec, er), v in _button_regions.items()}
+    _button_regions.clear()
+    _button_regions.update(shifted)
+    output = _render_news_search_bar(pane_width) + '\n' + body
+    if output != last_output:
+        print('\033[2J\033[3J\033[H', end='', flush=True)
+        print(output, end='', flush=True)
+        return output
+    return last_output
 
 # Gather doc count, chunk count, last-run timestamp for searxng_crypto
 def _fetch_news_status() -> dict:
