@@ -8,7 +8,7 @@ of the exact `subprocess.run` argv sequence it issues — this package never inv
 
 ## Modules
 
-### argv_byte_identity.py (176 LOC, new 2026-09, remaining-thresholds milestone)
+### argv_byte_identity.py (177 LOC, new 2026-09, remaining-thresholds milestone)
 
 **Purpose:** Byte-identity harness for `launch_split_screen`/`restart_panes`'s function-LOC split.
 Monkeypatches `subprocess.run` to record every argv list issued (real tmux never runs) and to
