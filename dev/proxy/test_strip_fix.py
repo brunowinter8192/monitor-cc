@@ -507,9 +507,14 @@ def t44_bundled_claudemd_and_env_context_preserved():
 # Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
 import importlib as _wakeup_il
 _rules_mod = _wakeup_il.import_module('src.proxy.message_passes')
+# _apply_bg_exit_strip/_apply_sn_notice_strip/_apply_interrupt_marker_strip moved to
+# message_passes_simple.py (2026-09, helper-extraction milestone — generic pass runner +
+# declarative spec split out of message_passes.py); _apply_first_pass/_apply_final_sr_pass/
+# _apply_role_system_strip stayed (structural passes with their own logic).
+_simple_mod = _wakeup_il.import_module('src.proxy.message_passes_simple')
 _apply_first_pass = _rules_mod._apply_first_pass
-_apply_bg_exit_strip = _rules_mod._apply_bg_exit_strip
-_apply_sn_notice_strip = _rules_mod._apply_sn_notice_strip
+_apply_bg_exit_strip = _simple_mod._apply_bg_exit_strip
+_apply_sn_notice_strip = _simple_mod._apply_sn_notice_strip
 _apply_final_sr_pass = _rules_mod._apply_final_sr_pass
 _apply_role_system_strip = _rules_mod._apply_role_system_strip
 _bgk_mod = _wakeup_il.import_module('src.proxy.strip_bg_completed')
@@ -522,8 +527,8 @@ _im_mod = _wakeup_il.import_module('src.proxy.strip_interrupt_marker')
 _strip_interrupt_marker = _im_mod._strip_interrupt_marker
 _INTERRUPT_MARKER = '[Request interrupted by user]'
 _INTERRUPT_MARKER_TOOL_USE = '[Request interrupted by user for tool use]'
-_apply_interrupt_marker_strip = _rules_mod._apply_interrupt_marker_strip
-del _wakeup_il, _rules_mod, _bgk_mod, _sn_mod, _bg_ack_mod, _im_mod
+_apply_interrupt_marker_strip = _simple_mod._apply_interrupt_marker_strip
+del _wakeup_il, _rules_mod, _simple_mod, _bgk_mod, _sn_mod, _bg_ack_mod, _im_mod
 
 
 def _has_wakeup(content) -> bool:

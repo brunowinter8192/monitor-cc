@@ -42,6 +42,31 @@ def _read_rule_file(rel_path: str) -> str:
         return ""
 
 
+# Resolve project-specific rule files from system2_rules.projects for the matching project_path.
+# Returns (project_files, exclusive_files_or_None, empty_due_to_family: bool) — the third element
+# signals the caller must return "" outright (an exclusive project restricted to model families
+# that don't include this one).
+def _resolve_project_rule_files(s2: dict, project_path: str, model_family: str) -> tuple:
+    project_files = []
+    exclusive_files = None
+    if not project_path:
+        return project_files, exclusive_files, False
+    for _name, proj in s2.get("projects", {}).items():
+        path_contains = proj.get("path_contains", "")
+        if path_contains and path_contains in project_path:
+            # Exclusive project: skip global+model, load ONLY these files.
+            # Optional exclusive_model_families restricts to listed families;
+            # other families fall through to empty rules.
+            if proj.get("exclusive"):
+                allowed = proj.get("exclusive_model_families")
+                if allowed is not None and model_family not in allowed:
+                    return [], None, True
+                exclusive_files = list(proj.get("files", []))
+                break
+            project_files.extend(proj.get("files", []))
+    return project_files, exclusive_files, False
+
+
 def _load_system2_rules(model_family: str, project_path: str = "", worker_context: str = "") -> str:
     """Concatenate system2 rule files for a session (global + role-specific + project).
 
@@ -71,23 +96,9 @@ def _load_system2_rules(model_family: str, project_path: str = "", worker_contex
     # Role → config key. Absent/empty/None context means main (see docstring).
     role_key = "worker" if (worker_context or "").startswith("worker:") else "main"
     role_files = s2.get(role_key, {}).get("files", [])
-    # Load project-specific files from system2_rules.projects
-    project_files = []
-    exclusive_files = None
-    if project_path:
-        for _name, proj in s2.get("projects", {}).items():
-            path_contains = proj.get("path_contains", "")
-            if path_contains and path_contains in project_path:
-                # Exclusive project: skip global+model, load ONLY these files.
-                # Optional exclusive_model_families restricts to listed families;
-                # other families fall through to empty rules.
-                if proj.get("exclusive"):
-                    allowed = proj.get("exclusive_model_families")
-                    if allowed is not None and model_family not in allowed:
-                        return ""
-                    exclusive_files = list(proj.get("files", []))
-                    break
-                project_files.extend(proj.get("files", []))
+    project_files, exclusive_files, empty_due_to_family = _resolve_project_rule_files(s2, project_path, model_family)
+    if empty_due_to_family:
+        return ""
     if exclusive_files is not None:
         all_files = exclusive_files
     else:

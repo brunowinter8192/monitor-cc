@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+from .payload_helpers import _walk_replace_marker_blocks
 
 # tmux-Escape interruption marker CC records when the proxy sends an Escape keystroke into a
 # worker's pane mid-tool-call (bg_escape.py) — CC logs this identically to a genuine user
@@ -34,55 +35,9 @@ def _is_interrupt_marker(text):
 # downstream index-keyed diffing (rule_ops._ops_from_content_change walks old/new content by
 # index), and matches the emptied-block convention ('.') the other strip_*.py passes use for a
 # block reduced to nothing (the API rejects an empty text block).
-# Covers all 4 content shapes: str, list[text], list[tool_result+str], list[tool_result+list].
+# Covers all 4 content shapes: str, list[text], list[tool_result+str], list[tool_result+list] —
+# via the shared payload_helpers._walk_replace_marker_blocks walk (folded 2026-09, byte-identical
+# shape to strip_bg_launch_ack.py's own walk, verified before folding).
 # Returns (new_content, removed_chunks) — removed_chunks: original marker text per match.
 def _strip_interrupt_marker(content):
-    removed = []
-    if isinstance(content, str):
-        if _is_interrupt_marker(content):
-            removed.append(content)
-            return '.', removed
-        return content, removed
-    if isinstance(content, list):
-        result = []
-        for block in content:
-            if not isinstance(block, dict):
-                result.append(block)
-                continue
-            btype = block.get('type')
-            if btype == 'text':
-                text = block.get('text', '')
-                if _is_interrupt_marker(text):
-                    removed.append(text)
-                    result.append({**block, 'text': '.'})
-                else:
-                    result.append(block)
-            elif btype == 'tool_result':
-                inner = block.get('content', '')
-                if isinstance(inner, str):
-                    if _is_interrupt_marker(inner):
-                        removed.append(inner)
-                        result.append({**block, 'content': '.'})
-                    else:
-                        result.append(block)
-                elif isinstance(inner, list):
-                    new_sub = []
-                    sub_changed = False
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get('type') == 'text':
-                            text = sub.get('text', '')
-                            if _is_interrupt_marker(text):
-                                removed.append(text)
-                                new_sub.append({**sub, 'text': '.'})
-                                sub_changed = True
-                            else:
-                                new_sub.append(sub)
-                        else:
-                            new_sub.append(sub)
-                    result.append({**block, 'content': new_sub} if sub_changed else block)
-                else:
-                    result.append(block)
-            else:
-                result.append(block)
-        return result, removed
-    return content, removed
+    return _walk_replace_marker_blocks(content, _is_interrupt_marker, lambda _text: '.')

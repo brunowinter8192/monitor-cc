@@ -67,19 +67,13 @@ def _get_inner_text(block) -> str:
     return json.dumps(block, ensure_ascii=False)
 
 
-# Build ground-truth spans from exact stripped chunks recorded by apply_modification_rules
-def build_message_spans(orig_text: str, fwd_text: str, stripped_chunks: list, injected_chunks: list = None) -> tuple:
-    """Returns (spans, flags) — tags: 'equal' / 'stripped' / 'injected'."""
-    flags = []
-
-    if not stripped_chunks:
-        if orig_text == fwd_text:
-            return [("equal", orig_text)] if orig_text else [], flags
-        return [("equal", orig_text)], flags
-
-    # Step 1: split orig_text at stripped_chunk positions → equal_segs + stripped_segs
+# Step 1 of build_message_spans: split orig_text at stripped_chunk positions into equal_segs +
+# stripped_segs (equal_segs is only used for its LENGTH downstream, never emitted as an "equal"
+# span — see build_message_spans' own step-2 comment). Returns (equal_segs, stripped_segs, flags).
+def _split_stripped_segments(orig_text: str, stripped_chunks: list) -> tuple:
     equal_segs: list = []
     stripped_segs: list = []
+    flags: list = []
     pos = 0
     for chunk in stripped_chunks:
         chunk_pos = orig_text.find(chunk, pos)
@@ -93,37 +87,59 @@ def build_message_spans(orig_text: str, fwd_text: str, stripped_chunks: list, in
         stripped_segs.append(chunk)
         pos = chunk_pos + len(chunk)
     equal_segs.append(orig_text[pos:])
+    return equal_segs, stripped_segs, flags
 
-    # Step 2: emit stripped spans (yellow path — unchanged from orig-split)
+
+# Step 3 of build_message_spans: decompose fwd_text into injected vs equal spans using recorded
+# injected_chunks — green spans come ONLY from injected_chunks, no gap inference from fwd
+# positions. Returns (spans, flags).
+def _build_fwd_spans(fwd_text: str, injected_chunks: list) -> tuple:
+    spans: list = []
+    flags: list = []
+    _inj = injected_chunks or []
+    if not _inj:
+        if fwd_text:
+            spans.append(("equal", fwd_text))
+        return spans, flags
+    inj_positions = []
+    for chunk in _inj:
+        idx = fwd_text.find(chunk)
+        if idx != -1:
+            inj_positions.append((idx, idx + len(chunk), chunk))
+        else:
+            flags.append(f"INJECT_NOT_IN_FWD(len={len(chunk)}) '{chunk[:40]}'")
+    inj_positions.sort()
+    fwd_cursor = 0
+    for start, end, chunk in inj_positions:
+        if start > fwd_cursor:
+            spans.append(("equal", fwd_text[fwd_cursor:start]))
+        spans.append(("injected", chunk))
+        fwd_cursor = end
+    if fwd_cursor < len(fwd_text):
+        spans.append(("equal", fwd_text[fwd_cursor:]))
+    return spans, flags
+
+
+# Build ground-truth spans from exact stripped chunks recorded by apply_modification_rules
+def build_message_spans(orig_text: str, fwd_text: str, stripped_chunks: list, injected_chunks: list = None) -> tuple:
+    """Returns (spans, flags) — tags: 'equal' / 'stripped' / 'injected'."""
+    if not stripped_chunks:
+        if orig_text == fwd_text:
+            return [("equal", orig_text)] if orig_text else [], []
+        return [("equal", orig_text)], []
+
+    equal_segs, stripped_segs, flags = _split_stripped_segments(orig_text, stripped_chunks)
+
+    # Emit stripped spans (yellow path — unchanged from orig-split); equal_segs itself is never
+    # emitted as an "equal" span, only its length (via enumerate) drives the stripped-span count.
     spans: list = []
     for i, _eq in enumerate(equal_segs):
         if i > 0:
             spans.append(("stripped", stripped_segs[i - 1]))
 
-    # Step 3: decompose fwd_text into injected vs equal using recorded injected_chunks
-    # Green spans come ONLY from injected_chunks — no gap inference from fwd positions
-    _inj = injected_chunks or []
-    if not _inj:
-        if fwd_text:
-            spans.append(("equal", fwd_text))
-    else:
-        inj_positions = []
-        for chunk in _inj:
-            idx = fwd_text.find(chunk)
-            if idx != -1:
-                inj_positions.append((idx, idx + len(chunk), chunk))
-            else:
-                flags.append(f"INJECT_NOT_IN_FWD(len={len(chunk)}) '{chunk[:40]}'")
-        inj_positions.sort()
-        fwd_cursor = 0
-        for start, end, chunk in inj_positions:
-            if start > fwd_cursor:
-                spans.append(("equal", fwd_text[fwd_cursor:start]))
-            spans.append(("injected", chunk))
-            fwd_cursor = end
-        if fwd_cursor < len(fwd_text):
-            spans.append(("equal", fwd_text[fwd_cursor:]))
-
+    fwd_spans, fwd_flags = _build_fwd_spans(fwd_text, injected_chunks)
+    spans.extend(fwd_spans)
+    flags.extend(fwd_flags)
     return spans, flags
 
 

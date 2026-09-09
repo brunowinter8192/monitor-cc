@@ -28,7 +28,7 @@ os.environ.setdefault('MONITOR_CC_ROOT', os.path.join(os.path.dirname(__file__),
 
 # Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
 import importlib as _il
-_apply_sn_notice_strip = _il.import_module('src.proxy.message_passes')._apply_sn_notice_strip
+_apply_sn_notice_strip = _il.import_module('src.proxy.message_passes_simple')._apply_sn_notice_strip
 _sn_mod = _il.import_module('src.proxy.strip_sn_notice')
 _SN_NOTICE_PARAGRAPH = _sn_mod._SN_NOTICE_PARAGRAPH
 _SN_NOTICE_BLOCK = _sn_mod._SN_NOTICE_BLOCK

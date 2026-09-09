@@ -18,6 +18,39 @@ a pane-render or span-computation change.
 
 ## Modules
 
+### pipeline_byte_identity.py (153 LOC, new 2026-09, proxy milestone A — message_passes split + helper extraction)
+
+**Purpose:** Byte-identity regression harness for the full `src/proxy/` modification pipeline.
+Replays `apply_modification_rules` → `_strip_all_cache_control` → `_set_cache_breakpoints` →
+`_build_forwarded_delta` → `_build_stripped_injected_deltas` → `_build_errors_entries` over every
+request payload found in a bounded prefix (60 lines) of a real `*_original.jsonl`, for both
+`worker_context="main"` and `"worker:x"`, with timestamp-shaped fields normalized out (dict key
+ORDER stays part of the hashed signal — matches what the real `json.dumps(entry)` in `addon.py`
+actually writes to the JSONL), hashing the full output sequence (modified payload, modifications
+list, forwarded/stripped/injected delta entries, error entries) for every payload × every
+worker_context.
+**Reads:** One `*_original.jsonl` file — newest under `/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log/`
+by default, or `$PROXY_PIPELINE_BYTE_IDENTITY_LOG` when set.
+**Writes:** Nothing — stdout only (`source`, `payloads`, one `HASH: <hex>` line).
+**Run:** `./venv/bin/python dev/proxy/pipeline_byte_identity.py`
+**Calls out:** `src.proxy.rules` (`apply_modification_rules`), `src.proxy.cache`
+(`_strip_all_cache_control`, `_set_cache_breakpoints`), `src.proxy.logging`
+(`_build_forwarded_delta`, `_build_errors_entries`), `src.proxy.strip_inject_delta`
+(`_build_stripped_injected_deltas`), `src.proxy.message_summary` (`_summarize_message`)
+
+**`PROXY_PIPELINE_BYTE_IDENTITY_LOG` env var** overrides the source path — needed to pin a
+before/after comparison to the exact same bytes when the default (newest `*_original.jsonl` under
+the live MAIN checkout) can itself be THIS very session's own actively-growing log — same pitfall
+class as `dev/proxy_display/render_byte_identity.py`'s `RENDER_BYTE_IDENTITY_LOG_DIR` and
+`dev/workers/format_byte_identity.py`'s `WORKERS_BYTE_IDENTITY_JSONL` (see their own Gotchas).
+Snapshot a real `*_original.jsonl` to a fixed path once (a bounded prefix — the harness only reads
+the first 60 lines regardless), then point both runs at it via the env var.
+
+Status: hash `8bc6bde611342924989faf234f728969d31b2112c58d3ceb415254da9ec4d825` — identical before
+and after the milestone A split (60 real payloads × 2 worker_contexts, pinned snapshot).
+
+---
+
 ### proxy_bgcomplete_tests.py (173 LOC)
 
 **Purpose:** Smoke tests (B01–B04) for the task-notification wakeup-injection single-block fix —
@@ -45,7 +78,8 @@ reports genuine-strip vs. untouched-data-occurrence counts deduplicated per (fil
 `src/logs/` is gitignored per-worktree).
 **Writes:** `dev/proxy/md/replay_sn_notice_strip.md`.
 **Run:** `./venv/bin/python dev/proxy/replay_sn_notice_strip.py`
-**Calls out:** `src/proxy/message_passes.py` (`_apply_sn_notice_strip`), `src/proxy/strip_sn_notice.py`
+**Calls out:** `src/proxy/message_passes_simple.py` (`_apply_sn_notice_strip` — re-pointed 2026-09,
+helper-extraction milestone: moved out of `message_passes.py`), `src/proxy/strip_sn_notice.py`
 (`_SN_NOTICE_PARAGRAPH`, `_SN_NOTICE_BLOCK`).
 
 Status: runs clean — 0 byte-exact failures across every request entry in the current corpus.
@@ -118,7 +152,7 @@ Status: runs clean — 26/26 checks PASS on the current tree.
 
 ---
 
-### test_strip_fix.py (1570 LOC)
+### test_strip_fix.py (1575 LOC)
 
 **Purpose:** The largest suite in this directory (255 checks) for the template-based exact-match SR
 strip (Phase B). Five groups: (1) 8 core SR templates × 3 cases each — real strip at top level, FP
@@ -134,7 +168,8 @@ ONE `<system-reminder>` block is preserved whole (`fullmatch` correctly never ma
 task-notification, launch-ack, interrupt-marker, sn-notice and role-system strips run through the
 real per-message passes together, asserting neighbor content and exact real-corpus bodies survive;
 (3) "w31"–"w33" full-`apply_modification_rules`-chain tests (2026-09-04) for the `<system-reminder>`-
-wrapped TN wake-up shape (`_unwrap_full_sr_wrapper`, `message_passes.py`) — real corpus fixture
+wrapped TN wake-up shape (`_unwrap_full_sr_wrapper`, `message_passes_wakeup.py` since the 2026-09
+helper-extraction milestone) — real corpus fixture
 (`src/logs/dual_log/api_requests_opus_wise2627_1788533758_stripped.jsonl`, request_id
 `65c964d6-90c6-46ec-81de-190487d92e55`) asserts the wire content is exactly the bare wake-up text,
 plus regression pins for the two shapes that already worked (bare role='system' str, unwrapped
@@ -153,9 +188,12 @@ verbatim from the real corpus (see above) rather than read from the log file at 
 **Writes:** stdout PASS/FAIL lines only.
 **Run:** `python3 dev/proxy/test_strip_fix.py`
 **Calls out:** `src/proxy/strip_sr.py`, `src/proxy/payload_helpers.py`, `src/proxy/message_passes.py`
-(`_apply_first_pass`, `_apply_bg_exit_strip`, `_apply_sn_notice_strip`, `_apply_final_sr_pass`,
-`_apply_role_system_strip`), `src/proxy/rules.py` (`apply_modification_rules`, W31–W33 only, imported
-via `importlib` to satisfy `block_dev_imports_src`), `src/proxy/strip_bg_completed.py`,
+(`_apply_first_pass`, `_apply_final_sr_pass`, `_apply_role_system_strip`),
+`src/proxy/message_passes_simple.py` (`_apply_bg_exit_strip`, `_apply_sn_notice_strip`,
+`_apply_interrupt_marker_strip` — re-pointed 2026-09, helper-extraction milestone: moved out of
+`message_passes.py`, imported via a second `importlib.import_module` call alongside the
+pre-existing `message_passes` one), `src/proxy/rules.py` (`apply_modification_rules`, W31–W33 only,
+imported via `importlib` to satisfy `block_dev_imports_src`), `src/proxy/strip_bg_completed.py`,
 `src/proxy/strip_sn_notice.py`, `src/proxy/strip_bg_launch_ack.py`, `src/proxy/strip_interrupt_marker.py`,
 `src/proxy_display/parser.py` (`badge_flags`, `accumulate_dual_log`), `src/proxy_display/render_turn.py`
 (`_build_req_header_line`).

@@ -28,20 +28,25 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
+# Structural passes (own logic) stayed in message_passes.py; template passes (generic pass
+# runner + declarative spec) moved to message_passes_simple.py; the wake-up concern moved to
+# message_passes_wakeup.py (2026-09, helper-extraction milestone).
 from proxy.message_passes import (
     _apply_role_system_strip,
-    _apply_sn_notice_strip,
     _apply_first_pass,
     _apply_cumulative_sr_strips,
     _apply_final_sr_pass,
+)
+from proxy.message_passes_simple import (
+    _apply_sn_notice_strip,
     _apply_po_preview_strip,
     _apply_bg_exit_strip,
     _apply_bg_launch_ack_strip,
     _apply_hook_prefix_strip,
     _apply_git_lock_strip,
     _apply_bd_noise_strip,
-    _dedup_wakeup_blocks,
 )
+from proxy.message_passes_wakeup import _dedup_wakeup_blocks
 from proxy.rule_ops import _block_inner_text
 from proxy.diff_engine import compose_block
 from proxy.payload_helpers import _top_level_content_contains
