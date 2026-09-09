@@ -193,7 +193,7 @@ that module's own entry.
 
 ---
 
-### proxy_pane_shared.py (307 LOC, renamed + expanded from `worker_proxy_helpers.py` 2026-09 — see `process-docs/proxy_display/`)
+### proxy_pane_shared.py (309 LOC, renamed + expanded from `worker_proxy_helpers.py` 2026-09 — see `process-docs/proxy_display/`)
 
 **Purpose:** Mechanics shared by BOTH proxy panes (`pane.py` and `worker_proxy_pane.py`), parameterized by explicit arguments — never reads either pane's own globals. No module-level state, no `global` declarations.
 
