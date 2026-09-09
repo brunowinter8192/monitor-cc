@@ -1,0 +1,66 @@
+# P3 drag-select regression — 20260909_153036
+
+62/62 checks passed
+
+- [x] click before/at label end -> index 0
+- [x] click on first char -> boundary 0 (before it)
+- [x] click on 7th query col -> boundary 6 (before 'w' in 'hello world')
+- [x] click past the end -> clamped to len(query)
+- [x] empty query always maps to 0
+- [x] click on 'a' -> boundary 0 (before 'a')
+- [x] click on emoji's LEFT cell -> boundary 1 (before emoji)
+- [x] click on emoji's RIGHT cell -> boundary 2 (after emoji, before 'b')
+- [x] click on 'b' -> boundary 2 (same boundary, before 'b')
+- [x] click past 'b' -> boundary 3 (end of query)
+- [x] press returns True (redraw)
+- [x] press focuses the bar (existing behavior preserved)
+- [x] press arms dragging
+- [x] press sets anchor==end (empty range until motion)
+- [x] motion returns True (redraw)
+- [x] motion extends sel_end only, anchor unchanged
+- [x] release returns True (redraw)
+- [x] release disarms dragging
+- [x] release copies exactly the selected substring
+- [x] release KEEPS the selection range visible (finished, not cleared)
+- [x] release still returns True (state changed: dragging disarmed)
+- [x] NO clipboard call on a plain click (never clobber the real clipboard)
+- [x] selection state fully cleared after a plain click
+- [x] focus is still set (existing behavior)
+- [x] release with no armed drag returns False
+- [x] no clipboard call
+- [x] body-row press does not arm dragging
+- [x] motion after a body-row press falls through to generic hover (proxy_hover_row set)
+- [x] search selection untouched by a body-row drag
+- [x] selection exists before the elsewhere-click
+- [x] elsewhere-click reports a change (selection cleared)
+- [x] selection cleared after clicking elsewhere
+- [x] selection exists before typing
+- [x] typing reports a change
+- [x] selection cleared after typing
+- [x] query still gets the typed char appended (typing keeps operating at the end)
+- [x] selection is 'ello ' before backspace
+- [x] backspace reports a change
+- [x] query has the SELECTED substring removed (not just the last char)
+- [x] selection cleared after selection-delete
+- [x] no selection active
+- [x] backspace reports a change
+- [x] last char trimmed (regression: unchanged pre-existing behavior)
+- [x] kill-line reports a change
+- [x] query fully emptied
+- [x] selection is active before kill-line
+- [x] query fully emptied (not just the selected substring)
+- [x] selection also cleared
+- [x] '\x15'.isprintable() is False (confirms the fallthrough risk this branch prevents)
+- [x] query was actually cleared, not silently ignored
+- [x] matches survive plain backspace
+- [x] matches survive selection-delete backspace
+- [x] matches survive kill-line
+- [x] selection exists before Esc
+- [x] selection cleared after Esc
+- [x] query also cleared (existing Esc behavior)
+- [x] reverse-video ON code present
+- [x] reverse-video OFF code present
+- [x] the reversed span wraps exactly the selected substring
+- [x] no reverse-video codes when there is no selection
+- [x] selection exists before session change
+- [x] selection cleared on session change

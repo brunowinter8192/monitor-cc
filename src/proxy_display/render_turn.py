@@ -98,7 +98,8 @@ def _mark_search_lines(lines: list, query: str, is_current: bool) -> list:
 # search_query/is_search_current: when query is truthy, every rendered line containing it
 # (case-insensitive) gets a search-highlight BG marker — "exactly what this expanded view shows".
 def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalone: bool, prev_same, expand_states: dict, pane_width: int, search_query: str = '', is_search_current: bool = False) -> tuple:
-    from .render_sections import render_system_blocks, render_tools, render_fields_delta, render_beta, render_directives
+    from .render_sections import render_tools, render_fields_delta, render_beta, render_directives
+    from .render_sections_system import render_system_blocks
     from .render_messages import render_messages
     lines = []
     keys = []
