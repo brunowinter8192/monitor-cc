@@ -41,9 +41,9 @@ resolved log directory.
 `src.proxy_display.dual_log_accumulator` (`accumulate_dual_log`, `accumulate_original_tools`),
 `src.proxy_display.proxy_pane_shared` (`_attach_overlay_references`), `src.proxy_display.format`
 (`format_proxy_block`, `_is_standalone_entry`), `src.proxy_display.render_turn`
-(`_resolve_prev_same_family`), `src.proxy_display.render_sections` (`render_system_blocks`,
-`render_tools` — update the import path if either moves module again), `src.proxy_display.render_messages`
-(`render_messages`)
+(`_resolve_prev_same_family`), `src.proxy_display.render_sections` (`render_tools`),
+`src.proxy_display.render_sections_system` (`render_system_blocks` — update the import path if
+either function moves module again), `src.proxy_display.render_messages` (`render_messages`)
 
 ## Gotchas
 
