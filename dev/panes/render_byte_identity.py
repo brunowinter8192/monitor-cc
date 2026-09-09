@@ -10,8 +10,13 @@ warnings_pane.py / warnings_render.py concern split).
 (2) _format_warnings_pane over a synthetic tool_errors list (4 errors: mixed expanded/collapsed,
     one carrying _pre_strip_text/_stripped_chunks, one with a search match) at two pane widths,
     hashing (rendered_string, line_map).
-(3) format_cache_tracker output is already covered by the workers-pane byte-identity harness —
-    skipped here, per the milestone's own scope note.
+(3) format_cache_tracker (src.format.token_format) over a synthetic 1-turn/2-call list with
+    response_rid_map populated (rate-limit headers: utilization+reset for both 5h/7d windows,
+    plus a non-'allowed' status and a non-'allowed' overage), expand_states all True, a
+    copy_feedback entry with a future expiry, and a search query matching the turn/call — added
+    for the tokens-data-render-helpers milestone (2026-09) specifically to cover the `rl:`/warn
+    lines and the expanded content-blocks loop, which the workers-pane harness's own synthetic
+    fixtures never populate.
 
 Usage (from project root):
     ./venv/bin/python dev/panes/render_byte_identity.py
@@ -39,10 +44,11 @@ _CHUNK_SIZE = 40  # lines appended per incremental build_cache_turns() feed step
 
 
 def main():
-    build_cache_turns, format_warnings_pane = _import_panes()
+    build_cache_turns, format_warnings_pane, format_cache_tracker = _import_panes()
     digest = hashlib.sha256()
     _hash_cache_turns(digest, build_cache_turns)
     _hash_warnings_pane(digest, format_warnings_pane)
+    _hash_format_cache_tracker(digest, format_cache_tracker)
     print(f'HASH: {digest.hexdigest()}')
 
 
@@ -53,7 +59,8 @@ def main():
 def _import_panes():
     from src.panes.cache_turns import build_cache_turns
     from src.panes.warnings_render import _format_warnings_pane
-    return build_cache_turns, _format_warnings_pane
+    from src.format import format_cache_tracker
+    return build_cache_turns, _format_warnings_pane, format_cache_tracker
 
 
 # PANES_BYTE_IDENTITY_JSONL overrides the source session path — pin a real *.jsonl's frozen
@@ -140,6 +147,67 @@ def _hash_warnings_pane(digest, format_warnings_pane) -> None:
         digest.update(f'warnings|{pane_width}|'.encode())
         digest.update(output.encode())
         digest.update(json.dumps(line_map, sort_keys=True, default=str).encode())
+
+
+# 1 turn / 2 calls, both with request_ids matched in response_rid_map — call 0 carries every
+# usage-extras group (ttl/web/meta/iterations) plus rate-limit headers with a non-'allowed'
+# status AND a non-'allowed' overage (exercises both the `rl:` line and the YELLOW warn line);
+# call 1 has a plain content_blocks set (tool_use/thinking/text) with no rate-limit headers.
+# Fixed (not "now"-relative) reset epochs so the same-day/other-day _fmt_rl_reset_time branch
+# taken doesn't depend on which day this harness happens to run.
+def _make_rate_limit_turns() -> tuple:
+    call_0 = {
+        'cache_read': 5000, 'cache_creation': 200, 'direct': 0, 'output_tokens': 120,
+        'request_id': 'req-rl-1',
+        'cache_creation_ttl': {'ephemeral_5m_input_tokens': 100, 'ephemeral_1h_input_tokens': 50},
+        'server_tool_use': {'web_search_requests': 2, 'web_fetch_requests': 1},
+        'service_tier': 'standard', 'speed': 'fast', 'inference_geo': 'us',
+        'iterations': [{'n': 1}, {'n': 2}],
+        'content_blocks': [
+            {'type': 'tool_use', 'tool_name': 'Bash', 'preview': {'command': 'ls -la'}},
+            {'type': 'thinking', 'sig_chars': 9000},
+            {'type': 'text', 'preview': 'investigating the rate limit issue'},
+        ],
+    }
+    call_1 = {
+        'cache_read': 1200, 'cache_creation': 0, 'direct': 300, 'output_tokens': 40,
+        'request_id': 'req-rl-2',
+        'content_blocks': [{'type': 'text', 'preview': 'follow-up'}],
+    }
+    turn = {
+        'timestamp': '2026-04-21T10:00:00Z', 'prompt': 'investigate the rate limit issue',
+        'api_calls': [call_0, call_1],
+    }
+    response_rid_map = {
+        'req-rl-1': {
+            'anthropic-ratelimit-unified-5h-utilization': '0.82',
+            'anthropic-ratelimit-unified-5h-reset': '1893456000',   # 2030-01-01, fixed
+            'anthropic-ratelimit-unified-7d-utilization': '0.55',
+            'anthropic-ratelimit-unified-7d-reset': '1893542400',   # 2030-01-02, fixed
+            'anthropic-ratelimit-unified-status': 'rejected',
+            'anthropic-ratelimit-unified-overage-status': 'disabled',
+            'anthropic-ratelimit-unified-overage-disabled-reason': 'exceeded plan limit',
+        },
+    }
+    return [turn], response_rid_map
+
+
+def _hash_format_cache_tracker(digest, format_cache_tracker) -> None:
+    turns, response_rid_map = _make_rate_limit_turns()
+    expand_states = {(0, 0): True, (0, 1): True}
+    copy_feedback = {(0, 0): 9999999999.0}   # far-future expiry -> is_flash branch
+    nav_out = {}
+    for pane_width in (40, 100):
+        result = format_cache_tracker(
+            turns, expand_states=expand_states, pane_height=30, pane_width=pane_width,
+            scroll_offset=0, response_rid_map=response_rid_map, copy_feedback=copy_feedback,
+            search_match_set={(0, 0), ('turn', 0)}, search_current_key=(0, 0),
+            search_query='rate limit', nav_out=nav_out,
+        )
+        digest.update(f'cache_tracker|{pane_width}|'.encode())
+        digest.update(json.dumps(result, default=str, sort_keys=True).encode())
+        nav_out_str_keys = {str(k): v for k, v in nav_out.items()}
+        digest.update(json.dumps(nav_out_str_keys, default=str, sort_keys=True).encode())
 
 
 if __name__ == '__main__':

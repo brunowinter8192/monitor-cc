@@ -80,8 +80,8 @@ def _fmt_rl_reset_time(epoch_str: str) -> str:
     except (ValueError, OSError):
         return epoch_str
 
-# Render expanded detail lines for one API call; returns (lines, keys).
-def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
+# TTL split / web_search-fetch / tier-speed-geo / iteration-count lines; returns (lines, keys).
+def _render_usage_extras_lines(call: dict) -> tuple:
     lines = []
     keys = []
     ttl = call.get('cache_creation_ttl') or {}
@@ -110,34 +110,48 @@ def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
     if iters:
         lines.append(f"    {DIM}iter:{len(iters)}{SOFT_RESET}")
         keys.append(None)
+    return lines, keys
+
+# Rate-limit `rl:` line (5h/7d utilization+reset) + YELLOW warn line (non-allowed status/overage);
+# returns (lines, keys). No-op (empty) when the call's request_id has no response_rid_map entry.
+def _render_rate_limit_lines(call: dict, response_rid_map: dict) -> tuple:
+    lines = []
+    keys = []
     rid = call.get('request_id', '')
     rl_headers = (response_rid_map or {}).get(rid) if rid else None
-    if rl_headers:
-        u5h = rl_headers.get('anthropic-ratelimit-unified-5h-utilization', '')
-        r5h = rl_headers.get('anthropic-ratelimit-unified-5h-reset', '')
-        u7d = rl_headers.get('anthropic-ratelimit-unified-7d-utilization', '')
-        r7d = rl_headers.get('anthropic-ratelimit-unified-7d-reset', '')
-        parts_rl = []
-        if u5h:
-            pct5 = f"{float(u5h)*100:.0f}%"
-            parts_rl.append(f"5h:{pct5}→{_fmt_rl_reset_time(r5h)}" if r5h else f"5h:{pct5}")
-        if u7d:
-            pct7 = f"{float(u7d)*100:.0f}%"
-            parts_rl.append(f"7d:{pct7}→{_fmt_rl_reset_time(r7d)}" if r7d else f"7d:{pct7}")
-        if parts_rl:
-            lines.append(f"    {DIM}rl: {'  '.join(parts_rl)}{SOFT_RESET}")
-            keys.append(None)
-        status = rl_headers.get('anthropic-ratelimit-unified-status', 'allowed')
-        overage = rl_headers.get('anthropic-ratelimit-unified-overage-status', '')
-        warn_parts = []
-        if status != 'allowed':
-            warn_parts.append(f"status:{status}")
-        if overage and overage != 'allowed':
-            reason = rl_headers.get('anthropic-ratelimit-unified-overage-disabled-reason', '')
-            warn_parts.append(f"overage:{overage}" + (f"({reason})" if reason else ''))
-        if warn_parts:
-            lines.append(f"    {YELLOW}{'  '.join(warn_parts)}{SOFT_RESET}")
-            keys.append(None)
+    if not rl_headers:
+        return lines, keys
+    u5h = rl_headers.get('anthropic-ratelimit-unified-5h-utilization', '')
+    r5h = rl_headers.get('anthropic-ratelimit-unified-5h-reset', '')
+    u7d = rl_headers.get('anthropic-ratelimit-unified-7d-utilization', '')
+    r7d = rl_headers.get('anthropic-ratelimit-unified-7d-reset', '')
+    parts_rl = []
+    if u5h:
+        pct5 = f"{float(u5h)*100:.0f}%"
+        parts_rl.append(f"5h:{pct5}→{_fmt_rl_reset_time(r5h)}" if r5h else f"5h:{pct5}")
+    if u7d:
+        pct7 = f"{float(u7d)*100:.0f}%"
+        parts_rl.append(f"7d:{pct7}→{_fmt_rl_reset_time(r7d)}" if r7d else f"7d:{pct7}")
+    if parts_rl:
+        lines.append(f"    {DIM}rl: {'  '.join(parts_rl)}{SOFT_RESET}")
+        keys.append(None)
+    status = rl_headers.get('anthropic-ratelimit-unified-status', 'allowed')
+    overage = rl_headers.get('anthropic-ratelimit-unified-overage-status', '')
+    warn_parts = []
+    if status != 'allowed':
+        warn_parts.append(f"status:{status}")
+    if overage and overage != 'allowed':
+        reason = rl_headers.get('anthropic-ratelimit-unified-overage-disabled-reason', '')
+        warn_parts.append(f"overage:{overage}" + (f"({reason})" if reason else ''))
+    if warn_parts:
+        lines.append(f"    {YELLOW}{'  '.join(warn_parts)}{SOFT_RESET}")
+        keys.append(None)
+    return lines, keys
+
+# Content-blocks loop (tool_use / thinking / text); returns (lines, keys).
+def _render_content_block_lines(call: dict) -> tuple:
+    lines = []
+    keys = []
     for block in call.get('content_blocks', []):
         bt = block.get('type', '')
         if bt == 'tool_use':
@@ -167,6 +181,19 @@ def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
             else:
                 lines.append(f"    {WHITE}text{SOFT_RESET}")
             keys.append(None)
+    return lines, keys
+
+# Render expanded detail lines for one API call; returns (lines, keys).
+def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
+    lines = []
+    keys = []
+    for group_lines, group_keys in (
+        _render_usage_extras_lines(call),
+        _render_rate_limit_lines(call, response_rid_map),
+        _render_content_block_lines(call),
+    ):
+        lines.extend(group_lines)
+        keys.extend(group_keys)
     return lines, keys
 
 # Compute viewport slice, sticky header, and initial_parent_count; returns the 5-tuple.
@@ -224,6 +251,71 @@ def _format_turn_header_line(turn_idx: int, turn: dict, pane_width: int) -> str:
 # ('turn', idx) keys never reach cache_line_map/click handling (turn headers stay
 # non-interactive for clicks, exactly as before) and workers/worker_format.py's own reuse of
 # this function (which assumes every non-None key is a plain 2-int-tuple) is unaffected.
+# Per-call summary-line build: symbol + _format_cache_call + search-marker-wrap + copy-symbol.
+# Returns (call_line, key, marker) — marker is None unless this call is a search match; the
+# caller uses it to decide whether/how to highlight this call's expanded detail lines.
+def _render_call_line(turn_idx: int, call_idx: int, call: dict, is_expanded: bool, request_num: int,
+                      wide: bool, pane_width: int, search_match_set: Optional[set],
+                      search_current_key, copy_feedback: Optional[dict]) -> tuple:
+    cr = call.get('cache_read', 0)
+    cc = call.get('cache_creation', 0)
+    d = call.get('direct', 0)
+    out = call.get('output_tokens', 0)
+    key = (turn_idx, call_idx)
+    symbol = '▼' if is_expanded else '▶'
+    has_thinking, sig_chars = _call_thinking_meta(call)
+    call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking, sig_chars)
+    call_is_match = bool(search_match_set) and key in search_match_set
+    marker = None
+    if call_is_match:
+        marker = SEARCH_CURRENT_BG if key == search_current_key else SEARCH_MATCH_BG
+        call_line = f"{marker}{call_line}{_BG_RESTORE_SENTINEL}"
+    if copy_feedback is not None:
+        is_flash = copy_feedback.get(key, 0) > time.time()
+        call_line = append_copy_symbol(call_line, '✓' if is_flash else '⎘', pane_width)
+    return call_line, key, marker
+
+# Appends one turn's header + all its call lines + trailing blank line directly into the
+# caller's all_lines/line_keys (in-place — same contract nav_out already uses, keeps nav_out's
+# absolute line-index bookkeeping correct without threading an offset). Returns the updated
+# request_num (a running counter across turns).
+def _render_turn_lines(turn_idx: int, turn: dict, expand_states: dict, pane_width: int, wide: bool,
+                       request_num: int, response_rid_map: dict, copy_feedback: Optional[dict],
+                       search_match_set: Optional[set], search_current_key, search_query: str,
+                       nav_out: Optional[dict], all_lines: list, line_keys: list) -> int:
+    turn_key = ('turn', turn_idx)
+    turn_line = _format_turn_header_line(turn_idx, turn, pane_width)
+    turn_is_match = bool(search_match_set) and turn_key in search_match_set
+    if turn_is_match:
+        marker = SEARCH_CURRENT_BG if turn_key == search_current_key else SEARCH_MATCH_BG
+        turn_line = f"{marker}{turn_line}{_BG_RESTORE_SENTINEL}"
+    if nav_out is not None:
+        nav_out[turn_key] = len(all_lines)
+    all_lines.append(turn_line)
+    line_keys.append(None)
+
+    api_calls = turn.get('api_calls', [])
+    for call_idx, call in enumerate(api_calls):
+        is_expanded = expand_states.get((turn_idx, call_idx), False)
+        request_num += 1
+        call_line, key, marker = _render_call_line(
+            turn_idx, call_idx, call, is_expanded, request_num, wide, pane_width,
+            search_match_set, search_current_key, copy_feedback)
+        if nav_out is not None:
+            nav_out[key] = len(all_lines)
+        all_lines.append(call_line)
+        line_keys.append(key)
+        if is_expanded:
+            exp_lines, exp_keys = _render_expanded_call_lines(call, response_rid_map)
+            if marker is not None and search_query:
+                exp_lines = [highlight_query_in_line(l, search_query, marker, _BG_RESTORE_SENTINEL) for l in exp_lines]
+            all_lines.extend(exp_lines)
+            line_keys.extend(exp_keys)
+
+    all_lines.append('')
+    line_keys.append(None)
+    return request_num
+
 def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: int = 50, pane_width: int = 80, scroll_offset: int = 0, response_rid_map: dict = None, copy_feedback: Optional[dict] = None, search_match_set: Optional[set] = None, search_current_key=None, search_query: str = '', nav_out: Optional[dict] = None) -> tuple:
     if not turns:
         return [f"{YELLOW}No turns yet{SOFT_RESET}"], [None], None, 0, 0
@@ -245,50 +337,10 @@ def format_cache_tracker(turns: list, expand_states: dict = None, pane_height: i
         line_keys.append(None)
 
     for turn_idx, turn in enumerate(turns):
-        turn_key = ('turn', turn_idx)
-        turn_line = _format_turn_header_line(turn_idx, turn, pane_width)
-        turn_is_match = bool(search_match_set) and turn_key in search_match_set
-        if turn_is_match:
-            marker = SEARCH_CURRENT_BG if turn_key == search_current_key else SEARCH_MATCH_BG
-            turn_line = f"{marker}{turn_line}{_BG_RESTORE_SENTINEL}"
-        if nav_out is not None:
-            nav_out[turn_key] = len(all_lines)
-        all_lines.append(turn_line)
-        line_keys.append(None)
-
-        api_calls = turn.get('api_calls', [])
-        for call_idx, call in enumerate(api_calls):
-            cr = call.get('cache_read', 0)
-            cc = call.get('cache_creation', 0)
-            d = call.get('direct', 0)
-            out = call.get('output_tokens', 0)
-            key = (turn_idx, call_idx)
-            is_expanded = expand_states.get(key, False)
-            symbol = '▼' if is_expanded else '▶'
-            request_num += 1
-            has_thinking, sig_chars = _call_thinking_meta(call)
-            call_line = _format_cache_call(symbol, cr, cc, d, out, wide, request_num, has_thinking, sig_chars)
-            call_is_match = bool(search_match_set) and key in search_match_set
-            marker = None
-            if call_is_match:
-                marker = SEARCH_CURRENT_BG if key == search_current_key else SEARCH_MATCH_BG
-                call_line = f"{marker}{call_line}{_BG_RESTORE_SENTINEL}"
-            if copy_feedback is not None:
-                is_flash = copy_feedback.get(key, 0) > time.time()
-                call_line = append_copy_symbol(call_line, '✓' if is_flash else '⎘', pane_width)
-            if nav_out is not None:
-                nav_out[key] = len(all_lines)
-            all_lines.append(call_line)
-            line_keys.append(key)
-            if is_expanded:
-                exp_lines, exp_keys = _render_expanded_call_lines(call, response_rid_map)
-                if call_is_match and search_query:
-                    exp_lines = [highlight_query_in_line(l, search_query, marker, _BG_RESTORE_SENTINEL) for l in exp_lines]
-                all_lines.extend(exp_lines)
-                line_keys.extend(exp_keys)
-
-        all_lines.append('')
-        line_keys.append(None)
+        request_num = _render_turn_lines(
+            turn_idx, turn, expand_states, pane_width, wide, request_num, response_rid_map,
+            copy_feedback, search_match_set, search_current_key, search_query, nav_out,
+            all_lines, line_keys)
 
     while all_lines and all_lines[-1] == '':
         all_lines.pop()
