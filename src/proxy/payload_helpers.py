@@ -192,6 +192,33 @@ def _top_level_content_contains(content, substring: str) -> bool:
 # in shape (only the predicate and replace_fn differed) — verified before folding. predicate(text)
 # -> bool; replace_fn(text) -> new_text. Returns (new_content, removed_chunks) — removed_chunks:
 # original text of every block/sub-block that matched.
+# Process one tool_result block for _walk_replace_marker_blocks: str content, or list content
+# with nested text sub-blocks. Appends matched originals to removed (in place); returns the
+# (possibly rewritten) block.
+def _walk_tool_result_inner(block, predicate, replace_fn, removed):
+    inner = block.get('content', '')
+    if isinstance(inner, str):
+        if predicate(inner):
+            removed.append(inner)
+            return {**block, 'content': replace_fn(inner)}
+        return block
+    if isinstance(inner, list):
+        new_sub = []
+        sub_changed = False
+        for sub in inner:
+            if isinstance(sub, dict) and sub.get('type') == 'text':
+                text = sub.get('text', '')
+                if predicate(text):
+                    removed.append(text)
+                    new_sub.append({**sub, 'text': replace_fn(text)})
+                    sub_changed = True
+                else:
+                    new_sub.append(sub)
+            else:
+                new_sub.append(sub)
+        return {**block, 'content': new_sub} if sub_changed else block
+    return block
+
 def _walk_replace_marker_blocks(content, predicate, replace_fn):
     removed = []
     if isinstance(content, str):
@@ -214,30 +241,7 @@ def _walk_replace_marker_blocks(content, predicate, replace_fn):
                 else:
                     result.append(block)
             elif btype == 'tool_result':
-                inner = block.get('content', '')
-                if isinstance(inner, str):
-                    if predicate(inner):
-                        removed.append(inner)
-                        result.append({**block, 'content': replace_fn(inner)})
-                    else:
-                        result.append(block)
-                elif isinstance(inner, list):
-                    new_sub = []
-                    sub_changed = False
-                    for sub in inner:
-                        if isinstance(sub, dict) and sub.get('type') == 'text':
-                            text = sub.get('text', '')
-                            if predicate(text):
-                                removed.append(text)
-                                new_sub.append({**sub, 'text': replace_fn(text)})
-                                sub_changed = True
-                            else:
-                                new_sub.append(sub)
-                        else:
-                            new_sub.append(sub)
-                    result.append({**block, 'content': new_sub} if sub_changed else block)
-                else:
-                    result.append(block)
+                result.append(_walk_tool_result_inner(block, predicate, replace_fn, removed))
             else:
                 result.append(block)
         return result, removed
