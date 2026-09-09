@@ -256,8 +256,11 @@ def _run_pane_search(state: search_bar.SearchState, entries: list, expand_states
 # The scroll-wheel / row-1-drag-motion / generic-hover button classes, identical in shape across
 # both proxy panes' `_handle_*_mouse` (folded together 2026-09) — parameterized over the
 # caller's own SearchState/label/current scroll+hover values. Returns
-# (handled, new_scroll_offset, new_hover_row); a False `handled` means none of these four
-# button classes matched, so the caller's OWN button==0 body-click handling still applies.
+# (handled, new_scroll_offset, new_hover_row). `handled` is False either when none of these four
+# button classes matched (caller's OWN button==0 body-click handling still applies) OR when the
+# button==32 drag-motion case matched but search_bar.handle_search_mouse_motion itself reported
+# a no-op motion — its own bool return is passed straight through, not hardcoded True, so a
+# motion that changed nothing still does not trigger a redraw (matches both panes' pre-split behavior).
 def _handle_scroll_or_hover(button: int, col: int, row: int, state: search_bar.SearchState,
                              label: str, scroll_offset: int, hover_row) -> tuple:
     if button == 64:
@@ -265,8 +268,7 @@ def _handle_scroll_or_hover(button: int, col: int, row: int, state: search_bar.S
     if button == 65:
         return True, max(0, scroll_offset - 3), hover_row
     if button == 32 and state.dragging:  # motion with left button held (0+32), row-1 drag active
-        search_bar.handle_search_mouse_motion(state, col, label)
-        return True, scroll_offset, hover_row
+        return search_bar.handle_search_mouse_motion(state, col, label), scroll_offset, hover_row
     if button >= 32:
         return True, scroll_offset, row
     return False, scroll_offset, hover_row
