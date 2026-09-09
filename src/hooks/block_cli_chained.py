@@ -9,25 +9,10 @@ from _shell_strip import _strip_non_shell_active
 from _fire_log import log_fire
 from _known_cli import resolve_cli_segment, is_protected_segment, tool_sub_name
 
-# Chain-level separators: && || ; newline and space-bounded & (background). Deliberately
-# EXCLUDES `|` — chaining with any of these is always fine, for any CLI, with any other
-# command (no allowlist of chain segments). Order matters — `||` before the (absent)
-# single-`&` form matters only for keeping `&&`/`&>`/`2>&1` out of the bare-`&` match.
 _CHAIN_SEPARATOR_RE = re.compile(r'&&|\|\||;|\n|\s&(?=\s|$)')
-# Pipe-stage separator, applied WITHIN one chain segment only (so a `||` already
-# consumed as a chain separator never reaches this split).
 _PIPE_SEPARATOR_RE = re.compile(r'\|')
-# Redirect operators that police a PROTECTED subcommand (rule 2): `>`, `>>`, `2>&1`,
-# `&>`, `<`. Deliberately EXCLUDES bare `2>` (stderr-only redirect, e.g. `2>/dev/null`
-# noise suppression) — it never touches the actual bounded output, so it does not cut
-# anything short. `(?<![0-9])` on bare `>` excludes it being reached as part of `2>`;
-# `(?!>)` keeps `>>` matching as one token; `<(?!<)` excludes heredoc `<<MARKER`.
 _REDIRECT_RE = re.compile(r'>>|2>&1|&>|(?<![0-9])>(?!>)|<(?!<)')
-# Output-redirect-target extraction (rule 3): only the forms that write a FILE a later
-# segment could read back — `>`, `>>`, `&>`. `2>&1`/`<` carry no filename to track.
 _REDIRECT_TARGET_RE = re.compile(r'(?:>>|&>|(?<![0-9])>(?!>))\s*([^\s;&|<>]+)')
-# Tools that partition/consume file content — reading a CLI's own redirected file back
-# with one of these in the SAME Bash call is rule 3's violation.
 _READBACK_TOOLS = {"head", "tail", "cat", "sed", "awk", "grep", "less", "more", "wc"}
 _FIRST_TOKEN_RE = re.compile(r'^(\S+)')
 
@@ -49,12 +34,6 @@ _RULE3_MESSAGE = (
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; exit 2 + stderr on any of 3 rules: (1) a known-CLI
-# segment piped into anything, (2) a redirect on a PROTECTED subcommand, (3) a
-# same-call readback (head/tail/cat/sed/awk/grep/less/more/wc) of a file a CLI segment
-# in that same call redirected into. Nothing else blocks — chaining with `;`/`&&` is
-# always fine, for any CLI, with any other command. Exits 0 on any parse error
-# (fail-open) or when no segment invokes a known CLI at all.
 def block_cli_chained_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
@@ -72,7 +51,6 @@ def block_cli_chained_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
@@ -81,8 +59,6 @@ def _parse_command():
     except Exception:
         return None, None
 
-# Split `text` on `sep_re`, returning (start, end) spans of the pieces BETWEEN matches
-# (position-preserving — no content is discarded, only spans are computed).
 def _split_spans(text: str, sep_re) -> list:
     spans = []
     pos = 0
@@ -92,7 +68,6 @@ def _split_spans(text: str, sep_re) -> list:
     spans.append((pos, len(text)))
     return spans
 
-# Trim a (start, end) span to exclude leading/trailing whitespace in `text`
 def _trim_span(text: str, s: int, e: int) -> tuple:
     while s < e and text[s].isspace():
         s += 1
@@ -100,9 +75,6 @@ def _trim_span(text: str, s: int, e: int) -> tuple:
         e -= 1
     return s, e
 
-# Build the list of chain segments: each is {'stripped', 'original', 'stage_spans'} —
-# 'stage_spans' are (start, end) offsets INTO the chain segment's own stripped/original
-# text for each `|`-separated pipe stage (length 1 when the segment carries no pipe).
 def _build_chain_segments(stripped: str, original: str) -> list:
     segments = []
     for s, e in _split_spans(stripped, _CHAIN_SEPARATOR_RE):
@@ -123,17 +95,12 @@ def _build_chain_segments(stripped: str, original: str) -> list:
         })
     return segments
 
-# True if any pipe stage in this chain segment is a known-CLI invocation, by wrapper
-# name or by the bare-interpreter `cli.py` form (resolved against `command_context`,
-# the whole shell-stripped Bash command).
 def _segment_stages_with_cli(segment: dict, command_context: str) -> bool:
     for s, e in segment['stage_spans']:
         if resolve_cli_segment(segment['stripped'][s:e], command_context) is not None:
             return True
     return False
 
-# Rule 1: a known-CLI stage that is NOT the last stage of its pipe run — its output
-# gets piped into something. Blocks with the WHOLE chain segment as evidence.
 def _check_rule1_pipe(chain_segments: list, command_context: str, command: str, session_id) -> None:
     for segment in chain_segments:
         stages = segment['stage_spans']
@@ -143,8 +110,6 @@ def _check_rule1_pipe(chain_segments: list, command_context: str, command: str, 
                 blocked = segment['original'].strip()
                 _block(_RULE1_MESSAGE.format(segment=blocked), command, session_id)
 
-# Rule 2: a known-CLI stage in the LAST position of its pipe run (no pipe follows it)
-# that invokes a PROTECTED subcommand and carries a redirect operator.
 def _check_rule2_redirect(chain_segments: list, command_context: str, command: str, session_id) -> None:
     for segment in chain_segments:
         stages = segment['stage_spans']
@@ -160,10 +125,6 @@ def _check_rule2_redirect(chain_segments: list, command_context: str, command: s
             tool_sub = tool_sub_name(match.group('tool'), match.group('sub'))
             _block(_RULE2_MESSAGE.format(tool_sub=tool_sub, segment=blocked), command, session_id)
 
-# Rule 3: any stage (readback tool) referencing, in the SAME call, a file that a
-# known-CLI stage's own output redirect wrote to (protected or not — an unprotected
-# subcommand's redirect stays allowed alone, but reading it back in the same call is
-# the truncation risk this rule targets).
 def _check_rule3_readback(chain_segments: list, command_context: str, command: str, session_id) -> None:
     redirected_files = set()
     for segment in chain_segments:
@@ -191,12 +152,10 @@ def _check_rule3_readback(chain_segments: list, command_context: str, command: s
                     blocked = stage_original.strip()
                     _block(_RULE3_MESSAGE.format(segment=blocked), command, session_id)
 
-# First whitespace-delimited token of `text`, or "" if empty
 def _first_token(text: str) -> str:
     m = _FIRST_TOKEN_RE.match(text)
     return m.group(1) if m else ""
 
-# Print message to stderr, log the fire, exit 2
 def _block(message: str, command: str, session_id) -> None:
     print(message, file=sys.stderr, end="")
     log_fire("block_cli_chained", "block", "Bash", command,

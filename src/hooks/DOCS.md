@@ -18,7 +18,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ## Modules
 
-### _shell_strip.py (194 LOC)
+### _shell_strip.py (181 LOC)
 
 **Purpose:** Shared utility — provides `_strip_non_shell_active(command)`, the position-preserving shell-region stripper used by twenty-three Bash-scanning hooks. Replaces heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes with spaces of the same length before pattern matching runs. Command substitutions `$(...)` and backtick expressions are kept shell-active. Fail-open: any parse error returns the original command unchanged (never silently allows a blocked pattern due to a strip failure). `_strip_impl` is decomposed into 6 private scan helpers (`_scan_heredoc`, `_scan_ansi_c_quote`, `_scan_cmd_subst`, `_scan_backtick`, `_scan_single_quote`, `_scan_double_quote`), each returning `(fragment, new_i)`.
 **Reads:** n/a (pure logic module, not a standalone script).
@@ -28,7 +28,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### _known_cli.py (166 LOC, rewritten for `block_cli_chained.py` — 2026-09 chain-hook unification; interpreter-path-bypass fix + stale-subcommand-name fix — 2026-09-06)
+### _known_cli.py (81 LOC, rewritten for `block_cli_chained.py` — 2026-09 chain-hook unification; interpreter-path-bypass fix + stale-subcommand-name fix — 2026-09-06)
 
 **Purpose:** Shared utility — `PROTECTED_SUBCOMMANDS`, a `{tool: set-of-subcommands-or-None}` table for the 8 CLIs `block_cli_chained.py` polices (`gh-cli`, `rag-cli`, `worker-cli`, `reddit-cli`, `websearch`, `linkedin`, `penny-cli`, `duallog`); `None` means every subcommand of that tool is protected (`linkedin`, `penny-cli`, `duallog` — no unprotected subset exists for any of the three). Plus `match_known_cli_segment(segment)` (matches by WRAPPER name only — returns the `re.Match` with named groups `tool`/`sub`, or `None`), `match_interpreter_cli_segment(segment, command_context)` (matches a bare `<python> cli.py <sub>` interpreter invocation, resolving WHICH tool via a project-directory marker found in `command_context`), `resolve_cli_segment(segment, command_context)` (tries the wrapper form first, falls back to the interpreter form — the one function `block_cli_chained.py` actually calls), `is_known_cli_segment(segment)` (wrapper-name only, currently unreferenced), `is_protected_segment(match)` (takes an already-resolved match object, not a string — protected subcommand, or a `None`-tool where every invocation counts), and `tool_sub_name(tool, sub)` (block-message naming, drops `sub` when it is actually a flag like `--help`). **Superseded the old `is_allowed_chain_segment`/`is_guard_segment`/`is_echo_segment`/`is_loop_scaffold_segment` predicates** (2026-08/2026-09 chained-CLI hook family) — those existed to decide whether a "foreign" chain segment was actually fine; the 2026-09 rule rewrite dropped the whole foreign-segment concept (chaining with `;`/`&&` is unconditionally fine for any CLI, with any other command — "no allowlist of chain segments"), so the predicates lost their only consumers and were deleted rather than kept unreachable.
 
@@ -40,7 +40,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### _fire_log.py (48 LOC)
+### _fire_log.py (34 LOC)
 
 **Purpose:** Shared utility — provides `log_fire(hook_name, decision, tool_name, command, reason=None, rewritten=None, session_id=None)`, the single fire-event appender used by all active hooks. Appends one JSON line per fire to `src/logs/hook_firing.jsonl`. For `decision="block"` and `decision="feedback"`: includes `reason` field (the message text), omits `rewritten`. For `decision="rewrite"`: includes `rewritten` field (new command/path), omits `reason`. Fail-silent: any exception in the write path is swallowed so a logging failure never breaks the hook itself. Log path overridable via `MONITOR_CC_HOOK_FIRING_LOG` env var (used for test isolation in `dev/hook_smoke/`).
 **Reads:** n/a (pure logic module, not a standalone script).
@@ -50,7 +50,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_dangerous_kill.py (91 LOC)
+### block_dangerous_kill.py (71 LOC)
 
 
 **Purpose:** PreToolUse hook — blocks `pkill -f <pattern>` and `ps|grep|kill` pipe chains. Both patterns target processes via text substring matching against the full cmdline, which routinely kills unintended processes (CC worker sessions whose prompt text contains the matched string). Exits 2 + stderr with concrete safer alternatives. Exits 0 on any parse/internal error (fail-open).
@@ -77,7 +77,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### rewrite_chained_sleep.py (143 LOC)
+### rewrite_chained_sleep.py (133 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — **rewrites** chained `sleep N` by stripping it when the immediately-preceding segment is in `_TRIVIAL` (single-token read-only-fast commands) or `_TRIVIAL_PAIRS` (two-token exact pairs for safe subcommands of multi-verb CLIs). Sleep-first chains, load-bearing predecessors, and loop-body sleeps are passed through unchanged (no-op). Exits 0 in all cases (fail-open rewrite hook — never blocks). Uses `_shell_strip._strip_non_shell_active` for position-preserving heredoc + quote removal before tokenizing.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -105,7 +105,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_search_subreddits_limit.py (54 LOC)
+### block_search_subreddits_limit.py (50 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `reddit-cli search_subreddits` and `cli.py search_subreddits` invocations that carry a `--limit` flag. Subreddit discovery must return the full result set; capping it prematurely hides candidates. Exits 2 + stderr. Exits 0 on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -119,7 +119,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_unauthorized_background.py (78 LOC, Milestone 2 worker-cli wait exemption 2026-08)
+### block_unauthorized_background.py (59 LOC, Milestone 2 worker-cli wait exemption 2026-08)
 
 **Purpose:** PreToolUse hook — **silently rewrites** any Bash command dispatched with `run_in_background=true` that is neither a sleep-only timer habit NOR the canonical `worker-cli wait`, flipping `run_in_background` to `false` via `hookSpecificOutput.updatedInput`. Two exempt shapes: (1) sleep-only commands (bare `sleep N` OR `sleep N && echo <anything>`) — kept exempt even though `rewrite_background_sleep.py` normalizes them, so this hook stays correct regardless of hook execution order; (2) `worker-cli wait` with optional `project_path`/`--timeout N` args in any combination — the canonical pull-based wake-up command (iterative-dev plugin `worker-cli wait`) that raw sleep-timer habits get rewritten to. All other background commands are foreground-forced without exception. Exits 0 in all cases (fail-open rewrite hook — never blocks). Logs `decision="rewrite"` with `rewritten="run_in_background: true → false"`.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
@@ -141,7 +141,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### rewrite_background_sleep.py (88 LOC, Milestone 2 rewrite target change 2026-08; orchestrator-only guard 2026-08 Milestone 3b)
+### rewrite_background_sleep.py (65 LOC, Milestone 2 rewrite target change 2026-08; orchestrator-only guard 2026-08 Milestone 3b)
 
 **Purpose:** PreToolUse hook (Bash) — **rewrites** ANY sleep-only background command to the canonical `worker-cli wait` (iterative-dev plugin — blocks in-process until all workers of the project go stably idle, or `--timeout`; its own exit IS the wake-up, replacing the old push-based raw-sleep + menubar-kill mechanism). Matches bare `sleep N` OR `sleep N && echo <anything>` (regex `_SLEEP_ONLY_BG`). No "already canonical" exemption needed: `_SLEEP_ONLY_BG` requires a literal `sleep` token, which can never match the target string `"worker-cli wait"` — every sleep-only match, including the OLD canonical `sleep 3300 && echo done`, is now a stale habit and gets rewritten. Pairs with `block_unauthorized_background.py`, which exempts both sleep-only commands AND `worker-cli wait` forms from foreground-forcing (that hook stays global — it only ever flips `run_in_background`, never the command text, so a worker's `sleep N` staying `sleep N` in the background is already harmless there). **Orchestrator-only (2026-08, live incident, `_in_worktree()`/`_WORKTREE_FRAGMENT`, same convention the removed `block_timer_*` hooks used):** skipped entirely when the hook's own cwd is inside a worktree — a worker's own background sleep (e.g. waiting on its own long test run) must never get promoted to `worker-cli wait`, since run from the worker's worktree cwd that command resolves the worktree path as the project, finds no workers there, and blocks up to the full default timeout; that stray wait becomes a live child under the worker's own `claude` process, which then makes the ORCHESTRATOR's own `worker-cli wait` see a live background task and refuse to finish too — one misfire cascading into two stuck waits. `_in_worktree()` fails open TOWARD "skip rewrite" on any `os.getcwd()` failure (deliberately the opposite fail-open direction from most hooks here — a missed rewrite for the orchestrator is harmless, rewriting a worker's sleep on an unreliable cwd read is the exact incident being prevented). Exits 0 in all cases (fail-open rewrite hook — never blocks).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`); `os.getcwd()` (worktree exemption).
@@ -164,7 +164,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_broad_grep.py (104 LOC)
+### block_broad_grep.py (87 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks recursive `grep -r`/`-R` calls on directories when no `--include=` scope is present. Unrestricted recursive grep matches JSONL logs, node_modules, and vendored content, producing 10MB+ output that floods the context window. Exits 2 + stderr with fix options. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -189,7 +189,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_broad_find.py (130 LOC)
+### block_broad_find.py (113 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `find` invocations over broad/unbounded search roots when no `-maxdepth N` predicate is present and output is not immediately `| head`-bounded. Broad roots: `~`, `~/`, `$HOME`, `/`, and the `.claude` subtree (`~/.claude` or any path under it). A `find ~/.claude -type d -iname '*searxng*'` without depth or head limits traverses hundreds of session/worktree dirs and floods context (~80 results — the trigger incident). Exits 2 + stderr with three escapes. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -221,7 +221,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_cli_chained.py (208 LOC, 2026-09 chain-hook unification; interpreter-path-bypass fix — 2026-09-06)
+### block_cli_chained.py (167 LOC, 2026-09 chain-hook unification; interpreter-path-bypass fix — 2026-09-06)
 
 **Purpose:** PreToolUse hook (Bash) — replaces the 7 per-CLI chained/isolated hooks this family used to carry (`block_gh_cli_chained.py`, `block_rag_cli_chained.py`, `block_worker_cli_read_chained.py`, `block_websearch_scrape_chained.py`, `block_duallog_chained.py`, `block_linkedin_cli_isolated.py`, `block_penny_cli_chained.py`) with one hook enforcing one rule set, driven by `_known_cli.py`'s `PROTECTED_SUBCOMMANDS` table, for all 8 CLIs (`gh-cli`, `rag-cli`, `worker-cli`, `reddit-cli`, `websearch`, `linkedin`, `penny-cli`, `duallog`). **The old hooks enforced MORE than the actual rule:** they blocked any "foreign" chain segment (an allowlist of known CLIs, cd guards, echo, loop scaffolding) even when nothing about that segment touched the CLI's output — measured on `src/logs/hook_firing.jsonl`, 115 historical blocks by the 7 old hooks, of which 66 turned out to be non-truncating chains under the actual rule (see the replay probe below). **The actual rule, exactly 3 conditions, nothing else:** chaining any CLI with `;`/`&&`/`||`/newline/background-`&` and ANY other command is always fine — there is no allowlist of chain segments. What blocks: (1) a known-CLI segment (any of the 8, any subcommand) piped into anything — pipes are checked structurally by splitting each chain segment into `|`-stages and requiring a CLI-matching stage to be the LAST stage of its pipe run; (2) a redirect (`>`, `>>`, `2>&1`, `&>`, `<`) on a segment invoking a PROTECTED subcommand (`is_protected_segment`) — deliberately excludes bare `2>` (stderr-only suppression, e.g. `2>/dev/null`, never touches the real output); (3) a same-Bash-call readback of a file ANY CLI segment (protected or not) redirected into, via `head`/`tail`/`cat`/`sed`/`awk`/`grep`/`less`/`more`/`wc` — tracked by extracting every CLI stage's own `>`/`>>`/`&>` target file, then checking every readback-tool stage's text for that target as a substring. Each rule fires its own single-sentence message naming the variant plus the offending segment (`"Blocked segment: <text>"`) — no CLI lists, no history, matching the milestone's exact wording. Every stage-matching call goes through `_known_cli.resolve_cli_segment(stage_text, command_context)` — `command_context` is the whole shell-stripped Bash command, threaded through `_segment_stages_with_cli`/`_check_rule1_pipe`/`_check_rule2_redirect`/`_check_rule3_readback` — so all 3 rules apply identically whether a CLI is invoked by wrapper name or by the bare-interpreter `cli.py` form (see `_known_cli.py`'s Gotchas). Exits 2 + stderr on the first rule violation found (rule 1, then rule 2, then rule 3, in that order across all chain segments). Exits 0 on any parse error (fail-open) or when no segment invokes any of the 8 known CLIs at all.
 
@@ -256,7 +256,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_gh_cli_local_path.py (108 LOC, 2026-08-07)
+### block_gh_cli_local_path.py (90 LOC, 2026-08-07)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `gh-cli get_file_content`/`gh-cli download_files` when a positional path argument (the one(s) after `owner`/`repo`) starts with `/` or `~` — a local filesystem path where a repo-relative path is required. Observed failure class: agents pass Claude Code tool-result paths (`~/.claude/projects/.../tool-results/...`) or other absolute/`~` paths as `get_file_content`'s `path`; the GitHub API then 404s/validation-errors. Same philosophy as `block_gh_cli_chained.py` — the skill prose that used to teach this is being removed, the hook teaches at block time instead. Tokenizes the matched segment via `shlex.split` (quote-preserved, sliced from the ORIGINAL command using indices computed against the `_strip_non_shell_active`-stripped copy — same position-preserving trick `block_rag_cli_document_repeat.py` uses), walks tokens classifying value-consuming flags vs positionals: `get_file_content`'s `--offset`/`--limit` and `download_files`'s `--dest` each consume their own value token, everything else is a positional. **False-positive trap solved:** `download_files --dest DIR` — `DIR` is a LOCAL directory by design (where downloaded files land), explicitly excluded from the positional-path check via the per-subcommand `_VALUE_FLAGS` set, regardless of whether `--dest` appears before or after the repo-path positionals. Only positions `[2:]` (after owner/repo) are checked — `get_file_content` has exactly one (`path`), `download_files` has one-or-more (`paths`, `nargs="+"` in the real CLI). Fail-open on any parse/tokenize error.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_input: {command}}`).
@@ -268,7 +268,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_rag_cli_index_isolated.py (98 LOC)
+### block_rag_cli_index_isolated.py (75 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks any `rag-cli index` call that shares the Bash invocation with anything other than shell variable assignments and a `cd`, or that carries any command/process substitution anywhere. `rag-cli index` runs for minutes; `block_rag_cli_chained.py`'s trailing-only rule misses noise placed BEFORE the index segment (e.g. `tail <log> \n echo ... \n cd ... && rag-cli index ...` — a poll-then-index pattern that grabs the collection lock mid-run). This hook enforces the tighter rule: any number of assignment-only segments, any number of `cd` segments, exactly one `rag-cli index` segment (optionally env-var-prefixed, e.g. `PYTHONUNBUFFERED=1 rag-cli index ...`), nothing else — in any position, and no `$(...)`/backtick/`<(...)`/`>(...)` anywhere in the raw command (a subshell has no legitimate reason to exist in an isolated index call, and is a proven vector for smuggling a second command through an assignment value, argument, or redirect target). Backslash+newline line-continuations are collapsed before segment-splitting (not treated as a separator). Out of scope for all other rag-cli subcommands (`search`, `delete`, `list_documents`, etc.), which stay governed by `block_rag_cli_chained.py`. Exits 2 + stderr on violation. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_input: {command}}`).
@@ -315,7 +315,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_rag_docs_layer.py (119 LOC)
+### block_rag_docs_layer.py (100 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `rag-cli search` calls on any `*-docs` collection that lack a `--document` or `--exclude` filter naming `process-docs`. The `<Project>-docs` RAG collections mix `process-docs/**` (process history) and `**/DOCS.md` (code module map); an unscoped search dilutes results across both layers. Process-layer search: `--document 'process-docs/%'` (or a specific `process-docs/<area>/%'`). Code-layer search: `--exclude 'process-docs/%'`. Exits 2 + stderr on violation. Exits 0 on any parse/tokenization error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_input: {command}}`).
@@ -346,7 +346,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_rag_corpus_read.py (108 LOC, 2026-08)
+### block_rag_corpus_read.py (81 LOC, 2026-08)
 
 **Purpose:** PreToolUse hook (Bash) — blocks raw-content-read commands (`cat`, `grep`, `head`, `tail`, `sed`, `awk`, `rg`, `less`, `more`) targeting a path under rag-cli's document-chunk store (`rag-*/data/documents/`). Reading these files directly bypasses the ranking/formatting `rag-cli search`/`rag-cli read_document` perform and returns raw chunk-store files instead of search results — see `process-docs/tool_use_safety/2026-08-28_rag_cli_path_indirection_bypass.md`, which documents a worker routing around the (then-buggy) `block_rag_cli_chained.py` FP by reading the corpus through `cat`/interpreter indirection because the block message never named an allowed alternative. This hook's `_BLOCK_MESSAGE` explicitly names both sanctioned forms (`rag-cli search <query> <collection>`, `rag-cli read_document <collection> <doc_id>`) for that reason. File management and deletion over the corpus tree (`ls`, `rm`, `mv`, `mkdir`) are deliberately NOT policed — those are sanctioned operator actions, only bypassing rag-cli's own read path is blocked. Bash-only by design (no Read-tool matcher) — Read already has its own directory/oversize handling; this hook's scope is shell indirection specifically. `_CORPUS_PATH_RE` matches `rag-[^/\s]*` (not a literal `rag-cli`) so a renamed checkout or worktree (`rag-cli-eval`, `rag-cli-convert`) is still caught — a glob dodge around a literal-string match. Exits 2 + stderr on violation. Exits 0 on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_input: {command}}`).
@@ -380,7 +380,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_noop_edit.py (42 LOC)
+### block_noop_edit.py (40 LOC)
 
 **Purpose:** PreToolUse hook (Edit) — blocks Edit calls where `old_string == new_string`. CC rejects these with "No changes to make: old_string and new_string are exactly the same" — the hook surfaces this before the round-trip. Exits 2 + stderr. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {old_string, new_string}}`).
@@ -394,7 +394,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_read_directory.py (43 LOC)
+### block_read_directory.py (40 LOC)
 
 **Purpose:** PreToolUse hook (Read) — blocks Read calls where `file_path` points to a directory. CC rejects these with "Read tool cannot read directories" — the hook surfaces this before the round-trip and suggests `ls` instead. Exits 2 + stderr. Exits 0 on any parse/internal error or nonexistent path (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {file_path}}`).
@@ -414,7 +414,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_cd_drift.py (71 LOC)
+### block_cd_drift.py (67 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks Bash commands that `cd` into a `.claude/worktrees/` path without `cd`-ing back at the end of the chain. Bash tool calls share CWD across invocations; a dangling worktree `cd` causes the next call to write to the wrong tree. Exits 2 + stderr with the fix. Exits 0 when the last `cd` target is not a worktree path, or on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -428,7 +428,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_dev_imports_src.py (69 LOC, 2026-08 regression-suite exemption)
+### block_dev_imports_src.py (58 LOC, 2026-08 regression-suite exemption)
 
 **Purpose:** PreToolUse hook (Write + Edit) — blocks dev/ scripts that import from `src/`. dev/ modules are self-contained pipeline probes; importing from `src/` breaks isolation and makes dev/ non-runnable without the full production tree. Fires on Write and Edit for files under a `dev/` path. **2026-08 exemption:** a `dev/` file is NOT a probe — and is skipped entirely, imports allowed — when it sits under a `tests/` directory segment AND its filename matches pytest's own discovery convention (`test_*.py`, `*_test.py`, or `conftest.py`). A regression suite is the categorical opposite of a probe: it exists to import and exercise the live `src/` tree, and the exemption keys off pytest's own naming convention rather than any one project's directory layout (e.g. `websearch`'s `dev/tests/`). Both conditions are required — a bare `tests/` dir doesn't exempt a stray probe someone drops there, and pytest-shaped naming alone doesn't exempt a renamed probe outside an actual test directory. Exits 2 + stderr on an unexempted match. Exits 0 on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {file_path, content|new_string}}`).
@@ -442,7 +442,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_except_pass.py (50 LOC)
+### block_except_pass.py (46 LOC)
 
 **Purpose:** PreToolUse hook (Write + Edit) — blocks code that contains bare `except ...: pass` (silent exception swallow). Silently swallowing exceptions is prohibited — scripts must fail visibly when they cannot fulfill their purpose. Fires on Write and Edit for any file. Exits 2 + stderr with allowed alternatives. Exits 0 on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {content|new_string}}`).
@@ -456,7 +456,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_git_add_deps.py (61 LOC)
+### block_git_add_deps.py (56 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `git add` commands that target dependency directories (`venv/`, `.venv/`, `node_modules/`). In worktrees these directories are symlinks pointing to the main repo; staging them creates circular self-references on merge. Exits 2 + stderr. Exits 0 on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -470,7 +470,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_git_destructive.py (97 LOC)
+### block_git_destructive.py (90 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks destructive git operations: `git commit --amend`, `git push --force`/`-f`/`--force-with-lease`, `git commit/push --no-verify`, `git commit --allow-empty`, and `git config` modifications (read-only config variants allowed). Pattern connectors use `[^|;&\n]*` — matches cannot span across newlines in multi-line commands (closes cross-line FP: `git push` on line N + `[ -f file ]` on a later line). Enforces the Git Safety Protocol from `tool-use.md`. Exits 2 + stderr with the specific violation and a suggestion. Exits 0 on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -489,7 +489,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_path_typo.py (119 LOC)
+### block_path_typo.py (108 LOC)
 
 **Purpose:** PreToolUse hook (Bash + Read + Write + Edit) — detects path typos `.claire/` (tokenizer typo of `.claude/`) and `..letter` (double-dot immediately followed by lowercase letter, e.g. `..claude/`, `..src/`) and **auto-rewrites** them to `.claude/` and `../letter` respectively. Upgraded 2026-05-22 commit `ce8d220` from block-and-hint to auto-rewrite. File name preserved (`block_path_typo.py`) for `~/.claude/settings.json` compatibility; internal semantics are now rewrite.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command|file_path[+old_string,new_string,replace_all for Edit]}}`).
@@ -513,7 +513,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_venv_no_redirect.py (50 LOC)
+### block_venv_no_redirect.py (45 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `./venv/bin/python <script>.py` calls that have no file redirect (`> file`) or `| tee`. Dev scripts produce verbose output that floods the context window; redirecting to `/tmp/` is mandatory (Rule 4, `tool-use.md`). Exits 2 + stderr with the required form. Exits 0 when redirect/tee present, or on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -529,7 +529,7 @@ Each hook script is a standalone `python3 <script>.py` entry invoked by CC. Not 
 
 ---
 
-### block_worker_spawn_placement.py (99 LOC)
+### block_worker_spawn_placement.py (91 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `worker-cli spawn` calls that either (a) target a different project than the current session or (b) pass `--no-worktree`. Spawns always land in a worktree of the current project; cross-project or worktree-less spawns are a mis-dispatch. Exits 2 + stderr. Exits 0 when the session itself runs from inside a worktree (worker sessions don't spawn workers) or on any parse/resolution error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`); `os.getcwd()` (session CWD for project-root resolution).
@@ -555,7 +555,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### block_worker_send_background.py (54 LOC)
+### block_worker_send_background.py (51 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `worker-cli send` commands dispatched with `run_in_background=true`. `worker-cli send` is a fire-once, must-confirm action; backgrounding risks SIGTERM-kill before delivery (exit 143, silent message loss) or the orchestrator's next action running before the send completes. Canonical pattern: send in a standalone foreground Bash call; any wake-up timer dispatched as a separate `worker-cli wait` call (Milestone 2, 2026-08 — message text updated, block condition unchanged). Exits 2 + stderr. Exits 0 when `run_in_background` is absent or false, or on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command, run_in_background}}`).
@@ -569,7 +569,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### block_worker_kill_while_working.py (102 LOC, message text corrected 2026-09-04)
+### block_worker_kill_while_working.py (86 LOC, message text corrected 2026-09-04)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `worker-cli kill <name>` when the named worker is currently `working`. Double-gate: (1) regex `\bworker-cli\s+kill\s+([\w.-]+)` on shell-stripped command captures name token(s); (2) runs `worker-cli status <name>` subprocess (timeout 3s) and blocks only when the first output token is exactly `working`. Quoted/heredoc kill commands inside `worker-cli send` messages are stripped by `_strip_non_shell_active` → no match → guaranteed allow. All non-working statuses (idle, dead, unknown), subprocess errors, timeouts, and all exceptions → allow. Exits 2 + stderr. **2026-09-04:** `_BLOCK_MESSAGE` shortened to `"worker '{name}' is working — do not kill a working worker. Not possible.\n"` — the old text ("stop it first ... or: worker-cli send '{name}' 'stop'") suggested exactly the workaround the new sibling hook (`block_worker_send_while_working.py`) now forbids, so the message no longer names an alternative at all.
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`); `worker-cli status <name>` output (subprocess).
@@ -585,7 +585,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### block_worker_send_while_working.py (102 LOC, new 2026-09-04)
+### block_worker_send_while_working.py (86 LOC, new 2026-09-04)
 
 **Purpose:** PreToolUse hook (Bash) — sibling to `block_worker_kill_while_working.py`, same shape applied to `worker-cli send` instead of `kill`: blocks `worker-cli send <name> <message>` when the named worker is currently `working`. Same double-gate — (1) regex `\bworker-cli\s+send\s+([\w.-]+)` on shell-stripped command captures the name token; (2) live `worker-cli status <name>` subprocess (timeout 3s), blocking only when the first output token is exactly `working` — and the identical `decide(command, status_fn)`/`_resolve_worker_cli`/`_live_worker_status`/`_parse_command` set, copied rather than shared, matching this hook family's convention of small, fully independent scripts. Worker statuses are exactly `working`/`idle`/`dead`; only `working` blocks. Exits 2 + stderr with `"worker '{name}' is working — do not send messages to a working worker. Not possible.\n"`. Exits 0 on idle, dead, an unknown/empty status, a `worker-cli status` subprocess error or timeout, or any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`); `worker-cli status <name>` output (subprocess).
@@ -599,7 +599,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### block_manual_worker_cleanup.py (59 LOC)
+### block_manual_worker_cleanup.py (52 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks raw manual worker-cleanup commands that bypass `worker-cli kill <name>` and leave orphaned state. Two patterns: (1) `tmux kill-session -t worker-*` — kills the tmux session without removing the worktree, registry entry, or branch; (2) `git worktree remove .claude/worktrees/*` — removes the worktree without stopping the session or clearing the registry. Both patterns use `[^;&|\n]*` (not `.*`) to prevent bridging across shell separators — `tmux kill-session -t main ; cmd -t worker-x` does not trigger. `git branch -D` is deliberately excluded (worker branches have no distinguishing prefix; blocking would FP on normal feature-branch deletes). Exits 2 + stderr with `worker-cli kill <name>` as the fix. Exits 0 on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -617,7 +617,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### block_po_read.py (79 LOC)
+### block_po_read.py (67 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks shell reads that feed a Claude Code persisted-output export path (`tool-results/<id>.txt` under a `.claude/` dir — CC's full-output export when a tool result exceeds the inline preview limit) to a content-reading or content-partitioning tool (`head`, `tail`, `grep`, `egrep`, `fgrep`, `rg`, `sed`, `awk`, `cut`, `less`, `more`, `cat`, `tac`, `nl`, `zcat`, `split`, `dd`). These exports must be consumed via the Read tool — a partial shell view (`head`/`tail`/`grep`/piped `cat … | head`) or a partitioning escape (`split -l N <path> /tmp/...`, `dd if=<path> of=...`) risks acting on an incomplete result. Discriminator is path-schema only (`/.claude/` substring AND `.txt` suffix on the same token) — no size threshold, no Read-tool matcher (Read stays fully allowed). Direct structural clone of `block_log_read.py.disabled`'s Branch B (reader-tool + matching input-path segment → block) with no state file / no session counting. Exits 2 + stderr on match. Exits 0 on any parse error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_name, tool_input: {command}}`).
@@ -640,7 +640,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### block_pipe_scraper_isolated.py (103 LOC)
+### block_pipe_scraper_isolated.py (79 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — blocks `python -m src.crawler.pipe_scraper` (websearch project's long-running scraper) calls that share the Bash invocation with anything other than shell variable assignments and a `cd`, or that carry any command/process substitution anywhere. Direct clone of `block_rag_cli_index_isolated.py` with the anchor swapped: CC auto-backgrounds a Bash call only when it stands ALONE in the invocation; a worker chaining a poll (`tail`, `&& echo done`) onto the scraper call in the same invocation defeats auto-backgrounding, and the worker sleeps until the multi-minute scrape finishes instead of staying awake to poll. Segment classifier `_SCRAPER_SEGMENT_RE` additionally tolerates an interpreter path prefix before `python`/`python3` (`./venv/bin/python`, `/usr/bin/python3`) since the scraper is always invoked via a venv interpreter, not a bare CLI name. Exits 2 + stderr on violation. Exits 0 on any parse/internal error (fail-open).
 **Reads:** stdin (CC PreToolUse JSON payload: `{tool_input: {command}}`).
@@ -667,7 +667,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### block_rag_cli_document_repeat.py (196 LOC)
+### block_rag_cli_document_repeat.py (165 LOC)
 
 **Purpose:** PreToolUse hook (Bash) — the first STATEFUL hook in this family. Blocks the 2nd (or later) single-document `rag-cli index --collection X --document Y` / `rag-cli delete --collection X --document Y` call to the SAME `(subcommand, collection)` within a 10-minute rolling window, across SEPARATE Bash invocations. `block_rag_cli_index_isolated.py` already forbids CHAINING (>1 `index` segment in one Bash call) but each individually-isolated `--document` call passes that hook fine — the gap it cannot see is REPETITION across calls: an observed incident issued ~40 consecutive `rag-cli index --document <file>` calls (and ~48 `rag-cli delete --document <file>` calls) instead of one collection-wide call, none of which individually run long enough to auto-background, so the worker stayed awake for dozens of turns instead of sleeping through one long run. State-persistence architecture is a direct clone of the disabled `block_polling_loop.py.disabled`'s pattern (append-only JSONL, self-pruned to the window on every write, count by session_id+target) — the only established stateful-hook precedent in this codebase; the alternative `last_cmd_state.jsonl`/adjacency-based "last command" pattern was deliberately NOT used (it was redesigned then fully removed in 2026-07-20/21 specifically because adjacency tracking false-positive-blocked legitimate interleaved commands — see `2026-07-20_timer_guard_concurrent_redesign.md`). Segment/argument extraction reuses `block_rag_docs_layer.py`'s technique (regex segment-end scan on the shell-stripped command, then `shlex.split` the ORIGINAL unstripped segment to recover real quoted flag values). Threshold 2, not 3: a genuine single-document op is singular by definition (pull one file back in) — a SECOND `--document` call to the same collection+subcommand within the window is already the opening move of the per-file loop, not a second legitimate one-off. Window 600s, not the polling-loop's 30s: a full model turn sits between two rag-cli calls, so a short window would expire before a real repeat pattern registers. Exits 2 + stderr (naming the collection-wide form as the fix) on the 2nd+ call. Exits 0 on any parse/state error (fail-open — a state-file failure can only undercount, never overcount, so it never causes a false block).
 **Reads:** stdin (CC PreToolUse JSON payload: `{session_id, tool_input: {command}}`); `src/logs/rag_doc_repeat_state.jsonl` (own state, read-modify-write each call).
@@ -692,7 +692,7 @@ Comparison is **case-insensitive** (`.lower()` on both roots) — macOS FS is ca
 
 ---
 
-### hook_setup.py (257 LOC)
+### hook_setup.py (211 LOC)
 
 **Purpose:** Idempotent installer with three defense layers. **Layer 1 — Worktree Guard:** `_guard_not_worktree()` checks `Path(__file__).resolve().parts` for consecutive `.claude`/`worktrees` components; exits 2 with a clear error message (stderr) if running from a worktree — preventing dead-path registration. **Layer 2 — Stale-hook Sweep:** `_sweep_stale_hooks()` iterates ALL event keys in `settings["hooks"]` (not only `PreToolUse`), checks every `python3 <path>` entry, and removes any whose script path fails `os.path.exists()`; drops now-empty groups, saves atomically, then runs the normal add-loop. **Layer 3 — Two-Condition Install Gate:** `decide_entries()` (pure, injectable `git_query_fn` + `tree_query_fn`) partitions `_HOOK_SCRIPTS` into installable vs. skipped BEFORE the add-loop runs. A script installs only when BOTH: (a) `_script_on_main()` confirms it's committed on `main` (`git cat-file -e main:src/hooks/<script>`, cached `_main_branch_resolves()` check first); (b) `_script_in_worktree()` confirms `os.path.exists(_HOOKS_DIR / script)` — present in the CURRENT working tree, at the exact path about to be registered. Condition (a) prevents the incident this layer was built for: a hook merged into `integration`, auto-registered via `.githooks/post-merge` using its absolute working-tree path, then orphaned machine-wide the moment the tree checked out `main` — every Bash call on every project failed with `[Errno 2] No such file or directory` until the entry was removed by hand. Condition (b) closes the mirror-image hole found in review: (a) alone lets a script that IS on `main` but was deleted/renamed in the CURRENT tree (while its `_HOOK_SCRIPTS` entry stayed) pass the gate and get registered as a dead path — same outage, entering from the other side; note `_sweep_stale_hooks()` runs BEFORE this gate, so without condition (b) the sweep would remove that exact dead entry and the install loop would immediately put it back. Main-branch presence is checked first — a script failing it never reaches the tree check, so a script missing from both reports the main-branch reason. Decision is per-script (cached by filename, shared across a script's multiple matcher entries) — one unmergeable/deleted script never blocks the other 38. `_report_skipped()` prints one deduped stderr line per skipped script naming it and the reason. Re-running heals stale entries from any source (worktree accident, repo move, feature-branch script since merged, etc.). Runs completely silent on success — no stdout output; stderr only for error conditions (worktree guard, JSON parse failure, skipped-script lines).
 **Reads:** `~/.claude/settings.json`; local `main` branch git state (`git rev-parse --verify`, `git cat-file -e`); working-tree filesystem (`os.path.exists`).

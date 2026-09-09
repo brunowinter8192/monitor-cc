@@ -6,7 +6,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _fire_log import log_fire
 
-# Each entry: (compiled pattern, label, suggestion). Patterns matched against quote-stripped command.
 _PATTERNS = [
     (re.compile(r'\bgit\b[^|;&\n]*\bcommit\b[^|;&\n]*--amend\b'),
      "git commit --amend",
@@ -25,7 +24,6 @@ _PATTERNS = [
      "Never create empty commits — they add noise without value."),
 ]
 
-# git config modify detection (separate from regex list — needs exclusion of read-only variants)
 _GIT_CONFIG_RE = re.compile(r'\bgit\b(?:\s+-C\s+\S+)?\s+config\b([^|;&\n]*)')
 _GIT_CONFIG_READONLY = re.compile(
     r'\s--(?:list|get|get-all|get-regexp|show-origin|show-scope|show-keys|help)\b'
@@ -36,7 +34,6 @@ _BLOCK_TEMPLATE = "`{label}` — {suggestion}\n"
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; exit 2 + stderr if command matches a destructive git pattern.
 def block_git_destructive_workflow() -> None:
     command, session_id = _parse_command()
     if command is None:
@@ -62,7 +59,6 @@ def block_git_destructive_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, session_id); (None, None) on any error or missing field (fail-open)
 def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
@@ -72,9 +68,6 @@ def _parse_command():
         return None, None
 
 
-# Strip content inside single/double quotes so quoted text (commit messages, descriptions) cannot
-# trigger pattern matches. Not a full shell parser — handles balanced quotes with simple
-# backslash-escape.
 def _strip_quoted(s: str) -> str:
     out, i, n = [], 0, len(s)
     while i < n:
@@ -86,7 +79,7 @@ def _strip_quoted(s: str) -> str:
                     i += 2
                 else:
                     i += 1
-            i += 1   # skip closing quote (or step past end if unbalanced)
+            i += 1
         else:
             out.append(c)
             i += 1

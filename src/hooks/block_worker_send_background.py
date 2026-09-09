@@ -7,7 +7,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _shell_strip import _strip_non_shell_active
 from _fire_log import log_fire
 
-# worker-cli send invocation in shell-active code (the fire-once, must-confirm action)
 _WORKER_SEND = re.compile(r'\bworker-cli\s+send\b')
 
 _BLOCK_MESSAGE = (
@@ -20,7 +19,6 @@ _BLOCK_MESSAGE = (
 
 # ORCHESTRATOR
 
-# Read Bash tool_input from stdin; exit 2 + stderr if a backgrounded command contains worker-cli send
 def block_worker_send_background_workflow() -> None:
     command, run_in_background, session_id = _parse_input()
     if command is None or not run_in_background:
@@ -36,7 +34,6 @@ def block_worker_send_background_workflow() -> None:
 
 # FUNCTIONS
 
-# Parse stdin JSON; return (command, run_in_background, session_id); (None, False, None) on error (fail-open)
 def _parse_input():
     try:
         payload = json.loads(sys.stdin.read())
