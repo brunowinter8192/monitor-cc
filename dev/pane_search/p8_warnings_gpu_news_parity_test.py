@@ -162,7 +162,10 @@ def test_warnings_dim_yellow_bg_already_used_in_not_startswith():
           "uses 'in line', not '.startswith()' -- confirmed by reading the source directly, "
           "no collateral fix needed here (unlike token_pane/worker_pane)")
     import inspect
-    src = inspect.getsource(mod_wrender._format_warnings_pane)
+    # (2026-09, panes-split milestone) the zebra/hover row loop that carries this check moved out
+    # of _format_warnings_pane into its own _render_warnings_rows helper — re-pointed here, same
+    # assertion, same target concern.
+    src = inspect.getsource(mod_wrender._render_warnings_rows)
     check("source contains 'DIM_YELLOW_BG in line' (substring form)",
           'DIM_YELLOW_BG in line' in src)
     check("source does NOT contain a '.startswith(DIM_YELLOW_BG)' call",

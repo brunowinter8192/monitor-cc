@@ -16,7 +16,7 @@ from .proxy_pane_shared import (
     _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body, _accumulate_dual_logs_and_attach,
 )
 from .format import format_proxy_block
-from ..panes.token_pane import build_cache_turns
+from ..panes.cache_turns import build_cache_turns
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, copy_to_clipboard, wait_for_input,

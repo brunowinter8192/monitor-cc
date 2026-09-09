@@ -67,35 +67,7 @@ def run_warnings_loop() -> None:
     try:
         while True:
             try:
-                input_changed = False
-                while True:
-                    char = read_keypress()
-                    if char is None:
-                        break
-                    if char == '\033':
-                        event = read_mouse_event(char)
-                        if event is not None and event[0] != -1:
-                            if _handle_warnings_mouse(*event):
-                                input_changed = True
-                        elif event is not None:
-                            # (-1,-1,-1) release sentinel -- no-op unless a row-1 drag was active
-                            if _handle_warnings_search_release():
-                                input_changed = True
-                        elif _warnings_search.focused:  # bare ESC -> cancel search
-                            if _handle_warnings_search_cancel():
-                                input_changed = True
-                    elif _warnings_search.focused:
-                        if _handle_warnings_search_input(char):
-                            input_changed = True
-                    elif char == '/':
-                        _warnings_search.focused = True
-                        input_changed = True
-                    elif char in ('n', 'N'):
-                        if _jump_warnings_search_match(forward=(char == 'n')):
-                            input_changed = True
-                    else:
-                        if _handle_warnings_key(char):
-                            input_changed = True
+                input_changed = _poll_warnings_input()
 
                 now = time.time()
                 input_changed, last_data_refresh = _refresh_warnings_data(
@@ -124,6 +96,42 @@ def run_warnings_loop() -> None:
         restore_terminal()
 
 # FUNCTIONS
+
+# Drain and dispatch all pending keyboard/mouse input for one tick; returns True if the display
+# needs to redraw. Stays physically in this module (bare-name read_keypress/read_mouse_event
+# calls — dev/pane_error_log's exception-survival probe and dev/pane_search's search-bar probes
+# monkeypatch these as module attributes of warnings_pane itself).
+def _poll_warnings_input() -> bool:
+    input_changed = False
+    while True:
+        char = read_keypress()
+        if char is None:
+            break
+        if char == '\033':
+            event = read_mouse_event(char)
+            if event is not None and event[0] != -1:
+                if _handle_warnings_mouse(*event):
+                    input_changed = True
+            elif event is not None:
+                # (-1,-1,-1) release sentinel -- no-op unless a row-1 drag was active
+                if _handle_warnings_search_release():
+                    input_changed = True
+            elif _warnings_search.focused:  # bare ESC -> cancel search
+                if _handle_warnings_search_cancel():
+                    input_changed = True
+        elif _warnings_search.focused:
+            if _handle_warnings_search_input(char):
+                input_changed = True
+        elif char == '/':
+            _warnings_search.focused = True
+            input_changed = True
+        elif char in ('n', 'N'):
+            if _jump_warnings_search_match(forward=(char == 'n')):
+                input_changed = True
+        else:
+            if _handle_warnings_key(char):
+                input_changed = True
+    return input_changed
 
 # Prime monitor_sessions so the pane has fresh session state on startup
 def load_historical_warnings() -> None:

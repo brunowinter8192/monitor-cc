@@ -357,7 +357,7 @@ retargeted at this pane's own thin wrappers, PLUS what's genuinely new here:
 
 ---
 
-### p8_warnings_gpu_news_parity_test.py (581 LOC)
+### p8_warnings_gpu_news_parity_test.py (584 LOC)
 
 **Purpose:** Regression guard for the FINAL three panes (rollout sub-milestones 6-8, bundled)
 reaching search-bar parity: WARNINGS (`src/panes/warnings_pane.py` + `warnings_render.py`), GPU
@@ -365,10 +365,16 @@ reaching search-bar parity: WARNINGS (`src/panes/warnings_pane.py` + `warnings_r
 as `p3`-`p7` (drag-select, editor-style deletion, Esc, reverse-video render) retargeted at each
 pane's own thin wrappers, PLUS what's genuinely new here:
 - **`test_warnings_dim_yellow_bg_already_used_in_not_startswith`** — the milestone's own explicit
-  verification requirement, made into a permanent regression guard: introspects
-  `_format_warnings_pane`'s real source (`inspect.getsource`) and asserts it contains
-  `'DIM_YELLOW_BG in line'` and does NOT contain `'.startswith(DIM_YELLOW_BG)'` — proves the
-  "no collateral fix needed here" finding stays true even if the function is refactored later.
+  verification requirement, made into a permanent regression guard: introspects the real source
+  (`inspect.getsource`) of the function that carries the zebra/hover row-bg loop and asserts it
+  contains `'DIM_YELLOW_BG in line'` and does NOT contain `'.startswith(DIM_YELLOW_BG)'` — proves
+  the "no collateral fix needed here" finding stays true even if the function is refactored later.
+  **(2026-09, panes-split milestone) re-pointed from `_format_warnings_pane` to
+  `_render_warnings_rows`** — `warnings_render.py`'s split moved the row-bg loop itself into a new
+  helper of that name (`_format_warnings_pane` became a thin orchestrator); this was the ONE
+  literal-source-introspection check across every probe in this milestone's behavior-proof set
+  (grep-confirmed), which is why the zebra/viewport loop's extraction target had to be decided
+  around it — see `src/panes/DOCS.md`'s `warnings_render.py` entry for the full rationale.
 - **`test_warnings_collapsed_container_mark_and_expanded_substring_mark`** — uses a MULTI-WORD
   Bash command (`'echo unique_marker_x'`) specifically because `warnings_render.py`'s
   PRE-EXISTING `first_word_of_call` already shows a one-word inline preview even when

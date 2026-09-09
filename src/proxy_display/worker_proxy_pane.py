@@ -11,7 +11,7 @@ from ..constants import (
 from .parser import find_worker_proxy_log
 from .forwarded_parser import _parse_forwarded_log, _infer_model_family
 from .format import format_proxy_block
-from ..panes.token_pane import build_cache_turns
+from ..panes.cache_turns import build_cache_turns
 from ..workers.worker_tmux import find_worker_jsonl, list_workers
 from ..workers.worker_pane import get_selection_file_path
 from ..workers import write_selection
