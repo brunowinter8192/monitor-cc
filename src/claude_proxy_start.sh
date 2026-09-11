@@ -84,11 +84,15 @@ elif [ -z "$HAS_EXPLICIT_MODEL" ] && [ -z "$SHORTCUT_MODEL" ] && command -v jq &
     fi
 fi
 
-# Generate session_id from project path: first 8 chars of md5 (matches monitor.py hash logic)
+# Generate session_id from project path: first 8 chars of md5 of the NORMALIZED path (matches
+# monitor.py's hash logic and tmux_launcher.py:generate_session_name's
+# os.path.normpath(os.path.expanduser(project_path)) byte-for-byte, so a trailing slash, a
+# relative path, or a leading ~ can never make the proxy-side and tmux-side hashes diverge).
+NORMALIZED_PROJECT="$(python3 -c "import os, sys; print(os.path.normpath(os.path.expanduser(sys.argv[1])))" "$PROJECT")"
 if command -v md5 &>/dev/null; then
-    SESSION_ID="$(echo -n "$PROJECT" | md5 | head -c 8)"
+    SESSION_ID="$(echo -n "$NORMALIZED_PROJECT" | md5 | head -c 8)"
 else
-    SESSION_ID="$(echo -n "$PROJECT" | md5sum | head -c 8)"
+    SESSION_ID="$(echo -n "$NORMALIZED_PROJECT" | md5sum | head -c 8)"
 fi
 # Per-start unique id: project hash + pid + epoch — prevents live-copy collision when two
 # sessions run in the same project simultaneously (SESSION_ID stays per-project for worker discovery)
@@ -146,27 +150,14 @@ _proxy_pid_is_live() {
 # Parallel sessions for the same project must NOT clobber a live marker.
 # Primary liveness: stored PID + process-identity (prevents PID-reuse false-positives).
 # Secondary liveness: log mtime < 60s (belt-and-suspenders for alive sessions).
-# Old format (no PID line): falls back to mtime-only check for safe rollout.
+# Every marker on disk carries the PID line — no PID line means no liveness signal, stale.
 MARKER_IS_STALE=true
 if [ -f "$MARKER_FILE" ]; then
     existing_log_id=$(sed -n '2p' "$MARKER_FILE" 2>/dev/null)
     existing_pid=$(sed -n '3p' "$MARKER_FILE" 2>/dev/null)
-    if [ -n "$existing_log_id" ]; then
-        if [ -n "$existing_pid" ]; then
-            # New format: verify PID is a live claude_proxy_start.sh process
-            if _proxy_pid_is_live "$existing_pid"; then
-                existing_log="$LOG_DIR/dual_log/api_requests_${existing_log_id}_forwarded.jsonl"
-                if [ -f "$existing_log" ]; then
-                    log_mtime=$(stat -f %m "$existing_log" 2>/dev/null || stat -c %Y "$existing_log" 2>/dev/null)
-                    now=$(date +%s)
-                    if [ -n "$log_mtime" ] && [ $((now - log_mtime)) -lt 60 ]; then
-                        MARKER_IS_STALE=false
-                    fi
-                fi
-            fi
-            # PID dead or not a claude_proxy_start.sh process: stale regardless of log mtime
-        else
-            # Old format (no PID line): mtime-only fallback
+    if [ -n "$existing_log_id" ] && [ -n "$existing_pid" ]; then
+        # Verify PID is a live claude_proxy_start.sh process
+        if _proxy_pid_is_live "$existing_pid"; then
             existing_log="$LOG_DIR/dual_log/api_requests_${existing_log_id}_forwarded.jsonl"
             if [ -f "$existing_log" ]; then
                 log_mtime=$(stat -f %m "$existing_log" 2>/dev/null || stat -c %Y "$existing_log" 2>/dev/null)
@@ -176,6 +167,7 @@ if [ -f "$MARKER_FILE" ]; then
                 fi
             fi
         fi
+        # PID dead or not a claude_proxy_start.sh process: stale regardless of log mtime
     fi
 fi
 if [ "$MARKER_IS_STALE" = true ]; then
@@ -183,27 +175,14 @@ if [ "$MARKER_IS_STALE" = true ]; then
 fi
 # Also write to /tmp for cross-repo discovery (workers find proxy via this)
 # Format: line 1 = port, line 2 = log_id, line 3 = MONITOR_CC_ROOT, line 4 = owner PID
-# Same guard: PID+identity primary, mtime secondary; old format (no PID line) falls back to mtime.
+# Same guard: PID+identity primary, mtime secondary — every marker on disk carries the PID line.
 TMP_MARKER="/tmp/.monitor_cc_proxy_${SESSION_ID}"
 TMP_IS_STALE=true
 if [ -f "$TMP_MARKER" ]; then
     existing_tmp_log_id=$(sed -n '2p' "$TMP_MARKER" 2>/dev/null)
     existing_tmp_pid=$(sed -n '4p' "$TMP_MARKER" 2>/dev/null)
-    if [ -n "$existing_tmp_log_id" ]; then
-        if [ -n "$existing_tmp_pid" ]; then
-            if _proxy_pid_is_live "$existing_tmp_pid"; then
-                existing_tmp_log="$LOG_DIR/dual_log/api_requests_${existing_tmp_log_id}_forwarded.jsonl"
-                if [ -f "$existing_tmp_log" ]; then
-                    tmp_log_mtime=$(stat -f %m "$existing_tmp_log" 2>/dev/null || stat -c %Y "$existing_tmp_log" 2>/dev/null)
-                    tmp_now=$(date +%s)
-                    if [ -n "$tmp_log_mtime" ] && [ $((tmp_now - tmp_log_mtime)) -lt 60 ]; then
-                        TMP_IS_STALE=false
-                    fi
-                fi
-            fi
-            # PID dead or not a claude_proxy_start.sh process: stale regardless of log mtime
-        else
-            # Old format (no PID line): mtime-only fallback
+    if [ -n "$existing_tmp_log_id" ] && [ -n "$existing_tmp_pid" ]; then
+        if _proxy_pid_is_live "$existing_tmp_pid"; then
             existing_tmp_log="$LOG_DIR/dual_log/api_requests_${existing_tmp_log_id}_forwarded.jsonl"
             if [ -f "$existing_tmp_log" ]; then
                 tmp_log_mtime=$(stat -f %m "$existing_tmp_log" 2>/dev/null || stat -c %Y "$existing_tmp_log" 2>/dev/null)
@@ -213,6 +192,7 @@ if [ -f "$TMP_MARKER" ]; then
                 fi
             fi
         fi
+        # PID dead or not a claude_proxy_start.sh process: stale regardless of log mtime
     fi
 fi
 if [ "$TMP_IS_STALE" = true ]; then

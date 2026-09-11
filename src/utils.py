@@ -43,12 +43,6 @@ def first_word_of_call(tool_name: str, tool_call_input: dict) -> str:
         return tool_call_input.get(key, '')
     return ''
 
-def _iso_to_float(ts: str) -> float:
-    try:
-        return datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
-    except Exception:
-        return 0.0
-
 def format_worker_prefix(name: str) -> str:
     if not name:
         return ' ' * (WORKER_COL_WIDTH + 3)

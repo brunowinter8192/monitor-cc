@@ -6,6 +6,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .rules_config import is_main_session
 from .strip_bg_launch_ack import _is_bg_launch_ack, _ACK_ID_RE
 
 _TMUX_TIMEOUT_SECS = 2
@@ -32,7 +33,7 @@ def _trigger_bg_escape(stripped_msg_removed: dict, worker_context: str, project_
             if tmux_session is None:
                 tmux_session = _derive_tmux_session_name(worker_context, project_path) or ""
             if not tmux_session:
-                reason = "main_context" if not worker_context.startswith(_WORKER_PREFIX) else "no_tmux_session"
+                reason = "main_context" if is_main_session(worker_context) else "no_tmux_session"
                 _log_bg_escape_event("skipped", worker_context, task_id, "", reason=reason)
                 continue
             _escaped_task_ids.add(task_id)
@@ -48,7 +49,7 @@ def _extract_task_id(ack_text: str) -> str:
 
 
 def _derive_tmux_session_name(worker_context: str, project_path: str) -> str:
-    if not worker_context.startswith(_WORKER_PREFIX):
+    if is_main_session(worker_context):
         return ''
     worker_name = worker_context[len(_WORKER_PREFIX):]
     if not worker_name or not project_path:

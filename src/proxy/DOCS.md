@@ -19,7 +19,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (262 LOC)
+### addon.py (253 LOC)
 
 **Purpose:** mitmproxy addon hook class (`ProxyAddon`) that receives HTTP flows and orchestrates the full request-modification and dual-log pipeline; `count_tokens` requests pass through unmodified.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `PROXY_PROJECT_PATH`, `MONITOR_CC_ROOT`, `PROXY_LOG_ID`/`PROXY_SESSION_ID`.
@@ -49,7 +49,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### bg_escape.py (104 LOC)
+### bg_escape.py (105 LOC)
 
 **Purpose:** Sends a tmux Escape into a worker's pane the first time a genuine background-launch ack is detected in stripped content, so the worker doesn't poll the newly-backgrounded task.
 **Reads:** `stripped_msg_removed` dict, `worker_context`, `project_path` (passed by `addon.py`); env var `MONITOR_CC_ROOT`.
@@ -59,12 +59,12 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### rules_config.py (83 LOC)
+### rules_config.py (87 LOC)
 
-**Purpose:** Loads and mtime-caches `proxy_rules.json` and system2 rule-text files, assembling role- and project-scoped system2 rule text for a session.
+**Purpose:** Loads and mtime-caches `proxy_rules.json` and system2 rule-text files, assembling role- and project-scoped system2 rule text for a session; owns `is_main_session(worker_context)`, the single "is this the main session" predicate shared with `rules.py` and `bg_escape.py`.
 **Reads:** `proxy_rules.json` and rule files under the shared-rules directory in the user's home folder (mtime-cached).
-**Writes:** — (returns config dict or assembled rule text)
-**Called by:** `src/proxy/rules.py`, `src/proxy/message_passes.py`, `src/proxy/inject_helpers.py`.
+**Writes:** — (returns config dict, assembled rule text, or a bool)
+**Called by:** `src/proxy/rules.py`, `src/proxy/message_passes.py`, `src/proxy/inject_helpers.py`, `src/proxy/bg_escape.py` (`is_main_session`).
 **Calls out:** —
 
 ---
@@ -259,12 +259,12 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### message_summary.py (172 LOC)
+### message_summary.py (181 LOC)
 
-**Purpose:** Summarizes and classifies message content into compact dicts (role, type, chars, preview, per-block breakdown, `cache_control` presence) for log entries.
-**Reads:** Raw message dicts from an API payload.
-**Writes:** — (returns summary dicts)
-**Called by:** `src/proxy/addon.py`, `src/proxy/logging.py`, `src/proxy/cache.py`.
+**Purpose:** Summarizes and classifies message content into compact dicts (role, type, chars, preview, per-block breakdown, `cache_control` presence) for log entries; also owns `_infer_model_family(model)`, the single model-family classifier every proxy-side and display-side model-family check imports.
+**Reads:** Raw message dicts from an API payload, or a model id string.
+**Writes:** — (returns summary dicts or a family string)
+**Called by:** `src/proxy/addon.py`, `src/proxy/logging.py`, `src/proxy/cache.py`, `src/proxy_display/forwarded_parser.py` (`_infer_model_family`), `src/dual_log_cli/reader.py` (`_infer_model_family` as `infer_family`).
 **Calls out:** —
 
 ---

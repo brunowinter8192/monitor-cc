@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from ..pane_error_log import log_pane_error
 from .forwarded_parser import _infer_model_family
 from .proxy_badge import _is_total_tokens_nuke, _msgs_delta_is_substantial
 
@@ -36,6 +37,7 @@ def accumulate_original_tools(path: Optional[Path], last_pos: int, acc_by_family
                         fam_map[t['name']] = t
             return f.tell()
     except OSError:
+        log_pane_error('dual_log_accumulator')
         return last_pos
 
 def _reset_family_acc_if_first(acc: dict, entry: dict) -> None:
@@ -117,4 +119,5 @@ def accumulate_dual_log(path: Optional[Path], last_pos: int, acc_by_family: dict
                 _apply_lag_correction(acc, entry, msgs_delta)
             return f.tell()
     except OSError:
+        log_pane_error('dual_log_accumulator')
         return last_pos

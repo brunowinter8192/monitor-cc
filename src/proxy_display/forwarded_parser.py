@@ -7,21 +7,24 @@ from pathlib import Path
 from typing import Optional
 
 from ..constants import PROXY_MESSAGES_KEEP_LAST
-from ..proxy.message_summary import _summarize_message
+from ..pane_error_log import log_pane_error
+from ..proxy.message_summary import _infer_model_family, _summarize_message
 from ..proxy.logging import _compute_diff
 
 # FUNCTIONS
 
 def _proxy_session_id_for_project(project_path: str) -> str:
-    return hashlib.md5(project_path.encode()).hexdigest()[:8]
+    normalized_path = os.path.normpath(os.path.expanduser(project_path))
+    return hashlib.md5(normalized_path.encode()).hexdigest()[:8]
 
-def _infer_model_family(model: str) -> str:
-    m = model.lower()
-    if 'haiku' in m:
-        return 'haiku'
-    if 'sonnet' in m:
-        return 'sonnet'
-    return 'opus'
+def _resolve_log_id(root: str, session_id: str) -> str:
+    marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
+    log_id = session_id
+    if marker_file.exists():
+        lines = marker_file.read_text(encoding='utf-8').splitlines()
+        if len(lines) >= 2 and lines[1].strip():
+            log_id = lines[1].strip()
+    return log_id
 
 def _summarize_fwd_message(msg: dict) -> dict:
     s = _summarize_message(msg)
@@ -206,6 +209,7 @@ def _parse_forwarded_log(fwd_path: Path, last_pos: int, acc_by_family: dict, kee
                 req_idx += 1
             new_pos = f.tell()
     except OSError:
+        log_pane_error('forwarded_parser')
         return [], last_pos
     for win_entry, summaries in recent_window:
         win_entry['messages'] = list(summaries)
@@ -249,6 +253,7 @@ def _lazy_load_messages_forwarded(entry: dict, fwd_path: Path) -> bool:
                     entry['messages_total_chars'] = sum(s.get('chars', 0) for s in reconstructed)
                     return True
     except OSError:
+        log_pane_error('forwarded_parser')
         return False
     return False
 
@@ -261,12 +266,7 @@ def parse_proxy_log_forwarded(project_filter: Optional[str], last_pos: int, acc_
     if not project_filter:
         return [], last_pos
     session_id = _proxy_session_id_for_project(project_filter)
-    marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
-    log_id = session_id
-    if marker_file.exists():
-        lines = marker_file.read_text(encoding='utf-8').splitlines()
-        if len(lines) >= 2 and lines[1].strip():
-            log_id = lines[1].strip()
+    log_id = _resolve_log_id(root, session_id)
     fwd_path = Path(root) / 'src' / 'logs' / 'dual_log' / f'api_requests_{log_id}_forwarded.jsonl'
     entries, new_pos = _parse_forwarded_log(fwd_path, last_pos, acc_by_family)
     for entry in entries:

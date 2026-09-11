@@ -78,55 +78,6 @@ def _render_tool_dual(tool_idx: int, t_name: str, tool_def: dict, entry: dict, e
         keys.extend(p_keys)
     return lines, keys
 
-def _render_legacy_tool_params(props: dict, required_props: list, stripped_original, bg: str) -> tuple:
-    lines = []
-    keys = []
-    for param_name, param_info in props.items():
-        if isinstance(param_info, dict):
-            param_type = param_info.get('type', '?')
-            param_desc = param_info.get('description', '')
-            orig_param_desc = ''
-            if not param_desc and stripped_original:
-                orig_param_desc = stripped_original.get('params', {}).get(param_name, '')
-            req_marker = '*' if param_name in required_props else ''
-            param_line = f"{param_name}{req_marker}: {param_type}"
-            if orig_param_desc:
-                param_line += f" — {orig_param_desc}"
-                lines.append(f"        {DIM_YELLOW_BG}{DIM}{param_line}{SOFT_RESET}")
-            else:
-                if param_desc:
-                    param_line += f" — {param_desc}"
-                lines.append(f"        {bg}{DIM}{param_line}{SOFT_RESET}")
-            keys.append(None)
-    return lines, keys
-
-def _render_tool_legacy(tool_idx: int, t_name: str, tool_def: dict, expand_states: dict, entry_idx: int) -> tuple:
-    lines = []
-    keys = []
-    tool_key = ('tool', entry_idx, tool_idx)
-    is_tool_exp = expand_states.get(tool_key, False)
-    t_symbol = '▼' if is_tool_exp else '▶'
-    stripped_original = tool_def.get('stripped_original')
-    lines.append(f"      {DIM}{t_symbol} {t_name}{SOFT_RESET}")
-    keys.append(tool_key)
-    if is_tool_exp:
-        bg = ''
-        description = tool_def.get('description', '')
-        if description:
-            d_lines, d_keys = _emit_text_lines(description, "        ", bg)
-            lines.extend(d_lines)
-            keys.extend(d_keys)
-        orig_desc = (stripped_original or {}).get('description', '')
-        if orig_desc:
-            o_lines, o_keys = _emit_text_lines(orig_desc, "        ", DIM_YELLOW_BG)
-            lines.extend(o_lines)
-            keys.extend(o_keys)
-        props, required_props = _extract_schema_props(tool_def.get('input_schema', {}))
-        p_lines, p_keys = _render_legacy_tool_params(props, required_props, stripped_original, bg)
-        lines.extend(p_lines)
-        keys.extend(p_keys)
-    return lines, keys
-
 def _render_whole_stripped_tool(entry_idx: int, name: str, tool_def: Optional[dict], expand_states: dict) -> tuple:
     lines = []
     keys = []
@@ -165,7 +116,7 @@ def _compute_tools_delta(tools_hash: str, tools_names: list, prev_entry_for_delt
         'removed': removed,
     }
 
-def _render_tool_defs_list(tools_defs: list, entry: dict, expand_states: dict, entry_idx: int, delta: dict, use_dual: bool) -> tuple:
+def _render_tool_defs_list(tools_defs: list, entry: dict, expand_states: dict, entry_idx: int, delta: dict) -> tuple:
     lines = []
     keys = []
     added_set = set(delta['added'])
@@ -173,10 +124,7 @@ def _render_tool_defs_list(tools_defs: list, entry: dict, expand_states: dict, e
         t_name = tool_def.get('name', '')
         if not delta['is_first_request'] and (not delta['tools_changed'] or t_name not in added_set):
             continue
-        if use_dual:
-            t_lines, t_keys = _render_tool_dual(tool_idx, t_name, tool_def, entry, expand_states, entry_idx)
-        else:
-            t_lines, t_keys = _render_tool_legacy(tool_idx, t_name, tool_def, expand_states, entry_idx)
+        t_lines, t_keys = _render_tool_dual(tool_idx, t_name, tool_def, entry, expand_states, entry_idx)
         lines.extend(t_lines)
         keys.extend(t_keys)
     return lines, keys
@@ -197,21 +145,15 @@ def _render_tools_body(entry_idx: int, entry: dict, expand_states: dict, tools_n
     lines = []
     keys = []
     tools_defs = entry.get('tools_defs', [])
-    use_dual = '_stripped_spans' in entry
     for r_name in delta['removed']:
         lines.append(f"      {DIM}{RED}-{r_name}{SOFT_RESET}")
         keys.append(None)
-    d_lines, d_keys = _render_tool_defs_list(tools_defs, entry, expand_states, entry_idx, delta, use_dual)
+    d_lines, d_keys = _render_tool_defs_list(tools_defs, entry, expand_states, entry_idx, delta)
     lines.extend(d_lines)
     keys.extend(d_keys)
-    if use_dual:
-        w_lines, w_keys = _render_whole_stripped_extras(entry, tools_names, expand_states, entry_idx)
-        lines.extend(w_lines)
-        keys.extend(w_keys)
-    else:
-        for s_name in entry.get('stripped_unused_tools_names', []):
-            lines.append(f"      {DIM_YELLOW_BG}{DIM}▶ {s_name}{SOFT_RESET}")
-            keys.append(None)
+    w_lines, w_keys = _render_whole_stripped_extras(entry, tools_names, expand_states, entry_idx)
+    lines.extend(w_lines)
+    keys.extend(w_keys)
     for d_name in entry.get('deferred_tools_names', []):
         lines.append(f"      {DIM_YELLOW_BG}{DIM}▶ {d_name}{SOFT_RESET}")
         keys.append(None)

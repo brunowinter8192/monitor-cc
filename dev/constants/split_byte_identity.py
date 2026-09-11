@@ -1,14 +1,16 @@
 """
 Byte-identity harness for src/constants.py's split by constant cluster into src/colors.py (ANSI
-colors + backgrounds, PASTEL_* cluster), src/core/modes.py (MODE_* cluster), src/hook_events.py
-(HOOK_* cluster + HOOK_EVENT_CATEGORIES), src/pane_error_log.py (PANE_ERROR_LOG_* cluster
-absorbed into the module that already owns that concern), and the residual src/constants.py
-(timing/size limits + TOOL_BLOCKLIST — zero clusters left).
+colors + backgrounds, PASTEL_* cluster), src/core/modes.py (MODE_* cluster), src/pane_error_log.py
+(PANE_ERROR_LOG_* cluster absorbed into the module that already owns that concern), and the
+residual src/constants.py (timing/size limits + TOOL_BLOCKLIST — zero clusters left). The HOOK_*
+cluster + HOOK_EVENT_CATEGORIES (26 names) had zero importers anywhere in src/ or dev/ and were
+deleted outright (control-flow integrity fixes, refactor phase 4) rather than migrated to a new
+module — removed from _NAMES below, not tracked in _NEW_LOCATIONS.
 
 BEFORE the split: every name below resolves through _NEW_LOCATIONS' default (src.constants,
 where they all still live); dumps {name: repr(value)} and hashes it.
 AFTER the split: _NEW_LOCATIONS is updated (same commit as the split) to point each moved name at
-its new module; the same 70 names resolve from their new homes and hash identically.
+its new module; the same 44 names resolve from their new homes and hash identically.
 
 Usage (from project root):
     ./venv/bin/python dev/constants/split_byte_identity.py
@@ -26,18 +28,12 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
-# The exact 70 top-level UPPER_CASE names in src/constants.py at the moment this harness was
-# built (pre-split) — frozen here rather than discovered dynamically via vars(), since after the
-# split most of them are no longer present in src.constants at all.
+# The 44 top-level UPPER_CASE names in src/constants.py that are still live post-HOOK_*-deletion —
+# frozen here rather than discovered dynamically via vars(), since after the split most of them
+# are no longer present in src.constants at all.
 _NAMES = [
     'BLUE', 'COLLISION_BG', 'CYAN', 'DIM', 'DIM_GREEN_BG', 'DIM_YELLOW_BG',
-    'EXPANDED_MAX_LINES', 'GREEN', 'HOOK_CONFIG_CHANGE', 'HOOK_CWD_CHANGED', 'HOOK_ELICITATION',
-    'HOOK_ELICITATION_RESULT', 'HOOK_EVENT_CATEGORIES', 'HOOK_FILE_CHANGED', 'HOOK_NOTIFICATION',
-    'HOOK_PERMISSION_DENIED', 'HOOK_PERMISSION_REQUEST', 'HOOK_POST_COMPACT', 'HOOK_POST_TOOL',
-    'HOOK_POST_TOOL_FAILURE', 'HOOK_PRE_COMPACT', 'HOOK_PRE_TOOL', 'HOOK_SESSION_END',
-    'HOOK_SESSION_START', 'HOOK_STOP', 'HOOK_STOP_FAILURE', 'HOOK_SUBAGENT_START',
-    'HOOK_SUBAGENT_STOP', 'HOOK_TASK_COMPLETED', 'HOOK_TASK_CREATED', 'HOOK_TEAMMATE_IDLE',
-    'HOOK_USER_PROMPT', 'HOOK_WORKTREE_CREATE', 'HOOK_WORKTREE_REMOVE', 'HOVER_BG',
+    'EXPANDED_MAX_LINES', 'GREEN', 'HOVER_BG',
     'INPUT_POLL_INTERVAL', 'LIGHT_RED_BG', 'MAGENTA', 'MODE_ALL', 'MODE_PROXY', 'MODE_TOKENS',
     'MODE_WARNINGS', 'MODE_WORKERS', 'MODE_WORKER_PROXY', 'ORANGE', 'PANE_ERROR_LOG_KEEP_BYTES',
     'PANE_ERROR_LOG_MAX_BYTES', 'PANE_ERROR_LOG_PATH', 'PASTEL_BLUE', 'PASTEL_GREEN',
@@ -49,11 +45,8 @@ _NAMES = [
 ]
 
 # Post-split home for every name that moves out of src/constants.py. A name absent here is
-# assumed to still live in src.constants — true for the 9 residual timing/size-limit names,
-# TOOL_BLOCKLIST, and the entire HOOK_* cluster (+ HOOK_EVENT_CATEGORIES), which stayed per Main's
-# explicit direction: a hook-events module would have zero importers (dead code on arrival), and
-# HOOK_* is the only cluster left in constants.py once PASTEL_/PANE_/MODE_ leave, which satisfies
-# the cluster rule on its own.
+# assumed to still live in src.constants — true for the 9 residual timing/size-limit names and
+# TOOL_BLOCKLIST.
 _COLOR_NAMES = [
     'BLUE', 'COLLISION_BG', 'CYAN', 'DIM', 'DIM_GREEN_BG', 'DIM_YELLOW_BG', 'GREEN', 'HOVER_BG',
     'LIGHT_RED_BG', 'MAGENTA', 'ORANGE', 'PASTEL_BLUE', 'PASTEL_GREEN', 'PASTEL_ORANGE',

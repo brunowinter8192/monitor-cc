@@ -15,6 +15,10 @@ _config_cache: list = [None]
 # FUNCTIONS
 
 
+def is_main_session(worker_context: str) -> bool:
+    return not (worker_context or "").startswith("worker:")
+
+
 def _load_config() -> dict:
     try:
         mtime = _PROXY_RULES_CONFIG.stat().st_mtime
@@ -70,7 +74,7 @@ def _load_system2_rules(model_family: str, project_path: str = "", worker_contex
     if model_family == "haiku":
         return ""
     global_files = s2.get("global", {}).get("files", [])
-    role_key = "worker" if (worker_context or "").startswith("worker:") else "main"
+    role_key = "main" if is_main_session(worker_context) else "worker"
     role_files = s2.get(role_key, {}).get("files", [])
     project_files, exclusive_files, empty_due_to_family = _resolve_project_rule_files(s2, project_path, model_family)
     if empty_due_to_family:

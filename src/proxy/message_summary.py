@@ -3,6 +3,15 @@ import json
 
 # FUNCTIONS
 
+def _infer_model_family(model: str) -> str:
+    m = (model or "").lower()
+    if "haiku" in m:
+        return "haiku"
+    if "sonnet" in m:
+        return "sonnet"
+    return "opus"
+
+
 def _summarize_block(block: dict) -> dict:
     btype = block.get("type", "text")
     has_cc = bool(block.get("cache_control"))

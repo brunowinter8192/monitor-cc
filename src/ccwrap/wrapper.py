@@ -63,11 +63,8 @@ def run(cmd: list, log_dir: Path) -> int:
 
 
 def _get_winsize():
-    try:
-        buf = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\x00' * 8)
-        return struct.unpack('HHHH', buf)[:2]
-    except OSError:
-        return (24, 80)
+    buf = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\x00' * 8)
+    return struct.unpack('HHHH', buf)[:2]
 
 
 def _set_winsize(master_fd: int, rows: int, cols: int) -> None:

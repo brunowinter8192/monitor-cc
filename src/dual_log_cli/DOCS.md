@@ -125,16 +125,17 @@ and stem/substring resolution with explicit ambiguity and unknown errors.
 
 ---
 
-### reader.py (105 LOC)
+### reader.py (98 LOC)
 
 **Purpose:** The read-only file primitives — reverse chunked line-offset scanner, cheap model
-sniff, last-conversation-request loader, small-file JSONL iterator, `infer_family`, and
-`local_datetime` — the one place every UTC dual-log timestamp gets parsed and converted to this
-machine's local time.
+sniff, last-conversation-request loader, small-file JSONL iterator, `infer_family` (imported from
+`src.proxy.message_summary._infer_model_family`, the one model-family classifier every proxy-side
+and display-side consumer shares), and `local_datetime` — the one place every UTC dual-log
+timestamp gets parsed and converted to this machine's local time.
 **Reads:** `_original` (byte ranges only, never whole-file) and any small stream line by line.
 **Writes:** Nothing.
 **Called by:** `discovery.py`, `timeline.py`, `timeline_boundaries.py`, `render_format.py`, `usage.py`; `dev/dual_log_cli/tests/test_local_time.py`, `test_msgs_blocks.py`, `test_msgs_sys_delta.py`, `test_msgs_usage.py`, `test_reqs.py`, `test_turns.py`, `test_sidecar_exclusion.py`.
-**Calls out:** —
+**Calls out:** `proxy.message_summary` (`_infer_model_family`)
 
 ---
 

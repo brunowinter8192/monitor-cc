@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from ..pane_error_log import log_pane_error
+
 # FUNCTIONS
 
 def read_response_log(path: Optional[Path], last_pos: int) -> tuple:
@@ -29,6 +31,7 @@ def read_response_log(path: Optional[Path], last_pos: int) -> tuple:
                     rid_map[rid] = entry.get('headers', {})
             return rid_map, f.tell()
     except OSError:
+        log_pane_error('side_logs')
         return {}, last_pos
 
 def scan_worker_errors_logs(last_positions: dict, project_session_id: str = '',
