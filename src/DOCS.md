@@ -1,86 +1,166 @@
-# src/ — Monitor_CC
+# src/
 
 ## Role
 
-Real-time monitor for Claude Code sessions. Reads Claude Code's JSONL output files and the mitmproxy API log, formats tool calls and events to a terminal, and drives 8 dedicated tmux panes (tokens, warnings, workers, worker-proxy, proxy, gpu, news, news-log). The `src/` tree is the entire application — `workflow.py` at the project root is just a 25-line entry point.
+`src/` is the entire Monitor_CC application — a real-time terminal monitor for Claude Code
+sessions, driven as 8 dedicated tmux panes plus a background mitmproxy addon. This directory
+holds the root-level modules shared by two or more pane packages (colors, constants, session
+discovery, the shared search bar, pane-error logging, rendering utils), the tmux window/pane
+launcher, the monitor-session janitor, and the shell/py entry points that start the whole thing.
+Every pane-specific package (`core/`, `panes/`, `workers/`, `gpu_pane/`, `news_pane/`,
+`proxy_display/`, `proxy/`, `format/`, `input/`, `jsonl/`, `ram_audit/`, `ccwrap/`, `menubar/`,
+`hooks/`) documents itself in its own DOCS.md. Touch this level when changing a constant, color,
+or util shared by 2+ packages, the tmux window/pane layout, or process startup. Do NOT touch it
+to change a single pane's own rendering or input handling — that lives in the pane's own package.
 
-## Entry Points
+## Public Interface
 
-- `workflow.py` → `src.startup`, `src.tmux_launcher`, `src.core.monitor`
-- mitmproxy → `src.proxy_addon` (thin shim, loaded via `mitmproxy -s src/proxy_addon.py`)
-- tmux panes → `workflow.py --mode <pane>` (each pane is a separate process)
+`src/__init__.py` is empty. Actual entry points:
+- `workflow.py` (project root) — the main process, and every pane subprocess (`workflow.py --mode <pane>`).
+- mitmproxy — loads `src/proxy_addon.py` directly via `-s`.
 
-## Directory Map
+## Flow
 
-| Subdir | Role | LOC | Modules |
-|---|---|---|---|
-| `core/` | Session discovery + mode dispatcher (main pane removed 2026-09, see `process-docs/main_pane/`) | 115 | 2 |
-| `panes/` | Tmux pane event loops (tokens, warnings) + warnings scan/render/parse helpers + tokens search matcher | 1207 | 5 |
-| `format/` | ANSI string rendering (cache tracker) | 327 | 2 |
-| `input/` | Keyboard/mouse stdin handling | 154 | 1 |
-| `jsonl/` | JSONL parsing (incremental read + cache-turn extraction) | 205 | 2 |
-| `workers/` | Workers pane (tmux session discovery + status display) | 878 | 3 |
-| `proxy_display/` | Proxy pane TUI (two-level expand, delta rendering, subprocess-parse, copy-button) | 2892 | 8 |
-| `proxy/` | mitmproxy addon (payload modification + JSONL logging) | 3074 | 18 |
-| `ram_audit/` | SIGUSR1 RAM-dump helper, gated by MONITOR_CC_RAM_AUDIT env | 103 | 1 |
-| `menubar/` | macOS status-bar app showing live CC sessions (rumps/AppKit) | 4155 | 25 |
-| `gpu_pane/` | GPU server monitor pane (cross-project, reads RAG state) | 734 | 3 |
-| `news_pane/` | CoinDesk news pipeline control (left) + live log tail (right) | 501 | 3 |
-| `hooks/` | Global CC safety hooks (PreToolUse scripts + hook_setup) | 1674 | 22 |
-| `ccwrap/` | Standalone PTY wrapper with diagnostic ANSI logging for CC (Phase 1 diagnostic tool) | 232 | 4 |
+1. `workflow.py` parses `--mode` and dispatches: `all`/`restart-panes` → `tmux_launcher`; `menubar`/`gpu`/`news`/`news-log` → their own pane package; every other mode → `core.monitor.run_monitor`.
+2. `tmux_launcher.launch_split_screen` spawns 8 panes, each its own `workflow.py --mode <X>` subprocess.
+3. `core.monitor.run_monitor` discovers session files via `session_finder` and dispatches `tokens`/`warnings`/`workers`/`proxy`/`worker-proxy` to the matching pane package.
+4. `claude_proxy_start.sh` launches mitmproxy (`-s proxy_addon.py`) + Claude Code; mitmproxy logs intercepted API traffic that the tokens/warnings/proxy panes tail independently.
 
-## Root-Level Files
+## Modules
 
-| File | LOC | Why at root |
-|---|---|---|
-| `constants.py` | 77 | Timing/size limits (`POLL_INTERVAL`, `INPUT_POLL_INTERVAL`, `WARNINGS_POLL_INTERVAL`, `TMUX_HISTORY_LIMIT`, `EXPANDED_MAX_LINES`, `PROXY_MESSAGES_KEEP_LAST`, `PROXY_REPARSE_INTERVAL_SECONDS`, `WORKER_COL_WIDTH`, `WARNINGS_INITIAL_TAIL_BYTES`), `TOOL_BLOCKLIST`, and the `HOOK_*` cluster (25 CC hook-event-name constants + `HOOK_EVENT_CATEGORIES`) — zero clusters among the timing/size-limit names, `HOOK_*` is the only cluster left in this file. **(2026-09, constants-split milestone)** was 154 LOC with 4 clusters (`PASTEL_*`, `PANE_ERROR_LOG_*`, `MODE_*`, `HOOK_*`) — split by cluster: `PASTEL_*` (+ every other ANSI color/background constant) moved to `colors.py`; `PANE_ERROR_LOG_*` moved into `pane_error_log.py` (the module that already owns that concern); `MODE_*` moved to `core/modes.py` (its sole importer, `core/monitor.py`). `HOOK_*`/`HOOK_EVENT_CATEGORIES` deliberately STAYED — grep-confirmed **zero importers anywhere in `src/`/`dev/`** (every other `HOOK_`-prefixed name in the codebase is an unrelated local `_HOOK_*` constant in a different module, e.g. `menubar/hook_setup.py`'s `_HOOK_EVENTS`); a dedicated module for a cluster nothing imports would be dead code on arrival, and leaving it here is free — it's the only cluster remaining in this file, which satisfies the split rule on its own. Byte-identical values verified via `dev/constants/split_byte_identity.py`. |
-| `colors.py` | 27 | **(2026-09, constants-split milestone, new)** ANSI colors + backgrounds (`RESET`…`SEARCH_CURRENT_BG`, incl. the `PASTEL_*` cluster, `DIM*`, `ZEBRA_*`, `SEARCH_*_BG`, `HOVER_BG`, `LIGHT_RED_BG`, `COLLISION_BG`, `SOFT_RESET`) — split out of `constants.py`. Imported by ≥2 subdirectories (`core`, `format`, `gpu_pane`, `news_pane`, `panes`, `proxy_display`, `workers`) plus root `search_bar.py`/`session_finder.py`/`startup.py`/`utils.py` — stays at root, same shallow-path rationale as `constants.py`/`utils.py`/`pane_error_log.py`. Catppuccin Mocha palette (https://catppuccin.com/palette/), truecolor ANSI `\033[38;2;R;G;Bm` (FG) / `\033[48;2;R;G;Bm` (BG). Semantic mapping: text=Text, title=Mauve, title-soft=Lavender, error=Red, warning=Yellow, success=Green, info=Blue, accent=Sky, accent-warm=Peach, hover-bg=Surface1, zebra-bg=Surface0, error-bg=Red, stripped-bg=custom mustard. |
-| `utils.py` | 166 | Same — `format_timestamp` + `visual_line_count` used everywhere; also `append_copy_symbol` (right-align a ⎘/✓ symbol, width-guarded — shared by `core.monitor_display`, `format.token_format`, `panes.warnings_render`, `workers.worker_format`, and `proxy_display`'s own reference implementation stays independent), `compute_header_rule_len` (shrinking-decoration header layout, shared by `gpu_pane`/`news_pane`), `highlight_query_in_line` (2026-08, browser-find-style inline substring BG highlight, ANSI-safe; `restore_bg` param defaults to `\033[49m` for callers with no per-row background — used directly by `core.monitor_display` since 2026-08-18 (its own identical private copy was deleted, rollout sub-milestone 2) and by `format.token_format` since sub-milestone 4 (passed a `search_bar._BG_RESTORE_SENTINEL` restore_bg, since the tokens pane DOES have a per-row background); `search_bar.py` passes a caller-owned sentinel instead, substituted for the real row background once known, for panes WITH a per-row background), and `wrap_visible` (2026-08-28, thinking-expander milestone — the repo's first word-wrap helper, cell-aware via `_cell_width` like `truncate_visible`, NOT character-count-based; breaks on spaces, hard-splits a single word wider than the target width; currently used only by `proxy_display/render_messages.py`'s thinking-block content wrapping) |
-| `search_bar.py` | 147 | Shared search-bar mechanics (2026-08-18, sub-milestone 1 of the pane-search rollout — extracted from `proxy_display/pane.py`, the reference implementation) — `SearchState`, `render_search_bar`, `col_to_query_index`, `handle_search_input`/`_cancel`, the drag-select mouse handlers, and the `_BG_RESTORE_SENTINEL`/`resolve_bg_restore` pair. Imported by `proxy_display` (sub-milestone 1's `pane.py` AND sub-milestone 3's `worker_proxy_pane.py`, 2026-08-18 — the latter imports only `SearchState`/`render_search_bar`/the input+drag handlers, not `_BG_RESTORE_SENTINEL`/`resolve_bg_restore` directly, since that sentinel machinery already lives in the SHARED `format.py`/`render_turn.py` render pipeline both proxy panes call through — worker_proxy_pane's own zebra/hover rows get the same sentinel-based highlight preservation automatically, no separate import needed), `core` (sub-milestone 2, 2026-08-18 — the main pane's `_main_search`), `panes`/`format` (sub-milestone 4, 2026-08-18 — the tokens pane's `_tokens_search`; `format/token_format.py` imports `_BG_RESTORE_SENTINEL` directly to embed search highlights at construction time, `panes/token_pane.py` imports `resolve_bg_restore` to resolve them in its own hand-rolled row loop — same `ZEBRA_BG_A == ''` trap the proxy pane hit, fixed the same way), `workers` (sub-milestone 5, 2026-08-18 — the workers pane's `_worker_search`; same `_BG_RESTORE_SENTINEL`/`resolve_bg_restore` split between `worker_format.py` (embed) and `worker_pane.py` (resolve, own hand-rolled loop) as the tokens pane — third occurrence of the identical sentinel fix), `panes.warnings_pane`/`warnings_render` (sub-milestones 6-8, 2026-08-18, bundled — the warnings pane's `_warnings_search`; fourth sentinel occurrence, `ZEBRA_BG_A==''` still applied even though this pane's PRE-EXISTING `DIM_YELLOW_BG` detection was already substring-based, verified before assuming), and `gpu_pane`/`news_pane` (sub-milestones 7-8, 2026-08-18 — `_gpu_search`/`_news_search`; HIGHLIGHT-ONLY, no jump-to-match, no sentinel needed at all — neither pane has any per-row background/zebra/hover loop, so `utils.highlight_query_in_line`'s default `restore_bg` is directly correct, same simple case as the main pane; `search_bar.py`'s drag-select/editor-deletion functions called directly at each pane's own INLINE mouse/key dispatch, since neither pane factors dispatch into a standalone handler function) — same shallow-path rationale as `constants.py`/`utils.py`. Rollout complete as of sub-milestone 8 — all 8 panes now share this module (`news_pane/log_pane.py` explicitly excluded per decision). See `proxy_display/DOCS.md` and `core/DOCS.md` for each retrofit and `process-docs/pane_search/` for the rollout plan. |
-| `pane_error_log.py` | 30 | `log_pane_error(pane_name)` — shared exception-safe sink all 8 pane `run_*_loop()` functions call from their `except Exception:` guard (2026-07-31); imported by every pane module the same shallow-path way as `constants.py`, so it belongs at the same level. **(2026-09, constants-split milestone)** now defines `PANE_ERROR_LOG_PATH`/`PANE_ERROR_LOG_MAX_BYTES`/`PANE_ERROR_LOG_KEEP_BYTES` itself (moved from `constants.py`'s `PANE_ERROR_LOG_*` cluster — this module already owned the concern) instead of importing them. |
-| `session_finder.py` | 77 | Single module, no subpackage warranted |
-| `startup.py` | 43 | Single module; only called by `workflow.py` |
-| `tmux_launcher.py` | 245 | Single module; only called by `workflow.py` (mode `all` → `launch_split_screen`; mode `restart-panes` → `restart_panes`, the Ctrl+R self-heal handler). **(2026-09, remaining-thresholds milestone)** `launch_split_screen`/`restart_panes` were both over the 50-LOC function threshold — `launch_split_screen` now reuses `_build_mode_commands` for its 8 mode-command strings (was duplicated inline, byte-identical construction) and delegates the window/split sequence to `_create_windows(session_name, cmds)`; `restart_panes` gained `_list_pane_modes(session_name, win_idx)` (the thrice-repeated list-panes+parse), `_create_missing_window(...)`, `_fill_missing_panes(...)`, `_respawn_all_panes(session_name)`. Byte-identical `subprocess.run` argv sequences verified via `dev/tmux_launcher/argv_byte_identity.py`. 6-Window Layout: Window 0 "tokens" (fullscreen); 1 "proxy" (fullscreen); 2 "workers" (left 34%) + worker-proxy (right 66%); 3 "debug" = warnings (fullscreen); 4 "gpu" (fullscreen); 5 "news" (left 50%) + news-log (right 50%). |
-| `monitor_janitor.py` | 69 | `sweep_workflow()` — kills every `monitor_cc_*` tmux session older than 24h (registry-free `tmux list-sessions` enumeration, same lesson as the worker-cli janitor), logs one line per session (name, age, KILLED/SPARED) to `<checkout>/src/logs/monitor_sweep.log`, where `<checkout>` is `$MONITOR_CC_ROOT` if set, else the directory two levels above `monitor_janitor.py`'s own `__file__` — so a manual run from a `.claude/worktrees/<name>/` checkout writes into THAT worktree's `src/logs/`, not the main checkout's, unless `MONITOR_CC_ROOT` is set. No main-checkout fallback like `dual_log_cli.discovery.resolve_dual_log_dir` — this path is a write target that must follow whichever checkout's code produced the entry, not a read source to prefer aggregating in one place. Invoked as `python3 -m src.monitor_janitor` from project root — from `claude_proxy_start.sh` (detached, every main-session start; bash `cd`'s into `$MONITOR_CC_ROOT` first, so `__file__` resolves correctly without an explicit env var) and, 2026-09, from `src/menubar/monitor_sweep_scheduler.py`'s daily tick-gated call (`sweep_workflow()` imported directly, not `-m`; sets `$MONITOR_CC_ROOT` explicitly first, since a frozen py2app bundle's own `__file__` resolves inside the bundle copy). **This module's own dedicated LaunchAgent (`com.brunowinter.monitor-cc-sweep.plist` + `setup_monitor_sweep.py`) was removed 2026-09** — a bare launchd-spawned `/usr/bin/python3` has no TCC Full Disk Access grant for a checkout under `~/Documents`, and that block cannot be worked around by any plist or code change (see `process-docs/monitor_lifecycle/`); the daily run moved to the already-launchd-and-TCC-granted menubar app's own tick instead. Never uses `pkill -f` (see `process-docs/pipeline/` `pkill -f` incident) — kills by exact tmux session name only, which tears down all nine panes (verified in `dev/monitor_lifecycle/`). |
-| `proxy_addon.py` | 27 | Thin shim — `claude_proxy_start.sh` copies it to `src/logs/.proxy_addon_live_<id>.py` for per-session isolation. Shim has sys.path logic that finds `src/proxy/` from both root and live-copy locations. Move would break live-copy pattern. |
-| `claude_proxy_start.sh` | 436 | Shell script — launches mitmproxy + Claude Code with proxy env; version-aware purge (Phase 0: hash proxy source, delete stale >60min logs on change) + count-30 quartet-aligned dual-log rotation; per-project marker (src/logs + /tmp) with PID+identity liveness guard + 10s heartbeat reclaim; model precedence (highest first): explicit `--model` (anywhere in the args) > `--fable`/`--opus` shortcut flags (2026-08-06, map to `--model claude-fable-5`/`claude-opus-5`, last one wins if both given) > `main` from `~/.claude/shared-rules/model_selection.json` (2026-08, model-selector milestone 3 — the menubar's Models tab writes this file; read via `jq`, `command -v`-guarded; a missing/unreadable/malformed file or missing/empty key falls through silently) > nothing injected, byte-identical to no-flag behavior; fires a fully-detached `worker-cli janitor` (2026-08-19, `command -v`-guarded, `nohup ... & disown`) before arg-parsing so every main-session start also triggers the iterative-dev stale-tmux-worker sweep — see `iterative-dev` repo's `bin/worker-cli`, unrelated to this script's own `_janitor_*` functions (proxy live-copy/log rotation, pre-existing separate concern, same name coincidental); also fires a fully-detached `python3 -m src.monitor_janitor` (2026-09, `cd "$MONITOR_CC_ROOT"` first so the module path resolves regardless of caller CWD) triggering the monitor-session sweep (`monitor_janitor.py`) on the same every-session-start cadence |
+### colors.py (27 LOC)
 
-## Flow (Main Session)
+**Purpose:** ANSI truecolor foreground/background color and style constants (Catppuccin Mocha palette).
+**Reads:** nothing.
+**Writes:** nothing.
+**Called by:** every rendering module in `format/`, `gpu_pane/`, `news_pane/`, `panes/`, `proxy_display/`, `workers/`, plus root `search_bar.py`, `session_finder.py`, `startup.py`, `utils.py`.
+**Calls out:** none.
 
-1. `workflow.py` → `run_monitor(project_filter, mode="all")` → `tmux_launcher.launch_split_screen()` spawns 8 panes each running `workflow.py --mode <X>`. **(2026-09) Window 0 is the tokens pane at full width** — the main pane was removed entirely, see `process-docs/main_pane/`.
-2. Each pane runs its own event loop (e.g. `run_tokens_loop()`): poll data source → handle mouse/keyboard → render full screen. `core/monitor.py::run_monitor` only discovers sessions and dispatches to the matching loop by `--mode`; it does not run a loop of its own anymore.
-3. mitmproxy (started by `claude_proxy_start.sh`) intercepts API traffic, strips/modifies payloads, logs to `src/logs/api_requests_<id>.jsonl`.
-4. Panes that need proxy data (proxy_display, warnings) tail that JSONL file independently.
+---
 
-## Shared State
+### constants.py (77 LOC)
 
-Runtime state (`file_positions`, `active_project_filter`, `active_mode`) lives in `core/monitor.py` as module-level variables. Every pane that needs session state imports via `from ..core import monitor as _monitor` (lazy, inside the run function to avoid circular imports).
+**Purpose:** process-wide timing/size-limit constants, the `HOOK_*` CC hook-event names + `HOOK_EVENT_CATEGORIES`, and `TOOL_BLOCKLIST`.
+**Reads:** nothing.
+**Writes:** nothing.
+**Called by:** `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy/payload_helpers.py`, `proxy/tools.py`, several `proxy_display/` modules, `tmux_launcher.py`, `utils.py`, `workers/worker_pane.py`.
+**Calls out:** none.
 
-| State | Owner | Readers |
-|---|---|---|
-| `file_positions` | `core/monitor.py` | `core/monitor.py` itself (session-file bookkeeping only) |
-| `active_project_filter` | `core/monitor.py` | all pane loops |
-| `active_mode` | `core/monitor.py` | `core/monitor.py` itself |
-| Pane scroll/expand state | each pane module | that pane only |
+---
+
+### monitor_janitor.py (69 LOC)
+
+**Purpose:** `sweep_workflow()` — kills every `monitor_cc_*` tmux session older than 24h and logs one line per session (name, age, KILLED/SPARED).
+**Reads:** `tmux list-sessions` output.
+**Writes:** kills stale tmux sessions via `tmux_launcher.kill_session`; appends to `<root>/src/logs/monitor_sweep.log`.
+**Called by:** `claude_proxy_start.sh` (detached `python3 -m src.monitor_janitor` on every session start), `menubar/monitor_sweep_scheduler.py` (`sweep_workflow`, its own daily tick), `dev/monitor_lifecycle/tests/test_monitor_sweep.py`.
+**Calls out:** `tmux` (subprocess CLI).
+
+---
+
+### pane_error_log.py (30 LOC)
+
+**Purpose:** `log_pane_error(pane_name)` — exception-safe sink every pane's `except Exception:` guard calls; caps the log file at a fixed size.
+**Reads:** existing log file size (to decide truncation).
+**Writes:** `/tmp/monitor_cc_error.log` (appends traceback; truncates to a fixed tail once past the max size).
+**Called by:** `gpu_pane/pane.py`, `news_pane/log_pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `workers/worker_pane.py`.
+**Calls out:** none.
+
+---
+
+### proxy_addon.py (27 LOC)
+
+**Purpose:** thin mitmproxy shim — resolves `src/proxy/`'s actual location (checkout copy or per-session live copy) and re-exports `ProxyAddon`/`addons`/`apply_modification_rules`.
+**Reads:** its own `__file__` path and the live-copy directory naming convention (`.proxy_live_<session_id>`).
+**Writes:** mutates `sys.path`.
+**Called by:** `claude_proxy_start.sh` (copies this file to `src/logs/.proxy_addon_live_<id>.py`, then launches mitmproxy with `-s` against the copy).
+**Calls out:** `mitmproxy` (loaded via `-s`).
+
+---
+
+### search_bar.py (147 LOC)
+
+**Purpose:** shared search-bar mechanics — `SearchState`, `render_search_bar`, `handle_search_input`/`_cancel`, drag-select mouse handlers, and the `_BG_RESTORE_SENTINEL`/`resolve_bg_restore` pair every pane's zebra/hover row loop uses to embed then resolve search highlights.
+**Reads:** nothing (all state passed as arguments).
+**Writes:** mutates the passed-in `SearchState` instance.
+**Called by:** `format/token_format.py`, `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy_display/format.py`, `proxy_display/pane.py`, `proxy_display/proxy_pane_shared.py`, `proxy_display/render_turn.py`, `proxy_display/worker_proxy_pane.py`, `workers/worker_format.py`, `workers/worker_pane.py`, `workers/worker_render.py`.
+**Calls out:** none.
+
+---
+
+### session_finder.py (77 LOC)
+
+**Purpose:** `find_active_sessions(project_filter)` — enumerates `~/.claude/projects/**/*.jsonl` (incl. `subagents/agent-*.jsonl`), optionally filtered by project, sorted newest-first.
+**Reads:** `~/.claude/projects/` directory tree.
+**Writes:** nothing.
+**Called by:** `core/monitor.py`, `menubar/discover.py`, `workers/worker_tmux.py` (`encode_project_path`), `dev/pipeline/io_profile/01_poll_cycle_cost.py`.
+**Calls out:** none.
+
+---
+
+### startup.py (43 LOC)
+
+**Purpose:** CLI argument parsing (`--project`/`--session`/`--mode`), SIGINT/SIGTERM handlers, startup/shutdown console messages.
+**Reads:** `sys.argv`.
+**Writes:** stdout (startup/shutdown messages); calls `sys.exit(0)` on shutdown signal.
+**Called by:** `workflow.py`.
+**Calls out:** none.
+
+---
+
+### tmux_launcher.py (245 LOC)
+
+**Purpose:** launches the 6-window, 8-pane tmux split-screen layout (`launch_split_screen`) and self-heals missing windows/panes on Ctrl+R (`restart_panes`); owns the window layout table (`_WINDOW_LAYOUT`) and every tmux key-binding/status-bar setup call.
+**Reads:** `tmux list-sessions`/`list-panes`/`list-windows`/`show-options` output.
+**Writes:** creates/kills tmux sessions, windows, panes; sets tmux options and key bindings.
+**Called by:** `workflow.py` (`--mode all` / `--mode restart-panes`), `monitor_janitor.py` (`kill_session`), `menubar/system.py` (`generate_session_name`, `check_session_exists`, `kill_session`).
+**Calls out:** `tmux` (subprocess CLI).
+
+---
+
+### utils.py (166 LOC)
+
+**Purpose:** shared formatting/rendering primitives with no I/O — timestamp formatting, cell-width-aware truncation/wrapping, ANSI-safe substring highlighting, copy-symbol placement, header-rule sizing.
+**Reads:** nothing (pure functions on passed-in strings/values).
+**Writes:** nothing.
+**Called by:** `format/token_format.py`, `gpu_pane/gpu_render.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/token_search.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy_display/format.py`, `proxy_display/proxy_pane_shared.py`, `proxy_display/render_messages.py`, `proxy_display/render_turn.py`, `proxy_display/search.py`, `proxy_display/worker_proxy_pane.py`, `search_bar.py`, `workers/worker_format.py`, `workers/worker_render.py`.
+**Calls out:** none.
+
+---
+
+### workflow.py (39 LOC, project root)
+
+**Purpose:** single process entry point — parses `--mode`, dispatches to `tmux_launcher` (`all`/`restart-panes`), `menubar`, `gpu_pane`, `news_pane`, or `core.monitor.run_monitor` (every other mode).
+**Reads:** `sys.argv` (via `startup.parse_arguments`).
+**Writes:** nothing directly.
+**Called by:** invoked directly (main session start); `tmux_launcher.py`'s own generated pane commands (`python3 {script_path} --mode <X>`).
+**Calls out:** none.
+
+---
+
+### claude_proxy_start.sh (436 LOC, project root)
+
+**Purpose:** shell entry point that launches mitmproxy + Claude Code with the proxy env — handles per-project log rotation/purge, a per-project marker with a liveness guard, model-flag precedence, and fires the background janitors (`monitor_janitor.py` and `bin/worker-cli` (iterative-dev)) on every session start.
+**Reads:** `~/.claude/shared-rules/model_selection.json` (model precedence); existing log files (rotation/purge decisions); per-project marker files.
+**Writes:** `src/logs/.proxy_addon_live_<id>.py` (live proxy-addon copy); rotated/purged log files; per-project marker files (`src/logs` + `/tmp`).
+**Called by:** invoked directly (main session start); the command `src/ccwrap/wrapper.py` wraps.
+**Calls out:** `mitmproxy`, `jq`, `tmux`, `bin/worker-cli` (iterative-dev).
+
+---
+
+## State
+
+Runtime state (`file_positions`, `active_project_filter`, `active_mode`) lives in `core/monitor.py`
+as module-level variables — see `core/DOCS.md`. Every pane package reads it via
+`from ..core import monitor as _monitor` (lazy, to avoid circular imports).
 
 ## Gotchas
 
-- `KILL_LINE_CHAR = '\x15'` (Ctrl-U) is a HYPOTHESIS from 2026-08-18, not live-confirmed: Cmd+Backspace is normally consumed by the terminal app; Ghostty most likely maps it to 0x15 before it reaches the pane. It is one named constant so a rebind after live testing is a one-line change.
-- `restart_panes` known limitation: when several panes in one window are missing at once, the split percentage is applied against whichever pane survived, not the original source, so proportions may differ from the initial launch; the single-missing-pane case always restores the correct size.
-
-## Subdir DOCS
-
-- [core/DOCS.md](core/DOCS.md) — session discovery, mode dispatch
-- [panes/DOCS.md](panes/DOCS.md) — token, warnings pane loops
-- [format/DOCS.md](format/DOCS.md) — strip_marker, token_format
-- [input/DOCS.md](input/DOCS.md) — click_handler
-- [jsonl/DOCS.md](jsonl/DOCS.md) — jsonl_parser, jsonl_cache_turns
-- [workers/DOCS.md](workers/DOCS.md) — worker_pane, worker_format, worker_tmux
-- [proxy_display/DOCS.md](proxy_display/DOCS.md) — proxy pane TUI (8 modules)
-- [proxy/DOCS.md](proxy/DOCS.md) — mitmproxy addon (18 modules)
-- [ram_audit/DOCS.md](ram_audit/DOCS.md) — SIGUSR1 RAM-dump helper (env-gated tracemalloc)
-- [menubar/DOCS.md](menubar/DOCS.md) — macOS menubar app (rumps, session discovery, background-task badge)
-- [gpu_pane/DOCS.md](gpu_pane/DOCS.md) — GPU monitor pane (status, errors, toggle)
-- [news_pane/DOCS.md](news_pane/DOCS.md) — CoinDesk news pipeline control pane + live log pane
-- [hooks/DOCS.md](hooks/DOCS.md) — Global CC PreToolUse safety hooks (block scripts + hook_setup)
-- [ccwrap/DOCS.md](ccwrap/DOCS.md) — PTY wrapper with diagnostic ANSI logging (Phase 1 diagnostic tool)
+- `search_bar._BG_RESTORE_SENTINEL` (`'\033[999m'`) must be resolved via `resolve_bg_restore` by every renderer that embeds it, or it leaks into terminal output as a literal escape code.
+- `search_bar.KILL_LINE_CHAR` (`'\x15'`, Ctrl-U) is an unconfirmed mapping guess for Cmd+Backspace's terminal encoding — a rebind after live testing is a one-line change.
+- `constants.py`'s `HOOK_*` cluster and `HOOK_EVENT_CATEGORIES` have no real importer anywhere in `src/` or `dev/` (only referenced by a byte-identity check script) — kept because a dedicated module for them would itself be dead code on arrival.
+- `monitor_janitor.py`'s log path follows `MONITOR_CC_ROOT` if set, else two directories above its own `__file__` — a manual run from a worktree checkout without the env var set writes into that worktree's own `src/logs/`, not the main checkout's.
+- `tmux_launcher.restart_panes`'s split-percentage self-heal is computed against whichever pane in a window currently survives, not the original source pane, when several panes in one window are missing at once — proportions can differ from a fresh launch; the single-missing-pane case is exact.
+- `pane_error_log.log_pane_error` swallows its own write failures silently (`except Exception: pass`) — a full disk or permissions error here never propagates and never kills the calling pane loop.
+- `session_finder.encode_project_path` must stay byte-identical to however Claude Code itself encodes project directory names, or `matches_project_filter` silently matches nothing.
+- `utils._cell_width` treats emoji and CJK ranges as width-2 cells — every truncation/padding function across every pane depends on this being correct, or ANSI row-fill columns drift by one cell per wide character.
