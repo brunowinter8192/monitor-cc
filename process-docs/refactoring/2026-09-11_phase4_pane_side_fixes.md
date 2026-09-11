@@ -98,3 +98,19 @@ the corresponding DOCS.md headings; `news_pane/log_pane.py` (79→76) and `news_
 headings updated too. Remaining 16 path-drift findings after the fix are pre-existing and
 unrelated (gitignored `src/logs/dual_log/` references, `.claude/worktrees` references) — same
 count before and after this change.
+
+## Recap — 2026-09-11
+
+Self-audit (`git diff integration --name-only`) shows files beyond this task's own commit
+(`ade22d8`) — proxy-side fixes (`src/proxy/`, `src/proxy_display/`, `src/dual_log_cli/`,
+`src/ccwrap/`, `src/constants.py`, `src/utils.py`, `dev/constants/`, and a
+`process-docs/refactoring/2026-09-11_phase4_proxy_side_fixes.md` file) already sit in this
+branch's history ahead of my own commit. Those belong to a different task/session (the proxy-side
+half of the same Phase 4 scan) and are out of this recap's scope — not touched, not reported on,
+per the "scope is YOUR task" rule. The one commit (`ade22d8`) that is this task's own work touches
+exactly the 14 files listed in the Verification section above; no follow-up task exists.
+
+Re-ran `docs-drift-check` from the worktree root: still 0 LOC-drift findings on every touched
+DOCS.md, 16 path-drift findings unchanged (pre-existing, unrelated to this task). No DOCS.md
+edits were needed at recap time — the module-map entries were already brought current during the
+task itself.
