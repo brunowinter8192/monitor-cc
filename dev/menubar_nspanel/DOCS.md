@@ -1,44 +1,43 @@
 # dev/menubar_nspanel/
 
-## Purpose
+## Role
 
-Probe suite for the NSPanel sticky-toggle refactor of the menubar app. Replaces the `NSMenu`-based dropdown (which auto-dismisses on any outside click via `NSEventTrackingRunLoopMode`) with a persistent `NSPanel` that only closes on an explicit Cmd+L toggle or bar-icon click.
+Probe and debug launcher for the menubar's NSPanel sticky-toggle behavior — a persistent
+`NSPanel` that only closes on an explicit Cmd+L toggle or bar-icon click, replacing an
+`NSMenu`-based dropdown that auto-dismisses on any outside click via
+`NSEventTrackingRunLoopMode`. Background/build narrative: `process-docs/menubar_nspanel/`.
 
-Background and design rationale: `process-docs/menubar_nspanel/A1.md`.
-Build narrative: `process-docs/menubar_nspanel/A2.md`.
-
-## Scripts
+## Modules
 
 ### p1_nspanel_probe.py (260 LOC)
 
-Self-contained NSPanel menubar probe. Does **not** modify `src/`. Imports `src.menubar.discover` (read-only) for live session data.
+**Purpose:** Self-contained NSPanel menubar probe verifying: the panel stays open on an outside
+click (no `NSEventTrackingRunLoopMode` auto-dismiss), `@rumps.timer` (`_tick`) keeps firing while
+the panel is visible, and bar-icon click + Cmd+L both toggle the panel via the same
+`togglePanel_` action. Does not modify `src/`.
+**Reads:** live session data via `src.menubar.discover.list_alive_sessions` (read-only).
+**Writes:** nothing — foreground GUI app, no Dock icon.
+**Called by:** none — run manually; stop via the panel's Quit button or `pkill -f
+p1_nspanel_probe.py`.
+**Calls out:** `objc`, `rumps`, `AppKit`, `Foundation`.
 
-**Purpose:** Verify three things that the production NSMenu approach cannot provide:
-1. Panel stays open on outside click (no `NSEventTrackingRunLoopMode` auto-dismiss).
-2. `@rumps.timer` (`_tick`) keeps firing while the panel is visible — no runloop freeze.
-3. Bar-icon click and Cmd+L both toggle the panel via the same `togglePanel_` action.
+---
 
-**Usage (run from project root):**
-```bash
-./venv/bin/python3 dev/menubar_nspanel/p1_nspanel_probe.py
-```
+### menubar_debug.py (60 LOC)
 
-The probe launches as a menubar app (no Dock icon). A `◉` icon appears in the status bar.
+**Purpose:** Bootout the real menubar launchd service, run `workflow.py --mode menubar` in the
+foreground with `MENUBAR_DIAGNOSTICS=1`, and optionally re-bootstrap the launchd service on exit.
+**Reads:** nothing.
+**Writes:** nothing — runs the menubar app in the foreground; stdout/stderr inherited.
+**Called by:** none — run manually.
+**Calls out:** `launchctl` (via `subprocess`, bootout/bootstrap of the `com.brunowinter.monitor_cc_menubar` service).
 
-**To stop:** Click the `◉` icon to open the panel → click Quit, or send SIGTERM:
-```bash
-pkill -f p1_nspanel_probe.py
-```
+---
 
-## Verification Checklist
+## Gotchas
 
-Run through these steps after launch to confirm the probe is functional:
-
-1. **Panel opens on Cmd+L** — press Cmd+L → panel appears directly below the `◉` bar icon.
-2. **Panel stays open on outside click** — with panel visible, click anywhere on the desktop or another app window → panel remains open (does NOT auto-dismiss).
-3. **Panel closes on second Cmd+L** — press Cmd+L again → panel disappears.
-4. **Bar-icon click toggles** — click the `◉` icon → panel appears; click `◉` again → panel disappears.
-5. **`@rumps.timer` fires while panel is open** — open panel, wait 5+ seconds while a Claude Code session changes status (working ↔ idle) → `◉` blinks and panel text updates. Proves `NSDefaultRunLoopMode` is not frozen (unlike NSMenu which triggered `NSEventTrackingRunLoopMode`).
-6. **Panel positions correctly** — panel appears flush below the bar icon, not at screen origin (0,0) or off-screen.
-7. **No focus steal** — open panel while typing in another app window → other window retains keyboard focus (`.nonactivatingPanel` styleMask working).
-8. **Quit works** — open panel, click Quit → app exits cleanly.
+**The production NSMenu approach auto-dismisses on any outside click** (via
+`NSEventTrackingRunLoopMode`) — the NSPanel replacement's whole purpose is to not do that; if
+`p1_nspanel_probe.py` shows the panel disappearing on an outside click, the toggle wiring
+regressed. `@rumps.timer` firing while the panel is open also proves `NSDefaultRunLoopMode` isn't
+frozen by the panel (unlike `NSEventTrackingRunLoopMode` under the old NSMenu).

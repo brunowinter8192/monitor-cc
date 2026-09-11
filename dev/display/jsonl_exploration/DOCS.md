@@ -1,58 +1,46 @@
-# JSONL Structure Exploration
+# dev/display/jsonl_exploration/
 
-Scripts to map the full structure of Claude Code session JSONL files. Each script exports results as MD reports.
+## Role
 
-## Working Directory
+Scripts that map the full structure of Claude Code session JSONL files, each exporting an MD
+report. Touch this directory when investigating a new JSONL message/content shape not already
+covered by `01`-`03`'s reports.
 
-**CRITICAL:** All commands assume CWD = `Monitor_CC/` (project root)
-
-## Scripts
+## Modules
 
 ### 01_map_message_types.py (163 LOC)
 
-Maps all message types in a session JSONL.
+**Purpose:** For each top-level `type` value in a session JSONL: count, top-level keys, subtypes,
+`isMeta` distribution, one truncated example.
+**Reads:** a session JSONL path (argv[1], default hardcoded).
+**Writes:** `01_reports/message_types_<timestamp>.md`.
+**Called by:** none — run manually.
 
-**Purpose:** For each `type` value: count, top-level keys, subtypes, isMeta distribution, one truncated example.
-
-**Usage:**
-```bash
-python3 dev/display/jsonl_exploration/01_map_message_types.py [path/to/session.jsonl]
-```
-
-**Output:** `01_reports/message_types_<timestamp>.md`
+---
 
 ### 02_map_content_blocks.py (239 LOC)
 
-Deep-dive into `message.content` blocks.
+**Purpose:** Deep-dive into `message.content` blocks — for each `msg_type`/`content_type`
+combination: count, keys, nested structure, tool names, one truncated example.
+**Reads:** a session JSONL path (argv[1], default hardcoded).
+**Writes:** `02_reports/content_blocks_<timestamp>.md`.
+**Called by:** none — run manually.
 
-**Purpose:** For each msg_type/content_type combination: count, keys, nested structure, tool names, one truncated example.
-
-**Usage:**
-```bash
-python3 dev/display/jsonl_exploration/02_map_content_blocks.py [path/to/session.jsonl]
-```
-
-**Output:** `02_reports/content_blocks_<timestamp>.md`
+---
 
 ### 03_scan_instructions.py (237 LOC)
 
-Scans for anything rules/instructions-related.
+**Purpose:** Scans for anything rules/instructions-related — `isMeta` messages, "Contents of",
+CLAUDE.md references, `system-reminder` tags, command tags, file-history-snapshot structure.
+**Reads:** a session JSONL path (argv[1], default hardcoded).
+**Writes:** `03_reports/instructions_<timestamp>.md`.
+**Called by:** none — run manually.
 
-**Purpose:** Searches for isMeta messages, "Contents of", CLAUDE.md references, system-reminder tags, command tags, file-history-snapshot structure.
+---
 
-**Usage:**
-```bash
-python3 dev/display/jsonl_exploration/03_scan_instructions.py [path/to/session.jsonl]
-```
+## Gotchas
 
-**Output:** `03_reports/instructions_<timestamp>.md`
-
-## Key Finding
-
-Session-JSONL contains NO rules/instructions data:
-- `Contents of`: 0 hits
-- `system-reminder`: 0 hits (injected at API call time, not persisted)
-- `claudeMd`: 0 hits
-- System prompt is NOT written to JSONL
-
-The InstructionsLoaded hook (via `hook_outputs.jsonl`) is the only Claude-infrastructure source for rules data.
+**Session JSONL contains no rules/instructions data** — `Contents of`: 0 hits, `system-reminder`:
+0 hits (injected at API call time, not persisted), `claudeMd`: 0 hits; the system prompt itself is
+never written to JSONL. The InstructionsLoaded hook (`hook_outputs.jsonl`) is the only
+Claude-infrastructure source for rules data.

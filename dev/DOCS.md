@@ -1,47 +1,41 @@
-# Dev Scripts
+# dev/
 
-Development and testing scripts for Monitor_CC pipeline components.
+## Role
 
-## Working Directory
+Development, measurement, and regression scripts for `src/`. Every script here runs manually
+(no `src/` module imports any `dev/` script — `block_dev_imports_src` also blocks the reverse:
+`dev/` scripts may not `import src.` at module level, only via `sys.path.insert` +
+package-relative imports or `importlib`). Each subdirectory is one area: either a byte-identity/
+regression harness for one `src/` package, a smoke-test suite for one class of hook or pane
+feature, or a standalone investigation probe. Touch a `dev/<area>/` directory when adding a new
+regression guard for that area's `src/` package, or when a `src/` refactor in that package needs
+a before/after correctness proof. All commands assume CWD = the project root.
 
-**CRITICAL:** All commands assume CWD = `Monitor_CC/` (project root)
+## Flow
 
-```bash
-cd Monitor_CC/
-```
+A script reads real logs/session JSONLs/live state or builds synthetic fixtures in-process,
+drives one or more real `src/` functions (via `importlib`, `sys.path.insert`, or package-relative
+import), and either asserts pass/fail to stdout or writes a report under `dev/<area>/md/` (or
+`json/`, `reports/`).
 
-## Documentation Tree
+## Areas in scope of this map
 
-- [display/DOCS.md](display/DOCS.md) — Display layer tests + format_cache_tracker differential proof
-- [jsonl/DOCS.md](jsonl/DOCS.md) — extract_cache_turns differential proof harness
-- [hook_error_correlation/DOCS.md](hook_error_correlation/DOCS.md) — Hook-caused tool-error overlay analysis (`hook_firing.jsonl` × `tool_errors.jsonl`); `md/` also holds the historical 2026-05-22 hook block-event snapshot
-- [pipeline/DOCS.md](pipeline/DOCS.md) — Pipeline evaluation suite (memory, I/O, parsing, format stability)
-- [session_analysis/DOCS.md](session_analysis/DOCS.md) — Forensic session JSONL + proxy log analysis (cache behavior, rebuild detection, token attribution)
-- [tool_injection/DOCS.md](tool_injection/DOCS.md) — MCP tool schema extraction for proxy-side tool injection
-- [tool_use_analysis/DOCS.md](tool_use_analysis/DOCS.md) — Tool-use input size extraction (Proxy JSONL) + zero-result detection (Session JSONL)
-- [tool_use_errors/DOCS.md](tool_use_errors/DOCS.md) — Empirical audit of `src/logs/tool_errors.jsonl` — cluster analysis + strip_hook_prefix.py cross-check (2026-05-30)
-- [cursor_edges/DOCS.md](cursor_edges/DOCS.md) — NSPanel cursor-rect investigation probe — edge hover ↔/↕ blockers (NonactivatingPanel, subview coverage, mask conflicts)
-- [menubar_nspanel/DOCS.md](menubar_nspanel/DOCS.md) — NSPanel sticky-toggle probe suite — persistent menubar panel replacing NSMenu auto-dismiss behavior
-- [cc_internals/DOCS.md](cc_internals/DOCS.md) — CC binary + source research artifacts — env-var inventory from npm binaries, cross-referenced against community decompiles
-- [ToolsSystemPrompts/DOCS.md](ToolsSystemPrompts/DOCS.md) — Captured CC built-in tool definitions + sys[3] segment — char-count corpus for proxy tool-injection/stripping budget analysis
-- [ram_audit/DOCS.md](ram_audit/DOCS.md) — Pane RAM snapshot investigation — SIGUSR1 dump handler + `dump_all.sh` for live RSS/allocator capture across all panes
-- [sleep_pattern_analysis/DOCS.md](sleep_pattern_analysis/DOCS.md) — Empirical audit of `block_chained_sleep` firing events; classifies cmd_before tokens as trivial-sync / load-bearing / mixed to inform `rewrite_chained_sleep.py` design
-- [hook_smoke/DOCS.md](hook_smoke/DOCS.md) — Hook blocking/rewrite smoke tests — one test script per hook (block_dangerous_kill, block_read_worktree, rewrite_chained_sleep; block_chained_sleep preserved for reference; test_fire_log added 2026-05-24); also holds `test_bg_task_detection.py` + `probe_bg_task_live.py` for `proc_cache.py::_has_active_bg` (menubar background-task predicate, not a hook — added 2026-07-30)
-- `bead_tracker/` — `smoke.py`: end-to-end smoke for `bead_tracker_hook` per-subcommand processing (4 cases: single, chained `;`, cross-project skip, pipe non-split); creates/deletes real test beads; no own DOCS.md
-- [strip_fp_tool_result/DOCS.md](strip_fp_tool_result/DOCS.md) — Audit: which strip passes remove content from inside `tool_result` blocks, split SR strip family vs. unrelated non-SR passes; measurement only
-- [proxy/DOCS.md](proxy/DOCS.md) — Per-pass unit tests + targeted replay proofs for individual proxy strip/inject passes (message_passes.py sub-passes, rules_config.py) and a bash regression for the proxy marker-file lifecycle (claude_proxy_start.sh)
-- [proxy_dual_log/DOCS.md](proxy_dual_log/DOCS.md) — Verification suite for the dual-log quartet written by src/proxy/addon.py — losslessness/self-consistency of the forwarded-delta log against the original, and completeness of the strip/inject diff engine
-- [proxy_instrumentation/DOCS.md](proxy_instrumentation/DOCS.md) — Reconstructs/measures the proxy's real strip/inject pipeline from recorded dual-log payloads through the real production code, no live proxy required
-- [bg_wakeup_id_line/DOCS.md](bg_wakeup_id_line/DOCS.md) — CC background-launch-ack wording inventory (`p1_`) + tmux-Escape-on-launch-ack mechanism verification (`p2_`, `src/proxy/bg_escape.py`); `md/` holds both scripts' reports
-- [pane_error_log/DOCS.md](pane_error_log/DOCS.md) — Regression coverage for the shared exception-safe pane-error sink (`src/pane_error_log.py`) and the exception guard on all 9 pane event loops — catch+log+continue, `KeyboardInterrupt`/`SystemExit` passthrough, failing-log-write safety, sink size-capping
-- [click_ui/DOCS.md](click_ui/DOCS.md) — Click-UI milestone series (every pane control mouse-clickable) — Milestone 1: worker-selection click-region parity vs. digit keys, worker-proxy header + workers pane
-- [hotkey_latency/DOCS.md](hotkey_latency/DOCS.md) — Menubar hotkey-lag investigation tooling: `GetEventTime`/`GetCurrentEventTime` probe + `menubar.log` `[latency]` line parser/report generator; measurement only, no `src/` behavior change
-- [thinking/DOCS.md](thinking/DOCS.md) — Verification for the proxy pane's thinking display features: the per-request 🧠 brain-marker badge (`has_thinking_delta`, delta vs. cumulative cross-check) and the thinking-block drill-down + wrapping in the expanded REQ view (collapsed/expanded/byte-identical checks against a pre-change git snapshot) — both render through the real parse+render path against a real `_forwarded` dual-log
-- [monitor_lifecycle/DOCS.md](monitor_lifecycle/DOCS.md) — Load probe for `monitor_cc_*` tmux sessions (per-pane mode/PID/age/CPU snapshot, `reports/` holds dated baselines) + regression test for `src/monitor_janitor.py`'s daily sweep (`tests/`, real throwaway tmux sessions) + gate test for `src/menubar/monitor_sweep_scheduler.py`'s at-most-once-per-24h tick trigger (`tests/`, isolated temp state, no real tmux)
-- `menubar_per_project/` — `test_open_or_focus_monitor.py`: unit tests for the per-project menubar monitor button's pure/branch logic (`src/menubar/system.py:_open_or_focus_monitor`) — session-name reuse from `tmux_launcher.py` (never re-derived), the focus-vs-launch branch given `check_session_exists`, and launch-command quoting for a cwd containing a space; no own DOCS.md
+- `bg_wakeup_id_line/` — CC background-launch-ack wording + tmux-Escape-on-launch-ack mechanism verification (`src/proxy/bg_escape.py`, `strip_bg_launch_ack.py`, `strip_interrupt_marker.py`).
+- `cc_injection_inventory/` — full-corpus text-class inventory over `src/logs/dual_log/` (COVERED/INJECTED/KEEP/OURS/UNCLASSIFIED classification against the real `src/proxy/rules.py` pipeline).
+- `cc_internals/` — Claude Code binary/source research artifacts (env-var inventory), no `.py` scripts.
+- `click_ui/` — pane-control mouse-click regression coverage (worker selection, copy-by-click, chrome buttons, gpu/news refresh).
+- `constants/` — byte-identity harness for `src/constants.py`'s split into `src/colors.py`/`src/core/modes.py`/`src/pane_error_log.py`.
+- `cursor_edges/` — standalone NSPanel cursor-rect probe (edge hover `↔`/`↕` behavior), no `src/` import.
+- `desktop_detection/` — Mission Control desktop-number detection pipeline probes (Ghostty AppleScript + CGS/SkyLight APIs), no `src/` changes.
+- `display/` — display-layer tests (tmux layout, JSONL rule scanning, pane screenshots, cache-tracker/hover-map/strip-marker regressions); `display/jsonl_exploration/` maps session-JSONL structure.
+- `gpu_pane/` — byte-identity harness for `src/gpu_pane/`.
+- `hook_error_correlation/` — overlays `src/logs/tool_errors.jsonl` against hook-fire logs to classify current-config-relevant vs. stale hook errors.
+- `hook_smoke/` — one smoke-test script per `src/hooks/*.py` hook, positive+negative subprocess cases.
+- `hotkey_latency/` — menubar hotkey-lag measurement (Carbon `GetEventTime` probe + `menubar.log` `[latency]`-line analyzer).
+- `jsonl/` — differential-proof harness for `src/jsonl/jsonl_cache_turns.py`.
+- `menubar_nspanel/` — NSPanel sticky-toggle probe + foreground menubar debug launcher.
+- `menubar/` — byte-identity harnesses for `src/menubar/` module splits.
+- `model_selector/` — regression coverage for the menubar Models tab and the launcher/hook precedence chain that applies it.
+- `monitor_lifecycle/` — load probe + regression/gate tests for `monitor_cc_*` tmux-session lifecycle (`src/monitor_janitor.py`, `src/menubar/monitor_sweep_scheduler.py`).
 
-## session_analysis/
-
-See [session_analysis/DOCS.md](session_analysis/DOCS.md).
-
-6 standalone analysis scripts (01–06) + `md/` for `05_req_breakdown.py` output. No pipeline mapping.
+Other `dev/` areas exist outside this map's scope; see their own `DOCS.md`.
