@@ -28,7 +28,7 @@ class _TrailerCrashFilter(logging.Filter):
 
 
 logging.getLogger("mitmproxy.proxy.server").addFilter(_TrailerCrashFilter())
-from .message_summary import _summarize_message
+from .message_summary import _infer_model_family, _summarize_message
 from .rules import apply_modification_rules, _strip_blocked_tool_references
 from .inject_helpers import _inject_context_management, _inject_model_override
 from .content_strip import _strip_tool_descriptions, _strip_sys3
@@ -191,15 +191,6 @@ def _finalize_cache_state(delta_state, model_family: str, modified_payload: dict
         _summarize_message(m) for m in modified_payload.get("messages", [])
     ]
     return modified_payload
-
-
-def _infer_model_family(model: str) -> str:
-    m = model.lower()
-    if "haiku" in m:
-        return "haiku"
-    if "sonnet" in m:
-        return "sonnet"
-    return "opus"
 
 
 _RESPONSE_HEADER_EXACT = frozenset({"request-id", "retry-after", "anthropic-organization-id"})

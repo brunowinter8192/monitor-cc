@@ -66,7 +66,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### proxy_pane_shared.py (228 LOC)
+### proxy_pane_shared.py (225 LOC)
 
 **Purpose:** Mechanics shared by both proxy panes (`pane.py`, `worker_proxy_pane.py`), each function parameterized by explicit arguments — never reads either pane's own module-level globals. Covers the worker-switcher header builder, key/entry-idx resolution, copy-text serialization, expand+lazy-load toggling, dual-log accumulate-and-attach, search-on-commit, scroll/hover dispatch, and render+scroll+row-shift.
 **Reads:** Parameters only.
@@ -86,23 +86,23 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### forwarded_parser.py (274 LOC)
+### forwarded_parser.py (273 LOC)
 
-**Purpose:** Forwarded-log delta reconstruction — parses `_forwarded` dual-log JSONL and rebuilds per-request entries (system/tools/messages via index-keyed delta application), computes `has_thinking_delta`, stamps `diff_from_prev`. Leaf module — does not import from `parser.py` (holds its own copy of `_proxy_session_id_for_project` to avoid a circular import).
-**Reads:** `_forwarded` dual-log JSONL files (incremental by byte position).
-**Writes:** Nothing — returns `(entry_list, new_position)`, `True`/`False`, or a `{flow_id: messages}` dict.
-**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/parser.py` (`_proxy_session_id_for_project`), `src/proxy_display/proxy_pane_shared.py` (`_lazy_load_messages_forwarded`, `reconstruct_all_messages`), `src/proxy_display/dual_log_accumulator.py` (`_infer_model_family`), `src/dual_log_cli/project_map.py` (`_proxy_session_id_for_project`)
-**Calls out:** `proxy.message_summary` (`_summarize_message`), `proxy.logging` (`_compute_diff`)
+**Purpose:** Forwarded-log delta reconstruction — parses `_forwarded` dual-log JSONL and rebuilds per-request entries (system/tools/messages via index-keyed delta application), computes `has_thinking_delta`, stamps `diff_from_prev`; also owns `_proxy_session_id_for_project` and `_resolve_log_id` (marker-file → log_id resolution), both shared with `parser.py`. Leaf module — does not import from `parser.py` (parser.py imports these id-resolution helpers from here instead, avoiding a circular import).
+**Reads:** `_forwarded` dual-log JSONL files (incremental by byte position); `.proxy_session_*` marker files (`_resolve_log_id`).
+**Writes:** Nothing — returns `(entry_list, new_position)`, `True`/`False`, a `{flow_id: messages}` dict, or a log-id string; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`).
+**Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/parser.py` (`_proxy_session_id_for_project`, `_resolve_log_id`), `src/proxy_display/proxy_pane_shared.py` (`_lazy_load_messages_forwarded`, `reconstruct_all_messages`), `src/proxy_display/dual_log_accumulator.py` (`_infer_model_family`), `src/dual_log_cli/project_map.py` (`_proxy_session_id_for_project`)
+**Calls out:** `proxy.message_summary` (`_infer_model_family`, `_summarize_message`), `proxy.logging` (`_compute_diff`), `pane_error_log` (`log_pane_error`)
 
 ---
 
-### parser.py (104 LOC)
+### parser.py (86 LOC)
 
-**Purpose:** Proxy log path resolution — marker-file-based resolution of the current proxy session's `_forwarded`/`_stripped`/`_injected`/`_original`/`_errors`/`_response` log paths, and worker log discovery via glob.
+**Purpose:** Proxy log path resolution — marker-file-based resolution of the current proxy session's `_forwarded`/`_stripped`/`_injected`/`_original`/`_errors`/`_response` log paths, and worker log discovery via glob. The marker-file → log_id resolution itself lives in `forwarded_parser._resolve_log_id`, shared by every `find_*_log_path` function here.
 **Reads:** `.proxy_session_*` marker files under the runtime log directory (src/logs/, gitignored).
-**Writes:** Nothing — returns path objects or a session-id string.
+**Writes:** Nothing — returns path objects, a session-id string, or a marker mtime/`time.time()` float; an unreadable marker file's `OSError` propagates to the caller (every pane loop already catches and logs via `pane_error_log`).
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/proxy_pane_shared.py` (`_find_dual_log_paths`), `src/proxy_display/__init__.py` (`find_worker_proxy_log`), `src/panes/warnings_pane.py` (`find_errors_log_path`, `proxy_session_id_for_project`, `get_proxy_session_start_ts`), `src/panes/token_pane.py` (`find_response_log_path`)
-**Calls out:** `forwarded_parser` (`_proxy_session_id_for_project`)
+**Calls out:** `forwarded_parser` (`_proxy_session_id_for_project`, `_resolve_log_id`)
 
 ---
 
@@ -116,23 +116,23 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### dual_log_accumulator.py (120 LOC)
+### dual_log_accumulator.py (123 LOC)
 
 **Purpose:** Dual-log overlay accumulation — tails `_stripped`/`_injected`/`_original` and builds the per-family accumulator state both panes' entries hold references into. `accumulate_original_tools` keeps a latest-snapshot `{tool_name -> tool_def}` map per family (the `_original` log is a full-snapshot log, not delta-encoded). `accumulate_dual_log` mutates its accumulator dict in place (`.clear()`+`.update()`, preserving Python references held by pane entries), maintaining per-flow lookup dicts (`_has_content_by_flow_id`, `_msg_idx_by_flow_id`, `_sys_idx_by_flow_id`, `_tool_name_by_flow_id`, `_lag_msg_idx_by_flow_id`) that back the REQ-header badge and the flow-scoped span lookup in `render_messages._lookup_spans`.
 **Reads:** `_stripped`/`_injected`/`_original` dual-log JSONL files (incremental by byte position).
-**Writes:** Nothing — returns the new file position; mutates the `acc_by_family` argument in place.
+**Writes:** Nothing — returns the new file position; mutates the `acc_by_family` argument in place; `/tmp/monitor_cc_error.log` on a log-read `OSError` (via `pane_error_log`, retry-next-poll position unchanged).
 **Called by:** `src/proxy_display/pane.py` (`accumulate_original_tools`), `src/proxy_display/proxy_pane_shared.py` (`accumulate_dual_log`), `src/dual_log_cli/overlay.py` (`accumulate_dual_log`, its own independent accumulator per call — never shares state with the panes')
-**Calls out:** none beyond project modules
+**Calls out:** `pane_error_log` (`log_pane_error`)
 
 ---
 
-### side_logs.py (79 LOC)
+### side_logs.py (82 LOC)
 
 **Purpose:** `_response`/`_errors` side-log readers. `read_response_log` reads `_response` entries incrementally (`{request_id: headers_dict}`). `scan_worker_errors_logs` globs worker `_errors` dual-logs and reads them incrementally by byte position.
 **Reads:** `_response`/`_errors` dual-log JSONL files (incremental by byte position).
-**Writes:** Nothing — returns tuples.
+**Writes:** Nothing — returns tuples; `/tmp/monitor_cc_error.log` on `read_response_log`'s `OSError` (via `pane_error_log`, retry-next-poll position unchanged).
 **Called by:** `src/panes/token_pane.py` (`read_response_log`, lazy import), `src/panes/warnings_pane.py` (`scan_worker_errors_logs`, lazy import)
-**Calls out:** stdlib only (`json`, `os`, `pathlib`)
+**Calls out:** `pane_error_log` (`log_pane_error`)
 
 ---
 
@@ -146,9 +146,9 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### render_sections.py (315 LOC)
+### render_sections.py (257 LOC)
 
-**Purpose:** Renders tools, fields-delta, beta-flags, and directives sections for an expanded request entry. Tools rendering shares the dual-color sentinel (`use_dual = '_stripped_spans' in entry`) with `render_sections_system.py`: the new path reads `entry['_stripped_spans']`/`entry['_injected_spans']` span data, the legacy path (worker pane, or entries without dual-log attachment) uses the old side-channel fields. Whole-stripped tools (blocklist-removed entirely, not just desc-changed) are expandable via `_render_whole_stripped_tool`, sourcing the original definition from `entry['_original_tools_by_name']` — falls back to a `(original definition unavailable)` line when absent (worker pane never attaches this field).
+**Purpose:** Renders tools, fields-delta, beta-flags, and directives sections for an expanded request entry. Tools rendering reads `entry['_stripped_spans']`/`entry['_injected_spans']` span data — every entry reaching this module carries dual-log overlay attachment (`proxy_pane_shared._accumulate_dual_logs_and_attach` runs unconditionally in both `pane.py` and `worker_proxy_pane.py`), so there is exactly one tools-rendering path, no legacy fallback. Whole-stripped tools (blocklist-removed entirely, not just desc-changed) are expandable via `_render_whole_stripped_tool`, sourcing the original definition from `entry['_original_tools_by_name']` — falls back to a `(original definition unavailable)` line when absent (worker pane never attaches this field).
 **Reads:** Entry dict, previous entry, expand states, pane width, modifications list.
 **Writes:** Nothing — returns `(lines, keys)` tuple.
 **Called by:** `src/proxy_display/render_turn.py`, `dev/proxy_tool_stripping/tests/test_whole_stripped_tool_expand.py` (`_render_whole_stripped_tool`, `render_tools`)
@@ -264,5 +264,6 @@ stream from byte 0, matched by `flow_id`, to repopulate it.
   is deliberately NOT future-proof against a new, uncatalogued CC nudge sentence: an unrecognized
   sentence fails the test and the request stays badged (fails toward showing it) rather than being
   silently absorbed as quiet.
-- `parser.get_proxy_session_start_ts` treats a `.proxy_session_<id>` marker file older than 24h as
-  stale and returns `time.time()` instead of its mtime.
+- `parser.get_proxy_session_start_ts` always returns an existing marker file's mtime, however old —
+  a warnings-pane session-start filter keyed off this can reach back arbitrarily far if the marker
+  itself is stale (no marker at all falls back to `time.time()`).

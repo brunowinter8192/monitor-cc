@@ -221,8 +221,5 @@ def _render_and_scroll_body(render_fn, line_map: dict, copy_rows: set, header_sh
     return body, scroll_offset
 
 def _terminal_size(default_lines: int = 50, default_cols: int = 80) -> Tuple[int, int]:
-    try:
-        term = os.get_terminal_size()
-        return term.lines - 1, term.columns
-    except OSError:
-        return default_lines, default_cols
+    term = os.get_terminal_size()
+    return term.lines - 1, term.columns

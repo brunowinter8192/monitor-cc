@@ -9,7 +9,7 @@ sys.path.insert(0, _src_dir)
 
 from .payload_helpers import _strip_blocked_tool_references
 from .content_strip import _strip_session_guidance, _strip_git_status
-from .rules_config import _load_system2_rules
+from .rules_config import _load_system2_rules, is_main_session
 from .message_passes import (
     _apply_role_system_strip,
     _apply_first_pass,
@@ -39,7 +39,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
     system_rules = _load_system2_rules(model_family, project_path, worker_context)
     messages_to_process = list(payload.get("messages", []))
 
-    is_main = worker_context == "main"
+    is_main = is_main_session(worker_context)
     _bg_launch_ack_pass = lambda msgs: _apply_bg_launch_ack_strip(msgs, is_main=is_main)
 
     _passes = [

@@ -4,6 +4,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..proxy.message_summary import _infer_model_family as infer_family
+
 _MODEL_RE = re.compile(rb'"model"\s*:\s*"([^"]+)"')
 _MODEL_SNIFF_BYTES = 512
 _REVERSE_CHUNK_BYTES = 1 << 20
@@ -19,15 +21,6 @@ def local_datetime(timestamp: str):
         return aware_utc.astimezone()
     except ValueError:
         return None
-
-
-def infer_family(model: str) -> str:
-    m = (model or "").lower()
-    if "haiku" in m:
-        return "haiku"
-    if "sonnet" in m:
-        return "sonnet"
-    return "opus"
 
 
 def iter_line_offsets_reverse(path: Path, chunk_bytes: int = _REVERSE_CHUNK_BYTES):

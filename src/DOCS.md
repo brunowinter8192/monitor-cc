@@ -38,9 +38,9 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### constants.py (77 LOC)
+### constants.py (28 LOC)
 
-**Purpose:** process-wide timing/size-limit constants, the `HOOK_*` CC hook-event names + `HOOK_EVENT_CATEGORIES`, and `TOOL_BLOCKLIST`.
+**Purpose:** process-wide timing/size-limit constants and `TOOL_BLOCKLIST`.
 **Reads:** nothing.
 **Writes:** nothing.
 **Called by:** `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy/payload_helpers.py`, `proxy/tools.py`, several `proxy_display/` modules, `tmux_launcher.py`, `utils.py`, `workers/worker_pane.py`.
@@ -118,7 +118,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### utils.py (166 LOC)
+### utils.py (160 LOC)
 
 **Purpose:** shared formatting/rendering primitives with no I/O — timestamp formatting, cell-width-aware truncation/wrapping, ANSI-safe substring highlighting, copy-symbol placement, header-rule sizing.
 **Reads:** nothing (pure functions on passed-in strings/values).
@@ -138,7 +138,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### claude_proxy_start.sh (436 LOC, project root)
+### claude_proxy_start.sh (416 LOC, project root)
 
 **Purpose:** shell entry point that launches mitmproxy + Claude Code with the proxy env — handles per-project log rotation/purge, a per-project marker with a liveness guard, model-flag precedence, and fires the background janitors (`monitor_janitor.py` and the worker-cli janitor from the iterative-dev project) on every session start.
 **Reads:** `~/.claude/shared-rules/model_selection.json` (model precedence); existing log files (rotation/purge decisions); per-project marker files.
@@ -158,7 +158,6 @@ as module-level variables — see `core/DOCS.md`. Every pane package reads it vi
 
 - `search_bar._BG_RESTORE_SENTINEL` (`'\033[999m'`) must be resolved via `resolve_bg_restore` by every renderer that embeds it, or it leaks into terminal output as a literal escape code.
 - `search_bar.KILL_LINE_CHAR` (`'\x15'`, Ctrl-U) is an unconfirmed mapping guess for Cmd+Backspace's terminal encoding — a rebind after live testing is a one-line change.
-- `constants.py`'s `HOOK_*` cluster and `HOOK_EVENT_CATEGORIES` have no real importer anywhere in `src/` or `dev/` (only referenced by a byte-identity check script) — kept because a dedicated module for them would itself be dead code on arrival.
 - `monitor_janitor.py`'s log path follows `MONITOR_CC_ROOT` if set, else two directories above its own `__file__` — a manual run from a worktree checkout without the env var set writes into that worktree's own `src/logs/`, not the main checkout's.
 - `tmux_launcher.restart_panes`'s split-percentage self-heal is computed against whichever pane in a window currently survives, not the original source pane, when several panes in one window are missing at once — proportions can differ from a fresh launch; the single-missing-pane case is exact.
 - `pane_error_log.log_pane_error` swallows its own write failures silently (`except Exception: pass`) — a full disk or permissions error here never propagates and never kills the calling pane loop.

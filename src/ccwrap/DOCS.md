@@ -39,7 +39,7 @@ from src.ccwrap.wrapper import run
 
 ---
 
-### wrapper.py (132 LOC)
+### wrapper.py (129 LOC)
 
 **Purpose:** PTY lifecycle manager. `run()` forks a child into a PTY, manages bidirectional I/O via `select`, forwards SIGWINCH resizes, waits for child exit, and propagates the exit code. Owns stdin raw-mode management (set/restore via `termios`).
 **Reads:** `sys.stdin` (raw keystrokes, when stdin is a tty); child PTY output via `master_fd`.

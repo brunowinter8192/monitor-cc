@@ -9,7 +9,7 @@ proof.
 
 ## Modules
 
-### split_byte_identity.py (104 LOC)
+### split_byte_identity.py (97 LOC)
 
 **Purpose:** Byte-identity harness for `src/constants.py`'s constant clusters — resolves a fixed
 list of top-level `UPPER_CASE` names through a `_NEW_LOCATIONS` map to their current module
