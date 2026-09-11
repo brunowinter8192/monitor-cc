@@ -90,7 +90,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ### session_finder.py (77 LOC)
 
-**Purpose:** `find_active_sessions(project_filter)` — enumerates `~/.claude/projects/**/*.jsonl` (incl. `subagents/agent-*.jsonl`), optionally filtered by project, sorted newest-first.
+**Purpose:** `find_active_sessions(project_filter)` — enumerates `~/.claude/projects/**/*.jsonl` (including the subagent transcripts under each project's subagents directory), optionally filtered by project, sorted newest-first.
 **Reads:** `~/.claude/projects/` directory tree.
 **Writes:** nothing.
 **Called by:** `core/monitor.py`, `menubar/discover.py`, `workers/worker_tmux.py` (`encode_project_path`), `dev/pipeline/io_profile/01_poll_cycle_cost.py`.
@@ -140,11 +140,11 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ### claude_proxy_start.sh (436 LOC, project root)
 
-**Purpose:** shell entry point that launches mitmproxy + Claude Code with the proxy env — handles per-project log rotation/purge, a per-project marker with a liveness guard, model-flag precedence, and fires the background janitors (`monitor_janitor.py` and `bin/worker-cli` (iterative-dev)) on every session start.
+**Purpose:** shell entry point that launches mitmproxy + Claude Code with the proxy env — handles per-project log rotation/purge, a per-project marker with a liveness guard, model-flag precedence, and fires the background janitors (`monitor_janitor.py` and the worker-cli janitor from the iterative-dev project) on every session start.
 **Reads:** `~/.claude/shared-rules/model_selection.json` (model precedence); existing log files (rotation/purge decisions); per-project marker files.
 **Writes:** `src/logs/.proxy_addon_live_<id>.py` (live proxy-addon copy); rotated/purged log files; per-project marker files (`src/logs` + `/tmp`).
 **Called by:** invoked directly (main session start); the command `src/ccwrap/wrapper.py` wraps.
-**Calls out:** `mitmproxy`, `jq`, `tmux`, `bin/worker-cli` (iterative-dev).
+**Calls out:** `mitmproxy`, `jq`, `tmux`, worker-cli (iterative-dev project).
 
 ---
 

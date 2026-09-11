@@ -24,7 +24,7 @@ top/bottom placement) by building the target layout in a temporary session and l
 ### scan_jsonl_rules.py (108 LOC)
 
 **Purpose:** Scans a Claude Code session JSONL for "Contents of" lines (loaded CLAUDE.md /
-`.claude/rules/*.md` markers) to check whether rules/instructions data is present in session
+the rules-file markers under the user's .claude directory) to check whether rules/instructions data is present in session
 JSONL and in what message shape.
 **Reads:** a session JSONL (path hardcoded/passed in-script).
 **Writes:** stdout — all unique "Contents of" entries found, with message type/line/parsed name.
