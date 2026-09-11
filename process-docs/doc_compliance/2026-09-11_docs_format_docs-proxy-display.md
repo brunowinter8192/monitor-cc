@@ -1,0 +1,514 @@
+This file holds the salvage of the format cut applied to `src/proxy_display/DOCS.md` on
+2026-09-11: the dated iteration notes, "split out of X", "replaced the old Y", verification
+notes, and function-by-function narratives that were removed from that DOCS.md to bring it to
+the DOCS.md Format of the documentation rules. Everything below is copied as-is from the prior
+DOCS.md revision, grouped by the module (or top-level section) it came from, so it stays
+findable via RAG even though it no longer lives in the module map. This is not curated for
+correctness or completeness — no triage was performed.
+
+## Salvage from src/proxy_display/DOCS.md
+
+### Top-level (Role / Public Interface / Flow)
+
+Additionally reads `src/logs/dual_log/*_stripped.jsonl` / `*_injected.jsonl` to drive a
+yellow (DIM_YELLOW_BG) / green (DIM_GREEN_BG) overlay showing what the proxy stripped and
+injected per request. Runs two event loops — one for the main session proxy log, one for the
+selected worker's proxy log (both carry the full dual-log overlay). Also exports
+`parse_proxy_log_forwarded`, `find_errors_log_path`, `scan_worker_errors_logs`, and path
+helpers used by `panes.warnings_pane`. **(2026-08, search-bar rollout)** `pane.py` (the
+reference implementation, Milestone 2) and `worker_proxy_pane.py` (sub-milestone 3,
+2026-08-18) both have a permanent row-1 search bar (`search: <query> N/M`, always visible —
+user design principle: features hidden behind a keypress don't get used); `search.py` matches
+a case-insensitive query against each request's real expanded-view content (via
+`render_turn._render_req_expanded`, forced-expanded); `forwarded_parser.reconstruct_all_messages`
+does the one-sweep reconstruction that makes ALL entries searchable (see
+`process-docs/pane_search/` and `dev/pane_search/`). `worker_proxy_pane.py`'s bar shifts its
+existing worker-switcher header (variable height, click-region table) down by one row — see its
+module entry below. Touch this package when changing proxy pane display logic or the parser
+field extraction. Do NOT touch for the proxy modification pipeline — that lives in `src/proxy/`.
+
+Public Interface list included `scan_worker_errors_logs(last_positions, project_session_id,
+min_mtime)` annotated "(2026-09, split out of `parser.py`)".
+
+Flow section (full, with milestone annotations):
+`src/logs/dual_log/api_requests_*_forwarded.jsonl` → `forwarded_parser._parse_forwarded_log` (incremental JSONL read, delta accumulation per model family via `_apply_delta_to_list`/`_dict_to_list_fwd`, message summaries via `_summarize_fwd_message`, deque-bounded via `keep_last` param, default `PROXY_MESSAGES_KEEP_LAST=10`: last N entries get `messages`, rest carry `messages=None`)
+→ `pane` (entries extended; entries outside window + not-expanded carry `messages=None`)
+→ `format` (group by turn — turns always expanded, viewport, scroll; `pane.py` also renders a permanent row-1 search bar above the body, shifting all body rows +1) → `render_turn` (req rows; embeds search-highlight BG markers when a search is active)
+→ `render_sections` + `render_messages` (expanded req detail; requires messages — lazy-reload ensures they are present)
+→ `pane` / `worker_proxy_pane` (event loop, stdin → stdout)
+
+On expand-click: `forwarded_parser._lazy_load_messages_forwarded(entry, fwd_path)` replays forwarded delta stream from byte 0, matching by `entry['flow_id']` (globally unique — NOT `entry['_fwd_req_idx']`, which is only unique within one incremental parse call, see Gotcha below), reconstructs and populates `entry['messages']`. Also reloads `prev_same` in the same click handler.
+
+**Whole-stripped tool expand (2026-09, Milestone 2):** `pane.py` additionally tails `src/logs/dual_log/*_original.jsonl` (the RAW pre-strip payload log, not delta-encoded) via `dual_log_accumulator.accumulate_original_tools`, keeping the latest `{tool_name -> tool_def}` snapshot per model family and attaching it to every entry as `entry['_original_tools_by_name']` (reference, continuously updated — no lazy-load-on-click needed, unlike messages). `render_sections._render_whole_stripped_tool` uses this to make a `TOOL_BLOCKLIST`-stripped tool's yellow row expandable, showing the description/schema that never reached the wire.
+
+**Search (both proxy panes — `pane.py` the reference implementation, `worker_proxy_pane.py` since 2026-08-18 sub-milestone 3):** Enter in the search bar runs `forwarded_parser.reconstruct_all_messages(fwd_path)` — a one-sweep `_parse_forwarded_log(fwd_path, 0, {}, keep_last=None)` pass retaining messages for EVERY entry (~35-60ms/190 entries measured, `process-docs/pane_search/`) — merges the result into `proxy_entries`/`worker_proxy_entries` by `flow_id`, then `search.build_search_matches` calls `render_turn._render_req_expanded` FORCE-EXPANDED for every entry (ignoring that entry's own `('req', idx)` expand_state, respecting nested fields/beta/tools-desc toggles as-is) and substring-matches the ANSI-stripped output — "exactly what that request's expanded view shows". A collapsed match's REQ header gets a `SEARCH_MATCH_BG`/`SEARCH_CURRENT_BG` marker; an expanded match ALSO gets the specific matching line(s) marked (header stays marked too — uniform, keeps orientation when scrolling). `n`/`N` jump between matches and `/` focuses the bar reusing the SAME `_proxy_just_expanded`/`_wp_just_expanded` + `item_positions`/scroll-clamp mechanics as expand-click auto-scroll (`('req', entry_idx)` is always a valid item_positions key, expanded or not). `worker_proxy_pane.py`'s bar additionally shifts its own worker-switcher header down by one row (`_WP_SEARCH_BAR_LINES`) and resets on worker switch, not just session change — see its module entry.
+
+**Expand model (flat):** Turn boundaries are indicated by empty-line separators only (no header rows). Only Req-level and below are expandable. line_map contains only Req-level and deeper keys — one sequential phys_row counter through the visible slice, no nested offsets.
+
+### pane.py
+
+Heading was: `### pane.py (327 LOC, split by concern 2026-09 — see process-docs/proxy_display/)`
+
+Full removed narrative (the entire multi-paragraph Purpose block plus the four follow-on
+paragraphs about the search-bar rollout and the 2026-09 split):
+
+**Purpose:** Event loop for the main proxy pane — reads `_forwarded` dual-log incrementally, handles mouse input (click expand/collapse, scroll, hover), renders on change. Drain-refresh-render pattern: `run_proxy_loop` is a skeleton delegating to helpers. **Expand/collapse undo ('u' key):** `_proxy_undo_stack` (list of `(key, prev_state)` tuples, capped at 200) is pushed only at the single expand-toggle site in `_handle_proxy_mouse` (the `else` branch under `button == 0`, NOT the copy-column or scroll/hover branches), before the toggle flips. `run_proxy_loop`'s input-drain loop calls `_undo_proxy_expand()` on `char == 'u'`; it pops LIFO, restores `proxy_expand_states[key] = prev_state`, returns bool — no lazy-load and no `_proxy_just_expanded` set on undo (a previously-expanded entry already triggered its lazy-load when first expanded; undo is a pure state flip). `_proxy_undo_stack.clear()` runs alongside `proxy_expand_states.clear()` on session change in `_refresh_proxy_data` — stale keys from a prior session are not undoable. Deliberately excluded from `_proxy_ram_state` (bounded at 200, no leak risk). **Scroll-state clamp:** `_build_proxy_output` writes back `proxy_scroll_offset = min(proxy_scroll_offset, max_scroll)` immediately after the first `format_proxy_block` call (using that call's `total_lines` + the mirrored `content_height - 1` viewport) — bounds the STATE, not just the rendered slice. Scroll-up (`_handle_proxy_mouse`, button 64) only lower-clamps (`max(0, offset + 3)`), so without this the state could inflate past the content while the render already sat pinned at the top-clamp inside `format_proxy_block`; scroll-down would then have to unwind the phantom offset before the display moved. The write-back re-bounds it every render, so an over-scroll tick self-corrects on the next frame. Deque-bounded messages: only the last `PROXY_MESSAGES_KEEP_LAST=10` entries have `messages` populated by `_parse_forwarded_log`; entries outside that window carry `messages=None` and are lazy-loaded on expand-click. On expand-click, lazy-reloads messages for the target entry AND its `prev_same` (first non-standalone predecessor, via the NON-family-matched `_resolve_prev_same` local to this module — deliberately a different, looser walk than `render_turn._resolve_prev_same_family`; see Gotcha below) via `_lazy_load_messages_forwarded(entry, fwd_path)` where `fwd_path = _proxy_log_path.parent / 'dual_log' / f'{_proxy_log_path.stem}_forwarded.jsonl'`. Copy-button click on REQ header copies REQ content to clipboard; ✓-flash for 1.5s after click. **Forwarded-log state:** `_proxy_fwd_pos` (int, byte position in `_forwarded` file, reset to 0 on session change/reparse); `_proxy_acc_fwd` (dict, family accumulator for `_parse_forwarded_log`, cleared on reset). **Dual-log overlay accumulator (unchanged from pre-migration):** `_proxy_stripped_pos` / `_proxy_injected_pos` + `_proxy_acc_stripped` / `_proxy_acc_injected` for `_stripped`/`_injected` overlay; entries hold references to family acc dict (`_stripped_spans` / `_injected_spans`), to the per-family `_has_content_by_flow_id` dict (`_strip_fns_lookup` / `_inject_fns_lookup`), and to the per-family `_msg_idx_by_flow_id` dict (`_strip_msgs_lookup` / `_inject_msgs_lookup`, `{flow_id -> set(msg_idx str)}`) — all six as Python references so late-arriving stripped/injected responses auto-propagate. `render_messages._lookup_spans` uses the msgs-lookup pair to scope span rendering to the owning flow_id only (fixes cross-request span bleed off the shared acc reference). A seventh/eighth attachment (`_strip_msgs_sub_lookup` / `_inject_msgs_sub_lookup`) existed on 2026-08-30 to gate the out-of-window prepend and was removed with it. Session-change + time-triggered reset blocks clear all fwd + overlay state vars (session-change also clears search state — see below).
+
+**Whole-stripped tool original-def accumulator (2026-09, Milestone 2 — expandable tools drill-down):** `_proxy_original_pos` (byte position in `_original` dual-log) + `_proxy_acc_original` (`{family -> {tool_name -> tool_def}}`, mutated in-place same as the stripped/injected accs) via `dual_log_accumulator.accumulate_original_tools`, resolved from `parser._find_original_log_path(_proxy_log_path)`. Unlike `_stripped`/`_injected`/`_forwarded`, `_original` is NOT delta-encoded — every line with a non-empty `tools` list carries the FULL list — so the accumulator just keeps the LATEST snapshot per family (overwrite, not merge); tool defs are stable within a session (see `render_sections.py`'s `_render_whole_stripped_tool` entry for the measurement). Each newly-created entry gets `entry['_original_tools_by_name'] = _proxy_acc_original.setdefault(family, {})` — a reference, so entries created before the first `_original` line is read still see the definition once it lands. Reset alongside the stripped/injected accs on session-change and hourly-reparse.
+
+**(2026-07-31) The `while True:` body is wrapped in its own `try/except Exception:`** — an uncaught exception is caught, logged via `pane_error_log.log_pane_error('proxy')`, and the loop continues after `wait_for_input(INPUT_POLL_INTERVAL)`; `KeyboardInterrupt`/`SystemExit` still propagate, `finally: disable_mouse(); restore_terminal()` still runs — this is the guard closing the "window `1:proxy` vanishes from the tmux status bar" symptom (tmux destroys a window when its last pane's process exits; the crash's own root cause is still unknown, this guard only stops it from killing the pane process).
+
+**Permanent row-1 search bar (Milestone 2, 2026-08. This module is the REFERENCE
+IMPLEMENTATION for the search feature — every mechanic (bar rendering, key routing, drag-select
+state machine, col→char mapping, BG-restore sentinel) was battle-tested here first, then
+(2026-08-18, sub-milestone 1 of the pane-search rollout) extracted to `src/search_bar.py` for
+reuse by every other pane. `pane.py` now holds ONE `_proxy_search: search_bar.SearchState`
+instance (replacing 8 separate flat globals) plus thin PANE-SPECIFIC wrapper functions:**
+- `_handle_proxy_search_cancel`/`_handle_proxy_search_input`/`_search_col_to_query_index`/
+  `_handle_proxy_search_release`/`_render_proxy_search_bar` are all 1-2 line wrappers over
+  `search_bar`'s generic functions, binding this pane's own `_SEARCH_BAR_LABEL = 'search: '` and
+  (for release) this module's own `copy_to_clipboard` name — kept as named wrappers specifically
+  so external callers/tests didn't need to change call shape when the mechanics moved out.
+- `_proxy_search_on_commit(state)` is the `on_commit` callback injected into
+  `search_bar.handle_search_input` (fires on Enter) — the PANE-SPECIFIC part that couldn't move
+  to the shared module: one-sweep reconstruction of ALL entries' messages via
+  `reconstruct_all_messages(fwd_path)` (merged into `proxy_entries` by `flow_id`, NOT
+  `_fwd_req_idx` — see Gotcha below), `search.build_search_matches`, then jump to the first
+  match if any. Always re-runs (not gated on query-unchanged, unlike the main pane's own older
+  optimization) — cheap enough (~55-60ms/190 real entries, `process-docs/pane_search/`) that
+  "(re)runs the search" picks up requests that streamed in since the last Enter.
+- `_jump_to_search_match` (called from `on_commit` and `n`/`N`) sets `_proxy_just_expanded =
+  ('req', target_entry_idx)` — REUSES the existing expand-click auto-scroll mechanism verbatim;
+  works uniformly for collapsed AND expanded matches since `('req', idx)` is always a valid
+  `item_positions` key regardless of expand state.
+- `_build_proxy_output` renders `header = _render_proxy_search_bar(pane_width)`
+  (`_PROXY_HEADER_LINES=1` fixed — never wraps, unlike `worker_proxy_pane.py`'s multi-marker
+  header) then `format_proxy_block` with `content_height = pane_height - 1`; `proxy_line_map`/
+  `_proxy_copy_rows` shifted `+1` after every call (mirrors `worker_proxy_pane.py`'s
+  `header_lines` shift). Guarded for the empty-entries placeholder body. Returns a single string
+  (`header + '\n' + body`) — no `(output, header)` tuple, no overdraw print.
+- **Key routing** (`run_proxy_loop`'s drain loop, priority order): bare-ESC-while-focused →
+  `_handle_proxy_search_cancel`; focused → `_handle_proxy_search_input`; `'u'` undo (only
+  reachable when NOT focused); `'/'` → focus; `'n'`/`'N'` → `_jump_search_match(forward=...)`.
+- **Mouse:** `_handle_proxy_mouse`'s `row == 1` branch delegates to
+  `search_bar.handle_search_mouse_press` (focuses + anchors a drag-select); `button == 32`
+  (SGR "left button held", `0+32`) gated on `_proxy_search.dragging` delegates to
+  `search_bar.handle_search_mouse_motion` — a body-row drag never sets `dragging`, so it falls
+  through unchanged to the generic `button>=32` hover bucket. Release routes through
+  `_handle_proxy_search_release`; `search_bar.handle_search_mouse_release` takes
+  `copy_to_clipboard` as an INJECTED parameter (not a fixed import in `search_bar.py`) so a
+  pane-level monkeypatch of that name — the established test convention throughout this
+  codebase — still intercepts calls made through the shared function.
+- **Drag-select + editor-style deletion** (full mechanics documented in `search_bar.py`'s own
+  entry below): release always copies the selection to clipboard; Backspace with an active
+  selection deletes it from the query instead of trimming the last char; kill-line
+  (`search_bar.KILL_LINE_CHAR`, aliased here as `_KILL_LINE_CHAR` for backward compat) empties
+  the whole query. None of these clear `_proxy_search.matches` — Enter (`on_commit`) remains the
+  sole recompute trigger.
+- Search state cleared on session change via `search_bar.handle_search_cancel(_proxy_search)`
+  (same block as `_proxy_undo_stack.clear()`) — NOT cleared on the hourly reparse trigger (same
+  convention as `proxy_expand_states`, which also survives reparse: entry_idx-keyed state
+  assumes stable re-indexing on a same-file, same-order reparse).
+
+**(2026-09) Split by concern to satisfy the 400-LOC file limit and the 100-LOC hard function
+limit — see `process-docs/proxy_display/`.** `run_proxy_loop`'s own input-drain loop moved into
+a LOCAL helper `_poll_proxy_input()` — kept in THIS module rather than `proxy_pane_shared.py`
+because `dev/pane_error_log`'s exception-survival probe monkeypatches `read_keypress`/
+`read_mouse_event` directly as attributes of `src.proxy_display.pane`, which only works while
+the call site doing the bare-name lookup is defined in that same module. `_handle_proxy_mouse`'s
+copy/expand body-click branches moved into local helpers `_handle_proxy_copy_click`/
+`_handle_proxy_expand_click`, which delegate their shared halves (lazy-load+serialize, toggle+
+lazy-load) to `proxy_pane_shared.py`. `_refresh_proxy_data`'s two reset blocks (session-change,
+hourly-reparse) factored into `_reset_proxy_session_state`/`_reset_proxy_reparse_state`, both
+built on a shared `_reset_proxy_positions` (reparse's own reset was a strict line-for-line subset
+of session-change's). Four mechanics genuinely duplicated with `worker_proxy_pane.py` — search
+on_commit, scroll/hover button dispatch, the render+scroll+row-shift dance, and the dual-log
+accumulate+attach tail — now live in `proxy_pane_shared.py`, parameterized by explicit arguments
+(never reading either pane's globals); see that module's own entry for what moved there.
+
+Original `Called by`/`Calls out` lines kept the note "(via `..proxy_display.run_proxy_loop`)"
+and listed `panes` (cache_turns.build_cache_turns) among Calls out, unchanged in substance from
+the new entry.
+
+### worker_proxy_pane.py
+
+Heading was: `### worker_proxy_pane.py (332 LOC, split by concern 2026-09 — see process-docs/proxy_display/)`
+
+Full removed narrative (Purpose block plus three follow-on paragraphs — 2-row header, worker-switch
+reset, 2026-09 split):
+
+**Purpose:** Event loop for the worker-proxy pane — watches active workers, reads the selected worker's `_forwarded` dual-log, handles digit-key worker switching, mouse input, renders with worker-switcher header. Drain-refresh-render pattern with `force_reload-OR-tick` gate. **(2026-07-30) Header markers are click-selectable:** `_worker_proxy_header_regions: Dict[(start_col,end_col,phys_row), name]` (button-region pattern, mirrors `gpu_pane`/`news_pane` `_button_regions`) is rebuilt every `_build_worker_proxy_output` call by `_format_worker_proxy_header(workers, current_worker, pane_width, regions_out=_worker_proxy_header_regions)` — one region per `[i]name`/`[i*]name` marker, computed from the visible (ANSI-stripped) column offset with wrap math against `pane_width`; a marker straddling a wrap boundary gets one region per row segment it occupies (`_register_marker_regions`, 2+ entries mapping to the same name) — every rendered marker stays clickable regardless of wrap, none silently dropped. `_handle_worker_proxy_mouse` now takes `monitor` and checks these header regions on `button == 0` (row 1 — the search bar, see below — is checked FIRST; any other row clears a lingering drag-selection, THEN checks header regions, THEN the `worker_proxy_line_map` body lookup — no row overlap, body rows are shifted past `total_header_lines`); a hit calls `write_selection` + sets `_worker_proxy_force_reload = True`, identical effect to the digit key (`_handle_worker_proxy_key`). Call site (`run_worker_proxy_loop`) now passes `_monitor` into the mouse handler. **Forwarded-log state:** `_worker_proxy_fwd_pos` (int) + `_worker_proxy_acc_fwd` (dict) replace `_worker_proxy_pending_by_rid`. In `_refresh_worker_proxy_data`: `fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'`; calls `_parse_forwarded_log(fwd_path, _worker_proxy_fwd_pos, _worker_proxy_acc_fwd)` directly; stamps `entry['_source_file'] = fwd_path.name` on each new entry. Lazy-load: same `_lazy_load_messages_forwarded` pattern, fwd_path derived from `_worker_proxy_log_path`. Worker-change + time-triggered reset blocks clear fwd state vars (worker-change ALSO resets search state — see below). **Dual-log overlay accumulator (unchanged):** `_worker_proxy_stripped_pos` / `_worker_proxy_injected_pos` + `_worker_proxy_acc_stripped` / `_worker_proxy_acc_injected` — both reset triggers clear all four. Entries receive `_strip_fns_lookup` / `_inject_fns_lookup` references to the per-family `_has_content_by_flow_id` dicts and `_strip_msgs_lookup` / `_inject_msgs_lookup` references to the per-family `_msg_idx_by_flow_id` dicts (same pattern as main pane — see `pane.py` entry above for what the msgs-lookup pair drives in `render_messages.py`). `_worker_proxy_log_path` still updated to `log_path` (used for overlay path derivation and lazy-load fwd_path derivation). Header rendered via overdraw pattern; `_build_worker_proxy_output` returns `(output, header)` tuple — `header` is now TWO logical rows (search bar + worker-switcher header) joined by `'\n'`, generic to the overdraw print/tuple shape (neither needed a change). Pure helpers extracted to `worker_proxy_helpers.py` (renamed/expanded to `proxy_pane_shared.py` 2026-09, see that module's own entry). **Scroll-state clamp:** unlike `pane.py`, the body viewport here is NOT the full pane — TWO header rows render above it (search bar + worker-switcher), so `content_height = max(1, pane_height - total_header_lines)` (`total_header_lines = _WP_SEARCH_BAR_LINES + worker_header_lines`, since 2026-08-18 — was `header_lines` alone before the search bar) is the value the body is actually built with, never `pane_height` itself. `format_proxy_block` is called with `content_height` as its own `pane_height` argument and internally derives its real per-screen viewport as `max(1, pane_height_arg - 1)` — so the caller-side clamp must mirror that SAME `-1`, computed once as `viewport_lines_n = max(1, content_height - 1)` and reused at both clamp sites (the unconditional write-back right after the first `format_proxy_block` call, and the `_wp_just_expanded` auto-scroll branch's `max_scroll`/`start`/`item_line` comparisons) — using `content_height` directly at either site under-counts the true viewport by 1, silently capping `worker_proxy_scroll_offset` one step below what `format_proxy_block`'s own internal clamp would tolerate (max_scroll = total_lines − viewport: a SMALLER viewport needs a LARGER max_scroll, not smaller) and permanently hiding the top-most line — `format_proxy_block`'s own internal clamp keeps the rendered slice itself correct regardless, so this was invisible until scrolling was traced precisely, never a rendering crash. The write-back is scoped to the `else` branch (worker selected AND entries exist) only — the two placeholder bodies (`if not current_worker` / `elif not worker_proxy_entries`) never compute `total_lines`, so a stale `worker_proxy_scroll_offset` from before a placeholder was shown simply sits inert until the next real render, which re-clamps it.
+
+**(2026-07-31) The `while True:` body is wrapped in its own `try/except Exception:`** — an uncaught exception is caught, logged via `pane_error_log.log_pane_error('worker_proxy')`, and the loop continues after `wait_for_input(INPUT_POLL_INTERVAL)`; `KeyboardInterrupt`/`SystemExit` still propagate, `finally: disable_mouse(); restore_terminal()` still runs.
+
+**(2026-08-18, rollout sub-milestone 3) Permanent row-1 search bar, mirroring `pane.py`'s
+reference implementation and `core/monitor.py`'s main-pane retrofit — one `_worker_proxy_search:
+search_bar.SearchState` instance, thin wrapper functions
+(`_handle_worker_proxy_search_cancel`/`_input`/`_release`, `_render_worker_proxy_search_bar`),
+`_worker_proxy_search_on_commit` (Enter callback — one-sweep `reconstruct_all_messages(fwd_path)`
+merge by `flow_id` when `_worker_proxy_log_path` is set, then `search.build_search_matches`,
+always re-runs — no unchanged-query gate ever existed on this pane, so nothing to correct here
+unlike the main pane), `_jump_worker_search_match`/`_jump_to_wp_search_match` (`n`/`N`, reuses the
+EXISTING `_wp_just_expanded`/`worker_item_positions`/scroll-clamp mechanism verbatim — `('req',
+idx)` is always a valid `item_positions` key). `format_proxy_block`'s `search_match_set`/
+`search_current_entry_idx`/`search_query` kwargs (present since M2 but always left at their
+`None`/`None`/`''` defaults for THIS pane specifically) are now threaded through both
+`_build_worker_proxy_output` call sites, matching `pane.py`'s pattern exactly.**
+
+**2-row header — the NEW work this milestone, `_format_worker_proxy_header` (now in `proxy_pane_shared.py`, see that module's entry)
+itself untouched (still a pure helper computing rows RELATIVE to its own top):**
+`_WP_SEARCH_BAR_LINES = 1` (fixed, never wraps — mirrors `pane.py`'s `_PROXY_HEADER_LINES`).
+`_build_worker_proxy_output` calls `_format_worker_proxy_header` as before, then shifts every
+`_worker_proxy_header_regions` row by `+_WP_SEARCH_BAR_LINES` (same rebuild-then-shift pattern
+already used for `worker_proxy_line_map`/`_worker_proxy_copy_rows`) — relative rows 1..N become
+physical rows 2..N+1, since the search bar now owns physical row 1. `total_header_lines =
+_WP_SEARCH_BAR_LINES + worker_header_lines` replaces the old `header_lines` everywhere it fed
+`content_height`/`body_hover`/either shift site. `header` returned from `_build_worker_proxy_output`
+is `search_bar_line + '\n' + worker_header` — the pre-existing overdraw print
+(`\033[H{header}\033[K`) and `(output, header)` tuple shape needed zero changes, both generic
+over the string.
+
+**Worker-switch reset:** `_refresh_worker_proxy_data`'s pre-existing `worker_name !=
+_worker_proxy_last_worker_name` block (fires identically whether the switch came from a digit
+key or a header-marker click — both converge on the same selection-file + `_worker_proxy_force_
+reload` path, so one reset site covers both) now also calls
+`search_bar.handle_search_cancel(_worker_proxy_search)` — mirrors `pane.py`'s session-change
+reset. Unlike the main pane, no extra line-offset dict is needed (this pane jumps at REQ
+granularity only, via `_wp_just_expanded`, same as proxy). NOT reset on the hourly reparse
+trigger — same convention as `worker_proxy_expand_states` (entry_idx-keyed state assumes stable
+re-indexing across a same-file reparse).
+
+**(2026-09) Split by concern to satisfy the 400-LOC file limit — see `process-docs/proxy_display/`.**
+`run_worker_proxy_loop`'s input-drain loop moved into a LOCAL helper `_poll_worker_proxy_input`
+— kept in THIS module (not `proxy_pane_shared.py`) for the same monkeypatch reason as `pane.py`'s
+`_poll_proxy_input` (see that module's entry). `_handle_worker_proxy_mouse`'s copy/expand
+body-click branches, the two reset blocks (`_reset_worker_proxy_selection_state`/
+`_reset_worker_proxy_reparse_state`, built on a shared `_reset_worker_proxy_positions`), the
+duplicated "read the IPC selection file" block (`_refresh_worker_proxy_data` and the header
+builder both used to inline it — now `_read_selected_worker_name(monitor)`), the header-build
+block (`_build_worker_proxy_header_block`, returns `(header, total_header_lines, current_worker)`)
+and the body-render block (`_render_worker_proxy_body`) were all extracted from
+`_build_worker_proxy_output`, which is now a thin dispatcher. The four mechanics genuinely
+duplicated with `pane.py` (search on_commit, scroll/hover button dispatch, the render+scroll+
+row-shift dance, the dual-log accumulate+attach tail) now live in `proxy_pane_shared.py` — see
+that module's own entry.
+
+### proxy_pane_shared.py
+
+Heading was: `### proxy_pane_shared.py (228 LOC, renamed + expanded from worker_proxy_helpers.py 2026-09 — see process-docs/proxy_display/)`
+
+The four ORIGINAL worker-proxy-only helpers (unchanged, still worker-proxy-only — `pane.py` has no worker-switcher header):
+- `_format_worker_proxy_header(workers, current_worker, pane_width=80, regions_out=None)` — builds ANSI header string with worker list and selection marker; when `regions_out` given, populates it (via `.clear()` + in-place writes) with `(start_col,end_col,phys_row)->name` click targets, one per marker, using `_ANSI_ESCAPE_RE`-stripped visible-column tracking; delegates region registration to `_register_marker_regions` so a marker straddling a header-wrap boundary still gets a full set of clickable segments instead of being dropped
+- `_register_marker_regions(regions_out, name, start, end, pane_width)` — splits one marker's `[start,end]` visible-column span into one region PER physical row it occupies (wrap-aware); a marker that fits on one row yields exactly one region, a straddling marker yields 2+ (one per row segment), all mapping to the same worker name — no marker is ever left with zero regions
+
+**2026-09 (LOC-limit split): four byte-identical private-copy pairs folded into ONE function each** — `pane.py`'s `_entry_idx_from_key`/`_resolve_prev_same`/`_strip_inactive_messages`/`_serialize_proxy` and `worker_proxy_pane.py`'s `_wp_entry_idx_from_key`/`_resolve_prev_same_wp`/`_strip_inactive_wp_messages`/`_serialize_worker_proxy` had identical bodies (verified before merging, per every prior rollout's own precedent) modulo which entries/expand_states/log_path they closed over — now one function each, taking those as explicit parameters:
+- `_entry_idx_from_key(key)` — extracts `entry_idx` from int/tuple line_map keys
+- `_resolve_prev_same(entries, k)` — walks backward to find first non-standalone predecessor
+- `_strip_inactive_messages(entries, expand_states)` — evicts `messages` from entries outside the keep-last window that are not expanded
+- `_serialize_proxy_entry(key, entries)` — full untruncated clipboard text for one entry (all new-message blocks); worker-proxy's call site now passes `worker_proxy_entries` explicitly, matching `pane.py`'s own pre-existing signature shape
+
+Plus five NEW shared functions (2026-09), each replacing a block that was duplicated nearly verbatim between the two panes' event-loop/render code:
+- `_prepare_copy_text(key, entry_idx, entries, log_path)` — lazy-loads messages if needed, returns the serialized clipboard text; the ACTUAL `copy_to_clipboard(...)` call stays in each pane's own module (both dev/pane_error_log and dev/pane_search monkeypatch `copy_to_clipboard` directly on `pane`/`worker_proxy_pane`, which only works while the call site is a bare-name lookup inside them)
+- `_toggle_expand_and_lazy_load(key, entry_idx, entries, log_path, expand_states)` — toggles the expand state and, on becoming expanded, lazy-loads this entry's (and its prev-same sibling's) messages; returns the new state so the caller can decide its own just-expanded assignment (`pane.py`'s undo-stack push, a proxy-only feature, reads the OLD state before calling this)
+- `_attach_overlay_references(entries, acc_stripped, acc_injected, infer_family_fn, original_tools_by_family=None)` — attaches the per-entry dual-log strip/inject span references + header-badge flow-lookups onto every newly-added entry; `original_tools_by_family=None` (worker-proxy's case) simply skips the `_original_tools_by_name` field pane.py alone attaches
+- `_accumulate_dual_logs_and_attach(new_entries, entries, expand_states, log_path, acc_stripped, acc_injected, stripped_pos, injected_pos, infer_family_fn, original_tools_by_family=None)` — the full tail both refresh functions run once a log path is known: resolve `_stripped`/`_injected` paths, `accumulate_dual_log` both, `_attach_overlay_references`, `_strip_inactive_messages`; returns `(new_stripped_pos, new_injected_pos)`. `pane.py`'s own `_original`-tools accumulation (`accumulate_original_tools`, `_find_original_log_path`) stays separate in `pane.py` itself — `worker_proxy_pane.py` has no equivalent.
+- `_run_pane_search(state, entries, expand_states, pane_width, log_path, jump_fn)` — the search_bar `on_commit` callback's shared half: one-sweep `reconstruct_all_messages` merge by `flow_id` when a log path is known, then `search.build_search_matches`, then `jump_fn()` on the first match. `jump_fn` is the caller's own jump-to-first-match callback (`_jump_to_search_match`/`_jump_to_wp_search_match`) since the just-expanded target assignment is a module global each pane owns separately.
+- `_handle_scroll_or_hover(button, col, row, state, label, scroll_offset, hover_row)` — the scroll-wheel/row-1-drag-motion/generic-hover button classes, identical in shape across both panes' `_handle_*_mouse`; returns `(handled, new_scroll_offset, new_hover_row)`, a False `handled` meaning the caller's own `button == 0` body-click handling still applies
+- `_render_and_scroll_body(render_fn, line_map, copy_rows, header_shift, just_expanded, scroll_offset, viewport_lines)` — render once, clamp scroll, shift into physical rows; if the just-expanded/jumped-to item falls outside the viewport, recompute scroll and render+shift AGAIN. `render_fn(scroll_offset, want_item_positions)` must call the caller's own `format_proxy_block(...)` and return `(body, total_lines, item_positions_or_None)`. Returns `(body, new_scroll_offset)` — never touches either pane's globals directly, per the milestone's own "parameterized by explicit arguments" requirement.
+- `_terminal_size(default_lines=50, default_cols=80)` — `(pane_height, pane_width)` with the `term.lines - 1` adjustment both `_build_proxy_output`/`_build_worker_proxy_output` already applied, falling back to the fixed default on `OSError` (piped stdout, no tty)
+
+`Calls out` line included "(2026-09 constants-split milestone, re-pointed from `constants`)" on `colors`.
+
+### format.py
+
+Heading was: `### format.py (180 LOC)`.
+
+**Purpose** block's final sentence: "Milestone 3 briefly added `_format_proxy_header` here to
+build the proxy pane's `[undo]` header button; reverted 2026-07-30 (see `pane.py` above) — that
+specific function stays gone; the search-bar header is rendered entirely in `pane.py`
+(`_render_proxy_search_bar`), not here."
+
+**(2026-08-18, revised) Search highlights are NOT part of the priority chain anymore — they're an independent inline overlay, browser-find style.** Originally (M2) `SEARCH_MATCH_BG`/`SEARCH_CURRENT_BG` were detected via the same substring-then-hoist mechanism as `DIM_YELLOW_BG`/`DIM_GREEN_BG`, painting the ENTIRE row full-width (live user feedback: unwanted). Fixed: `render_turn.py` embeds the highlighted span with `_BG_RESTORE_SENTINEL` (`'\033[999m'` — an out-of-range but syntactically valid SGR code, so the existing `utils._ANSI_ESCAPE_RE` strips it as zero-width everywhere that already happens, e.g. the copy-button padding math) standing in for "resume the row's real background" — render_turn.py doesn't know `chosen_bg` (zebra/hover/strip/collision) at embed time, only `_apply_row_backgrounds` does, once computed here. `resolve_bg_restore(line, chosen_bg)` (imported from `search_bar.py` — see `chosen_bg == ''` fix below) does the substitution for every row.
+
+**(2026-08-18, second fix — live-confirmed) `chosen_bg == ''` (ZEBRA_BG_A, every second zebra row) is NOT "no restore needed" — it must resolve to an explicit `\033[49m`, not be substituted with the empty string itself.** The revision above was verified only against `DIM_YELLOW_BG`-style NON-empty `chosen_bg`; `ZEBRA_BG_A = ''` was missed. Substituting `_BG_RESTORE_SENTINEL` with `''` DELETES the sentinel outright — the search-highlight BG stays active with nothing to close it before the row's trailing `\033[K` (erase-to-EOL), flooding the rest of the row gold. Reproduced byte-for-byte from a live user report. Fix: `search_bar.resolve_bg_restore`'s substitution value is `chosen_bg if chosen_bg else '\033[49m'` — an explicit default-background reset when the row has no BG override of its own. The LEADING `f'{chosen_bg}{trunc}'` prefix does NOT need the same fix: `''` there is harmless because the PRIOR row's own trailing `RESET` (`\033[0m`, full reset) already cleared the terminal's active background by the time this row starts printing — omission only means "no override" at that position because nothing came before it on this row; mid-line, after a real color (the search marker) was already set, omission does not restore anything.
+
+**(2026-08-18, sub-milestone 1 of the pane-search rollout) `_BG_RESTORE_SENTINEL` + the substitution logic both moved to `src/search_bar.py`** (`resolve_bg_restore`) — this module now imports both rather than owning them, so every pane adopting a search bar reuses the SAME fix rather than each re-deriving the empty-string edge case independently.
+
+**(2026-09, helper-extraction milestone) `format_proxy_block` split into four helpers to stay
+under the 50-LOC function threshold** — `_render_all_groups` (the per-turn-group render loop,
+threads `opus_req_num`/`sub_req_num`, fills `item_positions_out`, appends the blank-line
+separator), `_compute_collision_idxs` (the `Counter`-over-`rendered_opus_labels` step),
+`_trim_trailing_blank` (drops trailing empty turn-separator lines, mutates in place),
+`_slice_viewport` (scroll-clamp + viewport slice + `line_map` fill + `initial_parent_count`
+carry-in for zebra parity). `format_proxy_block` itself is now a thin sequence of these four
+calls plus `_apply_row_backgrounds`. Byte-identical — verified via
+`dev/proxy_display/render_byte_identity.py` and `dev/proxy_dual_log/A_render_refactor_proof.py`.
+
+### forwarded_parser.py
+
+Heading was: `### forwarded_parser.py (274 LOC)`.
+
+**`has_thinking_delta` (2026-08-28, brain-marker milestone):** bool, `any(block.type == 'thinking' for msg in delta_messages for block in msg.blocks)` — driven by `delta_messages` (the summaries for ONLY the messages THIS request's `messages_delta` newly added/changed), NOT the full accumulated `message_summaries` list; computed once in `_extract_forwarded_fields` and baked into the entry, so it survives later `messages=None` truncation the same way `messages_total_chars` does. `is_first` requests have no narrower "newly added" slice (a proxy-session restart re-sends the whole history in one shot) so the entire message list stands in as the delta for that one request — a deliberate, documented edge case, not a bug: it can make the badge light up once on such a restart even though no assistant turn just happened. `_parse_forwarded_log(fwd_path, last_pos, acc_by_family, keep_last=PROXY_MESSAGES_KEEP_LAST)` reads `forwarded_delta` JSONL incrementally, accumulates system/tools/message deltas per model family (deque-bounded: last `keep_last` entries get `messages`, rest carry `messages=None`; `keep_last=None` retains ALL entries — added 2026-08-18 for the search feature's one-sweep reconstruction, default preserves every pre-existing call site byte-for-byte), stamps `diff_from_prev` via `_compute_diff`, builds `delta_summaries` (the per-request `has_thinking_delta` input) alongside the accumulated `new_summaries` in the same loop. `reconstruct_all_messages(fwd_path)` (new 2026-08-18) — thin wrapper: one `_parse_forwarded_log(fwd_path, 0, {}, keep_last=None)` call, returns `{flow_id: messages}` for a caller to merge by `flow_id`.
+
+**`_lazy_load_messages_forwarded(entry, fwd_path)` — matches by `flow_id`, not `_fwd_req_idx` (fixed 2026-08-18).** Replays the forwarded stream from byte 0, stopping when `fwd_e.get('flow_id') == entry['flow_id']`. Was previously `req_idx == entry['_fwd_req_idx']` — see Gotcha below for why that was wrong; the fix is a same-signature internal change, zero caller-side updates needed.
+
+**(2026-09, helper-extraction milestone) Duplicated reconstruction logic factored into shared
+helpers, all four over-50-LOC functions in this file dropped under the threshold:**
+`_build_system_blocks(system)` / `_build_tools_fields(tools)` — the two list/dict-comprehension
+blocks `_extract_forwarded_fields` used to build inline, now called and `dict.update`-merged in.
+`_build_first_summaries(messages_delta, msg_cnt)` (the is_first branch: `_dict_to_list_fwd` then
+summarize each) and `_apply_messages_delta(prev_summaries, messages_delta, msg_cnt)` (the
+non-first branch: overwrite at delta indices, pad/trim to `msg_cnt`, returns
+`(new_summaries, delta_summaries)`) are each called from BOTH `_parse_forwarded_log` (via
+`_reconstruct_first_request`/`_reconstruct_delta_request`, which additionally handle
+system/tools) and `_lazy_load_messages_forwarded` (messages only — that function never touches
+system/tools) — previously two independent, drifting copies of each branch. `_process_forwarded_entry(fwd_e, req_idx, acc_by_family)` is `_parse_forwarded_log`'s own per-line
+body (family inference through `diff_from_prev` stamping), extracted so the function itself is
+just the `while True:` read loop plus deque bookkeeping. All four extractions verified
+byte-identical via `dev/proxy_display/render_byte_identity.py` and
+`dev/proxy_dual_log/A_render_refactor_proof.py`.
+
+`Called by` line included: "(direct imports, 2026-09 — the `parser.py` re-export shim that used
+to sit between them was removed, see `process-docs/proxy_display/`)".
+
+### parser.py
+
+Heading was: `### parser.py (104 LOC, reduced 2026-09 to log-path resolution only — see process-docs/proxy_display/)`.
+
+**Purpose:** Proxy log path resolution — the ONE remaining concern of what used to be a 514-LOC
+module mixing four. ... The other three concerns this module used to hold — total_tokens-nuke/badge logic, dual-log accumulation, and `_response`/`_errors` side-log reading — split out 2026-09 into `proxy_badge.py`, `dual_log_accumulator.py`, `side_logs.py` respectively (each below); no re-export shims were left behind, every importer re-points to the new module directly. Two `except OSError: pass` blocks (marker-file mtime/read failures) were reshaped to `except OSError: <sentinel> = None` + downstream guard during the split, to satisfy the repo's bare-except-pass ban — behavior unchanged (same fail-safe fallthrough either way).
+
+### proxy_badge.py
+
+Heading was: `### proxy_badge.py (81 LOC, split out of parser.py 2026-09 — see process-docs/proxy_display/)`.
+
+Full removed Purpose narrative (measured corpus counts, trailing-nudge widening history, the
+2026-09-05 claude-f widening details, the "not future-proof, deliberately" framing kept in
+distilled form in the new Gotchas, full original text below):
+
+**Purpose:** The REQ-header strip/inject badge logic and the total_tokens-nuke detection it depends on. **`_msgs_delta_is_substantial(msgs_delta, entry_type)` (2026-08-29)** is a BADGE-ONLY filter — it never touches the overlay section dicts or `_msg_idx_by_flow_id`, so the expanded view keeps rendering IN-WINDOW every span it hides from the header. (Its per-index twin `_msg_delta_entry_is_substantial` is the verdict it aggregates — see below.) Two classes stop counting: on `stripped_delta` lines, a message whose blocks' stripped texts amount to exactly ONE text full-matching `_TOTAL_TOKENS_NUKE_RE` (`^<total_tokens>\d+ tokens left</total_tokens>$` — CC's per-request token-budget message, nuked at a fresh message index every request so the writer's hash dedup can never suppress it); on `injected_delta` lines, a block whose injected spans are only `"."` (the API-required empty-block filler, not a real injection). The role field is NOT available read-side, so unlike a write-side check the total_tokens match rests on the single-full-match text shape alone. **Trailing-nudge widening (2026-09-05, model claude-f):** on claude-f, CC's trailing message is no longer always the bare tag — it can carry one or two (measured up to four, any order, repeats included) fixed CC-native nudge sentences before it, e.g. `"First privately list what you need next...\n\n<total_tokens>N tokens left</total_tokens>"`, and CC re-sends the previous trailing message with a sentence dropped on the next request, so hash-dedup defeats the SAME way the bare tag does — measured against the 3 current `_stripped.jsonl` logs (`dev/proxy_tool_stripping/probe_trailing_message_shapes.py`, 24 distinct shapes total; see `process-docs/proxy_tool_stripping/` for the full counts). `_is_total_tokens_nuke_text(text)` now backs BOTH the stripped-side check above and `_is_total_tokens_nuke` below: bare-tag exact match (unchanged), OR the tag preceded only by paragraphs (split on blank lines) that are ALL members of `_TOTAL_TOKENS_NUDGE_PARAGRAPHS`, a small frozenset of the exact sentences measured — catalogued the same way `strip_sr.py` catalogs SR templates by exact identifier, not a heuristic "generic prose" detector (which would risk swallowing a real notice that also reads as plain prose). **This is deliberately not future-proof against a NEW, uncatalogued CC nudge sentence — that is the point, not a gap:** an unrecognized sentence fails the paragraph test, so the request stays on the badge (fails toward showing it) instead of being silently absorbed into the quiet class; a future CC wording change surfaces as a live badge regression instead of vanishing unnoticed, and gets added to the catalog once measured. Real content that happens to land on the same trailing slot (deferred-tools, skills-available, a file-modified notice, a hook message) still fails the test the moment one paragraph isn't catalogued, so it stays loud. **The injected-side `"."` rule is NOT the final badge answer** — on its own it would silence the nag/deferred/date-changed nukes too, whose `"."` IS injected and DOES render green. `badge_flags` below re-adds those; only the total_tokens class ends up silent. **`badge_flags(entry) -> (show_strip, show_inject)` (2026-08-29)** is what the REQ header actually calls. It exists because an `injected_delta` line CANNOT identify the total_tokens class alone — a total_tokens nuke and a nag nuke both inject the identical literal `"."`, and the distinguishing marker text lives only on the stripped side. So the two sides are coordinated by `flow_id` at the consumer, where all four per-flow lookups are attached: `show_inject = real (non-".") injection OR ("."-filler present AND the strip side is substantial)`, where "`"."`-filler present" is a non-empty `_inject_msgs_lookup` entry (the writer only records a block that has an injected span, so once the real-injection case is excluded, a touched message block means a `"."`). Resulting classes: total_tokens nuke → neither word; nag/deferred/date-changed/mid-conv nuke → `strip inject`; total_tokens + a real strip in one request → `strip inject`; real content injection → `inject` regardless. Computed per render rather than stored at accumulation time on purpose — the two dual-log files are tailed independently, so a flow's peer line may not have been read yet when one side is accumulated; deriving it at render is order-independent and self-correcting for the running session. **`_is_total_tokens_nuke` widened alongside the badge filter (2026-09-05)** — same `_is_total_tokens_nuke_text` shape test, same single-text-per-index requirement as before. Measured before widening: at the exact position this function is asked about (the previous request's trailing index), the claude-f corpus carried 48 bare-tag cases and 55 nudge-shaped cases the narrow bare-only regex missed entirely — those 55 would have kept rendering with no span correction, the same symptom the lag correction exists to fix, just for the new shape. At that same position 6 cases were genuine real content (all mixed with a nudge, including the now-removed `feedback_bash_error` hook's message); the catalog test correctly excludes all 6, preserving the marker guard's load-bearing property. **`_msg_delta_entry_is_substantial(blks, is_injected)`** is the per-index verdict `_msgs_delta_is_substantial` is now an `any()` over (badge behavior provably unmoved — verified over 3184 recorded delta payloads plus adversarial shapes, zero divergence from the pre-refactor inline body); the badge is its only consumer again, and it stays split because the per-index question is the meaningful one. `_chars_to_tokens(chars)` — the `chars/3.5` heuristic (~±15% accuracy) used by `format.py`'s `_format_tok_est`.
+
+### dual_log_accumulator.py
+
+Heading was: `### dual_log_accumulator.py (120 LOC, split out of parser.py 2026-09 — see process-docs/proxy_display/)`.
+
+**Purpose:** Dual-log overlay accumulation — the two functions that tail `_stripped`/`_injected`/`_original` and build the per-family accumulator state both panes' entries hold references into. **`accumulate_original_tools(path, last_pos, acc_by_family)` (2026-09, Milestone 2 — expandable whole-stripped tool rows):** reads the `_original` dual-log incrementally; for each line whose `payload.tools` is non-empty, overwrites (not merges — `_original` is a full-snapshot log, not delta-encoded) the per-family `{tool_name -> tool_def}` map in place, same reference-preservation convention as `accumulate_dual_log`. Source for `render_sections._render_whole_stripped_tool`'s expanded description/schema — the stripped stream itself only ever records `{"whole": true}` for a fully-removed tool, no text (see `render_sections.py`'s own entry for the corpus measurement backing this design). **`accumulate_dual_log(path, last_pos, acc_by_family)`** reads stripped/injected delta entries, mutates `acc_by_family` IN-PLACE (`.clear()`+`.update()` preserves Python refs held by pane entries); maintains `acc['_has_content_by_flow_id']: {flow_id → bool}` per family — True when THAT line's delta carried any SUBSTANTIAL content (system/tools counted raw; `messages_delta` filtered through `proxy_badge._msgs_delta_is_substantial`; `fields_delta` deliberately EXCLUDED as of 2026-08 — a field-only change (model/effort/max_tokens override) must not badge, it stays visible only in the fields drill-down) — independent of `fn_map` — this is the source for the REQ-header `strip`/`inject` badge, kept separate from `fn_map` (untouched, still consumed by `dev/proxy_dual_log/attribution_coverage.py` and `dev/proxy_dual_log/green_overlay_probe.py`). Also maintains `acc['_msg_idx_by_flow_id']: {flow_id → set(msg_idx str)}` per family — which message indices THAT line's `messages_delta` touched — plus `acc['_lag_msg_idx_by_flow_id']`, the write-side LAG CORRECTION (2026-08-30) that re-attributes a trailing-message total_tokens strip to the request that actually performed it (`proxy_badge._is_total_tokens_nuke` is its marker guard, `_last_line_meta` the previous-line state it needs); all cleared on `is_first` alongside the section dicts. **`acc['_sys_idx_by_flow_id']`/`acc['_tool_name_by_flow_id']` (2026-09-04)** mirror `_msg_idx_by_flow_id` for the system/tools sections — which system indices / tool names THAT line's `system_delta`/`tools_delta` touched — added for `src/dual_log_cli/overlay.py`'s `build_sys_tool_overlay` (the sys/tool strip-inject delta tail `duallog msgs` now shows); purely additive, no existing key touched, and the panes here never read either (no lag correction is needed for system/tools — see that module's own docs for why). Consumed by `render_messages._lookup_spans` (via `pane.py`/`worker_proxy_pane.py`'s `_strip_msgs_lookup`/`_inject_msgs_lookup` attachments) to scope span rendering to the owning flow. **2026-09 (LOC-limit split):** the per-line body extracted into four helpers, each documenting one step of the walk — `_reset_family_acc_if_first` (the `is_first` clear), `_merge_dual_log_entry` (system/tools/messages/fields merge, returns this line's own `messages_delta`), `_record_flow_lookups` (the four per-flow lookup dicts), `_apply_lag_correction` (the write-side lag correction) — `accumulate_dual_log` itself is now the ~25-line per-line dispatch loop calling all four in order.
+
+`Called by` line included: "(`accumulate_dual_log`, since 2026-08-30 via `build_overlay` and,
+since 2026-09-04, also via `build_sys_tool_overlay` — both build their own independent
+accumulator per call, never sharing state with the panes' `_proxy_acc_stripped`/
+`_worker_proxy_acc_stripped`)".
+
+### side_logs.py
+
+Heading was: `### side_logs.py (79 LOC, split out of parser.py 2026-09 — see process-docs/proxy_display/)`.
+
+Purpose text: "The `_response`/`_errors` side-log readers — neither dual-log accumulation nor
+path resolution, the two concerns they used to sit between in `parser.py`." — the "used to sit
+between" framing is history and was cut; the factual behavior ("reads `_response` entries
+incrementally", "globs worker `_errors` dual-logs") was kept in the new entry.
+
+### render_turn.py
+
+Heading was: `### render_turn.py (152 LOC)`.
+
+**Brain badge (2026-08-28):** `tag_badge` gains a third slot, green `🧠`, shown when `entry['has_thinking_delta']` is True (flat field from `forwarded_parser._extract_forwarded_fields` — see that module's entry). Boolean only, no count, no color threshold (unlike the token pane's `🧠Nk` — see `format/token_format.py::_format_cache_call`, which this milestone deliberately does not touch). Order in `tag_badge`: `strip inject 🧠`. Never true for haiku (no haiku response ever carries a `thinking` block in this codebase's data). No padding-math change needed — the existing `sum(_cell_width(ch) for ch in stripped)` pad computation in `_build_req_header_line` already treats 🧠 (U+1F9E0) as 2 cells generically via `utils._cell_width`'s `0x1F000–0x1FAFF` range check.
+
+**As of 2026-08-29 the header and the expanded view are one-to-one for every class EXCEPT the per-request total_tokens nuke**, which shows neither badge word — the one deliberate divergence, because that class occurs on nearly every request and would otherwise make the badge meaningless. Since 2026-08-30 that divergence is WIDER, in the other direction: the expanded body is the request's payload delta only, so a strip landing outside that delta — nag, deferred-tools, date-changed, mid-conversation — renders nothing at all while the header still badges it. In-window strips DO show their olive/green spans, which for the per-request total_tokens nuke means the request's own trailing msg: characteristically in-window, and rendering correctly only since the write-side attribution lag was corrected on 2026-08-30 (until then it drew a bare `.`, contradicting this very sentence). See `render_messages.py`'s entry and the invisible-strip Gotcha for what that means for a reader chasing a badge. Every other `"."`-nuke (task-tools nag, deferred-tools, date-changed, mid-conversation) still renders `strip inject`. The coordination that separates the two lives in `proxy_badge.badge_flags` — see that module's entry and `process-docs/proxy_tool_stripping/`.
+
+`prev_same` note: "computed via `_resolve_prev_same_family(entries, entry_idx)` (module-level
+function, extracted 2026-08-18 from what was previously inlined in `render_turn_expanded`'s loop
+— same family-matched (haiku vs non-haiku) backward walk skipping `format._is_standalone_entry`
+candidates, now also reused by `search.py`'s match-index build so search matching can never
+diverge from what the real render computes)."
+
+**Warn badges:** only `⚠T` (`tools_hash` differs from `prev_same`) — the `⚠S`
+(`system_total_chars` differs) badge was removed 2026-08 (system_total_chars drift alone was
+noise; `strip`/`inject` word badge + expanded diff already surface real content changes).
+
+**(2026-08-18, revised — scope fix per live user feedback).** Originally wrapped the ENTIRE header line / matched content line in a marker and let `format._apply_row_backgrounds`'s hoist-to-whole-row mechanism (shared with strip/inject) paint the full row — unwanted (browser-find style substring highlight was the actual ask). Now: `_build_req_header_line` wraps only the header's own **text extent** — `{WHITE}{req_symbol}...{tag_badge}{SOFT_RESET}` (the `body` local var) — NOT the leading 2-space indent, NOT the copy-button padding appended after this function returns — in `{SEARCH_CURRENT_BG or SEARCH_MATCH_BG}{body}{format._BG_RESTORE_SENTINEL}`, whenever `entry_idx` is a search match, regardless of expand state (header stays marked even once expanded — decision: uniform, keeps orientation when scrolling inside a long expanded request). `_mark_search_lines(lines, query, is_current)` — rewritten from a whole-line-prefix to `utils.highlight_query_in_line(line, query, marker, format._BG_RESTORE_SENTINEL)` per line: highlights ONLY the literal query substring occurrence(s) within that line (marks every occurrence, not just the first), leaving the rest of the line's own formatting (DIM, indentation, etc.) untouched. Both use `_BG_RESTORE_SENTINEL` instead of a real color as the "resume normal background" code, since this module doesn't know the row's eventual `chosen_bg` (zebra/hover/strip/collision) at embed time — `format._apply_row_backgrounds` substitutes it for the real value once computed (see `format.py`'s entry above for the full mechanism and why a hardcoded `\033[49m` would have been wrong here, unlike `core/monitor_display.py`'s own copy of this pattern which has no per-row background to preserve).
+
+### render_sections.py
+
+Heading was: `### render_sections.py (315 LOC, render_system_blocks split out to render_sections_system.py 2026-09 — see that module's entry and process-docs/proxy_display/)`.
+
+**Whole-stripped extra rows (2026-09, Milestone 2 — expandable, was name-only until this milestone):** delegates to `_render_whole_stripped_tool(entry_idx, name, tool_def, expand_states)` with `tool_def = entry.get('_original_tools_by_name', {}).get(name)`. Collapsed row is byte-identical to the pre-milestone static row (`DIM_YELLOW_BG ▶ {name}`) — only the `keys` entry changed from `None` to `('stripped_tool', entry_idx, name)`, so it is now a real click target. Expanded: same shape as `_render_tool_legacy`'s expanded body (description, then per-param `name[*]: type — desc`), entirely `DIM_YELLOW_BG` since this content never reached the wire at all. `tool_def=None` (worker proxy pane, which never gets `_original_tools_by_name` attached — see `pane.py`; or the `_original` accumulator hasn't caught up yet) renders a single `(original definition unavailable)` fallback line instead — row stays expandable either way, never crashes. The original def is sourced from the SAME session's `_original` dual-log (the last request's own `tools` list, not the stripped stream, which only ever records `{"whole": true}` — no text) — measured 2026-09-04 (`process-docs/dual_log_cli/2026-09-04_sys_tool_original_chars_and_whole_strip_lines.md`): 336/336 whole-stripped tool name-instances found there across 42 sessions, 0 hash mismatches comparing any earlier request's tool-by-name content against the last request's across 45 sessions — tool defs never change mid-session, so serving the latest snapshot is always correct. Byte-identical regression confirmed via `dev/proxy_dual_log/A_render_refactor_proof.py` (13/14 fixture cases unchanged; the 14th, `expand_fixpoint`, legitimately gains the new expanded content once its whole-stripped `read_file` row's new key gets iterated to True — inspected manually, diff is exactly the new line and nothing else). Deferred rows (`deferred_tools_names`) are untouched — CC's own SR-based deferral notice, not a `TOOL_BLOCKLIST` strip, out of this milestone's scope. Old (non-dual) path: `stripped_original`, `stripped_unused_tools_names` — untouched.
+
+**(2026-09, helper-extraction milestone) `render_system_blocks` (85 LOC) moved to a new sibling
+module `render_sections_system.py`** — the ONLY function whose module changed; `render_tools` and
+`_render_whole_stripped_tool` stay HERE under their existing names (dev-script importers keep
+their `from src.proxy_display.render_sections import ...` line unchanged; `render_turn.py`'s
+import line was the only internal caller that needed re-pointing). The 3x-repeated "split text on
+`\n`, `expandtabs(8)`, emit `{indent}{bg}{DIM}{line}{SOFT_RESET}` per line" block (the
+bare-`{bg}{DIM}{SOFT_RESET}`-for-empty-line spelling and the `raw_line or ''` spelling verified to
+produce identical strings) now goes through the shared `render_line_helpers._emit_text_lines` /
+`_emit_span_lines` / `_emit_inline_spans` — the same three helpers `render_sections_system.py`
+uses, which is why they live in their own module rather than either render-section module.
+`render_tools` itself was split into `_compute_tools_delta` (added/removed name sets +
+first-request/changed flags), `_render_tool_defs_list` (per-tool-def dispatch loop),
+`_render_whole_stripped_extras` (the whole-stripped-tool extra rows), `_render_tools_body` (wires
+the three together plus the removed/deferred one-liners). `_render_tool_dual` gained
+`_render_tool_desc` (its own inline-vs-legacy description dispatch); `_render_tool_dual`,
+`_render_tool_legacy`, and `_render_whole_stripped_tool` all now share `_extract_schema_props`
+(the `input_schema.get('properties'/'required')` pull, repeated 3x verbatim) and
+`_render_tool_params` (the param-listing loop, shared by the dual and whole-stripped paths;
+`_render_tool_legacy` keeps its own `_render_legacy_tool_params` since it alone has the
+`orig_param_desc` fallback branch). All extractions verified byte-identical via
+`dev/proxy_display/render_byte_identity.py` and `dev/proxy_dual_log/A_render_refactor_proof.py`.
+
+Trailing "New private helpers (same module)" list was also present, itemizing every helper by
+name — cut as function-level enumeration.
+
+### render_sections_system.py
+
+Heading was: `### render_sections_system.py (101 LOC, new 2026-09, split out of render_sections.py — see process-docs/proxy_display/)`.
+
+Trailing sentence: "Moved here verbatim from `render_sections.py` (2026-09, helper-extraction
+milestone) purely to keep that file under the 400-LOC limit once its own tool-section helpers
+were added — `render_turn.py` is the only caller and re-points its import here; no dev-script or
+other module referenced `render_system_blocks` by name before the move."
+
+### render_line_helpers.py
+
+Heading was: `### render_line_helpers.py (31 LOC, new 2026-09, shared by render_sections.py and render_sections_system.py — see process-docs/proxy_display/)`.
+
+Purpose text's framing: "The one repeated line-emission primitive both render-section modules
+used to spell out inline many times over" — the "used to spell out inline" clause is history;
+the actual behavior description of the three functions was kept in the new entry.
+
+### render_messages.py
+
+Heading was: `### render_messages.py (281 LOC)`.
+
+**Flow-scoped span lookup (2026-08):** `_lookup_spans(entry, msg_idx, bidx, use_dual)` scopes the shared, cumulative `_stripped_spans`/`_injected_spans` acc dicts to `entry`'s OWN `flow_id` — filters out a span at a coordinate this entry's flow never touched via `entry['_strip_msgs_lookup'].get(fid, set())` / `entry['_inject_msgs_lookup'].get(fid, set())` (the `dual_log_accumulator.py` `_msg_idx_by_flow_id` structure). Fixes cross-request bleed: the acc dicts are mutated in place and shared by reference across every entry of a family, so without this filter a later request's overwrite of a message index could render under an earlier/neighbor request that never touched it. Filtering only applies when the entry carries the lookup dicts at all (`'_strip_msgs_lookup' in entry`) — synthetic test fixtures without them fall back to the old unscoped lookup, preserving byte-identical output for `dev/proxy_dual_log/A_render_refactor_proof.py`'s fixture cases.
+
+**The body is the request's payload delta, and nothing else (2026-08-30).** `render_messages()` returns one of the two window renderers directly: `_render_new_messages` for `prev_msg_count < len(messages)`, else `_render_modified_messages`. There is no third source of lines. Between 2026-08-07 and 2026-08-30 there was one — `_render_flow_extra_messages` PREPENDED the message indices this entry's own flow had touched below the rendered window, so a strip that landed outside the delta (CC's mid-conversation system-message overwrites: task-tools nag, deferred-tools notice, date-changed) still showed its olive/green spans somewhere. That mechanism, its `_own_msgs` helper, the parser's `_msg_idx_sub_by_flow_id` subset and the `_strip_msgs_sub_lookup`/`_inject_msgs_sub_lookup` pane attachments are all gone; `_render_modified_messages` went back to returning `(lines, keys)` since `diff_start` existed only to feed it. See the Gotcha below for what that costs — it is real and was accepted deliberately.
+
+**Thinking-block drill-down + wrapping (2026-08-28, thinking-expander milestone):** `_render_block_spans` gained `entry_idx: int, expand_states: dict, pane_width: int` — consulted ONLY for `btype == 'thinking'`; every other block type ignores all three and renders byte-identical to before (verified against the pre-change code, see `dev/thinking/render_thinking_expander.py`). A thinking block builds `think_key = ('think', entry_idx, msg_idx, bidx)`, defaults COLLAPSED (`expand_states.get(think_key, False)`), header line gets a `▶`/`▼` prefix; collapsed emits ONLY the header line (no content, no key besides `think_key` itself — matches every other drill-down's collapsed shape). Expanded: `_wrap_thinking_text(full_text, _BLOCK_CONTENT_INDENT, pane_width)` word-wraps to `pane_width - len(indent)` cells via the new `utils.wrap_visible` (the repo's first wrap helper, cell-aware like `_cell_width`/`truncate_visible`, NOT character-count-based) — existing `\n` breaks kept as paragraph boundaries, each paragraph wrapped independently, rejoined with `\n`, then fed into the UNCHANGED `_render_span_content` as its `full_text` arg. **KNOWN LIMITATION (unmeasured, do not treat as ruled out):** `_render_span_content` ignores its `full_text` argument entirely whenever `i_blk` is new-format span data — it renders `i_blk`'s own `span_text` chunks instead. A thinking block that carries strip/inject spans at its own `(msg_idx, bidx)` coordinate would therefore render those spans UNWRAPPED, silently bypassing the wrap above. A probe against the real dual-log used for this milestone found zero such coordinates, but the probe's own correctness was never independently verified — recorded as a known, unmeasured gap, not as evidence the case cannot occur. See `process-docs/thinking/` for the full note. Plumbing: `entry_idx`/`expand_states`/`pane_width` now thread through `_render_new_messages`, `_render_modified_messages`, `_render_flow_extra_messages`, and `render_messages` (which gained a leading `entry_idx: int` param — caller is `render_turn._render_req_expanded`, which already had it in scope). `pane.py`'s `_entry_idx_from_key` and `worker_proxy_pane`'s `_wp_entry_idx_from_key` need no change — their existing `isinstance(key[0], str): return key[1]` branch already covers the 4-tuple `think_key` (verified directly, not assumed).
+
+**(2026-09, helper-extraction milestone) `_render_modified_messages` (was 51 LOC) split to drop
+under the 50-LOC threshold — three helpers, two shared with `_render_new_messages`:**
+`_render_prestripped_range(entry, messages, fdi, upper, stripped_indices, use_dual, show_chars)` —
+the "pre-render stripped messages skipped by the main window loop" block, previously duplicated
+between `_render_new_messages` (`upper=prev_msg_count`, `show_chars=True`) and
+`_render_modified_messages` (`upper=diff_start`, `show_chars=False`), now one function called by
+both. `_compute_diff_start(messages, prev_messages)` — the backward-walk-from-the-tail loop that
+finds where curr/prev messages diverge, extracted out of `_render_modified_messages` on its own.
+`_render_removed_tail(messages, prev_messages)` — the trailing `removed:` marker-line loop.
+
+### search.py
+
+Heading was: `### search.py (24 LOC, new 2026-08-18, Milestone 2 — main pane only)`.
+
+Purpose text included: "Cost: ~20-25ms / 190 entries measured on a real 6.8MB forwarded log
+(`process-docs/pane_search/`; combined with the ~35ms one-sweep, the full Enter-triggered search
+costs ~55-60ms — comfortably under the ~1s interactive budget the milestone's plan-gate required
+measuring before implementation)." — the measured numbers were a one-time investigation result,
+cut per the "no dates, no 'since'" rule; the qualitative fact that the render function is reused
+verbatim (not a duplicated serializer) was kept in the new entry.
+
+`Called by` line: "`src/proxy_display/pane.py` (`build_search_matches`, on search-Enter)" — this
+was STALE even before the rewrite: `build_search_matches` is now imported and called only from
+`proxy_pane_shared.py`'s `_run_pane_search`, which both `pane.py` and `worker_proxy_pane.py` call
+into. Corrected in the new DOCS.md.
+
+### State (top-level section)
+
+Full removed prose (module-state inventory with per-line milestone/date annotations):
+
+`pane.py` and `worker_proxy_pane.py` each own independent module-level mutable state:
+- entries list, expand states dict, scroll offset, hover row, line map, turns list
+- `_proxy_log_path` / `_worker_proxy_log_path` — current JSONL path, updated each poll cycle; used by lazy-reload on expand-click and clipboard copy
+- `_proxy_pane_width` / `_worker_proxy_pane_width` — last rendered pane width (default 80); used by copy-button click handler to determine column threshold
+- `_proxy_copy_rows` / `_worker_proxy_copy_rows` — set of phys_rows where ⎘ was rendered; cleared before each `format_proxy_block` call and repopulated; `_worker_proxy_copy_rows` is shifted by `header_lines` after each call
+- `_copy_feedback_until` / `_worker_copy_feedback_until` — entry_idx→float dicts for ✓ flash; cleaned up each poll cycle; non-empty dict keeps `input_changed=True` for animation refresh
+- `_worker_proxy_header_regions` (`worker_proxy_pane.py` only) — `(start_col,end_col,phys_row)->worker name` click-region table for the header's `[i]name` markers; rebuilt every `_build_worker_proxy_output` call by `_format_worker_proxy_header`, consulted by `_handle_worker_proxy_mouse` before the body `worker_proxy_line_map` lookup. `pane.py` has NO equivalent region table — its row-1 header is a single fixed-height search bar, not multiple click markers; `row == 1` is checked directly in `_handle_proxy_mouse`
+
+**Search state (`pane.py` — reference implementation; `worker_proxy_pane.py` since 2026-08-18 sub-milestone 3 — BOTH panes now have search):**
+- `pane.py`: `_proxy_search_query` (str), `_proxy_search_focused` (bool) — the bar's text-edit state
+- `_proxy_search_matches` (`List[int]`, entry_idx ordered by position) / `_proxy_search_match_set` (`set(_proxy_search_matches)`, O(1) membership) — rebuilt on every Enter via `_run_proxy_search` (never gated on query-unchanged, unlike the main pane's `core/monitor_display.py` search — proxy's one-sweep is cheap enough to always re-run)
+- `_proxy_search_current_idx` — index into `_proxy_search_matches` for the `n`/`N` jump target and the `SEARCH_CURRENT_BG` vs `SEARCH_MATCH_BG` distinction
+- All five cleared together in `_refresh_proxy_data`'s session-change block (alongside `_proxy_undo_stack.clear()`) — NOT cleared on the hourly reparse trigger, same convention as `proxy_expand_states` (entry_idx-keyed state assumes stable re-indexing across a same-file reparse)
+- `_proxy_search_dragging` (bool), `_proxy_search_sel_anchor`/`_proxy_search_sel_end` (`Optional[int]`, char-boundary indices) — drag-to-select on the search bar (2026-08-18 follow-up). Release always copies to clipboard; Backspace with an active selection ALSO deletes it from `_proxy_search_query` (2026-08-18 second follow-up — no longer copy-only). Cleared via the shared `_clear_proxy_search_selection()` helper on click-elsewhere, new keyboard input, Esc-cancel, AND session change (same block as the five above)
+
+NOTE: the bullet above is the stale reference to `_clear_proxy_search_selection()` flagged as
+"Known drift to resolve" in the task prompt — that helper does not exist in the code. The actual
+current behavior is `search_bar.clear_selection(state)`, called directly in each pane's mouse
+handler and inside `search_bar.handle_search_cancel`.
+
+- `worker_proxy_pane.py`: `_worker_proxy_search: search_bar.SearchState` — one instance (query/focused/matches/match_set/current_idx/drag-select fields, same shape as `pane.py`'s `_proxy_search`, minted straight onto `search_bar.SearchState` since this pane never had its own flat globals to migrate from). `_worker_proxy_header_regions` — the pre-existing worker-switcher click-region table, rows now shifted `+_WP_SEARCH_BAR_LINES` after every `_format_worker_proxy_header` call (see module entry above). Search state cleared via `search_bar.handle_search_cancel(_worker_proxy_search)` in `_refresh_worker_proxy_data`'s worker-CHANGE block (fires for both digit-key and header-marker selection) — NOT on the hourly reparse trigger, same convention as `pane.py`
+
+**Dual-log accumulator (both panes):**
+- `_proxy_stripped_pos` / `_proxy_injected_pos` (`pane.py`) and `_worker_proxy_stripped_pos` / `_worker_proxy_injected_pos` (`worker_proxy_pane.py`) — byte-position cursors for incremental dual-log reads; reset to 0 on session/worker change
+- `_proxy_acc_stripped` / `_proxy_acc_injected` (`pane.py`) and `_worker_proxy_acc_stripped` / `_worker_proxy_acc_injected` (`worker_proxy_pane.py`) — `{family: {'system': {}, 'tools': {}, 'messages': {}, 'fields': {}, '_has_content_by_flow_id': {}, '_msg_idx_by_flow_id': {}, '_lag_msg_idx_by_flow_id': {}, '_last_line_meta': None}}` accumulator dicts; mutated IN-PLACE by `accumulate_dual_log` (`.clear()`+`.update()` on section dicts preserves Python references); cleared on reset via `.clear()`. Each newly-parsed entry holds a REFERENCE to its family's accumulator dict — NOT a copy — plus references to the `_has_content_by_flow_id` and `_msg_idx_by_flow_id` sub-dicts (`_strip_fns_lookup`/`_inject_fns_lookup`, `_strip_msgs_lookup`/`_inject_msgs_lookup`) and, from the STRIPPED accumulator only, `_lag_msgs_lookup`. Render code reads span data from these references at render time, so late-arriving delta updates propagate automatically — `render_messages.py`'s `_lookup_spans` uses the msgs-lookup pair to scope a span to the flow_id that actually wrote it, since the shared reference means every entry of a family sees the SAME cumulative dict; `_lag_msgs_lookup` widens that ownership by the coordinates the writer attributed one request too late (see Gotchas). Every read goes through `setdefault`, so an accumulator dict minted without one of these keys degrades to an empty lookup rather than a KeyError. Worker pane has two reset triggers (worker-change detection + time-triggered reparse); both clear all four dual-log vars.
+
+Both are reset when session/worker changes. On reset, the log path is cleared to `None`.
+
+**Whole-stripped tool original-def accumulator (`pane.py` only, 2026-09, Milestone 2):**
+`_proxy_original_pos` / `_proxy_acc_original` (`{family -> {tool_name -> tool_def}}`) — same
+reference-preservation convention as the dual-log accumulator above, but fed from `_original`
+(the raw pre-strip payload log, NOT delta-encoded) via `dual_log_accumulator.accumulate_original_tools`, and
+holding a LATEST-SNAPSHOT overwrite rather than a merge (no history needed — tool defs never
+change within a session). `worker_proxy_pane.py` does NOT have this accumulator and never
+attaches `entry['_original_tools_by_name']` — a whole-stripped tool row in the worker pane is
+still expandable (it shares `render_sections.render_tools`) but always shows the
+`(original definition unavailable)` fallback, a deliberate scope decision for this milestone, not
+an oversight.
+
+**Lazy-reload invariant:** every entry in the entries list that is outside the `PROXY_MESSAGES_KEEP_LAST=10` tail window and not in `expand_states` has `messages=None` (stripped by `_parse_forwarded_log`). Entries inside the deque window or with an active expand key (`('req', i)`, `i`, or `(i, 'neg_delta')`) always retain messages. On expand-click, `_lazy_load_messages_forwarded(entry, fwd_path)` replays the forwarded delta stream from byte 0, matching by `entry['flow_id']`, to reconstruct messages; `prev_same` (first non-standalone predecessor) is reloaded in the same click handler.
+
+### Gotchas (top-level section)
+
+Full removed text of each Gotcha paragraph (dated framing and investigation-report style kept
+here verbatim; the calibrated facts were distilled into the new DOCS.md's Gotchas section in
+present-tense mechanism form):
+
+**Gotcha — the delta writer attributes a trailing-message strip to the WRONG request, and the read side corrects it (2026-08-30).** CC hangs the cache-control breakpoint on the last message, so a request's fresh trailing `role='system'` total_tokens msg arrives list-shaped. `_apply_role_system_strip` nukes it correctly (the forwarded payload carries the `"."`), but `_ops_from_content_change` returns `{}` for list content — verified directly, string content yields an op, list content yields none — so no op reaches `_process_messages_section`, whose `if s_texts:` guard then writes no stripped span for that request. The NEXT request re-sends the same msg as a plain string, produces the op, and records the strip one request late. Measured across two sessions: **0 of 510 total_tokens strips recorded against the request that performed them, 510 of 510 against the following one.** Symptom before the fix: the in-window trailing `syst` msg rendered as a bare `.` with no olive original and no green filler, contradicting this file's own description. `dual_log_accumulator.accumulate_dual_log` now maps such a delta back onto the flow that stripped it (`_lag_msg_idx_by_flow_id`, consulted by `_lookup_spans` via the panes' `_lag_msgs_lookup`), under three conditions: the index is the previous line's trailing msg, the count did not regress, and the delta is a total_tokens nuke. **The marker guard is load-bearing** — CC overwrites mid-conversation indices in place, so the task-tools nag lands on an index that was an earlier request's trailing msg; without the guard that nag's text would render under a request that stripped something else there, which is real neighbour bleed. The durable repair LANDED write-side on 2026-08-30 (`rule_ops._ops_from_content_change` gained a list→str branch, see `src/proxy/DOCS.md`), but it changes nothing here: it only affects lines written AFTER a proxy restart, every already-recorded log keeps the lag forever, and the running mitmproxy addon holds the old code until someone restarts it. So this correction stays and keeps earning its place. It is self-neutralising by design, verified on a synthetic fixed-writer stream: with the writer fixed the request records its own strip, the next line's repeat is hash-deduped away, and this rule finds 0 corrections to make while the recorded old-format stream still gets its full set.
+
+**Gotcha — an out-of-window strip is INVISIBLE in the pane, and the badge is its only trace (2026-08-30).** The expanded body is the request's payload delta, so a strip landing outside that delta renders nothing at all. The obvious consolation does not hold: the touched message IS rendered by whichever request's delta legitimately contains it, but WITHOUT spans, because `_lookup_spans` scopes spans to the flow that touched the index and that neighbour request's flow did not. Measured over both recorded sessions: of 90 indices that the removed mechanism used to prepend, 90 are rendered elsewhere without spans and **0 are rendered anywhere with spans**. So for a task-tools nag, deferred-tools notice or date-changed nuke, the stripped ORIGINAL text cannot be read in the pane at all — only the `strip`/`inject` badge words on the REQ header say it happened. The text remains recoverable from the dual-log `_stripped` stream (e.g. `duallog expand <session> <msg>`), which is why this was accepted rather than fixed. Do not "fix" it by loosening `_lookup_spans`' flow scoping — that is the 2026-08-07 neighbour-bleed bug, and it would put a foreign request's span under this request's header. **This does NOT cover the per-request total_tokens nuke**, which lands on the request's own trailing msg and therefore sits INSIDE its delta window: that class renders its olive original and green `"."` normally, once the lag correction above puts the span back under the request that stripped it. The two classes are distinguished by where the strip lands, not by what it is.
+
+**Gotcha — `_fwd_req_idx` is NOT a stable cross-call identifier (fixed 2026-08-18).** `_parse_forwarded_log` stamps `entry['_fwd_req_idx'] = req_idx`, a counter that restarts at 0 on EVERY call — i.e. it's unique only WITHIN one incremental parse batch, not across the polling session. `_lazy_load_messages_forwarded` used to match on this (`req_idx == target_idx` while replaying from byte 0), which is wrong the moment a session has had ≥2 incremental poll batches with new lines in each (i.e. almost always, given the 500ms poll tick) — an entry from a later batch would silently load an EARLIER batch's content at the same call-local index. Verified live during M2 investigation: 158/158 out-of-window entries mismatched their ground-truth content in a simulated 2-batch session. `flow_id` (from the forwarded_delta line, always populated, globally unique — verified 189/189 unique on a real 190-entry log) is the correct correlation key; `_lazy_load_messages_forwarded` and `reconstruct_all_messages`'s merge (in `pane.py`) both use it. `_fwd_req_idx` is still stamped (used only within a single `_parse_forwarded_log` call's own `recent_window` deque bookkeeping) — do not use it as a dict key across separate parse calls.
+
+**Gotcha — `get_proxy_session_start_ts` stale-marker fallback.** `parser.get_proxy_session_start_ts` treats a `.proxy_session_<id>` marker older than 24h as stale and returns `time.time()` instead of its mtime.
+
+## 2026-09-11 Recap
+
+Task: bring `src/proxy_display/DOCS.md` to the DOCS.md Format of the documentation rules,
+derived from the code, not the prior changelog-style prose (16 modules: 15 `.py` files plus
+`__init__.py`).
+
+Method: read every `.py` file in the package in full, then grepped `src/`, `dev/`, and the root
+files (`cli.py`, `workflow.py`, `start.sh`, `claude_proxy_start.sh`, `bin/`) for each module's
+importers to build an accurate `Called by` list per module, rather than trusting the prior
+prose's claims.
+
+Findings against the prior DOCS.md, resolved in the rewrite:
+- The "Known drift to resolve" item from the task prompt was confirmed by reading the code:
+  `_clear_proxy_search_selection()` does not exist anywhere in `src/proxy_display/`. State
+  clearing for the search bar's drag-selection is `search_bar.clear_selection(state)`, called
+  directly from each pane's own mouse handler (`pane.py`'s and `worker_proxy_pane.py`'s
+  `button == 0` branch) and from inside `search_bar.handle_search_cancel`.
+- `search.py`'s `Called by` line in the prior DOCS.md named `src/proxy_display/pane.py` as the
+  caller of `build_search_matches`. Grep found this stale: `build_search_matches` is imported and
+  called only from `src/proxy_display/proxy_pane_shared.py`'s `_run_pane_search`, which both
+  `pane.py` and `worker_proxy_pane.py` call into via their own `on_commit` callbacks. Corrected
+  in the new entry.
+- No DEAD CODE candidates — every one of the 15 modules has at least one real `src/` caller
+  (grep results are in the report given to Main before "Go", not reproduced here since they are
+  not salvage material — they were verification steps, not removed doc content).
+
+`docs-drift-check` note (not salvage, a tooling interaction worth recording for whoever next
+touches this DOCS.md): the checker only scans path-like tokens inside backtick spans, and its
+glob-extension check strips the true file extension when a `*` appears before the last dot (e.g.
+`api_requests_*_forwarded.jsonl` loses its `.jsonl` extension to the split-at-`*` logic), so a
+backticked reference to the runtime, gitignored `src/logs/` directory or a glob under it always
+reports NOT FOUND — this pattern already exists in nearly every other DOCS.md in the repo. Three
+such references in the new `src/proxy_display/DOCS.md` (Role paragraph, `parser.py`'s Reads line)
+were reworded out of backticks into plain prose to reach zero findings for this file specifically,
+per the existing rule that non-existent shell-style paths (`/dev/null`, `~/...`) are written in
+plain words rather than backticked — treated `src/logs/` the same way since it is equally
+never present in a checkout.
+
+Verification: `wc -l` on every module compared against its new DOCS.md heading (all 15 match);
+`docs-drift-check` run from the worktree root, output filtered to lines starting with
+`src/proxy_display/DOCS.md` — zero after the reword above.
