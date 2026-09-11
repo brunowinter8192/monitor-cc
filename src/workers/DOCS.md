@@ -65,7 +65,7 @@ serialization), `worker_render.py` (pure viewport/row-render + jump-scroll math)
 
 ---
 
-### worker_render.py (97 LOC)
+### worker_render.py (94 LOC)
 
 **Purpose:** Pure viewport/row-rendering + jump-scroll helpers with no module state — every function takes the caller's own dicts/scalars as explicit parameters and either returns a value or mutates a passed-in dict/set in place. `_workers_terminal_size()`, `_compute_viewport(total_lines, content_height, scroll_offset)`, `_render_workers_rows(...)` (the zebra/hover background loop), `_resolve_workers_hover_key(...)`, `apply_scroll(...)`, `compute_jump_scroll_offset(...)`.
 **Reads:** parameters only.

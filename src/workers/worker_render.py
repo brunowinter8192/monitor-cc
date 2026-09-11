@@ -21,12 +21,9 @@ def compute_jump_scroll_offset(key, turns: list, per_worker_expand: dict, pane_w
     new_start = max(0, target_line - 2)
     return max(0, total_lines - viewport_lines - new_start)
 
-def _workers_terminal_size(default_lines: int = 50, default_cols: int = 80) -> tuple:
-    try:
-        term = os.get_terminal_size()
-        return term.lines, term.columns
-    except OSError:
-        return default_lines, default_cols
+def _workers_terminal_size() -> tuple:
+    term = os.get_terminal_size()
+    return term.lines, term.columns
 
 def _compute_viewport(total_lines: int, content_height: int, scroll_offset: int) -> tuple:
     max_offset = max(0, total_lines - content_height)

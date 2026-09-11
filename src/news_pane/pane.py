@@ -127,12 +127,9 @@ def _handle_news_mouse(button: int, col: int, row: int) -> tuple:
 
 
 def _build_news_output(status: dict, last_output):
-    try:
-        term = os.get_terminal_size()
-        pane_width  = term.columns
-        pane_height = term.lines - 1
-    except OSError:
-        pane_width, pane_height = 80, 24
+    term = os.get_terminal_size()
+    pane_width  = term.columns
+    pane_height = term.lines - 1
     running = _is_running()
     current_match_line = (
         _news_search.matches[_news_search.current_idx]
@@ -230,10 +227,7 @@ def _news_search_on_commit(state: search_bar.SearchState, status: dict) -> None:
         state.matches = []
         state.match_set = set()
         return
-    try:
-        pane_width = os.get_terminal_size().columns
-    except OSError:
-        pane_width = 80
+    pane_width = os.get_terminal_size().columns
     plain = _render_pane(pane_width, 0, status, _is_running())
     q = state.query.lower()
     matches = [i for i, line in enumerate(plain.split('\n')) if q in _strip_ansi(line).lower()]

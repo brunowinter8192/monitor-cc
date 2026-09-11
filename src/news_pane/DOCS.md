@@ -24,7 +24,7 @@ websearch project.
 
 ## Modules
 
-### pane.py (302 LOC)
+### pane.py (296 LOC)
 
 **Purpose:** Left control-pane event loop — collection stats display, SGR mouse/keyboard dispatch, pipeline subprocess launch, running-state indicator, row-1 search bar (highlight-only, no scroll infra). `NEWS_POLL_INTERVAL = 2.0` s; `LOG_RUNNING_RECENT_SECS = 60` (mtime gate for the log-based running-state fallback).
 **Reads:** `rag-cli list_documents searxng_crypto` + `rag-cli list_collections --json` (every 2s); `LAST_RUN_FILE` (every 2s); `_pipeline_proc.poll()`; the pipeline log file (via `_is_running_via_log()`).
@@ -34,7 +34,7 @@ websearch project.
 
 ---
 
-### log_pane.py (79 LOC)
+### log_pane.py (76 LOC)
 
 **Purpose:** Right log-tail pane. Polls the newest log file every 0.5s, extracts current-run lines, filters to whitelisted events, renders top-anchored (newest visible on overflow). No mouse (tmux native scroll active). `LOG_POLL_INTERVAL = 0.5` s; `MAX_LOG_LINES = 40`.
 **Reads:** log file via `find_log_file()` + `find_current_run_lines()` + `filter_events()` (every 0.5s).
@@ -44,11 +44,11 @@ websearch project.
 
 ---
 
-### log_parser.py (76 LOC)
+### log_parser.py (79 LOC)
 
 **Purpose:** Pure parsing helper + package-level path constants. Provides `WEBSEARCH_ROOT`, `LOG_DIR`, `LAST_RUN_FILE`, `TARGET_COLLECTION`, run boundary markers, and the whitelist regex list. Functions are side-effect-free beyond the file reads they take as input.
 **Reads:** `LOG_DIR/news_coindesk_*.log` (via `find_log_file`); `LAST_RUN_FILE` (via `read_last_run_ts`); log file text (via `find_current_run_lines`).
-**Writes:** nothing.
+**Writes:** `/tmp/monitor_cc_error.log` on an unreadable log file in `find_current_run_lines` (via `pane_error_log`).
 **Called by:** `pane.py` (constants + `read_last_run_ts`), `log_pane.py` (all parsing functions).
 **Calls out:** none.
 

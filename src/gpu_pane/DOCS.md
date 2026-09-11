@@ -23,7 +23,7 @@ that lives in the RAG project.
 
 ## Modules
 
-### pane.py (233 LOC)
+### pane.py (226 LOC)
 
 **Purpose:** Event loop — keyboard/mouse dispatch, row-1 search bar (highlight-only, no scroll infra since this pane has none), digit-key preset toggle. `GPU_POLL_INTERVAL = 2.0` s; `COLLECTIONS_POLL_INTERVAL = 30.0` s. `_toggle_server` stays in this module (not `gpu_actions.py`) because it reads the module-level `PRESET_NAMES` bare name that `dev/click_ui/p4_gpu_news_button_probe.py` monkeypatches directly.
 **Reads:** `all_statuses()`, `get_anomalies()`, `errors_today()`, `errors_today_by_server()` every 2s tick; `_fetch_collections()` every 30s tick (+ force-refresh); `PRESET_NAMES` from `status` (set at import).
