@@ -220,6 +220,6 @@ def _render_and_scroll_body(render_fn, line_map: dict, copy_rows: set, header_sh
         _shift_line_map_and_copy_rows(line_map, copy_rows, header_shift)
     return body, scroll_offset
 
-def _terminal_size(default_lines: int = 50, default_cols: int = 80) -> Tuple[int, int]:
+def _terminal_size() -> Tuple[int, int]:
     term = os.get_terminal_size()
     return term.lines - 1, term.columns

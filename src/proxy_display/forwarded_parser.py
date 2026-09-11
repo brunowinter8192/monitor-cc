@@ -14,7 +14,8 @@ from ..proxy.logging import _compute_diff
 # FUNCTIONS
 
 def _proxy_session_id_for_project(project_path: str) -> str:
-    return hashlib.md5(project_path.encode()).hexdigest()[:8]
+    normalized_path = os.path.normpath(os.path.expanduser(project_path))
+    return hashlib.md5(normalized_path.encode()).hexdigest()[:8]
 
 def _resolve_log_id(root: str, session_id: str) -> str:
     marker_file = Path(root) / 'src' / 'logs' / f'.proxy_session_{session_id}'
