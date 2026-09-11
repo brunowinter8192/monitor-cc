@@ -38,10 +38,10 @@ drive the real project-scoping hook end-to-end via subprocess with a seeded stat
 cwd.
 **Reads:** nothing persistent — seeded its own state file per case under a temp directory.
 **Writes:** `md/p3_project_scope_incident_probe_report.md`.
-**Called by:** none — DEAD CODE. Both the hook module and the state-writer module it imports have
-been removed from `src/`; the script cannot run.
+**Called by:** none — DEAD CODE. Both the hook module and the state-writer module it imports do not
+exist under `src/`; the script cannot run.
 **Calls out:** none reachable — its imports (a hook module and a pending-state module, both under
-`src/`) no longer exist; `src/proxy/addon.py` (`ProxyAddon`, `_derive_worker_context`) is still live
+`src/`) do not exist; `src/proxy/addon.py` (`ProxyAddon`, `_derive_worker_context`) is still live
 but unreachable since the script fails at import time.
 
 ---
@@ -65,5 +65,5 @@ file/process pair is touched.
 - `p1_`'s corpus (src/logs/dual_log) is a moving target — counts are a lower bound, not final; a
   rescan can only add deduplicated occurrences, never remove them.
 - `p3_project_scope_incident_probe.py` is non-functional on the current tree — the hook and
-  state-writer modules it targets were both removed from `src/`. Left in place as a historical record
-  of the incident, not as a runnable check.
+  state-writer modules it targets do not exist under `src/`. Kept in place as a record of the
+  incident it replays, not as a runnable check.

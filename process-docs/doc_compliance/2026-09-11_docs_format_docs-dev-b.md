@@ -3084,3 +3084,45 @@ the read content) — for a fully pinned before/after comparison across a longer
 prefer `WORKERS_BYTE_IDENTITY_JSONL` pointed at a one-time snapshot.
 ```
 
+
+## Recap — 2026-09-11
+
+Self-audit (`git diff integration --name-only`) confirmed the touched-file set matches the original
+task commit: the 25 rewritten `dev/<area>/DOCS.md` files plus this process-docs file, no `.py`/`.sh`
+files.
+
+DOCS.md currency check: re-ran the module-heading LOC check (`wc -l` per module vs. its heading) and
+`docs-drift-check` across all 25 files — both stayed clean (0 LOC mismatches, 0 in-scope drift
+findings) after this recap's own edits.
+
+Corrections made on this pass, all wording-only (no factual/content changes, no new files touched):
+- `dev/timer-loop/DOCS.md`: reworded `p3_project_scope_incident_probe.py`'s DEAD CODE explanation and
+  its Gotchas entry — "have been removed from src/" / "were both removed from src/" (history framing)
+  became "do not exist under src/" (current-shape framing). Same underlying fact (the hook module and
+  the pending-state module it imports are absent from `src/`), reworded per the no-history rule.
+- `dev/proxy_tool_stripping/DOCS.md`: reworded the `A_render_refactor_proof.py` reuse note — "the
+  whole-stripped-tool-expand milestone" became "the whole-stripped-tool-expand feature", dropping the
+  milestone-naming convention in favor of a plain feature reference.
+- `dev/proxy_dual_log/DOCS.md`: reworded the matching cross-reference — "for its own milestones" became
+  "for its own regression checks".
+- `dev/proxy/DOCS.md`: reworded `marker_race_repro.sh`'s Reads line — `` `_proxy_pid_is_live()` `` (a
+  backtick-wrapped function-call form) became "the `_proxy_pid_is_live` bash function", since the
+  drift-checker's symbol scan only searches Python `def` sites under `src/` and flagged the bash
+  function as a false-positive symbol-drift finding; this function is confirmed live in
+  `src/claude_proxy_start.sh`.
+- `dev/proxy_instrumentation/DOCS.md`: removed a duplicated `replay_env_context_strip.py` module
+  section — that script lives only in `dev/proxy/`, not `dev/proxy_instrumentation/`; the duplicate
+  was a copy-paste error from drafting both areas' entries back to back, caught by the LOC-verification
+  pass (the file did not exist at that path, so `wc -l` failed).
+- `dev/pipeline/DOCS.md`: removed backticked `01_reports/` subdirectory paths (none of the four exist
+  on disk — the actual reports on disk live under each folder's own `md/`, a discrepancy already
+  captured in this file's Gotchas) and the backticked `src/jsonl_parser.py` path (that flat path does
+  not exist; the module now lives under `src/jsonl/`) in favor of plain-prose descriptions, per the
+  rule that a named path must exist on disk relative to the project root.
+- `dev/proxy_dual_log/DOCS.md`: reworded `proxy_176_agent_types_tests.py`'s stale top-level usage path
+  (`dev/proxy_176_agent_types_tests.py`, which does not exist — the file lives at
+  `dev/proxy_dual_log/proxy_176_agent_types_tests.py`) into a plain-prose note instead of a backticked
+  path claim.
+
+No new salvage — this recap only reworded already-written DOCS.md prose for rule compliance; nothing
+was cut that needs preserving beyond what the original 2026-09-11 salvage sections above already hold.

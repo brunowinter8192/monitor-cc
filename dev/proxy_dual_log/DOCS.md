@@ -146,7 +146,7 @@ byte-identity against that baseline.
 `A_render_refactor_proof_reports/`.
 **Writes:** `A_render_refactor_proof_reports/<name>.json` (capture mode).
 **Called by:** none — manual, run as capture/implement/verify around a render-cluster refactor
-(reused by `dev/proxy_tool_stripping/` for its own milestones — see that DOCS.md).
+(also reused by `dev/proxy_tool_stripping/` for its own regression checks — see that DOCS.md).
 **Calls out:** `src.proxy_display.format` (`format_proxy_block`).
 
 ---

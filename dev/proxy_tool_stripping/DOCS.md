@@ -48,6 +48,6 @@ top level of this directory rather than under `tests/`.
 ---
 
 ## Gotchas
-- The byte-identity regression for the whole-stripped-tool-expand milestone reuses
+- The whole-stripped-tool-expand feature's byte-identity regression reuses
   `dev/proxy_dual_log/A_render_refactor_proof.py` rather than a harness in this directory — its
-  refreshed baseline lives at `dev/proxy_dual_log/A_render_refactor_proof_reports/baseline_20260905.json`.
+  current baseline lives at `dev/proxy_dual_log/A_render_refactor_proof_reports/baseline_20260905.json`.
