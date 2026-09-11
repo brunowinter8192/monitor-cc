@@ -2,12 +2,14 @@
 
 ## Role
 
-Standalone PTY wrapper for Claude Code diagnostic logging. Spawns `src/claude_proxy_start.sh` as a child process in a PTY, forwards I/O bidirectionally (transparent passthrough), and logs every byte the child emits to a `.bin` file plus a `.ansi.log` file with one named ANSI sequence per line.
-
-Phase 1 tool only — no filtering, no byte rewriting. Exists to capture the exact ANSI sequence that triggers Ghostty's scroll-to-bottom behavior during CC tool_use rendering.
-
-**Touch this package** to: add ANSI sequence filtering (Phase 2), change log format, or extend sequence coverage.
-**Do NOT touch** to: change Monitor_CC's main TUI, proxy, or session discovery — this package is fully standalone.
+Standalone PTY wrapper for Claude Code diagnostic logging. Spawns `src/claude_proxy_start.sh` as a
+child process in a PTY, forwards I/O bidirectionally (transparent passthrough), and logs every
+byte the child emits to a `.bin` file plus a `.ansi.log` file with one named ANSI sequence per
+line. Phase 1 tool only — no filtering, no byte rewriting; exists to capture the exact ANSI
+sequence that triggers a terminal's scroll-to-bottom behavior during CC tool_use rendering. Touch
+this package to add ANSI sequence filtering, change the log format, or extend sequence coverage.
+Do NOT touch it to change Monitor_CC's main TUI, proxy, or session discovery — this package is
+fully standalone.
 
 ## Public Interface
 
@@ -16,86 +18,52 @@ Entry point: `python3 -m src.ccwrap [--project <path>]`
 ```python
 from src.ccwrap.wrapper import run
 # run(cmd: list, log_dir: Path) -> int
-# Wraps cmd in a PTY, logs ANSI sequences to log_dir, returns child exit code.
 ```
 
 ## Flow
 
 1. `__main__.py` parses `--project`, builds `['bash', 'src/claude_proxy_start.sh', '--project', <path>]`, calls `wrapper.run()`.
-2. `wrapper.run()` creates log dir, rotates old logs, calls `pty.fork()` → child execs the command; parent sets PTY window size + installs SIGWINCH forwarder + opens log pair.
-3. `_io_loop()` multiplexes master_fd and stdin_fd via `select` in a tight loop, forwarding data in both directions, writing raw bytes to `.bin` and parsed sequence names to `.ansi.log`.
-4. Loop exits on PTY EOF (`OSError(EIO)` on Linux or 0-byte read on macOS). Parent calls `_wait_child()` and exits with child's exit code.
+2. `wrapper.run()` creates the log dir, rotates old logs, calls `pty.fork()` — the child execs the command; the parent sets the PTY window size, installs a SIGWINCH forwarder, and opens the log pair.
+3. `_io_loop()` multiplexes `master_fd` and `stdin_fd` via `select`, forwarding data both ways, writing raw bytes to `.bin` and parsed sequence names to `.ansi.log`.
+4. Loop exits on PTY EOF (`OSError(EIO)` on Linux, 0-byte read on macOS). The parent waits for the child and exits with its exit code.
 
 ## Modules
 
-### __init__.py (0 LOC)
+### __main__.py (31 LOC)
 
-**Purpose:** Package marker.
-**Reads:** nothing. **Writes:** nothing.
-**Called by:** Python import system.
-**Calls out:** nothing.
-
----
-
-### __main__.py (27 LOC)
-
-**Purpose:** CLI entry point — parses `--project <path>` from argv, passes remaining args as passthrough to `claude_proxy_start.sh`, invokes `wrapper.run()`.
+**Purpose:** CLI entry point — parses `--project <path>` from argv, passes remaining args through to `claude_proxy_start.sh`, invokes `wrapper.run()`.
 **Reads:** `sys.argv`.
 **Writes:** `sys.exit(exit_code)`.
 **Called by:** `python3 -m src.ccwrap`.
-**Calls out:** `wrapper` (`.run`, `._DEFAULT_PROJECT`, `._SCRIPT_REL`, `._LOG_DIR`).
+**Calls out:** none.
 
 ---
 
 ### wrapper.py (132 LOC)
 
-**Purpose:** PTY lifecycle manager. `run()` forks a child into a PTY, manages bidirectional I/O via `select`, forwards SIGWINCH resizes, waits for child exit, and propagates exit code. Owns stdin raw-mode management (set/restore via `termios`).
-**Reads:** `sys.stdin` (raw keystrokes in interactive mode); child PTY output via master_fd.
-**Writes:** `sys.stdout` (raw bytes forwarded from child); `.bin` and `.ansi.log` via handles from `ansi_log.open_log_pair()`; SIGWINCH forwarded to child PTY via `TIOCSWINSZ`.
+**Purpose:** PTY lifecycle manager. `run()` forks a child into a PTY, manages bidirectional I/O via `select`, forwards SIGWINCH resizes, waits for child exit, and propagates the exit code. Owns stdin raw-mode management (set/restore via `termios`).
+**Reads:** `sys.stdin` (raw keystrokes, when stdin is a tty); child PTY output via `master_fd`.
+**Writes:** `sys.stdout` (raw bytes forwarded from child); `.bin` and `.ansi.log` via handles from `ansi_log.open_log_pair()`; forwards SIGWINCH to the child PTY via `TIOCSWINSZ`.
 **Called by:** `__main__.py` (`run`).
-**Calls out:** `ansi_log` (`.rotate_logs`, `.open_log_pair`, `.parse_sequences`, `.write_sequences`); stdlib `pty`, `select`, `termios`, `tty`, `fcntl`, `signal`.
+**Calls out:** none.
 
 ---
 
 ### ansi_log.py (69 LOC)
 
-**Purpose:** ANSI byte-stream parser and log-file manager. `parse_sequences()` extracts named ANSI tokens (CSI, OSC, ESC+char, C0) from a byte chunk using a compiled regex. `rotate_logs()` deletes oldest `.bin`/`.ansi.log` pairs beyond the keep-count. `open_log_pair()` opens a `.bin` + `.ansi.log` file pair. `write_sequences()` appends `<unix_ts>\t<name>\t<hex>` lines to the ansi.log.
-**Reads:** nothing from disk at runtime (rotation reads dir listings via `glob`).
-**Writes:** `.bin` and `.ansi.log` pairs under `_LOG_DIR` (default: `logs/ccwrap/` relative to project root, gitignored — created on first run; handles returned to caller).
+**Purpose:** ANSI byte-stream parser and log-file manager. `parse_sequences()` extracts named ANSI tokens (CSI, OSC, ESC+char, C0) from a byte chunk via a compiled regex. `rotate_logs()` deletes the oldest `.bin`/`.ansi.log` pairs beyond the keep-count. `open_log_pair()` opens a `.bin` + `.ansi.log` file pair. `write_sequences()` appends `<unix_ts>\t<name>\t<hex>` lines to the ansi.log.
+**Reads:** nothing at parse time; directory listings via `glob` for rotation.
+**Writes:** `.bin` and `.ansi.log` pairs under the caller-supplied `log_dir` (default `src/logs/ccwrap/`, gitignored).
 **Called by:** `wrapper.py` (all four public functions).
-**Calls out:** stdlib `re`, `time`, `pathlib`.
+**Calls out:** none.
 
 ---
 
-## State
-
-No module-level mutable state. All state is local to `run()` call.
-
 ## Gotchas
 
-- **macOS PTY EOF semantics differ from Linux.** On Linux, reading from master_fd after the child exits raises `OSError(errno.EIO)`. On macOS, `os.read(master_fd, N)` returns `b''` (0 bytes). `_io_loop` handles both: catch `EIO` for Linux, break on empty read for macOS.
-- **`_wait_child` called BEFORE `os.close(master_fd)` in the finally block.** If master_fd is closed before `waitpid`, the child receives SIGHUP (PTY disconnect → session-leader exit → SIGHUP to process group), which masks the real exit code (returns 128+1=129). Closing master_fd happens in `finally` AFTER `_wait_child` returns.
-- **stdin raw mode is skipped when stdin is not a TTY.** The wrapper checks `os.isatty(stdin_fd)` before calling `tty.setraw()` and before adding `stdin_fd` to the select watch list. When run inside a task runner (non-tty stdin), stdin is simply not forwarded — the child gets an empty stdin from its slave PTY.
-- **SIGWINCH handler deregistered before master_fd closes.** The `finally` block sets `signal.SIGWINCH = SIG_DFL` as its first step to prevent the handler from calling `TIOCSWINSZ` on a closed fd if a resize signal races with cleanup.
-- **Log rotation is mtime-based** — newest mtime = most recently written. Pairs are matched by stem: `<stem>.bin` + `<stem>.ansi.log`. If only one half of a pair exists (e.g., crash mid-write), the orphan `.ansi.log` is NOT cleaned up by `rotate_logs` (it only iterates `.bin` files). Tolerable for Phase 1.
-- **Partial ESC sequence carry buffer** (`_carry_tail`) handles chunks that split an escape sequence across two reads. Only the last 1–2 bytes are carried (ESC alone, or ESC+`[`/`]`). Longer partial sequences (e.g., mid-CSI parameter bytes) are not carried — would only matter for very unlucky 4096-byte boundaries and the sequence would just log as two fragments.
-
-## Usage
-
-```bash
-# Wrap real CC session (default project = Monitor_CC):
-python3 -m src.ccwrap
-
-# With explicit project:
-python3 -m src.ccwrap --project /path/to/my/project
-
-# Smoke test (quick-exit command, write logs to src/logs/ccwrap/):
-python3 -c "
-import sys; sys.path.insert(0, '.')
-from pathlib import Path
-from src.ccwrap.wrapper import run
-run(['bash', '-c', r'echo hi; printf \"\033[2J\033[H\"; echo done'], Path('src/logs/ccwrap'))
-"
-```
-
-Logs land in `_LOG_DIR` (`logs/ccwrap/` under project root, gitignored).
+- **macOS PTY EOF differs from Linux.** Reading from `master_fd` after the child exits raises `OSError(errno.EIO)` on Linux, but returns `b''` on macOS. `_io_loop` handles both explicitly.
+- **`_wait_child` runs before `os.close(master_fd)`.** If `master_fd` closed first, the child receives SIGHUP (PTY disconnect → session-leader exit → SIGHUP to the process group), masking the real exit code with `128+1=129`. The `finally` block closes `master_fd` only after `_wait_child` has already returned.
+- **stdin raw mode is skipped when stdin is not a tty** (`os.isatty(stdin_fd)` guards both `tty.setraw()` and adding `stdin_fd` to the select watch list) — under a non-tty runner, the child simply never receives stdin.
+- **SIGWINCH handler is deregistered before `master_fd` closes** (`finally` sets it to `SIG_DFL` first) to prevent a racing resize signal from calling `TIOCSWINSZ` on an already-closed fd.
+- **Log rotation is mtime-based** and matches pairs by stem (`<stem>.bin` + `<stem>.ansi.log`); `rotate_logs` only iterates `.bin` files, so an orphaned `.ansi.log` from a crash mid-write is never cleaned up.
+- **`_carry_tail` only carries 1-2 bytes** of a split escape sequence across reads (ESC alone, or ESC+`[`/`]`) — a longer partial sequence split at a 4096-byte read boundary logs as two fragments instead of one.
