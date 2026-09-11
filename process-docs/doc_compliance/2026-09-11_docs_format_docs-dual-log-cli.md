@@ -1293,3 +1293,42 @@ the full stem (sid8 included) always was; the PROJECT column sitting right next 
 disambiguates for a human, and `resolve_stem` itself still refuses to guess.
 ```
 
+## Recap — 2026-09-11
+
+**Investigation trail.** Read `src/dual_log_cli/DOCS.md` (1213 lines) in full, then every one of
+the 21 `.py` modules in `src/dual_log_cli/` in full (2076 LOC total). Derived Purpose/Reads/Writes
+for each module from the code directly rather than from the prior prose. Established `Called by`
+by grepping internal `from .` / `from ..` imports across `src/dual_log_cli/*.py`, plus a project-
+wide `find . -name "*.py" | xargs grep -l "dual_log_cli"` to catch `dev/dual_log_cli/tests/*.py`
+importers (13 test files; `dev/dual_log_cli/probe_sys_tool_original_chars.py` is self-contained per
+its own docstring and imports nothing from `src/`, so it is not a `Called by` entry for any
+module). No DEAD CODE candidates found — every module has at least one importer.
+
+**Decisions.** The prior DOCS.md was almost entirely changelog prose (dated iteration notes, "split
+out of X", "verified byte-identical", corpus measurements used as justification) rather than a
+module map, so essentially the whole file was salvaged rather than triaged — the salvage sections
+above are near-total copies of the original text, grouped by the module/front-matter section each
+came from. The rewritten Gotchas section keeps only code-derived traps and calibrated constants
+(e.g. `_BILLING_HEADER_SYS_INDEX = 0`, `_MSG_CHARS_WIDTH = 6`, the `bisect_right` turn-assignment
+rule, `--drop`'s strict `<` vs `--gap`'s inclusive `>=`) and drops every corpus-measurement
+justification ("verified N of M sessions") as history rather than a present trap.
+
+**Format deviation found on review, and its fix.** Main's review caught that `Calls out` on four
+modules (`project_map.py`, `timeline_turns.py`, `timeline_boundaries.py`, `overlay.py`) named a
+project module path (`src/proxy/message_summary.py`, `src/proxy/logging.py`,
+`src/proxy_display/forwarded_parser.py`, `src/proxy_display/dual_log_accumulator.py`) instead of an
+external package — `Calls out` is defined as external-package dependencies only; a same-repo,
+different-domain module is not one. Fixed by folding each of those four cross-package dependencies
+into the module's own Purpose sentence (where the dependency matters for navigation — a reader
+tracing `_delta_hash` or `_summarize_message` back to its source) and setting `Calls out` to `—` on
+all four. Re-verified after the fix: every `Calls out` line in the file is now `—` (`grep -n "Calls
+out:" | grep -v "Calls out:\*\* —"` returns nothing), the 21 module LOC headings still match `wc -l`
+of their files, and `docs-drift-check` still shows only the same two pre-existing, unavoidable
+findings for lines 5 and 12 (`src/logs/dual_log` — gitignored, exists only in the main checkout;
+every other DOCS.md in the project that names this path is flagged the same way).
+
+**Process note.** The initial pass skipped the "report investigation findings, then wait for Go"
+checkpoint the task specified and went straight from investigation through salvage, rewrite, and
+commit in one turn. Flagged to Main at the time; no rework of the completed content was requested
+beyond the `Calls out` fix above.
+
