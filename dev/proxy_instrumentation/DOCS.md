@@ -1,122 +1,113 @@
 # dev/proxy_instrumentation/
 
 ## Role
+Reconstructs and measures the proxy's real strip/inject pipeline output straight from recorded
+dual-log payloads, through the real production code (`src/proxy/message_passes.py`, `rule_ops.py`,
+`diff_engine.py`, `src/proxy_display/render_messages.py`) — no live proxy required. Touch when
+validating a pane-render or span-computation change against real recorded data; use
+`dev/proxy_dual_log/` instead for the dual-log invariant/verification suite.
 
-Reconstructs/measures the proxy's real strip/inject pipeline output straight from recorded
-dual-log payloads or `src/logs/dual_log/*_original.jsonl`, through the REAL production code
-(`src/proxy/message_passes.py`, `rule_ops.py`, `diff_engine.py`, `proxy_display/render_messages.py`)
-— no live proxy required. Touch when validating a pane-render or span-computation change against
-real recorded data; not for live-session debugging (see `dev/proxy_dual_log/` for the dual-log
-invariant/verification suite instead).
+## Flow
+Each script loads one or more recorded dual-log JSONL files, drives the real pass functions or
+render path over the payloads, and either asserts an invariant or writes a findings report to `md/`.
 
 ## Modules
 
 ### render_recorded_request.py (129 LOC)
 
 **Purpose:** Reconstructs the pane render for one specific recorded request (by `request_id`)
-straight from the on-disk dual-log, verifying a span-render fix for block-less messages.
-`_render` takes `entry_idx` as of 2026-08-28 (thinking-expander milestone bumped
-`render_messages`'s signature to `(entry_idx, entry, ...)`) — passes `target_line`/`control_line`,
-mechanical update only, no behavior change to this script's own checks.
-**Reads:** `src/logs/dual_log/api_requests_opus_posts_1785266871_{forwarded,stripped,injected}.jsonl`
-(hardcoded stem/request_id — one-off verification, not parameterized).
-**Calls out:** `src.proxy_display.{forwarded_parser,parser,render_messages}`.
-
-### p4_blocklist_223_probe.py (140 LOC)
-
-**Purpose:** Verifies the CC 2.1.223 `TOOL_BLOCKLIST` extension (Artifact, ReportFindings,
-DeferredToolPlaceholder) end-to-end — runs the real `proxy.tools._strip_unused_tools` on the
-session's actual original-log payload, asserts the post-strip set is exactly
-`{Bash, Edit, Read, Write, Skill}` + any MCP-injected names present in the forwarded log; sanity
-check for a live `tool_use` invocation of any newly-blocked name (would 400 the API if stripped);
-confirms `Agent` (pre-existing blocklist entry) is absent from the forwarded tools list — the
-drill-down's "Agent" sighting is the intentional whole-stripped yellow row
-(`render_sections.py`), not a strip-path bug.
-**Reads:** `src/logs/dual_log/api_requests_opus_websearch_1786052022_{original,forwarded}.jsonl`.
-**Writes:** `md/blocklist_223_probe_report.md`.
-**Calls out:** `proxy.tools` (`_strip_unused_tools`), `constants` (`TOOL_BLOCKLIST`),
-`src.proxy_display.forwarded_parser` (`_parse_forwarded_log`).
-
-### p5_mid_turn_user_msg_preserve_probe.py (132 LOC)
-
-**Purpose:** Verifies the CC 2.1.223 mid-turn-user-message preserve-guard in
-`src/proxy/message_passes.py::_apply_role_system_strip` (issue #61) — drives the REAL function on
-the REAL recorded message list, not a synthetic fixture. Preserve case: session
-`api_requests_opus_posts_1786051932`, flow `4b4d396b...`, msg 274 — the live incident itself (a
-role='system' mid-turn user message body "jetzt") must survive byte-for-byte. Regression: session
-`api_requests_opus_websearch_1786052022`, three unrelated role='system' noise messages
-(deferred-tools, task-tools-nag, date-changed) must still strip to `"."` exactly as before.
-**Reads:** `src/logs/dual_log/api_requests_opus_{posts_1786051932,websearch_1786052022}_original.jsonl`.
-**Writes:** `md/mid_turn_user_msg_preserve_probe_report.md`.
-**Calls out:** `src.proxy.message_passes` (`_apply_role_system_strip`).
-
-### p6_no_flow_extra_prepend_probe.py (294 LOC)
-
-**Purpose:** Verifies that an expanded request body is the request's payload delta and nothing
-else, after the out-of-window prepend was removed entirely (2026-08-30). Replaces
-`p6_flow_extra_suppress_probe.py`, which verified the earlier PARTIAL suppression of the same
-mechanism by rendering each entry twice (once with the suppression disabled) — impossible now that
-the mechanism is gone, so these invariants are self-contained instead: no entry's body carries a
-`[N]` header below its own delta-window start (the window start is recomputed here from
-`prev_msg_count`/`diff_start` rather than imported, so the probe cannot agree with the renderer by
-construction); `_render_flow_extra_messages`/`_own_msgs` are absent from `render_messages`, the
-parser no longer mentions `_msg_idx_sub_by_flow_id` and no entry carries a sub-lookup attachment
-(reintroduction guard — a partial revert would otherwise pass the first check silently); every
-entry whose out-of-window touch is SUBSTANTIAL still badges, substantiality read off the raw
-dual-log lines via `parser._msg_delta_entry_is_substantial` because a total_tokens-only touch
-deliberately badges nothing; and at least one entry still renders an in-window olive/green span, so
-a regression that killed span rendering outright cannot pass as "no prepend". Reports, without
-asserting, how many entries have an out-of-window touched index whose stripped original is
-therefore invisible in the pane — the accepted cost, recoverable only from the `_stripped` stream. **Fifth check (2026-08-30):** the write-side lag correction is sound and effective — every coordinate re-attributed to the flow that stripped it carries the total_tokens marker (never a mid-conversation overwrite, which would be neighbour bleed), and every such coordinate inside its flow's delta window really renders olive+green. Guards the bare-`.` defect.
-**Reads:** `src/logs/dual_log/api_requests_{opus_monitor_cc_1788091735,opus_gh_cli_1787995963}_{forwarded,stripped,injected}.jsonl` (override via argv).
-**Writes:** `md/no_flow_extra_prepend_report.md`.
-**Calls out:** `src.proxy_display.{forwarded_parser,parser,render_messages,render_turn}`.
-
-### p7_blocklist_258_probe.py (145 LOC)
-
-**Purpose:** Verifies the CC 2.1.258 `TOOL_BLOCKLIST` extension (SendFeedback, ListAgents)
-end-to-end against the CURRENT full `src/logs/dual_log/*_original.jsonl` corpus, not one hardcoded
-session — glob-driven, since the corpus rotates. Runs the real `proxy.tools._strip_unused_tools`
-on the newest main-session log's original payload, asserts the post-strip set is exactly
-`{Bash, Edit, Read, Write, Skill}` + any MCP-injected names; corpus-wide sanity check for a live
-`tool_use` invocation of either newly-blocked name in ANY `_original.jsonl` file's messages (would
-400 the API if stripped) — reports files-scanned count and hit count; confirms both names are in
-`TOOL_BLOCKLIST`.
-**Reads:** all `src/logs/dual_log/*_original.jsonl` files present at run time.
-**Writes:** `md/blocklist_258_probe_report.md`.
-**Calls out:** `proxy.tools` (`_strip_unused_tools`), `constants` (`TOOL_BLOCKLIST`).
-
-### p1_measure_full_replacement_blast_radius.py (536 LOC)
-
-**Purpose:** Measurement script (dev/ M1 "bg-ack-shapes" milestone, 2026-07-29) — drives real
-recorded payloads through the real `message_passes.py` pass functions in `rules.py`'s actual
-order, classifies each `_ops_from_content_change` call site as FULL (whole-block-independent
-replacement) vs PARTIAL (excise-and-keep-remainder) vs STRUCTURAL (index-shift artifact) by
-reading the underlying strip function — NOT by any ratio threshold — and quantifies how many
-FULL-class ops are today recorded as a trimmed/split span due to `_extract_block_op`'s
-prefix/suffix-trim. Report: `md/full_replacement_blast_radius_20260729.md`.
-**Reads:** `src/logs/dual_log/api_requests_{opus_monitor_cc_1785336796,opus_posts_1785338463,
-opus_wise2627_1785324012,worker_25c51a2e_tn-role-system_1785344818}_original.jsonl`.
-**Writes:** `md/full_replacement_blast_radius_20260729.md`.
-**Calls out:** `src.proxy.{message_passes,rule_ops,diff_engine,payload_helpers,content_strip}`,
+straight from the on-disk dual-log, to verify a span-render fix for block-less messages.
+**Reads:** a fixed recorded session's forwarded/stripped/injected dual-log files (hardcoded stem and
+request_id) under src/logs/dual_log.
+**Writes:** rendered output to stdout.
+**Called by:** none — manual, one-off verification script.
+**Calls out:** `src.proxy_display.forwarded_parser`, `src.proxy_display.parser`,
 `src.proxy_display.render_messages`.
 
 ---
 
-## Gotchas
+### p4_blocklist_223_probe.py (150 LOC)
 
-- `pN_*.py` scripts import from `src/` — filename MUST carry the `pN_` prefix (project convention:
-  only `pN_*.py` dev scripts may `from src...`/`import src...`; unprefixed dev scripts must copy
-  the logic or import from an existing `pN_` module).
-- `proxy_display` has an internal `from ..constants` (2-level relative import in `pane.py`, pulled
-  in transitively by `proxy_display/__init__.py`) — it must be imported with the project ROOT on
-  `sys.path` (not `src/` directly, which is what the plain `src/proxy/*` imports use). Mixing both
-  roots on `sys.path` in the same script is safe (verified in `p1_measure_full_replacement_blast_radius.py`)
-  since `src.proxy_display` and the flat `proxy` package never collide.
-- `p1_measure_full_replacement_blast_radius.py` feeds each pass function only the NEW-message
-  delta per dual-log request (not the full cumulative message list) — safe because none of the
-  11 pass functions read any OTHER message's content (verified by reading `message_passes.py`),
-  so this reproduces the same per-message ops as the real pipeline without the dual-log's
-  cumulative-snapshot duplication inflating counts. The 2026-07-29 corpus itself was NOT static
-  during the scan — see `process-docs/proxy_instrumentation/2026-07-29_full_replacement_blast_radius_measurement.md`
-  for the moving-snapshot caveat.
+**Purpose:** Verifies the CC 2.1.223 `TOOL_BLOCKLIST` extension (Artifact, ReportFindings,
+DeferredToolPlaceholder) end-to-end — runs the real `_strip_unused_tools` on a recorded session's
+original payload and asserts the post-strip tool set is exactly the expected core set plus any
+MCP-injected names.
+**Reads:** a fixed recorded session's original/forwarded dual-log pair under src/logs/dual_log.
+**Writes:** `md/blocklist_223_probe_report.md`.
+**Called by:** none — manual, historical pin-bump verification.
+**Calls out:** `proxy.tools` (`_strip_unused_tools`), `constants` (`TOOL_BLOCKLIST`),
+`src.proxy_display.forwarded_parser` (`_parse_forwarded_log`).
+
+---
+
+### p5_mid_turn_user_msg_preserve_probe.py (132 LOC)
+
+**Purpose:** Verifies the CC 2.1.223 mid-turn-user-message preserve guard in
+`_apply_role_system_strip` — drives the real function against a recorded incident message that must
+survive byte-for-byte, plus a regression case confirming unrelated `role='system'` noise still
+strips to `"."`.
+**Reads:** two recorded sessions' original dual-log files under src/logs/dual_log.
+**Writes:** `md/mid_turn_user_msg_preserve_probe_report.md`.
+**Called by:** none — manual, historical incident-verification probe.
+**Calls out:** `src.proxy.message_passes` (`_apply_role_system_strip`).
+
+---
+
+### p6_no_flow_extra_prepend_probe.py (294 LOC)
+
+**Purpose:** Verifies that an expanded request body is exactly the request's own payload delta and
+nothing else, after the out-of-window prepend mechanism was removed — asserts no entry's body carries
+a header below its own delta-window start, that the removed mechanism's functions/attachments are
+fully absent (reintroduction guard), that substantial out-of-window touches still badge, and that
+in-window spans still render.
+**Reads:** two recorded sessions' forwarded/stripped/injected dual-log files under src/logs/dual_log
+(overridable via argv).
+**Writes:** `md/no_flow_extra_prepend_report.md`.
+**Called by:** none — manual regression guard for the removed prepend mechanism.
+**Calls out:** `src.proxy_display.forwarded_parser`, `src.proxy_display.parser`,
+`src.proxy_display.render_messages`, `src.proxy_display.render_turn`.
+
+---
+
+### p7_blocklist_258_probe.py (145 LOC)
+
+**Purpose:** Verifies the CC 2.1.258 `TOOL_BLOCKLIST` extension (SendFeedback, ListAgents)
+end-to-end against the current full dual-log corpus (glob-driven, not one hardcoded session) — runs
+the real `_strip_unused_tools` on the newest main-session log and scans the whole corpus for any live
+`tool_use` invocation of either newly-blocked name.
+**Reads:** all `*_original.jsonl` files present under src/logs/dual_log at run time.
+**Writes:** `md/blocklist_258_probe_report.md`.
+**Called by:** none — manual, historical pin-bump verification.
+**Calls out:** `proxy.tools` (`_strip_unused_tools`), `constants` (`TOOL_BLOCKLIST`).
+
+---
+
+### p1_measure_full_replacement_blast_radius.py (541 LOC)
+
+**Purpose:** Classifies each `_ops_from_content_change` call site in `message_passes.py`'s pass
+functions as FULL (whole-block-independent replacement) vs. PARTIAL vs. STRUCTURAL by reading the
+underlying strip function (not by a ratio threshold), and quantifies how many FULL-class ops are
+recorded as a trimmed/split span due to `_extract_block_op`'s prefix/suffix trim.
+**Reads:** four recorded sessions' original dual-log files under src/logs/dual_log.
+**Writes:** `md/full_replacement_blast_radius_20260729.md`.
+**Called by:** none — manual, one-off measurement.
+**Calls out:** `src.proxy.message_passes`, `src.proxy.rule_ops`, `src.proxy.diff_engine`,
+`src.proxy.payload_helpers`, `src.proxy.content_strip`, `src.proxy_display.render_messages`.
+
+---
+
+## Gotchas
+- `pN_*.py` scripts import from `src/` directly — this filename prefix is a project convention: only
+  `pN_*.py` dev scripts may `from src...`/`import src...`; unprefixed scripts in `dev/` must copy the
+  logic or import from an existing `pN_` module.
+- `src.proxy_display` pulls in a 2-level relative import (`from ..constants` in `pane.py`,
+  transitively via `proxy_display/__init__.py`) and must be imported with the project root on
+  `sys.path`, not `src/` directly (which is what plain `src.proxy.*` imports use). Mixing both roots
+  on `sys.path` in the same script is safe — `src.proxy_display` and the flat `proxy` package never
+  collide.
+- `p1_measure_full_replacement_blast_radius.py` feeds each pass function only the new-message delta
+  per dual-log request, not the full cumulative message list — safe only because none of the pass
+  functions in `message_passes.py` read any other message's content.
+- All dual-log reads in this directory point at src/logs/dual_log, which is gitignored runtime data
+  absent from a fresh worktree and live-growing from concurrent sessions — re-running a corpus-wide
+  script shifts absolute counts without changing the underlying finding.

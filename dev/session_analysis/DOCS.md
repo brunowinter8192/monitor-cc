@@ -1,247 +1,113 @@
 # dev/session_analysis/
 
-Standalone forensic analysis suite for Claude Code session JSONL and proxy log data. Used to investigate cache behavior, token attribution, and cache rebuild root causes. Scripts are not part of the production pipeline — they read raw data files directly and write Markdown reports or print to stdout. All scripts assume CWD = `Monitor_CC/` (project root).
+## Role
+Standalone forensic analysis suite for Claude Code session JSONL and proxy log data — investigates
+cache behavior, token attribution, and cache-rebuild root causes. Scripts are not part of the
+production pipeline: they read raw data files directly and write Markdown reports or print to
+stdout. Touch when adding a new forensic angle on cache/token behavior; all scripts assume CWD is the
+project root.
 
-## 01_extract.py
+## Flow
+Each script reads session JSONL files (under the user's Claude Code projects directory) and/or a
+proxy log under src/logs, computes one specific breakdown or timeline, and either prints a Markdown
+table to stdout or writes a timestamped report to `md/`.
 
-**Purpose:** Multi-level extraction and summary of tool calls from session JSONL files. Supports four zoom levels: all projects (aggregate), single project, single session, single session filtered by tool name.
+## Modules
 
-**Input:** `~/.claude/projects/**/*.jsonl` session files. Optionally filtered by `--project` (absolute path) and `--session` (JSONL file path).
+### 01_extract.py (281 LOC)
 
-**Output:** Markdown table of tool call counts and input/output token usage — printed to stdout.
-
-**Usage:**
-```bash
-# All projects (aggregate)
-python3 dev/session_analysis/01_extract.py
-
-# Single project
-python3 dev/session_analysis/01_extract.py --project /path/to/project
-
-# Single session
-python3 dev/session_analysis/01_extract.py --session ~/.claude/projects/<encoded>/session.jsonl
-
-# Single session, single tool
-python3 dev/session_analysis/01_extract.py --session <path> --tool Bash
-```
-
-| Flag | Description |
-|------|-------------|
-| `--project` | Absolute project path — filters to that project's sessions |
-| `--session` | Path to a single session JSONL file |
-| `--tool` | Tool name filter (requires `--session`) |
+**Purpose:** Multi-level tool-call extraction and summary from session JSONL files — all projects,
+one project, one session, or one session filtered by tool name (`--project`, `--session`, `--tool`).
+**Reads:** session JSONL files under the user's Claude Code projects directory.
+**Writes:** a Markdown table of tool-call counts and token usage to stdout.
+**Called by:** none — manual CLI.
+**Calls out:** none — stdlib JSONL parsing only.
 
 ---
 
-## 02_cache_timeline.py
+### 02_cache_timeline.py (478 LOC)
 
-**Purpose:** Visualizes cache and token behavior turn-by-turn or minute-by-minute across a session or project. Detects anomalies (large CC spikes, time gaps > TTL, drops in CR). Useful for spotting when and why cache rebuilds occur at a coarse granularity.
-
-**Input:** `~/.claude/projects/**/*.jsonl` session files, optionally a full project path.
-
-**Output:** Markdown table with per-turn CR/CC/D/Out metrics, anomaly flags, bar chart — printed to stdout.
-
-**Usage:**
-```bash
-# Single session — turn-by-turn
-python3 dev/session_analysis/02_cache_timeline.py --session ~/.claude/projects/<encoded>/session.jsonl
-
-# Single session — anomalies only
-python3 dev/session_analysis/02_cache_timeline.py --session <path> --anomalies-only
-
-# Single session — per-minute aggregation
-python3 dev/session_analysis/02_cache_timeline.py --session <path> --aggregate
-
-# Project summary (one row per session)
-python3 dev/session_analysis/02_cache_timeline.py --project /path/to/project
-
-# Include worker sessions
-python3 dev/session_analysis/02_cache_timeline.py --project /path/to/project --workers
-```
-
-| Flag | Description |
-|------|-------------|
-| `--session` | Path to session JSONL file |
-| `--project` | Absolute project path — one summary row per session |
-| `--aggregate` | Per-minute aggregation view (requires `--session`) |
-| `--workers` | Include worker sessions (requires `--project`) |
-| `--anomalies-only` | Show only turns with detected anomalies (requires `--session`) |
+**Purpose:** Visualizes cache/token behavior turn-by-turn or minute-by-minute across a session or
+project, flagging anomalies (large CC spikes, TTL time gaps, CR drops) via `--anomalies-only`,
+`--aggregate`, `--project`, or `--workers`.
+**Reads:** session JSONL files under the user's Claude Code projects directory.
+**Writes:** a Markdown table with anomaly flags and a bar chart to stdout.
+**Called by:** none — manual CLI.
+**Calls out:** none — stdlib JSONL parsing only.
 
 ---
 
-## 03_cache_rebuild_context.py
+### 03_cache_rebuild_context.py (415 LOC)
 
-**Purpose:** Detects cache rebuilds (turns where CR drops and CC spikes disproportionately) and displays surrounding message context for root cause analysis. Outputs pattern summary (how many rebuilds, time-gap triggered vs payload-triggered) and delta statistics.
-
-**Input:** `~/.claude/projects/**/*.jsonl` session files. Single session or all projects scan.
-
-**Output:** Per-rebuild context blocks (N messages before/after) + pattern summary — printed to stdout.
-
-**Usage:**
-```bash
-# Single session, full context
-python3 dev/session_analysis/03_cache_rebuild_context.py --session ~/.claude/projects/<encoded>/session.jsonl
-
-# Single session, wider context window
-python3 dev/session_analysis/03_cache_rebuild_context.py --session <path> --context 10
-
-# Single session, summary only (no context blocks)
-python3 dev/session_analysis/03_cache_rebuild_context.py --session <path> --summary-only
-
-# All sessions across all projects
-python3 dev/session_analysis/03_cache_rebuild_context.py --all
-```
-
-| Flag | Description |
-|------|-------------|
-| `--session` | Path to session JSONL file |
-| `--context N` | Messages before/after each rebuild (default: 5) |
-| `--summary-only` | Print pattern summary only, no context blocks |
-| `--all` | Scan all session JSONLs across all projects |
+**Purpose:** Detects cache rebuilds (CR drops with disproportionate CC spikes) and shows surrounding
+message context (`--context N`) for root-cause analysis, across one session or all sessions
+(`--all`).
+**Reads:** session JSONL files under the user's Claude Code projects directory.
+**Writes:** per-rebuild context blocks plus a pattern summary to stdout.
+**Called by:** none — manual CLI.
+**Calls out:** none — stdlib JSONL parsing only.
 
 ---
 
-## 04_cache_validation.py
+### 04_cache_validation.py (144 LOC)
 
-**Purpose:** Validates proxy-side cache breakpoint placement and stability. Reads a proxy JSONL log and shows per-request: CC's original breakpoint positions (system/tools/messages), which messages contain proxy-modified content, whether breakpoints are stable between consecutive requests, and potential invalidation risks from modified content before a breakpoint.
-
-**Input:** A proxy JSONL log file (`src/logs/api_requests_*.jsonl`) as positional argument.
-
-**Output:** Per-request breakpoint analysis table — printed to stdout.
-
-**Usage:**
-```bash
-# All requests in proxy log
-python3 dev/session_analysis/04_cache_validation.py src/logs/api_requests_<id>.jsonl
-
-# Limit to first N requests
-python3 dev/session_analysis/04_cache_validation.py src/logs/api_requests_<id>.jsonl --limit 20
-
-# Only requests with modifications before a breakpoint
-python3 dev/session_analysis/04_cache_validation.py src/logs/api_requests_<id>.jsonl --rebuilds-only
-```
-
-| Flag | Description |
-|------|-------------|
-| `log_file` | *(positional)* Path to proxy JSONL log file |
-| `--limit N` | Limit output to first N requests (0 = all, default: 0) |
-| `--rebuilds-only` | Only show requests where modified content sits before a cache breakpoint |
+**Purpose:** Validates proxy-side cache breakpoint placement and stability — per request, shows
+breakpoint positions, which messages carry proxy-modified content, and breakpoint stability between
+consecutive requests.
+**Reads:** a proxy JSONL log (positional, `--limit`, `--rebuilds-only`).
+**Writes:** a per-request breakpoint analysis table to stdout.
+**Called by:** none — manual CLI.
+**Calls out:** none — stdlib JSONL parsing only.
 
 ---
 
-## 05_req_breakdown.py
+### 05_req_breakdown.py (687 LOC)
 
-**Purpose:** Forensic per-segment token attribution for a specific API request. Uses tiktoken (cl100k_base) to tokenize each system block, tool definition, and message individually and compare against session JSONL ground truth (CR, CC, D, Out). Optional cross-session byte-diff (`--prev-proxy-log`) computes which prefix segments were cache-read vs newly created, enabling root cause attribution for cache rebuilds. Writes a timestamped Markdown report to `md/`.
-
-**Input:** A proxy JSONL log (`--proxy-log`) + a session JSONL (`--session-jsonl`) for the same session. Optionally a previous session's proxy log (`--prev-proxy-log`) for byte-diff attribution when CR > 0.
-
-**Output:** `md/<YYYYMMDD_HHMMSS>_req<N>.md` — report path printed to stdout.
-
-**Usage:**
-```bash
-python3 dev/session_analysis/05_req_breakdown.py \
-  --proxy-log src/logs/api_requests_<id>.jsonl \
-  --session-jsonl ~/.claude/projects/<encoded>/session.jsonl \
-  --req 5
-
-# With cross-session byte-diff attribution
-python3 dev/session_analysis/05_req_breakdown.py \
-  --proxy-log src/logs/api_requests_<current>.jsonl \
-  --session-jsonl ~/.claude/projects/<encoded>/session.jsonl \
-  --req 5 \
-  --prev-proxy-log src/logs/api_requests_<previous>.jsonl
-```
-
-| Flag | Description |
-|------|-------------|
-| `--proxy-log` | *(required)* Proxy JSONL log file for the session |
-| `--session-jsonl` | *(required)* Session JSONL file for ground truth CR/CC/D/Out |
-| `--req N` | Request number (1-based, Opus only, default: 1) |
-| `--prev-proxy-log` | Previous session proxy log for prefix byte-diff attribution (enables CR breakdown) |
+**Purpose:** Forensic per-segment token attribution for one API request — tokenizes each system
+block, tool definition, and message with `tiktoken` (cl100k_base) and compares against session-JSONL
+ground truth (CR/CC/D/Out). With `--prev-proxy-log`, adds cross-session byte-diff attribution of
+which prefix segments were cache-read vs. newly created.
+**Reads:** a proxy JSONL log (`--proxy-log`) and a session JSONL (`--session-jsonl`) for the same
+session; optionally a previous session's proxy log (`--prev-proxy-log`).
+**Writes:** `md/<timestamp>_req<N>.md`, path printed to stdout.
+**Called by:** none — manual CLI.
+**Calls out:** `tiktoken`.
 
 ---
 
-## 06_char_token_ratio.py
+### 06_char_token_ratio.py (455 LOC)
 
-**Purpose:** Correlates message char counts with actual API token counts (CR, CC, D) to derive chars-per-token ratios for Claude's tokenizer. Supports single-file analysis and batch mode across all proxy logs with auto-pairing to session JSONLs. Generates persistent Markdown reports.
-
-**Input:** Proxy JSONL log (positional arg) or `--batch <dir>` for all logs in a directory. Optionally `--session-jsonl` for single-file mode to pair with session JSONL for token data.
-
-**Output:** Markdown table to stdout + persistent report to `md/` (batch mode).
-
-**Usage:**
-```bash
-# Single proxy log (char counts only)
-python3 dev/session_analysis/06_char_token_ratio.py src/logs/api_requests_<id>.jsonl
-
-# Single proxy log + session pairing (adds CR/CC/D/ratio)
-python3 dev/session_analysis/06_char_token_ratio.py src/logs/api_requests_<id>.jsonl \
-  --session-jsonl ~/.claude/projects/<encoded>/session.jsonl
-
-# Batch mode — all proxy logs, auto-paired with session JSONLs
-python3 dev/session_analysis/06_char_token_ratio.py --batch src/logs/
-```
-
-| Flag | Description |
-|------|-------------|
-| `log_file` | *(positional, optional in batch mode)* Proxy JSONL log file |
-| `--session-jsonl` | Session JSONL for token data pairing (single-file mode) |
-| `--batch DIR` | Scan all `api_requests_*.jsonl` in DIR, auto-pair with session JSONLs |
-
-**Ratio types in output:**
-- `full-rebuild`: CR=0, ratio = total_chars / CC (entire payload tokenized)
-- `delta`: CR>0 + CC>0 + Δchars>0, ratio = Δmsgs_chars / CC (incremental message tokens)
+**Purpose:** Correlates message char counts with actual API token counts (CR/CC/D) to derive
+chars-per-token ratios, single-file or batch mode (`--batch <dir>`) with auto-pairing to session
+JSONLs.
+**Reads:** one proxy JSONL log (positional) or all logs in a directory (`--batch`); optionally a
+session JSONL (`--session-jsonl`) for token-data pairing.
+**Writes:** a Markdown table to stdout; a persistent report under `md/` in batch mode.
+**Called by:** none — manual CLI.
+**Calls out:** none — stdlib JSONL parsing only.
 
 ---
 
-## 07_quartet_prefix_diff.py
+### 07_quartet_prefix_diff.py (811 LOC)
 
-**Purpose:** Forensic per-segment prefix-diff for cache rebuilds. Reconstructs full payload state (system/tools/messages) at each opus-family request by replaying the `_forwarded` dual-log delta chain, aligns it to session-JSONL ground-truth usage (CR/CC/D) by timestamp, and diffs consecutive requests segment-by-segment (system[0..3] individually / tools / messages, per-index) to find WHERE a cache-rebuild's byte divergence sits and WHAT changed there (chars added/removed, image blocks mutated — including images nested inside `tool_result.content` — per-row auto-classification note). Also auto-scans the whole log for CR-collapse points (CC > CR and CR < 0.2 x prior max CR). Optionally cross-checks each modified message index against the `_original` dual-log (full non-delta incoming payloads, matched by `flow_id`) to attribute a diff as CLIENT-SIDE (already present in the incoming request, before our proxy) vs PROXY-SIDE (introduced by our own modification pass) — the fix-vs-document decision.
-
-Cache-control breakpoint markers are intentionally NOT reported: the forwarded delta chain hashes elements with `cache_control` stripped (`src/proxy/logging.py: _delta_hash` -> `_strip_cache_control`), so a marker-only change never enters the delta and a replayed message's `cache_control` can be stale. True sent breakpoint positions are not derivable from this reconstruction.
-
-**Input:** `--forwarded-log` — a `_forwarded` dual-log JSONL (delta-encoded: `system_delta`/`tools_delta`/`messages_delta` per request, NOT the eliminated single-main-log `raw_payload` format read by 04/05/06). `--session-jsonl` — session JSONL for ground-truth CR/CC/D. `--req-range A-B` and/or `--auto-detect`. `--original-log` (optional) — the matching `_original` dual-log for client-vs-proxy attribution.
-
-**Output:** `md/<YYYYMMDD_HHMMSS>_quartet_prefix_diff.md` — report path printed to stdout.
-
-**Usage:**
-```bash
-./venv/bin/python dev/session_analysis/07_quartet_prefix_diff.py \
-  --forwarded-log src/logs/dual_log/api_requests_opus_<id>_forwarded.jsonl \
-  --session-jsonl ~/.claude/projects/<encoded>/session.jsonl \
-  --original-log src/logs/dual_log/api_requests_opus_<id>_original.jsonl \
-  --req-range 133-137 --auto-detect
-```
-
-| Flag | Description |
-|------|-------------|
-| `--forwarded-log` | *(required)* `_forwarded` dual-log JSONL path |
-| `--session-jsonl` | *(required)* Session JSONL for ground-truth CR/CC/D |
-| `--req-range` | Consecutive REQ pair range to analyze, e.g. `133-137` |
-| `--auto-detect` | Also scan the whole log for CR-collapse points |
-| `--original-log` | `_original` dual-log JSONL (full non-delta incoming payloads) for CLIENT-SIDE vs PROXY-SIDE attribution |
-
-**REQ numbering:** ground-truth requests are grouped from session-JSONL `type=assistant` lines by identical `(cr, cc, inp, out)` usage tuple (one physical request can emit several content-block lines interleaved with `type=user` tool_result lines from mid-stream tool execution). Forwarded-log entries are aligned to these groups by timestamp (two-pointer, monotonic) — NOT a fixed line-position offset; retried/aborted forwarded sends are silently absorbed into the next group's match.
-
-**Original-log matching:** the `_original` log (one line per request, full non-delta `payload`) is matched to a forwarded/ground-truth request via `flow_id` (shared field on both logs). Only lines whose `flow_id` is in the target set are fully JSON-parsed — a cheap regex peek at the first 300 chars of each raw line extracts `flow_id` first, avoiding a full parse of the ~9MB-average irrelevant lines in a 1.4GB file.
+**Purpose:** Forensic per-segment prefix diff for cache rebuilds — reconstructs full payload state by
+replaying the `_forwarded` dual-log delta chain, aligns to session-JSONL ground truth by timestamp,
+and diffs consecutive requests segment-by-segment to find where a rebuild's byte divergence sits.
+With `--original-log`, cross-checks each modified message against the `_original` dual-log to
+attribute a diff as client-side (already in the incoming request) vs. proxy-side (introduced by a
+proxy pass).
+**Reads:** a `_forwarded` dual-log JSONL (`--forwarded-log`), a session JSONL (`--session-jsonl`),
+optionally a matching `_original` dual-log (`--original-log`).
+**Writes:** `md/<timestamp>_quartet_prefix_diff.md`, path printed to stdout.
+**Called by:** none — manual CLI.
+**Calls out:** none — stdlib JSONL parsing only.
 
 ---
 
-## md/
-
-MD reports written by `05_req_breakdown.py` and `07_quartet_prefix_diff.py`. One file per run.
-
-**Naming convention:** `<YYYYMMDD_HHMMSS>_req<N>.md` (05) / `<YYYYMMDD_HHMMSS>_quartet_prefix_diff.md` (07).
-
-**05 report structure:**
-1. **Header** — proxy log path, session JSONL path, timestamp
-2. **Ground Truth** — CR, CC, D, Out, Total input from session JSONL (deduplicated streaming chunks)
-3. **Segment Breakdown** — tiktoken token counts per system block, per tool definition, per message; totals and estimate vs ground truth delta
-4. **Prefix Attribution** *(when `--prev-proxy-log` provided)* — byte-diff per segment: which segments are byte-identical to previous session (→ cache-read) vs changed (→ cache-creation)
-5. **Rule Edits** — proxy modifications detected between current and previous request (system content changes, injected rules)
-
-**07 report structure:**
-1. **Methodology** — REQ mapping notes (forwarded-entry / ground-truth counts, absorbed retries)
-2. **Auto-Detected CR-Collapse Points** — table of collapse REQs vs prior max CR
-3. **Per-pair sections** — system blocks table, tools changed y/n, messages table (status/chars/image counts per index), breakpoint markers added/removed, segment attribution (first diverging segment, raw and excluding per-request `system[0]` churn), CR/CC reconciliation (tiktoken BP1 estimate, recovery-identity check)
-4. **Findings Summary** — proven-from-bytes facts, separated from interpretation/hypotheses
+## Gotchas
+- `07_quartet_prefix_diff.py` never reports cache-control breakpoint marker changes: the forwarded
+  delta chain hashes elements with `cache_control` stripped, so a marker-only change never enters the
+  delta and true sent breakpoint positions are not derivable from this reconstruction.
+- `07_quartet_prefix_diff.py` aligns forwarded-log entries to ground-truth request groups by
+  timestamp (two-pointer, monotonic), not by fixed line position — retried/aborted forwarded sends
+  are silently absorbed into the next group's match.
