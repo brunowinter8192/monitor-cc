@@ -269,3 +269,47 @@ LOC-drift, 0 symbol-drift, 16 path-drift findings — identical set (same paths,
 from an unrelated Gotcha-bullet removal) to a `git stash`-verified pre-edit run, all pointing at
 `src/logs/...` or `.claude/worktrees` paths absent from every fresh worktree regardless of this
 task's changes.
+
+## 2026-09-11 recap — review follow-ups: 9(b) was incomplete, dead `_terminal_size` params
+
+Main's review of the first commit caught two gaps.
+
+**9(b) was only half-fixed.** The initial pass normalized `SESSION_ID` in
+`claude_proxy_start.sh` and confirmed it already matched `tmux_launcher.generate_session_name`,
+but missed that `src/proxy_display/forwarded_parser.py:_proxy_session_id_for_project` — the
+READ side's own hash of the project path, used by every `parser.py` `find_*_log_path` function and
+by `dual_log_cli/project_map.py` — still hashed the raw, unnormalized string. A trailing slash on
+`project_filter` (e.g. from a caller that appends `/` before passing it through) would produce a
+session id on the read side that never matches the write side's (shell) or the tmux side's
+(`generate_session_name`) session id for the same project, even after the first commit's fix —
+exactly the 3-way divergence class item 9(b) was meant to close, just on the one call site that
+got missed. Fixed by applying the same `os.path.normpath(os.path.expanduser(project_path))`
+normalization inside `_proxy_session_id_for_project` itself, matching
+`src/workers/worker_selection.py:get_selection_file_path`'s existing identical pattern for the
+same reason (worker selection file naming) — this is the third module doing this exact
+normalization now, all three byte-for-byte identical in method.
+
+Proof, canonical path (unchanged from the first commit's proof, confirming no regression):
+`hashlib.md5(canon).hexdigest()[:8]` before this fix == `_proxy_session_id_for_project(canon)`
+after == `394da8fb`. Proof the actual gap is closed: `_proxy_session_id_for_project(canon + '/')`
+now also returns `394da8fb` (was `92a32869` before this fix, diverging from
+`generate_session_name`'s `394da8fb` for the same trailing-slash input). Reran
+`dev/proxy_display/render_byte_identity.py` against the same frozen quartet used throughout this
+task — HASH `5a6344a4...`, unchanged from every prior run, since the harness never varies its
+project-path input format. `dev/dual_log_cli/tests/test_msgs_usage.py` (13/13) and
+`test_project_display.py` (23/23) — the two dev suites that call `_proxy_session_id_for_project`
+directly — both still pass; both already pass an absolute, already-normalized path, so the
+function's new normalization step is a no-op for their inputs and doesn't need new test coverage.
+
+**Dead `_terminal_size` parameters.** `proxy_pane_shared._terminal_size`'s `default_lines`/
+`default_cols` parameters became unused once the first commit removed the `except OSError:
+return default_lines, default_cols` branch, but were left in place at the time out of a
+minimize-the-diff instinct. Main's review pointed out `p4fix-b` (the sibling worker on the
+worker-pane side of this same phase-4 scan) removed the equivalent dead parameters on its own
+terminal-size helper, so this was left inconsistent. Dropped both parameters — `_terminal_size()`
+now takes no arguments; both call sites (`pane.py:293`, `worker_proxy_pane.py:320`) already called
+it with zero arguments, so this is a pure signature cleanup with no caller change needed.
+`render_byte_identity.py` and `pipeline_byte_identity.py` rerun, both still byte-identical.
+
+Both fixes committed as `7117049`. `docs-drift-check` after: same 0 LOC-drift / 0 symbol-drift /
+16 path-drift (identical pre-existing set) as every prior run in this task.
