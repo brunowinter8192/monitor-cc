@@ -89,11 +89,13 @@ helper per command.
 **Purpose:** Resolves the proxy's `md5(project_path)[:8]` session id — the only trace of a
 worker's project in its stem — to that project's real cwd, by scanning CC's own transcript store.
 `build_project_index` does that walk once and returns it in two shapes: `cwd_to_dir` (a main
-stem's label match) and `sid_to_cwd` (a worker stem's sid8 lookup, keeping the real project path).
+stem's label match) and `sid_to_cwd` (a worker stem's sid8 lookup, keeping the real project path),
+hashed via `src/proxy_display/forwarded_parser.py`'s `_proxy_session_id_for_project` — the single
+source shared with `addon.py`'s own session-id derivation.
 **Reads:** `~/.claude/projects/<encoded>/<uuid>.jsonl` (first ~40 lines of up to 3 newest transcripts per project dir).
 **Writes:** Nothing — returns `{"cwd_to_dir": ..., "sid_to_cwd": ...}`; degrades to an empty structure on any failure rather than erroring.
 **Called by:** `discovery.py`, `commands.py`, `usage.py`.
-**Calls out:** `src/proxy_display/forwarded_parser.py` (`_proxy_session_id_for_project` — the single source shared with `addon.py`'s own session-id derivation).
+**Calls out:** —
 
 ---
 
@@ -152,11 +154,12 @@ stream exists) its request boundaries and turn-times.
 
 **Purpose:** Turn-row construction for one payload — `build_turns` (the compact per-msg rows
 `msgs`/`expand` iterate), `iter_block_texts` (the block-text generator `search` builds on), and
-`full_turn` (single-turn full extraction, what `expand` dumps).
+`full_turn` (single-turn full extraction, what `expand` dumps) — each message summarized via
+`src/proxy/message_summary.py`'s `_summarize_message`.
 **Reads:** The parsed last-request payload.
 **Writes:** Nothing — returns row lists or a generator.
 **Called by:** `timeline.py` (`build_turns`), `search.py` (`iter_block_texts`), `commands.py` (`full_turn`); `dev/dual_log_cli/tests/test_msgs_blocks.py`.
-**Calls out:** `src/proxy/message_summary.py` (`_summarize_message`).
+**Calls out:** —
 
 ---
 
@@ -164,11 +167,13 @@ stream exists) its request boundaries and turn-times.
 
 **Purpose:** Request-boundary derivation from the `_forwarded` delta stream (`request_boundaries`)
 plus, per boundary, its `sys_lines`/`tool_lines` — the system blocks and tools that request sent
-in full (family's first request) or changed/added since the previous one of the same family.
+in full (family's first request) or changed/added since the previous one of the same family,
+compared via `src/proxy/logging.py`'s `_delta_hash` — the exact content-hash normalisation the
+proxy itself uses, so a read-side "changed" decision matches the proxy's own.
 **Reads:** The session's `_forwarded.jsonl`.
 **Writes:** Nothing — returns boundary dicts and a `{turn_index: timestamp}` dict.
 **Called by:** `timeline.py` (`request_boundaries`, `build_turn_times`), `render_msgs.py` (`_BILLING_HEADER_SYS_INDEX`, `_system_block_chars`, `_tool_chars`); `dev/dual_log_cli/tests/test_msgs_req_range.py`, `test_msgs_sys_delta.py`, `test_msgs_sys_tool_overlay.py`, `test_reqs.py`, `test_sidecar_exclusion.py`, `test_tool_name_comparison.py`, `test_turns.py`.
-**Calls out:** `src/proxy/logging.py` (`_delta_hash` — the exact content-hash normalisation the proxy itself uses).
+**Calls out:** —
 
 ---
 
@@ -204,11 +209,12 @@ assigns each request to a turn via the count of openers already contained in tha
 **Purpose:** Reconstructs the proxy's own strip/inject deltas as a read-side overlay: `build_overlay`
 for one message block's `{(msg_idx, blk_idx): {stripped, injected, req}}`, `build_sys_tool_overlay`
 for the equivalent per-system-index and per-tool-name shape, both by running the session's
-`_stripped`/`_injected` delta streams through `proxy_display.dual_log_accumulator.accumulate_dual_log`.
+`_stripped`/`_injected` delta streams through `src/proxy_display/dual_log_accumulator.py`'s
+`accumulate_dual_log` — reused, not re-implemented.
 **Reads:** The session's `_stripped.jsonl` and `_injected.jsonl`.
 **Writes:** Nothing — returns one dict (`build_overlay`) or a 2-tuple of dicts (`build_sys_tool_overlay`).
 **Called by:** `commands.py` (`build_overlay` from `_run_expand`/`_run_msgs`; `build_sys_tool_overlay` from `_run_msgs` only).
-**Calls out:** `src/proxy_display/dual_log_accumulator.py` (`accumulate_dual_log`).
+**Calls out:** —
 
 ---
 
