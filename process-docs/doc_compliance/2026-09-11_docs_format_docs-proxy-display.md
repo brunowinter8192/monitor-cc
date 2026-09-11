@@ -470,3 +470,45 @@ present-tense mechanism form):
 **Gotcha — `_fwd_req_idx` is NOT a stable cross-call identifier (fixed 2026-08-18).** `_parse_forwarded_log` stamps `entry['_fwd_req_idx'] = req_idx`, a counter that restarts at 0 on EVERY call — i.e. it's unique only WITHIN one incremental parse batch, not across the polling session. `_lazy_load_messages_forwarded` used to match on this (`req_idx == target_idx` while replaying from byte 0), which is wrong the moment a session has had ≥2 incremental poll batches with new lines in each (i.e. almost always, given the 500ms poll tick) — an entry from a later batch would silently load an EARLIER batch's content at the same call-local index. Verified live during M2 investigation: 158/158 out-of-window entries mismatched their ground-truth content in a simulated 2-batch session. `flow_id` (from the forwarded_delta line, always populated, globally unique — verified 189/189 unique on a real 190-entry log) is the correct correlation key; `_lazy_load_messages_forwarded` and `reconstruct_all_messages`'s merge (in `pane.py`) both use it. `_fwd_req_idx` is still stamped (used only within a single `_parse_forwarded_log` call's own `recent_window` deque bookkeeping) — do not use it as a dict key across separate parse calls.
 
 **Gotcha — `get_proxy_session_start_ts` stale-marker fallback.** `parser.get_proxy_session_start_ts` treats a `.proxy_session_<id>` marker older than 24h as stale and returns `time.time()` instead of its mtime.
+
+## 2026-09-11 Recap
+
+Task: bring `src/proxy_display/DOCS.md` to the DOCS.md Format of the documentation rules,
+derived from the code, not the prior changelog-style prose (16 modules: 15 `.py` files plus
+`__init__.py`).
+
+Method: read every `.py` file in the package in full, then grepped `src/`, `dev/`, and the root
+files (`cli.py`, `workflow.py`, `start.sh`, `claude_proxy_start.sh`, `bin/`) for each module's
+importers to build an accurate `Called by` list per module, rather than trusting the prior
+prose's claims.
+
+Findings against the prior DOCS.md, resolved in the rewrite:
+- The "Known drift to resolve" item from the task prompt was confirmed by reading the code:
+  `_clear_proxy_search_selection()` does not exist anywhere in `src/proxy_display/`. State
+  clearing for the search bar's drag-selection is `search_bar.clear_selection(state)`, called
+  directly from each pane's own mouse handler (`pane.py`'s and `worker_proxy_pane.py`'s
+  `button == 0` branch) and from inside `search_bar.handle_search_cancel`.
+- `search.py`'s `Called by` line in the prior DOCS.md named `src/proxy_display/pane.py` as the
+  caller of `build_search_matches`. Grep found this stale: `build_search_matches` is imported and
+  called only from `src/proxy_display/proxy_pane_shared.py`'s `_run_pane_search`, which both
+  `pane.py` and `worker_proxy_pane.py` call into via their own `on_commit` callbacks. Corrected
+  in the new entry.
+- No DEAD CODE candidates — every one of the 15 modules has at least one real `src/` caller
+  (grep results are in the report given to Main before "Go", not reproduced here since they are
+  not salvage material — they were verification steps, not removed doc content).
+
+`docs-drift-check` note (not salvage, a tooling interaction worth recording for whoever next
+touches this DOCS.md): the checker only scans path-like tokens inside backtick spans, and its
+glob-extension check strips the true file extension when a `*` appears before the last dot (e.g.
+`api_requests_*_forwarded.jsonl` loses its `.jsonl` extension to the split-at-`*` logic), so a
+backticked reference to the runtime, gitignored `src/logs/` directory or a glob under it always
+reports NOT FOUND — this pattern already exists in nearly every other DOCS.md in the repo. Three
+such references in the new `src/proxy_display/DOCS.md` (Role paragraph, `parser.py`'s Reads line)
+were reworded out of backticks into plain prose to reach zero findings for this file specifically,
+per the existing rule that non-existent shell-style paths (`/dev/null`, `~/...`) are written in
+plain words rather than backticked — treated `src/logs/` the same way since it is equally
+never present in a checkout.
+
+Verification: `wc -l` on every module compared against its new DOCS.md heading (all 15 match);
+`docs-drift-check` run from the worktree root, output filtered to lines starting with
+`src/proxy_display/DOCS.md` — zero after the reword above.
