@@ -402,3 +402,20 @@ Removed narrative (very long — full 2026-07 through 2026-09 change history of 
 ### Gotchas (removed history framing)
 
 `worker_scroll_offset` Gotcha originally read: "**`worker_scroll_offset` (pane-level int) is dormant.** Wheel 64/65 events write to `worker_scroll_offsets[name]` (per-worker dict), which `format_cache_tracker` reads to scroll the expanded REQ view. `worker_scroll_offset` stays permanently 0 — `vp_start = max(0, total_lines - content_height - worker_scroll_offset)` (was `pane_height`, now `content_height = pane_height - _WORKERS_SEARCH_BAR_LINES` since 2026-08-18) reduces to a bottom-anchor. The int is not removed because it anchors the `all_lines[vp_start:vp_start + content_height]` slice-cap that prevents terminal overflow with many workers. **(2026-08-18) Jump-to-match deliberately never touches it either** — see `worker_pane.py`'s own module entry for the reasoning."
+
+## 2026-09-11 — recap
+
+Main session. Task scope was exactly the 11 DOCS.md files listed above; no `.py`/`.sh`/other
+source file was read for editing purposes beyond the read-only investigation needed to derive the
+rewritten DOCS.md content from the actual code. `git diff integration --name-only` at recap time
+shows only this process-docs file plus the 11 DOCS.md files — no source file was touched, so the
+worker-rules "DOCS.md currency check for every `src/`/`dev/` file touched" has no additional
+target beyond the DOCS.md rewrite that was the task itself.
+
+Verification performed before the initial commit, not repeated here since nothing changed since:
+- `wc -l` on every `.py`/`.sh` module named in a rewritten heading matched the heading's LOC value exactly (47 modules across the 11 files).
+- `docs-drift-check` run from this worktree: zero Path-Drift/LOC-Drift/Symbol-Drift findings for any of the 11 rewritten files except `src/DOCS.md:143`/`:147` (`bin/worker-cli` — correctly annotated `(iterative-dev)` per the cross-project-path convention; the checker doesn't parse that annotation, same false positive already present at `src/menubar/DOCS.md:126`) and `src/DOCS.md:145`/`:162` + `src/ccwrap/DOCS.md:56` (`src/logs`/`src/logs/ccwrap` — gitignored runtime-only directories, the same pre-existing false-positive pattern repeated in ~40 other DOCS.md files across the repo).
+- Every `Called by` line was derived from a fresh grep over `src/` and `dev/` for the module's actual export names (not copied from the pre-existing prose) — no DEAD CODE candidate was found among the 47 modules in scope.
+
+No corrections were needed in this recap pass. The rewritten DOCS.md content and the salvage
+sections above stand as committed in `aa4125e`.
