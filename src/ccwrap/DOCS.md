@@ -53,7 +53,7 @@ from src.ccwrap.wrapper import run
 
 **Purpose:** ANSI byte-stream parser and log-file manager. `parse_sequences()` extracts named ANSI tokens (CSI, OSC, ESC+char, C0) from a byte chunk via a compiled regex. `rotate_logs()` deletes the oldest `.bin`/`.ansi.log` pairs beyond the keep-count. `open_log_pair()` opens a `.bin` + `.ansi.log` file pair. `write_sequences()` appends `<unix_ts>\t<name>\t<hex>` lines to the ansi.log.
 **Reads:** nothing at parse time; directory listings via `glob` for rotation.
-**Writes:** `.bin` and `.ansi.log` pairs under the caller-supplied `log_dir` (default `src/logs/ccwrap/`, gitignored).
+**Writes:** `.bin` and `.ansi.log` pairs under the caller-supplied `log_dir` (default: the ccwrap folder under the gitignored src logs directory).
 **Called by:** `wrapper.py` (all four public functions).
 **Calls out:** none.
 
