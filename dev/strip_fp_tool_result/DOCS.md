@@ -1,62 +1,47 @@
 # dev/strip_fp_tool_result/
 
 ## Role
+Measurement-only audit for the false-positive-nuke bug class as it applies to `tool_result` content
+specifically: which strip passes remove text from inside a `tool_result` block, split into the
+system-reminder strip family vs. unrelated non-SR passes (bg_launch_ack, hook_prefix, po_preview).
+Touch when extending this measurement or building a fix milestone's regression baseline; do not touch
+to change strip behavior itself — that lives in `src/proxy/`.
 
-Measurement-only audit for the FP-nuke bug class (see `process-docs/message_strip_fp_nuke/`) as
-it applies to `tool_result` content specifically: which strip passes remove text from INSIDE a
-`tool_result` block, split into the SR strip family (`_apply_first_pass`'s SR branches,
-`_apply_cumulative_sr_strips`, `_apply_final_sr_pass` — all matching via `strip_sr.py`'s
-line-anchored `<system-reminder>` scan) vs. unrelated non-SR passes (`bg_launch_ack`,
-`hook_prefix`, `po_preview` — each matching its own marker, no `strip_sr` dependency). Touch when
-extending this measurement (more corpus, more passes) or building the fix milestone's regression
-baseline; do NOT touch to change strip behavior — that lives in `src/proxy/`.
+## Flow
+Streams every recorded request payload, threads it through the real per-message pass functions in
+their production order, and records every removal whose pre-pass block type is `tool_result`,
+classified by template — writes a findings report to `md/`.
 
 ## Modules
 
-### audit_tool_result_sr_strips.py (656 LOC)
+### audit_tool_result_sr_strips.py (659 LOC)
 
-**Purpose:** Streams every request payload in `src/logs/dual_log/*_original.jsonl`, threads it
-through the 11 real `_apply_*` pass functions from `src.proxy.message_passes` in
-`rules.py::apply_modification_rules`'s exact order, and — using each pass's own
-`pass_ops_by_msg_blk` per-block diff (offset/removed/injected) — records every removal whose
-pre-pass block `type == 'tool_result'`. Classifies template via the real `strip_sr.py` registry
-(imported, not reinvented); non-SR passes get their fixed mod name. Quoted-data / genuine-CC-
-injection verdicts are hand-written into `_MANUAL_VERDICTS` (keyed by `(file, msg_idx, blk_idx,
-first_line_idx)`) after reviewing one run's raw context, then folded in on the next run.
-**Reads:** `src/logs/dual_log/*_original.jsonl` (main checkout, not per-worktree — gitignored).
+**Purpose:** Streams every request payload in the dual-log corpus, threads it through the 11 real
+`_apply_*` pass functions in `apply_modification_rules`'s exact order, and — using each pass's own
+per-block diff — records every removal whose pre-pass block type is `tool_result`. Classifies via the
+real `strip_sr.py` template registry; non-SR passes get their fixed mod name. Quoted-data vs.
+genuine-CC-injection verdicts for ambiguous cases are hand-written into a manual verdicts table after
+review, then folded into later runs.
+**Reads:** all `*_original.jsonl` files under src/logs/dual_log in the main checkout (gitignored
+runtime data, not per-worktree).
 **Writes:** `dev/strip_fp_tool_result/md/audit_tool_result_sr_strips.md`.
-**Called by:** none (standalone CLI: `python3 dev/strip_fp_tool_result/audit_tool_result_sr_strips.py`).
+**Called by:** none — manual CLI.
 **Calls out:** `src.proxy.message_passes`, `src.proxy.strip_sr`, `src.proxy.content_strip`,
-`src.proxy.rule_ops`, `src.proxy.strip_git_lock` (all via `importlib`, dodging
-`block_dev_imports_src`).
+`src.proxy.rule_ops`, `src.proxy.strip_git_lock` — all via `importlib`, per the
+`block_dev_imports_src` hook.
 
 ---
 
 ## Gotchas
-
-- **Self-session exclusion is by filename, not automatic.** Any file matching `SELF_SESSION_MARKER
-  = 'sr-fp-audit'` is excluded — this worker's own dual-log is live-growing while the script runs
-  and its own Read/Bash calls on this investigation would otherwise appear as fake "evidence".
-- **The corpus is live.** Other sessions' dual-logs (`api_requests_opus_monitor_cc_...`, etc.) keep
-  growing between runs (real concurrent Claude sessions) — occurrence counts are a snapshot at
-  scan time, not a fixed total; re-running can surface new rows requiring new `_MANUAL_VERDICTS`
-  entries (same reasoning as an already-classified sibling, not a reclassification).
-- **`tool_result_list_joined` offsets are into the JOINED sub-block text**, not any single
-  sub-block — `_block_inner_text` (imported from `rule_ops.py`) is what `_ops_from_content_change`
-  computed the offset against; context slicing reuses the same function for consistency.
-- **SR-family vs. non-SR split is load-bearing for the report's headline conclusion** — pooling
+- Self-session exclusion is by filename, not automatic — any file matching the marker
+  `sr-fp-audit` is excluded, since this script's own dual-log grows live while it runs and its own
+  Read/Bash calls would otherwise appear as fake evidence.
+- The corpus is live — other sessions' dual-logs keep growing between runs; occurrence counts are a
+  snapshot at scan time, not a fixed total.
+- `tool_result_list_joined` offsets are into the JOINED sub-block text, not any single sub-block —
+  reuse `_block_inner_text` (from `rule_ops.py`) for context slicing, matching what
+  `_ops_from_content_change` computed the offset against.
+- The SR-family vs. non-SR split is load-bearing for the report's headline conclusion — pooling
   `bg_launch_ack`/`hook_prefix`/`po_preview` (unrelated markers, correct-by-design tool_result
-  descent) together with the actual SR-template passes produces a false "genuine injections
-  found" conclusion. Keep the two aggregated and reported separately.
-- **Ground-truth non-reproduction is a first-class result, not a bug in the script.** The
-  task-stated `stripped_git_lock_advice` finding does not reproduce in this corpus snapshot — the
-  literal 5-line block never appears with real newlines outside this worker's own excluded
-  self-session (an artifact of investigating `strip_git_lock.py`'s escaped source, not production
-  data). `_scan_ground_truth_git_lock` makes this check itself re-runnable.
-- **This script also served as the fix-milestone's verification tool.** After
-  `strip_sr.py::_strip_system_reminders` stopped descending into `tool_result` (2026-07-28), a
-  re-run showed the SR-family aggregate going from 1 occurrence to 0, non-SR unchanged in kind —
-  see `process-docs/message_strip_fp_nuke/2026-07-28_tool_result_sr_audit.md`. The report's
-  "Genuine CC injection — found?" section has an explicit `elif not sr_occ:` branch for this
-  post-fix state (distinct from the pre-fix "0 genuine, 1 FP" prose) — don't let the two states'
-  wording collide if the corpus regresses.
+  descent) together with actual SR-template passes produces a false "genuine injections found"
+  conclusion.

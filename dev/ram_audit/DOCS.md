@@ -1,76 +1,50 @@
 # dev/ram_audit/
 
-## Problem
+## Role
+Investigation tooling for pane process RSS growth over long sessions — captures live RAM snapshots
+(gc object counts, tracemalloc top allocators, module-level state sizes) from a running pane process
+on demand. Touch when adding a new RAM-dump section or verifying a `src/ram_audit/instrument.py`
+refactor; not a regression suite for pane behavior itself.
 
-Pane process RSS grows over long sessions. Investigation module to capture live RAM snapshots and identify the top allocators.
+## Flow
+A running pane process registers a `SIGUSR1` handler via `src.ram_audit.instrument.register_ram_dump`
+at startup. Sending the signal (directly or via `dump_all.sh`) writes a dump file to `dumps/`; nothing
+in this directory triggers a dump automatically.
 
-## Trigger a dump
-
-```bash
-# Send SIGUSR1 to a running pane process (e.g. warnings_pane):
-kill -USR1 $(cat /tmp/.monitor_cc_pid_warnings)
-```
-
-- **PID file:** `/tmp/.monitor_cc_pid_<pane>` — written at startup by each pane's run loop, removed on exit.
-- **Dumps land in:** `dev/ram_audit/dumps/<YYYYmmdd_HHMMSS>_<pane>.txt`
-- The handler prints `[ram-dump] wrote <path>` to stderr (visible in the pane's tmux output).
-
-## Dump format
-
-Each dump contains four sections:
-
-1. **Header** — `timestamp`, `pid`, `rss` (bytes + MB, sourced from `resource.getrusage` on macOS).
-2. **Top-30 gc objects by class** — 2-column table: class name | count. Covers all live Python objects at snapshot time.
-3. **Top-30 tracemalloc by lineno** — 3-column table: file:line | size_bytes | count. Requires `tracemalloc.start(25)` (called at module import). Shows which source lines hold the most memory.
-4. **Pane module state** — len + sizeof for every module-level list/dict; scalar values for floats/ints/strings. Reveals unbounded growth in module-level event lists.
-
-## Scripts
+## Modules
 
 ### dump_all.sh (44 LOC)
 
-Triggers a SIGUSR1 RAM dump on every running monitor_cc pane in one shot.
+**Purpose:** Triggers a `SIGUSR1` RAM dump on every running monitor_cc pane in one shot — iterates
+`/tmp/.monitor_cc_pid_*` PID files, sends the signal to each live one, then lists freshly created
+dump files.
+**Reads:** `/tmp/.monitor_cc_pid_*` PID files (written by each pane's run loop at startup, removed on
+exit).
+**Writes:** nothing directly — triggers each pane's own dump write to `dumps/`.
+**Called by:** none — manual CLI, run via `dev/ram_audit/dump_all.sh` from project root.
+**Calls out:** stdlib bash + `kill` only.
 
-**Usage (from project root):**
-```bash
-dev/ram_audit/dump_all.sh
-```
+---
 
-**What it does:**
-1. Iterates all `/tmp/.monitor_cc_pid_*` PID files.
-2. For each, verifies the process is alive (`kill -0`), then sends `SIGUSR1`.
-3. Sleeps 1 s for handlers to write their dumps.
-4. Lists freshly created dump files in `dev/ram_audit/dumps/`.
-5. Prints summary: `N dumps written, see dev/ram_audit/dumps/`.
+### dump_byte_identity.py (114 LOC)
 
-**Graceful handling:** skips stale PID files (process no longer running); exits cleanly with "No active pane PID files found" when no panes are instrumented.
+**Purpose:** Byte-identity harness for `register_ram_dump`/`_handle_ram_dump`'s report-section
+split — calls `register_ram_dump` with a fake pane name and fixed module state, sends itself
+`SIGUSR1`, reads the resulting dump file, normalizes out inherently non-deterministic lines
+(timestamp/pid/rss header, gc/tracemalloc row values), and hashes what remains.
+**Reads:** its own freshly-written dump file under `dumps/`.
+**Writes:** a scratch PID file and dump file, both deleted before exit — stdout only (one `HASH:`
+line, plus `register_ram_dump`'s own `[ram-dump] wrote <path>` line on stderr).
+**Called by:** none — manual regression harness, run before and after a `register_ram_dump`/
+`_handle_ram_dump` refactor.
+**Calls out:** `src.ram_audit.instrument` (`register_ram_dump`) — imported via a dedicated function,
+not a module-level `from src.` line, per the `block_dev_imports_src` hook.
 
-**Equivalent per-pane trigger:**
-```bash
-kill -USR1 $(cat /tmp/.monitor_cc_pid_<pane>)
-# e.g.:
-kill -USR1 $(cat /tmp/.monitor_cc_pid_proxy)
-kill -USR1 $(cat /tmp/.monitor_cc_pid_warnings)
-```
+---
 
-### dump_byte_identity.py (114 LOC, new 2026-09, remaining-thresholds milestone)
-
-**Purpose:** Byte-identity harness for `register_ram_dump`/`_handle_ram_dump`'s function-LOC
-split into module-level report-section helpers. Calls `register_ram_dump` with a fake pane name
-and a fixed `module_state_provider` (one container, one scalar), sends `SIGUSR1` to itself, reads
-the resulting dump file, then normalizes out every inherently-non-deterministic line (`timestamp:`/
-`pid:`/`rss:` header lines; the actual gc object-count rows and tracemalloc size/count rows — real
-process memory state varies run to run, kept only as section headers/structure) before hashing
-what remains — the report's fixed structure plus the fully-deterministic module-state section.
-Verified stable across 3 independent runs on the unmodified code before recording the baseline.
-**Reads:** Its own freshly-written dump file under `dev/ram_audit/dumps/`.
-**Writes:** `/tmp/.monitor_cc_pid_byteidentity` and `dev/ram_audit/dumps/<ts>_byteidentity.txt` —
-both deleted before the script exits (dump-dir `*.txt` files are gitignored either way, but this
-harness cleans up proactively so a full run leaves the directory untouched). Stdout: one
-`HASH: <hex>` line (plus `register_ram_dump`'s own `[ram-dump] wrote <path>` line on stderr).
-**Run:** `./venv/bin/python dev/ram_audit/dump_byte_identity.py`
-**Calls out:** `src.ram_audit.instrument` (`register_ram_dump`) — imported via a dedicated function
-(`_import_instrument`), not a module-level `from src.` line, per `block_dev_imports_src`.
-
-Status: hash `7f7f0d224b2eb5b19ee5eae33471f60614d6def9c2a00c720e295e9e26a4322d` — identical before
-and after the `register_ram_dump`/`_handle_ram_dump` split (remaining-thresholds milestone,
-2026-09).
+## Gotchas
+- To trigger a dump on a live pane: `kill -USR1 $(cat /tmp/.monitor_cc_pid_<pane>)`. The handler
+  prints `[ram-dump] wrote <path>` to stderr, visible in the pane's tmux output.
+- A dump file has four sections: header (timestamp/pid/rss), top-30 gc objects by class, top-30
+  tracemalloc allocations by source line (requires `tracemalloc.start(25)` at module import), and
+  per-pane module-level state (len + sizeof for containers, scalar values for numbers/strings).

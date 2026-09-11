@@ -1,323 +1,218 @@
 # dev/proxy_dual_log/
 
-## Purpose
+## Role
+Verification suite for the dual-log quartet (`_original`/`_forwarded`/`_stripped`/`_injected`)
+written by `src/proxy/addon.py` under src/logs/dual_log. Proves losslessness and self-consistency of
+the forwarded-delta log against the original log, and completeness of the strip/inject diff engine
+(`src/proxy/diff_engine.py`). Touch when changing the dual-log write side, the diff engine, or the
+read-side badge/render logic that consumes `_stripped`/`_injected`.
 
-Verification suite for the `src/logs/dual_log/` log quartet written by `src/proxy/addon.py`.
-Proves losslessness and self-consistency of the forwarded-delta log against the original log,
-and completeness of the strip/inject diff engine (`src/proxy/diff_engine.py`).
+## Flow
+Each script reads one or more dual-log JSONL files (or synthetic fixtures), replays the delta chain
+or the real modification pipeline, and either asserts an invariant (exit 1 on violation) or writes a
+findings report to `md/`.
 
 ## Modules
 
 ### verify_delta.py (272 LOC)
 
-**Purpose:** Reads a `_original.jsonl` + `_forwarded.jsonl` pair, reconstructs the full forwarded
-payload from the delta stream (per-model-family chain), and verifies two invariants:
-
-- **Check 1 (hard):** Reconstructed element counts == counts declared in the delta entry. Pure
-  delta self-consistency — must always hold. Violation = delta-builder bug → exit 1 + FAIL.
-- **Check 2 (soft diagnostic):** `forwarded counts.messages` vs message count in the original.
-  Mismatches are reported with context (request, delta indices, diff) but do NOT fail the script —
-  the proxy legitimately changes message count (msg0-strip).
-
-Output: per-request table (line, request_id, family, is_first, sys/tools/msgs counts, delta KB,
-status, delta indices) + PASS/FAIL summary line.
-
-**Usage (from project root):**
-```bash
-./venv/bin/python dev/proxy_dual_log/verify_delta.py \
-    src/logs/dual_log/api_requests_<id>_original.jsonl \
-    src/logs/dual_log/api_requests_<id>_forwarded.jsonl
-```
-
-**CLI flags:**
-
-| Flag | Description |
-|---|---|
-| `original` (positional) | Path to `_original.jsonl` |
-| `forwarded` (positional) | Path to `_forwarded.jsonl` |
-| `--original` | Named alternative for original path |
-| `--forwarded` | Named alternative for forwarded path |
-
-**Exit codes:** 0 = all hard checks passed (soft mismatches possible); 1 = at least one hard-fail.
+**Purpose:** Reconstructs the full forwarded payload from a `_forwarded.jsonl` delta stream
+(per-model-family chain) and verifies element counts match the delta entry's own declared counts
+(hard check), plus a soft diagnostic comparing message counts against the original log.
+**Reads:** an `_original.jsonl` + `_forwarded.jsonl` pair (positional or `--original`/`--forwarded`).
+**Writes:** a per-request table and PASS/FAIL summary to stdout.
+**Called by:** none — manual CLI, exits 1 on a hard-check failure.
+**Calls out:** none at import time — parses JSONL directly.
 
 ---
 
 ### tt_delta_skip_replay.py (282 LOC)
 
-**Purpose:** Before/after proof for the read-side badge suppression of the per-request
-`<total_tokens>N tokens left</total_tokens>` nuke, INCLUDING its claude-f trailing-nudge variant
-(2026-09-05 — see `src/proxy_display/DOCS.md`'s `parser.py` entry for the full design). Replays a
-recorded `_original.jsonl` through the REAL production pass pipeline
-(`rules.apply_modification_rules`, the actual source of `all_ops`), feeds `(orig_payload,
-fwd_payload, all_ops)` into the REAL `_build_stripped_injected_deltas` — the same call `addon.py`
-makes — and runs the resulting dual-log lines through the REAL `parser.accumulate_dual_log`.
-Unlike `verify_strip_inject.py` it therefore exercises the message delta path end to end, because
-it supplies `all_ops`.
-
-Reports two things separately: the WRITE side (entries carrying `messages_delta`, which must be
-unchanged — the spans keep rendering) and the RENDERED BADGE, resolved through the real
-`parser.badge_flags` (so the flow coordination between the stripped and injected side is exercised,
-not just the per-line filter), under the old one-to-one rule vs the new one. The old rule is
-reproduced in-process by monkeypatching `parser._msgs_delta_is_substantial` to
-`bool(messages_delta)`, so both readings differ in nothing else. Classifies each request as `pure_total_tokens` / `mixed` / `real_strip` / `no_msg_delta` by
-inspecting the original payload's messages via `_is_tt_msg`, which delegates to the REAL
-`parser._is_total_tokens_nuke_text` (lazy-imported via `_shape_classifier()`) rather than keeping
-its own copy of the shape test — updated 2026-09-05 alongside the production widening so this
-script's own classification never drifts out of agreement with what it is verifying; before that
-change this script's narrower bare-tag-only `_is_tt_msg` misclassified nudge-shaped messages as
-`real_strip`/`mixed` and the `--compare` check FAILED on the claude-f sessions for that reason
-alone (the widened production code was correct, the harness's classifier was stale).
-
-**Verified:** PASS on `api_requests_opus_monitor_cc_1788011077`, one run of 88 requests on
-2026-08-29 (that log was live during the work, so a later run shows larger absolute counts — the
-script asserts per-class invariants, not fixed totals, and keeps passing as the log grows): write
-side unchanged at 77 stripped / 76 injected entries with `messages_delta`; rendered badge 78 → 25
-for `strip` and 78 → 25 for `inject`; 53/53 pure-total_tokens requests show NEITHER word while 53/53
-still carry their stripped spans; 14/14 real-strip requests show `strip` and 13/13 of those with a
-green message span show `inject`; 10/10 mixed requests show both words. **Re-verified 2026-09-05**
-against all three current claude-f/opus corpus stems (`api_requests_opus_{wise2627_1788612045,
-websearch_1788611995, monitor_cc_1788611156}`) after the trailing-nudge widening — PASS on all
-three; the widened `pure_total_tokens` bucket on `monitor_cc` (which now correctly absorbs the
-nudge-prefixed shapes) rose from 16 requests (old bare-only classification) to 119, and `strip`
-dropped from 157 → 38 shown while every real-strip request kept showing both words.
-
-**Check semantics note:** the inject check is an implication, not an equality — a green message span
-MUST light `inject`, but the converse does not hold, because a system-section injection (proxy rules
-into `system[2]`) legitimately lights `inject` with an empty injected `messages_delta`.
-
-Recorded dual-logs are read from the MAIN checkout (`MAIN_REPO_ROOT`), since they are untracked
-data not duplicated into worktrees; the code under test is imported from the worktree root.
-
-**Usage (from project root):**
-```bash
-./venv/bin/python dev/proxy_dual_log/tt_delta_skip_replay.py api_requests_opus_monitor_cc_1788011077 --compare
-```
-
-**CLI flags:**
-
-| Flag | Description |
-|---|---|
-| `stem` (positional) | Log stem without the `_original.jsonl` suffix |
-| `--compare` | Report the badge signal under the old rule vs the new one, with PASS/FAIL |
-
-**Exit codes:** 0 = every class behaves as specified; 1 = at least one class regressed.
+**Purpose:** Before/after proof for the read-side `<total_tokens>N tokens left</total_tokens>` badge
+suppression (including its trailing-nudge variant). Replays an `_original.jsonl` through the real
+`apply_modification_rules`, feeds the result into the real `_build_stripped_injected_deltas`, and
+runs the resulting dual-log lines through the real `accumulate_dual_log`/`badge_flags`, comparing the
+old one-to-one badge rule against the current one via `--compare`.
+**Reads:** a dual-log stem's `_original.jsonl`/`_stripped.jsonl`/`_injected.jsonl` triplet under the
+main checkout's src/logs/dual_log (gitignored runtime data).
+**Writes:** PASS/FAIL classification report to stdout.
+**Called by:** none — manual CLI, exits 1 if a class regresses.
+**Calls out:** `src.proxy.rules` (`apply_modification_rules`), `src.proxy_display.dual_log_accumulator`,
+`src.proxy_display.proxy_badge`.
 
 ---
 
 ### diff_strip_inject.py (239 LOC)
 
-**Purpose:** Span-level strip/inject diff of Original vs Forwarded proxy logs. Shows what the
-proxy stripped (delete spans = yellow) and injected (insert spans = green) per request. Reads
-a `_original.jsonl` + `_forwarded.jsonl` pair, reconstructs the full forwarded payload from
-the delta chain (per-model-family), aligns blocks (system by index, tools by name, messages
-by index + within-message by block position), and classifies spans as equal / stripped /
-injected using difflib. One diff delivers both colors: delete spans = stripped, insert spans = injected.
-
-Engine imported from `src/proxy/diff_engine.py` (via `sys.path.insert` — same engine used by
-the runtime `_build_stripped_injected_deltas` in `logging.py`).
-
-**Diff strategy:** Word-level when `SequenceMatcher.ratio() >= 0.1` (partial edits, e.g. a
-cache_control suffix appended to a 55k base64 block — ratio ≈ 1.0, only the last few words
-change). Whole-block 2-span replacement when `ratio < 0.1` (full replacements, e.g. sys[2]:
-CC system prompt → proxy rules, ratio ≈ 0.004 — word-level would produce thousands of trivial
-word-spans with zero information gain).
-
-**Output:** Per-request sections with system / tools / messages blocks, per-block IDENTICAL /
-REPLACED / STRIPPED / INJECTED tags, char counts, previews (120 chars), and a SPANS summary
-line per request.
-
-**Usage (from project root):**
-```bash
-./venv/bin/python dev/proxy_dual_log/diff_strip_inject.py \
-    src/logs/dual_log/api_requests_<id>_original.jsonl \
-    src/logs/dual_log/api_requests_<id>_forwarded.jsonl
-```
-
-**CLI flags:**
-
-| Flag | Description |
-|---|---|
-| `original` (positional) | Path to `_original.jsonl` |
-| `forwarded` (positional) | Path to `_forwarded.jsonl` |
-| `--original` | Named alternative for original path |
-| `--forwarded` | Named alternative for forwarded path |
+**Purpose:** Span-level strip/inject diff of an original vs. forwarded proxy log pair — reconstructs
+the forwarded payload from the delta chain, aligns blocks (system by index, tools by name, messages
+by index), and classifies spans as equal/stripped/injected via `difflib`. Word-level diff when
+`SequenceMatcher.ratio() >= 0.1`, whole-block 2-span replacement below that threshold.
+**Reads:** an `_original.jsonl` + `_forwarded.jsonl` pair (positional or `--original`/`--forwarded`).
+**Writes:** per-request diff sections with IDENTICAL/REPLACED/STRIPPED/INJECTED tags to stdout.
+**Called by:** none — manual CLI.
+**Calls out:** `src.proxy.diff_engine`.
 
 ---
 
 ### span_inline_probe.py (625 LOC)
 
-**Purpose:** Form A vs Form B inline-render data model probe. Validates that Form B (full
-ordered span list per log) is the minimal enrichment that lets the read-side render
-strip/inject inline without content duplication. Shows Form A's empirical failure via concrete
-offset/substring mismatches on real data. Probes 3 blocks: sys[2] full-replace, sys[3]
-strip-to-dot, and a word-level message block with cache_control diff.
-
-Key finding: trailing equal span `'"is_error": false}'` from normalized diff NOT found in
-`fwd_raw_text` (exact_in_raw=-1) — Form A's offset/text unusable as raw-text anchor.
-Form B stores equal+stripped in `_stripped`, equal+injected in `_injected`; 3-color render
-= read-side lock-step zip by equal anchors (trivial for all patterns in session 1780517466).
-
-Imports `diff_engine._diff_text` via `importlib` (standalone load, no src/ package import).
-Inlines `_strip_cache_control` (5-line mirror of `logging.py:_strip_cache_control`).
-
-**Usage (from project root):**
-```bash
-./venv/bin/python dev/proxy_dual_log/span_inline_probe.py
-```
-
-**Output:** `dev/proxy_dual_log/md/span_inline_probe_<YYYYMMDD>.md`
+**Purpose:** Validates that a full ordered span list per log (Form B) is the minimal data model
+letting the read side render strip/inject inline without content duplication, by showing Form A's
+(offset+text anchor) empirical failure on real diff data across three probed blocks.
+**Reads:** a fixed recorded session's dual-log files (hardcoded session reference).
+**Writes:** `md/span_inline_probe_<date>.md`.
+**Called by:** none — manual, one-off design-validation probe.
+**Calls out:** `src.proxy.diff_engine` (`_diff_text`, loaded via `importlib`, standalone).
 
 ---
 
 ### main_log_elimination_probe.py (625 LOC)
 
-**Purpose:** Feasibility probe for eliminating the main log (`api_requests_<id>.jsonl`).
-Answers two questions on a real session using the `_forwarded` + `_original` quartet logs:
-
-- **Question A (Forwarded reconstruction):** Accumulates `_forwarded` delta log per-model-family
-  into full `{system, tools, messages}` payloads, diffs against main log `raw_payload` after
-  stripping `cache_control`. Reports content losslessness, BP-count divergence table, and classifies
-  every top-level payload field as: delta-covered / MUST-ADD / metadata-pane-only-irrelevant.
-- **Question B (Error extraction):** Extracts `is_error=True` tool_result blocks from `_original`
-  payloads, deduplicates by `tool_use_id`, compares against `tool_errors.jsonl` for the session.
-
-Matching strategy: positional (request_ids are empty in quartet; both logs written serially).
-Inlines `_strip_cache_control` + `_normalize_msg_shape_for_hash` verbatim from `src/proxy/logging.py`.
-
-**Findings (session `opus_monitor_cc_1780602018`, 47 requests):**
-- A: LOSSLESS — system/tools/messages reconstruct exactly after cache_control normalization
-- A: BP-count diverges structurally (pre-ops 3 markers → post-ops grows +1/request)
-- A: MUST-ADD `max_tokens` + `output_config` to `_build_forwarded_delta` for proxy-pane header fields
-- B: EXACT MATCH — 1 unique error (by tool_use_id) matches tool_errors.jsonl entry
-
-**Usage (from project root):**
-```bash
-MONITOR_CC_ROOT=/path/to/monitor-cc \
-./venv/bin/python dev/proxy_dual_log/main_log_elimination_probe.py <session_suffix>
-```
-
-Default session: `opus_monitor_cc_1780602018`
-
-**Output:** `dev/proxy_dual_log/md/main_log_elimination_<YYYYMMDD>.md`
+**Purpose:** Feasibility probe for eliminating the single main proxy log in favor of the dual-log
+quartet — reconstructs full payloads from the `_forwarded` delta chain and diffs against the main
+log's `raw_payload`, classifying every top-level field as delta-covered / must-add / pane-only; also
+cross-checks `is_error` tool_result extraction against `tool_errors.jsonl`.
+**Reads:** a dual-log quartet plus the corresponding main proxy log for one session (session suffix
+via positional arg, default hardcoded).
+**Writes:** `md/main_log_elimination_<date>.md`.
+**Called by:** none — manual, one-off feasibility probe.
+**Calls out:** none at module scope — inlines the cache-control-strip and shape-normalization helpers
+from `src/proxy/logging.py` verbatim.
 
 ---
 
 ### green_overlay_probe.py (538 LOC)
 
-**Purpose:** Reproduces the green-overlay false-injection bug in `_diff_text` (word-level path)
-on real log data and validates the char-level candidate fix. The bug: when a JSON-serialized
-tool_result block is diffed, the escaped `\n` sequences are NOT real whitespace, so tokens
-containing both code content and `<system-reminder>…` are treated as single words by `.split()`.
-SequenceMatcher tags them as 'replace' → common prefix `set()))\n\n` mis-tagged as stripped
-(yellow) AND injected (green). Only `<system-reminder>…` was actually stripped.
-
-Implements both variants inline (self-contained, no `src/` imports at module level):
-- `diff_text_word` — exact copy of production `_diff_text` (word-level path)
-- `diff_text_char` — candidate fix: char-level SequenceMatcher, keeps early-exit branches
-
-Also runs 4 regression cases (R1–R3 real logs ratio >= 0.1; R4 synthetic whitespace-collapse
-test) to confirm no span explosion and correct whitespace fidelity.
-
-**Key findings (2026-06-05, session `badge-recap_1780678180`):**
-- Bug case: word=4 spans (common prefix `set()))\n\n` wrongly split), char=6 spans (280-char
-  common prefix correctly equal ✅, `<system-reminder>` stripped ✅, fidelity ✅)
-- R1 (ratio=0.76): word=4, char=6 — no explosion
-- R2 (ratio=0.99): word=3, char=3 — identical span count
-- R3 (ratio=0.95): word=4, char=3 — char fewer spans ✅
-- R4 synthetic whitespace: word collapses `  ` / `\t` / `   ` to single space; char preserves exactly ✅
-- All 4 regression fidelity checks: orig_ok=True fwd_ok=True ✅
-
-**Usage (from project root):**
-```bash
-./venv/bin/python dev/proxy_dual_log/green_overlay_probe.py
-```
-
-**Output:** `dev/proxy_dual_log/md/green_overlay_probe.md`
+**Purpose:** Reproduces a green-overlay false-injection bug in the word-level diff path (JSON-escaped
+`\n` sequences merged into single "words" by `.split()`, causing a shared prefix to be mis-tagged as
+both stripped and injected) and validates a char-level `SequenceMatcher` fix against real log data
+plus synthetic regression cases.
+**Reads:** one recorded session's dual-log files (hardcoded session reference).
+**Writes:** `md/green_overlay_probe.md`.
+**Called by:** none — manual, one-off bug-repro probe.
+**Calls out:** none — both diff variants (`diff_text_word`, `diff_text_char`) are implemented inline,
+no `src/` imports at module level.
 
 ---
 
 ### groundtruth_message_spans_probe.py (669 LOC)
 
-**Purpose:** Validates `build_message_spans(orig_text, fwd_text, stripped_chunks)` — the
-ground-truth span construction algorithm that replaces the blind `_diff_text` for messages.
-Instead of diffing, builds spans from the exact stripped chunks recorded by
-`apply_modification_rules` (`stripped_msg_removed`): split `orig_text` at chunk positions →
-EQUAL + STRIPPED segments; walk `fwd_text` matching EQUALs; gaps in `fwd_text` = INJECTED
-(the real replacement placeholder, if any). Proves: zero phantom green on pure-strip cases,
-lossless fidelity (equal+stripped rebuilds orig, equal+injected rebuilds fwd), and correct
-small injected spans for replace cases (`.` placeholder, wake-up text).
-
-Data source: re-runs `apply_modification_rules` on `_original` dual-log payloads to regenerate
-`stripped_msg_removed`; validates mod payload == fwd delta per case. Operates at inner-content
-level (`block["text"]` / `block["content"]`) rather than `json.dumps(block)` — JSON structural
-chars (`"is_error": false}`) are never coloured.
-
-**Key findings (2026-06-05):**
-- BUG case msg[18] blk[0] tool_result SR strip: GT 0 phantom ✅; diff_text_word at production
-  JSON level: injected phantom `set()))\\n\\n",` ❌
-- TEXT_REPLACE DEF-SR → `.`: GT injected=`.` correct small ✅; fidelity ✅
-- BG_REPLACE TN→wakeup: GT injected=`background done…` correct small ✅; fidelity ✅
-- LARGE_SR 5777-char: precision gap — trailing `\n` not in stripped_chunks; `fwd_ok=False`
-- Recording gaps: ENV-context SR and trailing `\n` not captured in `stripped_msg_removed`
-
-**Usage (from project root):**
-```bash
-./venv/bin/python dev/proxy_dual_log/groundtruth_message_spans_probe.py
-```
-
-**Output:** `dev/proxy_dual_log/md/groundtruth_spans_<YYYYMMDD_HHMMSS>.md`
+**Purpose:** Validates `build_message_spans(orig_text, fwd_text, stripped_chunks)`, the ground-truth
+span-construction algorithm that replaces blind diffing for messages — builds spans directly from the
+chunks `apply_modification_rules` recorded as stripped, rather than diffing original against
+forwarded text.
+**Reads:** recorded `_original.jsonl` dual-log payloads (re-runs `apply_modification_rules` on them to
+regenerate `stripped_msg_removed`).
+**Writes:** `md/groundtruth_spans_<timestamp>.md`.
+**Called by:** none — manual, one-off design-validation probe.
+**Calls out:** `src.proxy.rules` (`apply_modification_rules`).
 
 ---
 
 ### composition_probe.py (547 LOC)
 
-**Purpose:** Proves multi-pass span composition over C0. Models each proxy pass as an
-`Op(offset_in_Ck, removed, injected)` derived from the pass's `(before, after)` block-text
-pair via common-prefix/suffix. Composes all passes into a single span list over C0 by walking
-the accumulated `(equal/stripped/injected)` span list and applying each op — "equal" bytes in
-the removal range become "stripped"; prior "injected" bytes re-removed disappear. Models
-`_dedup_wakeup_blocks` as a final composed op (Layer-1 payload modification, not a span-build hack).
-
-**Stage 1A wiring:** `_REAL_OPS_PASSES = frozenset({"po_preview", "hook_prefix", "git_lock", "bd_noise"})` — for these 4 passes the probe reads `result[5]` (directly-recorded ops from `src/proxy/rules.py`) instead of the `(before, after)` stand-in. Remaining passes still use the stand-in; both paths verified byte-exact.
-
-**Proved (9509/9509 blocks, 567 entries, 5 stems — 2026-06-09 with Stage 1A ops):**
-- Both reconstruction invariants byte-exact: `equal+stripped == C0`, `equal+injected == Cfwd`
-- 1134 multi-pass blocks (same block, ≥2 passes) — all pass
-- 772 double-inject blocks — dedup op correctly reduces each to 1 injected wakeup
-- Money shot (msg[100] TN+BG double-inject): span list = 1 stripped (full TN block) +
-  1 injected wakeup; Cfwd (48 chars) reconstructed byte-exact from C0 (406 chars)
-
-**Usage (from project root):**
-```bash
-./venv/bin/python dev/proxy_dual_log/composition_probe.py
-```
-
-**Output:** `dev/proxy_dual_log/md/composition_probe_<YYYYMMDD>.md`
+**Purpose:** Proves multi-pass span composition over the original content (C0) — models each proxy
+pass as an `Op(offset, removed, injected)` and composes all passes into one span list, validating two
+reconstruction invariants (`equal+stripped == C0`, `equal+injected == Cfwd`) across every modified
+block in the corpus, including double-inject and multi-pass-per-block cases.
+**Reads:** the full dual-log corpus (`*_original.jsonl` and siblings) present at run time.
+**Writes:** `md/composition_probe_<date>.md`.
+**Called by:** `test_composition_invariant.py` (imports it as a module for its own synthetic-fixture
+check); otherwise run manually.
+**Calls out:** `src.proxy.rules`, `src.proxy.strip_bg_completed`.
 
 ---
 
 ### attribution_coverage.py (479 LOC)
 
-**Purpose:** Read-only function-attribution coverage analysis for `_stripped`/`_injected` dual-logs.
-Answers: can every strip AND inject entry be attributed to a responsible proxy function?
-Processes all available `*_stripped.jsonl`/`*_injected.jsonl` pairs in `src/logs/dual_log/`
-and produces a coverage report with per-category attribution tables, RAW/ADJUSTED coverage
-percentages, full residual listing, and false-positive evidence.
+**Purpose:** Read-only coverage analysis — can every entry in the `_stripped`/`_injected` dual-logs
+be attributed to a responsible proxy function? Processes all available quartet pairs, produces
+per-category attribution tables and RAW/ADJUSTED coverage percentages.
+**Reads:** all `*_stripped.jsonl`/`*_injected.jsonl` pairs under src/logs/dual_log.
+**Writes:** `md/attribution_coverage_<date>.md`.
+**Called by:** none — manual CLI.
+**Calls out:** `src.proxy.strip_vocab` (loaded via `importlib.util.spec_from_file_location`).
 
-Key findings from first run (19 pairs, 2026-06-04):
-- Strip ADJUSTED 100% / Inject ADJUSTED 100% — zero truly unattributed entries
-- 6 residual gap categories in strip_vocab (ENV/HP/UI_PARTIAL/DATE_SR/SN/FM) — all attributable,
-  need vocab additions before `fn` field can be materialised
-- **json_reserialization bug**: 409 false positive entries from `_set_cache_breakpoints`
-  format-normalisation not being mirrored in `_build_stripped_injected_deltas` diff setup;
-  renders as false yellow/green in the monitor
+---
 
-Loads `strip_vocab` via `importlib.util.spec_from_file_location` (block_dev_imports_src safe).
-Auto-detects main repo vs worktree path for dual_log directory.
+### A_render_refactor_proof.py (403 LOC)
 
-**Usage (from project root):**
-```bash
-./venv/bin/python dev/proxy_dual_log/attribution_coverage.py
-```
+**Purpose:** Byte-identical differential test harness for the proxy_display render cluster —
+`--mode capture` runs 14 fixed cases through `format_proxy_block` and writes `(ansi_string,
+total_lines)` per case to a baseline JSON; `--mode verify` re-runs the same cases and asserts
+byte-identity against that baseline.
+**Reads:** synthetic in-script fixture entries; `--mode verify` also reads a baseline JSON under
+`A_render_refactor_proof_reports/`.
+**Writes:** `A_render_refactor_proof_reports/<name>.json` (capture mode).
+**Called by:** none — manual, run as capture/implement/verify around a render-cluster refactor
+(also reused by `dev/proxy_tool_stripping/` for its own regression checks — see that DOCS.md).
+**Calls out:** `src.proxy_display.format` (`format_proxy_block`).
 
-**Output:** `dev/proxy_dual_log/md/attribution_coverage_<YYYYMMDD>.md`
+---
+
+### proxy_176_agent_types_tests.py (155 LOC)
+
+**Purpose:** Unit tests for the CC 2.1.176 agent-types system-reminder strip — a standalone
+`<system-reminder>`-wrapped "Available agent types" block in a user message must strip via
+`_apply_cumulative_sr_strips` and attribute to code `AT` in `_MSG_CODE_TO_FN`.
+**Reads:** nothing — synthetic in-script fixture text.
+**Writes:** PASS/FAIL lines to stdout.
+**Called by:** none — manual CLI; its own usage comment names a stale top-level `dev/` path that
+predates this file's move into `dev/proxy_dual_log/`.
+**Calls out:** `proxy.message_passes`, `proxy.strip_inject_delta`, `proxy.diff_engine`,
+`proxy.logging`, `proxy.rule_ops` — imported after inserting `src/` directly onto `sys.path` (not a
+`from src.` line).
+
+---
+
+### proxy_176_bg_launch_ack_tests.py (432 LOC)
+
+**Purpose:** Unit tests for the CC 2.1.176 background-launch-ack strip (`_apply_bg_launch_ack_strip`)
+across tool_result-string, tool_result-list, and standalone-text-block shapes, including two known
+wordings and several false-positive-preservation cases.
+**Reads:** nothing — synthetic in-script fixture text.
+**Writes:** PASS/FAIL lines to stdout.
+**Called by:** none — manual CLI.
+**Calls out:** `proxy.message_passes_simple`, `proxy.strip_inject_delta`, `proxy.diff_engine`,
+`proxy.logging`, `proxy.rule_ops`, `proxy.strip_vocab`, `proxy.strip_bg_launch_ack` — imported after
+inserting `src/` directly onto `sys.path`.
+
+---
+
+### proxy_176_strip_tests.py (181 LOC)
+
+**Purpose:** Unit tests for two CC 2.1.176 proxy drift fixes: `Workflow` added to `TOOL_BLOCKLIST`
+(stripped by `_strip_unused_tools`), and `_apply_role_system_strip` stripping `role='system'`
+messages unconditionally.
+**Reads:** nothing — synthetic in-script fixture text.
+**Writes:** PASS/FAIL lines to stdout.
+**Called by:** none — manual CLI.
+**Calls out:** `proxy.tools`, `proxy.message_passes`, `proxy.strip_inject_delta`, `proxy.diff_engine`,
+`proxy.logging` — imported after inserting `src/` directly onto `sys.path`.
+
+---
+
+### test_composition_invariant.py (131 LOC)
+
+**Purpose:** CI-style regression test asserting the two composition invariants (`equal+stripped ==
+C0`, `equal+injected == Cfwd`) hold for every modified block across a synthetic 9-entry fixture
+corpus covering all 8 proxy passes plus the wakeup-dedup pass.
+**Reads:** `fixtures/invariant_corpus.jsonl`.
+**Writes:** PASS/FAIL summary to stdout; exits 1 on any invariant violation.
+**Called by:** none — manual CLI, exit code suitable for CI use.
+**Calls out:** `composition_probe` (same-directory module, imported directly by adding this
+directory and the project root to `sys.path`).
+
+---
+
+## Gotchas
+- The dual-log corpus under src/logs/dual_log is live and growing from concurrent real sessions — a
+  re-run of any corpus-scanning script here shifts absolute counts without changing the underlying
+  correctness finding.
+- Session-specific scripts (`span_inline_probe.py`, `green_overlay_probe.py`,
+  `main_log_elimination_probe.py`) hardcode one recorded session's stem rather than taking it as an
+  argument — they are one-off design-validation probes, not general-purpose regression tools.
+- `tt_delta_skip_replay.py`'s inject check is an implication, not an equality — a green message span
+  must light `inject`, but a system-section-only injection can legitimately light `inject` with an
+  empty injected `messages_delta`.
