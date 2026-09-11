@@ -2,13 +2,16 @@
 
 ## Role
 
-Research artifacts from Claude Code binary + source analysis (env-var inventory). Contains env-var inventories extracted from npm binaries and cross-referenced against community decompile repos. Touch this directory when adding new binary extracts or updating the env-var inventory. Area pairs with `process-docs/cc_internals/`.
+Research artifacts from Claude Code binary and source analysis — env-var inventories extracted
+from npm binaries and cross-referenced against community decompile repos. No `.py` scripts; add a
+new dated file under `md/` when extracting from a new binary version. Pairs with
+`process-docs/cc_internals/`.
 
 ## Files
 
 | File | Description |
 |---|---|
-| `md/20260428_env_var_inventory_v2.1.121.md` | Full env-var table for v2.1.121 binary — all CLAUDE_* + perf-adjacent vars, categorized, with latency-subset highlight and open questions |
+| `md/20260428_env_var_inventory_v2.1.121.md` | Env-var table for v2.1.121 — all `CLAUDE_*` + perf-adjacent vars, categorized, with latency-subset highlight and open questions |
 
 ## Sources Used
 
