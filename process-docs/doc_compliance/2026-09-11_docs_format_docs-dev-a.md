@@ -742,3 +742,82 @@ without the date, area cross-reference kept.
 "the daily sweep's dedicated LaunchAgent was removed the same milestone — see
 `process-docs/monitor_lifecycle/`" (repeated on test_monitor_sweep_scheduler.py's own Purpose) —
 same treatment, de-duplicated into the single Gotchas-section statement in the rewrite.
+
+---
+
+## 2026-09-11 recap
+
+Single-pass task: investigate, report, receive "Go", implement, verify, commit — no separate
+implementation session, so this recap is the only entry beyond the salvage sections above.
+
+### Method
+
+Read every one of the 19 in-scope DOCS.md files in full (`dev/DOCS.md` plus the 17 listed areas,
+`display` counted as 2 files with `jsonl_exploration`). For every `.py`/`.sh` file inside those
+areas, read the docstring/header, `argparse`/CLI-flag block, and full import list, and took
+`wc -l`. Cross-referenced every module's basename against `src/`, `dev/`, `cli.py`, `workflow.py`
+via both a loose substring grep (caught mostly noise — common words like "probe"/"analyze"
+matching unrelated files) and a precise import-pattern grep (`import <base>`,
+`from .*<base> import`, `import.*\.<base>\b`) — the precise pass returned zero hits for every
+in-scope module, confirming none of these dev scripts are imported anywhere; all are manually-run
+entry points.
+
+### Decisions
+
+- **`Called by` phrasing for dev/ entry points:** Main confirmed "none — run manually" over
+  "DEAD CODE", reserving DEAD CODE strictly for a script whose `src/` target no longer exists.
+  Checked every referenced `src/` module/function for existence before writing each entry; none
+  were missing except the ones a script's own Purpose already documents as verifying a removal
+  (`verify_hook17_removal.py` confirming `block_worker_spawn_opus.py` is gone — that's the
+  script's job, not staleness).
+- **LOC drift caught during the rewrite, not just inherited:** `desktop_detection/
+  03_field_availability_probe.py` was documented as 260 LOC; actual `wc -l` is 451. Used the
+  actual count in the rewritten heading rather than propagating the stale number.
+- **`cc_internals/DOCS.md`'s provenance table (Sources Used) kept verbatim** per Main's explicit
+  instruction — it describes what the artifact IS (binary version, decompile repos, GH issue
+  numbers), not a change.
+- **`hook_smoke/DOCS.md` gained 7 module entries** for scripts present on disk but entirely
+  undocumented in the pre-rewrite file: `test_block_broad_find.py`,
+  `test_block_manual_worker_cleanup.py`, `test_block_rag_corpus_read.py`,
+  `test_block_rag_docs_layer.py`, `test_block_worker_kill_while_working.py`,
+  `test_block_worker_send_while_working.py`, `test_fire_log.py`. `display/DOCS.md` gained one:
+  `test_strip_markers.py`. `menubar_nspanel/DOCS.md` gained one: `menubar_debug.py`.
+- **Known drift items resolved as directed:** `hook_error_correlation/DOCS.md`'s
+  `md/YYYY-MM-DD.md` placeholder rewritten as plain-word phrasing (`md/<date>.md`);
+  `hook_smoke/DOCS.md`'s `src/panes/log_janitor.cleanup_old_jsonl` and `src/proxy/addon` path
+  literals split into real file path (`src/panes/log_janitor.py`, `src/proxy/addon.py`) plus
+  function name in prose; `menubar/DOCS.md`'s `IMPORT_OK` implementation-variable literal
+  dropped, substance (no monkeypatch seam for `desktop_detection.py`/`ghostty.py`) kept as a
+  Gotcha; `model_selector/DOCS.md`'s `_load_model_controller()` rename narrative cut in full.
+- **Every removed sentence salvaged before deletion**, grouped by source DOCS.md and module, in
+  the sections above — written before any rewrite, per the salvage-first rule.
+
+### Verification
+
+- Automated LOC check: every `### <file> (<N> LOC)` heading across all 19 rewritten files
+  compared against `wc -l` of the actual file on disk — zero mismatches.
+- Path-existence check: every backticked `src/*.py`/`*.sh` path and every `src.module.sub`
+  dotted-import reference across all 19 files resolved to a real file on disk (verified via a
+  script that also flagged 3 false positives from function names appended after the module path,
+  e.g. `src.workers.worker_pane._build_workers_output` — the underlying module
+  `src/workers/worker_pane.py` exists, confirmed separately).
+  `dev/`-relative and `process-docs/<area>/`-relative cross-references also all resolved.
+- `docs-drift-check`, filtered to lines whose path starts with one of the 19 rewritten files:
+  zero LOC-Drift findings, zero Symbol-Drift findings. 12 Path-Drift findings remain, all for
+  `src/logs/dual_log` (gitignored, not materialized in this worktree) and `.claude/worktrees`/
+  `.claude/rules/*.md` (not present as literal paths inside a worktree checkout) — the same
+  false-positive category the tool reports against every other pre-existing DOCS.md in the repo
+  (`dev/proxy_dual_log/`, `dev/session_analysis/`, `src/proxy/DOCS.md`, `src/hooks/DOCS.md`, and
+  others all show identical findings for the same paths), not something introduced by this
+  rewrite.
+- `git diff integration --name-only` restricted to this task's own commit (`git show --stat
+  HEAD`): exactly the 19 DOCS.md files plus this process-docs file — no `.py`/`.sh` touched.
+
+### Discarded approach
+
+Considered writing a `Reads`/`Writes` line for every one of the 27 `hook_smoke/` test modules to
+match the target format's field list exactly, but every one of them shares the identical
+mechanism (subprocess with a JSON stdin payload, exit-code + stdout/stderr check) — stated once in
+the area's Role paragraph instead, per "omit, don't pad"; only the modules whose I/O actually
+diverges from that default (writes a report file, imports the hook directly instead of
+subprocessing it, touches a real scratch dir) carry their own `Reads`/`Writes`/`Calls out` lines.
