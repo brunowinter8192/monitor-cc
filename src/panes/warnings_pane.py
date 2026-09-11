@@ -250,6 +250,7 @@ def _read_errors_log(path: Path, last_pos: int) -> tuple:
                     continue
             return records, f.tell()
     except OSError:
+        log_pane_error('warnings')
         return records, last_pos
 
 def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: float) -> tuple:
@@ -299,13 +300,9 @@ def _refresh_warnings_data(now: float, input_changed: bool, last_data_refresh: f
 
 def _build_warnings_output() -> tuple:
     global error_line_map, error_copy_rows, _error_pane_width, _warnings_header_regions
-    try:
-        term = os.get_terminal_size()
-        pane_height = term.lines - 1
-        pane_width = term.columns
-    except OSError:
-        pane_height = 50
-        pane_width = 80
+    term = os.get_terminal_size()
+    pane_height = term.lines - 1
+    pane_width = term.columns
     _error_pane_width = pane_width
     refresh_header = _format_warnings_header(_last_refresh_ts, pane_width, _warnings_header_regions)
     if _warnings_header_regions:

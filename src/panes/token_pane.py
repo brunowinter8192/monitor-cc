@@ -218,11 +218,8 @@ def _ensure_tokens_match_visible() -> None:
     total_lines = _tokens_nav.get('total_lines')
     if target_line is None or total_lines is None:
         return
-    try:
-        term = os.get_terminal_size()
-        pane_height = term.lines - 1
-    except OSError:
-        pane_height = 50
+    term = os.get_terminal_size()
+    pane_height = term.lines - 1
     viewport_lines = (pane_height - _TOKENS_SEARCH_BAR_LINES) - 1
     new_start = max(0, target_line - 2)
     cache_scroll_offset = max(0, total_lines - viewport_lines - new_start)
@@ -272,13 +269,9 @@ def _refresh_tokens_data(now: float, input_changed: bool, last_data_refresh: flo
 
 def _build_tokens_output() -> str:
     global cache_line_map, cache_copy_rows, _cache_pane_width
-    try:
-        term = os.get_terminal_size()
-        pane_height = term.lines - 1
-        pane_width = term.columns
-    except OSError:
-        pane_height = 50
-        pane_width = 80
+    term = os.get_terminal_size()
+    pane_height = term.lines - 1
+    pane_width = term.columns
     _cache_pane_width = pane_width
     content_height = pane_height - _TOKENS_SEARCH_BAR_LINES
     current_match_key = (

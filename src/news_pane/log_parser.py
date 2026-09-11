@@ -2,6 +2,8 @@
 import re
 from pathlib import Path
 
+from ..pane_error_log import log_pane_error
+
 WEBSEARCH_ROOT = Path('/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch')
 LOG_DIR        = WEBSEARCH_ROOT / 'src' / 'logs'
 LAST_RUN_FILE  = LOG_DIR / 'news_coindesk_last_run.txt'
@@ -40,6 +42,7 @@ def find_current_run_lines(log_path: Path) -> list[str]:
     try:
         text = log_path.read_text(errors='replace')
     except OSError:
+        log_pane_error('news_log')
         return []
     lines = text.splitlines()
     last_start = -1

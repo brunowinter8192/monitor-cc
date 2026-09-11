@@ -160,10 +160,7 @@ def _gpu_search_on_commit(state: search_bar.SearchState, presets: list, arbitrar
         state.matches = []
         state.match_set = set()
         return
-    try:
-        pane_width = os.get_terminal_size().columns
-    except OSError:
-        pane_width = 100
+    pane_width = os.get_terminal_size().columns
     plain = _render_pane(pane_width, 0, presets, arbitrary, anomalies, today_errors, error_counts, collections)
     q = state.query.lower()
     matches = [i for i, line in enumerate(plain.split('\n')) if q in _strip_ansi(line).lower()]
@@ -204,13 +201,9 @@ def _refresh_gpu_data(now: float, force_refresh: bool, last_data_refresh: float,
 
 def _build_gpu_output(presets: list, arbitrary: list, anomalies: list, today_errors: list,
                        error_counts: dict, collections: list, last_output) -> str:
-    try:
-        term = os.get_terminal_size()
-        pane_width = term.columns
-        pane_height = term.lines - 1
-    except OSError:
-        pane_width = 100
-        pane_height = 30
+    term = os.get_terminal_size()
+    pane_width = term.columns
+    pane_height = term.lines - 1
     current_match_line = (
         _gpu_search.matches[_gpu_search.current_idx]
         if _gpu_search.matches and _gpu_search.current_idx < len(_gpu_search.matches)

@@ -30,7 +30,7 @@ core/monitor.run_monitor(mode=X)
 
 ## Modules
 
-### token_pane.py (333 LOC)
+### token_pane.py (326 LOC)
 
 **Purpose:** Token/cache-tracker pane event loop — incrementally reads session JSONL (via `cache_turns.build_cache_turns`), renders an interactive expand/collapse/scroll view with CR/CC/D per request, and owns the zebra/hover/truncation render loop over `format.token_format`'s logical lines. Also polls the `_response` dual-log incrementally for rate-limit headers (accumulated into `_response_rid_map`), and runs the 24h `log_janitor` sweep from its own tick — this pane is the always-active, main-checkout-resident process, which is why it hosts that sweep.
 **Reads:** session JSONL (incremental via `_cache_jsonl_position`); the `_response` dual-log (incremental via `_response_log_pos`); shared state `monitor.active_project_filter`.
@@ -60,7 +60,7 @@ core/monitor.run_monitor(mode=X)
 
 ---
 
-### warnings_pane.py (332 LOC)
+### warnings_pane.py (329 LOC)
 
 **Purpose:** Warnings pane event loop and module-level state owner. Reads tool errors from the current session's `_errors` dual-log plus every worker's own `_errors` dual-log, converts raw records to display dicts, and drives the same drain-refresh-render loop shape as every other pane. On project/session change, resets all state and read positions.
 **Reads:** `_errors` dual-log (incremental via `_errors_log_pos`); worker `_errors` dual-logs (incremental via `_worker_errors_positions`); shared state `monitor.active_project_filter`.

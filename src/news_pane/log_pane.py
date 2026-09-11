@@ -17,12 +17,9 @@ def run_news_log_loop() -> None:
     last_output = None
     while True:
         try:
-            try:
-                term = os.get_terminal_size()
-                pane_width  = term.columns
-                pane_height = term.lines - 1
-            except OSError:
-                pane_width, pane_height = 80, 24
+            term = os.get_terminal_size()
+            pane_width  = term.columns
+            pane_height = term.lines - 1
 
             log_path = find_log_file()
             events: list[str] = []

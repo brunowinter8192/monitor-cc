@@ -1,0 +1,86 @@
+# P8 warnings + gpu + news panes parity regression -- 20260911_200621
+
+82/82 checks passed
+
+- [x] _warnings_search is a search_bar.SearchState instance
+- [x] label is 'search: '
+- [x] search bar is fixed 1-line
+- [x] source contains 'DIM_YELLOW_BG in line' (substring form)
+- [x] source does NOT contain a '.startswith(DIM_YELLOW_BG)' call
+- [x] row 1 shows the 'search: ' label
+- [x] no click-arrows
+- [x] [refresh] region exists and is at row 2 (shifted past the search bar)
+- [x] clicking the shifted [refresh] region still sets _force_refresh
+- [x] press returns True (redraw)
+- [x] press focuses the bar
+- [x] press arms dragging
+- [x] press anchors at index 1 ('e')
+- [x] motion extends sel_end only
+- [x] release copies exactly the selected substring
+- [x] release still returns True (dragging disarmed)
+- [x] NO clipboard call on a plain click
+- [x] elsewhere-click clears the selection (reports a change)
+- [x] selection actually cleared
+- [x] selection-delete removed 'ello '
+- [x] plain backspace trims last char
+- [x] kill-line empties the query
+- [x] matches survive plain backspace
+- [x] error is NOT expanded
+- [x] Enter reports a change
+- [x] real search found the error
+- [x] collapsed header line is container-marked
+- [x] the marker text itself does NOT leak into the collapsed row (only 'echo' shows)
+- [x] header line STILL container-marked when expanded
+- [x] the matched substring itself is browser-find highlighted
+- [x] no unsubstituted _BG_RESTORE_SENTINEL leaks into the final output
+- [x] ZEBRA_BG_A is indeed the empty string
+- [x] an explicit \033[49m appears right after the highlighted detail-line text
+- [x] no raw _BG_RESTORE_SENTINEL leaked
+- [x] no-op with zero matches
+- [x] n advances to idx 1
+- [x] n advances to idx 2
+- [x] n wraps back to idx 0
+- [x] N (backward) wraps to idx 2
+- [x] error_scroll_offset untouched by n/N
+- [x] cancel reports a change
+- [x] query/matches/selection cleared
+- [x] bar still renders (never hidden)
+- [x] reverse-video wraps exactly the selected substring
+- [x] _gpu_search is a search_bar.SearchState instance
+- [x] label is 'search: '
+- [x] search bar is fixed 1-line
+- [x] direct _render_pane call registers its own header region at row 1 (its own top)
+- [x] after the external shift, the region is at row 2
+- [x] a click at the shifted row still correctly dispatches to 'refresh'
+- [x] row-1 dispatch returns True (search_bar handled it)
+- [x] press focuses the bar
+- [x] press arms dragging
+- [x] release copies exactly the selected substring
+- [x] plain backspace trims last char
+- [x] kill-line empties the query
+- [x] matcher found at least one match line
+- [x] matched line is highlighted with SEARCH_CURRENT_BG
+- [x] the query substring itself is wrapped exactly (browser-find style)
+- [x] no-op with zero matches
+- [x] n advances to idx 1
+- [x] n advances to idx 2
+- [x] n wraps back to idx 0
+- [x] N (backward) wraps to idx 2
+- [x] cancel reports a change
+- [x] query/matches cleared
+- [x] bar still renders (never hidden)
+- [x] _news_search is a search_bar.SearchState instance
+- [x] label is 'search: '
+- [x] search bar is fixed 1-line
+- [x] [refresh] region (first inserted) is at its own top, row 1
+- [x] every region shifted by exactly _NEWS_SEARCH_BAR_LINES
+- [x] matcher found at least one match line
+- [x] matched line is highlighted with SEARCH_CURRENT_BG
+- [x] collection name substring wrapped exactly (browser-find style)
+- [x] release copies exactly the selected substring
+- [x] no-op with zero matches
+- [x] n advances to idx 1
+- [x] n wraps back to idx 0
+- [x] cancel reports a change
+- [x] query/matches cleared
+- [x] bar still renders (never hidden)
