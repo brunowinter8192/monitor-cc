@@ -325,3 +325,27 @@ The comparison target is `proxy_forwarded_model`, not `cc_requested_model`, per 
 instruction: the API answered the request the proxy actually sent, and a `cc_requested_model` /
 `proxy_forwarded_model` difference is our own override feature firing, not an API deviation. Matches
 the M1 rationale already recorded above under "Design choice" in the first dated section of this file.
+
+## 2026-09-13 — Recap close-out (M2)
+
+Session end for the M2 task. Self-audit (`git diff integration --name-only`, integration already
+carries M1 as of `55de9bd merge: worker modelcheck`): `dev/panes/DOCS.md`,
+`dev/panes/answering_model_line_test.py`, `dev/panes/render_byte_identity.py`,
+`process-docs/proxy_instrumentation/2026-09-13_answering_model_capture_m1.md`, `src/format/DOCS.md`,
+`src/format/token_format.py`, `src/panes/DOCS.md`, `src/proxy_display/DOCS.md`,
+`src/proxy_display/side_logs.py`. All touched-file DOCS.md entries (`dev/panes/DOCS.md`,
+`src/format/DOCS.md`, `src/proxy_display/DOCS.md`, `src/panes/DOCS.md`) were kept current inline
+during the task itself, not deferred to this recap pass — checked again now against `wc -l` on each
+file, all LOC values and Purpose/Reads/Writes text still match the committed state, nothing to fix.
+
+**One thing worth flagging for whoever picks up the next milestone in this area:** the three
+TTY-dependent pane-parity harnesses (`dev/pane_search/p6_tokens_pane_parity_test.py`,
+`dev/pane_search/p7_workers_pane_parity_test.py`, `dev/click_ui/p2_copy_click_probe.py`) cannot run to
+completion in this sandboxed worker environment at all (`os.get_terminal_size()` has no real TTY to
+query). This is a standing environment gap, not something either M1 or M2 introduced or should try to
+fix — confirmed via `git stash` both times work in this area touched pane rendering. Don't spend time
+debugging it as if it were a regression; it reproduces identically on unmodified `integration` HEAD.
+
+M1 + M2 are both complete and merged into `integration` as of this recap. No further work on this
+`_response`-model-capture line is planned by this worker — the milestone as scoped (M1: capture +
+survive-abort + three-field naming; M2: token-pane display) is done.
