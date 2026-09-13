@@ -24,5 +24,6 @@ TOOL_BLOCKLIST = frozenset({
     "Workflow",
     "Artifact", "ReportFindings", "DeferredToolPlaceholder",
     "SendFeedback", "ListAgents",
+    "Read", "Edit", "Write",
 })
 

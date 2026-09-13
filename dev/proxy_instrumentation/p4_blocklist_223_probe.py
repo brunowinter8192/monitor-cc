@@ -33,7 +33,7 @@ STEM = 'api_requests_opus_websearch_1786052022'
 REPORT_DIR = Path(__file__).parent / 'md'
 REPORT_PATH = REPORT_DIR / 'blocklist_223_probe_report.md'
 
-EXPECTED_KEPT = {'Bash', 'Edit', 'Read', 'Write', 'Skill'}
+EXPECTED_KEPT = {'Bash', 'Skill'}
 NEWLY_BLOCKED = {'Artifact', 'ReportFindings', 'DeferredToolPlaceholder'}
 
 # FUNCTIONS
