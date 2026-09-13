@@ -29,10 +29,18 @@ _ENV_CONTEXT_RE = re.compile(
     r"As you answer the user's questions, you can use the following context:\n"
     r"# userEmail\n"
     r"The user's email address is brunowinter7934@gmail\.com\.[^\n]*\n"
+    r"(?:"
     r"# currentDate\n"
     r"Today's date is \d{4}-\d{2}-\d{2}\.\s+"
+    r"|"
+    r"# gitStatus\n"
+    r"This is the git status at the start of the conversation\. Note that this status is a "
+    r"snapshot in time, and will not update during the conversation\.\n"
+    r".*?"
+    r")"
     r"IMPORTANT: this context may or may not be relevant to your tasks\. "
     r"You should not respond to this context unless it is highly relevant to your task\.",
+    re.DOTALL,
 )
 
 _MARKER_TO_TEMPLATE = {

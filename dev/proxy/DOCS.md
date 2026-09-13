@@ -113,7 +113,7 @@ under both roles, and end-to-end resolution through `apply_modification_rules`.
 
 ---
 
-### test_strip_fix.py (1575 LOC)
+### test_strip_fix.py (1786 LOC)
 
 **Purpose:** The largest suite in this directory — regression tests for the template-based
 exact-match system-reminder strip (core templates, content-shape variants, preserve guards), the
@@ -134,12 +134,12 @@ line (see the module's own W31-W33 fixture).
 
 ---
 
-### replay_env_context_strip.py (192 LOC)
+### replay_env_context_strip.py (244 LOC)
 
-**Purpose:** Before/after replay for the CC 2.1.258 `_ENV_CONTEXT_RE` fix — scans every top-level
-standalone system-reminder block across the dual-log corpus, classifies each against both the old and
-live regex into stripped / left-pure (the bug) / left-bundled (preserved by design) /
-CLAUDE.md-preserved.
+**Purpose:** Before/after replay for `_ENV_CONTEXT_RE` fixes (CC 2.1.258 trailing-sentences, and the
+gitStatus-section widening) — scans every top-level standalone system-reminder block across the
+dual-log corpus, classifies each against both the old and live regex, split by bucket (stripped /
+left-pure / left-bundled / CLAUDE.md-preserved) AND by form (`currentDate` vs `gitStatus`).
 **Reads:** all `*_original.jsonl` files under src/logs/dual_log in the main checkout (hardcoded
 absolute path).
 **Writes:** `dev/proxy/md/replay_env_context_strip.md`.
