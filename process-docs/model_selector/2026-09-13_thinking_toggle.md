@@ -192,3 +192,114 @@ between them; a future person touching one without the other reintroduces this s
   pipeline/`ProxyAddon` hash harnesses) both run clean (no exceptions) after the change; their
   hashes are expected to differ from any pre-fix run since real behavior changed, which is fine —
   neither harness asserts equality against a stored baseline.
+
+## 2026-09-13 (unrelated follow-up task, same worktree) — blocking Read/Edit/Write in `TOOL_BLOCKLIST`
+
+This entry is unrelated to the thinking toggle above — it lands here only because this worker
+writes exactly one process-docs file for its whole lifetime, under `process-docs/model_selector/`.
+The actual line of work is `TOOL_BLOCKLIST`/proxy tool stripping (see
+`process-docs/proxy_tool_stripping/` for the area's own history — not touched by me).
+
+### Task
+
+Add `Read`, `Edit`, `Write` to `src/constants.py:TOOL_BLOCKLIST`, the same mechanism as every
+existing entry (`_strip_unused_tools` removes the tool def from the outgoing `tools` array;
+`_strip_blocked_tool_references` removes `tool_reference` blocks for it from tool results). Before
+touching anything, investigate whether this is really "the same as every existing entry," given
+Read/Edit/Write are the dominant tools of essentially every already-running session, unlike
+anything blocklisted before.
+
+### Investigation finding 1 — two dead spots outside `TOOL_BLOCKLIST`
+
+Grepped `src/` for special-case handling of the literal strings `"Read"`/`"Edit"`/`"Write"` outside
+`constants.py`/`tools.py`/`payload_helpers.py`, and cross-checked every currently-blocklisted name
+against the same files to see whether this pattern already existed for them (it doesn't):
+
+- `src/hooks/hook_setup.py`'s `_HOOK_SCRIPTS` registers 5 local Claude-Code `PreToolUse` hook
+  entries matched against `"Read"`/`"Write"`/`"Edit"`: `block_path_typo.py` (all three), `block_
+  noop_edit.py` (`Edit`), `block_read_directory.py` (`Read`), `block_dev_imports_src.py` (`Write`,
+  `Edit`), `block_except_pass.py` (`Write`, `Edit`). None of the 30 names already in
+  `TOOL_BLOCKLIST` (grepped individually) has any such registration.
+- `src/utils.py:first_word_of_call` has `if tool_name in ('Glob', 'Read', 'Edit', 'Write'): key =
+  'pattern' if tool_name == 'Glob' else 'file_path'; return tool_call_input.get(key, '')` — a
+  display helper (extracts the file path for a monitor-pane tool-call summary line).
+
+**Both are now dead code, not broken code.** A `PreToolUse` hook only fires when the model actually
+calls the tool; a tool the model was never offered in `tools` can never be called, since the model
+has no schema for it. `first_word_of_call` similarly just never gets invoked with these three names
+again. Neither raises, neither behaves incorrectly — they simply stop being reachable. Left both
+untouched: fixing/removing dead code was not the deliverable and the task's negative scope forbids
+scope creep.
+
+### Investigation finding 2 — the historical-tool_use gap, and why it turned out to be harmless
+
+`TOOL_BLOCKLIST` is consulted in exactly 2 places in `src/`: `tools.py:_strip_unused_tools` (the
+`tools` schema array) and `payload_helpers.py:_strip_blocked_tool_references` (`tool_reference`
+blocks, a ToolSearch-deferred-tools construct). Neither touches a real `tool_use`/`tool_result`
+content-block pair. Proved this empirically (not just by absence of a call site) in the new guard:
+a synthetic historic `tool_use`/`tool_result` pair for each of Read/Edit/Write survives both
+functions byte-for-byte, unmodified.
+
+`process-docs/proxy_tool_stripping/20_cc223_strip_followup.md` and `22_cc258_strip_followup.md`
+both state, verbatim: "a stripped tool def with a live `tool_use` reference in history would 400
+the API on replay" — and both back every prior `TOOL_BLOCKLIST` addition with a corpus-wide scan
+proving **zero** live `tool_use` hits for the newly-blocked name before merging (`dev/proxy_
+instrumentation/p4_blocklist_223_probe.py`, `p7_blocklist_258_probe.py`). **This claim has never
+actually been measured against a real occurrence** — every prior addition sidestepped it by only
+ever blocklisting tools with zero historical usage in the observed corpus. Nobody has ever shipped
+a `TOOL_BLOCKLIST` addition WITH live history and observed what the API actually does. It is
+carried in this codebase as an untested assumption, not a confirmed fact.
+
+Read/Edit/Write cannot pass that same zero-hits bar. Corpus-wide scan (25 `*_original.jsonl` files
+present at the time under `src/logs/dual_log/` in the main checkout): **450,847 live `tool_use`
+hits across 21 of the 25 files** — by a wide margin the largest number this line of work has ever
+produced for a `TOOL_BLOCKLIST` addition. This is concrete, measured evidence that Read/Edit/Write
+structurally differ from every prior entry.
+
+**Why this turned out not to matter in production, per review feedback:** each worker runs its own
+proxy instance, frozen at spawn time, under `src/logs/.proxy_live_worker_<name>/` (`src/proxy/
+DOCS.md`'s own Gotcha: "Worker proxies are frozen at spawn time... A worker spawned before a
+proxy-touching merge cannot reach the new code until it is killed and respawned"). A newly spawned
+worker loads the NEW `TOOL_BLOCKLIST` (with Read/Edit/Write) and starts its history from empty —
+zero pre-existing `tool_use` blocks for anything, let alone Read/Edit/Write. A session already
+running when this change merges keeps its OLD, already-loaded, in-memory `TOOL_BLOCKLIST` (no
+hot-reload of the blocklist mid-session) and so keeps offering Read/Edit/Write in its `tools` array
+for its own remaining lifetime — its history and its live declarations never diverge. The gap
+(declaring a tool as absent while history still references it) therefore never actually arises for
+ANY live session, old or new. The 450,847-hit measurement stands as real evidence of the SCALE of
+usage, and as documentation that the "would 400 on replay" assumption remains unmeasured either
+way — but the per-process-frozen-proxy architecture is what makes the gap moot in practice, not
+anything this task built.
+
+### What was and wasn't changed
+
+Added `"Read", "Edit", "Write"` to `TOOL_BLOCKLIST` (`src/constants.py`) — the whole functional
+change; `_strip_unused_tools`/`_strip_blocked_tool_references` needed no code change, both already
+operate purely off the frozenset. No message-history-rewrite mechanism was built to "close" the
+historical-tool_use gap — given the review-confirmed harmlessness above, there was nothing to
+close, and building one preemptively would have been unrequested, invasive scope creep (rewriting
+content in every message of every session) against an assumption that isn't even confirmed to be a
+real API constraint.
+
+Fixed 3 existing dev/ tests whose assertions depended on Read/Edit/Write staying unblocked (a
+real, mechanical consequence of the `TOOL_BLOCKLIST` change, not a new mechanism): `dev/proxy_
+instrumentation/p4_blocklist_223_probe.py` and `p7_blocklist_258_probe.py`'s `EXPECTED_KEPT`
+(`{Bash, Edit, Read, Write, Skill}` → `{Bash, Skill}`), and `dev/proxy_dual_log/proxy_176_strip_
+tests.py`'s control-tool assertion (`"Read" in remaining` → `"Glob" in remaining`, since `Read` is
+no longer a valid "definitely not blocked" example).
+
+### Verification
+
+`dev/proxy_instrumentation/p7_blocklist_258_probe.py` (existing file, extended — chosen over the
+other 3 candidates because it's the most current/general: corpus-wide, glob-driven, no hardcoded
+session stem). Added 4 checks for the Read/Edit/Write milestone: blocklist membership, actual
+removal from a representative payload, the corpus-wide scan asserting hits `> 0` (447,644–450,847
+across separate runs, corpus grows between runs — inverse of the pre-existing zero-hits check,
+intentionally, since zero isn't achievable here and pretending otherwise would misreport reality),
+and the synthetic historic-tool_use/tool_result-survives check. Command: `./venv/bin/python dev/
+proxy_instrumentation/p7_blocklist_258_probe.py` → **8/8 PASS**. Also re-ran `dev/proxy_dual_log/
+proxy_176_strip_tests.py` (all PASS), `dev/proxy/test_strip_fix.py` (255/255), `dev/proxy/pipeline_
+byte_identity.py` and `dev/proxy/addon_hook_byte_identity.py` (both clean) as broader sweeps. `dev/
+proxy_instrumentation/p4_blocklist_223_probe.py` could not run — its hardcoded session log has
+since rotated out of the corpus, a pre-existing issue predating this task, documented as a new
+Gotcha in `dev/proxy_instrumentation/DOCS.md` rather than fixed (out of scope).
