@@ -121,10 +121,7 @@ class ProxyAddon:
             if not _is_messages_request(flow):
                 return
             if flow.response:
-                try:
-                    _write_response_entry(flow, self.paths.response)
-                except Exception as e:
-                    print(f"[dual_log] response write failed: {e}", file=sys.stderr)
+                _write_response_and_mismatch(flow, self.paths, self.identity)
             if flow.response and 400 <= flow.response.status_code < 500:
                 _log_4xx_error(flow, self.paths.errors)
                 return
@@ -141,10 +138,7 @@ class ProxyAddon:
             if not _is_messages_request(flow):
                 return
             if flow.response:
-                try:
-                    _write_response_entry(flow, self.paths.response)
-                except Exception as e:
-                    print(f"[dual_log] response write failed (error hook): {e}", file=sys.stderr)
+                _write_response_and_mismatch(flow, self.paths, self.identity)
         except Exception as e:
             print(f"[proxy_addon] Error in error hook: {e}", file=sys.stderr)
 
@@ -220,9 +214,9 @@ def _filter_response_headers(headers) -> dict:
     return result
 
 
-def _write_response_entry(flow: http.HTTPFlow, log_file) -> None:
+def _write_response_entry(flow: http.HTTPFlow, log_file) -> Optional[dict]:
     if flow.metadata.get("mc_response_entry_written"):
-        return
+        return None
     flow.metadata["mc_response_entry_written"] = True
     original_payload = flow.metadata.get("mc_original_payload") or {}
     modified_payload = flow.metadata.get("mc_modified_payload") or {}
@@ -238,6 +232,46 @@ def _write_response_entry(flow: http.HTTPFlow, log_file) -> None:
         "answering_model": probe_state.get("model", ""),
     }
     _write_entry(log_file, entry)
+    return entry
+
+
+def _write_response_and_mismatch(flow: http.HTTPFlow, paths, identity) -> None:
+    response_entry = None
+    try:
+        response_entry = _write_response_entry(flow, paths.response)
+    except Exception as e:
+        print(f"[dual_log] response write failed: {e}", file=sys.stderr)
+    if response_entry is not None:
+        try:
+            _write_model_mismatch_entry(flow, response_entry, paths.errors, identity)
+        except Exception as e:
+            print(f"[dual_log] model mismatch write failed: {e}", file=sys.stderr)
+
+
+def _write_model_mismatch_entry(flow: http.HTTPFlow, response_entry: dict, errors_log_file, identity) -> None:
+    if flow.metadata.get("mc_model_mismatch_logged"):
+        return
+    forwarded_model = response_entry.get("proxy_forwarded_model", "")
+    answering_model = response_entry.get("answering_model", "")
+    if not answering_model or answering_model == forwarded_model:
+        return
+    flow.metadata["mc_model_mismatch_logged"] = True
+    now_ts = datetime.now(timezone.utc)
+    ts = f"{now_ts.strftime('%Y-%m-%dT%H:%M:%S.')}{now_ts.microsecond // 1000:03d}Z"
+    entry = {
+        "type": "model_mismatch",
+        "request_id": response_entry.get("request_id", ""),
+        "timestamp": ts,
+        "ts": ts,
+        "session_id": identity.session_id,
+        "worker": identity.worker_context,
+        "tool_name": "model_mismatch",
+        "tool_use_id": "",
+        "error_full": f"model mismatch — requested {forwarded_model}, answered {answering_model}",
+        "proxy_file": "",
+        "flow_id": response_entry.get("flow_id", ""),
+    }
+    _write_entry(errors_log_file, entry)
 
 
 def _is_messages_request(flow: http.HTTPFlow) -> bool:

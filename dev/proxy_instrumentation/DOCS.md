@@ -148,6 +148,31 @@ mismatch.
 
 ---
 
+### p10_model_mismatch_warning_test.py (196 LOC)
+
+**Purpose:** Unit-level regression guard for `addon._write_model_mismatch_entry`/`_write_response_and_mismatch`
+(M3 milestone) — covers exactly-one-sentence-on-mismatch, no-sentence on equal/empty-`answering_model`,
+the double-write guard, the sentence rendering correctly through the real
+`warnings_pane._errors_record_to_display` + `warnings_render._build_one_warning_lines` pipeline (both
+lines, exact ANSI text), and that the write never touches the `tool_use_id` dedup set
+(`logging._build_errors_entries`'s `seen_ids`) — by signature inspection and by an interleaved-write
+integration case proving dedup survives across two `_build_errors_entries` calls with a
+`model_mismatch` write in between.
+**Reads:** no on-disk data — fake flow/response/paths/identity objects and a synthetic payload defined
+in the module.
+**Writes:** stdout (pass/fail via assert); temp files under the system temp dir.
+**Called by:** none — manual regression guard, re-run after any change to `addon.py`'s
+`_write_model_mismatch_entry`/`_write_response_and_mismatch`/`response`/`error`, or to
+`warnings_pane._errors_record_to_display`.
+**Calls out:** `proxy.addon` (`_write_response_and_mismatch`, `_write_model_mismatch_entry`),
+`proxy.logging` (`_build_errors_entries`), `src.panes.warnings_pane`, `src.panes.warnings_render`,
+`src.colors` — the last three imported via the project-root-on-`sys.path` form (`from src....`) inside
+the one test function that needs it, since `src.panes` pulls in a 2-level relative import chain like
+`src.proxy_display` (see the `src.proxy_display` Gotcha below); mixing both `sys.path` roots in one
+script is safe.
+
+---
+
 ## Gotchas
 - `pN_*.py` scripts import from `src/` directly — this filename prefix is a project convention: only
   `pN_*.py` dev scripts may `from src...`/`import src...`; unprefixed scripts in `dev/` must copy the

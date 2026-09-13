@@ -349,3 +349,123 @@ debugging it as if it were a regression; it reproduces identically on unmodified
 M1 + M2 are both complete and merged into `integration` as of this recap. No further work on this
 `_response`-model-capture line is planned by this worker — the milestone as scoped (M1: capture +
 survive-abort + three-field naming; M2: token-pane display) is done.
+
+## 2026-09-13 — M3: model mismatch in the warnings pane
+
+New task, same file. Scope: `src/proxy/addon.py` only (`addon_dual_log.py`/`logging.py` read for
+context, not touched) — token pane, the 4xx path, and `logging._build_errors_entries`'s request-side
+tool_error path (with its `tool_use_id` dedup) all explicitly untouched. `warnings_pane.py`/
+`warnings_render.py` also untouched — the whole deliverable is making the write side speak the
+existing read-side contract, not changing the reader.
+
+### Key finding from prep, re-confirmed by reading the code
+
+`_errors_record_to_display` (`warnings_pane.py`) does not gate on a `type` field at all — every field
+access is `.get(key, default)`, no required keys except that the caller wants `tool_name` and
+`error_full` populated with something meaningful (everything else defaults to `''`/`{}` silently).
+This means ANY dict with those two keys renders through the existing pipeline without touching
+`warnings_pane.py`/`warnings_render.py` — confirmed by direct calls to the real functions in
+`p10_model_mismatch_warning_test.py`, not just by reading the source.
+
+### The exact sentence, as JSON
+
+```json
+{"type": "model_mismatch", "request_id": "req_1", "timestamp": "2026-09-13T19:30:54.117Z", "ts": "2026-09-13T19:30:54.117Z", "session_id": "sess123", "worker": "main", "tool_name": "model_mismatch", "tool_use_id": "", "error_full": "model mismatch — requested claude-opus-4-6, answered claude-opus-4-6-fallback", "proxy_file": "", "flow_id": "flow-mismatch"}
+```
+
+Built by the new `_write_model_mismatch_entry` (`addon.py`), called from a new shared helper
+`_write_response_and_mismatch(flow, paths, identity)` which both `response()` and `error()` now call
+in place of their old direct `_write_response_entry(...)` call — `_write_response_entry` was changed to
+RETURN the entry dict it builds (was: `-> None`) instead of just writing it, so the mismatch check can
+reuse `proxy_forwarded_model`/`answering_model` without recomputing them from `flow.metadata` a second
+time. `type`/`tool_use_id`/`proxy_file` mirror the shape `logging._build_error_entry` already uses for
+real tool errors (same key set except `type` value and the always-empty `tool_use_id`), so the sentence
+looks native in the log, not like a bolted-on second schema.
+
+**Landmine I stepped on and fixed:** the first version reused `response_entry["timestamp"]` (built in
+`_write_response_entry` via `datetime.now(timezone.utc).isoformat() + "Z"`) for `ts`. That expression
+produces a DOUBLE timezone marker (`...+00:00Z`, both the isoformat offset AND the manually appended
+`Z`) — `utils.format_timestamp` tries `iso_timestamp.replace('Z', '+00:00')` then
+`datetime.fromisoformat(...)`, which fails on the double-offset string and silently falls back to
+`'00:00:00'`. This exact buggy pattern is already used throughout `src/proxy/` for OTHER log
+timestamps (`addon_dual_log.py`'s `_log_original_request`/`_log_4xx_error`, `bg_escape.py`) — pre-
+existing, not something this milestone should fix elsewhere, and harmless there because none of those
+timestamps are rendered through `format_timestamp`. My model_mismatch entry IS rendered through it (via
+`_errors_record_to_display`), so reusing the buggy value would have made every mismatch warning show
+`00:00:00` — a real, visible defect for MY delivered feature specifically. Fixed by generating `ts`
+independently with the SAME correct pattern `_stamp_request_metadata` already uses for `mc_timestamp`
+(`f"{now.strftime('%Y-%m-%dT%H:%M:%S.')}{now.microsecond // 1000:03d}Z"` — manual, single `Z`, no
+built-in offset). Caught by `p10_model_mismatch_warning_test.py`'s explicit
+`display["timestamp"] != "00:00:00"` assertion, which exists specifically to pin this.
+
+### The exact rendered line (collapsed + expanded), raw ANSI
+
+Collapsed:
+```
+\x1b[2m▶ 21:30:54                         \x1b[38;2;205;214;244mmodel_mismatch  \x1b[39m  \x1b[2m\x1b[39m
+```
+Expanded (two lines — header row unchanged except the ▶→▼ symbol, plus one detail line):
+```
+\x1b[2m▼ 21:30:54                         \x1b[38;2;205;214;244mmodel_mismatch  \x1b[39m  \x1b[2m\x1b[39m
+    \x1b[2mmodel mismatch — requested claude-opus-4-6, answered claude-opus-4-6-fallback\x1b[39m
+```
+`tool_name = "model_mismatch"` (16-char column, matches every real tool name's width) is what makes the
+row visually distinguishable from a real tool error at a glance; the actual "requested X, answered Y"
+text only appears on expand (or via `y`-copy / search-match), same UX as every other tool-error detail
+line — consistent with the existing pane, not a new interaction pattern.
+
+### tool_use_id dedup isolation
+
+`_write_model_mismatch_entry`'s signature is `(flow, response_entry, errors_log_file, identity)` — it
+never receives `delta_state`/`seen_ids`/`error_ids_by_model` at all, structurally cannot read or mutate
+the dedup set that `addon_dual_log._log_errors_entries` builds from `logging._build_errors_entries`'s
+return value. `tool_use_id` in my sentence is always `""` (no real tool_use_id exists for this record
+class), and since my write bypasses `_build_errors_entries`/`_log_errors_entries` entirely (direct
+`_write_entry` call, not through that function), the `seen_ids` set never sees `""` or any other value
+from my writes, in either direction. Verified two ways in
+`p10_model_mismatch_warning_test.py`: (1) `inspect.signature` asserts none of `seen_ids`/`delta_state`/
+`prev_seen_ids` are parameters, (2) an integration case — build a real erroring tool_result payload,
+call `_build_errors_entries` once (gets the entry, `seen_ids = {"toolu_X"}`), write a `model_mismatch`
+entry via `_write_response_and_mismatch` in between, call `_build_errors_entries` again with the same
+payload and `seen_ids` — still returns `[]` (dedup intact), and the errors log itself only carries the
+`model_mismatch` line (never wrote the tool_error to file in this test — that write path is
+`addon_dual_log.py`, out of scope, confirmed by code reading not to interact with `paths.errors`
+differently for the two record types beyond both appending to the same file).
+
+### Cases producing no sentence, and how each is guarded
+
+1. `proxy_forwarded_model == answering_model` (no real mismatch) — `if not answering_model or
+   answering_model == forwarded_model: return`, before any write.
+2. `answering_model == ""` (abort before first chunk, or compressed-body gap from M1) — same guard,
+   `not answering_model` catches it first.
+3. Same flow's mismatch already logged (`response()`+`error()` both firing — shouldn't happen per
+   mitmproxy's own "never both" guarantee, established in the M1 dated section above, but guarded
+   anyway) — `flow.metadata["mc_model_mismatch_logged"]` early-return, mirroring
+   `mc_response_entry_written`'s existing pattern for `_write_response_entry`.
+4. `_write_response_entry` itself was skipped (already written, or an exception inside it) —
+   `_write_response_and_mismatch` only calls `_write_model_mismatch_entry` when `response_entry is not
+   None`, so a failed/skipped `_response` write can never produce an orphaned mismatch sentence with
+   stale or missing model data.
+
+All four pinned as separate assertions in `p10_model_mismatch_warning_test.py`.
+
+### Tests run, numbers before/after
+
+- `dev/proxy_instrumentation/p10_model_mismatch_warning_test.py` (NEW) — 7/7 assertions pass.
+- `dev/proxy_instrumentation/p8_answering_model_probe_test.py`, `p9_response_entry_abort_survival_test.py`
+  (M1 guards, unaffected by M3's changes to `addon.py`) — both still pass in full after this change.
+- `dev/panes/answering_model_line_test.py` (M2 guard) — still passes; unaffected since M3 touched no
+  `src/panes/`/`src/format/` file.
+- `dev/proxy/pipeline_byte_identity.py` (broad `src/proxy/` pipeline harness covering
+  `_build_errors_entries` among others — the exact function whose dedup this task must not disturb) —
+  HASH identical before and after: `e56b0f78fd4c483d2af9d628d6bfbe11e9db879466aea998904a8dda1c9fc961`.
+  Confirmed via `git stash` (before) / `git stash pop` (after) on the same source data, not just two
+  separate runs — proves byte-for-byte that nothing in the reused request-side error pipeline changed.
+- `dev/panes/render_byte_identity.py` (pinned session prefix, covers `_format_warnings_pane` among
+  others) — HASH identical to the M2 recap value: `5c7fc44cb8aab9f6302ba6a3d59548a88c833eee213a6593469905d8a70d95a9`
+  (expected — M3 never touches `warnings_pane.py`/`warnings_render.py`).
+- `dev/display/test_hover_map.py` — 45/45 passed, unaffected.
+- `dev/display/test_strip_markers.py` — fails at import (`ImportError: cannot import name
+  'get_stripped_data' from 'src.format.strip_marker'`) — pre-existing, unrelated to any of M1/M2/M3
+  (this task never touches `strip_marker.py`); noted here only so a future agent doesn't waste time
+  attributing it to this line of work.
