@@ -113,7 +113,7 @@ under both roles, and end-to-end resolution through `apply_modification_rules`.
 
 ---
 
-### test_strip_fix.py (1727 LOC)
+### test_strip_fix.py (1786 LOC)
 
 **Purpose:** The largest suite in this directory — regression tests for the template-based
 exact-match system-reminder strip (core templates, content-shape variants, preserve guards), the

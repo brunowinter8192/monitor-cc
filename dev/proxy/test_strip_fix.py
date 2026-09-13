@@ -506,15 +506,24 @@ def t44_bundled_claudemd_and_env_context_preserved():
 # ── ENV-CONTEXT SR: gitStatus WIDENING (2026-09) ─────────────────────────────
 # Current CC build replaced `# currentDate` with a `# gitStatus` section in the same bundled
 # env-context block — no `# currentDate` anywhere, still exactly one `IMPORTANT:` footer.
-# `_ENV_CONTEXT_RE`'s alternation now accepts EITHER `# currentDate\n...` OR the full `# gitStatus`
-# section (stable header sentence, then Current branch / Main branch / Git user / Status /
-# Recent commits, each line's VALUE unconstrained). T45/T46 are copied verbatim from
+# `_ENV_CONTEXT_RE`'s alternation now accepts EITHER `# currentDate\n...` OR `# gitStatus\n` +
+# the stable header sentence + a free body (`.*?`, DOTALL) up to the `IMPORTANT:` footer — the
+# body is deliberately NOT anchored field-by-field (no per-line `Current branch:`/`Main branch:`/
+# `Git user:`/`Status:`/`Recent commits:` requirement). An initial version of this fix DID
+# enumerate those 5 fields with a fixed blank-line structure, generalized from only the 3 corpus
+# blocks below — review caught that each enumerated field is a brittle anchor with zero protective
+# value (fullmatch is already pinned by the preamble, the literal email, and the IMPORTANT footer;
+# a block carrying all three IS the env-context block) and a guaranteed re-break on the next CC
+# gitStatus layout change. CC issue reports confirm the layout is not fixed: #86891's snapshot
+# has only Current branch / Main branch / Status, no Git user line and no Recent commits section
+# (T50); #43250 has no blank lines between fields at all and an inline `Status: clean` (T51) —
+# both would have failed the field-enumerated version. T45/T46 are copied verbatim from
 # `src/logs/dual_log/*_original.jsonl` (main checkout, 2026-09 measurement, 3 distinct blocks,
-# 973-1045 chars each, see process-docs/proxy_noise_strip/ for the fresh count). T47/T48 cover the
-# two known-variable shapes CC issue reports describe (dirty `git status --short` lines, detached
-# `HEAD` branch) that happen not to occur in the current corpus window. T49 confirms the bundled
-# `# claudeMd` + gitStatus shape (unobserved in this corpus, but structurally identical to T44's
-# bundled currentDate case) is still preserved whole by the same `_PRESERVE_PREAMBLE` fallback.
+# 973-1045 chars each, see process-docs/proxy_noise_strip/ for the fresh count). T47/T48 cover
+# dirty `git status --short` lines and a detached `HEAD` branch, neither observed in the current
+# corpus window. T49 confirms the bundled `# claudeMd` + gitStatus shape (unobserved in this
+# corpus, but structurally identical to T44's bundled currentDate case) is still preserved whole
+# by the same `_PRESERVE_PREAMBLE` fallback.
 
 def t45_env_context_gitstatus_corpus_block_main_clean_stripped():
     body = (
@@ -648,6 +657,54 @@ def t49_bundled_claudemd_and_gitstatus_preserved():
     sr = real_sr_text(body)
     result = _strip_system_reminders(text_block(sr))
     check('T49_bundled_claudemd_gitstatus_preserved', result[0]['text'] == sr, repr(result[0]['text'])[:120])
+
+
+def t50_env_context_gitstatus_issue86891_shape_stripped():
+    # CC issue #86891 — snapshot has only Current branch / Main branch / Status, no Git user
+    # line and no Recent commits section at all.
+    body = (
+        "As you answer the user's questions, you can use the following context:\n"
+        "# userEmail\n"
+        "The user's email address is brunowinter7934@gmail.com. Use it only to identify the user, "
+        "such as for authorship, attribution, or filtering their own work. Never send it to an "
+        "unrelated service, such as in a request header, URL, or payload, unless the user explicitly asks.\n"
+        "# gitStatus\n"
+        "This is the git status at the start of the conversation. Note that this status is a "
+        "snapshot in time, and will not update during the conversation.\n\n"
+        "Current branch: main\n\n"
+        "Main branch (you will usually use this for PRs): main\n\n"
+        "Status:\n(clean)\n\n"
+        "IMPORTANT: this context may or may not be relevant to your tasks. "
+        "You should not respond to this context unless it is highly relevant to your task."
+    )
+    sr = real_sr_text(body)
+    result = _strip_system_reminders(text_block(sr))
+    check('T50_gitstatus_issue86891_shape_stripped', _O not in result[0]['text'], repr(result[0]['text'])[:120])
+
+
+def t51_env_context_gitstatus_issue43250_shape_stripped():
+    # CC issue #43250 — fields have no blank lines between them, Status is inline on one line.
+    body = (
+        "As you answer the user's questions, you can use the following context:\n"
+        "# userEmail\n"
+        "The user's email address is brunowinter7934@gmail.com. Use it only to identify the user, "
+        "such as for authorship, attribution, or filtering their own work. Never send it to an "
+        "unrelated service, such as in a request header, URL, or payload, unless the user explicitly asks.\n"
+        "# gitStatus\n"
+        "This is the git status at the start of the conversation. Note that this status is a "
+        "snapshot in time, and will not update during the conversation.\n"
+        "Current branch: main\n"
+        "Main branch (you will usually use this for PRs): main\n"
+        "Git user: Bruno Winter\n"
+        "Status: clean\n"
+        "Recent commits:\n"
+        "19f939e docs: something\n\n"
+        "IMPORTANT: this context may or may not be relevant to your tasks. "
+        "You should not respond to this context unless it is highly relevant to your task."
+    )
+    sr = real_sr_text(body)
+    result = _strip_system_reminders(text_block(sr))
+    check('T51_gitstatus_issue43250_shape_stripped', _O not in result[0]['text'], repr(result[0]['text'])[:120])
 
 
 # ── WAKEUP FALSE-POSITIVE TESTS ───────────────────────────────────────────────
@@ -1685,6 +1742,8 @@ if __name__ == '__main__':
         t47_env_context_gitstatus_dirty_status_stripped,
         t48_env_context_gitstatus_head_branch_stripped,
         t49_bundled_claudemd_and_gitstatus_preserved,
+        t50_env_context_gitstatus_issue86891_shape_stripped,
+        t51_env_context_gitstatus_issue43250_shape_stripped,
         w01_tn_in_tool_result_str, w02_tn_in_tool_result_list, w03_bgk_in_tool_result_str,
         w04_genuine_tn_completed_plain_string, w05_genuine_tn_failed_plain_string,
         w06_genuine_bgk_plain_string,

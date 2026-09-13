@@ -59,10 +59,37 @@ task prompt) for top-level standalone `<system-reminder>` blocks, using the same
   happen for the currentDate form and there is no reason to expect CC's bundling logic
   distinguishes between the two date/status section kinds.
 
-## The fix
+## The fix — v1 (field-enumerated, REJECTED on review) and v2 (header-anchored, shipped)
 
-Widened the alternation after the (already CC-2.1.258-tolerant) userEmail line to accept EITHER
-the pre-existing `# currentDate\n...` branch OR a new `# gitStatus\n...` branch:
+**v1**, the first version, widened the alternation after the (already CC-2.1.258-tolerant)
+userEmail line to a `# gitStatus` branch that enumerated all 5 fields the 3 corpus blocks
+happened to carry, each with a fixed blank-line gap:
+
+```python
+r"# gitStatus\n"
+r"This is the git status at the start of the conversation\. Note that this status is a "
+r"snapshot in time, and will not update during the conversation\.\n\n"
+r"Current branch: [^\n]*\n\n"
+r"Main branch \(you will usually use this for PRs\): [^\n]*\n\n"
+r"Git user: [^\n]*\n\n"
+r"Status:\n.*?\n\n"
+r"Recent commits:\n.*?\n\n"
+```
+
+**Review caught this as an unfalsified generalization.** Only the header sentence is stable per
+the task's cited CC issue reports; the field list and blank-line structure were inferred from 3
+corpus blocks, not from any stability guarantee. Two counter-examples from CC issue reports break
+v1: **#86891** — a snapshot with only `Current branch` / `Main branch` / `Status`, no `Git user`
+line and no `Recent commits` section at all; **#43250** — fields with NO blank lines between them
+and `Status:` inline on one line (`Status: clean`). Neither would `fullmatch` against v1's rigid
+5-field structure, so both would silently fall through to `_PRESERVE_PREAMBLE` again — the exact
+failure this task exists to fix, just moved one CC-layout-change later. Worse: none of the 5
+enumerated fields carries any protective value the fullmatch doesn't already get for free from the
+preamble, the literal `brunowinter7934@gmail.com` email, and the `IMPORTANT:` footer — a block
+that opens with the preamble, names that exact email, and closes with that exact footer IS the
+env-context block regardless of what its gitStatus body contains.
+
+**v2 (shipped)** anchors only the stable header sentence, then leaves the body free:
 
 ```python
 _ENV_CONTEXT_RE = re.compile(
@@ -75,12 +102,8 @@ _ENV_CONTEXT_RE = re.compile(
     r"|"
     r"# gitStatus\n"
     r"This is the git status at the start of the conversation\. Note that this status is a "
-    r"snapshot in time, and will not update during the conversation\.\n\n"
-    r"Current branch: [^\n]*\n\n"
-    r"Main branch \(you will usually use this for PRs\): [^\n]*\n\n"
-    r"Git user: [^\n]*\n\n"
-    r"Status:\n.*?\n\n"
-    r"Recent commits:\n.*?\n\n"
+    r"snapshot in time, and will not update during the conversation\.\n"
+    r".*?"
     r")"
     r"IMPORTANT: this context may or may not be relevant to your tasks\. "
     r"You should not respond to this context unless it is highly relevant to your task\.",
@@ -89,37 +112,45 @@ _ENV_CONTEXT_RE = re.compile(
 ```
 
 Design notes:
-- The gitStatus header sentence, and the `Current branch:` / `Main branch (...)`: / `Git user:` /
-  `Status:` / `Recent commits:` labels are matched literally — per the task's cited CC issue
-  reports, these labels are stable across CC versions; only their VALUES vary.
-- `[^\n]*` after `Current branch:` / `Main branch (...):` / `Git user:` tolerates any single-line
-  value, including the literal `HEAD` (detached-head state) for the branch — T48 pins this.
-- `Status:\n.*?\n\n` (non-greedy, `re.DOTALL` newly added to the compiled flags for this reason)
-  tolerates both `(clean)` and a multi-line `git status --short` listing with leading-column
-  spaces (` M foo.py`, `?? bar.py`) — T47 pins the dirty variant. `re.DOTALL` is new on this
-  compile call; every other branch in the alternation is unaffected because none of their own
-  sub-patterns relied on `.` NOT matching newlines.
-- `Recent commits:\n.*?\n\n` is the same non-greedy shape for the variable-length commit list.
-- Both non-greedy `.*?` groups are safely bounded because the corpus guarantees exactly one
-  `IMPORTANT:` per block (verified in the measurement above) — a second `IMPORTANT:` occurring
-  inside a commit message subject line would make the `.*?` stop early and the fullmatch fail,
-  correctly falling through to `_PRESERVE_PREAMBLE` (fails safe, not stripped, not corrupted).
+- Only the gitStatus header sentence is matched literally — the one piece of the section the
+  task's cited CC issue reports actually describe as stable.
+- The body after the header sentence is `.*?` (non-greedy, `re.DOTALL` newly added to the compiled
+  flags for this reason) up to the literal `IMPORTANT:` footer — this accepts the 3 corpus shapes,
+  both issue-report shapes (#86891's truncated field set, #43250's no-blank-lines/inline-status
+  shape), the dirty `git status --short` variant, and a detached `HEAD` branch, all with the SAME
+  pattern, because none of them are anchored at all.
+- The non-greedy `.*?` is safely bounded because the corpus guarantees exactly one `IMPORTANT:`
+  per block (verified in the measurement above) — a second `IMPORTANT:` occurring inside a commit
+  message subject line would make the `.*?` stop early and the fullmatch fail, correctly falling
+  through to `_PRESERVE_PREAMBLE` (fails safe: not stripped, not corrupted, just left whole like
+  any other block the regex doesn't recognize).
+- The tradeoff this widening accepts: a `# gitStatus` section that DOESN'T end right before an
+  `IMPORTANT:` footer (e.g., if CC ever appends something after gitStatus but before the footer)
+  would still `fullmatch` and strip, since the body itself is unconstrained. This is judged
+  acceptable because the preamble + literal email + footer combination is not observed to occur
+  outside the env-context/CLAUDE.md-context family at all (see `_PRESERVE_PREAMBLE`'s existing
+  role for the sibling CLAUDE.md-context block), and a body-content check would reintroduce
+  exactly the brittleness review rejected in v1.
 
 **No other branch, guard, or template was touched.** `_PRESERVE_PREAMBLE` and its position, the
-`_ENV_CONTEXT_RE` pre-guard position (checked before `_PRESERVE_PREAMBLE`), every other
-`_SR_TEMPLATES` entry, and `strip_vocab.py` are all unchanged — this task's scope was explicitly
-limited to widening the one regex.
+`_ENV_CONTEXT_RE` pre-guard position (checked before `_PRESERVE_PREAMBLE`), the pre-existing
+`# currentDate` branch, every other `_SR_TEMPLATES` entry, and `strip_vocab.py` are all
+unchanged — this task's scope was explicitly limited to widening the one regex.
 
 ## Tests added
 
-`dev/proxy/test_strip_fix.py` T45-T49 (255 -> 260 checks, all pre-existing 255 confirmed passing
-unmodified both before writing the new tests and after):
+`dev/proxy/test_strip_fix.py` T45-T51 (255 -> 262 checks, all pre-existing 255 confirmed passing
+unmodified before writing any new test, again after v1, and again after the v2 correction):
 - T45, T46 — the two `main`/`integration`-branch real corpus blocks, copied verbatim, both strip.
 - T47 — synthetic dirty-status variant (`git status --short`-shaped lines with leading-column
   spaces), strips.
 - T48 — synthetic `Current branch: HEAD` variant, strips.
 - T49 — synthetic bundled `# claudeMd` + gitStatus block (unobserved in corpus, added by analogy
   to T44's bundled currentDate case), preserved whole.
+- T50 — CC issue #86891 shape (only `Current branch`/`Main branch`/`Status`, no `Git user` line,
+  no `Recent commits` section), strips. Added on review; would have FAILED against v1.
+- T51 — CC issue #43250 shape (no blank lines between fields, inline `Status: clean`), strips.
+  Added on review; would have FAILED against v1.
 
 ## Replay
 
@@ -129,7 +160,9 @@ dimension, and `_ENV_CONTEXT_RE_OLD` now quotes the regex immediately BEFORE thi
 (i.e. already carries the CC 2.1.258 trailing-sentences tolerance, but still hard-requires
 `# currentDate`) rather than the much older pre-2026-05-30 shape, so the before/after comparison
 isolates exactly this task's effect. As of this task, over the 9-file/2218-entry corpus described
-above:
+above (re-run after the v2 correction; the 9-file corpus grew from 2218 to 2252 entries between
+the v1 and v2 replay runs — same 9 files, more requests logged in the meantime — the distinct
+gitStatus-block count stayed at 3, as expected since it counts live sessions, not requests):
 
 | Bucket | Form | Before | After |
 |---|---|---|---|
@@ -144,7 +177,9 @@ above:
 All 3 gitStatus-form blocks move from left-PURE (the bug) to stripped; the currentDate-form
 stripped/left-BUNDLED counts are byte-identical before/after, confirming the fix is additive only.
 The gitStatus-form BUNDLED count is 0/0 (unobserved in this corpus window, not asserted to never
-happen — see T49 above for the synthetic guard).
+happen — see T49 above for the synthetic guard). The bucket counts are unchanged between the v1
+and v2 regex shapes over this corpus — v1 and v2 agree on every occurrence actually seen so far;
+v1's brittleness only shows up against the shapes it never saw (T50/T51's issue-report fixtures).
 
 ## What the next reader should know
 
@@ -158,3 +193,13 @@ happen — see T49 above for the synthetic guard).
   CC 2.1.258 entry: widen the specific literal/label that broke, keep everything else anchored,
   re-verify against `dev/proxy/replay_env_context_strip.py`'s left-PURE bucket for that form before
   declaring victory.
+- **The v1/v2 rejection is the reusable lesson here, not just this task's outcome.** When a
+  `fullmatch`-based strip already pins the block by preamble + a proxy-specific literal (this
+  proxy's own hardcoded email) + a footer, do NOT additionally enumerate a variable body's
+  internal field structure "for safety" — that enumeration adds no discriminating power (the
+  three outer anchors already do the discrimination) and only adds guaranteed-to-break surface
+  area against the NEXT CC layout change. Anchor the stable prose (a header sentence, a fixed
+  literal), leave genuinely variable structure (a field list, a status listing, a commit log)
+  fully free. Two live counter-examples (CC issues #86891, #43250) surfaced this on first review
+  here, with real per-field variability, before this shipped — check any future SR-shape fix for
+  the same generalize-from-N-samples mistake before calling it done.

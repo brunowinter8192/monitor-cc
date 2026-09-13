@@ -1,6 +1,6 @@
 # strip_sr.py — env-context `_ENV_CONTEXT_RE` replay (gitStatus widening fix)
 
-Corpus: `/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log` — 9 `*_original.jsonl` files, 2230 request entries. Counts below are UNIQUE (file, exact inner text) — dual-logs are cumulative snapshots, the same block reappears in every later request of the same session.
+Corpus: `/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log` — 9 `*_original.jsonl` files, 2260 request entries. Counts below are UNIQUE (file, exact inner text) — dual-logs are cumulative snapshots, the same block reappears in every later request of the same session.
 
 ## Before / after, by bucket and form
 
