@@ -203,3 +203,29 @@ v1's brittleness only shows up against the shapes it never saw (T50/T51's issue-
   fully free. Two live counter-examples (CC issues #86891, #43250) surfaced this on first review
   here, with real per-field variability, before this shipped — check any future SR-shape fix for
   the same generalize-from-N-samples mistake before calling it done.
+
+## Recap 2026-09-13
+
+Task closed. Both `_ENV_CONTEXT_RE` revisions (v1 field-enumerated, v2 header-anchored) and both
+M1/M2 deliverables are complete on branch `envstrip`, worktree
+`.claude/worktrees/envstrip/`, across two commits:
+`417b7e3` (fix: widen env-context strip regex for gitStatus form — M1+M2, v1 regex) and
+`343852f` (fix: anchor gitStatus strip on header only, not fields — the v2 review correction,
+T50/T51 added).
+
+**Self-audit** (`git diff integration --name-only`) — touched files, all inside this worktree:
+`src/proxy/strip_sr.py`, `dev/proxy/test_strip_fix.py`, `dev/proxy/replay_env_context_strip.py`,
+`dev/proxy/md/replay_env_context_strip.md`, `src/proxy/DOCS.md`, `dev/proxy/DOCS.md`, and this
+process-docs file. No file outside this list was modified.
+
+**Final state verified at recap time:** `python3 dev/proxy/test_strip_fix.py` — 262/262 passed.
+`python3 dev/proxy/replay_env_context_strip.py` — runs clean, writes
+`dev/proxy/md/replay_env_context_strip.md`. `src/proxy/DOCS.md` strip_sr.py LOC (161) and
+`dev/proxy/DOCS.md` test_strip_fix.py LOC (1786) / replay_env_context_strip.py LOC (244) all match
+`wc -l` on the files as left. No further DOCS.md drift found in either file for the modules
+touched by this task.
+
+**For whoever picks up the next env-context regex break:** read the "What the next reader should
+know" section above in full before touching `_ENV_CONTEXT_RE` again — the v1/v2 rejection lesson
+(anchor stable prose only, never enumerate a variable body's field structure) is the single most
+valuable thing this task produced, more so than the fix itself.
