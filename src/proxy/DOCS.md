@@ -16,18 +16,20 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 → `tool_injection` (MCP schema append) → `inject_helpers` (model override, context management)
 → dual-log writes (original + forwarded + errors) → `cache` (strip all markers, set BP3/BP4/anchor)
 → modified payload forwarded to Anthropic; `responseheaders()` hook installs `response_model_probe`
-as `flow.response.stream` for 2xx (SSE `message_start.model` inspection, no body buffering); `response()`
-hook writes the `_response` dual-log (requested + answering model side by side) once the body has
-streamed, then writes stripped/injected dual-logs via metadata bridge
+as `flow.response.stream` for 2xx (SSE `message_start.model` inspection, no body buffering); the
+`_response` dual-log (cc_requested/proxy_forwarded/answering model side by side) is written from
+whichever of `response()` or `error()` fires — mitmproxy guarantees exactly one of the two per flow,
+which is what makes the write survive a client-side mid-stream abort (see Gotchas); `response()`
+additionally writes stripped/injected dual-logs via metadata bridge on a completed exchange
 
 ## Modules
 
-### addon.py (270 LOC)
+### addon.py (287 LOC)
 
 **Purpose:** mitmproxy addon hook class (`ProxyAddon`) that receives HTTP flows and orchestrates the full request-modification and dual-log pipeline; `count_tokens` requests pass through unmodified.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `PROXY_PROJECT_PATH`, `MONITOR_CC_ROOT`, `PROXY_LOG_ID`/`PROXY_SESSION_ID`.
-**Writes:** `flow.request.content` (modified payload, in place); `flow.metadata` (`mc_original_payload`, `mc_modified_payload`, `mc_model_family`, `mc_all_ops`, `mc_request_id`, `mc_answering_model_state` — stashed in `request()`/`responseheaders()`, read in `response()`). `_response` dual-log entry now carries `requested_model` (from `mc_modified_payload`) and `answering_model` (from the streamed probe state) side by side, written from `response()` instead of `responseheaders()` so the answering model is known before the write. Actual dual-log file writes are delegated to `addon_dual_log.py`.
-**Called by:** `src/proxy_addon.py` (imports `ProxyAddon`, `addons`); mitmproxy itself via `addons = [ProxyAddon()]` at module level (hooks: `request`, `responseheaders`, `response`).
+**Writes:** `flow.request.content` (modified payload, in place); `flow.metadata` (`mc_original_payload`, `mc_modified_payload`, `mc_model_family`, `mc_all_ops`, `mc_request_id`, `mc_answering_model_state`, `mc_response_entry_written` — stashed in `request()`/`responseheaders()`, read/set in `response()`/`error()`). `_response` dual-log entry carries three distinctly-named model fields side by side — `cc_requested_model` (from `mc_original_payload`, what Claude Code asked for), `proxy_forwarded_model` (from `mc_modified_payload`, what the proxy actually sent — can differ under `_inject_model_override`'s legacy-override path), `answering_model` (from the streamed probe state, what the API answered with) — written by `_write_response_entry`, called from both `response()` and `error()` (mitmproxy fires exactly one of the two per flow, never both) so a client-side mid-stream abort still produces an entry; `mc_response_entry_written` guards against a double write if that invariant is ever violated. Actual dual-log file writes are delegated to `addon_dual_log.py`.
+**Called by:** `src/proxy_addon.py` (imports `ProxyAddon`, `addons`); mitmproxy itself via `addons = [ProxyAddon()]` at module level (hooks: `request`, `responseheaders`, `response`, `error`).
 **Calls out:** `mitmproxy`
 
 ---
@@ -375,3 +377,5 @@ streamed, then writes stripped/injected dual-logs via metadata bridge
 **`_PRESERVE_PREAMBLE` in `strip_sr.py` unconditionally preserves any SR whose inner text starts with the CLAUDE.md-context preamble.** A new strip rule targeting a block that shares this preamble (e.g. the env-context SR) must insert its own check BEFORE this guard, or the guard wins and the new strip never fires — see `_ENV_CONTEXT_RE.fullmatch(inner)` in `_apply_sr_strip._replace` for the pattern.
 
 **`_apply_role_system_strip`'s blanket `role='system'` → `"."` nuke has two content-anchored carve-outs checked before the nuke** (truncation-notice prefix, top-level `<task-notification>` presence). A new carve-out must follow the same anchored-check shape and add a matching exception to `strip_inject_delta.py`'s `role=='system' → 'RS'` attribution shortcut, or `fn_map` mislabels the change as the blanket nuke.
+
+**A client-side mid-stream abort is the common case, not the exception, in this project — see `process-docs/abort_cascade/`.** Claude Code cancels the SSE connection and refires on any incoming event while a stream is open (user keystroke, background-task completion, subagent task-notification); depth-3+ cascades are routine. mitmproxy fires exactly one of `response`/`error` per flow, never both (`HttpErrorHook`'s own docstring: "Every flow will receive either an error or an response event, but not both."). Any per-request write that must survive an abort — the `_response` dual-log write is the current example — has to be called from both `response()` and `error()`, not just `response()`; a write that only lives in `response()` silently disappears for every aborted REQ, which given the cascade frequency here means most REQs, not a rare edge case.

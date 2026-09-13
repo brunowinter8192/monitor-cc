@@ -119,3 +119,81 @@ requested-vs-answering comparison — do not treat the current all-zero numbers 
   (`state_stream_response_body`, confirming per-chunk callable semantics and hook ordering). No system
   `mitmproxy` Python package exists outside this venv in this environment — `pip3 install mitmproxy`
   fails (`externally-managed-environment`, no network access from a worker session anyway).
+
+## 2026-09-13 — Review fix: abort survival + three-field model naming
+
+Two findings from review, both fixed in this same session, same file (no new process-docs file).
+
+### Finding 1 — the response-hook-only write silently lost entries on the common path
+
+The first version of this milestone moved the `_response` write from `responseheaders()` (fires
+before any body bytes) to `response()` (fires only after the full body has streamed) so the entry
+could carry `answering_model`. That is wrong for this project specifically: `process-docs/abort_cascade/`
+documents that Claude Code aborts an in-flight SSE stream and refires on almost any incoming event
+(user keystroke, background-task completion, subagent task-notification) — cascades of depth 3+ are
+observed, not hypothetical, and the abort-cascade doc's own framing is that this is the *common* case
+during active orchestration, not an edge case.
+
+Traced the actual mitmproxy behavior on abort by reading
+`venv/lib/python3.14/site-packages/mitmproxy/proxy/layers/http/__init__.py::handle_protocol_error`
+(reached when the client closes the connection mid-response): it calls `HttpErrorHook`, never
+`HttpResponseHook`. `_hooks.py`'s `HttpErrorHook` docstring states the exact guarantee: "Every flow
+will receive either an error or an response event, but not both." So `response()` genuinely never
+fires for an aborted flow — moving the write there was a straight regression, not a subtle one.
+
+**Fix:** `_write_response_entry` is now called from both `ProxyAddon.response()` and a new
+`ProxyAddon.error()` hook. Guarded by `flow.metadata["mc_response_entry_written"]` so a violation of
+mitmproxy's "never both" guarantee (future version change, or my own misunderstanding of it) degrades
+to a no-op second call rather than a duplicate log line.
+
+**Verified for both abort shapes named in review, via `dev/proxy_instrumentation/p9_response_entry_abort_survival_test.py`:**
+- *Abort right after headers, before the first chunk:* `responseheaders()` already ran (so
+  `flow.response` exists, headers/status known), but the probe was never called with any bytes —
+  `mc_answering_model_state["model"]` is still `""`. `error()` fires, entry is written with
+  `answering_model: ""`. This exactly matches what the OLD (pre-this-milestone) code produced for
+  every abort — headers survive, model is unknown either way, nothing regresses.
+- *Abort mid-stream, after `message_start` already arrived:* since `message_start` is documented as
+  the SSE stream's first event, in practice the model is very often already captured in
+  `mc_answering_model_state` by the time any abort happens later in the stream. `error()` fires,
+  `_write_response_entry` reads whatever the probe closure had already found — the entry carries a
+  real `answering_model` even though the response never completed. This is strictly better than the
+  pre-milestone baseline (which had no `answering_model` field at all).
+- Both cases produce exactly one JSONL line (double-write guard test), and a normal non-aborted
+  completion still goes through `response()` unchanged.
+
+**Landmine for whoever touches this next:** any FUTURE per-request write that needs to survive to the
+same degree — i.e. anything that should exist "once per REQ, regardless of how the REQ ended" — must
+follow the same response()+error() dual-registration pattern. Writing only in `response()` (or only in
+`responseheaders()` if it needs body data) is a proven-repeatable mistake here specifically because
+this project's traffic pattern makes aborts frequent, not rare.
+
+### Finding 2 — `requested_model` collapsed three distinct values into one ambiguous field
+
+Original field `requested_model` was sourced from `mc_modified_payload` — deliberately, reasoning
+documented above under "Design choice", because that is what actually went out on the wire for this
+exact HTTP exchange. Review's point (independent of whether the proxy pane today happens to render
+`_forwarded.model` or something else — I checked `src/proxy_display/forwarded_parser.py` and the pane
+row's `model` field is in fact sourced from `_forwarded`, i.e. post-override, contra the review
+description, but the underlying concern holds regardless of which one the pane currently shows) is
+structural: there are three genuinely distinct model values in play for one request/response cycle,
+and cramming two of them behind one ambiguous name (`requested_model`) forces every future reader to
+either guess which one it is or go read this file. Not defensible against "names the reader cannot
+mis-resolve."
+
+**Fix — three explicit fields, all three always present when known:**
+- `cc_requested_model` — `mc_original_payload["model"]`, what Claude Code itself put in the request
+  it composed (before any proxy modification).
+- `proxy_forwarded_model` — `mc_modified_payload["model"]`, what the proxy actually sent to
+  `api.anthropic.com` for this exchange (can differ from the above under
+  `inject_helpers._inject_legacy_model_override`'s config-driven override path).
+- `answering_model` — unchanged, from the SSE probe.
+
+A `cc_requested_model != proxy_forwarded_model` mismatch is now a directly visible, correctly-named
+signal that a model override fired for this request — pinned by
+`p9_response_entry_abort_survival_test.py::_test_model_override_visible_via_three_distinct_fields`.
+
+`dev/proxy_instrumentation/response_model_corpus_report.py` was updated to the new field names and
+adds one more headline number: count of entries where `cc_requested_model != proxy_forwarded_model`
+(override-active count). Re-ran against the same 9-file real corpus — all three new fields are still
+0/N-present for the same frozen-live-copy reason as before (see original entry above); this is expected,
+not a new finding.

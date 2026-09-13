@@ -136,6 +136,18 @@ class ProxyAddon:
         except Exception as e:
             print(f"[proxy_addon] Error in response hook: {e}", file=sys.stderr)
 
+    def error(self, flow: http.HTTPFlow) -> None:
+        try:
+            if not _is_messages_request(flow):
+                return
+            if flow.response:
+                try:
+                    _write_response_entry(flow, self.paths.response)
+                except Exception as e:
+                    print(f"[dual_log] response write failed (error hook): {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"[proxy_addon] Error in error hook: {e}", file=sys.stderr)
+
 
 # FUNCTIONS
 
@@ -209,6 +221,10 @@ def _filter_response_headers(headers) -> dict:
 
 
 def _write_response_entry(flow: http.HTTPFlow, log_file) -> None:
+    if flow.metadata.get("mc_response_entry_written"):
+        return
+    flow.metadata["mc_response_entry_written"] = True
+    original_payload = flow.metadata.get("mc_original_payload") or {}
     modified_payload = flow.metadata.get("mc_modified_payload") or {}
     probe_state = flow.metadata.get("mc_answering_model_state") or {}
     entry = {
@@ -217,7 +233,8 @@ def _write_response_entry(flow: http.HTTPFlow, log_file) -> None:
         "request_id": flow.response.headers.get("request-id", ""),
         "status_code": flow.response.status_code,
         "headers": _filter_response_headers(flow.response.headers),
-        "requested_model": modified_payload.get("model", ""),
+        "cc_requested_model": original_payload.get("model", ""),
+        "proxy_forwarded_model": modified_payload.get("model", ""),
         "answering_model": probe_state.get("model", ""),
     }
     _write_entry(log_file, entry)

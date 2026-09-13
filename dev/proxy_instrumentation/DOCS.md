@@ -117,17 +117,33 @@ and a gzip-compressed body does not spuriously match (documents the known parsin
 
 ---
 
-### response_model_corpus_report.py (163 LOC)
+### p9_response_entry_abort_survival_test.py (128 LOC)
+
+**Purpose:** Unit-level regression guard for `addon._write_response_entry` and the `response()`/`error()`
+dual-hook wiring — verifies the `_response` entry's exact key set and three-field model naming
+(`cc_requested_model`/`proxy_forwarded_model`/`answering_model`), that a fake abort-before-first-chunk
+and abort-mid-stream both still produce an entry, that a spurious double call does not duplicate the
+entry, and that an active model override surfaces as a `cc_requested_model`/`proxy_forwarded_model`
+mismatch.
+**Reads:** no on-disk data — fake flow/response/metadata objects defined in the module.
+**Writes:** stdout (pass/fail via assert); temp files under the system temp dir (via `tempfile.mktemp`).
+**Called by:** none — manual regression guard, re-run after any change to `addon.py`'s `response`/`error`/
+`_write_response_entry`.
+**Calls out:** `proxy.addon` (`_write_response_entry`).
+
+---
+
+### response_model_corpus_report.py (177 LOC)
 
 **Purpose:** Reads every recorded `*_response.jsonl` dual-log and reports how many entries carry an
 `answering_model`, the `content-type`/`content-encoding` header values observed, and how
-`requested_model` relates to `answering_model` across the corpus.
+`cc_requested_model`/`proxy_forwarded_model`/`answering_model` relate across the corpus.
 **Reads:** all `*_response.jsonl` files under the main checkout's `src/logs/dual_log` (hardcoded
 `MAIN_REPO_ROOT`, same pattern as `p7_blocklist_258_probe.py` — this dev worktree carries no logs).
 **Writes:** `md/response_model_corpus_report.md`.
 **Called by:** none — manual, re-run after a proxy restart to check whether the corpus has picked up
-`requested_model`/`answering_model`/`content-type`/`content-encoding` yet (frozen live-copy caveat, see
-`src/proxy/DOCS.md` Gotchas).
+`cc_requested_model`/`proxy_forwarded_model`/`answering_model`/`content-type`/`content-encoding` yet
+(frozen live-copy caveat, see `src/proxy/DOCS.md` Gotchas).
 **Calls out:** —
 
 ---

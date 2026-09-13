@@ -44,12 +44,14 @@ def _compute_stats(entries: list) -> dict:
     content_type_values = {}
     content_encoding_values = {}
     status_counts = {}
-    requested_present = 0
+    forwarded_present = 0
     answering_present = 0
     both_present_match = 0
     both_present_mismatch = 0
-    requested_model_values = {}
+    cc_requested_model_values = {}
+    proxy_forwarded_model_values = {}
     answering_model_values = {}
+    override_active_count = 0
 
     for e in entries:
         status_counts[e.get('status_code')] = status_counts.get(e.get('status_code'), 0) + 1
@@ -61,19 +63,24 @@ def _compute_stats(entries: list) -> dict:
         if ce:
             content_encoding_values[ce] = content_encoding_values.get(ce, 0) + 1
 
-        requested_model = e.get('requested_model', '')
+        cc_requested_model = e.get('cc_requested_model', '')
+        proxy_forwarded_model = e.get('proxy_forwarded_model', '')
         answering_model = e.get('answering_model', '')
-        if requested_model:
-            requested_present += 1
-            requested_model_values[requested_model] = requested_model_values.get(requested_model, 0) + 1
+        if cc_requested_model:
+            cc_requested_model_values[cc_requested_model] = cc_requested_model_values.get(cc_requested_model, 0) + 1
+        if proxy_forwarded_model:
+            forwarded_present += 1
+            proxy_forwarded_model_values[proxy_forwarded_model] = proxy_forwarded_model_values.get(proxy_forwarded_model, 0) + 1
+        if cc_requested_model and proxy_forwarded_model and cc_requested_model != proxy_forwarded_model:
+            override_active_count += 1
         if answering_model:
             answering_present += 1
             with_answering_model += 1
             answering_model_values[answering_model] = answering_model_values.get(answering_model, 0) + 1
         else:
             without_answering_model += 1
-        if requested_model and answering_model:
-            if requested_model == answering_model:
+        if proxy_forwarded_model and answering_model:
+            if proxy_forwarded_model == answering_model:
                 both_present_match += 1
             else:
                 both_present_mismatch += 1
@@ -85,12 +92,14 @@ def _compute_stats(entries: list) -> dict:
         'content_type_values': content_type_values,
         'content_encoding_values': content_encoding_values,
         'status_counts': status_counts,
-        'requested_present': requested_present,
+        'forwarded_present': forwarded_present,
         'answering_present': answering_present,
         'both_present_match': both_present_match,
         'both_present_mismatch': both_present_mismatch,
-        'requested_model_values': requested_model_values,
+        'cc_requested_model_values': cc_requested_model_values,
+        'proxy_forwarded_model_values': proxy_forwarded_model_values,
         'answering_model_values': answering_model_values,
+        'override_active_count': override_active_count,
     }
 
 
@@ -107,9 +116,10 @@ def _write_report(log_files: list, stats: dict) -> None:
     lines.append(f'- Total `_response` entries: {stats["total"]}')
     lines.append(f'- Entries carrying an `answering_model`: {stats["with_answering_model"]}')
     lines.append(f'- Entries missing `answering_model`: {stats["without_answering_model"]}')
-    lines.append(f'- Entries carrying a `requested_model`: {stats["requested_present"]}')
-    lines.append(f'- Entries where requested == answering: {stats["both_present_match"]}')
-    lines.append(f'- Entries where requested != answering: {stats["both_present_mismatch"]}')
+    lines.append(f'- Entries carrying a `proxy_forwarded_model`: {stats["forwarded_present"]}')
+    lines.append(f'- Entries where proxy_forwarded_model == answering_model: {stats["both_present_match"]}')
+    lines.append(f'- Entries where proxy_forwarded_model != answering_model: {stats["both_present_mismatch"]}')
+    lines.append(f'- Entries where cc_requested_model != proxy_forwarded_model (override active): {stats["override_active_count"]}')
     lines.append('')
     lines.append('## Status codes observed')
     lines.append('')
@@ -135,24 +145,28 @@ def _write_report(log_files: list, stats: dict) -> None:
         lines.append('- none — no entry in the corpus carries a `content-encoding` header value '
                       '(same reason as content-type above)')
     lines.append('')
-    lines.append('## Requested vs. answering model')
+    lines.append('## cc_requested_model vs. proxy_forwarded_model vs. answering_model')
     lines.append('')
-    if stats['requested_present'] or stats['answering_present']:
-        lines.append('`requested_model` values:')
-        for val, count in sorted(stats['requested_model_values'].items(), key=lambda kv: -kv[1]):
+    if stats['forwarded_present'] or stats['answering_present'] or stats['cc_requested_model_values']:
+        lines.append('`cc_requested_model` values (what Claude Code asked for):')
+        for val, count in sorted(stats['cc_requested_model_values'].items(), key=lambda kv: -kv[1]):
             lines.append(f'- `{val}`: {count}')
         lines.append('')
-        lines.append('`answering_model` values:')
+        lines.append('`proxy_forwarded_model` values (what the proxy actually sent to Anthropic):')
+        for val, count in sorted(stats['proxy_forwarded_model_values'].items(), key=lambda kv: -kv[1]):
+            lines.append(f'- `{val}`: {count}')
+        lines.append('')
+        lines.append('`answering_model` values (what the API answered with):')
         for val, count in sorted(stats['answering_model_values'].items(), key=lambda kv: -kv[1]):
             lines.append(f'- `{val}`: {count}')
     else:
         lines.append(
-            'No entry in the corpus carries `requested_model`/`answering_model` — the entire '
-            f'{stats["total"]}-entry corpus predates this milestone\'s `addon.py`/`response_model_probe.py` '
-            'change. Every worker/main proxy in this session is running from a frozen '
-            '`src/logs/.proxy_live_<id>/proxy/` copy (see `src/proxy/DOCS.md` Gotchas); none can produce '
-            'the new fields until killed and respawned. This is the expected, documented state as of this '
-            'milestone — not a bug in the parsing logic (see `p8_answering_model_probe_test.py` for '
+            'No entry in the corpus carries `cc_requested_model`/`proxy_forwarded_model`/`answering_model` '
+            f'— the entire {stats["total"]}-entry corpus predates this milestone\'s `addon.py`/'
+            '`response_model_probe.py` change. Every worker/main proxy in this session is running from a '
+            'frozen `src/logs/.proxy_live_<id>/proxy/` copy (see `src/proxy/DOCS.md` Gotchas); none can '
+            'produce the new fields until killed and respawned. This is the expected, documented state as '
+            'of this milestone — not a bug in the parsing logic (see `p8_answering_model_probe_test.py` for '
             'unit-level verification of the parser against synthetic SSE bytes).'
         )
     lines.append('')
