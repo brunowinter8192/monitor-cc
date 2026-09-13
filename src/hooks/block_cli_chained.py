@@ -35,17 +35,17 @@ _RULE3_MESSAGE = (
 # ORCHESTRATOR
 
 def block_cli_chained_workflow() -> None:
-    command, session_id = _parse_command()
+    command, session_id, cwd = _parse_command()
     if command is None:
         sys.exit(0)
     stripped = _strip_non_shell_active(command)
     chain_segments = _build_chain_segments(stripped, command)
-    if not any(_segment_stages_with_cli(seg, stripped) for seg in chain_segments):
+    if not any(_segment_stages_with_cli(seg, stripped, cwd) for seg in chain_segments):
         sys.exit(0)
 
-    _check_rule1_pipe(chain_segments, stripped, command, session_id)
-    _check_rule2_redirect(chain_segments, stripped, command, session_id)
-    _check_rule3_readback(chain_segments, stripped, command, session_id)
+    _check_rule1_pipe(chain_segments, stripped, command, session_id, cwd)
+    _check_rule2_redirect(chain_segments, stripped, command, session_id, cwd)
+    _check_rule3_readback(chain_segments, stripped, command, session_id, cwd)
     sys.exit(0)
 
 
@@ -55,9 +55,14 @@ def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
-        return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
+        cwd = payload.get("cwd")
+        return (
+            (cmd if isinstance(cmd, str) else None),
+            payload.get("session_id"),
+            (cwd if isinstance(cwd, str) else None),
+        )
     except Exception:
-        return None, None
+        return None, None, None
 
 def _split_spans(text: str, sep_re) -> list:
     spans = []
@@ -95,29 +100,29 @@ def _build_chain_segments(stripped: str, original: str) -> list:
         })
     return segments
 
-def _segment_stages_with_cli(segment: dict, command_context: str) -> bool:
+def _segment_stages_with_cli(segment: dict, command_context: str, cwd) -> bool:
     for s, e in segment['stage_spans']:
-        if resolve_cli_segment(segment['stripped'][s:e], command_context) is not None:
+        if resolve_cli_segment(segment['stripped'][s:e], command_context, cwd) is not None:
             return True
     return False
 
-def _check_rule1_pipe(chain_segments: list, command_context: str, command: str, session_id) -> None:
+def _check_rule1_pipe(chain_segments: list, command_context: str, command: str, session_id, cwd) -> None:
     for segment in chain_segments:
         stages = segment['stage_spans']
         for i, (s, e) in enumerate(stages[:-1]):
             stage_stripped = segment['stripped'][s:e]
-            if resolve_cli_segment(stage_stripped, command_context) is not None:
+            if resolve_cli_segment(stage_stripped, command_context, cwd) is not None:
                 blocked = segment['original'].strip()
                 _block(_RULE1_MESSAGE.format(segment=blocked), command, session_id)
 
-def _check_rule2_redirect(chain_segments: list, command_context: str, command: str, session_id) -> None:
+def _check_rule2_redirect(chain_segments: list, command_context: str, command: str, session_id, cwd) -> None:
     for segment in chain_segments:
         stages = segment['stage_spans']
         if not stages:
             continue
         s, e = stages[-1]
         stage_stripped = segment['stripped'][s:e]
-        match = resolve_cli_segment(stage_stripped, command_context)
+        match = resolve_cli_segment(stage_stripped, command_context, cwd)
         if not is_protected_segment(match):
             continue
         if _REDIRECT_RE.search(stage_stripped):
@@ -125,7 +130,7 @@ def _check_rule2_redirect(chain_segments: list, command_context: str, command: s
             tool_sub = tool_sub_name(match.group('tool'), match.group('sub'))
             _block(_RULE2_MESSAGE.format(tool_sub=tool_sub, segment=blocked), command, session_id)
 
-def _check_rule3_readback(chain_segments: list, command_context: str, command: str, session_id) -> None:
+def _check_rule3_readback(chain_segments: list, command_context: str, command: str, session_id, cwd) -> None:
     redirected_files = set()
     for segment in chain_segments:
         stages = segment['stage_spans']
@@ -133,7 +138,7 @@ def _check_rule3_readback(chain_segments: list, command_context: str, command: s
             continue
         s, e = stages[-1]
         stage_stripped = segment['stripped'][s:e]
-        if resolve_cli_segment(stage_stripped, command_context) is None:
+        if resolve_cli_segment(stage_stripped, command_context, cwd) is None:
             continue
         target_match = _REDIRECT_TARGET_RE.search(stage_stripped)
         if target_match:

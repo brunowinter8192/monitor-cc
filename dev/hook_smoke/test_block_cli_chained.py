@@ -114,6 +114,22 @@ CASES = [
      "worker-cli status duallog-search-chars; git -C .claude/worktrees/duallog-search-chars log integration..HEAD", 0),
     ("no known CLI at all PASS",
      "ls -la && git status --short", 0),
+
+    # --- cwd-resolved interpreter form (measured bypass, 14/306 interpreter calls in real
+    # transcripts carry no directory name while cwd IS a known CLI directory; 2 of those 14
+    # were real bypasses of this hook's own rules) ---
+    ("cwd-resolved interpreter redirect BLOCK (measured bypass 1: no dir name in the "
+     "command, cwd is a websearch worktree)",
+     'python3 cli.py scrape_url_chromium "https://example.com" > /tmp/out.txt 2>&1', 2,
+     '/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch/.claude/worktrees/rawlog'),
+    ("cwd-resolved interpreter piped BLOCK (measured bypass 2: no dir name in the command, "
+     "cwd is the rag-cli directory itself)",
+     'python3 cli.py search "x" coll | head -40', 2,
+     '/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/rag-cli'),
+    ("cwd-resolved: another project's own cli.py PASS (cwd matches none of the 5 known "
+     "CLI directories, exactly like the 259 chore-tracker calls this must keep passing)",
+     'python3 cli.py list --status open > /tmp/out.txt', 0,
+     '/Users/brunowinter2000/Documents/ai/chore-tracker'),
 ]
 
 
@@ -121,8 +137,10 @@ CASES = [
 
 def test_block_cli_chained_workflow() -> None:
     failures = []
-    for desc, cmd, expected in CASES:
-        got = _run_hook(cmd)
+    for case in CASES:
+        desc, cmd, expected = case[0], case[1], case[2]
+        cwd = case[3] if len(case) > 3 else None
+        got = _run_hook(cmd, cwd)
         status = "OK  " if got == expected else "FAIL"
         print(f"  [{status}] {desc}: exit={got} (expected {expected})")
         if got != expected:
@@ -146,12 +164,14 @@ def test_block_cli_chained_workflow() -> None:
 # FUNCTIONS
 
 # Run hook with given command string wrapped in a valid PreToolUse payload; return exit code
-def _run_hook(command: str) -> int:
-    payload = json.dumps({
+def _run_hook(command: str, cwd: str = None) -> int:
+    payload_dict = {
         "tool_name": "Bash",
         "tool_input": {"command": command},
-    })
-    return _run_hook_raw(payload.encode())
+    }
+    if cwd is not None:
+        payload_dict["cwd"] = cwd
+    return _run_hook_raw(json.dumps(payload_dict).encode())
 
 
 # Run hook with raw bytes on stdin (used for the malformed-payload fail-open case); return exit code
