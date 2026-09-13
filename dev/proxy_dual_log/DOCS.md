@@ -124,11 +124,15 @@ check); otherwise run manually.
 
 ---
 
-### attribution_coverage.py (479 LOC)
+### attribution_coverage.py (480 LOC)
 
 **Purpose:** Read-only coverage analysis — can every entry in the `_stripped`/`_injected` dual-logs
 be attributed to a responsible proxy function? Processes all available quartet pairs, produces
-per-category attribution tables and RAW/ADJUSTED coverage percentages.
+per-category attribution tables and RAW/ADJUSTED coverage percentages. Owns its own local
+`_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` maps for top-level-field attribution (`model`/`max_tokens`/
+`thinking`/`output_config`/`context_management`) — this is the live attribution mechanism for
+those fields; `src/proxy/strip_inject_delta.py`'s same-named maps are dead code (see that
+module's own DOCS.md entry).
 **Reads:** all `*_stripped.jsonl`/`*_injected.jsonl` pairs under src/logs/dual_log.
 **Writes:** `md/attribution_coverage_<date>.md`.
 **Called by:** none — manual CLI.
