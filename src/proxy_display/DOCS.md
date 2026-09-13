@@ -128,7 +128,7 @@ populate `messages` for entries the deque window dropped.
 
 ### side_logs.py (82 LOC)
 
-**Purpose:** `_response`/`_errors` side-log readers. `read_response_log` reads `_response` entries incrementally (`{request_id: headers_dict}`). `scan_worker_errors_logs` globs worker `_errors` dual-logs and reads them incrementally by byte position.
+**Purpose:** `_response`/`_errors` side-log readers. `read_response_log` reads `_response` entries incrementally (`{request_id: full entry dict}` — headers plus `cc_requested_model`/`proxy_forwarded_model`/`answering_model`, whatever the on-disk entry carries). `scan_worker_errors_logs` globs worker `_errors` dual-logs and reads them incrementally by byte position.
 **Reads:** `_response`/`_errors` dual-log JSONL files (incremental by byte position).
 **Writes:** Nothing — returns tuples; `/tmp/monitor_cc_error.log` on `read_response_log`'s `OSError` (via `pane_error_log`, retry-next-poll position unchanged).
 **Called by:** `src/panes/token_pane.py` (`read_response_log`, lazy import), `src/panes/warnings_pane.py` (`scan_worker_errors_logs`, lazy import)

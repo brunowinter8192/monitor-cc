@@ -225,3 +225,127 @@ scope. Live verification of the whole mechanism (real compressed/uncompressed co
 reading, a real override-mismatch instance, an actually-observed abort producing a partial-model
 entry) needs a proxy restart, which is explicitly out of scope for this session — the corpus report
 script exists precisely so a future session can re-run it after a restart without re-deriving anything.
+
+## 2026-09-13 — M2: answering model in the token pane
+
+New task, same file (M2 continues the same area). Scope: `src/panes/token_pane.py`,
+`src/format/token_format.py`, `src/proxy_display/side_logs.py` only — `src/proxy/` untouched (M1
+is merged and closed), warnings pane and proxy pane untouched.
+
+### How the entry flows from read_response_log to the rendered line
+
+`token_pane._refresh_tokens_data` calls `find_response_log_path` + `read_response_log`, merges the
+result into module-level `_response_rid_map` (`{request_id: entry}`), and passes it into
+`format_cache_tracker(..., response_rid_map=_response_rid_map, ...)` on every render
+(`_build_tokens_output`). `format_cache_tracker` threads it down through `_render_turn_lines` →
+`_render_expanded_call_lines(call, response_rid_map)`, which now calls three line-group renderers in
+order: usage-extras, rate-limit, **`_render_answering_model_line`** (new), content-blocks. Each group
+looks up its own data via `call['request_id']` — `response_rid_map` is keyed by `request_id`
+end-to-end, never by `flow_id` or list position, matching the existing rate-limit lookup.
+
+**The one shape change that makes this possible:** `side_logs.read_response_log` used to store only
+`entry.get('headers', {})` per `request_id` — everything else in the M1 `_response` entry
+(`cc_requested_model`, `proxy_forwarded_model`, `answering_model`) was discarded at read time, before
+it ever reached the pane. Changed to store the full parsed `entry` dict. `_render_rate_limit_lines`
+updated in lockstep (`entry.get('headers')` instead of treating the stored value itself as the headers
+dict) — this is the one place the shape change could have silently broken something, since it was
+already a caller of the old contract; covered by
+`dev/panes/answering_model_line_test.py::_test_rate_limit_lines_still_work_with_new_shape`.
+
+### Exact rendered line, both cases (raw bytes, verified via direct call)
+
+Equal (`proxy_forwarded_model == answering_model`, or `proxy_forwarded_model` unknown):
+```
+    \x1b[2mmodel: claude-opus-4-6-20260701\x1b[39m
+```
+(`DIM` = `\x1b[2m`, `SOFT_RESET` = `\x1b[39m` — same DIM+SOFT_RESET pattern every other unobtrusive
+expanded-detail line in this file already uses, e.g. the `rl:`/`tier:`/`5m:` lines.)
+
+Mismatch (`proxy_forwarded_model != answering_model`, both known):
+```
+    \x1b[38;2;243;139;168mmodel: claude-opus-4-6-20260815\x1b[39m
+```
+(`RED` = `\x1b[38;2;243;139;168m`.) Both confirmed byte-for-byte via a direct
+`_render_answering_model_line(call, response_rid_map)` call in a throwaway REPL snippet during
+implementation, then pinned as hard `==` assertions in
+`dev/panes/answering_model_line_test.py::_test_equal_models_render_dim` /
+`_test_mismatch_models_render_red`.
+
+### Empty-field safety
+
+Three cases, all return `(lines=[], keys=[])` — i.e. render nothing, assert nothing:
+1. No entry at all for this `request_id` (`response_rid_map.get(rid)` is `None` — e.g. `_response`
+   log not yet polled this far, or the request predates M1).
+2. Entry present but `answering_model == ''` — the documented M1 case: stream aborted before the
+   first chunk, or the SSE body was compressed and the probe never matched (see M1 entry above).
+3. `call` itself carries no `request_id` (defensive — shouldn't happen given `extract_cache_turns`
+   always sets it, but the function must not `KeyError`/`None`-index on it).
+
+One more asymmetric case, deliberately NOT a mismatch: `answering_model` known but
+`proxy_forwarded_model` empty/missing. Colors DIM, not RED — coloring red here would assert a
+mismatch the code cannot actually verify. Pinned in
+`_test_missing_forwarded_model_shows_plain`.
+
+### Tests run, numbers before/after
+
+- `dev/panes/answering_model_line_test.py` (NEW, this task) — 7 assertions, all pass, both before
+  writing the fix would be meaningless (function didn't exist) and after.
+- `dev/display/test_hover_map.py` — **45 passed, 0 failed**, identical before and after (this suite
+  doesn't touch `response_rid_map` at all, included as a broad caller-safety sweep over
+  `format_cache_tracker`/related render code).
+- `dev/panes/render_byte_identity.py` (pinned via `PANES_BYTE_IDENTITY_JSONL=/tmp/mc_pin/pinned_session_prefix.jsonl`,
+  a frozen 300-line prefix of the newest real session JSONL at task start) — HASH before:
+  `95aa658e7b90090cd21630d4117b06fbb6b25fd3111d052fe65c081a18dec532`; HASH after fixing the
+  fixture's `response_rid_map` shape to match the new full-entry contract (and extending it with a
+  mismatching model pair, since this harness is this exact render path's one dedicated fixture):
+  `5c7fc44cb8aab9f6302ba6a3d59548a88c833eee213a6593469905d8a70d95a9`. The hash change is the
+  EXPECTED, intended result of a real behavior change, not a regression — confirmed by first running
+  the harness with the OLD fixture shape against the NEW code (hash
+  `c412908cd19402f4a911ac313e188f519584c764302073b62f88bc637a9eca0a`, differs from both — silently
+  losing the `rl:`/warn lines because `entry.get('headers')` no longer finds anything in a
+  flat-headers-shaped dict), which is what proved the fixture itself needed updating, not just
+  tolerating a new hash.
+- `dev/pane_search/p6_tokens_pane_parity_test.py`, `dev/pane_search/p7_workers_pane_parity_test.py`,
+  `dev/click_ui/p2_copy_click_probe.py` — **could not complete in this sandbox**: all three call
+  `os.get_terminal_size()` (via `token_pane._build_tokens_output` / `worker_render._workers_terminal_size`)
+  which raises `OSError: [Errno 25] Inappropriate ioctl for device` with no real TTY attached. Verified
+  this is pre-existing and unrelated to this change: `git stash` + re-run reproduces the IDENTICAL
+  failure (same 3/3/2 PASS lines printed before the same crash) on the unmodified code. Running under
+  `script -q /dev/null` gets past `get_terminal_size` (pty provides a size) but then hits an unrelated
+  `IndexError` in `_compute_cache_viewport`, ALSO reproduced identically on unmodified code via the
+  same stash test — pre-existing environment limitation, not a regression caused here. Landmine for
+  whoever runs these next in a similar sandboxed worker: they need a real TTY (or a `pty`-based
+  harness fix, not attempted here — out of scope) to run to completion; do not treat their failure to
+  start as a signal about `src/format/`/`src/panes/` correctness without first checking they fail
+  identically on `git stash`.
+
+### Design note carried over from M1 review
+
+The comparison target is `proxy_forwarded_model`, not `cc_requested_model`, per this task's explicit
+instruction: the API answered the request the proxy actually sent, and a `cc_requested_model` /
+`proxy_forwarded_model` difference is our own override feature firing, not an API deviation. Matches
+the M1 rationale already recorded above under "Design choice" in the first dated section of this file.
+
+## 2026-09-13 — Recap close-out (M2)
+
+Session end for the M2 task. Self-audit (`git diff integration --name-only`, integration already
+carries M1 as of `55de9bd merge: worker modelcheck`): `dev/panes/DOCS.md`,
+`dev/panes/answering_model_line_test.py`, `dev/panes/render_byte_identity.py`,
+`process-docs/proxy_instrumentation/2026-09-13_answering_model_capture_m1.md`, `src/format/DOCS.md`,
+`src/format/token_format.py`, `src/panes/DOCS.md`, `src/proxy_display/DOCS.md`,
+`src/proxy_display/side_logs.py`. All touched-file DOCS.md entries (`dev/panes/DOCS.md`,
+`src/format/DOCS.md`, `src/proxy_display/DOCS.md`, `src/panes/DOCS.md`) were kept current inline
+during the task itself, not deferred to this recap pass — checked again now against `wc -l` on each
+file, all LOC values and Purpose/Reads/Writes text still match the committed state, nothing to fix.
+
+**One thing worth flagging for whoever picks up the next milestone in this area:** the three
+TTY-dependent pane-parity harnesses (`dev/pane_search/p6_tokens_pane_parity_test.py`,
+`dev/pane_search/p7_workers_pane_parity_test.py`, `dev/click_ui/p2_copy_click_probe.py`) cannot run to
+completion in this sandboxed worker environment at all (`os.get_terminal_size()` has no real TTY to
+query). This is a standing environment gap, not something either M1 or M2 introduced or should try to
+fix — confirmed via `git stash` both times work in this area touched pane rendering. Don't spend time
+debugging it as if it were a regression; it reproduces identically on unmodified `integration` HEAD.
+
+M1 + M2 are both complete and merged into `integration` as of this recap. No further work on this
+`_response`-model-capture line is planned by this worker — the milestone as scoped (M1: capture +
+survive-abort + three-field naming; M2: token-pane display) is done.

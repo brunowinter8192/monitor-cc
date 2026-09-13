@@ -28,7 +28,7 @@ def read_response_log(path: Optional[Path], last_pos: int) -> tuple:
                     continue
                 rid = entry.get('request_id', '')
                 if rid:
-                    rid_map[rid] = entry.get('headers', {})
+                    rid_map[rid] = entry
             return rid_map, f.tell()
     except OSError:
         log_pane_error('side_logs')

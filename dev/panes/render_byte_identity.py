@@ -16,7 +16,10 @@ warnings_pane.py / warnings_render.py concern split).
     copy_feedback entry with a future expiry, and a search query matching the turn/call — added
     for the tokens-data-render-helpers milestone (2026-09) specifically to cover the `rl:`/warn
     lines and the expanded content-blocks loop, which the workers-pane harness's own synthetic
-    fixtures never populate.
+    fixtures never populate. response_rid_map values are now full `_response` dual-log entries
+    (M2, answering-model-in-token-pane milestone) — req-rl-1 carries a mismatching
+    proxy_forwarded_model/answering_model pair (exercises the RED `model:` line), req-rl-2 has no
+    entry at all (exercises the no-line case).
 
 Usage (from project root):
     ./venv/bin/python dev/panes/render_byte_identity.py
@@ -180,13 +183,17 @@ def _make_rate_limit_turns() -> tuple:
     }
     response_rid_map = {
         'req-rl-1': {
-            'anthropic-ratelimit-unified-5h-utilization': '0.82',
-            'anthropic-ratelimit-unified-5h-reset': '1893456000',   # 2030-01-01, fixed
-            'anthropic-ratelimit-unified-7d-utilization': '0.55',
-            'anthropic-ratelimit-unified-7d-reset': '1893542400',   # 2030-01-02, fixed
-            'anthropic-ratelimit-unified-status': 'rejected',
-            'anthropic-ratelimit-unified-overage-status': 'disabled',
-            'anthropic-ratelimit-unified-overage-disabled-reason': 'exceeded plan limit',
+            'headers': {
+                'anthropic-ratelimit-unified-5h-utilization': '0.82',
+                'anthropic-ratelimit-unified-5h-reset': '1893456000',   # 2030-01-01, fixed
+                'anthropic-ratelimit-unified-7d-utilization': '0.55',
+                'anthropic-ratelimit-unified-7d-reset': '1893542400',   # 2030-01-02, fixed
+                'anthropic-ratelimit-unified-status': 'rejected',
+                'anthropic-ratelimit-unified-overage-status': 'disabled',
+                'anthropic-ratelimit-unified-overage-disabled-reason': 'exceeded plan limit',
+            },
+            'proxy_forwarded_model': 'claude-opus-4-6-20260701',
+            'answering_model': 'claude-opus-4-6-20260815',
         },
     }
     return [turn], response_rid_map
