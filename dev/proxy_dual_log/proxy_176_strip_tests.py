@@ -38,13 +38,13 @@ def test_workflow_blocklist():
     payload = {"tools": [
         {"name": "Bash", "description": "run bash"},
         {"name": "Workflow", "description": "big description " * 100},
-        {"name": "Read", "description": "read file"},
+        {"name": "Glob", "description": "glob files"},
     ]}
     modified, removed_count, removed_names = _strip_unused_tools(payload)
     remaining = [t["name"] for t in modified["tools"]]
     check("Workflow removed from tools list", "Workflow" not in remaining)
     check("Bash retained", "Bash" in remaining)
-    check("Read retained", "Read" in remaining)
+    check("Glob retained", "Glob" in remaining)
     check("removed_count == 1", removed_count == 1)
     check("removed_names == ['Workflow']", removed_names == ["Workflow"])
     print()
