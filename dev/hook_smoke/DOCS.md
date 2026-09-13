@@ -192,14 +192,17 @@ fail-open).
 
 ---
 
-### test_block_cli_chained.py (168 LOC)
+### test_block_cli_chained.py (188 LOC)
 
-**Purpose:** 42-case smoke for `block_cli_chained.py` — the single hook covering all 3 chain-abuse
+**Purpose:** 45-case smoke for `block_cli_chained.py` — the single hook covering all 3 chain-abuse
 rule classes (pipe after a known-CLI segment, redirect on a protected subcommand, readback of a
 redirected protected-subcommand's output) across all 8 known wrapper CLIs (`rag-cli`, `gh-cli`,
-`worker-cli`, `websearch`, `duallog`, `linkedin-cli`, `penny-cli`, `reddit-cli`), plus 5 cases
-proving the same rules apply when a wrapper's `cli.py` is invoked directly through its Python
-interpreter path (bypassing the wrapper script name).
+`worker-cli`, `websearch`, `duallog`, `linkedin-cli`, `penny-cli`, `reddit-cli`), 5 cases proving
+the same rules apply when a wrapper's `cli.py` is invoked directly through its Python interpreter
+path naming its project directory in the command, plus 3 cases for the same interpreter form
+falling back to the payload's `cwd` when the command names no directory (2 measured real-transcript
+bypasses BLOCK, one other project's own `cli.py` with an unrelated cwd stays PASS). Cases carrying a
+4th tuple element pass that value as the payload's `cwd`.
 **Called by:** none — run manually; must be run from project root (HOOK path is relative).
 
 ---

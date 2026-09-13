@@ -48,21 +48,26 @@ class _InterpreterMatch:
 def match_known_cli_segment(segment: str):
     return _KNOWN_CLI_RE.match(segment)
 
-def match_interpreter_cli_segment(segment: str, command_context: str):
+def match_interpreter_cli_segment(segment: str, command_context: str, cwd=None):
     match = _INTERPRETER_CLI_RE.match(segment)
     if match is None:
         return None
     dir_matches = list(_CLI_PY_DIR_RE.finditer(command_context))
-    if not dir_matches:
-        return None
-    tool = _CLI_PY_DIR_TOOL[dir_matches[-1].group(1)]
-    return _InterpreterMatch(tool, match.group('sub'))
+    if dir_matches:
+        tool = _CLI_PY_DIR_TOOL[dir_matches[-1].group(1)]
+        return _InterpreterMatch(tool, match.group('sub'))
+    if cwd:
+        cwd_matches = list(_CLI_PY_DIR_RE.finditer(cwd))
+        if cwd_matches:
+            tool = _CLI_PY_DIR_TOOL[cwd_matches[-1].group(1)]
+            return _InterpreterMatch(tool, match.group('sub'))
+    return None
 
-def resolve_cli_segment(segment: str, command_context: str):
+def resolve_cli_segment(segment: str, command_context: str, cwd=None):
     match = match_known_cli_segment(segment)
     if match is not None:
         return match
-    return match_interpreter_cli_segment(segment, command_context)
+    return match_interpreter_cli_segment(segment, command_context, cwd)
 
 def is_known_cli_segment(segment: str) -> bool:
     return match_known_cli_segment(segment) is not None

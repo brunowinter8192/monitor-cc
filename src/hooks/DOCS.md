@@ -27,9 +27,9 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 
 ---
 
-### _known_cli.py (81 LOC)
+### _known_cli.py (86 LOC)
 
-**Purpose:** `PROTECTED_SUBCOMMANDS` table and matcher functions resolving a Bash chain segment to one of the 8 policed CLIs (gh-cli, rag-cli, worker-cli, reddit-cli, websearch, linkedin, penny-cli, duallog), by wrapper name or by bare `python cli.py` interpreter form, and whether its subcommand is protected.
+**Purpose:** `PROTECTED_SUBCOMMANDS` table and matcher functions resolving a Bash chain segment to one of the 8 policed CLIs (gh-cli, rag-cli, worker-cli, reddit-cli, websearch, linkedin, penny-cli, duallog), by wrapper name, by bare `python cli.py` interpreter form naming a known project directory in the command, or by that same interpreter form falling back to the session `cwd` when the command names no directory, and whether its subcommand is protected.
 **Reads:** n/a.
 **Writes:** n/a.
 **Called by:** `block_cli_chained.py` — `resolve_cli_segment`, `is_protected_segment`, `tool_sub_name`.
@@ -108,10 +108,10 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 
 ---
 
-### block_cli_chained.py (167 LOC)
+### block_cli_chained.py (172 LOC)
 
 **Purpose:** PreToolUse Bash hook enforcing 3 rules across all 8 CLIs `_known_cli` knows: no piping a CLI segment into another command, no redirecting a protected subcommand's output to a file, no same-call readback (head/tail/cat/sed/awk/grep/less/more/wc) of a file any CLI segment redirected into; chaining with `;`/`&&`/`||` alongside any other command is otherwise unrestricted.
-**Reads:** stdin (PreToolUse JSON: `tool_input.command`).
+**Reads:** stdin (PreToolUse JSON: `tool_input.command`, top-level `cwd` — used only as a fallback to resolve the interpreter form when the command itself names no known CLI directory).
 **Writes:** stderr (one of 3 rule-specific block messages) on violation; exit 2.
 **Called by:** Claude Code hook system, registered by `hook_setup.py`.
 
