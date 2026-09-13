@@ -34,11 +34,22 @@ leaves `context_management` byte-identical (same object, not just equal). Test 1
 `src/proxy/logging.py::_build_forwarded_delta` recording the forwarded `thinking` value (on/off/
 absent), added so this exact failure is now readable straight off the forwarded dual-log.
 
+Test 15 covers a follow-up review point: a context_management removal now reaches the
+stripped-delta path for the first time (previously that field only ever got INJECTED, never
+STRIPPED). `src/proxy/strip_inject_delta.py`'s own `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` are proven
+dead code (the real `fn_map` written to the stripped/injected JSONL never carries a field-level
+entry for ANY top-level field, thinking/output_config/max_tokens included — verified directly, not
+just by absence of a call site), so they are left unchanged. The tool that DOES actually attribute
+`fields_delta` entries is `dev/proxy_dual_log/attribution_coverage.py`'s own `_FIELD_STRIP_FN`
+dict, which was missing `context_management` on the strip side and would have reported the removal
+as `UNATTR:context_management`; fixed there, verified here.
+
 Run from project root or worktree root:
     ./venv/bin/python dev/native-model-start/p2_model_params_probe.py
 """
 
 # INFRASTRUCTURE
+import importlib.util
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,6 +61,8 @@ sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 from proxy import inject_helpers
 from proxy.inject_helpers import _inject_model_override, _strip_clear_thinking_edit
 from proxy.logging import _build_forwarded_delta
+from proxy import strip_inject_delta
+from proxy.strip_inject_delta import _build_stripped_injected_deltas
 
 _PASS = "\033[32mPASS\033[0m"
 _FAIL = "\033[31mFAIL\033[0m"
@@ -422,6 +435,60 @@ def test_forwarded_delta_includes_thinking():
           "thinking" in entry_missing and entry_missing["thinking"] is None)
 
 
+# Load dev/proxy_dual_log/attribution_coverage.py by path (its module name has no package
+# context here, matching the same by-path load it itself uses for src/proxy/strip_vocab.py).
+def _load_attribution_coverage_module():
+    path = WORKTREE_ROOT / "dev" / "proxy_dual_log" / "attribution_coverage.py"
+    spec = importlib.util.spec_from_file_location("attribution_coverage_probe", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# Test 15 — follow-up review point: _strip_clear_thinking_edit can now remove a top-level field
+# (context_management) for the first time ever on the STRIP side. Establishes (a) the real fn_map
+# written to stripped/injected JSONL never attributes ANY top-level field, proving
+# src/proxy/strip_inject_delta.py's _FIELD_STRIP_FN/_FIELD_INJECT_FN are dead code untouched by
+# this change; and (b) the tool that DOES attribute fields_delta entries,
+# dev/proxy_dual_log/attribution_coverage.py's own _FIELD_STRIP_FN, now correctly names
+# _strip_clear_thinking_edit instead of falling through to UNATTR:context_management.
+def test_context_management_strip_is_attributed():
+    print("\n[Test 15] context_management strip: fn_map dead-code check + attribution_coverage fix")
+
+    orig_payload = {
+        "model": "claude-sonnet-5",
+        "thinking": {"type": "adaptive", "display": "summarized"},
+        "context_management": {"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]},
+        "messages": [{"role": "user", "content": "hi"}],
+    }
+    modified_payload = {
+        "model": "claude-sonnet-5",
+        "thinking": {"type": "disabled"},
+        "messages": [{"role": "user", "content": "hi"}],
+    }
+    stripped_entry, injected_entry, _new_s, _new_i = _build_stripped_injected_deltas(
+        orig_payload, modified_payload, "req-attr", None, None, "claude-sonnet-5", {})
+
+    check("(a) context_management now appears in stripped fields_delta (new: was injected-only before)",
+          stripped_entry["fields_delta"].get("context_management") == orig_payload["context_management"])
+    check("(a) the real fn_map carries NO field-level entry at all (thinking is equally unattributed "
+          "there — pre-existing dead code, not something this fix changes)",
+          stripped_entry["fn_map"] == {} and "thinking" not in stripped_entry["fn_map"])
+
+    ac = _load_attribution_coverage_module()
+    check("(a) confirms by content: src/proxy/strip_inject_delta.py's own _FIELD_STRIP_FN "
+          "still has no context_management entry (left untouched — it was never live)",
+          "context_management" not in strip_inject_delta._FIELD_STRIP_FN)
+    strip_fn = ac._FIELD_STRIP_FN.get("context_management", "UNATTR:context_management")
+    check("(b) attribution_coverage.py now attributes the strip to _strip_clear_thinking_edit, "
+          f"not UNATTR (got: {strip_fn!r})",
+          strip_fn != "UNATTR:context_management" and "_strip_clear_thinking_edit" in strip_fn)
+    inject_fn = ac._FIELD_INJECT_FN.get("context_management", "UNATTR:context_management")
+    check("(b) the inject side (Claude Code / _inject_context_management adding the edit) is "
+          "unchanged and still correctly attributed",
+          inject_fn == "_inject_context_management")
+
+
 # ORCHESTRATOR
 
 def run_probe_workflow():
@@ -442,6 +509,7 @@ def run_probe_workflow():
     test_fixation_load_failure_does_not_pin()
     test_clear_thinking_edit_stripped_when_thinking_disabled()
     test_forwarded_delta_includes_thinking()
+    test_context_management_strip_is_attributed()
 
     total = len(_RESULTS)
     passed = sum(1 for _, ok in _RESULTS if ok)
