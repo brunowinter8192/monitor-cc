@@ -22,15 +22,18 @@ transitions and the absence of any queue-file side effect.
 
 ---
 
-### verify_model_cycle_and_io.py (287 LOC)
+### verify_model_cycle_and_io.py (309 LOC)
 
 **Purpose:** Regression guard for `src/menubar/model_selection.py`'s pure cycle logic
 (`_next_model`/`_next_effort`/`_next_max_tokens`, each stepping and wrapping through their known
-value sets, and confirming an unrecognized current value starts the cycle at the first choice),
-`model_selection.json` I/O (atomic write, exact 2-key schema, an unrecognized-but-valid on-disk
-value preserved verbatim rather than replaced), and `proxy_rules.json` read-modify-write (the
-custom serializer's indent-2-except-`model_params` format fidelity, `_write_proxy_rules_model_params`
-against an existing and a missing target model, and graceful degradation on a malformed file).
+value sets, and confirming an unrecognized current value starts the cycle at the first choice; plus
+`_next_thinking`/`_thinking_is_enabled`, toggling exactly between the on `{"type": "adaptive",
+"display": "summarized"}` and off `{"type": "disabled"}` states), `model_selection.json` I/O
+(atomic write, exact 2-key schema, an unrecognized-but-valid on-disk value preserved verbatim
+rather than replaced), and `proxy_rules.json` read-modify-write (the custom serializer's
+indent-2-except-`model_params` format fidelity, `_write_proxy_rules_model_params` against an
+existing target model with its thinking state flipped off, a missing target model created with
+thinking left on, and graceful degradation on a malformed file).
 **Reads:** nothing persistent — every case uses a tempdir path or an in-memory fixture string,
 never the real `~/.claude/shared-rules/model_selection.json` or `proxy_rules.json`.
 **Writes:** `md/verify_model_cycle_and_io.md`.

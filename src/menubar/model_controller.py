@@ -7,7 +7,7 @@ from AppKit import (NSAttributedString, NSColor, NSFontAttributeName,
 from Foundation import NSMakeRect, NSOperationQueue
 
 from .panel import _TOP_BAR_H, _ROW_H, _LABEL_H, _MENLO, _make_line_separator
-from .model_selection import _PendingSelection
+from .model_selection import _PendingSelection, _thinking_is_enabled
 from .model_panel_ui import (_make_models_nspanel, _make_model_row_btn, _make_apply_btn,
                              _APPLY_BTN_W, _APPLY_SUCCESS_TITLE, _APPLY_SUCCESS_W,
                              _APPLY_SUCCESS_DURATION)
@@ -16,38 +16,47 @@ from .model_panel_ui import (_make_models_nspanel, _make_model_row_btn, _make_ap
 
 class _ModelRowButtons:
     def __init__(self):
-        self.main_cycle    = None
-        self.main_effort   = None
-        self.main_maxtok   = None
-        self.worker_cycle  = None
-        self.worker_effort = None
-        self.worker_maxtok = None
-        self.apply         = None
+        self.main_cycle      = None
+        self.main_effort     = None
+        self.main_maxtok     = None
+        self.main_thinking   = None
+        self.worker_cycle    = None
+        self.worker_effort   = None
+        self.worker_maxtok   = None
+        self.worker_thinking = None
+        self.apply           = None
 
     def build(self, sv, pw: int, target) -> None:
-        self.main_cycle    = _make_model_row_btn(pw)
-        self.main_effort   = _make_model_row_btn(pw)
-        self.main_maxtok   = _make_model_row_btn(pw)
-        self.worker_cycle  = _make_model_row_btn(pw)
-        self.worker_effort = _make_model_row_btn(pw)
-        self.worker_maxtok = _make_model_row_btn(pw)
-        self.apply         = _make_apply_btn()
+        self.main_cycle      = _make_model_row_btn(pw)
+        self.main_effort     = _make_model_row_btn(pw)
+        self.main_maxtok     = _make_model_row_btn(pw)
+        self.main_thinking   = _make_model_row_btn(pw)
+        self.worker_cycle    = _make_model_row_btn(pw)
+        self.worker_effort   = _make_model_row_btn(pw)
+        self.worker_maxtok   = _make_model_row_btn(pw)
+        self.worker_thinking = _make_model_row_btn(pw)
+        self.apply           = _make_apply_btn()
         self.main_cycle.setTarget_(target)
         self.main_cycle.setAction_(b'cycleMainModel:')
         self.main_effort.setTarget_(target)
         self.main_effort.setAction_(b'cycleMainEffort:')
         self.main_maxtok.setTarget_(target)
         self.main_maxtok.setAction_(b'cycleMainMaxTokens:')
+        self.main_thinking.setTarget_(target)
+        self.main_thinking.setAction_(b'cycleMainThinking:')
         self.worker_cycle.setTarget_(target)
         self.worker_cycle.setAction_(b'cycleWorkerModel:')
         self.worker_effort.setTarget_(target)
         self.worker_effort.setAction_(b'cycleWorkerEffort:')
         self.worker_maxtok.setTarget_(target)
         self.worker_maxtok.setAction_(b'cycleWorkerMaxTokens:')
+        self.worker_thinking.setTarget_(target)
+        self.worker_thinking.setAction_(b'cycleWorkerThinking:')
         self.apply.setTarget_(target)
         self.apply.setAction_(b'applyModelSelection:')
-        for btn in (self.main_cycle, self.main_effort, self.main_maxtok,
-                    self.worker_cycle, self.worker_effort, self.worker_maxtok, self.apply):
+        for btn in (self.main_cycle, self.main_effort, self.main_maxtok, self.main_thinking,
+                    self.worker_cycle, self.worker_effort, self.worker_maxtok, self.worker_thinking,
+                    self.apply):
             sv.addView_inGravity_(btn, 1)
 
     def refresh_titles(self, pending: _PendingSelection) -> None:
@@ -61,6 +70,10 @@ class _ModelRowButtons:
         self.main_maxtok.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
                 f'  Main max_tokens:  {pending.main_max_tokens}', {NSFontAttributeName: _MENLO()}))
+        self.main_thinking.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'  Main thinking:    {"on" if _thinking_is_enabled(pending.main_thinking) else "off"}',
+                {NSFontAttributeName: _MENLO()}))
         self.worker_cycle.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
                 f'Worker:  {pending.worker}',
@@ -71,6 +84,10 @@ class _ModelRowButtons:
         self.worker_maxtok.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(
                 f'  Worker max_tokens:{pending.worker_max_tokens}', {NSFontAttributeName: _MENLO()}))
+        self.worker_thinking.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(
+                f'  Worker thinking:  {"on" if _thinking_is_enabled(pending.worker_thinking) else "off"}',
+                {NSFontAttributeName: _MENLO()}))
 
 
 class ModelController:
@@ -97,7 +114,7 @@ class ModelController:
             NSAttributedString.alloc().initWithString_attributes_(
                 f'Sessions · RAG · [Models]     Auto-Jump: {state}',
                 {NSFontAttributeName: _MENLO()}))
-        required_h = _TOP_BAR_H + _LABEL_H + 6 * _ROW_H + 22
+        required_h = _TOP_BAR_H + _LABEL_H + 8 * _ROW_H + 22
         self._resize_models_panel(max(app.settings.panel_min_height, required_h))
         self._models_sv.addView_inGravity_(_make_line_separator(pw), 1)
         self._buttons.build(self._models_sv, pw, app._panel_controller)
@@ -144,6 +161,20 @@ class ModelController:
             self._buttons.refresh_titles(self._pending)
         except Exception as exc:
             print(f'[menubar] model max_tokens cycle (worker) failed: {exc}', file=sys.stderr)
+
+    def handle_cycle_main_thinking(self) -> None:
+        try:
+            self._pending.cycle_main_thinking()
+            self._buttons.refresh_titles(self._pending)
+        except Exception as exc:
+            print(f'[menubar] model thinking cycle (main) failed: {exc}', file=sys.stderr)
+
+    def handle_cycle_worker_thinking(self) -> None:
+        try:
+            self._pending.cycle_worker_thinking()
+            self._buttons.refresh_titles(self._pending)
+        except Exception as exc:
+            print(f'[menubar] model thinking cycle (worker) failed: {exc}', file=sys.stderr)
 
     def handle_apply(self) -> None:
         try:

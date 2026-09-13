@@ -83,19 +83,19 @@ root) — this package only consumes those.
 
 ---
 
-### model_controller.py (188 LOC)
+### model_controller.py (219 LOC)
 
-**Purpose:** Per-concern controller for the Models side panel — main/worker model plus effort plus max_tokens cycle rows, and the Apply action.
+**Purpose:** Per-concern controller for the Models side panel — main/worker model plus effort plus max_tokens plus thinking cycle rows, and the Apply action.
 **Reads:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (via `model_selection.py`, on open and after each cycle click); `app.settings.panel_width`/`.panel_min_height`/`.auto_focus`.
-**Writes:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (atomic, only on an explicit Apply click); `self._pending`'s 6 fields (in-memory, on cycle clicks); `self._models_panel` frame.
+**Writes:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (atomic, only on an explicit Apply click); `self._pending`'s 8 fields (in-memory, on cycle clicks); `self._models_panel` frame.
 **Called by:** `app.py` (construction, all cycle/apply `_PanelController` delegates, resize), `panel_lifecycle.py` (open/close/cycle).
-**Calls out:** `AppKit`, `Foundation`, `sys`, `threading`; `.panel` (constants + `_make_line_separator`); `.model_selection` (`_PendingSelection`); `.model_panel_ui` (factories + `_APPLY_*` constants).
+**Calls out:** `AppKit`, `Foundation`, `sys`, `threading`; `.panel` (constants + `_make_line_separator`); `.model_selection` (`_PendingSelection`, `_thinking_is_enabled`); `.model_panel_ui` (factories + `_APPLY_*` constants).
 
 ---
 
-### model_selection.py (143 LOC)
+### model_selection.py (162 LOC)
 
-**Purpose:** Pure file-I/O persistence for model/effort/max_tokens selection — cycle-value tuples, a custom `proxy_rules.json` serializer, and the `_PendingSelection` state object.
+**Purpose:** Pure file-I/O persistence for model/effort/max_tokens/thinking selection — cycle-value tuples, a custom `proxy_rules.json` serializer, and the `_PendingSelection` state object.
 **Reads:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (`path=` parameters, defaulting to the real files).
 **Writes:** `MODEL_SELECTION_FILE`, `PROXY_RULES_FILE` (atomic tempfile + `os.replace`, only via `_write_model_selection`/`_write_proxy_rules_model_params`).
 **Called by:** `model_controller.py` (`_PendingSelection`, sole import); `dev/model_selector/verify_model_cycle_and_io.py`; `dev/menubar/model_controller_byte_identity.py` (dynamic import).
@@ -123,7 +123,7 @@ root) — this package only consumes those.
 
 ---
 
-### app.py (337 LOC)
+### app.py (343 LOC)
 
 **Purpose:** `CCMenuBarApp` (rumps.App subclass) — owns the per-concern controllers, the `_tick` timer loop, and `_PanelController` (the NSObject target for every button/hotkey action).
 **Reads:** `sessions.refresh()` + `sessions.bg_by_project` (via `SessionsController`, backed by `discovery_worker.py`'s background snapshot) every tick; `SETTINGS_FILE` on launch.
@@ -360,7 +360,7 @@ root) — this package only consumes those.
 | `CCMenuBarApp.settings` | app.py | app.py | `PanelSettings` — the persisted panel-preference triple: `.auto_focus`, `.panel_width`, `.panel_min_height`. Read by `panel_manager.py`, `rag_controller.py`, `model_controller.py`, `focus_controller.py`. |
 | `CCMenuBarApp.panel` | app.py | panel_manager.py | `PanelManager` — owns `_panel_open`, `_panel_backgrounded`, `_initialized`, `_rebuild_in_progress`, `_lookups` (`_PanelLookups`: `displayed_items`/`cwd_map`/`worker_tag_map`/`desktop_to_cwd`/`abort_btns_by_project`/`abort_project_for_tag`), `_widgets` (`_PanelWidgets`: `panel`/`stack`/`quit_btn`/`toggle_btn`/`kill_btn`). |
 | `CCMenuBarApp.rag` | app.py | rag_controller.py | `RagController` — owns `_rag_open`, `_rag_panel`, `_rag_sv`, `_rag_toggle_btn`, `_rag_status_label`. |
-| `CCMenuBarApp.models` | app.py | model_controller.py | `ModelController` — owns `_models_open`, `_models_panel`, `_models_sv`, `_models_toggle_btn`, `_pending` (a `model_selection.py:_PendingSelection`), `_buttons` (a `_ModelRowButtons`). |
+| `CCMenuBarApp.models` | app.py | model_controller.py | `ModelController` — owns `_models_open`, `_models_panel`, `_models_sv`, `_models_toggle_btn`, `_pending` (a `model_selection.py:_PendingSelection`, incl. per-side `main_thinking`/`worker_thinking`), `_buttons` (a `_ModelRowButtons`, incl. `main_thinking`/`worker_thinking` rows). |
 | `CCMenuBarApp.focus` | app.py | focus_controller.py | `FocusController` — owns `_idle_since_ts` (per-main debounce timestamps), `_last_statuses` (blink/transition detection). |
 | `CCMenuBarApp.sessions` | app.py | sessions_controller.py | `SessionsController` — owns `_last_sessions`, `_last_bg_by_project`, refreshed from `discovery_worker.py`'s published snapshot. |
 | `CCMenuBarApp.hotkey` | app.py | hotkey_controller.py | `HotkeyController` — owns digit/arrow GC refs plus `global_handles` (the Cmd-L/Cmd-K `(cb, ref, cb, ref)` tuple, set by `CCMenuBarApp.__init__` right after registration). |

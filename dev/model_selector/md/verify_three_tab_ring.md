@@ -1,4 +1,4 @@
-# Models tab — three-tab ring verification — 2026-09-01T22:41:47
+# Models tab — three-tab ring verification — 2026-09-13T16:06:15
 
 ## Forward: Sessions -> RAG -> Models -> Sessions (Cmd+->)
 open main: panel_open=True

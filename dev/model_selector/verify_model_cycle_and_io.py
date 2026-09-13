@@ -54,6 +54,7 @@ def verify_model_cycle_and_io_workflow() -> None:
     _verify_model_cycle(ms, lines)
     _verify_effort_cycle(ms, lines)
     _verify_max_tokens_cycle(ms, lines)
+    _verify_thinking_cycle(ms, lines)
 
     with tempfile.TemporaryDirectory() as tmp:
         _verify_model_selection_write(ms, lines, tmp)
@@ -63,14 +64,15 @@ def verify_model_cycle_and_io_workflow() -> None:
         _verify_proxy_rules_malformed_fallback(ms, lines, tmp)
 
     lines.append("")
-    lines.append("RESULT: PASS — model/effort/max_tokens cycles step + wrap correctly; "
-                "model_selection.json write is atomic with exact 2-key schema, read-back correct "
-                "for valid/missing/malformed files, unrecognized values preserved verbatim; "
-                "proxy_rules.json serializer reproduces the real on-disk convention byte-for-byte, "
-                "Apply's read-modify-write touches only the two selected models' effort/max_tokens "
-                "(foreign sections/keys/models byte-identical, missing entries created with the "
-                "established thinking-block shape, malformed file degrades to a fresh minimal file "
-                "without raising).")
+    lines.append("RESULT: PASS — model/effort/max_tokens cycles step + wrap correctly; the "
+                "thinking toggle flips between exactly the on (adaptive/summarized) and off "
+                "(disabled) states; model_selection.json write is atomic with exact 2-key schema, "
+                "read-back correct for valid/missing/malformed files, unrecognized values preserved "
+                "verbatim; proxy_rules.json serializer reproduces the real on-disk convention "
+                "byte-for-byte, Apply's read-modify-write touches only the two selected models' "
+                "effort/max_tokens/thinking (foreign sections/keys/models byte-identical, missing "
+                "entries created with the established thinking-block shape, malformed file degrades "
+                "to a fresh minimal file without raising).")
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -144,10 +146,28 @@ def _verify_max_tokens_cycle(ms, lines) -> None:
     assert unknown_next == choices[0]
     lines.append(f"Unrecognized current value starts cycle at first choice: {unknown_next!r}")
 
-# Section 4: model_selection.json atomic write — unchanged behavior for existing callers
+# Section 4: the thinking toggle — exactly 2 states (on: adaptive/summarized, off: disabled),
+# added so the Models pane can turn thinking off entirely, separately for Main and Worker.
+def _verify_thinking_cycle(ms, lines) -> None:
+    lines.append("")
+    lines.append("## 4. Thinking toggle logic (2 states)")
+    on_state = ms._next_thinking(ms._THINKING_OFF)
+    assert on_state == ms._THINKING_ON == {"type": "adaptive", "display": "summarized"}, on_state
+    lines.append(f"off -> on: {on_state}")
+    off_state = ms._next_thinking(ms._THINKING_ON)
+    assert off_state == ms._THINKING_OFF == {"type": "disabled"}, off_state
+    lines.append(f"on -> off: {off_state}")
+    round_trip = ms._next_thinking(ms._next_thinking(ms._THINKING_ON))
+    assert round_trip == ms._THINKING_ON
+    lines.append(f"Toggling twice returns to the original state: {round_trip == ms._THINKING_ON}")
+    assert ms._thinking_is_enabled(ms._THINKING_ON) is True
+    assert ms._thinking_is_enabled(ms._THINKING_OFF) is False
+    lines.append("_thinking_is_enabled reads True for the on-state, False for the off-state")
+
+# Section 5: model_selection.json atomic write — unchanged behavior for existing callers
 def _verify_model_selection_write(ms, lines, tmp) -> None:
     lines.append("")
-    lines.append("## 4. model_selection.json atomic write")
+    lines.append("## 5. model_selection.json atomic write")
     tmp_path = Path(tmp) / "model_selection.json"
     ms._write_model_selection("claude-fable-5", "claude-opus-5", path=tmp_path)
     raw = json.loads(tmp_path.read_text())
@@ -158,10 +178,10 @@ def _verify_model_selection_write(ms, lines, tmp) -> None:
     assert not tmp_leftover.exists(), "tempfile not cleaned up by os.replace"
     lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
 
-# Section 5: model_selection.json read-back + fallback — unchanged behavior for existing callers
+# Section 6: model_selection.json read-back + fallback — unchanged behavior for existing callers
 def _verify_model_selection_readback(ms, lines, tmp) -> None:
     lines.append("")
-    lines.append("## 5. model_selection.json read-back + fallback")
+    lines.append("## 6. model_selection.json read-back + fallback")
     tmp_path = Path(tmp) / "model_selection.json"
     main, worker = ms._load_model_selection(path=tmp_path)
     lines.append(f"Valid file -> {(main, worker)}")
@@ -193,30 +213,31 @@ def _verify_model_selection_readback(ms, lines, tmp) -> None:
     lines.append(f"Apply without cycling round-trips unchanged -> {(main2, worker2)}")
     assert (main2, worker2) == ("claude-hand-edited-9000", "claude-opus-5")
 
-# Section 6: the custom proxy_rules.json serializer reproduces the real file's own convention
+# Section 7: the custom proxy_rules.json serializer reproduces the real file's own convention
 # byte-for-byte on an unmodified round-trip — the mechanism the read-modify-write below relies on.
 def _verify_proxy_rules_format_fidelity(ms, lines) -> None:
     lines.append("")
-    lines.append("## 6. proxy_rules.json serializer format fidelity")
+    lines.append("## 7. proxy_rules.json serializer format fidelity")
     config = json.loads(_FIXTURE_RAW)
     roundtrip = ms._dumps_proxy_rules(config)
     identical = roundtrip == _FIXTURE_RAW
     lines.append(f"Unmodified round-trip byte-identical to fixture: {identical}")
     assert identical, "serializer does not reproduce the established on-disk convention"
 
-# Section 7: Apply's read-modify-write — foreign sections/keys/models byte-preserved, missing
-# per-model entry created with the established thinking-block shape, touched entries updated.
+# Section 8: Apply's read-modify-write — foreign sections/keys/models byte-preserved, missing
+# per-model entry created with the established thinking-block shape, touched entries updated
+# (including the thinking toggle: main is switched off, worker's fresh entry stays on).
 def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
     lines.append("")
-    lines.append("## 7. proxy_rules.json read-modify-write")
+    lines.append("## 8. proxy_rules.json read-modify-write")
     path = Path(tmp) / "proxy_rules.json"
     path.write_text(_FIXTURE_RAW, encoding="utf-8")
 
-    # main = claude-opus-5 (existing entry, gets new effort/max_tokens)
-    # worker = claude-sonnet-5 (NOT in the fixture — must be created)
+    # main = claude-opus-5 (existing entry, gets new effort/max_tokens, thinking switched off)
+    # worker = claude-sonnet-5 (NOT in the fixture — must be created, thinking stays on)
     ms._write_proxy_rules_model_params(
-        "claude-opus-5", "medium", 128000,
-        "claude-sonnet-5", "low", 32000,
+        "claude-opus-5", "medium", 128000, ms._THINKING_OFF,
+        "claude-sonnet-5", "low", 32000, ms._DEFAULT_THINKING,
         path=path)
 
     written_raw = path.read_text(encoding="utf-8")
@@ -225,6 +246,7 @@ def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
     expected_config = json.loads(_FIXTURE_RAW)
     expected_config["model_params"]["claude-opus-5"]["effort"] = "medium"
     expected_config["model_params"]["claude-opus-5"]["max_tokens"] = 128000
+    expected_config["model_params"]["claude-opus-5"]["thinking"] = dict(ms._THINKING_OFF)
     expected_config["model_params"]["claude-sonnet-5"] = {
         "thinking": dict(ms._DEFAULT_THINKING), "effort": "low", "max_tokens": 32000}
     expected_raw = ms._dumps_proxy_rules(expected_config)
@@ -247,13 +269,12 @@ def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
         {"thinking": {"type": "adaptive", "display": "summarized"}, "effort": "high", "max_tokens": 32000}
     lines.append("Second untouched model entry ('claude-untouched-9') byte-preserved: True")
 
-    # Touched entry (main): effort/max_tokens updated, thinking block untouched
+    # Touched entry (main): effort/max_tokens updated AND thinking switched to disabled
     opus_entry = written["model_params"]["claude-opus-5"]
-    assert opus_entry == {"thinking": {"type": "adaptive", "display": "summarized"},
-                          "effort": "medium", "max_tokens": 128000}
-    lines.append(f"Touched main entry (claude-opus-5) updated, thinking block unchanged: {opus_entry}")
+    assert opus_entry == {"thinking": {"type": "disabled"}, "effort": "medium", "max_tokens": 128000}
+    lines.append(f"Touched main entry (claude-opus-5) updated, thinking now disabled: {opus_entry}")
 
-    # Missing entry (worker) created with the established thinking-block shape
+    # Missing entry (worker) created with the established thinking-block shape, thinking on
     sonnet_entry = written["model_params"]["claude-sonnet-5"]
     assert sonnet_entry == {"thinking": {"type": "adaptive", "display": "summarized"},
                             "effort": "low", "max_tokens": 32000}
@@ -263,23 +284,24 @@ def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
     assert not tmp_leftover.exists(), "tempfile not cleaned up by os.replace"
     lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
 
-# Section 8: a malformed proxy_rules.json degrades to a fresh minimal file, never raises
+# Section 9: a malformed proxy_rules.json degrades to a fresh minimal file, never raises
 def _verify_proxy_rules_malformed_fallback(ms, lines, tmp) -> None:
     lines.append("")
-    lines.append("## 8. proxy_rules.json malformed-file fallback")
+    lines.append("## 9. proxy_rules.json malformed-file fallback")
     path = Path(tmp) / "proxy_rules_malformed.json"
     path.write_text("{not valid json", encoding="utf-8")
 
     ms._write_proxy_rules_model_params(
-        "claude-opus-5", "high", 64000,
-        "claude-sonnet-5", "high", 64000,
+        "claude-opus-5", "high", 64000, ms._THINKING_OFF,
+        "claude-sonnet-5", "high", 64000, ms._DEFAULT_THINKING,
         path=path)
 
     written = json.loads(path.read_text(encoding="utf-8"))   # must parse — no raise from the write
     lines.append(f"Write from malformed file did not raise; result parses as valid JSON: True")
     assert written["model_params"]["claude-opus-5"]["effort"] == "high"
+    assert written["model_params"]["claude-opus-5"]["thinking"] == {"type": "disabled"}
     assert written["model_params"]["claude-sonnet-5"]["max_tokens"] == 64000
-    lines.append(f"Fresh model_params created for both selected models: "
+    lines.append(f"Fresh model_params created for both selected models, thinking states applied: "
                 f"{list(written['model_params'].keys())}")
 
 
