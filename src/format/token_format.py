@@ -101,7 +101,8 @@ def _render_rate_limit_lines(call: dict, response_rid_map: dict) -> tuple:
     lines = []
     keys = []
     rid = call.get('request_id', '')
-    rl_headers = (response_rid_map or {}).get(rid) if rid else None
+    entry = (response_rid_map or {}).get(rid) if rid else None
+    rl_headers = entry.get('headers') if entry else None
     if not rl_headers:
         return lines, keys
     u5h = rl_headers.get('anthropic-ratelimit-unified-5h-utilization', '')
@@ -165,12 +166,30 @@ def _render_content_block_lines(call: dict) -> tuple:
             keys.append(None)
     return lines, keys
 
+def _render_answering_model_line(call: dict, response_rid_map: dict) -> tuple:
+    lines = []
+    keys = []
+    rid = call.get('request_id', '')
+    entry = (response_rid_map or {}).get(rid) if rid else None
+    if not entry:
+        return lines, keys
+    answering_model = entry.get('answering_model', '')
+    if not answering_model:
+        return lines, keys
+    forwarded_model = entry.get('proxy_forwarded_model', '')
+    mismatch = bool(forwarded_model) and forwarded_model != answering_model
+    color = RED if mismatch else DIM
+    lines.append(f"    {color}model: {answering_model}{SOFT_RESET}")
+    keys.append(None)
+    return lines, keys
+
 def _render_expanded_call_lines(call: dict, response_rid_map: dict) -> tuple:
     lines = []
     keys = []
     for group_lines, group_keys in (
         _render_usage_extras_lines(call),
         _render_rate_limit_lines(call, response_rid_map),
+        _render_answering_model_line(call, response_rid_map),
         _render_content_block_lines(call),
     ):
         lines.extend(group_lines)
