@@ -197,3 +197,31 @@ adds one more headline number: count of entries where `cc_requested_model != pro
 (override-active count). Re-ran against the same 9-file real corpus — all three new fields are still
 0/N-present for the same frozen-live-copy reason as before (see original entry above); this is expected,
 not a new finding.
+
+## 2026-09-13 — Recap close-out
+
+Session end. Both review findings from the same day are fixed and committed (see section above).
+Final touched-file inventory (`git diff integration --name-only`): `dev/proxy_instrumentation/DOCS.md`,
+`dev/proxy_instrumentation/md/response_model_corpus_report.md`,
+`dev/proxy_instrumentation/p8_answering_model_probe_test.py`,
+`dev/proxy_instrumentation/p9_response_entry_abort_survival_test.py`,
+`dev/proxy_instrumentation/response_model_corpus_report.py`,
+`process-docs/proxy_instrumentation/2026-09-13_answering_model_capture_m1.md`, `src/proxy/DOCS.md`,
+`src/proxy/addon.py`, `src/proxy/response_model_probe.py`. `src/proxy/DOCS.md` and
+`dev/proxy_instrumentation/DOCS.md` LOC values checked against `wc -l` on this pass — both already
+current (were updated as part of the review-fix commit, not stale).
+
+Two unit-level regression guards now exist and both pass as of this commit:
+`dev/proxy_instrumentation/p8_answering_model_probe_test.py` (the SSE parser itself — split-chunk,
+budget, pass-through, gzip-gap) and `dev/proxy_instrumentation/p9_response_entry_abort_survival_test.py`
+(the `_write_response_entry`/`response()`+`error()` wiring — abort survival, double-write guard,
+three-field naming). Run both after any future touch to `addon.py`'s response/error hooks or
+`response_model_probe.py`.
+
+**Still open for a later milestone (not this one):** display-side rendering of
+`cc_requested_model`/`proxy_forwarded_model`/`answering_model` in the proxy/token pane —
+`src/panes/`, `src/format/`, `src/proxy_display/` were read for caller-safety only, never touched, per
+scope. Live verification of the whole mechanism (real compressed/uncompressed content-encoding
+reading, a real override-mismatch instance, an actually-observed abort producing a partial-model
+entry) needs a proxy restart, which is explicitly out of scope for this session — the corpus report
+script exists precisely so a future session can re-run it after a restart without re-deriving anything.
