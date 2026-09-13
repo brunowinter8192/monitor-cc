@@ -469,3 +469,19 @@ All four pinned as separate assertions in `p10_model_mismatch_warning_test.py`.
   'get_stripped_data' from 'src.format.strip_marker'`) — pre-existing, unrelated to any of M1/M2/M3
   (this task never touches `strip_marker.py`); noted here only so a future agent doesn't waste time
   attributing it to this line of work.
+
+## 2026-09-13 — Recap close-out (M3)
+
+Session end for the M3 task. Self-audit (`git diff integration --name-only`, integration already
+carries M1+M2 as of `27648c7 merge: worker modelcheck`): `dev/proxy_instrumentation/DOCS.md`,
+`dev/proxy_instrumentation/p10_model_mismatch_warning_test.py`,
+`process-docs/proxy_instrumentation/2026-09-13_answering_model_capture_m1.md`, `src/proxy/DOCS.md`,
+`src/proxy/addon.py`. Both touched DOCS.md files were kept current inline during the task; re-checked
+now against `wc -l` (`addon.py` 321, `p10_model_mismatch_warning_test.py` 196) and against their own
+described content — both match the committed code exactly, nothing to fix this pass.
+
+M1 + M2 + M3 are all complete and merged into `integration`. The `_response`-model-capture line of
+work as scoped across all three milestones (M1: proxy-side capture, abort-survival, three-field
+naming; M2: token-pane display; M3: warnings-pane mismatch alert) is done. No further milestone in
+this area is known to be planned as of this session's end — if one arrives, start from `## Origin`/
+`## Status` at the top of this file for the full context chain rather than re-deriving it.
