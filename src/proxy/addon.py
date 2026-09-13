@@ -37,6 +37,7 @@ from .tools import _strip_unused_tools, _extract_deferred_tool_names
 from .tool_injection import inject_mcp_tools
 from .fixation import _capture_fixation, _apply_fixation
 from .bg_escape import _trigger_bg_escape
+from .response_model_probe import make_answering_model_probe
 ANTHROPIC_API_HOST = "api.anthropic.com"
 MESSAGES_PATH = "/v1/messages"
 
@@ -109,26 +110,21 @@ class ProxyAddon:
             if not _is_messages_request(flow):
                 return
             if flow.response and 200 <= flow.response.status_code < 300:
-                flow.response.stream = True
+                probe, probe_state = make_answering_model_probe()
+                flow.response.stream = probe
+                flow.metadata["mc_answering_model_state"] = probe_state
         except Exception as e:
             print(f"[proxy_addon] Error in responseheaders hook: {e}", file=sys.stderr)
-        try:
-            if _is_messages_request(flow) and flow.response:
-                entry = {
-                    "flow_id": flow.id,
-                    "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-                    "request_id": flow.response.headers.get("request-id", ""),
-                    "status_code": flow.response.status_code,
-                    "headers": _filter_response_headers(flow.response.headers),
-                }
-                _write_entry(self.paths.response, entry)
-        except Exception as e:
-            print(f"[dual_log] response write failed: {e}", file=sys.stderr)
 
     def response(self, flow: http.HTTPFlow) -> None:
         try:
             if not _is_messages_request(flow):
                 return
+            if flow.response:
+                try:
+                    _write_response_entry(flow, self.paths.response)
+                except Exception as e:
+                    print(f"[dual_log] response write failed: {e}", file=sys.stderr)
             if flow.response and 400 <= flow.response.status_code < 500:
                 _log_4xx_error(flow, self.paths.errors)
                 return
@@ -196,7 +192,10 @@ def _finalize_cache_state(delta_state, model_family: str, modified_payload: dict
     return modified_payload
 
 
-_RESPONSE_HEADER_EXACT = frozenset({"request-id", "retry-after", "anthropic-organization-id"})
+_RESPONSE_HEADER_EXACT = frozenset({
+    "request-id", "retry-after", "anthropic-organization-id",
+    "content-type", "content-encoding",
+})
 _RESPONSE_HEADER_PREFIXES = ("anthropic-ratelimit-", "anthropic-priority-", "anthropic-fast-")
 
 
@@ -207,6 +206,21 @@ def _filter_response_headers(headers) -> dict:
         if kl in _RESPONSE_HEADER_EXACT or kl.startswith(_RESPONSE_HEADER_PREFIXES):
             result[kl] = v
     return result
+
+
+def _write_response_entry(flow: http.HTTPFlow, log_file) -> None:
+    modified_payload = flow.metadata.get("mc_modified_payload") or {}
+    probe_state = flow.metadata.get("mc_answering_model_state") or {}
+    entry = {
+        "flow_id": flow.id,
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        "request_id": flow.response.headers.get("request-id", ""),
+        "status_code": flow.response.status_code,
+        "headers": _filter_response_headers(flow.response.headers),
+        "requested_model": modified_payload.get("model", ""),
+        "answering_model": probe_state.get("model", ""),
+    }
+    _write_entry(log_file, entry)
 
 
 def _is_messages_request(flow: http.HTTPFlow) -> bool:

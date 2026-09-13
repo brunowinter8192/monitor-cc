@@ -15,17 +15,30 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 → `fixation` (freeze sys[2] + msg[0] after first request) → `tools` (blocklist strip)
 → `tool_injection` (MCP schema append) → `inject_helpers` (model override, context management)
 → dual-log writes (original + forwarded + errors) → `cache` (strip all markers, set BP3/BP4/anchor)
-→ modified payload forwarded to Anthropic; `response()` hook writes stripped/injected dual-logs via metadata bridge
+→ modified payload forwarded to Anthropic; `responseheaders()` hook installs `response_model_probe`
+as `flow.response.stream` for 2xx (SSE `message_start.model` inspection, no body buffering); `response()`
+hook writes the `_response` dual-log (requested + answering model side by side) once the body has
+streamed, then writes stripped/injected dual-logs via metadata bridge
 
 ## Modules
 
-### addon.py (256 LOC)
+### addon.py (270 LOC)
 
 **Purpose:** mitmproxy addon hook class (`ProxyAddon`) that receives HTTP flows and orchestrates the full request-modification and dual-log pipeline; `count_tokens` requests pass through unmodified.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `PROXY_PROJECT_PATH`, `MONITOR_CC_ROOT`, `PROXY_LOG_ID`/`PROXY_SESSION_ID`.
-**Writes:** `flow.request.content` (modified payload, in place); `flow.metadata` (`mc_original_payload`, `mc_modified_payload`, `mc_model_family`, `mc_all_ops`, `mc_request_id` — stashed in `request()`, read in `response()`). Actual dual-log file writes are delegated to `addon_dual_log.py`.
+**Writes:** `flow.request.content` (modified payload, in place); `flow.metadata` (`mc_original_payload`, `mc_modified_payload`, `mc_model_family`, `mc_all_ops`, `mc_request_id`, `mc_answering_model_state` — stashed in `request()`/`responseheaders()`, read in `response()`). `_response` dual-log entry now carries `requested_model` (from `mc_modified_payload`) and `answering_model` (from the streamed probe state) side by side, written from `response()` instead of `responseheaders()` so the answering model is known before the write. Actual dual-log file writes are delegated to `addon_dual_log.py`.
 **Called by:** `src/proxy_addon.py` (imports `ProxyAddon`, `addons`); mitmproxy itself via `addons = [ProxyAddon()]` at module level (hooks: `request`, `responseheaders`, `response`).
 **Calls out:** `mitmproxy`
+
+---
+
+### response_model_probe.py (28 LOC)
+
+**Purpose:** Builds a per-flow, stateful `flow.response.stream` callable that inspects streamed 2xx SSE bytes for the `message_start.model` field without buffering the body, honoring a byte budget.
+**Reads:** the raw response-body chunks mitmproxy passes it, one call per chunk plus a final `b""` call.
+**Writes:** — (returns each chunk unmodified; mutates its own closure-local `state` dict in place, which `addon.py` stashes on `flow.metadata["mc_answering_model_state"]`)
+**Called by:** `src/proxy/addon.py` (`responseheaders()`); `dev/proxy_instrumentation/p8_answering_model_probe_test.py` (unit-level verification against synthetic SSE bytes).
+**Calls out:** —
 
 ---
 
