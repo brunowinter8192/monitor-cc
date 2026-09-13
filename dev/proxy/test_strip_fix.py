@@ -503,6 +503,153 @@ def t44_bundled_claudemd_and_env_context_preserved():
     check('T44_bundled_claudemd_env_context_preserved', result[0]['text'] == sr, repr(result[0]['text'])[:120])
 
 
+# ── ENV-CONTEXT SR: gitStatus WIDENING (2026-09) ─────────────────────────────
+# Current CC build replaced `# currentDate` with a `# gitStatus` section in the same bundled
+# env-context block — no `# currentDate` anywhere, still exactly one `IMPORTANT:` footer.
+# `_ENV_CONTEXT_RE`'s alternation now accepts EITHER `# currentDate\n...` OR the full `# gitStatus`
+# section (stable header sentence, then Current branch / Main branch / Git user / Status /
+# Recent commits, each line's VALUE unconstrained). T45/T46 are copied verbatim from
+# `src/logs/dual_log/*_original.jsonl` (main checkout, 2026-09 measurement, 3 distinct blocks,
+# 973-1045 chars each, see process-docs/proxy_noise_strip/ for the fresh count). T47/T48 cover the
+# two known-variable shapes CC issue reports describe (dirty `git status --short` lines, detached
+# `HEAD` branch) that happen not to occur in the current corpus window. T49 confirms the bundled
+# `# claudeMd` + gitStatus shape (unobserved in this corpus, but structurally identical to T44's
+# bundled currentDate case) is still preserved whole by the same `_PRESERVE_PREAMBLE` fallback.
+
+def t45_env_context_gitstatus_corpus_block_main_clean_stripped():
+    body = (
+        "As you answer the user's questions, you can use the following context:\n"
+        "# userEmail\n"
+        "The user's email address is brunowinter7934@gmail.com. Use it only to identify the user, "
+        "such as for authorship, attribution, or filtering their own work. Never send it to an "
+        "unrelated service, such as in a request header, URL, or payload, unless the user explicitly asks.\n"
+        "# gitStatus\n"
+        "This is the git status at the start of the conversation. Note that this status is a "
+        "snapshot in time, and will not update during the conversation.\n\n"
+        "Current branch: main\n\n"
+        "Main branch (you will usually use this for PRs): main\n\n"
+        "Git user: Bruno Winter\n\n"
+        "Status:\n(clean)\n\n"
+        "Recent commits:\n"
+        "19f939e docs: phase 4 section in main session entry\n"
+        "a64d71a merge: worker docs-dev-c\n"
+        "de92650 docs: recap for docs-dev-c\n"
+        "e8a863e docs: de-backtick missing hook path in bead_tracker DOCS.md\n"
+        "bbb26f7 docs: create DOCS.md for 7 dev/ areas (docs-dev-c)\n\n"
+        "IMPORTANT: this context may or may not be relevant to your tasks. "
+        "You should not respond to this context unless it is highly relevant to your task."
+    )
+    sr = real_sr_text(body)
+    result = _strip_system_reminders(text_block(sr))
+    check('T45_gitstatus_main_clean_stripped', _O not in result[0]['text'], repr(result[0]['text'])[:120])
+
+
+def t46_env_context_gitstatus_corpus_block_integration_branch_stripped():
+    body = (
+        "As you answer the user's questions, you can use the following context:\n"
+        "# userEmail\n"
+        "The user's email address is brunowinter7934@gmail.com. Use it only to identify the user, "
+        "such as for authorship, attribution, or filtering their own work. Never send it to an "
+        "unrelated service, such as in a request header, URL, or payload, unless the user explicitly asks.\n"
+        "# gitStatus\n"
+        "This is the git status at the start of the conversation. Note that this status is a "
+        "snapshot in time, and will not update during the conversation.\n\n"
+        "Current branch: integration\n\n"
+        "Main branch (you will usually use this for PRs): main\n\n"
+        "Git user: Bruno Winter\n\n"
+        "Status:\n(clean)\n\n"
+        "Recent commits:\n"
+        "b582e71 merge: worker cfg3\n"
+        "d7d61ad docs: salvage six DOCS.md files before lean rewrite\n"
+        "03603f8 merge: worker cfg3\n"
+        "9b6a2a7 merge: worker cfg2\n"
+        "49816fc merge: worker cfg1\n\n"
+        "IMPORTANT: this context may or may not be relevant to your tasks. "
+        "You should not respond to this context unless it is highly relevant to your task."
+    )
+    sr = real_sr_text(body)
+    result = _strip_system_reminders(text_block(sr))
+    check('T46_gitstatus_integration_branch_stripped', _O not in result[0]['text'], repr(result[0]['text'])[:120])
+
+
+def t47_env_context_gitstatus_dirty_status_stripped():
+    body = (
+        "As you answer the user's questions, you can use the following context:\n"
+        "# userEmail\n"
+        "The user's email address is brunowinter7934@gmail.com. Use it only to identify the user, "
+        "such as for authorship, attribution, or filtering their own work. Never send it to an "
+        "unrelated service, such as in a request header, URL, or payload, unless the user explicitly asks.\n"
+        "# gitStatus\n"
+        "This is the git status at the start of the conversation. Note that this status is a "
+        "snapshot in time, and will not update during the conversation.\n\n"
+        "Current branch: feature/envstrip\n\n"
+        "Main branch (you will usually use this for PRs): main\n\n"
+        "Git user: Bruno Winter\n\n"
+        "Status:\n"
+        " M src/proxy/strip_sr.py\n"
+        "?? dev/proxy/new_file.py\n\n"
+        "Recent commits:\n"
+        "abc1234 fix: something\n"
+        "def5678 feat: other thing\n\n"
+        "IMPORTANT: this context may or may not be relevant to your tasks. "
+        "You should not respond to this context unless it is highly relevant to your task."
+    )
+    sr = real_sr_text(body)
+    result = _strip_system_reminders(text_block(sr))
+    check('T47_gitstatus_dirty_status_stripped', _O not in result[0]['text'], repr(result[0]['text'])[:120])
+
+
+def t48_env_context_gitstatus_head_branch_stripped():
+    body = (
+        "As you answer the user's questions, you can use the following context:\n"
+        "# userEmail\n"
+        "The user's email address is brunowinter7934@gmail.com. Use it only to identify the user, "
+        "such as for authorship, attribution, or filtering their own work. Never send it to an "
+        "unrelated service, such as in a request header, URL, or payload, unless the user explicitly asks.\n"
+        "# gitStatus\n"
+        "This is the git status at the start of the conversation. Note that this status is a "
+        "snapshot in time, and will not update during the conversation.\n\n"
+        "Current branch: HEAD\n\n"
+        "Main branch (you will usually use this for PRs): main\n\n"
+        "Git user: Bruno Winter\n\n"
+        "Status:\n(clean)\n\n"
+        "Recent commits:\n"
+        "19f939e docs: phase 4 section in main session entry\n\n"
+        "IMPORTANT: this context may or may not be relevant to your tasks. "
+        "You should not respond to this context unless it is highly relevant to your task."
+    )
+    sr = real_sr_text(body)
+    result = _strip_system_reminders(text_block(sr))
+    check('T48_gitstatus_head_branch_stripped', _O not in result[0]['text'], repr(result[0]['text'])[:120])
+
+
+def t49_bundled_claudemd_and_gitstatus_preserved():
+    body = (
+        "As you answer the user's questions, you can use the following context:\n"
+        "# claudeMd\nCodebase and user instructions are shown below. Be sure to adhere to these "
+        "instructions.\n\nContents of /Users/x/wise2627/CLAUDE.md (project instructions, checked "
+        "into the codebase):\n\n# wise2627\n\nSome real project instructions here.\n"
+        "# userEmail\n"
+        "The user's email address is brunowinter7934@gmail.com. Use it only to identify the user, "
+        "such as for authorship, attribution, or filtering their own work. Never send it to an "
+        "unrelated service, such as in a request header, URL, or payload, unless the user explicitly asks.\n"
+        "# gitStatus\n"
+        "This is the git status at the start of the conversation. Note that this status is a "
+        "snapshot in time, and will not update during the conversation.\n\n"
+        "Current branch: main\n\n"
+        "Main branch (you will usually use this for PRs): main\n\n"
+        "Git user: Bruno Winter\n\n"
+        "Status:\n(clean)\n\n"
+        "Recent commits:\n"
+        "19f939e docs: phase 4 section in main session entry\n\n"
+        "IMPORTANT: this context may or may not be relevant to your tasks. "
+        "You should not respond to this context unless it is highly relevant to your task."
+    )
+    sr = real_sr_text(body)
+    result = _strip_system_reminders(text_block(sr))
+    check('T49_bundled_claudemd_gitstatus_preserved', result[0]['text'] == sr, repr(result[0]['text'])[:120])
+
+
 # ── WAKEUP FALSE-POSITIVE TESTS ───────────────────────────────────────────────
 # Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
 import importlib as _wakeup_il
@@ -1533,6 +1680,11 @@ if __name__ == '__main__':
         t40_env_context_may_2026_form_stripped, t41_env_context_cc258_form_stripped,
         t42_claudemd_context_block_preserved, t43_env_context_different_email_preserved,
         t44_bundled_claudemd_and_env_context_preserved,
+        t45_env_context_gitstatus_corpus_block_main_clean_stripped,
+        t46_env_context_gitstatus_corpus_block_integration_branch_stripped,
+        t47_env_context_gitstatus_dirty_status_stripped,
+        t48_env_context_gitstatus_head_branch_stripped,
+        t49_bundled_claudemd_and_gitstatus_preserved,
         w01_tn_in_tool_result_str, w02_tn_in_tool_result_list, w03_bgk_in_tool_result_str,
         w04_genuine_tn_completed_plain_string, w05_genuine_tn_failed_plain_string,
         w06_genuine_bgk_plain_string,

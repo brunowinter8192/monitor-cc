@@ -129,7 +129,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### strip_sr.py (153 LOC)
+### strip_sr.py (165 LOC)
 
 **Purpose:** Strips `<system-reminder>` blocks from message content via a catalog of 11 exact-match templates (task-tools-nag, pyright-diagnostics, deferred-tools, user-interrupt, system-notification, file-modified, claudemd-contents, date-changed, skills-available, agent-types, plan-mode).
 **Reads:** Message content (string or list of blocks); template catalog (module-local).
