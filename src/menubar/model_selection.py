@@ -12,7 +12,9 @@ _EFFORT_CHOICES = ("low", "medium", "high")
 _MAXTOK_CHOICES = (32000, 64000, 128000)
 _DEFAULT_EFFORT     = "high"
 _DEFAULT_MAX_TOKENS = 64000
-_DEFAULT_THINKING   = {"type": "adaptive", "display": "summarized"}
+_THINKING_ON        = {"type": "adaptive", "display": "summarized"}
+_THINKING_OFF       = {"type": "disabled"}
+_DEFAULT_THINKING   = _THINKING_ON
 
 # FUNCTIONS
 
@@ -31,6 +33,12 @@ def _next_effort(current: str) -> str:
 
 def _next_max_tokens(current: int) -> int:
     return _next_in(_MAXTOK_CHOICES, current)
+
+def _thinking_is_enabled(thinking: dict) -> bool:
+    return (thinking or {}).get("type") != "disabled"
+
+def _next_thinking(current: dict) -> dict:
+    return dict(_THINKING_OFF) if _thinking_is_enabled(current) else dict(_THINKING_ON)
 
 def _load_model_selection(path=MODEL_SELECTION_FILE):
     try:
@@ -54,7 +62,9 @@ def _load_proxy_rules(path=PROXY_RULES_FILE) -> dict:
 def _load_model_params_for(model_id: str, path=PROXY_RULES_FILE) -> tuple:
     config = _load_proxy_rules(path)
     params = config.get("model_params", {}).get(model_id, {})
-    return params.get("effort", _DEFAULT_EFFORT), params.get("max_tokens", _DEFAULT_MAX_TOKENS)
+    return (params.get("effort", _DEFAULT_EFFORT),
+            params.get("max_tokens", _DEFAULT_MAX_TOKENS),
+            params.get("thinking", _DEFAULT_THINKING))
 
 def _reindent_nested(text: str, prefix: str) -> str:
     lines = text.split('\n')
@@ -82,16 +92,17 @@ def _dumps_proxy_rules(config: dict) -> str:
     lines.append('}')
     return '\n'.join(lines) + '\n'
 
-def _write_proxy_rules_model_params(main: str, main_effort: str, main_max_tokens: int,
-                                     worker: str, worker_effort: str, worker_max_tokens: int,
+def _write_proxy_rules_model_params(main: str, main_effort: str, main_max_tokens: int, main_thinking: dict,
+                                     worker: str, worker_effort: str, worker_max_tokens: int, worker_thinking: dict,
                                      path=PROXY_RULES_FILE) -> None:
     config = _load_proxy_rules(path)
     model_params = dict(config.get("model_params", {}))
-    for model_id, effort, max_tokens in (
-        (main, main_effort, main_max_tokens),
-        (worker, worker_effort, worker_max_tokens),
+    for model_id, effort, max_tokens, thinking in (
+        (main, main_effort, main_max_tokens, main_thinking),
+        (worker, worker_effort, worker_max_tokens, worker_thinking),
     ):
-        entry = dict(model_params.get(model_id) or {"thinking": dict(_DEFAULT_THINKING)})
+        entry = dict(model_params.get(model_id) or {})
+        entry["thinking"] = dict(thinking)
         entry["effort"] = effort
         entry["max_tokens"] = max_tokens
         model_params[model_id] = entry
@@ -108,21 +119,23 @@ class _PendingSelection:
         self.worker = None
         self.main_effort = None
         self.main_max_tokens = None
+        self.main_thinking = None
         self.worker_effort = None
         self.worker_max_tokens = None
+        self.worker_thinking = None
 
     def load(self) -> None:
         self.main, self.worker = _load_model_selection()
-        self.main_effort, self.main_max_tokens = _load_model_params_for(self.main)
-        self.worker_effort, self.worker_max_tokens = _load_model_params_for(self.worker)
+        self.main_effort, self.main_max_tokens, self.main_thinking = _load_model_params_for(self.main)
+        self.worker_effort, self.worker_max_tokens, self.worker_thinking = _load_model_params_for(self.worker)
 
     def cycle_main(self) -> None:
         self.main = _next_model(self.main)
-        self.main_effort, self.main_max_tokens = _load_model_params_for(self.main)
+        self.main_effort, self.main_max_tokens, self.main_thinking = _load_model_params_for(self.main)
 
     def cycle_worker(self) -> None:
         self.worker = _next_model(self.worker)
-        self.worker_effort, self.worker_max_tokens = _load_model_params_for(self.worker)
+        self.worker_effort, self.worker_max_tokens, self.worker_thinking = _load_model_params_for(self.worker)
 
     def cycle_main_effort(self) -> None:
         self.main_effort = _next_effort(self.main_effort)
@@ -130,14 +143,20 @@ class _PendingSelection:
     def cycle_main_max_tokens(self) -> None:
         self.main_max_tokens = _next_max_tokens(self.main_max_tokens)
 
+    def cycle_main_thinking(self) -> None:
+        self.main_thinking = _next_thinking(self.main_thinking)
+
     def cycle_worker_effort(self) -> None:
         self.worker_effort = _next_effort(self.worker_effort)
 
     def cycle_worker_max_tokens(self) -> None:
         self.worker_max_tokens = _next_max_tokens(self.worker_max_tokens)
 
+    def cycle_worker_thinking(self) -> None:
+        self.worker_thinking = _next_thinking(self.worker_thinking)
+
     def write(self) -> None:
         _write_model_selection(self.main, self.worker)
         _write_proxy_rules_model_params(
-            self.main, self.main_effort, self.main_max_tokens,
-            self.worker, self.worker_effort, self.worker_max_tokens)
+            self.main, self.main_effort, self.main_max_tokens, self.main_thinking,
+            self.worker, self.worker_effort, self.worker_max_tokens, self.worker_thinking)

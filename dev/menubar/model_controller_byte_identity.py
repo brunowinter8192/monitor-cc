@@ -90,8 +90,8 @@ def _hash_persistence(ms) -> str:
             rules_path.write_text(_SYNTHETIC_RULES, encoding='utf-8')
 
         main, worker = ms._load_model_selection(path=sel_path)
-        main_effort, main_max_tokens = ms._load_model_params_for(main, path=rules_path)
-        worker_effort, worker_max_tokens = ms._load_model_params_for(worker, path=rules_path)
+        main_effort, main_max_tokens, main_thinking = ms._load_model_params_for(main, path=rules_path)
+        worker_effort, worker_max_tokens, worker_thinking = ms._load_model_params_for(worker, path=rules_path)
 
         for _ in range(4):
             main = ms._next_model(main)
@@ -105,10 +105,15 @@ def _hash_persistence(ms) -> str:
             main_max_tokens = ms._next_max_tokens(main_max_tokens)
         for _ in range(3):
             worker_max_tokens = ms._next_max_tokens(worker_max_tokens)
+        for _ in range(1):
+            main_thinking = ms._next_thinking(main_thinking)
+        for _ in range(2):
+            worker_thinking = ms._next_thinking(worker_thinking)
 
         ms._write_model_selection(main, worker, path=sel_path)
         ms._write_proxy_rules_model_params(
-            main, main_effort, main_max_tokens, worker, worker_effort, worker_max_tokens,
+            main, main_effort, main_max_tokens, main_thinking,
+            worker, worker_effort, worker_max_tokens, worker_thinking,
             path=rules_path)
 
         digest.update(sel_path.read_bytes())
@@ -166,7 +171,8 @@ def _hash_ui(mc) -> str:
 
     for step in ('handle_cycle_main', 'handle_cycle_worker', 'handle_cycle_main_effort',
                  'handle_cycle_main_max_tokens', 'handle_cycle_worker_effort',
-                 'handle_cycle_worker_max_tokens'):
+                 'handle_cycle_worker_max_tokens', 'handle_cycle_main_thinking',
+                 'handle_cycle_worker_thinking'):
         getattr(controller, step)()
         digest.update(step.encode())
         digest.update(_dump_subviews(controller._models_sv))

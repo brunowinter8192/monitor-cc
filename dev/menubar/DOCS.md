@@ -9,14 +9,15 @@ before/after correctness proof that isn't already covered by `dev/model_selector
 
 ## Modules
 
-### model_controller_byte_identity.py (196 LOC)
+### model_controller_byte_identity.py (202 LOC)
 
 **Purpose:** Byte-identity harness for `ModelController` — two independent hashed checks:
 persistence (redirects `MODEL_SELECTION_FILE`/`PROXY_RULES_FILE` to temp copies via each
-function's own `path=` parameter, runs a fixed cycle sequence for main and worker, hashes both
-written files' raw bytes) and UI (instantiates `ModelController` with a minimal fake app, calls
-`open()` then each `handle_cycle_*`, hashing every arranged subview's class/frame/title/tag/
-action).
+function's own `path=` parameter, runs a fixed cycle sequence for main and worker — model, effort,
+max_tokens, and the thinking toggle — hashes both written files' raw bytes) and UI (instantiates
+`ModelController` with a minimal fake app, calls `open()` then each `handle_cycle_*` including
+`handle_cycle_main_thinking`/`handle_cycle_worker_thinking`, hashing every arranged subview's
+class/frame/title/tag/action).
 **Reads:** `~/.claude/shared-rules/proxy_rules.json` (read-only, to seed the persistence check's
 temp copy).
 **Writes:** nothing outside its own tempdir — stdout only (`PERSISTENCE_HASH: <hex>`, `UI_HASH:
