@@ -30,7 +30,7 @@ class _TrailerCrashFilter(logging.Filter):
 logging.getLogger("mitmproxy.proxy.server").addFilter(_TrailerCrashFilter())
 from .message_summary import _infer_model_family, _summarize_message
 from .rules import apply_modification_rules, _strip_blocked_tool_references
-from .inject_helpers import _inject_context_management, _inject_model_override
+from .inject_helpers import _inject_context_management, _inject_model_override, _strip_clear_thinking_edit
 from .content_strip import _strip_tool_descriptions, _strip_sys3
 from .cache import _strip_all_cache_control, _set_cache_breakpoints
 from .tools import _strip_unused_tools, _extract_deferred_tool_names
@@ -169,6 +169,9 @@ def _run_post_fixation_pipeline(modified_payload: dict, modifications: list, mod
     modified_payload, model_overridden = _inject_model_override(modified_payload, model_family, fixated_model_override)
     if model_overridden:
         modifications.append("injected_model_override")
+    modified_payload, clear_thinking_stripped = _strip_clear_thinking_edit(modified_payload)
+    if clear_thinking_stripped:
+        modifications.append("stripped_clear_thinking_edit")
     return modified_payload, modifications
 
 

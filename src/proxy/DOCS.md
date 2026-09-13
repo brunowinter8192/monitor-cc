@@ -19,7 +19,7 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ## Modules
 
-### addon.py (253 LOC)
+### addon.py (256 LOC)
 
 **Purpose:** mitmproxy addon hook class (`ProxyAddon`) that receives HTTP flows and orchestrates the full request-modification and dual-log pipeline; `count_tokens` requests pass through unmodified.
 **Reads:** mitmproxy `http.HTTPFlow`; env vars `PROXY_PROJECT_PATH`, `MONITOR_CC_ROOT`, `PROXY_LOG_ID`/`PROXY_SESSION_ID`.
@@ -239,9 +239,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### logging.py (244 LOC)
+### logging.py (245 LOC)
 
-**Purpose:** Builds structured JSONL entries for `forwarded_delta` and `tool_error` dual-log records, and owns the payload-normalization/hashing helpers (`_strip_cache_control`, `_normalize_msg_shape_for_hash`, `_delta_hash`) shared with the stripped/injected pipeline.
+**Purpose:** Builds structured JSONL entries for `forwarded_delta` (including the forwarded `model`/`max_tokens`/`thinking`/`output_config`/`context_management` values) and `tool_error` dual-log records, and owns the payload-normalization/hashing helpers (`_strip_cache_control`, `_normalize_msg_shape_for_hash`, `_delta_hash`) shared with the stripped/injected pipeline.
 **Reads:** Raw payload dicts, message lists, previous message summaries, previous delta hash state.
 **Writes:** — (returns structured entry dicts)
 **Called by:** `src/proxy/addon_dual_log.py`, `src/proxy/cache.py`, `src/proxy/strip_inject_delta.py`.
@@ -299,9 +299,9 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 
 ---
 
-### inject_helpers.py (121 LOC)
+### inject_helpers.py (149 LOC)
 
-**Purpose:** Injects model parameters (`thinking`/`effort`/`max_tokens`, or the model id itself for the legacy config shape) and the `context_management` block into the payload, snapshotting the resolved value per exact model id for the process lifetime.
+**Purpose:** Injects model parameters (`thinking`/`effort`/`max_tokens`, or the model id itself for the legacy config shape) and the `context_management` block into the payload, snapshotting the resolved value per exact model id for the process lifetime; also reconciles the two — `_strip_clear_thinking_edit` removes a `clear_thinking_20251015` context_management edit whenever the payload's final `thinking` is `{"type": "disabled"}`, whichever path set it, since the two together are a self-contradictory request the API rejects with a 400.
 **Reads:** Payload dict, model_family string, optional fixation dict; `proxy_rules.json` via `rules_config._load_config()` (only on a cache-miss for the request's exact model id).
 **Writes:** — on the payload (returns modified payload or `(modified_payload, injected_bool)`); mutates the caller-owned `fixated_model_override` dict in place.
 **Called by:** `src/proxy/addon.py` (`_run_post_fixation_pipeline`).
@@ -340,6 +340,8 @@ mitmproxy `http.HTTPFlow` (POST /v1/messages) → `addon.ProxyAddon.request()`
 ## Gotchas
 
 **`_TrailerCrashFilter` drops one specific mitmproxy crash record, not crash logging in general.** It filters the `NotImplementedError: HTTP trailers are not implemented yet` `LogRecord` mitmproxy 12.x raises from `proxy/layers/http/_http1.py`; every other `mitmproxy has crashed!` record still reaches stderr.
+
+**`strip_inject_delta.py`'s `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` are dead code — never wired into `fn_map`.** Only the `sys`/`tools`/`messages` sections contribute to `s_fn_map`/`i_fn_map`; every top-level field (`model`/`max_tokens`/`thinking`/`output_config`/`context_management`) that shows up in a `stripped_delta`/`injected_delta` entry's `fields_delta` carries NO function attribution in the real written JSONL `fn_map`, regardless of what these two maps say. The live attribution for `fields_delta` entries is `dev/proxy_dual_log/attribution_coverage.py`'s own local, separately-maintained copy of the same two maps — keep both in sync by hand if a field's owning function ever changes.
 
 **An op-less strip still rewrites the payload — it only loses its dual-log entry, silently.** `message_passes` sets new content directly; the op is recorded separately via `_ops_from_content_change`. If a pass changes content shape (e.g. list→str) in a way the op-builder doesn't handle, the op comes back empty, `strip_inject_delta._process_messages_section` skips the message (`if s_texts:`), and nothing marks the strip anywhere visible — the forwarded payload is still correct, but no pane or CLI can show it happened. When adding a pass that changes content shape, verify the message index appears in `all_ops`, not just that the payload is right.
 

@@ -29,18 +29,31 @@ position-independence, and last-shortcut-wins ordering. Never starts the proxy o
 
 ---
 
-### p2_model_params_probe.py (356 LOC)
+### p2_model_params_probe.py (545 LOC)
 
 **Purpose:** Verifies `src/proxy/inject_helpers.py::_inject_model_override` — the per-model
 `model_params` config lookup (exact model-id match, never writes `model`) vs. the legacy
 family-bucketed `model_override`/`model_override_worker` fallback, plus the fixation mechanism that
-pins a resolved override to a caller-owned dict across calls. 12 test groups, 55 checks.
+pins a resolved override to a caller-owned dict across calls; also `_strip_clear_thinking_edit` (a
+`clear_thinking_20251015` context_management edit is removed whenever the payload's thinking ends
+up `{"type": "disabled"}`, whichever path disabled it, siblings like `clear_tool_uses_20250919`
+survive, an emptied edits list drops the whole `context_management` key, a non-disabled thinking
+value leaves it byte-identical), `src/proxy/logging.py::_build_forwarded_delta`'s forwarded
+`thinking` field, and (Test 15) that a `context_management` strip is attributed correctly by
+`dev/proxy_dual_log/attribution_coverage.py`'s own field-attribution map rather than falling
+through to `UNATTR` — while confirming `src/proxy/strip_inject_delta.py`'s same-shaped maps stay
+dead code (the real `fn_map` never carries a field-level entry for any top-level field). 15 test
+groups, 73 checks.
 **Reads:** nothing persistent — builds all fixtures in-process, config injected via
 `mock.patch.object(inject_helpers, "_load_config", ...)`.
 **Writes:** `md/p2_model_params_probe_<timestamp>.md`.
-**Called by:** none — manual regression guard, re-run after changing `_inject_model_override` or its
-fixation mechanics.
-**Calls out:** `src.proxy.inject_helpers`.
+**Called by:** none — manual regression guard, re-run after changing `_inject_model_override`, its
+fixation mechanics, `_strip_clear_thinking_edit`, `_build_forwarded_delta`, or
+`attribution_coverage.py`'s field-attribution maps.
+**Calls out:** `src.proxy.inject_helpers`, `src.proxy.logging` (`_build_forwarded_delta`),
+`src.proxy.strip_inject_delta` (`_build_stripped_injected_deltas`, `_FIELD_STRIP_FN`),
+`dev/proxy_dual_log/attribution_coverage.py` (loaded via
+`importlib.util.spec_from_file_location`).
 
 ---
 

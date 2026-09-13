@@ -48,6 +48,7 @@ _FIELD_STRIP_FN = {
     "model":        "_inject_model_override (orig replaced)",
     "thinking":     "_inject_model_override (orig replaced)",
     "output_config": "_inject_model_override (orig replaced)",
+    "context_management": "_strip_clear_thinking_edit (removed: thinking disabled)",
 }
 
 
