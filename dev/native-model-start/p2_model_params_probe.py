@@ -22,6 +22,18 @@ very next call retries live. All 7 pre-fixation tests below call _inject_model_o
 2 positional args (no fixated_model_override) — the default (None -> a fresh, discarded dict per
 call) keeps them independent, proving the old 2-arg call form is unaffected by this rework.
 
+2026-09 thinking/context_management self-consistency coverage (Test 13): once thinking can be
+switched to {"type": "disabled"} (menubar thinking toggle, or any future path), a surviving
+`clear_thinking_20251015` context_management edit makes the request self-contradictory and the API
+returns a 400 (reproduced verbatim from a real capture,
+`api_requests_worker_25c51a2e_cache-write-run_1789308787`). Covers `_strip_clear_thinking_edit`:
+the edit is removed when thinking ends up disabled regardless of which path disabled it, sibling
+edits like `clear_tool_uses_20250919` survive, an emptied edits list drops the whole
+`context_management` key rather than carrying an empty list, and a non-disabled thinking value
+leaves `context_management` byte-identical (same object, not just equal). Test 14 covers
+`src/proxy/logging.py::_build_forwarded_delta` recording the forwarded `thinking` value (on/off/
+absent), added so this exact failure is now readable straight off the forwarded dual-log.
+
 Run from project root or worktree root:
     ./venv/bin/python dev/native-model-start/p2_model_params_probe.py
 """
@@ -36,7 +48,8 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
 from proxy import inject_helpers
-from proxy.inject_helpers import _inject_model_override
+from proxy.inject_helpers import _inject_model_override, _strip_clear_thinking_edit
+from proxy.logging import _build_forwarded_delta
 
 _PASS = "\033[32mPASS\033[0m"
 _FAIL = "\033[31mFAIL\033[0m"
@@ -303,6 +316,112 @@ def test_fixation_load_failure_does_not_pin():
     check("next call retries live and succeeds: now pinned for claude-fable-5", "claude-fable-5" in fixated)
 
 
+# Test 13 — thinking/context_management self-consistency: a surviving clear_thinking_20251015
+# edit alongside a disabled thinking value is what produced the real 400 in
+# api_requests_worker_25c51a2e_cache-write-run_1789308787; _strip_clear_thinking_edit must remove
+# exactly that edit, no matter what disabled thinking, and never leave a dangling empty edits list.
+def test_clear_thinking_edit_stripped_when_thinking_disabled():
+    print("\n[Test 13] _strip_clear_thinking_edit: thinking/context_management self-consistency")
+
+    # (a) thinking disabled + clear_thinking edit + a sibling edit -> only clear_thinking removed
+    payload_a = {
+        "model": "claude-sonnet-5",
+        "thinking": {"type": "disabled"},
+        "context_management": {"edits": [
+            {"type": "clear_thinking_20251015", "keep": "all"},
+            {"type": "clear_tool_uses_20250919", "trigger": {"type": "input_tokens", "value": 100000}},
+        ]},
+    }
+    result_a, changed_a = _strip_clear_thinking_edit(payload_a)
+    check("(a) clear_thinking_20251015 removed, changed=True", changed_a is True)
+    check("(a) clear_tool_uses_20250919 survives untouched",
+          result_a["context_management"]["edits"] == [
+              {"type": "clear_tool_uses_20250919", "trigger": {"type": "input_tokens", "value": 100000}}])
+    check("(a) original payload's edits list not mutated in place (still has both edits)",
+          len(payload_a["context_management"]["edits"]) == 2)
+
+    # (b) thinking disabled + ONLY the clear_thinking edit -> whole context_management key dropped,
+    # not carried forward as an empty edits list (an empty edits list asks the API for "manage
+    # context with zero edits", which is not the same as "no context_management at all" — dropping
+    # the key is what Claude Code itself does when IT disables thinking, per the Haiku request in
+    # the same capture).
+    payload_b = {
+        "model": "claude-sonnet-5",
+        "thinking": {"type": "disabled"},
+        "context_management": {"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]},
+    }
+    result_b, changed_b = _strip_clear_thinking_edit(payload_b)
+    check("(b) sole edit removed -> context_management key dropped entirely (no empty edits list)",
+          changed_b is True and "context_management" not in result_b)
+
+    # (c) thinking NOT disabled (adaptive) -> context_management untouched, byte-identical (same
+    # object, not just equal-by-value).
+    cm_c = {"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]}
+    payload_c = {
+        "model": "claude-sonnet-5",
+        "thinking": {"type": "adaptive", "display": "summarized"},
+        "context_management": cm_c,
+    }
+    result_c, changed_c = _strip_clear_thinking_edit(payload_c)
+    check("(c) thinking enabled -> unchanged, changed=False", changed_c is False)
+    check("(c) thinking enabled -> context_management is the SAME object, byte-identical",
+          result_c["context_management"] is cm_c)
+
+    # (d) thinking disabled, no context_management at all -> no-op
+    payload_d = {"model": "claude-sonnet-5", "thinking": {"type": "disabled"}}
+    result_d, changed_d = _strip_clear_thinking_edit(payload_d)
+    check("(d) no context_management -> no-op, changed=False", changed_d is False and result_d == payload_d)
+
+    # (e) thinking disabled, context_management has no clear_thinking edit -> untouched
+    payload_e = {
+        "model": "claude-sonnet-5",
+        "thinking": {"type": "disabled"},
+        "context_management": {"edits": [{"type": "clear_tool_uses_20250919"}]},
+    }
+    result_e, changed_e = _strip_clear_thinking_edit(payload_e)
+    check("(e) no clear_thinking edit present -> untouched, changed=False", changed_e is False)
+
+    # (f) end-to-end: the exact observed shape — Claude Code sends thinking=adaptive plus its own
+    # clear_thinking edit, the proxy's model_params injection (the menubar thinking-off toggle)
+    # overwrites thinking to disabled, and the two functions together (as wired in
+    # addon.py:_run_post_fixation_pipeline) must leave the payload self-consistent.
+    observed_payload, injected = _with_config(
+        {"model_params": {"claude-sonnet-5": {"thinking": {"type": "disabled"}, "effort": "high", "max_tokens": 64000}}},
+        lambda: _inject_model_override({
+            "model": "claude-sonnet-5",
+            "thinking": {"type": "adaptive", "display": "summarized"},
+            "output_config": {"effort": "low"},
+            "context_management": {"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]},
+        }, "sonnet"))
+    check("(f) model_params injection (thinking toggle OFF) set thinking to disabled",
+          injected is True and observed_payload["thinking"] == {"type": "disabled"})
+    fixed_payload, fixed = _strip_clear_thinking_edit(observed_payload)
+    check("(f) end-to-end: the self-contradictory 400-causing payload is now self-consistent",
+          fixed is True and "context_management" not in fixed_payload)
+
+
+# Test 14 — the forwarded dual-log must show the forwarded 'thinking' value, so this exact failure
+# is readable straight off _forwarded.jsonl without cross-referencing the injected-fields delta.
+def test_forwarded_delta_includes_thinking():
+    print("\n[Test 14] _build_forwarded_delta records the forwarded 'thinking' value")
+    payload_on = {"model": "claude-sonnet-5", "thinking": {"type": "adaptive", "display": "summarized"},
+                  "max_tokens": 64000, "output_config": {"effort": "high"}}
+    entry_on, _ = _build_forwarded_delta(payload_on, "req-1", None)
+    check("thinking ON value recorded in the forwarded_delta entry",
+          entry_on["thinking"] == {"type": "adaptive", "display": "summarized"})
+
+    payload_off = {"model": "claude-sonnet-5", "thinking": {"type": "disabled"},
+                   "max_tokens": 64000, "output_config": {"effort": "high"}}
+    entry_off, _ = _build_forwarded_delta(payload_off, "req-2", None)
+    check("thinking OFF value recorded in the forwarded_delta entry",
+          entry_off["thinking"] == {"type": "disabled"})
+
+    payload_missing = {"model": "claude-haiku-4-5-20251001"}
+    entry_missing, _ = _build_forwarded_delta(payload_missing, "req-3", None)
+    check("thinking absent from payload -> key present in the entry, value None",
+          "thinking" in entry_missing and entry_missing["thinking"] is None)
+
+
 # ORCHESTRATOR
 
 def run_probe_workflow():
@@ -321,6 +440,8 @@ def run_probe_workflow():
     test_fixation_legacy_path_pinned_and_unchanged()
     test_fixation_miss_is_pinned_too()
     test_fixation_load_failure_does_not_pin()
+    test_clear_thinking_edit_stripped_when_thinking_disabled()
+    test_forwarded_delta_includes_thinking()
 
     total = len(_RESULTS)
     passed = sum(1 for _, ok in _RESULTS if ok)

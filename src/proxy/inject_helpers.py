@@ -1,6 +1,8 @@
 # INFRASTRUCTURE
 from .rules_config import _load_config
 
+_CLEAR_THINKING_EDIT_TYPE = "clear_thinking_20251015"
+
 # FUNCTIONS
 
 def _model_params_dict_for(model_id: str, entry: dict) -> dict:
@@ -119,3 +121,29 @@ def _inject_context_management(payload: dict) -> tuple:
         return result, True
     except Exception:
         return payload, False
+
+
+def _thinking_is_disabled(payload: dict) -> bool:
+    thinking = payload.get("thinking")
+    return isinstance(thinking, dict) and thinking.get("type") == "disabled"
+
+
+def _strip_clear_thinking_edit(payload: dict) -> tuple:
+    if not _thinking_is_disabled(payload):
+        return payload, False
+    cm = payload.get("context_management")
+    if not isinstance(cm, dict):
+        return payload, False
+    edits = cm.get("edits")
+    if not isinstance(edits, list):
+        return payload, False
+    filtered_edits = [e for e in edits
+                      if not (isinstance(e, dict) and e.get("type") == _CLEAR_THINKING_EDIT_TYPE)]
+    if len(filtered_edits) == len(edits):
+        return payload, False
+    result = dict(payload)
+    if filtered_edits:
+        result["context_management"] = {**cm, "edits": filtered_edits}
+    else:
+        del result["context_management"]
+    return result, True

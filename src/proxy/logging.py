@@ -151,6 +151,7 @@ def _build_forwarded_delta(payload: dict, request_id: str, prev_hashes: Optional
         "timestamp": _forwarded_timestamp(),
         "model": payload.get("model", ""),
         "max_tokens": payload.get("max_tokens"),
+        "thinking": payload.get("thinking"),
         "output_config": payload.get("output_config"),
         "context_management": payload.get("context_management"),
         "diagnostics": payload.get("diagnostics"),
