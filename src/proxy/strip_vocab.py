@@ -11,6 +11,7 @@ BUCKETS: dict[str, str] = {
 }
 
 RULES: dict[str, tuple[str, list[str]]] = {
+    'PR':  ('injected_poread_content',      ['<poread-export ', '--- poread: ']),
     'REJ': ('stripped_rejection_message',   ['(rejection marker stripped by proxy)']),
     'TN':  ('trimmed_task_notification',    ['<task-notification>']),
     'NAG': ('stripped_task_tools_nag',      ["task tools haven"]),

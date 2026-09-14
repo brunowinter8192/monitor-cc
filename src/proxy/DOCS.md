@@ -87,7 +87,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### rules.py (144 LOC)
+### rules.py (146 LOC)
 
 **Purpose:** Orchestrates the message-pass pipeline (`apply_modification_rules`) and the system-block replacement pass (sys1 boilerplate strip, sys2 rule injection, sys3 session-guidance/gitStatus/worktree-path cleanup).
 **Reads:** Raw payload dict; system2 rule text via `rules_config._load_system2_rules`.
@@ -117,13 +117,13 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### message_passes_simple.py (157 LOC)
+### message_passes_simple.py (171 LOC)
 
-**Purpose:** Generic spec-driven pass runner (`_run_simple_pass`) plus the 8 declarative pass specs — PO-preview, BG-exit, hook-prefix, git-lock, bg-launch-ack, bd-noise, interrupt-marker, SN-notice — that all share the role-filter → marker-guard → `strip_fn` shape.
+**Purpose:** Spec-driven pass runner (`_run_simple_pass`) plus 9 declarative specs (PO-preview, BG-exit, hook-prefix, git-lock, bg-launch-ack, bd-noise, interrupt-marker, SN-notice, poread-expand); role-filter, marker-guard, `strip_fn`.
 **Reads:** Message list.
 **Writes:** — (returns new lists/dicts; no mutation of input messages)
-**Called by:** `src/proxy/rules.py` (all 8 `_apply_*_strip` functions imported).
-**Calls out:** —
+**Called by:** `src/proxy/rules.py` (all 9 `_apply_*_strip` functions imported).
+**Calls out:** `constants` (`POREAD_MARKER_PREFIX`, via `.inject_poread`'s re-export — see that module's own entry for the live-copy sys.path bootstrap this indirectly depends on).
 
 ---
 
@@ -174,6 +174,16 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 **Writes:** — (returns `(modified_content, list[str])`)
 **Called by:** `src/proxy/message_passes_simple.py` (`_apply_bg_launch_ack_strip`); `src/proxy/bg_escape.py` (`_is_bg_launch_ack`, `_ACK_ID_RE` — unchanged by the third wording, deliberately: bg_escape's tmux-Escape trigger only fires for the two original wordings, see `src/proxy/DOCS.md` Gotchas).
 **Calls out:** —
+
+---
+
+### inject_poread.py (75 LOC)
+
+**Purpose:** Recognizes a `<poread-export ...>` marker inside a `tool_result`, replaces it with the named file's full content, re-validated fresh against disk every call.
+**Reads:** Message content (string or list of blocks); the named file's bytes from disk, up to `constants.POREAD_MAX_BYTES`.
+**Writes:** — (returns `(modified_content, list[str])`); stderr diagnostic (`[proxy_addon] poread: ...`) when a structurally-valid marker fails validation (source changed, vanished, or declares a size over the ceiling) — the marker is left completely unchanged in that case, never partially expanded, and never cached across calls: size + truncated sha256 are both recomputed from disk on every single invocation, so a marker that validated on one request can validate differently (or stop validating) on the next.
+**Called by:** `src/proxy/message_passes_simple.py` (`_apply_poread_expand_strip`).
+**Calls out:** `constants` (`POREAD_MAX_BYTES`, `POREAD_HASH_LEN`, `POREAD_MARKER_PREFIX`, via the same `MONITOR_CC_ROOT`-based `sys.path` bootstrap `payload_helpers.py`/`tools.py` already use — required because the running proxy's live copy under `src/logs/.proxy_live_<id>/proxy/` never includes `src/constants.py` itself, only the `proxy/` subpackage).
 
 ---
 
@@ -267,7 +277,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### strip_inject_delta.py (292 LOC)
+### strip_inject_delta.py (293 LOC)
 
 **Purpose:** Builds `stripped_delta`/`injected_delta` JSONL entries from an original↔forwarded payload pair, with per-location hash chains for delta suppression and a function-attribution map (`fn_map`) for each recorded change.
 **Reads:** Original and forwarded payload dicts; previous hash state dicts (`loc_key → MD5[:10]`) from the prior request; `all_ops` bridged from `flow.metadata`.
@@ -327,7 +337,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### strip_vocab.py (222 LOC)
+### strip_vocab.py (223 LOC)
 
 **Purpose:** Shared vocabulary and classification logic for proxy strip attribution — rule-code/marker tables, chunk-to-rule attribution, and the 5-bucket (EFF/INERT/IDX/LEAK/SUS) per-request classifier used by audit tooling and the monitor display. Must stay in lockstep with `rules.py`'s rule set and markers.
 **Reads:** —

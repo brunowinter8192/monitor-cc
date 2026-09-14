@@ -9,6 +9,7 @@ from .strip_git_lock import _strip_git_lock_advice, _GIT_LOCK_MARKER
 from .strip_bd_noise import _strip_bd_noise, _BD_NOISE_MARKERS
 from .strip_sn_notice import _strip_sn_notice, _SN_NOTICE_MARKER
 from .strip_interrupt_marker import _strip_interrupt_marker, _INTERRUPT_MARKERS
+from .inject_poread import _inject_poread_content, POREAD_MARKER_PREFIX
 
 _USER_ROLES = frozenset({"user"})
 
@@ -155,3 +156,16 @@ _SN_NOTICE_SPEC = {
 
 def _apply_sn_notice_strip(messages: list) -> tuple:
     return _run_simple_pass(messages, _SN_NOTICE_SPEC)
+
+
+_POREAD_SPEC = {
+    "roles": _USER_ROLES,
+    "marker_guard": lambda c: _content_contains(c, POREAD_MARKER_PREFIX),
+    "strip_fn": _inject_poread_content,
+    "mod_name": "injected_poread_content",
+    "full_replace": True,
+}
+
+
+def _apply_poread_expand_strip(messages: list) -> tuple:
+    return _run_simple_pass(messages, _POREAD_SPEC)

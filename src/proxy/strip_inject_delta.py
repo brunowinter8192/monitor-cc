@@ -17,6 +17,7 @@ _FIELD_INJECT_FN: dict[str, str] = {
     **_FIELD_STRIP_FN, 'context_management': '_inject_context_management',
 }
 _MSG_CODE_TO_FN: dict[str, str] = {
+    'PR':  '_apply_poread_expand_strip',
     'RS':  '_apply_role_system_strip',
     'REJ': '_apply_first_pass',  'TN':  '_apply_first_pass',
     'NAG': '_apply_first_pass',  'DEF': '_apply_first_pass',

@@ -25,6 +25,7 @@ from .message_passes_simple import (
     _apply_git_lock_strip,
     _apply_bd_noise_strip,
     _apply_interrupt_marker_strip,
+    _apply_poread_expand_strip,
 )
 from .message_passes_wakeup import _dedup_wakeup_blocks
 from .rule_ops import _merge_ops
@@ -55,6 +56,7 @@ def apply_modification_rules(payload: dict, model_family: str = "opus", project_
         _apply_git_lock_strip,
         _apply_bd_noise_strip,
         _apply_interrupt_marker_strip,
+        _apply_poread_expand_strip,
     ]
 
     (new_messages, modifications, changed, stripped_msg_indices, stripped_msg_originals,
