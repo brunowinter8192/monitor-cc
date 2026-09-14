@@ -13,23 +13,26 @@ _READ_TOOL_RE = re.compile(
 )
 _REDIRECT_STRIP = re.compile(r'\s*(?:\d?>>?|&>>?)\s*\S+')
 _SEGMENT_SPLIT = re.compile(r'\s*(?:&&|\|\||\||\n|;)\s*')
+_TOKEN_PREFIX_RE = re.compile(r'^\w+=(.*)$')
+
+POREAD_MAX_BYTES = 50_000
 
 _BLOCK_MSG = (
     "BLOCKED: this path is a Claude Code persisted-output export (contains /.claude/, ends .txt) — "
-    "it MUST be read via `poread <path>`, never partially via head/tail/grep/sed/split/dd/etc.\n"
+    "read it via `poread <path>` instead of partially.\n"
 )
 
 
 # ORCHESTRATOR
 
 def block_po_read_workflow() -> None:
-    command, session_id = _parse_command()
+    command, session_id, cwd = _parse_command()
     if command is None:
         sys.exit(0)
     stripped = _strip_non_shell_active(command)
     segments = [s for s in _SEGMENT_SPLIT.split(stripped) if s.strip()]
     for seg in segments:
-        if _is_po_read_segment(seg):
+        if _is_po_read_segment(seg, cwd):
             print(_BLOCK_MSG, file=sys.stderr, end="")
             log_fire("block_po_read", "block", "Bash", command, reason=_BLOCK_MSG, session_id=session_id)
             sys.exit(2)
@@ -42,13 +45,19 @@ def _parse_command():
     try:
         payload = json.loads(sys.stdin.read())
         cmd = payload.get("tool_input", {}).get("command")
-        return (cmd if isinstance(cmd, str) else None), payload.get("session_id")
+        return (cmd if isinstance(cmd, str) else None), payload.get("session_id"), payload.get("cwd")
     except Exception:
-        return None, None
+        return None, None, None
 
-def _is_po_read_segment(seg: str) -> bool:
+def _is_po_read_segment(seg: str, cwd) -> bool:
     cleaned = _strip_redirects(seg)
-    return bool(_READ_TOOL_RE.search(cleaned) and _PO_PATH_RE.search(cleaned))
+    if not _READ_TOOL_RE.search(cleaned):
+        return False
+    match = _PO_PATH_RE.search(cleaned)
+    if not match:
+        return False
+    size = _po_export_size(match.group(0), cwd)
+    return size is None or size <= POREAD_MAX_BYTES
 
 def _strip_redirects(seg: str) -> str:
     cleaned = seg
@@ -58,6 +67,22 @@ def _strip_redirects(seg: str) -> str:
             break
         cleaned = new
     return cleaned
+
+def _resolve_po_path(token: str, cwd) -> str:
+    prefix_match = _TOKEN_PREFIX_RE.match(token)
+    path = prefix_match.group(1) if prefix_match else token
+    path = os.path.expanduser(path)
+    if not os.path.isabs(path):
+        base = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+        path = os.path.join(base, path)
+    return path
+
+def _po_export_size(token: str, cwd):
+    path = _resolve_po_path(token, cwd)
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return None
 
 
 if __name__ == "__main__":
