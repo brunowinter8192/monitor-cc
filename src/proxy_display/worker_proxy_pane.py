@@ -175,8 +175,9 @@ def _handle_worker_proxy_mouse(button: int, col: int, row: int, monitor) -> bool
             return had_selection
         is_req = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
         is_msg = isinstance(key, tuple) and key[0] == 'msg'
+        is_think = isinstance(key, tuple) and key[0] == 'think'
         entry_idx = _entry_idx_from_key(key)
-        if (is_req or is_msg) and col >= _worker_proxy_pane_width - 2 and row in _worker_proxy_copy_rows:
+        if (is_req or is_msg or is_think) and col >= _worker_proxy_pane_width - 2 and row in _worker_proxy_copy_rows:
             _handle_worker_proxy_copy_click(key, entry_idx)
         elif is_msg:
             return had_selection
