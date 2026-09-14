@@ -173,6 +173,19 @@ script is safe.
 
 ---
 
+### p11_request_identity_encoding_test.py (51 LOC)
+
+**Purpose:** Unit-level regression guard for `addon._request_identity_encoding` — verifies it sets
+`accept-encoding: identity` on the outbound request from empty, and that it overwrites an already-
+present compressed `accept-encoding` value rather than merging or leaving it alone.
+**Reads:** no on-disk data — a fake flow/request/headers object defined in the module.
+**Writes:** stdout (pass/fail via assert).
+**Called by:** none — manual regression guard, re-run after any change to `addon.py`'s
+`request()`/`_request_identity_encoding`.
+**Calls out:** `proxy.addon` (`_request_identity_encoding`).
+
+---
+
 ## Gotchas
 - `pN_*.py` scripts import from `src/` directly — this filename prefix is a project convention: only
   `pN_*.py` dev scripts may `from src...`/`import src...`; unprefixed scripts in `dev/` must copy the
