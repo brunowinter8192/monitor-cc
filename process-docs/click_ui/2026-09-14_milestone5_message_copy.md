@@ -104,3 +104,47 @@ unmodified as caller-safety: `dev/display/test_hover_map.py` (45/45, before and 
 `dev/click_ui/p2_copy_click_probe.py`/`p3_button_click_probe.py` (both crash identically
 before/after on this sandbox's missing TTY — confirmed pre-existing via traceback diff, not
 introduced by this milestone).
+
+## 2026-09-14 — Recap close-out
+
+Session end for this task, including the review-fix pass (comment-in-code violation: the code
+standard allows only the three section-marker comment lines per module; a 5-line explainer above
+`_serialize_proxy_message`'s return was removed, its substance folded into the section above this
+one instead of being re-derived by a future reader).
+
+Self-audit (`git diff integration --name-only`): `dev/click_ui/DOCS.md`,
+`dev/click_ui/md/p5_proxy_message_copy_click_probe_20260914_124129.md`,
+`dev/click_ui/md/p5_proxy_message_copy_click_probe_20260914_124310.md`,
+`dev/click_ui/md/p5_proxy_message_copy_click_probe_20260914_124416.md`,
+`dev/click_ui/p5_proxy_message_copy_click_probe.py`,
+`process-docs/click_ui/2026-09-14_milestone5_message_copy.md`, `src/proxy_display/DOCS.md`,
+`src/proxy_display/format.py`, `src/proxy_display/pane.py`,
+`src/proxy_display/proxy_pane_shared.py`, `src/proxy_display/render_messages.py`,
+`src/proxy_display/render_turn.py`, `src/proxy_display/worker_proxy_pane.py`.
+
+DOCS.md currency checked against `wc -l` on every touched file this pass, all six
+`src/proxy_display/` entries plus `dev/click_ui/p5_proxy_message_copy_click_probe.py` match
+exactly (332/336/260/181/152/297/252 LOC respectively) — all were kept current inline during the
+task itself, nothing stale found on this pass. Left the pre-existing Purpose-field word-count
+overage on all six `src/proxy_display/` entries alone (each was already well past the 25-word cap
+before this task touched any of them, e.g. `render_messages.py` at ~100 words) — none of my edits
+went into Purpose text, only Writes/Calls-out (which carry no cap), so there was nothing of mine
+to trim; rewriting six pre-existing bloated Purpose sentences unrelated to this milestone's actual
+change would itself be the kind of out-of-scope cleanup the task rules warn against.
+
+Three `dev/click_ui/md/p5_*` report files ended up committed across two commits (one per
+milestone-then-review-fix run) — matches this directory's own established convention (69 `p1_*`
+reports already committed before this task ever started) of keeping every run's report, not
+pruning to one.
+
+**One thing worth flagging for whoever touches `proxy_pane_shared.py` next:** this file's Purpose
+line says "never reads either pane's own module-level globals" — that invariant held for every
+function this milestone added (`_serialize_proxy_message`, `_is_msg_key`, `_copy_feedback_key` all
+take explicit arguments only). Keep it that way; the moment one of these needs pane-specific
+context, it stops being genuinely shared and the duplication-vs-sharing tradeoff this milestone
+leaned on (dispatch logic duplicated per pane, serializer/feedback-key shared) needs re-deciding,
+not just extended.
+
+No further work planned by this worker on this line — the milestone (message-level copy inside an
+expanded REQ, both proxy panes, `[STRIPPED]` rows explicitly out of scope) is complete as scoped
+and the review finding is fixed.
