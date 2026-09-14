@@ -26,13 +26,14 @@ request_id) under src/logs/dual_log.
 
 ---
 
-### p4_blocklist_223_probe.py (150 LOC)
+### p4_blocklist_223_probe.py (172 LOC)
 
 **Purpose:** Verifies the CC 2.1.223 `TOOL_BLOCKLIST` extension (Artifact, ReportFindings,
-DeferredToolPlaceholder) end-to-end — runs the real `_strip_unused_tools` on a recorded session's
-original payload and asserts the post-strip tool set is exactly the expected core set (`Bash`,
-`Read`, `Skill`) plus any MCP-injected names.
-**Reads:** a fixed recorded session's original/forwarded dual-log pair under src/logs/dual_log.
+DeferredToolPlaceholder) end-to-end — runs the real `_strip_unused_tools` on the newest
+main-session recording present in the live corpus and asserts the post-strip tool set is exactly
+the expected core set (`Bash`, `Read`, `Skill`) plus any MCP-injected names.
+**Reads:** the newest main-session original/forwarded dual-log pair under src/logs/dual_log
+(glob-driven session selection, same pattern as `p7_blocklist_258_probe.py`, no hardcoded stem).
 **Writes:** `md/blocklist_223_probe_report.md`.
 **Called by:** none — manual, historical pin-bump verification.
 **Calls out:** `proxy.tools` (`_strip_unused_tools`), `constants` (`TOOL_BLOCKLIST`),
@@ -220,10 +221,12 @@ script's precision can never silently drift from the actual proxy behavior it's 
 - All dual-log reads in this directory point at src/logs/dual_log, which is gitignored runtime data
   absent from a fresh worktree and live-growing from concurrent sessions — re-running a corpus-wide
   script shifts absolute counts without changing the underlying finding.
-- `p4_blocklist_223_probe.py` hardcodes one session stem (`api_requests_opus_websearch_1786052022`)
-  that has since aged out of the live `src/logs/dual_log/` corpus (log rotation) — as of 2026-09 the
-  script cannot run (`FileNotFoundError`) until repointed at a session still present. `p7_blocklist_
-  258_probe.py`'s corpus-wide, glob-driven design (no hardcoded stem) does not have this problem.
+- `p4_blocklist_223_probe.py` previously hardcoded one session stem
+  (`api_requests_opus_websearch_1786052022`) that aged out of the live `src/logs/dual_log/`
+  corpus (log rotation) and could no longer run. As of 2026-09-14 it selects the newest
+  main-session original+forwarded log pair at runtime instead (`_select_session_stem()`,
+  same pattern as `p7_blocklist_258_probe.py`'s `_newest_main_session_log`) — see
+  `process-docs/proxy_instrumentation/` for the fix's details.
 - **`post_restart_verification.py` cannot trust plain substring search against `_original.jsonl`
   in a session that discusses its own subject matter.** A worker session that implements and
   reports on a feature (e.g. this exact branch) quotes the feature's own literal marker/wording
