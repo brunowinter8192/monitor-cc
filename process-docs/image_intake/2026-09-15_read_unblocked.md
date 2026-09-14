@@ -2,7 +2,7 @@
 
 ## Why this entry lives here, not in proxy_tool_stripping
 
-`process-docs/image_intake/2026-09-13_main_session.md` opened the question of how a session gets
+A prior entry in `process-docs/image_intake/` opened the question of how a session gets
 an actual image into its context once `Read`/`Edit`/`Write` were blocked, parked a proxy-side
 image-injection mechanism as unbuilt and unmeasured, and closed with OCR as the working answer for
 that session. This entry is the sequel to that question, not to the blocklist's own history: the
@@ -57,7 +57,7 @@ this caveat rather than adjusted by an estimate.
 
 ## Two hooks go from dead code back to live code
 
-`process-docs/model_selector/2026-09-13_thinking_toggle.md` recorded, at the time Read/Edit/Write
+A prior entry in `process-docs/model_selector/` recorded, at the time Read/Edit/Write
 were added to the blocklist, that `src/hooks/hook_setup.py`'s `_HOOK_SCRIPTS` registrations matched
 against the literal `"Read"` (`block_path_typo.py`, `block_read_directory.py`) and `src/utils.py`'s
 `first_word_of_call`'s `Read` branch became unreachable — a `PreToolUse` hook only fires when the
@@ -89,7 +89,7 @@ at run time). Result: 7/8 checks pass, including `post_strip_set_is_exact` now r
 failure, `rw_live_tool_use_present_corpus_wide_by_design`, is a corpus-rotation artefact that
 predates this change and is not caused by it: the check asserts more than zero corpus-wide live
 `tool_use` hits for the still-blocked tools (`Edit`, `Write`), reflecting the expectation recorded in
-`process-docs/model_selector/2026-09-13_thinking_toggle.md` that these are dominant, heavily-used
+`process-docs/model_selector/` that these are dominant, heavily-used
 tools. Measured before touching anything (same script, same corpus, before any edit in this
 session): 12 files scanned, 0 hits for `{Edit, Read, Write}` across 0 files — the three-tool corpus
 this check was written against (25 files, 450,847 hits, per the earlier entry) has rotated down to
