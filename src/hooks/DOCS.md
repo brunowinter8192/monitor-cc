@@ -279,7 +279,7 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 
 ---
 
-### block_po_read.py (66 LOC)
+### block_po_read.py (64 LOC)
 
 **Purpose:** PreToolUse Bash hook blocking shell reads (head/tail/grep/sed/awk/cut/less/more/cat/split/dd/etc.) targeting a Claude Code persisted-output export path (contains `/.claude/`, ends `.txt`) — must be read via `poread` instead.
 **Reads:** stdin (PreToolUse JSON: `tool_input.command`).

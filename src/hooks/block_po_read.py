@@ -16,9 +16,7 @@ _SEGMENT_SPLIT = re.compile(r'\s*(?:&&|\|\||\||\n|;)\s*')
 
 _BLOCK_MSG = (
     "BLOCKED: this path is a Claude Code persisted-output export (contains /.claude/, ends .txt) — "
-    "it MUST be read via `poread <path>`, never partially via head/tail/grep/sed/split/dd/etc. "
-    "poread brings the full content into context regardless of size; if the file exceeds "
-    "poread's own ceiling it says so on stderr and exits non-zero.\n"
+    "it MUST be read via `poread <path>`, never partially via head/tail/grep/sed/split/dd/etc.\n"
 )
 
 
