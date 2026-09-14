@@ -1,8 +1,8 @@
 # 2026-09-14 — Milestone 7: per-block copy click (fourth granularity)
 
-New task, same line of work as `process-docs/click_ui/2026-09-14_milestone5_message_copy.md`
-(REQ → message → thinking block → this milestone: every other block type). Scope:
-`src/proxy_display/` and the one dev test only.
+New task, same line of work as the prior REQ-copy/message-copy/thinking-block-copy milestones
+documented in `process-docs/click_ui/` (REQ → message → thinking block → this milestone: every
+other block type). Scope: `src/proxy_display/` and the one dev test only.
 
 ## What was missing
 
