@@ -130,11 +130,6 @@ def _serialize_proxy_message(key, entries: list) -> str:
         if ct:
             parts.append(f"\n--- msg[{msg_idx}] {role} {msg_type} ---")
             parts.append(ct)
-    # Same per-block separator shape _serialize_proxy_entry uses (each header carries its own
-    # leading \n, so consecutive blocks/messages get a blank-line separator there) -- stripped of
-    # ONLY the resulting single leading newline, since a standalone message copy has no preceding
-    # REQ-summary line to separate from. This keeps a message's copy text a byte-exact substring
-    # of what _serialize_proxy_entry produces for that same message inside a full REQ copy.
     return '\n'.join(parts).lstrip('\n')
 
 def _copy_feedback_key(key, entry_idx: Optional[int]):

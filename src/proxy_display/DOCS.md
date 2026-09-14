@@ -66,7 +66,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### proxy_pane_shared.py (265 LOC)
+### proxy_pane_shared.py (260 LOC)
 
 **Purpose:** Mechanics shared by both proxy panes (`pane.py`, `worker_proxy_pane.py`), each function parameterized by explicit arguments — never reads either pane's own module-level globals. Covers the worker-switcher header builder, key/entry-idx resolution, copy-text serialization, expand+lazy-load toggling, dual-log accumulate-and-attach, search-on-commit, scroll/hover dispatch, and render+scroll+row-shift.
 **Reads:** Parameters only.
