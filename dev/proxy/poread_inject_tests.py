@@ -29,6 +29,7 @@ _WORKTREE_ROOT = os.path.join(os.path.dirname(__file__), '..', '..')
 
 from proxy.rules import apply_modification_rules
 from proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX
+from constants import POREAD_NOTICE
 from proxy.strip_vocab import attribute_chunk
 
 _PASS = "PASS"
@@ -47,7 +48,7 @@ def _mint_marker(path: str) -> str:
         [sys.executable, "-m", "src.poread_cli", path],
         cwd=_WORKTREE_ROOT, capture_output=True, text=True, check=True,
     )
-    assert proc.stdout.count('\n') == 1, f"poread stdout must be exactly one line: {proc.stdout!r}"
+    assert proc.stdout.count('\n') == 2, f"poread stdout must be exactly two lines (marker + notice): {proc.stdout!r}"
     return proc.stdout.rstrip('\n')
 
 
@@ -148,6 +149,9 @@ def test_file_changed_between_requests_leaves_marker_inert():
         check("second run (changed file) leaves marker completely unchanged", r2 == marker)
         check("second run records no mod for this pass", "injected_poread_content" not in mods2)
         check("second run records no op for this block", all_ops2.get(2, {}).get(0, []) == [])
+        check("the notice sentence is still present in r2 -- this is exactly the case where the "
+              "agent needs the explanation, so it must not have been silently dropped",
+              POREAD_NOTICE in r2)
     finally:
         os.unlink(path)
 
@@ -181,7 +185,7 @@ def test_oversize_declared_marker_refused_regardless_of_actual_file():
     try:
         import hashlib
         fake_digest = hashlib.sha256(data).hexdigest()[:16]
-        crafted_marker = f'<poread-export path="{path}" bytes="999999999" sha256="{fake_digest}"/>'
+        crafted_marker = f'<poread-export path="{path}" bytes="999999999" sha256="{fake_digest}"/>\n{POREAD_NOTICE}'
         payload = _payload_with_marker(crafted_marker)
         modified, mods, *_ = apply_modification_rules(payload, "opus", "", "main")
         result = modified["messages"][2]["content"][0]["content"]
@@ -236,7 +240,8 @@ def test_marker_alone_with_own_trailing_newline_still_expands():
         path = f.name
     try:
         marker = _mint_marker(path)
-        check("_mint_marker strips the CLI's own trailing newline before we re-add one ourselves", marker.count('\n') == 0)
+        check("_mint_marker strips only the CLI's own FINAL trailing newline, keeping the one "
+              "internal newline between the marker and the fixed notice sentence", marker.count('\n') == 1)
         payload = _payload_with_marker(marker + "\n")
         modified, mods, *_ = apply_modification_rules(payload, "opus", "", "main")
         result = modified["messages"][2]["content"][0]["content"]
@@ -280,6 +285,48 @@ def test_source_is_read_only_once_per_marker():
         os.unlink(path)
 
 
+def test_marker_without_notice_is_ineligible():
+    print("Item 11 - a marker with no notice sentence under it is ineligible for expansion (the "
+          "notice is now part of the whole-block contract, not an optional extra line)")
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
+        data = b"content that must not be injected without the notice\n"
+        f.write(data)
+        path = f.name
+    try:
+        import hashlib
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        marker_only = f'<poread-export path="{os.path.realpath(path)}" bytes="{len(data)}" sha256="{digest}"/>'
+        payload = _payload_with_marker(marker_only)
+        modified, mods, *_ = apply_modification_rules(payload, "opus", "", "main")
+        result = modified["messages"][2]["content"][0]["content"]
+        check("marker without the notice is left completely unchanged", result == marker_only)
+        check("no mod recorded for a marker missing the notice", "injected_poread_content" not in mods)
+    finally:
+        os.unlink(path)
+
+
+def test_marker_with_notice_expands_to_content():
+    print("Item 12 - marker plus the exact fixed notice sentence expands to the file's full "
+          "content, and the notice itself disappears along with the marker (the 'expansion "
+          "succeeded' property, for free from the same full_replace mechanics)")
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
+        data = b"content that DOES get injected once the notice is present\n"
+        f.write(data)
+        path = f.name
+    try:
+        import hashlib
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        marker_plus_notice = f'<poread-export path="{os.path.realpath(path)}" bytes="{len(data)}" sha256="{digest}"/>\n{POREAD_NOTICE}'
+        payload = _payload_with_marker(marker_plus_notice)
+        modified, mods, *_ = apply_modification_rules(payload, "opus", "", "main")
+        result = modified["messages"][2]["content"][0]["content"]
+        check("mod recorded once the exact notice is present", "injected_poread_content" in mods)
+        check("the notice text is gone from the result -- replaced along with the marker, not appended to", POREAD_NOTICE not in result)
+        check("result carries the exact file content", data.decode('utf-8') in result)
+    finally:
+        os.unlink(path)
+
+
 # ORCHESTRATOR
 
 def run_poread_inject_tests_workflow() -> None:
@@ -293,6 +340,8 @@ def run_poread_inject_tests_workflow() -> None:
     test_marker_with_trailing_content_is_untouched_not_truncated()
     test_marker_alone_with_own_trailing_newline_still_expands()
     test_source_is_read_only_once_per_marker()
+    test_marker_without_notice_is_ineligible()
+    test_marker_with_notice_expands_to_content()
 
     total = len(_RESULTS)
     passed = sum(1 for _, ok in _RESULTS if ok)

@@ -12,6 +12,10 @@ WARNINGS_INITIAL_TAIL_BYTES = 50_000_000
 POREAD_MAX_BYTES = 500_000
 POREAD_HASH_LEN = 16
 POREAD_MARKER_PREFIX = '<poread-export '
+POREAD_NOTICE = (
+    "The file's full content will arrive automatically on the next turn — do not read "
+    "this file again until then."
+)
 
 TOOL_BLOCKLIST = frozenset({
     "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",

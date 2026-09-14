@@ -9,7 +9,7 @@ from .payload_helpers import _walk_replace_marker_blocks
 _src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
-from constants import POREAD_MAX_BYTES, POREAD_HASH_LEN, POREAD_MARKER_PREFIX
+from constants import POREAD_MAX_BYTES, POREAD_HASH_LEN, POREAD_MARKER_PREFIX, POREAD_NOTICE
 
 # INFRASTRUCTURE
 
@@ -17,6 +17,7 @@ _POREAD_HEADER_PREFIX = '--- poread: '
 
 _POREAD_MARKER_RE = re.compile(
     r'<poread-export path="(?P<path>[^"]*)" bytes="(?P<bytes>\d+)" sha256="(?P<sha256>[0-9a-f]+)"\s*/>'
+    r'\n' + re.escape(POREAD_NOTICE)
 )
 
 

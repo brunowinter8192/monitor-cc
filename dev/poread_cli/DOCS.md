@@ -27,4 +27,4 @@ file (refused before ever being opened), missing file, directory path, malformed
 **Called by:** none — manual regression guard, re-run after any change to
 `src/poread_cli/__main__.py`.
 **Calls out:** `src.poread_cli.__main__` (`main`), `src.constants` (`POREAD_MAX_BYTES`,
-`POREAD_HASH_LEN`, `POREAD_MARKER_PREFIX`).
+`POREAD_HASH_LEN`, `POREAD_MARKER_PREFIX`, `POREAD_NOTICE`).
