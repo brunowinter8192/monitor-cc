@@ -284,7 +284,7 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 **Purpose:** PreToolUse Bash hook blocking shell reads (head/tail/grep/sed/awk/cut/less/more/cat/split/dd/etc.) targeting a Claude Code persisted-output export path (contains `/.claude/`, ends `.txt`) at or under poread's own byte ceiling — above it, partial reads are allowed since poread itself would refuse to export the file whole; size undeterminable (missing file, unstat-able, unresolved path token) defaults to blocked.
 **Reads:** stdin (PreToolUse JSON: `tool_input.command`, `session_id`, `cwd`); the matched path's size from disk (`os.path.getsize`, any `OSError` treated as undeterminable).
 **Writes:** stderr (block message pointing at `poread <path>`) on match; exit 2.
-**Called by:** Claude Code hook system, registered by `hook_setup.py` — currently unregistered in `~/.claude/settings.json` as of this milestone (not this repo's file to change).
+**Called by:** Claude Code hook system, registered by `hook_setup.py` (registration state lives in `~/.claude/settings.json`, a machine-local file this repo does not track — not asserted here).
 
 ---
 
