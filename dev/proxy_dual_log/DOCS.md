@@ -170,10 +170,10 @@ predates this file's move into `dev/proxy_dual_log/`.
 
 ---
 
-### proxy_176_bg_launch_ack_tests.py (432 LOC)
+### proxy_176_bg_launch_ack_tests.py (587 LOC)
 
 **Purpose:** Unit tests for the CC 2.1.176 background-launch-ack strip (`_apply_bg_launch_ack_strip`)
-across tool_result-string, tool_result-list, and standalone-text-block shapes, including two known
+across tool_result-string, tool_result-list, and standalone-text-block shapes, including three known
 wordings and several false-positive-preservation cases.
 **Reads:** nothing — synthetic in-script fixture text.
 **Writes:** PASS/FAIL lines to stdout.

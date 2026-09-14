@@ -16,7 +16,9 @@ from proxy.diff_engine import _diff_messages, compose_block
 from proxy.logging import _normalize_msg_shape_for_hash
 from proxy.rule_ops import _ops_from_content_change
 from proxy.strip_vocab import attribute_chunk
-from proxy.strip_bg_launch_ack import _BG_LAUNCH_ACK_MSG, _BG_LAUNCH_ACK_MSG_MAIN
+from proxy.strip_bg_launch_ack import (
+    _BG_LAUNCH_ACK_MSG, _BG_LAUNCH_ACK_MSG_MAIN, _BG_AUTO_TIMEOUT_MSG, _BG_AUTO_TIMEOUT_MSG_MAIN,
+)
 
 _PASS = "\033[32mPASS\033[0m"
 _FAIL = "\033[31mFAIL\033[0m"
@@ -106,6 +108,44 @@ _FP_W2_MID_CONTENT = (
     "    text.lstrip().startswith(prefix), not substring-anywhere.\n\n"
     "[2] Example quoted transcript:\n"
     "    'Command was manually backgrounded by user with ID: bxab0pzvo. Output is being written to ...'\n"
+    "    — pasted here for documentation purposes, must not be replaced.\n"
+)
+
+
+# Wording 3 (2026-09-14 milestone) — CC auto-backgrounds a Bash call that exceeded its own
+# timeout (not a deliberate/manual launch). Exact text taken verbatim from
+# src/logs/dual_log/api_requests_opus_monitor_cc_1789383190_original.jsonl. Unlike wording 1/2, this
+# one carries a trailing "Session cwd remains ..." sentence in the SAME block — the strip discards it
+# along with the rest of the matched ack, same as it already discards any trailing content for
+# wording 2 (see W24 in dev/proxy/test_strip_fix.py).
+_LAUNCH_ACK_W3 = (
+    "Command did not complete within its 120s timeout and was moved to the background (ID: "
+    "b1mahby4a). Output is being written to: /private/tmp/claude-501/"
+    "-Users-brunowinter2000-Documents-ai-monitor-cc/d7b0d213-0c28-4e53-baf8-c11fa7838f0b/"
+    "tasks/b1mahby4a.output. You will be notified when it completes. To check interim output, "
+    "use Read on that file path.\n"
+    "Session cwd remains /Users/brunowinter2000/Documents/ai/monitor-cc; directory changes made "
+    "by the backgrounded command do not apply to subsequent commands."
+)
+
+_EXPECTED_REPLACEMENT_W3 = (
+    "Command exceeded its timeout and was moved to the background. Do NOT check, poll, or read "
+    "its output — just wait until it finishes (you will get a completion notice).\n"
+    "Output: /private/tmp/claude-501/-Users-brunowinter2000-Documents-ai-monitor-cc/"
+    "d7b0d213-0c28-4e53-baf8-c11fa7838f0b/tasks/b1mahby4a.output\n"
+    "ID: b1mahby4a\n"
+)
+
+# FP fixture — CONTAINS the wording-3 marker phrase but does NOT start with the ack prefix.
+_FP_W3_MID_CONTENT = (
+    "RAG search results (hybrid, 3 hits):\n\n"
+    "[1] decisions/strip_bg_launch_ack.md (score 0.91)\n"
+    "    Wording 3 marker: 'moved to the background (ID'. Anchored prefix:\n"
+    "    'Command did not complete within its'. Fires only when\n"
+    "    text.lstrip().startswith(prefix), not substring-anywhere.\n\n"
+    "[2] Example quoted transcript:\n"
+    "    'Command did not complete within its 60s timeout and was moved to the background "
+    "(ID: bxab0pzvo). Output is being written to ...'\n"
     "    — pasted here for documentation purposes, must not be replaced.\n"
 )
 
@@ -345,6 +385,115 @@ def test_wording1_and_wording2_same_msg_line():
     print()
 
 
+# ── LAUNCH-ACK WORDING 3: AUTO-BACKGROUNDED ON TIMEOUT (2026-09-14 milestone) ─────────────────
+# Third CC wording — Bash exceeded its own timeout and CC moved it to the background on its own,
+# distinct from wording 1 (deliberate run_in_background) and wording 2 (user manually backgrounds
+# an already-running call). The replacement message must still say "timeout" so the reader can
+# tell this apart from a deliberate background launch (see process-docs/proxy_dual_log/ area note
+# for the 2026-09-14 entry) — this is why wording 3 gets its OWN message constant
+# (_BG_AUTO_TIMEOUT_MSG/_MAIN) rather than reusing _BG_LAUNCH_ACK_MSG.
+
+def test_wording3_tool_result_str_content():
+    print("Item 4s — wording 3: tool_result string content replaced with timeout-aware hold message")
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_w3", "content": _LAUNCH_ACK_W3},
+        ],
+    }]
+    result, mods, removed, changed, _, _ = _apply_bg_launch_ack_strip(messages)
+    tr = result[0]["content"][0]
+    check("wording3 tool_result content → timeout-aware 3-line hold message", tr["content"] == _EXPECTED_REPLACEMENT_W3)
+    check("mod-name recorded", "stripped_bg_launch_ack" in mods)
+    check("index 0 in changed_indices", 0 in changed)
+    check("original captured in removed[0] (incl. the trailing cwd sentence)", removed.get(0) == [_LAUNCH_ACK_W3])
+    print()
+
+
+def test_wording3_fp_mid_content_preserved():
+    print("Item 4t — FP: wording-3 marker phrase quoted mid-content (not block-initial) preserved")
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_fp_w3", "content": _FP_W3_MID_CONTENT},
+        ],
+    }]
+    result, mods, removed, changed, _, _ = _apply_bg_launch_ack_strip(messages)
+    tr = result[0]["content"][0]
+    check("content UNCHANGED", tr["content"] == _FP_W3_MID_CONTENT)
+    check("stripped_bg_launch_ack NOT in mods", "stripped_bg_launch_ack" not in mods)
+    check("index 0 NOT in changed_indices", 0 not in changed)
+    check("nothing removed at index 0", removed.get(0) is None)
+    print()
+
+
+def test_wording3_attribution_bl_code():
+    print("Item 4u — attribution: wording-3 ack chunk → code='BL' (same rule as wording 1/2)")
+    code = attribute_chunk(_LAUNCH_ACK_W3)
+    check(f"wording3 chunk attributes to BL (got {code!r})", code == "BL")
+    print()
+
+
+def test_wording3_message_differs_and_mentions_timeout():
+    print("Item 4v — wording-3 message line differs from wording 1/2 and names the timeout cause")
+    messages = [{
+        "role": "user",
+        "content": [{"type": "tool_result", "tool_use_id": "t3", "content": _LAUNCH_ACK_W3}],
+    }]
+    result, _, _, _, _, _ = _apply_bg_launch_ack_strip(messages)
+    msg_line = result[0]["content"][0]["content"].split('\n')[0]
+    check("wording3 message line uses the timeout-aware constant", msg_line == _BG_AUTO_TIMEOUT_MSG)
+    check("wording3 message line differs from wording1/2's shared message", msg_line != _BG_LAUNCH_ACK_MSG)
+    check("wording3 message explicitly names the timeout cause", "timeout" in msg_line.lower())
+    print()
+
+
+def test_wording3_main_vs_worker():
+    print("Item 4w — wording-3 replacement wording: is_main=True sharpens vs the default/worker wording")
+    messages = [{
+        "role": "user",
+        "content": [{"type": "tool_result", "tool_use_id": "toolu_w3_main", "content": _LAUNCH_ACK_W3}],
+    }]
+    default_result, _, _, _, _, _ = _apply_bg_launch_ack_strip(messages)
+    main_result, _, _, _, _, _ = _apply_bg_launch_ack_strip(messages, is_main=True)
+    default_text = default_result[0]["content"][0]["content"]
+    main_text = main_result[0]["content"][0]["content"]
+    check("default (is_main=False) wording unchanged", default_text.startswith(_BG_AUTO_TIMEOUT_MSG))
+    check("main wording starts with the sharpened timeout-aware message", main_text.startswith(_BG_AUTO_TIMEOUT_MSG_MAIN))
+    check("main wording differs from default wording", main_text != default_text)
+    check("main wording still carries the recovered ID line", "ID: b1mahby4a" in main_text)
+    print()
+
+
+def test_wording3_ops_path_present():
+    print("Item 4x — wording-3 strip is visible in the ops path, not only in the payload")
+    messages = [{
+        "role": "user",
+        "content": [{"type": "tool_result", "tool_use_id": "toolu_w3_ops", "content": _LAUNCH_ACK_W3}],
+    }]
+    _result, _mods, _removed, _changed, _injected, ops = _apply_bg_launch_ack_strip(messages)
+    block_ops = ops.get(0, {}).get(0, [])
+    check("exactly one op recorded for the wording-3 strip", len(block_ops) == 1)
+    offset, removed, injected = block_ops[0]
+    check("op offset is 0 (full_replace, no prefix trim)", offset == 0)
+    check("op removed is the FULL original wording-3 ack", removed == _LAUNCH_ACK_W3)
+    check("op injected is the FULL timeout-aware replacement", injected == _EXPECTED_REPLACEMENT_W3)
+
+    orig_content = [{"type": "tool_result", "tool_use_id": "toolu_w3_ops", "content": _LAUNCH_ACK_W3}]
+    fwd_content = [{"type": "tool_result", "tool_use_id": "toolu_w3_ops", "content": "."}]
+    orig_msgs = [{"role": "user", "content": orig_content}]
+    fwd_msgs = [{"role": "user", "content": fwd_content}]
+    orig_norm = [_normalize_msg_shape_for_hash(m) for m in orig_msgs]
+    fwd_norm = [_normalize_msg_shape_for_hash(m) for m in fwd_msgs]
+    msg_diffs = _diff_messages(orig_norm, fwd_norm)
+    all_ops = {0: _ops_from_content_change(orig_content, fwd_content)}
+    _, _, _, _, s_fn, _ = _process_messages_section(
+        msg_diffs, orig_norm, is_first=True, prev_stripped=None, prev_injected=None, all_ops=all_ops
+    )
+    check("fn_map attributes the wording-3 removal to _apply_bg_launch_ack_strip", s_fn.get("msg.0.0") == "_apply_bg_launch_ack_strip")
+    print()
+
+
 # ── FULL-REPLACEMENT SPAN SHAPE (2026-07-29 milestone-3) ──────────────────────
 # _apply_bg_launch_ack_strip is one of the 3 full_replace=True call sites in message_passes.py
 # (src/proxy/rule_ops.py::_extract_block_op). Before this milestone, the recorded op trimmed the
@@ -427,6 +576,12 @@ if __name__ == "__main__":
     test_wording2_fp_mid_content_preserved()
     test_wording2_attribution_bl_code()
     test_wording1_and_wording2_same_msg_line()
+    test_wording3_tool_result_str_content()
+    test_wording3_fp_mid_content_preserved()
+    test_wording3_attribution_bl_code()
+    test_wording3_message_differs_and_mentions_timeout()
+    test_wording3_main_vs_worker()
+    test_wording3_ops_path_present()
     test_full_replace_span_is_one_contiguous_block()
     test_wording_main_vs_worker()
     print("Done.")

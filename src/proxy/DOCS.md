@@ -167,12 +167,12 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### strip_bg_launch_ack.py (54 LOC)
+### strip_bg_launch_ack.py (79 LOC)
 
-**Purpose:** Replaces a genuine background-command launch-ack block with a 3-line hold instruction (main vs. non-main wording), recovering the task id and output path from the original ack text.
+**Purpose:** Replaces any of three CC background-launch-ack wordings with a 3-line hold instruction (main vs. non-main; timeout-aware for auto-backgrounding), recovering task id and output path.
 **Reads:** Message content (string or list of blocks).
 **Writes:** — (returns `(modified_content, list[str])`)
-**Called by:** `src/proxy/message_passes_simple.py` (`_apply_bg_launch_ack_strip`); `src/proxy/bg_escape.py` (`_is_bg_launch_ack`, `_ACK_ID_RE`).
+**Called by:** `src/proxy/message_passes_simple.py` (`_apply_bg_launch_ack_strip`); `src/proxy/bg_escape.py` (`_is_bg_launch_ack`, `_ACK_ID_RE` — unchanged by the third wording, deliberately: bg_escape's tmux-Escape trigger only fires for the two original wordings, see `src/proxy/DOCS.md` Gotchas).
 **Calls out:** —
 
 ---
@@ -386,3 +386,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 **A client-side mid-stream abort is the common case, not the exception, in this project — see `process-docs/abort_cascade/`.** Claude Code cancels the SSE connection and refires on any incoming event while a stream is open (user keystroke, background-task completion, subagent task-notification); depth-3+ cascades are routine. mitmproxy fires exactly one of `response`/`error` per flow, never both (`HttpErrorHook`'s own docstring: "Every flow will receive either an error or an response event, but not both."). Any per-request write that must survive an abort — the `_response` dual-log write is the current example — has to be called from both `response()` and `error()`, not just `response()`; a write that only lives in `response()` silently disappears for every aborted REQ, which given the cascade frequency here means most REQs, not a rare edge case.
 
 **`response_model_probe.py` needs uncompressed bytes to ever match — `_request_identity_encoding` is what makes that true in real traffic, not a body-decompression path.** The probe regexes raw wire bytes; a `gzip`/`br`-compressed SSE body never contains the literal `"message_start"` text, so `answering_model` stayed empty on every real (non-test) request until `ProxyAddon.request()` started forcing `accept-encoding: identity` on the outbound Messages request. This is a request-side fix, not a response-side decompression path — deliberately, per this project's stance against building/maintaining a decompression layer. Applies uniformly to every Messages request regardless of whether the response turns out to stream or not (not knowable at request time), including the non-streaming JSON side calls (`claude-haiku-4-5`, `content-type: application/json`) — harmless there since their body never contains `message_start` either way, compressed or not.
+
+**`strip_bg_launch_ack.py`'s three wordings deliberately do NOT share one detection predicate.** `_is_bg_launch_ack` (the two deliberate/manual-launch wordings) stays untouched and is still what `bg_escape.py` imports to decide whether to fire a real tmux `Escape` keystroke into a worker's pane; the third wording (auto-backgrounded on timeout) is detected by a separate `_is_bg_auto_timeout_ack`, combined only inside `_strip_bg_launch_ack`'s own predicate via `_is_bg_launch_ack_any`. Widening `_is_bg_launch_ack` itself instead would have made `bg_escape.py` also fire on timeout auto-backgrounding — a real production side effect (see the `bg_escape.py`'s per-task-id dedup Gotcha above) this project never asked for. A future fourth wording should follow the same pattern: extend the strip's own combined predicate, never `_is_bg_launch_ack` directly, unless `bg_escape.py` is meant to fire for it too.
+
+**`strip_vocab.py`'s `RULES['BL']` marker list must carry a literal for every wording `strip_bg_launch_ack.py` recognizes, by hand.** `attribute_chunk` matches by plain substring against the ORIGINAL removed ack text (not the code), and this file has zero imports from `strip_bg_launch_ack.py` by design (same separately-maintained-copy pattern as the `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` Gotcha above) — a new wording added to the strip without a matching literal here silently returns `None` from `attribute_chunk`, losing `fn_map` attribution for `stripped_delta`/`injected_delta` entries for that wording specifically, with no error anywhere.

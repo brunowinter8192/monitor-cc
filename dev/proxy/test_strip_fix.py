@@ -1125,6 +1125,39 @@ def w24_launch_ack_wording2_trailing_content_not_swallowed_into_path():
     check('W24_id_line_present', 'ID: bsxpatpam' in new_content, repr(new_content))
 
 
+# ── LAUNCH-ACK WORDING 3: AUTO-BACKGROUNDED ON TIMEOUT (2026-09-14 milestone) ─────────────────
+# Third CC wording — Bash auto-backgrounds a call that exceeded its own timeout (not a deliberate
+# run_in_background launch, not a manual user backgrounding). Distinct anchored prefix ("Command did
+# not complete within its"), distinct ID shape ("(ID: <id>)" instead of "with ID: <id>."), and a
+# trailing "Session cwd remains ..." sentence in the SAME block that wording 1/2 never carry. The
+# replacement message names the timeout cause explicitly so it reads differently from a deliberate
+# background launch.
+
+# W34 — real recorded wording-3 body, verbatim (src/logs/dual_log/
+# api_requests_opus_monitor_cc_1789383190_original.jsonl, 2026-09-14) → exact 3-line output, trailing
+# cwd sentence discarded along with the rest of the matched ack (same discard behavior as W24).
+def w34_launch_ack_wording3_real_corpus_body_exact():
+    ack = (
+        'Command did not complete within its 120s timeout and was moved to the background (ID: '
+        'b1mahby4a). Output is being written to: /private/tmp/claude-501/'
+        '-Users-brunowinter2000-Documents-ai-monitor-cc/d7b0d213-0c28-4e53-baf8-c11fa7838f0b/'
+        'tasks/b1mahby4a.output. You will be notified when it completes. To check interim output, '
+        'use Read on that file path.\n'
+        'Session cwd remains /Users/brunowinter2000/Documents/ai/monitor-cc; directory changes made '
+        'by the backgrounded command do not apply to subsequent commands.'
+    )
+    expected = (
+        'Command exceeded its timeout and was moved to the background. Do NOT check, poll, or read '
+        'its output — just wait until it finishes (you will get a completion notice).\n'
+        'Output: /private/tmp/claude-501/-Users-brunowinter2000-Documents-ai-monitor-cc/'
+        'd7b0d213-0c28-4e53-baf8-c11fa7838f0b/tasks/b1mahby4a.output\n'
+        'ID: b1mahby4a\n'
+    )
+    new_content, removed = _strip_bg_launch_ack(ack)
+    check('W34_real_corpus_wording3_exact', new_content == expected, repr(new_content))
+    check('W34_removed_is_original_ack_incl_cwd_sentence', removed == [ack])
+
+
 # ── INTERRUPT-MARKER TESTS (strip_interrupt_marker.py, 2026-07-30, re-measured 2026-07-31) ────
 # CC records the proxy's bg_escape.py tmux-Escape into a worker's pane as
 # "[Request interrupted by user]" or "[Request interrupted by user for tool use]" — never a
@@ -1757,6 +1790,7 @@ if __name__ == '__main__':
         w19_tn_real_corpus_body_exact, w20_tn_missing_task_id_omits_id_line,
         w21_tn_missing_output_file_omits_output_line, w22_tn_no_id_no_output_reduces_to_bare_wakeup,
         w23_launch_ack_wording2_real_body_exact, w24_launch_ack_wording2_trailing_content_not_swallowed_into_path,
+        w34_launch_ack_wording3_real_corpus_body_exact,
         w25_interrupt_marker_real_shape_neighbors_intact, w26_interrupt_marker_four_shapes,
         w26b_interrupt_marker_tool_use_wording,
         w27_interrupt_marker_embedded_in_longer_text_untouched, w28_interrupt_marker_pass_role_gate_and_mod,
