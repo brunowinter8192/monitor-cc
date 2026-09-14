@@ -142,7 +142,7 @@ def _wrap_thinking_text(full_text: str, indent: str, pane_width: int) -> str:
         out_lines.extend(wrap_visible(para.expandtabs(8), width_cells))
     return '\n'.join(out_lines)
 
-def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entry: dict, use_dual: bool, expand_states: dict, pane_width: int) -> tuple:
+def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entry: dict, use_dual: bool, expand_states: dict, pane_width: int, copy_feedback=None) -> tuple:
     lines = []
     keys = []
     btype = blk.get('type', 'text')
@@ -154,7 +154,8 @@ def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entr
         think_key = ('think', entry_idx, msg_idx, bidx)
         is_think_expanded = expand_states.get(think_key, False)
         think_symbol = '▼' if is_think_expanded else '▶'
-        lines.append(f"      {DIM}{think_symbol} [{bidx}] {btype:<12} text:{bchars:>5,}c sig:{sig_chars:>4,}c{bcc}{SOFT_RESET}")
+        row_line = f"      {DIM}{think_symbol} [{bidx}] {btype:<12} text:{bchars:>5,}c sig:{sig_chars:>4,}c{bcc}{SOFT_RESET}"
+        lines.append(_append_msg_copy_symbol(row_line, think_key, copy_feedback, pane_width))
         keys.append(think_key)
         if is_think_expanded:
             i_blk, s_blk = _lookup_spans(entry, msg_idx, bidx, use_dual)
@@ -202,7 +203,7 @@ def _render_new_messages(entry_idx: int, entry: dict, messages: list, prev_msg_c
             keys.append(msg_key)
         if blocks:
             for bidx, blk in enumerate(blocks):
-                b_lines, b_keys = _render_block_spans(entry_idx, msg_idx, bidx, blk, entry, use_dual, expand_states, pane_width)
+                b_lines, b_keys = _render_block_spans(entry_idx, msg_idx, bidx, blk, entry, use_dual, expand_states, pane_width, copy_feedback)
                 lines.extend(b_lines)
                 keys.extend(b_keys)
         else:
@@ -259,7 +260,7 @@ def _render_modified_messages(entry_idx: int, entry: dict, messages: list, prev_
             keys.append(msg_key)
         if blocks:
             for bidx, blk in enumerate(blocks):
-                b_lines, b_keys = _render_block_spans(entry_idx, msg_idx, bidx, blk, entry, use_dual, expand_states, pane_width)
+                b_lines, b_keys = _render_block_spans(entry_idx, msg_idx, bidx, blk, entry, use_dual, expand_states, pane_width, copy_feedback)
                 lines.extend(b_lines)
                 keys.extend(b_keys)
         else:

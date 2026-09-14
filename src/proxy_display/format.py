@@ -74,7 +74,8 @@ def _apply_row_backgrounds(visible_lines: list, visible_keys: list, collision_en
         if copy_rows_out is not None:
             is_req_line = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
             is_msg_line = isinstance(key, tuple) and key[0] == 'msg'
-            if (is_req_line or is_msg_line) and ('⎘' in line or '✓' in line):
+            is_think_line = isinstance(key, tuple) and key[0] == 'think'
+            if (is_req_line or is_msg_line or is_think_line) and ('⎘' in line or '✓' in line):
                 copy_rows_out.add(row)
         if key is not None:
             zebra_bg = ZEBRA_BG_B if parent_count % 2 else ZEBRA_BG_A

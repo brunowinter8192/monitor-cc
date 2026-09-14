@@ -132,8 +132,30 @@ def _serialize_proxy_message(key, entries: list) -> str:
             parts.append(ct)
     return '\n'.join(parts).lstrip('\n')
 
+def _is_think_key(key) -> bool:
+    return isinstance(key, tuple) and len(key) == 4 and key[0] == 'think'
+
+def _serialize_proxy_think(key, entries: list) -> str:
+    if not _is_think_key(key):
+        return ''
+    _, entry_idx, msg_idx, bidx = key
+    if entry_idx is None or entry_idx >= len(entries):
+        return ''
+    messages = entries[entry_idx].get('messages') or []
+    if msg_idx >= len(messages):
+        return ''
+    blocks = messages[msg_idx].get('blocks', [])
+    if bidx >= len(blocks):
+        return ''
+    blk = blocks[bidx]
+    ft = blk.get('full_text', blk.get('preview', ''))
+    if not ft:
+        return ''
+    role = messages[msg_idx].get('role', '?')
+    return f"--- msg[{msg_idx}] {role} {blk.get('type', '?')} ---\n{ft}"
+
 def _copy_feedback_key(key, entry_idx: Optional[int]):
-    return key if _is_msg_key(key) else entry_idx
+    return key if (_is_msg_key(key) or _is_think_key(key)) else entry_idx
 
 def _prepare_copy_text(key, entry_idx: Optional[int], entries: list, log_path) -> str:
     if entry_idx is not None and entry_idx < len(entries) and log_path:
@@ -141,6 +163,8 @@ def _prepare_copy_text(key, entry_idx: Optional[int], entries: list, log_path) -
         if e.get('messages') is None:
             fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'
             _lazy_load_messages_forwarded(e, fwd_path)
+    if _is_think_key(key):
+        return _serialize_proxy_think(key, entries)
     if _is_msg_key(key):
         return _serialize_proxy_message(key, entries)
     return _serialize_proxy_entry(key, entries)
