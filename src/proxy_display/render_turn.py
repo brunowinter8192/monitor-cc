@@ -75,7 +75,7 @@ def _mark_search_lines(lines: list, query: str, is_current: bool) -> list:
     marker = SEARCH_CURRENT_BG if is_current else SEARCH_MATCH_BG
     return [highlight_query_in_line(line, query, marker, _BG_RESTORE_SENTINEL) for line in lines]
 
-def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalone: bool, prev_same, expand_states: dict, pane_width: int, search_query: str = '', is_search_current: bool = False) -> tuple:
+def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalone: bool, prev_same, expand_states: dict, pane_width: int, search_query: str = '', is_search_current: bool = False, copy_feedback=None) -> tuple:
     from .render_sections import render_tools, render_fields_delta, render_beta, render_directives
     from .render_sections_system import render_system_blocks
     from .render_messages import render_messages
@@ -106,7 +106,7 @@ def _render_req_expanded(entry_idx: int, entry: dict, entries: list, is_standalo
     t_lines, t_keys = render_tools(entry_idx, entry, _section_ref, expand_states, pane_width)
     lines.extend(t_lines)
     keys.extend(t_keys)
-    m_lines, m_keys = render_messages(entry_idx, entry, _section_ref, entries, expand_states, pane_width)
+    m_lines, m_keys = render_messages(entry_idx, entry, _section_ref, entries, expand_states, pane_width, copy_feedback)
     lines.extend(m_lines)
     keys.extend(m_keys)
     lines = _mark_search_lines(lines, search_query, is_search_current)
@@ -146,7 +146,7 @@ def render_turn_expanded(group: dict, entries: list, expand_states: dict, pane_w
         lines.append(_build_req_header_line(entry, entry_idx, num_label, req_symbol, model_short, msg_count, mods_str, warn_str, pane_width, copy_feedback, is_search_match, is_search_current))
         keys.append(req_key)
         if is_req_expanded:
-            e_lines, e_keys = _render_req_expanded(entry_idx, entry, entries, is_standalone, prev_same, expand_states, pane_width, search_query if is_search_match else '', is_search_current)
+            e_lines, e_keys = _render_req_expanded(entry_idx, entry, entries, is_standalone, prev_same, expand_states, pane_width, search_query if is_search_match else '', is_search_current, copy_feedback)
             lines.extend(e_lines)
             keys.extend(e_keys)
     return lines, keys, opus_req_num, sub_req_num

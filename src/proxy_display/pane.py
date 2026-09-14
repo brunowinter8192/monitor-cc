@@ -14,6 +14,7 @@ from .dual_log_accumulator import accumulate_original_tools
 from .proxy_pane_shared import (
     _entry_idx_from_key, _terminal_size, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body, _accumulate_dual_logs_and_attach,
+    _copy_feedback_key,
 )
 from .format import format_proxy_block
 from ..panes.cache_turns import build_cache_turns
@@ -186,8 +187,9 @@ def _render_proxy_search_bar(pane_width: int) -> str:
 def _handle_proxy_copy_click(key, entry_idx: Optional[int]) -> None:
     global _copy_feedback_until
     copy_to_clipboard(_prepare_copy_text(key, entry_idx, proxy_entries, _proxy_log_path))
-    if entry_idx is not None:
-        _copy_feedback_until[entry_idx] = time.time() + 1.5
+    feedback_key = _copy_feedback_key(key, entry_idx)
+    if feedback_key is not None:
+        _copy_feedback_until[feedback_key] = time.time() + 1.5
 
 def _handle_proxy_expand_click(key, entry_idx: Optional[int]) -> None:
     global _proxy_just_expanded, _proxy_undo_stack
@@ -208,9 +210,12 @@ def _handle_proxy_mouse(button: int, col: int, row: int) -> bool:
         if key is None:
             return had_selection
         is_req = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
+        is_msg = isinstance(key, tuple) and key[0] == 'msg'
         entry_idx = _entry_idx_from_key(key)
-        if is_req and col >= _proxy_pane_width - 2 and row in _proxy_copy_rows:
+        if (is_req or is_msg) and col >= _proxy_pane_width - 2 and row in _proxy_copy_rows:
             _handle_proxy_copy_click(key, entry_idx)
+        elif is_msg:
+            return had_selection
         else:
             _handle_proxy_expand_click(key, entry_idx)
         return True
