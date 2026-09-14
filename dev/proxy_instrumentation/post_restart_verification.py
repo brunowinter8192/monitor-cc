@@ -115,8 +115,6 @@ def _result(name: str, status: str, detail: list, action=None) -> dict:
 def _missing(name: str, reason: str, action: str) -> dict:
     return _result(name, 'MISSING DATA', [reason], action)
 
-# -- Claim 1 --------------------------------------------------------------
-
 def _is_compressed(content_encoding: str) -> bool:
     ce = (content_encoding or '').lower()
     return bool(ce) and ce != 'identity'
@@ -167,8 +165,6 @@ def _check_claim1(paths: dict) -> dict:
                 '-- not part of this claim, flagged for awareness only'
             )
     return _result(CLAIM1_NAME, 'PASS' if ok else 'CONTRADICTED', detail)
-
-# -- Claim 2 --------------------------------------------------------------
 
 def _iter_user_texts(messages: list):
     for idx, msg in enumerate(messages):
@@ -258,8 +254,6 @@ def _check_claim2(paths: dict) -> dict:
     ]
     return _result(CLAIM2_NAME, 'PASS' if ok else 'CONTRADICTED', detail)
 
-# -- Claim 3 --------------------------------------------------------------
-
 def _poread_expand_fired(injected_path: Path) -> bool:
     if not injected_path.exists():
         return False
@@ -300,8 +294,6 @@ def _check_claim3(paths: dict) -> dict:
         + ('found' if forwarded_ok else 'NOT found'),
     ]
     return _result(CLAIM3_NAME, 'PASS' if ok else 'CONTRADICTED', detail)
-
-# -- Reporting --------------------------------------------------------------
 
 def _exit_code(claims: list) -> int:
     if any(c['status'] == 'CONTRADICTED' for c in claims):

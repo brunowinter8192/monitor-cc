@@ -186,7 +186,7 @@ present compressed `accept-encoding` value rather than merging or leaving it alo
 
 ---
 
-### post_restart_verification.py (358 LOC)
+### post_restart_verification.py (350 LOC)
 
 **Purpose:** The one script a zero-context agent runs after a proxy restart to check whether this
 branch's three proxy-side changes took real effect, never vacuously.
