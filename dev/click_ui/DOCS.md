@@ -92,27 +92,31 @@ monkeypatched to a capturing stub (no real `rag-cli`/news-pipeline process ever 
 loop's inline mouse-dispatch snippet.
 **Calls out:** `src.gpu_pane.pane`, `src.news_pane.pane` — loaded via `importlib.import_module`.
 
-### p5_proxy_message_copy_click_probe.py (387 LOC)
+### p5_proxy_message_copy_click_probe.py (539 LOC)
 
 **Purpose:** Proves, per proxy pane (main and worker), that after one real render pass a
-message-summary row AND a thinking-block row inside an expanded REQ each get a copy-row
-registration (`('msg', entry_idx, msg_idx)` / `('think', entry_idx, msg_idx, bidx)`), a click on
-either row's copy column copies exactly `proxy_pane_shared._serialize_proxy_message`/
-`_serialize_proxy_think`'s real output (each a byte-exact substring of its parent's own copy —
-message inside REQ, thinking block inside message), the copy-flash timer is keyed by each row's
-own key (never the shared `entry_idx`, so it can't flash a different row), and the pre-existing
-REQ-level copy path is unaffected. The thinking-block case additionally proves a non-copy click
-still toggles that block's `expand_states` entry exactly as it did before this row had a copy
-affordance (the one behavior this milestone must not disturb) — including a second click toggling
-it back, not just a one-way flip. Also a width-guard check at the render-integration level for
-both row kinds.
+message-summary row, a thinking-block row, AND every other block row (text, tool_use,
+tool_result, anything else) inside an expanded REQ each get a copy-row registration
+(`('msg', entry_idx, msg_idx)` / `('think', entry_idx, msg_idx, bidx)` /
+`('block', entry_idx, msg_idx, bidx)`), a click on any row's copy column copies exactly
+`proxy_pane_shared._serialize_proxy_message`/`_serialize_proxy_block`'s real output (each a
+byte-exact substring of its parent's own copy — message inside REQ, thinking/generic block
+inside message AND inside REQ, both nesting levels checked directly rather than assumed via
+transitivity), the copy-flash timer is keyed by each row's own key (never the shared `entry_idx`,
+so it can't flash a different row), and the pre-existing REQ-level copy path is unaffected. The
+thinking-block case proves a non-copy click still toggles that block's `expand_states` entry
+exactly as it did before this row had a copy affordance (the one behavior that milestone must not
+disturb) — including a second click toggling it back, not just a one-way flip. The generic-block
+case proves the OPPOSITE: a non-copy click on a block row is a no-op, matching the message-row
+shape (these rows never toggled anything before they had a key either) — not the thinking-row
+shape. Also a width-guard check at the render-integration level for all three row kinds.
 **Reads:** nothing external — seeds synthetic proxy entries (one multi-block assistant message
 plus a blockless user message; a separate entry with an assistant thinking block followed by a
 text block) directly; `copy_to_clipboard` is monkeypatched per module to a capturing stub.
 **Writes:** `md/p5_proxy_message_copy_click_probe_<timestamp>.md`.
-**Called by:** none — run manually; re-run after any change to `render_messages.py`'s message-row
-or thinking-block build sites, `proxy_pane_shared._serialize_proxy_message`/
-`_serialize_proxy_think`/`_prepare_copy_text`/`_copy_feedback_key`,
+**Called by:** none — run manually; re-run after any change to `render_messages.py`'s message-row,
+thinking-block, or generic-block build sites, `proxy_pane_shared._serialize_proxy_message`/
+`_serialize_proxy_block`/`_prepare_copy_text`/`_copy_feedback_key`,
 `format._apply_row_backgrounds`, or either pane's `_handle_*_mouse`/`_handle_*_copy_click`.
 **Calls out:** `src.proxy_display.pane`, `src.proxy_display.worker_proxy_pane`,
 `src.proxy_display.format`, `src.proxy_display.proxy_pane_shared` — loaded via

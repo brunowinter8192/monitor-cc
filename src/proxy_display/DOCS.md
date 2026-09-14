@@ -46,7 +46,7 @@ populate `messages` for entries the deque window dropped.
 
 ## Modules
 
-### pane.py (333 LOC)
+### pane.py (334 LOC)
 
 **Purpose:** Event loop for the main proxy pane — reads the `_forwarded` dual-log incrementally, handles mouse (click expand/collapse, scroll, hover, copy, search) and keyboard input (search, undo, `n`/`N`), renders on change via the drain-refresh-render pattern.
 **Reads:** Module-level state; active project filter from `core.monitor`; stdin (keypresses, mouse events).
@@ -56,7 +56,7 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### worker_proxy_pane.py (337 LOC)
+### worker_proxy_pane.py (338 LOC)
 
 **Purpose:** Event loop for the worker-proxy pane — watches the active worker list, reads the selected worker's `_forwarded` dual-log, handles digit-key and header-click worker switching, mouse/keyboard input, renders with a 2-row header (search bar + worker-switcher). Force-reload-or-tick refresh gate.
 **Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file (`workers.worker_pane.get_selection_file_path`); stdin.
@@ -66,17 +66,17 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### proxy_pane_shared.py (284 LOC)
+### proxy_pane_shared.py (287 LOC)
 
 **Purpose:** Mechanics shared by both proxy panes (`pane.py`, `worker_proxy_pane.py`), each function parameterized by explicit arguments — never reads either pane's own module-level globals. Covers the worker-switcher header builder, key/entry-idx resolution, copy-text serialization, expand+lazy-load toggling, dual-log accumulate-and-attach, search-on-commit, scroll/hover dispatch, and render+scroll+row-shift.
 **Reads:** Parameters only.
-**Writes:** Nothing — returns values; several functions mutate an argument in place (`entries`, `line_map`, `copy_rows`, accumulator dicts) as documented per function, never a name outside the parameter list. `_prepare_copy_text` dispatches on key shape — a `('think', entry_idx, msg_idx, bidx)` key routes to `_serialize_proxy_think` (one thinking block's own `full_text`, never its signature — the signature is never stored anywhere in this data, only its char count), a `('msg', entry_idx, msg_idx)` key routes to `_serialize_proxy_message`, everything else to `_serialize_proxy_entry` (unchanged); `_copy_feedback_key` returns the same `key` for a msg or think row (so its flash never leaks onto the REQ header or a sibling row) and `entry_idx` for everything else, unchanged.
+**Writes:** Nothing — returns values; several functions mutate an argument in place (`entries`, `line_map`, `copy_rows`, accumulator dicts) as documented per function, never a name outside the parameter list. `_prepare_copy_text` dispatches on key shape — a `('think', entry_idx, msg_idx, bidx)` key OR a `('block', entry_idx, msg_idx, bidx)` key both route to the same `_serialize_proxy_block` (one block's own `full_text`, with `preview` fallback; for a thinking block this is never its signature — the signature is never stored anywhere in this data, only its char count — the two key shapes share one serializer because nothing in its body was ever thinking-specific, only the guard was), a `('msg', entry_idx, msg_idx)` key routes to `_serialize_proxy_message`, everything else to `_serialize_proxy_entry` (unchanged); `_copy_feedback_key` returns the same `key` for a msg, think, or block row (so its flash never leaks onto the REQ header or a sibling row) and `entry_idx` for everything else, unchanged.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py` exclusively
 **Calls out:** `colors` (`RESET`, `YELLOW`, `DIM`, `WHITE`), `search_bar` (`SearchState`, `handle_search_mouse_motion`), `utils` (`_ANSI_ESCAPE_RE`)
 
 ---
 
-### format.py (182 LOC)
+### format.py (183 LOC)
 
 **Purpose:** `format_proxy_block` — groups proxy entries by turn (turns always expanded, no turn-level header row), applies scroll/viewport windowing, delegates row rendering to `render_turn`, applies the row-background priority chain, returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
 **Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
@@ -176,11 +176,11 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### render_messages.py (298 LOC)
+### render_messages.py (304 LOC)
 
 **Purpose:** Renders new/modified/removed messages for an expanded request entry. `render_messages()` dispatches to `_render_new_messages` (when the message count grew) or `_render_modified_messages` (retry/abort re-send) — the request's payload delta is the only source of rendered message content. Span content rendering (inline new-format vs. legacy stacked) goes through the shared `_render_span_content`. `_lookup_spans` scopes the shared, cumulative `_stripped_spans`/`_injected_spans` accumulator dicts to the entry's own `flow_id` via the `_strip_msgs_lookup`/`_inject_msgs_lookup`/`_lag_msgs_lookup` reference sets, preventing a later request's overwrite of a message index from rendering under an earlier/neighbor request. Thinking blocks (`btype == 'thinking'`) get their own collapsed-by-default drill-down (`('think', entry_idx, msg_idx, bidx)` key) with word-wrapped content via `utils.wrap_visible`.
 **Reads:** Entry dict, previous entry, all entries, expand states, pane width.
-**Writes:** Nothing — returns `(lines, keys)` tuple; when `copy_feedback` is given, the two plain message-summary row sites (`_render_new_messages`/`_render_modified_messages`, not the `[STRIPPED]` variant) assign each row a `('msg', entry_idx, msg_idx)` key and append a `utils.append_copy_symbol` copy affordance — `None` when `copy_feedback` is omitted, unchanged. `_render_block_spans` does the same for a thinking block's own always-visible summary line (`('think', entry_idx, msg_idx, bidx)` key, not gated on that block's own expand/collapse state) — the same helper, reused rather than duplicated.
+**Writes:** Nothing — returns `(lines, keys)` tuple; when `copy_feedback` is given, the two plain message-summary row sites (`_render_new_messages`/`_render_modified_messages`, not the `[STRIPPED]` variant) assign each row a `('msg', entry_idx, msg_idx)` key and append a `utils.append_copy_symbol` copy affordance — `None` when `copy_feedback` is omitted, unchanged. `_render_block_spans` does the same for a thinking block's own always-visible summary line (`('think', entry_idx, msg_idx, bidx)` key, not gated on that block's own expand/collapse state) and, identically, for every other block row reaching its non-thinking branch — text, tool_use, tool_result, anything else — via a `('block', entry_idx, msg_idx, bidx)` key (`_block_row_key`) — the same `_append_msg_copy_symbol` helper, reused rather than duplicated, across all three row kinds.
 **Called by:** `src/proxy_display/render_turn.py`
 **Calls out:** `proxy.strip_vocab` (`attribute_chunk`, `classify_tags`, `code_for_rule`, `classify_req`), `utils` (`wrap_visible`, `append_copy_symbol`)
 
