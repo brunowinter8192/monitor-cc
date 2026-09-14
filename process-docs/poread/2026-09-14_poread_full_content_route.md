@@ -155,3 +155,105 @@ to fix.
 `~/.claude/settings.json` was never touched, as instructed. No further work planned by this worker
 on this line — the milestone (CLI + proxy-side injection + the `block_po_read.py` pointer update)
 is complete as scoped, and both review findings are fixed and tested.
+
+## 2026-09-14 — the marker needs to explain itself, and a small message trim before it
+
+Two small tasks, same area, same session. Recorded together since the second directly extends
+the mechanism the first is about, and neither was big enough to warrant its own file.
+
+### block_po_read.py message trim (no plan needed, direct)
+
+Main found `_BLOCK_MSG`'s closing sentence ("poread brings the full content into context
+regardless of size; if the file exceeds poread's own ceiling it says so on stderr and exits
+non-zero") redundant with what the CLI already demonstrates when it actually fires — Main's own
+call: "the ceiling explains itself when it fires, and the message is for the moment of the block,
+not a manual." Removed the sentence, kept the BLOCKED line naming the path class and pointing at
+`poread <path>`. `src/hooks/DOCS.md`'s Purpose/Writes lines never quoted the removed sentence, so
+only the LOC needed touching (66→64). `dev/hook_smoke/test_block_po_read.py` only asserts exit
+codes, never message text — unaffected, re-ran it anyway (16/16).
+
+### The marker needed to explain itself — real gap, found by actually using it
+
+Main's own framing: "the marker alone tells the agent nothing... today the only thing that
+explains it is the rule file, and a rule file is not present at the moment the marker arrives."
+Real, structural gap — an agent seeing `<poread-export path="..." bytes="..." sha256="..."/>` in
+its own tool_result has no way to know what happens next unless it already knows the mechanism.
+
+**The fixed sentence became part of the marker contract, not an extra line.** This was the whole
+design constraint, stated directly by Main and confirmed correct: since `inject_poread.py`'s
+predicate requires the block to be nothing but the marker (the whole-block rule from the review two
+milestones ago), a second line would make every marker ineligible unless the proxy's own pattern
+was widened to expect it. So `POREAD_NOTICE` (new shared constant in `src/constants.py`, same
+"shared by 2+ modules" reasoning as `POREAD_MARKER_PREFIX`/`POREAD_MAX_BYTES`/`POREAD_HASH_LEN`) is
+now baked into `_POREAD_MARKER_RE` itself — `r'\n' + re.escape(POREAD_NOTICE)` appended after the
+marker's own pattern, `.fullmatch()`'d as one unit. A marker with no notice, a different notice, or
+anything else in the block is exactly as ineligible as before — same single code path, no second
+route.
+
+**Wording:** "The file's full content will arrive automatically on the next turn — do not read
+this file again until then." One sentence, states both facts asked for (arrives next turn; don't
+re-read meanwhile).
+
+**The free property, confirmed by actually testing both directions, not just stating it in
+prose.** Because the notice is part of the SAME matched-and-replaced block as the marker,
+`_build_poread_replacement` — completely unchanged — discards it along with the marker on success.
+Pinned directly: `test_marker_with_notice_expands_to_content` (Item 12) asserts
+`POREAD_NOTICE not in result` after a successful expansion. The other direction — the notice
+survives when expansion doesn't fire — was ALREADY true by construction (an ineligible block is
+left byte-for-byte untouched, notice included), but I added an explicit assertion to Item 4 (source
+file changed mid-session) rather than leaving it implicit: `POREAD_NOTICE in r2`, exactly the case
+Main named as "the case where it needs the explanation."
+
+### A real regression caught by re-running the existing suite, not by reasoning about it
+
+`dev/proxy/poread_inject_tests.py`'s `_mint_marker` helper asserted `proc.stdout.count('\n') == 1`
+("poread stdout must be exactly one line") — this is now structurally false (two lines), and the
+assertion caught it immediately as a hard crash the moment I ran the suite after the CLI change,
+before I'd even touched the proxy regex. Two OTHER existing tests needed more than a one-line count
+bump, and both would have silently tested the wrong thing if I'd only fixed `_mint_marker`:
+
+- **Item 6** (`test_oversize_declared_marker_refused_regardless_of_actual_file`) crafts its own
+  marker string by hand (doesn't go through `_mint_marker`) with `bytes="999999999"` to prove the
+  ceiling check fires independent of the real file's size. Its crafted string had no notice under
+  it — meaning after this change it would still show "refused, unchanged" but for the WRONG
+  reason (missing notice, not the oversize check), silently testing nothing about the ceiling
+  anymore while still showing green. Fixed by adding `\n{POREAD_NOTICE}` to the crafted marker so
+  the test genuinely exercises the oversize path again.
+- **Item 9** (`test_marker_alone_with_own_trailing_newline_still_expands`) asserted
+  `marker.count('\n') == 0` as a precondition on what `_mint_marker` returns. The marker now
+  legitimately contains ONE internal newline (between the marker line and the notice line), so the
+  precondition needed to become `== 1`, not `== 0` — a different number, not just "no newlines
+  anymore."
+
+**Landmine for whoever touches this contract next:** any test that crafts its own poread marker
+string by hand (not through `_mint_marker`/the real CLI) needs the notice appended manually, or it
+silently tests the wrong failure mode once real markers require two lines. Grep for
+`f'<poread-export path=` (the hand-crafted-marker shape) before trusting a test's stated purpose
+matches what it actually exercises.
+
+### Numbers
+
+`dev/poread_cli/test_poread_cli.py`: before 16/17 (one real failure — `test_valid_file_prints_marker`
+expected the old one-line shape), after 17/17 (that assertion updated to the two-line shape, all
+five boundary cases otherwise unchanged). `dev/proxy/poread_inject_tests.py`: before — crashed at
+`_mint_marker` before any check even ran; after 37/37 (25 original, unchanged in intent, three of
+them touched for the reasons above, plus 2 new dedicated tests — Item 11 marker-without-notice is
+ineligible, Item 12 marker-with-notice expands and the notice disappears — plus one new assertion
+added to Item 4 for the "notice survives when ineligible" direction).
+
+### Recap close-out
+
+Self-audit (`git diff integration --name-only` at recap time): the 10 files from the notice-sentence
+commit (`src/constants.py`, `src/poread_cli/__main__.py`, `src/proxy/inject_poread.py`,
+`dev/poread_cli/test_poread_cli.py`, `dev/proxy/poread_inject_tests.py`, and the five corresponding
+DOCS.md files: `src/DOCS.md`, `src/poread_cli/DOCS.md`, `src/proxy/DOCS.md`, `dev/poread_cli/DOCS.md`,
+`dev/proxy/DOCS.md`) — the `block_po_read.py` trim commit had already been merged into `integration`
+before this recap ran, so it doesn't show in this diff; recorded here anyway since it's the same
+area and the same session. All five DOCS.md entries touched by the notice-sentence task checked
+against `wc -l` this pass — all already matched exactly (71/80/36/138/355 LOC), kept current inline
+during the task itself.
+
+The poread mechanism (CLI mint → proxy recognize/expand → whole-block contract → now a
+self-explanatory notice sentence, all confirmed against real data and real caller code at each
+step) is complete as scoped across every milestone in this area this session. No further work
+planned by this worker here.
