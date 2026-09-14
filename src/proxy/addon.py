@@ -102,6 +102,7 @@ class ProxyAddon:
             flow.metadata["mc_model_family"] = model_family
             flow.request.content = json.dumps(modified_payload).encode("utf-8")
             flow.request.headers.pop("content-encoding", None)
+            _request_identity_encoding(flow)
         except Exception as e:
             print(f"[proxy_addon] Error: {e}", file=sys.stderr)
 
@@ -196,6 +197,10 @@ def _finalize_cache_state(delta_state, model_family: str, modified_payload: dict
         _summarize_message(m) for m in modified_payload.get("messages", [])
     ]
     return modified_payload
+
+
+def _request_identity_encoding(flow: http.HTTPFlow) -> None:
+    flow.request.headers["accept-encoding"] = "identity"
 
 
 _RESPONSE_HEADER_EXACT = frozenset({
