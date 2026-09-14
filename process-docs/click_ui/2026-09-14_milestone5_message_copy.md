@@ -148,3 +148,99 @@ not just extended.
 No further work planned by this worker on this line — the milestone (message-level copy inside an
 expanded REQ, both proxy panes, `[STRIPPED]` rows explicitly out of scope) is complete as scoped
 and the review finding is fixed.
+
+## 2026-09-14 — Milestone 6: per-thinking-block copy click
+
+New task, same file (continues the same proxy-pane-copy line of work: REQ → message → thinking
+block). Scope: `src/proxy_display/` and the one dev test only.
+
+## The one real behavioral difference from the message milestone
+
+A message row had no key before milestone 5 — a non-copy click was always a no-op, and it stayed
+one after adding the copy affordance (`elif is_msg: return had_selection`). A thinking block's row
+already had a key and already toggled expand/collapse on any click, before this task ever touched
+it. Preserving that meant the OPPOSITE dispatch shape: no `elif is_think` branch at all. A think
+key that isn't on the copy column now falls straight through to the pre-existing
+`else: _handle_proxy_expand_click(...)`, unchanged. Verified this is a real toggle, not just "the
+code doesn't crash" — `dev/click_ui/p5_proxy_message_copy_click_probe.py`'s new tests assert
+`pre_state != post_state` after one non-copy click AND that a second non-copy click toggles back
+to the original state, so a one-way-flip bug (a state machine that only ever turns one way) would
+have failed loudly instead of silently passing a weaker check.
+
+## What the clipboard carries, and why it was already settled before I chose anything
+
+`message_summary.py`'s thinking-block handling: `bfull = thinking_text` (the full `thinking` field,
+what `full_text` becomes), `bpreview = thinking_text.split('\n')[0][:60]`, and
+`sig_chars = len(signature)` — the actual `signature` string is computed for its LENGTH ONLY and
+never written into `block_dict` anywhere. So "the signature is not content a reader wants" wasn't
+a preference I had to defend — the signature text is structurally absent from every piece of data
+this pane ever touches; `full_text` (the same `blk.get('full_text', blk.get('preview', ''))`
+fallback every other block-copy path in this file already uses) was the only value that could ever
+have been on the table. Real recorded example (this machine's own logs, entry_idx=61, msg_idx=2,
+bidx=0, `sig_chars` was 432 on that exact block — an opaque length with no corresponding text a
+copy could even offer):
+
+```
+--- msg[2] assistant thinking ---
+I'll start by exploring the worktree structure.
+
+```
+
+Built with the exact same per-block header shape `_serialize_proxy_message`/`_serialize_proxy_entry`
+already use, so a thinking-block copy is a byte-exact substring of its parent message's copy — the
+same nesting property (REQ ⊇ message ⊇ think-block) established for message-vs-REQ in milestone 5,
+now extended one level deeper without inventing a new shape.
+
+## render_byte_identity — predicted correctly, verified anyway rather than assumed
+
+Predicted before touching any code that the hash would come back IDENTICAL (not changed, unlike
+milestone 5): a thinking-block key was already non-`None` before this task, so zebra/hover
+eligibility in `format._apply_row_backgrounds` was already established; `render_byte_identity.py`
+never passes `copy_feedback`, so `_append_msg_copy_symbol` (reused as-is, not duplicated or
+renamed, for the thinking-row line too) returns every line unmodified in that harness's code path.
+Ran it pinned anyway, before and after implementing, per Main's explicit instruction to report the
+hash either way and stop if it differed: `8ea2ab4742b875bf83c612f28870e2404726153db21834bbc46b16abe30b464c`
+both times, 243 entries, identical. Confirms the prediction was right, not just plausible.
+
+## Test extension, not a new file
+
+Extended `dev/click_ui/p5_proxy_message_copy_click_probe.py` rather than creating a new file —
+matches this file's own established pattern (one file per milestone in this exact line of work,
+now covering REQ, message, and thinking-block copy together). Used a SEPARATE new fixture
+(`_make_entry_with_thinking`) rather than adding a thinking block to the existing `_make_entry()`,
+specifically so the pre-existing P5.1-P5.5 exact-text assertions could not be disturbed even by
+accident — ran them unmodified first (29/29) before writing a single line of new test code, then
+54/54 after adding P5.6-P5.10 (25 new assertions: key+registration including the collapsed-state
+case, serializer-match + message-subset + exact-text + defensive-dispatch-on-a-wrong-key-shape,
+full click dispatch for both panes including the toggle-back proof and a sibling-row-does-not-flash
+proof, width guard).
+
+**Landmine I hit and fixed before running anything:** typed `⏘` (U+23D8) instead of `⎘` (U+2398,
+the real copy symbol used everywhere else in this file) in two new print() labels — purely
+cosmetic (never compared, never asserted against), but worth a two-second `chr()`-based grep-fix
+before it became a stray inconsistency for the next reader. Caught by re-reading the diff, not by
+a test failing (nothing would have failed — it's just print() text). A reminder that copy-paste
+across similar blocks in the same file is exactly where this kind of typo hides, since nothing
+exercises print-statement text.
+
+## Recap close-out
+
+Self-audit (`git diff integration --name-only`): `dev/click_ui/DOCS.md`,
+`dev/click_ui/md/p5_proxy_message_copy_click_probe_20260914_150015.md`,
+`dev/click_ui/p5_proxy_message_copy_click_probe.py`, `src/proxy_display/DOCS.md`,
+`src/proxy_display/format.py`, `src/proxy_display/pane.py`,
+`src/proxy_display/proxy_pane_shared.py`, `src/proxy_display/render_messages.py`,
+`src/proxy_display/worker_proxy_pane.py`. All six touched `src/proxy_display/` DOCS.md entries
+plus the `dev/click_ui/DOCS.md` entry checked against `wc -l` this pass — all seven already
+matched exactly (284/298/333/337/182/387 LOC respectively), kept current inline during the task
+itself, nothing to fix.
+
+This line of work (REQ copy → message copy → thinking-block copy, all sharing one serialization
+home in `proxy_pane_shared.py` and one copy-row registry in `format.py`) is complete as scoped
+across all three milestones. If a fourth granularity is ever asked for (a single block inside a
+non-thinking message, say), the pattern to follow is exactly this file's own accumulated shape:
+new `_is_X_key`/`_serialize_proxy_X` pair next to the existing ones, one more dispatch branch in
+`_prepare_copy_text`/`_copy_feedback_key`, one more `is_X_line` in `format.py`'s registry, and a
+dispatch-order decision in both panes' `_handle_*_mouse` — new key type, or existing behavior to
+preserve? That decision is the one place each of these three milestones actually differed from the
+others; everything else was mechanical repetition of the same shape.
