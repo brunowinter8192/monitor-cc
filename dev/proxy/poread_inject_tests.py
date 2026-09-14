@@ -8,9 +8,13 @@ separate pipeline runs against the same unchanged file (determinism); a source f
 or vanished between two runs leaves the marker completely inert (no mods, no ops, original text
 preserved) rather than injecting stale or wrong content; a marker whose declared byte count exceeds
 the 500,000-byte ceiling is refused regardless of what the actual file contains; a marker that is
-NOT the first thing in its block (mid-content, false-positive class) is left untouched; a realistic
-multi-message payload shape (system + user prompt + assistant tool_use + user tool_result carrying
-the marker) exercises the full apply_modification_rules pass order end to end.
+NOT the first thing in its block (mid-content, false-positive class) is left untouched; trailing
+content AFTER the marker in the same block is preserved, not silently dropped, because the marker
+must be the entire block for expansion to fire at all; the source is read exactly once per
+validated marker (no second read between predicate and replacement, so no race window can leave a
+request's whole modification pipeline crashing out on a benign mid-request file change); a
+realistic multi-message payload shape (system + user prompt + assistant tool_use + user tool_result
+carrying the marker) exercises the full apply_modification_rules pass order end to end.
 
 Run from project root:
     ./venv/bin/python dev/proxy/poread_inject_tests.py
@@ -64,7 +68,7 @@ def _payload_with_marker(marker: str) -> dict:
 
 
 def test_real_cli_marker_expands_to_full_content():
-    print("Item 1 — real poread marker expands to the file's full content")
+    print("Item 1 - real poread marker expands to the file's full content")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
         data = b"full file content\nspanning multiple lines\nfor the agent to read\n"
         f.write(data)
@@ -83,7 +87,7 @@ def test_real_cli_marker_expands_to_full_content():
 
 
 def test_ops_path_and_attribution_both_sides():
-    print("Item 2 — injection appears in the ops path, attributed to 'PR' on both sides")
+    print("Item 2 - injection appears in the ops path, attributed to 'PR' on both sides")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
         data = b"ops-path content\n"
         f.write(data)
@@ -105,7 +109,7 @@ def test_ops_path_and_attribution_both_sides():
 
 
 def test_determinism_across_two_runs():
-    print("Item 3 — same marker, unchanged file, byte-identical injection across two separate runs")
+    print("Item 3 - same marker, unchanged file, byte-identical injection across two separate runs")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
         data = b"stable content that must not drift\n"
         f.write(data)
@@ -124,7 +128,7 @@ def test_determinism_across_two_runs():
 
 
 def test_file_changed_between_requests_leaves_marker_inert():
-    print("Item 4 — source file changed between two requests: second run injects nothing, marker stays as-is")
+    print("Item 4 - source file changed between two requests: second run injects nothing, marker stays as-is")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
         data = b"version one of the file\n"
         f.write(data)
@@ -149,7 +153,7 @@ def test_file_changed_between_requests_leaves_marker_inert():
 
 
 def test_file_vanished_between_requests_leaves_marker_inert():
-    print("Item 5 — source file vanished between two requests: second run injects nothing")
+    print("Item 5 - source file vanished between two requests: second run injects nothing")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
         data = b"will be deleted\n"
         f.write(data)
@@ -169,7 +173,7 @@ def test_file_vanished_between_requests_leaves_marker_inert():
 
 
 def test_oversize_declared_marker_refused_regardless_of_actual_file():
-    print("Item 6 — marker declaring over the ceiling is refused even if the real file is small")
+    print("Item 6 - marker declaring over the ceiling is refused even if the real file is small")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
         data = b"tiny actual file\n"
         f.write(data)
@@ -188,7 +192,7 @@ def test_oversize_declared_marker_refused_regardless_of_actual_file():
 
 
 def test_marker_not_at_block_start_is_a_false_positive_and_untouched():
-    print("Item 7 — FP guard: marker text quoted mid-content (not block-initial) is left untouched")
+    print("Item 7 - FP guard: marker text quoted mid-content (not block-initial) is left untouched")
     with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
         data = b"real content\n"
         f.write(data)
@@ -205,6 +209,77 @@ def test_marker_not_at_block_start_is_a_false_positive_and_untouched():
         os.unlink(path)
 
 
+def test_marker_with_trailing_content_is_untouched_not_truncated():
+    print("Item 8 - trailing content after the marker in the same block is preserved, not lost: the marker must be the ENTIRE block or nothing is replaced")
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
+        data = b"real content\n"
+        f.write(data)
+        path = f.name
+    try:
+        marker = _mint_marker(path)
+        trailing_content = marker + "\nsomething else the agent must not lose"
+        payload = _payload_with_marker(trailing_content)
+        modified, mods, *_ = apply_modification_rules(payload, "opus", "", "main")
+        result = modified["messages"][2]["content"][0]["content"]
+        check("block with trailing content left completely unchanged (nothing lost)", result == trailing_content)
+        check("'something else' text is still present verbatim", "something else the agent must not lose" in result)
+        check("no mod recorded when the marker is not the whole block", "injected_poread_content" not in mods)
+    finally:
+        os.unlink(path)
+
+
+def test_marker_alone_with_own_trailing_newline_still_expands():
+    print("Item 9 - regression guard: a marker with ONLY its own trailing newline (poread's real print() output shape) still expands normally")
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
+        data = b"still expands\n"
+        f.write(data)
+        path = f.name
+    try:
+        marker = _mint_marker(path)
+        check("_mint_marker strips the CLI's own trailing newline before we re-add one ourselves", marker.count('\n') == 0)
+        payload = _payload_with_marker(marker + "\n")
+        modified, mods, *_ = apply_modification_rules(payload, "opus", "", "main")
+        result = modified["messages"][2]["content"][0]["content"]
+        check("marker plus its own trailing newline still expands", "injected_poread_content" in mods)
+        check("expanded content carries the file's bytes", data.decode('utf-8') in result)
+    finally:
+        os.unlink(path)
+
+
+def test_source_is_read_only_once_per_marker():
+    print("Item 10 - the file is opened exactly once per validated marker (predicate result feeds the replacement directly; no second read, no race window between the two)")
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
+        data = b"read exactly once\n"
+        f.write(data)
+        path = f.name
+    try:
+        marker = _mint_marker(path)
+        payload = _payload_with_marker(marker)
+
+        import proxy.inject_poread as inject_poread_mod
+        open_calls = []
+        real_open = open
+
+        real_path = os.path.realpath(path)
+
+        def _counting_open(p, *a, **kw):
+            if p == real_path:
+                open_calls.append(p)
+            return real_open(p, *a, **kw)
+
+        inject_poread_mod.open = _counting_open
+        try:
+            modified, mods, *_ = apply_modification_rules(payload, "opus", "", "main")
+        finally:
+            del inject_poread_mod.open
+
+        result = modified["messages"][2]["content"][0]["content"]
+        check("expansion still succeeds", "injected_poread_content" in mods and data.decode('utf-8') in result)
+        check("the source file was opened exactly once for this one marker", len(open_calls) == 1)
+    finally:
+        os.unlink(path)
+
+
 # ORCHESTRATOR
 
 def run_poread_inject_tests_workflow() -> None:
@@ -215,6 +290,9 @@ def run_poread_inject_tests_workflow() -> None:
     test_file_vanished_between_requests_leaves_marker_inert()
     test_oversize_declared_marker_refused_regardless_of_actual_file()
     test_marker_not_at_block_start_is_a_false_positive_and_untouched()
+    test_marker_with_trailing_content_is_untouched_not_truncated()
+    test_marker_alone_with_own_trailing_newline_still_expands()
+    test_source_is_read_only_once_per_marker()
 
     total = len(_RESULTS)
     passed = sum(1 for _, ok in _RESULTS if ok)

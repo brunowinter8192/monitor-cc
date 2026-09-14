@@ -163,13 +163,16 @@ subprocesses and fake log files under a `mktemp -d` directory.
 
 ---
 
-### poread_inject_tests.py (228 LOC)
+### poread_inject_tests.py (306 LOC)
 
 **Purpose:** End-to-end regression guard for `src/proxy/inject_poread.py` — mints real markers
 through `src.poread_cli` as a subprocess (not a reimplementation), then drives the real
 `apply_modification_rules`. Covers expansion, the ops path, `strip_vocab.attribute_chunk` on both
 the stripped and injected sides, determinism across two runs, a source file changed or vanished
-between two runs, an oversize-declared marker, and the anchored-prefix false-positive guard.
+between two runs, an oversize-declared marker, the anchored-prefix false-positive guard, trailing
+content after the marker in the same block being preserved rather than silently dropped (the
+marker must be the whole block), a marker with only its own trailing newline still expanding, and
+the source file being opened exactly once per validated marker (no second read, no race window).
 **Reads:** nothing external — writes its own temp files, invokes `python -m src.poread_cli` as a
 real subprocess per fixture.
 **Writes:** stdout (pass/fail via `check()`); its own temp files, cleaned up per test.

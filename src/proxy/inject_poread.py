@@ -23,16 +23,19 @@ _POREAD_MARKER_RE = re.compile(
 # ORCHESTRATOR
 
 def _inject_poread_content(content):
-    return _walk_replace_marker_blocks(content, _is_poread_marker_valid, _build_poread_replacement)
+    cache: dict = {}
+    predicate = lambda text: _is_poread_marker_valid(text, cache)
+    replace_fn = lambda text: _build_poread_replacement(text, cache)
+    return _walk_replace_marker_blocks(content, predicate, replace_fn)
 
 
 # FUNCTIONS
 
 def _parse_poread_marker(text):
-    stripped = text.lstrip()
+    stripped = text.strip()
     if not stripped.startswith(POREAD_MARKER_PREFIX):
         return None
-    m = _POREAD_MARKER_RE.match(stripped)
+    m = _POREAD_MARKER_RE.fullmatch(stripped)
     if not m:
         return None
     return m.group('path'), int(m.group('bytes')), m.group('sha256')
@@ -53,7 +56,7 @@ def _read_validated_poread_source(path, expected_bytes, expected_hash):
     return data
 
 
-def _is_poread_marker_valid(text):
+def _is_poread_marker_valid(text, cache):
     parsed = _parse_poread_marker(text)
     if parsed is None:
         return False
@@ -65,11 +68,12 @@ def _is_poread_marker_valid(text):
     if data is None:
         print(f"[proxy_addon] poread: source changed or unavailable, refusing to inject: {path}", file=sys.stderr)
         return False
+    cache[text] = data
     return True
 
 
-def _build_poread_replacement(marker_text):
-    path, expected_bytes, expected_hash = _parse_poread_marker(marker_text)
-    data = _read_validated_poread_source(path, expected_bytes, expected_hash)
+def _build_poread_replacement(marker_text, cache):
+    path, expected_bytes, _expected_hash = _parse_poread_marker(marker_text)
+    data = cache.pop(marker_text)
     text = data.decode('utf-8', errors='replace')
     return f"{_POREAD_HEADER_PREFIX}{path} ({expected_bytes}B) ---\n{text}"

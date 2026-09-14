@@ -177,11 +177,11 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### inject_poread.py (75 LOC)
+### inject_poread.py (79 LOC)
 
-**Purpose:** Recognizes a `<poread-export ...>` marker inside a `tool_result`, replaces it with the named file's full content, re-validated fresh against disk every call.
+**Purpose:** Recognizes a `<poread-export ...>` marker that is a whole `tool_result` block, replaces it with the named file's full content, re-validated fresh every call.
 **Reads:** Message content (string or list of blocks); the named file's bytes from disk, up to `constants.POREAD_MAX_BYTES`.
-**Writes:** — (returns `(modified_content, list[str])`); stderr diagnostic (`[proxy_addon] poread: ...`) when a structurally-valid marker fails validation (source changed, vanished, or declares a size over the ceiling) — the marker is left completely unchanged in that case, never partially expanded, and never cached across calls: size + truncated sha256 are both recomputed from disk on every single invocation, so a marker that validated on one request can validate differently (or stop validating) on the next.
+**Writes:** — (returns `(modified_content, list[str])`); stderr diagnostic (`[proxy_addon] poread: ...`) when a structurally-valid marker fails validation (source changed, vanished, declares a size over the ceiling, or is not the ENTIRE block — trailing content after a marker, e.g. from chaining `poread` with another command in one Bash call, leaves the whole block untouched rather than being silently dropped) — never partially expanded, and never cached across requests: size + truncated sha256 are both recomputed from disk on every call. Within one call, the file is opened exactly once — `_inject_poread_content` hands the predicate's own validated bytes to the replacement via a closure-scoped cache keyed by the exact marker text, so there is no second read and no window in which the source could change between validation and use (a benign race there would previously raise inside `_build_poread_replacement` and, uncaught, cause `ProxyAddon.request()`'s outer handler to skip ALL modifications for that request, not just this one marker).
 **Called by:** `src/proxy/message_passes_simple.py` (`_apply_poread_expand_strip`).
 **Calls out:** `constants` (`POREAD_MAX_BYTES`, `POREAD_HASH_LEN`, `POREAD_MARKER_PREFIX`, via the same `MONITOR_CC_ROOT`-based `sys.path` bootstrap `payload_helpers.py`/`tools.py` already use — required because the running proxy's live copy under `src/logs/.proxy_live_<id>/proxy/` never includes `src/constants.py` itself, only the `proxy/` subpackage).
 
