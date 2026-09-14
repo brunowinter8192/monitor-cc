@@ -3,7 +3,7 @@ Verifies the CC 2.1.223 TOOL_BLOCKLIST extension (Artifact, ReportFindings,
 DeferredToolPlaceholder) against the recorded session api_requests_opus_websearch_1786052022:
 
   1. The real _strip_unused_tools (src/proxy/tools.py), run on the session's actual ORIGINAL
-     payload tools list, leaves exactly {Bash, Edit, Read, Write, Skill} + any MCP-injected
+     payload tools list, leaves exactly {Bash, Read, Skill} + any MCP-injected
      names present in the forwarded log.
   2. Sanity: none of the newly-blocked tool names has a live tool_use invocation anywhere in
      the session's original messages (a stripped def with a live tool_use would 400 the API).
@@ -33,7 +33,7 @@ STEM = 'api_requests_opus_websearch_1786052022'
 REPORT_DIR = Path(__file__).parent / 'md'
 REPORT_PATH = REPORT_DIR / 'blocklist_223_probe_report.md'
 
-EXPECTED_KEPT = {'Bash', 'Skill'}
+EXPECTED_KEPT = {'Bash', 'Read', 'Skill'}
 NEWLY_BLOCKED = {'Artifact', 'ReportFindings', 'DeferredToolPlaceholder'}
 
 # FUNCTIONS

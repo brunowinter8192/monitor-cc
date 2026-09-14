@@ -3,23 +3,26 @@ Verifies the CC 2.1.258 TOOL_BLOCKLIST extension (SendFeedback, ListAgents) agai
 full src/logs/dual_log/*_original.jsonl corpus:
 
   1. The real _strip_unused_tools (src/proxy/tools.py), run on the newest main-session log's
-     original payload, leaves exactly {Bash, Skill} + any MCP-injected names.
+     original payload, leaves exactly {Bash, Read, Skill} + any MCP-injected names.
   2. Sanity, corpus-wide: no tool_use block in ANY *_original.jsonl file's messages references
      SendFeedback or ListAgents (a stripped tool def with a live tool_use in history would 400
      the API on replay). Reports the number of files scanned and hits found.
   3. Blocklist membership: both names are in TOOL_BLOCKLIST.
 
-Also verifies the Read/Edit/Write TOOL_BLOCKLIST extension (Bash-only file access; see
-process-docs/proxy_tool_stripping/ for the milestone), which structurally differs from every
-addition above and everything blocklisted before it:
+Also verifies the Edit/Write TOOL_BLOCKLIST extension (Bash-only file access for the two
+remaining blocked file-mutation tools — Read was taken back out of TOOL_BLOCKLIST afterward; see
+process-docs/image_intake/ for that decision and process-docs/proxy_tool_stripping/ for the
+blocklist's own history), which structurally differs from every addition above and everything
+blocklisted before it:
 
-  4. Blocklist membership: Read, Edit, Write are in TOOL_BLOCKLIST; _strip_unused_tools removes
-     all three from the same representative payload used in check 1.
+  4. Blocklist membership: Edit, Write are in TOOL_BLOCKLIST; _strip_unused_tools removes both
+     from the same representative payload used in check 1.
   5. UNLIKE every prior addition (which all required zero corpus-wide live tool_use hits before
-     merging, per checks 2/3 above and the 223 probe), Read/Edit/Write DO have live tool_use hits
-     across the corpus — expected, not a failure — because these three are the dominant tools of
-     essentially every turn in every already-running session. This check asserts hits > 0 and
-     reports the exact count, so the residual risk is visible rather than silently assumed away.
+     merging, per checks 2/3 above and the 223 probe), Edit/Write DO have live tool_use hits
+     across the corpus — expected, not a failure — because these two are among the dominant
+     tools of essentially every turn in every already-running session. This check asserts
+     hits > 0 and reports the exact count, so the residual risk is visible rather than silently
+     assumed away.
   6. Documents, as a pinned regression check, that this residual risk is real: a synthetic
      tool_use/tool_result pair for a blocked tool already sitting in message history is NOT
      touched by _strip_unused_tools (src/proxy/tools.py) or _strip_blocked_tool_references
@@ -48,9 +51,9 @@ LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 REPORT_DIR = Path(__file__).parent / 'md'
 REPORT_PATH = REPORT_DIR / 'blocklist_258_probe_report.md'
 
-EXPECTED_KEPT = {'Bash', 'Skill'}
+EXPECTED_KEPT = {'Bash', 'Read', 'Skill'}
 NEWLY_BLOCKED = {'SendFeedback', 'ListAgents'}
-RW_BLOCKED = {'Read', 'Edit', 'Write'}
+RW_BLOCKED = {'Edit', 'Write'}
 
 # FUNCTIONS
 
@@ -161,7 +164,7 @@ def main() -> None:
         f'{sorted(NEWLY_BLOCKED)} subset of TOOL_BLOCKLIST: {r4_ok}',
     ))
 
-    # --- Read/Edit/Write milestone (Bash-only file access) ---
+    # --- Edit/Write milestone (Bash-only file access; Read restored) ---
 
     r5_ok = RW_BLOCKED <= TOOL_BLOCKLIST
     results.append((
@@ -182,7 +185,7 @@ def main() -> None:
         'rw_live_tool_use_present_corpus_wide_by_design', r7_ok,
         f'files scanned: {n_scanned_rw}, tool_use hits for {sorted(RW_BLOCKED)}: {len(rw_hits)} '
         f'across {len(rw_hit_files)} file(s) — UNLIKE checks 2/3 above, hits are EXPECTED here '
-        f'(Read/Edit/Write are the dominant tools of every running session; this is the residual '
+        f'(Edit/Write are among the dominant tools of every running session; this is the residual '
         f'risk documented for this milestone, not a bug)',
     ))
 
@@ -205,7 +208,7 @@ def main() -> None:
         f'tool_reference content blocks — this pins the documented gap, it does not close it)',
     ))
 
-    lines = ['# CC 2.1.258 + Read/Edit/Write TOOL_BLOCKLIST extension probe', '']
+    lines = ['# CC 2.1.258 + Edit/Write TOOL_BLOCKLIST extension probe', '']
     lines.append(f'Newest main-session log: `{newest_log.name}`')
     lines.append(f'Corpus files scanned for live tool_use: {n_scanned}')
     lines.append('')
