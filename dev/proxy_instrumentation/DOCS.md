@@ -31,7 +31,7 @@ request_id) under src/logs/dual_log.
 **Purpose:** Verifies the CC 2.1.223 `TOOL_BLOCKLIST` extension (Artifact, ReportFindings,
 DeferredToolPlaceholder) end-to-end — runs the real `_strip_unused_tools` on a recorded session's
 original payload and asserts the post-strip tool set is exactly the expected core set (`Bash`,
-`Skill`) plus any MCP-injected names.
+`Read`, `Skill`) plus any MCP-injected names.
 **Reads:** a fixed recorded session's original/forwarded dual-log pair under src/logs/dual_log.
 **Writes:** `md/blocklist_223_probe_report.md`.
 **Called by:** none — manual, historical pin-bump verification.
@@ -69,22 +69,23 @@ in-window spans still render.
 
 ---
 
-### p7_blocklist_258_probe.py (229 LOC)
+### p7_blocklist_258_probe.py (232 LOC)
 
 **Purpose:** Verifies the CC 2.1.258 `TOOL_BLOCKLIST` extension (SendFeedback, ListAgents)
 end-to-end against the current full dual-log corpus (glob-driven, not one hardcoded session) — runs
 the real `_strip_unused_tools` on the newest main-session log and scans the whole corpus for any live
-`tool_use` invocation of either newly-blocked name. Also verifies the Read/Edit/Write extension
-(Bash-only file access): blocklist membership and removal, PLUS a corpus-wide `tool_use` scan that
-asserts hits `> 0` (the inverse of the check above — expected, since these three are the dominant
-tools of every running session, unlike every prior addition which required zero hits before
-merging), and a synthetic historic tool_use/tool_result-pair check pinning that
-`_strip_unused_tools`/`_strip_blocked_tool_references` leave such a pair untouched (documents,
+`tool_use` invocation of either newly-blocked name. Also verifies the Edit/Write extension
+(Bash-only file access for the two remaining blocked file-mutation tools; Read was taken back out of
+`TOOL_BLOCKLIST`, see `process-docs/image_intake/`): blocklist membership and removal, PLUS a
+corpus-wide `tool_use` scan that asserts hits `> 0` (the inverse of the check above — expected, since
+Edit/Write are among the dominant tools of every running session, unlike every prior addition which
+required zero hits before merging), and a synthetic historic tool_use/tool_result-pair check pinning
+that `_strip_unused_tools`/`_strip_blocked_tool_references` leave such a pair untouched (documents,
 without closing, the gap this creates).
 **Reads:** all `*_original.jsonl` files present under src/logs/dual_log at run time.
 **Writes:** `md/blocklist_258_probe_report.md`.
 **Called by:** none — manual, historical pin-bump verification (now also the standing regression
-guard for the Read/Edit/Write blocklist entry — re-run after any `TOOL_BLOCKLIST` change).
+guard for the Edit/Write blocklist entries — re-run after any `TOOL_BLOCKLIST` change).
 **Calls out:** `proxy.tools` (`_strip_unused_tools`), `proxy.payload_helpers`
 (`_strip_blocked_tool_references`), `constants` (`TOOL_BLOCKLIST`).
 
