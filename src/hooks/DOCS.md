@@ -279,12 +279,12 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 
 ---
 
-### block_po_read.py (64 LOC)
+### block_po_read.py (89 LOC)
 
-**Purpose:** PreToolUse Bash hook blocking shell reads (head/tail/grep/sed/awk/cut/less/more/cat/split/dd/etc.) targeting a Claude Code persisted-output export path (contains `/.claude/`, ends `.txt`) — must be read via `poread` instead.
-**Reads:** stdin (PreToolUse JSON: `tool_input.command`).
+**Purpose:** PreToolUse Bash hook blocking shell reads (head/tail/grep/sed/awk/cut/less/more/cat/split/dd/etc.) targeting a Claude Code persisted-output export path (contains `/.claude/`, ends `.txt`) at or under poread's own byte ceiling — above it, partial reads are allowed since poread itself would refuse to export the file whole; size undeterminable (missing file, unstat-able, unresolved path token) defaults to blocked.
+**Reads:** stdin (PreToolUse JSON: `tool_input.command`, `session_id`, `cwd`); the matched path's size from disk (`os.path.getsize`, any `OSError` treated as undeterminable).
 **Writes:** stderr (block message pointing at `poread <path>`) on match; exit 2.
-**Called by:** Claude Code hook system, registered by `hook_setup.py` — currently unregistered in `~/.claude/settings.json` as of this milestone (not this repo's file to change).
+**Called by:** Claude Code hook system, registered by `hook_setup.py` (registration state lives in `~/.claude/settings.json`, a machine-local file this repo does not track — not asserted here).
 
 ---
 
@@ -341,3 +341,4 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 - **`hook_setup.py` writes absolute paths.** Moving the repo checkout requires re-running `hook_setup.py` to refresh the registered paths; the sweep removes the old ones automatically.
 - **Per-clone setup:** each clone must run `git config core.hooksPath .githooks` once (local config, not committed) for `.githooks/post-merge`/`post-commit` to auto-run `hook_setup.py` on commits touching `src/hooks/`. Without it, a merged hook script is not auto-registered.
 - **Subprocess hooks must resolve plugin CLIs by absolute path, never by bare name.** Claude Code's hook execution environment has a stripped PATH that excludes local bin and plugin-cache bin directories; a bare `subprocess.run(['worker-cli', ...])` raises `FileNotFoundError`, which the fail-open catch turns into a silent no-fire. `block_worker_kill_while_working.py` and `block_worker_send_while_working.py` resolve via `shutil.which` first, then a glob fallback over the plugin-cache bin directory under the user's home — follow the same pattern for any new subprocess-invoking hook.
+- **`block_po_read.py`'s own `POREAD_MAX_BYTES` constant is a hand-maintained copy of `src/proxy/inject_poread.py`'s constant of the same name, not a shared import — despite living in the same repo.** Every hook in this directory imports only same-directory siblings (`_shell_strip`, `_fire_log`) by design — this directory isn't even a Python package, and a hook is a standalone entry point invoked machine-wide via a fixed absolute path with a 5s budget; reaching into `src/proxy/` would break that isolation for one value. Same separately-maintained-copy pattern as `src/proxy/DOCS.md`'s `inject_poread.py`/iterative-dev Gotcha, except both hand-maintained copies now sit in this one repo. A drift between the two reopens the exact gap this milestone closed: a file above the real poread ceiling but at-or-below this hook's stale copy stays wrongly blocked with no route left (poread refuses it too); the reverse drift wrongly allows a partial read of a file poread could still have exported whole. No import ties the two together and there is no shared CI within this repo for this specific pair — change both by hand. `dev/hook_smoke/test_block_po_read.py` pins its own independent literal copy of the value, same reasoning as `dev/proxy/poread_inject_tests.py`'s and iterative-dev's `test_poread_cli.py`'s own pinned copies.

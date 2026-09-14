@@ -182,12 +182,17 @@ target file (`lsof <path>`), not the whole session directory, to avoid the self-
 
 ---
 
-### test_block_po_read.py (94 LOC)
+### test_block_po_read.py (123 LOC)
 
-**Purpose:** 16-case smoke for `block_po_read.py` — blocked readers (`head`/`tail`/`grep`/`cat`/
+**Purpose:** 19-case smoke for `block_po_read.py` — blocked readers (`head`/`tail`/`grep`/`cat`/
 `sed`/`rg`, piped, and `split`/`dd` partitioning-escape) on a persisted-output `.txt` path under
 `.claude/`, allowed cases (non-`.claude/` paths, non-`.txt` paths, writes, malformed stdin
-fail-open).
+fail-open), plus 3 real-file size-boundary cases (M2) proving the size gate against real bytes on
+disk: a file at exactly the pinned ceiling still blocks, one byte over it passes, and `dd if=<path>`
+against an over-ceiling file passes too (proving the `if=` token prefix is stripped before the file
+is stat'ed, not left attached to a broken path). Pins its own literal `_PINNED_MAX_BYTES` copy of
+the ceiling, independent of `block_po_read.py`'s own constant — see the Gotcha in
+`src/hooks/DOCS.md`.
 **Called by:** none — run manually; must be run from project root (HOOK path is relative).
 
 ---

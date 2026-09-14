@@ -1,10 +1,32 @@
 # INFRASTRUCTURE
+import atexit
 import json
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 
 HOOK = "src/hooks/block_po_read.py"
 PO_PATH = "~/.claude/projects/-Users-x-proj/abc123-session/tool-results/def456.txt"
+
+_PINNED_MAX_BYTES = 50_000
+
+_FIXTURE_DIR = tempfile.mkdtemp(prefix="block_po_read_smoke_")
+atexit.register(shutil.rmtree, _FIXTURE_DIR, True)
+_PO_FIXTURE_SUBTREE = os.path.join(_FIXTURE_DIR, ".claude", "projects", "test-proj", "tool-results")
+os.makedirs(_PO_FIXTURE_SUBTREE, exist_ok=True)
+
+
+def _write_fixture(name: str, size: int) -> str:
+    path = os.path.join(_PO_FIXTURE_SUBTREE, name)
+    with open(path, "wb") as f:
+        f.write(b"x" * size)
+    return path
+
+
+_AT_BOUNDARY_PATH = _write_fixture("at_boundary.txt", _PINNED_MAX_BYTES)
+_OVER_BOUNDARY_PATH = _write_fixture("over_boundary.txt", _PINNED_MAX_BYTES + 1)
 
 CASES = [
     # (description, command, expected_exit_code)
@@ -40,6 +62,13 @@ CASES = [
      f"echo x > {PO_PATH}", 0),
     ("PO path only in quoted string PASS",
      f"echo 'cat {PO_PATH}'", 0),
+    # --- real files, size boundary (M2: size-dependent block) ---
+    ("real PO export AT boundary (50,000B) BLOCK",
+     f"cat {_AT_BOUNDARY_PATH}", 2),
+    ("real PO export ONE BYTE OVER boundary (50,001B) PASS",
+     f"cat {_OVER_BOUNDARY_PATH}", 0),
+    ("dd if= on real PO export over boundary PASS (proves if= prefix is stripped before stat)",
+     f"dd if={_OVER_BOUNDARY_PATH} of=/tmp/x", 0),
 ]
 
 
