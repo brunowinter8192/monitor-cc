@@ -105,3 +105,31 @@ whatever sessions have recently run, independent of any code change here.
 `dev/proxy/test_strip_fix.py` (264/264, unaffected — no `TOOL_BLOCKLIST` dependency) and
 `dev/proxy_dual_log/proxy_176_strip_tests.py` (33/33 PASS, 0 FAIL, unaffected — same reason), both
 run before and after this change with identical results.
+
+## Recap (2026-09-15, same session)
+
+Task completed and committed as a single commit, `2eceaf55a4c8e63010859666497a0c56d5c13e20`,
+"feat: take Read back out of TOOL_BLOCKLIST" — 6 files, `src/constants.py` plus the two `dev/
+proxy_instrumentation/` probes, that area's `DOCS.md`, one regenerated report, and this file.
+Self-audit (`git diff integration --name-only`) confirms no file outside that commit was touched.
+
+Nothing left undone from the original ask. The two open threads worth naming for a successor:
+
+- `p4_blocklist_223_probe.py`'s corrected `EXPECTED_KEPT` is source-consistent but has never been
+  run against the fix — its hardcoded session stem is gone from the corpus. If a successor ever
+  repoints it at a live session (the fix would be trivial: swap `STEM` for a glob over
+  `src/logs/dual_log/*_original.jsonl` the way `p7` already does), that is the moment this
+  correction gets its first real verification.
+- `rw_live_tool_use_present_corpus_wide_by_design` in `p7` will keep flapping between PASS and FAIL
+  as the live `src/logs/dual_log/` corpus rotates in and out sessions that happen to use Edit/Write.
+  A FAIL there is not evidence of anything broken by itself — check what the corpus actually
+  contains (`ls src/logs/dual_log/*_original.jsonl | wc -l` and re-run the scan) before treating it
+  as a regression.
+
+One thing that cost time and would cost a successor the same: don't run a `dev/proxy_instrumentation/
+p*` probe against the live corpus casually while still in "investigate, don't implement" mode — it
+writes a real report file into a tracked path (`dev/proxy_instrumentation/md/*.md`) as a side effect
+of just reading data. I ran `p7` once before getting Go to capture a baseline number and had to
+`git checkout --` the resulting diff before reporting back clean. Capture console stdout for
+baseline numbers instead of trusting the written report file's timestamp/content to still be the
+pre-change state later.
