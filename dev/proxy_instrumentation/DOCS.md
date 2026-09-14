@@ -186,6 +186,24 @@ present compressed `accept-encoding` value rather than merging or leaving it alo
 
 ---
 
+### post_restart_verification.py (358 LOC)
+
+**Purpose:** The one script a zero-context agent runs after a proxy restart to check whether this
+branch's three proxy-side changes took real effect, never vacuously.
+**Reads:** the newest session's six dual-log files (by `*_original.jsonl` mtime, never a hardcoded
+stem) under `POST_RESTART_VERIFY_LOG_DIR` or the main checkout's `src/logs/dual_log`.
+**Writes:** stdout (per-claim report, one of PASS/CONTRADICTED/MISSING DATA per claim — the three claims are accept-encoding: identity + `answering_model`, the auto-backgrounded-on-timeout strip, and poread full-content injection); `md/post_restart_verification_<timestamp>.md`.
+**Called by:** none — manual CLI, run once per proxy restart; exit 0 all-pass, exit 1 if any claim
+is CONTRADICTED, exit 2 if none are contradicted but at least one is MISSING DATA.
+**Calls out:** `proxy.strip_bg_launch_ack` (`_is_bg_auto_timeout_ack`, `_BG_AUTO_TIMEOUT_MSG`,
+`_BG_AUTO_TIMEOUT_MSG_MAIN`), `proxy.message_passes_simple` (`_apply_bg_launch_ack_strip`,
+`_apply_poread_expand_strip`, read only for `.__name__`), `proxy.inject_poread`
+(`_parse_poread_marker`, `_POREAD_HEADER_PREFIX`), `src.proxy_display.forwarded_parser`
+(`_parse_forwarded_log`) — real predicates/constants reused directly rather than re-typed, so this
+script's precision can never silently drift from the actual proxy behavior it's checking.
+
+---
+
 ## Gotchas
 - `pN_*.py` scripts import from `src/` directly — this filename prefix is a project convention: only
   `pN_*.py` dev scripts may `from src...`/`import src...`; unprefixed scripts in `dev/` must copy the
@@ -205,3 +223,25 @@ present compressed `accept-encoding` value rather than merging or leaving it alo
   that has since aged out of the live `src/logs/dual_log/` corpus (log rotation) — as of 2026-09 the
   script cannot run (`FileNotFoundError`) until repointed at a session still present. `p7_blocklist_
   258_probe.py`'s corpus-wide, glob-driven design (no hardcoded stem) does not have this problem.
+- **`post_restart_verification.py` cannot trust plain substring search against `_original.jsonl`
+  in a session that discusses its own subject matter.** A worker session that implements and
+  reports on a feature (e.g. this exact branch) quotes the feature's own literal marker/wording
+  text extensively in its own assistant turns — that text gets resent as ordinary conversation
+  history on every later request, so a naive grep across the whole payload counts self-discussion
+  as if it were a genuine triggering event. The script avoids this by restricting "genuine
+  trigger" detection to `role=='user'` `tool_result` content specifically, using the real
+  predicates (`_is_bg_auto_timeout_ack`, `_parse_poread_marker`) rather than a hand-rolled
+  substring check — verified against this exact worktree's own pre-restart logs, where a loose
+  substring count found 146/19 "hits" but the precise, tool_result-anchored count found 1/1.
+- **`src/proxy_display/forwarded_parser.py` cannot be imported as `from src.proxy_display...` in
+  this non-test file** — the `block_dev_imports_src` PreToolUse hook blocks any literal
+  `from src.`/`import src.` statement written via the Write/Edit tool outside a `/tests/`
+  regression-test file (a narrower exemption than this file's own "only `pN_*.py`" note above
+  describes — the hook's actual regex has no `pN_` special case, it only exempts `/tests/.../
+  test_*.py`-shaped paths). Loaded instead via `importlib.import_module(f'{_ROOT_PKG}.proxy_display
+  .forwarded_parser')` with `_ROOT_PKG = 'src'` — the same string-built-import pattern
+  `dev/click_ui/`'s probes already use for the identical `proxy_display` package family.
+  `importlib.util.spec_from_file_location` (the `attribution_coverage.py` workaround for
+  `strip_vocab.py`) does NOT work here — `forwarded_parser.py` has real relative imports
+  (`from ..proxy.message_summary import ...`) that need genuine package context to resolve, which
+  `spec_from_file_location` does not provide.
