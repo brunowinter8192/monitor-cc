@@ -58,7 +58,7 @@ CLAIM1_ACTION = ('send at least one normal message to the main session (any ordi
 CLAIM2_ACTION = ('run a Bash command that exceeds its own timeout without run_in_background, e.g. '
                   '`sleep 130` against the ~120s default, so Claude Code auto-backgrounds it')
 CLAIM3_ACTION = ('run `poread <path>` via Bash, alone in its own call (nothing chained after it), '
-                  'against a file well under 500,000 bytes')
+                  'against a file well under 50,000 bytes')
 
 _BL_FN_NAME = _apply_bg_launch_ack_strip.__name__
 _PR_FN_NAME = _apply_poread_expand_strip.__name__

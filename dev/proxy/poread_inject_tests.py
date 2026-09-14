@@ -8,7 +8,7 @@ in strip_vocab.attribute_chunk on BOTH the stripped (marker) and injected (wrapp
 the expansion is byte-identical across two separate pipeline runs against the same unchanged file
 (determinism); a source file that changed or vanished between two runs leaves the marker completely
 inert (no mods, no ops, original text preserved) rather than injecting stale or wrong content; a
-marker whose declared byte count exceeds the 500,000-byte ceiling is refused regardless of what the
+marker whose declared byte count exceeds the 50,000-byte ceiling is refused regardless of what the
 actual file contains; a marker that is NOT the first thing in its block (mid-content, false-positive
 class) is left untouched; trailing content AFTER the marker in the same block is preserved, not
 silently dropped, because the marker must be the entire block for expansion to fire at all; the
