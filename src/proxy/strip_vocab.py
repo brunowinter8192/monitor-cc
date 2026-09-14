@@ -24,7 +24,7 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'ALL': ('stripped_all_sr_msg0',         []),
     'PP':  ('stripped_po_preview',          ['Preview (first ']),
     'BGK': ('stripped_bg_exit_notification', ['Background command "']),
-    'BL':  ('stripped_bg_launch_ack',        ['running in background with ID', 'backgrounded by user with ID']),
+    'BL':  ('stripped_bg_launch_ack',        ['running in background with ID', 'backgrounded by user with ID', 'moved to the background (ID']),
     'GL':  ('stripped_git_lock_advice',      ['Another git process seems to be running']),
     'BD':  ('stripped_bd_noise',             ['issues.jsonl', 'auto-export: no changes', 'auto-export: throttled', 'auto-export: skipping']),
     'ENV': ('stripped_env_context_sr',        ["As you answer the user's questions, you can use the following context:\n# userEmail"]),

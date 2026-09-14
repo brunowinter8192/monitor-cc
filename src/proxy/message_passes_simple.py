@@ -3,7 +3,7 @@ from .payload_helpers import _content_contains, _top_level_content_contains
 from .rule_ops import _ops_from_content_change
 from .strip_po import _strip_persisted_output_previews, _PO_OPEN_TAG
 from .strip_bg_completed import _strip_bg_exit_notifications, _BG_CMD_MARKER, _WAKEUP_TEXT
-from .strip_bg_launch_ack import _strip_bg_launch_ack, _BG_LAUNCH_ACK_MARKER, _BG_LAUNCH_ACK_MARKER_2
+from .strip_bg_launch_ack import _strip_bg_launch_ack, _BG_LAUNCH_ACK_MARKER, _BG_LAUNCH_ACK_MARKER_2, _BG_LAUNCH_ACK_MARKER_3
 from .strip_hook_prefix import _strip_hook_prefix, _HOOK_PREFIX_MARKER
 from .strip_git_lock import _strip_git_lock_advice, _GIT_LOCK_MARKER
 from .strip_bd_noise import _strip_bd_noise, _BD_NOISE_MARKERS
@@ -103,7 +103,7 @@ def _apply_git_lock_strip(messages: list) -> tuple:
 
 _BG_LAUNCH_ACK_SPEC = {
     "roles": _USER_ROLES,
-    "marker_guard": _any_marker_guard(_content_contains, (_BG_LAUNCH_ACK_MARKER, _BG_LAUNCH_ACK_MARKER_2)),
+    "marker_guard": _any_marker_guard(_content_contains, (_BG_LAUNCH_ACK_MARKER, _BG_LAUNCH_ACK_MARKER_2, _BG_LAUNCH_ACK_MARKER_3)),
     "mod_name": "stripped_bg_launch_ack",
     "full_replace": True,
 }
