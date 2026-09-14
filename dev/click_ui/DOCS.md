@@ -92,6 +92,28 @@ monkeypatched to a capturing stub (no real `rag-cli`/news-pipeline process ever 
 loop's inline mouse-dispatch snippet.
 **Calls out:** `src.gpu_pane.pane`, `src.news_pane.pane` — loaded via `importlib.import_module`.
 
+### p5_proxy_message_copy_click_probe.py (252 LOC)
+
+**Purpose:** Proves, per proxy pane (main and worker), that after one real render pass a
+message-summary row inside an expanded REQ gets a `('msg', entry_idx, msg_idx)` key and a
+copy-row registration, a click on its copy column copies exactly
+`proxy_pane_shared._serialize_proxy_message`'s output (a byte-exact substring of the REQ-level
+copy for that same message), a click elsewhere on the row is a no-op, the copy-flash timer is
+keyed by the message's own key (not the shared `entry_idx`, so it can't flash the REQ header or a
+sibling message row), and the pre-existing REQ-level copy path is unaffected. Also a width-guard
+check at the render-integration level.
+**Reads:** nothing external — seeds a synthetic proxy entry (one multi-block assistant message,
+one blockless user message) directly; `copy_to_clipboard` is monkeypatched per module to a
+capturing stub.
+**Writes:** `md/p5_proxy_message_copy_click_probe_<timestamp>.md`.
+**Called by:** none — run manually; re-run after any change to `render_messages.py`'s message-row
+build sites, `proxy_pane_shared._serialize_proxy_message`/`_prepare_copy_text`/
+`_copy_feedback_key`, `format._apply_row_backgrounds`, or either pane's `_handle_*_mouse`/
+`_handle_*_copy_click`.
+**Calls out:** `src.proxy_display.pane`, `src.proxy_display.worker_proxy_pane`,
+`src.proxy_display.format`, `src.proxy_display.proxy_pane_shared` — loaded via
+`importlib.import_module`.
+
 ---
 
 ## Gotchas
@@ -105,3 +127,15 @@ shift separately.
 **The worker-proxy header's row-1 slot is reserved for the search bar** — a header-marker click
 probe must apply `_WP_SEARCH_BAR_LINES`'s shift itself when calling `_format_worker_proxy_header`
 directly (bypassing `_build_worker_proxy_output`, which performs the shift internally).
+
+**The proxy panes' own body row-1 slot is ALSO reserved for the search bar, one level below the
+header-marker case above** — `_handle_proxy_mouse`/`_handle_worker_proxy_mouse` special-case
+`row == 1` as "focus the search bar" BEFORE ever looking at `line_map`. A probe calling
+`format_proxy_block` directly (the same unshifted-row style `dev/display/test_hover_map.py` and
+this suite's other probes already use) gets body rows starting at 1 — dispatching a synthetic
+click at a raw `format_proxy_block` row number can silently land on the search-bar branch instead
+of the real copy/expand dispatch, `_handle_proxy_mouse`/`_handle_worker_proxy_mouse` still returns
+truthy, and the click quietly does nothing to the thing you meant to test. Shift both `line_map`
+and `copy_rows` by 1 with `proxy_pane_shared._shift_line_map_and_copy_rows` (the same shift
+`_render_and_scroll_body` applies in the real event loop) before dispatching any synthetic click
+through `_handle_proxy_mouse`/`_handle_worker_proxy_mouse`.

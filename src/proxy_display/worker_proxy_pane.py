@@ -25,7 +25,7 @@ from ..pane_error_log import log_pane_error
 from .proxy_pane_shared import (
     _format_worker_proxy_header, _entry_idx_from_key, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _terminal_size, _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body,
-    _accumulate_dual_logs_and_attach,
+    _accumulate_dual_logs_and_attach, _copy_feedback_key,
 )
 from .. import search_bar
 
@@ -148,8 +148,9 @@ def _worker_proxy_ram_state() -> list:
 def _handle_worker_proxy_copy_click(key, entry_idx: Optional[int]) -> None:
     global _worker_copy_feedback_until
     copy_to_clipboard(_prepare_copy_text(key, entry_idx, worker_proxy_entries, _worker_proxy_log_path))
-    if entry_idx is not None:
-        _worker_copy_feedback_until[entry_idx] = time.time() + 1.5
+    feedback_key = _copy_feedback_key(key, entry_idx)
+    if feedback_key is not None:
+        _worker_copy_feedback_until[feedback_key] = time.time() + 1.5
 
 def _handle_worker_proxy_expand_click(key, entry_idx: Optional[int]) -> None:
     global _wp_just_expanded
@@ -173,9 +174,12 @@ def _handle_worker_proxy_mouse(button: int, col: int, row: int, monitor) -> bool
         if key is None:
             return had_selection
         is_req = (isinstance(key, tuple) and key[0] == 'req') or isinstance(key, int)
+        is_msg = isinstance(key, tuple) and key[0] == 'msg'
         entry_idx = _entry_idx_from_key(key)
-        if is_req and col >= _worker_proxy_pane_width - 2 and row in _worker_proxy_copy_rows:
+        if (is_req or is_msg) and col >= _worker_proxy_pane_width - 2 and row in _worker_proxy_copy_rows:
             _handle_worker_proxy_copy_click(key, entry_idx)
+        elif is_msg:
+            return had_selection
         else:
             _handle_worker_proxy_expand_click(key, entry_idx)
         return True

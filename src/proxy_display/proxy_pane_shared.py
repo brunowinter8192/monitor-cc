@@ -102,12 +102,47 @@ def _serialize_proxy_entry(key, entries: list) -> str:
                 parts.append(ct)
     return '\n'.join(parts)
 
+def _is_msg_key(key) -> bool:
+    return isinstance(key, tuple) and len(key) == 3 and key[0] == 'msg'
+
+def _serialize_proxy_message(key, entries: list) -> str:
+    if not _is_msg_key(key):
+        return ''
+    _, entry_idx, msg_idx = key
+    if entry_idx is None or entry_idx >= len(entries):
+        return ''
+    messages = entries[entry_idx].get('messages') or []
+    if msg_idx >= len(messages):
+        return ''
+    msg = messages[msg_idx]
+    role = msg.get('role', '?')
+    msg_type = msg.get('type', '?')
+    blocks = msg.get('blocks', [])
+    parts = []
+    if blocks:
+        for blk in blocks:
+            ft = blk.get('full_text', blk.get('preview', ''))
+            if ft:
+                parts.append(f"\n--- msg[{msg_idx}] {role} {blk.get('type', '?')} ---")
+                parts.append(ft)
+    else:
+        ct = msg.get('content_tail', '') or msg.get('content_preview', '')
+        if ct:
+            parts.append(f"\n--- msg[{msg_idx}] {role} {msg_type} ---")
+            parts.append(ct)
+    return '\n'.join(parts).lstrip('\n')
+
+def _copy_feedback_key(key, entry_idx: Optional[int]):
+    return key if _is_msg_key(key) else entry_idx
+
 def _prepare_copy_text(key, entry_idx: Optional[int], entries: list, log_path) -> str:
     if entry_idx is not None and entry_idx < len(entries) and log_path:
         e = entries[entry_idx]
         if e.get('messages') is None:
             fwd_path = log_path.parent / 'dual_log' / f'{log_path.stem}_forwarded.jsonl'
             _lazy_load_messages_forwarded(e, fwd_path)
+    if _is_msg_key(key):
+        return _serialize_proxy_message(key, entries)
     return _serialize_proxy_entry(key, entries)
 
 def _toggle_expand_and_lazy_load(key, entry_idx: Optional[int], entries: list, log_path,
