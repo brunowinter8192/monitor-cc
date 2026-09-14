@@ -157,3 +157,129 @@ the review fix. No further work planned by this worker on this line — the mile
 `accept-encoding: identity` reach the wire for Messages requests) is complete as scoped; the next
 open item in this area is the live-restart verification described above, left for whoever runs it
 next since it needs an actual proxy restart this session couldn't perform.
+
+## 2026-09-14 — post_restart_verification.py: the one script for all three restart-gated claims
+
+New task, same area (this file's own note from the earlier close-out — "the next open item in this
+area is the live-restart verification" — is what this task actually delivers, though as a script
+to be run AFTER the real restart, not as a live check performed by this worker itself; the restart
+itself stayed explicitly out of scope). Covers three claims spanning three separate milestones on
+this branch: this file's own accept-encoding/answering_model fix, `bg_wakeup_id_line`'s
+auto-backgrounded-on-timeout strip, and `poread`'s full-content injection.
+
+## The corpus-contamination finding — the most valuable thing from this task
+
+Before writing any verification logic, I validated the design against `/tmp/pre_restart_logs/` by
+hand. Naive substring grep for the bg_launch_ack wording-3 text and the poread marker across
+`_original.jsonl` found 146 and 19 "hits". Both numbers are almost entirely worthless: this very
+session implemented and extensively discussed both features, quoting their literal marker/wording
+text in its own assistant turns, which get resent as ordinary conversation history on every later
+request. A verification script built on substring grep would have been unable to tell its own
+meta-discussion from a genuine tool_result event.
+
+Fix: restrict "genuine trigger" detection to `role=='user'` `tool_result` content specifically
+(never assistant text, never a top-level match), using the REAL production predicates
+(`_is_bg_auto_timeout_ack` from `strip_bg_launch_ack.py`, `_parse_poread_marker` from
+`inject_poread.py`) rather than retyped literals. Precise count against the same corpus: 1 and 1 —
+both genuinely real (the wording-3 hit is literally the `b1mahby4a` event that motivated that whole
+milestone; the poread hit is a real invocation against that same event's output file).
+
+**Second, sharper finding, caught by the same precision:** that one real poread occurrence has
+trailing content after the marker (`.../>\nexit=0`) — under the review-fixed whole-block-only rule
+in `inject_poread.py`, this specific occurrence will never expand, even after the restart, BY
+DESIGN. A looser `startswith`-only check for "genuine trigger" would have counted it anyway and
+then reported claim 3 as CONTRADICTED post-restart even though the code would be behaving exactly
+as intended — a false alarm baked into the verification tool itself. Confirmed with Main this was
+their own `poread <path> && echo $?`-shaped invocation; Main is adding an "alone in its own Bash
+call" requirement to the rule file as a direct result of this finding (not this repo's file to
+touch).
+
+**Takeaway for whoever builds the next corpus-scanning verification tool in a self-referential
+session:** if the session doing the verifying is also the session that implemented and discussed
+the feature, raw substring presence in `_original`/`_forwarded` is not evidence of anything by
+itself. Anchor on the real predicate AND the real structural location (tool_result content,
+specifically, not "anywhere in the payload") before treating a hit as genuine data.
+
+## Design decisions
+
+**Session picking:** newest `*_original.jsonl` by mtime under the resolved dual-log dir, matching
+the exact established convention of `render_byte_identity.py`/`pipeline_byte_identity.py`/
+`addon_hook_byte_identity.py` (all three already independently arrived at this same pattern) —
+`POST_RESTART_VERIFY_LOG_DIR` env override, same idiom as those three's own override variables,
+used to pin the required dry run against `/tmp/pre_restart_logs/`.
+
+**`response_model_corpus_report.py` left untouched, decided and justified before implementing:**
+different scope (corpus-wide vs. this task's required single-newest-session), different semantics
+(descriptive report, no exit code, vs. this task's required PASS/CONTRADICTED/MISSING DATA with
+exit codes), and it only ever covered claim 1 — the task's explicit "one script" requirement
+covering all three claims would have been impossible to satisfy by extending it.
+
+**Exit code scheme:** 0 all-pass, 1 if any claim CONTRADICTED (checked first, the worse outcome),
+2 if none contradicted but at least one MISSING DATA — both non-PASS cases non-zero, and
+distinguishable by which of the two fired, not just by reading stdout.
+
+## A hook landmine, found and fixed before committing (not a churned convention)
+
+First version imported `_parse_forwarded_log` via `from src.proxy_display.forwarded_parser import
+...`. This DOCS.md file's own Gotchas section (pre-existing, from before this task) claims only
+`pN_*.py`-named dev scripts may use `from src...` — but I actually read the enforcing hook,
+`src/hooks/block_dev_imports_src.py`, and its regex has no `pN_` exemption at all; it only exempts
+files under a `/tests/` directory named `test_*.py`/`*_test.py`/`conftest.py`. The pre-existing
+DOCS.md note describes an intent, not what's actually enforced. Fixed by loading the module via
+`importlib.import_module(f'{_ROOT_PKG}.proxy_display.forwarded_parser')` with `_ROOT_PKG = 'src'`
+— the exact string-built-import pattern `dev/click_ui/`'s probes already use for the same
+`proxy_display` package family, confirmed by reading their imports directly rather than guessing.
+Documented as a new Gotcha in this file's own DOCS.md, since a future editor hitting this same
+wall would otherwise waste time on the same investigation. Landmine for whoever adds more `from
+src.proxy_display...`-needing logic to a non-test dev/ file: `importlib.util.spec_from_file_location`
+(the `attribution_coverage.py` workaround for `strip_vocab.py`) does NOT generalize to modules with
+real relative imports (`forwarded_parser.py` has `from ../proxy.message_summary import ...`) — that
+workaround only works for genuinely self-contained modules; `importlib.import_module` with a
+dynamically-built dotted string is the one that handles real package context correctly.
+
+## Numbers — the required dry run, and the sanity check beyond it
+
+Against `/tmp/pre_restart_logs/` (exit 1): claim 1 CONTRADICTED (212/212 streamed responses still
+compressed, 0/212 carry `answering_model`; the corpus's 1 side call correctly shows empty
+`answering_model`, explicitly not counted against the claim); claim 2 CONTRADICTED (the genuine
+`b1mahby4a` trigger found at msg 198, 0 matching strips in `_stripped`); claim 3 MISSING DATA (the
+trailing-content near-miss above — script printed its ACTION line: "run `poread <path>` via Bash,
+alone in its own call ... against a file well under 500,000 bytes"). None came back PASS, matching
+the task's own stated expectation.
+
+Ran the script a second time against this worktree's own live (still pre-restart) session, unpinned
+— produced DIFFERENT, sensible verdicts (1 contradicted, 2 missing data — this worker's own worktree
+session never triggered a genuine auto-background or a genuine poread call through the real Bash
+tool) — proof the script isn't overfit to the one frozen fixture.
+
+Validated the TRUE branches the dry run itself never exercises (it only ever sees FALSE for claims
+2/3's fix-detection, since neither fix is live pre-restart): used wording-1's ALREADY-working
+replacement (never touched by this branch) as a real positive control for
+`_forwarded_has_block_starting_with` and `_bg_launch_ack_strip_fired` — both correctly returned
+True against real data. `_poread_expand_fired`'s TRUE branch has no real-data positive control
+available (the feature never fired even once pre-restart), so pinned it with a small synthetic
+`fn_map` fixture instead.
+
+## Review fix, same session
+
+Four non-section comment lines (`# -- Claim 1 --`, `# -- Claim 2 --`, `# -- Claim 3 --`,
+`# -- Reporting --`) removed per the code standard's three-comment-line rule; the module docstring
+stayed (matches every `pN_*.py` script in this dev area, not being churned through one file alone).
+Re-ran the dry run after the removal: stdout identical line-for-line except the report's own
+timestamp, exit code still 1 — confirmed via `diff`, not just by inspection. One thing I caught
+myself doing wrong before committing: re-running the dry run had `rm`'d the two previously-committed
+report files locally before regenerating them, and I almost let that deletion ride into the review-
+fix commit as an unintended side effect — restored both via `git checkout --` before staging, so
+the commit only added the fix plus one fresh verification report, nothing pre-existing lost.
+
+## Recap close-out
+
+Self-audit (`git diff integration --name-only`): `dev/proxy_instrumentation/DOCS.md`,
+`dev/proxy_instrumentation/post_restart_verification.py`,
+`dev/proxy_instrumentation/md/post_restart_verification_20260914_144740.md`,
+`dev/proxy_instrumentation/md/post_restart_verification_20260914_144759.md`,
+`dev/proxy_instrumentation/md/post_restart_verification_20260914_144932.md`. DOCS.md checked
+against `wc -l` this pass: `post_restart_verification.py` entry says 350 LOC, actual `wc -l` = 350,
+match — already current from the review-fix commit, nothing to fix. No further work planned by
+this worker on this script — it is meant to be run once, by Main, after the actual restart; this
+worker never performed that restart or a live check, as scoped.
