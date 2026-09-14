@@ -157,3 +157,30 @@ mechanical shape (new predicate, new dispatch branch, new `is_X_line`, a dispatc
 per pane) but does NOT by itself justify a new serializer function when an existing one's body
 already covers the case; that check is a decision each new granularity has to make for itself, not
 something the recipe should be trusted to answer.
+
+## 2026-09-14 — Recap pass
+
+Main sent `recap`. Self-audit (`git diff integration --name-only`) matched exactly what the task
+commit (`67192ca6`) already staged: `dev/click_ui/DOCS.md`,
+`dev/click_ui/md/p5_proxy_message_copy_click_probe_20260914_172433.md`,
+`dev/click_ui/p5_proxy_message_copy_click_probe.py`,
+`process-docs/click_ui/2026-09-14_milestone7_block_copy.md`, `src/proxy_display/DOCS.md`,
+`src/proxy_display/format.py`, `src/proxy_display/pane.py`,
+`src/proxy_display/proxy_pane_shared.py`, `src/proxy_display/render_messages.py`,
+`src/proxy_display/worker_proxy_pane.py`. Nothing new to fold in — the process-docs entry above
+was already written during the task itself (not deferred to this recap), and the currency check
+below found no drift since that commit.
+
+DOCS.md currency re-checked against `wc -l` on every touched file (unchanged since the task
+commit — no edits happened between commit and this recap): `pane.py` 334, `worker_proxy_pane.py`
+338, `proxy_pane_shared.py` 287, `format.py` 183, `render_messages.py` 304 (all
+`src/proxy_display/DOCS.md`), `p5_proxy_message_copy_click_probe.py` 539
+(`dev/click_ui/DOCS.md`) — all six headings still match exactly. Also confirmed no stale
+`_serialize_proxy_think` reference survived the rename anywhere in either DOCS.md (grepped both
+files directly — only `_serialize_proxy_block` appears). No corrections needed; this recap commit
+carries no code or DOCS.md changes, only this section.
+
+Nothing else to hand off — the four-granularity line of work (REQ → message → thinking block →
+any block) is complete as scoped, and the one open note for a future fifth granularity is already
+in the section above ("check FIRST whether the new serializer would be a near-copy of an existing
+one before writing a new pair").
