@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+cd /Users/brunowinter2000/Documents/ai/monitor-cc || exit 1
+exec ./venv/bin/python -m src.poread_cli "$@"

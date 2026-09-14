@@ -2,7 +2,7 @@
 
 ## Role
 Per-pass unit tests and targeted replay proofs for individual proxy strip/inject functions
-(`src/proxy/message_passes.py` and its `strip_*.py` sub-passes, `src/proxy/rules_config.py`) plus one
+(`src/proxy/message_passes.py` and its `strip_*.py`/`inject_poread.py` sub-passes, `src/proxy/rules_config.py`) plus one
 bash regression for the proxy marker-file lifecycle (`src/claude_proxy_start.sh`). Each script
 verifies one function or one narrow behavior in isolation. Use `dev/proxy_dual_log/` instead when the
 check depends on the dual-log quartet's own losslessness/self-consistency invariants; use
@@ -160,6 +160,28 @@ subprocesses and fake log files under a `mktemp -d` directory.
 **Writes:** PASS/FAIL lines to stdout.
 **Called by:** none — manual CLI, run via `bash dev/proxy/marker_race_repro.sh` from project root.
 **Calls out:** `src/claude_proxy_start.sh` (`_proxy_pid_is_live`).
+
+---
+
+### poread_inject_tests.py (306 LOC)
+
+**Purpose:** End-to-end regression guard for `src/proxy/inject_poread.py` — mints real markers
+through `src.poread_cli` as a subprocess (not a reimplementation), then drives the real
+`apply_modification_rules`. Covers expansion, the ops path, `strip_vocab.attribute_chunk` on both
+the stripped and injected sides, determinism across two runs, a source file changed or vanished
+between two runs, an oversize-declared marker, the anchored-prefix false-positive guard, trailing
+content after the marker in the same block being preserved rather than silently dropped (the
+marker must be the whole block), a marker with only its own trailing newline still expanding, and
+the source file being opened exactly once per validated marker (no second read, no race window).
+**Reads:** nothing external — writes its own temp files, invokes `python -m src.poread_cli` as a
+real subprocess per fixture.
+**Writes:** stdout (pass/fail via `check()`); its own temp files, cleaned up per test.
+**Called by:** none — manual regression guard, re-run after any change to
+`src/proxy/inject_poread.py`, `src/proxy/message_passes_simple.py`'s `_POREAD_SPEC`, or
+`src/poread_cli/__main__.py`'s marker format.
+**Calls out:** `proxy.rules` (`apply_modification_rules`), `proxy.inject_poread`
+(`_parse_poread_marker`, `_POREAD_HEADER_PREFIX`), `proxy.strip_vocab` (`attribute_chunk`), and
+`python -m src.poread_cli` as a subprocess.
 
 ---
 

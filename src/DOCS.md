@@ -38,12 +38,12 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### constants.py (29 LOC)
+### constants.py (32 LOC)
 
 **Purpose:** process-wide timing/size-limit constants and `TOOL_BLOCKLIST`.
 **Reads:** nothing.
 **Writes:** nothing.
-**Called by:** `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy/payload_helpers.py`, `proxy/tools.py`, several `proxy_display/` modules, `tmux_launcher.py`, `utils.py`, `workers/worker_pane.py`.
+**Called by:** `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy/payload_helpers.py`, `proxy/tools.py`, `proxy/inject_poread.py` (`POREAD_MAX_BYTES`, `POREAD_HASH_LEN`, `POREAD_MARKER_PREFIX`), `poread_cli/__main__.py` (same three), several `proxy_display/` modules, `tmux_launcher.py`, `utils.py`, `workers/worker_pane.py`.
 **Calls out:** none.
 
 ---
