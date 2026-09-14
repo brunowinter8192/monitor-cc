@@ -3,9 +3,8 @@
 Worker task, worktree `.claude/worktrees/poreadcap/`, milestone 1 of a larger plan (the plan's
 later milestones were explicitly out of scope here — no paging/partial-read mode, no touch to
 `src/hooks/block_po_read.py`, no marker-format/notice/hash-length/refusal-structure change). Same
-area as the two prior `poread` entries (`2026-09-14_poread_full_content_route.md`,
-`2026-09-14_poread_cli_moves_to_iterative_dev.md`) — this entry only lowers a value already
-established there, it does not change the mechanism.
+area as the prior work recorded in `process-docs/poread/` — this entry only lowers a value
+already established there, it does not change the mechanism.
 
 ## Trigger
 
@@ -17,7 +16,7 @@ ceiling) is unchanged — only the number moved.
 ## What changed, and why each one
 
 Both hand-maintained copies of `POREAD_MAX_BYTES` (this repo's `src/proxy/inject_poread.py:9`, and
-iterative-dev's `src/poread_cli/__main__.py:6` — see the two prior entries in this area and the
+iterative-dev's `src/poread_cli/__main__.py:6` — see the prior work in `process-docs/poread/` and the
 Gotcha in `src/proxy/DOCS.md` for why there are two copies instead of one shared constant) both
 became `50_000`. Confirmed byte-identical by diffing the four POREAD_* constant lines across both
 files after the edit — not just eyeballed.
@@ -40,9 +39,8 @@ confirmed in scope and fixed to "well under 50,000 bytes."
 `src/pane_error_log.py`'s `PANE_ERROR_LOG_KEEP_BYTES = 500_000` is a coincidentally-identical value
 for a completely unrelated log-rotation ceiling — not poread, not touched.
 
-Every process-docs mention of "500,000" (`2026-09-14_poread_full_content_route.md:62`,
-`2026-09-14_accept_encoding_identity_fix.md` in `process-docs/proxy_instrumentation/`) and the
-three frozen `dev/proxy_instrumentation/md/post_restart_verification_2026*.md` reports are
+Every prior process-docs mention of "500,000" — findable under `process-docs/poread/` and
+`process-docs/proxy_instrumentation/` — and the three frozen `dev/proxy_instrumentation/md/post_restart_verification_2026*.md` reports are
 write-once historical snapshots correctly describing the ceiling as it was AT THE TIME. Per this
 project's own process-docs rule (write-once, never touched after the author's session closes) and
 dev/ rule (reports are outputs, not maintained), these stay as-is — they are accurate records of a
