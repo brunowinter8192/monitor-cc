@@ -20,6 +20,10 @@ def _msg_row_key(entry_idx: int, msg_idx: int) -> tuple:
     return ('msg', entry_idx, msg_idx)
 
 
+def _block_row_key(entry_idx: int, msg_idx: int, bidx: int) -> tuple:
+    return ('block', entry_idx, msg_idx, bidx)
+
+
 def _append_msg_copy_symbol(line: str, key: tuple, copy_feedback, pane_width: int) -> str:
     if copy_feedback is None:
         return line
@@ -164,8 +168,10 @@ def _render_block_spans(entry_idx: int, msg_idx: int, bidx: int, blk: dict, entr
             lines.extend(content_lines)
             keys.extend(content_keys)
         return lines, keys
-    lines.append(f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}")
-    keys.append(None)
+    block_key = _block_row_key(entry_idx, msg_idx, bidx)
+    row_line = f"      {DIM}[{bidx}] {btype:<12} {bchars:>6,}c{bcc}{SOFT_RESET}"
+    lines.append(_append_msg_copy_symbol(row_line, block_key, copy_feedback, pane_width))
+    keys.append(block_key)
     i_blk, s_blk = _lookup_spans(entry, msg_idx, bidx, use_dual)
     content_lines, content_keys = _render_span_content(full_text, i_blk, s_blk, _BLOCK_CONTENT_INDENT)
     lines.extend(content_lines)

@@ -1,6 +1,8 @@
 """
-P5 -- proxy pane message-row AND thinking-block copy-by-click probe (Milestone 5: message-level
-copy inside an expanded REQ; extended for the thinking-block-level copy milestone right after it).
+P5 -- proxy pane message-row, thinking-block AND generic-block copy-by-click probe (Milestone 5:
+message-level copy inside an expanded REQ; extended for the thinking-block-level copy milestone
+right after it; extended again for the fourth granularity -- a copy affordance on every other
+block row: text, tool_use, tool_result, anything else).
 
 Proves, per proxy pane (main `pane.py`, worker `worker_proxy_pane.py`), that after one real
 render pass of an expanded REQ:
@@ -25,7 +27,7 @@ render pass of an expanded REQ:
      copy-row registration too, alongside its pre-existing `('think', entry_idx, msg_idx, bidx)`
      key
   8. a synthetic click on a thinking row's copy column copies EXACTLY
-     `proxy_pane_shared._serialize_proxy_think`'s real output -- a byte-exact substring of the
+     `proxy_pane_shared._serialize_proxy_block`'s real output -- a byte-exact substring of the
      same message's `_serialize_proxy_message` output
   9. a click anywhere ELSE on a thinking row still toggles `expand_states[think_key]`, exactly as
      it already did before this row had a copy affordance -- the one behavior this milestone must
@@ -33,8 +35,33 @@ render pass of an expanded REQ:
  10. copying a thinking block's flash timer is keyed by its own `('think', ...)` key -- it must
      NOT flash the sibling message row, the REQ header, or a different block
  11. a too-narrow pane renders no `⎘`/`✓` on a thinking row and registers no copy row for it
+ 12. every other block row (text, tool_use, tool_result -- anything reaching the non-thinking
+     branch of `render_messages._render_block_spans`) gets a `('block', entry_idx, msg_idx, bidx)`
+     key and a copy-row registration, alongside its sibling message/REQ rows
+ 13. a synthetic click on a block row's copy column copies EXACTLY
+     `proxy_pane_shared._serialize_proxy_block`'s real output for that key, and that output is a
+     byte-exact substring of BOTH the owning message's own copy AND the REQ-level copy -- verified
+     directly, not assumed via transitivity
+ 14. a click anywhere else on a block row changes nothing -- no `expand_states` mutation, no
+     clipboard write -- the SAME shape as the message-row case (3), not the thinking-row case (9):
+     a block row never toggled anything before it had a key, so it must not start now
+ 15. copying one block row's flash timer is keyed by its own `('block', ...)` key -- it must NOT
+     flash the REQ header, the owning message row, or a sibling block row
+ 16. a too-narrow pane renders no `⎘`/`✓` on a block row and registers no copy row for it
 
-No live tmux/terminal needed for parts 1-5/7-10/11 -- `format_proxy_block` and `_handle_*_mouse`
+`_serialize_proxy_block` is ONE function shared by both the `('think', ...)` and `('block', ...)`
+key shapes, not two near-identical copies -- the pre-merge `_serialize_proxy_think` body had
+nothing thinking-specific in it beyond its own guard (same `full_text`-with-`preview`-fallback
+read, same header format, same block-index lookup), so widening the guard to
+`_is_think_key(key) or _is_block_key(key)` was the deliberate choice over duplicating that body a
+third time. The two key-shape predicates (`_is_think_key`, `_is_block_key`) stay SEPARATE from
+each other and from the merged serializer, because they still drive a real fork elsewhere: each
+pane's `_handle_*_mouse` non-copy-click dispatch treats a `('think', ...)` row and a `('block', ...)`
+row oppositely (think falls through to the pre-existing expand-toggle branch, block returns a
+no-op alongside `is_msg`) -- that fork is genuine and stays; only the serialization body, which
+never varied, was collapsed.
+
+No live tmux/terminal needed for parts 1-5/7-16 -- `format_proxy_block` and `_handle_*_mouse`
 are called directly with synthetic entries, `os.get_terminal_size` is never invoked on that path.
 `copy_to_clipboard` is monkeypatched per module to a capturing stub (no real pbcopy call, no OS
 clipboard dependency).
@@ -255,11 +282,11 @@ def test_thinking_copy_matches_serializer_and_msg_subset():
     entries = [_make_entry_with_thinking()]
     think_key = ('think', 0, 0, 0)
     msg_text = mod_shared._serialize_proxy_message(('msg', 0, 0), entries)
-    think_text = mod_shared._serialize_proxy_think(think_key, entries)
+    think_text = mod_shared._serialize_proxy_block(think_key, entries)
     check("thinking serialization non-empty", bool(think_text))
     check("thinking text appears verbatim inside the message-level copy", think_text in msg_text)
     check("thinking exact text", think_text == "--- msg[0] assistant thinking ---\nLet me think this through carefully.")
-    check("non-think key returns empty string (defensive dispatch)", mod_shared._serialize_proxy_think(('msg', 0, 0), entries) == '')
+    check("non-think/non-block key returns empty string (defensive dispatch)", mod_shared._serialize_proxy_block(('msg', 0, 0), entries) == '')
 
 
 def _run_thinking_click_suite(mod, pane_name):
@@ -289,7 +316,7 @@ def _run_thinking_click_suite(mod, pane_name):
 
     # -- copy click on the thinking row's copy column --
     changed = handler(0, 119, think_row)
-    expected_think = mod_shared._serialize_proxy_think(think_key, entries)
+    expected_think = mod_shared._serialize_proxy_block(think_key, entries)
     check(f"{pane_name}: click on thinking row copy column triggers copy", changed and captured and captured[-1] == expected_think)
     check(f"{pane_name}: flash keyed by the thinking block's own key, not entry_idx or the msg key",
           think_key in feedback_attr and 0 not in feedback_attr and ('msg', 0, 0) not in feedback_attr)
@@ -336,6 +363,126 @@ def test_width_guard_suppresses_thinking_row_symbol():
     ))
 
 
+def test_block_row_gets_key_and_copy_registration():
+    print("P5.11 -- non-thinking block rows get a ('block', entry_idx, msg_idx, bidx) key and copy-row registration")
+    entries = [_make_entry()]
+    expand_states = {('req', 0): True}
+    line_map, copy_rows, _ = _render_expanded(entries, expand_states)
+    block_keys = {k for k in line_map.values() if isinstance(k, tuple) and k[0] == 'block'}
+    check("both non-thinking blocks in msg[0] keyed", block_keys == {('block', 0, 0, 0), ('block', 0, 0, 1)})
+    block_rows = {r for r, k in line_map.items() if k in block_keys}
+    check("both block rows registered as copy rows", block_rows <= copy_rows and len(block_rows) == 2)
+    msg_row = next(r for r, k in line_map.items() if k == ('msg', 0, 0))
+    check("owning message row still registered as a copy row too", msg_row in copy_rows)
+    req_row = next(r for r, k in line_map.items() if k == ('req', 0))
+    check("REQ row still registered as a copy row too", req_row in copy_rows)
+
+
+def test_block_copy_matches_serializer_and_nests_in_msg_and_req():
+    print("P5.12 -- block-row copy matches the real serializer, and nests inside BOTH the message copy and the REQ copy")
+    entries = [_make_entry()]
+    req_text = mod_shared._serialize_proxy_entry(('req', 0), entries)
+    msg0_text = mod_shared._serialize_proxy_message(('msg', 0, 0), entries)
+    block0_text = mod_shared._serialize_proxy_block(('block', 0, 0, 0), entries)
+    block1_text = mod_shared._serialize_proxy_block(('block', 0, 0, 1), entries)
+    check("block[0] (text) serialization non-empty", bool(block0_text))
+    check("block[1] (tool_use) serialization non-empty", bool(block1_text))
+    check("block[0] exact text", block0_text == "--- msg[0] assistant text ---\nhello world")
+    check("block[1] exact text", block1_text == "--- msg[0] assistant tool_use ---\nBash\n{\"command\":\"ls\"}")
+    check("block[0] text appears verbatim inside its message-level copy", block0_text in msg0_text)
+    check("block[1] text appears verbatim inside its message-level copy", block1_text in msg0_text)
+    check("block[0] text appears verbatim inside the REQ-level copy (not just via transitivity)", block0_text in req_text)
+    check("block[1] text appears verbatim inside the REQ-level copy (not just via transitivity)", block1_text in req_text)
+    check("non-think/non-block key returns empty string (defensive dispatch, shared serializer)",
+          mod_shared._serialize_proxy_block(('msg', 0, 0), entries) == '')
+
+
+def _run_block_click_suite(mod, pane_name):
+    captured = _patch_clipboard(mod)
+    entries = [_make_entry()]
+    expand_states = {('req', 0): True}
+    line_map, copy_rows, copy_feedback = _render_expanded(entries, expand_states)
+
+    entries_attr = mod.proxy_entries if pane_name == 'main' else mod.worker_proxy_entries
+    line_map_attr = mod.proxy_line_map if pane_name == 'main' else mod.worker_proxy_line_map
+    copy_rows_attr = mod._proxy_copy_rows if pane_name == 'main' else mod._worker_proxy_copy_rows
+    feedback_attr = mod._copy_feedback_until if pane_name == 'main' else mod._worker_copy_feedback_until
+    expand_states_attr = mod.proxy_expand_states if pane_name == 'main' else mod.worker_proxy_expand_states
+    pane_width_attr_name = '_proxy_pane_width' if pane_name == 'main' else '_worker_proxy_pane_width'
+    handler = mod._handle_proxy_mouse if pane_name == 'main' else (lambda b, c, r: mod._handle_worker_proxy_mouse(b, c, r, None))
+
+    entries_attr.clear(); entries_attr.extend(entries)
+    line_map_attr.clear(); line_map_attr.update(line_map)
+    copy_rows_attr.clear(); copy_rows_attr.update(copy_rows)
+    feedback_attr.clear()
+    expand_states_attr.clear(); expand_states_attr.update(expand_states)
+    setattr(mod, pane_width_attr_name, 120)
+
+    block_row0 = next(r for r, k in line_map.items() if k == ('block', 0, 0, 0))
+    block_row1 = next(r for r, k in line_map.items() if k == ('block', 0, 0, 1))
+    msg_row = next(r for r, k in line_map.items() if k == ('msg', 0, 0))
+    req_row = next(r for r, k in line_map.items() if k == ('req', 0))
+
+    # -- copy click on block row 0's copy column --
+    changed = handler(0, 119, block_row0)
+    expected_block0 = mod_shared._serialize_proxy_block(('block', 0, 0, 0), entries)
+    check(f"{pane_name}: click on block row 0 copy column triggers copy", changed and captured and captured[-1] == expected_block0)
+    check(f"{pane_name}: flash keyed by the block's own key, not entry_idx or the msg key",
+          ('block', 0, 0, 0) in feedback_attr and 0 not in feedback_attr and ('msg', 0, 0) not in feedback_attr)
+    check(f"{pane_name}: sibling block row does NOT flash from this copy", ('block', 0, 0, 1) not in feedback_attr)
+    captured.clear()
+
+    # -- copy click on block row 1's copy column --
+    changed = handler(0, 119, block_row1)
+    expected_block1 = mod_shared._serialize_proxy_block(('block', 0, 0, 1), entries)
+    check(f"{pane_name}: click on block row 1 copy column triggers copy", changed and captured and captured[-1] == expected_block1)
+    captured.clear()
+
+    # -- non-copy click on a block row: no-op, matching the message-row shape (never toggled anything before) --
+    pre_expand = dict(expand_states_attr)
+    changed = handler(0, 5, block_row0)
+    check(f"{pane_name}: non-copy click on block row returns no-change", changed is False)
+    check(f"{pane_name}: non-copy click on block row leaves expand_states untouched", expand_states_attr == pre_expand)
+    check(f"{pane_name}: non-copy click on block row writes nothing to clipboard", not captured)
+
+    # -- copying the owning message row does not flash either block row --
+    feedback_attr.clear()
+    handler(0, 119, msg_row)
+    check(f"{pane_name}: copying the owning message row does NOT flash block row 0", ('block', 0, 0, 0) not in feedback_attr)
+    check(f"{pane_name}: copying the owning message row does NOT flash block row 1", ('block', 0, 0, 1) not in feedback_attr)
+    captured.clear()
+
+    # -- REQ-level copy still works, unaffected --
+    feedback_attr.clear()
+    changed = handler(0, 119, req_row)
+    expected_req = mod_shared._serialize_proxy_entry(('req', 0), entries)
+    check(f"{pane_name}: REQ copy-click still fires after block-row changes", changed and captured and captured[-1] == expected_req)
+    check(f"{pane_name}: REQ flash keyed by entry_idx (unchanged), not any block key",
+          0 in feedback_attr and ('block', 0, 0, 0) not in feedback_attr and ('block', 0, 0, 1) not in feedback_attr)
+
+
+def test_main_pane_block_copy_click():
+    print("P5.13 -- main pane (pane.py) end-to-end block-row click dispatch")
+    _run_block_click_suite(mod_proxy, 'main')
+
+
+def test_worker_pane_block_copy_click():
+    print("P5.14 -- worker pane (worker_proxy_pane.py) end-to-end block-row click dispatch (both panes took the change)")
+    _run_block_click_suite(mod_worker_proxy, 'worker')
+
+
+def test_width_guard_suppresses_block_row_symbol():
+    print("P5.15 -- width guard: no ⎘/✓ symbol or copy-row registration on a block row on a too-narrow pane")
+    entries = [_make_entry()]
+    expand_states = {('req', 0): True}
+    line_map, copy_rows, _ = _render_expanded(entries, expand_states, pane_width=10)
+    block_keys = {k for k in line_map.values() if isinstance(k, tuple) and k[0] == 'block'}
+    check("block keys still present at narrow width (rendering itself unaffected)", len(block_keys) == 2)
+    check("no block row registered as a copy row at width=10", not any(
+        isinstance(line_map.get(r), tuple) and line_map[r][0] == 'block' for r in copy_rows
+    ))
+
+
 # ORCHESTRATOR
 
 def run_probe_workflow():
@@ -352,6 +499,11 @@ def run_probe_workflow():
     test_main_pane_thinking_copy_click()
     test_worker_pane_thinking_copy_click()
     test_width_guard_suppresses_thinking_row_symbol()
+    test_block_row_gets_key_and_copy_registration()
+    test_block_copy_matches_serializer_and_nests_in_msg_and_req()
+    test_main_pane_block_copy_click()
+    test_worker_pane_block_copy_click()
+    test_width_guard_suppresses_block_row_symbol()
 
     total = len(_RESULTS)
     passed = sum(1 for _, ok in _RESULTS if ok)
