@@ -1,6 +1,8 @@
 """
 Verifies the CC 2.1.223 TOOL_BLOCKLIST extension (Artifact, ReportFindings,
-DeferredToolPlaceholder) against the recorded session api_requests_opus_websearch_1786052022:
+DeferredToolPlaceholder) against the newest main-session recording currently present in the live
+src/logs/dual_log/ corpus (glob-driven, same pattern as p7_blocklist_258_probe.py -- no hardcoded
+session stem, since a fixed stem ages out of the log-rotated corpus):
 
   1. The real _strip_unused_tools (src/proxy/tools.py), run on the session's actual ORIGINAL
      payload tools list, leaves exactly {Bash, Read, Skill} + any MCP-injected
@@ -24,11 +26,10 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
-# Recorded dual-log session lives in the main project checkout (untracked data, not
+# Recorded dual-log corpus lives in the main project checkout (untracked data, not
 # duplicated into worktrees) — code under test is imported from WORKTREE_ROOT above.
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
-STEM = 'api_requests_opus_websearch_1786052022'
 
 REPORT_DIR = Path(__file__).parent / 'md'
 REPORT_PATH = REPORT_DIR / 'blocklist_223_probe_report.md'
@@ -38,9 +39,29 @@ NEWLY_BLOCKED = {'Artifact', 'ReportFindings', 'DeferredToolPlaceholder'}
 
 # FUNCTIONS
 
+# Newest main-session (non-worker) original log that also has a matching forwarded log and at
+# least one non-empty tools payload -- same selection pattern as
+# p7_blocklist_258_probe.py._newest_main_session_log, extended with the forwarded-pair/non-empty
+# requirements this probe additionally needs.
+def _select_session_stem() -> str:
+    candidates = [
+        p for p in sorted(LOG_DIR.glob('*_original.jsonl'))
+        if not p.name.startswith('api_requests_worker_')
+        and (LOG_DIR / p.name.replace('_original.jsonl', '_forwarded.jsonl')).exists()
+    ]
+    if not candidates:
+        raise AssertionError(f'no main-session original+forwarded log pair found in {LOG_DIR}')
+    for path in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                if json.loads(line).get('payload', {}).get('tools'):
+                    return path.name[:-len('_original.jsonl')]
+    raise AssertionError(f'no candidate log has a non-empty tools payload in {LOG_DIR}')
+
+
 # One representative original-log payload with a non-empty tools list
-def _load_original_payload() -> dict:
-    path = LOG_DIR / f'{STEM}_original.jsonl'
+def _load_original_payload(stem: str) -> dict:
+    path = LOG_DIR / f'{stem}_original.jsonl'
     with open(path, encoding='utf-8') as f:
         for line in f:
             e = json.loads(line)
@@ -50,8 +71,8 @@ def _load_original_payload() -> dict:
 
 
 # Union of tool_use names invoked anywhere in the session's original messages
-def _invoked_tool_names() -> set:
-    path = LOG_DIR / f'{STEM}_original.jsonl'
+def _invoked_tool_names(stem: str) -> set:
+    path = LOG_DIR / f'{stem}_original.jsonl'
     names = set()
     with open(path, encoding='utf-8') as f:
         for line in f:
@@ -67,9 +88,9 @@ def _invoked_tool_names() -> set:
 
 
 # Union of forwarded (post-strip, post-MCP-injection) tool names across the whole session
-def _forwarded_tool_names() -> set:
+def _forwarded_tool_names(stem: str) -> set:
     from src.proxy_display.forwarded_parser import _parse_forwarded_log
-    fwd_path = LOG_DIR / f'{STEM}_forwarded.jsonl'
+    fwd_path = LOG_DIR / f'{stem}_forwarded.jsonl'
     entries, _ = _parse_forwarded_log(fwd_path, 0, {})
     names = set()
     for e in entries:
@@ -85,7 +106,8 @@ def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     results = []
 
-    payload = _load_original_payload()
+    stem = _select_session_stem()
+    payload = _load_original_payload(stem)
     orig_names = {t.get('name') for t in payload.get('tools', [])}
     modified, removed, removed_names = _strip_unused_tools(payload)
     kept_names = {t.get('name') for t in modified['tools']}
@@ -104,7 +126,7 @@ def main() -> None:
         f'removed_names contains all of {sorted(NEWLY_BLOCKED)}: {r2_ok} (removed={sorted(removed_names)})',
     ))
 
-    invoked = _invoked_tool_names()
+    invoked = _invoked_tool_names(stem)
     live_hits = NEWLY_BLOCKED & invoked
     r3_ok = not live_hits
     results.append((
@@ -112,7 +134,7 @@ def main() -> None:
         f'tool_use invocations of newly-blocked names in session messages: {sorted(live_hits) or "(none)"}',
     ))
 
-    fwd_names = _forwarded_tool_names()
+    fwd_names = _forwarded_tool_names(stem)
     r4_ok = 'Agent' not in fwd_names
     results.append((
         'agent_absent_from_forwarded', r4_ok,
@@ -128,7 +150,7 @@ def main() -> None:
     ))
 
     lines = ['# CC 2.1.223 TOOL_BLOCKLIST extension probe', '']
-    lines.append(f'Session: `{STEM}`')
+    lines.append(f'Session (newest main-session log in live corpus): `{stem}`')
     lines.append('')
     lines.append('| case | pass | detail |')
     lines.append('|---|---|---|')
