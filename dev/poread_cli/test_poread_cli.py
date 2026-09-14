@@ -27,7 +27,7 @@ _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE.parents[1]))
 
 from src.poread_cli.__main__ import main
-from src.constants import POREAD_MAX_BYTES, POREAD_HASH_LEN, POREAD_MARKER_PREFIX
+from src.constants import POREAD_MAX_BYTES, POREAD_HASH_LEN, POREAD_MARKER_PREFIX, POREAD_NOTICE
 
 PASS_LIST = []
 FAIL_LIST = []
@@ -59,9 +59,9 @@ def test_valid_file_prints_marker():
         code, out, err = _run([path])
         expected_hash = hashlib.sha256(data).hexdigest()[:POREAD_HASH_LEN]
         abs_path = os.path.realpath(path)
-        expected = f'{POREAD_MARKER_PREFIX}path="{abs_path}" bytes="{len(data)}" sha256="{expected_hash}"/>\n'
+        expected = f'{POREAD_MARKER_PREFIX}path="{abs_path}" bytes="{len(data)}" sha256="{expected_hash}"/>\n{POREAD_NOTICE}\n'
         check("exit code 0 for a valid file", code == 0, code)
-        check("stdout is exactly the marker line, nothing else", out == expected, repr(out))
+        check("stdout is exactly the marker line plus the notice line, nothing else", out == expected, repr(out))
         check("stderr is empty on success", err == "", repr(err))
     finally:
         os.unlink(path)

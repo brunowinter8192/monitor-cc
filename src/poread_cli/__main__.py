@@ -3,7 +3,7 @@ import hashlib
 import os
 import sys
 
-from ..constants import POREAD_MAX_BYTES, POREAD_HASH_LEN, POREAD_MARKER_PREFIX
+from ..constants import POREAD_MAX_BYTES, POREAD_HASH_LEN, POREAD_MARKER_PREFIX, POREAD_NOTICE
 
 # ORCHESTRATOR
 
@@ -57,6 +57,7 @@ def _emit_marker(path: str) -> int:
         return 1
     digest = hashlib.sha256(data).hexdigest()[:POREAD_HASH_LEN]
     print(f'{POREAD_MARKER_PREFIX}path="{abs_path}" bytes="{len(data)}" sha256="{digest}"/>')
+    print(POREAD_NOTICE)
     return 0
 
 if __name__ == "__main__":
