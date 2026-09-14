@@ -177,7 +177,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### inject_poread.py (79 LOC)
+### inject_poread.py (81 LOC)
 
 **Purpose:** Recognizes a `<poread-export ...>` marker plus its fixed notice sentence as one whole `tool_result` block, replaces it with the file's full content.
 **Reads:** Message content (string or list of blocks); the named file's bytes from disk, up to its own `POREAD_MAX_BYTES`.

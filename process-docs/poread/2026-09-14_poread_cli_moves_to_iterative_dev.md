@@ -90,3 +90,30 @@ source location, so it needed no change; only its DOCS.md description of that me
 The move is complete as scoped: CLI half relocated, proxy half unchanged apart from the forced
 constant-copy adaptation, both DOCS.md files and both test suites updated and re-verified,
 `duallog` untouched, `~/.local/bin` untouched (the user's own symlink to repoint).
+
+## Recap close-out
+
+Self-audit (`git diff integration --name-only` from the `poreadmove` worktree): `bin/poread`,
+`dev/poread_cli/DOCS.md`, `dev/poread_cli/test_poread_cli.py`, `dev/proxy/DOCS.md`,
+`dev/proxy/poread_inject_tests.py`, `process-docs/poread/2026-09-14_poread_cli_moves_to_iterative_dev.md`,
+`src/DOCS.md`, `src/constants.py`, `src/hooks/DOCS.md`, `src/poread_cli/DOCS.md`,
+`src/poread_cli/__init__.py`, `src/poread_cli/__main__.py` (last three deleted), `src/proxy/DOCS.md`,
+`src/proxy/inject_poread.py` — matches the file list already named in the task's completion
+checklist, nothing outside scope touched.
+
+**One real LOC-mismatch caught by this recap's currency check, not caught at task time.**
+`src/proxy/DOCS.md`'s `inject_poread.py` entry said `(79 LOC)`, carried over from an earlier
+line-count before the module-level constants block was finalized; the file is actually 81 LOC
+(`wc -l`). Fixed to `(81 LOC)`. Every other touched module's DOCS.md entry (`constants.py` 29,
+`poread_inject_tests.py` 362, `block_po_read.py` 64 — unchanged, only its prose line was edited)
+already matched `wc -l` exactly on this pass.
+
+**Landmine for whoever next touches `inject_poread.py` or its test:** the LOC-mismatch above is a
+reminder that a DOCS.md LOC figure written mid-task (before the file is fully settled) can go stale
+by the time the task's own later edits land — re-run `wc -l` on the actual file at recap time
+rather than trusting a number written earlier in the same session, even one written by the same
+worker minutes before.
+
+No further work planned by this worker here. Both this repo's half and the iterative-dev half
+(`process-docs/poread/` there) are complete as scoped; see that repo's own recap entry for its
+half's currency check.
