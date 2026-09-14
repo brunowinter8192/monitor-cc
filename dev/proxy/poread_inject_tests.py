@@ -1,36 +1,43 @@
 """Regression suite for src/proxy/inject_poread.py (the poread marker-expansion pass).
 
-Covers: a marker minted by the REAL poread CLI (invoked as a real subprocess, not reimplemented)
-expands to the file's full content when run through the real apply_modification_rules pipeline;
-the injection shows up in the ops path (all_ops) and in strip_vocab.attribute_chunk on BOTH the
-stripped (marker) and injected (wrapped content) sides; the expansion is byte-identical across two
-separate pipeline runs against the same unchanged file (determinism); a source file that changed
-or vanished between two runs leaves the marker completely inert (no mods, no ops, original text
-preserved) rather than injecting stale or wrong content; a marker whose declared byte count exceeds
-the 500,000-byte ceiling is refused regardless of what the actual file contains; a marker that is
-NOT the first thing in its block (mid-content, false-positive class) is left untouched; trailing
-content AFTER the marker in the same block is preserved, not silently dropped, because the marker
-must be the entire block for expansion to fire at all; the source is read exactly once per
-validated marker (no second read between predicate and replacement, so no race window can leave a
-request's whole modification pipeline crashing out on a benign mid-request file change); a
-realistic multi-message payload shape (system + user prompt + assistant tool_use + user tool_result
-carrying the marker) exercises the full apply_modification_rules pass order end to end.
+Covers: a marker minted from this test's own pinned literal copy of the marker contract (the CLI
+half that used to mint real markers has moved out of this repo entirely, into the iterative-dev
+plugin — see the Gotcha in src/proxy/DOCS.md) expands to the file's full content when run through
+the real apply_modification_rules pipeline; the injection shows up in the ops path (all_ops) and
+in strip_vocab.attribute_chunk on BOTH the stripped (marker) and injected (wrapped content) sides;
+the expansion is byte-identical across two separate pipeline runs against the same unchanged file
+(determinism); a source file that changed or vanished between two runs leaves the marker completely
+inert (no mods, no ops, original text preserved) rather than injecting stale or wrong content; a
+marker whose declared byte count exceeds the 500,000-byte ceiling is refused regardless of what the
+actual file contains; a marker that is NOT the first thing in its block (mid-content, false-positive
+class) is left untouched; trailing content AFTER the marker in the same block is preserved, not
+silently dropped, because the marker must be the entire block for expansion to fire at all; the
+source is read exactly once per validated marker (no second read between predicate and replacement,
+so no race window can leave a request's whole modification pipeline crashing out on a benign
+mid-request file change); a realistic multi-message payload shape (system + user prompt + assistant
+tool_use + user tool_result carrying the marker) exercises the full apply_modification_rules pass
+order end to end.
 
 Run from project root:
     ./venv/bin/python dev/proxy/poread_inject_tests.py
 """
+import hashlib
 import os
-import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
-_WORKTREE_ROOT = os.path.join(os.path.dirname(__file__), '..', '..')
 
 from proxy.rules import apply_modification_rules
 from proxy.inject_poread import _parse_poread_marker, _POREAD_HEADER_PREFIX
-from constants import POREAD_NOTICE
 from proxy.strip_vocab import attribute_chunk
+
+_PINNED_MARKER_PREFIX = '<poread-export '
+_PINNED_HASH_LEN = 16
+POREAD_NOTICE = (
+    "The file's full content will arrive automatically on the next turn — do not read "
+    "this file again until then."
+)
 
 _PASS = "PASS"
 _FAIL = "FAIL"
@@ -44,12 +51,12 @@ def check(label, condition):
 
 
 def _mint_marker(path: str) -> str:
-    proc = subprocess.run(
-        [sys.executable, "-m", "src.poread_cli", path],
-        cwd=_WORKTREE_ROOT, capture_output=True, text=True, check=True,
-    )
-    assert proc.stdout.count('\n') == 2, f"poread stdout must be exactly two lines (marker + notice): {proc.stdout!r}"
-    return proc.stdout.rstrip('\n')
+    abs_path = os.path.realpath(path)
+    with open(abs_path, 'rb') as f:
+        data = f.read()
+    digest = hashlib.sha256(data).hexdigest()[:_PINNED_HASH_LEN]
+    marker = f'{_PINNED_MARKER_PREFIX}path="{abs_path}" bytes="{len(data)}" sha256="{digest}"/>'
+    return f'{marker}\n{POREAD_NOTICE}'
 
 
 def _payload_with_marker(marker: str) -> dict:

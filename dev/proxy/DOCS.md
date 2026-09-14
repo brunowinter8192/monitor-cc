@@ -163,28 +163,32 @@ subprocesses and fake log files under a `mktemp -d` directory.
 
 ---
 
-### poread_inject_tests.py (355 LOC)
+### poread_inject_tests.py (362 LOC)
 
-**Purpose:** End-to-end regression guard for `src/proxy/inject_poread.py` — mints real markers
-through `src.poread_cli` as a subprocess (not a reimplementation), then drives the real
-`apply_modification_rules`. Covers expansion, the ops path, `strip_vocab.attribute_chunk` on both
-the stripped and injected sides, determinism across two runs, a source file changed or vanished
-between two runs (including that the fixed notice sentence survives untouched in that case,
-exactly where the agent needs it), an oversize-declared marker, the anchored-prefix false-positive
-guard, trailing content after the marker in the same block being preserved rather than silently
-dropped (the marker must be the whole block), a marker with only its own trailing newline still
-expanding, the source file being opened exactly once per validated marker (no second read, no race
-window), a marker with no notice sentence under it being ineligible, and marker-plus-notice
-expanding with the notice disappearing along with the marker.
-**Reads:** nothing external — writes its own temp files, invokes `python -m src.poread_cli` as a
-real subprocess per fixture.
+**Purpose:** End-to-end regression guard for `src/proxy/inject_poread.py` — mints markers from this
+file's own pinned literal copy of the marker contract (`_PINNED_MARKER_PREFIX`, `_PINNED_HASH_LEN`,
+`POREAD_NOTICE`, hardcoded here, independent of `inject_poread.py`'s own hand-maintained copy — the
+CLI that used to mint real markers moved out of this repo into the iterative-dev plugin; see the
+Gotcha in `src/proxy/DOCS.md`), then drives the real `apply_modification_rules`. Covers expansion,
+the ops path, `strip_vocab.attribute_chunk` on both the stripped and injected sides, determinism
+across two runs, a source file changed or vanished between two runs (including that the fixed
+notice sentence survives untouched in that case, exactly where the agent needs it), an
+oversize-declared marker, the anchored-prefix false-positive guard, trailing content after the
+marker in the same block being preserved rather than silently dropped (the marker must be the whole
+block), a marker with only its own trailing newline still expanding, the source file being opened
+exactly once per validated marker (no second read, no race window), a marker with no notice
+sentence under it being ineligible, and marker-plus-notice expanding with the notice disappearing
+along with the marker.
+**Reads:** nothing external — writes its own temp files; mints its own marker fixtures from its
+own pinned literal constants, no subprocess.
 **Writes:** stdout (pass/fail via `check()`); its own temp files, cleaned up per test.
 **Called by:** none — manual regression guard, re-run after any change to
-`src/proxy/inject_poread.py`, `src/proxy/message_passes_simple.py`'s `_POREAD_SPEC`, or
-`src/poread_cli/__main__.py`'s marker format.
+`src/proxy/inject_poread.py` or `src/proxy/message_passes_simple.py`'s `_POREAD_SPEC`; if this
+file's own pinned constants ever need to change, the matching hand-maintained copy in the
+iterative-dev plugin's `src/poread_cli/__main__.py` needs the same change too (not machine-checked
+across repos — see the Gotcha in `src/proxy/DOCS.md`).
 **Calls out:** `proxy.rules` (`apply_modification_rules`), `proxy.inject_poread`
-(`_parse_poread_marker`, `_POREAD_HEADER_PREFIX`), `proxy.strip_vocab` (`attribute_chunk`), and
-`python -m src.poread_cli` as a subprocess.
+(`_parse_poread_marker`, `_POREAD_HEADER_PREFIX`), `proxy.strip_vocab` (`attribute_chunk`).
 
 ---
 

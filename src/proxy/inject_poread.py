@@ -1,17 +1,18 @@
 import hashlib
-import os
 import re
 import sys
-from pathlib import Path
 
 from .payload_helpers import _walk_replace_marker_blocks
 
-_src_dir = os.path.join(os.environ.get("MONITOR_CC_ROOT", str(Path(__file__).parent.parent.parent)), "src")
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
-from constants import POREAD_MAX_BYTES, POREAD_HASH_LEN, POREAD_MARKER_PREFIX, POREAD_NOTICE
-
 # INFRASTRUCTURE
+
+POREAD_MAX_BYTES = 500_000
+POREAD_HASH_LEN = 16
+POREAD_MARKER_PREFIX = '<poread-export '
+POREAD_NOTICE = (
+    "The file's full content will arrive automatically on the next turn — do not read "
+    "this file again until then."
+)
 
 _POREAD_HEADER_PREFIX = '--- poread: '
 
