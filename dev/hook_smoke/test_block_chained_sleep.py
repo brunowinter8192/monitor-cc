@@ -3,7 +3,7 @@ import json
 import subprocess
 import sys
 
-HOOK = "src/hooks/block_chained_sleep.py"
+HOOK = "src/hooks/block_chained_sleep.py.disabled"
 
 CASES = [
     # (description, command, expected_exit_code)
