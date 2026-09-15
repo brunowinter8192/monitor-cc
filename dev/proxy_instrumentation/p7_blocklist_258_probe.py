@@ -120,16 +120,10 @@ def _payload_with_historic_blocked_tool_use(tool_name: str) -> dict:
     }
 
 
-# ORCHESTRATOR
-def main() -> None:
+def _check_newly_blocked_extension(newest_log: Path) -> tuple:
     from proxy.tools import _strip_unused_tools
-    from proxy.payload_helpers import _strip_blocked_tool_references
     from constants import TOOL_BLOCKLIST
 
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    results = []
-
-    newest_log = _newest_main_session_log()
     payload = _load_original_payload(newest_log)
     orig_names = {t.get('name') for t in payload.get('tools', [])}
     modified, removed, removed_names = _strip_unused_tools(payload)
@@ -137,11 +131,11 @@ def main() -> None:
     mcp_names = {n for n in kept_names if n.startswith('mcp__')}
     non_mcp_kept = kept_names - mcp_names
     r1_ok = non_mcp_kept == EXPECTED_KEPT
-    results.append((
+    results = [(
         'post_strip_set_is_exact', r1_ok,
         f'log={newest_log.name} orig={sorted(orig_names)} kept={sorted(kept_names)} '
         f'(non-MCP kept: {sorted(non_mcp_kept)}, want {sorted(EXPECTED_KEPT)}, mcp_extra={sorted(mcp_names)})',
-    ))
+    )]
 
     r2_ok = NEWLY_BLOCKED <= set(removed_names)
     results.append((
@@ -164,30 +158,12 @@ def main() -> None:
         f'{sorted(NEWLY_BLOCKED)} subset of TOOL_BLOCKLIST: {r4_ok}',
     ))
 
-    # --- Edit/Write milestone (Bash-only file access; Read restored) ---
+    return results, n_scanned, modified, removed_names
 
-    r5_ok = RW_BLOCKED <= TOOL_BLOCKLIST
-    results.append((
-        'rw_blocklist_contains_new_entries', r5_ok,
-        f'{sorted(RW_BLOCKED)} subset of TOOL_BLOCKLIST: {r5_ok}',
-    ))
 
-    r6_ok = RW_BLOCKED <= set(removed_names)
-    results.append((
-        'rw_actually_removed_from_representative_payload', r6_ok,
-        f'removed_names contains all of {sorted(RW_BLOCKED)}: {r6_ok} (removed={sorted(removed_names)})',
-    ))
-
-    n_scanned_rw, rw_hits = _scan_corpus_for_live_tool_use(all_logs, RW_BLOCKED)
-    r7_ok = len(rw_hits) > 0
-    rw_hit_files = sorted({fname for fname, _ in rw_hits})
-    results.append((
-        'rw_live_tool_use_present_corpus_wide_by_design', r7_ok,
-        f'files scanned: {n_scanned_rw}, tool_use hits for {sorted(RW_BLOCKED)}: {len(rw_hits)} '
-        f'across {len(rw_hit_files)} file(s) — UNLIKE checks 2/3 above, hits are EXPECTED here '
-        f'(Edit/Write are among the dominant tools of every running session; this is the residual '
-        f'risk documented for this milestone, not a bug)',
-    ))
+def _rw_historic_tool_use_result_details() -> list:
+    from proxy.tools import _strip_unused_tools
+    from proxy.payload_helpers import _strip_blocked_tool_references
 
     r8_details = []
     for tool_name in sorted(RW_BLOCKED):
@@ -199,6 +175,39 @@ def main() -> None:
         tool_use_intact = assistant_msg['content'][0] == historic_payload['messages'][1]['content'][0]
         tool_result_intact = result_msg['content'][0] == historic_payload['messages'][2]['content'][0]
         r8_details.append((tool_name, tool_use_intact, tool_result_intact))
+    return r8_details
+
+
+def _check_rw_extension(modified: dict, removed_names: list) -> list:
+    from constants import TOOL_BLOCKLIST
+
+    # --- Edit/Write milestone (Bash-only file access; Read restored) ---
+
+    r5_ok = RW_BLOCKED <= TOOL_BLOCKLIST
+    results = [(
+        'rw_blocklist_contains_new_entries', r5_ok,
+        f'{sorted(RW_BLOCKED)} subset of TOOL_BLOCKLIST: {r5_ok}',
+    )]
+
+    r6_ok = RW_BLOCKED <= set(removed_names)
+    results.append((
+        'rw_actually_removed_from_representative_payload', r6_ok,
+        f'removed_names contains all of {sorted(RW_BLOCKED)}: {r6_ok} (removed={sorted(removed_names)})',
+    ))
+
+    all_logs = _all_original_logs()
+    n_scanned_rw, rw_hits = _scan_corpus_for_live_tool_use(all_logs, RW_BLOCKED)
+    r7_ok = len(rw_hits) > 0
+    rw_hit_files = sorted({fname for fname, _ in rw_hits})
+    results.append((
+        'rw_live_tool_use_present_corpus_wide_by_design', r7_ok,
+        f'files scanned: {n_scanned_rw}, tool_use hits for {sorted(RW_BLOCKED)}: {len(rw_hits)} '
+        f'across {len(rw_hit_files)} file(s) — UNLIKE checks 2/3 above, hits are EXPECTED here '
+        f'(Edit/Write are among the dominant tools of every running session; this is the residual '
+        f'risk documented for this milestone, not a bug)',
+    ))
+
+    r8_details = _rw_historic_tool_use_result_details()
     r8_ok = all(tu and tr for _, tu, tr in r8_details)
     results.append((
         'rw_historic_tool_use_result_left_untouched_documented_gap', r8_ok,
@@ -208,6 +217,10 @@ def main() -> None:
         f'tool_reference content blocks — this pins the documented gap, it does not close it)',
     ))
 
+    return results
+
+
+def _write_report(newest_log: Path, n_scanned: int, results: list) -> None:
     lines = ['# CC 2.1.258 + Edit/Write TOOL_BLOCKLIST extension probe', '']
     lines.append(f'Newest main-session log: `{newest_log.name}`')
     lines.append(f'Corpus files scanned for live tool_use: {n_scanned}')
@@ -226,6 +239,15 @@ def main() -> None:
         print(('PASS' if ok else 'FAIL'), label, '-', detail)
     print('ALL PASS' if all_pass else 'FAILURES PRESENT')
     sys.exit(0 if all_pass else 1)
+
+
+# ORCHESTRATOR
+def main() -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    newest_log = _newest_main_session_log()
+    results, n_scanned, modified, removed_names = _check_newly_blocked_extension(newest_log)
+    results += _check_rw_extension(modified, removed_names)
+    _write_report(newest_log, n_scanned, results)
 
 
 if __name__ == '__main__':

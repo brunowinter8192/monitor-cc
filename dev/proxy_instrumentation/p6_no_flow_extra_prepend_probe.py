@@ -199,22 +199,17 @@ def _removed_symbols_absent() -> tuple:
     return gone, acc_key
 
 
-# One session: render, assert the four invariants, return (rows, stats)
-def _check_session(stem: str) -> tuple:
-    from src.proxy_display.proxy_badge import badge_flags
-    entries = _load_session(stem)
-    rendered = _render_all(entries)
-
+def _below_window_indices(rendered: dict) -> list:
     below = []
     for idx, (body, start, _outside) in rendered.items():
         low = [h for h in _header_indices(body) if h < start]
         if low:
             below.append((idx, start, low[:4]))
+    return below
 
-    gone, acc_key = _removed_symbols_absent()
-    sub_attached = [idx for idx, e in enumerate(entries)
-                    if '_strip_msgs_sub_lookup' in e or '_inject_msgs_sub_lookup' in e]
 
+def _badge_silence_stats(entries: list, rendered: dict, stem: str) -> tuple:
+    from src.proxy_display.proxy_badge import badge_flags
     badges = {idx: badge_flags(entries[idx]) for idx in rendered}
     verdicts = _substantial_touches(stem)
     with_outside = [idx for idx, (_b, _s, outside) in rendered.items() if outside]
@@ -224,6 +219,21 @@ def _check_session(stem: str) -> tuple:
                for m in rendered[idx][2])
     ]
     silent = [idx for idx in with_real_outside if not any(badges[idx])]
+    return with_outside, with_real_outside, silent
+
+
+# One session: render, assert the four invariants, return (rows, stats)
+def _check_session(stem: str) -> tuple:
+    entries = _load_session(stem)
+    rendered = _render_all(entries)
+
+    below = _below_window_indices(rendered)
+
+    gone, acc_key = _removed_symbols_absent()
+    sub_attached = [idx for idx, e in enumerate(entries)
+                    if '_strip_msgs_sub_lookup' in e or '_inject_msgs_sub_lookup' in e]
+
+    with_outside, with_real_outside, silent = _badge_silence_stats(entries, rendered, stem)
 
     spans_seen = sum(1 for body, _s, _o in rendered.values()
                      if DIM_YELLOW_BG in body or DIM_GREEN_BG in body)
