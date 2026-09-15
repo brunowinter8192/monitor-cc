@@ -13,8 +13,13 @@ logic (extend the existing one).
 
 ### test_block_chained_sleep.py (67 LOC)
 
-**Purpose:** 13-case smoke for the disabled `block_chained_sleep.py` (`.disabled` on disk),
-preserved for regression reference.
+**Purpose:** 13-case smoke for the retired `block_chained_sleep.py.disabled` — the canonical
+`sleep N && echo done` form, chained/non-canonical sleep placements, heredoc/quoted-string/
+ANSI-C-quote stripping, and command-substitution/backtick sleeps kept shell-active. `HOOK` now
+points at the `.disabled` path (it used to point at the pre-rename name and silently test nothing
+— see the Gotcha below for that history and its fix) and the suite genuinely executes the retired
+hook's real code again: 13/13 pass, unchanged from what this test always asserted, since only the
+path was ever wrong, never the hook's own logic.
 **Called by:** none — run manually.
 
 ---
@@ -367,27 +372,23 @@ is a defect in `block_non_canonical_edit.py` itself, retired since as
 `block_non_canonical_edit.py.disabled` — see `process-docs/tool_use_safety/` for this hook's full
 history.
 
-**`test_block_chained_sleep.py` reports PASS without ever executing its target — a real defect,
-found while retiring `block_non_canonical_edit.py` and left as-is here since fixing it is separate
-work.** Its `HOOK` constant still points at `src/hooks/block_chained_sleep.py`, the path from
-before that hook was disabled; the file has not existed there since the rename to
+**`test_block_chained_sleep.py` used to report PASS without ever executing its target — a real
+defect, found while retiring `block_non_canonical_edit.py`, fixed in a follow-up milestone the
+same day.** Its `HOOK` constant pointed at `src/hooks/block_chained_sleep.py`, the path from
+before that hook was disabled; the file had not existed there since the rename to
 `block_chained_sleep.py.disabled`. `subprocess.run(["python3", HOOK], ...)` against a nonexistent
 path does not fail the way a broken hook invocation should — `python3` itself prints `can't open
 file ... No such file or directory` and exits with status 2, and 2 is also this hook family's own
-"block" exit code. The two codes collide by coincidence, not by any check this test performs. The
-practical effect: every case in `CASES` that expects BLOCK (`exit=2`) reports OK, because
-`python3`'s own file-not-found exit code happens to equal 2 regardless of what the (nonexistent)
-hook would have decided; every case that expects PASS (`exit=0`) reports FAIL, because
-`python3`'s file-not-found exit code is never 0. Running it now: 5 of the 13 cases are BLOCK-
-expecting and show as spuriously OK (`chained before sleep`, `non-echo-done cont`, `real sleep
-after quoted`, `cmd-subst sleep`, `backtick sleep`); the other 8 are PASS-expecting and show as
-FAIL (`canonical pass`, `canonical float pass`, `no sleep pass`, `heredoc quoted body PASS`,
-`heredoc unquoted body PASS`, `single-quoted sleep PASS`, `double-quoted sleep PASS`, `ANSI-C
-quote sleep PASS`) — meaning the script's own summary line reads "FAILED: 8 case(s)", which is
-itself somewhat self-revealing, but a prior pass at the actual per-case output before reading past
-the summary would report "OK" on 5 cases that never touched real hook logic at all. A test
-reporting PASS while never running its target is worse than no test — it buys false confidence
-rather than none. Not fixed here
-because retiring a *different* hook is not licence to fix an unrelated, pre-existing one; if this
-is ever revived, the fix is the same one-line `HOOK` path update `test_block_non_canonical_edit.py`
-got on its own retirement, documented above.
+"block" exit code. The two codes collided by coincidence, not by any check this test performed.
+The practical effect while broken: every case in `CASES` that expects BLOCK (`exit=2`) reported
+OK, because `python3`'s own file-not-found exit code happened to equal 2 regardless of what the
+(nonexistent) hook would have decided; every case that expects PASS (`exit=0`) reported FAIL,
+because `python3`'s file-not-found exit code is never 0 — 5 of the 13 cases (`chained before
+sleep`, `non-echo-done cont`, `real sleep after quoted`, `cmd-subst sleep`, `backtick sleep`)
+spuriously OK, the other 8 spuriously FAIL. A test reporting PASS while never running its target
+is worse than no test — it buys false confidence rather than none. **Fixed** by the same one-line
+`HOOK`-path update `test_block_non_canonical_edit.py` got on its own retirement: pointed at
+`block_chained_sleep.py.disabled` (`python3 <path>` runs a file regardless of extension), then run
+for real. Result: 13/13 pass, unchanged from every case's original expectation — the retired
+hook's own logic was never wrong, only this test's path was stale, so no case's expected exit code
+needed to change and the hook itself was not touched.
