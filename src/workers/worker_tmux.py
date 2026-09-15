@@ -5,7 +5,7 @@ import subprocess
 import time
 
 from ..session_finder import encode_project_path
-from .worker_format import get_worker_project_name
+from .worker_format import get_worker_project_name, parse_worker_stats_delta
 
 # FUNCTIONS
 
@@ -87,3 +87,23 @@ def find_worker_jsonl(session_name: str) -> Optional[Path]:
         return None
 
     return max(jsonl_files, key=lambda f: f.stat().st_mtime)
+
+def attach_worker_stats(workers: List[dict], cache: dict) -> None:
+    for w in workers:
+        session = w.get('session', '')
+        if not session:
+            continue
+        jsonl_path = find_worker_jsonl(session)
+        if not jsonl_path:
+            continue
+        entry = cache.get(session)
+        if entry is None or entry['jsonl_path'] != jsonl_path:
+            entry = {'position': 0, 'total_output': 0, 'context_pct': None, 'jsonl_path': jsonl_path}
+            cache[session] = entry
+        total_output, context_pct, new_position = parse_worker_stats_delta(
+            jsonl_path, entry['position'], entry['total_output'], entry['context_pct'])
+        entry['position'] = new_position
+        entry['total_output'] = total_output
+        entry['context_pct'] = context_pct
+        w['tokens'] = {'output': total_output}
+        w['context_pct'] = context_pct

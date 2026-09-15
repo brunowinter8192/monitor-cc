@@ -78,7 +78,8 @@ test writes a throwaway 2-line forwarded-delta JSONL fixture, another a throwawa
 **Writes:** `md/p5_worker_proxy_pane_parity_test_<timestamp>.md`; exits 1 if any check fails.
 **Called by:** none — manual regression guard, re-run after changing `worker_proxy_pane.py`'s
 search/mouse handlers, `_build_worker_proxy_output`'s header composition,
-`_format_worker_proxy_header`/`worker_proxy_helpers.py`, or `src/search_bar.py`.
+`workers/worker_switch_header.py` (imported here under the alias `_format_worker_proxy_header`),
+or `src/search_bar.py`.
 **Calls out:** `src.proxy_display.worker_proxy_pane`, `src.search_bar` — loaded via
 `importlib.import_module`.
 
@@ -104,24 +105,27 @@ or `src/search_bar.py`.
 
 ---
 
-### p7_workers_pane_parity_test.py (535 LOC)
+### p7_workers_pane_parity_test.py (596 LOC)
 
-**Purpose:** Regression guard for the workers pane reaching search-bar parity — the first pane
-needing a genuine reconstruction step, since `worker_turns` only holds data for currently-expanded
-workers. Covers the same mechanics suite as `p3_`-`p6_`, plus a three-tier match key (worker / turn /
-call) with per-worker scoping (a match in one worker must not leak highlighting into another
-worker's independently-expanded output), the 2-row header + freeze-badge shift, the same
-`LIGHT_RED_BG` collateral fix, and jump-to-match self-healing when `worker_turns` has gone stale or
-the matched worker has vanished from the current list.
-**Reads:** nothing external — seeds `src.workers.worker_pane` module state directly; some tests write
-throwaway JSONL fixture files under a temp directory with `find_worker_jsonl` monkeypatched to
-resolve to them.
+**Purpose:** Regression guard for the worker-tokens pane reaching search-bar parity. RETARGETED
+2026-09 (panesplit milestone) — originally the all-workers list pane's own three-tier-match parity
+suite; that pane (worker_pane.py) is gone, replaced by `workers/worker_tokens_pane.py`, a
+single-selected-worker cache tracker. Covers the same mechanics suite as `p6_` (two-tier match
+key, `(turn_idx, call_idx)` / `('turn', turn_idx)` — no more per-worker wrapping, since only one
+worker is ever visible at a time), PLUS the 2-row header + worker-switch mechanics of `p5_`
+(search bar row 1, worker-switch header row 2+, built by the shared
+`workers/worker_switch_header.py`), PLUS a NEW worker-switch reset (search state and scroll offset
+both reset on switch — a deliberate behavior change from the deleted list pane, which had no
+single current worker to switch away from).
+**Reads:** nothing external — seeds `src.workers.worker_tokens_pane` module state directly; some
+tests write a throwaway JSONL fixture file under a temp directory with `find_worker_jsonl`
+monkeypatched to resolve to it.
 **Writes:** `md/p7_workers_pane_parity_test_<timestamp>.md`; exits 1 if any check fails.
-**Called by:** none — manual regression guard, re-run after changing `worker_pane.py`'s search/mouse
-handlers or jump-to-match, `worker_format.py`'s `format_workers_block`/scoping helpers,
-`panes/token_search.py`, or `src/search_bar.py`.
-**Calls out:** `src.workers.worker_pane`, `src.workers.worker_format`, `src.search_bar`,
-`src.constants` — loaded via `importlib.import_module`.
+**Called by:** none — manual regression guard, re-run after changing `worker_tokens_pane.py`'s
+search/mouse/header handlers, `worker_switch_header.py`, `panes/token_search.py`, or
+`src/search_bar.py`.
+**Calls out:** `src.workers.worker_tokens_pane`, `src.search_bar`, `src.colors` — loaded via
+`importlib.import_module`.
 
 ---
 

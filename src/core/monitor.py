@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .modes import MODE_ALL, MODE_WARNINGS, MODE_TOKENS, MODE_WORKERS, MODE_PROXY, MODE_WORKER_PROXY
+from .modes import MODE_ALL, MODE_WARNINGS, MODE_TOKENS, MODE_WORKER_TOKENS, MODE_PROXY, MODE_WORKER_PROXY
 
 from ..session_finder import find_active_sessions
 from ..jsonl import parse_jsonl_lines, read_new_lines
@@ -20,9 +20,9 @@ def run_monitor(project_filter: Optional[str] = None, mode: str = MODE_ALL) -> N
 
     initialize_file_positions()
 
-    if mode == MODE_WORKERS:
-        from ..workers import run_workers_loop
-        run_workers_loop()
+    if mode == MODE_WORKER_TOKENS:
+        from ..workers import run_worker_tokens_loop
+        run_worker_tokens_loop()
     elif mode == MODE_TOKENS:
         from ..panes import run_tokens_loop
         run_tokens_loop()

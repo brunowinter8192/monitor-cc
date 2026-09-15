@@ -13,7 +13,6 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from src.proxy_display.format import format_proxy_block
-from src.workers.worker_format import format_workers_block
 from src.format.token_format import format_cache_tracker
 
 PANE_HEIGHT = 30
@@ -159,62 +158,12 @@ def test_proxy_hover_matches_row() -> None:
         assert_true(HOVER_BG not in next_line or True, "proxy_hover: adjacent row not hovered (soft check)")
 
 
-def test_workers_viewport_clipping() -> None:
-    print("\n[workers] Viewport clipping — phys_row stays within pane_height")
-    workers = [
-        {'name': f'worker-{i}', 'status': 'idle', 'spawned': '10:00', 'model': 'sonnet', 'tokens': {'output': 1000}, 'purpose': f'Task {i}', 'session': ''}
-        for i in range(8)
-    ]
-    expand_states = {w['name']: False for w in workers}
-    all_lines, line_keys = format_workers_block(workers, expand_states, {}, {}, {})
-
-    # Simulate viewport clipping (as worker_pane.py does)
-    pane_height = 20
-    total = len(all_lines)
-    vp_start = max(0, total - pane_height)
-    visible_keys = line_keys[vp_start:]
-
-    line_map: dict = {}
-    phys_row = 1
-    for key in visible_keys:
-        if isinstance(key, str):
-            line_map[phys_row] = key
-        phys_row += 1
-
-    assert_true(total > pane_height, f"workers_clip: content({total}) > pane({pane_height}) — clipping needed")
-    assert_true(all(r <= pane_height for r in line_map.keys()), "workers_clip: all rows within pane_height")
-    assert_true(len(line_map) > 0, "workers_clip: line_map has entries")
-
-
-def test_no_expanded_worker_overflow() -> None:
-    print("\n[workers] No phys_row overflow when worker expanded with many cache lines")
-    from src.format.token_format import format_cache_tracker
-    workers = [{'name': 'w1', 'status': 'working', 'spawned': '10:00', 'model': 'sonnet', 'tokens': {'output': 5000}, 'purpose': 'Long task', 'session': ''}]
-    # Simulate 20 turns in the cache tracker
-    turns = [
-        {'timestamp': f'2026-04-21T10:{i:02d}:00Z', 'prompt': f'Turn {i}',
-         'api_calls': [{'cache_read': 10000, 'cache_creation': 5000, 'direct': 0, 'output_tokens': 200}]}
-        for i in range(20)
-    ]
-    expand_states = {'w1': True}
-    worker_turns = {'w1': turns}
-    all_lines, line_keys = format_workers_block(workers, expand_states, worker_turns, {'w1': 0}, {'w1': {}})
-
-    pane_height = 25
-    total = len(all_lines)
-    vp_start = max(0, total - pane_height)
-    visible_keys = line_keys[vp_start:]
-
-    line_map: dict = {}
-    phys_row = 1
-    for key in visible_keys:
-        if key is not None:
-            line_map[phys_row] = key
-        phys_row += 1
-
-    assert_true(phys_row - 1 <= pane_height, f"workers_expanded: rendered rows({phys_row-1}) <= pane_height({pane_height})")
-    assert_true(len(visible_keys) <= pane_height, f"workers_expanded: visible slice <= pane_height")
-
+# (2026-09, panesplit) test_workers_viewport_clipping / test_no_expanded_worker_overflow removed.
+# Both exercised format_workers_block's outer viewport math over several SIMULTANEOUSLY stacked
+# worker blocks -- a concern that no longer exists once the all-workers list is gone. The single
+# remaining worker view's own viewport clipping is format_cache_tracker's, exercised the same way
+# for every caller (token_pane.py, worker_tokens_pane.py); there is no separate outer-list
+# composition step left to test here.
 
 # Task 1 — header-wrap tests
 
@@ -292,53 +241,13 @@ def test_proxy_shift_uses_header_lines() -> None:
     assert_true(min_old >= 2, f"proxy_shift: old shift gives min={min_old} (for reference)")
 
 
-# Task 2 — pane-level scroll tests
-
-def test_workers_pane_scroll_offset() -> None:
-    print("\n[workers] Pane-level scroll: vp_start shifts toward older content")
-    workers = [
-        {'name': f'worker-{i}', 'status': 'idle', 'spawned': '10:00', 'model': 'sonnet', 'tokens': {'output': 1000}, 'purpose': f'Task {i}', 'session': ''}
-        for i in range(12)
-    ]
-    expand_states = {w['name']: False for w in workers}
-    all_lines, line_keys = format_workers_block(workers, expand_states, {}, {}, {})
-
-    pane_height = 20
-    total = len(all_lines)
-    assert_true(total > pane_height, f"workers_scroll: content({total}) > pane({pane_height})")
-
-    # offset=0: bottom-anchored (shows newest)
-    scroll_offset = 0
-    max_offset = max(0, total - pane_height)
-    vp_start_0 = max(0, total - pane_height - scroll_offset)
-
-    # offset=3: shifted toward older
-    scroll_offset = 3
-    clamped = min(scroll_offset, max_offset)
-    vp_start_3 = max(0, total - pane_height - clamped)
-
-    assert_true(vp_start_0 > vp_start_3, f"workers_scroll: offset=0 vp_start({vp_start_0}) > offset=3 vp_start({vp_start_3})")
-    assert_true(vp_start_3 == vp_start_0 - 3, f"workers_scroll: offset=3 shifts vp_start by 3, got {vp_start_0 - vp_start_3}")
-
-    # offset > max_offset clamps correctly
-    scroll_offset = max_offset + 100
-    clamped_big = min(scroll_offset, max_offset)
-    vp_start_big = max(0, total - pane_height - clamped_big)
-    assert_true(vp_start_big == 0, f"workers_scroll: over-offset clamps to vp_start=0, got {vp_start_big}")
-    visible_big = all_lines[vp_start_big:]
-    assert_true(len(visible_big) >= pane_height, f"workers_scroll: clamped still shows full pane, got {len(visible_big)}")
-
-
-def test_workers_scroll_reset_on_expand() -> None:
-    print("\n[workers] Scroll: reset scroll_offsets[name]=0 on worker expand")
-    from src.workers.worker_pane import worker_scroll_offsets
-    # Expanding a worker resets its intra-worker offset (line 90 in worker_pane.py)
-    simulated_scroll_offsets: dict = {'worker-A': 6, 'worker-B': 0}
-    # Simulate expand: worker_scroll_offsets[name] = 0
-    simulated_scroll_offsets['worker-A'] = 0
-    assert_true(simulated_scroll_offsets['worker-A'] == 0, "workers_scroll_reset: expand resets intra-worker offset to 0")
-    assert_true(simulated_scroll_offsets['worker-B'] == 0, "workers_scroll_reset: worker-B unaffected")
-
+# (2026-09, panesplit) test_workers_pane_scroll_offset removed -- it exercised the outer
+# multi-worker list's own bottom-anchored viewport math (format_workers_block), gone with the
+# list. test_workers_scroll_reset_on_expand removed too -- it never called real worker_pane code
+# to begin with (a hand-set `simulated_scroll_offsets` dict, not `worker_scroll_offsets` itself),
+# so it had nothing genuine to retarget. The real successor concept -- scroll state resetting on
+# a worker switch -- is asserted against real worker_tokens_pane.py code in
+# dev/pane_search/p7_workers_pane_parity_test.py's worker-switch-reset test.
 
 def test_stripped_msg_pair_alignment() -> None:
     print("\n[render_messages] Stripped-msg lines/keys exact pairing (no line_map drift)")
@@ -420,12 +329,8 @@ def run_tests() -> None:
     test_proxy_one_req_expanded()
     test_proxy_turns_always_expanded()
     test_proxy_hover_matches_row()
-    test_workers_viewport_clipping()
-    test_no_expanded_worker_overflow()
     test_proxy_hover_wrap_header()
     test_proxy_shift_uses_header_lines()
-    test_workers_pane_scroll_offset()
-    test_workers_scroll_reset_on_expand()
     test_stripped_msg_pair_alignment()
     print(f"\n{'=' * 60}")
     print(f"Results: {PASS} passed, {FAIL} failed")

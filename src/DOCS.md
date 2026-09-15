@@ -23,7 +23,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 1. `workflow.py` parses `--mode` and dispatches: `all`/`restart-panes` → `tmux_launcher`; `menubar`/`gpu`/`news`/`news-log` → their own pane package; every other mode → `core.monitor.run_monitor`.
 2. `tmux_launcher.launch_split_screen` spawns 8 panes, each its own `workflow.py --mode <X>` subprocess.
-3. `core.monitor.run_monitor` discovers session files via `session_finder` and dispatches `tokens`/`warnings`/`workers`/`proxy`/`worker-proxy` to the matching pane package.
+3. `core.monitor.run_monitor` discovers session files via `session_finder` and dispatches `tokens`/`warnings`/`worker-tokens`/`proxy`/`worker-proxy` to the matching pane package.
 4. `claude_proxy_start.sh` launches mitmproxy (`-s proxy_addon.py`) + Claude Code; mitmproxy logs intercepted API traffic that the tokens/warnings/proxy panes tail independently.
 
 ## Modules
@@ -43,7 +43,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 **Purpose:** process-wide timing/size-limit constants and `TOOL_BLOCKLIST`.
 **Reads:** nothing.
 **Writes:** nothing.
-**Called by:** `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy/payload_helpers.py`, `proxy/tools.py`, several `proxy_display/` modules, `tmux_launcher.py`, `utils.py`, `workers/worker_pane.py`.
+**Called by:** `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy/payload_helpers.py`, `proxy/tools.py`, several `proxy_display/` modules, `tmux_launcher.py`, `utils.py`, `workers/worker_tokens_pane.py`.
 **Calls out:** none.
 
 ---
@@ -63,7 +63,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 **Purpose:** `log_pane_error(pane_name)` — exception-safe sink every pane's `except Exception:` guard calls; caps the log file at a fixed size.
 **Reads:** existing log file size (to decide truncation).
 **Writes:** `/tmp/monitor_cc_error.log` (appends traceback; truncates to a fixed tail once past the max size).
-**Called by:** `gpu_pane/pane.py`, `news_pane/log_pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `workers/worker_pane.py`.
+**Called by:** `gpu_pane/pane.py`, `news_pane/log_pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `workers/worker_tokens_pane.py`.
 **Calls out:** none.
 
 ---
@@ -83,7 +83,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 **Purpose:** shared search-bar mechanics — `SearchState`, `render_search_bar`, `handle_search_input`/`_cancel`, drag-select mouse handlers, and the `_BG_RESTORE_SENTINEL`/`resolve_bg_restore` pair every pane's zebra/hover row loop uses to embed then resolve search highlights.
 **Reads:** nothing (all state passed as arguments).
 **Writes:** mutates the passed-in `SearchState` instance.
-**Called by:** `format/token_format.py`, `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy_display/format.py`, `proxy_display/pane.py`, `proxy_display/proxy_pane_shared.py`, `proxy_display/render_turn.py`, `proxy_display/worker_proxy_pane.py`, `workers/worker_format.py`, `workers/worker_pane.py`, `workers/worker_render.py`.
+**Called by:** `format/token_format.py`, `gpu_pane/pane.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy_display/format.py`, `proxy_display/pane.py`, `proxy_display/proxy_pane_shared.py`, `proxy_display/render_turn.py`, `proxy_display/worker_proxy_pane.py`, `workers/worker_tokens_pane.py`.
 **Calls out:** none.
 
 ---
@@ -123,7 +123,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 **Purpose:** shared formatting/rendering primitives with no I/O — timestamp formatting, cell-width-aware truncation/wrapping, ANSI-safe substring highlighting, copy-symbol placement, header-rule sizing.
 **Reads:** nothing (pure functions on passed-in strings/values).
 **Writes:** nothing.
-**Called by:** `format/token_format.py`, `gpu_pane/gpu_render.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/token_search.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy_display/format.py`, `proxy_display/proxy_pane_shared.py`, `proxy_display/render_messages.py`, `proxy_display/render_turn.py`, `proxy_display/search.py`, `proxy_display/worker_proxy_pane.py`, `search_bar.py`, `workers/worker_format.py`, `workers/worker_render.py`.
+**Called by:** `format/token_format.py`, `gpu_pane/gpu_render.py`, `news_pane/pane.py`, `panes/token_pane.py`, `panes/token_search.py`, `panes/warnings_pane.py`, `panes/warnings_render.py`, `proxy_display/format.py`, `proxy_display/render_messages.py`, `proxy_display/render_turn.py`, `proxy_display/search.py`, `proxy_display/worker_proxy_pane.py`, `search_bar.py`, `workers/worker_switch_header.py`, `workers/worker_tokens_pane.py`.
 **Calls out:** none.
 
 ---

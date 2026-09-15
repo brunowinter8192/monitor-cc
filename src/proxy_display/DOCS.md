@@ -56,23 +56,23 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### worker_proxy_pane.py (338 LOC)
+### worker_proxy_pane.py (341 LOC)
 
-**Purpose:** Event loop for the worker-proxy pane — watches the active worker list, reads the selected worker's `_forwarded` dual-log, handles digit-key and header-click worker switching, mouse/keyboard input, renders with a 2-row header (search bar + worker-switcher). Force-reload-or-tick refresh gate.
-**Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file (`workers.worker_pane.get_selection_file_path`); stdin.
-**Writes:** ANSI output to stdout (overdraw pattern: body print + header overdraw); clipboard via `copy_to_clipboard`; worker selection IPC file via `workers.write_selection`; `/tmp/monitor_cc_error.log` on caught exception; mutates its own module-level state.
+**Purpose:** Event loop for the worker-proxy pane — watches the active worker list, reads the selected worker's `_forwarded` dual-log, handles digit-key and header-click worker switching, mouse/keyboard input, renders with a 2-row header (search bar + worker-switcher). Force-reload-or-tick refresh gate. The worker-switcher header itself is built by the shared `workers.worker_switch_header.format_worker_switch_header` (imported under the alias `_format_worker_proxy_header`, its pre-move name) — `_worker_proxy_workers` is enriched with token/context-% liveness via `worker_tmux.attach_worker_stats(_worker_proxy_workers, _worker_proxy_stats_cache)` before that header renders (incremental, own cache — see `workers/DOCS.md`'s `attach_worker_stats` gotcha for why this must stay incremental).
+**Reads:** Module-level state; live worker list from `workers.worker_tmux`; worker selection IPC file (`workers.worker_selection.get_selection_file_path`); stdin.
+**Writes:** ANSI output to stdout (overdraw pattern: body print + header overdraw); clipboard via `copy_to_clipboard`; worker selection IPC file via `workers.write_selection`; `/tmp/monitor_cc_error.log` on caught exception; mutates its own module-level state (including `_worker_proxy_stats_cache`, the per-session incremental read state `attach_worker_stats` owns — never reset on worker switch, same as `worker_tokens_pane.py`'s own copy).
 **Called by:** `src/proxy_display/__init__.py`, `src/core/monitor.py` (lazy import, mode dispatch)
-**Calls out:** `input.click_handler`, `workers.worker_tmux` (`find_worker_jsonl`, `list_workers`), `workers.worker_pane` (`get_selection_file_path`), `workers` (`write_selection`), `panes.cache_turns` (`build_cache_turns`), `utils` (`visual_line_count`), `ram_audit` (`register_ram_dump`), `pane_error_log` (`log_pane_error`), `search_bar`
+**Calls out:** `input.click_handler`, `workers.worker_tmux` (`find_worker_jsonl`, `list_workers`, `attach_worker_stats`), `workers.worker_selection` (`get_selection_file_path`), `workers` (`write_selection`), `workers.worker_switch_header` (`format_worker_switch_header`), `panes.cache_turns` (`build_cache_turns`), `utils` (`visual_line_count`), `ram_audit` (`register_ram_dump`), `pane_error_log` (`log_pane_error`), `search_bar`
 
 ---
 
-### proxy_pane_shared.py (287 LOC)
+### proxy_pane_shared.py (254 LOC)
 
-**Purpose:** Mechanics shared by both proxy panes (`pane.py`, `worker_proxy_pane.py`), each function parameterized by explicit arguments — never reads either pane's own module-level globals. Covers the worker-switcher header builder, key/entry-idx resolution, copy-text serialization, expand+lazy-load toggling, dual-log accumulate-and-attach, search-on-commit, scroll/hover dispatch, and render+scroll+row-shift.
+**Purpose:** Mechanics shared by both proxy panes (`pane.py`, `worker_proxy_pane.py`), each function parameterized by explicit arguments — never reads either pane's own module-level globals. Covers key/entry-idx resolution, copy-text serialization, expand+lazy-load toggling, dual-log accumulate-and-attach, search-on-commit, scroll/hover dispatch, and render+scroll+row-shift. (2026-09) The worker-switcher header builder moved to `workers.worker_switch_header` — that pane's own header is now shared with `workers/worker_tokens_pane.py` too, and `proxy_display` already depends on `workers` one-directionally for worker discovery/selection, so the header followed that same direction rather than `workers` depending back on `proxy_display`.
 **Reads:** Parameters only.
 **Writes:** Nothing — returns values; several functions mutate an argument in place (`entries`, `line_map`, `copy_rows`, accumulator dicts) as documented per function, never a name outside the parameter list. `_prepare_copy_text` dispatches on key shape — a `('think', entry_idx, msg_idx, bidx)` key OR a `('block', entry_idx, msg_idx, bidx)` key both route to the same `_serialize_proxy_block` (one block's own `full_text`, with `preview` fallback; for a thinking block this is never its signature — the signature is never stored anywhere in this data, only its char count — the two key shapes share one serializer because nothing in its body was ever thinking-specific, only the guard was), a `('msg', entry_idx, msg_idx)` key routes to `_serialize_proxy_message`, everything else to `_serialize_proxy_entry` (unchanged); `_copy_feedback_key` returns the same `key` for a msg, think, or block row (so its flash never leaks onto the REQ header or a sibling row) and `entry_idx` for everything else, unchanged.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py` exclusively
-**Calls out:** `colors` (`RESET`, `YELLOW`, `DIM`, `WHITE`), `search_bar` (`SearchState`, `handle_search_mouse_motion`), `utils` (`_ANSI_ESCAPE_RE`)
+**Calls out:** `search_bar` (`SearchState`, `handle_search_mouse_motion`)
 
 ---
 

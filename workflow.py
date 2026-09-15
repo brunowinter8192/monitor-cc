@@ -31,7 +31,7 @@ def main() -> None:
         run_news_log_loop()
     else:
         setup_signal_handlers()
-        if args.mode not in ('warnings', 'tokens', 'workers'):
+        if args.mode not in ('warnings', 'tokens', 'worker-tokens'):
             print_startup_message(args.project, args.mode)
         run_monitor(args.project, args.mode)
 

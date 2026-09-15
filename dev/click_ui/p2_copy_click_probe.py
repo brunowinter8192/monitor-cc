@@ -15,15 +15,22 @@ Proves, per pane, that after ONE real render pass:
 see `process-docs/main_pane/`) — `test_main_pane_copy_click` and its `mod_main_display`/
 `mod_monitor` imports were dropped accordingly.
 
+**(2026-09, panesplit) The all-workers list pane (worker_pane.py) is gone**, replaced by
+`worker_tokens_pane.py` -- a single-selected-worker cache tracker with the exact same
+`(turn_idx, call_idx)`-keyed copy-row shape `token_pane.py` already has (no more worker-header-row
+copy case, since there is no worker header ROW anymore in this pane -- worker identity now lives
+in the switch header's marker regions, covered by `p1_worker_selection_click_probe.py`, not here).
+`test_workers_pane_copy_click` is retargeted at `worker_tokens_pane.py` accordingly, same shape as
+`test_tokens_pane_copy_click`.
+
 Covers:
   - src/panes/token_pane.py :: _build_tokens_output (cache_copy_rows), _handle_tokens_mouse,
     _handle_tokens_key
   - src/panes/warnings_pane.py :: _build_warnings_output (error_copy_rows), _handle_warnings_mouse,
     _handle_warnings_key -- plus a regression guard for the pre-existing _serialize_warnings
     int-vs-tuple key bug fixed as part of this milestone
-  - src/workers/worker_pane.py :: _build_workers_output (worker_copy_rows, both worker-header AND
-    expanded-cache-call rows), _handle_workers_mouse, _handle_workers_key -- plus a check that the
-    milestone-1 row-click-select wiring is undisturbed by the new copy-region priority check
+  - src/workers/worker_tokens_pane.py :: _build_worker_tokens_output (worker_tokens_copy_rows),
+    _handle_worker_tokens_mouse, _handle_worker_tokens_key
 
 No live tmux/terminal needed -- module globals are seeded directly with synthetic data;
 copy_to_clipboard is monkeypatched per module to a capturing stub (no real pbcopy calls, no OS
@@ -39,6 +46,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
@@ -49,7 +57,7 @@ mod_tokens = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
 mod_token_format = importlib.import_module(f'{_ROOT_PKG}.format.token_format')
 mod_warnings = importlib.import_module(f'{_ROOT_PKG}.panes.warnings_pane')
 mod_warnings_render = importlib.import_module(f'{_ROOT_PKG}.panes.warnings_render')
-mod_workers = importlib.import_module(f'{_ROOT_PKG}.workers.worker_pane')
+mod_workers = importlib.import_module(f'{_ROOT_PKG}.workers.worker_tokens_pane')
 mod_utils = importlib.import_module(f'{_ROOT_PKG}.utils')
 
 _PASS = "\033[32mPASS\033[0m"
@@ -163,76 +171,56 @@ def test_warnings_pane_copy_click():
           '⎘' not in narrow_out and '✓' not in narrow_out)
 
 
-# Workers pane: copy regions on BOTH worker-header and expanded-cache-call rows; click vs 'y'
-# parity; copy-priority does not disturb milestone-1's row-click-select wiring
-def test_workers_pane_copy_click():
+# worker_tokens pane: one copy region per API-call row (same (turn_idx, call_idx)-keyed shape as
+# token_pane.py, since this pane shows exactly one worker's own cache tracker); click vs 'y'
+# parity; width guard end-to-end
+def test_worker_tokens_copy_click():
     captured = _patch_clipboard(mod_workers)
-    project_filter = '/tmp/click_ui_probe_p2_workers'
-    mod_workers.worker_expand_states.clear()
-    mod_workers.worker_scroll_offsets.clear()
-    mod_workers.worker_cache_expand_states.clear()
-    mod_workers.worker_turns.clear()
-    mod_workers.worker_selected_name = None
-    mod_workers.worker_scroll_offset = 0
-    mod_workers._worker_copy_feedback_until.clear()
+    project_filter = '/tmp/click_ui_probe_p2_worker_tokens'
+    monitor = SimpleNamespace(active_project_filter=project_filter)
+    mod_workers.worker_tokens_expand_states.clear()
+    mod_workers.worker_tokens_line_map.clear()
+    mod_workers.worker_tokens_hover_row = None
+    mod_workers.worker_tokens_scroll_offset = 0
+    mod_workers.worker_tokens_copy_rows.clear()
+    mod_workers._worker_tokens_copy_feedback_until.clear()
+    mod_workers._worker_tokens_workers = [{'name': 'w1', 'status': 'working', 'context_pct': 50}]
+    mod_workers._worker_tokens_turns = [{
+        'prompt': 'do the thing', 'timestamp': '2026-01-01T00:00:00Z',
+        'api_calls': [
+            {'cache_read': 1000, 'cache_creation': 0, 'direct': 0, 'output_tokens': 50, 'content_blocks': []},
+            {'cache_read': 2000, 'cache_creation': 500, 'direct': 0, 'output_tokens': 80, 'content_blocks': []},
+        ],
+    }]
     if os.path.exists(mod_workers.get_selection_file_path(project_filter)):
         os.remove(mod_workers.get_selection_file_path(project_filter))
+    mod_workers.write_selection(project_filter, 'w1')
 
-    workers = [{'name': 'w1', 'status': 'working', 'purpose': 'run the build', 'session': ''}]
-    mod_workers.worker_expand_states['w1'] = True
-    mod_workers.worker_turns['w1'] = [{
-        'prompt': 'build it', 'timestamp': '2026-01-01T00:00:00Z',
-        'api_calls': [{'cache_read': 1000, 'cache_creation': 0, 'direct': 0, 'output_tokens': 50, 'content_blocks': []}],
-    }]
+    mod_workers._build_worker_tokens_output(monitor)
+    check("worker-tokens: one copy region per API call (2 calls)", len(mod_workers.worker_tokens_copy_rows) == 2)
 
-    mod_workers._build_workers_output(workers, frozen=False)
-    header_copy_rows = {r for r in mod_workers.worker_copy_rows if r in mod_workers.worker_line_map}
-    cache_copy_rows = {r for r in mod_workers.worker_copy_rows if r in mod_workers.worker_cache_line_map}
-    check("workers: header-row copy region present", len(header_copy_rows) == 1)
-    check("workers: expanded-cache-call copy region present", len(cache_copy_rows) == 1)
-
-    for row in sorted(mod_workers.worker_copy_rows):
-        key = mod_workers.worker_line_map.get(row) or mod_workers.worker_cache_line_map.get(row)
-        mod_workers.worker_hover_row = row
+    for row in sorted(mod_workers.worker_tokens_copy_rows):
+        key = mod_workers.worker_tokens_line_map[row]
+        mod_workers.worker_tokens_hover_row = row
         captured.clear()
-        mod_workers._handle_workers_key('y', workers, False, project_filter)
+        mod_workers._handle_worker_tokens_key('y', monitor)
         y_text = captured[-1] if captured else None
 
         captured.clear()
-        click_col = mod_workers._worker_pane_width - 1
-        pre_click_selected = mod_workers.worker_selected_name
-        changed, _ = mod_workers._handle_workers_mouse(0, click_col, row, project_filter, False)
-        check(f"workers: click on row {row} (key={key}) triggers copy", changed and len(captured) == 1)
+        click_col = mod_workers._worker_tokens_pane_width - 1
+        changed = mod_workers._handle_worker_tokens_mouse(0, click_col, row, monitor)
+        check(f"worker-tokens: click on row {row} (key={key}) triggers copy", changed and len(captured) == 1)
         if captured:
-            check(f"workers: click/y parity row {row} (key={key})",
+            check(f"worker-tokens: click/y parity row {row} (key={key})",
                   captured[-1] == y_text and y_text)
-        check(f"workers: copy click on row {row} did not change milestone-1 selection (no collision)",
-              mod_workers.worker_selected_name == pre_click_selected)
-
-    # Milestone-1 regression: a normal (non-edge) click on the header row still selects+expands
-    mod_workers.worker_expand_states['w1'] = False
-    mod_workers.worker_selected_name = None
-    mod_workers._build_workers_output(workers, frozen=False)
-    header_row = next(r for r, k in mod_workers.worker_line_map.items() if k == 'w1')
-    changed, _ = mod_workers._handle_workers_mouse(0, 5, header_row, project_filter, False)
-    check("workers: normal (non-edge) row click still selects+expands (milestone-1 undisturbed)",
-          changed and mod_workers.worker_selected_name == 'w1' and mod_workers.worker_expand_states.get('w1') is True)
 
     if os.path.exists(mod_workers.get_selection_file_path(project_filter)):
         os.remove(mod_workers.get_selection_file_path(project_filter))
 
-    mod_worker_format = importlib.import_module(f'{_ROOT_PKG}.workers.worker_format')
-    orig_terminal_size = os.get_terminal_size
-    os.get_terminal_size = lambda: os.terminal_size((10, 30))
-    try:
-        narrow_lines, _ = mod_worker_format.format_workers_block(
-            workers, mod_workers.worker_expand_states, mod_workers.worker_turns,
-            mod_workers.worker_scroll_offsets, mod_workers.worker_cache_expand_states,
-            frozen=False, selected_name=None, copy_feedback={'w1': 0},
-        )
-    finally:
-        mod_worker_format.os.get_terminal_size = orig_terminal_size
-    check("workers: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
+    narrow_lines, narrow_keys, _, _, _ = mod_token_format.format_cache_tracker(
+        mod_workers._worker_tokens_turns, {}, 50, 10, 0, copy_feedback={},
+    )
+    check("worker-tokens: width guard -- no ⎘/✓ symbol rendered when pane_width=10 (too narrow)",
           not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))
 
 
@@ -245,7 +233,7 @@ def run_probe_workflow():
     test_append_copy_symbol_width_guard()
     test_tokens_pane_copy_click()
     test_warnings_pane_copy_click()
-    test_workers_pane_copy_click()
+    test_worker_tokens_copy_click()
 
     total = len(_RESULTS)
     passed = sum(1 for _, ok in _RESULTS if ok)

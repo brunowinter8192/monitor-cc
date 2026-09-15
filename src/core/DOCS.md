@@ -32,7 +32,7 @@ on startup and every poll tick — session-file add/remove tracking only.
 
 ### modes.py (8 LOC)
 
-**Purpose:** `MODE_*` constants (`MODE_ALL`/`MODE_WARNINGS`/`MODE_TOKENS`/`MODE_WORKERS`/`MODE_PROXY`/`MODE_WORKER_PROXY`).
+**Purpose:** `MODE_*` constants (`MODE_ALL`/`MODE_WARNINGS`/`MODE_TOKENS`/`MODE_WORKER_TOKENS`/`MODE_PROXY`/`MODE_WORKER_PROXY`).
 **Reads:** nothing.
 **Writes:** nothing.
 **Called by:** `monitor.py` only.
@@ -45,7 +45,7 @@ on startup and every poll tick — session-file add/remove tracking only.
 **Purpose:** Session discovery + mode dispatcher. `run_monitor` sets `active_project_filter`/`active_mode`, calls `initialize_file_positions()`, then dispatches by `mode` to the matching pane package's loop function (lazy import per mode) — raises `ValueError` for any other mode. `get_main_session_files`/`_get_newest_main_session`/`_get_session_start_ts` resolve the current project's newest non-agent session JSONL. `monitor_sessions()`/`update_session_tracking()` maintain `file_positions` (new/removed session files only).
 **Reads:** `~/.claude/projects/**/*.jsonl` via `session_finder`.
 **Writes:** mutates `file_positions`, `active_project_filter`, `active_mode` (module-level state).
-**Called by:** `workflow.py` (top-level entry); `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `workers/worker_pane.py` (all via `from ..core import monitor as _monitor`).
+**Called by:** `workflow.py` (top-level entry); `proxy_display/pane.py`, `proxy_display/worker_proxy_pane.py`, `panes/token_pane.py`, `panes/warnings_pane.py`, `workers/worker_tokens_pane.py` (all via `from ..core import monitor as _monitor`).
 **Calls out:** none.
 
 ---

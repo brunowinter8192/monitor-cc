@@ -58,17 +58,22 @@ against a captured baseline.
 
 ---
 
-### test_hover_map.py (437 LOC)
+### test_hover_map.py (342 LOC)
 
 **Purpose:** Synthetic + real-log assertion suite for expand-model `line_map` correctness — every
 visible row maps to exactly one `phys_row`, monotonic, no duplicates — plus a `render_messages`
 `len(lines) == len(keys)` pairing check for the stripped-span dual-color overlay path against
-real forwarded/stripped dual-log pairs.
+real forwarded/stripped dual-log pairs. (2026-09) The four worker-list tests
+(`test_workers_viewport_clipping`, `test_no_expanded_worker_overflow`,
+`test_workers_pane_scroll_offset`, `test_workers_scroll_reset_on_expand`) were removed — they
+exercised `format_workers_block`'s outer multi-worker viewport composition, which no longer
+exists now that the all-workers list pane is gone (see `src/workers/DOCS.md`); the surviving
+proxy-side tests are unaffected.
 **Reads:** `src/logs/dual_log/*_forwarded.jsonl` + sibling `*_stripped.jsonl` (newest-first glob).
 **Writes:** stdout PASS/FAIL lines + `Results: N passed, M failed` summary; exits 1 on failure.
 **Called by:** none — run manually.
-**Calls out:** `src.proxy_display.format` (`format_proxy_block`), `src.workers.worker_format`
-(`format_workers_block`), `src.format.token_format` (`format_cache_tracker`).
+**Calls out:** `src.proxy_display.format` (`format_proxy_block`), `src.format.token_format`
+(`format_cache_tracker`).
 
 ---
 

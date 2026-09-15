@@ -11,8 +11,8 @@ from .constants import TMUX_HISTORY_LIMIT
 _WINDOW_LAYOUT = [
     (0, 'tokens',  [('tokens',       None,      None)]),
     (1, 'proxy',   [('proxy',        None,      None)]),
-    (2, 'workers', [('workers',      None,      None),
-                    ('worker-proxy', 'workers', '66%')]),
+    (2, 'workers', [('worker-tokens', None,           None),
+                    ('worker-proxy',  'worker-tokens', '66%')]),
     (3, 'debug',   [('warnings',     None,      None)]),
     (4, 'gpu',     [('gpu',          None,      None)]),
     (5, 'news',    [('news',         None,      None),
@@ -57,7 +57,7 @@ def _create_windows(session_name: str, cmds: dict) -> None:
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:1", "-n", "proxy", cmds['proxy']])
 
-    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:2", "-n", "workers", cmds['workers']])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:2", "-n", "workers", cmds['worker-tokens']])
     subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:2.0", "-l", "66%", cmds['worker-proxy']])
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:3", "-n", "debug", cmds['warnings']])
@@ -118,7 +118,7 @@ def configure_tmux_session(session_name: str, script_path: str = '', project_arg
     pane_titles = {
         '0.0': 'TOKENS',
         '1.0': 'PROXY',
-        '2.0': 'WORKERS', '2.1': 'WORKER-PROXY',
+        '2.0': 'WORKER-TOKENS', '2.1': 'WORKER-PROXY',
         '3.0': 'WARNINGS',
         '4.0': 'GPU',
         '5.0': 'NEWS', '5.1': 'NEWS-LOG',
@@ -133,7 +133,7 @@ def configure_tmux_session(session_name: str, script_path: str = '', project_arg
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-border-format", "#[fg=colour216] ━━━ #{pane_title} ━━━"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-t", "run-shell", f"tmux capture-pane -t {session_name}:0.0 -pS - | pbcopy && tmux display 'Tokens pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-p", "run-shell", f"tmux capture-pane -t {session_name}:1.0 -pS - | pbcopy && tmux display 'Proxy pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-k", "run-shell", f"tmux capture-pane -t {session_name}:2.0 -pS - | pbcopy && tmux display 'Workers pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-k", "run-shell", f"tmux capture-pane -t {session_name}:2.0 -pS - | pbcopy && tmux display 'Worker-tokens pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-w", "run-shell", f"tmux capture-pane -t {session_name}:3.0 -pS - | pbcopy && tmux display 'Warnings pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-n", "run-shell", f"tmux capture-pane -t {session_name}:5.1 -pS - | pbcopy && tmux display 'News-log pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "C-f", "copy-mode", "\\;", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
@@ -151,7 +151,7 @@ def _build_mode_commands(script_path: str, project_path: Optional[str]) -> dict:
     project_arg = f"--project {project_path}" if project_path else ""
     cmds = {
         mode: f"python3 {script_path} --mode {mode} {project_arg}"
-        for mode in ('tokens', 'proxy', 'workers', 'worker-proxy', 'warnings', 'gpu', 'news', 'news-log')
+        for mode in ('tokens', 'proxy', 'worker-tokens', 'worker-proxy', 'warnings', 'gpu', 'news', 'news-log')
     }
     return cmds
 
