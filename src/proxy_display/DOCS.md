@@ -76,9 +76,9 @@ populate `messages` for entries the deque window dropped.
 
 ---
 
-### format.py (183 LOC)
+### format.py (182 LOC)
 
-**Purpose:** `format_proxy_block` — groups proxy entries by turn (turns always expanded, no turn-level header row), applies scroll/viewport windowing, delegates row rendering to `render_turn`, applies the row-background priority chain, returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-context sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
+**Purpose:** `format_proxy_block` — groups proxy entries by turn (turns always expanded, no turn-level header row), applies scroll/viewport windowing, delegates row rendering to `render_turn`, applies the row-background priority chain, returns `(ansi_string, total_lines)`. Also owns `_is_standalone_entry` (haiku or zero-tool sidecar detection, used by backward walks across the package) and the REQ-numbering helpers `_fmt_effort`/`_fmt_thinking_budget`.
 **Reads:** Entries list, expand states, line map, hover row, pane dimensions, scroll offset, turns list.
 **Writes:** Nothing — returns `(ansi_string, total_lines)` tuple; mutates the `line_map`/`copy_rows_out`/`item_positions_out` arguments when given.
 **Called by:** `src/proxy_display/pane.py`, `src/proxy_display/worker_proxy_pane.py`, `src/proxy_display/render_turn.py` (`_is_standalone_entry`, `_shorten_model`, `_format_k`, `_fmt_thinking_budget`, `_fmt_effort`), `src/proxy_display/search.py` (`_is_standalone_entry`), `src/proxy_display/proxy_pane_shared.py` (`_is_standalone_entry`), `src/proxy_display/render_sections.py` (`_format_k`), `src/proxy_display/render_sections_system.py` (`_format_k`), `src/proxy_display/__init__.py`
@@ -267,3 +267,10 @@ stream from byte 0, matched by `flow_id`, to repopulate it.
 - `parser.get_proxy_session_start_ts` always returns an existing marker file's mtime, however old —
   a warnings-pane session-start filter keyed off this can reach back arbitrarily far if the marker
   itself is stale (no marker at all falls back to `time.time()`).
+- `format._is_standalone_entry` treats ANY zero-tool entry (`tools_total_chars == 0`, checked
+  regardless of model) as standalone, not just haiku — a CC-internal sidecar call (session-titling,
+  quota check, security-monitor) sharing the real conversation's model family would otherwise get a
+  numbered `#N` REQ header and shift every later REQ number by one. Same `tools == 0` criterion as
+  `src/proxy/addon_dual_log.py`'s write-side `_is_sidecar_payload` and
+  `src/dual_log_cli/timeline_boundaries._is_sidecar` — no import between any of the three, keep in
+  sync if the shape of a sidecar ever changes.

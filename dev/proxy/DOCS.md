@@ -192,6 +192,23 @@ across repos — see the Gotcha in `src/proxy/DOCS.md`).
 
 ---
 
+### test_sidecar_delta_chain.py (205 LOC)
+
+**Purpose:** Regression guard for isolating the CC-internal zero-tool sidecar call
+(session-titling, quota check, security-monitor) from `addon_dual_log.py`'s per-model-family
+`forwarded` delta-hash chain — a sidecar written between two real requests of the same family must
+not advance `DeltaState.forwarded_hashes_by_model`, so the next real request still diffs against
+the last REAL request.
+**Reads:** nothing external — synthetic in-process payloads, writes to its own temp directory.
+**Writes:** PASS/FAIL lines to stdout; its own temp dual-log files (`tempfile.TemporaryDirectory`,
+cleaned up on exit).
+**Called by:** none — manual regression guard, re-run after touching
+`addon_dual_log._write_request_dual_logs`/`_is_sidecar_payload` or `DeltaState`.
+**Calls out:** `proxy.addon_dual_log` (`_is_sidecar_payload`, `_write_request_dual_logs`),
+`proxy.addon_state` (`DeltaState`, `DualLogPaths`, `SessionIdentity`).
+
+---
+
 ## Gotchas
 - `replay_strip_v2.py` and `scan_sr_catalog.py` both hardcode a log directory under the project's OLD
   name/casing, which does not exist on the current tree. Neither script raises on the missing path —
