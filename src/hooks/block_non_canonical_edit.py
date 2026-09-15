@@ -83,7 +83,8 @@ def block_non_canonical_edit_workflow() -> None:
         sys.exit(0)
     try:
         verdict, reason = _decide(command, cwd)
-    except Exception:
+    except Exception as e:
+        print(f"[block_non_canonical_edit] internal error, failing open: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(0)
     if verdict == "block":
         print(reason, file=sys.stderr, end="")
@@ -147,9 +148,10 @@ def _blank_spans(command: str, spans: list) -> str:
 def _python_body_verdict(body: str, cwd):
     for label in _PYTHON_BODY_LABELS:
         pattern = _FORM_BY_LABEL[label]["pattern"]
-        if not pattern.search(body):
+        m = pattern.search(body)
+        if not m:
             continue
-        path = _resolve_python_open_path(body, cwd)
+        path = _resolve_python_open_path(body, m, cwd)
         if label in _ALWAYS_BLOCK_LABELS:
             return "block", _build_block_message(path or "<the file you are editing>")
         if path is None or not os.path.exists(path):
@@ -158,11 +160,12 @@ def _python_body_verdict(body: str, cwd):
     return None
 
 
-def _resolve_python_open_path(body: str, cwd):
-    m = re.search(r"open\(\s*['\"]([^'\"]+)['\"]", body)
+def _resolve_python_open_path(body: str, match, cwd):
+    call_text = match.group(0)
+    m = re.search(r"open\(\s*['\"]([^'\"]+)['\"]", call_text)
     if m:
         return _resolve_target_path(m.group(1), cwd)
-    m = re.search(r"open\(\s*([A-Za-z_]\w*)", body)
+    m = re.search(r"open\(\s*([A-Za-z_]\w*)", call_text)
     if not m:
         return None
     var = m.group(1)

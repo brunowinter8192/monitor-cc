@@ -200,3 +200,65 @@ and this entire milestone was built in a worktree. Activation is a separate, del
 from the main repo root after merge, same as every other hook addition in this directory's own
 history (`process-docs/tool_use_safety/2026-07-22_block_po_read_hook.md` is the direct precedent
 for this exact deferral).
+
+## Recap — 2026-09-15, later same session: python path resolution had the same anchoring bug the shell side already fixed, plus two smaller review items
+
+Main review caught a second instance of the exact bug class already fixed once on the shell side:
+`_resolve_python_open_path` took the FIRST literal `open()` call anywhere in a python body, not
+the one the write-mode classification pattern had actually matched. In the ordinary
+read-source/write-destination shape —
+
+```python
+data = open('a.txt').read()
+open('b.txt', 'w').write(data)
+```
+
+— the resolver returned `a.txt`. Two consequences: the block message named the wrong file, and
+the existence check ran against `a.txt` (which exists, because it was just read), so a genuinely
+new `b.txt` target got blocked as a false positive — the exact defect class this whole build
+weighs heaviest.
+
+**Confirmed the bug reproduces exactly as described**, hand-built against a real two-file fixture
+before touching any code: old resolver named `a.txt`; a `b.txt` that didn't yet exist still got
+BLOCKED (should have been ALLOW). **Fixed the same way the shell-side redirect bug was fixed one
+turn earlier**: anchor path extraction to the specific `re.Match` the write-mode classification
+pattern produced (`match.group(0)`, the literal `open(...)` call text up through its mode
+argument), never an independent re-search of the whole body. Re-verified the same fixture pair
+both ways: `b.txt` absent → ALLOW; `b.txt` present → BLOCK correctly naming `b.txt`.
+
+**Re-ran the corpus verification and the smoke suite as instructed. The split moved: 125/85 →
+124/86 — one record flipped from ALLOW to BLOCK.** Found and hand-traced it
+(`toolu_01JG1zAXhFmAGYpVicJhFJZB`, `concepts-rename` session): `content = open('concepts/
+regime_vola/beta_breaks.py', encoding='utf-8').read()` ... `open('/tmp/actual_snippet.txt',
+'w').write(snippet)`. Before the fix, the resolver named `beta_breaks.py` inside the
+`concepts-rename` worker worktree — which no longer exists (deleted post-merge, see the
+worktree-lifecycle confound already documented above), so the old, WRONG target happened to
+report ALLOW. After the fix, the resolver correctly names `/tmp/actual_snippet.txt`, which exists
+on this machine as a leftover from this same session's own earlier calibration work, so the new,
+CORRECT target reports BLOCK. **Both the before and after verdicts for this one record are
+themselves still inside the corpus-replay confounds already documented above** — the flip
+demonstrates the resolution logic is now anchored correctly, not that this specific record's
+verdict is now free of replay-timing noise. Smoke suite: 19/19 (18 plus the new internal-exception
+case below), all corpus records still got a verdict, 0 errors.
+
+**Fail-open is no longer silent.** `block_non_canonical_edit_workflow`'s `except Exception` around
+`_decide` now prints `[block_non_canonical_edit] internal error, failing open: <type>: <message>`
+to stderr before `sys.exit(0)`, in the same one-line diagnostic style as `src/proxy/
+inject_poread.py`'s `[proxy_addon] poread: ...` lines. Exit code unchanged at 0 — failing open is
+still correct, only the silence was the problem. Verified with a new smoke case that monkeypatches
+`_decide` to raise directly (`dev/hook_smoke/test_block_non_canonical_edit.py`'s 19th case) —
+subprocess-level fault injection through the sanctioned stdin-JSON surface alone could not
+reliably force an internal exception (tried a `cwd` type-confusion and an embedded-NUL-byte
+path first; both are already defended against internally, which is a good sign about the rest of
+the code, not a test gap), so this one case imports the module directly and monkeypatches `_decide`
+itself, same technique `test_block_worker_kill_while_working.py` already uses for its stub
+`status_fn`.
+
+**Documented, not fixed, per explicit instruction:** `_PY_HD_OPEN_RE` only recognizes a
+single-quoted heredoc delimiter (`<<'DELIM'`). An unquoted (`<<PYEOF`) or double-quoted
+(`<<"PYEOF"`) python heredoc is never extracted as a python invocation and falls through to the
+generic strip-and-blank pass instead, going unseen. Not handled, because an unquoted delimiter
+also breaks the canonical form's own reason for requiring a quoted one (interpolation-safety), and
+no command in the 210-record corpus uses either shape. Written up as a Gotcha in
+`src/hooks/DOCS.md` so a future session that finds one recognizes the gap immediately rather than
+mistaking it for a mystery.

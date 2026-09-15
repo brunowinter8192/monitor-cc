@@ -295,20 +295,24 @@ of the log path is honored, and the tool-error writer path works.
 
 ---
 
-### test_block_non_canonical_edit.py (131 LOC)
+### test_block_non_canonical_edit.py (161 LOC)
 
-**Purpose:** 18-case smoke for `block_non_canonical_edit.py` — the always-block shell-level forms
+**Purpose:** 19-case smoke for `block_non_canonical_edit.py` — the always-block shell-level forms
 (`sed -i`, `perl -pi`, `gawk -i inplace`), the always-block python-body form (`open(..., 'r+')`),
 a truncating `cat >`/bare `tee` on an existing file, a non-canonical python heredoc (wrong
 delimiter) on an existing file, the always-allow forms (new-file creation, `>>`/`tee -a`
 appending, `python open() mode x`), the exact canonical `'LINEEDIT'` form applied for real against
-a fixture file, an unresolvable path (`sys.argv`), and the two false-positive-avoidance cases
-found during the classification milestone's own calibration (`sed -i` mentioned only as prose in
-a new-file heredoc, and only as a quoted search term) — plus the shared malformed-stdin fail-open
-case.
+a fixture file, an unresolvable path (`sys.argv`), the two false-positive-avoidance cases found
+during the classification milestone's own calibration (`sed -i` mentioned only as prose in a
+new-file heredoc, and only as a quoted search term), the shared malformed-stdin fail-open case,
+and a direct-import monkeypatch case forcing `_decide` itself to raise, confirming the hook still
+fails open (exit 0) AND prints the `[block_non_canonical_edit] internal error, failing open: ...`
+diagnostic rather than staying silent.
 **Called by:** none — run manually.
-**Calls out:** none — drives the hook via `subprocess` over stdin JSON, same shape as
-`test_block_po_read.py`.
+**Calls out:** none — drives the hook via `subprocess` over stdin JSON for the 18 command-level
+cases (same shape as `test_block_po_read.py`), and via a direct `import block_non_canonical_edit`
++ monkeypatch for the internal-exception case (same directory-insert pattern as
+`test_block_worker_kill_while_working.py`).
 
 ---
 

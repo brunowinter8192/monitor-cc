@@ -1,8 +1,8 @@
 # block_non_canonical_edit corpus verification
 
 Total records evaluated: 210
-allow: 125
-block: 85
+allow: 124
+block: 86
 error: 0
 
 `cwd_guess` is a leading `cd <path>` extracted from the command text itself for this 
@@ -244,6 +244,10 @@ session's real working directory.
 - session=api_requests_worker_1dda1c81_concepts-rename_1789397270 tool_use_id=toolu_01EoLwH8nbwAvRnQ4D143dw5 matched_forms=['truncating redirect >'] cwd_guess='/Users/brunowinter2000/Documents/ai/trading/.claude/worktrees/concepts-rename/'
   command: 'cd /Users/brunowinter2000/Documents/ai/trading/.claude/worktrees/concepts-rename/ && /Users/brunowinter2000/Documents/ai/trading/.venv/bin/python concepts/regime_vola/vola_overview.py > /tmp/run_vola.'
   reason (first line): BLOCKED: this command would modify the content of an existing file (/tmp/run_vola.log) without using the canonical line-numbered edit form. Only this form is accepted for changing what is already on disk -- appending to the end and creating a brand-new file are unaffected by this rule.
+
+- session=api_requests_worker_1dda1c81_concepts-rename_1789397270 tool_use_id=toolu_01JG1zAXhFmAGYpVicJhFJZB matched_forms=['python open() mode w'] cwd_guess='/Users/brunowinter2000/Documents/ai/trading/.claude/worktrees/concepts-rename/'
+  command: 'cd /Users/brunowinter2000/Documents/ai/trading/.claude/worktrees/concepts-rename/ && python3 -c "\ncontent = open(\'concepts/regime_vola/beta_breaks.py\', encoding=\'utf-8\').read()\nidx = content.find(\'def'
+  reason (first line): BLOCKED: this command would modify the content of an existing file (/tmp/actual_snippet.txt) without using the canonical line-numbered edit form. Only this form is accepted for changing what is already on disk -- appending to the end and creating a brand-new file are unaffected by this rule.
 
 - session=api_requests_worker_1dda1c81_concepts-rename_1789397270 tool_use_id=toolu_011hUbGGrjmq48DE7Kw2JavQ matched_forms=['truncating redirect >'] cwd_guess='/Users/brunowinter2000/Documents/ai/trading/.claude/worktrees/concepts-rename/'
   command: 'cd /Users/brunowinter2000/Documents/ai/trading/.claude/worktrees/concepts-rename/ && /Users/brunowinter2000/Documents/ai/trading/.venv/bin/python concepts/regime_vola/beta_breaks.py > /tmp/run_beta.lo'

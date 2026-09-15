@@ -288,7 +288,7 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 
 ---
 
-### block_non_canonical_edit.py (241 LOC)
+### block_non_canonical_edit.py (244 LOC)
 
 **Purpose:** PreToolUse Bash hook enforcing one canonical line-numbered-and-fingerprinted form
 (heredoc delimiter `'LINEEDIT'`) for any edit to an EXISTING file's content, blocking every other
@@ -301,7 +301,9 @@ target path's existence from disk (`os.path.exists`) for the "undetermined" clas
 only — the "edit"-determinate forms (`sed -i` and siblings) block unconditionally, no stat needed,
 since they can only ever apply to a file that is already there.
 **Writes:** stderr (block message: the resolved target path plus the full canonical-form template
-to copy) on match; exit 2.
+to copy) on match, exit 2; stderr (a one-line `[block_non_canonical_edit] internal error, failing
+open: ...` diagnostic) on any internal exception from `_decide`, exit 0 (fails open, but audibly
+rather than silently).
 **Called by:** Claude Code hook system, registered by `hook_setup.py`;
 `dev/hook_smoke/test_block_non_canonical_edit.py` (subprocess smoke test) and
 `dev/hook_smoke/verify_block_non_canonical_edit_corpus.py` (imports `_decide` directly, run
@@ -369,3 +371,15 @@ hand-copying a constant.
 - **`block_non_canonical_edit.py` deliberately breaks the "same-directory imports only" convention above.** It does `from src.constants import BASH_FILE_MODIFICATION_FORMS` — a real cross-package import, not a hand-copy. This is a one-off exception, not a new default: `src/constants.py` was purpose-built for this (see `process-docs/cache/` for the classification's own history) specifically so this hook and the corpus extractor in `dev/cache/` never drift apart on what counts as a file-content-modifying shell form, and the module is pure data (compiled regex patterns, no transitive imports beyond stdlib `re`) — none of the import-cost/isolation concerns the `POREAD_MAX_BYTES` Gotcha above describes for `src/proxy/` apply here. A future hook wanting to reach into `src/` for a different reason should not treat this as precedent without the same justification.
 - **`block_non_canonical_edit.py` runs `_strip_non_shell_active` only on the command with every `python3 -c`/`python3 - <<DELIM` invocation's own span blanked out first**, not on the raw command directly. Every other hook in this directory strips first and matches second; this one inverts the order for its python-invocation spans specifically, because the payload it needs to inspect (an `open(path, 'w')` call, the canonical form's own structure) lives INSIDE those heredoc/`-c` bodies, which `_strip_non_shell_active` blanks to spaces by design (see the `_shell_strip.py` entry above). It extracts and inspects those bodies as raw, real code first, then blanks them and runs the normal stripped-text match for everything else (`sed -i`, `cat >`, `tee`, ...). A hook that needs to see inside a heredoc payload should follow this two-pass shape rather than fighting `_strip_non_shell_active`'s blanking.
 - **Path-existence checks in `block_non_canonical_edit.py` reflect the filesystem at decision time, which is correct for the live hook but not reproducible by replaying old commands.** Testing it against a corpus of already-executed historical commands (`dev/cache/jsonl/bash_file_mods_*.jsonl`) systematically misjudges commands whose own effect (creating the very file being checked) is still sitting on disk from when they actually ran, and misjudges commands whose target lived in a worktree that has since been deleted after merge. See `dev/hook_smoke/verify_block_non_canonical_edit_corpus.py` and `process-docs/tool_use_safety/` for the measured scale of this and concrete examples — it is a property of corpus-replay testing, not a defect in the hook's real-time behavior.
+- **`block_non_canonical_edit.py`'s python-invocation extraction only recognizes a QUOTED heredoc
+  delimiter** (`_PY_HD_OPEN_RE` requires `<<'DELIM'`, single-quoted). A body opened with an
+  unquoted delimiter (`<<PYEOF`) or a double-quoted one (`<<"PYEOF"`) is never extracted as a
+  python invocation, so it falls through to the generic `_strip_non_shell_active` pass instead,
+  which blanks its body like any other heredoc — the hook goes blind to whatever file-modification
+  pattern lives inside it. Deliberately not handled: an unquoted delimiter also breaks the
+  canonical form itself (the whole point of requiring `<<'LINEEDIT'` is that a quoted delimiter
+  disables shell interpolation inside the body — see the `_shell_strip.py`-adjacent reasoning in
+  this hook's own Purpose line), and no command in the 210-record `dev/cache/jsonl/` corpus uses
+  an unquoted or double-quoted python heredoc delimiter. If one is ever observed, extend
+  `_PY_HD_OPEN_RE` to also capture `<<(\w+)` / `<<"(\w+)"` forms at that time, rather than guarding
+  against it now on no evidence.
