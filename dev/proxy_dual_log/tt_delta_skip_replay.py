@@ -201,23 +201,22 @@ def _canon(entry: dict) -> str:
 
 # ORCHESTRATOR
 
-def compare_workflow(stem: str) -> int:
-    rows = replay(stem)
-
-    base_hc_s = has_content_map(rows, 1, baseline=True)
-    base_hc_i = has_content_map(rows, 2, baseline=True)
-    show_strip, show_inject = badge_maps(rows)
-
+def _build_buckets(rows: list) -> dict:
     buckets: dict = {}
     for rid, s_entry, _i_entry, orig_payload in rows:
         buckets.setdefault(classify(s_entry, orig_payload), []).append(rid)
+    return buckets
 
+
+def _print_classification_summary(stem: str, rows: list, buckets: dict) -> None:
     print(f'\ntt_delta_skip_replay — {stem}')
     print(f'  requests replayed: {len(rows)}\n')
     print('  classification (by written delta + original payload):')
     for cls in ('pure_total_tokens', 'mixed', 'real_strip', 'no_msg_delta'):
         print(f'    {cls:<20} {len(buckets.get(cls, []))}')
 
+
+def _print_write_side(rows: list, base_hc_s: dict, base_hc_i: dict, show_strip: dict, show_inject: dict) -> None:
     md_s = sum(1 for r in rows if r[1].get('messages_delta'))
     md_i = sum(1 for r in rows if r[2].get('messages_delta'))
     print(f'\n  WRITE SIDE (must be unchanged by this fix — spans keep rendering):')
@@ -227,6 +226,9 @@ def compare_workflow(stem: str) -> int:
     print(f'    `strip`  shown: {sum(base_hc_s.values())} -> {sum(show_strip.values())}')
     print(f'    `inject` shown: {sum(base_hc_i.values())} -> {sum(show_inject.values())}')
 
+
+# Compute + print the per-class verdict; returns True iff every class matches expectations
+def _compute_and_print_verdict(rows: list, buckets: dict, show_strip: dict, show_inject: dict) -> bool:
     tt_ids = set(buckets.get('pure_total_tokens', []))
     real_ids = set(buckets.get('real_strip', []))
     mixed_ids = set(buckets.get('mixed', []))
@@ -250,9 +252,24 @@ def compare_workflow(stem: str) -> int:
     tt_spans_kept = sum(1 for rid, s_e, _i, _o in rows if rid in tt_ids and s_e.get('messages_delta'))
     print(f'  pure_total_tokens requests still carrying stripped spans: {tt_spans_kept}/{len(tt_ids)}')
 
-    ok = (tt_quiet == len(tt_ids) and real_loud == len(real_ids)
-          and real_inj == len(real_with_green) and mixed_loud == len(mixed_ids)
-          and tt_spans_kept == len(tt_ids))
+    return (tt_quiet == len(tt_ids) and real_loud == len(real_ids)
+            and real_inj == len(real_with_green) and mixed_loud == len(mixed_ids)
+            and tt_spans_kept == len(tt_ids))
+
+
+def compare_workflow(stem: str) -> int:
+    rows = replay(stem)
+
+    base_hc_s = has_content_map(rows, 1, baseline=True)
+    base_hc_i = has_content_map(rows, 2, baseline=True)
+    show_strip, show_inject = badge_maps(rows)
+
+    buckets = _build_buckets(rows)
+
+    _print_classification_summary(stem, rows, buckets)
+    _print_write_side(rows, base_hc_s, base_hc_i, show_strip, show_inject)
+    ok = _compute_and_print_verdict(rows, buckets, show_strip, show_inject)
+
     print(f'\n{"PASS" if ok else "FAIL"}\n')
     return 0 if ok else 1
 

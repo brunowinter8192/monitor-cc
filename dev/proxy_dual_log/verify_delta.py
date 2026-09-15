@@ -75,6 +75,59 @@ def _build_original_index(entries: list) -> dict:
     return {"by_reqid": by_reqid, "by_family_order": by_family_order, "_family_cursors": {}}
 
 
+# Advance one model-family chain by one forwarded entry — returns (family, curr_state, model, is_first, counts)
+def _advance_chain(entry: dict, chain_states: dict) -> tuple:
+    model = entry.get("model", "")
+    family = _infer_family(model)
+    is_first = entry.get("is_first", False)
+    counts = entry.get("counts", {})
+
+    if is_first:
+        curr_state = {
+            "system": _dict_to_list(entry.get("system_delta", {}), counts.get("system", 0)),
+            "tools": _dict_to_list(entry.get("tools_delta", {}), counts.get("tools", 0)),
+            "messages": _dict_to_list(entry.get("messages_delta", {}), counts.get("messages", 0)),
+        }
+    else:
+        prev_state = chain_states.get(family, {"system": [], "tools": [], "messages": []})
+        curr_state = {}
+        for cat in ("system", "tools", "messages"):
+            prev_list = list(prev_state[cat])
+            for idx_str, elem in entry.get(f"{cat}_delta", {}).items():
+                i = int(idx_str)
+                while len(prev_list) <= i:
+                    prev_list.append(None)
+                prev_list[i] = elem
+            curr_state[cat] = prev_list[:counts.get(cat, len(prev_list))]
+
+    chain_states[family] = curr_state
+    return family, curr_state, model, is_first, counts
+
+
+# Check 1 (hard): reconstructed counts == declared counts in the delta entry
+def _hard_fail_check(curr_state: dict, counts: dict) -> tuple:
+    hard_fail = False
+    hard_fail_details = []
+    for cat in ("system", "tools", "messages"):
+        reconstructed = len(curr_state[cat])
+        declared = counts.get(cat, -1)
+        if reconstructed != declared:
+            hard_fail = True
+            hard_fail_details.append(f"{cat}: reconstructed={reconstructed} declared={declared}")
+    return hard_fail, hard_fail_details
+
+
+# Check 2 (soft diagnostic): forwarded counts.messages vs original message count
+def _soft_mismatch_check(request_id: str, family: str, counts: dict, original_index: dict, family_cursors: dict):
+    orig_msg_count = _lookup_original_msg_count(request_id, family, original_index, family_cursors)
+    if orig_msg_count is None:
+        return None
+    fwd_msg_count = counts.get("messages", 0)
+    if fwd_msg_count == orig_msg_count:
+        return None
+    return f"forwarded={fwd_msg_count} original={orig_msg_count} diff={fwd_msg_count - orig_msg_count:+d}"
+
+
 # Reconstruct per-model-family chains and run both checks for every forwarded entry
 def _reconstruct_and_check(forwarded_entries: list, original_index: dict) -> list:
     chain_states = {}   # model_family → {"system": [...], "tools": [...], "messages": [...]}
@@ -85,52 +138,11 @@ def _reconstruct_and_check(forwarded_entries: list, original_index: dict) -> lis
         if entry.get("type") != "forwarded_delta":
             continue
 
-        model = entry.get("model", "")
-        family = _infer_family(model)
-        is_first = entry.get("is_first", False)
-        counts = entry.get("counts", {})
+        family, curr_state, model, is_first, counts = _advance_chain(entry, chain_states)
         request_id = entry.get("request_id", "")
 
-        if is_first:
-            # Full reconstruction from delta dicts
-            curr_state = {
-                "system": _dict_to_list(entry.get("system_delta", {}), counts.get("system", 0)),
-                "tools": _dict_to_list(entry.get("tools_delta", {}), counts.get("tools", 0)),
-                "messages": _dict_to_list(entry.get("messages_delta", {}), counts.get("messages", 0)),
-            }
-            chain_states[family] = curr_state
-        else:
-            prev_state = chain_states.get(family, {"system": [], "tools": [], "messages": []})
-            curr_state = {}
-            for cat in ("system", "tools", "messages"):
-                prev_list = list(prev_state[cat])
-                for idx_str, elem in entry.get(f"{cat}_delta", {}).items():
-                    i = int(idx_str)
-                    while len(prev_list) <= i:
-                        prev_list.append(None)
-                    prev_list[i] = elem
-                curr_state[cat] = prev_list[:counts.get(cat, len(prev_list))]
-            chain_states[family] = curr_state
-
-        # Check 1 (hard): reconstructed counts == declared counts
-        hard_fail = False
-        hard_fail_details = []
-        for cat in ("system", "tools", "messages"):
-            reconstructed = len(curr_state[cat])
-            declared = counts.get(cat, -1)
-            if reconstructed != declared:
-                hard_fail = True
-                hard_fail_details.append(f"{cat}: reconstructed={reconstructed} declared={declared}")
-
-        # Check 2 (soft): forwarded counts.messages vs original message count
-        orig_msg_count = _lookup_original_msg_count(
-            request_id, family, original_index, family_cursors
-        )
-        soft_mismatch = None
-        if orig_msg_count is not None:
-            fwd_msg_count = counts.get("messages", 0)
-            if fwd_msg_count != orig_msg_count:
-                soft_mismatch = f"forwarded={fwd_msg_count} original={orig_msg_count} diff={fwd_msg_count - orig_msg_count:+d}"
+        hard_fail, hard_fail_details = _hard_fail_check(curr_state, counts)
+        soft_mismatch = _soft_mismatch_check(request_id, family, counts, original_index, family_cursors)
 
         delta_size = _delta_bytes(entry)
         delta_indices = {
@@ -196,47 +208,40 @@ def _infer_family(model: str) -> str:
     return "opus"
 
 
-# Print per-request table and PASS/FAIL summary
-def _print_report(results: list, original_path: Path, forwarded_path: Path) -> None:
-    print(f"\nverify_delta — {forwarded_path.name}")
-    print(f"  original:  {original_path}")
-    print(f"  forwarded: {forwarded_path}")
-    print(f"  entries:   {len(results)}\n")
+# Format one result row for the per-request table
+def _format_row(r: dict, col: str) -> str:
+    is_first_str = "FIRST" if r["is_first"] else ""
+    dkb = f"{r['delta_bytes'] / 1024:.1f}"
+    idx_summary = "  ".join(
+        f"{cat}[{','.join(str(i) for i in idxs)}]" if idxs else f"{cat}[]"
+        for cat, idxs in r["delta_indices"].items()
+    )
+    if r["hard_fail"]:
+        status = "FAIL"
+        notes = f"HARD FAIL: {'; '.join(r['hard_fail_details'])}"
+    elif r["soft_mismatch"]:
+        status = "warn"
+        notes = f"msg-count mismatch ({r['soft_mismatch']})  {idx_summary}"
+    else:
+        status = "ok"
+        notes = idx_summary
 
-    col = "{:<4} {:<18} {:<7} {:<8} {:>6} {:>5} {:>5} {:>5} {:>9} {}"
-    print(col.format("line", "request_id", "family", "is_first", "sys", "tools", "msgs", "dKB", "status", "delta_indices / notes"))
-    print("-" * 110)
+    return col.format(
+        r["lineno"],
+        r["request_id"],
+        r["model_family"],
+        is_first_str,
+        r["counts"].get("system", "?"),
+        r["counts"].get("tools", "?"),
+        r["counts"].get("messages", "?"),
+        dkb,
+        status,
+        notes,
+    )
 
-    for r in results:
-        is_first_str = "FIRST" if r["is_first"] else ""
-        dkb = f"{r['delta_bytes'] / 1024:.1f}"
-        idx_summary = "  ".join(
-            f"{cat}[{','.join(str(i) for i in idxs)}]" if idxs else f"{cat}[]"
-            for cat, idxs in r["delta_indices"].items()
-        )
-        if r["hard_fail"]:
-            status = "FAIL"
-            notes = f"HARD FAIL: {'; '.join(r['hard_fail_details'])}"
-        elif r["soft_mismatch"]:
-            status = "warn"
-            notes = f"msg-count mismatch ({r['soft_mismatch']})  {idx_summary}"
-        else:
-            status = "ok"
-            notes = idx_summary
 
-        print(col.format(
-            r["lineno"],
-            r["request_id"],
-            r["model_family"],
-            is_first_str,
-            r["counts"].get("system", "?"),
-            r["counts"].get("tools", "?"),
-            r["counts"].get("messages", "?"),
-            dkb,
-            status,
-            notes,
-        ))
-
+# Print the PASS/FAIL summary line after the per-request table
+def _print_summary(results: list) -> None:
     print()
     hard_fails = [r for r in results if r["hard_fail"]]
     soft_warns = [r for r in results if r["soft_mismatch"] and not r["hard_fail"]]
@@ -249,6 +254,23 @@ def _print_report(results: list, original_path: Path, forwarded_path: Path) -> N
         print(f"FAIL — {len(hard_fails)} hard-fail, {len(soft_warns)} soft-mismatch, {ok_count} ok")
         print("Delta self-consistency: BROKEN — see HARD FAIL rows above")
     print()
+
+
+# Print per-request table and PASS/FAIL summary
+def _print_report(results: list, original_path: Path, forwarded_path: Path) -> None:
+    print(f"\nverify_delta — {forwarded_path.name}")
+    print(f"  original:  {original_path}")
+    print(f"  forwarded: {forwarded_path}")
+    print(f"  entries:   {len(results)}\n")
+
+    col = "{:<4} {:<18} {:<7} {:<8} {:>6} {:>5} {:>5} {:>5} {:>9} {}"
+    print(col.format("line", "request_id", "family", "is_first", "sys", "tools", "msgs", "dKB", "status", "delta_indices / notes"))
+    print("-" * 110)
+
+    for r in results:
+        print(_format_row(r, col))
+
+    _print_summary(results)
 
 
 if __name__ == "__main__":
