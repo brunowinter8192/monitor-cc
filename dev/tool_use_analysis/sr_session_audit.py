@@ -233,12 +233,13 @@ def _row(label, s):
 
 
 # Build the full report as a list of lines
-def _build_report(known, preserved, unknown, scan):
+# Render the run-header + scan-parameters block
+def _render_scan_header(scan):
     ts_run = datetime.now().strftime('%Y-%m-%d %H:%M')
     n_noise = scan['n_code_noise'] + scan['n_data_noise']
     top_n = scan['top']
 
-    L = [
+    return [
         '# SR Session-JSONL Audit',
         (f"Run: {ts_run}  since={scan['since']}  files_scanned={scan['n_files']}  "
          f"srs_total={scan['n_total_srs']}  srs_filtered_noise={n_noise}  "
@@ -257,6 +258,12 @@ def _build_report(known, preserved, unknown, scan):
          'line-number prefix). Likely artefact from reading old session data or proxy logs. '
          'KNOWN/PRESERVED templates are never filtered by this rule.'),
         f"- noise_breakdown: code_noise={scan['n_code_noise']}  data_file_noise={scan['n_data_noise']}",
+    ]
+
+
+# Render the Known Templates + Preserved tables
+def _render_known_and_preserved(known, preserved):
+    L = [
         '',
         '## Known Templates (would be stripped today)',
         '| template_id | total | text | tool_result | first | last | cc_versions |',
@@ -272,9 +279,13 @@ def _build_report(known, preserved, unknown, scan):
         _row('claudemd-preamble', preserved),
         '',
     ]
+    return L
 
+
+# Render the Unknown / Gap Candidates table; returns (lines, sorted_unknown)
+def _render_unknown_table(unknown, top_n):
     sorted_unknown = sorted(unknown.items(), key=lambda x: -x[1]['total'])[:top_n]
-    L += [
+    L = [
         f'## Unknown / Gap Candidates (NOT stripped — top {top_n} by count)',
         '| total | text | tool_result | first | last | cc_versions | identifier prefix |',
         '|---|---|---|---|---|---|---|',
@@ -287,25 +298,39 @@ def _build_report(known, preserved, unknown, scan):
             f"| {', '.join(sorted(s['versions']))[:40]} | {key_cell} |"
         )
     L.append('')
+    return L, sorted_unknown
 
-    if sorted_unknown:
-        L.append(f'## Top-{min(top_n, len(sorted_unknown))} Unknown — Sample text')
-        for key, s in sorted_unknown:
-            versions_str = ', '.join(sorted(s['versions']))
-            proj_str = ', '.join(sorted(s.get('projects', set()))[:5])
-            sample = s.get('sample', '')[:600]
-            L += [
-                '',
-                (f'### "{key[:80]}"  '
-                 f'(count={s["total"]}, {s["first"] or "?"} → {s["last"] or "?"}, '
-                 f'cc_versions: {versions_str})'),
-                f'Projects: {proj_str}',
-                '```',
-                sample,
-                '```',
-            ]
-        L.append('')
 
+# Render the Unknown sample-text sections
+def _render_unknown_samples(sorted_unknown, top_n):
+    if not sorted_unknown:
+        return []
+    L = [f'## Top-{min(top_n, len(sorted_unknown))} Unknown — Sample text']
+    for key, s in sorted_unknown:
+        versions_str = ', '.join(sorted(s['versions']))
+        proj_str = ', '.join(sorted(s.get('projects', set()))[:5])
+        sample = s.get('sample', '')[:600]
+        L += [
+            '',
+            (f'### "{key[:80]}"  '
+             f'(count={s["total"]}, {s["first"] or "?"} → {s["last"] or "?"}, '
+             f'cc_versions: {versions_str})'),
+            f'Projects: {proj_str}',
+            '```',
+            sample,
+            '```',
+        ]
+    L.append('')
+    return L
+
+
+def _build_report(known, preserved, unknown, scan):
+    top_n = scan['top']
+    L = _render_scan_header(scan)
+    L += _render_known_and_preserved(known, preserved)
+    unknown_lines, sorted_unknown = _render_unknown_table(unknown, top_n)
+    L += unknown_lines
+    L += _render_unknown_samples(sorted_unknown, top_n)
     return L
 
 

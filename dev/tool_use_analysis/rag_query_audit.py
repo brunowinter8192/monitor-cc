@@ -210,16 +210,9 @@ def _cluster_topics(rag_calls: Dict[str, RagCall], threshold: float) -> List[Top
     return topics
 
 
-def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, threshold) -> str:
-    ts    = datetime.now().strftime('%Y-%m-%dT%H:%M')
-    lines = []
-
-    lines.append(f'# RAG Query Audit — {ts}')
-    lines.append('')
-
-    # Source block (CONVENTION.md §2)
-    lines.append('## Source JSONLs')
-    lines.append('')
+# Render the Source JSONLs block; returns lines
+def _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, threshold):
+    lines = ['## Source JSONLs', '']
     total_events = 0
     for path in jsonl_paths:
         label = _source_label(path)
@@ -235,8 +228,12 @@ def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, th
                  f'Total rag-cli calls (unique): {total_calls}. '
                  f'Unique topics (jaccard≥{threshold}): {total_topics}.')
     lines.append('')
+    return lines
 
-    # Summary
+
+# Render the Summary section
+def _render_summary(rag_calls, results, topics):
+    total_calls = len(rag_calls)
     multi_topics   = [t for t in topics if len(t.calls) > 1]
     single_topics  = [t for t in topics if len(t.calls) == 1]
     follow_up_calls = sum(len(t.calls) for t in multi_topics)
@@ -247,8 +244,7 @@ def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, th
     trunc_count = sum(1 for r in results.values() if r.truncated)
     no_result   = total_calls - len(results)
 
-    lines.append('## Summary')
-    lines.append('')
+    lines = ['## Summary', '']
     lines.append(f'- Single-query topics: {len(single_topics)} / Multi-query topics: {len(multi_topics)}')
     lines.append(f'- Calls in multi-query topics (follow-up rounds): {follow_up_calls} / {total_calls} '
                  f'({100*follow_up_calls//max(total_calls,1)}%)')
@@ -259,28 +255,35 @@ def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, th
     if no_result:
         lines.append(f'- Calls with no tool_result found in logs: {no_result}')
     lines.append('')
+    return lines
 
-    # Topic Overview table
-    lines.append('## Topic Overview')
-    lines.append('')
-    lines.append(f'Clustering: greedy chain-link per session, jaccard ≥ {threshold} on word tokens (stopwords excluded).')
-    lines.append('')
-    lines.append('| Topic | Session-Log | Queries | Follow-up? | Collections | classification (manual) |')
-    lines.append('|-------|------------|---------|-----------|-------------|------------------------|')
+
+# Render the Topic Overview table
+def _render_topic_overview(topics, threshold):
+    lines = [
+        '## Topic Overview', '',
+        f'Clustering: greedy chain-link per session, jaccard ≥ {threshold} on word tokens (stopwords excluded).',
+        '',
+        '| Topic | Session-Log | Queries | Follow-up? | Collections | classification (manual) |',
+        '|-------|------------|---------|-----------|-------------|------------------------|',
+    ]
     for t in topics:
         colls = ', '.join(sorted({c.collection for c in t.calls}))
         fu    = 'yes' if len(t.calls) > 1 else '—'
         src   = t.source.replace('opus_monitor_cc_', '')
         lines.append(f'| {t.topic_id} | `{src}` | {len(t.calls)} | {fu} | {colls} | {PLACEHOLDER} |')
     lines.append('')
+    return lines
 
-    # Per-topic detail
-    lines.append('## Per-Topic Detail')
-    lines.append('')
-    lines.append('Manual columns: **hit_quality** = Brauchbar / Zu-eng / Zu-breit / Miss. '
-                 '**classification** per topic = WIN-RAG / WIN-Direct / Tie.')
-    lines.append('')
 
+# Render the Per-Topic Detail section
+def _render_topic_detail(topics, results):
+    lines = [
+        '## Per-Topic Detail', '',
+        'Manual columns: **hit_quality** = Brauchbar / Zu-eng / Zu-breit / Miss. '
+        '**classification** per topic = WIN-RAG / WIN-Direct / Tie.',
+        '',
+    ]
     for t in topics:
         src = t.source.replace('opus_monitor_cc_', '')
         lines.append(f'### {t.topic_id} — {src}')
@@ -300,6 +303,17 @@ def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, th
         lines.append('')
         lines.append(f'**classification (manual):** {PLACEHOLDER}')
         lines.append('')
+    return lines
+
+
+def _build_report(jsonl_paths, per_source_events, rag_calls, results, topics, threshold) -> str:
+    ts = datetime.now().strftime('%Y-%m-%dT%H:%M')
+    lines = [f'# RAG Query Audit — {ts}', '']
+
+    lines += _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, threshold)
+    lines += _render_summary(rag_calls, results, topics)
+    lines += _render_topic_overview(topics, threshold)
+    lines += _render_topic_detail(topics, results)
 
     return '\n'.join(lines) + '\n'
 

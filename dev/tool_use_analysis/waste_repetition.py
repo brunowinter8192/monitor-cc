@@ -197,16 +197,14 @@ def _total_shortcut_savings(cmds):
     return total
 
 
-# Assemble and return the full markdown report
-def _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_total):
+# Render the header + summary line
+def _render_header(path, cmds, groups, min_count, shortcut_total):
     total_bash = len(cmds)
     total_chars = sum(len(c) for c in cmds)
     distinct_sigs = len(set(_sig(c) for c in cmds))
     repeated_chars = sum(g['total_chars'] for g in groups)
 
-    L = []
-    L.append(f'# Bash Repetition Waste — {os.path.basename(path)}')
-    L.append('')
+    L = [f'# Bash Repetition Waste — {os.path.basename(path)}', '']
     L.append(
         f'Total Bash calls: **{total_bash}** | '
         f'Distinct signatures: **{distinct_sigs}** | '
@@ -215,9 +213,12 @@ def _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_
         f'Path-shortcut-saveable: **{shortcut_total:,}** chars'
     )
     L.append('')
+    return L
 
-    L.append('## Family Overview')
-    L.append('')
+
+# Render the Family Overview + Repetition Groups sections
+def _render_groups(groups, min_count, top_k):
+    L = ['## Family Overview', '']
     families = defaultdict(lambda: {'count': 0, 'total_chars': 0})
     for g in groups:
         fk = _family_key(g['sig'])
@@ -248,11 +249,14 @@ def _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_
                 f"| `{sig80}` | {sample80} |"
             )
     L.append('')
+    return L, shown
 
-    L.append('## Replaceable Path Fragments')
-    L.append('')
-    L.append('| Rule | Occurrences | Chars saved / occurrence | Total saved |')
-    L.append('|---|---|---|---|')
+
+# Render the Replaceable Path Fragments section
+def _render_shortcuts(shortcut_hits, shortcut_total):
+    L = ['## Replaceable Path Fragments', '',
+         '| Rule | Occurrences | Chars saved / occurrence | Total saved |',
+         '|---|---|---|---|']
     for hit in shortcut_hits:
         L.append(
             f"| {hit['label']} | {hit['count']} "
@@ -261,19 +265,32 @@ def _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_
     L.append('')
     L.append(f"**Total saveable via path-shortcuts: {shortcut_total:,} chars**")
     L.append('')
+    return L
 
-    if shown:
-        full_count = min(10, len(shown))
-        L.append(f'## Full Samples (top {full_count})')
+
+# Render the Full Samples section (top 10 of the shown groups)
+def _render_full_samples(shown):
+    if not shown:
+        return []
+    full_count = min(10, len(shown))
+    L = [f'## Full Samples (top {full_count})', '']
+    for rank, g in enumerate(shown[:full_count], 1):
+        L.append(f'### {rank}. `{g["sig"][:80]}`')
         L.append('')
-        for rank, g in enumerate(shown[:full_count], 1):
-            L.append(f'### {rank}. `{g["sig"][:80]}`')
-            L.append('')
-            L.append('```bash')
-            L.append(g['sample'])
-            L.append('```')
-            L.append('')
+        L.append('```bash')
+        L.append(g['sample'])
+        L.append('```')
+        L.append('')
+    return L
 
+
+# Assemble and return the full markdown report
+def _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_total):
+    L = _render_header(path, cmds, groups, min_count, shortcut_total)
+    group_lines, shown = _render_groups(groups, min_count, top_k)
+    L += group_lines
+    L += _render_shortcuts(shortcut_hits, shortcut_total)
+    L += _render_full_samples(shown)
     return '\n'.join(L)
 
 
