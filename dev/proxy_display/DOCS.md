@@ -37,13 +37,13 @@ runtime data, absent from a fresh worktree).
 
 ---
 
-### test_standalone_sidecar.py (127 LOC)
+### test_standalone_sidecar.py (131 LOC)
 
-**Purpose:** Regression guard for `format._is_standalone_entry`'s widened zero-tool detection
-(catches a CC-internal sidecar sharing the real conversation's model family, not just haiku) and
-its effect on `render_turn.render_turn_expanded`'s REQ numbering — a sidecar between two real
-requests must render as `S`, not consume a numbered `#N`, and must not shift the following real
-request's number.
+**Purpose:** Regression guard confirming `format._is_standalone_entry`'s existing haiku check
+already excludes every CC-internal zero-tool sidecar shape observed in real data from
+`render_turn.render_turn_expanded`'s numbered `#N` REQ sequence — a haiku sidecar between two real
+requests must render as `H` and must not shift the following real request's number. Also pins the
+predicate's other two existing branches (old zero-context shape, a real non-zero-tools request).
 **Reads:** nothing external — synthetic in-process entries.
 **Writes:** PASS/FAIL lines to stdout.
 **Called by:** none — manual regression guard, re-run after touching

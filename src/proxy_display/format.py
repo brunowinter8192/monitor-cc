@@ -41,10 +41,11 @@ def _shorten_model(model: str) -> str:
     return model[:8] if model else '?'
 
 def _is_standalone_entry(entry: dict) -> bool:
+    sys_chars = entry.get('system_total_chars', entry.get('system_prompt_chars', 0))
     tools_chars = entry.get('tools_total_chars', entry.get('tools_chars', 0))
     return (
         'haiku' in entry.get('model', '').lower()
-        or tools_chars == 0
+        or (sys_chars == 0 and tools_chars == 0)
     )
 
 
