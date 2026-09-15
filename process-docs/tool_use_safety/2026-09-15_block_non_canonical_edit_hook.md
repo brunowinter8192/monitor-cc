@@ -262,3 +262,32 @@ also breaks the canonical form's own reason for requiring a quoted one (interpol
 no command in the 210-record corpus uses either shape. Written up as a Gotcha in
 `src/hooks/DOCS.md` so a future session that finds one recognizes the gap immediately rather than
 mistaking it for a mystery.
+
+## Recap — 2026-09-15, session close
+
+Self-check (`git diff integration --name-only`) confirms this milestone's full touched set:
+`src/hooks/block_non_canonical_edit.py`, `src/hooks/hook_setup.py`, `src/hooks/DOCS.md`,
+`dev/hook_smoke/test_block_non_canonical_edit.py`,
+`dev/hook_smoke/verify_block_non_canonical_edit_corpus.py`, `dev/hook_smoke/DOCS.md`,
+`dev/hook_smoke/md/block_non_canonical_edit_corpus_report.md`, and this file. DOCS.md staleness
+check against real `wc -l` on every touched `src/`/`dev/` module: all four headings correct
+(`block_non_canonical_edit.py` 244, `hook_setup.py` 212, `test_block_non_canonical_edit.py` 161,
+`verify_block_non_canonical_edit_corpus.py` 115) — no correction needed this round.
+
+This is the closing entry for this worker's `tool_use_safety` work this session. The
+`cache`-area classification/extraction work earlier this same session has its own file,
+`process-docs/cache/2026-09-15_bash_file_modification_classification.md`, already closed out with
+its own recap sections — not touched from here, per the one-file-per-area rule.
+
+**State for whoever picks this up next:** the hook is written, tested (19/19 synthetic smoke,
+210/210 corpus records get a verdict with 0 internal errors), registered in `_HOOK_SCRIPTS`, and
+committed on the `editops` branch. It is NOT active anywhere — `hook_setup.py` has refused to run
+twice now, automatically, via this repo's own `post-commit` githook, because it correctly detects
+it's being invoked from a worktree. Activation is a deliberate, separate step: merge this branch,
+then run `python3 src/hooks/hook_setup.py` from the main repo root (a real terminal, not a Bash
+tool call, per the stale-hook-recovery Gotcha in `src/hooks/DOCS.md` — though this is a fresh
+registration, not a recovery, the same "real terminal" constraint applies since the script itself
+guards against worktree execution). After activation, a real live-fire check (a genuine `sed -i`
+against an existing scratch file, confirming BLOCK; a genuine canonical-form edit, confirming
+ALLOW) would be the natural next verification — not attempted here, same deferral pattern
+`process-docs/tool_use_safety/2026-07-22_block_po_read_hook.md` used for its own hook.
