@@ -50,6 +50,7 @@ _worker_proxy_injected_pos: int = 0
 _worker_proxy_acc_stripped: dict = {}
 _worker_proxy_acc_injected: dict = {}
 _worker_proxy_header_regions: Dict[Tuple[int, int, int], str] = {}
+_worker_proxy_stats_cache: dict = {}
 
 _WP_SEARCH_BAR_LINES = 1
 _WP_SEARCH_BAR_LABEL = 'search: '
@@ -262,7 +263,7 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
     _worker_proxy_force_reload = False
     worker_name = _read_selected_worker_name(monitor)
     _worker_proxy_workers = list_workers(monitor.active_project_filter) if monitor.active_project_filter else []
-    attach_worker_stats(_worker_proxy_workers)
+    attach_worker_stats(_worker_proxy_workers, _worker_proxy_stats_cache)
     if not _worker_proxy_workers:
         worker_name = None
     elif worker_name is not None and worker_name not in {w['name'] for w in _worker_proxy_workers}:

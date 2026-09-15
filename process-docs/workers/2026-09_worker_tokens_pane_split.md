@@ -143,7 +143,67 @@ frozen name list) since it would otherwise `AttributeError` on import — confir
 produces a hash (not compared against a prior run; this harness's own before/after pair was for a
 different, already-completed split).
 
-Scroll lag/drift (2026-09-02 observation) was NOT independently investigated per the task's own
-scope boundary — the single-worker view structurally cannot reproduce the specific "five workers,
-two expanded" case that produced it, which is worth noting for whoever picks up
-`process-docs/proxy_pane_scroll/` next, but is not itself a fix or a verified resolution.
+Scroll lag/drift (2026-09-02 observation) itself — the row-highlight-vs-cursor drift specifically
+— was NOT independently investigated per the task's own scope boundary. The LAG half of that same
+observation, however, turned out to have a measured cause; see the next section, which corrects
+this entry's own first pass at that boundary.
+
+## Follow-up (same session): the lag was the header-liveness read pattern, not render cost — and this split had doubled it
+
+**The assumption everyone had been making, including this entry's own first pass above, was
+wrong.** `process-docs/proxy_pane_scroll/`'s 2026-09-02 observation recorded the lag without
+attributing a cause beyond speculating it might be "render cost with five expanded request
+tables." This entry's own Trigger section, written earlier in this same session, repeated that
+framing and reasoned that a single-worker view "structurally cannot reproduce" the lag because it
+never renders more than one expanded tracker — true, but beside the point, because rendering was
+never the cost. A post-implementation review caught that `attach_worker_stats` — introduced by
+this exact milestone to give the switch header its liveness text (status, context-%) — called
+`extract_worker_tokens`/`extract_worker_context_pct` for every worker, and both of those called
+`jsonl.read_new_lines(jsonl_path, 0)`: a full read of the ENTIRE worker JSONL from byte zero, on
+every `POLL_INTERVAL` (0.5s) tick, in BOTH worker panes now instead of the one pane
+(`worker_pane.py`) that used to do the equivalent work.
+
+**Measured on this machine, real files, before touching the fix** (`dev/worker_pane_split/md/
+attach_worker_stats_cost_probe_20260915_213048.md`): 5 real worker-worktree JSONLs at their
+median real size (~1.6 MB each, 8.02 MB total) cost **70.3 ms** for one `attach_worker_stats`
+call. Extrapolated to the actual call pattern (both panes, each gated by its own 0.5s tick):
+**281.1 ms of blocking, single-threaded I/O per second — 28.1% of one CPU core — spent solely on
+header liveness**, before either pane can poll its own input again. The single largest real
+worker JSONL found on this machine (a 196 MB long-running session) cost **623.6 ms** alone — more
+than the entire 500ms tick budget, meaning a pane with that worker in its list could not keep its
+own refresh tick on schedule at all. This is a directly measured, sufficient explanation for
+"noticeable delay" scrolling lag that has nothing to do with render cost, and the panesplit
+milestone had made it roughly twice as expensive system-wide by duplicating the same read pattern
+into a second pane.
+
+**The fix, same session:** `worker_format.py`'s two full-reparse extractors were replaced by one
+`parse_worker_stats_delta(jsonl_path, last_position, running_output, running_context_pct) ->
+(total_output, context_pct, new_position)` — reads only `read_new_lines(jsonl_path,
+last_position)`, folding new assistant messages into the running totals it was handed instead of
+resumming from scratch. `worker_tmux.attach_worker_stats(workers, cache)` gained a required
+`cache: dict` parameter (keyed by session name), self-healing (resets a session's entry to
+position 0) when that session's resolved `jsonl_path` changes — a worker restarting under a fresh
+session file must not keep summing into the old file's totals. Each pane owns its own cache
+(`_worker_tokens_stats_cache` / `_worker_proxy_stats_cache`) since they are separate OS processes
+with no shared memory — mirrors the exact shape `panes/cache_turns.build_cache_turns` already
+uses elsewhere in this codebase for the same "append-only file, incremental position" problem.
+Context-% is a LAST-VALUE, not a sum — verified directly (a throwaway smoke script, not staged)
+that a tick bringing zero new assistant messages leaves the previous percent standing rather than
+dropping it to `None`, and that a new message with no `cache_read_input_tokens` field does the
+same; a worker that goes quiet must not blank out in the header, and does not.
+
+**Measured again after the fix** (`dev/worker_pane_split/md/
+attach_worker_stats_cost_probe_20260915_213651.md`, same 5 files, same machine): COLD (fresh
+cache — what the first tick after a pane starts, or after a worker's session changes, still
+pays) dropped to **31.1 ms** — already about half the old 70.3ms, because the fix also merged two
+separate full-file passes into one. WARM (steady state — every tick after the first) dropped to
+**0.14 ms**, a **220x** speedup over COLD on the same data. Extrapolated the same way: both panes
+combined now cost **0.57 ms/s** in steady state, down from the 281.1 ms/s the pre-fix code cost
+doing the exact same job. The worst-case 196MB file's COLD cost roughly halved to 320.5 ms (still
+one-time, same merge effect); its WARM cost is 0.08 ms — the pathological single-worker case that
+used to blow the entire tick budget every 0.5 seconds now does so only once, on first sight of
+that worker, never again.
+
+`dev/worker_pane_split/attach_worker_stats_cost_probe.py` is rerunnable and kept in the repo
+specifically so a future change to this read path can reproduce this same before/after pair on
+whatever machine it runs on, rather than trusting these numbers unverified.

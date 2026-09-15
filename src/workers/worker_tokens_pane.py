@@ -36,6 +36,7 @@ _worker_tokens_current_name: Optional[str] = None
 _worker_tokens_force_reload: bool = False
 _worker_tokens_header_regions: Dict[Tuple[int, int, int], str] = {}
 _worker_tokens_header_lines: int = 2
+_worker_tokens_stats_cache: dict = {}
 
 _WT_SEARCH_BAR_LINES = 1
 _WT_SEARCH_BAR_LABEL = 'search: '
@@ -267,7 +268,7 @@ def _refresh_worker_tokens_data(now: float, input_changed: bool, last_data_refre
     _worker_tokens_force_reload = False
     worker_name = _read_selected_worker_name(monitor)
     _worker_tokens_workers = list_workers(monitor.active_project_filter) if monitor.active_project_filter else []
-    attach_worker_stats(_worker_tokens_workers)
+    attach_worker_stats(_worker_tokens_workers, _worker_tokens_stats_cache)
     if not _worker_tokens_workers:
         worker_name = None
     elif worker_name is not None and worker_name not in {w['name'] for w in _worker_tokens_workers}:
