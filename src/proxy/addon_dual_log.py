@@ -76,13 +76,17 @@ def _log_errors_entries(log_file: Path, payload: dict, mc_request_id: str, mc_ti
         return None
 
 
+def _is_sidecar_payload(payload: dict) -> bool:
+    return len(payload.get("tools") or []) == 0
+
+
 def _write_request_dual_logs(flow, payload: dict, modified_payload: dict, model_family: str,
                               mc_request_id: str, mc_timestamp: str, paths, delta_state, identity) -> None:
     curr_delta = _log_forwarded_delta(
         paths.forwarded, modified_payload, flow,
         delta_state.forwarded_hashes_by_model.get(model_family),
     )
-    if curr_delta is not None:
+    if curr_delta is not None and not _is_sidecar_payload(modified_payload):
         delta_state.forwarded_hashes_by_model[model_family] = curr_delta
 
     new_seen = _log_errors_entries(
