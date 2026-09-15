@@ -100,11 +100,8 @@ def _check_markers_stripped(payload: dict) -> list:
     return hits
 
 
-# ORCHESTRATOR
-def main() -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# Surface 3 — strip wordings on CC 2.1.223 (issue #63)', '']
-
+def _part_a_census_lines():
+    lines = []
     lines.append('## Part A — fn_map census (real recorded dual-logs, historical record)')
     lines.append('')
     all_fn_counts = {}
@@ -118,7 +115,10 @@ def main() -> None:
         for fn, n in sorted(counts.items(), key=lambda kv: -kv[1]):
             lines.append(f'| `{fn}` | {n} |')
         lines.append('')
+    return lines, all_fn_counts
 
+
+def _compute_fire_verdicts(all_fn_counts):
     # Presence of the raw marker text in each session's ORIGINAL log — distinguishes "the strip
     # never fired because the wording never occurred" (fine) from "the wording occurred but the
     # strip didn't fire" (a real gap).
@@ -142,7 +142,11 @@ def main() -> None:
         all_fn_counts[tag].get('_apply_first_pass', 0) > 0 or all_fn_counts[tag].get('_apply_bg_exit_strip', 0) > 0
         for tag, _ in SESSIONS
     )
+    return marker_present_in_session, bg_launch_fired, tn_or_bg_exit_fired
 
+
+def _part_a_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, marker_present_in_session):
+    lines = []
     lines.append(f'- `_apply_bg_launch_ack_strip` fired wherever its marker text was present in the '
                  f'session\'s raw original log: {bg_launch_fired}')
     lines.append(f'  - marker present per session: {({tag: v["bg_launch_ack"] for tag, v in marker_present_in_session.items()})} '
@@ -151,9 +155,10 @@ def main() -> None:
     lines.append(f'- TN/bg-completed replacement fired in both sessions (`_apply_first_pass` OR '
                  f'`_apply_bg_exit_strip`): {tn_or_bg_exit_fired}')
     lines.append('')
+    return lines
 
-    lines.append('## Part B — unstripped-wording sweep (real CURRENT code, replayed over all requests)')
-    lines.append('')
+
+def _part_b_sweep():
     total_marker_hits = 0
     total_survived = 0
     survivals = []
@@ -168,7 +173,11 @@ def main() -> None:
                 if survived:
                     total_survived += 1
                     survivals.append((tag, seq, flow_id, idx, label))
+    return total_marker_hits, total_survived, survivals, marker_totals
 
+
+def _part_b_report_lines(total_marker_hits, marker_totals, total_survived, survivals):
+    lines = []
     lines.append(f'- Total marker occurrences checked (original content containing a known bg-marker): {total_marker_hits}')
     lines.append(f'  - by marker: {marker_totals}')
     lines.append(f'- Survived unstripped into forwarded output: {total_survived}')
@@ -179,8 +188,12 @@ def main() -> None:
         for tag, seq, flow_id, idx, label in survivals[:30]:
             lines.append(f'| {tag} | {seq} | {flow_id} | {idx} | {label} |')
     lines.append('')
+    return lines
 
+
+def _overall_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, total_survived, total_marker_hits):
     verdict = 'CLEAN' if (bg_launch_fired and tn_or_bg_exit_fired and total_survived == 0) else 'FINDING'
+    lines = []
     lines.append('## Verdict')
     lines.append('')
     lines.append(f'**{verdict}**')
@@ -196,6 +209,27 @@ def main() -> None:
                  f'path ("Command did not complete within its 120s timeout and was moved to the '
                  f'background") rather than an explicit `run_in_background=true` launch-ack — a '
                  f'structurally different message our proxy does not strip (and was not asked to).')
+    return lines, verdict
+
+
+# ORCHESTRATOR
+def main() -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    lines = ['# Surface 3 — strip wordings on CC 2.1.223 (issue #63)', '']
+
+    census_lines, all_fn_counts = _part_a_census_lines()
+    lines.extend(census_lines)
+
+    marker_present_in_session, bg_launch_fired, tn_or_bg_exit_fired = _compute_fire_verdicts(all_fn_counts)
+    lines.extend(_part_a_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, marker_present_in_session))
+
+    lines.append('## Part B — unstripped-wording sweep (real CURRENT code, replayed over all requests)')
+    lines.append('')
+    total_marker_hits, total_survived, survivals, marker_totals = _part_b_sweep()
+    lines.extend(_part_b_report_lines(total_marker_hits, marker_totals, total_survived, survivals))
+
+    verdict_lines, verdict = _overall_verdict_lines(bg_launch_fired, tn_or_bg_exit_fired, total_survived, total_marker_hits)
+    lines.extend(verdict_lines)
 
     REPORT_PATH.write_text('\n'.join(lines))
     print(f'Report written: {REPORT_PATH}')

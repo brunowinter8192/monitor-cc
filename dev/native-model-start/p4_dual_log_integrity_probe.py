@@ -132,45 +132,38 @@ def _verify_unknown_keys_pass_through(new_keys: set, requests_by_key: dict) -> d
     return results
 
 
-# ORCHESTRATOR
-def main() -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    lines = ['# Surface 2 — dual_log integrity + schema drift (issue #63, CC 2.1.223)', '']
-
-    total_checks = 0
-    total_fail_inv1 = 0
-    total_fail_inv2 = 0
+def _process_session(tag, stem, keys_seen, sys_shapes_seen, block_types_seen, sample_payload_by_key):
+    requests = _load_session_requests(stem)
+    lines = []
+    lines.append(f'## Session: {tag} (`{stem}`, {len(requests)} requests)')
+    lines.append('')
+    session_checks = 0
+    session_fail = 0
     failures = []
-    keys_seen, sys_shapes_seen, block_types_seen = set(), set(), set()
-    sample_payload_by_key: dict = {}
+    for seq, (flow_id, payload) in enumerate(requests):
+        checks, _all_ops = _check_composition(payload)
+        _scan_schema(payload, keys_seen, sys_shapes_seen, block_types_seen)
+        for k in payload.keys():
+            if k not in KNOWN_PAYLOAD_KEYS and k not in sample_payload_by_key:
+                sample_payload_by_key[k] = payload
+        for msg_idx, blk_idx, ok1, ok2 in checks:
+            session_checks += 1
+            if not ok1:
+                session_fail += 1
+                failures.append((tag, seq, flow_id, msg_idx, blk_idx, 'Inv1'))
+            if not ok2:
+                session_fail += 1
+                failures.append((tag, seq, flow_id, msg_idx, blk_idx, 'Inv2'))
+    lines.append(f'- Composition checks (blocks with recorded ops): {session_checks}')
+    lines.append(f'- Failures: {session_fail}')
+    lines.append('')
+    return lines, session_checks, failures
 
-    for tag, stem in SESSIONS:
-        requests = _load_session_requests(stem)
-        lines.append(f'## Session: {tag} (`{stem}`, {len(requests)} requests)')
-        lines.append('')
-        session_checks = 0
-        session_fail = 0
-        for seq, (flow_id, payload) in enumerate(requests):
-            checks, _all_ops = _check_composition(payload)
-            _scan_schema(payload, keys_seen, sys_shapes_seen, block_types_seen)
-            for k in payload.keys():
-                if k not in KNOWN_PAYLOAD_KEYS and k not in sample_payload_by_key:
-                    sample_payload_by_key[k] = payload
-            for msg_idx, blk_idx, ok1, ok2 in checks:
-                total_checks += 1
-                session_checks += 1
-                if not ok1:
-                    total_fail_inv1 += 1
-                    session_fail += 1
-                    failures.append((tag, seq, flow_id, msg_idx, blk_idx, 'Inv1'))
-                if not ok2:
-                    total_fail_inv2 += 1
-                    session_fail += 1
-                    failures.append((tag, seq, flow_id, msg_idx, blk_idx, 'Inv2'))
-        lines.append(f'- Composition checks (blocks with recorded ops): {session_checks}')
-        lines.append(f'- Failures: {session_fail}')
-        lines.append('')
 
+def _part_a_verdict_lines(total_checks, failures):
+    total_fail_inv1 = sum(1 for f in failures if f[-1] == 'Inv1')
+    total_fail_inv2 = sum(1 for f in failures if f[-1] == 'Inv2')
+    lines = []
     lines.append('## Part A verdict — composition invariant')
     lines.append('')
     lines.append(f'Total blocks checked across both sessions: {total_checks}')
@@ -183,7 +176,11 @@ def main() -> None:
         for tag, seq, flow_id, msg_idx, blk_idx, inv in failures[:30]:
             lines.append(f'| {tag} | {seq} | {flow_id} | {msg_idx} | {blk_idx} | {inv} |')
     lines.append('')
+    return lines, total_fail_inv1, total_fail_inv2
 
+
+def _part_b_schema_lines(keys_seen, sys_shapes_seen, block_types_seen):
+    lines = []
     lines.append('## Part B — schema drift')
     lines.append('')
     new_keys = keys_seen - KNOWN_PAYLOAD_KEYS
@@ -194,8 +191,12 @@ def main() -> None:
     lines.append(f'- Content-block `type` values observed: {sorted(block_types_seen)}')
     lines.append(f'  - NOT in message_summary.py\'s known set: {sorted(new_block_types) or "(none)"}')
     lines.append('')
+    return lines, new_keys, new_block_types
 
+
+def _pass_through_section_lines(new_keys, sample_payload_by_key):
     pass_through_results = {}
+    lines = []
     if new_keys:
         pass_through_results = _verify_unknown_keys_pass_through(new_keys, sample_payload_by_key)
         lines.append('### Pass-through verification for unmodeled top-level keys')
@@ -210,11 +211,16 @@ def main() -> None:
         for key, (match, sample) in pass_through_results.items():
             lines.append(f'| `{key}` | {match} | `{sample}` |')
         lines.append('')
+    return lines, pass_through_results
 
+
+def _overall_verdict_lines(total_fail_inv1, total_fail_inv2, total_checks, new_keys, new_block_types,
+                            pass_through_results):
     keys_dropped = [k for k, (match, _s) in pass_through_results.items() if match is False]
     composition_clean = total_fail_inv1 == 0 and total_fail_inv2 == 0
     schema_clean = not new_block_types and not keys_dropped
     verdict = 'CLEAN' if (composition_clean and schema_clean) else 'FINDING'
+    lines = []
     lines.append('## Verdict')
     lines.append('')
     lines.append(f'**{verdict}**')
@@ -226,6 +232,38 @@ def main() -> None:
                  f'- New top-level keys: {sorted(new_keys) or "(none)"}'
                  + (f' — **DROPPED, real finding**: {keys_dropped}' if keys_dropped else ''))
     lines.append(f'- New content-block types: {"CLEAN (none)" if not new_block_types else f"FINDING: {sorted(new_block_types)} not in message_summary.py\'s handled set (falls through to its generic json.dumps summary — display-only gap, not a strip-pipeline correctness issue; composition invariant above already confirms no pass mishandles these blocks)"}')
+    return lines, verdict, keys_dropped
+
+
+# ORCHESTRATOR
+def main() -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    lines = ['# Surface 2 — dual_log integrity + schema drift (issue #63, CC 2.1.223)', '']
+
+    total_checks = 0
+    failures = []
+    keys_seen, sys_shapes_seen, block_types_seen = set(), set(), set()
+    sample_payload_by_key: dict = {}
+
+    for tag, stem in SESSIONS:
+        session_lines, session_checks, session_failures = _process_session(
+            tag, stem, keys_seen, sys_shapes_seen, block_types_seen, sample_payload_by_key)
+        lines.extend(session_lines)
+        total_checks += session_checks
+        failures.extend(session_failures)
+
+    part_a_lines, total_fail_inv1, total_fail_inv2 = _part_a_verdict_lines(total_checks, failures)
+    lines.extend(part_a_lines)
+
+    part_b_lines, new_keys, new_block_types = _part_b_schema_lines(keys_seen, sys_shapes_seen, block_types_seen)
+    lines.extend(part_b_lines)
+
+    pass_through_lines, pass_through_results = _pass_through_section_lines(new_keys, sample_payload_by_key)
+    lines.extend(pass_through_lines)
+
+    verdict_lines, verdict, keys_dropped = _overall_verdict_lines(
+        total_fail_inv1, total_fail_inv2, total_checks, new_keys, new_block_types, pass_through_results)
+    lines.extend(verdict_lines)
 
     REPORT_PATH.write_text('\n'.join(lines))
     print(f'Report written: {REPORT_PATH}')
