@@ -1,6 +1,6 @@
-import re
-
 # INFRASTRUCTURE
+
+import re
 
 POLL_INTERVAL = 0.5
 INPUT_POLL_INTERVAL = 0.05

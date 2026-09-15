@@ -1,8 +1,8 @@
+# INFRASTRUCTURE
+
 import json
 import sys
 from pathlib import Path
-
-# INFRASTRUCTURE
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
