@@ -26,7 +26,7 @@ request_id) under src/logs/dual_log.
 
 ---
 
-### p4_blocklist_223_probe.py (172 LOC)
+### p4_blocklist_223_probe.py (179 LOC)
 
 **Purpose:** Verifies the CC 2.1.223 `TOOL_BLOCKLIST` extension (Artifact, ReportFindings,
 DeferredToolPlaceholder) end-to-end — runs the real `_strip_unused_tools` on the newest
@@ -54,7 +54,7 @@ strips to `"."`.
 
 ---
 
-### p6_no_flow_extra_prepend_probe.py (294 LOC)
+### p6_no_flow_extra_prepend_probe.py (304 LOC)
 
 **Purpose:** Verifies that an expanded request body is exactly the request's own payload delta and
 nothing else, after the out-of-window prepend mechanism was removed — asserts no entry's body carries
@@ -70,7 +70,7 @@ in-window spans still render.
 
 ---
 
-### p7_blocklist_258_probe.py (232 LOC)
+### p7_blocklist_258_probe.py (254 LOC)
 
 **Purpose:** Verifies the CC 2.1.258 `TOOL_BLOCKLIST` extension (SendFeedback, ListAgents)
 end-to-end against the current full dual-log corpus (glob-driven, not one hardcoded session) — runs
@@ -92,17 +92,48 @@ guard for the Edit/Write blocklist entries — re-run after any `TOOL_BLOCKLIST`
 
 ---
 
-### p1_measure_full_replacement_blast_radius.py (541 LOC)
+### p1_measure_full_replacement_blast_radius.py (59 LOC)
 
-**Purpose:** Classifies each `_ops_from_content_change` call site in `message_passes.py`'s pass
-functions as FULL (whole-block-independent replacement) vs. PARTIAL vs. STRUCTURAL by reading the
-underlying strip function (not by a ratio threshold), and quantifies how many FULL-class ops are
-recorded as a trimmed/split span due to `_extract_block_op`'s prefix/suffix trim.
+**Purpose:** Entry point for the D2 blast-radius measurement — owns the corpus file list and
+drives `blast_radius_engine`/`blast_radius_report` over it.
 **Reads:** four recorded sessions' original dual-log files under src/logs/dual_log.
 **Writes:** `md/full_replacement_blast_radius_20260729.md`.
 **Called by:** none — manual, one-off measurement.
-**Calls out:** `src.proxy.message_passes`, `src.proxy.rule_ops`, `src.proxy.diff_engine`,
-`src.proxy.payload_helpers`, `src.proxy.content_strip`, `src.proxy_display.render_messages`.
+**Calls out:** `blast_radius_engine`, `blast_radius_report`.
+
+---
+
+### blast_radius_engine.py (220 LOC)
+
+**Purpose:** Drives recorded message deltas through the real `message_passes.py` pass order and
+classifies each resulting op as FULL/PARTIAL/STRUCTURAL by reading the underlying strip function.
+**Reads:** nothing directly — `_scan_file` is handed a dual-log path by its caller.
+**Writes:** nothing — returns per-op records to its caller.
+**Called by:** `p1_measure_full_replacement_blast_radius.py`.
+**Calls out:** `src.proxy.message_passes`, `src.proxy.message_passes_simple`,
+`src.proxy.message_passes_wakeup`, `src.proxy.rule_ops`, `src.proxy.payload_helpers`,
+`src.proxy.content_strip`.
+
+---
+
+### blast_radius_analysis.py (65 LOC)
+
+**Purpose:** Trim/ratio/distribution helpers plus a real `compose_block` + `_render_span_content`
+render comparison (recorded op vs. a hypothetical full-replacement op) for one classified record.
+**Reads:** nothing — pure functions over records passed in.
+**Writes:** nothing.
+**Called by:** `blast_radius_report.py`.
+**Calls out:** `src.proxy.diff_engine`, `src.proxy_display.render_messages`.
+
+---
+
+### blast_radius_report.py (272 LOC)
+
+**Purpose:** Builds the D2 markdown report, one function per section, composed by `_build_report`.
+**Reads:** nothing — takes records/corpus metadata as arguments.
+**Writes:** nothing — returns the report text to its caller.
+**Called by:** `p1_measure_full_replacement_blast_radius.py`.
+**Calls out:** `blast_radius_engine` (classification constants), `blast_radius_analysis`.
 
 ---
 
@@ -135,7 +166,7 @@ mismatch.
 
 ---
 
-### response_model_corpus_report.py (177 LOC)
+### response_model_corpus_report.py (195 LOC)
 
 **Purpose:** Reads every recorded `*_response.jsonl` dual-log and reports how many entries carry an
 `answering_model`, the `content-type`/`content-encoding` header values observed, and how
@@ -207,17 +238,20 @@ script's precision can never silently drift from the actual proxy behavior it's 
 ---
 
 ## Gotchas
-- `pN_*.py` scripts import from `src/` directly — this filename prefix is a project convention: only
-  `pN_*.py` dev scripts may `from src...`/`import src...`; unprefixed scripts in `dev/` must copy the
-  logic or import from an existing `pN_` module.
+- `pN_*.py` scripts import from `src/` directly, and so may an unprefixed sibling module split out of
+  one (e.g. `blast_radius_engine.py`, split from `p1_measure_full_replacement_blast_radius.py`) — the
+  `block_dev_imports_src` hook has no `pN_` special case (see the hook Gotcha below): it only blocks a
+  literal top-level `from src.`/`import src.` statement, so the established pattern of inserting
+  `src/` onto `sys.path` and importing flat (`from proxy.xxx import ...`) works in any `dev/` module
+  regardless of filename prefix.
 - `src.proxy_display` pulls in a 2-level relative import (`from ..constants` in `pane.py`,
   transitively via `proxy_display/__init__.py`) and must be imported with the project root on
   `sys.path`, not `src/` directly (which is what plain `src.proxy.*` imports use). Mixing both roots
   on `sys.path` in the same script is safe — `src.proxy_display` and the flat `proxy` package never
   collide.
-- `p1_measure_full_replacement_blast_radius.py` feeds each pass function only the new-message delta
-  per dual-log request, not the full cumulative message list — safe only because none of the pass
-  functions in `message_passes.py` read any other message's content.
+- `blast_radius_engine.py` (driven by `p1_measure_full_replacement_blast_radius.py`) feeds each pass
+  function only the new-message delta per dual-log request, not the full cumulative message list —
+  safe only because none of the pass functions in `message_passes.py` read any other message's content.
 - All dual-log reads in this directory point at src/logs/dual_log, which is gitignored runtime data
   absent from a fresh worktree and live-growing from concurrent sessions — re-running a corpus-wide
   script shifts absolute counts without changing the underlying finding.

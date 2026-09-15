@@ -37,80 +37,68 @@ def _load_entries(log_files: list) -> list:
     return entries
 
 
-def _compute_stats(entries: list) -> dict:
-    total = len(entries)
-    with_answering_model = 0
-    without_answering_model = 0
-    content_type_values = {}
-    content_encoding_values = {}
-    status_counts = {}
-    forwarded_present = 0
-    answering_present = 0
-    both_present_match = 0
-    both_present_mismatch = 0
-    cc_requested_model_values = {}
-    proxy_forwarded_model_values = {}
-    answering_model_values = {}
-    override_active_count = 0
-
-    for e in entries:
-        status_counts[e.get('status_code')] = status_counts.get(e.get('status_code'), 0) + 1
-        headers = e.get('headers', {})
-        ct = headers.get('content-type')
-        if ct:
-            content_type_values[ct] = content_type_values.get(ct, 0) + 1
-        ce = headers.get('content-encoding')
-        if ce:
-            content_encoding_values[ce] = content_encoding_values.get(ce, 0) + 1
-
-        cc_requested_model = e.get('cc_requested_model', '')
-        proxy_forwarded_model = e.get('proxy_forwarded_model', '')
-        answering_model = e.get('answering_model', '')
-        if cc_requested_model:
-            cc_requested_model_values[cc_requested_model] = cc_requested_model_values.get(cc_requested_model, 0) + 1
-        if proxy_forwarded_model:
-            forwarded_present += 1
-            proxy_forwarded_model_values[proxy_forwarded_model] = proxy_forwarded_model_values.get(proxy_forwarded_model, 0) + 1
-        if cc_requested_model and proxy_forwarded_model and cc_requested_model != proxy_forwarded_model:
-            override_active_count += 1
-        if answering_model:
-            answering_present += 1
-            with_answering_model += 1
-            answering_model_values[answering_model] = answering_model_values.get(answering_model, 0) + 1
-        else:
-            without_answering_model += 1
-        if proxy_forwarded_model and answering_model:
-            if proxy_forwarded_model == answering_model:
-                both_present_match += 1
-            else:
-                both_present_mismatch += 1
-
+def _init_stats_acc() -> dict:
     return {
-        'total': total,
-        'with_answering_model': with_answering_model,
-        'without_answering_model': without_answering_model,
-        'content_type_values': content_type_values,
-        'content_encoding_values': content_encoding_values,
-        'status_counts': status_counts,
-        'forwarded_present': forwarded_present,
-        'answering_present': answering_present,
-        'both_present_match': both_present_match,
-        'both_present_mismatch': both_present_mismatch,
-        'cc_requested_model_values': cc_requested_model_values,
-        'proxy_forwarded_model_values': proxy_forwarded_model_values,
-        'answering_model_values': answering_model_values,
-        'override_active_count': override_active_count,
+        'total': 0,
+        'with_answering_model': 0,
+        'without_answering_model': 0,
+        'content_type_values': {},
+        'content_encoding_values': {},
+        'status_counts': {},
+        'forwarded_present': 0,
+        'answering_present': 0,
+        'both_present_match': 0,
+        'both_present_mismatch': 0,
+        'cc_requested_model_values': {},
+        'proxy_forwarded_model_values': {},
+        'answering_model_values': {},
+        'override_active_count': 0,
     }
 
 
-def _write_report(log_files: list, stats: dict) -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+def _accumulate_entry(e: dict, acc: dict) -> None:
+    acc['status_counts'][e.get('status_code')] = acc['status_counts'].get(e.get('status_code'), 0) + 1
+    headers = e.get('headers', {})
+    ct = headers.get('content-type')
+    if ct:
+        acc['content_type_values'][ct] = acc['content_type_values'].get(ct, 0) + 1
+    ce = headers.get('content-encoding')
+    if ce:
+        acc['content_encoding_values'][ce] = acc['content_encoding_values'].get(ce, 0) + 1
+
+    cc_requested_model = e.get('cc_requested_model', '')
+    proxy_forwarded_model = e.get('proxy_forwarded_model', '')
+    answering_model = e.get('answering_model', '')
+    if cc_requested_model:
+        acc['cc_requested_model_values'][cc_requested_model] = acc['cc_requested_model_values'].get(cc_requested_model, 0) + 1
+    if proxy_forwarded_model:
+        acc['forwarded_present'] += 1
+        acc['proxy_forwarded_model_values'][proxy_forwarded_model] = acc['proxy_forwarded_model_values'].get(proxy_forwarded_model, 0) + 1
+    if cc_requested_model and proxy_forwarded_model and cc_requested_model != proxy_forwarded_model:
+        acc['override_active_count'] += 1
+    if answering_model:
+        acc['answering_present'] += 1
+        acc['with_answering_model'] += 1
+        acc['answering_model_values'][answering_model] = acc['answering_model_values'].get(answering_model, 0) + 1
+    else:
+        acc['without_answering_model'] += 1
+    if proxy_forwarded_model and answering_model:
+        if proxy_forwarded_model == answering_model:
+            acc['both_present_match'] += 1
+        else:
+            acc['both_present_mismatch'] += 1
+
+
+def _compute_stats(entries: list) -> dict:
+    acc = _init_stats_acc()
+    acc['total'] = len(entries)
+    for e in entries:
+        _accumulate_entry(e, acc)
+    return acc
+
+
+def _report_headline_lines(stats: dict) -> list:
     lines = []
-    lines.append('# Response Model Corpus Report')
-    lines.append('')
-    lines.append(f'Generated: {datetime.now(timezone.utc).isoformat()}Z')
-    lines.append(f'Source: `{LOG_DIR}` ({len(log_files)} `*_response.jsonl` files)')
-    lines.append('')
     lines.append('## Headline numbers')
     lines.append('')
     lines.append(f'- Total `_response` entries: {stats["total"]}')
@@ -121,11 +109,21 @@ def _write_report(log_files: list, stats: dict) -> None:
     lines.append(f'- Entries where proxy_forwarded_model != answering_model: {stats["both_present_mismatch"]}')
     lines.append(f'- Entries where cc_requested_model != proxy_forwarded_model (override active): {stats["override_active_count"]}')
     lines.append('')
+    return lines
+
+
+def _report_status_lines(stats: dict) -> list:
+    lines = []
     lines.append('## Status codes observed')
     lines.append('')
     for status, count in sorted(stats['status_counts'].items(), key=lambda kv: (kv[0] is None, kv[0])):
         lines.append(f'- `{status}`: {count}')
     lines.append('')
+    return lines
+
+
+def _report_content_header_lines(stats: dict) -> list:
+    lines = []
     lines.append('## content-type values observed')
     lines.append('')
     if stats['content_type_values']:
@@ -145,6 +143,11 @@ def _write_report(log_files: list, stats: dict) -> None:
         lines.append('- none — no entry in the corpus carries a `content-encoding` header value '
                       '(same reason as content-type above)')
     lines.append('')
+    return lines
+
+
+def _report_model_comparison_lines(stats: dict) -> list:
+    lines = []
     lines.append('## cc_requested_model vs. proxy_forwarded_model vs. answering_model')
     lines.append('')
     if stats['forwarded_present'] or stats['answering_present'] or stats['cc_requested_model_values']:
@@ -170,6 +173,21 @@ def _write_report(log_files: list, stats: dict) -> None:
             'unit-level verification of the parser against synthetic SSE bytes).'
         )
     lines.append('')
+    return lines
+
+
+def _write_report(log_files: list, stats: dict) -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    lines = []
+    lines.append('# Response Model Corpus Report')
+    lines.append('')
+    lines.append(f'Generated: {datetime.now(timezone.utc).isoformat()}Z')
+    lines.append(f'Source: `{LOG_DIR}` ({len(log_files)} `*_response.jsonl` files)')
+    lines.append('')
+    lines += _report_headline_lines(stats)
+    lines += _report_status_lines(stats)
+    lines += _report_content_header_lines(stats)
+    lines += _report_model_comparison_lines(stats)
     REPORT_PATH.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 

@@ -98,15 +98,10 @@ def _forwarded_tool_names(stem: str) -> set:
     return names
 
 
-# ORCHESTRATOR
-def main() -> None:
+def _run_checks(stem: str) -> list:
     from proxy.tools import _strip_unused_tools
     from constants import TOOL_BLOCKLIST
 
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    results = []
-
-    stem = _select_session_stem()
     payload = _load_original_payload(stem)
     orig_names = {t.get('name') for t in payload.get('tools', [])}
     modified, removed, removed_names = _strip_unused_tools(payload)
@@ -114,11 +109,11 @@ def main() -> None:
     mcp_names = {n for n in kept_names if n.startswith('mcp__')}
     non_mcp_kept = kept_names - mcp_names
     r1_ok = non_mcp_kept == EXPECTED_KEPT
-    results.append((
+    results = [(
         'post_strip_set_is_exact', r1_ok,
         f'orig={sorted(orig_names)} kept={sorted(kept_names)} '
         f'(non-MCP kept: {sorted(non_mcp_kept)}, want {sorted(EXPECTED_KEPT)}, mcp_extra={sorted(mcp_names)})',
-    ))
+    )]
 
     r2_ok = NEWLY_BLOCKED <= set(removed_names)
     results.append((
@@ -149,6 +144,11 @@ def main() -> None:
         f'{sorted(NEWLY_BLOCKED)} subset of TOOL_BLOCKLIST: {r5_ok}',
     ))
 
+    return results
+
+
+def _write_report(stem: str, results: list) -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
     lines = ['# CC 2.1.223 TOOL_BLOCKLIST extension probe', '']
     lines.append(f'Session (newest main-session log in live corpus): `{stem}`')
     lines.append('')
@@ -166,6 +166,13 @@ def main() -> None:
         print(('PASS' if ok else 'FAIL'), label, '-', detail)
     print('ALL PASS' if all_pass else 'FAILURES PRESENT')
     sys.exit(0 if all_pass else 1)
+
+
+# ORCHESTRATOR
+def main() -> None:
+    stem = _select_session_stem()
+    results = _run_checks(stem)
+    _write_report(stem, results)
 
 
 if __name__ == '__main__':
