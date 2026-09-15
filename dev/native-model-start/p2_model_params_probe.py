@@ -36,13 +36,15 @@ absent), added so this exact failure is now readable straight off the forwarded 
 
 Test 15 covers a follow-up review point: a context_management removal now reaches the
 stripped-delta path for the first time (previously that field only ever got INJECTED, never
-STRIPPED). `src/proxy/strip_inject_delta.py`'s own `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` are proven
-dead code (the real `fn_map` written to the stripped/injected JSONL never carries a field-level
-entry for ANY top-level field, thinking/output_config/max_tokens included — verified directly, not
-just by absence of a call site), so they are left unchanged. The tool that DOES actually attribute
-`fields_delta` entries is `dev/proxy_dual_log/attribution_coverage.py`'s own `_FIELD_STRIP_FN`
-dict, which was missing `context_management` on the strip side and would have reported the removal
-as `UNATTR:context_management`; fixed there, verified here.
+STRIPPED). `src/proxy/strip_inject_delta.py` used to hold its own `_FIELD_STRIP_FN`/
+`_FIELD_INJECT_FN` maps, proven dead code (the real `fn_map` written to the stripped/injected
+JSONL never carries a field-level entry for ANY top-level field, thinking/output_config/max_tokens
+included — verified directly, not just by absence of a call site) and already drifted from the live
+copy (missing `context_management` on the strip side); those maps have since been removed from that
+module entirely. The tool that DOES actually attribute `fields_delta` entries is
+`dev/proxy_dual_log/attribution_coverage.py`'s own `_FIELD_STRIP_FN` dict, which was missing
+`context_management` on the strip side and would have reported the removal as
+`UNATTR:context_management`; fixed there, verified here.
 
 Run from project root or worktree root:
     ./venv/bin/python dev/native-model-start/p2_model_params_probe.py
@@ -447,13 +449,14 @@ def _load_attribution_coverage_module():
 
 # Test 15 — follow-up review point: _strip_clear_thinking_edit can now remove a top-level field
 # (context_management) for the first time ever on the STRIP side. Establishes (a) the real fn_map
-# written to stripped/injected JSONL never attributes ANY top-level field, proving
-# src/proxy/strip_inject_delta.py's _FIELD_STRIP_FN/_FIELD_INJECT_FN are dead code untouched by
-# this change; and (b) the tool that DOES attribute fields_delta entries,
-# dev/proxy_dual_log/attribution_coverage.py's own _FIELD_STRIP_FN, now correctly names
-# _strip_clear_thinking_edit instead of falling through to UNATTR:context_management.
+# written to stripped/injected JSONL never attributes ANY top-level field, and that
+# src/proxy/strip_inject_delta.py's own _FIELD_STRIP_FN/_FIELD_INJECT_FN — proven dead code by
+# that fact — have since been removed from that module entirely; and (b) the tool that DOES
+# attribute fields_delta entries, dev/proxy_dual_log/attribution_coverage.py's own
+# _FIELD_STRIP_FN, now correctly names _strip_clear_thinking_edit instead of falling through to
+# UNATTR:context_management.
 def test_context_management_strip_is_attributed():
-    print("\n[Test 15] context_management strip: fn_map dead-code check + attribution_coverage fix")
+    print("\n[Test 15] context_management strip: fn_map dead-code removal check + attribution_coverage fix")
 
     orig_payload = {
         "model": "claude-sonnet-5",
@@ -476,9 +479,10 @@ def test_context_management_strip_is_attributed():
           stripped_entry["fn_map"] == {} and "thinking" not in stripped_entry["fn_map"])
 
     ac = _load_attribution_coverage_module()
-    check("(a) confirms by content: src/proxy/strip_inject_delta.py's own _FIELD_STRIP_FN "
-          "still has no context_management entry (left untouched — it was never live)",
-          "context_management" not in strip_inject_delta._FIELD_STRIP_FN)
+    check("(a) confirms by content: src/proxy/strip_inject_delta.py's own _FIELD_STRIP_FN/"
+          "_FIELD_INJECT_FN have been removed entirely (they were never live)",
+          not hasattr(strip_inject_delta, "_FIELD_STRIP_FN")
+          and not hasattr(strip_inject_delta, "_FIELD_INJECT_FN"))
     strip_fn = ac._FIELD_STRIP_FN.get("context_management", "UNATTR:context_management")
     check("(b) attribution_coverage.py now attributes the strip to _strip_clear_thinking_edit, "
           f"not UNATTR (got: {strip_fn!r})",
