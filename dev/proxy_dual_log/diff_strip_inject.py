@@ -131,8 +131,80 @@ def _preview(text: str, n: int = PREVIEW_CHARS) -> str:
     return repr(s[:n]) + (f"…({len(s)}c)" if len(s) > n else "")
 
 
+def _print_system_diff(o_sys: list, f_sys: list, diff_system) -> tuple:
+    from src.proxy.diff_engine import _span_counts
+    sys_diffs = diff_system(o_sys, f_sys)
+    sys_s = sys_i = 0
+    for d in sys_diffs:
+        s, inj = _span_counts(d["spans"]); sys_s += s; sys_i += inj
+    changed_sys = [d for d in sys_diffs if any(t != "equal" for t, _ in d["spans"])]
+    if changed_sys:
+        n_id = len(sys_diffs) - len(changed_sys)
+        print(f"  SYSTEM ({len(o_sys)}→{len(f_sys)} blocks, {n_id} identical)")
+        for d in changed_sys:
+            s, inj = _span_counts(d["spans"])
+            tag = "REPLACED" if s and inj else ("STRIPPED" if s else "INJECTED")
+            print(f"    sys[{d['idx']}]: {tag}   -{len(d['o_text'])} / +{len(d['f_text'])} chars")
+            for t, text in d["spans"]:
+                if t in ("stripped", "injected"):
+                    print(f"               {t}: {_preview(text)}")
+    return sys_s, sys_i
+
+
+def _print_tools_diff(o_tools: list, f_tools: list, diff_tools) -> tuple:
+    from src.proxy.diff_engine import _span_counts
+    td = diff_tools(o_tools, f_tools)
+    desc_stripped = [(n, len(od)) for n, od, fd, _ in td["desc_changes"] if not fd]
+    desc_other    = [(n, od, fd, sp) for n, od, fd, sp in td["desc_changes"] if fd]
+    t_s = len(td["stripped"]) + len(desc_stripped) + sum(_span_counts(sp)[0] for *_, sp in desc_other)
+    t_i = len(td["injected"]) + sum(_span_counts(sp)[1] for *_, sp in desc_other)
+    if td["stripped"] or td["injected"] or td["desc_changes"]:
+        print(f"  TOOLS  -{len(td['stripped'])} stripped / +{len(td['injected'])} injected / ~{len(td['desc_changes'])} desc-changed")
+        if td["stripped"]:
+            print(f"    STRIPPED: {',  '.join(td['stripped'])}")
+        if td["injected"]:
+            print(f"    INJECTED: {',  '.join(td['injected'])}")
+        if desc_stripped:
+            parts = "  ".join(f"{n}(-{l}c)" for n, l in desc_stripped)
+            print(f"    DESC STRIPPED: {parts}")
+        for n, od, fd, sp in desc_other:
+            s, inj = _span_counts(sp)
+            print(f"    desc ~{n}: -{len(od)} / +{len(fd)} chars  ({s} stripped / {inj} injected spans)")
+    return t_s, t_i
+
+
+def _print_messages_diff(o_msgs: list, f_msgs: list, diff_messages) -> tuple:
+    from src.proxy.diff_engine import _span_counts
+    msg_diffs = diff_messages(o_msgs, f_msgs)
+    msgs_s = msgs_i = 0
+    changed_msgs = []
+    for md in msg_diffs:
+        all_sp = [sp for bd in md["block_diffs"] for sp in bd["spans"]]
+        s, inj = _span_counts(all_sp); msgs_s += s; msgs_i += inj
+        if s or inj:
+            changed_msgs.append(md)
+    if changed_msgs:
+        n_id = len(msg_diffs) - len(changed_msgs)
+        print(f"  MESSAGES ({len(o_msgs)}→{len(f_msgs)}, {n_id} identical)")
+        for md in changed_msgs:
+            all_sp = [sp for bd in md["block_diffs"] for sp in bd["spans"]]
+            s, inj = _span_counts(all_sp)
+            print(f"    msg[{md['idx']}] ({len(md['block_diffs'])} blocks)  -{s} stripped / +{inj} injected")
+            for bd in md["block_diffs"]:
+                bs, bi = _span_counts(bd["spans"])
+                if bs == 0 and bi == 0:
+                    print(f"      block[{bd['bidx']}]: IDENTICAL   {len(bd['o_text'])} chars")
+                else:
+                    tag = "REPLACED" if bs and bi else ("STRIPPED" if bs else "INJECTED")
+                    print(f"      block[{bd['bidx']}]: {tag}   -{len(bd['o_text'])} / +{len(bd['f_text'])} chars")
+                    for t, text in bd["spans"]:
+                        if t in ("stripped", "injected"):
+                            print(f"               {t}: {_preview(text)}")
+    return msgs_s, msgs_i
+
+
 def _print_report(matched: list, filename: str) -> None:
-    from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages, _span_counts
+    from src.proxy.diff_engine import _diff_system, _diff_tools, _diff_messages
     print(f"\ndiff_strip_inject — {filename}")
     print(f"  {len(matched)} matched request pairs\n")
 
@@ -153,68 +225,9 @@ def _print_report(matched: list, filename: str) -> None:
         f_tools = [t for t in (fwd_state.get("tools", []) or []) if isinstance(t, dict)]
         f_msgs  = fwd_state.get("messages", []) or []
 
-        # --- SYSTEM ---
-        sys_diffs = _diff_system(o_sys, f_sys)
-        sys_s = sys_i = 0
-        for d in sys_diffs:
-            s, inj = _span_counts(d["spans"]); sys_s += s; sys_i += inj
-        changed_sys = [d for d in sys_diffs if any(t != "equal" for t, _ in d["spans"])]
-        if changed_sys:
-            n_id = len(sys_diffs) - len(changed_sys)
-            print(f"  SYSTEM ({len(o_sys)}→{len(f_sys)} blocks, {n_id} identical)")
-            for d in changed_sys:
-                s, inj = _span_counts(d["spans"])
-                tag = "REPLACED" if s and inj else ("STRIPPED" if s else "INJECTED")
-                print(f"    sys[{d['idx']}]: {tag}   -{len(d['o_text'])} / +{len(d['f_text'])} chars")
-                for t, text in d["spans"]:
-                    if t in ("stripped", "injected"):
-                        print(f"               {t}: {_preview(text)}")
-
-        # --- TOOLS ---
-        td = _diff_tools(o_tools, f_tools)
-        desc_stripped = [(n, len(od)) for n, od, fd, _ in td["desc_changes"] if not fd]
-        desc_other    = [(n, od, fd, sp) for n, od, fd, sp in td["desc_changes"] if fd]
-        t_s = len(td["stripped"]) + len(desc_stripped) + sum(_span_counts(sp)[0] for *_, sp in desc_other)
-        t_i = len(td["injected"]) + sum(_span_counts(sp)[1] for *_, sp in desc_other)
-        if td["stripped"] or td["injected"] or td["desc_changes"]:
-            print(f"  TOOLS  -{len(td['stripped'])} stripped / +{len(td['injected'])} injected / ~{len(td['desc_changes'])} desc-changed")
-            if td["stripped"]:
-                print(f"    STRIPPED: {',  '.join(td['stripped'])}")
-            if td["injected"]:
-                print(f"    INJECTED: {',  '.join(td['injected'])}")
-            if desc_stripped:
-                parts = "  ".join(f"{n}(-{l}c)" for n, l in desc_stripped)
-                print(f"    DESC STRIPPED: {parts}")
-            for n, od, fd, sp in desc_other:
-                s, inj = _span_counts(sp)
-                print(f"    desc ~{n}: -{len(od)} / +{len(fd)} chars  ({s} stripped / {inj} injected spans)")
-
-        # --- MESSAGES ---
-        msg_diffs = _diff_messages(o_msgs, f_msgs)
-        msgs_s = msgs_i = 0
-        changed_msgs = []
-        for md in msg_diffs:
-            all_sp = [sp for bd in md["block_diffs"] for sp in bd["spans"]]
-            s, inj = _span_counts(all_sp); msgs_s += s; msgs_i += inj
-            if s or inj:
-                changed_msgs.append(md)
-        if changed_msgs:
-            n_id = len(msg_diffs) - len(changed_msgs)
-            print(f"  MESSAGES ({len(o_msgs)}→{len(f_msgs)}, {n_id} identical)")
-            for md in changed_msgs:
-                all_sp = [sp for bd in md["block_diffs"] for sp in bd["spans"]]
-                s, inj = _span_counts(all_sp)
-                print(f"    msg[{md['idx']}] ({len(md['block_diffs'])} blocks)  -{s} stripped / +{inj} injected")
-                for bd in md["block_diffs"]:
-                    bs, bi = _span_counts(bd["spans"])
-                    if bs == 0 and bi == 0:
-                        print(f"      block[{bd['bidx']}]: IDENTICAL   {len(bd['o_text'])} chars")
-                    else:
-                        tag = "REPLACED" if bs and bi else ("STRIPPED" if bs else "INJECTED")
-                        print(f"      block[{bd['bidx']}]: {tag}   -{len(bd['o_text'])} / +{len(bd['f_text'])} chars")
-                        for t, text in bd["spans"]:
-                            if t in ("stripped", "injected"):
-                                print(f"               {t}: {_preview(text)}")
+        sys_s, sys_i = _print_system_diff(o_sys, f_sys, _diff_system)
+        t_s, t_i = _print_tools_diff(o_tools, f_tools, _diff_tools)
+        msgs_s, msgs_i = _print_messages_diff(o_msgs, f_msgs, _diff_messages)
 
         print(f"  SPANS: sys -{sys_s}/+{sys_i}  tools -{t_s}/+{t_i}  msgs -{msgs_s}/+{msgs_i}")
         print()
