@@ -130,3 +130,24 @@ gotcha `dev/proxy_instrumentation/DOCS.md` already documents.
 - `python open() mode x` (the one from-scratch-determinate form besides the edit-only in-place
   editors) has zero hits in this corpus as of 2026-09-15. That is an absence-in-this-corpus fact,
   not evidence the pattern is wrong — same caveat the task gave for `tee -a`/`perl -pi` up front.
+
+## Recap — 2026-09-15, later same session
+
+Main review found one structural defect: in both touched files, imports sat ABOVE the
+`# INFRASTRUCTURE` marker instead of below it. Code Standards says the marker is `Imports und
+Konstanten` — the marker comes first, imports follow it. `src/hooks/block_po_read.py` is the
+compliant shape in this repo (`# INFRASTRUCTURE` on line 1, every import under it);
+`src/proxy/strip_sr.py` is the drifted one and was named explicitly as the anti-pattern, not the
+model.
+
+Fixed in `9bda8c8f`: moved `import re` below the marker in `src/constants.py`, and moved
+`json`/`sys`/`from pathlib import Path` plus the `sys.path.insert`/`from src.constants import`
+bootstrap below the marker in `dev/cache/extract_bash_file_mods.py`. Nothing else changed — same
+LOC in both files (50 and 98), no regex touched, no re-run of the extraction, `dev/cache/DOCS.md`
+needed no update since its `(98 LOC)` heading was already correct and no documented behavior
+changed.
+
+**Lesson for a successor**: when writing a new module in this repo, put `# INFRASTRUCTURE` on
+line 1 before writing a single import. This worker wrote the import bootstrap first out of habit
+(get `sys.path` working, then structure it), which put the marker in the wrong place relative to
+the imports it's supposed to head. Write the marker first instead, every time.
