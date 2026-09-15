@@ -1,6 +1,13 @@
-# 2026-09-15 — removed the dead `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` pair from `strip_inject_delta.py`
+# 2026-09-15 — two milestones: dead `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` removal, then sidecar delta-chain/REQ-numbering isolation
 
-## Task
+This file covers two unrelated milestones from the same session, in chronological order: removing
+the dead `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` pair from `strip_inject_delta.py` ("Milestone 1"
+below), then isolating the CC-internal zero-tool sidecar call from the proxy's write-side delta
+chain and the pane's REQ numbering ("Milestone 2" below).
+
+## Milestone 1 — dead `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` removal
+
+### Task
 
 `src/proxy/strip_inject_delta.py` defined `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN`, a hand-written
 attribution table mapping top-level payload fields (`model`/`max_tokens`/`thinking`/
@@ -10,7 +17,7 @@ these as dead — never wired into the real `fn_map` — and noted that `dev/pro
 attribution_coverage.py` keeps its own separately-maintained copy of the same two maps, by hand,
 with no import between the files.
 
-## Investigation, re-verified fresh (not trusted from the prior entry)
+### Investigation, re-verified fresh (not trusted from the prior entry)
 
 `grep -rn "_FIELD_STRIP_FN\|_FIELD_INJECT_FN" --include='*.py' src/ dev/` found exactly two
 definitions and zero cross-file reads: `strip_inject_delta.py`'s own dicts were referenced only by
@@ -32,7 +39,7 @@ into a module the live mitmproxy addon loads on every process start, or (b) `str
 staying the "clean" copy while `attribution_coverage.py` still needs its own annotation layer on
 top — not a real single source of truth either way, just a different shape of duplication.
 
-## What was done
+### What was done
 
 Deleted `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` from `src/proxy/strip_inject_delta.py` (293 → 286
 LOC). Left `_SYS_FN` and `_MSG_CODE_TO_FN` in the same file untouched — both are genuinely used
@@ -60,7 +67,7 @@ truth after the removal:
   not just one missing key) instead of deleting it. Also updated the module docstring's Test 15
   description and the in-function comment block to say "removed" rather than "left unchanged."
 
-## Verification
+### Verification
 
 `./venv/bin/python dev/native-model-start/p2_model_params_probe.py` → **73/73 checks passed**
 (same total as before — Test 15's assertions were rewritten in place, not added to or removed
@@ -71,7 +78,7 @@ test_strip_fix.py` (264/264 PASS). A repo-wide grep for the two dict names after
 only `attribution_coverage.py`'s definitions/uses and `p2_model_params_probe.py`'s updated
 docstring/check text — no stray references left anywhere.
 
-## What a future reader must not assume
+### What a future reader must not assume
 
 The real `fn_map` written to `stripped_delta`/`injected_delta` JSONL entries **still** never
 carries a field-level entry, for any top-level field, for any request — that has not changed and
@@ -84,9 +91,9 @@ If `attribution_coverage.py`'s field maps and the functions they name ever diver
 again (a new pass added that strips or injects one of these five fields), there is still no import
 or shared source enforcing sync — the only fix location now is `attribution_coverage.py` itself.
 
-# 2026-09-15 (same session, new milestone) — isolating the zero-tool CC-internal sidecar from the proxy delta chain and pane REQ numbering
+## Milestone 2 (same session) — isolating the zero-tool CC-internal sidecar from the proxy delta chain and pane REQ numbering
 
-## Task
+### Task
 
 Claude Code sends a second kind of request alongside the real conversation — a zero-tool
 CC-internal call (this session's investigation found session-titling and a bare `"quota"` call;
@@ -100,7 +107,7 @@ one is opened"). This entry is that record. Two deliverables: (1) the write-side
 diff against a sidecar call, (2) the proxy pane (`src/proxy_display/`, NOT `dual_log_cli`, which
 already had its own independent read-side fix) does not count a sidecar as a numbered REQ.
 
-## Investigation — re-measured fresh, not trusted from the 2026-09-03 entry
+### Investigation — re-measured fresh, not trusted from the 2026-09-03 entry
 
 Repo-wide scan of `src/logs/dual_log/*_forwarded.jsonl` at investigation time (20 files, main
 checkout): **33 sidecar-shaped entries** (`counts.tools == 0`), spread across **all 20/20 files**
@@ -121,7 +128,7 @@ every `_original.jsonl` on disk at that point (6 + 6 files) — 0 non-haiku, zer
 either stream. A stray `/tmp/dual_log/` from an earlier dev-harness run (`flow_id: "fake-flow-id"`)
 was excluded as synthetic test output, not real corpus.
 
-## Deliverable 1 (write side) — kept, has a real observation behind it
+### Deliverable 1 (write side) — kept, has a real observation behind it
 
 `src/proxy/addon_dual_log.py`: added `_is_sidecar_payload(payload) -> bool` (`len(payload.get
 ("tools") or []) == 0`), the same criterion as `dual_log_cli.timeline_boundaries._is_sidecar`
@@ -153,7 +160,7 @@ polluted by the sidecar in between), and proving a GENUINE change right after a 
 reported (the chain skip doesn't swallow real changes). Confirmed the test fails
 (`ImportError`, pre-fix — the function didn't exist yet) via `git stash`.
 
-## Deliverable 2 (pane REQ numbering) — reverted after review pushback, with reasoning
+### Deliverable 2 (pane REQ numbering) — reverted after review pushback, with reasoning
 
 **First attempt:** widened `src/proxy_display/format.py::_is_standalone_entry` to treat ANY
 zero-tool entry as standalone (dropped the `sys_chars == 0 and` requirement, leaving `tools_chars
@@ -191,7 +198,7 @@ one, and asserts the `H` label — 8/8 passed against the REVERTED code (was 5/1
 reverted code with the old, wider-case assertions still in it, confirming those assertions really
 were testing only the unobserved case).
 
-## What a future reader must not assume
+### What a future reader must not assume
 
 `tools_total_chars == 0` (mirroring `dual_log_cli.timeline_boundaries._is_sidecar`'s `counts.tools
 == 0`, model-agnostic) IS the precise, correct criterion to switch `_is_standalone_entry` to if a
