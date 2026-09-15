@@ -13,6 +13,16 @@ end-to-end against one recorded request.
 Each script either builds synthetic fixtures in-process or replays a recorded dual-log corpus through
 one real pass function, then prints PASS/FAIL to stdout or writes a report to `md/`.
 
+`test_strip_fix.py` (the largest suite here) splits into a thin entry script plus sibling
+`test_strip_fix_fixtures.py` (module loads, `check()`/`PASS`/`FAIL`, shared content builders) and
+several `test_strip_fix_cases_*.py` modules (the `test_*`/`tNN_*`/`wNN_*`/`ttNN_*` functions,
+grouped by the concern each covers), following the split convention already used in
+`dev/proxy_dual_log/` and `dev/pane_search/`. Sibling modules import each other with plain
+`from test_strip_fix_... import name`; none of them literally write `from src.`/`import src.` at
+module level (blocked by `src/hooks/block_dev_imports_src.py` for any `dev/` file outside
+`*/tests/`) — they load `src` via `importlib.import_module` instead, same as the pre-existing
+`replay_*.py` scripts in this directory.
+
 ## Modules
 
 ### pipeline_byte_identity.py (153 LOC)
@@ -59,7 +69,7 @@ one block with the wakeup line in fixed order, summary always dropped.
 
 ---
 
-### replay_sn_notice_strip.py (215 LOC)
+### replay_sn_notice_strip.py (233 LOC)
 
 **Purpose:** Replay proof for `_apply_sn_notice_strip` over every captured dual-log — asserts every
 message not reported as changed is byte-exact untouched, every changed message reconstructs exactly
@@ -74,7 +84,7 @@ absolute path, since src/logs is gitignored per-worktree).
 
 ---
 
-### replay_strip_v2.py (241 LOC)
+### replay_strip_v2.py (259 LOC)
 
 **Purpose:** Two-part validator for the template-based SR strip (`strip_sr.py`) against an old
 proxy's recorded `stripped_msg_removed` field.
@@ -82,11 +92,11 @@ proxy's recorded `stripped_msg_removed` field.
 **Writes:** a report to a scratch path outside `dev/proxy/md/` (see Gotchas).
 **Called by:** none — manual CLI, currently non-functional (see Gotchas).
 **Calls out:** `src/proxy/strip_sr.py` (`_apply_sr_strip`, `_match_template`, `_ALL_TEMPLATES`,
-`_STANDALONE_SR_RE`, `_INNER_SR_RE`, `_strip_system_reminders`).
+`_STANDALONE_SR_RE`, `_INNER_SR_RE`, `_strip_system_reminders`) — loaded via `importlib`.
 
 ---
 
-### scan_sr_catalog.py (313 LOC)
+### scan_sr_catalog.py (333 LOC)
 
 **Purpose:** Scans proxy request logs to build a catalog of system-reminder/task-notification content
 — what the proxy stripped (classified real-SR/real-TN/false-positive by heuristic) and what it missed
@@ -113,28 +123,122 @@ under both roles, and end-to-end resolution through `apply_modification_rules`.
 
 ---
 
-### test_strip_fix.py (1820 LOC)
+### test_strip_fix.py (207 LOC)
 
-**Purpose:** The largest suite in this directory — regression tests for the template-based
-exact-match system-reminder strip (core templates, content-shape variants, preserve guards), the
-full per-message pass chain for task-notification/launch-ack/interrupt-marker/sn-notice strips, the
-system-reminder-wrapped task-notification wakeup shape, and the `<total_tokens>` badge/render delta
-including the trailing-nudge widening.
-**Reads:** synthetic in-script fixtures, except one fixture's text copied verbatim from a real corpus
-line (see the module's own W31-W33 fixture).
-**Writes:** PASS/FAIL lines to stdout.
+**Purpose:** Entry point for the largest suite in this directory — imports every `test_*`/`tNN_*`/
+`wNN_*`/`ttNN_*` function from the sibling `test_strip_fix_fixtures.py`/`test_strip_fix_cases_*.py`
+modules and runs them in the original fixed order.
+**Reads:** nothing external.
+**Writes:** PASS/FAIL lines to stdout; exits 1 if any check fails.
 **Called by:** none — manual CLI.
-**Calls out:** `src/proxy/strip_sr.py`, `src/proxy/payload_helpers.py`, `src/proxy/message_passes.py`
-(`_apply_first_pass`, `_apply_final_sr_pass`, `_apply_role_system_strip`),
-`src/proxy/message_passes_simple.py` (`_apply_bg_exit_strip`, `_apply_sn_notice_strip`,
-`_apply_interrupt_marker_strip`), `src/proxy/rules.py` (`apply_modification_rules`),
-`src/proxy/strip_bg_completed.py`, `src/proxy/strip_sn_notice.py`, `src/proxy/strip_bg_launch_ack.py`,
-`src/proxy/strip_interrupt_marker.py`, `src/proxy_display/parser.py` (`badge_flags`,
-`accumulate_dual_log`), `src/proxy_display/render_turn.py` (`_build_req_header_line`).
+**Calls out:** `test_strip_fix_fixtures.py`, `test_strip_fix_cases_templates.py`,
+`test_strip_fix_cases_env_context.py`, `test_strip_fix_cases_wakeup.py`,
+`test_strip_fix_cases_launch_ack_interrupt.py`, `test_strip_fix_cases_wrapped_tn.py`,
+`test_strip_fix_cases_badge.py`, `test_strip_fix_cases_badge_nudge.py`.
 
 ---
 
-### replay_env_context_strip.py (244 LOC)
+### test_strip_fix_fixtures.py (84 LOC)
+
+**Purpose:** Loads the `src.proxy` strip/pass modules under test, holds the shared `check()`/
+`PASS`/`FAIL`, and builds the SR/tool_result/text-block content fixtures every case module uses.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py` and every `test_strip_fix_cases_*.py` module.
+**Calls out:** `src.proxy.strip_sr`, `src.proxy.payload_helpers`, `src.proxy.message_passes`,
+`src.proxy.message_passes_simple`, `src.proxy.strip_bg_completed`, `src.proxy.strip_sn_notice`,
+`src.proxy.strip_bg_launch_ack`, `src.proxy.strip_interrupt_marker`, `src.proxy.rules` — loaded via
+`importlib.import_module`.
+
+---
+
+### test_strip_fix_cases_templates.py (341 LOC)
+
+**Purpose:** `T01`-`T39` — core template exact-match SR strip coverage (8 templates × 3 cases),
+content-shape tests, plan-mode, `_find_system_reminder_blocks`, `_content_contains`, the SR-family
+tool_result non-descent identity checks, and top-level-still-works evidence.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`.
+**Calls out:** `test_strip_fix_fixtures.py`.
+
+---
+
+### test_strip_fix_cases_env_context.py (303 LOC)
+
+**Purpose:** `T40`-`T51` — the env-context `_ENV_CONTEXT_RE` replay fixtures: the CC 2.1.258
+trailing-sentences form, the bundled CLAUDE.md-preserved shape, and the gitStatus-section widening
+(including two real CC issue-report layouts).
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`.
+**Calls out:** `test_strip_fix_fixtures.py`.
+
+---
+
+### test_strip_fix_cases_wakeup.py (236 LOC)
+
+**Purpose:** `W01`-`W14`, `W30` — wakeup-injection false-positive guards (TN/BGK tag quoted inside
+tool_result), the SN-notice-paragraph anchored strip, and role='system' task-notification/mid-turn
+message construction.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`.
+**Calls out:** `test_strip_fix_fixtures.py`.
+
+---
+
+### test_strip_fix_cases_launch_ack_interrupt.py (305 LOC)
+
+**Purpose:** `W15`-`W29`, `W34` — bg-launch-ack ID/path line recovery across all three recognized
+CC wordings (initial launch, manual backgrounding, auto-backgrounded-on-timeout), and
+`strip_interrupt_marker.py`'s two wordings.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`.
+**Calls out:** `test_strip_fix_fixtures.py`.
+
+---
+
+### test_strip_fix_cases_wrapped_tn.py (103 LOC)
+
+**Purpose:** `W31`-`W33` — the SR-wrapped task-notification full-chain regression (real
+`apply_modification_rules` pipeline, not a hand-picked pass subset) plus its two byte-identical
+control cases (bare role='system' TN, unwrapped role='user' TN).
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`.
+**Calls out:** `test_strip_fix_fixtures.py`.
+
+---
+
+### test_strip_fix_cases_badge.py (255 LOC)
+
+**Purpose:** `TT01`-`TT09` — the `<total_tokens>` badge-suppression read-side fix: writer spans
+unchanged, badge goes quiet only for the exact bare-tag class, every other nuke/injection still
+badges, end to end through the real header renderer.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`, `test_strip_fix_cases_badge_nudge.py`.
+**Calls out:** `test_strip_fix_fixtures.py`, `src.proxy.strip_inject_delta`, `src.proxy.rule_ops`,
+`src.proxy_display.proxy_badge`, `src.proxy_display.dual_log_accumulator`,
+`src.proxy_display.render_turn` — loaded via `importlib.import_module`/inline `from src.` (indented,
+not module-level, so outside the dev-import-hook's pattern).
+
+---
+
+### test_strip_fix_cases_badge_nudge.py (149 LOC)
+
+**Purpose:** `TT10`-`TT14` — the claude-f trailing-nudge widening of the total_tokens badge
+suppression class (single/combined/repeated nudge sentences, near-miss real-content mixes).
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `test_strip_fix.py`.
+**Calls out:** `test_strip_fix_fixtures.py`, `test_strip_fix_cases_badge.py`.
+
+---
+
+### replay_env_context_strip.py (255 LOC)
 
 **Purpose:** Before/after replay for `_ENV_CONTEXT_RE` fixes (CC 2.1.258 trailing-sentences, and the
 gitStatus-section widening) — scans every top-level standalone system-reminder block across the
@@ -192,7 +296,7 @@ across repos — see the Gotcha in `src/proxy/DOCS.md`).
 
 ---
 
-### test_sidecar_delta_chain.py (205 LOC)
+### test_sidecar_delta_chain.py (211 LOC)
 
 **Purpose:** Regression guard for isolating the CC-internal zero-tool sidecar call
 (session-titling, quota check, security-monitor) from `addon_dual_log.py`'s per-model-family
@@ -218,7 +322,12 @@ cleaned up on exit).
 - `replay_sn_notice_strip.py` and `replay_env_context_strip.py` hardcode the current project's
   absolute path and read from the main checkout's src/logs/dual_log, not the worktree's — src/logs is
   gitignored per-worktree, so the dual-log corpus only exists in the main checkout.
-- Scripts importing `from src.<module>` (via `importlib`, or `test_strip_fix.py`'s direct form) vs.
-  `from proxy.<module>` after inserting `src/` directly onto `sys.path` (`proxy_bgcomplete_tests.py`,
-  `test_role_keyed_rules.py`) both work in this directory, but the two import styles are not
-  interchangeable in every `dev/` area.
+- Scripts importing `from src.<module>` (via `importlib`, or indented inside a function body — both
+  outside `src/hooks/block_dev_imports_src.py`'s module-level-only pattern) vs. `from proxy.<module>`
+  after inserting `src/` directly onto `sys.path` (`proxy_bgcomplete_tests.py`,
+  `test_role_keyed_rules.py`, `test_sidecar_delta_chain.py`) both work in this directory, but the two
+  import styles are not interchangeable in every `dev/` area.
+- The main checkout's `src/logs/dual_log/` corpus is live and actively growing on the dev machine —
+  two back-to-back runs of a replay script can differ by exactly the handful of requests the real
+  proxy logged in between; this is expected drift, not a regression, as long as every other reported
+  count (bucket tables, byte-exact-failure count) matches.

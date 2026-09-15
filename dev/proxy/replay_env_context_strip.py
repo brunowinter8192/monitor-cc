@@ -31,6 +31,8 @@ distinct real occurrences.
 Usage: python3 dev/proxy/replay_env_context_strip.py
 Output: dev/proxy/md/replay_env_context_strip.md
 """
+
+# INFRASTRUCTURE
 import json
 import os
 import re
@@ -179,8 +181,8 @@ def _sr_inner_texts_in_text(text):
             yield inner_m.group(1).strip()
 
 
-def render_report(stats):
-    lines = [
+def _render_tables_lines(stats):
+    return [
         '# strip_sr.py — env-context `_ENV_CONTEXT_RE` replay (gitStatus widening fix)',
         '',
         f'Corpus: `{LOGS_DIR}` — {stats["files"]} `*_original.jsonl` files, '
@@ -213,6 +215,11 @@ def render_report(stats):
         f'| env-context, left — BUNDLED | {stats["left_bundled_before"]} | {stats["left_bundled_after"]} |',
         f'| CLAUDE.md context, preserved | {stats["claudemd_preserved_before"]} | {stats["claudemd_preserved_after"]} |',
         '',
+    ]
+
+
+def _render_summary_lines(stats):
+    return [
         f'Newly stripped by this fix (present in "after" stripped, absent from "before"): '
         f'{len(stats["newly_stripped"])} distinct blocks — all are the gitStatus-form PURE-left '
         'bucket moving to stripped (the bug this task fixes; the current CC build emits '
@@ -232,6 +239,10 @@ def render_report(stats):
         'which measured 2 pure CLAUDE.md-preserved occurrences in a different corpus window).',
         '',
     ]
+
+
+def render_report(stats):
+    lines = _render_tables_lines(stats) + _render_summary_lines(stats)
     return '\n'.join(lines)
 
 

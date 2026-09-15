@@ -22,7 +22,12 @@ Expected:
 Usage: python3 dev/proxy/replay_strip_v2.py
 Output: /tmp/replay_strip_v2.md
 """
-import json, sys, os
+
+# INFRASTRUCTURE
+import importlib
+import json
+import os
+import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -31,11 +36,35 @@ os.environ.setdefault('MONITOR_CC_ROOT', os.path.join(os.path.dirname(__file__),
 LOGS_DIR = Path('/Users/brunowinter2000/Documents/ai/Monitor_CC/src/logs')
 OUT_FILE = Path('/tmp/replay_strip_v2.md')
 
-from src.proxy.strip_sr import (
-    _apply_sr_strip, _match_template, _ALL_TEMPLATES,
-    _STANDALONE_SR_RE, _INNER_SR_RE, _strip_system_reminders,
-)
+_sr_mod = importlib.import_module('src.proxy.strip_sr')
+_apply_sr_strip = _sr_mod._apply_sr_strip
+_match_template = _sr_mod._match_template
+_ALL_TEMPLATES = _sr_mod._ALL_TEMPLATES
+_STANDALONE_SR_RE = _sr_mod._STANDALONE_SR_RE
+_INNER_SR_RE = _sr_mod._INNER_SR_RE
+_strip_system_reminders = _sr_mod._strip_system_reminders
 
+# ORCHESTRATOR
+
+def main():
+    print('Running replay validation...', flush=True)
+    result = scan_all()
+    print(f'Done. {result["total_entries"]} entries in {result["total_logs"]} logs.')
+    print(f'Part A: FPs_old={result["fps_old"]}, FPs_new={result["fps_new"]} | Real_old={result["real_old"]}, drops={result["real_new_drops"]}')
+    print(f'Part B: Missed_old={result["missed_old"]}, now_stripped={result["now_stripped"]}, still_missed={result["still_missed"]}')
+
+    report = write_report(result)
+    OUT_FILE.write_text(report)
+    print(f'\nReport: {OUT_FILE}')
+
+    failed = _failures(result)
+    if failed:
+        print('FAIL:', ', '.join(failed))
+        sys.exit(1)
+    print('ALL PASS: FPs_new=0, coverage gained, no regression')
+
+
+# FUNCTIONS
 
 def _chunk_template(chunk):
     """Return template_id for chunk, or None if not a known SR."""
@@ -73,22 +102,63 @@ def _has_standalone_sr(content):
     return False
 
 
+# Part A for one stripped_msg_removed chunk: classify by NEW template matching, record a
+# regression if the old-FP chunk is STILL stripped or a real-SR chunk is NOW dropped.
+def _process_part_a(chunk, counters, fp_new_examples, real_drop_examples):
+    if not isinstance(chunk, str):
+        return
+    if chunk.startswith('<task-notification>'):
+        return
+    if not chunk.startswith('<system-reminder>'):
+        return
+    tid = _chunk_template(chunk)
+    new_result = _apply_sr_strip(chunk, _ALL_TEMPLATES)
+    if tid is None:
+        counters['fps_old'] += 1
+        # FP check: does the new code strip the outer FP code wrapper?
+        # (It should NOT — template matching prevents this.)
+        # The outer FP content is the first non-whitespace line after <SR>
+        outer_m = _INNER_SR_RE.search(chunk)
+        if outer_m:
+            first_line = outer_m.group(1).strip().split('\n')[0]
+            if first_line and first_line not in new_result:
+                # Outer FP code was stripped — true regression
+                counters['fps_new'] += 1
+                if len(fp_new_examples) < 5:
+                    fp_new_examples.append(repr(chunk[:120]))
+    else:
+        counters['real_old'] += 1
+        if new_result == chunk:
+            counters['real_new_drops'] += 1
+            if len(real_drop_examples) < 3:
+                real_drop_examples.append({'tid': tid, 'chunk': repr(chunk[:80])})
+
+
+# Part B for one entry: messages NOT covered by old_removed but carrying a standalone SR the NEW
+# code strips (or still misses).
+def _process_part_b(rp, old_removed, counters):
+    stripped_idxs = set(int(k) for k in old_removed.keys())
+    for msg_idx, msg in enumerate(rp.get('messages', [])):
+        if msg_idx in stripped_idxs:
+            continue
+        content = msg.get('content', '')
+        if not _has_standalone_sr(content):
+            continue
+        counters['missed_old'] += 1
+        new_content = _strip_system_reminders(content)
+        if _has_standalone_sr(new_content):
+            counters['still_missed'] += 1
+        else:
+            counters['now_stripped'] += 1
+
+
 def scan_all():
     logs = sorted(LOGS_DIR.glob('api_requests_*.jsonl'))
     total_entries = 0
-
-    # Part A counters
-    fps_old = 0         # chunks with no template match (old code wrongly stripped)
-    fps_new = 0         # of those, new code ALSO strips them (regression)
-    real_old = 0        # chunks with template match (old code correctly stripped)
-    real_new_drops = 0  # of those, new code does NOT strip them (regression)
+    counters = {'fps_old': 0, 'fps_new': 0, 'real_old': 0, 'real_new_drops': 0,
+                'missed_old': 0, 'now_stripped': 0, 'still_missed': 0}
     fp_new_examples = []
     real_drop_examples = []
-
-    # Part B counters
-    missed_old = 0       # messages with SR not processed by old proxy
-    now_stripped = 0     # of those, new code now strips them
-    still_missed = 0
 
     for log in logs:
         with open(log, 'r', encoding='utf-8') as f:
@@ -101,49 +171,11 @@ def scan_all():
                     # ─── Part A ───
                     for _, chunks in old_removed.items():
                         for chunk in chunks:
-                            if not isinstance(chunk, str):
-                                continue
-                            if chunk.startswith('<task-notification>'):
-                                continue
-                            if not chunk.startswith('<system-reminder>'):
-                                continue
-                            tid = _chunk_template(chunk)
-                            new_result = _apply_sr_strip(chunk, _ALL_TEMPLATES)
-                            if tid is None:
-                                fps_old += 1
-                                # FP check: does the new code strip the outer FP code wrapper?
-                                # (It should NOT — template matching prevents this.)
-                                # The outer FP content is the first non-whitespace line after <SR>
-                                outer_m = _INNER_SR_RE.search(chunk)
-                                if outer_m:
-                                    first_line = outer_m.group(1).strip().split('\n')[0]
-                                    if first_line and first_line not in new_result:
-                                        # Outer FP code was stripped — true regression
-                                        fps_new += 1
-                                        if len(fp_new_examples) < 5:
-                                            fp_new_examples.append(repr(chunk[:120]))
-                            else:
-                                real_old += 1
-                                if new_result == chunk:
-                                    real_new_drops += 1
-                                    if len(real_drop_examples) < 3:
-                                        real_drop_examples.append({'tid': tid, 'chunk': repr(chunk[:80])})
+                            _process_part_a(chunk, counters, fp_new_examples, real_drop_examples)
 
                     # ─── Part B ───
                     rp = entry.get('raw_payload', {})
-                    stripped_idxs = set(int(k) for k in old_removed.keys())
-                    for msg_idx, msg in enumerate(rp.get('messages', [])):
-                        if msg_idx in stripped_idxs:
-                            continue
-                        content = msg.get('content', '')
-                        if not _has_standalone_sr(content):
-                            continue
-                        missed_old += 1
-                        new_content = _strip_system_reminders(content)
-                        if _has_standalone_sr(new_content):
-                            still_missed += 1
-                        else:
-                            now_stripped += 1
+                    _process_part_b(rp, old_removed, counters)
 
                 except (json.JSONDecodeError, KeyError, TypeError):
                     continue
@@ -151,13 +183,13 @@ def scan_all():
     return {
         'total_entries': total_entries,
         'total_logs': len(logs),
-        'fps_old': fps_old,
-        'fps_new': fps_new,
-        'real_old': real_old,
-        'real_new_drops': real_new_drops,
-        'missed_old': missed_old,
-        'now_stripped': now_stripped,
-        'still_missed': still_missed,
+        'fps_old': counters['fps_old'],
+        'fps_new': counters['fps_new'],
+        'real_old': counters['real_old'],
+        'real_new_drops': counters['real_new_drops'],
+        'missed_old': counters['missed_old'],
+        'now_stripped': counters['now_stripped'],
+        'still_missed': counters['still_missed'],
         'fp_new_examples': fp_new_examples,
         'real_drop_examples': real_drop_examples,
     }
@@ -208,17 +240,8 @@ def write_report(r):
     return ''.join(lines)
 
 
-def main():
-    print('Running replay validation...', flush=True)
-    result = scan_all()
-    print(f'Done. {result["total_entries"]} entries in {result["total_logs"]} logs.')
-    print(f'Part A: FPs_old={result["fps_old"]}, FPs_new={result["fps_new"]} | Real_old={result["real_old"]}, drops={result["real_new_drops"]}')
-    print(f'Part B: Missed_old={result["missed_old"]}, now_stripped={result["now_stripped"]}, still_missed={result["still_missed"]}')
-
-    report = write_report(result)
-    OUT_FILE.write_text(report)
-    print(f'\nReport: {OUT_FILE}')
-
+# still_missed < 5% tolerance: residual are unknown-template SR-like content
+def _failures(result: dict) -> list:
     failed = []
     if result['fps_new'] > 0:
         failed.append(f'FPs_new={result["fps_new"]} (expected 0)')
@@ -226,15 +249,10 @@ def main():
         failed.append(f'real_new_drops={result["real_new_drops"]} (expected 0)')
     if result['now_stripped'] == 0 and result['missed_old'] > 0:
         failed.append('Coverage=0 (expected >0)')
-    # still_missed < 5% tolerance: residual are unknown-template SR-like content
     missed_rate = result['still_missed'] / max(result['missed_old'], 1)
     if missed_rate > 0.05:
         failed.append(f'still_missed rate {missed_rate:.1%} > 5% tolerance')
-
-    if failed:
-        print('FAIL:', ', '.join(failed))
-        sys.exit(1)
-    print('ALL PASS: FPs_new=0, coverage gained, no regression')
+    return failed
 
 
 if __name__ == '__main__':
