@@ -151,3 +151,53 @@ changed.
 line 1 before writing a single import. This worker wrote the import bootstrap first out of habit
 (get `sys.path` working, then structure it), which put the marker in the wrong place relative to
 the imports it's supposed to head. Write the marker first instead, every time.
+
+## Milestone 2 — 2026-09-15, later same session: run-stamped output, never overwritten
+
+`dev/cache/extract_bash_file_mods.py` originally wrote to a fixed path,
+`dev/cache/jsonl/bash_file_mods.jsonl`, in `'w'` mode — every re-run silently replaced whatever
+was there, which directly defeats the file's own stated purpose (surviving
+`src/logs/dual_log/` rotation). A re-run after a session had rotated out of the live corpus would
+produce a poorer file and overwrite a richer one with no trace of the loss.
+
+**Fix**: `OUTPUT_PATH` (a fixed constant) became `OUTPUT_FILENAME_FORMAT =
+'bash_file_mods_%Y%m%dT%H%M%SZ.jsonl'` plus `_run_output_path()`, which stamps the filename with
+`datetime.now(timezone.utc)` at the moment `extract_workflow` runs. `_write_records` now opens
+the target with `'x'` (exclusive create) instead of `'w'` — a second run whose filename would
+collide with an existing one raises `FileExistsError` and aborts instead of silently overwriting.
+Main confirmed this is a tripwire to keep, not a race condition to engineer around: two runs
+starting in the same UTC second aborting loudly is the correct, intended behavior at
+one-second filename granularity.
+
+**The already-committed 210-record file was renamed, not regenerated**:
+`dev/cache/jsonl/bash_file_mods.jsonl` → `dev/cache/jsonl/bash_file_mods_20260915T142910Z.jsonl`
+via `git mv` (100% content-identical per git's own similarity detection). The timestamp is the
+file's real on-disk mtime at the moment the original script wrote it — verified with
+`date -u -r dev/cache/jsonl/bash_file_mods.jsonl +"%Y-%m-%dT%H:%M:%SZ"` before the rename, cross-
+checked against the `51d156b9` commit timestamp (within ten seconds) — not a value invented for
+convenience. A successor should trust this timestamp the same way as any other
+`bash_file_mods_<timestamp>.jsonl` filename; nothing about it is second-class.
+
+**Verification performed and explicitly discarded**: ran the real script once against the live
+corpus (produced `bash_file_mods_20260915T144036Z.jsonl`, 210 records, landing at a distinct
+filename from the renamed 14:29:10Z one as expected), then called `_write_records` directly
+against that same path a second time to confirm `FileExistsError` actually fires (it did). Deleted
+`bash_file_mods_20260915T144036Z.jsonl` afterward and did not commit it — it added no new
+information over the already-committed 14:29:10Z snapshot (same corpus, minutes apart, nothing
+happened in between) and committing it would have misrepresented a verification run as a second
+meaningful extraction. `dev/cache/jsonl/` holds exactly one file after this milestone:
+`bash_file_mods_20260915T142910Z.jsonl`.
+
+**`dev/cache/DOCS.md` updated**: Flow (writes "a new, run-stamped file" instead of the one fixed
+name), the module's `Writes` line (the `%Y%m%dT%H%M%SZ` shape and the never-overwrite guarantee),
+two new Gotchas (the exclusive-create tripwire, and the renamed file's mtime-derived timestamp
+provenance), and State (replaced the now-false "regenerated in full... snapshot at run time"
+claim — corrected to "accumulates one file per run, never overwritten, no single canonical
+'current' file, newest = lexicographically last filename"). LOC heading corrected `98 LOC` →
+`102 LOC` against the real `wc -l` after the edit.
+
+**What a successor should know**: there is deliberately no "latest" symlink or index file — this
+was in scope ("no aggregation, no statistics, no report") to avoid building. A reader wanting the
+newest snapshot lists `dev/cache/jsonl/` and takes the lexicographically last filename (the
+`%Y%m%dT%H%M%SZ` format sorts correctly as plain text). If a later milestone wants a "latest"
+convenience, that is new scope, not an oversight here.

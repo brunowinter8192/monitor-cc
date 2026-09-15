@@ -15,22 +15,23 @@ No `__init__.py`. `extract_bash_file_mods.py` is run directly:
 Streams every `src/logs/dual_log/*_original.jsonl` file in the main checkout line by line, finds
 `Bash` `tool_use` blocks, deduplicates by `tool_use` id per session (the same block reappears in
 every later cumulative request of its session), matches each surviving command's text against
-`src.constants.BASH_FILE_MODIFICATION_FORMS`, and writes one JSON record per match to
-`dev/cache/jsonl/bash_file_mods.jsonl`. No aggregation, no statistics — ad hoc analysis is
-expected to run on top of this file later.
+`src.constants.BASH_FILE_MODIFICATION_FORMS`, and writes one JSON record per match to a new,
+run-stamped file under `dev/cache/jsonl/`. No aggregation, no statistics — ad hoc analysis is
+expected to run on top of these files later.
 
 ## Modules
 
-### extract_bash_file_mods.py (98 LOC)
+### extract_bash_file_mods.py (102 LOC)
 
 **Purpose:** Extracts and persists every Bash tool call whose command matches a known
 file-content-modification form, verbatim, with enough identity to find it again.
 **Reads:** every `*_original.jsonl` file under the main checkout's `src/logs/dual_log` (hardcoded
 `MAIN_REPO_ROOT`, same pattern as `dev/proxy_instrumentation/p7_blocklist_258_probe.py` — this
 worktree carries no logs).
-**Writes:** `dev/cache/jsonl/bash_file_mods.jsonl`, one JSON object per matched, deduplicated
-`tool_use` block: `session`, `tool_use_id`, `timestamp`, `matched_forms` (list of classification
-labels), `command` (the full, verbatim command string).
+**Writes:** `dev/cache/jsonl/bash_file_mods_<UTC-timestamp>.jsonl` (`%Y%m%dT%H%M%SZ`, the run's own
+start time — one new file per run, never an existing one), one JSON object per matched,
+deduplicated `tool_use` block: `session`, `tool_use_id`, `timestamp`, `matched_forms` (list of
+classification labels), `command` (the full, verbatim command string).
 **Called by:** none — manual, re-run after `src/logs/dual_log/` rotation or a classification
 change.
 **Calls out:** `src.constants` (`BASH_FILE_MODIFICATION_FORMS`).
@@ -69,7 +70,20 @@ change.
 - `src/logs/dual_log/` is gitignored runtime data, live-growing from concurrent sessions
   (including this worker's own) — re-running this script shifts the exact record count without
   changing the underlying classification or method.
+- The output is opened with `'x'` (exclusive create), not `'w'` — a second run landing on the same
+  filename is a tripwire, not a fallback: it raises `FileExistsError` and aborts rather than
+  silently replacing an earlier run's file. At one-second filename granularity this only fires on
+  two runs starting in the same second, which is correct behavior to refuse, not a bug to work
+  around.
+- `dev/cache/jsonl/bash_file_mods_20260915T142910Z.jsonl` (210 records) is the file originally
+  committed as the fixed-path `bash_file_mods.jsonl` before this run-stamped-naming milestone —
+  renamed, not regenerated, into the new convention. Its timestamp is the file's own on-disk
+  mtime at creation (verified against the commit that introduced it, `51d156b9`, to within ten
+  seconds), not a fabricated value.
 
 ## State
-`dev/cache/jsonl/bash_file_mods.jsonl` is regenerated in full on every run (not appended to) —
-it is a snapshot of the corpus at run time, not an incrementally maintained log.
+`dev/cache/jsonl/` accumulates one snapshot file per run, named by that run's own UTC start time.
+An existing run's file is never overwritten or appended to — a later run's poorer, rotated-corpus
+result cannot silently replace an earlier, richer one. There is no single canonical "current"
+file; a reader wanting the newest snapshot picks the lexicographically last filename in the
+directory.
