@@ -43,11 +43,7 @@ def find_latest_jsonl(project_name: str = None) -> Path:
     return jsonl_files[0]
 
 
-def scan_jsonl(filepath: Path) -> None:
-    print(f"Scanning: {filepath.name} ({filepath.stat().st_size} bytes)")
-    print(f"Project: {filepath.parent.name}")
-    print("=" * 80)
-
+def _collect_rule_locations(filepath: Path) -> list:
     seen_rules = set()
     rule_locations = []
 
@@ -77,12 +73,17 @@ def scan_jsonl(filepath: Path) -> None:
                             'msg_type': msg_type,
                             'contents_of': match
                         })
+    return rule_locations
 
+
+def _print_rule_locations(rule_locations: list) -> None:
     print(f"\nFound {len(rule_locations)} unique 'Contents of' entries:\n")
 
     for entry in rule_locations:
         print(f"  Line {entry['line']:>5} [{entry['msg_type']:>10}]: Contents of {entry['contents_of']}")
 
+
+def _print_parseable_names(rule_locations: list) -> None:
     print("\n" + "=" * 80)
     print(f"\nParseable rule names:")
     for entry in rule_locations:
@@ -101,6 +102,17 @@ def scan_jsonl(filepath: Path) -> None:
             print(f"  {tag} {name}  ←  {filepath_str}  ({scope})")
         else:
             print(f"  [?] {raw}")
+
+
+def scan_jsonl(filepath: Path) -> None:
+    print(f"Scanning: {filepath.name} ({filepath.stat().st_size} bytes)")
+    print(f"Project: {filepath.parent.name}")
+    print("=" * 80)
+
+    rule_locations = _collect_rule_locations(filepath)
+
+    _print_rule_locations(rule_locations)
+    _print_parseable_names(rule_locations)
 
 
 if __name__ == '__main__':
