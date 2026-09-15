@@ -363,7 +363,9 @@ worktree report BLOCK not because the original command was wrong but because eit
 exact command is what created the file, which is still sitting there from its real run, or (b) the
 worker worktree it targeted has since been deleted post-merge, both confirmed against
 `dev/hook_smoke/md/block_non_canonical_edit_corpus_report.md`'s BLOCK list by hand. None of this
-is a defect in `block_non_canonical_edit.py` itself — see its own Gotcha in `src/hooks/DOCS.md`.
+is a defect in `block_non_canonical_edit.py` itself, retired since as
+`block_non_canonical_edit.py.disabled` — see `process-docs/tool_use_safety/` for this hook's full
+history.
 
 **`test_block_chained_sleep.py` reports PASS without ever executing its target — a real defect,
 found while retiring `block_non_canonical_edit.py` and left as-is here since fixing it is separate

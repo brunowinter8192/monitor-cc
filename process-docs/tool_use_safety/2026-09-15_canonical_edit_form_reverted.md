@@ -130,3 +130,31 @@ precedent. Documented in `dev/hook_smoke/DOCS.md`'s Gotchas with the exact mecha
 FAIL) so whoever picks it up next does not have to re-derive it from scratch. The fix, if someone
 takes it on, is the same one-line `HOOK`-path update this session just gave
 `test_block_non_canonical_edit.py` on its own retirement.
+
+## Recap — 2026-09-15, session close
+
+Self-check (`git diff integration --name-only`) confirms this milestone's full touched set:
+`src/constants.py`, `src/hooks/hook_setup.py`, `src/hooks/DOCS.md`,
+`src/hooks/block_non_canonical_edit.py.disabled` (renamed), `dev/hook_smoke/DOCS.md`,
+`dev/hook_smoke/test_block_non_canonical_edit.py`, and this file.
+
+DOCS.md staleness check found one real miss from the retirement commit itself, fixed during this
+recap: `dev/hook_smoke/DOCS.md`'s corpus-replay-confound Gotcha ended with "see its own Gotcha in
+`src/hooks/DOCS.md`" — a dangling reference, since that exact Gotcha was one of the four removed
+from `src/hooks/DOCS.md` in the same commit that added this cross-reference's neighbor text. Fixed
+by pointing it at `process-docs/tool_use_safety/` instead, which still holds the material. Lesson
+for a successor: when a retirement removes documentation in one file, grep the REST of the repo's
+DOCS.md files for cross-references into the part just removed, not only the file being edited —
+this one was missed in the original commit and only caught here because the recap step checks
+DOCS.md accuracy as a matter of course, not because anything flagged it directly.
+
+Every other LOC heading re-checked against real `wc -l` after the fixes: `hook_setup.py` (211),
+`test_block_non_canonical_edit.py` (131), `verify_block_non_canonical_edit_corpus.py` (115,
+unchanged) — all correct. Smoke suite re-run clean: 18/18.
+
+This closes out the `tool_use_safety` area for this worker's session. Three process-docs files
+now exist for this one area from this session, each a closed, dated snapshot per the write-once
+rule: `2026-09-15_block_non_canonical_edit_hook.md` (the build), and this file (the reversal). The
+`cache`-area file from earlier the same session
+(`process-docs/cache/2026-09-15_bash_file_modification_classification.md`) is a separate area,
+untouched from here.
