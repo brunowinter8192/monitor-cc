@@ -229,12 +229,24 @@ def format_input_params(tool_name, input_dict):
     return '\n'.join(lines)
 
 
-def build_report(session_paths, session_summaries, all_zeros):
-    """Build the full markdown report."""
-    lines = []
-    multi = len(session_paths) > 1
+def render_session_table(session_summaries):
+    """Render the multi-session per-session summary table."""
+    lines = ['### Per-Session Summary', '', '| Session | Grep | Glob | Read | Total |',
+              '|---------|------|------|------|-------|']
+    for s in session_summaries:
+        sid = s['session_id'][:12]
+        grep_c = s['counts'].get('Grep', 0)
+        glob_c = s['counts'].get('Glob', 0)
+        read_c = s['counts'].get('Read', 0)
+        lines.append(f'| `{sid}` | {grep_c} | {glob_c} | {read_c} | {s["total"]} |')
+    lines.append('')
+    return lines
 
-    # Header
+
+def render_header_and_summary(session_paths, session_summaries, multi):
+    """Render the title, per-session summary (or single-session line), and the fixed note."""
+    lines = []
+
     if multi:
         lines.append('# Zero-Result Tool Calls')
     else:
@@ -257,22 +269,11 @@ def build_report(session_paths, session_summaries, all_zeros):
     lines.append('')
 
     if multi:
-        lines.append('### Per-Session Summary')
-        lines.append('')
-        lines.append('| Session | Grep | Glob | Read | Total |')
-        lines.append('|---------|------|------|------|-------|')
-        for s in session_summaries:
-            sid = s['session_id'][:12]
-            grep_c = s['counts'].get('Grep', 0)
-            glob_c = s['counts'].get('Glob', 0)
-            read_c = s['counts'].get('Read', 0)
-            lines.append(f'| `{sid}` | {grep_c} | {glob_c} | {read_c} | {s["total"]} |')
-        lines.append('')
+        lines += render_session_table(session_summaries)
     else:
         lines.append(f'**Session:** `{session_paths[0]}`')
         lines.append('')
 
-    # Note on 146 discrepancy
     lines.append('> **Note on warnings-pane count:** The Monitor_CC warnings pane aggregates')
     lines.append('> zero-results across the full Claude Code process tree (parent session +')
     lines.append('> all worker sub-sessions + any hook calls). A single session JSONL covers')
@@ -282,7 +283,12 @@ def build_report(session_paths, session_summaries, all_zeros):
     lines.append('---')
     lines.append('')
 
-    # Individual entries
+    return lines
+
+
+def render_zero_entries(all_zeros, multi):
+    """Render one detail section per zero-result entry."""
+    lines = []
     for n, z in enumerate(all_zeros, 1):
         sid = z['session_id']
         ts = z['timestamp_local']
@@ -314,6 +320,14 @@ def build_report(session_paths, session_summaries, all_zeros):
         lines.append('---')
         lines.append('')
 
+    return lines
+
+
+def build_report(session_paths, session_summaries, all_zeros):
+    """Build the full markdown report."""
+    multi = len(session_paths) > 1
+    lines = render_header_and_summary(session_paths, session_summaries, multi)
+    lines += render_zero_entries(all_zeros, multi)
     return '\n'.join(lines)
 
 

@@ -199,8 +199,8 @@ def _scan_proxy_log(proxy_log, cc_heads):
     return hits
 
 
-# Build the MD catalog report from all hits across all proxy logs
-def _build_report(all_hits, proxy_log_paths, session_cache):
+# Render the "Proxy Logs Scanned" header block
+def _render_scanned_logs(proxy_log_paths, session_cache):
     ts = datetime.now().strftime('%Y-%m-%d %H:%M')
     lines = [
         f'# CC Injection Catalog',
@@ -215,17 +215,12 @@ def _build_report(all_hits, proxy_log_paths, session_cache):
         cc_name = cc.name if cc else '(no match)'
         lines.append(f'- `{p.name}` → CC session `{cc_name}`')
     lines.append('')
+    return lines
 
-    if not all_hits:
-        lines.append('*No CC injections detected.*')
-        return '\n'.join(lines)
 
-    # Group by classification
-    by_class = defaultdict(list)
-    for h in all_hits:
-        by_class[h['classification']].append(h)
-
-    lines += [
+# Render the Summary table (classification → count → known strip rule)
+def _render_summary_table(by_class):
+    lines = [
         f'## Summary',
         f'',
         f'| Classification | Count | Known Strip Rule |',
@@ -241,8 +236,12 @@ def _build_report(all_hits, proxy_log_paths, session_cache):
         rule = rule_map.get(cls, '*(unknown)*')
         lines.append(f'| `{cls}` | {count} | {rule} |')
     lines.append('')
+    return lines
 
-    # Detail per classification
+
+# Render the per-classification detail sections
+def _render_classification_detail(by_class):
+    lines = []
     for cls in sorted(by_class):
         hits = by_class[cls]
         lines += [
@@ -267,6 +266,23 @@ def _build_report(all_hits, proxy_log_paths, session_cache):
                     f"| {h['msg_idx']} | {h['length']} | `{head_cell}` |"
                 )
         lines.append('')
+    return lines
+
+
+# Build the MD catalog report from all hits across all proxy logs
+def _build_report(all_hits, proxy_log_paths, session_cache):
+    lines = _render_scanned_logs(proxy_log_paths, session_cache)
+
+    if not all_hits:
+        lines.append('*No CC injections detected.*')
+        return '\n'.join(lines)
+
+    by_class = defaultdict(list)
+    for h in all_hits:
+        by_class[h['classification']].append(h)
+
+    lines += _render_summary_table(by_class)
+    lines += _render_classification_detail(by_class)
 
     return '\n'.join(lines)
 
