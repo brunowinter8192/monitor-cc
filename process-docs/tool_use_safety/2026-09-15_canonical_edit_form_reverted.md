@@ -158,3 +158,36 @@ rule: `2026-09-15_block_non_canonical_edit_hook.md` (the build), and this file (
 `cache`-area file from earlier the same session
 (`process-docs/cache/2026-09-15_bash_file_modification_classification.md`) is a separate area,
 untouched from here.
+
+## Recap — 2026-09-15, closing the test_block_chained_sleep.py defect
+
+Follow-up milestone, same session, closing the item this file's own body left open ("Not fixed
+here ... if someone takes it on, is the same one-line `HOOK`-path update
+`test_block_non_canonical_edit.py` got on its own retirement"). Applied exactly that: `HOOK` in
+`dev/hook_smoke/test_block_chained_sleep.py` now points at `src/hooks/block_chained_sleep.py.disabled`.
+
+**Ran it for real rather than assuming the fix alone was the deliverable.** Traced
+`block_chained_sleep.py.disabled`'s actual code by hand against each of the 13 cases first (the
+canonical-form regex, the sleep-token detector, `_shell_strip`-dependent quoted/heredoc/ANSI-C
+stripping, the command-substitution/backtick shell-active exception, and a settling-time
+side-effect carve-out none of the 13 cases happen to trigger), to have an independent expectation
+before executing — then ran it: **13/13 pass, twice, no flakiness.** The retired hook's own logic
+was never wrong; only this test's `HOOK` path had gone stale after the earlier rename. No case's
+expected exit code needed changing, and `block_chained_sleep.py.disabled` itself was not touched,
+per the task's explicit instruction not to change a hook or its expectations to manufacture a
+pass.
+
+`dev/hook_smoke/DOCS.md` updated in the same commit: the module entry no longer claims "preserved
+for regression reference" (which was true in name only while the path was broken) — it now states
+the fix and the real 13/13 directly. The Gotcha documenting the original defect moved from
+present to past tense, kept the full mechanism (the `python3` exit-code-2 coincidence, the exact
+5-false-OK/8-false-FAIL breakdown from the discovery commit) as the historical record of what
+went wrong and why, and now ends with the real result instead of "Not fixed here."
+
+Self-check (`git diff integration --name-only`): `dev/hook_smoke/DOCS.md`,
+`dev/hook_smoke/test_block_chained_sleep.py` — nothing else. LOC re-checked: 67, unchanged,
+matches its DOCS.md heading. No other DOCS.md file references this test, so no cross-reference
+cleanup was needed this time (unlike the previous recap in this same file, which had to fix one).
+
+This closes the last open item from this session's `block_non_canonical_edit` build-then-revert
+arc. Nothing further pending in this file.
