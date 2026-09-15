@@ -1,8 +1,7 @@
 # INFRASTRUCTURE
 import os
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
-from ..colors import RESET, YELLOW, DIM, WHITE
 from ..constants import PROXY_MESSAGES_KEEP_LAST
 from .format import _is_standalone_entry
 from .forwarded_parser import _lazy_load_messages_forwarded, reconstruct_all_messages
@@ -10,40 +9,8 @@ from .parser import _find_dual_log_paths
 from .dual_log_accumulator import accumulate_dual_log
 from .search import build_search_matches
 from .. import search_bar
-from ..utils import _ANSI_ESCAPE_RE
 
 # FUNCTIONS
-
-def _register_marker_regions(regions_out: Dict[Tuple[int, int, int], str], name: str,
-                              start: int, end: int, pane_width: int) -> None:
-    pos = start
-    while pos <= end:
-        row, col = divmod(pos, pane_width)
-        row_end = row * pane_width + pane_width - 1
-        seg_end = min(end, row_end)
-        regions_out[(col + 1, seg_end - row * pane_width + 1, row + 1)] = name
-        pos = seg_end + 1
-
-def _format_worker_proxy_header(workers: list, current_worker: Optional[str],
-                                 pane_width: int = 80,
-                                 regions_out: Optional[Dict[Tuple[int, int, int], str]] = None) -> str:
-    label = f"{YELLOW}WORKER-PROXY{RESET}  "
-    if regions_out is not None:
-        regions_out.clear()
-    if not workers:
-        return label + f"{DIM}no workers{RESET}"
-    parts = []
-    visible_col = len(_ANSI_ESCAPE_RE.sub('', label))
-    for i, w in enumerate(workers, 1):
-        name = w['name']
-        star = '*' if name == current_worker else ''
-        marker = f"[{i}{star}]{name}" if name == current_worker else f"[{i}]{name}"
-        color = WHITE if name == current_worker else DIM
-        parts.append(f"{color}{marker}{RESET}")
-        if regions_out is not None:
-            _register_marker_regions(regions_out, name, visible_col, visible_col + len(marker) - 1, pane_width)
-        visible_col += len(marker) + 2
-    return label + '  '.join(parts)
 
 def _entry_idx_from_key(key) -> Optional[int]:
     if isinstance(key, int):

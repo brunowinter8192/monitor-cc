@@ -1,0 +1,87 @@
+# P7 worker-tokens pane parity regression -- 20260915_212453
+
+83/83 checks passed
+
+- [x] _worker_tokens_search is a search_bar.SearchState instance
+- [x] label is 'search: '
+- [x] search bar is fixed 1-line
+- [x] row 1 (search bar) contains the label
+- [x] row 1 has no click-arrows
+- [x] worker-switch header text appears on a LATER line, not row 1
+- [x] row 1 is not a body line_map key
+- [x] row 2 (worker header) is not a body line_map key either
+- [x] header regions exist and are all on rows >= 2 (shifted past the search bar)
+- [x] all body line_map rows are past both header rows
+- [x] press returns True (redraw)
+- [x] press focuses the bar
+- [x] press arms dragging
+- [x] press anchors at index 1 ('e')
+- [x] motion extends sel_end only
+- [x] release returns True (redraw)
+- [x] release disarms dragging
+- [x] release copies exactly the selected substring
+- [x] release still returns True (dragging disarmed)
+- [x] NO clipboard call on a plain click
+- [x] selection cleared after a plain click
+- [x] release with no armed drag returns False
+- [x] selection exists before the elsewhere-click
+- [x] elsewhere-click reports a change (selection cleared)
+- [x] selection cleared after clicking elsewhere
+- [x] body-row press does not arm dragging
+- [x] motion after a body-row press falls through to generic hover
+- [x] selection exists before typing
+- [x] typing reports a change
+- [x] selection cleared after typing
+- [x] typed char appended at the end
+- [x] backspace reports a change
+- [x] query has the SELECTED substring removed
+- [x] selection cleared after selection-delete
+- [x] backspace reports a change
+- [x] last char trimmed
+- [x] kill-line reports a change
+- [x] query fully emptied
+- [x] matches survive plain backspace
+- [x] matches survive kill-line
+- [x] call is NOT expanded
+- [x] Enter reports a change
+- [x] real search found the call
+- [x] collapsed call header line is container-marked (SEARCH_CURRENT_BG present)
+- [x] the marker text itself does NOT leak into the collapsed row (still collapsed)
+- [x] real search found the call
+- [x] header line STILL container-marked when expanded
+- [x] the matched substring itself is browser-find highlighted somewhere in the output
+- [x] no unsubstituted _BG_RESTORE_SENTINEL leaks into the final output
+- [x] Enter reports a change
+- [x] real search found the turn
+- [x] turn header is container-marked in the rendered output
+- [x] no ('turn', 0) key leaked into worker_tokens_line_map (turn headers stay non-interactive)
+- [x] real search found the call
+- [x] row's OUTER chosen_bg is still LIGHT_RED_BG despite the search-marker wrap preceding it
+- [x] no-op with zero matches
+- [x] n advances to idx 1
+- [x] n advances to idx 2
+- [x] n wraps back to idx 0
+- [x] N (backward) wraps to idx 2
+- [x] cancel reports a change
+- [x] query cleared
+- [x] matches cleared
+- [x] focused cleared
+- [x] selection cleared
+- [x] bar still renders (never hidden)
+- [x] reverse-video ON code present
+- [x] reverse-video OFF code present
+- [x] the reversed span wraps exactly the selected substring
+- [x] no reverse-video codes when there is no selection
+- [x] ZEBRA_BG_A is indeed the empty string (confirms the trap applies here)
+- [x] an explicit \033[49m appears right after the highlighted detail-line text
+- [x] no raw _BG_RESTORE_SENTINEL leaked into the final output
+- [x] scroll starts at 0 (default view = newest/bottom)
+- [x] real search found the early call
+- [x] jump pushed worker_tokens_scroll_offset above 0 (turn 0 is far from the default bottom view)
+- [x] search state populated before the switch
+- [x] selected worker actually changed
+- [x] query cleared by the worker switch
+- [x] matches cleared by the worker switch
+- [x] focused cleared by the worker switch
+- [x] scroll offset reset to 0 by the worker switch
+- [x] turns cleared by the worker switch (stale worker's data does not leak)

@@ -12,9 +12,10 @@ from .parser import find_worker_proxy_log
 from .forwarded_parser import _parse_forwarded_log, _infer_model_family
 from .format import format_proxy_block
 from ..panes.cache_turns import build_cache_turns
-from ..workers.worker_tmux import find_worker_jsonl, list_workers
-from ..workers.worker_pane import get_selection_file_path
+from ..workers.worker_tmux import find_worker_jsonl, list_workers, attach_worker_stats
+from ..workers.worker_selection import get_selection_file_path
 from ..workers import write_selection
+from ..workers.worker_switch_header import format_worker_switch_header as _format_worker_proxy_header
 from ..input.click_handler import (
     read_keypress, setup_keyboard_input, restore_terminal,
     enable_mouse, disable_mouse, read_mouse_event, parse_digit_key, copy_to_clipboard, wait_for_input,
@@ -23,7 +24,7 @@ from ..utils import visual_line_count
 from ..ram_audit import register_ram_dump
 from ..pane_error_log import log_pane_error
 from .proxy_pane_shared import (
-    _format_worker_proxy_header, _entry_idx_from_key, _prepare_copy_text, _toggle_expand_and_lazy_load,
+    _entry_idx_from_key, _prepare_copy_text, _toggle_expand_and_lazy_load,
     _terminal_size, _run_pane_search, _handle_scroll_or_hover, _render_and_scroll_body,
     _accumulate_dual_logs_and_attach, _copy_feedback_key,
 )
@@ -261,6 +262,7 @@ def _refresh_worker_proxy_data(now: float, input_changed: bool, last_data_refres
     _worker_proxy_force_reload = False
     worker_name = _read_selected_worker_name(monitor)
     _worker_proxy_workers = list_workers(monitor.active_project_filter) if monitor.active_project_filter else []
+    attach_worker_stats(_worker_proxy_workers)
     if not _worker_proxy_workers:
         worker_name = None
     elif worker_name is not None and worker_name not in {w['name'] for w in _worker_proxy_workers}:

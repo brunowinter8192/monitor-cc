@@ -1,5 +1,5 @@
 """
-P1 — verifies all 8 pane event loops (7 previously unguarded + worker_pane.py, the reference
+P1 — verifies all 8 pane event loops (7 previously unguarded + worker_tokens_pane.py, the reference
 pattern) survive an uncaught exception raised inside the loop body, log it with a pane
 identifier via the shared src/pane_error_log.py sink, and keep running — and that the guard
 does NOT swallow deliberate termination (KeyboardInterrupt/SystemExit still propagate, `finally:`
@@ -45,7 +45,7 @@ _ROOT_PKG = 'src'  # built at runtime, not a literal `import src...` — these m
                     # package-qualified loading for their `from ..constants import ...` imports
 
 pel = importlib.import_module(f'{_ROOT_PKG}.pane_error_log')
-mod_workers = importlib.import_module(f'{_ROOT_PKG}.workers.worker_pane')
+mod_worker_tokens = importlib.import_module(f'{_ROOT_PKG}.workers.worker_tokens_pane')
 mod_proxy = importlib.import_module(f'{_ROOT_PKG}.proxy_display.pane')
 mod_worker_proxy = importlib.import_module(f'{_ROOT_PKG}.proxy_display.worker_proxy_pane')
 mod_tokens = importlib.import_module(f'{_ROOT_PKG}.panes.token_pane')
@@ -180,9 +180,9 @@ def _assert_survives(pane_id: str, module, run_fn_name: str, use_time_sleep: boo
           r['cleanup_calls']['disable_mouse'] >= 1 and r['cleanup_calls']['restore_terminal'] >= 1)
 
 
-def test_workers_pane():
-    print("\n[Test] workers pane (src/workers/worker_pane.py) — reference pattern, re-checked")
-    _assert_survives('workers', mod_workers, 'run_workers_loop')
+def test_worker_tokens_pane():
+    print("\n[Test] worker-tokens pane (src/workers/worker_tokens_pane.py) — reference pattern, re-checked")
+    _assert_survives('worker_tokens', mod_worker_tokens, 'run_worker_tokens_loop')
 
 
 def test_proxy_pane():
@@ -383,7 +383,7 @@ def run_probe_workflow():
     print("=" * 70)
     print("pane_error_log probe — 8 pane loops survive an uncaught exception")
     print("=" * 70)
-    test_workers_pane()
+    test_worker_tokens_pane()
     test_proxy_pane()
     test_worker_proxy_pane()
     test_tokens_pane()

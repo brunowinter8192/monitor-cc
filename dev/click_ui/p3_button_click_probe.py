@@ -1,17 +1,13 @@
 """
 P3 -- pane-chrome button click parity probe (Milestone 3: the remaining single-purpose keyboard
-controls -- workers 'f' freeze, warnings 'r' refresh; proxy 'u' undo stays keyboard-only, see
-below).
+controls -- warnings 'r' refresh; proxy 'u' undo stays keyboard-only, see below).
 
 Proves, per pane, that after ONE real render pass:
   1. the header/chrome button region is registered at a plausible (start_col,end_col,phys_row)
   2. dispatching a synthetic click on it produces the SAME state change as the corresponding key
-  3. the freeze button's rendered text reflects state BEFORE the click (badge differs
-     live-vs-frozen)
-  4. a too-narrow pane registers no region (and renders no button text either; the workers freeze
-     badge is pre-existing content, always rendered, only its clickability is width-guarded)
-  5. the existing click handling each pane already had (workers row-select, warnings
-     expand/copy) still works after adding the header check ahead of it
+  3. a too-narrow pane registers no region (and renders no button text either)
+  4. the existing click handling each pane already had (warnings expand/copy) still works after
+     adding the header check ahead of it
 
 (2026-07-30) The proxy pane's [undo] button and the one-line header introduced solely to host it
 were REVERTED per user decision after live-testing: 'u' is the only way to undo, and stays.
@@ -23,13 +19,19 @@ the button-era code), body rows start at row 2, and everything the header/body s
 expand/collapse clicks, copy symbols, scroll, auto-scroll-to-just-expanded, and 'u' itself --
 still works at the SHIFTED rows.
 
+**(2026-09, panesplit) `test_workers_freeze_button` is DELETED, not retargeted.** The 'f' freeze
+badge was a control on the all-workers list pane specifically -- "pause the whole list so I can
+read it while it churns" -- and that list is gone per the user's own decision (the switch header
+replaces it; see `process-docs/workers/`). worker_tokens_pane.py, its successor, shows one
+worker at a time; there is no "the whole list keeps scrolling under me" problem for freeze to
+solve there, and freezing a single already-selected worker's own tracker was never asked for as
+part of this milestone. This is a feature genuinely retired with the pane it belonged to, not an
+oversight -- it has no successor test in this suite.
+
 Covers:
   - src/panes/warnings_pane.py :: _build_warnings_output (_warnings_header_regions),
     _handle_warnings_mouse, _handle_warnings_key -- src/panes/warnings_render.py ::
     _format_warnings_header
-  - src/workers/worker_pane.py :: _build_workers_output (_worker_header_regions),
-    _handle_workers_mouse (now returns (changed, frozen)), _handle_workers_key --
-    src/workers/worker_format.py :: format_workers_block
   - src/proxy_display/pane.py :: _build_proxy_output (permanent search-bar header, row-shifted
     line_map/copy_rows), _handle_proxy_mouse (row==1 -> focus), _undo_proxy_expand --
     src/proxy_display/format.py (search-highlight priority in _apply_row_backgrounds)
@@ -56,8 +58,6 @@ os.environ.setdefault('MONITOR_CC_ROOT', str(WORKTREE_ROOT))
 _ROOT_PKG = 'src'
 mod_warnings = importlib.import_module(f'{_ROOT_PKG}.panes.warnings_pane')
 mod_warnings_render = importlib.import_module(f'{_ROOT_PKG}.panes.warnings_render')
-mod_workers = importlib.import_module(f'{_ROOT_PKG}.workers.worker_pane')
-mod_worker_format = importlib.import_module(f'{_ROOT_PKG}.workers.worker_format')
 mod_proxy = importlib.import_module(f'{_ROOT_PKG}.proxy_display.pane')
 mod_proxy_format = importlib.import_module(f'{_ROOT_PKG}.proxy_display.format')
 
@@ -124,69 +124,6 @@ def test_warnings_refresh_button():
     narrow_header = mod_warnings_render._format_warnings_header(1234567890.0, 10, narrow_regions)
     check("warnings: width guard -- no region and no button text when pane_width=10",
           len(narrow_regions) == 0 and '[refresh]' not in narrow_header)
-
-
-# Workers pane: freeze badge as header button -- region, click/key parity, state-reflecting label,
-# no collision with row-select/copy, width guard
-def test_workers_freeze_button():
-    project_filter = '/tmp/click_ui_probe_p3_workers'
-    mod_workers.worker_expand_states.clear()
-    mod_workers.worker_scroll_offsets.clear()
-    mod_workers.worker_cache_expand_states.clear()
-    mod_workers.worker_turns.clear()
-    mod_workers.worker_selected_name = None
-    mod_workers.worker_scroll_offset = 0
-    mod_workers._worker_copy_feedback_until.clear()
-    if os.path.exists(mod_workers.get_selection_file_path(project_filter)):
-        os.remove(mod_workers.get_selection_file_path(project_filter))
-
-    workers = [{'name': 'w1', 'status': 'working', 'purpose': 'run the build', 'session': ''}]
-
-    output_live = mod_workers._build_workers_output(workers, frozen=False)
-    regions_live = dict(mod_workers._worker_header_regions)
-    output_frozen = mod_workers._build_workers_output(workers, frozen=True)
-    regions_frozen = dict(mod_workers._worker_header_regions)
-
-    check("workers: freeze region registered live", regions_live.get(next(iter(regions_live), None)) == 'freeze' if regions_live else False)
-    check("workers: freeze region registered frozen", regions_frozen.get(next(iter(regions_frozen), None)) == 'freeze' if regions_frozen else False)
-    check("workers: badge reads [LIVE] when not frozen", '[LIVE]' in output_live and '[FROZEN]' not in output_live)
-    check("workers: badge reads [FROZEN] when frozen", '[FROZEN]' in output_frozen and '[LIVE]' not in output_frozen)
-
-    (sc, ec, er) = next(iter(regions_live))
-    click_col = (sc + ec) // 2
-
-    key_changed, key_frozen = mod_workers._handle_workers_key('f', workers, False, project_filter)
-    click_changed, click_frozen = mod_workers._handle_workers_mouse(0, click_col, er, project_filter, False)
-    check("workers: 'f' key toggles frozen False->True", key_changed and key_frozen is True)
-    check("workers: click on freeze badge toggles frozen False->True (same as key)",
-          click_changed and click_frozen is True)
-
-    click_changed2, click_frozen2 = mod_workers._handle_workers_mouse(0, click_col, er, project_filter, True)
-    check("workers: click on freeze badge toggles frozen True->False", click_changed2 and click_frozen2 is False)
-
-    pre_selected = mod_workers.worker_selected_name
-    check("workers: clicking the freeze badge did not select/expand a worker (no collision)",
-          mod_workers.worker_selected_name == pre_selected and not mod_workers.worker_expand_states.get('w1', False))
-
-    header_row = next(r for r, k in mod_workers.worker_line_map.items() if k == 'w1')
-    row_changed, row_frozen = mod_workers._handle_workers_mouse(0, 5, header_row, project_filter, False)
-    check("workers: normal row click still selects+expands (milestone-1 undisturbed)",
-          row_changed and mod_workers.worker_selected_name == 'w1' and mod_workers.worker_expand_states.get('w1') is True and row_frozen is False)
-
-    orig_terminal_size = os.get_terminal_size
-    os.get_terminal_size = lambda: os.terminal_size((10, 30))
-    try:
-        narrow_regions = {}
-        mod_worker_format.format_workers_block(
-            workers, {}, {}, {}, {}, frozen=False, selected_name=None, regions_out=narrow_regions,
-        )
-    finally:
-        os.get_terminal_size = orig_terminal_size
-    check("workers: width guard -- no freeze region when pane_width=10 (too narrow)",
-          'freeze' not in narrow_regions)
-
-    if os.path.exists(mod_workers.get_selection_file_path(project_filter)):
-        os.remove(mod_workers.get_selection_file_path(project_filter))
 
 
 # Proxy pane: Milestone 2 (2026-08-18) added a PERMANENT row-1 search bar -- unlike the
@@ -290,10 +227,9 @@ def test_proxy_pane_permanent_search_bar_header():
 
 def run_probe_workflow():
     print("=" * 70)
-    print("pane-chrome button click probe -- workers freeze, proxy undo, warnings refresh")
+    print("pane-chrome button click probe -- proxy undo, warnings refresh")
     print("=" * 70)
     test_warnings_refresh_button()
-    test_workers_freeze_button()
     test_proxy_pane_permanent_search_bar_header()
 
     total = len(_RESULTS)

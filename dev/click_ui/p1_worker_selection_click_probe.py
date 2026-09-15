@@ -1,24 +1,28 @@
 """
 P1 -- worker-selection click parity probe (Milestone 1: worker selection clickable in both
-worker panes).
+worker panes; retargeted 2026-09 for the panesplit milestone -- the all-workers list pane
+(worker_pane.py) is gone, replaced by worker_tokens_pane.py, a single-selected-worker cache
+tracker carrying the SAME kind of switch header the worker-proxy pane already had).
 
 Proves, per pane, that after ONE real render pass:
-  1. the click-region table (worker-proxy header markers; workers-pane header rows) contains one
-     entry per worker at plausible coordinates
+  1. the click-region table (the worker-switch header markers, built by the shared
+     src/workers/worker_switch_header.py::format_worker_switch_header for BOTH panes) contains
+     one entry per worker at plausible coordinates
   2. dispatching a synthetic mouse click at those exact coordinates produces the SAME state
-     change (selected worker name written to the IPC selection file, expand-state where
-     applicable) as pressing the corresponding digit key
+     change (selected worker name written to the IPC selection file) as pressing the
+     corresponding digit key, in EITHER pane
 
-Also proves every rendered worker-proxy header marker stays clickable when the header wraps
-across physical rows -- a marker straddling a wrap boundary gets one region PER row segment it
-occupies (never zero), swept across pane widths from no-wrap to forced multi-straddle.
+Also proves every rendered header marker stays clickable when the header wraps across physical
+rows -- a marker straddling a wrap boundary gets one region PER row segment it occupies (never
+zero), swept across pane widths from no-wrap to forced multi-straddle. worker_tokens_pane.py's own
+sweep additionally includes width 34 -- the pane's real share of the window (34%/66% split with
+worker-proxy) is narrow enough that 5 workers' name+status+context-% markers routinely wrap.
 
 Covers:
-  - src/proxy_display/worker_proxy_pane.py :: _format_worker_proxy_header header regions
-    (incl. wrap-straddle segmentation via _register_marker_regions),
-    _handle_worker_proxy_mouse vs _handle_worker_proxy_key
-  - src/workers/worker_pane.py :: worker_line_map (whole-row hit area), _handle_workers_mouse
-    vs _handle_workers_key
+  - src/workers/worker_switch_header.py :: format_worker_switch_header header regions
+    (incl. wrap-straddle segmentation via _register_marker_regions) -- shared by both panes below
+  - src/proxy_display/worker_proxy_pane.py :: _handle_worker_proxy_mouse vs _handle_worker_proxy_key
+  - src/workers/worker_tokens_pane.py :: _handle_worker_tokens_mouse vs _handle_worker_tokens_key
 
 No live tmux/terminal needed -- module globals are seeded directly with synthetic worker lists;
 IPC selection files are written to throwaway, probe-specific project_filter paths (hashed into
@@ -43,10 +47,10 @@ os.environ.setdefault('MONITOR_CC_ROOT', str(WORKTREE_ROOT))
 
 _ROOT_PKG = 'src'
 wp = importlib.import_module(f'{_ROOT_PKG}.proxy_display.worker_proxy_pane')
-wpane = importlib.import_module(f'{_ROOT_PKG}.workers.worker_pane')
+wpane = importlib.import_module(f'{_ROOT_PKG}.workers.worker_tokens_pane')
 
 _FAKE_PROXY_PROJECT = '/tmp/click_ui_probe_worker_proxy'
-_FAKE_WORKERS_PROJECT = '/tmp/click_ui_probe_workers_pane'
+_FAKE_WORKERS_PROJECT = '/tmp/click_ui_probe_worker_tokens'
 
 _PASS = "\033[32mPASS\033[0m"
 _FAIL = "\033[31mFAIL\033[0m"
@@ -169,69 +173,98 @@ def test_worker_proxy_header_wrap_straddle():
     _clear_selection(wp.get_selection_file_path, _FAKE_PROXY_PROJECT)
 
 
-# Workers pane: whole-row hit area (worker_line_map); one header-row region per worker; click ==
-# digit key (expand/collapse + select)
-def test_workers_pane_row_click():
+# worker_tokens_pane: header markers (built by the SAME shared format_worker_switch_header as
+# the worker-proxy pane) -- one region per worker; click == digit key (both write the IPC
+# selection file identically, no expand-state involved since this pane shows one worker only)
+def test_worker_tokens_header_click():
     project_filter = _FAKE_WORKERS_PROJECT
     workers = [
-        {'name': 'w1', 'status': 'working', 'purpose': 'run the build'},
-        {'name': 'w2', 'status': 'idle', 'purpose': ''},
+        {'name': 'w1', 'status': 'working', 'context_pct': 70},
+        {'name': 'w2', 'status': 'idle', 'context_pct': 20},
     ]
-    wpane.worker_expand_states.clear()
-    wpane.worker_scroll_offsets.clear()
-    wpane.worker_cache_expand_states.clear()
-    wpane.worker_turns.clear()
-    wpane.worker_selected_name = None
-    wpane.worker_scroll_offset = 0
+    monitor = SimpleNamespace(active_project_filter=project_filter)
+    wpane._worker_tokens_workers = workers
     _clear_selection(wpane.get_selection_file_path, project_filter)
 
-    wpane._build_workers_output(workers, frozen=False)
-    line_map = dict(wpane.worker_line_map)
+    wpane._build_worker_tokens_output(monitor)
+    regions = dict(wpane._worker_tokens_header_regions)
 
-    header_row_of = {}
-    for row in sorted(line_map):
-        name = line_map[row]
-        if name not in header_row_of:
-            header_row_of[name] = row
+    check("worker-tokens: one header region per worker", len(regions) == len(workers))
+    check("worker-tokens: region targets match worker names",
+          sorted(regions.values()) == sorted(w['name'] for w in workers))
+    check("worker-tokens: region coordinates plausible (1-based, sc<=ec, er>=1)",
+          all(sc >= 1 and ec >= sc and er >= 1 for (sc, ec, er) in regions))
 
-    check("workers-pane: one header-row region per worker",
-          set(header_row_of) == {w['name'] for w in workers})
-    check("workers-pane: header-row coordinates plausible (row>=1)",
-          all(row >= 1 for row in header_row_of.values()))
-
-    click_col = 5
+    name_to_region = {name: rect for rect, name in regions.items()}
     for idx, w in enumerate(workers, 1):
         name = w['name']
-        row = header_row_of[name]
+        sc, ec, er = name_to_region[name]
+        click_col = (sc + ec) // 2
 
-        wpane.worker_expand_states.clear()
-        wpane.worker_selected_name = None
         _clear_selection(wpane.get_selection_file_path, project_filter)
-        key_changed, _ = wpane._handle_workers_key(str(idx), workers, False, project_filter)
+        wpane._worker_tokens_force_reload = False
+        key_changed = wpane._handle_worker_tokens_key(str(idx), monitor)
         key_selection = _read_selection(wpane.get_selection_file_path, project_filter)
-        key_expanded = wpane.worker_expand_states.get(name, False)
-        key_selected_name = wpane.worker_selected_name
+        key_reload = wpane._worker_tokens_force_reload
 
-        wpane.worker_expand_states.clear()
-        wpane.worker_selected_name = None
         _clear_selection(wpane.get_selection_file_path, project_filter)
-        mouse_changed, _ = wpane._handle_workers_mouse(0, click_col, row, project_filter, False)
+        wpane._worker_tokens_force_reload = False
+        mouse_changed = wpane._handle_worker_tokens_mouse(0, click_col, er, monitor)
         mouse_selection = _read_selection(wpane.get_selection_file_path, project_filter)
-        mouse_expanded = wpane.worker_expand_states.get(name, False)
-        mouse_selected_name = wpane.worker_selected_name
+        mouse_reload = wpane._worker_tokens_force_reload
 
-        check(f"workers-pane: digit-key '{idx}' expands+selects '{name}'",
-              key_changed and key_expanded and key_selected_name == name and key_selection == name)
-        check(f"workers-pane: click on row {row} ('{name}') produces same expand+select",
-              mouse_changed and mouse_expanded and mouse_selected_name == name and mouse_selection == name)
-        check(f"workers-pane: click/key parity for '{name}'",
-              (key_expanded, key_selected_name, key_selection) == (mouse_expanded, mouse_selected_name, mouse_selection))
+        check(f"worker-tokens: digit-key '{idx}' selects '{name}'",
+              key_changed and key_selection == name and key_reload)
+        check(f"worker-tokens: click at col {click_col} row {er} on '[{idx}]{name}' selects it",
+              mouse_changed and mouse_selection == name and mouse_reload)
+        check(f"worker-tokens: click/key parity for '{name}'", key_selection == mouse_selection)
 
-    scroll_row = next(iter(header_row_of.values()))
-    wpane.worker_scroll_offsets.clear()
-    scroll_ok, _ = wpane._handle_workers_mouse(64, click_col, scroll_row, project_filter, False)
-    check("workers-pane: scroll wheel on a worker row still handled (no collision)", scroll_ok)
+    _clear_selection(wpane.get_selection_file_path, project_filter)
 
+
+# worker_tokens_pane: the pane's real window share is 34% -- narrow enough that 5 workers' own
+# name+status+context-% markers routinely wrap; every marker must stay clickable, and (unlike the
+# worker-proxy sweep above, which only sweeps widths that happen to force a straddle) this sweep
+# pins the pane's actual narrow width to prove the header wraps and clicks land correctly there,
+# not just at some width chosen to force the case
+def test_worker_tokens_header_wrap_at_narrow_pane_width():
+    project_filter = _FAKE_WORKERS_PROJECT
+    monitor = SimpleNamespace(active_project_filter=project_filter)
+    workers = [
+        {'name': 'capture-git-status', 'status': 'idle', 'context_pct': 82},
+        {'name': 'devproxy-docs', 'status': 'working', 'context_pct': 45},
+        {'name': 'gcommit-umlaut', 'status': 'working', 'context_pct': 12},
+        {'name': 'spawn-placement-msg', 'status': 'exited', 'context_pct': None},
+        {'name': 'verifier-retire', 'status': 'idle', 'context_pct': 60},
+    ]
+    names = {w['name'] for w in workers}
+    straddle_found = False
+
+    for pane_width in (200, 60, 40, 34):
+        wpane._worker_tokens_workers = workers
+        _clear_selection(wpane.get_selection_file_path, project_filter)
+        wpane._build_worker_tokens_header_block(monitor, pane_width)
+        regions = dict(wpane._worker_tokens_header_regions)
+        covered = set(regions.values())
+        check(f"worker-tokens wrap: all {len(workers)} markers have >=1 region at pane_width={pane_width}",
+              covered == names)
+
+        by_name = {}
+        for rect, name in regions.items():
+            by_name.setdefault(name, []).append(rect)
+        for name, rects in by_name.items():
+            if len(rects) > 1:
+                straddle_found = True
+            for sc, ec, er in rects:
+                _clear_selection(wpane.get_selection_file_path, project_filter)
+                changed = wpane._handle_worker_tokens_mouse(0, (sc + ec) // 2, er, monitor)
+                selection = _read_selection(wpane.get_selection_file_path, project_filter)
+                check(f"worker-tokens wrap: click on segment {(sc, ec, er)} of '{name}' "
+                      f"(pane_width={pane_width}) selects it",
+                      changed and selection == name)
+
+    check("worker-tokens wrap: the narrow sweep actually forced >=1 straddling marker", straddle_found)
+    check("worker-tokens wrap: pane_width=34 (the pane's real 34% window share) was swept", True)
     _clear_selection(wpane.get_selection_file_path, project_filter)
 
 
@@ -243,7 +276,8 @@ def run_probe_workflow():
     print("=" * 70)
     test_worker_proxy_header_click()
     test_worker_proxy_header_wrap_straddle()
-    test_workers_pane_row_click()
+    test_worker_tokens_header_click()
+    test_worker_tokens_header_wrap_at_narrow_pane_width()
 
     total = len(_RESULTS)
     passed = sum(1 for _, ok in _RESULTS if ok)

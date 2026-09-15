@@ -18,7 +18,7 @@ exception injected on its first I/O call, and asserted to survive, log the marke
 ### p1_pane_loop_survives_exception_probe.py (429 LOC)
 
 **Purpose:** For 7 of the 8 pane loops (`run_proxy_loop`, `run_worker_proxy_loop`,
-`run_tokens_loop`, `run_warnings_loop`, `run_gpu_loop`, `run_news_loop`, `run_workers_loop`):
+`run_tokens_loop`, `run_warnings_loop`, `run_gpu_loop`, `run_news_loop`, `run_worker_tokens_loop`):
 injects a marker exception on the loop's first `read_keypress()` call, forces a bounded exit after 3
 ticks, and asserts the exception was caught, logged with the correct pane identifier and full
 traceback, and that `finally: disable_mouse(); restore_terminal()` still ran. For the 8th
@@ -32,7 +32,7 @@ data-refresh/render path runs unmocked past the injected first-call crash.
 `pane_error_log.PANE_ERROR_LOG_PATH` to a scratch file under the system temp directory for the run.
 **Called by:** none — manual regression guard, re-run after changing a pane loop's `while True:`
 shape or `pane_error_log.py`.
-**Calls out:** `src.pane_error_log`, `src.workers.worker_pane`, `src.proxy_display.pane`,
+**Calls out:** `src.pane_error_log`, `src.workers.worker_tokens_pane`, `src.proxy_display.pane`,
 `src.proxy_display.worker_proxy_pane`, `src.panes.token_pane`, `src.panes.warnings_pane`,
 `src.gpu_pane.pane`, `src.news_pane.pane`, `src.news_pane.log_pane` — loaded via
 `importlib.import_module` (package-qualified, since these modules use double-dot relative imports).

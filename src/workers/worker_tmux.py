@@ -5,7 +5,7 @@ import subprocess
 import time
 
 from ..session_finder import encode_project_path
-from .worker_format import get_worker_project_name
+from .worker_format import get_worker_project_name, extract_worker_tokens, extract_worker_context_pct
 
 # FUNCTIONS
 
@@ -87,3 +87,13 @@ def find_worker_jsonl(session_name: str) -> Optional[Path]:
         return None
 
     return max(jsonl_files, key=lambda f: f.stat().st_mtime)
+
+def attach_worker_stats(workers: List[dict]) -> None:
+    for w in workers:
+        session = w.get('session', '')
+        if not session:
+            continue
+        jsonl_path = find_worker_jsonl(session)
+        if jsonl_path:
+            w['tokens'] = extract_worker_tokens(jsonl_path)
+            w['context_pct'] = extract_worker_context_pct(jsonl_path)
