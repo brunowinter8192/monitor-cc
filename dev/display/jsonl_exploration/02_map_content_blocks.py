@@ -72,7 +72,40 @@ def describe_nested(obj, depth=0, max_depth=3) -> list:
     return lines
 
 
-def scan_jsonl(filepath: Path) -> str:
+def _process_content_blocks(content, msg_type, combo_counts, combo_keys, combo_examples,
+                             combo_tool_names, combo_nested) -> None:
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get('type', 'MISSING')
+        combo = f'{msg_type}/{block_type}'
+        combo_counts[combo] += 1
+        combo_keys[combo].update(block.keys())
+
+        if 'name' in block and block_type == 'tool_use':
+            combo_tool_names[combo].add(block['name'])
+
+        if combo not in combo_examples:
+            combo_examples[combo] = block
+
+        if combo not in combo_nested:
+            combo_nested[combo] = describe_nested(block, max_depth=3)
+
+        # Check tool_result for nested content
+        if block_type == 'tool_result':
+            result_content = block.get('content', '')
+            if isinstance(result_content, list):
+                for sub in result_content:
+                    if isinstance(sub, dict):
+                        sub_type = sub.get('type', '?')
+                        sub_combo = f'{combo}/sub:{sub_type}'
+                        combo_counts[sub_combo] += 1
+                        combo_keys[sub_combo].update(sub.keys())
+                        if sub_combo not in combo_examples:
+                            combo_examples[sub_combo] = sub
+
+
+def _collect_block_stats(filepath: Path) -> tuple:
     combo_counts = Counter()
     combo_keys = defaultdict(set)
     combo_examples = {}
@@ -108,43 +141,15 @@ def scan_jsonl(filepath: Path) -> str:
             if not isinstance(content, list):
                 continue
 
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-                block_type = block.get('type', 'MISSING')
-                combo = f'{msg_type}/{block_type}'
-                combo_counts[combo] += 1
-                combo_keys[combo].update(block.keys())
+            _process_content_blocks(content, msg_type, combo_counts, combo_keys, combo_examples,
+                                     combo_tool_names, combo_nested)
 
-                if 'name' in block and block_type == 'tool_use':
-                    combo_tool_names[combo].add(block['name'])
+    return (combo_counts, combo_keys, combo_examples, combo_tool_names, combo_nested,
+            string_content_examples, string_content_counts)
 
-                if combo not in combo_examples:
-                    combo_examples[combo] = block
 
-                if combo not in combo_nested:
-                    combo_nested[combo] = describe_nested(block, max_depth=3)
-
-                # Check tool_result for nested content
-                if block_type == 'tool_result':
-                    result_content = block.get('content', '')
-                    if isinstance(result_content, list):
-                        for sub in result_content:
-                            if isinstance(sub, dict):
-                                sub_type = sub.get('type', '?')
-                                sub_combo = f'{combo}/sub:{sub_type}'
-                                combo_counts[sub_combo] += 1
-                                combo_keys[sub_combo].update(sub.keys())
-                                if sub_combo not in combo_examples:
-                                    combo_examples[sub_combo] = sub
-
+def _summary_table_lines(combo_counts, combo_keys) -> list:
     lines = []
-    lines.append(f'# JSONL Content Block Types')
-    lines.append(f'')
-    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
-    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-    lines.append(f'')
-
     # Summary table
     lines.append(f'## Summary')
     lines.append(f'')
@@ -154,7 +159,11 @@ def scan_jsonl(filepath: Path) -> str:
         keys = ', '.join(sorted(combo_keys[combo]))
         lines.append(f'| `{combo}` | {count} | {keys} |')
     lines.append(f'')
+    return lines
 
+
+def _string_content_section_lines(string_content_counts, string_content_examples) -> list:
+    lines = []
     if string_content_counts:
         lines.append(f'## String Content (non-list)')
         lines.append(f'')
@@ -167,7 +176,23 @@ def scan_jsonl(filepath: Path) -> str:
             lines.append(truncate(example, 500))
             lines.append(f'```')
             lines.append(f'')
+    return lines
 
+
+def _clean_detail_example(example: dict) -> dict:
+    ex_clean = {}
+    for k, v in example.items():
+        if isinstance(v, str) and len(v) > 300:
+            ex_clean[k] = truncate(v)
+        elif isinstance(v, (dict, list)):
+            ex_clean[k] = truncate(json.dumps(v, ensure_ascii=False), 300)
+        else:
+            ex_clean[k] = v
+    return ex_clean
+
+
+def _detail_section_lines(combo_counts, combo_keys, combo_tool_names, combo_nested, combo_examples) -> list:
+    lines = []
     # Detailed sections
     for combo, count in combo_counts.most_common():
         if '/sub:' in combo:
@@ -194,14 +219,7 @@ def scan_jsonl(filepath: Path) -> str:
             example = combo_examples[combo]
             lines.append(f'**Example (truncated):**')
             lines.append(f'```json')
-            ex_clean = {}
-            for k, v in example.items():
-                if isinstance(v, str) and len(v) > 300:
-                    ex_clean[k] = truncate(v)
-                elif isinstance(v, (dict, list)):
-                    ex_clean[k] = truncate(json.dumps(v, ensure_ascii=False), 300)
-                else:
-                    ex_clean[k] = v
+            ex_clean = _clean_detail_example(example)
             lines.append(json.dumps(ex_clean, indent=2, ensure_ascii=False))
             lines.append(f'```')
             lines.append(f'')
@@ -216,6 +234,24 @@ def scan_jsonl(filepath: Path) -> str:
                 sub_keys = ', '.join(sorted(combo_keys[sub]))
                 lines.append(f'- `{sub}` ({sub_count}x) — keys: {sub_keys}')
             lines.append(f'')
+
+    return lines
+
+
+def scan_jsonl(filepath: Path) -> str:
+    (combo_counts, combo_keys, combo_examples, combo_tool_names, combo_nested,
+     string_content_examples, string_content_counts) = _collect_block_stats(filepath)
+
+    lines = []
+    lines.append(f'# JSONL Content Block Types')
+    lines.append(f'')
+    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
+    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    lines.append(f'')
+
+    lines.extend(_summary_table_lines(combo_counts, combo_keys))
+    lines.extend(_string_content_section_lines(string_content_counts, string_content_examples))
+    lines.extend(_detail_section_lines(combo_counts, combo_keys, combo_tool_names, combo_nested, combo_examples))
 
     return '\n'.join(lines)
 

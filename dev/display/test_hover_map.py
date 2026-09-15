@@ -249,11 +249,7 @@ def test_proxy_shift_uses_header_lines() -> None:
 # a worker switch -- is asserted against real worker_tokens_pane.py code in
 # dev/pane_search/p7_workers_pane_parity_test.py's worker-switch-reset test.
 
-def test_stripped_msg_pair_alignment() -> None:
-    print("\n[render_messages] Stripped-msg lines/keys exact pairing (no line_map drift)")
-    from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
-    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
-    from src.proxy_display.render_messages import render_messages
+def _resolve_dual_log_dir():
     from pathlib import Path
 
     worktree_root = Path(__file__).parent.parent.parent
@@ -262,8 +258,14 @@ def test_stripped_msg_pair_alignment() -> None:
         # Running from a git worktree — navigate up to main repo (.claude/worktrees/<name>/../../../)
         dual_dir = worktree_root.parent.parent.parent / 'src' / 'logs' / 'dual_log'
     if not dual_dir.exists():
-        assert_true(True, "stripped_pair: dual_log dir missing — skipped")
-        return
+        return None
+    return dual_dir
+
+
+def _collect_stripped_pair_entries(dual_dir) -> list:
+    from pathlib import Path
+    from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
+    from src.proxy_display.dual_log_accumulator import accumulate_dual_log
 
     # Newest-first: current forwarded-log architecture reconstructs messages from
     # <log_id>_forwarded.jsonl deltas; stripped-span content lives in the sibling
@@ -306,6 +308,20 @@ def test_stripped_msg_pair_alignment() -> None:
             tested_entries.append((idx, entry, prev))
         if len(tested_entries) >= 5:
             break
+
+    return tested_entries
+
+
+def test_stripped_msg_pair_alignment() -> None:
+    print("\n[render_messages] Stripped-msg lines/keys exact pairing (no line_map drift)")
+    from src.proxy_display.render_messages import render_messages
+
+    dual_dir = _resolve_dual_log_dir()
+    if dual_dir is None:
+        assert_true(True, "stripped_pair: dual_log dir missing — skipped")
+        return
+
+    tested_entries = _collect_stripped_pair_entries(dual_dir)
 
     if not tested_entries:
         assert_true(True, "stripped_pair: no stripped-content entries in available dual logs — skipped")

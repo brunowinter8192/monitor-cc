@@ -21,7 +21,7 @@ top/bottom placement) by building the target layout in a temporary session and l
 
 ---
 
-### scan_jsonl_rules.py (108 LOC)
+### scan_jsonl_rules.py (120 LOC)
 
 **Purpose:** Scans a Claude Code session JSONL for "Contents of" lines (loaded CLAUDE.md /
 the rules-file markers under the user's .claude directory) to check whether rules/instructions data is present in session
@@ -58,7 +58,7 @@ against a captured baseline.
 
 ---
 
-### test_hover_map.py (342 LOC)
+### test_hover_map.py (358 LOC)
 
 **Purpose:** Synthetic + real-log assertion suite for expand-model `line_map` correctness — every
 visible row maps to exactly one `phys_row`, monotonic, no duplicates — plus a `render_messages`

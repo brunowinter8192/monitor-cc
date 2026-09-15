@@ -48,7 +48,7 @@ def truncate(text: str, max_len: int = 200) -> str:
     return s
 
 
-def scan_jsonl(filepath: Path) -> str:
+def _collect_type_stats(filepath: Path) -> tuple:
     type_counts = Counter()
     type_keys = defaultdict(set)
     type_subtypes = defaultdict(set)
@@ -78,14 +78,11 @@ def scan_jsonl(filepath: Path) -> str:
             if msg_type not in type_examples:
                 type_examples[msg_type] = msg
 
-    lines = []
-    lines.append(f'# JSONL Message Types')
-    lines.append(f'')
-    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
-    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-    lines.append(f'**Total messages:** {sum(type_counts.values())}')
-    lines.append(f'')
+    return type_counts, type_keys, type_subtypes, type_is_meta, type_examples
 
+
+def _summary_table_lines(type_counts, type_subtypes, type_is_meta) -> list:
+    lines = []
     lines.append(f'## Summary')
     lines.append(f'')
     lines.append(f'| Type | Count | Subtypes | isMeta |')
@@ -98,7 +95,40 @@ def scan_jsonl(filepath: Path) -> str:
         lines.append(f'| `{msg_type}` | {count} | {subtypes} | {meta_dist} |')
 
     lines.append(f'')
+    return lines
 
+
+def _clean_example(example: dict) -> dict:
+    example_clean = {}
+    for k, v in example.items():
+        if k == 'message':
+            msg_obj = v
+            content = msg_obj.get('content', '')
+            if isinstance(content, str):
+                msg_obj = {**msg_obj, 'content': truncate(content)}
+            elif isinstance(content, list):
+                truncated_content = []
+                for block in content[:3]:
+                    if isinstance(block, dict):
+                        tb = {}
+                        for bk, bv in block.items():
+                            tb[bk] = truncate(str(bv)) if isinstance(bv, str) and len(str(bv)) > 200 else bv
+                        truncated_content.append(tb)
+                    else:
+                        truncated_content.append(block)
+                if len(content) > 3:
+                    truncated_content.append(f'... +{len(content)-3} more blocks')
+                msg_obj = {**msg_obj, 'content': truncated_content}
+            example_clean[k] = msg_obj
+        elif isinstance(v, str) and len(v) > 200:
+            example_clean[k] = truncate(v)
+        else:
+            example_clean[k] = v
+    return example_clean
+
+
+def _detail_section_lines(type_counts, type_keys, type_subtypes, type_examples) -> list:
+    lines = []
     for msg_type, count in type_counts.most_common():
         lines.append(f'## `{msg_type}` ({count}x)')
         lines.append(f'')
@@ -112,34 +142,27 @@ def scan_jsonl(filepath: Path) -> str:
         example = type_examples[msg_type]
         lines.append(f'**Example (truncated):**')
         lines.append(f'```json')
-        example_clean = {}
-        for k, v in example.items():
-            if k == 'message':
-                msg_obj = v
-                content = msg_obj.get('content', '')
-                if isinstance(content, str):
-                    msg_obj = {**msg_obj, 'content': truncate(content)}
-                elif isinstance(content, list):
-                    truncated_content = []
-                    for block in content[:3]:
-                        if isinstance(block, dict):
-                            tb = {}
-                            for bk, bv in block.items():
-                                tb[bk] = truncate(str(bv)) if isinstance(bv, str) and len(str(bv)) > 200 else bv
-                            truncated_content.append(tb)
-                        else:
-                            truncated_content.append(block)
-                    if len(content) > 3:
-                        truncated_content.append(f'... +{len(content)-3} more blocks')
-                    msg_obj = {**msg_obj, 'content': truncated_content}
-                example_clean[k] = msg_obj
-            elif isinstance(v, str) and len(v) > 200:
-                example_clean[k] = truncate(v)
-            else:
-                example_clean[k] = v
+        example_clean = _clean_example(example)
         lines.append(json.dumps(example_clean, indent=2, ensure_ascii=False))
         lines.append(f'```')
         lines.append(f'')
+
+    return lines
+
+
+def scan_jsonl(filepath: Path) -> str:
+    type_counts, type_keys, type_subtypes, type_is_meta, type_examples = _collect_type_stats(filepath)
+
+    lines = []
+    lines.append(f'# JSONL Message Types')
+    lines.append(f'')
+    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
+    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    lines.append(f'**Total messages:** {sum(type_counts.values())}')
+    lines.append(f'')
+
+    lines.extend(_summary_table_lines(type_counts, type_subtypes, type_is_meta))
+    lines.extend(_detail_section_lines(type_counts, type_keys, type_subtypes, type_examples))
 
     return '\n'.join(lines)
 

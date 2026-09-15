@@ -86,7 +86,22 @@ def extract_content_text(msg: dict) -> str:
     return ''
 
 
-def scan_jsonl(filepath: Path) -> str:
+def _record_pattern_hits(line: str, line_num: int, msg_type: str, pattern_hits: dict) -> None:
+    for name, pattern in SEARCH_PATTERNS:
+        matches = pattern.findall(line)
+        if matches:
+            for match in matches[:3]:
+                idx = line.find(str(match))
+                context = line[max(0, idx-40):idx+len(str(match))+60]
+                pattern_hits[name].append({
+                    'line': line_num,
+                    'type': msg_type,
+                    'match': str(match)[:100],
+                    'context': truncate(context, 200),
+                })
+
+
+def _collect_instruction_stats(filepath: Path) -> tuple:
     pattern_hits = {name: [] for name, _ in SEARCH_PATTERNS}
     is_meta_messages = []
     file_history_snapshots = []
@@ -129,27 +144,13 @@ def scan_jsonl(filepath: Path) -> str:
                 })
 
             # Pattern search across the raw line
-            for name, pattern in SEARCH_PATTERNS:
-                matches = pattern.findall(line)
-                if matches:
-                    for match in matches[:3]:
-                        idx = line.find(str(match))
-                        context = line[max(0, idx-40):idx+len(str(match))+60]
-                        pattern_hits[name].append({
-                            'line': line_num,
-                            'type': msg_type,
-                            'match': str(match)[:100],
-                            'context': truncate(context, 200),
-                        })
+            _record_pattern_hits(line, line_num, msg_type, pattern_hits)
 
+    return pattern_hits, is_meta_messages, file_history_snapshots, total_lines
+
+
+def _pattern_summary_lines(pattern_hits: dict) -> list:
     lines = []
-    lines.append(f'# JSONL Instructions & Rules Scan')
-    lines.append(f'')
-    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
-    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-    lines.append(f'**Total lines:** {total_lines}')
-    lines.append(f'')
-
     # Pattern hits summary
     lines.append(f'## Pattern Search Summary')
     lines.append(f'')
@@ -159,7 +160,11 @@ def scan_jsonl(filepath: Path) -> str:
         count = len(pattern_hits[name])
         lines.append(f'| `{name}` | {count} |')
     lines.append(f'')
+    return lines
 
+
+def _is_meta_section_lines(is_meta_messages: list) -> list:
+    lines = []
     # isMeta messages
     lines.append(f'## isMeta Messages ({len(is_meta_messages)})')
     lines.append(f'')
@@ -177,7 +182,11 @@ def scan_jsonl(filepath: Path) -> str:
     else:
         lines.append('No isMeta messages found.')
         lines.append(f'')
+    return lines
 
+
+def _file_history_section_lines(file_history_snapshots: list) -> list:
+    lines = []
     # file-history-snapshot
     lines.append(f'## file-history-snapshot ({len(file_history_snapshots)})')
     lines.append(f'')
@@ -200,7 +209,11 @@ def scan_jsonl(filepath: Path) -> str:
     else:
         lines.append('No file-history-snapshot messages found.')
         lines.append(f'')
+    return lines
 
+
+def _pattern_detail_lines(pattern_hits: dict) -> list:
+    lines = []
     # Detailed pattern hits
     for name, _ in SEARCH_PATTERNS:
         hits = pattern_hits[name]
@@ -214,6 +227,24 @@ def scan_jsonl(filepath: Path) -> str:
         if len(hits) > 15:
             lines.append(f'- ... +{len(hits)-15} more hits')
         lines.append(f'')
+    return lines
+
+
+def scan_jsonl(filepath: Path) -> str:
+    pattern_hits, is_meta_messages, file_history_snapshots, total_lines = _collect_instruction_stats(filepath)
+
+    lines = []
+    lines.append(f'# JSONL Instructions & Rules Scan')
+    lines.append(f'')
+    lines.append(f'**Source:** `{filepath.name}` ({filepath.stat().st_size:,} bytes)')
+    lines.append(f'**Scanned:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    lines.append(f'**Total lines:** {total_lines}')
+    lines.append(f'')
+
+    lines.extend(_pattern_summary_lines(pattern_hits))
+    lines.extend(_is_meta_section_lines(is_meta_messages))
+    lines.extend(_file_history_section_lines(file_history_snapshots))
+    lines.extend(_pattern_detail_lines(pattern_hits))
 
     return '\n'.join(lines)
 

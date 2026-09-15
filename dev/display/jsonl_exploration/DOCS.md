@@ -8,7 +8,7 @@ covered by `01`-`03`'s reports.
 
 ## Modules
 
-### 01_map_message_types.py (163 LOC)
+### 01_map_message_types.py (186 LOC)
 
 **Purpose:** For each top-level `type` value in a session JSONL: count, top-level keys, subtypes,
 `isMeta` distribution, one truncated example.
@@ -18,7 +18,7 @@ covered by `01`-`03`'s reports.
 
 ---
 
-### 02_map_content_blocks.py (239 LOC)
+### 02_map_content_blocks.py (275 LOC)
 
 **Purpose:** Deep-dive into `message.content` blocks — for each `msg_type`/`content_type`
 combination: count, keys, nested structure, tool names, one truncated example.
@@ -28,7 +28,7 @@ combination: count, keys, nested structure, tool names, one truncated example.
 
 ---
 
-### 03_scan_instructions.py (237 LOC)
+### 03_scan_instructions.py (268 LOC)
 
 **Purpose:** Scans for anything rules/instructions-related — `isMeta` messages, "Contents of",
 CLAUDE.md references, `system-reminder` tags, command tags, file-history-snapshot structure.
