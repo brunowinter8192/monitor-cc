@@ -29,7 +29,7 @@ position-independence, and last-shortcut-wins ordering. Never starts the proxy o
 
 ---
 
-### p2_model_params_probe.py (545 LOC)
+### p2_model_params_probe.py (549 LOC)
 
 **Purpose:** Verifies `src/proxy/inject_helpers.py::_inject_model_override` — the per-model
 `model_params` config lookup (exact model-id match, never writes `model`) vs. the legacy
@@ -41,9 +41,9 @@ survive, an emptied edits list drops the whole `context_management` key, a non-d
 value leaves it byte-identical), `src/proxy/logging.py::_build_forwarded_delta`'s forwarded
 `thinking` field, and (Test 15) that a `context_management` strip is attributed correctly by
 `dev/proxy_dual_log/attribution_coverage.py`'s own field-attribution map rather than falling
-through to `UNATTR` — while confirming `src/proxy/strip_inject_delta.py`'s same-shaped maps stay
-dead code (the real `fn_map` never carries a field-level entry for any top-level field). 15 test
-groups, 73 checks.
+through to `UNATTR` — while confirming `src/proxy/strip_inject_delta.py`'s own same-shaped maps
+(proven dead code, since the real `fn_map` never carried a field-level entry for any top-level
+field) have been removed from that module entirely. 15 test groups, 73 checks.
 **Reads:** nothing persistent — builds all fixtures in-process, config injected via
 `mock.patch.object(inject_helpers, "_load_config", ...)`.
 **Writes:** `md/p2_model_params_probe_<timestamp>.md`.
@@ -51,7 +51,7 @@ groups, 73 checks.
 fixation mechanics, `_strip_clear_thinking_edit`, `_build_forwarded_delta`, or
 `attribution_coverage.py`'s field-attribution maps.
 **Calls out:** `src.proxy.inject_helpers`, `src.proxy.logging` (`_build_forwarded_delta`),
-`src.proxy.strip_inject_delta` (`_build_stripped_injected_deltas`, `_FIELD_STRIP_FN`),
+`src.proxy.strip_inject_delta` (`_build_stripped_injected_deltas`),
 `dev/proxy_dual_log/attribution_coverage.py` (loaded via
 `importlib.util.spec_from_file_location`).
 

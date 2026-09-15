@@ -9,13 +9,6 @@ from .logging import _strip_cache_control, _normalize_msg_shape_for_hash, _delta
 from .payload_helpers import _top_level_content_contains
 
 _SYS_FN: dict[int, str] = {1: '_apply_system_passes', 2: '_apply_system_passes', 3: '_strip_sys3'}
-_FIELD_STRIP_FN: dict[str, str] = {
-    'model': '_inject_model_override', 'max_tokens': '_inject_model_override',
-    'thinking': '_inject_model_override', 'output_config': '_inject_model_override',
-}
-_FIELD_INJECT_FN: dict[str, str] = {
-    **_FIELD_STRIP_FN, 'context_management': '_inject_context_management',
-}
 _MSG_CODE_TO_FN: dict[str, str] = {
     'PR':  '_apply_poread_expand_strip',
     'RS':  '_apply_role_system_strip',

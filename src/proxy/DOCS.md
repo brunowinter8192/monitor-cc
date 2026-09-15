@@ -277,7 +277,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### strip_inject_delta.py (293 LOC)
+### strip_inject_delta.py (286 LOC)
 
 **Purpose:** Builds `stripped_delta`/`injected_delta` JSONL entries from an original↔forwarded payload pair, with per-location hash chains for delta suppression and a function-attribution map (`fn_map`) for each recorded change.
 **Reads:** Original and forwarded payload dicts; previous hash state dicts (`loc_key → MD5[:10]`) from the prior request; `all_ops` bridged from `flow.metadata`.
@@ -369,7 +369,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 **`_TrailerCrashFilter` drops one specific mitmproxy crash record, not crash logging in general.** It filters the `NotImplementedError: HTTP trailers are not implemented yet` `LogRecord` mitmproxy 12.x raises from `proxy/layers/http/_http1.py`; every other `mitmproxy has crashed!` record still reaches stderr.
 
-**`strip_inject_delta.py`'s `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` are dead code — never wired into `fn_map`.** Only the `sys`/`tools`/`messages` sections contribute to `s_fn_map`/`i_fn_map`; every top-level field (`model`/`max_tokens`/`thinking`/`output_config`/`context_management`) that shows up in a `stripped_delta`/`injected_delta` entry's `fields_delta` carries NO function attribution in the real written JSONL `fn_map`, regardless of what these two maps say. The live attribution for `fields_delta` entries is `dev/proxy_dual_log/attribution_coverage.py`'s own local, separately-maintained copy of the same two maps — keep both in sync by hand if a field's owning function ever changes.
+**`_process_fields_section` never contributes to `fn_map` — only the `sys`/`tools`/`messages` sections do.** Every top-level field (`model`/`max_tokens`/`thinking`/`output_config`/`context_management`) that shows up in a `stripped_delta`/`injected_delta` entry's `fields_delta` carries NO function attribution in the real written JSONL `fn_map`. `strip_inject_delta.py` used to hold its own unread `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` maps for this — removed as dead code, since nothing consumed them and they had already drifted from the live copy (missing the `context_management` strip-side entry). The only attribution for `fields_delta` entries now lives in `dev/proxy_dual_log/attribution_coverage.py`'s own local `_FIELD_STRIP_FN`/`_FIELD_INJECT_FN` maps — update those directly if a field's owning function ever changes.
 
 **An op-less strip still rewrites the payload — it only loses its dual-log entry, silently.** `message_passes` sets new content directly; the op is recorded separately via `_ops_from_content_change`. If a pass changes content shape (e.g. list→str) in a way the op-builder doesn't handle, the op comes back empty, `strip_inject_delta._process_messages_section` skips the message (`if s_texts:`), and nothing marks the strip anywhere visible — the forwarded payload is still correct, but no pane or CLI can show it happened. When adding a pass that changes content shape, verify the message index appears in `all_ops`, not just that the payload is right.
 
