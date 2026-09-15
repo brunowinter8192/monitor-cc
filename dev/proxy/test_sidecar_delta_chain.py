@@ -38,6 +38,24 @@ def check(label, condition):
     return condition
 
 
+# ORCHESTRATOR
+
+def run_probe_workflow():
+    print("=" * 70)
+    print("sidecar delta-chain isolation probe (src/proxy/addon_dual_log.py)")
+    print("=" * 70)
+    test_is_sidecar_payload_matches_tool_count()
+    test_sidecar_does_not_advance_chain_and_next_real_diffs_against_last_real()
+    test_real_change_after_sidecar_still_reported()
+
+    total = len(_RESULTS)
+    passed = sum(1 for _, ok in _RESULTS if ok)
+    print("\n" + "=" * 70)
+    print(f"{passed}/{total} checks passed")
+    print("=" * 70)
+    return passed == total
+
+
 # FUNCTIONS
 
 class _FakeRequest:
@@ -83,6 +101,22 @@ def _read_jsonl(path: Path) -> list:
     return entries
 
 
+# Real/sidecar payload pair shared by the chain-isolation tests below — same model family
+# (the historical shape measured 2026-09-03: a sonnet-family sidecar interleaved into a sonnet
+# conversation, generalized here to opus), sidecar has tools == [] and its own system/msg text.
+def _real_and_sidecar_payloads():
+    real_payload = _payload(
+        "claude-opus-4-8", [{"name": "Bash"}, {"name": "Read"}],
+        ["billing header", "You are Claude Code, Anthropic's official CLI."],
+    )
+    sidecar_payload = _payload(
+        "claude-opus-4-8", [],
+        ["You are naming a coding session so the user can pick it out of a long list."],
+        msg_text="<session>fix the bug</session>",
+    )
+    return real_payload, sidecar_payload
+
+
 # Test 1 — _is_sidecar_payload is the exact same tools-count-zero signal
 # dual_log_cli.timeline_boundaries._is_sidecar uses on the read side, applied to the payload
 # directly (counts isn't built yet at this point in the write path).
@@ -94,8 +128,7 @@ def test_is_sidecar_payload_matches_tool_count():
     check("six tools -> not sidecar", not _is_sidecar_payload({"tools": [{"name": f"T{i}"} for i in range(6)]}))
 
 
-# Test 2 — a sidecar sharing the REAL conversation's model family (the historical shape measured
-# 2026-09-03: a sonnet-family sidecar interleaved into a sonnet conversation) never advances
+# Test 2 — a sidecar sharing the REAL conversation's model family never advances
 # forwarded_hashes_by_model. The next real request's forwarded_delta is empty when its content is
 # byte-identical to the LAST REAL request, proving the diff base is the real request, not the
 # sidecar that sat between them.
@@ -106,16 +139,7 @@ def test_sidecar_does_not_advance_chain_and_next_real_diffs_against_last_real():
         paths = _make_paths(tmp_dir)
         delta_state = DeltaState()
         identity = SessionIdentity(session_id="s", worker_context="main")
-
-        real_payload = _payload(
-            "claude-opus-4-8", [{"name": "Bash"}, {"name": "Read"}],
-            ["billing header", "You are Claude Code, Anthropic's official CLI."],
-        )
-        sidecar_payload = _payload(
-            "claude-opus-4-8", [],
-            ["You are naming a coding session so the user can pick it out of a long list."],
-            msg_text="<session>fix the bug</session>",
-        )
+        real_payload, sidecar_payload = _real_and_sidecar_payloads()
 
         _write_request_dual_logs(
             _FakeFlow("f1"), real_payload, real_payload, "opus", "req1", "ts1",
@@ -180,24 +204,6 @@ def test_real_change_after_sidecar_still_reported():
               "1" in last_entry.get("tools_delta", {}))
         check("REQ 2's new tool is Read, not something sidecar-derived",
               (last_entry["tools_delta"]["1"] or {}).get("name") == "Read")
-
-
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    print("=" * 70)
-    print("sidecar delta-chain isolation probe (src/proxy/addon_dual_log.py)")
-    print("=" * 70)
-    test_is_sidecar_payload_matches_tool_count()
-    test_sidecar_does_not_advance_chain_and_next_real_diffs_against_last_real()
-    test_real_change_after_sidecar_still_reported()
-
-    total = len(_RESULTS)
-    passed = sum(1 for _, ok in _RESULTS if ok)
-    print("\n" + "=" * 70)
-    print(f"{passed}/{total} checks passed")
-    print("=" * 70)
-    return passed == total
 
 
 if __name__ == "__main__":
