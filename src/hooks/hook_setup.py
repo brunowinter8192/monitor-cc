@@ -49,6 +49,7 @@ _HOOK_SCRIPTS = [
     ("block_po_read.py",                 "Bash"),
     ("block_pipe_scraper_isolated.py",   "Bash"),
     ("block_rag_cli_document_repeat.py", "Bash"),
+    ("block_non_canonical_edit.py", "Bash"),
 ]
 
 # ORCHESTRATOR

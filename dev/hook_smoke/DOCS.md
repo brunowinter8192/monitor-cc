@@ -295,6 +295,39 @@ of the log path is honored, and the tool-error writer path works.
 
 ---
 
+### test_block_non_canonical_edit.py (131 LOC)
+
+**Purpose:** 18-case smoke for `block_non_canonical_edit.py` — the always-block shell-level forms
+(`sed -i`, `perl -pi`, `gawk -i inplace`), the always-block python-body form (`open(..., 'r+')`),
+a truncating `cat >`/bare `tee` on an existing file, a non-canonical python heredoc (wrong
+delimiter) on an existing file, the always-allow forms (new-file creation, `>>`/`tee -a`
+appending, `python open() mode x`), the exact canonical `'LINEEDIT'` form applied for real against
+a fixture file, an unresolvable path (`sys.argv`), and the two false-positive-avoidance cases
+found during the classification milestone's own calibration (`sed -i` mentioned only as prose in
+a new-file heredoc, and only as a quoted search term) — plus the shared malformed-stdin fail-open
+case.
+**Called by:** none — run manually.
+**Calls out:** none — drives the hook via `subprocess` over stdin JSON, same shape as
+`test_block_po_read.py`.
+
+---
+
+### verify_block_non_canonical_edit_corpus.py (115 LOC)
+
+**Purpose:** Runs `block_non_canonical_edit.py`'s `_decide()` directly against every record in
+`dev/cache/jsonl/bash_file_mods_*.jsonl` (all 210 real, previously-extracted Bash calls) and
+writes the full verdict distribution plus every BLOCK/ERROR verdict and a 40-record ALLOW sample
+to a report — the corpus-scale complement to the synthetic smoke test above, per the
+`block_non_canonical_edit` milestone's own testing requirement.
+**Reads:** `dev/cache/jsonl/bash_file_mods_*.jsonl` (read-only, never written to).
+**Writes:** `md/block_non_canonical_edit_corpus_report.md`.
+**Called by:** none — manual, re-run after any change to `block_non_canonical_edit.py`'s decision
+logic.
+**Calls out:** `src.hooks.block_non_canonical_edit` (`_decide`, imported directly, same pattern as
+`test_block_worker_kill_while_working.py`'s `decide` import).
+
+---
+
 ## Gotchas
 
 **`log_janitor`, `block_worker_kill_while_working`, and `block_worker_send_while_working`'s test
@@ -304,3 +337,19 @@ in-process while every other script in this suite drives the hook as a subproces
 
 **Several HOOK paths inside these scripts are relative** (`src/hooks/<name>.py`) — those scripts
 must be run from the project root or they silently fail to find the hook.
+
+**`verify_block_non_canonical_edit_corpus.py`'s `cwd_guess` is a leading-`cd`-extraction heuristic
+for offline testing only, not a real `cwd`.** The real hook receives `cwd` from Claude Code's own
+stdin payload on every real invocation; the extracted corpus records carry no such field. A
+command with no leading `cd` and a relative target path resolves against this worktree's own
+`os.getcwd()` instead of the session's real working directory, which can silently misresolve a
+target to a nonexistent path — confirmed concretely: `toolu_01DmbPtmA6jHZAL6LEXH2LLe`'s
+`open(p).read()` / `open(p, "w")` read-modify-write of `dokumente/goethe/prozess/2026-09-14.md`
+(no leading `cd`) reported ALLOW during verification because the relative path resolved into this
+monitor-cc worktree rather than the real wise2627 project directory where the file genuinely
+exists. Separately, on the BLOCK side: many `>`/`cat >` targets under `/tmp/` or inside a worker
+worktree report BLOCK not because the original command was wrong but because either (a) that
+exact command is what created the file, which is still sitting there from its real run, or (b) the
+worker worktree it targeted has since been deleted post-merge, both confirmed against
+`dev/hook_smoke/md/block_non_canonical_edit_corpus_report.md`'s BLOCK list by hand. None of this
+is a defect in `block_non_canonical_edit.py` itself — see its own Gotcha in `src/hooks/DOCS.md`.
