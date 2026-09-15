@@ -295,40 +295,47 @@ of the log path is honored, and the tool-error writer path works.
 
 ---
 
-### test_block_non_canonical_edit.py (161 LOC)
+### test_block_non_canonical_edit.py (131 LOC)
 
-**Purpose:** 19-case smoke for `block_non_canonical_edit.py` — the always-block shell-level forms
-(`sed -i`, `perl -pi`, `gawk -i inplace`), the always-block python-body form (`open(..., 'r+')`),
-a truncating `cat >`/bare `tee` on an existing file, a non-canonical python heredoc (wrong
-delimiter) on an existing file, the always-allow forms (new-file creation, `>>`/`tee -a`
-appending, `python open() mode x`), the exact canonical `'LINEEDIT'` form applied for real against
-a fixture file, an unresolvable path (`sys.argv`), the two false-positive-avoidance cases found
-during the classification milestone's own calibration (`sed -i` mentioned only as prose in a
-new-file heredoc, and only as a quoted search term), the shared malformed-stdin fail-open case,
-and a direct-import monkeypatch case forcing `_decide` itself to raise, confirming the hook still
-fails open (exit 0) AND prints the `[block_non_canonical_edit] internal error, failing open: ...`
-diagnostic rather than staying silent.
+**Purpose:** 18-case smoke for the retired `block_non_canonical_edit.py.disabled` — the
+always-block shell-level forms (`sed -i`, `perl -pi`, `gawk -i inplace`), the always-block
+python-body form (`open(..., 'r+')`), a truncating `cat >`/bare `tee` on an existing file, a
+non-canonical python heredoc (wrong delimiter) on an existing file, the always-allow forms
+(new-file creation, `>>`/`tee -a` appending, `python open() mode x`), the exact canonical
+`'LINEEDIT'` form applied for real against a fixture file, an unresolvable path (`sys.argv`), the
+two false-positive-avoidance cases found during the classification milestone's own calibration
+(`sed -i` mentioned only as prose in a new-file heredoc, and only as a quoted search term), and
+the shared malformed-stdin fail-open case. Its `HOOK` constant was updated to the `.disabled`
+path on retirement so it keeps genuinely passing rather than silently testing nothing — see the
+`test_block_chained_sleep.py` Gotcha below for what happens when that update is skipped. The
+19th case from this hook's active period (a direct-import monkeypatch forcing `_decide` to raise)
+was removed on retirement, not merely left broken: it required importing the module by name,
+which a `.disabled` file cannot satisfy, and an uncaught `ModuleNotFoundError` would crash this
+whole script rather than report a clean pass/fail count.
 **Called by:** none — run manually.
-**Calls out:** none — drives the hook via `subprocess` over stdin JSON for the 18 command-level
-cases (same shape as `test_block_po_read.py`), and via a direct `import block_non_canonical_edit`
-+ monkeypatch for the internal-exception case (same directory-insert pattern as
-`test_block_worker_kill_while_working.py`).
+**Calls out:** none — drives the hook via `subprocess` over stdin JSON, same shape as
+`test_block_po_read.py`.
 
 ---
 
 ### verify_block_non_canonical_edit_corpus.py (115 LOC)
 
-**Purpose:** Runs `block_non_canonical_edit.py`'s `_decide()` directly against every record in
-`dev/cache/jsonl/bash_file_mods_*.jsonl` (all 210 real, previously-extracted Bash calls) and
-writes the full verdict distribution plus every BLOCK/ERROR verdict and a 40-record ALLOW sample
-to a report — the corpus-scale complement to the synthetic smoke test above, per the
-`block_non_canonical_edit` milestone's own testing requirement.
+**Purpose:** Ran `block_non_canonical_edit.py`'s `_decide()` directly against every record in
+`dev/cache/jsonl/bash_file_mods_*.jsonl` while the hook was live, measuring its real-world verdict
+distribution before/during activation. The hook is now retired
+(`block_non_canonical_edit.py.disabled`) and this script can no longer run as written: its
+`from block_non_canonical_edit import _decide` needs a `.py`-suffixed, importable module name,
+which the disabled file no longer has. Adapting the import (e.g. via
+`importlib.util.spec_from_file_location`) was judged out of scope for the retirement — new loading
+machinery the script never needed while the hook was live. Kept, not deleted, for its
+already-committed findings and corpus-replay methodology (see
+`md/block_non_canonical_edit_corpus_report.md` and `process-docs/tool_use_safety/`), not for
+re-execution.
 **Reads:** `dev/cache/jsonl/bash_file_mods_*.jsonl` (read-only, never written to).
-**Writes:** `md/block_non_canonical_edit_corpus_report.md`.
-**Called by:** none — manual, re-run after any change to `block_non_canonical_edit.py`'s decision
-logic.
-**Calls out:** `src.hooks.block_non_canonical_edit` (`_decide`, imported directly, same pattern as
-`test_block_worker_kill_while_working.py`'s `decide` import).
+**Writes:** `md/block_non_canonical_edit_corpus_report.md` — a historical snapshot from while the
+hook was live, not regenerated.
+**Called by:** none — cannot currently run; see Purpose.
+**Calls out:** `src.hooks.block_non_canonical_edit` (`_decide`) — target retired.
 
 ---
 
@@ -357,3 +364,28 @@ exact command is what created the file, which is still sitting there from its re
 worker worktree it targeted has since been deleted post-merge, both confirmed against
 `dev/hook_smoke/md/block_non_canonical_edit_corpus_report.md`'s BLOCK list by hand. None of this
 is a defect in `block_non_canonical_edit.py` itself — see its own Gotcha in `src/hooks/DOCS.md`.
+
+**`test_block_chained_sleep.py` reports PASS without ever executing its target — a real defect,
+found while retiring `block_non_canonical_edit.py` and left as-is here since fixing it is separate
+work.** Its `HOOK` constant still points at `src/hooks/block_chained_sleep.py`, the path from
+before that hook was disabled; the file has not existed there since the rename to
+`block_chained_sleep.py.disabled`. `subprocess.run(["python3", HOOK], ...)` against a nonexistent
+path does not fail the way a broken hook invocation should — `python3` itself prints `can't open
+file ... No such file or directory` and exits with status 2, and 2 is also this hook family's own
+"block" exit code. The two codes collide by coincidence, not by any check this test performs. The
+practical effect: every case in `CASES` that expects BLOCK (`exit=2`) reports OK, because
+`python3`'s own file-not-found exit code happens to equal 2 regardless of what the (nonexistent)
+hook would have decided; every case that expects PASS (`exit=0`) reports FAIL, because
+`python3`'s file-not-found exit code is never 0. Running it now: 5 of the 13 cases are BLOCK-
+expecting and show as spuriously OK (`chained before sleep`, `non-echo-done cont`, `real sleep
+after quoted`, `cmd-subst sleep`, `backtick sleep`); the other 8 are PASS-expecting and show as
+FAIL (`canonical pass`, `canonical float pass`, `no sleep pass`, `heredoc quoted body PASS`,
+`heredoc unquoted body PASS`, `single-quoted sleep PASS`, `double-quoted sleep PASS`, `ANSI-C
+quote sleep PASS`) — meaning the script's own summary line reads "FAILED: 8 case(s)", which is
+itself somewhat self-revealing, but a prior pass at the actual per-case output before reading past
+the summary would report "OK" on 5 cases that never touched real hook logic at all. A test
+reporting PASS while never running its target is worse than no test — it buys false confidence
+rather than none. Not fixed here
+because retiring a *different* hook is not licence to fix an unrelated, pre-existing one; if this
+is ever revived, the fix is the same one-line `HOOK` path update `test_block_non_canonical_edit.py`
+got on its own retirement, documented above.
