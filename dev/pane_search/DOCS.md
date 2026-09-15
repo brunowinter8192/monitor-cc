@@ -14,137 +14,321 @@ fixture) directly, drives the pane's real search/mouse handler functions, and as
 resulting query/match state and rendered output — no live tmux session involved. Output is
 PASS/FAIL to stdout plus a timestamped report in `md/`.
 
+Each `pN_*` suite splits into an entry script (kept runnable at its original path/name) plus sibling
+`_fixtures.py` (module loads, state resets, `check()`) and `_cases*.py` (the `test_*` functions)
+helper modules in the same directory, following the split convention already used in
+`dev/proxy_dual_log/`. `dev/` scripts may not `import src.` at module level; the entry/fixtures
+modules load `src` via `importlib.import_module` (see `src/hooks/block_dev_imports_src.py`), and
+sibling `pN_*` modules import each other with plain `from pN_... import name`.
+
 ## Modules
 
-### p1_full_sweep_cost_probe.py (403 LOC)
+### p1_full_sweep_cost_probe.py (83 LOC)
 
-**Purpose:** Compares two message-reconstruction strategies on a real `_forwarded.jsonl` log:
-per-entry lazy-load (O(N) replays) vs. one-sweep reconstruction (single pass, keeps messages for
-every entry). Measures wall time and peak/current traced RAM for both.
+**Purpose:** Orchestrates the M1 cost probe end to end and writes the markdown report.
 **Reads:** a forwarded dual-log JSONL (positional arg, or the newest one found under src/logs/dual_log
 on the dev machine — gitignored runtime data, absent from a fresh worktree).
 **Writes:** `md/p1_full_sweep_cost_report.md`; a one-line stdout summary.
 **Called by:** none — manual, one-off feasibility measurement.
-**Calls out:** stdlib only (`json`, `tracemalloc`, `gc`, `collections.deque`) — the delta-accumulation
-algorithm is reimplemented locally rather than importing `src.proxy_display.forwarded_parser`.
+**Calls out:** `p1_full_sweep_reconstruct.py`, `p1_full_sweep_report.py`.
 
 ---
 
-### p2_search_feature_regression_test.py (471 LOC)
+### p1_full_sweep_reconstruct.py (161 LOC)
 
-**Purpose:** Regression guard for the proxy pane's search feature: search-bar rendering at row 1,
-line_map/copy_rows shift correctness, collapsed-vs-expanded hit marking, `n`/`N` jump ordering, Esc
-clearing query+matches without hiding the bar, the `flow_id`-based `_lazy_load_messages_forwarded`
-fix, the `ZEBRA_BG_A == ''` sentinel-resolution bug, UTF-8 multi-byte keypress decoding in
-`read_keypress`, and kill-line-after-a-real-search-run behavior.
-**Reads:** nothing external — seeds `src.proxy_display.pane` module state with synthetic entries
-directly; one test writes a throwaway forwarded-delta JSONL fixture under a temp directory.
+**Purpose:** Local reimplementation of the forwarded-delta reconstruction algorithm (both the
+per-entry lazy-load and one-sweep strategies) plus their wall-time/RAM measurement wrappers.
+**Reads:** nothing at import time; its functions read a forwarded-delta JSONL passed as an argument.
+**Writes:** nothing — pure functions returning entries/timings.
+**Called by:** `p1_full_sweep_cost_probe.py`.
+**Calls out:** stdlib only (`json`, `gc`, `tracemalloc`, `collections.deque`) — mirrors
+`src/proxy_display/forwarded_parser.py` structurally rather than importing it.
+
+---
+
+### p1_full_sweep_report.py (171 LOC)
+
+**Purpose:** Computes derived report metrics and formats the markdown report body section by section.
+**Reads:** the entries/timing/RAM values `p1_full_sweep_cost_probe.py` measured.
+**Writes:** nothing — returns the report string; the caller writes the file.
+**Called by:** `p1_full_sweep_cost_probe.py`.
+**Calls out:** `p1_full_sweep_reconstruct.py` (`_infer_model_family`, for the per-family stats).
+
+---
+
+### p2_search_feature_regression_test.py (97 LOC)
+
+**Purpose:** Runs the M2 proxy-pane search-bar regression suite and writes the PASS/FAIL report.
+**Reads:** nothing external.
 **Writes:** `md/p2_search_feature_regression_test_<timestamp>.md`; exits 1 if any check fails.
 **Called by:** none — manual regression guard, re-run after changing `pane.py`'s search
 state/handlers, `format.py`'s row-background/render functions, `render_turn.py`'s search-marker
 embedding, `search.py`, `forwarded_parser.py`'s reconstruction functions, or
 `input.click_handler.read_keypress`.
+**Calls out:** `p2_search_feature_regression_fixtures.py`, `p2_search_feature_regression_cases.py`.
+
+---
+
+### p2_search_feature_regression_fixtures.py (117 LOC)
+
+**Purpose:** Loads the `src` modules under test, holds the shared `check()`/results list, and
+builds synthetic proxy entries and pane-state resets for the M2 suite's test cases.
+**Reads:** nothing external.
+**Writes:** nothing — mutates in-process `src.proxy_display.pane` module state on demand.
+**Called by:** `p2_search_feature_regression_test.py`, `p2_search_feature_regression_cases.py`.
 **Calls out:** `src.proxy_display.pane`, `src.proxy_display.format`, `src.proxy_display.search`,
-`src.proxy_display.forwarded_parser`, `src.input.click_handler`, `src.constants` — loaded via
+`src.proxy_display.forwarded_parser`, `src.input.click_handler`, `src.colors` — loaded via
 `importlib.import_module`.
 
 ---
 
-### p3_drag_select_regression_test.py (406 LOC)
+### p2_search_feature_regression_cases.py (285 LOC)
 
-**Purpose:** Regression guard for drag-to-select on the search bar: column-to-query-index boundary
-mapping (ASCII and wide-char/emoji), the full press-motion-release drag flow producing an exact
-clipboard copy, plain-click producing zero clipboard calls, editor-style Backspace-deletes-selection
-vs. plain Backspace, and kill-line (`pane._KILL_LINE_CHAR`) clearing the whole query.
-**Reads:** nothing external — seeds `src.proxy_display.pane` module state directly and drives its
-mouse/search handlers with direct `(button, col, row)` calls.
+**Purpose:** The M2 suite's `test_*` functions covering search-bar render/highlight/nav/UTF-8
+input behavior described in the module docstring of the entry script.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p2_search_feature_regression_test.py`.
+**Calls out:** `p2_search_feature_regression_fixtures.py`.
+
+---
+
+### p3_drag_select_regression_test.py (110 LOC)
+
+**Purpose:** Runs the proxy pane's drag-to-select regression suite and writes the PASS/FAIL report.
+**Reads:** nothing external.
 **Writes:** `md/p3_drag_select_regression_test_<timestamp>.md`; exits 1 if any check fails.
 **Called by:** none — manual regression guard, re-run after changing `pane.py`'s
 `_search_col_to_query_index`, `_handle_proxy_mouse`, `_handle_proxy_search_release`,
 `_clear_proxy_search_selection`, or `_render_proxy_search_bar`.
+**Calls out:** `p3_drag_select_regression_fixtures.py`, `p3_drag_select_regression_cases.py`.
+
+---
+
+### p3_drag_select_regression_fixtures.py (45 LOC)
+
+**Purpose:** Loads `src.proxy_display.pane`, holds `check()`/results, and resets pane/search state
+between drag-select test cases.
+**Reads:** nothing external.
+**Writes:** nothing — mutates in-process `src.proxy_display.pane` module state on demand.
+**Called by:** `p3_drag_select_regression_test.py`, `p3_drag_select_regression_cases.py`.
 **Calls out:** `src.proxy_display.pane` — loaded via `importlib.import_module`.
 
 ---
 
-### p5_worker_proxy_pane_parity_test.py (543 LOC)
+### p3_drag_select_regression_cases.py (277 LOC)
 
-**Purpose:** Regression guard for the worker-proxy pane reaching search-bar parity with the proxy
-pane: the same drag-select/editing/jump mechanics suite as `p2_`/`p3_`, retargeted at this pane's own
-wrappers, plus the 2-row header composition (search bar row 1, worker-switcher header shifted to
-row 2+), Enter always re-running the search, the one-sweep reconstruction merge wired for this pane,
-and a worker-switch search-state reset.
-**Reads:** nothing external — seeds `src.proxy_display.worker_proxy_pane` module state directly; one
-test writes a throwaway 2-line forwarded-delta JSONL fixture, another a throwaway IPC selection file.
+**Purpose:** The drag-select suite's `test_*` functions covering column mapping, drag/click/editing
+mechanics, and selection-clearing described in the entry script's docstring.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p3_drag_select_regression_test.py`.
+**Calls out:** `p3_drag_select_regression_fixtures.py`.
+
+---
+
+### p5_worker_proxy_pane_parity_test.py (119 LOC)
+
+**Purpose:** Runs the worker-proxy pane's search-bar parity suite and writes the PASS/FAIL report.
+**Reads:** nothing external.
 **Writes:** `md/p5_worker_proxy_pane_parity_test_<timestamp>.md`; exits 1 if any check fails.
 **Called by:** none — manual regression guard, re-run after changing `worker_proxy_pane.py`'s
 search/mouse handlers, `_build_worker_proxy_output`'s header composition,
 `workers/worker_switch_header.py` (imported here under the alias `_format_worker_proxy_header`),
 or `src/search_bar.py`.
+**Calls out:** `p5_worker_proxy_pane_parity_fixtures.py`, `p5_worker_proxy_pane_parity_cases_mechanics.py`,
+`p5_worker_proxy_pane_parity_cases_search.py`.
+
+---
+
+### p5_worker_proxy_pane_parity_fixtures.py (121 LOC)
+
+**Purpose:** Loads `src.proxy_display.worker_proxy_pane`/`src.search_bar`, holds `check()`/results,
+and builds synthetic worker-proxy entries, state resets, and clipboard/output-building helpers.
+**Reads:** nothing external.
+**Writes:** nothing — mutates in-process `worker_proxy_pane` module state on demand.
+**Called by:** `p5_worker_proxy_pane_parity_test.py`, both `p5_..._cases_*.py` modules.
 **Calls out:** `src.proxy_display.worker_proxy_pane`, `src.search_bar` — loaded via
 `importlib.import_module`.
 
 ---
 
-### p6_tokens_pane_parity_test.py (515 LOC)
+### p5_worker_proxy_pane_parity_cases_mechanics.py (207 LOC)
 
-**Purpose:** Regression guard for the tokens pane reaching search-bar parity: the same mechanics
-suite as `p3_`-`p5_`, plus two-key match semantics (`(turn_idx, call_idx)` container-marks a call
-header unconditionally; `('turn', turn_idx)` marks the turn's prompt line), the same
-`ZEBRA_BG_A == ''` sentinel bug, a `LIGHT_RED_BG` detection regression fix (`.startswith()` → `in`),
-jump-to-match scroll positioning via `format_cache_tracker`'s `nav_out`, and a session-change search
-state reset.
-**Reads:** nothing external — seeds `src.panes.token_pane._cache_turns` with synthetic turns
-directly; the session-change test monkeypatches session-lookup functions to nonexistent paths.
+**Purpose:** `test_*` functions for the 2-row header, drag-select, and editor-style-deletion
+mechanics half of the p5 suite.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p5_worker_proxy_pane_parity_test.py`.
+**Calls out:** `p5_worker_proxy_pane_parity_fixtures.py`.
+
+---
+
+### p5_worker_proxy_pane_parity_cases_search.py (139 LOC)
+
+**Purpose:** `test_*` functions for Enter-triggered search, the reconstruction merge, n/N nav, and
+the worker-switch reset half of the p5 suite.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p5_worker_proxy_pane_parity_test.py`.
+**Calls out:** `p5_worker_proxy_pane_parity_fixtures.py`.
+
+---
+
+### p6_tokens_pane_parity_test.py (135 LOC)
+
+**Purpose:** Runs the tokens pane's search-bar parity suite and writes the PASS/FAIL report.
+**Reads:** nothing external.
 **Writes:** `md/p6_tokens_pane_parity_test_<timestamp>.md`; exits 1 if any check fails.
 **Called by:** none — manual regression guard, re-run after changing `token_pane.py`'s search/mouse
 handlers, `token_format.py`'s `format_cache_tracker`/`_compute_cache_viewport`, `token_search.py`,
 or `src/search_bar.py`.
-**Calls out:** `src.panes.token_pane`, `src.panes.token_search`, `src.format.token_format`,
-`src.search_bar`, `src.constants`, `src.core.monitor`, `src.proxy_display.parser` — loaded via
-`importlib.import_module`.
+**Calls out:** `p6_tokens_pane_parity_fixtures.py`, `p6_tokens_pane_parity_cases_mechanics.py`,
+`p6_tokens_pane_parity_cases_matching.py`.
 
 ---
 
-### p7_workers_pane_parity_test.py (596 LOC)
+### p6_tokens_pane_parity_fixtures.py (71 LOC)
 
-**Purpose:** Regression guard for the worker-tokens pane reaching search-bar parity. RETARGETED
-2026-09 (panesplit milestone) — originally the all-workers list pane's own three-tier-match parity
-suite; that pane (worker_pane.py) is gone, replaced by `workers/worker_tokens_pane.py`, a
-single-selected-worker cache tracker. Covers the same mechanics suite as `p6_` (two-tier match
-key, `(turn_idx, call_idx)` / `('turn', turn_idx)` — no more per-worker wrapping, since only one
-worker is ever visible at a time), PLUS the 2-row header + worker-switch mechanics of `p5_`
-(search bar row 1, worker-switch header row 2+, built by the shared
-`workers/worker_switch_header.py`), PLUS a NEW worker-switch reset (search state and scroll offset
-both reset on switch — a deliberate behavior change from the deleted list pane, which had no
-single current worker to switch away from).
-**Reads:** nothing external — seeds `src.workers.worker_tokens_pane` module state directly; some
-tests write a throwaway JSONL fixture file under a temp directory with `find_worker_jsonl`
-monkeypatched to resolve to it.
+**Purpose:** Loads the `src` token-pane modules, holds `check()`/results, and builds synthetic
+turns and pane-state resets for the p6 suite's test cases.
+**Reads:** nothing external.
+**Writes:** nothing — mutates in-process `token_pane` module state on demand.
+**Called by:** `p6_tokens_pane_parity_test.py`, both `p6_..._cases_*.py` modules.
+**Calls out:** `src.panes.token_pane`, `src.panes.token_search`, `src.format.token_format`,
+`src.search_bar`, `src.colors`, `src.core.monitor`, `src.proxy_display.parser`,
+`src.proxy_display.side_logs` — loaded via `importlib.import_module`.
+
+---
+
+### p6_tokens_pane_parity_cases_mechanics.py (194 LOC)
+
+**Purpose:** `test_*` functions for state shape, render, drag-select, and editor-style-deletion
+mechanics half of the p6 suite.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p6_tokens_pane_parity_test.py`.
+**Calls out:** `p6_tokens_pane_parity_fixtures.py`.
+
+---
+
+### p6_tokens_pane_parity_cases_matching.py (157 LOC)
+
+**Purpose:** `test_*` functions for two-key match semantics, the sentinel/LIGHT_RED_BG regressions,
+nav, jump-to-match, and session-change-reset half of the p6 suite.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p6_tokens_pane_parity_test.py`.
+**Calls out:** `p6_tokens_pane_parity_fixtures.py`.
+
+---
+
+### p7_workers_pane_parity_test.py (125 LOC)
+
+**Purpose:** Runs the worker-tokens pane's search-bar + worker-switch-header parity suite and
+writes the PASS/FAIL report.
+**Reads:** nothing external.
 **Writes:** `md/p7_workers_pane_parity_test_<timestamp>.md`; exits 1 if any check fails.
 **Called by:** none — manual regression guard, re-run after changing `worker_tokens_pane.py`'s
 search/mouse/header handlers, `worker_switch_header.py`, `panes/token_search.py`, or
 `src/search_bar.py`.
+**Calls out:** `p7_workers_pane_parity_fixtures.py`, `p7_workers_pane_parity_cases_mechanics.py`,
+`p7_workers_pane_parity_cases_matching.py`.
+
+---
+
+### p7_workers_pane_parity_fixtures.py (119 LOC)
+
+**Purpose:** Loads `src.workers.worker_tokens_pane`/`src.search_bar`/`src.colors`, holds
+`check()`/results, and builds real throwaway worker-JSONL fixtures plus state resets.
+**Reads:** nothing at import time; `_setup_one_worker_jsonl` writes and later reads a throwaway
+JSONL fixture under a temp directory with `find_worker_jsonl` monkeypatched to resolve to it.
+**Writes:** a throwaway JSONL fixture file per test that requests one (cleaned up by
+`_cleanup_worker_jsonl`).
+**Called by:** `p7_workers_pane_parity_test.py`, both `p7_..._cases_*.py` modules.
 **Calls out:** `src.workers.worker_tokens_pane`, `src.search_bar`, `src.colors` — loaded via
 `importlib.import_module`.
 
 ---
 
-### p8_warnings_gpu_news_parity_test.py (584 LOC)
+### p7_workers_pane_parity_cases_mechanics.py (208 LOC)
 
-**Purpose:** Regression guard for the final three panes (warnings, gpu, news) reaching search-bar
-parity, bundled in one suite. Covers the same drag-select/editing/Esc/render mechanics as `p3_`-`p7_`
-retargeted at each pane's wrappers, a literal-source-introspection check pinning that the warnings
-row-background loop uses substring matching (not `.startswith()`), the same `ZEBRA_BG_A == ''`
-sentinel-resolution fix, and — for gpu/news, which have no scroll infrastructure at all —
-highlight-only matching where `n`/`N` cycles `current_idx` with zero scroll calls.
-**Reads:** nothing external — seeds `src.panes.warnings_pane.tool_errors` and synthetic
-`presets`/`status` dicts directly for gpu/news.
+**Purpose:** `test_*` functions for the 2-row header, drag-select, and editor-style-deletion
+mechanics half of the p7 suite.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p7_workers_pane_parity_test.py`.
+**Calls out:** `p7_workers_pane_parity_fixtures.py`.
+
+---
+
+### p7_workers_pane_parity_cases_matching.py (189 LOC)
+
+**Purpose:** `test_*` functions for two-key match semantics, the sentinel/LIGHT_RED_BG regressions,
+nav, jump-to-match, and the worker-switch reset half of the p7 suite.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p7_workers_pane_parity_test.py`.
+**Calls out:** `p7_workers_pane_parity_fixtures.py`.
+
+---
+
+### p8_warnings_gpu_news_parity_test.py (126 LOC)
+
+**Purpose:** Runs the warnings/gpu/news panes' bundled search-bar parity suite and writes the
+PASS/FAIL report.
+**Reads:** nothing external.
 **Writes:** `md/p8_warnings_gpu_news_parity_test_<timestamp>.md`; exits 1 if any check fails.
 **Called by:** none — manual regression guard, re-run after changing `warnings_pane.py`/
 `warnings_render.py`'s search handling, `gpu_pane/pane.py`'s or `news_pane/pane.py`'s
 `_render_pane`/inline mouse dispatch, or `src/search_bar.py`.
+**Calls out:** `p8_warnings_gpu_news_parity_fixtures.py`, `p8_warnings_gpu_news_parity_cases_warnings.py`,
+`p8_warnings_gpu_news_parity_cases_gpu.py`, `p8_warnings_gpu_news_parity_cases_news.py`.
+
+---
+
+### p8_warnings_gpu_news_parity_fixtures.py (111 LOC)
+
+**Purpose:** Loads the warnings/gpu/news `src` modules, holds `check()`/results, and builds
+synthetic tool-errors/presets plus per-pane state resets and the inline gpu-click dispatcher.
+**Reads:** nothing external.
+**Writes:** nothing — mutates in-process pane module state on demand.
+**Called by:** `p8_warnings_gpu_news_parity_test.py`, all three `p8_..._cases_*.py` modules.
 **Calls out:** `src.panes.warnings_pane`, `src.panes.warnings_render`, `src.gpu_pane.pane`,
-`src.news_pane.pane`, `src.search_bar`, `src.constants` — loaded via `importlib.import_module`.
+`src.news_pane.pane`, `src.search_bar`, `src.colors` — loaded via `importlib.import_module`.
+
+---
+
+### p8_warnings_gpu_news_parity_cases_warnings.py (204 LOC)
+
+**Purpose:** `test_*` functions for the warnings pane's 2-row header, two-stage match marking,
+sentinel fix, and drag/editing mechanics.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p8_warnings_gpu_news_parity_test.py`.
+**Calls out:** `p8_warnings_gpu_news_parity_fixtures.py`.
+
+---
+
+### p8_warnings_gpu_news_parity_cases_gpu.py (108 LOC)
+
+**Purpose:** `test_*` functions for the gpu pane's highlight-only match/nav and unshifted-render
+button-region behavior.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p8_warnings_gpu_news_parity_test.py`.
+**Calls out:** `p8_warnings_gpu_news_parity_fixtures.py`.
+
+---
+
+### p8_warnings_gpu_news_parity_cases_news.py (80 LOC)
+
+**Purpose:** `test_*` functions for the news pane's highlight-only match/nav and unshifted-render
+button-region behavior.
+**Reads:** nothing external.
+**Writes:** nothing.
+**Called by:** `p8_warnings_gpu_news_parity_test.py`.
+**Calls out:** `p8_warnings_gpu_news_parity_fixtures.py`.
 
 ---
 
@@ -160,3 +344,6 @@ highlight-only matching where `n`/`N` cycles `current_idx` with zero scroll call
   filler message per earlier index) — `render_messages._render_new_messages` finds "new" messages via
   `range(prev_msg_count, len(messages))`, so a non-cumulative per-entry-only list silently renders an
   empty new-message range and a placed marker never appears.
+- The `pN_*_fixtures.py`/`_cases*.py` split modules are never run directly — always invoke the
+  `pN_..._test.py` (or `p1_full_sweep_cost_probe.py`) entry file at its documented path; the split
+  exists purely to keep each file under the 400-LOC/50-line-function code-standard thresholds.
