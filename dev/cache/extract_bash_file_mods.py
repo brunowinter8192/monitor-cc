@@ -2,6 +2,7 @@
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
@@ -12,7 +13,7 @@ from src.constants import BASH_FILE_MODIFICATION_FORMS
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 OUTPUT_DIR = Path(__file__).parent / 'jsonl'
-OUTPUT_PATH = OUTPUT_DIR / 'bash_file_mods.jsonl'
+OUTPUT_FILENAME_FORMAT = 'bash_file_mods_%Y%m%dT%H%M%SZ.jsonl'
 
 # ORCHESTRATOR
 
@@ -21,7 +22,7 @@ def extract_workflow() -> None:
     records = []
     for log_path in log_paths:
         records.extend(_extract_session_records(log_path))
-    _write_records(records)
+    _write_records(records, _run_output_path())
 
 # FUNCTIONS
 
@@ -88,9 +89,12 @@ def _build_record(session_stem: str, tool_use_id: str, timestamp, command: str, 
         'command': command,
     }
 
-def _write_records(records: list) -> None:
+def _run_output_path() -> Path:
+    return OUTPUT_DIR / datetime.now(timezone.utc).strftime(OUTPUT_FILENAME_FORMAT)
+
+def _write_records(records: list, output_path: Path) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
+    with open(output_path, 'x', encoding='utf-8') as f:
         for record in records:
             f.write(json.dumps(record) + '\n')
 
