@@ -1,22 +1,4 @@
 #!/usr/bin/env python3
-"""Unit tests for template-based exact-match SR strip (Phase B).
-
-Coverage:
-  - 8 core templates × 3 cases each = 24 tests (real strip at top level, FP preserve, tool_result
-    content PRESERVED — SR family no longer descends into tool_result, 2026-07-28 FP-nuke fix;
-    see process-docs/message_strip_fp_nuke/2026-07-28_tool_result_sr_audit.md)
-  - 4 content-shape tests (str / list[text] stripped; list[tool_result:str] / list[tool_result:list]
-    now PRESERVED)
-  - user-interrupt partial mode (body preserved, IMPORTANT stripped) — top-level only
-  - plan-mode None-return behavior
-  - _find_system_reminder_blocks: top-level extraction only (tool_result now finds nothing)
-  - SR-family tool_result non-descent: _apply_final_sr_pass identity-preservation (str + list
-    tool_result shapes, the pass with no gate at all), the real Occurrence-8 fenced-example shape,
-    and top-level-still-works evidence for one `_apply_first_pass`-gated template + one template
-    only `_apply_final_sr_pass`'s catch-all covers
-
-Run: python3 dev/proxy/test_strip_fix.py
-"""
 
 # INFRASTRUCTURE
 import sys

@@ -1,23 +1,4 @@
 #!/usr/bin/env python3
-"""Replay verification for strip_sn_notice.py over all captured dual-logs.
-
-Runs ONLY `_apply_sn_notice_strip` (no other pass) against every request payload's
-`messages` list in every `src/logs/dual_log/*_original.jsonl` entry, then:
-
-  1. Asserts byte-exact equality for every message index NOT reported as changed —
-     proves the pass never touches anything outside its own target (tool_result data,
-     mid-content occurrences, role != 'user', unrelated blocks).
-  2. Asserts every CHANGED message's new content, with the removed paragraph(+blank
-     line) spliced back in, reconstructs the original exactly — proves the strip is a
-     pure removal, no incidental byte drift elsewhere in the same block.
-  3. Reports genuine-strip and untouched-data-occurrence counts, deduplicated per
-     (file, exact text) to collapse conversation-growth duplication (dual-logs are full
-     cumulative snapshots — the same message reappears in every later request of the
-     same session).
-
-Usage: python3 dev/proxy/replay_sn_notice_strip.py
-Output: dev/proxy/md/replay_sn_notice_strip.md
-"""
 
 # INFRASTRUCTURE
 import json
@@ -28,7 +9,6 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 os.environ.setdefault('MONITOR_CC_ROOT', os.path.join(os.path.dirname(__file__), '..', '..'))
 
-# Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
 import importlib as _il
 _apply_sn_notice_strip = _il.import_module('src.proxy.message_passes_simple')._apply_sn_notice_strip
 _sn_mod = _il.import_module('src.proxy.strip_sn_notice')
@@ -36,8 +16,6 @@ _SN_NOTICE_PARAGRAPH = _sn_mod._SN_NOTICE_PARAGRAPH
 _SN_NOTICE_BLOCK = _sn_mod._SN_NOTICE_BLOCK
 del _il, _sn_mod
 
-# Actual runtime dual-log location (main checkout, not this worktree — src/logs/ is gitignored
-# per-worktree; the corpus only exists here).
 LOGS_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
 OUT_FILE = Path(os.path.join(os.path.dirname(__file__), 'md', 'replay_sn_notice_strip.md'))
 
@@ -56,7 +34,6 @@ def replay_sn_notice_strip_workflow():
 
 # FUNCTIONS
 
-# Reconstruct old content from new content + removed chunks for one changed message; True if exact.
 def _reconstruct_matches(old_content, new_content, removed):
     if isinstance(old_content, str):
         lead_ws_len = len(old_content) - len(old_content.lstrip())
@@ -81,8 +58,6 @@ def _reconstruct_matches(old_content, new_content, removed):
     return False
 
 
-# Accumulates untouched-data occurrences of the SN-notice paragraph found OUTSIDE the pass's own
-# target (tool_result content, mid-content text) for one message's content.
 def _scan_untouched(content, role, fp, counts, untouched_data_unique, tool_result_unique, mid_content_unique):
     texts = []
     if isinstance(content, str):
@@ -106,7 +81,7 @@ def _scan_untouched(content, role, fp, counts, untouched_data_unique, tool_resul
         if _SN_NOTICE_PARAGRAPH not in text:
             continue
         if role == 'user' and not in_tool_result and text.lstrip().startswith(_SN_NOTICE_PARAGRAPH):
-            continue  # genuine — handled by the pass, not "untouched data"
+            continue
         n = text.count(_SN_NOTICE_PARAGRAPH)
         counts['untouched_data_events_raw'] += n
         key = (fp.name, text)
@@ -117,8 +92,6 @@ def _scan_untouched(content, role, fp, counts, untouched_data_unique, tool_resul
             mid_content_unique.add(key)
 
 
-# Runs _apply_sn_notice_strip over one dual-log entry's messages, recording genuine-strip
-# reconstruction failures and untouched-data occurrences into the shared accumulators.
 def _process_entry(line, fp, counts, genuine_unique, untouched_data_unique, tool_result_unique,
                     mid_content_unique, byte_exact_failures):
     entry = json.loads(line)

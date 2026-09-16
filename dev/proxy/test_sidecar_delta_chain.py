@@ -1,20 +1,3 @@
-"""
-Regression guard for isolating the zero-tool CC-internal sidecar call (session-titling, quota
-check, security-monitor — anything Claude Code sends alongside the real conversation with
-`tools == 0`) from the proxy's own per-model-family `forwarded` delta-hash chain
-(`src/proxy/addon_dual_log.py::_write_request_dual_logs`, `DeltaState.forwarded_hashes_by_model`).
-
-Covers: `_is_sidecar_payload` matches on tool count alone (model-agnostic, since the sidecar has
-shared its model family with the real conversation before — see
-process-docs/dual_log_cli/2026-09-03_sidecar_exclusion_and_delta_hash_fix.md); a sidecar written
-between two real requests of the SAME family does not advance `forwarded_hashes_by_model`, so the
-next real request's `forwarded_delta` reports no spurious changes against content the sidecar
-introduced and DOES report a real change the sidecar's own presence must not suppress.
-
-Run (from project root or worktree root):
-    ./venv/bin/python dev/proxy/test_sidecar_delta_chain.py
-"""
-
 # INFRASTRUCTURE
 import json
 import sys
@@ -101,9 +84,6 @@ def _read_jsonl(path: Path) -> list:
     return entries
 
 
-# Real/sidecar payload pair shared by the chain-isolation tests below — same model family
-# (the historical shape measured 2026-09-03: a sonnet-family sidecar interleaved into a sonnet
-# conversation, generalized here to opus), sidecar has tools == [] and its own system/msg text.
 def _real_and_sidecar_payloads():
     real_payload = _payload(
         "claude-opus-4-8", [{"name": "Bash"}, {"name": "Read"}],
@@ -117,9 +97,6 @@ def _real_and_sidecar_payloads():
     return real_payload, sidecar_payload
 
 
-# Test 1 — _is_sidecar_payload is the exact same tools-count-zero signal
-# dual_log_cli.timeline_boundaries._is_sidecar uses on the read side, applied to the payload
-# directly (counts isn't built yet at this point in the write path).
 def test_is_sidecar_payload_matches_tool_count():
     print("\n[Test 1] _is_sidecar_payload: tools-count-zero, model-agnostic")
     check("empty tools list -> sidecar", _is_sidecar_payload({"tools": []}))
@@ -128,10 +105,6 @@ def test_is_sidecar_payload_matches_tool_count():
     check("six tools -> not sidecar", not _is_sidecar_payload({"tools": [{"name": f"T{i}"} for i in range(6)]}))
 
 
-# Test 2 — a sidecar sharing the REAL conversation's model family never advances
-# forwarded_hashes_by_model. The next real request's forwarded_delta is empty when its content is
-# byte-identical to the LAST REAL request, proving the diff base is the real request, not the
-# sidecar that sat between them.
 def test_sidecar_does_not_advance_chain_and_next_real_diffs_against_last_real():
     print("\n[Test 2] Sidecar write does not advance the per-family chain")
     with tempfile.TemporaryDirectory() as td:
@@ -177,8 +150,6 @@ def test_sidecar_does_not_advance_chain_and_next_real_diffs_against_last_real():
               (sidecar_entry.get("counts") or {}).get("tools") == 0)
 
 
-# Test 3 — a REAL change made in the request right after a sidecar is still reported: the chain
-# skip must not silently swallow real content changes, only the sidecar's own.
 def test_real_change_after_sidecar_still_reported():
     print("\n[Test 3] A genuine change after a sidecar is still visible in forwarded_delta")
     with tempfile.TemporaryDirectory() as td:

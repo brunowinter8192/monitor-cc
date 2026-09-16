@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""Scan all proxy JSONL logs for SR/TN/ND catalog.
-
-Scans all src/logs/api_requests_*.jsonl, outputs SR catalog to /tmp/sr_catalog.md.
-
-Sources:
-  stripped_msg_removed  — chunks the proxy stripped (real SRs + false positives)
-  raw_payload.messages  — post-strip content (missed SRs still visible to Claude)
-
-Usage:
-    python3 dev/proxy/scan_sr_catalog.py
-"""
 
 # INFRASTRUCTURE
 import json
@@ -20,10 +9,9 @@ from pathlib import Path
 LOGS_DIR = Path('/Users/brunowinter2000/Documents/ai/Monitor_CC/src/logs')
 OUT_FILE = Path('/tmp/sr_catalog.md')
 
-# Detect false-positive code patterns in stripped chunks
 CODE_INDICATORS = [
-    r'.*?\?',         # regex quantifiers
-    r'\\s\*',         # regex \s*
+    r'.*?\?',
+    r'\\s\*',
     r'\.\.\.',
     're\.DOTALL',
     'return \\"',
@@ -68,7 +56,6 @@ def scan_sr_catalog_workflow():
 
 # FUNCTIONS
 
-# Check if a stripped chunk is a false positive (code / non-SR content)
 def is_code_false_positive(chunk: str) -> bool:
     inner = chunk
     if chunk.startswith('<system-reminder>'):
@@ -81,14 +68,12 @@ def is_code_false_positive(chunk: str) -> bool:
     return False
 
 
-# Extract first-sentence identifier from SR inner text
 def first_sentence(inner: str) -> str:
     inner = inner.strip()
     if inner.startswith('<new-diagnostics>'):
         return inner[:80]
     if inner.startswith('<task-id>'):
         return '<structured-task-notification>'
-    # first non-empty line
     for line in inner.split('\n'):
         line = line.strip()
         if line:
@@ -96,7 +81,6 @@ def first_sentence(inner: str) -> str:
     return inner[:80]
 
 
-# Classify a chunk into: real-sr, real-tn, false-positive, or other
 def classify_chunk(chunk: str):
     if chunk.startswith('<system-reminder>'):
         if is_code_false_positive(chunk):
@@ -107,7 +91,6 @@ def classify_chunk(chunk: str):
     return 'other'
 
 
-# Determine location context (role, content shape) for a message at idx
 def location_context(msgs: list, idx: int) -> tuple:
     if idx >= len(msgs):
         return ('?', 'unknown')
@@ -122,8 +105,6 @@ def location_context(msgs: list, idx: int) -> tuple:
     return (role, 'other')
 
 
-# Part 1 of one log entry's scan: classify every stripped_msg_removed chunk into the real-SR /
-# real-TN / false-positive buckets, keyed by first-sentence template and role|shape location.
 def _process_stripped_chunks(removed: dict, msgs: list, stripped_sr: dict, stripped_tn: dict,
                               false_positives: dict) -> None:
     for idx_str, chunks in removed.items():
@@ -136,7 +117,6 @@ def _process_stripped_chunks(removed: dict, msgs: list, stripped_sr: dict, strip
             tag_class = classify_chunk(chunk)
             if tag_class == 'real-sr':
                 inner = chunk[len('<system-reminder>'):].strip()
-                # Detect if SR wraps new-diagnostics only
                 if inner.startswith('<new-diagnostics>'):
                     nd_inner = re.search(r'<new-diagnostics>(.*?)</new-diagnostics>', inner, re.DOTALL)
                     if nd_inner:
@@ -164,8 +144,6 @@ def _process_stripped_chunks(removed: dict, msgs: list, stripped_sr: dict, strip
                     false_positives[key]['examples'].append(chunk[:400])
 
 
-# Part 2 of one log entry's scan: find SRs still present in raw_payload.messages (missed by the
-# proxy), skipping code false-positives and closing-tag remnants.
 def _process_missed_srs(msgs: list, sr_re, missed_sr: dict) -> None:
     for mi, msg in enumerate(msgs):
         role = msg.get('role', '?')
@@ -191,10 +169,8 @@ def _process_missed_srs(msgs: list, sr_re, missed_sr: dict) -> None:
                 continue
             for inner in sr_re.findall(text):
                 inner_stripped = inner.strip()
-                # Skip obvious code
                 if is_code_false_positive('<system-reminder>' + inner):
                     continue
-                # Skip very short fragments (closing tag remnants)
                 if len(inner_stripped) < 5:
                     continue
                 key = first_sentence(inner_stripped)
@@ -205,7 +181,6 @@ def _process_missed_srs(msgs: list, sr_re, missed_sr: dict) -> None:
                     missed_sr[key]['examples'].append(('<system-reminder>' + inner + '</system-reminder>')[:300])
 
 
-# Scan all logs for stripped chunks and missed SRs
 def scan_all_logs():
     stripped_sr = defaultdict(lambda: {'count': 0, 'examples': [], 'locations': defaultdict(int)})
     stripped_tn = {'count': 0, 'examples': []}
@@ -234,7 +209,6 @@ def scan_all_logs():
     return total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr
 
 
-# Format location dict as concise string
 def fmt_locations(loc_dict: dict) -> str:
     parts = []
     for k, v in sorted(loc_dict.items(), key=lambda x: -x[1]):
@@ -317,7 +291,6 @@ def _render_tn_and_summary_lines(stripped_tn: dict, stripped_sr: dict, total_fp:
     return lines
 
 
-# Write catalog markdown report
 def write_report(total_entries, logs, stripped_sr, stripped_tn, false_positives, missed_sr):
     lines = ['# SR Catalog — Monitor_CC Proxy Logs\n', f'Scanned {len(logs)} log files, {total_entries} entries total.\n']
     lines += _render_stripped_sr_lines(stripped_sr)

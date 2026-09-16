@@ -1,36 +1,4 @@
 #!/usr/bin/env python3
-"""Replay verification for `_ENV_CONTEXT_RE` in strip_sr.py — CC 2.1.258 trailing-sentences fix
-(2026-09) AND the gitStatus-section widening (2026-09, this task).
-
-Scans every top-level standalone `<system-reminder>` block (str content, or `list[type=='text']`
-blocks — never `tool_result`, matching `_strip_system_reminders`'s own 2026-07-28 scope reduction
-exactly) in every `src/logs/dual_log/*_original.jsonl` entry, and classifies each DISTINCT
-(file, exact inner text) occurrence against both the OLD (pre-gitStatus-fix, quoted verbatim
-below — this is the exact regex this task replaced) and the live (post-fix) `_ENV_CONTEXT_RE`:
-
-  - env-context, stripped        — `_ENV_CONTEXT_RE.fullmatch` succeeds
-  - env-context, left            — starts with `_PRESERVE_PREAMBLE` AND contains `# userEmail`,
-                                    but the fullmatch fails (this is exactly the gitStatus bug
-                                    before this task's fix — no `# currentDate` anywhere in a
-                                    build that emits `# gitStatus` instead — and the "bundled
-                                    CLAUDE.md + userEmail" shape both before and after — see the
-                                    report body)
-  - CLAUDE.md context, preserved — starts with `_PRESERVE_PREAMBLE`, does NOT match
-                                    `_ENV_CONTEXT_RE`, and either has no `# userEmail` at all or
-                                    has one only as part of bundled real project content
-
-Each bucket is additionally split by FORM — `currentDate` (the block carries a `# currentDate`
-section) vs. `gitStatus` (the block carries a `# gitStatus` section instead) — since the two forms
-are structurally different CC-emitted shapes and the whole point of this task's fix is the
-gitStatus form moving from "left" to "stripped".
-
-Deduplicated by (file, exact inner text) — dual-logs are cumulative snapshots, the same message
-reappears in every later request of the same session, so raw per-entry counts vastly overcount
-distinct real occurrences.
-
-Usage: python3 dev/proxy/replay_env_context_strip.py
-Output: dev/proxy/md/replay_env_context_strip.md
-"""
 
 # INFRASTRUCTURE
 import json
@@ -42,7 +10,6 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 os.environ.setdefault('MONITOR_CC_ROOT', os.path.join(os.path.dirname(__file__), '..', '..'))
 
-# Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
 import importlib as _il
 _sr_mod = _il.import_module('src.proxy.strip_sr')
 _ENV_CONTEXT_RE_NEW = _sr_mod._ENV_CONTEXT_RE
@@ -51,11 +18,6 @@ _STANDALONE_SR_RE = _sr_mod._STANDALONE_SR_RE
 _INNER_SR_RE = _sr_mod._INNER_SR_RE
 del _il, _sr_mod
 
-# The pre-this-task pattern, quoted verbatim — the CC 2.1.258 trailing-sentences fix (2026-09,
-# see process-docs/proxy_noise_strip/2026-09_env_context_cc258_trailing_sentences.md) is already
-# folded in (`[^\n]*` after the email sentence), but it still hard-requires a `# currentDate`
-# section immediately after — the current CC build instead emits `# gitStatus` and no
-# `# currentDate` at all, so this pattern's fullmatch fails on that form (this task's bug).
 _ENV_CONTEXT_RE_OLD = re.compile(
     r"As you answer the user's questions, you can use the following context:\n"
     r"# userEmail\n"
@@ -66,8 +28,6 @@ _ENV_CONTEXT_RE_OLD = re.compile(
     r"You should not respond to this context unless it is highly relevant to your task\.",
 )
 
-# Actual runtime dual-log location (main checkout, not this worktree — src/logs/ is gitignored
-# per-worktree; the corpus only exists here).
 LOGS_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
 OUT_FILE = Path(os.path.join(os.path.dirname(__file__), 'md', 'replay_env_context_strip.md'))
 
@@ -76,7 +36,7 @@ OUT_FILE = Path(os.path.join(os.path.dirname(__file__), 'md', 'replay_env_contex
 
 def scan_all():
     files = sorted(LOGS_DIR.glob('*_original.jsonl'))
-    seen = set()  # (file, exact inner text) — dedup across cumulative session snapshots
+    seen = set()
     buckets_old = _new_bucket_dict()
     buckets_new = _new_bucket_dict()
     total_entries = 0
@@ -112,8 +72,6 @@ def _new_bucket_dict():
     return {bucket: {form: set() for form in _FORMS} for bucket in _BUCKET_NAMES}
 
 
-# A block's FORM is which date/status section it carries — 'other' covers real CLAUDE.md context
-# blocks (no userEmail section at all, so neither marker is present).
 def _form_of(inner):
     if '# gitStatus' in inner:
         return 'gitStatus'
@@ -122,10 +80,6 @@ def _form_of(inner):
     return 'other'
 
 
-# One classification pass for one env-context regex variant — populates the bucket dict in place.
-# "left" splits into PURE (no `# claudeMd` at all — a genuinely broken env-context block, the bug)
-# and BUNDLED (`# claudeMd` present too — CC folded real project content and env-context into one
-# block; correctly preserved by design regardless of the regex fix, see report body).
 def _classify(key, inner, form, buckets, env_re):
     if env_re.fullmatch(inner):
         buckets['stripped'][form].add(key)
@@ -135,7 +89,7 @@ def _classify(key, inner, form, buckets, env_re):
         else:
             buckets['left_pure'][form].add(key)
     elif inner.startswith(_PRESERVE_PREAMBLE):
-        buckets['claudemd_preserved'][form].add(key)  # real CLAUDE.md context, no userEmail hint
+        buckets['claudemd_preserved'][form].add(key)
 
 
 def _build_stats(num_files, total_entries, buckets_old, buckets_new):
@@ -156,9 +110,6 @@ def _build_stats(num_files, total_entries, buckets_old, buckets_new):
     }
 
 
-# Yield inner text of every top-level standalone SR block (str content, or list[type=='text']
-# blocks) across all messages — tool_result is never descended into, matching
-# _strip_system_reminders's own 2026-07-28 scope reduction exactly.
 def _find_top_level_sr_inner_texts(messages):
     for msg in messages:
         if not isinstance(msg, dict):

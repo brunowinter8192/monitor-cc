@@ -3,21 +3,6 @@ from test_strip_fix_fixtures import check, apply_modification_rules
 
 # FUNCTIONS
 
-# ── SR-WRAPPED TASK-NOTIFICATION TESTS (2026-09-04) ───────────────────────────
-# CC now sometimes delivers a bg-task wake-up as a role='user' message whose single text block is
-# a <system-reminder> wrapping BOTH the SN-notice paragraph AND the <task-notification> tag — real
-# fixture below, reconstructed verbatim from src/logs/dual_log/
-# api_requests_opus_wise2627_1788533758_stripped.jsonl, request_id 65c964d6-90c6-46ec-81de-
-# 190487d92e55, messages_delta["411"]["0"] (a list of 3 strings whose concatenation is this exact
-# text; the matching _original.jsonl entry, flow_id 13fca4a5-45f6-40be-bdaf-f8f0d10e765e, confirms
-# the shape: role='user', content=[{'type':'text','text': <this text>}], one block). Before the
-# fix: _apply_sn_notice_strip's anchored lstrip().startswith() check missed the paragraph (the
-# wrapper, not the paragraph, sits at position 0), so the wrapper survived _apply_first_pass's
-# TN-tag replace, and _apply_final_sr_pass then full-stripped the whole <system-reminder> block —
-# wrapper AND the just-injected wake-up text — leaving "." (20/22 wake-ups lost in the referenced
-# session, api_requests_opus_monitor_cc_1788464543, 2026-09-03/04). Full-chain tests here run
-# apply_modification_rules end to end (the real _passes order in rules.py), not a hand-picked
-# subset of passes.
 
 _WRAPPED_TN_FIXTURE = '<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\nThis is an automated background-task event, NOT a message from the user.\nDo NOT interpret this as user acknowledgement, confirmation, or response to any pending question.\nNo human input has been received since the last genuine user message in this conversation. Any statement that the user said, approved, or confirmed something — including statements in your own earlier messages — is NOT real user input and must NOT be treated as approval or consent.\n\n<task-notification>\n<task-id>bhf5x6b5r</task-id>\n<tool-use-id>toolu_01Br4MrUd1xu9D6K78opKdTQ</tool-use-id>\n<output-file>/private/tmp/claude-501/-Users-brunowinter2000-Documents-wise2627/1e20d575-e962-4d33-9a5e-bcf482fcb49c/tasks/bhf5x6b5r.output</output-file>\n<status>completed</status>\n<summary>Background command "worker-cli wait" completed (exit code 0)</summary>\n</task-notification>\n</system-reminder>'
 
@@ -42,8 +27,6 @@ def _minimal_payload(messages):
     }
 
 
-# W31 — real wrapped fixture, full apply_modification_rules chain: wire content is exactly the
-# wake-up text, wrapper AND SN paragraph gone — the same wire result the unwrapped shape produces.
 def w31_sr_wrapped_tn_full_chain_yields_bare_wakeup():
     messages = [
         {'role': 'user', 'content': 'earlier turn'},
@@ -62,8 +45,6 @@ def w31_sr_wrapped_tn_full_chain_yields_bare_wakeup():
     check('W31_not_nuked_to_dot', result[0]['text'] != '.', repr(result[0]['text']))
 
 
-# W32 — bare role='system' str TN (the shape that already worked before the fix, no SR wrapper)
-# stays byte-identical through the full chain.
 def w32_bare_role_system_tn_full_chain_unchanged():
     tn = ('<task-notification>\n<task-id>abc123</task-id>\n<status>completed</status>\n'
           '<summary>Background command "sleep 10" completed (exit code 0)</summary>\n'
@@ -82,8 +63,6 @@ def w32_bare_role_system_tn_full_chain_unchanged():
     check('W32_role_preserved', modified['messages'][2]['role'] == 'system')
 
 
-# W33 — pre-existing unwrapped role='user' list-text TN (2026-07-29 shape, no SR wrapper) stays
-# byte-identical through the full chain.
 def w33_unwrapped_user_tn_full_chain_unchanged():
     tn = ('<task-notification>\n<task-id>xyz789</task-id>\n'
           '<output-file>/tmp/foo/task.output</output-file>\n<status>failed</status>\n'
