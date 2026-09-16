@@ -4,8 +4,6 @@ from cc_injection_classification import _classify_segment
 
 # FUNCTIONS
 
-# Dispatch one segment occurrence: replay cached classification on a dedup repeat (chars-only),
-# classify fresh on first sight (registers count + chars + sample).
 def _process_segment_occurrence(key, dedup_seen: dict, registry: dict, pending: dict, counters: dict,
                                  role, section, block_type, text, tool_name, sys_idx=None) -> None:
     counters["raw_segments"] += 1
@@ -50,10 +48,6 @@ def _touch_pending(pending, sig, role, section, block_type, sample, chars) -> No
         rec["variants"].add((sample or "").strip())
 
 
-# Collapse variants where one is a verbatim substring of another (prefix, suffix, or mid-string
-# extension) before counting distinctness — a message a human edited/extended between two sends
-# is still ONE evolving message, not two occurrences of a recurring CC template. Longest-first so
-# a shorter variant merges into whichever longer kept variant already contains it.
 def _distinct_variant_count(variants: set) -> int:
     ordered = sorted((v for v in variants if v), key=len, reverse=True)
     kept: list = []
@@ -63,11 +57,6 @@ def _distinct_variant_count(variants: set) -> int:
     return len(kept)
 
 
-# Two-phase resolution for top-level user text: signatures with >=2 SUBSTANTIVELY DISTINCT
-# variants (containment-collapsed, see `_distinct_variant_count`) are CC-authored templates
-# humans don't retype verbatim -> UNCLASSIFIED, one row each. Everything else (singletons, and
-# same-message-grew-longer pairs collapsing to 1 distinct variant) is genuinely unique -> folded
-# into one OURS aggregate row (enumerating each would be a laundry-list, not a class).
 def _finalize_pending_user_text(pending: dict, registry: dict) -> None:
     singleton_count = singleton_chars = 0
     singleton_sample = None

@@ -6,7 +6,6 @@ from cc_injection_aggregation import _process_segment_occurrence
 
 # FUNCTIONS
 
-# Stream one dual-log file, extracting + classifying every segment; returns per-file corpus stats
 def _process_file(path, registry: dict, pending: dict, dedup_seen: dict, counters: dict,
                    max_entries, msg_dedup_seen: set) -> dict:
     n_entries = 0
@@ -30,7 +29,6 @@ def _process_file(path, registry: dict, pending: dict, dedup_seen: dict, counter
             "size_bytes": path.stat().st_size}
 
 
-# tool_use_id -> tool name, rebuilt per-entry from all assistant tool_use blocks in that snapshot
 def _build_tool_name_map(messages: list) -> dict:
     m = {}
     for msg in messages:
@@ -97,7 +95,6 @@ def _process_content_blocks(path, role, content, tool_names, dedup_seen, registr
                                          text=text, tool_name=None)
         elif btype == "tool_result":
             _process_tool_result_block(path, role, block, tool_names, dedup_seen, registry, pending, counters)
-        # tool_use / image / document — out of scope, skipped
 
 
 def _process_tool_result_block(path, role, block, tool_names, dedup_seen, registry, pending, counters) -> None:

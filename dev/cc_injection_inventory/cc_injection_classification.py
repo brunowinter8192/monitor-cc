@@ -8,14 +8,9 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _WORKTREE_ROOT = _SCRIPT_DIR.parents[1]
 sys.path.insert(0, str(_WORKTREE_ROOT / "src"))
 
-# From src/proxy/rules.py: real proxy strip pipeline — run against synthetic single-block
-# messages to get ground-truth COVERED/removed-chunk decisions instead of hardcoded markers
 import proxy.rules as rules
-# From src/proxy/strip_vocab.py: rule-code <-> marker <-> full-name vocabulary (attribute_chunk)
 import proxy.strip_vocab as strip_vocab
-# From src/proxy/strip_sr.py: SR regexes + CLAUDE.md preserve-guard preamble
 import proxy.strip_sr as strip_sr
-# From src/proxy/message_passes.py: role=system truncation-notice marker
 import proxy.message_passes as message_passes
 
 _UUID_RE = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
@@ -24,21 +19,13 @@ _PATH_RE = re.compile(r'(?:/[\w.\-]+){2,}')
 _NUM_RE = re.compile(r'\d+')
 _WS_RE = re.compile(r'\s+')
 
-# A resolved classification hit for one segment occurrence.
-# kind: 'CLASS' (goes straight into the registry) | 'PENDING' (deferred two-phase user-text resolution)
 ResolvedHit = namedtuple("ResolvedHit", ["kind", "ref", "label", "origin", "chars", "sample"])
 
-# Content shapes where CC genuinely delivers top-level framing/wrappers (plain user-typed text
-# or a CC-appended text block). tool_result content is OUR tool's own return value — an SR-looking
-# literal inside it is quoted DATA (a fetched issue body, a `strings` dump, RAG content, source
-# code containing the tag as a string), never a CC-injected wrapper, so the CLAUDE.md-preserve and
-# leftover-SR extraction below must not run against tool_result content.
 _TOP_LEVEL_SHAPES = ("plain_string", "text")
 
 
 # FUNCTIONS
 
-# Route a fresh segment to the right classifier by (role, section)
 def _classify_segment(role, section, block_type, text, tool_name, sys_idx) -> list:
     if section == "system":
         return _classify_system_segment(sys_idx, text)
@@ -52,9 +39,6 @@ def _classify_segment(role, section, block_type, text, tool_name, sys_idx) -> li
                          "UNCLASSIFIED", len(text), text)]
 
 
-# system[] block — sys[2]/sys[3] are unconditionally fully replaced (COVERED); sys[0]/sys[1]
-# are never touched by any proxy function (verified: grep for system[0]/system[1] mutation
-# across src/proxy/*.py returns nothing) -> UNCLASSIFIED.
 def _classify_system_segment(idx, text) -> list:
     if idx == 2:
         return [ResolvedHit("CLASS", "COVERED:SYS2_REPLACE",
@@ -74,9 +58,6 @@ def _classify_system_segment(idx, text) -> list:
                          "UNCLASSIFIED", len(text), text)]
 
 
-# role=system message (message-level, bare content) — RS rule (_apply_role_system_strip) wipes
-# ALL role=system content unconditionally, EXCEPT the Read-tool truncation notice (KEEP, guarded
-# in production by `content.startswith('[Truncated:')`).
 def _classify_role_system_segment(text) -> list:
     if text.startswith(message_passes._TRUNCATION_NOTICE_MARKER):
         return [ResolvedHit("CLASS", "KEEP:read_truncation_notice",
@@ -94,9 +75,6 @@ def _classify_role_system_segment(text) -> list:
                          "UNCLASSIFIED", len(text), text)]
 
 
-# role=user segment — run the real proxy strip pipeline on a synthetic single-block message,
-# then peel off KEEP wrappers / leftover unmatched SR blocks from the residual, then bucket
-# whatever's left as OURS (tool/user content) or defer top-level text for two-phase resolution.
 def _classify_user_segment(block_type, text, tool_name) -> list:
     content = _wrap_content(block_type, text)
     payload = {"system": [], "messages": [{"role": "user", "content": content}]}
@@ -106,7 +84,7 @@ def _classify_user_segment(block_type, text, tool_name) -> list:
 
     if "stripped_po_preview" in mods:
         hits.append(_po_wrapper_hit(residual))
-        return hits  # PO block content is entirely the wrapper; nothing else to classify
+        return hits
 
     if not residual or residual.strip() in ("", "."):
         return hits
@@ -126,11 +104,6 @@ def _extract_covered_and_injected(removed, injected, residual) -> tuple:
         hits.append(ResolvedHit("CLASS", f"COVERED:{code}", f"`{rule_name}` (rule {code})",
                                  "COVERED", len(chunk), chunk))
 
-    # Text the PROXY ITSELF added (e.g. TN/BGK wake-up replacement) — ground truth is the
-    # pipeline's own injected_msg_added output, same principle as removed_chunks for COVERED.
-    # It round-trips back into a LATER request's history (CC persists what was actually sent,
-    # not what CC intended) and would otherwise misread as a CC-authored recurring template.
-    # Subtracted from residual so it isn't ALSO counted as OURS/UNCLASSIFIED below.
     for chunk in injected_chunks:
         if not chunk or chunk not in residual:
             continue
@@ -211,9 +184,6 @@ def _unwrap_content(block_type, content) -> str:
     return ""
 
 
-# Peel out CLAUDE.md-context SR blocks (strip_sr._PRESERVE_PREAMBLE guard) from residual text.
-# Only called for top-level shapes (see `_TOP_LEVEL_SHAPES`) — CLAUDE.md context is delivered as
-# its own top-level message block, never nested inside a tool_result's own content.
 def _extract_claudemd_blocks(text: str) -> tuple:
     kept = []
 
@@ -230,10 +200,6 @@ def _extract_claudemd_blocks(text: str) -> tuple:
     return kept, new_text
 
 
-# Any <system-reminder> block still standing after the full pipeline matched no known template —
-# a genuine gap: proxy strips nothing here, no strip_vocab entry exists for it. Only called for
-# top-level shapes (see `_TOP_LEVEL_SHAPES`) — inside tool_result this would be quoted OUR data,
-# not a CC wrapper.
 def _extract_leftover_sr_blocks(text: str) -> tuple:
     blocks = strip_sr._STANDALONE_SR_RE.findall(text)
     if not blocks:
@@ -241,7 +207,6 @@ def _extract_leftover_sr_blocks(text: str) -> tuple:
     return blocks, strip_sr._STANDALONE_SR_RE.sub("", text)
 
 
-# Normalize variable data (ids/paths/numbers) to placeholders for template-signature grouping
 def _normalize_template(text: str) -> str:
     t = _UUID_RE.sub("<UUID>", text)
     t = _PATH_RE.sub("<PATH>", t)

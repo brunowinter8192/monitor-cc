@@ -1,19 +1,25 @@
 # dev/cc_injection_inventory/
 
 ## Role
+Reusable audit tool inventorying every distinguishable text class in raw Claude Code request
+payloads captured under `src/logs/dual_log/` — every distinct class listed regardless of
+frequency, not a top-N filter. Touch when the strip/inject rule set changes and the inventory
+needs re-running, or when adding a classification origin label.
 
-Reusable audit tool that produces a complete inventory of every distinguishable text class
-present in the raw request payloads Claude Code sends, as captured in `src/logs/dual_log/`. An
-inventory, not a top-N filter — every distinct class found is listed regardless of frequency or
-size. Answers "what text classes exist and are any of them unhandled?", complementing
-`dev/proxy_dual_log/attribution_coverage.py` (which answers "does every entry our proxy already
-strips have a named function?" — that tool never sees content the proxy does NOT touch; this one
-does, by classification rather than log-diff). Touch this directory when the strip/inject rule
-set changes and the inventory needs re-running, or when adding a new classification origin label.
+## Public Interface
+No `__init__.py` in this directory. Entry path: `./venv/bin/python
+dev/cc_injection_inventory/cc_injection_inventory.py`.
+
+## Flow
+Reads CLI args (`--logs-glob`/`--out-name`/`--max-entries`), resolves the matching
+`api_requests_*_original.jsonl` dual-log files -> streams each file, extracting every text
+segment and classifying it into one of 5 origin labels via the real `src/proxy` strip pipeline
+-> aggregates/dedups occurrences into a registry -> renders the registry into a markdown report
+under `md/` plus a 3-line console summary.
 
 ## Modules
 
-### cc_injection_inventory.py (117 LOC)
+### cc_injection_inventory.py (109 LOC)
 
 **Purpose:** Entry script — parses CLI args, resolves the dual-log file glob (with self-scan
 exclusion), and drives extraction -> aggregation -> report across all matched files.
@@ -22,11 +28,9 @@ exclusion), and drives extraction -> aggregation -> report across all matched fi
 **Called by:** none — run manually.
 **Calls out:** `cc_injection_extraction`, `cc_injection_aggregation`, `cc_injection_report`.
 
-**CLI flags:** `--logs-glob` (override input glob; dual_log dir auto-resolves to local
-`src/logs/dual_log` if present, else 3 parents up from the worktree root), `--out-name` (report
-filename), `--max-entries` (debug cap per file).
+---
 
-### cc_injection_extraction.py (125 LOC)
+### cc_injection_extraction.py (122 LOC)
 
 **Purpose:** Streams one dual-log JSONL file and extracts every text segment (`system[0..3]`,
 message content — plain string / `text` blocks / `tool_result` content).
@@ -36,7 +40,9 @@ multi-GB files, never loaded whole).
 **Called by:** `cc_injection_inventory.py`.
 **Calls out:** `cc_injection_aggregation`.
 
-### cc_injection_aggregation.py (92 LOC)
+---
+
+### cc_injection_aggregation.py (81 LOC)
 
 **Purpose:** Dedups segment occurrences by exact text, dispatches first-sight segments to
 classification, and resolves recurring user-text templates in a second pass.
@@ -45,7 +51,9 @@ classification, and resolves recurring user-text templates in a second pass.
 **Called by:** `cc_injection_extraction.py`, `cc_injection_inventory.py`.
 **Calls out:** `cc_injection_classification`.
 
-### cc_injection_classification.py (250 LOC)
+---
+
+### cc_injection_classification.py (215 LOC)
 
 **Purpose:** Classifies one segment into one of 5 origin labels (`COVERED`, `INJECTED`, `KEEP`,
 `OURS`, `UNCLASSIFIED`) by running the real `src/proxy` strip pipeline against a synthetic message.
@@ -55,6 +63,8 @@ classification, and resolves recurring user-text templates in a second pass.
 **Calls out:** `proxy.rules`, `proxy.strip_vocab`, `proxy.strip_sr`, `proxy.message_passes` via
 `sys.path.insert` + `import proxy.*` (avoids the `block_dev_imports_src` hook's `from src.`/
 `import src.` literal-line block).
+
+---
 
 ### cc_injection_report.py (271 LOC)
 
@@ -68,23 +78,9 @@ summary to stdout.
 
 ---
 
-## Gotchas
-
-**The dual_log directory is gitignored and lives only in the main repo**, not copied into a
-worktree — the auto-resolve fallback assumes the fixed `.claude/worktrees/<name>/` nesting; pass
-`--logs-glob` with an absolute path if that assumption doesn't hold.
-
-**Self-scan exclusion depends on the same worktree-nesting assumption.** The default glob
-excludes this session's own worker log (any `api_requests_worker_*` file that also embeds the
-current task/worktree name) since it's written live while the script runs. Running directly from
-a non-worktree checkout disables the exclusion (no task name to match against) — nothing gets
-excluded in that case. An explicit `--logs-glob` bypasses the exclusion entirely.
-
-**`system[2]`/`system[3]` are always fully replaced regardless of content** — one `COVERED` row
-each, never split by content. `system[0]`/`system[1]` are never touched anywhere in
-`src/proxy/*.py` — always `UNCLASSIFIED`.
-
-**`role=system` bare-content messages are unconditionally wiped by the RS pass** (except the
-`[Truncated:` guard) before any content-specific rule gets a chance to match — content that would
-otherwise map to a different rule (deferred-tools, file-modified) classifies as `COVERED` via RS
-specifically, since RS fires first.
+## State
+`cc_injection_inventory.py`'s `inventory_workflow` owns and creates the `registry`/
+`pending_user_text`/`dedup_seen`/`counters`/`msg_dedup_seen` state and passes them by reference
+into `cc_injection_extraction._process_file` (mutated per file) and
+`cc_injection_aggregation._finalize_pending_user_text` (mutated once at the end); no module-level
+mutable state exists in any of the 5 files.

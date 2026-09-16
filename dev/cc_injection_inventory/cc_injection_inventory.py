@@ -1,20 +1,3 @@
-"""
-cc_injection_inventory.py — complete inventory of every distinguishable text class present
-in raw Claude Code request payloads, as captured in the proxy dual-logs.
-
-INVENTORY, not a filter: every class found gets a row, however rare or small. Each class is
-labelled COVERED (existing strip rule handles it), KEEP (audited + deliberately preserved),
-INJECTED (text the PROXY ITSELF adds — e.g. a background-task wake-up replacement, which then
-round-trips back into a LATER request's history since CC persists what was actually sent), OURS
-(our own content — bash/tool output, user prompts, assistant text), or UNCLASSIFIED (CC-authored
-framing/notices no rule touches and no prior audit judged).
-
-Usage (from project root):
-    ./venv/bin/python dev/cc_injection_inventory/cc_injection_inventory.py
-
-Output: dev/cc_injection_inventory/md/<YYYYMMDD>_injection_inventory.md
-"""
-
 # INFRASTRUCTURE
 import argparse
 import glob as globmod
@@ -30,6 +13,23 @@ _WORKTREE_ROOT = _SCRIPT_DIR.parents[1]
 _DEFAULT_GLOB = "api_requests_*_original.jsonl"
 
 _WORKER_LOG_PREFIX = "api_requests_worker_"
+
+_MODULE_DESCRIPTION = """
+cc_injection_inventory.py — complete inventory of every distinguishable text class present
+in raw Claude Code request payloads, as captured in the proxy dual-logs.
+
+INVENTORY, not a filter: every class found gets a row, however rare or small. Each class is
+labelled COVERED (existing strip rule handles it), KEEP (audited + deliberately preserved),
+INJECTED (text the PROXY ITSELF adds — e.g. a background-task wake-up replacement, which then
+round-trips back into a LATER request's history since CC persists what was actually sent), OURS
+(our own content — bash/tool output, user prompts, assistant text), or UNCLASSIFIED (CC-authored
+framing/notices no rule touches and no prior audit judged).
+
+Usage (from project root):
+    ./venv/bin/python dev/cc_injection_inventory/cc_injection_inventory.py
+
+Output: dev/cc_injection_inventory/md/<YYYYMMDD>_injection_inventory.md
+"""
 
 
 # ORCHESTRATOR
@@ -62,7 +62,7 @@ def inventory_workflow() -> None:
 # FUNCTIONS
 
 def _parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description=_MODULE_DESCRIPTION)
     p.add_argument("--logs-glob", default=None,
                    help=f"Glob for input files (default: <dual_log_dir>/{_DEFAULT_GLOB})")
     p.add_argument("--out-name", default=None, help="Override report filename (under md/)")
@@ -71,8 +71,6 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-# Resolve the dual_log directory — local (main repo) or via the fixed worktree nesting
-# (.claude/worktrees/<name>/ -> 3 parents up = main repo), matching dev/proxy_dual_log precedent.
 def _default_log_dir() -> Path:
     local = _WORKTREE_ROOT / "src" / "logs" / "dual_log"
     if local.exists():
@@ -83,9 +81,6 @@ def _default_log_dir() -> Path:
     raise RuntimeError(f"dual_log directory not found at {local} or {fallback}")
 
 
-# Task/worktree name if running inside .claude/worktrees/<name>/, else None. Used only to
-# recognize (and exclude, default-glob path only) THIS session's own still-growing worker log —
-# never applied when the user passes an explicit --logs-glob.
 def _current_task_name() -> str | None:
     parent = _WORKTREE_ROOT.parent
     if parent.name == "worktrees" and parent.parent.name == ".claude":
@@ -93,15 +88,12 @@ def _current_task_name() -> str | None:
     return None
 
 
-# A worker log file is THIS session's own (live, still being appended to as this script runs)
-# iff it uses the worker naming convention AND embeds the current task/worktree name.
 def _is_own_live_session_log(path: Path, task_name: str | None) -> bool:
     if task_name is None:
         return False
     return path.name.startswith(_WORKER_LOG_PREFIX) and task_name in path.name
 
 
-# Returns (included_files, excluded_files) — excluded is always [] when logs_glob is explicit.
 def _resolve_log_files(logs_glob: str | None) -> tuple:
     if logs_glob:
         return sorted(Path(p) for p in globmod.glob(logs_glob)), []
