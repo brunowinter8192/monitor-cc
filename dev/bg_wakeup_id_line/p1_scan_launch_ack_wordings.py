@@ -62,6 +62,22 @@ _ID_NORM_RE = re.compile(r'with ID:\s*[^.\s]+')
 _PATH_NORM_RE = re.compile(r'Output is being written to:\s*\S+')
 
 
+# ORCHESTRATOR
+def main():
+    findings = {}
+    raw_dup_counter = defaultdict(int)
+    total_requests = 0
+    for fname in CORPUS_FILES:
+        path = LOG_DIR / fname
+        print(f'scanning {fname} ...')
+        total_requests += _scan_file(path, findings, raw_dup_counter)
+    report = _build_report(findings, total_requests, raw_dup_counter)
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = REPORT_DIR / 'launch_ack_wordings_20260729.md'
+    out_path.write_text(report, encoding='utf-8')
+    print(f'wrote {out_path} — {len(findings)} distinct wording(s), {total_requests} requests scanned')
+
+
 # FUNCTIONS
 
 # Extract (shape, text) candidate blocks from one message's content — mirrors the 4-shape
@@ -179,6 +195,17 @@ def _mark_volatile(text):
 def _build_report(findings, total_requests, raw_dup_counter):
     ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     lines = []
+    lines += _report_header_and_corpus(ts, total_requests)
+    lines += _report_contamination_trap()
+    lines += _report_dedup_importance(findings, raw_dup_counter)
+    lines += _report_live_observed_crosscheck(findings)
+    lines += _report_distinct_wordings(findings)
+    lines += _report_additional_wordings_note()
+    return '\n'.join(lines)
+
+
+def _report_header_and_corpus(ts, total_requests):
+    lines = []
     lines.append('# D1 — bg-launch-ack wording inventory (real corpus)')
     lines.append('')
     lines.append(f'Generated: {ts}')
@@ -194,6 +221,11 @@ def _build_report(findings, total_requests, raw_dup_counter):
     lines.append('')
     lines.append(f'Total requests scanned (deduped pass): {total_requests}')
     lines.append('')
+    return lines
+
+
+def _report_contamination_trap():
+    lines = []
     lines.append('## Contamination trap (beyond the 2 named exclusions)')
     lines.append('')
     lines.append(
@@ -209,6 +241,11 @@ def _build_report(findings, total_requests, raw_dup_counter):
         '`===`/`#N:`).'
     )
     lines.append('')
+    return lines
+
+
+def _report_dedup_importance(findings, raw_dup_counter):
+    lines = []
     lines.append('## Dedup importance (raw vs deduped)')
     lines.append('')
     lines.append('| Session | Raw candidate-block occurrences (all cumulative snapshots) | Deduped (new-message-only) |')
@@ -223,6 +260,11 @@ def _build_report(findings, total_requests, raw_dup_counter):
         'reappears in every later request of its session — raw grep would wildly overcount.'
     )
     lines.append('')
+    return lines
+
+
+def _report_live_observed_crosscheck(findings):
+    lines = []
     lines.append('## Live-observed text (2026-07-29, from prompt) — corpus cross-check')
     lines.append('')
     live_key = _normalize_wording(LIVE_OBSERVED_TEXT)
@@ -231,6 +273,11 @@ def _build_report(findings, total_requests, raw_dup_counter):
     else:
         lines.append('Does NOT match any normalized template found in this corpus (would be a genuinely new wording).')
     lines.append('')
+    return lines
+
+
+def _report_distinct_wordings(findings):
+    lines = []
     lines.append('## Distinct wordings')
     lines.append('')
     if not findings:
@@ -259,6 +306,11 @@ def _build_report(findings, total_requests, raw_dup_counter):
         lines.append(f'| `_ACK_ID_RE` | {"extracts: " + verdict["id_extract"] if verdict["id_extract"] else "FAILS to extract"} |')
         lines.append(f'| `_ACK_PATH_RE` | {"extracts: " + verdict["path_extract"] if verdict["path_extract"] else "FAILS to extract"} |')
         lines.append('')
+    return lines
+
+
+def _report_additional_wordings_note():
+    lines = []
     lines.append('## Additional wordings sought but not found')
     lines.append('')
     lines.append(
@@ -268,23 +320,7 @@ def _build_report(findings, total_requests, raw_dup_counter):
         'unknown wordings in the same family; none beyond the ones listed above were found in this corpus.'
     )
     lines.append('')
-    return '\n'.join(lines)
-
-
-# ORCHESTRATOR
-def main():
-    findings = {}
-    raw_dup_counter = defaultdict(int)
-    total_requests = 0
-    for fname in CORPUS_FILES:
-        path = LOG_DIR / fname
-        print(f'scanning {fname} ...')
-        total_requests += _scan_file(path, findings, raw_dup_counter)
-    report = _build_report(findings, total_requests, raw_dup_counter)
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = REPORT_DIR / 'launch_ack_wordings_20260729.md'
-    out_path.write_text(report, encoding='utf-8')
-    print(f'wrote {out_path} — {len(findings)} distinct wording(s), {total_requests} requests scanned')
+    return lines
 
 
 if __name__ == '__main__':
