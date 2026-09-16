@@ -230,6 +230,15 @@ def _verify_proxy_rules_format_fidelity(ms, lines) -> None:
 def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
     lines.append("")
     lines.append("## 8. proxy_rules.json read-modify-write")
+    path, written = _write_proxy_rules_and_check_full_match(ms, lines, tmp)
+    _check_proxy_rules_preserved_sections(written, lines)
+    _check_proxy_rules_touched_and_created(written, lines)
+
+    tmp_leftover = path.with_name(path.name + ".tmp")
+    assert not tmp_leftover.exists(), "tempfile not cleaned up by os.replace"
+    lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
+
+def _write_proxy_rules_and_check_full_match(ms, lines, tmp):
     path = Path(tmp) / "proxy_rules.json"
     path.write_text(_FIXTURE_RAW, encoding="utf-8")
 
@@ -254,7 +263,9 @@ def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
     exact_match = written_raw == expected_raw
     lines.append(f"Full-file output matches expected read-modify-write exactly: {exact_match}")
     assert exact_match
+    return path, written
 
+def _check_proxy_rules_preserved_sections(written, lines) -> None:
     # Foreign top-level section untouched
     assert written["future_section"] == {"some_future_key": "some_future_value"}
     lines.append("Foreign top-level section ('future_section') byte-preserved: True")
@@ -269,6 +280,7 @@ def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
         {"thinking": {"type": "adaptive", "display": "summarized"}, "effort": "high", "max_tokens": 32000}
     lines.append("Second untouched model entry ('claude-untouched-9') byte-preserved: True")
 
+def _check_proxy_rules_touched_and_created(written, lines) -> None:
     # Touched entry (main): effort/max_tokens updated AND thinking switched to disabled
     opus_entry = written["model_params"]["claude-opus-5"]
     assert opus_entry == {"thinking": {"type": "disabled"}, "effort": "medium", "max_tokens": 128000}
@@ -279,10 +291,6 @@ def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
     assert sonnet_entry == {"thinking": {"type": "adaptive", "display": "summarized"},
                             "effort": "low", "max_tokens": 32000}
     lines.append(f"Missing worker entry (claude-sonnet-5) created with established shape: {sonnet_entry}")
-
-    tmp_leftover = path.with_name(path.name + ".tmp")
-    assert not tmp_leftover.exists(), "tempfile not cleaned up by os.replace"
-    lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
 
 # Section 9: a malformed proxy_rules.json degrades to a fresh minimal file, never raises
 def _verify_proxy_rules_malformed_fallback(ms, lines, tmp) -> None:

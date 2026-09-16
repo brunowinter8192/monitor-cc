@@ -34,36 +34,8 @@ def verify_three_tab_ring_workflow() -> None:
     # spins in this headless probe. Patch only the dispatch wrapper to run synchronously —
     # everything downstream of it (the ring logic itself) is the real, unmocked code.
     with patch('src.menubar.panel_lifecycle.NSOperationQueue', _SyncOperationQueue):
-        lines.append("## Forward: Sessions -> RAG -> Models -> Sessions (Cmd+->)")
-        panel_lifecycle._open_main_panel(app)
-        assert app.panel._panel_open and not app.rag._rag_open and not app.models._models_open
-        lines.append(f"open main: panel_open={app.panel._panel_open}")
-
-        app.hotkey.right()   # main -> rag
-        assert not app.panel._panel_open and app.rag._rag_open and not app.models._models_open
-        lines.append("Cmd+-> from main: now on rag")
-
-        app.hotkey.right()   # rag -> models
-        assert not app.rag._rag_open and app.models._models_open
-        lines.append("Cmd+-> from rag: now on models")
-
-        app.hotkey.right()   # models -> main
-        assert app.panel._panel_open and not app.models._models_open
-        lines.append("Cmd+-> from models: back on main (ring closes)")
-
-        lines.append("")
-        lines.append("## Reverse: Sessions -> Models -> RAG -> Sessions (Cmd+<-)")
-        app.hotkey.left()    # main -> models
-        assert app.models._models_open and not app.panel._panel_open
-        lines.append("Cmd+<- from main: now on models")
-
-        app.hotkey.left()    # models -> rag
-        assert app.rag._rag_open and not app.models._models_open
-        lines.append("Cmd+<- from models: now on rag")
-
-        app.hotkey.left()    # rag -> main
-        assert app.panel._panel_open and not app.rag._rag_open
-        lines.append("Cmd+<- from rag: back on main (ring closes)")
+        _verify_forward_ring(app, panel_lifecycle, lines)
+        _verify_reverse_ring(app, panel_lifecycle, lines)
 
     lines.append("")
     lines.append("RESULT: PASS — three-tab ring (Sessions/RAG/Models) correct in both directions, "
@@ -74,6 +46,40 @@ def verify_three_tab_ring_workflow() -> None:
     print("\n".join(lines))
 
 # FUNCTIONS
+
+def _verify_forward_ring(app, panel_lifecycle, lines) -> None:
+    lines.append("## Forward: Sessions -> RAG -> Models -> Sessions (Cmd+->)")
+    panel_lifecycle._open_main_panel(app)
+    assert app.panel._panel_open and not app.rag._rag_open and not app.models._models_open
+    lines.append(f"open main: panel_open={app.panel._panel_open}")
+
+    app.hotkey.right()   # main -> rag
+    assert not app.panel._panel_open and app.rag._rag_open and not app.models._models_open
+    lines.append("Cmd+-> from main: now on rag")
+
+    app.hotkey.right()   # rag -> models
+    assert not app.rag._rag_open and app.models._models_open
+    lines.append("Cmd+-> from rag: now on models")
+
+    app.hotkey.right()   # models -> main
+    assert app.panel._panel_open and not app.models._models_open
+    lines.append("Cmd+-> from models: back on main (ring closes)")
+
+    lines.append("")
+
+def _verify_reverse_ring(app, panel_lifecycle, lines) -> None:
+    lines.append("## Reverse: Sessions -> Models -> RAG -> Sessions (Cmd+<-)")
+    app.hotkey.left()    # main -> models
+    assert app.models._models_open and not app.panel._panel_open
+    lines.append("Cmd+<- from main: now on models")
+
+    app.hotkey.left()    # models -> rag
+    assert app.rag._rag_open and not app.models._models_open
+    lines.append("Cmd+<- from models: now on rag")
+
+    app.hotkey.left()    # rag -> main
+    assert app.panel._panel_open and not app.rag._rag_open
+    lines.append("Cmd+<- from rag: back on main (ring closes)")
 
 # Dynamic import_module call (not a literal 'from src.'/'import src.' statement) — needed
 # because these modules have package-relative imports that only resolve inside src.menubar.

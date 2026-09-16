@@ -22,7 +22,7 @@ transitions and the absence of any queue-file side effect.
 
 ---
 
-### verify_model_cycle_and_io.py (309 LOC)
+### verify_model_cycle_and_io.py (317 LOC)
 
 **Purpose:** Regression guard for `src/menubar/model_selection.py`'s pure cycle logic
 (`_next_model`/`_next_effort`/`_next_max_tokens`, each stepping and wrapping through their known
@@ -44,7 +44,7 @@ package context).
 
 ---
 
-### verify_three_tab_ring.py (143 LOC)
+### verify_three_tab_ring.py (149 LOC)
 
 **Purpose:** Regression guard for the three-tab Cmd+→/← ring (Sessions/RAG/Models) — drives the
 real, unmocked `_open_main_panel`/`_open_rag_panel`/`_open_models_panel`/`_close_*_panel`/
@@ -77,7 +77,7 @@ precedence logic.
 
 ---
 
-### verify_hook17_removal.py (82 LOC)
+### verify_hook17_removal.py (91 LOC)
 
 **Purpose:** Confirms `block_worker_spawn_opus.py`'s retirement — the file is gone,
 `hook_setup.py:_HOOK_SCRIPTS` no longer lists it, and `_sweep_stale_hooks()` correctly removes a
