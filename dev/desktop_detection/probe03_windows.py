@@ -10,7 +10,6 @@ _CGW_NULL_WID   = 0
 
 # FUNCTIONS
 
-# Dump all key/value pairs from a CGWindow dict; kCGWindowBounds handled as nested dict
 def _dump_window_fields(d) -> Dict[str, Any]:
     keys = _dict_all_keys(d)
     out: Dict[str, Any] = {}
@@ -35,7 +34,6 @@ def _dump_window_fields(d) -> Dict[str, Any]:
                         out[k] = s
     return out
 
-# Return kCGWindowBounds sub-dict as {X,Y,Width,Height} or None
 def _read_bounds(d) -> Optional[Dict[str, Optional[int]]]:
     bv = _dict_val(d, 'kCGWindowBounds')
     if not bv:
@@ -43,7 +41,6 @@ def _read_bounds(d) -> Optional[Dict[str, Optional[int]]]:
     result = {kk: _dict_long(bv, kk) for kk in ('X', 'Y', 'Width', 'Height')}
     return result if any(v is not None for v in result.values()) else None
 
-# Build field_availability_summary across all windows
 def _build_availability_summary(
     all_fields: List[Dict[str, Any]],
     all_keys: List[str],
@@ -68,7 +65,6 @@ def _build_availability_summary(
         }
     return summary
 
-# Return space_ids for a single CGWindowID
 def _spaces_for_wid(cid: int, wid: int) -> List[int]:
     arr = _CG.CGSCopySpacesForWindows(cid, _CGS_SPACE_MASK, _make_uint_array([wid]))
     if not arr:
@@ -80,7 +76,6 @@ def _spaces_for_wid(cid: int, wid: int) -> List[int]:
             result.append(_msgl(ns, "intValue"))
     return result
 
-# Return PID of running Ghostty.app, or None
 def _ghostty_pid() -> Optional[int]:
     r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
                        capture_output=True, text=True, timeout=3)
@@ -91,7 +86,6 @@ def _ghostty_pid() -> Optional[int]:
                 return int(p)
     return None
 
-# Full CGWindow dump: all windows, all keys, build field_availability_summary
 def _collect_full_cgwindow_data(
     cid: int, ghostty_pid: Optional[int]
 ) -> Tuple[List[str], Dict[str, Any], List[Dict]]:
@@ -99,7 +93,7 @@ def _collect_full_cgwindow_data(
     all_field_dumps: List[Dict[str, Any]] = []
     all_keys_seen: List[str] = []
     keys_set: set = set()
-    ghostty_raw_ptr = raw  # reuse same list for Ghostty-detail pass
+    ghostty_raw_ptr = raw
 
     for i in range(_cf_count(raw)):
         d = _cf_at(raw, i)

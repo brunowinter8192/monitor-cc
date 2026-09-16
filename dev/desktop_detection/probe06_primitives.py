@@ -10,7 +10,6 @@ _REPORTS_DIR = Path(__file__).parent / "06_reports"
 
 # FUNCTIONS
 
-# Set argtypes + restype on a ctypes function in one call
 def _setup(fn, argtypes, restype):
     fn.argtypes = argtypes
     fn.restype  = restype
@@ -18,7 +17,6 @@ def _setup(fn, argtypes, restype):
 def _take_screenshot(path: Path) -> None:
     subprocess.run(["screencapture", "-x", str(path)], check=True, timeout=5)
 
-# Return (fn, True) if symbol `name` resolves in `lib`, else (None, False)
 def _try_sym(lib, name: str):
     try:
         ctypes.c_void_p.in_dll(lib, name)
@@ -26,7 +24,6 @@ def _try_sym(lib, name: str):
     except (OSError, ValueError):
         return None, False
 
-# Measure one move attempt: baseline snapshot → call_fn() → post-snapshot → screenshots
 def _run_primitive_trial(label: str, wid: int, call_fn, ts: str) -> dict:
     on_before   = _wids(True)
     in_before   = wid in on_before

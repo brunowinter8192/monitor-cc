@@ -9,7 +9,6 @@ from probe05_detection import _CGW_LIST_ALL, _CGW_NULL_WID, _WIN_COT, _WIN_OSC2,
 
 # FUNCTIONS
 
-# Launch a new window of the given type; foreground=False uses open -g
 def _open_window(win_type: str, token: str, foreground: bool) -> None:
     fg_flag = [] if foreground else ["-g"]
     if win_type == _WIN_TMUX:
@@ -33,7 +32,6 @@ def _open_window(win_type: str, token: str, foreground: bool) -> None:
         Path(f"/tmp/probe05_{token}.txt").write_text(
             f"probe05 token={token}\n", encoding="utf-8"
         )
-        # No -n (avoids cold-launch session restore); always -g (background, no focus steal)
         subprocess.run(
             ["open", "-g", "-a", "CotEditor", f"/tmp/probe05_{token}.txt"],
             capture_output=True, timeout=10,
@@ -41,7 +39,6 @@ def _open_window(win_type: str, token: str, foreground: bool) -> None:
 
 def _close_window_for_type(win_type: str, token: str) -> None:
     if win_type == _WIN_TMUX:
-        # Killing tmux session exits tmux-attach → Ghostty closes the terminal window
         subprocess.run(
             ["tmux", "kill-session", "-t", token],
             capture_output=True, timeout=5,
@@ -70,7 +67,6 @@ end tell'''
         subprocess.run(["osascript"], input=script.encode(), capture_output=True, timeout=10)
         Path(f"/tmp/probe05_{token}.txt").unlink(missing_ok=True)
 
-# Poll until WID gone from CGWindowList (max timeout)
 def _wait_for_wid_gone(wid: int, timeout: float = 3.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -79,7 +75,6 @@ def _wait_for_wid_gone(wid: int, timeout: float = 3.0) -> bool:
         time.sleep(0.3)
     return False
 
-# Fallback: SIGTERM the owning process if it is a new one (safe: separate -n instance)
 def _force_kill_if_new_pid(wid: int, pids_before: Set[int]) -> bool:
     _, wid_pid = _wid_info(wid)
     if wid_pid is not None and wid_pid not in pids_before:
@@ -88,9 +83,6 @@ def _force_kill_if_new_pid(wid: int, pids_before: Set[int]) -> bool:
         return not _wid_exists(wid)
     return False
 
-# Close window and clean up per-type side-effects.
-# pids_before: app PIDs pre-trial; a new PID is safe to SIGTERM as cleanup fallback.
-# Returns True if wid is gone from CGWindowList within 3s.
 def _cleanup_window(
     win_type: str, token: str, wid: Optional[int], pids_before: Set[int]
 ) -> bool:
@@ -104,8 +96,6 @@ def _cleanup_window(
 
     return _force_kill_if_new_pid(wid, pids_before)
 
-# Warm-launch CotEditor before trials: prevents cold-launch session-restore from reopening
-# previous documents. If CotEditor is already running, returns immediately.
 def _ensure_coteditor_running() -> None:
     arr = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
     for i in range(_cf_count(arr)):

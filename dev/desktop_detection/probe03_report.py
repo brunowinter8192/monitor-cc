@@ -9,7 +9,6 @@ _REPORTS_DIR = _SCRIPT_DIR / '03_reports'
 
 # FUNCTIONS
 
-# Write report JSON to _REPORTS_DIR/<tag>_<YYYYMMDD_HHMMSS>.json
 def _write_report(payload: Dict) -> Path:
     _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     ts   = datetime.now().strftime('%Y%m%d_%H%M%S')

@@ -4,13 +4,12 @@ from typing import Dict, List, Set, Tuple
 from probe04_bridge import _CG, _cf_at, _cf_count, _dict_long, _dict_str, _dict_val, _make_uint_array, _msgl
 
 _CGS_SPACE_MASK    = 0x7
-_CGW_LIST_ALL      = 0   # kCGWindowListOptionAll — all spaces
-_CGW_LIST_ONSCREEN = 1   # kCGWindowListOptionOnScreenOnly — active space only
+_CGW_LIST_ALL      = 0
+_CGW_LIST_ONSCREEN = 1
 _CGW_NULL_WID      = 0
 
 # FUNCTIONS
 
-# Returns ({space_id: (display_abbrev, desktop_no_1based)}, active_space_id)
 def _build_space_map(cid: int) -> Tuple[Dict[int, Tuple[str, int]], int]:
     active  = _CG.CGSGetActiveSpace(cid)
     dsp_arr = _CG.CGSCopyManagedDisplaySpaces(cid)
@@ -32,7 +31,6 @@ def _build_space_map(cid: int) -> Tuple[Dict[int, Tuple[str, int]], int]:
                 smap[sid] = (abbrev, si + 1)
     return smap, active
 
-# WIDs of every window visible on the currently-active space
 def _on_screen_wids() -> Set[int]:
     arr = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ONSCREEN, _CGW_NULL_WID)
     out: Set[int] = set()
@@ -42,8 +40,6 @@ def _on_screen_wids() -> Set[int]:
             out.add(wid)
     return out
 
-# WIDs of all layer-0 named Ghostty terminal windows across all spaces.
-# Requires kCGWindowName != None — excludes tab-bar strips (name=None, h=33px).
 def _ghostty_wids_all() -> Set[int]:
     arr = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
     out: Set[int] = set()
@@ -60,8 +56,6 @@ def _ghostty_wids_all() -> Set[int]:
             out.add(wid)
     return out
 
-# Space IDs for a WID — used only to record original space before the move
-# (not part of PASS/FAIL; CGSCopySpacesForWindows may lag after moves).
 def _spaces_for_wid(cid: int, wid: int) -> List[int]:
     result_arr = _CG.CGSCopySpacesForWindows(cid, _CGS_SPACE_MASK, _make_uint_array([wid]))
     if not result_arr:

@@ -30,7 +30,6 @@ _CG.CGSCopySpacesForWindows.restype       = ctypes.c_void_p
 _CG.CGWindowListCopyWindowInfo.argtypes   = [ctypes.c_uint32, ctypes.c_uint32]
 _CG.CGWindowListCopyWindowInfo.restype    = ctypes.c_void_p
 
-# proc_pidinfo flavor 58 = PROC_PIDT_RESPONSIBLE_PID
 _LIBPROC               = ctypes.CDLL('/usr/lib/libproc.dylib')
 _LIBPROC.proc_pidinfo.restype  = ctypes.c_int
 _LIBPROC.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,

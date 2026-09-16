@@ -8,10 +8,6 @@ from probe04_bridge import _FT_0vv, _FT_vv, _FT_vvvu64, _IMP, _OBJ, _make_uint_a
 
 # FUNCTIONS
 
-# SLSBridgedMoveWindowsToManagedSpaceOperation — DockDoor / yabai technique.
-# Class hierarchy on 26.5: SLSBridgedMoveWindowsToManagedSpaceOperation
-#   → SLSAsynchronousBridgedWindowManagementOperation (defines performWithWMBridgeDelegate)
-# performWithWMBridgeDelegate returns void — success verified externally via on-screen list.
 def _bridged_move(wids: List[int], target_space_id: int) -> None:
     cls = _OBJ.objc_getClass(b"SLSBridgedMoveWindowsToManagedSpaceOperation")
     if not cls:

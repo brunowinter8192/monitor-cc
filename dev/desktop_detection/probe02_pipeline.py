@@ -17,7 +17,6 @@ _CGW_NULL_WID   = 0
 
 # FUNCTIONS
 
-# Return PID of running Ghostty.app, or None
 def _ghostty_pid() -> Optional[int]:
     r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
                        capture_output=True, text=True, timeout=3)
@@ -28,7 +27,6 @@ def _ghostty_pid() -> Optional[int]:
                 return int(p)
     return None
 
-# Return space_ids for a single CGWindowID
 def _spaces_for_wid(cid: int, wid: int) -> List[int]:
     arr = _CG.CGSCopySpacesForWindows(cid, _CGS_SPACE_MASK, _make_uint_array([wid]))
     if not arr:
@@ -40,7 +38,6 @@ def _spaces_for_wid(cid: int, wid: int) -> List[int]:
             result.append(_msgl(ns, "intValue"))
     return result
 
-# Return (space_map {sid: (disp_abbrev, desktop_no)}, active_space_id)
 def _build_space_map(cid: int) -> Tuple[Dict[int, Tuple[str, int]], int]:
     active = _CG.CGSGetActiveSpace(cid)
     dsp    = _CG.CGSCopyManagedDisplaySpaces(cid)
@@ -58,7 +55,6 @@ def _build_space_map(cid: int) -> Tuple[Dict[int, Tuple[str, int]], int]:
                 smap[sid] = (did[:8], si + 1)
     return smap, int(active)
 
-# Return all windows; space_ids only for layer=0 (key TCC comparison signal)
 def _collect_raw_windows(cid: int) -> List[Dict[str, Any]]:
     raw = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
     result = []
@@ -76,7 +72,6 @@ def _collect_raw_windows(cid: int) -> List[Dict[str, Any]]:
         })
     return result
 
-# Read cwd_uuid map; returns (map, None) or (None, skip_reason)
 def _load_cwd_uuid_map() -> Tuple[Optional[Dict[str, str]], Optional[str]]:
     if not _CWD_UUID_FILE.exists():
         return None, 'cwd_uuid_map_missing'
@@ -88,7 +83,6 @@ def _load_cwd_uuid_map() -> Tuple[Optional[Dict[str, str]], Optional[str]]:
         return None, 'cwd_uuid_map_empty'
     return cwd_uuid, None
 
-# AppleScript one-call: returns ({ghostty_win_id: uuid}, {ghostty_win_id: win_name})
 def _applescript_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
     osa = (
         'tell application "Ghostty"\n'
@@ -119,7 +113,6 @@ def _applescript_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
             win_to_name[pts[0]] = pts[1]
     return uuid_to_win, win_to_name
 
-# Return {window_name: [wid, ...]} for all layer-0 named Ghostty CGWindows
 def _cgwindow_name_map(ghostty_pid: int) -> Dict[str, List[int]]:
     cgw = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
     by_name: Dict[str, List[int]] = {}
@@ -134,7 +127,6 @@ def _cgwindow_name_map(ghostty_pid: int) -> Dict[str, List[int]]:
             by_name.setdefault(nm, []).append(wid)
     return by_name
 
-# Build one pipeline row (name-unique strategy only)
 def _build_pipeline_row(
     cwd: str, uuid: str, uuid_to_win: Dict[str, str], win_to_name: Dict[str, str],
     by_name: Dict[str, List[int]], cid: int, smap: Dict,
@@ -160,8 +152,6 @@ def _build_pipeline_row(
             'cgwindow_id': cgw_id, 'strategy': strategy, 'space_id': space_id,
             'desktop_no': desktop_no, 'win_name': win_name, 'diagnostic': diag}
 
-# Detection pipeline: cwd_uuid → AppleScript → CGWindowList (name-unique strategy only)
-# Returns (sessions_list, skip_reason_or_None)
 def _run_detection_pipeline(
     cid: int, ghostty_pid: int, smap: Dict
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
@@ -179,7 +169,6 @@ def _run_detection_pipeline(
     ]
     return rows, None
 
-# Collect detection_result section: window stats + pipeline
 def _collect_detection_result(
     cid: int, raw_windows: List[Dict[str, Any]],
     ghostty_pid: Optional[int], smap: Dict, active_space: int

@@ -17,7 +17,6 @@ def _setup_trial(win_type: str, trial_n: int, foreground: bool):
     owner    = _OWNER[win_type]
     req_name = _REQUIRE_NAME[win_type]
     token    = _TOKEN_PREFIX[win_type] + secrets.token_hex(3)
-    # CotEditor always opened with 'open -g' (no cold-launch, no focus steal)
     if win_type == _WIN_COT:
         foreground = False
     fg_label = "fg" if foreground else "bg"
@@ -26,12 +25,10 @@ def _setup_trial(win_type: str, trial_n: int, foreground: bool):
     return owner, req_name, token, foreground
 
 def _snapshot_before_open(cid: int, owner: str, win_type: str, req_name: bool, space_map: Dict):
-    # S1: active space snapshotted STRICTLY before open
     s1_space_id = int(_CG.CGSGetActiveSpace(cid))
     s1_desktop  = space_map.get(s1_space_id, ("?", "?"))[1]
 
     pids_before = _owner_pids(owner)
-    # Ghostty: snapshot before open (CotEditor uses token-name poll instead)
     before = None
     if win_type != _WIN_COT:
         before = _owner_wids_layer0(owner, req_name)
@@ -46,17 +43,14 @@ def _poll_for_new_window(win_type: str, owner: str, req_name: bool, token: str, 
     poll_start = time.monotonic()
 
     if win_type == _WIN_COT:
-        # Token-name poll: CotEditor titles windows with filename — reliable unique key.
-        # Avoids snapshot-diff which grabbed session-restored windows (cold-launch issue).
         while time.monotonic() - poll_start < 5.0:
             time.sleep(0.2)
             ma_wid, ma_name = _method_a(owner, token)
             if ma_wid is not None:
                 wid_gt    = ma_wid
-                ma_agrees = True   # detection IS the token-match; agrees by construction
+                ma_agrees = True
                 break
     else:
-        # Ghostty: snapshot-diff poll — detect new WID by owner-list delta
         while time.monotonic() - poll_start < 5.0:
             time.sleep(0.2)
             after = _owner_wids_layer0(owner, req_name)
@@ -81,20 +75,17 @@ def _measure_signals(
     mb_agrees       = None
 
     if wid_gt is not None:
-        time.sleep(0.5)   # let title settle after detection (OSC-2 late-set, tmux title)
+        time.sleep(0.5)
 
         title_observed, _ = _wid_info(wid_gt)
 
         if win_type != _WIN_COT:
-            # For Ghostty: run method_a here (CotEditor: already resolved during poll)
             ma_wid, ma_name = _method_a(owner, token)
             ma_agrees = (ma_wid == wid_gt)
 
-        # Method B — frontmost among owner layer-0 windows
         mb_wid    = _method_b(owner, req_name)
         mb_agrees = (mb_wid == wid_gt)
 
-        # Space signals
         s2_on_screen = wid_gt in _on_screen_wids()
         s3_spaces    = _spaces_for_wid(cid, wid_gt)
         s3_space_id  = s3_spaces[0] if s3_spaces else None
@@ -158,7 +149,6 @@ def _write_trial_json(result: dict, win_type: str, trial_n: int, ts: str) -> Pat
     json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
     return json_path
 
-# Run one trial: open window, detect via ground-truth + methods A/B, measure space signals.
 def _run_trial(
     cid: int, space_map: Dict[int, Tuple[str, int]],
     win_type: str, trial_n: int, foreground: bool,
@@ -181,7 +171,7 @@ def _run_trial(
     _print_trial_outcome(wid_gt, signals)
 
     cleanup_ok = _cleanup_window(win_type, token, wid_gt, pids_before)
-    time.sleep(1.0)   # stabilize between trials
+    time.sleep(1.0)
 
     result = _assemble_trial_result(
         win_type, trial_n, foreground, token, wid_gt, poll_elapsed,
@@ -192,7 +182,6 @@ def _run_trial(
 
     return result
 
-# Format and print per-trial results as aligned summary table
 def _print_summary(results: List[dict]) -> None:
     print("=== Summary Table ===")
     hdr = (

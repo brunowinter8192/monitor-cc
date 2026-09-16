@@ -9,7 +9,6 @@ _REPORTS_DIR = _SCRIPT_DIR / '02_reports'
 
 # FUNCTIONS
 
-# Write report JSON to _REPORTS_DIR/<tag>_<YYYYMMDD_HHMMSS>.json
 def _write_report(
     tag: str, ctx: Dict, tcc: Dict, det: Dict, raw: List[Dict]
 ) -> Path:

@@ -10,7 +10,6 @@ _OBJ.sel_registerName.argtypes = [ctypes.c_char_p]
 _OBJ.objc_getClass.restype     = ctypes.c_void_p
 _OBJ.objc_getClass.argtypes    = [ctypes.c_char_p]
 
-# Module-level CFUNCTYPE refs — GC of these corrupts the IMP pointer table
 _FT_vv   = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 _FT_vvv  = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 _FT_vvcp = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p)
@@ -34,7 +33,6 @@ _CG.CGWindowListCopyWindowInfo.restype   = ctypes.c_void_p
 
 # FUNCTIONS
 
-# --- ObjC bridge helpers (verbatim from 04_space_move_probe.py) ---
 
 def _sel(s: str):
     return _OBJ.sel_registerName(s.encode())
@@ -78,8 +76,6 @@ def _dict_long(d, key: str) -> Optional[int]:
     v = _dict_val(d, key)
     return _msgl(v, "intValue") if v else None
 
-# Build NSMutableArray of NSNumber(numberWithUnsignedInt:) — correct shape for
-# CGSCopySpacesForWindows (CGWindowID = uint32_t; verbatim from 04)
 def _make_uint_array(values: List[int]):
     NSMutableArray = _OBJ.objc_getClass(b"NSMutableArray")
     NSNumber       = _OBJ.objc_getClass(b"NSNumber")

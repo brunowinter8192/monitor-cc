@@ -10,7 +10,6 @@ _OBJ.sel_registerName.argtypes = [ctypes.c_char_p]
 _OBJ.objc_getClass.restype     = ctypes.c_void_p
 _OBJ.objc_getClass.argtypes    = [ctypes.c_char_p]
 
-# CFUNCTYPE refs at module level — GC-safe (GC'ing these corrupts the IMP pointer table)
 _FT_vv   = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 _FT_vvv  = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 _FT_vvcp = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p)
@@ -21,7 +20,6 @@ _FT_nvv  = ctypes.CFUNCTYPE(None,            ctypes.c_void_p, ctypes.c_void_p, c
 
 _IMP = ctypes.cast(_OBJ.objc_msgSend, ctypes.c_void_p).value
 
-# CGS / CGWindow function signatures (set once at module load)
 _CG.CGSMainConnectionID.argtypes           = []
 _CG.CGSMainConnectionID.restype            = ctypes.c_int32
 _CG.CGSGetActiveSpace.argtypes             = [ctypes.c_int32]
@@ -35,7 +33,6 @@ _CG.CGWindowListCopyWindowInfo.restype     = ctypes.c_void_p
 
 # FUNCTIONS
 
-# --- objc bridge helpers ---
 
 def _sel(s: str):                       return _OBJ.sel_registerName(s.encode())
 def _msg1v(obj, s: str, a):            return ctypes.cast(_IMP, _FT_vvv)(obj, _sel(s), a)
@@ -63,7 +60,6 @@ def _dict_long(d, key: str) -> Optional[int]:
     v = _dict_val(d, key)
     return _msgl(v, "intValue") if v else None
 
-# Build NSMutableArray of unsigned-int values (for CGSCopySpacesForWindows window list)
 def _make_uint_array(values: List[int]):
     NSMutableArray = _OBJ.objc_getClass(b"NSMutableArray")
     NSNumber = _OBJ.objc_getClass(b"NSNumber")
