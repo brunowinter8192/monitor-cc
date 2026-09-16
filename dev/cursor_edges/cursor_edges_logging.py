@@ -26,7 +26,6 @@ def _dump_hierarchy(view, indent: int = 0) -> None:
 
 
 def _install_tracking_area(view) -> None:
-    """Replace all tracking areas on `view` with a fresh full-bounds area (legacy modes)."""
     for ta in list(view.trackingAreas()):
         view.removeTrackingArea_(ta)
     ta = NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
@@ -35,7 +34,6 @@ def _install_tracking_area(view) -> None:
 
 
 def _install_global_mouse_monitor() -> None:
-    """NSEvent local monitor — captures mouseMoved before any view-level dispatch."""
     def _handler(event):
         pt = event.locationInWindow()
         win = event.window()

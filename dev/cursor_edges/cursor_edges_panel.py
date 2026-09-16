@@ -53,9 +53,6 @@ def _build_content_view():
 
 
 def _apply_fix_flag(panel):
-    # Hypothesis: NonactivatingPanel never calls becomeKeyWindow → enableCursorRects
-    # never invoked internally → cursor rects installed but dispatch disabled.
-    # Explicit call should re-enable dispatch without requiring key-window status.
     panel.enableCursorRects()
     enabled = panel.areCursorRectsEnabled()
     _log(f'[--fix]  enableCursorRects() called — areCursorRectsEnabled={enabled}')
@@ -68,18 +65,18 @@ def _apply_fix_flag(panel):
 def _add_footer(cv):
     footer = _LoggingFooterView.alloc().initWithFrame_(
         NSMakeRect(0, 0, PANEL_WIDTH, _FOOTER_H))
-    footer.setAutoresizingMask_(2)   # NSViewWidthSizable
+    footer.setAutoresizingMask_(2)
 
     restart_btn = _LoggingButton.alloc().initWithFrame_(
         NSMakeRect(PANEL_WIDTH - 86, 4, 78, 22))
-    restart_btn.setAutoresizingMask_(1)   # NSViewMinXMargin — right-anchored
+    restart_btn.setAutoresizingMask_(1)
     restart_btn.setTitle_('Restart')
     restart_btn.setBezelStyle_(1)
     footer.addSubview_(restart_btn)
 
     kill_btn = _LoggingButton.alloc().initWithFrame_(
         NSMakeRect(PANEL_WIDTH - 86 - 78 - 8, 4, 78, 22))
-    kill_btn.setAutoresizingMask_(1)   # NSViewMinXMargin
+    kill_btn.setAutoresizingMask_(1)
     kill_btn.setTitle_('Kill')
     kill_btn.setBezelStyle_(1)
     footer.addSubview_(kill_btn)
@@ -90,14 +87,14 @@ def _add_footer(cv):
 def _add_top_bar(cv):
     top_bar = _LoggingTopBarView.alloc().initWithFrame_(
         NSMakeRect(0, PANEL_HEIGHT - _TOP_BAR_H, PANEL_WIDTH, _TOP_BAR_H))
-    top_bar.setAutoresizingMask_(10)   # NSViewWidthSizable | NSViewMinYMargin
+    top_bar.setAutoresizingMask_(10)
 
     toggle_btn = _LoggingButton.alloc().initWithFrame_(
         NSMakeRect(0, 0, PANEL_WIDTH - 22, _TOP_BAR_H - 1))
     toggle_btn.setBordered_(False)
-    toggle_btn.setButtonType_(7)   # NSButtonTypeMomentaryPushIn
+    toggle_btn.setButtonType_(7)
     toggle_btn.setTitle_('Auto-Jump: ON')
-    toggle_btn.setAutoresizingMask_(2)   # NSViewWidthSizable
+    toggle_btn.setAutoresizingMask_(2)
     top_bar.addSubview_(toggle_btn)
 
     cv.addSubview_(top_bar)
@@ -107,13 +104,12 @@ def _add_session_stack(cv):
     stack_h = PANEL_HEIGHT - _FOOTER_H - _TOP_BAR_H
     stack = _LoggingStackView.alloc().initWithFrame_(
         NSMakeRect(0, _FOOTER_H, PANEL_WIDTH, stack_h))
-    stack.setAutoresizingMask_(18)   # NSViewWidthSizable | NSViewHeightSizable
+    stack.setAutoresizingMask_(18)
     stack.setOrientation_(NSUserInterfaceLayoutOrientationVertical)
     stack.setAlignment_(NSLayoutAttributeLeading)
     stack.setSpacing_(1.0)
-    stack.setDistribution_(-1)   # NSStackViewDistributionGravityAreas
+    stack.setDistribution_(-1)
 
-    # Three fake session row buttons — representative of production stack content
     for label in [
         '● Monitor_CC        [*]   ',
         '  cursor-edges      [ ]   ',
@@ -130,7 +126,6 @@ def _add_session_stack(cv):
 
 
 def _make_probe_panel(fix: bool = False, no_resizable: bool = False) -> NSPanel:
-    """Build probe NSPanel that mirrors production _make_nspanel() geometry and z-order exactly."""
     panel = _build_panel_window(no_resizable)
     cv = _build_content_view()
     panel.setContentView_(cv)
