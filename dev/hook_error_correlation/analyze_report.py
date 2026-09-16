@@ -83,7 +83,6 @@ def _render_q2_section(all_hooks, hook_errors):
     for h in all_hooks:
         example = hook_errors[h][0]
         ef = example["error_full"]
-        # Extract the message after the hook path
         msg_match = re.search(r"\.py\]: (.+)", ef, re.DOTALL)
         msg = msg_match.group(1).strip() if msg_match else ef.strip()
         lines += [f"### `{h}`", "", f"```", msg[:400], "```", ""]
@@ -171,7 +170,6 @@ def _render_stufe2_section(all_hooks, stufe2):
     return lines
 
 
-# Format a command for display: truncate to 120 chars
 def _fmt_cmd(tool_name: str, tool_input) -> str:
     if tool_input is None:
         return "(unavailable)"
@@ -188,7 +186,6 @@ def _fmt_cmd(tool_name: str, tool_input) -> str:
     return str(tool_input)[:80]
 
 
-# Format markdown report answering Q1/Q2/Q3 + join analysis
 def format_report(stufe1: list, stufe2: list, fires: list, raw_counts: dict, report_date: str) -> str:
     lines = [f"# Hook Error Correlation — {report_date}", ""]
 
