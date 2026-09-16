@@ -3,100 +3,96 @@
 ## Role
 
 Tests and differential-proof harnesses for the display layer: tmux pane layout, session-JSONL
-rule scanning, pane screenshots, cache-tracker formatting, expand-model hover-map correctness, and
-the strip-marker highlight pipeline. Touch this directory when changing tmux pane geometry,
-`src/format/token_format.py`, `src/proxy_display/`/`src/workers/` line-map logic, or
-`src/format/strip_marker.py`. `display/jsonl_exploration/` is the session-JSONL structure-mapping
-sub-suite (see its own DOCS.md). All commands assume CWD = the project root.
+rule scanning, pane screenshots, cache-tracker formatting, hover-map correctness, and the
+strip-marker pipeline. Touch when changing tmux pane geometry, `token_format.py`,
+`proxy_display`/`workers` line-map logic, or `strip_marker.py`. `jsonl_exploration/` is a separate
+sub-suite (own DOCS.md).
+
+## Public Interface
+
+No `__init__.py` in this directory. Entry path: run each script directly, e.g.
+`./venv/bin/python dev/display/test_hover_map.py` (all commands assume CWD = the project root).
+
+## Flow
+
+A script reads either live tmux pane state, a session/proxy-log JSONL (positional or
+auto-discovered), or synthetic in-script fixtures. It exercises one specific piece of the display
+pipeline (pane geometry, cache-tracker formatting, hover-map `line_map`, strip-marker highlighting)
+via the real production function under test. It writes a PASS/FAIL summary, a PNG, or a
+Markdown/JSON report to stdout or a file under this directory.
 
 ## Modules
 
 ### test_tmux_layout.sh (55 LOC)
 
 **Purpose:** Verifies the tmux pane layout (window/pane indices, `-l` percentage splits, `-b`
-top/bottom placement) by building the target layout in a temporary session and listing panes.
+top/bottom placement) in a temporary session.
 **Reads:** nothing — creates its own temporary tmux session.
 **Writes:** stdout pane-index table; session auto-cleans after output.
 **Called by:** none — run manually (`bash dev/display/test_tmux_layout.sh`).
+**Calls out:** `tmux` (external binary).
 
 ---
 
-### scan_jsonl_rules.py (120 LOC)
+### scan_jsonl_rules.py (100 LOC)
 
-**Purpose:** Scans a Claude Code session JSONL for "Contents of" lines (loaded CLAUDE.md /
-the rules-file markers under the user's .claude directory) to check whether rules/instructions data is present in session
-JSONL and in what message shape.
-**Reads:** a session JSONL (path hardcoded/passed in-script).
+**Purpose:** Scans a Claude Code session JSONL for "Contents of" lines to check whether loaded
+rules data is present, and in what message shape.
+**Reads:** a session JSONL (auto-discovers the newest project's newest file; no CLI override).
 **Writes:** stdout — all unique "Contents of" entries found, with message type/line/parsed name.
 **Called by:** none — run manually.
+**Calls out:** none.
 
 ---
 
-### screenshot_panes.py (142 LOC)
+### screenshot_panes.py (119 LOC)
 
 **Purpose:** Captures all tmux panes of a running Monitor_CC session and combines them into one
 PNG for visual review.
 **Reads:** live tmux session state.
 **Writes:** `/tmp/monitor_cc_screenshot.png`.
 **Called by:** none — run manually (`--session <name>` to target a non-default session).
-**Calls out:** `termshot` (external binary, `brew install homeport/tap/termshot`), `Pillow`.
+**Calls out:** `termshot` (external binary), `Pillow`.
 
 ---
 
-### A_format_cache_tracker_proof.py (128 LOC)
+### A_format_cache_tracker_proof.py (113 LOC)
 
-**Purpose:** Differential-proof harness for `format_cache_tracker` — loads real session JSONLs
-via `extract_cache_turns`, calls `format_cache_tracker(turns, pane_height, pane_width)` across
-multiple height/width combinations, and verifies the serialized 5-tuple return is byte-identical
-against a captured baseline.
+**Purpose:** Differential-proof harness for `format_cache_tracker` — verifies its serialized
+5-tuple return is byte-identical against a captured baseline.
 **Reads:** real session JSONLs under `~/.claude/projects/`.
-**Writes:** `json/baseline_<timestamp>.json`.
+**Writes:** `A_format_cache_tracker_proof_reports/baseline_<timestamp>.json` (capture mode).
 **Called by:** none — run manually (`--mode capture` then `--mode verify [--baseline PATH]`).
-**Calls out:** `src.jsonl.jsonl_cache_turns` (`extract_cache_turns`), `src.format.token_format`
-(`format_cache_tracker`) — imported via `sys.path.insert` + local import, not a module-level
-`from src.` line.
+**Calls out:** `src.jsonl.jsonl_cache_turns`, `src.format.token_format` (imported via
+`sys.path.insert` + local import, not a module-level `from src.` line).
 
 ---
 
-### test_hover_map.py (358 LOC)
+### test_hover_map.py (298 LOC)
 
-**Purpose:** Synthetic + real-log assertion suite for expand-model `line_map` correctness — every
-visible row maps to exactly one `phys_row`, monotonic, no duplicates — plus a `render_messages`
-`len(lines) == len(keys)` pairing check for the stripped-span dual-color overlay path against
-real forwarded/stripped dual-log pairs. (2026-09) The four worker-list tests
-(`test_workers_viewport_clipping`, `test_no_expanded_worker_overflow`,
-`test_workers_pane_scroll_offset`, `test_workers_scroll_reset_on_expand`) were removed — they
-exercised `format_workers_block`'s outer multi-worker viewport composition, which no longer
-exists now that the all-workers list pane is gone (see `src/workers/DOCS.md`); the surviving
-proxy-side tests are unaffected.
+**Purpose:** Synthetic + real-log assertion suite for expand-model `line_map` correctness and the
+stripped-span dual-color overlay pairing.
 **Reads:** `src/logs/dual_log/*_forwarded.jsonl` + sibling `*_stripped.jsonl` (newest-first glob).
 **Writes:** stdout PASS/FAIL lines + `Results: N passed, M failed` summary; exits 1 on failure.
 **Called by:** none — run manually.
-**Calls out:** `src.proxy_display.format` (`format_proxy_block`), `src.format.token_format`
-(`format_cache_tracker`).
+**Calls out:** `src.proxy_display.format`, `src.proxy_display.render_messages`,
+`src.format.token_format`.
 
 ---
 
-### test_strip_markers.py (210 LOC)
+### test_strip_markers.py (186 LOC)
 
-**Purpose:** Visual test for `src/format/strip_marker.py` — feeds synthetic proxy entries and
-session events through the strip-marker highlight pipeline and prints ANSI-colored output to the
-terminal for manual review.
+**Purpose:** Visual test for the strip-marker highlight pipeline — feeds synthetic proxy entries
+through it and prints ANSI-colored output for manual review.
 **Reads:** nothing external — synthetic entries built in-script.
 **Writes:** stdout (ANSI-colored) only.
 **Called by:** none — run manually.
-**Calls out:** `src.format.strip_marker` (`highlight_stripped`, `get_stripped_data`,
-`build_tool_result_strip_lookup`, `build_tool_id_strip_lookup`), `src.colors`.
+**Calls out:** `src.format.strip_marker`, `src.colors`.
 
 ---
 
-## Gotchas
+## State
 
-**`test_hover_map.py`'s dual-log alignment case skips (PASS, not FAIL) when no dual-log pair with
-stripped content exists in `src/logs/dual_log/`** — a green run can mean "skipped due to missing
-data", not "verified"; check the printed reason, not just the exit code.
-
-**Session JSONL carries no rules/instructions data** (`scan_jsonl_rules.py`'s own finding: zero
-"Contents of", zero `system-reminder`, zero `claudeMd` hits — the system prompt is never written
-to JSONL). The InstructionsLoaded hook (`hook_outputs.jsonl`) is the only Claude-infrastructure
-source for rules data; don't add a JSONL-based rules scanner expecting to find it there.
+No shared state across modules — each script owns its own module-level constants (pane layout,
+thresholds, synthetic fixtures). `test_hover_map.py`'s `PASS`/`FAIL` counters are simple global
+ints mutated only by its own `assert_true()` helper.

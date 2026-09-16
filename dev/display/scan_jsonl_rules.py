@@ -1,27 +1,11 @@
 #!/usr/bin/env python3
-"""Scan a Claude Code session JSONL to find how loaded rules appear in system-reminders.
-
-Purpose: Verify the exact pattern/format of "Contents of" lines in system-reminder
-tags within tool_result content blocks. This tells us whether we can reliably parse
-loaded rules (CLAUDE.md, .claude/rules/*.md) from the JSONL instead of relying on
-the InstructionsLoaded hook (which has known bugs: #33275, #30973, #31017).
-
-Usage:
-    python3 dev/display/scan_jsonl_rules.py
-
-Scans the most recent JSONL from the RAG project (not Monitor_CC, to avoid
-self-referential noise from this session's own messages).
-
-Output: All unique "Contents of" lines found in system-reminder tags,
-with the message type and line number they appear in.
-"""
 
 import json
 import re
 from pathlib import Path
 
 PROJECTS_DIR = Path.home() / '.claude' / 'projects'
-TARGET_PROJECT = None  # auto-discover newest project
+TARGET_PROJECT = None
 
 SYSTEM_REMINDER_PATTERN = re.compile(r'<system-reminder>(.*?)</system-reminder>', re.DOTALL)
 CONTENTS_OF_PATTERN = re.compile(r'Contents of ([^\n]+)')
@@ -58,14 +42,12 @@ def _collect_rule_locations(filepath: Path) -> list:
 
             msg_type = msg.get('type', 'unknown')
 
-            # Search through all content for system-reminder tags
             raw = json.dumps(msg)
             reminders = SYSTEM_REMINDER_PATTERN.findall(raw)
 
             for reminder in reminders:
                 contents_matches = CONTENTS_OF_PATTERN.findall(reminder)
                 for match in contents_matches:
-                    # Deduplicate
                     if match not in seen_rules:
                         seen_rules.add(match)
                         rule_locations.append({
@@ -88,13 +70,11 @@ def _print_parseable_names(rule_locations: list) -> None:
     print(f"\nParseable rule names:")
     for entry in rule_locations:
         raw = entry['contents_of']
-        # Extract: path and scope from "path/to/file.md (scope description):"
         path_match = re.match(r'(.+\.md)\s*\(([^)]+)\)', raw)
         if path_match:
             filepath_str = path_match.group(1).strip()
             scope = path_match.group(2).strip()
             name = Path(filepath_str).stem
-            # Determine [P] or [G]
             if 'global' in scope or "user's private" in scope:
                 tag = '[G]'
             else:

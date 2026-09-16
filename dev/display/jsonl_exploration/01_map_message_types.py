@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""Map all message types in a Claude Code session JSONL.
-
-For each message type: count, top-level keys, subtypes, isMeta distribution,
-and one truncated example.
-
-Usage:
-    python3 dev/display/jsonl_exploration/01_map_message_types.py [path/to/session.jsonl]
-
-Default: latest JSONL from RAG project.
-Output: dev/display/jsonl_exploration/01_reports/message_types_<timestamp>.md
-"""
 
 import json
 import sys
@@ -18,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECTS_DIR = Path.home() / '.claude' / 'projects'
-DEFAULT_PROJECT = None  # auto-discover newest project
+DEFAULT_PROJECT = None
 REPORTS_DIR = Path(__file__).parent / '01_reports'
 
 
@@ -26,7 +15,6 @@ def find_latest_jsonl(project_name: str = None) -> Path:
     if project_name:
         project_dir = PROJECTS_DIR / project_name
     else:
-        # Auto-discover: newest project directory
         project_dirs = [d for d in PROJECTS_DIR.iterdir() if d.is_dir() and not d.name.startswith('.')]
         if not project_dirs:
             raise FileNotFoundError(f"No projects found in {PROJECTS_DIR}")
