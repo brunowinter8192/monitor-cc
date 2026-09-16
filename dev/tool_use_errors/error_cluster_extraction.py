@@ -11,13 +11,11 @@ _REJECTION_MARKER   = "doesn't want to proceed"
 
 # FUNCTIONS
 
-# Load all records from tool_errors.jsonl; return list of dicts
 def load_entries(path: str) -> list:
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f]
 
 
-# Assign each entry to exactly one bucket; return dict bucket_name → list of entries
 def cluster_entries(entries: list) -> dict:
     buckets = defaultdict(list)
     for e in entries:

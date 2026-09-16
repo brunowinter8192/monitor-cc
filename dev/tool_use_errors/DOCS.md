@@ -5,13 +5,17 @@ Empirical audit suite for the tool-errors log — determines which error pattern
 (keep) vs. strippable CC-wrapper noise, and verifies that `strip_hook_prefix.py` strips the
 hook-error prefix before it reaches Anthropic.
 
+## Public Interface
+No `__init__.py` in this directory. Entry path: `./venv/bin/python
+dev/tool_use_errors/A_error_cluster_audit.py`.
+
 ## Flow
 Loads the tool-errors log, clusters entries by error shape, classifies each bucket by a fixed match
 rule, cross-checks proxy logs for the strip modification, and writes a findings report.
 
 ## Modules
 
-### A_error_cluster_audit.py (50 LOC)
+### A_error_cluster_audit.py (48 LOC)
 
 **Purpose:** Entry script — resolves log paths (worktree-aware) and drives
 load -> cluster -> cross-check -> report.
@@ -21,7 +25,9 @@ load -> cluster -> cross-check -> report.
 `./venv/bin/python dev/tool_use_errors/A_error_cluster_audit.py`.
 **Calls out:** `error_cluster_extraction`, `error_cluster_crosscheck`, `error_cluster_report`.
 
-### error_cluster_extraction.py (41 LOC)
+---
+
+### error_cluster_extraction.py (39 LOC)
 
 **Purpose:** Loads the tool-errors log and clusters entries by error shape (hook-prefixed,
 tool_use_error, exit-code, rejection, bare-guidance).
@@ -30,7 +36,9 @@ tool_use_error, exit-code, rejection, bare-guidance).
 **Called by:** `A_error_cluster_audit.py`.
 **Calls out:** none — stdlib JSONL/regex parsing only.
 
-### error_cluster_crosscheck.py (73 LOC)
+---
+
+### error_cluster_crosscheck.py (69 LOC)
 
 **Purpose:** Scans available proxy JSONL logs for the `stripped_hook_error_prefix` modification to
 confirm the strip reaches Anthropic, and checks whether the hook-prefixed bucket predates it.
@@ -39,7 +47,9 @@ confirm the strip reaches Anthropic, and checks whether the hook-prefixed bucket
 **Called by:** `A_error_cluster_audit.py`.
 **Calls out:** none — stdlib JSONL parsing only.
 
-### error_cluster_report.py (245 LOC)
+---
+
+### error_cluster_report.py (241 LOC)
 
 **Purpose:** Classifies each bucket's verdict, formats the full markdown findings report section
 by section, and writes it to disk.
@@ -47,3 +57,10 @@ by section, and writes it to disk.
 **Writes:** `dev/tool_use_errors/reports/<date>_error_cluster_audit.md`.
 **Called by:** `A_error_cluster_audit.py`.
 **Calls out:** `error_cluster_extraction` (`_EXIT_CODE_RE`).
+
+---
+
+## State
+`A_error_cluster_audit.py` resolves and owns the module-level `MAIN_PROJECT`/`LOGS_DIR`/
+`REPORTS_DIR`/`TOOL_ERRORS_LOG` path constants at import time; the three library modules read data
+passed to them by the caller and hold no state of their own.

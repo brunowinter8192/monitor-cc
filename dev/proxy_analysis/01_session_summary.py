@@ -32,7 +32,6 @@ def session_summary_workflow(session_id: str | None) -> None:
 
 # FUNCTIONS
 
-# Locate src/logs/ — checks MONITOR_CC_ROOT env, then script-relative, then cwd-relative
 def _find_logs_dir() -> Path:
     if root := os.environ.get("MONITOR_CC_ROOT"):
         return Path(root) / "src" / "logs"
@@ -42,7 +41,6 @@ def _find_logs_dir() -> Path:
     return Path.cwd() / "src" / "logs"
 
 
-# Resolve log file from session_id or auto-discover most recent
 def _resolve_log_file(logs_dir: Path, session_id: str | None) -> Path:
     if session_id:
         path = logs_dir / f"api_requests_{session_id}.jsonl"
@@ -61,7 +59,6 @@ def _resolve_log_file(logs_dir: Path, session_id: str | None) -> Path:
     return candidates[0]
 
 
-# Load and parse all JSONL entries from file
 def _load_entries(log_file: Path) -> list:
     entries = []
     with open(log_file, encoding="utf-8") as f:
@@ -75,7 +72,6 @@ def _load_entries(log_file: Path) -> list:
     return entries
 
 
-# Convert UTC ISO timestamp string to local time display string
 def _to_local(ts: str) -> str:
     try:
         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
@@ -84,7 +80,6 @@ def _to_local(ts: str) -> str:
         return ts
 
 
-# Format chars count as human-readable (5c, 114k, 2.1M)
 def _fmt_chars(n: int) -> str:
     if n < 1000:
         return f"{n}c"
@@ -93,17 +88,14 @@ def _fmt_chars(n: int) -> str:
     return f"{n / 1_000_000:.1f}M"
 
 
-# Shorten model name for display (claude-opus-4-6 → opus-4-6)
 def _short_model(model: str) -> str:
     return model.removeprefix("claude-")
 
 
-# Return True if model is not an opus variant
 def _is_non_opus(model: str) -> bool:
     return "opus" not in model.lower()
 
 
-# Print section 1: overview
 def _print_overview(log_file: Path, entries: list) -> None:
     session_id = log_file.stem.removeprefix("api_requests_")
     first_ts = _to_local(entries[0]["timestamp"])
@@ -123,7 +115,6 @@ def _print_overview(log_file: Path, entries: list) -> None:
     print(f"  Models     : {model_str}")
 
 
-# Print section 2: anomalies
 def _print_anomalies(entries: list) -> None:
     print(f"\n{BOLD}=== Anomalies ==={RESET}")
 
@@ -171,7 +162,6 @@ def _print_anomalies(entries: list) -> None:
     _print_anomaly_section("Large Input Jumps (>20%)", large_jumps, _fmt_jump)
 
 
-# Print a named anomaly group with formatted lines
 def _print_anomaly_section(title: str, items: list, fmt_fn) -> None:
     if not items:
         print(f"  {DIM}{title}: none{RESET}")
@@ -181,13 +171,11 @@ def _print_anomaly_section(title: str, items: list, fmt_fn) -> None:
             print(f"    {fmt_fn(item)}")
 
 
-# Format a non-opus call anomaly line
 def _fmt_haiku(item: tuple) -> str:
     req_num, ts, model, chars, msg_count = item
     return f"{RED}#{req_num:>3}  {ts}  {_short_model(model):<20}  {msg_count:>3} msgs  {_fmt_chars(chars):>6}{RESET}"
 
 
-# Format a cache rebuild anomaly line
 def _fmt_rebuild(item: tuple) -> str:
     req_num, ts, old_diff, new_diff, removed, modified = item
     parts = []
@@ -203,13 +191,11 @@ def _fmt_rebuild(item: tuple) -> str:
     )
 
 
-# Format a compression event anomaly line
 def _fmt_compression(item: tuple) -> str:
     req_num, ts, removed, chars = item
     return f"{YELLOW}#{req_num:>3}  {ts}  -{removed} messages removed  total: {_fmt_chars(chars)}{RESET}"
 
 
-# Format a large input jump anomaly line
 def _fmt_jump(item: tuple) -> str:
     req_num, ts, prev_chars, chars, direction, pct = item
     return (
@@ -218,7 +204,6 @@ def _fmt_jump(item: tuple) -> str:
     )
 
 
-# Print section 3: compact one-line-per-request timeline
 def _print_timeline(entries: list) -> None:
     print(f"\n{BOLD}=== Request Timeline ==={RESET}")
     for i, e in enumerate(entries):

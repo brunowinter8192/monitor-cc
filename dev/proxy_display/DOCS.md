@@ -5,8 +5,12 @@ Regression checks for `src/proxy_display/` render-cluster changes — a byte-ide
 verifying a refactor of `format.py`/`render_turn.py`/`render_sections*.py`/`render_messages.py`/
 `forwarded_parser.py` changes zero observable output, plus targeted unit tests for individual
 render-cluster predicates. Touch when adding a new render-cluster regression check; not for
-`pane.py`/`worker_proxy_pane.py` event-loop changes (see `dev/pane_search/`, `dev/click_ui/`,
-`dev/pane_error_log/` for those).
+`pane.py`/`worker_proxy_pane.py` event-loop changes.
+
+## Public Interface
+No `__init__.py` in this directory. Entry paths: `./venv/bin/python
+dev/proxy_display/render_byte_identity.py` and `./venv/bin/python
+dev/proxy_display/test_standalone_sidecar.py`.
 
 ## Flow
 `render_byte_identity.py` reconstructs entries from a real forwarded dual-log, attaches
@@ -18,12 +22,12 @@ and asserts PASS/FAIL against a specific predicate/rendering outcome.
 
 ## Modules
 
-### render_byte_identity.py (143 LOC)
+### render_byte_identity.py (115 LOC)
 
 **Purpose:** Byte-identity harness for the proxy_display render cluster — see Flow above.
 **Reads:** forwarded/stripped/injected/original dual-log JSONL quartets under the resolved log
-directory (default: the newest quartet under src/logs/dual_log in the main checkout — gitignored
-runtime data, absent from a fresh worktree).
+directory (default: the newest quartet under src/logs/dual_log in the main checkout, overridable
+via `RENDER_BYTE_IDENTITY_LOG_DIR` to pin a frozen quartet for a stable before/after comparison).
 **Writes:** nothing — stdout only (`source`, `entries`, `expand_states keys`, `HASH` lines).
 **Called by:** none — manual regression harness, run before and after a render-cluster refactor.
 **Calls out:** `src.proxy_display.forwarded_parser` (`_parse_forwarded_log`, `_infer_model_family`),
@@ -37,13 +41,11 @@ runtime data, absent from a fresh worktree).
 
 ---
 
-### test_standalone_sidecar.py (131 LOC)
+### test_standalone_sidecar.py (105 LOC)
 
 **Purpose:** Regression guard confirming `format._is_standalone_entry`'s existing haiku check
 already excludes every CC-internal zero-tool sidecar shape observed in real data from
-`render_turn.render_turn_expanded`'s numbered `#N` REQ sequence — a haiku sidecar between two real
-requests must render as `H` and must not shift the following real request's number. Also pins the
-predicate's other two existing branches (old zero-context shape, a real non-zero-tools request).
+`render_turn.render_turn_expanded`'s numbered `#N` REQ sequence.
 **Reads:** nothing external — synthetic in-process entries.
 **Writes:** PASS/FAIL lines to stdout.
 **Called by:** none — manual regression guard, re-run after touching
@@ -54,7 +56,7 @@ predicate's other two existing branches (old zero-context shape, a real non-zero
 
 ---
 
-## Gotchas
-- The default log source (newest quartet under src/logs/dual_log) is live and growing — a concurrent
-  session's own proxy log can become "newest" between two runs. Set `RENDER_BYTE_IDENTITY_LOG_DIR` to
-  a fixed directory holding a frozen copy of one quartet to pin a before/after comparison.
+## State
+Neither module owns persistent state — `render_byte_identity.py` reads a dual-log quartet fresh
+per run and writes nothing; `test_standalone_sidecar.py` builds and discards its synthetic entries
+within one function call.
