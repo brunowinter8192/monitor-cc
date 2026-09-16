@@ -10,10 +10,6 @@ sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
 from proxy.diff_engine import compose_block
 
-# proxy_display/pane.py (pulled in by proxy_display/__init__.py) uses a 2-level relative
-# import ("from ..constants") that requires proxy_display to be resolved as a SUBPACKAGE of
-# the project root, not as a flat top-level package like the src/proxy/* imports above —
-# resolved via a second sys.path root + dynamic import (dodges static "from src." rewriting).
 sys.path.insert(0, str(WORKTREE_ROOT))
 _src_pkg = 'src'
 _render_messages_mod = importlib.import_module(_src_pkg + '.proxy_display.render_messages')
@@ -46,10 +42,6 @@ def _dist(values):
     }
 
 
-# Render one op through the REAL compose_block + _render_span_content pipeline — "recorded"
-# uses today's actual op (possibly prefix/suffix-trimmed); "hypothetical" uses a synthetic
-# full-block op (0, bt, at) to show how a full-replacement-aware _extract_block_op would render
-# the SAME underlying change. Returns (recorded_lines, hypothetical_lines), ANSI stripped.
 def _render_comparison(rec):
     bt = rec['bt']
     recorded_op = [(rec['offset'], rec['removed'], rec['injected'])]

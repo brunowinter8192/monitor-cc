@@ -6,9 +6,6 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
-# Structural passes (own logic) stayed in message_passes.py; template passes (generic pass
-# runner + declarative spec) moved to message_passes_simple.py; the wake-up concern moved to
-# message_passes_wakeup.py (2026-09, helper-extraction milestone).
 from proxy.message_passes import (
     _apply_role_system_strip,
     _apply_first_pass,
@@ -29,13 +26,6 @@ from proxy.rule_ops import _block_inner_text
 from proxy.payload_helpers import _top_level_content_contains
 from proxy.content_strip import _message_has_rejection
 
-# Real pass order from src/proxy/rules.py::apply_modification_rules — _passes list, then the
-# _dedup_wakeup_blocks call that follows the loop. Each pass function is called with ONLY the
-# per-request NEW message slice (see _scan_file) — legitimate because every pass here decides
-# per-message from that message's own content alone (verified by reading message_passes.py: no
-# pass reads any OTHER message's content), so feeding only new messages is equivalent to feeding
-# the full growing list and produces identical per-message ops without dual-log's cumulative
-# duplicate counting (same dedup principle as D1, blessed for that deliverable).
 _PASSES = [
     _apply_role_system_strip,
     _apply_sn_notice_strip,
@@ -50,12 +40,6 @@ _PASSES = [
     _apply_bd_noise_strip,
 ]
 
-# Semantic classification per call site — determined by READING the underlying strip function,
-# not by any measured ratio. FULL = new block content is constructed independently of the old
-# (a fixed literal, or a freshly-derived string) with no attempt to preserve any of the old text
-# outside what a template happens to share. PARTIAL = a known marker/chunk is excised from within
-# the text (regex.sub / str.replace / slice) and everything else in the block is kept verbatim.
-# STRUCTURAL = neither — an index-shift artifact, not a designed content transform.
 PASS_CLASS = {
     '_apply_role_system_strip': (
         'FULL',
@@ -106,9 +90,6 @@ PASS_CLASS = {
         "shifted index (index-shift artifact, not a designed content replacement)"),
 }
 
-# _apply_first_pass is one function with 5 internal elif-branches, each with a DIFFERENT
-# classification — sub-classify per message by re-evaluating the same branch conditions the
-# real function uses (reusing the real predicate functions, not reimplementing their logic)
 FIRST_PASS_BRANCH_CLASS = {
     'TN': ('PARTIAL',
            "payload_helpers.py:159 — _NOTIF_PAT.sub(_repl, content) or '.' — regex splice, "
@@ -126,8 +107,6 @@ FIRST_PASS_BRANCH_CLASS = {
 
 # FUNCTIONS
 
-# Re-derive which _apply_first_pass elif-branch fires for one message — mirrors the real
-# elif-chain in message_passes.py exactly, reusing the real predicate functions
 def _first_pass_branch(old_content, role):
     if role in ('user', 'system') and _top_level_content_contains(old_content, '<task-notification>'):
         return 'TN'
@@ -142,7 +121,6 @@ def _first_pass_branch(old_content, role):
     return None
 
 
-# Block text at blk_idx, mirroring _ops_from_content_change's own extraction exactly
 def _block_text(content, blk_idx):
     if isinstance(content, list):
         return _block_inner_text(content[blk_idx]) if blk_idx < len(content) else ''
@@ -151,8 +129,6 @@ def _block_text(content, blk_idx):
     return ''
 
 
-# Drive one delta message-list through all passes in real order, collecting every op with its
-# semantic class + evidence + (bt, at) for corroborating-ratio + render reproduction
 def _drive_passes(delta_messages, records):
     new_messages = delta_messages
     for pass_fn in _PASSES:
@@ -178,7 +154,6 @@ def _drive_passes(delta_messages, records):
                         'offset': offset, 'removed': removed, 'injected': injected,
                         'bt': bt, 'at': at,
                     })
-    # _dedup_wakeup_blocks runs after the pass loop in rules.py, outside _passes
     messages_before = new_messages
     new_messages, pass_ops = _dedup_wakeup_blocks(new_messages)
     for msg_idx, blk_map in pass_ops.items():
@@ -199,11 +174,6 @@ def _drive_passes(delta_messages, records):
     return new_messages
 
 
-# Scan one corpus file: dedup via prev-message-count delta (same principle as D1) — each pass
-# function decides per-message from that message's own content alone (no cross-message
-# dependency in any of the 11 passes, verified by reading message_passes.py), so feeding only
-# the newly-introduced messages per request reproduces the exact same per-message ops the real
-# cumulative pipeline would produce, without reprocessing (and over-counting) duplicated history.
 def _scan_file(path, records):
     prev_count = 0
     requests = 0

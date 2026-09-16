@@ -1,44 +1,3 @@
-"""
-p6_no_flow_extra_prepend_probe.py — the expanded body is the request's payload delta, nothing else.
-
-Replaces `p6_flow_extra_suppress_probe.py` (2026-08-30). That probe verified a PARTIAL suppression
-of the out-of-window prepend (total_tokens nuke only) by rendering each entry twice, once with the
-suppression disabled. The prepend mechanism was removed entirely hours later, so there is no second
-rendering to compare against any more — the invariants below are self-contained instead, which also
-means they keep holding as the recorded logs grow.
-
-Drives the REAL read path (`_parse_forwarded_log` -> `accumulate_dual_log` -> pane-style entry
-attach -> `render_messages`) over recorded sessions and asserts:
-
-  1. No entry's body contains a `[N]` message header BELOW that entry's own delta-window start
-     (prev_msg_count for the new-messages branch, diff_start for the modified branch). This is the
-     property the removal bought: body == payload delta.
-  2. `_render_flow_extra_messages` and `_own_msgs` no longer exist in `render_messages`, and no
-     entry carries a `_strip_msgs_sub_lookup` / `_inject_msgs_sub_lookup` attachment — a
-     reintroduction guard, since a partial revert would otherwise pass check 1 silently.
-  3. Every entry whose out-of-window touch is SUBSTANTIAL still badges — those badge words are now
-     the ONLY in-pane trace of such a strip. Substantiality is read off the raw dual-log lines via
-     `parser._msg_delta_entry_is_substantial`, because a touch that is only the per-request
-     total_tokens nuke deliberately badges nothing (the 2026-08-29 divergence) and must not be
-     demanded here.
-  4. The in-window path still renders spans: at least one entry shows an olive or green span, so a
-     regression that killed span rendering outright cannot pass as "no prepend".
-  5. The write-side LAG CORRECTION holds (2026-08-30): every coordinate the parser attributes back
-     to the flow that actually stripped it carries the total_tokens marker text (never a
-     mid-conversation overwrite such as the task-tools nag, which would be neighbour bleed), and
-     every such coordinate falling inside its flow's delta window really renders an olive span and
-     a green ".". Without the correction those messages render as a bare "." — the defect this
-     check guards.
-
-It also REPORTS (never asserts) how many entries have an out-of-window touched index whose stripped
-original is therefore invisible in the pane — the accepted cost of the removal, recoverable only
-from the dual-log `_stripped` stream (e.g. via the duallog CLI).
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy_instrumentation/p6_no_flow_extra_prepend_probe.py
-    ./venv/bin/python dev/proxy_instrumentation/p6_no_flow_extra_prepend_probe.py <stem> [<stem> ...]
-"""
-
 # INFRASTRUCTURE
 import re
 import sys
@@ -47,8 +6,6 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 
-# Recorded dual-log sessions are untracked data living in the main checkout, never duplicated into
-# worktrees — code under test is imported from WORKTREE_ROOT above.
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 
@@ -69,7 +26,6 @@ _ACC_KEYS = ('system', 'tools', 'messages', 'fields', '_has_content_by_flow_id',
 # FUNCTIONS
 
 
-# Load one recorded session the way pane.py assembles it, messages retained for every entry
 def _load_session(stem: str) -> list:
     from src.proxy_display.forwarded_parser import _parse_forwarded_log, _infer_model_family
     from src.proxy_display.dual_log_accumulator import accumulate_dual_log
@@ -92,9 +48,6 @@ def _load_session(stem: str) -> list:
     return entries
 
 
-# The first msg index this entry's delta window covers — mirrors render_messages' own branch
-# choice, recomputed here rather than imported so the probe cannot drift into agreeing by
-# construction with the code it checks
 def _delta_window_start(entry: dict, prev_entry) -> int:
     messages = entry.get('messages', []) or []
     prev_msg_count = prev_entry.get('message_count', 0) if prev_entry is not None else 0
@@ -112,13 +65,11 @@ def _delta_window_start(entry: dict, prev_entry) -> int:
     return diff_start
 
 
-# Msg indices appearing as top-level headers in a rendered body
 def _header_indices(body: str) -> list:
     return [int(m.group(1)) for m in
             (_MSG_HEADER_RE.match(line) for line in _ANSI_RE.sub('', body).splitlines()) if m]
 
 
-# Render every entry; returns {entry_idx: (body, window_start, out_of_window_touches)}
 def _render_all(entries: list) -> dict:
     from src.proxy_display.render_messages import render_messages
     from src.proxy_display.render_turn import _resolve_prev_same_family
@@ -138,8 +89,6 @@ def _render_all(entries: list) -> dict:
     return out
 
 
-# {(flow_id, msg_idx): True} for every delta entry the parser calls substantial, read straight off
-# the raw dual-log lines — the same verdict the badge rests on
 def _substantial_touches(stem: str) -> dict:
     import json
     from src.proxy_display.proxy_badge import _msg_delta_entry_is_substantial
@@ -160,8 +109,6 @@ def _substantial_touches(stem: str) -> dict:
     return verdicts
 
 
-# Check 5: the lag correction is marker-only, and the coordinates it fixes really render spans.
-# Returns (coords_with_wrong_text, coords_in_window_without_spans, total_corrected).
 def _check_lag_correction(entries: list, rendered: dict) -> tuple:
     marker = re.compile(r'^<total_tokens>\d+ tokens left</total_tokens>$')
     accs = {}
@@ -184,13 +131,12 @@ def _check_lag_correction(entries: list, rendered: dict) -> tuple:
         fid = entries[idx].get('flow_id', '')
         for i in entries[idx].get('_lag_msgs_lookup', {}).get(fid, set()):
             if int(i) < start:
-                continue  # outside this entry's delta window — nothing is drawn there at all
+                continue
             if DIM_YELLOW_BG not in body or DIM_GREEN_BG not in body:
                 unrendered.append((idx, i))
     return bad_text, unrendered, total
 
 
-# Checks 2's source-level half: the removed symbols must not come back
 def _removed_symbols_absent() -> tuple:
     from src.proxy_display import render_messages as rm
     gone = [name for name in ('_render_flow_extra_messages', '_own_msgs') if hasattr(rm, name)]
@@ -222,7 +168,6 @@ def _badge_silence_stats(entries: list, rendered: dict, stem: str) -> tuple:
     return with_outside, with_real_outside, silent
 
 
-# One session: render, assert the four invariants, return (rows, stats)
 def _check_session(stem: str) -> tuple:
     entries = _load_session(stem)
     rendered = _render_all(entries)
