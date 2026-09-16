@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""Repetition-based Bash waste analysis from a single proxy-log JSONL snapshot.
-
-Input:  path to one proxy-log JSONL (uses the entry with the highest message_count)
-Output: markdown report to stdout (redirect to file recommended)
-
-Usage:
-    ./venv/bin/python dev/tool_use_analysis/waste_repetition.py \\
-        src/logs/api_requests_opus_monitor_cc_1776855140.jsonl \\
-        > /tmp/waste_rep.md 2>&1
-"""
 
 # INFRASTRUCTURE
 import argparse
@@ -32,7 +22,6 @@ _SIG_SUBS = [
     (re.compile(r'(worker-cli\s+\w+\s+)[\w-]+'), r'\1<WORKER>'),
 ]
 
-# (pattern, context, replacement, repl_len, label) — most specific first
 KNOWN_SHORTCUTS = [
     (re.compile(r'/Users/brunowinter2000/Documents/ai/([^/\s]+)(?=\s|$|/)'),
      'worker_cli_arg', 'c', 1,
@@ -66,7 +55,6 @@ def run(path, min_count, top_k):
 
 # FUNCTIONS
 
-# Find entry with highest message_count — the cumulative snapshot of the session
 def _find_snapshot(path):
     best, best_count = None, -1
     with open(path, encoding='utf-8') as f:
@@ -86,7 +74,6 @@ def _find_snapshot(path):
     return best
 
 
-# Yield deduplicated Bash commands from snapshot assistant messages
 def _extract_bash_cmds(snapshot):
     seen_ids = set()
     cmds = []
@@ -109,7 +96,6 @@ def _extract_bash_cmds(snapshot):
     return cmds
 
 
-# Normalize a Bash command to a stable grouping signature
 def _sig(cmd):
     s = cmd.replace('\n', ' ')
     s = re.sub(r'\s+', ' ', s).strip()
@@ -118,14 +104,12 @@ def _sig(cmd):
     return s[:SIG_MAX_CHARS]
 
 
-# Return first whitespace token of signature (family grouping key), truncated
 def _family_key(sig):
     tokens = sig.split()
     first = tokens[0] if tokens else '?'
     return first[:40] + ('…' if len(first) > 40 else '')
 
 
-# Group commands by signature, filter by min_count, rank by count * avg_chars descending
 def _rank_groups(cmds, min_count):
     raw = defaultdict(lambda: {'count': 0, 'total_chars': 0, 'sample': None})
     for cmd in cmds:
@@ -151,13 +135,11 @@ def _rank_groups(cmds, min_count):
     return sorted(result, key=lambda x: -x['score'])
 
 
-# Return True if the cmd fragment at match_start is a worker-cli / git-check / dev-sync argument
 def _ctx_worker_cli_arg(cmd, match_start):
     prefix = cmd[max(0, match_start - 80):match_start].rstrip()
     return bool(re.search(r'(worker-cli\s+\w+(\s+\S+)*|git-check|dev-sync)\s*$', prefix))
 
 
-# Count per-rule occurrences and chars saved across all commands
 def _count_shortcuts(cmds):
     results = []
     for pat, ctx, _repl, repl_len, label in KNOWN_SHORTCUTS:
@@ -178,7 +160,6 @@ def _count_shortcuts(cmds):
     return results
 
 
-# Total unique shortcut savings — best rule wins per fragment, no double-counting across overlapping rules
 def _total_shortcut_savings(cmds):
     total = 0
     for cmd in cmds:
@@ -197,7 +178,6 @@ def _total_shortcut_savings(cmds):
     return total
 
 
-# Render the header + summary line
 def _render_header(path, cmds, groups, min_count, shortcut_total):
     total_bash = len(cmds)
     total_chars = sum(len(c) for c in cmds)
@@ -216,7 +196,6 @@ def _render_header(path, cmds, groups, min_count, shortcut_total):
     return L
 
 
-# Render the Family Overview + Repetition Groups sections
 def _render_groups(groups, min_count, top_k):
     L = ['## Family Overview', '']
     families = defaultdict(lambda: {'count': 0, 'total_chars': 0})
@@ -252,7 +231,6 @@ def _render_groups(groups, min_count, top_k):
     return L, shown
 
 
-# Render the Replaceable Path Fragments section
 def _render_shortcuts(shortcut_hits, shortcut_total):
     L = ['## Replaceable Path Fragments', '',
          '| Rule | Occurrences | Chars saved / occurrence | Total saved |',
@@ -268,7 +246,6 @@ def _render_shortcuts(shortcut_hits, shortcut_total):
     return L
 
 
-# Render the Full Samples section (top 10 of the shown groups)
 def _render_full_samples(shown):
     if not shown:
         return []
@@ -284,7 +261,6 @@ def _render_full_samples(shown):
     return L
 
 
-# Assemble and return the full markdown report
 def _build_report(path, cmds, groups, min_count, top_k, shortcut_hits, shortcut_total):
     L = _render_header(path, cmds, groups, min_count, shortcut_total)
     group_lines, shown = _render_groups(groups, min_count, top_k)

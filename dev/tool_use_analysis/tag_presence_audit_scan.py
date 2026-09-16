@@ -3,7 +3,6 @@ import json
 import re
 from datetime import datetime
 
-# Mirror of _SR_TEMPLATES from src/proxy/strip_sr.py (copy — no proxy/ import needed here)
 _SR_TEMPLATES = {
     'task-tools-nag':      ("The task tools haven't been used recently",                  'full'),
     'pyright-diagnostics': ('<new-diagnostics>',                                          'full'),
@@ -17,21 +16,16 @@ _SR_TEMPLATES = {
     'plan-mode':           ('Plan mode ',                                                 'full'),
 }
 
-# Preserved preamble: SR blocks starting with this are kept by design (CLAUDE.md context delivery)
 _PRESERVE_PREAMBLE = "As you answer the user's questions, you can use the following context:"
 
-# Standalone SR block regex (line-anchored) — used only for scanning stripped_msg_removed chunks
 _STANDALONE_SR_RE = re.compile(r'(?m)^<system-reminder>(.*?)</system-reminder>', re.DOTALL)
 
-# Non-SR tag literals
 _TN_TAG = '<task-notification>'
 _ND_TAG = '<new-diagnostics>'
 _PO_TAG = '<persisted-output>'
 
-# Standalone TN/ND block regexes (line-anchored, mirrors proxy strip logic)
 _STANDALONE_TN_RE = re.compile(r'(?m)^<task-notification>.*?</task-notification>', re.DOTALL)
 _STANDALONE_ND_RE = re.compile(r'(?m)^<new-diagnostics>.*?</new-diagnostics>', re.DOTALL)
-# PO preview regex — mirror of src/proxy/strip_po.py:_PO_PREVIEW_RE
 _PO_PREVIEW_RE = re.compile(
     r'(?P<open><persisted-output>\nOutput too large[^\n]+)'
     r'(?P<preview>\n+Preview \(first [^\n]+\):\n.*?)'
@@ -41,7 +35,6 @@ _PO_PREVIEW_RE = re.compile(
 
 # FUNCTIONS
 
-# Return a fresh scan-state accumulator
 def _init_scan_state():
     return {
         'blocks': [],
@@ -55,7 +48,6 @@ def _init_scan_state():
     }
 
 
-# Merge one _scan_entry result into the accumulator state
 def _merge_scan_result(state, result):
     block_lines, tc_d, byp_d, cap_d, tn_b, tn_c, nd_b, nd_c, po_b, po_c, has_tags = result
     for k in state['tag_counts']:
@@ -74,7 +66,6 @@ def _merge_scan_result(state, result):
         state['blocks'].extend(block_lines)
 
 
-# Stream JSONL, accumulate aggregate counters, buffer only tag-positive REQ blocks
 def _stream_and_audit(jsonl_path):
     state = _init_scan_state()
     prev = None
@@ -108,9 +99,6 @@ def _stream_and_audit(jsonl_path):
             state['po_bypassed'], state['po_captured'])
 
 
-# Scan messages[start:] for SR/TN/ND/PO tag occurrences; returns
-# (tag_occurrences, tc, byp, tn_byp, nd_byp, po_byp)
-# SR scan for one text — anchored regex (mirrors proxy logic: only line-start SR blocks stripped)
 def _scan_sr_in_text(messages, abs_idx, layer, text, seen, tag_occurrences, tc, byp):
     for m in _STANDALONE_SR_RE.finditer(text):
         inner = m.group(1).strip()
@@ -132,7 +120,6 @@ def _scan_sr_in_text(messages, abs_idx, layer, text, seen, tag_occurrences, tc, 
                 byp[tid] += 1
 
 
-# Non-SR (TN/ND/PO) tag scan for one text — returns (tn_byp, nd_byp, po_byp) deltas
 def _scan_non_sr_in_text(messages, abs_idx, layer, text, seen, tag_occurrences, tc):
     tn_byp = nd_byp = po_byp = 0
     for tag_type, tag_str in (('TN', _TN_TAG), ('ND', _ND_TAG), ('PO', _PO_TAG)):
@@ -145,7 +132,6 @@ def _scan_non_sr_in_text(messages, abs_idx, layer, text, seen, tag_occurrences, 
                 content_lines = _context_neighborhood(text, tag_str, 4)
                 tag_occurrences.append((header, content_lines))
                 tc[tag_type] += 1
-            # Bypass counting: line-anchored blocks still present in post-strip payload
             if tag_type == 'TN':
                 tn_byp += len(_STANDALONE_TN_RE.findall(text))
             elif tag_type == 'ND':
@@ -156,11 +142,11 @@ def _scan_non_sr_in_text(messages, abs_idx, layer, text, seen, tag_occurrences, 
 
 
 def _scan_tag_occurrences(messages, start):
-    tag_occurrences = []  # list of (header_line, content_lines)
+    tag_occurrences = []
     tc = {'SR': 0, 'TN': 0, 'ND': 0, 'PO': 0}
     byp = {tid: 0 for tid in _SR_TEMPLATES}
     tn_byp = nd_byp = po_byp = 0
-    seen = set()  # dedup within REQ
+    seen = set()
 
     for abs_idx in range(start, len(messages)):
         for layer, text in _iter_msg_text_with_layer(messages, abs_idx):
@@ -175,8 +161,6 @@ def _scan_tag_occurrences(messages, start):
     return tag_occurrences, tc, byp, tn_byp, nd_byp, po_byp
 
 
-# Scan stripped_msg_removed for captured SR/TN/ND/PO chunks; returns
-# (cap, tn_cap, nd_cap, po_cap, stripped_lines)
 def _scan_captured(entry, start, messages):
     smr = entry.get('stripped_msg_removed') or {}
     cap = {tid: 0 for tid in _SR_TEMPLATES}
@@ -203,11 +187,9 @@ def _scan_captured(entry, start, messages):
                     if tid:
                         cap[tid] += 1
             else:
-                # partial-mode or fragment chunk — try direct match on raw chunk
                 tid, _ = _match_template(chunk.strip())
                 if tid:
                     cap[tid] += 1
-            # TN/ND/PO captured detection
             chunk_s = chunk.strip()
             if chunk_s.startswith('<task-notification>'):
                 tn_cap += 1
@@ -222,7 +204,6 @@ def _scan_captured(entry, start, messages):
     return cap, tn_cap, nd_cap, po_cap, stripped_lines
 
 
-# Build the "### REQ #n ..." block from tag_occurrences + stripped_lines
 def _build_req_block(req_num, entry, prev, start, tag_occurrences, stripped_lines):
     prev_mc = prev.get('message_count', 0) if prev else 0
     curr_mc = entry.get('message_count', 0)
@@ -241,7 +222,6 @@ def _build_req_block(req_num, entry, prev, start, tag_occurrences, stripped_line
     return block_lines
 
 
-# Scan one opus REQ for tag occurrences in delta range and captured SR in stripped_msg_removed
 def _scan_entry(entry, prev, req_num):
     messages = entry.get('raw_payload', {}).get('messages', [])
     diff = entry.get('diff_from_prev') or {}
@@ -261,7 +241,6 @@ def _scan_entry(entry, prev, req_num):
     return block_lines, tc, byp, cap, tn_byp, tn_cap, nd_byp, nd_cap, po_byp, po_cap, True
 
 
-# Yield (layer_label, text) for all text content in messages[abs_idx]
 def _iter_msg_text_with_layer(messages, abs_idx):
     if abs_idx >= len(messages):
         return
@@ -296,7 +275,6 @@ def _iter_msg_text_with_layer(messages, abs_idx):
                 yield 'tool_use', name + '\n' + json.dumps(inp)
 
 
-# Find inner texts of standalone SR blocks in text (line-start anchored) — for smr chunks
 def _find_sr_inners(text):
     if '<system-reminder>' not in text:
         return
@@ -304,7 +282,6 @@ def _find_sr_inners(text):
         yield m.group(1).strip()
 
 
-# Match SR inner text against templates; returns (template_id, mode) or (None, None)
 def _match_template(inner):
     for tid, (identifier, mode) in _SR_TEMPLATES.items():
         identifiers = identifier if isinstance(identifier, list) else [identifier]
@@ -314,7 +291,6 @@ def _match_template(inner):
     return None, None
 
 
-# Return ' [tool_result:ToolName]' or ' [tool_result]' or '' for messages[abs_idx]
 def _make_tool_label(messages, abs_idx):
     if not _is_tool_result(messages, abs_idx):
         return ''
@@ -322,7 +298,6 @@ def _make_tool_label(messages, abs_idx):
     return f' [tool_result:{name}]' if name else ' [tool_result]'
 
 
-# Check whether messages[idx] is a user-role tool_result message
 def _is_tool_result(messages, idx):
     if idx >= len(messages):
         return False
@@ -335,7 +310,6 @@ def _is_tool_result(messages, idx):
     return False
 
 
-# Find tool name by matching tool_use_id backward through messages
 def _get_tool_name(messages, idx):
     if idx >= len(messages):
         return None
@@ -358,13 +332,11 @@ def _get_tool_name(messages, idx):
     return None
 
 
-# Return list of lines with n-space indent for multiline text
 def _indent_lines(text, n):
     prefix = ' ' * n
     return [prefix + line for line in text.splitlines()] if text else []
 
 
-# Return indented context around tag_str — full text if short, neighborhood if long
 def _context_neighborhood(text, tag_str, n):
     stripped = text.strip()
     if len(stripped) <= 3000:
@@ -378,7 +350,6 @@ def _context_neighborhood(text, tag_str, n):
     return _indent_lines(snippet.strip(), n)
 
 
-# Format UTC ISO timestamp to local HH:MM:SS
 def _format_ts(ts_raw):
     if not ts_raw:
         return '??:??:??'

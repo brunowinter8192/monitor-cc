@@ -1,9 +1,3 @@
-"""Classify every [N characters truncated] occurrence in Opus proxy logs into Hypothesis A/B/C.
-
-Input:  src/logs/api_requests_opus_monitor_cc_*.jsonl  (15 files, positional or default glob)
-Output: dev/tool_use_analysis/<YYYYMMDD>_rag_truncation_audit.md  (--output or auto-dated)
-"""
-
 # INFRASTRUCTURE
 import argparse
 import sys
@@ -39,7 +33,6 @@ def run(jsonl_paths, output_path):
 
 # FUNCTIONS
 
-# Write report to file or stdout
 def _write_output(report, path):
     if path:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -50,7 +43,6 @@ def _write_output(report, path):
         sys.stdout.write(report)
 
 
-# CLI entry point
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Classify [N characters truncated] occurrences in Opus proxy logs.'
@@ -62,7 +54,6 @@ if __name__ == '__main__':
     parser.add_argument('--output', default='', help='Output markdown file (default: auto-dated)')
     args = parser.parse_args()
 
-    # Resolve paths
     if args.proxy_jsonl:
         paths = args.proxy_jsonl
     else:
@@ -73,7 +64,6 @@ if __name__ == '__main__':
             print('No proxy logs found under src/logs/', file=sys.stderr)
             sys.exit(1)
 
-    # Resolve output path
     if args.output:
         out = args.output
     else:

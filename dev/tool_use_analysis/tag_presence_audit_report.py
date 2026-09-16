@@ -6,7 +6,6 @@ from tag_presence_audit_scan import _SR_TEMPLATES
 
 # FUNCTIONS
 
-# Build the Tag Type Counts + SR Template Breakdown tables
 def _build_tag_and_sr_tables(tag_counts, sr_bypassed, sr_captured):
     lines = [
         '### Tag Type Counts',
@@ -32,7 +31,6 @@ def _build_tag_and_sr_tables(tag_counts, sr_bypassed, sr_captured):
     return lines
 
 
-# Build the Non-SR Tag Strip Verification table
 def _build_non_sr_table(tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured):
     lines = [
         '',
@@ -52,7 +50,6 @@ def _build_non_sr_table(tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_b
     return lines
 
 
-# Build aggregate footer section
 def _build_aggregate(tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_tags,
                      tn_bypassed, tn_captured, nd_bypassed, nd_captured,
                      po_bypassed, po_captured):
@@ -70,7 +67,6 @@ def _build_aggregate(tag_counts, sr_bypassed, sr_captured, n_opus, n_reqs_with_t
     return lines
 
 
-# Assemble full report lines
 def _build_report(jsonl_path, blocks, tag_counts, sr_bypassed, sr_captured,
                   n_opus, n_reqs_with_tags, n_non_opus,
                   tn_bypassed, tn_captured, nd_bypassed, nd_captured, po_bypassed, po_captured):

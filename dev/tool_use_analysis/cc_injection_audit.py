@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""CC injection catalog via proxy-log / session-JSONL cross-reference.
-
-For each user-role message in the delta range of each opus REQ, checks whether
-the message content appears as a real user event in the matching CC session JSONL.
-Unmatched messages are CC-injected; classified by startswith pattern.
-
-Cross-reference key: first 80 chars of normalized text (str direct / text-block concat).
-Minimum text length: 20 chars (filters empty tool_result wrappers and noise).
-
-Auto-discovery: CC session JSONL is selected by mtime proximity to the proxy log
-(max 90 min); override with --cc-session.
-
-Input:  one or more proxy log paths (positional args); default: newest 5
-        src/logs/api_requests_opus_monitor_cc_*.jsonl
-Output: dev/tool_use_analysis/<YYYYMMDDHHMM>_cc_injection_catalog.md
-"""
 
 # INFRASTRUCTURE
 
@@ -30,11 +14,9 @@ from pathlib import Path
 def _resolve_repo_root():
     if 'MONITOR_CC_ROOT' in os.environ:
         return Path(os.environ['MONITOR_CC_ROOT'])
-    # Walk up from __file__; prefer the root that has src/logs/ (handles worktrees)
     candidate = Path(__file__).parent.parent.parent
     if (candidate / 'src' / 'logs').is_dir():
         return candidate
-    # Worktree: git --git-common-dir points to main .git → parent is main repo root
     try:
         import subprocess
         git_common = subprocess.run(
@@ -51,14 +33,14 @@ def _resolve_repo_root():
 
 _REPO_ROOT = _resolve_repo_root()
 _CC_PROJECT_DIR = Path.home() / '.claude/projects/-Users-brunowinter2000-Documents-ai-Monitor-CC'
-_MIN_TEXT_LEN = 20   # chars — below this, delta user-msgs are noise
-_MTIME_CAP_SEC = 90 * 60  # 90 minutes max mtime diff for auto-discovery
+_MIN_TEXT_LEN = 20
+_MTIME_CAP_SEC = 90 * 60
 
 # ORCHESTRATOR
 
 def cc_injection_audit_workflow(proxy_log_paths, cc_session_override, output_path):
     all_hits = []
-    session_cache = {}  # proxy_log → cc_session_path used
+    session_cache = {}
 
     for proxy_log in proxy_log_paths:
         if cc_session_override:
@@ -84,7 +66,6 @@ def cc_injection_audit_workflow(proxy_log_paths, cc_session_override, output_pat
 
 # FUNCTIONS
 
-# Return CC session JSONL with smallest mtime diff to proxy log, or None if none within cap
 def _find_matching_cc_session(proxy_log, cc_project_dir):
     if not cc_project_dir.is_dir():
         return None
@@ -99,7 +80,6 @@ def _find_matching_cc_session(proxy_log, cc_project_dir):
     return None
 
 
-# Build set of head-80 strings from all user events in CC session JSONL
 def _build_cc_user_index(cc_session_path):
     heads = set()
     for line in cc_session_path.read_text().splitlines():
@@ -126,7 +106,6 @@ def _build_cc_user_index(cc_session_path):
     return heads
 
 
-# Normalize message content to a single text blob; returns '' for tool_result/tool_use
 def _normalize_msg_content(content):
     if isinstance(content, str):
         return content
@@ -140,7 +119,6 @@ def _normalize_msg_content(content):
     return ''
 
 
-# Classify an unmatched injection by content startswith pattern
 def _classify_injection(normalized_text, payload):
     if normalized_text.startswith('The user stepped away and is coming back.'):
         return 'IDLE_RECAP'
@@ -158,7 +136,6 @@ def _classify_injection(normalized_text, payload):
     return f'UNKNOWN_{slug}'
 
 
-# Scan one proxy log; return list of hit dicts for each unmatched delta user-msg
 def _scan_proxy_log(proxy_log, cc_heads):
     hits = []
     lines = [l for l in proxy_log.read_text().splitlines() if l.strip()]
@@ -199,7 +176,6 @@ def _scan_proxy_log(proxy_log, cc_heads):
     return hits
 
 
-# Render the "Proxy Logs Scanned" header block
 def _render_scanned_logs(proxy_log_paths, session_cache):
     ts = datetime.now().strftime('%Y-%m-%d %H:%M')
     lines = [
@@ -218,7 +194,6 @@ def _render_scanned_logs(proxy_log_paths, session_cache):
     return lines
 
 
-# Render the Summary table (classification → count → known strip rule)
 def _render_summary_table(by_class):
     lines = [
         f'## Summary',
@@ -239,7 +214,6 @@ def _render_summary_table(by_class):
     return lines
 
 
-# Render the per-classification detail sections
 def _render_classification_detail(by_class):
     lines = []
     for cls in sorted(by_class):
@@ -250,7 +224,6 @@ def _render_classification_detail(by_class):
             f'| proxy_log | req# | line_idx | msg_idx | len | head[80c] |',
             f'|---|---|---|---|---|---|',
         ]
-        # Deduplicate by head for the table (show unique patterns first, then occurrences)
         seen_heads = {}
         for h in hits:
             head = h['head']
@@ -269,7 +242,6 @@ def _render_classification_detail(by_class):
     return lines
 
 
-# Build the MD catalog report from all hits across all proxy logs
 def _build_report(all_hits, proxy_log_paths, session_cache):
     lines = _render_scanned_logs(proxy_log_paths, session_cache)
 

@@ -15,10 +15,8 @@ WASTE_INPUT_MIN  = 50
 SIG_MAX_CHARS    = 120
 EXAMPLE_CHARS    = 150
 
-# Tools whose large input is by design (content being written/sent) — excluded from waste analysis
 CONTENT_TRANSFER_TOOLS = {'Write', 'Edit'}
 
-# Normalization substitutions applied in order
 _NORM_SUBS = [
     (re.compile(r'/(?:Users|tmp|var|opt)/\S+'),               '<PATH>'),
     (re.compile(r'api_requests_[a-z_-]+_\d+\.jsonl'),         '<LOG>'),
@@ -31,7 +29,6 @@ _NORM_SUBS = [
 
 # FUNCTIONS
 
-# Load proxy JSONL — entries with raw_payload only, tagged with source label
 def _load_proxy(path, label):
     events = []
     with open(path, encoding='utf-8') as f:
@@ -50,7 +47,6 @@ def _load_proxy(path, label):
     return events
 
 
-# Derive short label from JSONL filename (strips api_requests_ prefix and .jsonl suffix)
 def _source_label(path):
     base = os.path.basename(path)
     if base.startswith('api_requests_'):
@@ -60,7 +56,6 @@ def _source_label(path):
     return base
 
 
-# Collect all unique tool_use blocks across events — deduped by id
 def _collect_tool_uses(events, out):
     for ev in events:
         source = ev.get('_source', '')
@@ -88,7 +83,6 @@ def _collect_tool_uses(events, out):
                 }
 
 
-# Collect all unique tool_result blocks across events — deduped by tool_use_id
 def _collect_tool_results(events, out):
     for ev in events:
         for msg in ev.get('raw_payload', {}).get('messages', []):
@@ -111,7 +105,6 @@ def _collect_tool_results(events, out):
                 }
 
 
-# Apply normalization substitutions to produce a grouping signature
 def _normalize_sig(raw):
     s = raw.replace('\n', ' ')
     s = re.sub(r'\s+', ' ', s).strip()
@@ -121,7 +114,6 @@ def _normalize_sig(raw):
     return s[:SIG_MAX_CHARS]
 
 
-# Build signature string from tool name + input fields
 def _tool_sig(name, inp):
     if name == 'Bash':
         raw = inp.get('command', '')
@@ -137,7 +129,6 @@ def _tool_sig(name, inp):
     return _normalize_sig(raw)
 
 
-# Extract primary input field as display example (150 chars, newlines flattened)
 def _raw_example(name, inp):
     if name == 'Bash':
         raw = inp.get('command', '')
@@ -151,7 +142,6 @@ def _raw_example(name, inp):
     return raw.replace('\n', ' ')[:EXAMPLE_CHARS]
 
 
-# Return True for content-transfer tools whose large input is by design, not waste
 def _is_content_transfer(name, inp):
     if name in CONTENT_TRANSFER_TOOLS:
         return True
@@ -160,16 +150,12 @@ def _is_content_transfer(name, inp):
         stripped = cmd.lstrip()
         if stripped.startswith('bd '):
             return True
-        # cat > / cat >> : heredoc or pipe redirect to file — equivalent to Write tool
         if re.match(r'cat\s+>>?', stripped):
             return True
-        # echo "long..." > file : content redirect
         if re.match(r'echo\s+["\'].{100,}["\'].*>', stripped):
             return True
-        # git commit with long message: commit message is content, not repeatable pattern
         if re.search(r'\bgit\s+commit\b', cmd) and len(cmd) > 200:
             return True
-        # worker-cli send: message arg is content (equivalent to MCP worker_send)
         if stripped.startswith('worker-cli send '):
             return True
     if 'worker_send' in name or 'worker_merge' in name:
@@ -177,7 +163,6 @@ def _is_content_transfer(name, inp):
     return False
 
 
-# Classify error type from tool_result text (called only when is_error=True)
 def _classify_failure(text):
     if TOOL_USE_ERROR_OPEN in text:
         if PARALLEL_CANCEL_TAG in text:
@@ -192,7 +177,6 @@ def _classify_failure(text):
     return 'bash-exit-nonzero'
 
 
-# Build waste, failed, and content-transfer pair lists from matched tool_use + tool_result pairs
 def _build_pairs(tool_uses, tool_results):
     waste, failed, ct = [], [], []
     for tid, tu in tool_uses.items():
@@ -210,7 +194,6 @@ def _build_pairs(tool_uses, tool_results):
     return waste, failed, ct
 
 
-# Aggregate waste pairs by (tool_name, sig)
 def _aggregate_waste(waste_pairs):
     groups = {}
     for p in waste_pairs:
@@ -225,7 +208,6 @@ def _aggregate_waste(waste_pairs):
     return groups
 
 
-# Aggregate failed pairs by (tool_name, sig, error_type)
 def _aggregate_failed(failed_pairs):
     groups = {}
     for p in failed_pairs:
@@ -238,7 +220,6 @@ def _aggregate_failed(failed_pairs):
     return groups
 
 
-# Compute per-source summary stats for section 1
 def _per_source_stats(tool_uses, waste_pairs, failed_pairs, ct_pairs, jsonl_paths):
     stats = {}
     for path in jsonl_paths:

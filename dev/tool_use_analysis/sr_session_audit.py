@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""SR Session-JSONL longitudinal audit across all CC project sessions.
-
-Scans ~/.claude/projects/*/*.jsonl for <system-reminder> blocks in user-role messages.
-Classifies each block against the current strip template catalog from
-src/proxy/strip_sr._SR_TEMPLATES. Reports known/preserved/unknown buckets with
-per-bucket timeline and CC-version attribution across all projects and sessions.
-
-Noise filters applied before classification:
-  - code-heuristic: inner text starts with regex syntax (.*?, \\s*) or contains
-    Python code markers (re.compile, _SR_TEMPLATES, def ...).
-  - data-file-noise (Option A): UNKNOWN bucket only — drops SR when the 120-char
-    context before <system-reminder> contains \\d+\\t (Read-tool line-number prefix),
-    indicating the SR was read from a data file rather than injected by CC.
-
-Input:  ~/.claude/projects/*/*.jsonl  (CC session files, filtered by --since date)
-Output: dev/tool_use_analysis/<YYYYMMDDHHMM>_sr_session_audit.md
-"""
 
 # INFRASTRUCTURE
 
@@ -38,14 +21,11 @@ from proxy.strip_sr import _SR_TEMPLATES, _PRESERVE_PREAMBLE
 
 _CC_PROJECTS_DIR = Path.home() / '.claude' / 'projects'
 
-# Line-start anchored SR block regex (same anchor as src/proxy/strip_sr._STANDALONE_SR_RE)
 _SR_RE = re.compile(r'(?m)^<system-reminder>(.*?)</system-reminder>', re.DOTALL)
 
-# Read-tool output format: 'NNN\t content' — used to detect data-file-noise context
 _READ_TOOL_LINE_RE = re.compile(r'\d+\t')
 _LINE_NUM_PREFIX_RE = re.compile(r'^\d+\t')
 
-# Code-noise heuristic: inner text that starts with these is a regex/code artefact
 _NOISE_STARTS = ('.*?', r'\s*', r'\n', '(.*', '(.*?)', '...', r'\d+\t')
 _NOISE_CONTAINS = (
     're.compile', 're.escape', 're.findall',
@@ -63,7 +43,7 @@ def sr_session_audit_workflow(project_filter, since_date, output_path, top_n):
     }
     known = {tid: _empty_stat() for tid in _SR_TEMPLATES}
     preserved = _empty_stat()
-    unknown = {}  # normalized_prefix → stat dict with extra 'sample' + 'projects' keys
+    unknown = {}
 
     for proj_name, session_path in _iter_sessions(project_filter):
         scan['n_files'] += 1
@@ -100,7 +80,6 @@ def sr_session_audit_workflow(project_filter, since_date, output_path, top_n):
 
 # FUNCTIONS
 
-# Yield (proj_name, session_path) for all session JSONLs matching optional project filter
 def _iter_sessions(project_filter):
     if not _CC_PROJECTS_DIR.is_dir():
         return
@@ -113,7 +92,6 @@ def _iter_sessions(project_filter):
             yield proj_dir.name, jsonl
 
 
-# Yield (entry_date, version, content) for user messages with date >= since_date
 def _iter_user_messages(session_path, since_date, scan):
     try:
         with open(session_path, encoding='utf-8', errors='replace') as f:
@@ -136,9 +114,8 @@ def _iter_user_messages(session_path, since_date, scan):
         pass
 
 
-# Yield (inner, layer, ctx_before) for all line-start SR blocks in user message content
 def _extract_sr_hits(content):
-    texts = []  # (layer, full_text)
+    texts = []
     if isinstance(content, str):
         texts.append(('text', content))
     elif isinstance(content, list):
@@ -164,7 +141,6 @@ def _extract_sr_hits(content):
             yield inner, layer, text[max(0, m.start() - 120):m.start()]
 
 
-# Classify inner text → (bucket_or_None, noise_type_or_None)
 def _classify(inner, ctx_before):
     if _is_code_noise(inner):
         return None, 'code-noise'
@@ -175,13 +151,11 @@ def _classify(inner, ctx_before):
         for ident in ids:
             if inner.startswith(ident):
                 return f'known:{tid}', None
-    # Option A: unknown + Read-tool line-number prefix in context → data-file artefact
     if _READ_TOOL_LINE_RE.search(ctx_before):
         return None, 'data-file-noise'
-    return None, None  # genuine unknown
+    return None, None
 
 
-# True if inner text looks like regex/code rather than a real SR injection
 def _is_code_noise(inner):
     if not inner or inner == '.':
         return True
@@ -197,7 +171,6 @@ def _is_code_noise(inner):
     return False
 
 
-# Add one SR observation to a stat bucket
 def _add(stat, layer, version, entry_date):
     stat['total'] += 1
     stat[layer] = stat.get(layer, 0) + 1
@@ -208,12 +181,10 @@ def _add(stat, layer, version, entry_date):
     stat['versions'].add(version)
 
 
-# Return a fresh stat bucket
 def _empty_stat():
     return {'total': 0, 'text': 0, 'tool_result': 0, 'first': None, 'last': None, 'versions': set()}
 
 
-# Parse ISO-8601 timestamp string to date; returns None on failure
 def _parse_date(ts_raw):
     if not ts_raw:
         return None
@@ -223,7 +194,6 @@ def _parse_date(ts_raw):
         return None
 
 
-# Format one Known/Preserved table row
 def _row(label, s):
     return (
         f"| {label} | {s['total']} | {s['text']} | {s['tool_result']} "
@@ -232,8 +202,6 @@ def _row(label, s):
     )
 
 
-# Build the full report as a list of lines
-# Render the run-header + scan-parameters block
 def _render_scan_header(scan):
     ts_run = datetime.now().strftime('%Y-%m-%d %H:%M')
     n_noise = scan['n_code_noise'] + scan['n_data_noise']
@@ -261,7 +229,6 @@ def _render_scan_header(scan):
     ]
 
 
-# Render the Known Templates + Preserved tables
 def _render_known_and_preserved(known, preserved):
     L = [
         '',
@@ -282,7 +249,6 @@ def _render_known_and_preserved(known, preserved):
     return L
 
 
-# Render the Unknown / Gap Candidates table; returns (lines, sorted_unknown)
 def _render_unknown_table(unknown, top_n):
     sorted_unknown = sorted(unknown.items(), key=lambda x: -x[1]['total'])[:top_n]
     L = [
@@ -301,7 +267,6 @@ def _render_unknown_table(unknown, top_n):
     return L, sorted_unknown
 
 
-# Render the Unknown sample-text sections
 def _render_unknown_samples(sorted_unknown, top_n):
     if not sorted_unknown:
         return []

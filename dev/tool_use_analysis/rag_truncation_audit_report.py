@@ -6,7 +6,6 @@ from rag_truncation_audit_data import _source_label
 
 # FUNCTIONS
 
-# Render the "Source JSONLs" block; returns lines
 def _report_source_block(jsonl_paths, per_source_events):
     lines = ['## Source JSONLs', '']
     total_events = 0
@@ -36,7 +35,6 @@ def _report_source_block(jsonl_paths, per_source_events):
     return lines
 
 
-# Render the Summary section
 def _report_summary(jsonl_paths, classified, echo_hits):
     n_b = sum(1 for c in classified.values() if c['hypothesis'] == 'B')
     n_a = sum(1 for c in classified.values() if c['hypothesis'] == 'A')
@@ -54,7 +52,6 @@ def _report_summary(jsonl_paths, classified, echo_hits):
     return lines
 
 
-# Render the Hit Table section
 def _report_hit_table(classified):
     lines = [
         '## Hit Table', '',
@@ -75,7 +72,6 @@ def _report_hit_table(classified):
     return lines
 
 
-# Render the Hypothesis C echo-hits section (only when there are any)
 def _report_echo_hits(echo_hits):
     if not echo_hits:
         return []
@@ -95,7 +91,6 @@ def _report_echo_hits(echo_hits):
     return lines
 
 
-# Render the structural-fingerprint section for Hypothesis B hits
 def _report_fingerprint(classified):
     lines = [
         '## CC Inline Truncation — Structural Fingerprint', '',
@@ -120,7 +115,6 @@ def _report_fingerprint(classified):
     return lines
 
 
-# Render the fixed Conclusion section
 def _report_conclusion():
     lines = ['## Conclusion', '']
     lines.append('**Hypothesis B confirmed. Hypotheses A and C are secondary/derivative.**')
@@ -146,7 +140,6 @@ def _report_conclusion():
     return lines
 
 
-# Build the full Markdown report
 def _build_report(jsonl_paths, per_source_events, tool_uses, trunc_results, echo_hits, classified):
     ts    = datetime.now().strftime('%Y-%m-%dT%H:%M')
     lines = [f'# RAG Truncation Audit — {ts}', '']

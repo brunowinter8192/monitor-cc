@@ -5,7 +5,6 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-# Path insertion so "from proxy.strip_vocab import ..." resolves from dev/ script
 _src_dir = os.path.join(
     os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent)),
     'src',
@@ -16,7 +15,6 @@ if _src_dir not in sys.path:
 from proxy.strip_vocab import RULES, classify_req as vocab_classify_req
 from proxy.strip_sr import _SR_TEMPLATES, _PRESERVE_PREAMBLE
 
-# Template ID → rule name as it appears in modifications[]
 _TEMPLATE_TO_RULE = {
     'task-tools-nag':      'stripped_task_tools_nag',
     'pyright-diagnostics': 'stripped_pyright_diagnostics',
@@ -30,19 +28,16 @@ _TEMPLATE_TO_RULE = {
     'plan-mode':           'removed_plan_mode_sr',
 }
 
-# Non-SR tag literals for LEAK/SUSPECT detection
 _TN_TAG = '<task-notification>'
 _ND_TAG = '<new-diagnostics>'
-_PO_TAG = '<persisted-output>'   # no active rule (rolled back) — always SUS
+_PO_TAG = '<persisted-output>'
 
-# SR-wrapping strip rule fullnames (mirrors strip_vocab._SR_STRIP_RULES; TN excluded)
 _SR_STRIP_RULE_NAMES: frozenset = frozenset(
     fn for code, (fn, _) in RULES.items() if code not in ('TN',)
 )
 
 # FUNCTIONS
 
-# Load and filter JSONL — keep only claude-opus-* entries in file order
 def _load_entries(path):
     entries = []
     n_haiku = 0
@@ -61,14 +56,10 @@ def _load_entries(path):
             if model.startswith('claude-opus-'):
                 entries.append(entry)
             elif model:
-                n_haiku += 1  # any non-opus model (haiku, sonnet subagents)
-            # null-model sent_meta entries: silently skipped
+                n_haiku += 1
     return entries, n_haiku, n_skipped
 
 
-# Classify one REQ into five buckets — delegates to vocab_classify_req for
-# effective/inert/idx/unattributed; builds verbose tag_lines locally via _check_tags
-# (audit needs raw_payload SR-block scanning; classify_tags uses monitor-format blocks)
 def _classify_req(entry, prev):
     cls = vocab_classify_req(entry, prev)
     curr_mods_ctr = Counter(entry.get('modifications', []))
@@ -84,7 +75,6 @@ def _classify_req(entry, prev):
     }
 
 
-# Attribute SR block inner text to a rule code via marker substring (not template startswith)
 def _attribute_sr_inner(inner):
     for code, (_fn, markers) in RULES.items():
         if code in ('TN', 'ALL'):
@@ -95,7 +85,6 @@ def _attribute_sr_inner(inner):
     return None
 
 
-# True if the given tag literal was stripped somewhere in the delta range (smr key >= start)
 def _tag_strip_in_delta(smr, start, tag: str) -> bool:
     for idx_str, chunks in smr.items():
         if int(idx_str) < start:
@@ -106,8 +95,6 @@ def _tag_strip_in_delta(smr, start, tag: str) -> bool:
     return False
 
 
-# Detect SR leaks/suspects in texts; returns (lines, n_leaks, n_suspects)
-# SR occurrences: substring-based (handles unclosed literals); dedup on (code, head[:30])
 def _check_sr_tags(texts, smr, start):
     lines = []
     n_leaks = 0
@@ -127,7 +114,7 @@ def _check_sr_tags(texts, smr, start):
                 inner = None
             if inner is not None and inner.startswith(_PRESERVE_PREAMBLE):
                 pos = after
-                continue   # skip preserved claudeMD context blocks — not a leak/suspect
+                continue
             head_text = text[after:after + 80].strip()
             code = _attribute_sr_inner(inner if inner is not None else head_text)
             dedup_key = (code, head_text[:30])
@@ -145,7 +132,6 @@ def _check_sr_tags(texts, smr, start):
     return lines, n_leaks, n_suspects
 
 
-# Detect a single-occurrence non-SR tag (TN/ND); returns (lines, n_leaks, n_suspects)
 def _check_simple_tag(texts, smr, start, tag, label):
     for text in texts:
         if tag in text:
@@ -155,10 +141,6 @@ def _check_simple_tag(texts, smr, start, tag, label):
     return [], 0, 0
 
 
-# Detect leaked/suspect tags in delta messages of raw_payload; returns (lines, n_leaks, n_suspects)
-# Delta-scoped: raw_payload.messages[first_diff_index:] to match header-badge scope.
-# LEAK iff the relevant strip rule fired on a msg in delta range (smr key >= start).
-# Lines use compact notation: LEAK:<SR>/CODE, SUS:<PO>, LEAK:<TN>, etc.
 def _check_tags(entry, curr_mods_ctr):
     raw_messages = entry.get('raw_payload', {}).get('messages', [])
     diff = entry.get('diff_from_prev') or {}
@@ -181,8 +163,6 @@ def _check_tags(entry, curr_mods_ctr):
     return lines, n_leaks, n_suspects
 
 
-# Extract all raw text strings from message content (various shapes)
-# Includes tool_use blocks (name + JSON-serialized input) to catch tag literals in tool inputs
 def _extract_msg_texts(messages):
     for msg in messages:
         content = msg.get('content', '')
@@ -209,10 +189,9 @@ def _extract_msg_texts(messages):
                     yield name + '\n' + json.dumps(inp)
 
 
-# Match SR inner text against templates; returns (template_id, mode) or (None, None)
 def _match_template(inner):
     if inner.startswith(_PRESERVE_PREAMBLE):
-        return None, None   # intentionally preserved — not a strip candidate
+        return None, None
     for tid, spec in _SR_TEMPLATES.items():
         identifiers = spec[0] if isinstance(spec[0], list) else [spec[0]]
         mode = spec[1]

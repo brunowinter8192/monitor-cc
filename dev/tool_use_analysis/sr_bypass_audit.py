@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""SR bypass audit: per-template count of bypassed vs captured SR blocks.
-
-Scans raw_payload.messages for SR blocks still present after proxy processing
-(bypassed) and stripped_msg_removed for SR blocks successfully removed (captured).
-Reports bypass_rate per template per log file + aggregate summary table.
-
-Methodology note: the proxy final-pass (stripped_all_sr_msg0) strips all
-templates from msg[0] but does NOT write to stripped_msg_removed. SR blocks
-captured only by the final pass show as (captured=0, bypassed=0, n/a). SR blocks
-in msg[N>0] that bypass the elif chain are counted as bypassed here.
-
-Input:  JSONL paths (positional, optional) — auto-picks newest 3
-        api_requests_opus_monitor_cc_*.jsonl when not given.
-Output: dev/tool_use_analysis/<YYYYMMDDHHMM>_sr_bypass_audit.md
-"""
 
 # INFRASTRUCTURE
 
@@ -25,8 +10,6 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-# Mirror of _SR_TEMPLATES from src/proxy/strip_sr.py
-# mode 'full' → entire SR block removed; 'partial' → IMPORTANT line removed, body kept
 _SR_TEMPLATES = {
     'task-tools-nag':      ("The task tools haven't been used recently",                 'full'),
     'pyright-diagnostics': ('<new-diagnostics>',                                         'full'),
@@ -40,16 +23,13 @@ _SR_TEMPLATES = {
     'plan-mode':           ('Plan mode ',                                                'full'),
 }
 
-# Regex: standalone SR block (must start at line boundary)
 _STANDALONE_SR_RE = re.compile(r'(?m)^<system-reminder>(.*?)</system-reminder>', re.DOTALL)
 
-# Resolve log directory — handles both main repo and worktree execution
-_script_dir = Path(__file__).resolve().parent          # dev/tool_use_analysis/
-_repo_candidate = _script_dir.parent.parent            # worktree or main root
+_script_dir = Path(__file__).resolve().parent
+_repo_candidate = _script_dir.parent.parent
 if (_repo_candidate / 'src' / 'logs').is_dir():
     _LOGS_DIR = _repo_candidate / 'src' / 'logs'
 else:
-    # Worktree case: root/.claude/worktrees/<name>/ → root is 3 levels up
     _main_repo = _repo_candidate.parent.parent.parent
     _LOGS_DIR = _main_repo / 'src' / 'logs'
 
@@ -70,7 +50,6 @@ def sr_bypass_audit_workflow(jsonl_paths, output_path):
 
 # FUNCTIONS
 
-# Load opus-model entries from JSONL; skip non-opus and parse errors
 def _load_entries(path):
     entries = []
     with open(path) as f:
@@ -87,13 +66,11 @@ def _load_entries(path):
     return entries
 
 
-# Count bypassed and captured SR blocks per template across all entries
 def _audit_entries(entries):
     bypassed = {tid: 0 for tid in _SR_TEMPLATES}
     captured = {tid: 0 for tid in _SR_TEMPLATES}
 
     for entry in entries:
-        # Bypassed: SR blocks still present in raw_payload (reached Opus unstripped)
         messages = entry.get('raw_payload', {}).get('messages', [])
         for text in _iter_content_texts(messages):
             for inner in _find_sr_inners(text):
@@ -101,9 +78,6 @@ def _audit_entries(entries):
                 if tid:
                     bypassed[tid] += 1
 
-        # Captured: SR blocks recorded in stripped_msg_removed (confirmed stripped)
-        # Note: final-pass (stripped_all_sr_msg0) does NOT write to stripped_msg_removed,
-        # so captures from msg[0] via the final pass are not counted here.
         smr = entry.get('stripped_msg_removed') or {}
         for chunks in smr.values():
             if not chunks:
@@ -120,7 +94,6 @@ def _audit_entries(entries):
             for tid in _SR_TEMPLATES}
 
 
-# Yield all raw text strings from a messages list (text blocks + tool_result layers)
 def _iter_content_texts(messages):
     for msg in messages:
         content = msg.get('content', '')
@@ -143,7 +116,6 @@ def _iter_content_texts(messages):
                                 yield sub.get('text', '')
 
 
-# Find inner texts of all standalone SR blocks in text (line-start anchored)
 def _find_sr_inners(text):
     if '<system-reminder>' not in text:
         return
@@ -151,7 +123,6 @@ def _find_sr_inners(text):
         yield m.group(1).strip()
 
 
-# Match inner text against templates; returns template_id or None
 def _match_template(inner):
     for tid, (identifier, _mode) in _SR_TEMPLATES.items():
         identifiers = identifier if isinstance(identifier, list) else [identifier]
@@ -161,7 +132,6 @@ def _match_template(inner):
     return None
 
 
-# Build full report lines
 def _build_report(all_log_data):
     ts = datetime.now().strftime('%Y-%m-%d %H:%M')
     lines = [f'# SR Bypass Audit — {ts}', '']
@@ -188,7 +158,6 @@ def _build_report(all_log_data):
     return lines
 
 
-# Build per-log section (header + table)
 def _build_log_table(path, n_entries, tpl_stats):
     lines = [
         f'## {Path(path).name}',
@@ -199,7 +168,6 @@ def _build_log_table(path, n_entries, tpl_stats):
     return lines
 
 
-# Build template table (markdown)
 def _build_template_table(tpl_stats):
     lines = [
         '| template | mode | captured | bypassed | bypass_rate |',
@@ -216,7 +184,6 @@ def _build_template_table(tpl_stats):
     return lines
 
 
-# Parse CLI args — accept 1+ JSONL paths or auto-pick newest 3 from logs dir
 def _parse_args():
     parser = argparse.ArgumentParser(description='SR bypass audit for proxy logs')
     parser.add_argument('jsonl', nargs='*', help='JSONL paths (auto-picks newest 3 if omitted)')
