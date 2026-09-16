@@ -4,9 +4,21 @@ from pathlib import Path
 
 from groundtruth_spans_algorithm import _strip_cache_control, _normalize_msg_shape, _get_inner_text, _get_text
 
-_SCRIPT_DIR = Path(__file__).parent.resolve()
-_log_from_main = (_SCRIPT_DIR.parents[1] / "src" / "logs" / "dual_log").resolve()
-_log_from_wt = (_SCRIPT_DIR.parents[4] / "src" / "logs" / "dual_log").resolve()
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+_PROJECT_ROOT = _AREA_ROOT.parent.parent
+
+
+def _main_checkout_root(project_root: Path) -> Path:
+    parts = project_root.parts
+    if len(parts) >= 3 and parts[-3] == '.claude' and parts[-2] == 'worktrees':
+        return Path(*parts[:-3])
+    return project_root
+
+
+_log_from_main = (_PROJECT_ROOT / "src" / "logs" / "dual_log").resolve()
+_log_from_wt = (_main_checkout_root(_PROJECT_ROOT) / "src" / "logs" / "dual_log").resolve()
 LOG_DIR = _log_from_main if _log_from_main.exists() else _log_from_wt
 
 # FUNCTIONS

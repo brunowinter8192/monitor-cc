@@ -4,9 +4,22 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[2]))
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+_PROJECT_ROOT = _AREA_ROOT.parent.parent
 
-_engine_path = Path(__file__).parents[2] / "src" / "proxy" / "diff_engine.py"
+
+def _main_checkout_root(project_root: Path) -> Path:
+    parts = project_root.parts
+    if len(parts) >= 3 and parts[-3] == '.claude' and parts[-2] == 'worktrees':
+        return Path(*parts[:-3])
+    return project_root
+
+
+sys.path.insert(0, str(_PROJECT_ROOT))
+
+_engine_path = _PROJECT_ROOT / "src" / "proxy" / "diff_engine.py"
 _spec = importlib.util.spec_from_file_location("diff_engine_probe", _engine_path)
 diff_engine = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(diff_engine)
@@ -16,7 +29,7 @@ from span_inline_probe_reconstruct import _load_jsonl, _reconstruct_chains, _mat
 from span_inline_probe_blocks import _find_sys2_block, _find_sys3_block, _find_msg_wordlevel_block
 from span_inline_probe_report import _build_report
 
-LOG_DIR = Path(__file__).parents[5] / "src" / "logs" / "dual_log"
+LOG_DIR = _main_checkout_root(_PROJECT_ROOT) / "src" / "logs" / "dual_log"
 LOG_ID = "api_requests_opus_monitor_cc_1780517466"
 REPORT_DIR = Path("dev/proxy_dual_log/span_inline_probe_reports")
 

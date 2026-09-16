@@ -9,8 +9,10 @@ from composition_probe_ops import _strip_cache_control, _block_text, compose_blo
 from composition_probe_passes import run_passes_and_collect_ops
 from composition_probe_corpus import run_corpus, get_money_shot_case
 
-_SCRIPT_DIR = Path(__file__).parent.resolve()
-REPORT_DIR  = _SCRIPT_DIR / "01_reports"
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+REPORT_DIR = _AREA_ROOT / "01_reports"
 
 # FUNCTIONS
 

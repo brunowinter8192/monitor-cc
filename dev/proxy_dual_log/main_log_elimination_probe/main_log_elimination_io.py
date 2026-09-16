@@ -10,7 +10,10 @@ def _resolve_root() -> Path:
     env = os.environ.get("MONITOR_CC_ROOT")
     if env:
         return Path(env)
-    return Path(__file__).parent.parent.parent
+    area_root = Path(__file__).resolve().parent
+    while area_root.name != 'proxy_dual_log':
+        area_root = area_root.parent
+    return area_root.parent.parent
 
 
 def _resolve_paths(root: Path, session: str) -> dict:

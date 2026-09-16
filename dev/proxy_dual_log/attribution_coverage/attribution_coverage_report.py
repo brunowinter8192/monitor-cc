@@ -5,7 +5,12 @@ from pathlib import Path
 
 from attribution_coverage_classify import _coverage
 
-_sv_path = Path(__file__).parents[2] / "src" / "proxy" / "strip_vocab.py"
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+_PROJECT_ROOT = _AREA_ROOT.parent.parent
+
+_sv_path = _PROJECT_ROOT / "src" / "proxy" / "strip_vocab.py"
 _sv_spec = importlib.util.spec_from_file_location("strip_vocab_local_report", _sv_path)
 _sv_mod = importlib.util.module_from_spec(_sv_spec)
 _sv_spec.loader.exec_module(_sv_mod)

@@ -5,8 +5,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-_SCRIPT_DIR = Path(__file__).parent.resolve()
-WORKTREE_ROOT = _SCRIPT_DIR.parents[1]
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+WORKTREE_ROOT = _AREA_ROOT.parent.parent
 sys.path.insert(0, str(WORKTREE_ROOT))
 
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
