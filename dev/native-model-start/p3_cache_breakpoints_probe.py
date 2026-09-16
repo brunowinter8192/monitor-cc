@@ -225,6 +225,79 @@ def _classify_busts(records: list, busts: list) -> list:
     return out
 
 
+def _session_report_lines(tag: str, stem: str, records: list, analysis: dict, busts_detail: list) -> list:
+    lines = []
+    lines.append(f'## Session: {tag} (`{stem}`, {len(records)} requests)')
+    lines.append('')
+    lines.append(f"- BP1 (system[2]) positions observed: {analysis['bp1_positions']} "
+                  f"(want: exactly `[2]`) — missing on {len(analysis['bp1_missing_seqs'])} requests "
+                  f"{analysis['bp1_missing_seqs'][:10]}")
+    lines.append(f"- BP2 (last non-defer tool) positions observed: {analysis['bp2_positions']} "
+                  f"— missing despite tools present on {len(analysis['bp2_missing_seqs'])} requests "
+                  f"{analysis['bp2_missing_seqs'][:10]}")
+    lines.append(f"- Content diffs at a common (non-tail-growth) message index, "
+                  f"after cache_control + shape-churn normalization: {len(analysis['prefix_busts'])}")
+    cat_counts = {}
+    for b in busts_detail:
+        cat_counts[b['category']] = cat_counts.get(b['category'], 0) + 1
+    lines.append(f"  - by category: {cat_counts}")
+    if busts_detail:
+        lines.append('')
+        lines.append('| seq | msg_idx | category | prev snippet | curr snippet |')
+        lines.append('|---|---|---|---|---|')
+        for b in busts_detail:
+            lines.append(f"| {b['seq']} | {b['idx']} | {b['category']} | "
+                          f"`{b['prev_snippet']}` | `{b['curr_snippet']}` |")
+    lines.append('')
+    return lines
+
+
+def _overall_stats(all_analyses: dict) -> dict:
+    all_busts_detail = [b for _, _, bd in all_analyses.values() for b in bd]
+    total_bootstrap = sum(1 for b in all_busts_detail if b['category'] == 'session_bootstrap')
+    total_tail = sum(1 for b in all_busts_detail if b['category'] == 'tail_draft_edit')
+    total_deep = sum(1 for b in all_busts_detail if b['category'] == 'deep_history_mutation')
+    total_marker = sum(1 for b in all_busts_detail if b['category'] == 'mid_turn_marker')
+    total_bp1_missing = sum(len(a['bp1_missing_seqs']) for _, a, _ in all_analyses.values())
+    total_bp2_missing = sum(len(a['bp2_missing_seqs']) for _, a, _ in all_analyses.values())
+    bp1_stable = all(a['bp1_positions'] in ([], [2]) for _, a, _ in all_analyses.values())
+    bp2_stable = all(len(a['bp2_positions']) <= 1 for _, a, _ in all_analyses.values())
+    verdict = 'FINDING' if (total_marker > 0 or total_deep > 0 or not bp1_stable or total_bp1_missing) else 'CLEAN'
+    return {
+        'total_bootstrap': total_bootstrap, 'total_tail': total_tail, 'total_deep': total_deep,
+        'total_marker': total_marker, 'total_bp1_missing': total_bp1_missing,
+        'total_bp2_missing': total_bp2_missing, 'bp1_stable': bp1_stable, 'bp2_stable': bp2_stable,
+        'verdict': verdict,
+    }
+
+
+def _verdict_report_lines(stats: dict) -> list:
+    lines = []
+    lines.append('## Verdict')
+    lines.append('')
+    lines.append(f"**{stats['verdict']}**")
+    lines.append('')
+    lines.append(f"- BP1 stable at system[2] across both sessions: {stats['bp1_stable']} "
+                 f"(missing entirely on {stats['total_bp1_missing']} requests total)")
+    lines.append(f"- BP2 stable (single tool-index value per session): {stats['bp2_stable']} "
+                 f"(missing despite tools present on {stats['total_bp2_missing']} requests total)")
+    lines.append(f"- `session_bootstrap` (CC reshaping msg 0 in the first 2-3 requests): {stats['total_bootstrap']} "
+                 f'— expected, one-time, not a caching concern')
+    lines.append(f"- `tail_draft_edit` (last/second-to-last message text changes — active user typing/"
+                 f"editing before submit, correctly excluded from BP3's stable-prefix boundary): {stats['total_tail']} "
+                 f'— expected, not a real prefix bust')
+    lines.append(f"- `deep_history_mutation` (a message NOT near the tail changed content — CC itself "
+                 f'reordering/inserting, e.g. an async bg-task notification landing before an '
+                 f"already-sent user message): {stats['total_deep']} — **real finding, CC-side behavior, not "
+                 f'proxy-caused, not fixable from our side**')
+    lines.append(f"- `mid_turn_marker` (the flagged interaction: a mid-turn-user-message position, "
+                 f'previously always "." pre-fix, now carries genuinely different real text across '
+                 f"occurrences post the 2026-08-07 preserve-guard fix): {stats['total_marker']} — "
+                 f'**real finding, THE interaction this probe was built to check**')
+    lines.append('')
+    return lines
+
+
 # ORCHESTRATOR
 def main() -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -241,70 +314,17 @@ def main() -> None:
         analysis = _analyze(records)
         busts_detail = _classify_busts(records, analysis['prefix_busts'])
         all_analyses[tag] = (records, analysis, busts_detail)
-
-        lines.append(f'## Session: {tag} (`{stem}`, {len(records)} requests)')
-        lines.append('')
-        lines.append(f"- BP1 (system[2]) positions observed: {analysis['bp1_positions']} "
-                      f"(want: exactly `[2]`) — missing on {len(analysis['bp1_missing_seqs'])} requests "
-                      f"{analysis['bp1_missing_seqs'][:10]}")
-        lines.append(f"- BP2 (last non-defer tool) positions observed: {analysis['bp2_positions']} "
-                      f"— missing despite tools present on {len(analysis['bp2_missing_seqs'])} requests "
-                      f"{analysis['bp2_missing_seqs'][:10]}")
-        lines.append(f"- Content diffs at a common (non-tail-growth) message index, "
-                      f"after cache_control + shape-churn normalization: {len(analysis['prefix_busts'])}")
-        cat_counts = {}
-        for b in busts_detail:
-            cat_counts[b['category']] = cat_counts.get(b['category'], 0) + 1
-        lines.append(f"  - by category: {cat_counts}")
-        if busts_detail:
-            lines.append('')
-            lines.append('| seq | msg_idx | category | prev snippet | curr snippet |')
-            lines.append('|---|---|---|---|---|')
-            for b in busts_detail:
-                lines.append(f"| {b['seq']} | {b['idx']} | {b['category']} | "
-                              f"`{b['prev_snippet']}` | `{b['curr_snippet']}` |")
-        lines.append('')
+        lines.extend(_session_report_lines(tag, stem, records, analysis, busts_detail))
 
     # Overall verdict
-    all_busts_detail = [b for _, _, bd in all_analyses.values() for b in bd]
-    total_bootstrap = sum(1 for b in all_busts_detail if b['category'] == 'session_bootstrap')
-    total_tail = sum(1 for b in all_busts_detail if b['category'] == 'tail_draft_edit')
-    total_deep = sum(1 for b in all_busts_detail if b['category'] == 'deep_history_mutation')
-    total_marker = sum(1 for b in all_busts_detail if b['category'] == 'mid_turn_marker')
-    total_bp1_missing = sum(len(a['bp1_missing_seqs']) for _, a, _ in all_analyses.values())
-    total_bp2_missing = sum(len(a['bp2_missing_seqs']) for _, a, _ in all_analyses.values())
-    bp1_stable = all(a['bp1_positions'] in ([], [2]) for _, a, _ in all_analyses.values())
-    bp2_stable = all(len(a['bp2_positions']) <= 1 for _, a, _ in all_analyses.values())
-
-    verdict = 'FINDING' if (total_marker > 0 or total_deep > 0 or not bp1_stable or total_bp1_missing) else 'CLEAN'
-    lines.append('## Verdict')
-    lines.append('')
-    lines.append(f'**{verdict}**')
-    lines.append('')
-    lines.append(f'- BP1 stable at system[2] across both sessions: {bp1_stable} '
-                 f'(missing entirely on {total_bp1_missing} requests total)')
-    lines.append(f'- BP2 stable (single tool-index value per session): {bp2_stable} '
-                 f'(missing despite tools present on {total_bp2_missing} requests total)')
-    lines.append(f'- `session_bootstrap` (CC reshaping msg 0 in the first 2-3 requests): {total_bootstrap} '
-                 f'— expected, one-time, not a caching concern')
-    lines.append(f'- `tail_draft_edit` (last/second-to-last message text changes — active user typing/'
-                 f'editing before submit, correctly excluded from BP3\'s stable-prefix boundary): {total_tail} '
-                 f'— expected, not a real prefix bust')
-    lines.append(f'- `deep_history_mutation` (a message NOT near the tail changed content — CC itself '
-                 f'reordering/inserting, e.g. an async bg-task notification landing before an '
-                 f'already-sent user message): {total_deep} — **real finding, CC-side behavior, not '
-                 f'proxy-caused, not fixable from our side**')
-    lines.append(f'- `mid_turn_marker` (the flagged interaction: a mid-turn-user-message position, '
-                 f'previously always "." pre-fix, now carries genuinely different real text across '
-                 f'occurrences post the 2026-08-07 preserve-guard fix): {total_marker} — '
-                 f'**real finding, THE interaction this probe was built to check**')
-    lines.append('')
+    stats = _overall_stats(all_analyses)
+    lines.extend(_verdict_report_lines(stats))
 
     REPORT_PATH.write_text('\n'.join(lines))
     print(f'Report written: {REPORT_PATH}')
-    print(f'Verdict: {verdict}  (bootstrap={total_bootstrap}, tail_edit={total_tail}, '
-          f'deep_history={total_deep}, mid_turn_marker={total_marker}, '
-          f'bp1_missing={total_bp1_missing}, bp2_missing={total_bp2_missing})')
+    print(f"Verdict: {stats['verdict']}  (bootstrap={stats['total_bootstrap']}, tail_edit={stats['total_tail']}, "
+          f"deep_history={stats['total_deep']}, mid_turn_marker={stats['total_marker']}, "
+          f"bp1_missing={stats['total_bp1_missing']}, bp2_missing={stats['total_bp2_missing']})")
 
 
 if __name__ == '__main__':

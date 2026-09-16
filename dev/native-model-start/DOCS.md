@@ -29,12 +29,50 @@ position-independence, and last-shortcut-wins ordering. Never starts the proxy o
 
 ---
 
-### p2_model_params_probe.py (549 LOC)
+### p2_model_params_probe.py (135 LOC)
 
-**Purpose:** Verifies `src/proxy/inject_helpers.py::_inject_model_override` — the per-model
+**Purpose:** Entry point for the model_params probe — runs the 15 test groups (imported from
+`model_override_injection_tests.py`/`thinking_context_management_tests.py`) in order and writes
+the report. 15 test groups, 73 checks.
+**Reads:** nothing persistent — builds all fixtures in-process, config injected via
+`mock.patch.object(inject_helpers, "_load_config", ...)`.
+**Writes:** `md/p2_model_params_probe_<timestamp>.md`.
+**Called by:** none — manual regression guard, re-run after changing `_inject_model_override`, its
+fixation mechanics, `_strip_clear_thinking_edit`, `_build_forwarded_delta`, or
+`attribution_coverage.py`'s field-attribution maps.
+**Calls out:** `model_params_test_infra`, `model_override_injection_tests`,
+`thinking_context_management_tests`.
+
+---
+
+### model_params_test_infra.py (27 LOC)
+
+**Purpose:** Shared `check()`/`_RESULTS` assertion-recording infra and the `_with_config` context
+helper used by every test group in this probe.
+**Reads:** nothing.
+**Writes:** nothing — mutates the shared in-memory `_RESULTS` list other modules import by reference.
+**Called by:** `p2_model_params_probe.py`, `model_override_injection_tests.py`,
+`thinking_context_management_tests.py`.
+**Calls out:** `src.proxy.inject_helpers`.
+
+---
+
+### model_override_injection_tests.py (259 LOC)
+
+**Purpose:** Tests 1-12 of the model_params probe — `_inject_model_override`'s per-model
 `model_params` config lookup (exact model-id match, never writes `model`) vs. the legacy
 family-bucketed `model_override`/`model_override_worker` fallback, plus the fixation mechanism that
-pins a resolved override to a caller-owned dict across calls; also `_strip_clear_thinking_edit` (a
+pins a resolved override to a caller-owned dict across calls.
+**Reads:** nothing persistent — builds all fixtures in-process.
+**Writes:** nothing — results recorded via `model_params_test_infra.check`.
+**Called by:** `p2_model_params_probe.py`.
+**Calls out:** `src.proxy.inject_helpers`.
+
+---
+
+### thinking_context_management_tests.py (187 LOC)
+
+**Purpose:** Tests 13-15 of the model_params probe — `_strip_clear_thinking_edit` (a
 `clear_thinking_20251015` context_management edit is removed whenever the payload's thinking ends
 up `{"type": "disabled"}`, whichever path disabled it, siblings like `clear_tool_uses_20250919`
 survive, an emptied edits list drops the whole `context_management` key, a non-disabled thinking
@@ -43,13 +81,10 @@ value leaves it byte-identical), `src/proxy/logging.py::_build_forwarded_delta`'
 `dev/proxy_dual_log/attribution_coverage.py`'s own field-attribution map rather than falling
 through to `UNATTR` — while confirming `src/proxy/strip_inject_delta.py`'s own same-shaped maps
 (proven dead code, since the real `fn_map` never carried a field-level entry for any top-level
-field) have been removed from that module entirely. 15 test groups, 73 checks.
-**Reads:** nothing persistent — builds all fixtures in-process, config injected via
-`mock.patch.object(inject_helpers, "_load_config", ...)`.
-**Writes:** `md/p2_model_params_probe_<timestamp>.md`.
-**Called by:** none — manual regression guard, re-run after changing `_inject_model_override`, its
-fixation mechanics, `_strip_clear_thinking_edit`, `_build_forwarded_delta`, or
-`attribution_coverage.py`'s field-attribution maps.
+field) have been removed from that module entirely.
+**Reads:** nothing persistent — builds all fixtures in-process.
+**Writes:** nothing — results recorded via `model_params_test_infra.check`.
+**Called by:** `p2_model_params_probe.py`.
 **Calls out:** `src.proxy.inject_helpers`, `src.proxy.logging` (`_build_forwarded_delta`),
 `src.proxy.strip_inject_delta` (`_build_stripped_injected_deltas`),
 `dev/proxy_dual_log/attribution_coverage.py` (loaded via
@@ -57,7 +92,7 @@ fixation mechanics, `_strip_clear_thinking_edit`, `_build_forwarded_delta`, or
 
 ---
 
-### p3_cache_breakpoints_probe.py (311 LOC)
+### p3_cache_breakpoints_probe.py (331 LOC)
 
 **Purpose:** Replays every recorded request from two 223-era sessions through a real `ProxyAddon()`
 instance in order (fresh addon per session) and checks breakpoint positional stability (BP1
@@ -70,7 +105,7 @@ session stems `api_requests_opus_posts_1786051932` and `api_requests_opus_websea
 
 ---
 
-### p4_dual_log_integrity_probe.py (237 LOC)
+### p4_dual_log_integrity_probe.py (275 LOC)
 
 **Purpose:** Verifies the composition invariant (C0/Cfwd reconstruction from recorded ops matches
 `compose_block`) and top-level payload/schema stability, on the same two 223-era sessions as `p3_`.
@@ -82,7 +117,7 @@ session stems `api_requests_opus_posts_1786051932` and `api_requests_opus_websea
 
 ---
 
-### p5_strip_wordings_probe.py (207 LOC)
+### p5_strip_wordings_probe.py (241 LOC)
 
 **Purpose:** Checks bg-launch-ack / bg-completed / task-notification strip coverage on 223-era
 wordings — a fn_map census over the recorded `_stripped`/`_injected` dual-logs, plus a replay sweep
