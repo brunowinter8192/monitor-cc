@@ -1,17 +1,3 @@
-"""
-Differential proof harness for extract_cache_turns decomposition.
-
-Usage (from project root):
-    ./venv/bin/python dev/jsonl/A_extract_cache_turns_proof.py --mode capture
-    ./venv/bin/python dev/jsonl/A_extract_cache_turns_proof.py --mode verify [--baseline PATH]
-
-Modes:
-    capture  -- parse N session JSONLs, write turns list to baseline JSON
-    verify   -- parse same JSONLs, assert byte-identical against baseline, exit 0 (pass) / 1 (fail)
-
-Entry point under test: extract_cache_turns(messages) from src/jsonl/jsonl_cache_turns.py
-"""
-
 # INFRASTRUCTURE
 import argparse
 import json

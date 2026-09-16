@@ -1,34 +1,3 @@
-"""
-attach_worker_stats_cost_probe.py -- Measures the real wall-time cost of
-src.workers.worker_tmux.attach_worker_stats against real worker JSONL files on disk, and
-extrapolates to the actual call pattern introduced by the panesplit milestone: BOTH
-worker_tokens_pane.py and worker_proxy_pane.py call attach_worker_stats(workers, cache) once per
-refresh tick, each tick gated by POLL_INTERVAL (0.5s), for as many workers as are alive.
-
-Measures TWO costs per file set, since the fix (2026-09, this same milestone) changed
-attach_worker_stats from an unconditional full reparse into an incremental delta scan keyed by a
-per-pane cache dict:
-
-  - COLD: attach_worker_stats called with a FRESH (empty) cache -- a full read from byte 0 for
-    every worker. This is what the pre-fix code paid on EVERY tick, forever (it never cached a
-    position). Post-fix, it is only what the FIRST tick after a pane starts (or after a worker's
-    resolved JSONL path changes) pays.
-  - WARM: attach_worker_stats called AGAIN immediately after, same cache, no bytes appended to
-    any file in between -- what every steady-state tick costs post-fix. Pre-fix had no such state
-    to warm; every tick WAS a cold call.
-
-The COLD number is therefore directly comparable to "what every tick cost before the fix" and the
-WARM number is "what every tick after the first costs now" -- rerun this script before and after
-touching attach_worker_stats/parse_worker_stats_delta to get a same-machine before/after pair.
-
-Picks real worker-worktree JSONL files under ~/.claude/projects/ (paths containing
-'--claude-worktrees-'), reports their sizes, and times attach_worker_stats over a realistic
-5-worker set (the 2026-09-02 lag observation's own worker count) plus a stress set using the
-largest real file found, to bound both the typical and worst-case cost.
-
-Run: ./venv/bin/python dev/worker_pane_split/attach_worker_stats_cost_probe.py
-"""
-
 # INFRASTRUCTURE
 import importlib
 import os
@@ -45,8 +14,8 @@ _ROOT_PKG = 'src'
 mod_worker_tmux = importlib.import_module(f'{_ROOT_PKG}.workers.worker_tmux')
 
 PROJECTS_DIR = Path.home() / '.claude' / 'projects'
-N_WORKERS_TYPICAL = 5  # matches the 2026-09-02 lag observation's own worker count
-POLL_INTERVAL = 0.5    # src/constants.py -- both panes' refresh gate
+N_WORKERS_TYPICAL = 5
+POLL_INTERVAL = 0.5
 
 
 # ORCHESTRATOR
@@ -122,8 +91,6 @@ def _files_found_lines(all_worktree_files: list) -> list:
     ]
 
 
-# Typical set: N_WORKERS_TYPICAL files at the MEDIAN size (not the largest -- the largest
-# is a single outlier that would misrepresent a normal worker fleet).
 def _select_typical_set(all_worktree_files: list) -> tuple:
     sizes_sorted = sorted(all_worktree_files, key=lambda t: t[0])
     mid = len(sizes_sorted) // 2
@@ -149,9 +116,6 @@ def _typical_set_lines(typical_set: list) -> list:
 
 
 def _fake_workers_for_paths(paths: list) -> tuple:
-    # attach_worker_stats resolves the JSONL via find_worker_jsonl(session) -- monkeypatched
-    # below to hand back these exact paths, so the REAL parse_worker_stats_delta runs unmocked
-    # against real file bytes.
     workers = [{'name': f'w{i}', 'session': f'sess-{i}'} for i in range(len(paths))]
     path_by_session = {w['session']: p for w, p in zip(workers, paths)}
     return workers, path_by_session
@@ -189,7 +153,6 @@ def _cold_warm_summary_lines(cold_typical: float, warm_typical: float) -> list:
     return lines
 
 
-# Extrapolate to the ACTUAL call pattern: both panes call this every POLL_INTERVAL tick.
 def _extrapolation_lines(cold_typical: float, warm_typical: float) -> list:
     calls_per_second_per_pane = 1.0 / POLL_INTERVAL
     lines = []
@@ -210,7 +173,6 @@ def _extrapolation_lines(cold_typical: float, warm_typical: float) -> list:
     return lines
 
 
-# Stress set: the single largest real file found (worst case a worker's own session can be).
 def _stress_test_lines(all_worktree_files: list) -> list:
     largest_size, largest_path = all_worktree_files[0]
     lines = []

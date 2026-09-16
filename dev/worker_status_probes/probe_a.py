@@ -1,16 +1,3 @@
-"""Probe A: window_activity timestamp polling.
-
-Polls #{window_activity} for window 0 of each target session every 1 second.
-Logs delta (0 or 1) indicating whether the window was written since the last sample.
-
-Usage:
-    python3 probe_a.py --sessions S1 S2 S3 --duration 120 --outfile /path/to/out.csv
-
-CSV columns: elapsed_sec, session, window_activity_ts, delta
-    delta=1  → window_activity changed since last sample (pane received bytes)
-    delta=0  → no change (pane was silent this second)
-"""
-
 # INFRASTRUCTURE
 import argparse
 import csv

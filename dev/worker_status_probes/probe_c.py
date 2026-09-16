@@ -1,20 +1,3 @@
-"""Probe C: tmux -C control-mode event stream.
-
-Spawns `tmux -C attach-session -t <session>` per target session. A reader thread
-parses %output and %extended-output events, filtering to panes in window 0 only
-(avoids bead-tracker noise from windows 3/4 of multi-window sessions). Counters
-(events, bytes) are sampled and reset every 1 second.
-
-Usage:
-    python3 probe_c.py --sessions S1 S2 S3 --duration 120 --outfile /path/to/out.csv
-
-CSV columns: elapsed_sec, session, events_last_sec, bytes_last_sec
-Cleanup: sends detach-client to each subprocess stdin, then kills.
-
-Protocol reference: vonbai/goalx cli/tmux_control_watcher.go
-                    Handfish/Geppetto docs/WATCHER_ACTIVITY_DETECTION.md
-"""
-
 # INFRASTRUCTURE
 import argparse
 import atexit
@@ -26,7 +9,6 @@ import threading
 import time
 from pathlib import Path
 
-# session → subprocess
 _procs: dict = {}
 
 # ORCHESTRATOR
@@ -95,7 +77,6 @@ def _cleanup_all():
 
 
 def _reader_thread(proc, pane_ids, session, counters, lock, stop_event):
-    """Read %output / %extended-output lines and update per-second counters."""
     for raw in proc.stdout:
         if stop_event.is_set():
             break
@@ -111,7 +92,6 @@ def _reader_thread(proc, pane_ids, session, counters, lock, stop_event):
 
 
 def _parse_output_event(line):
-    """Return (pane_id, payload) for %output and %extended-output lines, else (None, None)."""
     if line.startswith("%output "):
         rest = line[len("%output "):]
         parts = rest.split(" ", 1)

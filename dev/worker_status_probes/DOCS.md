@@ -6,6 +6,9 @@ JSONL-mtime demote rule in the iterative-dev plugin's worker-status detection (`
 not in this repo's `src/`). Produces raw CSVs and a side-by-side comparison report. Touch when
 re-evaluating a tmux activity-sensing approach; not a regression suite.
 
+## Public Interface
+No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bin/python dev/worker_status_probes/run_all.py [--duration N]`.
+
 ## Flow
 `run_all.py` discovers the Opus main session and launches all three probes as concurrent
 subprocesses with a shared timestamp; each probe polls its own tmux signal every second and writes a
@@ -13,7 +16,7 @@ raw CSV, then a comparison report is produced from all three.
 
 ## Modules
 
-### run_all.py (121 LOC)
+### run_all.py (107 LOC)
 
 **Purpose:** Orchestrator — discovers the Opus main session (most recently active non-worker window)
 and launches `probe_a.py`/`probe_b.py`/`probe_c.py` as concurrent subprocesses with a shared
@@ -26,7 +29,7 @@ timestamp.
 
 ---
 
-### probe_a.py (80 LOC)
+### probe_a.py (67 LOC)
 
 **Purpose:** Polls `#{window_activity}` (a Unix timestamp) for each target session every second,
 logging a delta flag when the window received bytes since the last sample.
@@ -37,7 +40,7 @@ logging a delta flag when the window received bytes since the last sample.
 
 ---
 
-### probe_b.py (135 LOC)
+### probe_b.py (121 LOC)
 
 **Purpose:** Activates `tmux pipe-pane` for each target session, routing pane output through
 `byte_touch.py`, which touches an activity file and logs cumulative byte count; samples both every
@@ -49,7 +52,7 @@ second.
 
 ---
 
-### byte_touch.py (51 LOC)
+### byte_touch.py (42 LOC)
 
 **Purpose:** stdin reader invoked by `tmux pipe-pane` — on each non-empty read, touches the activity
 file's mtime and overwrites the byte-count file with the cumulative total.
@@ -60,7 +63,7 @@ file's mtime and overwrites the byte-count file with the cumulative total.
 
 ---
 
-### probe_c.py (169 LOC)
+### probe_c.py (149 LOC)
 
 **Purpose:** Spawns `tmux -C attach-session` per target session; reader threads parse
 `%output`/`%extended-output` control-mode events filtered to window 0 pane IDs, sampling event and
@@ -72,12 +75,5 @@ byte counters each second.
 
 ---
 
-## Gotchas
-- Probe B leaves `tmux pipe-pane` active if the process is killed without running its atexit
-  handler. Recovery: `tmux pipe-pane -t <session>:0` with no arguments stops piping; verify with
-  `tmux display-message -t <session>:0 -p '#{pane_pipe}'` returning `0`.
-- Probe C's `bytes_last_sec` is the tmux escaped-payload length, not actual byte count (roughly 1.65x
-  larger than pipe-pane's byte count due to octal escaping) — use `events_last_sec` as the primary
-  signal for Probe C.
-- `run_all.py` targets window 0 of non-worker sessions specifically to avoid bead-tracker noise from
-  other windows of monitor_cc sessions.
+## State
+No module owns persistent state across runs. `probe_b.py`'s `_active_pipes` and `probe_c.py`'s `_procs` are process-local dicts populated during setup and cleared by each script's own `atexit`-registered cleanup handler.

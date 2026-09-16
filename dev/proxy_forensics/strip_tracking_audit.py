@@ -1,24 +1,9 @@
-"""
-Audit proxy JSONL for stripped_msg_removed invariant violations.
-
-Invariant: for every idx in stripped_msg_indices, stripped_msg_removed[str(idx)] must
-exist and be a non-empty list.
-
-Usage:
-    python dev/proxy_forensics/strip_tracking_audit.py <jsonl_path>
-
-Exit codes:
-    0 — no violations
-    1 — violations found (or file unreadable)
-"""
-
 # INFRASTRUCTURE
 import json
 import sys
 
 # FUNCTIONS
 
-# Check one log entry; return list of violation strings (empty = OK)
 def _check_entry(line_no, entry):
     indices = entry.get("stripped_msg_indices") or []
     if not indices:
@@ -34,7 +19,6 @@ def _check_entry(line_no, entry):
     return violations
 
 
-# Run audit against a proxy JSONL file; print report and return violation count
 def audit(path: str) -> int:
     all_violations = []
     entries_checked = 0
