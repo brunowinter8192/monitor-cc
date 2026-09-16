@@ -1,23 +1,4 @@
 #!/usr/bin/env python3
-"""Forensic prefix-diff probe for repeated cache rebuilds.
-
-Reconstructs full payload state (system/tools/messages) at each opus-family
-request from a _forwarded dual-log delta chain, aligns it to session-JSONL
-ground-truth usage (CR/CC/D) by timestamp, and diffs consecutive requests
-segment-by-segment (system[0..3] individually / tools / messages) to find
-WHERE a cache-rebuild's byte divergence sits and WHAT changed there.
-
-Input handling note: the forwarded dual-log is delta-encoded (only changed
-system/tools/message indices per request) — this is NOT the eliminated
-single main-log raw_payload format read by 04/05/06; state must be replayed
-by applying deltas cumulatively (mirrors src/proxy_display/forwarded_parser.py).
-
-Usage (from project root):
-    ./venv/bin/python dev/session_analysis/07_quartet_prefix_diff.py \\
-        --forwarded-log src/logs/dual_log/api_requests_opus_<id>_forwarded.jsonl \\
-        --session-jsonl ~/.claude/projects/<encoded>/session.jsonl \\
-        --req-range 133-137 --auto-detect
-"""
 # INFRASTRUCTURE
 import argparse
 from datetime import datetime

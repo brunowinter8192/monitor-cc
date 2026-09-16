@@ -6,7 +6,7 @@ from pathlib import Path
 REPORTS_DIR = Path("dev/session_analysis/04_reports")
 ANCHOR_CHARS = 154_550
 ANCHOR_TOKENS = 41_975
-ANCHOR_RATIO = ANCHOR_CHARS / ANCHOR_TOKENS  # 3.68 chars/token
+ANCHOR_RATIO = ANCHOR_CHARS / ANCHOR_TOKENS
 
 # FUNCTIONS
 

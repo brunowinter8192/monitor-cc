@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Validate proxy cache breakpoint placement and stability.
+# INFRASTRUCTURE
+import argparse
+import json
+import sys
+from pathlib import Path
+
+_MODULE_DOCSTRING = """Validate proxy cache breakpoint placement and stability.
 
 Reads a proxy JSONL log and shows per-request:
 - Our breakpoint positions (system, tools, messages)
@@ -10,16 +16,11 @@ Reads a proxy JSONL log and shows per-request:
 Usage:
     python3 dev/session_analysis/04_cache_validation.py <proxy_log.jsonl> [--limit N]
 """
-# INFRASTRUCTURE
-import argparse
-import json
-import sys
-from pathlib import Path
 
 # ORCHESTRATOR
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=_MODULE_DOCSTRING, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("log_file", help="Path to proxy JSONL log file")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of requests to show (0=all)")
     parser.add_argument("--rebuilds-only", action="store_true", help="Only show requests with mods before breakpoint")

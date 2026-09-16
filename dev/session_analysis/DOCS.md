@@ -1,30 +1,30 @@
 # dev/session_analysis/
 
 ## Role
-Standalone forensic analysis suite for Claude Code session JSONL and proxy log data — investigates
-cache behavior, token attribution, and cache-rebuild root causes. Scripts are not part of the
-production pipeline: they read raw data files directly and write Markdown reports or print to
-stdout. Touch when adding a new forensic angle on cache/token behavior; all scripts assume CWD is the
-project root.
+Standalone forensic analysis suite for Claude Code session JSONL and proxy log data —
+investigates cache behavior, token attribution, and cache-rebuild root causes. Not part of the
+production pipeline. Touch when adding a new forensic angle on cache/token behavior; scripts
+assume CWD is the project root.
+
+## Public Interface
+No `__init__.py` in this directory. Each numbered `0N_*.py` script is its own entry point, run
+directly, e.g. `python3 dev/session_analysis/01_extract.py --session <path>`.
 
 ## Flow
 Each script reads session JSONL files (under the user's Claude Code projects directory) and/or a
-proxy log under src/logs, computes one specific breakdown or timeline, and either prints a Markdown
-table to stdout or writes a timestamped report to `md/`.
+proxy log under `src/logs`, computes one specific breakdown or timeline, and either prints a
+Markdown table to stdout or writes a timestamped report to `md/`.
 
-Every numbered script over the 400-LOC/50-line-function budget splits into the numbered entry file
-(kept at its original path/name, so `./venv/bin/python dev/session_analysis/0N_*.py` still works
-unchanged) plus sibling modules named `<topic>_<concern>.py` — WITHOUT the numeric prefix, since a
-literal `NN_name` is not a valid Python identifier and can't be the target of a `from NN_name import
-x` statement (digits can't lead a name). Entry scripts import their siblings with plain
-`from <topic>_<concern> import name`, matching the import style already used across `dev/`.
+Every numbered script over budget splits into the numbered entry file (kept at its original
+path/name) plus sibling modules named `<topic>_<concern>.py` — without the numeric prefix, since a
+literal `NN_name` is not a valid Python identifier.
 
 ## Modules
 
-### 01_extract.py (281 LOC)
+### 01_extract.py (266 LOC)
 
-**Purpose:** Multi-level tool-call extraction and summary from session JSONL files — all projects,
-one project, one session, or one session filtered by tool name (`--project`, `--session`, `--tool`).
+**Purpose:** Multi-level tool-call extraction and summary from session JSONL files — all
+projects, one project, one session, or one session filtered by tool name.
 **Reads:** session JSONL files under the user's Claude Code projects directory.
 **Writes:** a Markdown table of tool-call counts and token usage to stdout.
 **Called by:** none — manual CLI.
@@ -34,9 +34,8 @@ one project, one session, or one session filtered by tool name (`--project`, `--
 
 ### 02_cache_timeline.py (66 LOC)
 
-**Purpose:** Entry point — visualizes cache/token behavior turn-by-turn or minute-by-minute across a
-session or project, flagging anomalies via `--anomalies-only`, `--aggregate`, `--project`, or
-`--workers`.
+**Purpose:** Entry point — visualizes cache/token behavior turn-by-turn or minute-by-minute
+across a session or project, flagging anomalies.
 **Reads:** session JSONL files under the user's Claude Code projects directory.
 **Writes:** a Markdown table with anomaly flags and a bar chart to stdout.
 **Called by:** none — manual CLI.
@@ -57,8 +56,8 @@ parsing/formatting, assistant-turn extraction and content classification).
 
 ### cache_timeline_analysis.py (155 LOC)
 
-**Purpose:** Cache-status classification and anomaly detection (STUCK_CACHE, FAILED_RESUME,
-PREMATURE_TTL, each its own detector) plus time-gap finding.
+**Purpose:** Cache-status classification and anomaly detection (stuck cache, failed resume,
+premature TTL, each its own detector) plus time-gap finding.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `02_cache_timeline.py`, `cache_timeline_render.py`.
@@ -68,8 +67,8 @@ PREMATURE_TTL, each its own detector) plus time-gap finding.
 
 ### cache_timeline_render.py (167 LOC)
 
-**Purpose:** Markdown/table rendering for the timeline, anomalies section, summary, per-minute bar
-chart, and per-project session summary.
+**Purpose:** Markdown/table rendering for the timeline, anomalies section, summary, per-minute
+bar chart, and per-project session summary.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `02_cache_timeline.py`.
@@ -80,8 +79,7 @@ chart, and per-project session summary.
 ### 03_cache_rebuild_context.py (75 LOC)
 
 **Purpose:** Entry point — detects cache rebuilds (CR drops with disproportionate CC spikes) and
-shows surrounding message context (`--context N`) for root-cause analysis, across one session or all
-sessions (`--all`).
+shows surrounding message context for root-cause analysis.
 **Reads:** session JSONL files under the user's Claude Code projects directory.
 **Writes:** per-rebuild context blocks plus a pattern summary to stdout.
 **Called by:** none — manual CLI.
@@ -123,11 +121,10 @@ detected rebuild.
 
 ---
 
-### 04_cache_validation.py (158 LOC)
+### 04_cache_validation.py (159 LOC)
 
 **Purpose:** Validates proxy-side cache breakpoint placement and stability — per request, shows
-breakpoint positions, which messages carry proxy-modified content, and breakpoint stability between
-consecutive requests.
+breakpoint positions, modified messages, and stability between requests.
 **Reads:** a proxy JSONL log (positional, `--limit`, `--rebuilds-only`).
 **Writes:** a per-request breakpoint analysis table to stdout.
 **Called by:** none — manual CLI.
@@ -137,21 +134,20 @@ consecutive requests.
 
 ### 05_req_breakdown.py (55 LOC)
 
-**Purpose:** Entry point — forensic per-segment token attribution for one API request, tokenizing
-each system block/tool definition/message with `tiktoken` and comparing against session-JSONL ground
-truth; with `--prev-proxy-log`, adds cross-session byte-diff prefix attribution.
-**Reads:** a proxy JSONL log (`--proxy-log`) and a session JSONL (`--session-jsonl`) for the same
-session; optionally a previous session's proxy log (`--prev-proxy-log`).
+**Purpose:** Entry point — forensic per-segment token attribution for one API request, comparing
+`tiktoken` estimates against session-JSONL ground truth.
+**Reads:** a proxy JSONL log (`--proxy-log`) and a session JSONL (`--session-jsonl`); optionally
+a previous session's proxy log (`--prev-proxy-log`).
 **Writes:** `04_reports/<timestamp>_req<N>.md`, path printed to stdout.
 **Called by:** none — manual CLI.
-**Calls out:** `req_breakdown_load.py`, `req_breakdown_attribution.py`, `req_breakdown_rule_edits.py`,
-`req_breakdown_report.py`.
+**Calls out:** `req_breakdown_load.py`, `req_breakdown_attribution.py`,
+`req_breakdown_rule_edits.py`, `req_breakdown_report.py`.
 
 ---
 
-### req_breakdown_load.py (145 LOC)
+### req_breakdown_load.py (144 LOC)
 
-**Purpose:** Loads the target proxy-log entry and session ground truth (CR/CC/D/Out), and tokenizes
+**Purpose:** Loads the target proxy-log entry and session ground truth, and tokenizes
 system/tools/messages segments with `tiktoken`.
 **Reads:** a proxy JSONL log and a session JSONL.
 **Writes:** nothing.
@@ -160,22 +156,21 @@ system/tools/messages segments with `tiktoken`.
 
 ---
 
-### req_breakdown_attribution.py (210 LOC)
+### req_breakdown_attribution.py (202 LOC)
 
-**Purpose:** Cross-session byte-level prefix-diff attribution — locates the first byte where the
-current request's serialized prefix diverges from the previous session's last request, converts to a
-token-estimate KPI, and locates the diverging segment/nearest heading.
-**Reads:** a previous session's proxy JSONL log (`load_last_opus_entry`).
+**Purpose:** Cross-session byte-level prefix-diff attribution — locates where the current
+request's serialized prefix diverges from the previous session's last request.
+**Reads:** a previous session's proxy JSONL log.
 **Writes:** nothing.
 **Called by:** `05_req_breakdown.py`.
-**Calls out:** `req_breakdown_load.py` (`ENC`), `tiktoken`.
+**Calls out:** `req_breakdown_load.py`, `tiktoken`.
 
 ---
 
 ### req_breakdown_rule_edits.py (106 LOC)
 
-**Purpose:** Correlates a prefix-drift finding with shared-rules edits — git log in the session time
-window plus rule-file mtime scan, cross-checked against the drift context text.
+**Purpose:** Correlates a prefix-drift finding with shared-rules edits — git log in the session
+time window plus rule-file mtime scan.
 **Reads:** `~/.claude/shared-rules` (git log + file mtimes), `~/.claude/rules`.
 **Writes:** nothing.
 **Called by:** `05_req_breakdown.py`.
@@ -186,32 +181,32 @@ window plus rule-file mtime scan, cross-checked against the drift context text.
 ### req_breakdown_report.py (242 LOC)
 
 **Purpose:** Builds the full per-request Markdown report (ground truth, segment tables, totals,
-prefix attribution, rule-edit correlation, conclusion), section by section.
+attribution, rule-edit correlation, conclusion).
 **Reads:** nothing external.
 **Writes:** nothing — returns the report string; the caller writes the file.
 **Called by:** `05_req_breakdown.py`.
-**Calls out:** `req_breakdown_attribution.py` (`KPI_THRESHOLD`).
+**Calls out:** `req_breakdown_attribution.py`.
 
 ---
 
-### 06_char_token_ratio.py (41 LOC)
+### 06_char_token_ratio.py (31 LOC)
 
-**Purpose:** Entry point — single-session Opus char-to-token ratio analysis (msg-delta ratio and
-REQ#1 prefix-ratio backsolve), plus a tiktoken cl100k_base drift comparison against actual API token
-counts. Auto-detects the newest opus proxy log under `src/logs/` and the newest non-agent session
-JSONL under the current project's Claude directory — no CLI arguments.
+**Purpose:** Entry point — single-session Opus char-to-token ratio analysis plus a tiktoken
+drift comparison; auto-detects the newest proxy log and session JSONL.
 **Reads:** the auto-detected proxy JSONL log and session JSONL.
 **Writes:** a Markdown report to stdout; a persistent copy under `04_reports/`.
 **Called by:** none — manual CLI.
-**Calls out:** `char_token_ratio_load.py`, `char_token_ratio_compute.py`, `char_token_ratio_report.py`.
+**Calls out:** `char_token_ratio_load.py`, `char_token_ratio_compute.py`,
+`char_token_ratio_report.py`.
 
 ---
 
 ### char_token_ratio_load.py (177 LOC)
 
-**Purpose:** Latest-log/session auto-detection, proxy-row loading (char counts per segment), and
-session-event loading (deduplicated assistant usage tuples), paired by positional index.
-**Reads:** proxy JSONL logs under `src/logs/`, session JSONLs under the Claude projects directory.
+**Purpose:** Latest-log/session auto-detection, proxy-row loading, and session-event loading,
+paired by positional index.
+**Reads:** proxy JSONL logs under `src/logs/`, session JSONLs under the Claude projects
+directory.
 **Writes:** nothing.
 **Called by:** `06_char_token_ratio.py`.
 **Calls out:** none.
@@ -221,7 +216,7 @@ session-event loading (deduplicated assistant usage tuples), paired by positiona
 ### char_token_ratio_compute.py (76 LOC)
 
 **Purpose:** Computes the msg-delta and prefix-backsolve chars/token ratios, and the tiktoken
-cl100k_base drift estimate per request.
+drift estimate per request.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `06_char_token_ratio.py`.
@@ -231,22 +226,20 @@ cl100k_base drift estimate per request.
 
 ### char_token_ratio_report.py (176 LOC)
 
-**Purpose:** Builds the full ratio-analysis Markdown report (sources/accounting, prefix/msg-ratio,
-tiktoken drift, raw data table) and writes it under `04_reports/`.
+**Purpose:** Builds the full ratio-analysis Markdown report and writes it under `04_reports/`.
 **Reads:** nothing external.
-**Writes:** `dev/session_analysis/04_reports/<timestamp>_token_ratios_live.md`.
+**Writes:** `04_reports/<timestamp>_token_ratios_live.md`.
 **Called by:** `06_char_token_ratio.py`.
 **Calls out:** none.
 
 ---
 
-### 07_quartet_prefix_diff.py (86 LOC)
+### 07_quartet_prefix_diff.py (67 LOC)
 
-**Purpose:** Entry point — forensic per-segment prefix diff for cache rebuilds: reconstructs full
-payload state by replaying the `_forwarded` dual-log delta chain, aligns to session-JSONL ground
-truth by timestamp, and diffs consecutive requests segment-by-segment.
-**Reads:** a `_forwarded` dual-log JSONL (`--forwarded-log`), a session JSONL (`--session-jsonl`),
-optionally a matching `_original` dual-log (`--original-log`).
+**Purpose:** Entry point — forensic per-segment prefix diff for cache rebuilds: replays the
+`_forwarded` dual-log delta chain and diffs consecutive requests.
+**Reads:** a `_forwarded` dual-log JSONL, a session JSONL, optionally a matching `_original`
+dual-log.
 **Writes:** `md/<timestamp>_quartet_prefix_diff.md`, path printed to stdout.
 **Called by:** none — manual CLI.
 **Calls out:** `quartet_prefix_diff_load.py`, `quartet_prefix_diff_diff.py`,
@@ -256,22 +249,20 @@ optionally a matching `_original` dual-log (`--original-log`).
 
 ### quartet_prefix_diff_load.py (185 LOC)
 
-**Purpose:** Ground-truth grouping from session JSONL, forwarded-delta-chain replay (state
-reconstruction), original-log flow_id lookup, timestamp-based request/state mapping, and
-rebuild-pair detection/selection.
-**Reads:** nothing at import time; its functions read the forwarded/original dual-logs and session
-JSONL.
+**Purpose:** Ground-truth grouping, forwarded-delta-chain replay, original-log flow_id lookup,
+timestamp-based request mapping, and rebuild-pair detection.
+**Reads:** nothing at import time; its functions read the forwarded/original dual-logs and
+session JSONL.
 **Writes:** nothing.
-**Called by:** `07_quartet_prefix_diff.py`, `quartet_prefix_diff_report.py` (`REBUILD_CR_RATIO_THRESHOLD`).
+**Called by:** `07_quartet_prefix_diff.py`, `quartet_prefix_diff_report.py`.
 **Calls out:** none.
 
 ---
 
 ### quartet_prefix_diff_diff.py (221 LOC)
 
-**Purpose:** The segment diff engine — system-block diff, message-content classification (image
-eviction, format normalization), per-message row diff (modified/added/removed), client-side-vs-
-proxy-side original attribution, CR/CC reconciliation, and the full per-pair analysis assembly.
+**Purpose:** The segment diff engine — system-block diff, message-content classification,
+per-message row diff, client/proxy attribution, CR/CC reconciliation.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `07_quartet_prefix_diff.py`.
@@ -282,21 +273,18 @@ proxy-side original attribution, CR/CC reconciliation, and the full per-pair ana
 ### quartet_prefix_diff_report.py (216 LOC)
 
 **Purpose:** Builds the report header/methodology, CR-collapse-points section, pairs-analyzed
-section, and the full per-pair section (system/tools/messages tables, original attribution,
-segment/reconciliation).
+section, and the full per-pair section.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `07_quartet_prefix_diff.py`.
-**Calls out:** `quartet_prefix_diff_load.py` (`REBUILD_CR_RATIO_THRESHOLD`),
-`quartet_prefix_diff_findings.py`.
+**Calls out:** `quartet_prefix_diff_load.py`, `quartet_prefix_diff_findings.py`.
 
 ---
 
 ### quartet_prefix_diff_findings.py (147 LOC)
 
-**Purpose:** Builds the closing proven-vs-hypothesis findings summary (image/system/tools stability
-flags, original-attribution client-vs-proxy rollup, recovery-identity per pair, interpretation
-section).
+**Purpose:** Builds the closing proven-vs-hypothesis findings summary (image/system/tools
+stability flags, attribution rollup, recovery identity, interpretation).
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `quartet_prefix_diff_report.py`.
@@ -304,15 +292,9 @@ section).
 
 ---
 
-## Gotchas
-- `07_quartet_prefix_diff.py` never reports cache-control breakpoint marker changes: the forwarded
-  delta chain hashes elements with `cache_control` stripped, so a marker-only change never enters the
-  delta and true sent breakpoint positions are not derivable from this reconstruction.
-- `07_quartet_prefix_diff.py` aligns forwarded-log entries to ground-truth request groups by
-  timestamp (two-pointer, monotonic), not by fixed line position — retried/aborted forwarded sends
-  are silently absorbed into the next group's match.
-- `04_cache_validation.py`, `05_req_breakdown.py`, and `06_char_token_ratio.py` all read the OLD
-  single-file `raw_payload` proxy-log format, which no longer exists on a live proxy (superseded by
-  the `_original`/`_forwarded`/`_stripped`/`_injected` dual-log quartet under `src/logs/dual_log/`,
-  the format `07_quartet_prefix_diff.py` reads instead) — a fixed/replayed single-file log is still
-  needed to exercise these three scripts.
+## State
+No persistent state lives in this directory. Every script reads its input fresh on every run and
+either prints to stdout or writes a fresh timestamped report; `05_req_breakdown.py` and
+`06_char_token_ratio.py` write into a `04_reports/` subdirectory that does not currently exist
+(mismatched from the real, tracked `md/` directory — a pre-existing inconsistency, not introduced
+or fixed by this pass).

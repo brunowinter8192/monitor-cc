@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""Single-session Opus 4.7 char-to-token ratio analysis.
-
-Ratios computed (chars/token, consistent with anchor 3.68 chars/token):
-  A) msg-ratio: Δmsg_chars / CC for clean requests (REQ#>=2, no-thinking, Δmsg>0)
-  B) prefix-ratio: (sys+tools+msgs chars) / (CC+CR) backsolve from REQ#1 if clean
-
-Filters: Opus only, no-thinking response, streaming dedup.
-Auto-detects latest proxy log + session JSONL.
-All scripts assume CWD = Monitor_CC/ (project root).
-"""
 # INFRASTRUCTURE
 from char_token_ratio_load import (
     find_latest_proxy_log, find_latest_session_jsonl, load_proxy_rows, load_session_events, pair_rows,
