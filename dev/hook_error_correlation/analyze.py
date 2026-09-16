@@ -9,14 +9,13 @@ from datetime import datetime, timezone
 from analyze_report import format_report
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-MAIN_PROJECT = None  # resolved below by _resolve_main_project()
+MAIN_PROJECT = None
 REPORT_DATE  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 _HOOK_PATH_RE   = re.compile(r"src/hooks/(\w+)\.py")
 _HOOK_SIGNAL_RE = re.compile(r"PreToolUse:\w+ hook error:")
 
 
-# Resolve MAIN_PROJECT at import time via .git file traversal
 def _resolve_main_project() -> str:
     p = SCRIPT_DIR
     while p != os.path.dirname(p):
@@ -41,8 +40,6 @@ LOG_ERRORS   = os.path.join(LOGS_DIR, "tool_errors.jsonl")
 
 
 # ORCHESTRATOR
-
-# Load logs, overlay via proxy lookup, replay active hooks, write report
 def analyze_workflow() -> None:
     raw_counts = load_raw_counts(LOG_ERRORS)
     errors     = load_hook_errors(LOG_ERRORS)
@@ -55,8 +52,6 @@ def analyze_workflow() -> None:
 
 
 # FUNCTIONS
-
-# Count all (non-deduplicated) hook errors per hook name
 def load_raw_counts(path: str) -> dict:
     counts = defaultdict(int)
     with open(path) as f:
@@ -68,7 +63,6 @@ def load_raw_counts(path: str) -> dict:
     return dict(counts)
 
 
-# Load unique hook errors; return list enriched with hook_name + hook_status
 def load_hook_errors(path: str) -> list:
     errors, seen = [], set()
     with open(path) as f:
@@ -87,13 +81,11 @@ def load_hook_errors(path: str) -> list:
     return errors
 
 
-# Load fire log entries
 def load_fires(path: str) -> list:
     with open(path) as f:
         return [json.loads(l) for l in f]
 
 
-# Return status dict for a hook: active / disabled / removed
 def classify_hook_status(hook_name: str) -> dict:
     py       = os.path.join(HOOKS_DIR, f"{hook_name}.py")
     disabled = os.path.join(HOOKS_DIR, f"{hook_name}.py.disabled")
@@ -104,7 +96,6 @@ def classify_hook_status(hook_name: str) -> dict:
     return {"status": "removed", "stale_reason": "removed (file gone; errors show can't-open-file)"}
 
 
-# Enrich each error with exact tool_input from proxy; return list with added fields
 def build_stufe1(errors: list) -> list:
     result = []
     for e in errors:
@@ -118,7 +109,6 @@ def build_stufe1(errors: list) -> list:
     return result
 
 
-# Locate tool_use_id in proxy JSONL raw_payload.messages; return (input_dict, status_str)
 def lookup_command(proxy_file: str, tool_use_id: str, tool_name: str):
     proxy_path = os.path.join(LOGS_DIR, proxy_file)
     if not os.path.exists(proxy_path):
@@ -138,7 +128,6 @@ def lookup_command(proxy_file: str, tool_use_id: str, tool_name: str):
     return None, "not_found"
 
 
-# Classify active hook errors via replay; return Stufe2 entries
 def build_stufe2(stufe1: list) -> list:
     result = []
     for e in stufe1:
@@ -148,7 +137,6 @@ def build_stufe2(stufe1: list) -> list:
             result.append({**e, "replay_exit": None, "classification": f"stale:{e['hook_status']['stale_reason']}"})
             continue
         if e["tool_input"] is None:
-            # Hook is active but proxy file missing → can't verify; treat as unverified not stale
             result.append({**e, "replay_exit": None, "classification": "unverified:proxy_missing"})
             continue
         payload  = build_replay_payload(e["tool_name"], e["tool_input"])
@@ -160,12 +148,10 @@ def build_stufe2(stufe1: list) -> list:
     return result
 
 
-# Build stdin payload JSON for hook subprocess
 def build_replay_payload(tool_name: str, tool_input: dict) -> str:
     return json.dumps({"tool_name": tool_name, "tool_input": tool_input, "session_id": "replay"})
 
 
-# Run hook subprocess with cwd=MAIN_PROJECT; return exit code
 def replay_hook(hook_name: str, payload: str) -> int:
     hook_path = os.path.join(MAIN_PROJECT, "src", "hooks", f"{hook_name}.py")
     r = subprocess.run(
@@ -177,7 +163,6 @@ def replay_hook(hook_name: str, payload: str) -> int:
     return r.returncode
 
 
-# Write report to file; return path
 def write_report(report: str, reports_dir: str, date: str) -> str:
     os.makedirs(reports_dir, exist_ok=True)
     path = os.path.join(reports_dir, f"{date}.md")
