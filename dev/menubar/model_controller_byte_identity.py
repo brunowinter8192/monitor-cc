@@ -1,28 +1,3 @@
-"""
-Byte-identity harness for src/menubar/model_controller.py (menubar milestone A: persistence +
-NSPanel-construction concern split into sibling modules).
-
-(1) Persistence: MODEL_SELECTION_FILE/PROXY_RULES_FILE redirected to temp copies (rules file
-seeded from a copy of the real ~/.claude/shared-rules/proxy_rules.json if present, else a
-synthetic minimal fixture) — load, cycle main/worker model/effort/max_tokens through a fixed
-sequence, write; hashes both written files' raw bytes.
-(2) UI: instantiates ModelController with a minimal fake app (settings = a SimpleNamespace with
-panel_width/panel_min_height/auto_focus, per menubar milestone B's PanelSettings split;
-_panel_controller = a plain NSObject subclass instance), calls open() then each
-handle_cycle_* once, dumping every arranged subview's class/frame/title/attributedTitle/tag/action
-after each step; hashes the dump. Does NOT call handle_apply — that writes the REAL shared-rules
-files, and this harness must never touch them; open()/handle_cycle_* are read-only with respect to
-the real files (a cycle click only re-reads model_params for the newly-selected model, nothing is
-written until Apply).
-
-Usage (from project root):
-    ./venv/bin/python dev/menubar/model_controller_byte_identity.py
-
-Prints two lines: PERSISTENCE_HASH and UI_HASH. Run before and after the split; both must match.
-If AppKit refuses headless view creation, UI_HASH reports SKIPPED with the reason and an
-import + open() smoke check runs instead.
-"""
-
 # INFRASTRUCTURE
 import hashlib
 import importlib
@@ -61,24 +36,14 @@ def main():
 
 # FUNCTIONS
 
-# Loaded via importlib (not a literal 'from src.' module-level line) — dev/ scripts may not use
-# that form (block_dev_imports_src); model_controller.py's package-relative imports only resolve
-# when loaded as part of the src.menubar package anyway.
 def _import_model_controller():
     return importlib.import_module('.'.join(['src', 'menubar', 'model_controller']))
 
 
-# Loaded via importlib, same reason as _import_model_controller. (2026-09, menubar milestone A:
-# every persistence function this harness drives — load/cycle/write — moved out of
-# model_controller.py into this pure module; the harness's own import target was updated in the
-# same commit as the split, exactly like every other symbol move this milestone.)
 def _import_model_selection():
     return importlib.import_module('.'.join(['src', 'menubar', 'model_selection']))
 
 
-# Redirect MODEL_SELECTION_FILE/PROXY_RULES_FILE to temp copies via each function's own path=
-# parameter (no monkeypatching needed); load -> fixed cycle sequence -> write; hash both written
-# files' raw bytes.
 def _hash_persistence(ms) -> str:
     digest = hashlib.sha256()
     with tempfile.TemporaryDirectory() as tmp:
@@ -121,7 +86,6 @@ def _hash_persistence(ms) -> str:
     return digest.hexdigest()
 
 
-# Call obj.method_name() if the method exists; None if absent or if the call itself raises.
 def _safe_call(obj, method_name: str):
     if not hasattr(obj, method_name):
         return None
@@ -131,8 +95,6 @@ def _safe_call(obj, method_name: str):
         return None
 
 
-# Dump class/frame/title/attributedTitle/tag/action for every arranged subview, as a stable
-# JSON-serialized bytes blob.
 def _dump_subviews(sv) -> bytes:
     entries = []
     for v in sv.arrangedSubviews():
@@ -180,8 +142,6 @@ def _hash_ui(mc) -> str:
     return digest.hexdigest()
 
 
-# Fallback when headless AppKit view creation fails: import already succeeded (main() got this
-# far), so just prove open() doesn't raise.
 def _smoke_import_and_open(mc) -> None:
     from Foundation import NSObject
 

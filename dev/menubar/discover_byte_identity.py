@@ -1,30 +1,3 @@
-"""
-Byte-identity harness for src/menubar/discover.py:_process_project_dir (menubar milestone C:
-86-LOC function extraction into _worker_session_info/_main_session_info/_hook_freshness).
-
-Monkeypatches every I/O boundary the function touches (_newest_jsonl, _has_active_bg,
-_read_hook_state, _cwd_from_jsonl, _worker_tmux_session, _tmux_session_exists,
-_tmux_window_activity, _proc_cwd_for_encoded_dir, _proxy_log_newest_mtime) with deterministic
-fakes, drives 4 scenarios through the real, unmocked _process_project_dir/_classify_encoded_dir/
-_decode_dir_name logic, and hashes the resulting SessionInfo tuples:
-
-1. worker_fresh_working_stale_activity: worker in a worktree, hook fresh + 'working', tmux window
-   activity stale (> WORKING_THRESHOLD_SECS) -> crash-safety demote to 'idle'.
-2. worker_no_worktree_old_mtime: worker branch, cwd unresolvable, JSONL older than
-   ALIVE_WINDOW_SECS -> alive guard fails, returns None.
-3. main_fresh_hook: main session, hook fresh + 'working' -> status taken directly from hook.
-4. main_idle_proxy_override: main session, no hook, JSONL says idle, but a newer proxy-log mtime
-   within THINKING_OVERRIDE_MAX_SECS overrides status to 'working'.
-
-Usage (from project root):
-    ./venv/bin/python dev/menubar/discover_byte_identity.py
-
-Prints one HASH line. Run before and after a change to _process_project_dir; both must match.
-No harness needed for detect_main_desktop_numbers / _refresh_ghostty_tty_to_id (Ghostty/
-CoreGraphics/tty I/O, no clean seam) — see this milestone's recap for the import-smoke +
-caller-check rationale instead.
-"""
-
 # INFRASTRUCTURE
 import hashlib
 import importlib
@@ -48,9 +21,6 @@ def main():
 
 # FUNCTIONS
 
-# Loaded via importlib (not a literal 'from src.' module-level line) — dev/ scripts may not use
-# that form (block_dev_imports_src); discover.py's package-relative imports only resolve when
-# loaded as part of the src.menubar package anyway.
 def _import_discover():
     return importlib.import_module('.'.join(['src', 'menubar', 'discover']))
 
@@ -80,7 +50,7 @@ def _scenario_worker_fresh_working_stale_activity() -> dict:
         jsonl=_FakeJsonl('sess-w1', _NOW - 5),
         cwd_from_jsonl='/Users/x/Monitor_CC/.claude/worktrees/alpha',
         tmux_session_exists=True,
-        tmux_window_activity=_NOW - 999,   # stale: now - wa = 999 > WORKING_THRESHOLD_SECS
+        tmux_window_activity=_NOW - 999,
         hook_state={'sess-w1': {'status': 'working', 'updated_ts': _NOW - 1}},
         has_bg=False,
     )
@@ -89,7 +59,7 @@ def _scenario_worker_fresh_working_stale_activity() -> dict:
 def _scenario_worker_no_worktree_old_mtime() -> dict:
     return dict(
         project_dir=_FakeProjectDir('-Users-x-Monitor_CC--claude-worktrees-beta'),
-        jsonl=_FakeJsonl('sess-w2', _NOW - 999999),   # far older than ALIVE_WINDOW_SECS
+        jsonl=_FakeJsonl('sess-w2', _NOW - 999999),
         cwd_from_jsonl=None,
         tmux_session_exists=False,
         tmux_window_activity=0,
@@ -112,11 +82,11 @@ def _scenario_main_fresh_hook() -> dict:
 def _scenario_main_idle_proxy_override() -> dict:
     return dict(
         project_dir=_FakeProjectDir('-Users-x-Other_Proj'),
-        jsonl=_FakeJsonl('sess-m2', _NOW - 999),   # older than WORKING_THRESHOLD_SECS -> JSONL idle
+        jsonl=_FakeJsonl('sess-m2', _NOW - 999),
         proc_cwd='/Users/x/Other_Proj',
         hook_state={},
         has_bg=False,
-        proxy_mtime=_NOW - 100,   # newer than mtime, within THINKING_OVERRIDE_MAX_SECS
+        proxy_mtime=_NOW - 100,
     )
 
 
@@ -127,9 +97,6 @@ _PATCHED_NAMES = [
 ]
 
 
-# Replaces every I/O-boundary name on the live module object with a scenario-backed fake;
-# returns the originals for restoration. discover.py's own functions resolve these names as
-# module globals at call time, so reassigning the attribute redirects every internal caller.
 def _install_fakes(discover_mod, scenario: dict) -> dict:
     originals = {name: getattr(discover_mod, name) for name in _PATCHED_NAMES}
     discover_mod._newest_jsonl = lambda project_dir: scenario['jsonl']

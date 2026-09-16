@@ -1,31 +1,3 @@
-"""
-Byte-identity harness for src/menubar/panel_manager.py (menubar milestone B: PanelManager
-class-attribute split + _rebuild_inner helper extraction).
-
-Constructs PanelManager with a minimal fake app (settings + a real NSObject _panel_controller),
-calls rebuild(sessions, bg_by_project) with a synthetic 3-project session list (one project with
-two mains sharing a desktop number -> conflict; one with a worker; one with a bg timer and a main
-with desktop_no=None), dumps the full NSGridView contents (per cell: class, title string, tag,
-action, color description, row height) plus every lookup map, hashes. Then calls update_inplace
-with one session's status flipped and extends the hash. Run before and after a change; both
-hashes must match.
-
-Targets PanelManager's post-split attribute layout (menubar milestone B): `_widgets` (a
-_PanelWidgets: panel/stack/quit_btn/toggle_btn/kill_btn) and `_lookups` (a _PanelLookups: the 6
-per-rebuild maps) replace the 11 flat attrs the pre-split PanelManager carried; the fake app
-exposes `.settings` (panel_width/panel_min_height/auto_focus) instead of the 3 flat attrs
-PanelManager used to read directly off `app`. Baseline hash captured against the pre-split
-layout was 0efc9d390506a6e17c5b33958074e44d6ae5831ddd898ae82c9bd8b008876d42 — this file's own
-accessor code was updated in the same commit as the split, mirroring
-dev/menubar/model_controller_byte_identity.py's import-target update pattern from milestone A.
-
-Usage (from project root):
-    ./venv/bin/python dev/menubar/panel_manager_byte_identity.py
-
-Prints one HASH line. If AppKit refuses headless NSGridView introspection, reports SKIPPED with
-the reason and falls back to an import + rebuild() smoke check.
-"""
-
 # INFRASTRUCTURE
 import hashlib
 import importlib
@@ -57,9 +29,6 @@ def main():
 
 # FUNCTIONS
 
-# Loaded via importlib (not a literal 'from src.' module-level line) — dev/ scripts may not use
-# that form (block_dev_imports_src); panel_manager.py's package-relative imports only resolve
-# when loaded as part of the src.menubar package anyway.
 def _import_panel_manager():
     return importlib.import_module('.'.join(['src', 'menubar', 'panel_manager']))
 
@@ -68,9 +37,6 @@ def _import_discover():
     return importlib.import_module('.'.join(['src', 'menubar', 'discover']))
 
 
-# 3 projects: alpha has two mains sharing desktop_no=2 (conflict -> "[!2]" red rendering); beta
-# has one main + one worker (worker row, clickable); gamma has one main with desktop_no=None
-# (no slot prefix) and carries the bg timer (badge + abort button on its separator row).
 def _make_sessions(SessionInfo):
     return [
         SessionInfo(name='alpha-main1', status='working', has_bg=False, encoded_dir='-alpha1',
@@ -95,8 +61,6 @@ def _bg_by_project():
     return {'gamma': _BgInfo(min_remaining=90, sleep_pids=(4321,))}
 
 
-# PanelManager reads app.settings.panel_width / .panel_min_height / .auto_focus and
-# app._panel_controller (post-milestone-B layout).
 class _FakeApp:
     def __init__(self):
         self.settings = SimpleNamespace(panel_width=422, panel_min_height=460, auto_focus=False)
@@ -142,9 +106,6 @@ def _dump_cell(view) -> dict:
     }
 
 
-# Walks every arranged subview of the stack; for the one NSGridView among them, dumps every
-# row/cell (class/title/tag/action/color/height); everything else (separator, header label) dumps
-# by class name + frame only.
 def _dump_stack(stack) -> list:
     entries = []
     for view in stack.arrangedSubviews():
