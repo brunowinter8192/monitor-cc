@@ -38,7 +38,7 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### constants.py (29 LOC)
+### constants.py (49 LOC)
 
 **Purpose:** process-wide timing/size-limit constants and `TOOL_BLOCKLIST`.
 **Reads:** nothing.

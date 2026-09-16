@@ -73,7 +73,7 @@ self-consistency, the forwarded `thinking` field, and strip-side field attributi
 **Writes:** nothing — results recorded via `model_params_test_infra.check`.
 **Called by:** `p2_model_params_probe.py`.
 **Calls out:** `src.proxy.inject_helpers`, `src.proxy.logging`, `src.proxy.strip_inject_delta`,
-`dev/proxy_dual_log/attribution_coverage.py` (loaded via `importlib.util`).
+`dev/proxy_dual_log/attribution_coverage/attribution_coverage.py` (loaded via `importlib.util`).
 
 ---
 
