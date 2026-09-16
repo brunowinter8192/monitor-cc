@@ -198,9 +198,6 @@ def _pick_examples(full_recs, partial_recs, dot_absorbed):
     other_full = _pick(lambda r: r['site'] != '_apply_bg_launch_ack_strip' and r is not dot_example, full_recs)
     if other_full:
         examples.append(('other FULL site', other_full))
-    # Prefer a PARTIAL op that IS trimmed (offset>0 or suffix trimmed) with ratio<1 — shows
-    # trimming is CORRECT/desirable there (excises a marker, keeps real surrounding text),
-    # unlike the FULL sites above where trimming is the defect.
     trimmed_partial = _pick(lambda r: _trimmed(r) and (_ratio(r) or 0) < 0.95, partial_recs)
     if trimmed_partial:
         examples.append(('PARTIAL, trimmed — correctly served by trimming (contrast case)', trimmed_partial))
@@ -250,7 +247,6 @@ def _report_examples_section(full_recs, partial_recs, dot_absorbed):
     return lines
 
 
-# Build the markdown report
 def _build_report(records, total_requests, corpus_files, excluded_files):
     ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     lines = []

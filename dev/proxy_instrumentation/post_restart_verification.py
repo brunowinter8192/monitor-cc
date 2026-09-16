@@ -1,28 +1,3 @@
-"""
-post_restart_verification.py -- the one script a zero-context agent runs after the proxy restarts
-to find out whether the three proxy-side changes on this branch (accept-encoding: identity /
-answering_model, the auto-backgrounded-on-timeout strip, poread full-content injection) actually
-took effect in real traffic.
-
-Picks the newest recorded session by mtime under the dual-log directory (never a hardcoded stem),
-checks all three claims against that one session's six dual-log files, and prints one of PASS,
-CONTRADICTED, or MISSING DATA per claim -- a claim with no data to test against is never reported
-as a pass. Reuses the real proxy predicates/constants (src/proxy/strip_bg_launch_ack.py,
-src/proxy/inject_poread.py, src/proxy_display/forwarded_parser.py) wherever a claim's precision
-depends on them, rather than re-typing matching logic that could silently drift from the real
-implementation.
-
-Run (from project root or this worktree):
-    ./venv/bin/python dev/proxy_instrumentation/post_restart_verification.py
-
-Exit 0: all three claims PASS.
-Exit 1: at least one claim is CONTRADICTED (checked first -- the worse outcome).
-Exit 2: no claim is CONTRADICTED, but at least one has no data to test (MISSING DATA).
-
-POST_RESTART_VERIFY_LOG_DIR overrides the dual-log source directory -- used to pin a run against a
-frozen snapshot (e.g. /tmp/pre_restart_logs/) instead of the live, growing main-checkout corpus.
-"""
-
 # INFRASTRUCTURE
 import importlib
 import json

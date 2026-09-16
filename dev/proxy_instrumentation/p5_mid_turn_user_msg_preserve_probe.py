@@ -1,19 +1,3 @@
-"""
-Verifies the CC 2.1.223 mid-turn-user-message preserve-guard in
-src/proxy/message_passes.py::_apply_role_system_strip (issue #61) against two recorded sessions:
-
-  - api_requests_opus_posts_1786051932_original.jsonl: msg 274 (flow 4b4d396b...) is the live
-    incident itself — a role='system' message CC used to deliver a mid-turn user message
-    ("jetzt"). Real _apply_role_system_strip, run on the REAL recorded message list, must leave
-    it byte-for-byte untouched.
-  - api_requests_opus_websearch_1786052022_original.jsonl: three unrelated role='system' noise
-    messages (deferred-tools, task-tools-nag, date-changed) must still strip to "." exactly as
-    before this fix — the guard must not have widened beyond its one marker.
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy_instrumentation/p5_mid_turn_user_msg_preserve_probe.py
-"""
-
 # INFRASTRUCTURE
 import json
 import sys
@@ -22,8 +6,6 @@ from pathlib import Path
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
-# Recorded dual-log sessions live in the main project checkout (untracked data, not
-# duplicated into worktrees) — code under test is imported from WORKTREE_ROOT above.
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 
@@ -35,7 +17,6 @@ WEBSEARCH_STEM = 'api_requests_opus_websearch_1786052022'
 
 # FUNCTIONS
 
-# Load the full recorded messages list for one flow_id from an _original.jsonl file
 def _load_messages_for_flow(stem: str, flow_id: str) -> list:
     path = LOG_DIR / f'{stem}_original.jsonl'
     with open(path, encoding='utf-8') as f:
@@ -46,7 +27,6 @@ def _load_messages_for_flow(stem: str, flow_id: str) -> list:
     raise AssertionError(f'flow_id {flow_id} not found in {path}')
 
 
-# Preserve case: msg 274 of the incident flow must survive _apply_role_system_strip untouched
 def _check_preserve_case() -> dict:
     from proxy.message_passes import _apply_role_system_strip
     flow_id = '4b4d396b-a26e-4b44-ac32-144763cc786b'
@@ -71,7 +51,6 @@ def _check_preserve_case() -> dict:
     }
 
 
-# Regression case: one real role=system noise message from the websearch session must still nuke to "."
 def _check_noise_still_stripped(label: str, flow_id: str, msg_idx: int, expected_prefix: str) -> dict:
     from proxy.message_passes import _apply_role_system_strip
     messages = _load_messages_for_flow(WEBSEARCH_STEM, flow_id)

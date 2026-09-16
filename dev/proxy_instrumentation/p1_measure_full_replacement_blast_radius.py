@@ -1,20 +1,3 @@
-"""
-D2 — blast-radius measurement for a full-replacement-aware _extract_block_op.
-
-Measurement only: drives real recorded payloads through the real message-pass functions
-(src/proxy/message_passes.py) in src/proxy/rules.py::apply_modification_rules's actual
-pass order, capturing every (offset, removed, injected) op _ops_from_content_change
-produces, per pass. Classifies each op's SITE semantically (by reading the underlying
-strip function: does it construct new block content INDEPENDENTLY of the old — a whole-
-content replacement — or does it EXCISE a known chunk from within surrounding text and
-keep the remainder?) — not by any len(removed)/len(bt) threshold. The ratio is reported
-only as corroborating evidence, never as the classifier. Writes report to
-dev/proxy_instrumentation/md/.
-
-Usage (from project root or worktree root):
-    ./venv/bin/python dev/proxy_instrumentation/p1_measure_full_replacement_blast_radius.py
-"""
-
 # INFRASTRUCTURE
 from pathlib import Path
 
@@ -25,7 +8,6 @@ MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 REPORT_DIR = Path(__file__).resolve().parent / 'md'
 
-# Same corpus + exclusion rationale as D1 (dev/bg_wakeup_id_line/p1_scan_launch_ack_wordings.py)
 CORPUS_FILES = [
     'api_requests_opus_monitor_cc_1785336796_original.jsonl',
     'api_requests_opus_posts_1785338463_original.jsonl',

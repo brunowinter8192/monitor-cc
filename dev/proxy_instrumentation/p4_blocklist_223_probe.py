@@ -1,22 +1,3 @@
-"""
-Verifies the CC 2.1.223 TOOL_BLOCKLIST extension (Artifact, ReportFindings,
-DeferredToolPlaceholder) against the newest main-session recording currently present in the live
-src/logs/dual_log/ corpus (glob-driven, same pattern as p7_blocklist_258_probe.py -- no hardcoded
-session stem, since a fixed stem ages out of the log-rotated corpus):
-
-  1. The real _strip_unused_tools (src/proxy/tools.py), run on the session's actual ORIGINAL
-     payload tools list, leaves exactly {Bash, Read, Skill} + any MCP-injected
-     names present in the forwarded log.
-  2. Sanity: none of the newly-blocked tool names has a live tool_use invocation anywhere in
-     the session's original messages (a stripped def with a live tool_use would 400 the API).
-  3. Agent (already blocklisted pre-2.1.223) does not appear in the forwarded/post-strip tools
-     list — confirms the earlier live-observation of "Agent" in the tools drill-down was the
-     intentional whole-stripped yellow row (render_sections.py), not a strip-path bug.
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy_instrumentation/p4_blocklist_223_probe.py
-"""
-
 # INFRASTRUCTURE
 import json
 import sys
@@ -26,8 +7,6 @@ WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT))
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
-# Recorded dual-log corpus lives in the main project checkout (untracked data, not
-# duplicated into worktrees) — code under test is imported from WORKTREE_ROOT above.
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 
@@ -39,10 +18,6 @@ NEWLY_BLOCKED = {'Artifact', 'ReportFindings', 'DeferredToolPlaceholder'}
 
 # FUNCTIONS
 
-# Newest main-session (non-worker) original log that also has a matching forwarded log and at
-# least one non-empty tools payload -- same selection pattern as
-# p7_blocklist_258_probe.py._newest_main_session_log, extended with the forwarded-pair/non-empty
-# requirements this probe additionally needs.
 def _select_session_stem() -> str:
     candidates = [
         p for p in sorted(LOG_DIR.glob('*_original.jsonl'))
@@ -59,7 +34,6 @@ def _select_session_stem() -> str:
     raise AssertionError(f'no candidate log has a non-empty tools payload in {LOG_DIR}')
 
 
-# One representative original-log payload with a non-empty tools list
 def _load_original_payload(stem: str) -> dict:
     path = LOG_DIR / f'{stem}_original.jsonl'
     with open(path, encoding='utf-8') as f:
@@ -70,7 +44,6 @@ def _load_original_payload(stem: str) -> dict:
     raise AssertionError(f'no line with non-empty tools in {path}')
 
 
-# Union of tool_use names invoked anywhere in the session's original messages
 def _invoked_tool_names(stem: str) -> set:
     path = LOG_DIR / f'{stem}_original.jsonl'
     names = set()
@@ -87,7 +60,6 @@ def _invoked_tool_names(stem: str) -> set:
     return names
 
 
-# Union of forwarded (post-strip, post-MCP-injection) tool names across the whole session
 def _forwarded_tool_names(stem: str) -> set:
     from src.proxy_display.forwarded_parser import _parse_forwarded_log
     fwd_path = LOG_DIR / f'{stem}_forwarded.jsonl'
