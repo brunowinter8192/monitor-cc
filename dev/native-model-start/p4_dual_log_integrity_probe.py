@@ -1,29 +1,3 @@
-"""
-Issue #63 live-verify, surface 2 — dual_log integrity over ALL recorded requests of both CC
-2.1.223 sessions (api_requests_opus_posts_1786051932, api_requests_opus_websearch_1786052022).
-
-Part A — composition invariant, driven over REAL sessions (not the fixture corpus
-dev/proxy_dual_log/test_composition_invariant.py uses). Calls the REAL
-src/proxy/rules.py::apply_modification_rules on every recorded ORIGINAL payload (independent
-per-request — the message-passes pipeline itself carries no cross-request state; only the
-dual-log's cache-hash bookkeeping in ProxyAddon does, irrelevant to composition), and validates
-its own returned `all_ops` (the real per-block edit-op list every op-recording pass appends to,
-merged via `_merge_ops`) against the REAL `compose_block` (`src/proxy/diff_engine.py`, the same
-function `strip_inject_delta.py` uses to build the dual-log's span data):
-
-  Inv1: "".join(t for tag,t in spans if tag in ("equal","stripped")) == C0_block_text
-  Inv2: "".join(t for tag,t in spans if tag in ("equal","injected")) == Cfwd_block_text
-
-Part B — schema-drift scan: every top-level payload key, system-block key-set, and content-block
-`type` value observed across BOTH sessions' original payloads, diffed against the sets this
-pipeline's own code explicitly names/handles (found by reading message_summary.py /
-_extract_forwarded_fields / diff_engine.py) — flags anything new CC 2.1.223 might have introduced
-that the pipeline does not model.
-
-Usage (from project root, real venv — imports mitmproxy transitively via src.proxy.rules):
-    ./venv/bin/python dev/native-model-start/p4_dual_log_integrity_probe.py
-"""
-
 # INFRASTRUCTURE
 import json
 import sys
@@ -43,9 +17,7 @@ SESSIONS = [
     ('websearch', 'api_requests_opus_websearch_1786052022'),
 ]
 
-# Types this pipeline's own code explicitly branches on (message_summary.py::_summarize_message)
 KNOWN_CONTENT_BLOCK_TYPES = {'text', 'tool_use', 'tool_result', 'thinking'}
-# Top-level payload keys _extract_forwarded_fields / apply_modification_rules explicitly read
 KNOWN_PAYLOAD_KEYS = {
     'model', 'max_tokens', 'system', 'tools', 'messages', 'output_config',
     'anthropic_beta', 'context_management', 'diagnostics', 'metadata', 'stream',
@@ -64,7 +36,6 @@ def _load_session_requests(stem: str) -> list:
     return out
 
 
-# Part A — composition invariant over one request's real all_ops against the real compose_block
 def _check_composition(payload: dict) -> tuple:
     from proxy.rules import apply_modification_rules
     from proxy.diff_engine import compose_block, _get_inner_text
@@ -100,7 +71,6 @@ def _check_composition(payload: dict) -> tuple:
     return checks, all_ops
 
 
-# Part B — schema-drift scan over one payload
 def _scan_schema(payload: dict, keys_seen: set, sys_shapes_seen: set, block_types_seen: set) -> None:
     keys_seen.update(payload.keys())
     for b in payload.get('system', []) or []:
@@ -114,11 +84,6 @@ def _scan_schema(payload: dict, keys_seen: set, sys_shapes_seen: set, block_type
                     block_types_seen.add(blk.get('type', '<no-type>'))
 
 
-# For each unmodeled top-level key, confirm the real pipeline forwards it byte-identical
-# (dict(payload) shallow-copy pattern used throughout apply_modification_rules/cache.py) rather
-# than silently dropping it — the difference between "not specially modeled" (fine, forward-
-# compatible by construction) and "silently lost" (a real functional bug: e.g. dropping the
-# top-level `thinking` config would disable extended thinking without any visible error).
 def _verify_unknown_keys_pass_through(new_keys: set, requests_by_key: dict) -> dict:
     from proxy.rules import apply_modification_rules
     results = {}

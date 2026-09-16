@@ -16,8 +16,6 @@ from model_params_test_infra import check, _with_config
 
 # FUNCTIONS
 
-# Load dev/proxy_dual_log/attribution_coverage.py by path (its module name has no package
-# context here, matching the same by-path load it itself uses for src/proxy/strip_vocab.py).
 def _load_attribution_coverage_module():
     path = WORKTREE_ROOT / "dev" / "proxy_dual_log" / "attribution_coverage.py"
     spec = importlib.util.spec_from_file_location("attribution_coverage_probe", path)
@@ -26,12 +24,6 @@ def _load_attribution_coverage_module():
     return mod
 
 
-# (a) thinking disabled + clear_thinking edit + a sibling edit -> only clear_thinking removed
-# (b) thinking disabled + ONLY the clear_thinking edit -> whole context_management key dropped,
-# not carried forward as an empty edits list (an empty edits list asks the API for "manage
-# context with zero edits", which is not the same as "no context_management at all" — dropping
-# the key is what Claude Code itself does when IT disables thinking, per the Haiku request in
-# the same capture).
 def _test_clear_thinking_removal_cases():
     payload_a = {
         "model": "claude-sonnet-5",
@@ -59,10 +51,6 @@ def _test_clear_thinking_removal_cases():
           changed_b is True and "context_management" not in result_b)
 
 
-# (c) thinking NOT disabled (adaptive) -> context_management untouched, byte-identical (same
-# object, not just equal-by-value).
-# (d) thinking disabled, no context_management at all -> no-op
-# (e) thinking disabled, context_management has no clear_thinking edit -> untouched
 def _test_clear_thinking_noop_cases():
     cm_c = {"edits": [{"type": "clear_thinking_20251015", "keep": "all"}]}
     payload_c = {
@@ -88,10 +76,6 @@ def _test_clear_thinking_noop_cases():
     check("(e) no clear_thinking edit present -> untouched, changed=False", changed_e is False)
 
 
-# (f) end-to-end: the exact observed shape — Claude Code sends thinking=adaptive plus its own
-# clear_thinking edit, the proxy's model_params injection (the menubar thinking-off toggle)
-# overwrites thinking to disabled, and the two functions together (as wired in
-# addon.py:_run_post_fixation_pipeline) must leave the payload self-consistent.
 def _test_clear_thinking_end_to_end():
     observed_payload, injected = _with_config(
         {"model_params": {"claude-sonnet-5": {"thinking": {"type": "disabled"}, "effort": "high", "max_tokens": 64000}}},
@@ -108,10 +92,6 @@ def _test_clear_thinking_end_to_end():
           fixed is True and "context_management" not in fixed_payload)
 
 
-# Test 13 — thinking/context_management self-consistency: a surviving clear_thinking_20251015
-# edit alongside a disabled thinking value is what produced the real 400 in
-# api_requests_worker_25c51a2e_cache-write-run_1789308787; _strip_clear_thinking_edit must remove
-# exactly that edit, no matter what disabled thinking, and never leave a dangling empty edits list.
 def test_clear_thinking_edit_stripped_when_thinking_disabled():
     print("\n[Test 13] _strip_clear_thinking_edit: thinking/context_management self-consistency")
     _test_clear_thinking_removal_cases()
@@ -119,8 +99,6 @@ def test_clear_thinking_edit_stripped_when_thinking_disabled():
     _test_clear_thinking_end_to_end()
 
 
-# Test 14 — the forwarded dual-log must show the forwarded 'thinking' value, so this exact failure
-# is readable straight off _forwarded.jsonl without cross-referencing the injected-fields delta.
 def test_forwarded_delta_includes_thinking():
     print("\n[Test 14] _build_forwarded_delta records the forwarded 'thinking' value")
     payload_on = {"model": "claude-sonnet-5", "thinking": {"type": "adaptive", "display": "summarized"},
@@ -141,14 +119,6 @@ def test_forwarded_delta_includes_thinking():
           "thinking" in entry_missing and entry_missing["thinking"] is None)
 
 
-# Test 15 — follow-up review point: _strip_clear_thinking_edit can now remove a top-level field
-# (context_management) for the first time ever on the STRIP side. Establishes (a) the real fn_map
-# written to stripped/injected JSONL never attributes ANY top-level field, and that
-# src/proxy/strip_inject_delta.py's own _FIELD_STRIP_FN/_FIELD_INJECT_FN — proven dead code by
-# that fact — have since been removed from that module entirely; and (b) the tool that DOES
-# attribute fields_delta entries, dev/proxy_dual_log/attribution_coverage.py's own
-# _FIELD_STRIP_FN, now correctly names _strip_clear_thinking_edit instead of falling through to
-# UNATTR:context_management.
 def test_context_management_strip_is_attributed():
     print("\n[Test 15] context_management strip: fn_map dead-code removal check + attribution_coverage fix")
 

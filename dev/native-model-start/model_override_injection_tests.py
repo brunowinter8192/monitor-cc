@@ -48,8 +48,6 @@ def _base_payload(model):
 
 # FUNCTIONS
 
-# Test 1 — legacy-only config (no 'model_params' key) -> byte-identical legacy behavior, INCLUDING
-# the model-field rewrite, for both opus and sonnet families.
 def test_legacy_only_unchanged():
     print("\n[Test 1] Legacy-only config -> byte-identical legacy behavior")
     payload = _base_payload("claude-opus-4-8")
@@ -71,7 +69,6 @@ def test_legacy_only_unchanged():
           injected_h is False and result_h == payload_h)
 
 
-# Test 2 — model_params hit: thinking/effort/max_tokens applied, model field left untouched.
 def test_model_params_hit():
     print("\n[Test 2] model_params hit -> params applied, model field NEVER touched")
     payload = _base_payload("claude-fable-5")
@@ -93,7 +90,6 @@ def test_model_params_hit():
           injected_s is True and result_s["model"] == "claude-sonnet-5")
 
 
-# Test 3 — model_params miss: model not in the table -> payload untouched.
 def test_model_params_miss():
     print("\n[Test 3] model_params miss -> payload untouched")
     payload = _base_payload("claude-haiku-4")
@@ -102,20 +98,15 @@ def test_model_params_miss():
     check("payload identical (same dict values)", result == payload)
 
 
-# Test 4 — suffixed model-id variant is a DELIBERATE miss: exact-match only, no normalization.
-# Pinned so a future "should we strip suffixes?" question is a conscious follow-up, not a silent
-# behavior change nobody noticed.
 def test_suffixed_model_id_is_deliberate_miss():
     print("\n[Test 4] Suffixed model-id variant -> deliberate MISS (no normalization)")
     config = {"model_params": {"claude-opus-4-8": {"effort": "high"}}}
-    payload = _base_payload("claude-opus-4-8[1m]")  # suffix variant, e.g. a context-window tag
+    payload = _base_payload("claude-opus-4-8[1m]")
     result, injected = _with_config(config, lambda: _inject_model_override(payload, "opus"))
     check("suffixed id 'claude-opus-4-8[1m]' vs table key 'claude-opus-4-8' -> exact match FAILS",
           injected is False and result == payload)
 
 
-# Test 5 — model_params present (even as an empty {}) alongside legacy sections -> model_params
-# wins, legacy is ignored entirely, no model rewrite happens.
 def test_model_params_presence_wins_over_legacy():
     print("\n[Test 5] model_params PRESENT (non-empty) alongside legacy sections -> model_params wins")
     mixed_config = {**_LEGACY_CONFIG, **_MODEL_PARAMS_CONFIG}
@@ -123,7 +114,7 @@ def test_model_params_presence_wins_over_legacy():
     result, injected = _with_config(mixed_config, lambda: _inject_model_override(payload, "opus"))
     check("injected=True (from model_params, not legacy)", injected is True)
     check("model NOT rewritten despite legacy model_override.model=claude-fable-5 being present too",
-          result["model"] == "claude-fable-5")  # already claude-fable-5 going in — key check is params source below
+          result["model"] == "claude-fable-5")
     check("thinking/effort/max_tokens match model_params values", result["max_tokens"] == 64000)
 
     print("\n[Test 5b] model_params PRESENT as an EMPTY {} -> still wins, legacy fully disabled")
@@ -135,7 +126,6 @@ def test_model_params_presence_wins_over_legacy():
           result_o["model"] == "claude-opus-4-8")
 
 
-# Test 6 — empty per-model entry ({}) and a partial entry (one key only).
 def test_empty_and_partial_entries():
     print("\n[Test 6] Empty per-model entry -> untouched; partial entry -> only that key applied")
     config_empty_entry = {"model_params": {"claude-fable-5": {}}}
@@ -154,7 +144,6 @@ def test_empty_and_partial_entries():
           result2["max_tokens"] == payload2["max_tokens"] == 8000)
 
 
-# Test 7 — config load failure degrades to no-op (fail-open), never raises.
 def test_config_load_failure_fails_open():
     print("\n[Test 7] _load_config raising -> fail-open, no raise")
     payload = _base_payload("claude-fable-5")
@@ -168,8 +157,6 @@ def test_config_load_failure_fails_open():
     check("injected=False, payload untouched", injected is False and result == payload)
 
 
-# Test 8 — (a)+(b): first request pins the model_params entry it saw; a later config change
-# against the SAME fixated dict (same simulated proxy process) does NOT alter the result.
 def test_fixation_pins_model_params_snapshot():
     print("\n[Test 8] Fixation: model_params pins on first request, later config change ignored")
     config1 = {"model_params": {"claude-fable-5": {"effort": "low", "max_tokens": 32000}}}
@@ -188,8 +175,6 @@ def test_fixation_pins_model_params_snapshot():
     check("(b) injected still True on the pinned replay", injected2 is True)
 
 
-# Test 9 — (c): a FRESH fixated dict (simulated fresh addon instance / hot-reload) picks up the
-# new config — proves fixation is scoped to the dict instance, not global module state.
 def test_fixation_fresh_instance_picks_up_new_config():
     print("\n[Test 9] Fixation: a fresh fixated dict picks up the changed config")
     config2 = {"model_params": {"claude-fable-5": {"effort": "high", "max_tokens": 128000}}}
@@ -200,8 +185,6 @@ def test_fixation_fresh_instance_picks_up_new_config():
     check("(c) fresh dict applies config2 (max_tokens=128000)", result3["max_tokens"] == 128000)
 
 
-# Test 10 — (d): legacy path is pinned the SAME way, and stays byte-identical to unfixated legacy
-# behavior (model rewrite included) on the pinning (first) call.
 def test_fixation_legacy_path_pinned_and_unchanged():
     print("\n[Test 10] Fixation: legacy path pinned too, byte-identical on first call")
     fixated = {}
@@ -214,7 +197,6 @@ def test_fixation_legacy_path_pinned_and_unchanged():
     check("(d) legacy first call: max_tokens applied", result1["max_tokens"] == 64000)
     check("(d) fixated dict now holds an entry for claude-opus-4-8", "claude-opus-4-8" in fixated)
 
-    # Config now DISABLES the section — same fixated dict must still apply the pinned (enabled) snapshot.
     disabled_config = {"model_override": {**_LEGACY_CONFIG["model_override"], "enabled": False}}
     payload2 = _base_payload("claude-opus-4-8")
     result2, injected2 = _with_config(disabled_config, lambda: _inject_model_override(payload2, "opus", fixated))
@@ -222,8 +204,6 @@ def test_fixation_legacy_path_pinned_and_unchanged():
     check("(d) SAME fixated dict: model still rewritten to claude-fable-5", result2["model"] == "claude-fable-5")
 
 
-# Test 11 — a genuine MISS (config loads fine, model not in the table) pins "no injection" too —
-# a later config addition for that model id, against the SAME fixated dict, must NOT retroactively apply.
 def test_fixation_miss_is_pinned_too():
     print("\n[Test 11] Fixation: a genuine miss pins 'no injection', not just a hit")
     config_without_entry = {"model_params": {"claude-opus-5": {"effort": "high"}}}
@@ -240,8 +220,6 @@ def test_fixation_miss_is_pinned_too():
     check("miss stays pinned: payload2 unchanged", result2 == payload2)
 
 
-# Test 12 — a genuine _load_config() exception on the FIRST call for a model id does NOT pin —
-# the very next call (config now loadable) resolves live and pins from there.
 def test_fixation_load_failure_does_not_pin():
     print("\n[Test 12] Fixation: a load failure on first call does not pin — next call retries live")
     fixated = {}
