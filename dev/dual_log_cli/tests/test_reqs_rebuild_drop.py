@@ -15,7 +15,6 @@ from src.dual_log_cli.timeline_boundaries import request_boundaries
 PASS_LIST = []
 FAIL_LIST = []
 
-
 def check(name: str, condition: bool, detail: str = "") -> None:
     if condition:
         PASS_LIST.append(name)
@@ -23,15 +22,9 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         FAIL_LIST.append(name)
         print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
 
-
-# The LOCAL "HH:MM:SS" a UTC "...Z" timestamp renders as — computed the same way production code
-# does (reader.local_datetime), so an expected string built from this is correct on ANY machine's
-# timezone, not just the one this suite happened to be written on.
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
 
-
-# One forwarded_delta line as addon.py's dual-log writer would shape it
 def _delta_entry(flow_id: str, timestamp: str, messages: int, is_first: bool = False) -> dict:
     return {
         "type": "forwarded_delta",
@@ -45,8 +38,6 @@ def _delta_entry(flow_id: str, timestamp: str, messages: int, is_first: bool = F
         "messages_delta": {},
     }
 
-
-# Writes entries to a temp _forwarded.jsonl and runs the real request_boundaries over it
 def _boundaries(entries: list) -> list:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
         for entry in entries:
@@ -57,13 +48,8 @@ def _boundaries(entries: list) -> list:
     finally:
         path.unlink()
 
-
-# A session dict carrying only what render_reqs/render_reqs_merged actually read — `_session_tag`
-# derives the --merged tag straight from the STEM via `discovery.stem_identity`, so a realistic
-# stem is what a fixture needs, not a fake context string.
 def _session(stem: str) -> dict:
     return {"stem": stem}
-
 
 # ORCHESTRATOR
 
@@ -83,11 +69,8 @@ def test_reqs_rebuild_drop_workflow() -> None:
         sys.exit(1)
     print("ALL PASS")
 
-
 # FUNCTIONS
 
-# --rebuild: only REQs where CC > CR. REQ 3 has no entry in the usage map at all and must be
-# skipped, not shown with a "?" tail — an unresolved REQ fails the predicate outright.
 def test_rebuild_keeps_only_cc_gt_cr() -> None:
     boundaries = _boundaries([
         _delta_entry("f0", "2026-09-04T10:00:00Z", 2, is_first=True),
@@ -95,7 +78,7 @@ def test_rebuild_keeps_only_cc_gt_cr() -> None:
         _delta_entry("f2", "2026-09-04T10:02:00Z", 9),
     ])
     session = _session("s")
-    usage_by_stem = {"s": {"f0": (5, 10), "f1": (20, 3)}}  # f2 (REQ 3) unresolved
+    usage_by_stem = {"s": {"f0": (5, 10), "f1": (20, 3)}}
     got = render_reqs([(session, boundaries)], usage_by_stem=usage_by_stem, rebuild=True)
     expected = (
         "session s\n"
@@ -104,10 +87,6 @@ def test_rebuild_keeps_only_cc_gt_cr() -> None:
     check("only the CC>CR, resolved REQ prints; REQ 2 (CC<CR) and REQ 3 (unresolved) omitted",
           got == expected, got)
 
-
-# --drop: REQ n qualifies when CR(n) < CR(n-1) + CC(n-1). REQ 2's CR (300) is exactly REQ 1's
-# CR+CC (300) — the boundary, does NOT qualify (strict <). REQ 3's CR (250) is less than REQ 2's
-# CR+CC (350) — qualifies, no shortfall figure printed anywhere.
 def test_drop_boundary_exact_equal_does_not_qualify() -> None:
     boundaries = _boundaries([
         _delta_entry("f0", "2026-09-04T10:00:00Z", 2, is_first=True),
@@ -124,8 +103,6 @@ def test_drop_boundary_exact_equal_does_not_qualify() -> None:
     check("REQ 2 (exactly equal) does not qualify, REQ 3 qualifies, no shortfall figure printed",
           got == expected, got)
 
-
-# --drop: REQ 1 of a chain never qualifies (no predecessor), even when its own usage resolves.
 def test_drop_req1_never_qualifies() -> None:
     boundaries = _boundaries([_delta_entry("f0", "2026-09-04T10:00:00Z", 2, is_first=True)])
     session = _session("s")
@@ -134,9 +111,6 @@ def test_drop_req1_never_qualifies() -> None:
     check("REQ 1 has no predecessor -> never qualifies for --drop, header only",
           got == "session s\n", got)
 
-
-# --drop --merged: the predecessor is ALWAYS the previous request of the SAME session, never the
-# merged chain's chronological neighbor.
 def test_merged_drop_predecessor_stays_within_session() -> None:
     boundaries_a = _boundaries([
         _delta_entry("a0", "2026-09-04T10:00:00Z", 2, is_first=True),
@@ -160,8 +134,6 @@ def test_merged_drop_predecessor_stays_within_session() -> None:
     check("a1 qualifies against ITS OWN session's a0, not the chronologically nearer b0; "
           "b0 (session B's own REQ 1) never qualifies at all", got == expected, got)
 
-
-# A REQ whose own usage never resolves is skipped under EITHER flag.
 def test_unresolved_usage_skipped_under_either_flag() -> None:
     boundaries = _boundaries([
         _delta_entry("f0", "2026-09-04T10:00:00Z", 2, is_first=True),
@@ -175,8 +147,6 @@ def test_unresolved_usage_skipped_under_either_flag() -> None:
     check("no usage resolved at all -> --drop shows nothing but the header",
           got_drop == "session s\n", got_drop)
 
-
-# --rebuild AND --drop combine with AND: a REQ must satisfy both.
 def test_rebuild_and_drop_combine_with_and() -> None:
     boundaries = _boundaries([
         _delta_entry("f0", "2026-09-04T10:00:00Z", 2, is_first=True),
@@ -188,8 +158,6 @@ def test_rebuild_and_drop_combine_with_and() -> None:
     check("REQ 2 passes --rebuild alone but fails --drop (exact-equal boundary) -> excluded",
           got == "session s\n", got)
 
-
-# Neither --rebuild nor --drop set: CR/CC still print (baseline behavior, not an opt-in tail).
 def test_plain_listing_shows_usage_without_rebuild_or_drop() -> None:
     boundaries = _boundaries([
         _delta_entry("f0", "2026-09-04T20:16:02Z", 2, is_first=True),
@@ -205,7 +173,6 @@ def test_plain_listing_shows_usage_without_rebuild_or_drop() -> None:
     )
     check("CR/CC print on the plain listing with neither --rebuild nor --drop set",
           got == expected, got)
-
 
 if __name__ == "__main__":
     test_reqs_rebuild_drop_workflow()
