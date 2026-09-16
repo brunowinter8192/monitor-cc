@@ -49,6 +49,14 @@ N_WORKERS_TYPICAL = 5  # matches the 2026-09-02 lag observation's own worker cou
 POLL_INTERVAL = 0.5    # src/constants.py -- both panes' refresh gate
 
 
+# ORCHESTRATOR
+
+def run_probe_workflow():
+    all_worktree_files = _find_worktree_jsonls(limit=0)
+    lines = _build_report(all_worktree_files)
+    _write_report(lines)
+
+
 # FUNCTIONS
 
 def _find_worktree_jsonls(limit: int) -> list:
@@ -68,6 +76,76 @@ def _find_worktree_jsonls(limit: int) -> list:
             candidates.append((size, f))
     candidates.sort(key=lambda t: t[0], reverse=True)
     return candidates[:limit] if limit else candidates
+
+
+def _build_report(all_worktree_files: list) -> list:
+    lines = _report_header()
+    if not all_worktree_files:
+        lines += _no_files_found_lines()
+        return lines
+    lines += _files_found_lines(all_worktree_files)
+
+    typical_set, typical_paths = _select_typical_set(all_worktree_files)
+    lines += _typical_set_lines(typical_set)
+
+    result_typical = _time_cold_then_warm(typical_paths)
+    cold_typical = result_typical['cold_s']
+    warm_typical = result_typical['warm_s']
+    lines += _cold_warm_summary_lines(cold_typical, warm_typical)
+    lines += _extrapolation_lines(cold_typical, warm_typical)
+
+    lines += _stress_test_lines(all_worktree_files)
+    return lines
+
+
+def _report_header() -> list:
+    lines = []
+    lines.append("# attach_worker_stats real-file cost measurement")
+    lines.append("")
+    lines.append(f"Run: {datetime.now().isoformat()}")
+    lines.append("")
+    return lines
+
+
+def _no_files_found_lines() -> list:
+    msg = "No real worker-worktree JSONL files found under ~/.claude/projects/ -- cannot measure."
+    print(msg)
+    return [msg]
+
+
+def _files_found_lines(all_worktree_files: list) -> list:
+    print(f"Found {len(all_worktree_files)} real worker-worktree JSONL files.")
+    return [
+        f"Found {len(all_worktree_files)} real worker-worktree JSONL files under "
+        f"`~/.claude/projects/*--claude-worktrees-*/`.",
+        "",
+    ]
+
+
+# Typical set: N_WORKERS_TYPICAL files at the MEDIAN size (not the largest -- the largest
+# is a single outlier that would misrepresent a normal worker fleet).
+def _select_typical_set(all_worktree_files: list) -> tuple:
+    sizes_sorted = sorted(all_worktree_files, key=lambda t: t[0])
+    mid = len(sizes_sorted) // 2
+    start = max(0, mid - N_WORKERS_TYPICAL // 2)
+    typical_set = sizes_sorted[start:start + N_WORKERS_TYPICAL]
+    typical_paths = [p for _, p in typical_set]
+    return typical_set, typical_paths
+
+
+def _typical_set_lines(typical_set: list) -> list:
+    lines = []
+    lines.append("## Typical set (5 workers, median-sized real files)")
+    lines.append("")
+    lines.append("| File | Size (MB) |")
+    lines.append("|---|---|")
+    for size, p in typical_set:
+        lines.append(f"| `{p.name}` | {size / 1_048_576:.2f} |")
+    total_typical_mb = sum(s for s, _ in typical_set) / 1_048_576
+    lines.append("")
+    lines.append(f"Total bytes across the 5 files: {total_typical_mb:.2f} MB")
+    print(f"Typical 5-worker set: {total_typical_mb:.2f} MB total")
+    return lines
 
 
 def _fake_workers_for_paths(paths: list) -> tuple:
@@ -97,51 +175,10 @@ def _time_cold_then_warm(paths: list) -> dict:
     return {'cold_s': cold_elapsed, 'warm_s': warm_elapsed, 'workers': workers}
 
 
-# ORCHESTRATOR
-
-def run_probe_workflow():
-    lines = []
-    lines.append("# attach_worker_stats real-file cost measurement")
-    lines.append("")
-    lines.append(f"Run: {datetime.now().isoformat()}")
-    lines.append("")
-
-    all_worktree_files = _find_worktree_jsonls(limit=0)
-    if not all_worktree_files:
-        msg = "No real worker-worktree JSONL files found under ~/.claude/projects/ -- cannot measure."
-        print(msg)
-        lines.append(msg)
-        _write_report(lines)
-        return
-
-    print(f"Found {len(all_worktree_files)} real worker-worktree JSONL files.")
-    lines.append(f"Found {len(all_worktree_files)} real worker-worktree JSONL files under `~/.claude/projects/*--claude-worktrees-*/`.")
-    lines.append("")
-
-    # Typical set: N_WORKERS_TYPICAL files at the MEDIAN size (not the largest -- the largest
-    # is a single outlier that would misrepresent a normal worker fleet).
-    sizes_sorted = sorted(all_worktree_files, key=lambda t: t[0])
-    mid = len(sizes_sorted) // 2
-    start = max(0, mid - N_WORKERS_TYPICAL // 2)
-    typical_set = sizes_sorted[start:start + N_WORKERS_TYPICAL]
-    typical_paths = [p for _, p in typical_set]
-
-    lines.append("## Typical set (5 workers, median-sized real files)")
-    lines.append("")
-    lines.append("| File | Size (MB) |")
-    lines.append("|---|---|")
-    for size, p in typical_set:
-        lines.append(f"| `{p.name}` | {size / 1_048_576:.2f} |")
-    total_typical_mb = sum(s for s, _ in typical_set) / 1_048_576
-    lines.append("")
-    lines.append(f"Total bytes across the 5 files: {total_typical_mb:.2f} MB")
-    print(f"Typical 5-worker set: {total_typical_mb:.2f} MB total")
-
-    result_typical = _time_cold_then_warm(typical_paths)
-    cold_typical = result_typical['cold_s']
-    warm_typical = result_typical['warm_s']
+def _cold_warm_summary_lines(cold_typical: float, warm_typical: float) -> list:
     print(f"attach_worker_stats COLD (fresh cache) over 5 typical workers: {cold_typical*1000:.1f} ms")
     print(f"attach_worker_stats WARM (cached, no new bytes) over the same 5 workers: {warm_typical*1000:.2f} ms")
+    lines = []
     lines.append("")
     lines.append(f"**COLD (fresh cache, full read -- what every tick cost BEFORE the incremental fix): "
                  f"{cold_typical*1000:.1f} ms**")
@@ -149,9 +186,13 @@ def run_probe_workflow():
                  f"{warm_typical*1000:.2f} ms**")
     if warm_typical > 0:
         lines.append(f"speedup (COLD / WARM): {cold_typical / warm_typical:.0f}x")
+    return lines
 
-    # Extrapolate to the ACTUAL call pattern: both panes call this every POLL_INTERVAL tick.
+
+# Extrapolate to the ACTUAL call pattern: both panes call this every POLL_INTERVAL tick.
+def _extrapolation_lines(cold_typical: float, warm_typical: float) -> list:
     calls_per_second_per_pane = 1.0 / POLL_INTERVAL
+    lines = []
     lines.append("")
     lines.append("## Extrapolation to the real call pattern (per-tick cost x ticks/s x 2 panes)")
     lines.append("")
@@ -166,9 +207,13 @@ def run_probe_workflow():
         lines.append(f"| {label} | {one_pane:.1f} | {both_panes:.1f} | {both_panes/10:.2f}% |")
     print(f"BEFORE (cold every tick), both panes: {cold_typical * calls_per_second_per_pane * 2 * 1000:.1f} ms/s")
     print(f"AFTER (warm every tick), both panes: {warm_typical * calls_per_second_per_pane * 2 * 1000:.2f} ms/s")
+    return lines
 
-    # Stress set: the single largest real file found (worst case a worker's own session can be).
+
+# Stress set: the single largest real file found (worst case a worker's own session can be).
+def _stress_test_lines(all_worktree_files: list) -> list:
     largest_size, largest_path = all_worktree_files[0]
+    lines = []
     lines.append("")
     lines.append("## Worst-case single file (largest real worker-worktree JSONL found)")
     lines.append("")
@@ -189,8 +234,7 @@ def run_probe_workflow():
     if warm_largest > POLL_INTERVAL:
         lines.append(f"**WARM ALSO exceeds POLL_INTERVAL -- the fix does not help this file.**")
         print(f"WARNING: WARM cost ({warm_largest:.2f}s) ALSO exceeds POLL_INTERVAL ({POLL_INTERVAL}s)")
-
-    _write_report(lines)
+    return lines
 
 
 def _write_report(lines: list) -> None:
