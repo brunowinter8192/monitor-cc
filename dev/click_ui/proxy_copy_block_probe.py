@@ -72,7 +72,6 @@ def _run_block_click_suite(mod, pane_name):
     msg_row = next(r for r, k in line_map.items() if k == ('msg', 0, 0))
     req_row = next(r for r, k in line_map.items() if k == ('req', 0))
 
-    # -- copy click on block row 0's copy column --
     changed = handler(0, 119, block_row0)
     expected_block0 = mod_shared._serialize_proxy_block(('block', 0, 0, 0), entries)
     check(f"{pane_name}: click on block row 0 copy column triggers copy", changed and captured and captured[-1] == expected_block0)
@@ -81,27 +80,23 @@ def _run_block_click_suite(mod, pane_name):
     check(f"{pane_name}: sibling block row does NOT flash from this copy", ('block', 0, 0, 1) not in feedback_attr)
     captured.clear()
 
-    # -- copy click on block row 1's copy column --
     changed = handler(0, 119, block_row1)
     expected_block1 = mod_shared._serialize_proxy_block(('block', 0, 0, 1), entries)
     check(f"{pane_name}: click on block row 1 copy column triggers copy", changed and captured and captured[-1] == expected_block1)
     captured.clear()
 
-    # -- non-copy click on a block row: no-op, matching the message-row shape (never toggled anything before) --
     pre_expand = dict(expand_states_attr)
     changed = handler(0, 5, block_row0)
     check(f"{pane_name}: non-copy click on block row returns no-change", changed is False)
     check(f"{pane_name}: non-copy click on block row leaves expand_states untouched", expand_states_attr == pre_expand)
     check(f"{pane_name}: non-copy click on block row writes nothing to clipboard", not captured)
 
-    # -- copying the owning message row does not flash either block row --
     feedback_attr.clear()
     handler(0, 119, msg_row)
     check(f"{pane_name}: copying the owning message row does NOT flash block row 0", ('block', 0, 0, 0) not in feedback_attr)
     check(f"{pane_name}: copying the owning message row does NOT flash block row 1", ('block', 0, 0, 1) not in feedback_attr)
     captured.clear()
 
-    # -- REQ-level copy still works, unaffected --
     feedback_attr.clear()
     changed = handler(0, 119, req_row)
     expected_req = mod_shared._serialize_proxy_entry(('req', 0), entries)

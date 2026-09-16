@@ -1,42 +1,3 @@
-"""
-P4 -- gpu + news pane button probe (Milestone 4: the last keyboard-only controls).
-
-Proves:
-  1. gpu digit keys 1-9 need NO new button -- the pre-existing per-server [start]/[stop]/
-     [restart] button already registered in _button_regions computes the SAME action and fires
-     the SAME rag-cli subprocess call as _toggle_server(idx, presets) (what the digit key calls).
-     Asserted by comparing captured subprocess.Popen args + resulting _toggle_state entry between
-     the two paths, for both a stopped preset (start) and a running+healthy preset (stop).
-  2. gpu's new [refresh] header button and news's new [refresh] header button: region registered
-     after a render, disjoint from every pre-existing button region (different phys_row), and the
-     dispatch loop correctly special-cases action=='refresh' before falling into the pre-existing
-     _fire_button/_fire_pipeline branch (verified by replicating run_gpu_loop's / run_news_loop's
-     exact inline dispatch snippet, since neither loop factors mouse dispatch into a standalone
-     function -- same documented boundary as milestone 2's main-pane 'y' key: the local `force_
-     refresh`/`input_changed` variables inside the blocking loop are not independently reachable
-     without running that loop for real).
-  3. narrow pane: [refresh] gets no text and no region in both panes; the pre-existing per-row
-     buttons are NOT touched by the width-guard fix (unrelated, out of scope) and are not asserted
-     on for the narrow case.
-  4. news pane's existing [run pipeline] click dispatch is unchanged by the new action=='refresh'
-     branch (regression check).
-  5. (2026-07-30 review fix) the decorative '═' rule yields to the button, not the other way
-     round: a width sweep in both panes proves the [refresh] region survives down to widths well
-     below today's live pane widths (gpu 215, news 107) -- the rule shrinks (asserted: fewer '═'
-     chars than its cap) before the button is dropped -- and that the no-room case (even the rule
-     minimum can't fit alongside the button) still registers nothing while the title text itself
-     stays fully visible at every swept width, including the narrowest.
-
-No live tmux/terminal, no real rag-cli or news pipeline subprocess: subprocess.Popen is
-monkeypatched per module to a capturing stub (mirrors milestone 2/3's copy_to_clipboard pattern).
-gpu_pane.status.PRESET_NAMES (resolved once at import time via a REAL `rag-cli server presets`
-subprocess call) is monkeypatched to a fixed synthetic list so the probe is deterministic
-regardless of what's actually running on this machine.
-
-Run from project root or worktree root:
-    ./venv/bin/python dev/click_ui/p4_gpu_news_button_probe.py
-"""
-
 # INFRASTRUCTURE
 import importlib
 import os
@@ -65,8 +26,6 @@ def check(label, condition):
 
 # FUNCTIONS
 
-# Monkeypatch mod.subprocess.Popen with a capturing stub (no real process launched); returns the
-# capture list of Popen call (args, kwargs) tuples
 def _patch_popen(mod):
     captured = []
 
@@ -78,7 +37,6 @@ def _patch_popen(mod):
     return captured
 
 
-# Build a synthetic gpu preset status dict
 def _make_preset(name, running, healthy, port=None, pid=None):
     return {
         'name': name, 'kind': 'preset', 'running': running, 'healthy': healthy,
@@ -87,9 +45,6 @@ def _make_preset(name, running, healthy, port=None, pid=None):
     }
 
 
-# Replicate run_gpu_loop's exact inline button-region dispatch (not a standalone function in the
-# real loop); returns 'refresh' | (action, target) | None -- same three outcomes the real loop's
-# local force_refresh/input_changed assignment produces
 def _dispatch_gpu_click(col, row):
     for (sc, ec, er), (action, target) in list(mod_gpu._button_regions.items()):
         if row == er and sc <= col <= ec:
@@ -102,7 +57,6 @@ def _dispatch_gpu_click(col, row):
     return None
 
 
-# Replicate run_news_loop's exact inline button-region dispatch
 def _dispatch_news_click(col, row):
     for (sc, ec, er), (action, target) in list(mod_news._button_regions.items()):
         if row == er and sc <= col <= ec:
@@ -115,8 +69,6 @@ def _dispatch_news_click(col, row):
     return None
 
 
-# gpu pane: digit-key vs existing per-server button -- same action, same subprocess call, same
-# _toggle_state entry (no new button needed for 1-9)
 def test_gpu_digit_key_covered_by_existing_button():
     orig_names = mod_gpu.PRESET_NAMES
     mod_gpu.PRESET_NAMES = ['preset-a', 'preset-b']
@@ -167,7 +119,6 @@ def test_gpu_digit_key_covered_by_existing_button():
         mod_gpu._toggle_state.clear()
 
 
-# gpu pane: new [refresh] header button -- region, dispatch, width guard
 def test_gpu_refresh_button():
     orig_names = mod_gpu.PRESET_NAMES
     mod_gpu.PRESET_NAMES = ['preset-a']
@@ -196,15 +147,10 @@ def test_gpu_refresh_button():
         mod_gpu.PRESET_NAMES = orig_names
 
 
-# gpu pane: decoration must yield to the button, not the other way round -- width sweep proving
-# the '═' rule shrinks (down to its minimum) BEFORE [refresh] is dropped, all the way down to a
-# width range well below today's live pane width (215), and that title text survives even where
-# the button itself no longer fits
 def test_gpu_refresh_button_width_sweep():
     orig_names = mod_gpu.PRESET_NAMES
     mod_gpu.PRESET_NAMES = []
     try:
-        # crossover for '  GPU Servers' + '[refresh]' at rule_min=4, gap=1 is pane_width=27
         no_button_widths = [5, 20, 26]
         button_widths = [27, 30, 50, 90, 130, 215]
         for w in no_button_widths:
@@ -227,8 +173,6 @@ def test_gpu_refresh_button_width_sweep():
         mod_gpu.PRESET_NAMES = orig_names
 
 
-# news pane: new [refresh] header button -- region, dispatch, width guard, no collision with
-# [run pipeline]
 def test_news_refresh_button():
     status = {'doc_count': 5, 'chunk_count': 50, 'last_run_ts': '2026-01-01 00:00:00'}
     output = mod_news._render_pane(120, 30, status, running=False)
@@ -246,7 +190,6 @@ def test_news_refresh_button():
     check("news: click on [refresh] is recognized as the refresh action (same as 'r' key branch)",
           result == 'refresh')
 
-    # Regression: [run pipeline] click still fires the pipeline (existing behavior unchanged)
     captured = _patch_popen(mod_news)
     mod_news._pipeline_proc = None
     (rsc, rec, rer), _ = run_entries[0]
@@ -262,11 +205,8 @@ def test_news_refresh_button():
           '[refresh]' not in narrow_output.split('\n')[0])
 
 
-# news pane: decoration must yield to the button, not the other way round -- width sweep, same
-# shape as the gpu sweep, down to a range well below today's live pane width (107)
 def test_news_refresh_button_width_sweep():
     status = {'doc_count': 5, 'chunk_count': 50, 'last_run_ts': '2026-01-01 00:00:00'}
-    # crossover for '  CoinDesk News Pipeline' + '[refresh]' at rule_min=4, gap=1 is pane_width=38
     no_button_widths = [5, 20, 37]
     button_widths = [38, 40, 60, 86, 107]
     for w in no_button_widths:

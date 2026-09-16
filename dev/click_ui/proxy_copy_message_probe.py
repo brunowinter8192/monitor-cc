@@ -67,7 +67,6 @@ def _run_pane_click_suite(mod, pane_name):
     msg_row1 = next(r for r, k in line_map.items() if k == ('msg', 0, 1))
     req_row = next(r for r, k in line_map.items() if k == ('req', 0))
 
-    # -- copy click on msg row 0's copy column --
     changed = handler(0, 119, msg_row0)
     expected_msg0 = mod_shared._serialize_proxy_message(('msg', 0, 0), entries)
     check(f"{pane_name}: click on msg row 0 copy column triggers copy", changed and captured and captured[-1] == expected_msg0)
@@ -75,20 +74,17 @@ def _run_pane_click_suite(mod, pane_name):
     check(f"{pane_name}: sibling msg row does NOT flash from this copy", ('msg', 0, 1) not in feedback_attr)
     captured.clear()
 
-    # -- copy click on msg row 1's copy column --
     changed = handler(0, 119, msg_row1)
     expected_msg1 = mod_shared._serialize_proxy_message(('msg', 0, 1), entries)
     check(f"{pane_name}: click on msg row 1 copy column triggers copy", changed and captured and captured[-1] == expected_msg1)
     captured.clear()
 
-    # -- non-copy click on a msg row: no-op, matching pre-milestone (key=None) behavior --
     pre_expand = dict(expand_states_attr)
     changed = handler(0, 5, msg_row0)
     check(f"{pane_name}: non-copy click on msg row returns no-change", changed is False)
     check(f"{pane_name}: non-copy click on msg row leaves expand_states untouched", expand_states_attr == pre_expand)
     check(f"{pane_name}: non-copy click on msg row writes nothing to clipboard", not captured)
 
-    # -- REQ-level copy still works, unchanged shape, keyed by entry_idx --
     changed = handler(0, 119, req_row)
     expected_req = mod_shared._serialize_proxy_entry(('req', 0), entries)
     check(f"{pane_name}: REQ copy-click still fires", changed and captured and captured[-1] == expected_req)

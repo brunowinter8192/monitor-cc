@@ -1,45 +1,3 @@
-"""
-P2 -- copy-by-click parity probe (Milestone 2: copy-by-click in the y-only panes).
-
-Proves, per pane, that after ONE real render pass:
-  1. the copy-row registry (phys_row set/dict populated by the pane's own build function) contains
-     an entry for every row that carries a copyable unit, at plausible coordinates
-  2. dispatching a synthetic mouse click on the symbol column of that row copies EXACTLY the same
-     string the 'y' key produces for that same row -- both paths run through the REAL serializer,
-     nothing hardcoded, the two outputs are compared against each other
-  3. a too-narrow pane_width suppresses BOTH the visible symbol and the row registration (width
-     guard) -- proven once at the pure-function level (append_copy_symbol) and once at the
-     render-integration level (format_cache_tracker, tokens pane)
-
-**(2026-09) The main pane was removed entirely** (window 0 is now the tokens pane at full width,
-see `process-docs/main_pane/`) — `test_main_pane_copy_click` and its `mod_main_display`/
-`mod_monitor` imports were dropped accordingly.
-
-**(2026-09, panesplit) The all-workers list pane (worker_pane.py) is gone**, replaced by
-`worker_tokens_pane.py` -- a single-selected-worker cache tracker with the exact same
-`(turn_idx, call_idx)`-keyed copy-row shape `token_pane.py` already has (no more worker-header-row
-copy case, since there is no worker header ROW anymore in this pane -- worker identity now lives
-in the switch header's marker regions, covered by `p1_worker_selection_click_probe.py`, not here).
-`test_workers_pane_copy_click` is retargeted at `worker_tokens_pane.py` accordingly, same shape as
-`test_tokens_pane_copy_click`.
-
-Covers:
-  - src/panes/token_pane.py :: _build_tokens_output (cache_copy_rows), _handle_tokens_mouse,
-    _handle_tokens_key
-  - src/panes/warnings_pane.py :: _build_warnings_output (error_copy_rows), _handle_warnings_mouse,
-    _handle_warnings_key -- plus a regression guard for the pre-existing _serialize_warnings
-    int-vs-tuple key bug fixed as part of this milestone
-  - src/workers/worker_tokens_pane.py :: _build_worker_tokens_output (worker_tokens_copy_rows),
-    _handle_worker_tokens_mouse, _handle_worker_tokens_key
-
-No live tmux/terminal needed -- module globals are seeded directly with synthetic data;
-copy_to_clipboard is monkeypatched per module to a capturing stub (no real pbcopy calls, no OS
-clipboard dependency) so both paths' output can be read back and compared.
-
-Run from project root or worktree root:
-    ./venv/bin/python dev/click_ui/p2_copy_click_probe.py
-"""
-
 # INFRASTRUCTURE
 import importlib
 import os
@@ -73,14 +31,12 @@ def check(label, condition):
 
 # FUNCTIONS
 
-# Monkeypatch mod.copy_to_clipboard with a capturing stub; returns the capture list
 def _patch_clipboard(mod):
     captured = []
     mod.copy_to_clipboard = lambda text: captured.append(text)
     return captured
 
 
-# Pure-function width guard: symbol appended when room, unchanged when not
 def test_append_copy_symbol_width_guard():
     wide = mod_utils.append_copy_symbol("short line", '⎘', 50)
     check("append_copy_symbol: appends ⎘ when the pane is wide enough", '⎘' in wide and wide != "short line")
@@ -88,7 +44,6 @@ def test_append_copy_symbol_width_guard():
     check("append_copy_symbol: leaves line unchanged when too narrow (no invisible hit zone)", narrow == "x" * 60)
 
 
-# Tokens pane: one copy region per API-call row; click vs 'y' parity; width guard end-to-end
 def test_tokens_pane_copy_click():
     captured = _patch_clipboard(mod_tokens)
     mod_tokens.cache_expand_states.clear()
@@ -128,7 +83,6 @@ def test_tokens_pane_copy_click():
           not any(('⎘' in ln or '✓' in ln) for ln in narrow_lines))
 
 
-# Warnings pane: fixed int-key serializer bug regression guard + one copy region per error row
 def test_warnings_pane_copy_click():
     check("warnings: _serialize_warnings bug fix -- int key now returns real content",
           mod_warnings_render._serialize_warnings(0, [{'tool_name': 'Bash', 'tool_call_input': {}, 'full_text': 'boom'}]) != '')
@@ -171,9 +125,6 @@ def test_warnings_pane_copy_click():
           '⎘' not in narrow_out and '✓' not in narrow_out)
 
 
-# worker_tokens pane: one copy region per API-call row (same (turn_idx, call_idx)-keyed shape as
-# token_pane.py, since this pane shows exactly one worker's own cache tracker); click vs 'y'
-# parity; width guard end-to-end
 def test_worker_tokens_copy_click():
     captured = _patch_clipboard(mod_workers)
     project_filter = '/tmp/click_ui_probe_p2_worker_tokens'
