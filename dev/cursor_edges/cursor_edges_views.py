@@ -16,8 +16,6 @@ from cursor_edges_logging import _log, _install_tracking_area
 
 # FUNCTIONS
 
-# Logging subclass for the contentView (mirrors _PanelContentView) — cursor-rect mode
-# Installs identical 4-zone cursor rects and logs every AppKit cursor signal.
 class _LoggingContentView(NSView):
 
     def resetCursorRects(self):
@@ -60,24 +58,15 @@ class _LoggingContentView(NSView):
         _install_tracking_area(self)
 
 
-# NSTrackingArea + cursorUpdate content view — Iteration 8 pattern
-# Replaces addCursorRect_cursor_ entirely. Uses .cursorUpdate option on the tracking area
-# so cursorUpdate_ fires on mouse movement regardless of key-window status (.activeAlways).
-# hitTest_ claims L/R/bottom edge zones so child views don't intercept events there.
-# NSCursor.push()/pop() maintains cursor against child views that call super.cursorUpdate_.
-# Custom mouseDown_/mouseDragged_ handles resize when --no-resizable drops native mechanism.
-# Edges: left (x<EDGE), right (x>w-EDGE), bottom (y<EDGE) — mirrors production exactly.
 class _TrackingContentView(NSView):
 
     def initWithFrame_(self, frame):
         self = objc.super(_TrackingContentView, self).initWithFrame_(frame)
         if self is None:
             return None
-        # Edge tracking state
-        self._hovered_edge = None     # None | 'left' | 'right' | 'bottom'
+        self._hovered_edge = None
         self._tracking_area = None
-        # Custom drag-resize state (active when --no-resizable)
-        self._drag_edge = None        # None | 'left' | 'right' | 'bottom'
+        self._drag_edge = None
         self._drag_start_width  = 0.0
         self._drag_start_height = 0.0
         self._drag_start_screen_x = 0.0
@@ -104,25 +93,20 @@ class _TrackingContentView(NSView):
 
     @objc.python_method
     def _set_hovered_edge(self, edge):
-        """Push/pop cursor stack on edge transitions; call set() for immediate visual update."""
         old = self._hovered_edge
         if edge == old:
             return
         if edge is not None and old is None:
-            # nil → edge: push new cursor onto stack
             self._cursor_for_edge(edge).push()
             _log(f'cursor PUSH  edge={edge}  cursor={self._cursor_for_edge(edge).image()}')
         elif edge is None and old is not None:
-            # edge → nil: pop our cursor off the stack
             NSCursor.pop()
             _log(f'cursor POP  was={old}')
         else:
-            # edge_a → edge_b (e.g. left→bottom): pop old, push new
             NSCursor.pop()
             self._cursor_for_edge(edge).push()
             _log(f'cursor POP+PUSH  {old}→{edge}')
         self._hovered_edge = edge
-        # call set() for immediate visual feedback in addition to the stack change
         if edge is not None:
             self._cursor_for_edge(edge).set()
         else:
@@ -130,7 +114,6 @@ class _TrackingContentView(NSView):
 
     @objc.python_method
     def _edge_for_point(self, local):
-        """Determine edge zone for a point in local (view) coordinates."""
         w = self.bounds().size.width
         if local.x < EDGE:
             return 'left'
@@ -141,7 +124,6 @@ class _TrackingContentView(NSView):
         return None
 
     def cursorUpdate_(self, event):
-        """Called by AppKit when tracking area cursor-update event fires."""
         if self._hovered_edge is not None:
             self._cursor_for_edge(self._hovered_edge).set()
             _log(f'cursorUpdate_  TrackingCV  edge={self._hovered_edge}  → set cursor')
@@ -164,11 +146,9 @@ class _TrackingContentView(NSView):
         self._set_hovered_edge(None)
 
     def hitTest_(self, point):
-        """Claim L/R/bottom edge zones for self; interior falls through to child views."""
         local = self.convertPoint_fromView_(point, self.superview())
         w = self.bounds().size.width
         h = self.bounds().size.height
-        # Only claim the point if it's inside our bounds at all
         if local.x < 0 or local.y < 0 or local.x > w or local.y > h:
             return objc.super(_TrackingContentView, self).hitTest_(point)
         if local.x < EDGE or local.x > w - EDGE or local.y < EDGE:
@@ -210,18 +190,18 @@ class _TrackingContentView(NSView):
         sx = self._drag_start_screen_x
         sy = self._drag_start_screen_y
         if self._drag_edge == 'left':
-            delta   = sx - current.x   # positive → dragging left → panel grows
+            delta   = sx - current.x
             new_w   = max(PANEL_MIN_WIDTH, min(sw + delta, PANEL_MAX_DIM))
-            new_x   = ox + sw - new_w  # right edge stays fixed
+            new_x   = ox + sw - new_w
             win.setFrame_display_(NSMakeRect(new_x, oy, new_w, sh), True)
         elif self._drag_edge == 'right':
-            delta   = current.x - sx   # positive → dragging right → panel grows
+            delta   = current.x - sx
             new_w   = max(PANEL_MIN_WIDTH, min(sw + delta, PANEL_MAX_DIM))
             win.setFrame_display_(NSMakeRect(ox, oy, new_w, sh), True)
         elif self._drag_edge == 'bottom':
-            delta   = sy - current.y   # positive → dragging down → panel grows taller
+            delta   = sy - current.y
             new_h   = max(PANEL_MIN_HEIGHT, min(sh + delta, PANEL_MAX_DIM))
-            new_y   = oy + sh - new_h  # top edge stays fixed
+            new_y   = oy + sh - new_h
             win.setFrame_display_(NSMakeRect(ox, new_y, sw, new_h), True)
 
     def mouseUp_(self, event):
@@ -230,7 +210,6 @@ class _TrackingContentView(NSView):
             self._drag_edge = None
 
 
-# Logging subclass for the middle NSStackView (session rows live here)
 class _LoggingStackView(NSStackView):
 
     def resetCursorRects(self):
@@ -264,7 +243,6 @@ class _LoggingStackView(NSStackView):
         _install_tracking_area(self)
 
 
-# Logging subclass for all NSButton instances (Kill, Restart, Auto-Jump, session rows)
 class _LoggingButton(NSButton):
 
     def resetCursorRects(self):
@@ -274,9 +252,6 @@ class _LoggingButton(NSButton):
         _log(f'resetCursorRects  Button("{t}")  bounds={b.size.width:.0f}×{h:.0f}')
         objc.super(_LoggingButton, self).resetCursorRects()
         if cec._LEAF_RECTS_ENABLED:
-            # Install left-edge rect only when button frame starts at panel left edge
-            # (frame.origin.x < EDGE in parent coords → local x=0 maps to panel x≈0).
-            # Auto-Jump and session-row buttons start at x=0; Kill/Restart do not.
             if self.frame().origin.x < EDGE:
                 self.addCursorRect_cursor_(
                     NSMakeRect(0, 0, EDGE, h), NSCursor.resizeLeftRightCursor())
@@ -300,7 +275,6 @@ class _LoggingButton(NSButton):
         _install_tracking_area(self)
 
 
-# Logging subclass for the footer NSView (bottom bar, parent of Kill+Restart)
 class _LoggingFooterView(NSView):
 
     def resetCursorRects(self):
@@ -337,7 +311,6 @@ class _LoggingFooterView(NSView):
         _install_tracking_area(self)
 
 
-# Logging subclass for the top-bar NSView (parent of Auto-Jump button)
 class _LoggingTopBarView(NSView):
 
     def resetCursorRects(self):
