@@ -1,21 +1,26 @@
 # dev/grid_probe/
 
 ## Role
-
 Standalone PyObjC probe verifying `NSGridView` column alignment and click routing before that
-layout approach was used in a real pane. No `src/` import — a visual/interactive check of AppKit
-API behavior, not a regression guard. Touch this directory only if re-verifying a new PyObjC
-`NSGridView` API surface before adopting it elsewhere; it is not wired to any production code path.
+layout was used in a real pane. No `src/` import — a visual/interactive AppKit check, not a
+regression guard. Touch only to re-verify a new `NSGridView` API surface before adopting it
+elsewhere.
+
+## Public Interface
+No `__init__.py` in this directory. Entry path: `./venv/bin/python3 dev/grid_probe/probe.py`
+(interactive GUI script — opens a real floating panel, quit with Cmd-Q or close window).
+
+## Flow
+No data in — all layout values are module constants. Builds a floating `NSPanel` containing a
+5-column `NSGridView`, prints the expected column x-positions to stdout, then blocks in the AppKit
+event loop printing one line per cell click until the window is closed.
 
 ## Modules
 
-### probe.py (231 LOC)
+### probe.py (191 LOC)
 
-**Purpose:** Builds a 5-column, 3-row `NSGridView` (merged separator row, an all-orange "session"
-row, a partially-empty "worker" row) inside a floating `NSPanel`, prints each column's expected
-x-position, and routes any cell click to a `rowClicked_` handler that prints the clicked row's tag
-— a manual visual + click-routing check of `NSGridView`/`NSGridCell`/`NSGridColumn` bindings and
-`mergeCellsInHorizontalRange_verticalRange_`.
+**Purpose:** Builds a 5-column, 3-row `NSGridView` in a floating `NSPanel` and routes cell clicks
+to a handler that prints the clicked row's tag — a manual visual + click-routing check.
 **Reads:** nothing external — all layout values are module constants.
 **Writes:** stdout (startup report, column x-positions, click log lines); the floating panel itself.
 **Called by:** none — run manually (`./venv/bin/python3 dev/grid_probe/probe.py`); quit with Cmd-Q.
@@ -23,10 +28,7 @@ x-position, and routes any cell click to a `rowClicked_` handler that prints the
 
 ---
 
-## Gotchas
-
-**Column 2 is the only flexible column** — its width is computed as the remainder after the four
-fixed columns (`_COL0_W`/`_COL1_W`/`_COL3_W`/`_COL4_W`) and their spacing, so column 3's (the dot
-column) left edge lands at the same x in both the session and worker rows regardless of which cells
-in columns 0/1/4 are empty. Changing any fixed column width without recomputing `_COL2_W`/`_COL3_X`
-breaks that alignment guarantee silently.
+## State
+No persistent state — `probe.py` holds its own column-width/panel-geometry constants at module
+scope and its live click-count/tag state only inside the running `_ClickController` instance for
+the duration of one interactive run; nothing is read from or written to disk.
