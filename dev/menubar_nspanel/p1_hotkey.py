@@ -18,13 +18,11 @@ def _hotkey_ctypes_defs():
     return OSStatus, EventHotKeyID, EventTypeSpec, EventHandlerProcPtr
 
 
-# Register Cmd+L as global hotkey via Carbon — identical to production _register_hotkey
 def _register_hotkey(app: 'NSPanelProbeApp') -> None:
     OSStatus, EventHotKeyID, EventTypeSpec, EventHandlerProcPtr = _hotkey_ctypes_defs()
 
     def _on_hotkey(handler_ref, event, user_data):
         try:
-            # With setMenu_(None), performClick_ fires the button's action → togglePanel_
             app._nsapp.nsstatusitem.button().performClick_(None)
         except Exception:
             pass

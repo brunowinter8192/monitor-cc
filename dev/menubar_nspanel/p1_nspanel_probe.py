@@ -5,7 +5,6 @@ import threading
 import time
 from itertools import groupby
 
-# Project root on path so 'src.menubar.discover' resolves when run from any CWD
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 import objc
@@ -20,9 +19,7 @@ from AppKit import (
 )
 from Foundation import NSMakeRect, NSObject, NSRunLoop
 
-# From discover.py: Live session discovery
 from src.menubar.discover import list_alive_sessions
-# From bg_timer.py: Background sleep-timer scanning
 from src.menubar.bg_timer import _scan_bg_sleep_timers
 
 from p1_hotkey import _register_hotkey
@@ -40,12 +37,11 @@ _NO_BG         = '   '
 
 PANEL_WIDTH  = 360
 PANEL_HEIGHT = 440
-PANEL_GAP    = 4   # pts below the status bar
+PANEL_GAP    = 4
 
 
 # ORCHESTRATOR
 
-# Entry point: suppress Dock icon, create probe app, start run loop
 def run() -> None:
     os.environ.setdefault('LSUIElement', '1')
     app = NSPanelProbeApp()
@@ -54,7 +50,6 @@ def run() -> None:
 
 # FUNCTIONS
 
-# NSObject target for NSStatusBarButton action and Cmd+L performClick_
 class _PanelController(NSObject):
     def initWithApp_(self, app):
         self = objc.super(_PanelController, self).init()
@@ -74,20 +69,18 @@ class _PanelController(NSObject):
             app._panel_open = True
 
 
-# NSPanel probe app — polls CC sessions every 1.5s, panel toggles via Cmd+L / bar click
 class NSPanelProbeApp(rumps.App):
     def __init__(self):
         super().__init__(ICON_NORMAL, quit_button='Quit', menu=[])
         self._panel_open: bool = False
         self._initialized: bool = False
         self._last_statuses: dict = {}
-        self._panel, self._panel_tv = _make_nspanel()   # NSPanel + its NSTextView
+        self._panel, self._panel_tv = _make_nspanel()
         self._panel_controller = _PanelController.alloc().initWithApp_(self)
         _register_hotkey(self)
 
     @rumps.timer(POLL_INTERVAL)
     def _tick(self, _sender):
-        # Lazy-init: null NSMenu, wire button target/action to _PanelController
         if not self._initialized:
             try:
                 self._nsapp.nsstatusitem.setMenu_(None)
@@ -96,7 +89,7 @@ class NSPanelProbeApp(rumps.App):
                 btn.setAction_(b'togglePanel:')
                 self._initialized = True
             except AttributeError:
-                return   # _nsapp not ready yet; retry next tick
+                return
 
         try:
             sessions = list_alive_sessions()
@@ -111,24 +104,20 @@ class NSPanelProbeApp(rumps.App):
         _update_panel_text(self._panel_tv, sessions)
 
 
-# True if any session's status differs from last snapshot
 def _statuses_changed(sessions, last: dict) -> bool:
     current = {s.name: s.status for s in sessions}
     return current != last
 
 
-# Flash icon to ICON_BLINK for BLINK_DURATION seconds, then restore
 def _blink(app: NSPanelProbeApp) -> None:
     app.title = ICON_BLINK
     threading.Timer(BLINK_DURATION, _restore_icon, args=[app]).start()
 
 
-# Restore normal icon after blink
 def _restore_icon(app: NSPanelProbeApp) -> None:
     app.title = ICON_NORMAL
 
 
-# Badge for sessions with active background tasks
 def _format_bg_badge(remaining) -> str:
     if remaining is None:
         return '[B]'
@@ -136,24 +125,22 @@ def _format_bg_badge(remaining) -> str:
     return f'[B {mins}:{secs:02d}]'
 
 
-# Section header line: ─── ProjectName ──────────
 def _make_header(project_name: str) -> str:
     fill = '─' * max(2, 30 - len(project_name))
     return f'─── {project_name} {fill}'
 
 
-# Build NSPanel (nonactivatingPanel, statusBar level) + NSTextView; return (panel, tv)
 def _make_nspanel():
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT),
-        NSWindowStyleMaskNonactivatingPanel,  # 128 — no focus steal, no auto-dismiss
-        2,     # NSBackingStoreBuffered
+        NSWindowStyleMaskNonactivatingPanel,
+        2,
         True,
     )
-    panel.setLevel_(NSStatusWindowLevel)   # 25 — flush under menu bar
+    panel.setLevel_(NSStatusWindowLevel)
     panel.setCollectionBehavior_(
-        NSWindowCollectionBehaviorCanJoinAllSpaces |   # 1
-        NSWindowCollectionBehaviorIgnoresCycle         # 64
+        NSWindowCollectionBehaviorCanJoinAllSpaces |
+        NSWindowCollectionBehaviorIgnoresCycle
     )
     panel.setHasShadow_(True)
     panel.setOpaque_(False)
@@ -168,20 +155,18 @@ def _make_nspanel():
     tv.setDrawsBackground_(True)
 
     panel.contentView().addSubview_(tv)
-    return panel, tv   # NSPanel is an ObjC object; store textview ref on Python app instance
+    return panel, tv
 
 
-# Position panel flush under the status bar button
 def _reposition_panel(panel: NSPanel, nsstatusitem) -> None:
     btn_win = nsstatusitem.button().window()
-    sr = btn_win.frame()   # button's window frame is already in screen coordinates
+    sr = btn_win.frame()
     pw, ph = PANEL_WIDTH, PANEL_HEIGHT
     px = sr.origin.x + sr.size.width / 2.0 - pw / 2.0
     py = sr.origin.y - ph - PANEL_GAP
     panel.setFrame_display_(NSMakeRect(px, py, pw, ph), False)
 
 
-# Rebuild NSTextView attributed string from current session list (full replace, no flicker)
 def _update_panel_text(tv: NSTextView, sessions) -> None:
     min_remaining = _scan_bg_sleep_timers()
     sorted_sessions = sorted(sessions, key=lambda s: (s.project_name, s.is_worker, s.name))
