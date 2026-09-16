@@ -202,46 +202,15 @@ def write_report(log_path: Path, collapsed_rows: list, expanded_rows: list, iden
     n_expanded_ok = sum(1 for r in expanded_rows if r['text_present'] and r['width_ok'])
     n_identical = sum(1 for r in identity_rows if r['identical'])
 
-    lines = [
-        f"# Thinking expander render check — {log_path.name}",
-        "",
-        f"Source log: `{log_path}`",
-        f"Before-commit (byte-identical baseline): `{BEFORE_COMMIT_SHA}`",
-        "",
-        "## Deliverable numbers (real render path — render_turn._render_req_expanded)",
-        "",
-        f"- collapsed check: {n_collapsed_ok}/{len(collapsed_rows)} thinking blocks — exactly one line, no text leak",
-        f"- expanded check: {n_expanded_ok}/{len(expanded_rows)} (block x pane_width combos) — full text present, no line over pane_width",
-        f"- byte-identical check: {n_identical}/{len(identity_rows)} non-thinking block types identical to pre-change render",
-        "",
-        "## Collapsed — per thinking block",
-        "",
-        "| entry | msg | blk | exactly 1 line | no text leak |",
-        "|---|---|---|---|---|",
-    ]
-    for r in collapsed_rows:
-        lines.append(f"| {r['eidx']} | {r['midx']} | {r['bidx']} | {'yes' if r['exactly_one_line'] else 'FAIL'} | {'yes' if r['no_leak'] else 'FAIL'} |")
+    lines = _report_summary_lines(
+        log_path, n_collapsed_ok, len(collapsed_rows), n_expanded_ok, len(expanded_rows),
+        n_identical, len(identity_rows),
+    )
+    lines += _collapsed_table_lines(collapsed_rows)
+    lines += _expanded_table_lines(expanded_rows)
+    lines += _identity_table_lines(identity_rows)
 
-    lines += ["", "## Expanded — per thinking block x pane_width", "",
-              "| entry | msg | blk | chars | pane_width | text present | max content width | width ok |",
-              "|---|---|---|---|---|---|---|---|"]
-    for r in expanded_rows:
-        lines.append(
-            f"| {r['eidx']} | {r['midx']} | {r['bidx']} | {r['chars']} | {r['pane_width']} | "
-            f"{'yes' if r['text_present'] else 'FAIL'} | {r['max_w']} | {'yes' if r['width_ok'] else 'FAIL'} |"
-        )
-
-    lines += ["", "## Byte-identical (non-thinking blocks, pre- vs post-milestone)", "",
-              "| type | entry | msg | blk | identical | line count |",
-              "|---|---|---|---|---|---|"]
-    for r in identity_rows:
-        lines.append(f"| {r['btype']} | {r['eidx']} | {r['midx']} | {r['bidx']} | {'yes' if r['identical'] else 'FAIL'} | {r['line_count']} |")
-
-    report_dir = Path(__file__).resolve().parent / 'md'
-    report_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    report_path = report_dir / f'render_thinking_expander_{ts}.md'
-    report_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    report_path = _write_report_file(lines)
 
     print(f"collapsed: {n_collapsed_ok}/{len(collapsed_rows)} ok")
     print(f"expanded:  {n_expanded_ok}/{len(expanded_rows)} ok")
@@ -249,6 +218,66 @@ def write_report(log_path: Path, collapsed_rows: list, expanded_rows: list, iden
     print(f"Report written to: {report_path}")
     if n_collapsed_ok < len(collapsed_rows) or n_expanded_ok < len(expanded_rows) or n_identical < len(identity_rows):
         sys.exit(1)
+
+
+def _report_summary_lines(log_path: Path, n_collapsed_ok: int, n_collapsed_total: int,
+                           n_expanded_ok: int, n_expanded_total: int,
+                           n_identical: int, n_identity_total: int) -> list:
+    return [
+        f"# Thinking expander render check — {log_path.name}",
+        "",
+        f"Source log: `{log_path}`",
+        f"Before-commit (byte-identical baseline): `{BEFORE_COMMIT_SHA}`",
+        "",
+        "## Deliverable numbers (real render path — render_turn._render_req_expanded)",
+        "",
+        f"- collapsed check: {n_collapsed_ok}/{n_collapsed_total} thinking blocks — exactly one line, no text leak",
+        f"- expanded check: {n_expanded_ok}/{n_expanded_total} (block x pane_width combos) — full text present, no line over pane_width",
+        f"- byte-identical check: {n_identical}/{n_identity_total} non-thinking block types identical to pre-change render",
+        "",
+    ]
+
+
+def _collapsed_table_lines(collapsed_rows: list) -> list:
+    lines = [
+        "## Collapsed — per thinking block",
+        "",
+        "| entry | msg | blk | exactly 1 line | no text leak |",
+        "|---|---|---|---|---|",
+    ]
+    for r in collapsed_rows:
+        lines.append(f"| {r['eidx']} | {r['midx']} | {r['bidx']} | {'yes' if r['exactly_one_line'] else 'FAIL'} | {'yes' if r['no_leak'] else 'FAIL'} |")
+    return lines
+
+
+def _expanded_table_lines(expanded_rows: list) -> list:
+    lines = ["", "## Expanded — per thinking block x pane_width", "",
+             "| entry | msg | blk | chars | pane_width | text present | max content width | width ok |",
+             "|---|---|---|---|---|---|---|---|"]
+    for r in expanded_rows:
+        lines.append(
+            f"| {r['eidx']} | {r['midx']} | {r['bidx']} | {r['chars']} | {r['pane_width']} | "
+            f"{'yes' if r['text_present'] else 'FAIL'} | {r['max_w']} | {'yes' if r['width_ok'] else 'FAIL'} |"
+        )
+    return lines
+
+
+def _identity_table_lines(identity_rows: list) -> list:
+    lines = ["", "## Byte-identical (non-thinking blocks, pre- vs post-milestone)", "",
+             "| type | entry | msg | blk | identical | line count |",
+             "|---|---|---|---|---|---|"]
+    for r in identity_rows:
+        lines.append(f"| {r['btype']} | {r['eidx']} | {r['midx']} | {r['bidx']} | {'yes' if r['identical'] else 'FAIL'} | {r['line_count']} |")
+    return lines
+
+
+def _write_report_file(lines: list) -> Path:
+    report_dir = Path(__file__).resolve().parent / 'md'
+    report_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    report_path = report_dir / f'render_thinking_expander_{ts}.md'
+    report_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return report_path
 
 
 if __name__ == '__main__':

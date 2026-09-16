@@ -29,7 +29,7 @@ runtime data, absent from a fresh worktree).
 
 ---
 
-### render_thinking_expander.py (256 LOC)
+### render_thinking_expander.py (285 LOC)
 
 **Purpose:** Verifies the thinking-block drill-down + wrapping against a real forwarded log through
 the real render path: collapsed state occupies exactly one line and leaks no thinking text; expanded
