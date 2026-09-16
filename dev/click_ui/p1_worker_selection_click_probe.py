@@ -1,38 +1,3 @@
-"""
-P1 -- worker-selection click parity probe (Milestone 1: worker selection clickable in both
-worker panes; retargeted 2026-09 for the panesplit milestone -- the all-workers list pane
-(worker_pane.py) is gone, replaced by worker_tokens_pane.py, a single-selected-worker cache
-tracker carrying the SAME kind of switch header the worker-proxy pane already had).
-
-Proves, per pane, that after ONE real render pass:
-  1. the click-region table (the worker-switch header markers, built by the shared
-     src/workers/worker_switch_header.py::format_worker_switch_header for BOTH panes) contains
-     one entry per worker at plausible coordinates
-  2. dispatching a synthetic mouse click at those exact coordinates produces the SAME state
-     change (selected worker name written to the IPC selection file) as pressing the
-     corresponding digit key, in EITHER pane
-
-Also proves every rendered header marker stays clickable when the header wraps across physical
-rows -- a marker straddling a wrap boundary gets one region PER row segment it occupies (never
-zero), swept across pane widths from no-wrap to forced multi-straddle. worker_tokens_pane.py's own
-sweep additionally includes width 34 -- the pane's real share of the window (34%/66% split with
-worker-proxy) is narrow enough that 5 workers' name+status+context-% markers routinely wrap.
-
-Covers:
-  - src/workers/worker_switch_header.py :: format_worker_switch_header header regions
-    (incl. wrap-straddle segmentation via _register_marker_regions) -- shared by both panes below
-  - src/proxy_display/worker_proxy_pane.py :: _handle_worker_proxy_mouse vs _handle_worker_proxy_key
-  - src/workers/worker_tokens_pane.py :: _handle_worker_tokens_mouse vs _handle_worker_tokens_key
-
-No live tmux/terminal needed -- module globals are seeded directly with synthetic worker lists;
-IPC selection files are written to throwaway, probe-specific project_filter paths (hashed into
-/tmp/monitor_cc_selected_worker_<hash>.txt by the real get_selection_file_path), cleaned up after
-each check.
-
-Run from project root or worktree root:
-    ./venv/bin/python dev/click_ui/p1_worker_selection_click_probe.py
-"""
-
 # INFRASTRUCTURE
 import importlib
 import os
@@ -65,14 +30,12 @@ def check(label, condition):
 
 # FUNCTIONS
 
-# Remove a probe-scoped IPC selection file, if present
 def _clear_selection(get_path_fn, project_filter):
     path = get_path_fn(project_filter)
     if os.path.exists(path):
         os.remove(path)
 
 
-# Read back a probe-scoped IPC selection file's content ('' if absent)
 def _read_selection(get_path_fn, project_filter):
     path = get_path_fn(project_filter)
     if not os.path.exists(path):
@@ -80,7 +43,6 @@ def _read_selection(get_path_fn, project_filter):
     return open(path, 'r', encoding='utf-8').read().strip()
 
 
-# Worker-proxy pane: header-marker regions built one per worker; click == digit key
 def test_worker_proxy_header_click():
     monitor = SimpleNamespace(active_project_filter=_FAKE_PROXY_PROJECT)
     workers = [{'name': 'alice'}, {'name': 'bob'}, {'name': 'carol'}]
@@ -126,8 +88,6 @@ def test_worker_proxy_header_click():
     _clear_selection(wp.get_selection_file_path, _FAKE_PROXY_PROJECT)
 
 
-# Worker-proxy pane: every rendered marker stays clickable when the header wraps -- a marker
-# straddling a wrap boundary must get >=1 region per row segment it occupies, never zero
 def test_worker_proxy_header_wrap_straddle():
     monitor = SimpleNamespace(active_project_filter=_FAKE_PROXY_PROJECT)
     workers = [{'name': 'alpha'}, {'name': 'beta'}, {'name': 'gamma-long-name'}, {'name': 'delta'}]
@@ -137,11 +97,6 @@ def test_worker_proxy_header_wrap_straddle():
 
     for pane_width in (200, 60, 40, 30):
         wp._format_worker_proxy_header(workers, None, pane_width, wp._worker_proxy_header_regions)
-        # (2026-08-18, rollout sub-milestone 3) _format_worker_proxy_header computes regions
-        # RELATIVE to its own top (row 1 = its own first line); the real _build_worker_proxy_output
-        # shifts them by _WP_SEARCH_BAR_LINES so the search bar owns physical row 1 and a header
-        # marker never collides with it. This test calls the helper directly (bypassing that
-        # production shift step), so it must replicate the shift itself before dispatching clicks.
         shifted = {
             (sc, ec, er + wp._WP_SEARCH_BAR_LINES): name
             for (sc, ec, er), name in wp._worker_proxy_header_regions.items()
@@ -173,9 +128,6 @@ def test_worker_proxy_header_wrap_straddle():
     _clear_selection(wp.get_selection_file_path, _FAKE_PROXY_PROJECT)
 
 
-# worker_tokens_pane: header markers (built by the SAME shared format_worker_switch_header as
-# the worker-proxy pane) -- one region per worker; click == digit key (both write the IPC
-# selection file identically, no expand-state involved since this pane shows one worker only)
 def test_worker_tokens_header_click():
     project_filter = _FAKE_WORKERS_PROJECT
     workers = [
@@ -222,11 +174,6 @@ def test_worker_tokens_header_click():
     _clear_selection(wpane.get_selection_file_path, project_filter)
 
 
-# worker_tokens_pane: the pane's real window share is 34% -- narrow enough that 5 workers' own
-# name+status+context-% markers routinely wrap; every marker must stay clickable, and (unlike the
-# worker-proxy sweep above, which only sweeps widths that happen to force a straddle) this sweep
-# pins the pane's actual narrow width to prove the header wraps and clicks land correctly there,
-# not just at some width chosen to force the case
 def test_worker_tokens_header_wrap_at_narrow_pane_width():
     project_filter = _FAKE_WORKERS_PROJECT
     monitor = SimpleNamespace(active_project_filter=project_filter)

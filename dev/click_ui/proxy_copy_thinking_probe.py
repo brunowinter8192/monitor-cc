@@ -82,7 +82,6 @@ def _run_thinking_click_suite(mod, pane_name):
     think_row = next(r for r, k in line_map.items() if k == think_key)
     msg_row = next(r for r, k in line_map.items() if k == ('msg', 0, 0))
 
-    # -- copy click on the thinking row's copy column --
     changed = handler(0, 119, think_row)
     expected_think = mod_shared._serialize_proxy_block(think_key, entries)
     check(f"{pane_name}: click on thinking row copy column triggers copy", changed and captured and captured[-1] == expected_think)
@@ -90,7 +89,6 @@ def _run_thinking_click_suite(mod, pane_name):
           think_key in feedback_attr and 0 not in feedback_attr and ('msg', 0, 0) not in feedback_attr)
     captured.clear()
 
-    # -- non-copy click on the thinking row: MUST still toggle expand/collapse, exactly as before --
     pre_state = expand_states_attr.get(think_key, False)
     changed = handler(0, 5, think_row)
     post_state = expand_states_attr.get(think_key, False)
@@ -98,12 +96,10 @@ def _run_thinking_click_suite(mod, pane_name):
     check(f"{pane_name}: non-copy click on thinking row TOGGLES expand_states (pre={pre_state}, post={post_state})", post_state != pre_state)
     check(f"{pane_name}: non-copy click on thinking row writes nothing to clipboard", not captured)
 
-    # -- clicking again toggles it back, proving this is a real toggle, not a one-way flip --
     changed = handler(0, 5, think_row)
     back_state = expand_states_attr.get(think_key, False)
     check(f"{pane_name}: a second non-copy click toggles back to the original state", back_state == pre_state)
 
-    # -- copying the sibling message row does not flash the thinking row --
     feedback_attr.clear()
     handler(0, 119, msg_row)
     check(f"{pane_name}: copying the sibling message row does NOT flash the thinking row", think_key not in feedback_attr)

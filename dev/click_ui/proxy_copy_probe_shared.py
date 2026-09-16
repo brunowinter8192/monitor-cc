@@ -42,12 +42,6 @@ def _make_entry():
     }
 
 
-# Direct format_proxy_block call -- no os.get_terminal_size dependency, mirrors
-# dev/display/test_hover_map.py's existing pattern. Row numbers are then shifted by 1, the same
-# shift _render_and_scroll_body applies in the real event loop (row 1 is reserved for the
-# permanent search-bar header in both panes) -- without this shift a synthetic REQ landing on raw
-# row 1 would collide with _handle_*_mouse's "row==1 -> focus search bar" branch and never reach
-# the real copy/expand dispatch at all. Returns (line_map, copy_rows) already shifted.
 def _render_expanded(entries, expand_states, pane_width=120):
     line_map = {}
     copy_rows = set()
