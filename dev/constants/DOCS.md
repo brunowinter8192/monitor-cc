@@ -1,35 +1,25 @@
 # dev/constants/
 
 ## Role
+Byte-identity regression harness for `src/constants.py` and the modules it was split by constant cluster into (`src/colors.py`, `src/core/modes.py`, `src/pane_error_log.py`). Add a script here (or extend this one) when a future split of any of these modules needs a before/after correctness proof.
 
-Byte-identity regression harness for `src/constants.py` and the modules it was split by constant
-cluster into (`src/colors.py`, `src/core/modes.py`, `src/pane_error_log.py`). Add a script here
-(or extend this one) when a future split of any of these modules needs a before/after correctness
-proof.
+## Public Interface
+No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bin/python dev/constants/split_byte_identity.py`.
+
+## Flow
+Resolves a fixed list of 44 top-level `UPPER_CASE` names through a `_NEW_LOCATIONS` map to their current module, reads each value via `getattr`, hashes `{name: repr(value)}`, and prints one `HASH:` line to stdout.
 
 ## Modules
 
-### split_byte_identity.py (97 LOC)
+### split_byte_identity.py (68 LOC)
 
-**Purpose:** Byte-identity harness for `src/constants.py`'s constant clusters — resolves a fixed
-list of top-level `UPPER_CASE` names through a `_NEW_LOCATIONS` map to their current module
-(`src.constants` by default, `src.colors`/`src.core.modes`/`src.pane_error_log` for moved
-clusters) and hashes `{name: repr(value)}`.
+**Purpose:** Byte-identity harness for `src/constants.py`'s constant clusters — resolves 44 fixed names to their current module and hashes `{name: repr(value)}`.
 **Reads:** nothing external.
 **Writes:** nothing — stdout only (`HASH: <hex>`).
 **Called by:** none — run manually; re-run after any further `src/constants.py` split.
-**Calls out:** `src.constants`, `src.colors`, `src.core.modes`, `src.pane_error_log` — all
-imported via a dedicated function (`_resolve`, through `importlib`), not a module-level `from
-src.` line, per `block_dev_imports_src`.
+**Calls out:** `src.constants`, `src.colors`, `src.core.modes`, `src.pane_error_log` — all imported via a dedicated function (`_resolve`, through `importlib`), not a module-level `from src.` line, per `block_dev_imports_src`.
 
 ---
 
-## Gotchas
-
-**`repr(frozenset(...))` is non-deterministic across process runs.** `TOOL_BLOCKLIST` is a
-`frozenset` of strings; Python's per-process string-hash randomization
-(`PYTHONHASHSEED`) makes `repr(frozenset(...))`'s element order vary run to run — confirmed
-empirically (3 runs of a naive harness produced 3 different hashes with zero code changes).
-`_dump_values` sorts `(frozen)set` values before `repr()`-ing them to neutralize this. Any future
-addition of a `set`/`frozenset`-valued constant to the name list must go through the same
-`_stable_repr` path, not a bare `repr()`.
+## State
+No module-level shared state beyond the two frozen name lists (`_NAMES`, `_NEW_LOCATIONS`) and their derived cluster lists, all module constants read only, never mutated after import.

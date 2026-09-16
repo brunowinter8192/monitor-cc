@@ -1,21 +1,3 @@
-"""
-Byte-identity harness for src/ram_audit/instrument.py:register_ram_dump/_handle_ram_dump
-(function-LOC split into module-level report-section helpers).
-
-Calls register_ram_dump with a fake pane name + a fixed module_state_provider, sends SIGUSR1 to
-this very process, reads the resulting dump file, strips out the lines that are inherently
-non-deterministic across separate process runs (timestamp, pid, rss, the actual gc object-count
-rows, the actual tracemalloc size/count rows — real memory state varies run to run), and hashes
-what's left: the report's fixed section headers/structure plus the fully-deterministic
-module-state section (driven by the fake provider).
-
-Usage (from project root):
-    ./venv/bin/python dev/ram_audit/dump_byte_identity.py
-
-Prints one HASH line. Run before and after the register_ram_dump/_handle_ram_dump split; the hash
-must match. Cleans up its own dump file and PID file on exit.
-"""
-
 # INFRASTRUCTURE
 import hashlib
 import importlib
@@ -43,13 +25,10 @@ def main():
 
 # FUNCTIONS
 
-# Loaded via importlib (not a literal 'from src.' module-level line) — dev/ scripts may not use
-# that form (block_dev_imports_src).
 def _import_instrument():
     return importlib.import_module('src.ram_audit.instrument')
 
 
-# Fixed, fully-deterministic module state: one container (len+sizeof line) and one scalar line.
 def _fake_provider() -> list:
     return [('fake_list', [1, 2, 3]), ('fake_counter', 42)]
 
@@ -62,7 +41,7 @@ def _trigger_dump(instrument) -> str:
 
     instrument.register_ram_dump(_PANE_NAME, _fake_provider)
     os.kill(os.getpid(), signal.SIGUSR1)
-    time.sleep(0.2)   # signal handler runs synchronously on delivery, but give it a beat
+    time.sleep(0.2)
 
     after = {p.name for p in dump_dir.glob(f'*_{_PANE_NAME}.txt')}
     new_files = sorted(after - before)
@@ -75,13 +54,9 @@ def _trigger_dump(instrument) -> str:
     return text
 
 
-# Strips inherently-non-deterministic lines (timestamp/pid/rss headers; the actual gc-count and
-# tracemalloc data rows — real memory state varies run to run) while keeping section
-# headers/structure and the fully-deterministic module-state section (driven by the fixed fake
-# provider) intact.
 def _normalize(text: str) -> str:
     kept = []
-    section = None   # None | 'gc' | 'tracemalloc'
+    section = None
     for line in text.split('\n'):
         if line.startswith('timestamp:') or line.startswith('pid:') or line.startswith('rss:'):
             continue

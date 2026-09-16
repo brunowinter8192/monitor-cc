@@ -1,24 +1,15 @@
 #!/usr/bin/env python3
-"""
-Smoke test for bead_tracker_hook per-subcommand processing.
-
-Creates two temporary test beads, pipes crafted PostToolUse payloads
-to the hook, verifies labels via 'bd label list --json', then cleans up.
-
-Usage (from project root): ./venv/bin/python3 dev/bead_tracker/smoke.py
-"""
-
 # INFRASTRUCTURE
 import json
 import subprocess
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent   # worktree / project root
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 HOOK  = PROJECT_ROOT / 'src' / 'menubar' / 'bead_tracker_hook.py'
 VENV  = PROJECT_ROOT / 'venv' / 'bin' / 'python3'
 BD    = '/opt/homebrew/bin/bd'
-BD_DB = None   # discovered in smoke_workflow
+BD_DB = None
 
 
 # ORCHESTRATOR
@@ -73,7 +64,6 @@ def smoke_workflow():
 
 # FUNCTIONS
 
-# Walk up from PROJECT_ROOT to locate .beads/dolt
 def _find_db():
     cur = PROJECT_ROOT
     for _ in range(6):
@@ -84,7 +74,6 @@ def _find_db():
     return None
 
 
-# Create a bead and return its ID; returns None on failure
 def _create_bead(title):
     r = subprocess.run(
         [BD, 'create', title, '--type', 'task', '--db', str(BD_DB)],
@@ -92,13 +81,11 @@ def _create_bead(title):
     )
     for line in r.stdout.splitlines():
         if 'Created issue:' in line:
-            # line format: "✓ Created issue: Monitor_CC-xxxx — title"
             return line.split('Created issue:')[1].strip().split(' ')[0]
     print(f'FATAL: could not create bead "{title}":\n{r.stdout}\n{r.stderr}')
     return None
 
 
-# Return True if bead carries the given label
 def _has_label(bead_id, label):
     r = subprocess.run(
         [BD, 'label', 'list', bead_id, '--db', str(BD_DB), '--json'],
@@ -111,7 +98,6 @@ def _has_label(bead_id, label):
         return False
 
 
-# Remove label (no-op if absent)
 def _remove_label(bead_id, label):
     subprocess.run(
         [BD, 'label', 'remove', bead_id, label, '--db', str(BD_DB)],
@@ -119,7 +105,6 @@ def _remove_label(bead_id, label):
     )
 
 
-# Pipe a PostToolUse payload to the hook; cwd is project root so hook finds DB
 def _fire_hook(cmd):
     payload = json.dumps({
         'tool_name': 'Bash',
@@ -133,7 +118,6 @@ def _fire_hook(cmd):
     )
 
 
-# Clean slate → fire hook → verify labels; returns True on PASS
 def _run_case(case_id, cmd, expected, bead_a, bead_b):
     _remove_label(bead_a, 'tracked')
     _remove_label(bead_b, 'tracked')
@@ -152,7 +136,6 @@ def _run_case(case_id, cmd, expected, bead_a, bead_b):
     return ok
 
 
-# Remove labels + delete beads; safe on None
 def _cleanup(bead_a, bead_b):
     for bid in (bead_a, bead_b):
         if not bid:
