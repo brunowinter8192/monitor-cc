@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""Map content block types in a Claude Code session JSONL.
-
-For each msg_type/content_type combination: count, keys, nested structure,
-tool names, and one truncated example.
-
-Usage:
-    python3 dev/display/jsonl_exploration/02_map_content_blocks.py [path/to/session.jsonl]
-
-Default: latest JSONL from RAG project.
-Output: dev/display/jsonl_exploration/02_reports/content_blocks_<timestamp>.md
-"""
 
 import json
 import sys
@@ -18,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECTS_DIR = Path.home() / '.claude' / 'projects'
-DEFAULT_PROJECT = None  # auto-discover newest project
+DEFAULT_PROJECT = None
 REPORTS_DIR = Path(__file__).parent / '02_reports'
 
 
@@ -48,7 +37,6 @@ def truncate(text: str, max_len: int = 300) -> str:
 
 
 def describe_nested(obj, depth=0, max_depth=3) -> list:
-    """Recursively describe nested structure."""
     lines = []
     indent = '  ' * depth
     if depth >= max_depth:
@@ -91,7 +79,6 @@ def _process_content_blocks(content, msg_type, combo_counts, combo_keys, combo_e
         if combo not in combo_nested:
             combo_nested[combo] = describe_nested(block, max_depth=3)
 
-        # Check tool_result for nested content
         if block_type == 'tool_result':
             result_content = block.get('content', '')
             if isinstance(result_content, list):
@@ -150,7 +137,6 @@ def _collect_block_stats(filepath: Path) -> tuple:
 
 def _summary_table_lines(combo_counts, combo_keys) -> list:
     lines = []
-    # Summary table
     lines.append(f'## Summary')
     lines.append(f'')
     lines.append(f'| Combination | Count | Keys |')
@@ -193,7 +179,6 @@ def _clean_detail_example(example: dict) -> dict:
 
 def _detail_section_lines(combo_counts, combo_keys, combo_tool_names, combo_nested, combo_examples) -> list:
     lines = []
-    # Detailed sections
     for combo, count in combo_counts.most_common():
         if '/sub:' in combo:
             continue
@@ -224,7 +209,6 @@ def _detail_section_lines(combo_counts, combo_keys, combo_tool_names, combo_nest
             lines.append(f'```')
             lines.append(f'')
 
-        # Show sub-blocks if any
         sub_combos = [c for c in combo_counts if c.startswith(f'{combo}/sub:')]
         if sub_combos:
             lines.append(f'**Sub-blocks in content:**')

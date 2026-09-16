@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""Scan JSONL for anything rules/instructions-related.
-
-Searches for: isMeta messages, "Contents of", CLAUDE.md references,
-system-reminder tags, command tags, file-history-snapshot structure.
-
-Usage:
-    python3 dev/display/jsonl_exploration/03_scan_instructions.py [path/to/session.jsonl]
-
-Default: latest JSONL from RAG project.
-Output: dev/display/jsonl_exploration/03_reports/instructions_<timestamp>.md
-"""
 
 import json
 import re
@@ -19,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECTS_DIR = Path.home() / '.claude' / 'projects'
-DEFAULT_PROJECT = None  # auto-discover newest project
+DEFAULT_PROJECT = None
 REPORTS_DIR = Path(__file__).parent / '03_reports'
 
 SEARCH_PATTERNS = [
@@ -62,7 +51,6 @@ def truncate(text: str, max_len: int = 300) -> str:
 
 
 def extract_content_text(msg: dict) -> str:
-    """Extract all text content from a message for pattern searching."""
     content = msg.get('message', {}).get('content', '')
     if isinstance(content, str):
         return content
@@ -121,7 +109,6 @@ def _collect_instruction_stats(filepath: Path) -> tuple:
 
             msg_type = msg.get('type', '?')
 
-            # isMeta messages
             if msg.get('isMeta', False):
                 content_text = extract_content_text(msg)
                 is_meta_messages.append({
@@ -132,7 +119,6 @@ def _collect_instruction_stats(filepath: Path) -> tuple:
                     'timestamp': msg.get('timestamp', ''),
                 })
 
-            # file-history-snapshot
             if msg_type == 'file-history-snapshot':
                 snapshot = msg.get('snapshot', {})
                 file_history_snapshots.append({
@@ -143,7 +129,6 @@ def _collect_instruction_stats(filepath: Path) -> tuple:
                     'is_update': msg.get('isSnapshotUpdate', False),
                 })
 
-            # Pattern search across the raw line
             _record_pattern_hits(line, line_num, msg_type, pattern_hits)
 
     return pattern_hits, is_meta_messages, file_history_snapshots, total_lines
@@ -151,7 +136,6 @@ def _collect_instruction_stats(filepath: Path) -> tuple:
 
 def _pattern_summary_lines(pattern_hits: dict) -> list:
     lines = []
-    # Pattern hits summary
     lines.append(f'## Pattern Search Summary')
     lines.append(f'')
     lines.append(f'| Pattern | Hits |')
@@ -165,7 +149,6 @@ def _pattern_summary_lines(pattern_hits: dict) -> list:
 
 def _is_meta_section_lines(is_meta_messages: list) -> list:
     lines = []
-    # isMeta messages
     lines.append(f'## isMeta Messages ({len(is_meta_messages)})')
     lines.append(f'')
     if is_meta_messages:
@@ -187,7 +170,6 @@ def _is_meta_section_lines(is_meta_messages: list) -> list:
 
 def _file_history_section_lines(file_history_snapshots: list) -> list:
     lines = []
-    # file-history-snapshot
     lines.append(f'## file-history-snapshot ({len(file_history_snapshots)})')
     lines.append(f'')
     if file_history_snapshots:
@@ -200,7 +182,6 @@ def _file_history_section_lines(file_history_snapshots: list) -> list:
             lines.append(f'| ... | +{len(file_history_snapshots)-10} more | | |')
         lines.append(f'')
 
-        # Show first snapshot example
         lines.append(f'**First snapshot example:**')
         lines.append(f'```json')
         lines.append(file_history_snapshots[0]['snapshot_preview'])
@@ -214,7 +195,6 @@ def _file_history_section_lines(file_history_snapshots: list) -> list:
 
 def _pattern_detail_lines(pattern_hits: dict) -> list:
     lines = []
-    # Detailed pattern hits
     for name, _ in SEARCH_PATTERNS:
         hits = pattern_hits[name]
         if not hits:

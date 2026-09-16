@@ -1,18 +1,3 @@
-"""
-Differential proof harness for format_cache_tracker decomposition.
-
-Usage (from project root):
-    ./venv/bin/python dev/display/A_format_cache_tracker_proof.py --mode capture
-    ./venv/bin/python dev/display/A_format_cache_tracker_proof.py --mode verify [--baseline PATH]
-
-Modes:
-    capture  -- parse N session JSONLs, call format_cache_tracker on each, write 5-tuple to baseline JSON
-    verify   -- call same inputs, assert byte-identical 5-tuple against baseline, exit 0 (pass) / 1 (fail)
-
-Entry point under test: format_cache_tracker(turns, ...) from src/format/token_format.py
-Exercises all 3 extraction targets transitively: _render_expanded_call_lines, _compute_cache_viewport, _fmt_rl_reset_time.
-"""
-
 # INFRASTRUCTURE
 import argparse
 import json
