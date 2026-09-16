@@ -15,22 +15,43 @@ spawned subprocesses and asserts on file/process state.
 
 ## Modules
 
-### p1_scan_bg_completion_wordings.py (466 LOC)
+### p1_scan_bg_completion_wordings.py (67 LOC)
 
-**Purpose:** Inventories distinct background-task completion/kill notice wordings in the recorded
-corpus, split main vs. worker session, deduplicated per session by exact raw text (robust to
-non-monotonic message-count resets seen in some worker sessions), and evaluates the real
-task-notification task-id extraction against each wording.
+**Purpose:** Entry script — resolves the corpus dir, drives the per-file scan loop, writes the
+report.
 **Reads:** all `*_original.jsonl` files under src/logs/dual_log (corpus dir overridable via the first
 CLI argument).
 **Writes:** `md/bg_completion_wordings_<date>.md`.
 **Called by:** none — manual, measurement only.
+**Calls out:** `bg_completion_scan.py`, `bg_completion_report.py`.
+
+---
+
+### bg_completion_scan.py (175 LOC)
+
+**Purpose:** Corpus-scanning concern for p1 — candidate-block extraction, TN/bare structural
+filters, dedup, and mechanism-verdict evaluation against the real extraction code.
+**Reads:** nothing directly (operates on data passed in by the caller).
+**Writes:** nothing (mutates the `findings`/counter dicts passed in by the caller).
+**Called by:** `p1_scan_bg_completion_wordings.py`, `bg_completion_report.py`.
 **Calls out:** `src/proxy/strip_sn_notice.py`, `src/proxy/strip_bg_completed.py`,
 `src/proxy/payload_helpers.py`.
 
 ---
 
-### p3_project_scope_incident_probe.py (243 LOC)
+### bg_completion_report.py (275 LOC)
+
+**Purpose:** Report-building concern for p1 — one function per markdown section, assembled by
+`_build_report`.
+**Reads:** nothing (operates on the `findings`/counter dicts built by `bg_completion_scan.py`).
+**Writes:** nothing (returns the report text; the entry script writes the file).
+**Called by:** `p1_scan_bg_completion_wordings.py`.
+**Calls out:** `bg_completion_scan.py` (`_is_canonical_timer_command`, `_mechanism_verdict`,
+`EXCLUDED_FILES`).
+
+---
+
+### p3_project_scope_incident_probe.py (248 LOC)
 
 **Purpose:** Replays a cross-project false-block incident where one project's main session was
 blocked by another project's pending background-task entry in a shared state file — was meant to
@@ -46,7 +67,7 @@ but unreachable since the script fails at import time.
 
 ---
 
-### test_abort_stamp_scope.py (122 LOC)
+### test_abort_stamp_scope.py (142 LOC)
 
 **Purpose:** Integration regression guard for the menubar abort-stamp scoping fix
 (`_abort_bg_sleep_timers`/`_resolve_pid_output_file`). Spawns two real `sleep` subprocesses with
