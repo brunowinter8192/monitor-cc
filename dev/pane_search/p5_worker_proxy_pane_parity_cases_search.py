@@ -111,7 +111,7 @@ def test_worker_switch_resets_search_state():
     mod_wp._worker_proxy_search.matches = [0]
     mod_wp._worker_proxy_search.match_set = {0}
     mod_wp._worker_proxy_search.focused = True
-    mod_wp._worker_proxy_last_worker_name = 'workerA'  # pretend we're currently on workerA
+    mod_wp._worker_proxy_last_worker_name = 'workerA'
     check("search state populated before the switch",
           mod_wp._worker_proxy_search.matches == [0] and mod_wp._worker_proxy_search.query == 'hello world')
 

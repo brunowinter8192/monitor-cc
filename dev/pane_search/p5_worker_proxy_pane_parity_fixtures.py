@@ -33,8 +33,6 @@ class _FakeMonitor:
 
 # FUNCTIONS
 
-# Synthetic worker-proxy entry — same shape as p2/p3's _make_entry (proxy pane fixtures),
-# required by build_search_matches/_render_req_expanded regardless of which pane calls them.
 def _make_wp_entry(idx: int, marker: str = None, model: str = 'claude-sonnet') -> dict:
     marker_text = marker or f'unique_marker_{idx}'
     messages = [{'role': 'user', 'type': 'text', 'chars': 10, 'blocks': []} for _ in range(idx)]
@@ -90,8 +88,6 @@ def _capture_clipboard():
     return captured, orig
 
 
-# Runs _build_worker_proxy_output with a real (temp-file-backed) selection, monkeypatching only
-# get_selection_file_path — every other real function (format_proxy_block, _format_worker_proxy_header, ...) runs unmocked.
 def _build_output_with_worker(worker_name):
     tmp_dir = Path(tempfile.mkdtemp(prefix='pane_search_p5_sel_'))
     sel_path = tmp_dir / 'selection.txt'
@@ -106,8 +102,6 @@ def _build_output_with_worker(worker_name):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-# Build a synthetic forwarded_delta JSONL line (mirrors p2_search_feature_regression_test.py's
-# _fwd_line — same fixture shape, reconstruct_all_messages is the shared function under test)
 def _fwd_line(flow_id: str, model: str, is_first: bool, msg_text: str) -> str:
     entry = {
         'type': 'forwarded_delta', 'request_id': '', 'timestamp': datetime.now(timezone.utc).isoformat(),

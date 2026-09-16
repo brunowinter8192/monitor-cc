@@ -23,7 +23,6 @@ def test_gpu_render_pane_stays_unshifted_and_button_region_shifts_externally():
     mod_gpu._render_pane(PANE_WIDTH, 30, presets, [], [], [], {}, [])
     (sc, ec, er) = next(iter(mod_gpu._button_regions))
     check("direct _render_pane call registers its own header region at row 1 (its own top)", er == 1)
-    # Replicate run_gpu_loop's own external shift snippet
     shifted = {(sc2, ec2, er2 + mod_gpu._GPU_SEARCH_BAR_LINES): v for (sc2, ec2, er2), v in mod_gpu._button_regions.items()}
     mod_gpu._button_regions.clear()
     mod_gpu._button_regions.update(shifted)

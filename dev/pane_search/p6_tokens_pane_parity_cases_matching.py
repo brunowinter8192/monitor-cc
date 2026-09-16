@@ -93,7 +93,6 @@ def test_light_red_bg_still_detected_when_call_is_also_a_match():
     print("\n[regression] LIGHT_RED_BG (cc_broken row) detection uses 'in line', not "
           "'.startswith()' — a search-match wrap now precedes it in the string")
     _reset_state('unique_marker_w')
-    # cache_creation > cache_read triggers cc_broken -> LIGHT_RED_BG prefix in _format_cache_call
     mod_tp._cache_turns.append(_make_turn(0, call_marker='unique_marker_w', cache_read=100, cache_creation=500))
     mod_tp._handle_tokens_search_input('\r')
     check("real search found the (also cc_broken) call", mod_tp._tokens_search.matches == [(0, 0)])
@@ -109,10 +108,6 @@ def test_jump_to_match_moves_scroll_offset():
     _reset_state('unique_marker_early')
     for i in range(40):
         mod_tp._cache_turns.append(_make_turn(i, call_marker='unique_marker_early' if i == 0 else None))
-    # _tokens_nav is populated by the LAST render (mirrors core/monitor_display.py's
-    # ensure_match_visible reading _search_all_line_offsets) — one render must happen first,
-    # exactly as it would in the live pane loop (the pane is always rendering independently of
-    # search actions).
     mod_tp._build_tokens_output()
     check("scroll starts at 0 (default view = newest/bottom)", mod_tp.cache_scroll_offset == 0)
     mod_tp._handle_tokens_search_input('\r')

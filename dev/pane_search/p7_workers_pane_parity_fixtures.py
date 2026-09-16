@@ -65,10 +65,6 @@ def _select_worker(name: str, workers: list) -> None:
     mod_wt._worker_tokens_current_name = name
 
 
-# Write a real throwaway JSONL fixture (one user prompt + optional one assistant tool_use call)
-# for a single worker, monkeypatch find_worker_jsonl to resolve it. Real reconstruction pipeline
-# (read_new_lines -> parse_jsonl_lines -> extract_cache_turns, via panes.cache_turns.build_cache_turns)
-# runs unmocked -- only the tmux-session -> path RESOLUTION is stubbed.
 def _setup_one_worker_jsonl(name: str, prompt: str, call_marker: str = None):
     global _TMP_ROOT
     _TMP_ROOT = Path(tempfile.mkdtemp(prefix='pane_search_p7_'))

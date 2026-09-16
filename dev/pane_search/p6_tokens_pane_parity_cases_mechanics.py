@@ -85,7 +85,7 @@ def test_body_click_clears_selection():
     mod_tp._handle_tokens_mouse(32, len(label) + 5, 1)
     mod_tp._handle_tokens_search_release()
     check("selection exists before the elsewhere-click", mod_tp._tokens_search.sel_anchor is not None)
-    changed = mod_tp._handle_tokens_mouse(0, 5, 10)  # unmapped body row
+    changed = mod_tp._handle_tokens_mouse(0, 5, 10)
     check("elsewhere-click reports a change (selection cleared)", changed)
     check("selection cleared after clicking elsewhere",
           mod_tp._tokens_search.sel_anchor is None and mod_tp._tokens_search.sel_end is None)

@@ -29,7 +29,6 @@ def check(label, condition):
 
 # FUNCTIONS
 
-# Synthetic tool_errors entry
 def _make_error(tool_name='Bash', worker_name='', full_text='error output', input_marker=None):
     return {
         'timestamp': '10:00:00', 'tool_name': tool_name, 'summary': full_text[:80],
@@ -46,9 +45,6 @@ def _make_preset(name, running=True, healthy=True, port=8000, pid=123):
     }
 
 
-# Mirrors run_gpu_loop's inline row-1/button dispatch (dev/click_ui/p4_gpu_news_button_probe.py's
-# own established convention for these two panes -- mouse dispatch is inline, not a standalone
-# function).
 def _dispatch_gpu_click(col, row):
     if row == 1:
         return mod_search_bar.handle_search_mouse_press(mod_gpu._gpu_search, col, mod_gpu._GPU_SEARCH_BAR_LABEL)

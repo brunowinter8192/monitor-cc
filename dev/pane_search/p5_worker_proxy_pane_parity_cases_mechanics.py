@@ -118,7 +118,7 @@ def test_body_row_click_clears_selection():
     _click(32, len(label) + 5, 1)
     mod_wp._handle_worker_proxy_search_release()
     check("selection exists before the elsewhere-click", mod_wp._worker_proxy_search.sel_anchor is not None)
-    changed = _click(0, 5, 10)  # unmapped body row, no header regions registered
+    changed = _click(0, 5, 10)
     check("elsewhere-click reports a change (selection cleared)", changed)
     check("selection cleared after clicking elsewhere",
           mod_wp._worker_proxy_search.sel_anchor is None and mod_wp._worker_proxy_search.sel_end is None)

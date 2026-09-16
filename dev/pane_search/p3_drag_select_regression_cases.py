@@ -21,9 +21,8 @@ def test_col_to_index_ascii():
 
 def test_col_to_index_wide_char():
     print("\n[col mapping] Wide-char (emoji, 2-cell) query — left/right half snapping")
-    q = 'a😀b'  # a(1w) emoji(2w) b(1w)
+    q = 'a😀b'
     label_w = len(mod_pane._SEARCH_BAR_LABEL)
-    # cols: label_w+1='a', label_w+2..3=emoji(2 cells), label_w+4='b'
     check("click on 'a' -> boundary 0 (before 'a')",
           mod_pane._search_col_to_query_index(label_w + 1, q) == 0)
     check("click on emoji's LEFT cell -> boundary 1 (before emoji)",
@@ -42,13 +41,13 @@ def test_drag_select_copies_to_clipboard():
     captured, orig = _capture_clipboard()
     try:
         label_w = len(mod_pane._SEARCH_BAR_LABEL)
-        press_changed = mod_pane._handle_proxy_mouse(0, label_w + 2, 1)  # anchor at index1 ('e')
+        press_changed = mod_pane._handle_proxy_mouse(0, label_w + 2, 1)
         check("press returns True (redraw)", press_changed)
         check("press focuses the bar (existing behavior preserved)", mod_pane._proxy_search.focused is True)
         check("press arms dragging", mod_pane._proxy_search.dragging is True)
         check("press sets anchor==end (empty range until motion)",
               mod_pane._proxy_search.sel_anchor == mod_pane._proxy_search.sel_end == 1)
-        motion_changed = mod_pane._handle_proxy_mouse(32, label_w + 7, 1)  # extend to index6 ('w')
+        motion_changed = mod_pane._handle_proxy_mouse(32, label_w + 7, 1)
         check("motion returns True (redraw)", motion_changed)
         check("motion extends sel_end only, anchor unchanged",
               mod_pane._proxy_search.sel_anchor == 1 and mod_pane._proxy_search.sel_end == 6)
@@ -96,9 +95,9 @@ def test_body_row_drag_never_arms_search_selection():
     print("\n[scope] A drag starting on a BODY row never arms search-bar dragging")
     _reset_state('hello world')
     mod_pane.proxy_line_map[2] = ('req', 0)
-    press_changed = mod_pane._handle_proxy_mouse(0, 5, 2)  # press on a body row, not row 1
+    press_changed = mod_pane._handle_proxy_mouse(0, 5, 2)
     check("body-row press does not arm dragging", mod_pane._proxy_search.dragging is False)
-    motion_changed = mod_pane._handle_proxy_mouse(32, 40, 2)  # motion after a body-row press
+    motion_changed = mod_pane._handle_proxy_mouse(32, 40, 2)
     check("motion after a body-row press falls through to generic hover (proxy_hover_row set)",
           mod_pane.proxy_hover_row == 2)
     check("search selection untouched by a body-row drag",
@@ -142,8 +141,8 @@ def test_backspace_deletes_active_selection():
           "substring (not just the last char) and clears the selection")
     _reset_state('hello world')
     label_w = len(mod_pane._SEARCH_BAR_LABEL)
-    mod_pane._handle_proxy_mouse(0, label_w + 2, 1)   # anchor at index1 ('e')
-    mod_pane._handle_proxy_mouse(32, label_w + 7, 1)  # extend to index6 ('w') -> selects 'ello '
+    mod_pane._handle_proxy_mouse(0, label_w + 2, 1)
+    mod_pane._handle_proxy_mouse(32, label_w + 7, 1)
     mod_pane._handle_proxy_search_release()
     check("selection is 'ello ' before backspace",
           mod_pane._proxy_search.query[mod_pane._proxy_search.sel_anchor:mod_pane._proxy_search.sel_end] == 'ello ')
@@ -239,8 +238,8 @@ def test_render_reverse_video_bracket():
           "no selection renders without it")
     _reset_state('hello world')
     label_w = len(mod_pane._SEARCH_BAR_LABEL)
-    mod_pane._handle_proxy_mouse(0, label_w + 2, 1)   # index1
-    mod_pane._handle_proxy_mouse(32, label_w + 7, 1)  # index6
+    mod_pane._handle_proxy_mouse(0, label_w + 2, 1)
+    mod_pane._handle_proxy_mouse(32, label_w + 7, 1)
     mod_pane._handle_proxy_search_release()
     bar = mod_pane._render_proxy_search_bar(PANE_WIDTH)
     check("reverse-video ON code present", '\033[7m' in bar)
@@ -248,7 +247,7 @@ def test_render_reverse_video_bracket():
     check("the reversed span wraps exactly the selected substring",
           '\033[7mello \033[27m' in bar)
 
-    _reset_state('hello world')  # no selection
+    _reset_state('hello world')
     bar2 = mod_pane._render_proxy_search_bar(PANE_WIDTH)
     check("no reverse-video codes when there is no selection", '\033[7m' not in bar2)
 
@@ -263,7 +262,7 @@ def test_session_change_clears_selection():
     check("selection exists before session change", mod_pane._proxy_search.sel_anchor is not None)
 
     class _FakeMonitor:
-        active_project_filter = None  # keeps parse_proxy_log_forwarded/find_proxy_log_path as safe no-ops
+        active_project_filter = None
         def _get_newest_main_session(self):
             return '/tmp/pane_search_p3_fake_session'
         def _get_session_start_ts(self):
@@ -271,7 +270,7 @@ def test_session_change_clears_selection():
         def get_main_session_files(self):
             return []
 
-    mod_pane._proxy_current_main_session = None  # force the session-change branch to fire
+    mod_pane._proxy_current_main_session = None
     mod_pane._refresh_proxy_data(0.0, False, -9999.0, _FakeMonitor())
     check("selection cleared on session change",
           mod_pane._proxy_search.sel_anchor is None and mod_pane._proxy_search.sel_end is None)
