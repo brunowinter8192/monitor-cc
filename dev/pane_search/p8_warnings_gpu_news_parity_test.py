@@ -1,38 +1,3 @@
-"""
-p8_warnings_gpu_news_parity_test.py -- Regression guard for the FINAL three panes reaching
-search-bar parity (rollout sub-milestones 6-8, bundled, process-docs/pane_search/): warnings
-(src/panes/warnings_pane.py + warnings_render.py), gpu (src/gpu_pane/pane.py), and news
-(src/news_pane/pane.py ONLY -- log_pane.py is EXCLUDED per the approved decision).
-
-WARNINGS: 1-level expand (error_expand_states[idx]), full data always loaded. The verification
-this milestone explicitly required: warnings_render.py's row-bg loop was read at line level
-before assuming anything -- it ALREADY used `DIM_YELLOW_BG in line` (substring), not
-`.startswith()`, so no collateral fix was needed there (unlike every prior pane). ZEBRA_BG_A==''
-DOES still apply (same shared constant) -- search_bar.resolve_bg_restore is threaded into this
-same (already-correct) loop. Match key is a bare int err_idx (no nesting -- one expand level).
-Two-stage marking: collapsed error container-marks its whole header row; expanded ADDITIONALLY
-substring-highlights the matching detail line(s). header_lines param generalizes the previously
-hardcoded single-header-row offset (default 1, warnings_pane.py passes 2 for search bar +
-[refresh]).
-
-GPU + NEWS: flat, small live-fetched lists, NO scroll/viewport infra at all (pane_height is
-accepted by _render_pane but never read -- confirmed by grep before implementing). Per the
-approved decision: full bar mechanics (drag-select, editor-style deletion, kill-line) but
-HIGHLIGHT-ONLY -- no jump-to-match. n/N still cycles current_idx (which on-screen match gets
-SEARCH_CURRENT_BG vs SEARCH_MATCH_BG, and the N/M counter) with ZERO scroll call. No sentinel
-needed in either pane -- neither has a per-row background/zebra/hover loop at all, so
-utils.highlight_query_in_line's default restore_bg is directly correct (same simple case as the
-main pane). _render_pane's OWN row numbering stays UNSHIFTED/relative to its own top in both
-panes -- the search-bar row shift for _button_regions happens externally, in the loop, exactly
-mirroring worker_proxy_pane's precedent -- verified by dev/click_ui/p4_gpu_news_button_probe.py
-needing ZERO changes (it calls _render_pane directly).
-
-Uses REAL src.panes.warnings_pane / warnings_render / src.gpu_pane.pane / src.news_pane.pane
-functions against synthetic data -- not mocks. importlib.import_module used throughout.
-
-Run: ./venv/bin/python dev/pane_search/p8_warnings_gpu_news_parity_test.py
-"""
-
 # INFRASTRUCTURE
 import sys
 from datetime import datetime

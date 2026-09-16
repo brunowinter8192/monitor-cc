@@ -31,9 +31,6 @@ def check(label, condition):
 
 # FUNCTIONS
 
-# Synthetic turn — one call, optionally carrying a marker in its own prompt (turn-level match
-# surface) and/or a content_blocks text preview (call-level match surface, only found by the
-# matcher's force-expand, invisible when collapsed in a real render).
 def _make_turn(idx: int, prompt_marker: str = None, call_marker: str = None,
                 cache_read: int = 1000, cache_creation: int = 0) -> dict:
     prompt = f"turn {idx}" + (f" {prompt_marker}" if prompt_marker else "")

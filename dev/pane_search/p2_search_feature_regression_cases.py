@@ -95,8 +95,6 @@ def test_sentinel_resolves_to_default_bg_not_empty_string_on_zebra_a_rows():
           "active through to \\x1b[K erase-to-EOL, flooding the rest of the row gold. Exact "
           "user-reported + self-reproduced repro, direct call to _apply_row_backgrounds.")
     line = (f"    {SEARCH_CURRENT_BG}62/62 im eigenen Lauf, das Diff{_BG_RESTORE_SENTINEL}")
-    # key=('msg', 5, 0) with initial_parent_count=0 lands on ZEBRA_BG_A (empty string) — the
-    # exact scenario the live bug needs to reproduce (ZEBRA_BG_B rows always restored fine).
     out = mod_format._apply_row_backgrounds([line], [('msg', 5, 0)], set(), None, None, 120, 0)
     rendered = out[0]
     check("no unsubstituted _BG_RESTORE_SENTINEL left in the output", _BG_RESTORE_SENTINEL not in rendered)
@@ -109,8 +107,6 @@ def test_sentinel_resolves_to_default_bg_not_empty_string_on_zebra_a_rows():
           "erase-to-EOL, so no flood reaches the end of the row",
           match_end <= reset_pos < erase_pos)
 
-    # Sanity: a NON-empty chosen_bg (ZEBRA_BG_B, via initial_parent_count=1) must still resolve
-    # to the real color as before — this fix must not regress the already-correct case.
     line2 = f"    {SEARCH_CURRENT_BG}matched{_BG_RESTORE_SENTINEL} trailing"
     out2 = mod_format._apply_row_backgrounds([line2], [('msg', 6, 0)], set(), None, None, 120, 1)
     check("non-empty chosen_bg (ZEBRA_BG_B) case unaffected by the fix",
@@ -157,10 +153,9 @@ def test_esc_clears_query_bar_stays():
 def test_scroll_jump_clamps():
     print("\n[scroll-jump clamp] Jumping to a match never exceeds max_scroll")
     _reset_pane_state()
-    # Many entries so total_lines exceeds a small terminal height, forcing real scrolling
     entries = [_make_entry(i) for i in range(40)]
     mod_pane.proxy_entries.extend(entries)
-    mod_pane._proxy_search.matches = [2]  # near the TOP of the (chronological) list
+    mod_pane._proxy_search.matches = [2]
     mod_pane._proxy_search.match_set = {2}
     mod_pane._proxy_search.current_idx = 0
     orig_terminal_size = os.get_terminal_size
@@ -171,7 +166,6 @@ def test_scroll_jump_clamps():
         mod_pane._build_proxy_output()
         check("post-jump scroll_offset is non-negative", mod_pane.proxy_scroll_offset >= 0)
         check("the jumped-to entry is present in the rendered line_map", ('req', 2) in mod_pane.proxy_line_map.values())
-        # A second render at the same (already-clamped) offset must not push it further out of range
         offset_before = mod_pane.proxy_scroll_offset
         mod_pane._build_proxy_output()
         check("scroll_offset stable across a second render (clamp is idempotent)",
@@ -193,13 +187,9 @@ def test_flow_id_lazy_load_fix():
     ]
     full_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
-    # Ground truth: fresh byte-0 parse, matched by flow_id
     truth_entries, _ = mod_fwd._parse_forwarded_log(full_path, 0, {})
     truth_by_flow = {e['flow_id']: e for e in truth_entries}
 
-    # Simulate 2 incremental polling batches (batch1 = first 2 lines only, batch2 = rest) —
-    # this is what reproduces the call-local _fwd_req_idx collision: batch2's req_idx restarts
-    # at 0, colliding with batch1's flow-A/flow-B at the SAME local indices.
     truncated = tmp / 'truncated.jsonl'
     truncated.write_text('\n'.join(lines[:2]) + '\n', encoding='utf-8')
     acc = {}
@@ -235,8 +225,6 @@ def test_utf8_multibyte_keypress():
         result = _read_keypress_from_bytes(byte_seq)
         check(f"{label}: {byte_seq!r} -> {result!r}", result == expected)
 
-    # Back-to-back multi-byte + ASCII in the SAME pipe write — continuation-byte reads must not
-    # over-consume into the next character
     r, w = os.pipe()
     orig_fd = mod_click._stdin_fd
     mod_click._stdin_fd = r
@@ -275,7 +263,7 @@ def test_kill_line_after_a_real_search_run():
     mod_pane.proxy_entries.extend(entries)
     mod_pane._proxy_search.query = 'unique_marker_1'
     mod_pane._proxy_search.focused = True
-    mod_pane._handle_proxy_search_input('\r')  # Enter -> real _run_proxy_search via the real path
+    mod_pane._handle_proxy_search_input('\r')
     check("real search run found the match", mod_pane._proxy_search.matches == [1])
     mod_pane._proxy_search.focused = True
     changed = mod_pane._handle_proxy_search_input(mod_pane._KILL_LINE_CHAR)

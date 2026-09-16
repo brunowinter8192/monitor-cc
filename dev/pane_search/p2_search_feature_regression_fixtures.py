@@ -36,14 +36,6 @@ def check(label, condition):
 
 # FUNCTIONS
 
-# Synthetic proxy entry with a UNIQUE, always-visible marker in its OWN new message (message
-# index == idx, "unique_marker_<idx>") — messages list is CUMULATIVE (length == message_count,
-# one prior filler message per earlier idx + this entry's own new one), matching how
-# render_messages._render_new_messages finds "new" messages: range(prev_msg_count, len(messages))
-# — a non-cumulative per-entry-only messages list renders as an EMPTY new-message range and the
-# marker never appears (found while writing this test; see process-docs/pane_search/).
-# Base shape otherwise matches dev/display/test_hover_map.py's _make_entry, extended with
-# flow_id (search's merge key).
 def _make_entry(idx: int, marker: str = None, model: str = 'claude-sonnet') -> dict:
     marker_text = marker or f'unique_marker_{idx}'
     messages = [{'role': 'user', 'type': 'text', 'chars': 10, 'blocks': []} for _ in range(idx)]
@@ -88,7 +80,6 @@ def _reset_pane_state():
     mod_pane._proxy_pane_width = PANE_WIDTH
 
 
-# Build a synthetic 2-request forwarded_delta JSONL line (is_first or delta-continuation)
 def _fwd_line(flow_id: str, model: str, is_first: bool, msg_text: str) -> str:
     entry = {
         'type': 'forwarded_delta', 'request_id': '', 'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -102,8 +93,6 @@ def _fwd_line(flow_id: str, model: str, is_first: bool, msg_text: str) -> str:
     return json.dumps(entry)
 
 
-# Write byte_seq into a real os.pipe(), point click_handler._stdin_fd at the read end, call the
-# REAL read_keypress() once. Real os.read/select.select through the actual function — not a mock.
 def _read_keypress_from_bytes(byte_seq: bytes):
     r, w = os.pipe()
     orig_fd = mod_click._stdin_fd

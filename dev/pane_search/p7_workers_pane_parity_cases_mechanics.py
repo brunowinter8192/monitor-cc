@@ -99,7 +99,7 @@ def test_body_click_clears_selection():
     mod_wt._handle_worker_tokens_mouse(32, len(label) + 5, 1, _MONITOR)
     mod_wt._handle_worker_tokens_search_release()
     check("selection exists before the elsewhere-click", mod_wt._worker_tokens_search.sel_anchor is not None)
-    changed = mod_wt._handle_worker_tokens_mouse(0, 5, 10, _MONITOR)  # unmapped body row
+    changed = mod_wt._handle_worker_tokens_mouse(0, 5, 10, _MONITOR)
     check("elsewhere-click reports a change (selection cleared)", changed)
     check("selection cleared after clicking elsewhere",
           mod_wt._worker_tokens_search.sel_anchor is None and mod_wt._worker_tokens_search.sel_end is None)

@@ -8,6 +8,10 @@ reference implementation); `p5_`-`p8_` are per-pane parity suites proving each r
 the same search-bar behavior as the proxy pane. Touch when changing a pane's search/mouse handlers,
 `search_bar.py` itself, or a pane's header/row-background rendering that search highlighting touches.
 
+## Public Interface
+No `__init__.py` in this directory. Each `pN_..._test.py` (and `p1_full_sweep_cost_probe.py`) is
+invoked directly as a script: `./venv/bin/python dev/pane_search/pN_..._test.py`.
+
 ## Flow
 Each parity script seeds a pane module's state (synthetic entries/turns, or a real dual-log/JSONL
 fixture) directly, drives the pane's real search/mouse handler functions, and asserts on the
@@ -23,7 +27,7 @@ sibling `pN_*` modules import each other with plain `from pN_... import name`.
 
 ## Modules
 
-### p1_full_sweep_cost_probe.py (83 LOC)
+### p1_full_sweep_cost_probe.py (50 LOC)
 
 **Purpose:** Orchestrates the M1 cost probe end to end and writes the markdown report.
 **Reads:** a forwarded dual-log JSONL (positional arg, or the newest one found under src/logs/dual_log
@@ -56,7 +60,7 @@ per-entry lazy-load and one-sweep strategies) plus their wall-time/RAM measureme
 
 ---
 
-### p2_search_feature_regression_test.py (97 LOC)
+### p2_search_feature_regression_test.py (62 LOC)
 
 **Purpose:** Runs the M2 proxy-pane search-bar regression suite and writes the PASS/FAIL report.
 **Reads:** nothing external.
@@ -69,7 +73,7 @@ embedding, `search.py`, `forwarded_parser.py`'s reconstruction functions, or
 
 ---
 
-### p2_search_feature_regression_fixtures.py (117 LOC)
+### p2_search_feature_regression_fixtures.py (106 LOC)
 
 **Purpose:** Loads the `src` modules under test, holds the shared `check()`/results list, and
 builds synthetic proxy entries and pane-state resets for the M2 suite's test cases.
@@ -82,10 +86,10 @@ builds synthetic proxy entries and pane-state resets for the M2 suite's test cas
 
 ---
 
-### p2_search_feature_regression_cases.py (285 LOC)
+### p2_search_feature_regression_cases.py (273 LOC)
 
 **Purpose:** The M2 suite's `test_*` functions covering search-bar render/highlight/nav/UTF-8
-input behavior described in the module docstring of the entry script.
+input behavior.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `p2_search_feature_regression_test.py`.
@@ -93,7 +97,7 @@ input behavior described in the module docstring of the entry script.
 
 ---
 
-### p3_drag_select_regression_test.py (110 LOC)
+### p3_drag_select_regression_test.py (72 LOC)
 
 **Purpose:** Runs the proxy pane's drag-to-select regression suite and writes the PASS/FAIL report.
 **Reads:** nothing external.
@@ -116,10 +120,10 @@ between drag-select test cases.
 
 ---
 
-### p3_drag_select_regression_cases.py (277 LOC)
+### p3_drag_select_regression_cases.py (276 LOC)
 
 **Purpose:** The drag-select suite's `test_*` functions covering column mapping, drag/click/editing
-mechanics, and selection-clearing described in the entry script's docstring.
+mechanics, and selection-clearing.
 **Reads:** nothing external.
 **Writes:** nothing.
 **Called by:** `p3_drag_select_regression_test.py`.
@@ -127,7 +131,7 @@ mechanics, and selection-clearing described in the entry script's docstring.
 
 ---
 
-### p5_worker_proxy_pane_parity_test.py (119 LOC)
+### p5_worker_proxy_pane_parity_test.py (82 LOC)
 
 **Purpose:** Runs the worker-proxy pane's search-bar parity suite and writes the PASS/FAIL report.
 **Reads:** nothing external.
@@ -141,7 +145,7 @@ or `src/search_bar.py`.
 
 ---
 
-### p5_worker_proxy_pane_parity_fixtures.py (121 LOC)
+### p5_worker_proxy_pane_parity_fixtures.py (115 LOC)
 
 **Purpose:** Loads `src.proxy_display.worker_proxy_pane`/`src.search_bar`, holds `check()`/results,
 and builds synthetic worker-proxy entries, state resets, and clipboard/output-building helpers.
@@ -175,7 +179,7 @@ the worker-switch reset half of the p5 suite.
 
 ---
 
-### p6_tokens_pane_parity_test.py (135 LOC)
+### p6_tokens_pane_parity_test.py (86 LOC)
 
 **Purpose:** Runs the tokens pane's search-bar parity suite and writes the PASS/FAIL report.
 **Reads:** nothing external.
@@ -188,7 +192,7 @@ or `src/search_bar.py`.
 
 ---
 
-### p6_tokens_pane_parity_fixtures.py (71 LOC)
+### p6_tokens_pane_parity_fixtures.py (68 LOC)
 
 **Purpose:** Loads the `src` token-pane modules, holds `check()`/results, and builds synthetic
 turns and pane-state resets for the p6 suite's test cases.
@@ -212,7 +216,7 @@ mechanics half of the p6 suite.
 
 ---
 
-### p6_tokens_pane_parity_cases_matching.py (157 LOC)
+### p6_tokens_pane_parity_cases_matching.py (152 LOC)
 
 **Purpose:** `test_*` functions for two-key match semantics, the sentinel/LIGHT_RED_BG regressions,
 nav, jump-to-match, and session-change-reset half of the p6 suite.
@@ -223,7 +227,7 @@ nav, jump-to-match, and session-change-reset half of the p6 suite.
 
 ---
 
-### p7_workers_pane_parity_test.py (125 LOC)
+### p7_workers_pane_parity_test.py (86 LOC)
 
 **Purpose:** Runs the worker-tokens pane's search-bar + worker-switch-header parity suite and
 writes the PASS/FAIL report.
@@ -237,7 +241,7 @@ search/mouse/header handlers, `worker_switch_header.py`, `panes/token_search.py`
 
 ---
 
-### p7_workers_pane_parity_fixtures.py (119 LOC)
+### p7_workers_pane_parity_fixtures.py (115 LOC)
 
 **Purpose:** Loads `src.workers.worker_tokens_pane`/`src.search_bar`/`src.colors`, holds
 `check()`/results, and builds real throwaway worker-JSONL fixtures plus state resets.
@@ -273,7 +277,7 @@ nav, jump-to-match, and the worker-switch reset half of the p7 suite.
 
 ---
 
-### p8_warnings_gpu_news_parity_test.py (126 LOC)
+### p8_warnings_gpu_news_parity_test.py (91 LOC)
 
 **Purpose:** Runs the warnings/gpu/news panes' bundled search-bar parity suite and writes the
 PASS/FAIL report.
@@ -287,7 +291,7 @@ PASS/FAIL report.
 
 ---
 
-### p8_warnings_gpu_news_parity_fixtures.py (111 LOC)
+### p8_warnings_gpu_news_parity_fixtures.py (107 LOC)
 
 **Purpose:** Loads the warnings/gpu/news `src` modules, holds `check()`/results, and builds
 synthetic tool-errors/presets plus per-pane state resets and the inline gpu-click dispatcher.
@@ -299,7 +303,7 @@ synthetic tool-errors/presets plus per-pane state resets and the inline gpu-clic
 
 ---
 
-### p8_warnings_gpu_news_parity_cases_warnings.py (204 LOC)
+### p8_warnings_gpu_news_parity_cases_warnings.py (197 LOC)
 
 **Purpose:** `test_*` functions for the warnings pane's 2-row header, two-stage match marking,
 sentinel fix, and drag/editing mechanics.
@@ -310,7 +314,7 @@ sentinel fix, and drag/editing mechanics.
 
 ---
 
-### p8_warnings_gpu_news_parity_cases_gpu.py (108 LOC)
+### p8_warnings_gpu_news_parity_cases_gpu.py (107 LOC)
 
 **Purpose:** `test_*` functions for the gpu pane's highlight-only match/nav and unshifted-render
 button-region behavior.
@@ -332,18 +336,10 @@ button-region behavior.
 
 ---
 
-## Gotchas
-- `ZEBRA_BG_A` is the empty string (`''`) — substituting a background sentinel with it (instead of
-  the SGR reset `\033[49m`) silently deletes the sentinel rather than clearing the background,
-  flooding a highlight color to end-of-line. Every pane's parity suite (`p2_`, `p6_`, `p7_`, `p8_`)
-  re-checks this because each pane's row-background loop is a separate hand-rolled implementation.
-- `format_cache_tracker`'s `nav_out` dict mixes tuple keys (`(turn_idx, call_idx)`, `('turn',
-  turn_idx)`) with a string key (`'total_lines'`) — anything hashing or JSON-serializing it with
-  `sort_keys=True` needs every key stringified first.
-- Synthetic fixture entries must build a CUMULATIVE `messages` list (length == `message_count`, one
-  filler message per earlier index) — `render_messages._render_new_messages` finds "new" messages via
-  `range(prev_msg_count, len(messages))`, so a non-cumulative per-entry-only list silently renders an
-  empty new-message range and a placed marker never appears.
-- The `pN_*_fixtures.py`/`_cases*.py` split modules are never run directly — always invoke the
-  `pN_..._test.py` (or `p1_full_sweep_cost_probe.py`) entry file at its documented path; the split
-  exists purely to keep each file under the 400-LOC/50-line-function code-standard thresholds.
+## State
+Every `pN_*_fixtures.py` module owns the `_RESULTS` list and `check()` helper for its suite;
+`pN_*_cases*.py` modules mutate the imported real `src` pane module's globals (e.g.
+`src.proxy_display.pane.proxy_entries`, `src.panes.token_pane._tokens_search`) directly on each
+test call, and the matching `_reset_state`/`_reset_*_state` fixture function clears them between
+tests. No state persists across separate `python` invocations — each entry script runs in its own
+process.
