@@ -30,8 +30,6 @@ _CANONICAL_TIMER_CMD = 'sleep 3300 && echo done'
 
 # FUNCTIONS
 
-# Extract (shape, text) candidate blocks from one message's content — mirrors the 4-shape walk
-# used by every strip_* pass (str / text block / tool_result str / tool_result list[text]).
 def _iter_candidate_blocks(content):
     if isinstance(content, str):
         yield ('top_level_str', content)
@@ -53,10 +51,6 @@ def _iter_candidate_blocks(content):
                             yield ('tool_result_list_text', sub.get('text', ''))
 
 
-# Structural candidate filter for the TN (task-notification) family: block-INITIAL SN paragraph
-# (role=user path, the only one observed) OR block-initial bare tag (role=system path per
-# message_passes.py comments — defensive, 0 observed in this corpus, still checked so an
-# unknown-but-real occurrence would surface here rather than being silently missed).
 def _looks_like_tn_candidate(text, role):
     if not isinstance(text, str):
         return False
@@ -68,28 +62,18 @@ def _looks_like_tn_candidate(text, role):
     return False
 
 
-# Structural candidate filter for the bare (unwrapped) family strip_bg_completed.py targets —
-# block-INITIAL "Background command "" (not contains-anywhere, to exclude prose/dev-report
-# mentions the same way the TN filter above does).
 def _looks_like_bare_candidate(text):
     return isinstance(text, str) and text.lstrip().startswith(_BG_CMD_MARKER)
 
 
-# Mask the volatile quoted command/description inside a summary string, so distinct real
-# commands sharing the same status+exit-code collapse into one wording bucket
 def _normalize_summary(summary):
     return _CMD_QUOTE_RE.sub('"<CMD>"', summary, count=1)
 
 
-# Is the (HTML-unescaped) quoted command the canonical orchestrator timer literal?
 def _is_canonical_timer_command(raw_command):
     return html.unescape(raw_command).strip() == _CANONICAL_TIMER_CMD
 
 
-# Scan one corpus file for TN-family and bare-family candidates. Dedup key = the exact raw
-# <task-notification>...</task-notification> tag-block text (or exact raw bare-notice text) —
-# robust to both simple cumulative growth AND the non-monotonic message-count resets observed
-# in some worker sessions (compaction), unlike a prev-count positional delta.
 def _scan_file(path, findings, cmd_variant_counts, raw_dup_counter, bare_hits, session_is_worker):
     session = path.name
     is_worker = 'worker' in session
@@ -126,8 +110,6 @@ def _scan_file(path, findings, cmd_variant_counts, raw_dup_counter, bare_hits, s
     return requests, parse_errors
 
 
-# Record one deduped genuine TN completion/kill event into the findings dict, keyed by
-# (status, exit_code, normalized_summary) — the actual "distinct wording" grouping.
 def _record_tn_event(tag_block, full_text, session, is_worker, shape, role, findings, cmd_variant_counts):
     status_m = _STATUS_TAG_RE.search(tag_block)
     summary_m = _SUMMARY_TAG_RE.search(tag_block)
@@ -159,9 +141,6 @@ def _record_tn_event(tag_block, full_text, session, is_worker, shape, role, find
     bucket['examples'][cmd_text] += 1
 
 
-# Evaluate the real id/output extraction mechanism (payload_helpers.py) against one example
-# tag-block, plus the SN/TN fast-path marker gates the proxy uses before it ever reaches
-# extraction.
 def _mechanism_verdict(tag_block, full_text):
     marker_fires = _SN_NOTICE_MARKER in full_text
     tag_fires = '<task-notification>' in full_text
