@@ -1,20 +1,3 @@
-"""
-Verifies Carbon's GetEventTime(event)/GetCurrentEventTime() symbols resolve and produce a
-plausible main-thread-stall delta — the technique used by src/menubar/hotkey_controller.py's
-per-press queue_delay_ms instrumentation (see process-docs/hotkey_latency/).
-
-Two checks:
-  1. Symbol-resolution + monotonicity — non-interactive, runs standalone (no GUI focus needed).
-  2. Live delta on a real key press — registers throwaway global hotkey Cmd+Shift+9 (unused
-     elsewhere in this codebase) and prints queue_delay_ms on each press.
-
-Usage (from project root):
-    ./venv/bin/python3 dev/hotkey_latency/probe_get_event_time.py
-
-Then press Cmd+Shift+9 anywhere (global hotkey, no focus required) — a line prints per press.
-Ctrl+C to exit. No menu bar icon is shown (LSUIElement, no status item).
-"""
-
 # INFRASTRUCTURE
 import ctypes
 import os
@@ -22,12 +5,12 @@ import os
 import rumps
 
 _OSStatus = ctypes.c_int32
-_CMD_SHIFT_9_KEYCODE = 0x19            # kVK_ANSI_9
-_CMD_SHIFT_MODIFIERS = 0x0100 | 0x0200  # cmdKey | shiftKey
-_MBAR_SIG            = 0x4D424152      # OSType 'MBAR' — matches hotkey_controller.py convention
-_PROBE_ID            = 999             # EventHotKeyID.id, collision-free with production IDs (1, 2..10, 20, 21, 30)
-_kEventParamDirect   = 0x2D2D2D2D      # kEventParamDirectObject ('----')
-_typeEventHotKeyID   = 0x686B6964      # typeEventHotKeyID ('hkid')
+_CMD_SHIFT_9_KEYCODE = 0x19
+_CMD_SHIFT_MODIFIERS = 0x0100 | 0x0200
+_MBAR_SIG            = 0x4D424152
+_PROBE_ID            = 999
+_kEventParamDirect   = 0x2D2D2D2D
+_typeEventHotKeyID   = 0x686B6964
 _eventNotHandledErr  = -9874
 
 class _EventHotKeyID(ctypes.Structure):
@@ -36,12 +19,11 @@ class _EventHotKeyID(ctypes.Structure):
 class _EventTypeSpec(ctypes.Structure):
     _fields_ = [('eventClass', ctypes.c_uint32), ('eventKind', ctypes.c_uint32)]
 
-_HOTKEY_EVENT_SPEC = _EventTypeSpec(0x6B657962, 6)   # kEventClassKeyboard, kEventHotKeyPressed
+_HOTKEY_EVENT_SPEC = _EventTypeSpec(0x6B657962, 6)
 _EventHandlerProcPtr = ctypes.CFUNCTYPE(_OSStatus, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 
 # FUNCTIONS
 
-# Load Carbon CDLL with argtypes for GetEventTime/GetCurrentEventTime + hotkey registration calls
 def _load_carbon():
     carbon = ctypes.CDLL('/System/Library/Frameworks/Carbon.framework/Carbon')
     carbon.GetApplicationEventTarget.restype  = ctypes.c_void_p
@@ -67,7 +49,6 @@ def _load_carbon():
     carbon.GetCurrentEventTime.argtypes = []
     return carbon
 
-# Check 1: symbols resolve + GetCurrentEventTime is a plausible, monotonically-increasing double
 def _check_symbols_resolve(carbon) -> None:
     t1 = carbon.GetCurrentEventTime()
     t2 = carbon.GetCurrentEventTime()
@@ -76,7 +57,6 @@ def _check_symbols_resolve(carbon) -> None:
     print(f'[check 1] GetCurrentEventTime resolves: t1={t1:.6f}s t2={t2:.6f}s '
           f'delta={(t2 - t1) * 1000:.4f}ms (seconds since boot) — OK')
 
-# Check 2: register throwaway global hotkey, print live queue_delay_ms per press
 def _register_probe_hotkey(carbon) -> None:
     target = carbon.GetApplicationEventTarget()
 
@@ -110,7 +90,7 @@ def _register_probe_hotkey(carbon) -> None:
         print(f'[check 2] RegisterEventHotKey failed rc={rc} — Cmd+Shift+9 may be taken by another app')
     else:
         print('[check 2] Cmd+Shift+9 registered — press it anywhere to see a live delta. Ctrl+C to exit.')
-    return cb, hk_ref   # caller must keep alive (GC anchor)
+    return cb, hk_ref
 
 # ORCHESTRATOR
 
@@ -124,7 +104,7 @@ def main() -> None:
     os.environ.setdefault('LSUIElement', '1')
     app = _ProbeApp()
     _cb, _hk_ref = _register_probe_hotkey(carbon)
-    app._probe_cb, app._probe_hk_ref = _cb, _hk_ref   # GC anchor
+    app._probe_cb, app._probe_hk_ref = _cb, _hk_ref
     app.run()
 
 if __name__ == '__main__':

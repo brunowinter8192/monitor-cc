@@ -1,18 +1,3 @@
-"""
-Parses menubar.log [latency] lines — main-thread tick phase breakdowns (app.py), background
-discovery-worker cycle breakdowns (discovery_worker.py, 2026-08 M3: list_alive_sessions +
-_scan_bg_sleep_timers moved off the main thread), hotkey queue-delays (hotkey_controller.py),
-focus-path splits (system.py); see process-docs/hotkey_latency/ — into a distribution report:
-per-phase stats, slowest entries with full breakdown, hotkey queue-delay percentiles, focus
-lookup-vs-osascript split.
-
-Usage (from project root):
-    ./venv/bin/python3 dev/hotkey_latency/analyze_latency.py [path/to/menubar.log]
-
-Default log path: menubar.menubar_log.MENUBAR_LOG (live APP_SUPPORT location).
-Report written to dev/hotkey_latency/md/latency_report_<UTC-timestamp>.md.
-"""
-
 # INFRASTRUCTURE
 import re
 import statistics
@@ -24,7 +9,6 @@ from typing import Dict, List, Tuple
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(WORKTREE_ROOT / 'src'))
 
-# From menubar_log.py: default live log location
 from menubar.menubar_log import MENUBAR_LOG
 
 REPORT_DIR       = Path(__file__).parent / 'md'
@@ -50,10 +34,6 @@ def main() -> None:
 
 # FUNCTIONS
 
-# Parse menubar.log for [latency] lines; returns (ticks, bg_refreshes, hotkeys, focuses)
-# ticks/bg_refreshes: [{'ts': str, 'total_ms': int, 'phases': {name: ms}}]
-# hotkeys:  [{'ts': str, 'name': str, 'delay_ms': float}]
-# focuses:  [{'ts': str, 'lookup_ms': float, 'osascript_ms': float, 'label': str}]
 def _parse_latency_lines(log_path: Path) -> Tuple[List[dict], List[dict], List[dict], List[dict]]:
     ticks, bg_refreshes, hotkeys, focuses = [], [], [], []
     if not log_path.exists():
@@ -81,13 +61,11 @@ def _parse_latency_lines(log_path: Path) -> Tuple[List[dict], List[dict], List[d
                                  'osascript_ms': float(fm.group(2)), 'label': fm.group(3)})
     return ticks, bg_refreshes, hotkeys, focuses
 
-# Nearest-rank percentile over a non-empty list of numbers
 def _pct(values: List[float], p: float) -> float:
     s = sorted(values)
     idx = min(len(s) - 1, max(0, int(round(p / 100 * (len(s) - 1)))))
     return s[idx]
 
-# Distribution line: n, mean, median, p90, p95, max
 def _dist_line(values: List[float]) -> str:
     if not values:
         return 'n=0'
@@ -95,8 +73,6 @@ def _dist_line(values: List[float]) -> str:
             f'median={statistics.median(values):.1f} p90={_pct(values, 90):.1f} '
             f'p95={_pct(values, 95):.1f} max={max(values):.1f}')
 
-# Markdown section for one tick-like series (main-thread tick OR bg-thread bg_refresh):
-# total-duration distribution + per-phase distribution + slowest N entries with full breakdown
 def _tick_like_section(entries: List[dict], title: str, empty_note: str) -> str:
     if not entries:
         return f'## {title}\n\nNo [latency] lines found — {empty_note}\n'
@@ -120,7 +96,6 @@ def _tick_like_section(entries: List[dict], title: str, empty_note: str) -> str:
         + '\n'.join(slowest_lines) + '\n'
     )
 
-# Markdown section: hotkey queue-delay percentiles, overall + per hotkey name
 def _hotkey_section(hotkeys: List[dict]) -> str:
     if not hotkeys:
         return '## Hotkey Queue-Delay\n\nNo [latency] hotkey lines found.\n'
@@ -135,7 +110,6 @@ def _hotkey_section(hotkeys: List[dict]) -> str:
         '### Per Hotkey\n\n' + '\n'.join(lines) + '\n'
     )
 
-# Markdown section: focus-path lookup vs osascript split
 def _focus_section(focuses: List[dict]) -> str:
     if not focuses:
         return '## Focus-Path Timing\n\nNo [latency] focus lines found.\n'
@@ -147,7 +121,6 @@ def _focus_section(focuses: List[dict]) -> str:
         f'- `osascript_ms` (osascript run): {_dist_line(osa)}\n'
     )
 
-# Assemble full markdown report
 def _build_report(log_path: Path, ticks: List[dict], bg_refreshes: List[dict],
                    hotkeys: List[dict], focuses: List[dict]) -> str:
     header = (
