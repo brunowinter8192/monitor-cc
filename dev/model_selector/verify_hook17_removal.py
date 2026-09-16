@@ -12,11 +12,6 @@ REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook17_remov
 
 # ORCHESTRATOR
 
-# Verify Hook 17 (block_worker_spawn_opus.py) retirement: the file is gone, hook_setup.py no
-# longer lists it, and the real _sweep_stale_hooks() pure function removes a dead-path entry —
-# the actual mechanism that heals ~/.claude/settings.json, exercised here on a synthetic
-# in-memory dict, never the real file (hook_setup.py refuses to even run from a worktree —
-# _guard_not_worktree() — so it can't be invoked directly from here anyway).
 def verify_hook17_removal_workflow() -> None:
     lines = [f"# Hook 17 (block_worker_spawn_opus.py) removal verification — {datetime.now().isoformat(timespec='seconds')}", ""]
 
@@ -52,8 +47,8 @@ def _check_sweep_stale_hooks(hook_setup, lines) -> None:
     lines.append("3. _sweep_stale_hooks() — the real pure function that heals settings.json —")
     lines.append("   exercised on a synthetic in-memory dict (never the real ~/.claude/settings.json):")
     with tempfile.TemporaryDirectory() as tmp:
-        dead_path = str(Path(tmp) / "block_worker_spawn_opus.py")  # deliberately does not exist
-        alive_path = str(REPO_ROOT / "src" / "hooks" / "hook_setup.py")  # a real, existing file
+        dead_path = str(Path(tmp) / "block_worker_spawn_opus.py")
+        alive_path = str(REPO_ROOT / "src" / "hooks" / "hook_setup.py")
         synthetic_settings = {
             "hooks": {
                 "PreToolUse": [

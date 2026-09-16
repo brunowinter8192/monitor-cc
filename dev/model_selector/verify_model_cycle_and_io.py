@@ -11,11 +11,6 @@ sys.path.insert(0, str(REPO_ROOT))
 
 REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_model_cycle_and_io.md"
 
-# A minimal fixture mirroring proxy_rules.json's real on-disk convention, confirmed by a manual
-# byte-diff against the live file at implementation time: every section is byte-identical to
-# plain json.dumps(indent=2), EXCEPT model_params, whose per-model entries render as one compact
-# single-line JSON object each. Used both to pin that convention as a regression check and as the
-# base fixture for the read-modify-write tests below.
 _FIXTURE_RAW = '''{
   "system2_rules": {
     "global": {
@@ -43,10 +38,6 @@ _FIXTURE_RAW = '''{
 
 # ORCHESTRATOR
 
-# Verify cycle-order correctness for all 3 cycle kinds (model/effort/max_tokens), atomic-write +
-# read-back/fallback correctness for model_selection.json, and the proxy_rules.json read-modify-
-# write (format fidelity, foreign-content preservation, missing-entry creation, malformed-file
-# fallback) — all against temp paths, never the real ~/.claude/shared-rules/.
 def verify_model_cycle_and_io_workflow() -> None:
     ms = _load_model_selection_module()
     lines = [f"# Models tab — cycle + I/O verification — {datetime.now().isoformat(timespec='seconds')}", ""]
@@ -80,19 +71,10 @@ def verify_model_cycle_and_io_workflow() -> None:
 
 # FUNCTIONS
 
-# Load the real src.menubar.model_selection module via importlib (dev/ probes must not
-# write a literal 'from src.' / 'import src.' statement; a dynamic import_module call is not
-# that statement and is needed here anyway — model_selection.py has a package-relative import
-# that only resolves when loaded as part of the src.menubar package). (2026-09, menubar
-# milestone A: every symbol this script touches — the cycle constants/functions and the
-# model_selection.json/proxy_rules.json load/write functions — moved out of model_controller.py
-# into this pure persistence module; re-pointed here rather than re-exported from
-# model_controller.py, which no longer calls any of them directly.)
 def _load_model_selection_module():
     module_name = '.'.join(['src', 'menubar', 'model_selection'])
     return importlib.import_module(module_name)
 
-# Section 1: the 4-value model cycle (all 4 values step correctly, wraps, unrecognized -> first)
 def _verify_model_cycle(ms, lines) -> None:
     lines.append("## 1. Model cycle logic (4 values)")
     choices = ms._MODEL_CHOICES
@@ -109,7 +91,6 @@ def _verify_model_cycle(ms, lines) -> None:
     assert unknown_next == choices[0]
     lines.append(f"Unrecognized current value starts cycle at first choice: {unknown_next!r}")
 
-# Section 2: the effort cycle (low -> medium -> high -> wraps; 'max' deliberately absent)
 def _verify_effort_cycle(ms, lines) -> None:
     lines.append("")
     lines.append("## 2. Effort cycle logic")
@@ -128,7 +109,6 @@ def _verify_effort_cycle(ms, lines) -> None:
     assert unknown_next == choices[0]
     lines.append(f"Unrecognized current value starts cycle at first choice: {unknown_next!r}")
 
-# Section 3: the max_tokens cycle (32000 -> 64000 -> 128000 -> wraps)
 def _verify_max_tokens_cycle(ms, lines) -> None:
     lines.append("")
     lines.append("## 3. max_tokens cycle logic")
@@ -146,8 +126,6 @@ def _verify_max_tokens_cycle(ms, lines) -> None:
     assert unknown_next == choices[0]
     lines.append(f"Unrecognized current value starts cycle at first choice: {unknown_next!r}")
 
-# Section 4: the thinking toggle — exactly 2 states (on: adaptive/summarized, off: disabled),
-# added so the Models pane can turn thinking off entirely, separately for Main and Worker.
 def _verify_thinking_cycle(ms, lines) -> None:
     lines.append("")
     lines.append("## 4. Thinking toggle logic (2 states)")
@@ -164,7 +142,6 @@ def _verify_thinking_cycle(ms, lines) -> None:
     assert ms._thinking_is_enabled(ms._THINKING_OFF) is False
     lines.append("_thinking_is_enabled reads True for the on-state, False for the off-state")
 
-# Section 5: model_selection.json atomic write — unchanged behavior for existing callers
 def _verify_model_selection_write(ms, lines, tmp) -> None:
     lines.append("")
     lines.append("## 5. model_selection.json atomic write")
@@ -178,7 +155,6 @@ def _verify_model_selection_write(ms, lines, tmp) -> None:
     assert not tmp_leftover.exists(), "tempfile not cleaned up by os.replace"
     lines.append(f"No leftover .tmp file: {not tmp_leftover.exists()}")
 
-# Section 6: model_selection.json read-back + fallback — unchanged behavior for existing callers
 def _verify_model_selection_readback(ms, lines, tmp) -> None:
     lines.append("")
     lines.append("## 6. model_selection.json read-back + fallback")
@@ -198,8 +174,6 @@ def _verify_model_selection_readback(ms, lines, tmp) -> None:
     lines.append(f"Malformed file -> {(main, worker)} (expected default pair, no raise)")
     assert (main, worker) == (ms._DEFAULT_MAIN, ms._DEFAULT_WORKER)
 
-    # Correction from review (milestone 2): an unrecognized-but-valid on-disk value must be
-    # preserved verbatim on display, NOT silently replaced by the default.
     odd_path = Path(tmp) / "odd_value.json"
     odd_path.write_text(json.dumps({"main": "claude-hand-edited-9000", "worker": "claude-opus-5"}),
                         encoding="utf-8")
@@ -213,8 +187,6 @@ def _verify_model_selection_readback(ms, lines, tmp) -> None:
     lines.append(f"Apply without cycling round-trips unchanged -> {(main2, worker2)}")
     assert (main2, worker2) == ("claude-hand-edited-9000", "claude-opus-5")
 
-# Section 7: the custom proxy_rules.json serializer reproduces the real file's own convention
-# byte-for-byte on an unmodified round-trip — the mechanism the read-modify-write below relies on.
 def _verify_proxy_rules_format_fidelity(ms, lines) -> None:
     lines.append("")
     lines.append("## 7. proxy_rules.json serializer format fidelity")
@@ -224,9 +196,6 @@ def _verify_proxy_rules_format_fidelity(ms, lines) -> None:
     lines.append(f"Unmodified round-trip byte-identical to fixture: {identical}")
     assert identical, "serializer does not reproduce the established on-disk convention"
 
-# Section 8: Apply's read-modify-write — foreign sections/keys/models byte-preserved, missing
-# per-model entry created with the established thinking-block shape, touched entries updated
-# (including the thinking toggle: main is switched off, worker's fresh entry stays on).
 def _verify_proxy_rules_read_modify_write(ms, lines, tmp) -> None:
     lines.append("")
     lines.append("## 8. proxy_rules.json read-modify-write")
@@ -242,8 +211,6 @@ def _write_proxy_rules_and_check_full_match(ms, lines, tmp):
     path = Path(tmp) / "proxy_rules.json"
     path.write_text(_FIXTURE_RAW, encoding="utf-8")
 
-    # main = claude-opus-5 (existing entry, gets new effort/max_tokens, thinking switched off)
-    # worker = claude-sonnet-5 (NOT in the fixture — must be created, thinking stays on)
     ms._write_proxy_rules_model_params(
         "claude-opus-5", "medium", 128000, ms._THINKING_OFF,
         "claude-sonnet-5", "low", 32000, ms._DEFAULT_THINKING,
@@ -266,33 +233,27 @@ def _write_proxy_rules_and_check_full_match(ms, lines, tmp):
     return path, written
 
 def _check_proxy_rules_preserved_sections(written, lines) -> None:
-    # Foreign top-level section untouched
     assert written["future_section"] == {"some_future_key": "some_future_value"}
     lines.append("Foreign top-level section ('future_section') byte-preserved: True")
 
-    # Untouched model entry (claude-fable-5) and its thinking block untouched
     assert written["model_params"]["claude-fable-5"] == \
         {"thinking": {"type": "adaptive", "display": "summarized"}, "effort": "medium", "max_tokens": 64000}
     lines.append("Untouched model entry ('claude-fable-5') byte-preserved: True")
 
-    # Third, also-untouched model entry, proving the preservation isn't just "the other of two"
     assert written["model_params"]["claude-untouched-9"] == \
         {"thinking": {"type": "adaptive", "display": "summarized"}, "effort": "high", "max_tokens": 32000}
     lines.append("Second untouched model entry ('claude-untouched-9') byte-preserved: True")
 
 def _check_proxy_rules_touched_and_created(written, lines) -> None:
-    # Touched entry (main): effort/max_tokens updated AND thinking switched to disabled
     opus_entry = written["model_params"]["claude-opus-5"]
     assert opus_entry == {"thinking": {"type": "disabled"}, "effort": "medium", "max_tokens": 128000}
     lines.append(f"Touched main entry (claude-opus-5) updated, thinking now disabled: {opus_entry}")
 
-    # Missing entry (worker) created with the established thinking-block shape, thinking on
     sonnet_entry = written["model_params"]["claude-sonnet-5"]
     assert sonnet_entry == {"thinking": {"type": "adaptive", "display": "summarized"},
                             "effort": "low", "max_tokens": 32000}
     lines.append(f"Missing worker entry (claude-sonnet-5) created with established shape: {sonnet_entry}")
 
-# Section 9: a malformed proxy_rules.json degrades to a fresh minimal file, never raises
 def _verify_proxy_rules_malformed_fallback(ms, lines, tmp) -> None:
     lines.append("")
     lines.append("## 9. proxy_rules.json malformed-file fallback")
@@ -304,7 +265,7 @@ def _verify_proxy_rules_malformed_fallback(ms, lines, tmp) -> None:
         "claude-sonnet-5", "high", 64000, ms._DEFAULT_THINKING,
         path=path)
 
-    written = json.loads(path.read_text(encoding="utf-8"))   # must parse — no raise from the write
+    written = json.loads(path.read_text(encoding="utf-8"))
     lines.append(f"Write from malformed file did not raise; result parses as valid JSON: True")
     assert written["model_params"]["claude-opus-5"]["effort"] == "high"
     assert written["model_params"]["claude-opus-5"]["thinking"] == {"type": "disabled"}

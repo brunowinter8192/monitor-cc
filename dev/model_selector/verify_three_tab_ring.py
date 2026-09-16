@@ -15,11 +15,6 @@ REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_three_tab_ri
 
 # ORCHESTRATOR
 
-# Drive the REAL panel_lifecycle.py ring functions (_open_*_panel/_close_*_panel/
-# _deferred_close_open) against a lightweight FakeApp — no mocking of ring logic itself, only
-# of the NSOperationQueue async-dispatch wrapper (so the captured hotkey callbacks can be
-# executed synchronously without a real AppKit run loop) and of app.hotkey/app.sessions (which
-# have no bearing on ring correctness). Verifies both cycle directions land correctly.
 def verify_three_tab_ring_workflow() -> None:
     panel_manager   = _imp('src.menubar.panel_manager')
     rag_controller  = _imp('src.menubar.rag_controller')
@@ -30,9 +25,6 @@ def verify_three_tab_ring_workflow() -> None:
 
     app = _FakeApp(panel_manager, rag_controller, model_controller)
 
-    # NSOperationQueue.mainQueue() normally schedules async on the real run loop, which never
-    # spins in this headless probe. Patch only the dispatch wrapper to run synchronously —
-    # everything downstream of it (the ring logic itself) is the real, unmocked code.
     with patch('src.menubar.panel_lifecycle.NSOperationQueue', _SyncOperationQueue):
         _verify_forward_ring(app, panel_lifecycle, lines)
         _verify_reverse_ring(app, panel_lifecycle, lines)
@@ -53,15 +45,15 @@ def _verify_forward_ring(app, panel_lifecycle, lines) -> None:
     assert app.panel._panel_open and not app.rag._rag_open and not app.models._models_open
     lines.append(f"open main: panel_open={app.panel._panel_open}")
 
-    app.hotkey.right()   # main -> rag
+    app.hotkey.right()
     assert not app.panel._panel_open and app.rag._rag_open and not app.models._models_open
     lines.append("Cmd+-> from main: now on rag")
 
-    app.hotkey.right()   # rag -> models
+    app.hotkey.right()
     assert not app.rag._rag_open and app.models._models_open
     lines.append("Cmd+-> from rag: now on models")
 
-    app.hotkey.right()   # models -> main
+    app.hotkey.right()
     assert app.panel._panel_open and not app.models._models_open
     lines.append("Cmd+-> from models: back on main (ring closes)")
 
@@ -69,26 +61,21 @@ def _verify_forward_ring(app, panel_lifecycle, lines) -> None:
 
 def _verify_reverse_ring(app, panel_lifecycle, lines) -> None:
     lines.append("## Reverse: Sessions -> Models -> RAG -> Sessions (Cmd+<-)")
-    app.hotkey.left()    # main -> models
+    app.hotkey.left()
     assert app.models._models_open and not app.panel._panel_open
     lines.append("Cmd+<- from main: now on models")
 
-    app.hotkey.left()    # models -> rag
+    app.hotkey.left()
     assert app.rag._rag_open and not app.models._models_open
     lines.append("Cmd+<- from models: now on rag")
 
-    app.hotkey.left()    # rag -> main
+    app.hotkey.left()
     assert app.panel._panel_open and not app.rag._rag_open
     lines.append("Cmd+<- from rag: back on main (ring closes)")
 
-# Dynamic import_module call (not a literal 'from src.'/'import src.' statement) — needed
-# because these modules have package-relative imports that only resolve inside src.menubar.
 def _imp(module_name: str):
     return importlib.import_module(module_name)
 
-# Records the two most-recently-registered arrow callbacks; .right()/.left() invoke them,
-# exercising the real registered closure (including its NSOperationQueue dispatch, patched
-# synchronous for this test) rather than calling _deferred_close_open directly.
 class _FakeHotkey:
     def __init__(self):
         self._right = None
@@ -121,8 +108,6 @@ class _FakeStatusItem:
 class _FakeNSApp:
     nsstatusitem = _FakeStatusItem()
 
-# Synchronous stand-in for Foundation.NSOperationQueue — mainQueue().addOperationWithBlock_
-# just calls the block immediately instead of scheduling on the (nonexistent, in this probe) run loop.
 class _SyncOperationQueue:
     @staticmethod
     def mainQueue():
@@ -131,8 +116,6 @@ class _SyncOperationQueue:
     def addOperationWithBlock_(self, block):
         block()
 
-# Real PanelManager/RagController/ModelController instances (real NSPanel objects underneath)
-# driven by a minimal attribute-only app double — no rumps.App/run-loop needed for ring logic.
 class _FakeApp:
     def __init__(self, panel_manager, rag_controller, model_controller):
         self.settings = SimpleNamespace(panel_width=380, panel_min_height=460, auto_focus=False)
