@@ -65,7 +65,6 @@ def _make_uint_array(vals: List[int]):
         ctypes.cast(_IMP, _FT_nvv)(arr, _sel("addObject:"), n)
     return arr
 
-# Return human-readable string description of any NSObject via [obj description] → UTF8String
 def _cf_describe(v) -> Optional[str]:
     if not v:
         return None
@@ -75,7 +74,6 @@ def _cf_describe(v) -> Optional[str]:
     r = _msgp(ns, "UTF8String")
     return r.decode('utf-8', errors='replace') if r else None
 
-# Return all string keys from a CF/NS dictionary via [d allKeys]
 def _dict_all_keys(d) -> List[str]:
     arr = ctypes.cast(_IMP, _FT_vv)(d, _sel("allKeys"))
     if not arr:

@@ -12,15 +12,13 @@ _APP_SUPPORT = Path("~/Library/Application Support/com.brunowinter.monitor_cc_me
 _CWD_UUID_FILE = _APP_SUPPORT / "ghostty_cwd_uuid.json"
 
 _GHOSTTY_DET_PREFIX = '__DET_'
-_CGS_SPACE_MASK = 0x7           # works for all regular spaces
-_CGW_LIST_ALL   = 0             # kCGWindowListOptionAll — all windows incl. off-screen spaces
-_CGW_NULL_WID   = 0             # kCGNullWindowID
+_CGS_SPACE_MASK = 0x7
+_CGW_LIST_ALL   = 0
+_CGW_NULL_WID   = 0
 
 # FUNCTIONS
 
-# --- data gathering ---
 
-# Return PID int of running Ghostty.app process, or None
 def _ghostty_pid() -> Optional[int]:
     r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],
                        capture_output=True, text=True, timeout=2)
@@ -31,14 +29,11 @@ def _ghostty_pid() -> Optional[int]:
                 return int(pid_str)
     return None
 
-# Read ghostty_cwd_uuid.json → {cwd: uuid}; None if file missing (menubar not running)
 def _read_cwd_uuid_map() -> Optional[Dict[str, str]]:
     if not _CWD_UUID_FILE.exists():
         return None
     return json.loads(_CWD_UUID_FILE.read_text(encoding='utf-8'))
 
-# Build {cwd: tty} for all CC processes (command contains 'claude', tty != '??')
-# One ps call + lsof per CC pid; mirrors proc_cache.py _refresh_cc_proc_cache pattern
 def _build_cwd_tty_map() -> Dict[str, str]:
     r = subprocess.run(['ps', '-A', '-o', 'pid=,tty=,command='],
                        capture_output=True, text=True, timeout=3)
@@ -62,8 +57,6 @@ def _build_cwd_tty_map() -> Dict[str, str]:
                 break
     return result
 
-# AppleScript one-call: returns ({uuid: ghostty_win_id}, {ghostty_win_id: win_name})
-# Traverses all windows → tabs → terminal; one round-trip to Ghostty
 def _applescript_uuid_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
     osa = (
         'tell application "Ghostty"\n'
@@ -95,7 +88,6 @@ def _applescript_uuid_window_map() -> Tuple[Dict[str, str], Dict[str, str]]:
             win_to_name[win_id] = win_name
     return uuid_to_win, win_to_name
 
-# Return {window_name: [wid, ...]} for all layer-0 named Ghostty-owned CGWindows (all spaces)
 def _cgwindow_list_ghostty(ghostty_pid_int: int) -> Dict[str, List[int]]:
     arr = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
     count = _cf_count(arr)
@@ -113,9 +105,6 @@ def _cgwindow_list_ghostty(ghostty_pid_int: int) -> Dict[str, List[int]]:
         by_name.setdefault(name, []).append(wid)
     return by_name
 
-# Return (space_map, active_space_id)
-# space_map: {space_id: (display_id_abbrev, desktop_no_1based)}
-# Defensive: probes multiple key names for display identifier and space id
 def _build_space_map(cid: int) -> Tuple[Dict[int, Tuple[str, int]], int]:
     active = _CG.CGSGetActiveSpace(cid)
     dsp_arr = _CG.CGSCopyManagedDisplaySpaces(cid)
@@ -140,7 +129,6 @@ def _build_space_map(cid: int) -> Tuple[Dict[int, Tuple[str, int]], int]:
                 space_map[sid] = (disp_abbrev, si + 1)
     return space_map, active
 
-# Return list of space_ids for a single CGWindowID via CGSCopySpacesForWindows
 def _spaces_for_wid(cid: int, wid: int) -> List[int]:
     wid_arr = _make_uint_array([wid])
     result_arr = _CG.CGSCopySpacesForWindows(cid, _CGS_SPACE_MASK, wid_arr)
@@ -155,8 +143,6 @@ def _spaces_for_wid(cid: int, wid: int) -> List[int]:
             spaces.append(sid)
     return spaces
 
-# OSC-2 fallback: inject unique marker to tty, re-check kCGWindowName after 150ms
-# Effective only when the injected terminal is the focused tab in its Ghostty window
 def _osc2_inject_match(tty: str, ghostty_pid_int: int,
                         candidates: List[int]) -> Optional[int]:
     marker = f'{_GHOSTTY_DET_PREFIX}{os.urandom(4).hex()}'
@@ -165,16 +151,13 @@ def _osc2_inject_match(tty: str, ghostty_pid_int: int,
     time.sleep(0.15)
     by_name = _cgwindow_list_ghostty(ghostty_pid_int)
     matched_wids = by_name.get(marker, [])
-    with open(f'/dev/{tty}', 'wb', buffering=0) as fh:   # restore shell-default title
+    with open(f'/dev/{tty}', 'wb', buffering=0) as fh:
         fh.write(b'\033]2;\007')
     if len(matched_wids) == 1:
         return matched_wids[0]
     overlap = [w for w in matched_wids if w in candidates]
     return overlap[0] if len(overlap) == 1 else None
 
-# Resolve CGWindowID for one Main session via three strategies (in order):
-# 1) Unique kCGWindowName match  2) Space-based elimination  3) OSC-2 injection
-# Returns (cgwindow_id, strategy_used, diagnostic_note)
 def _resolve_cgwindow_id(
     window_name: str,
     cgwindow_by_name: Dict[str, List[int]],
@@ -190,7 +173,6 @@ def _resolve_cgwindow_id(
     if len(candidates) == 1:
         return candidates[0], 'name-unique', ''
 
-    # Space-based elimination: find candidates not on spaces claimed by other mains
     unclaimed: List[Tuple[int, List[int]]] = []
     for wid in candidates:
         spaces = _spaces_for_wid(cid, wid)
@@ -205,7 +187,6 @@ def _resolve_cgwindow_id(
     else:
         diag = f'{len(candidates)} candidates, all on claimed spaces'
 
-    # OSC-2 injection: only effective when the CC tab is the focused tab in its window
     if tty:
         wid = _osc2_inject_match(tty, ghostty_pid_int, candidates)
         if wid is not None:
@@ -216,7 +197,6 @@ def _resolve_cgwindow_id(
 
     return None, 'no-match', diag
 
-# Build one session row: resolve cgwindow_id, then space_id/desktop_no/display if resolved
 def _build_session_row(
     cwd: str, uuid: str, cwd_tty: Dict[str, str],
     uuid_to_win: Dict[str, str], win_to_name: Dict[str, str],
@@ -258,7 +238,6 @@ def _build_session_row(
         'win_name': win_name,
     }
 
-# Gather all live state and build session rows; returns (rows, space_map, active_space)
 def _collect_session_rows(
     cid: int, cwd_uuid: Dict[str, str], ghostty_pid_int: int,
 ) -> Tuple[List[dict], Dict[int, Tuple[str, int]], int]:

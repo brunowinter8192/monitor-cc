@@ -12,7 +12,6 @@ _CGW_NULL_WID      = 0
 
 # FUNCTIONS
 
-# Returns ({space_id: (display_abbrev, desktop_no_1based)}, active_space_id)
 def _build_space_map(cid: int) -> Tuple[Dict[int, Tuple[str, int]], int]:
     active  = _CG.CGSGetActiveSpace(cid)
     dsp_arr = _CG.CGSCopyManagedDisplaySpaces(cid)
@@ -34,7 +33,6 @@ def _build_space_map(cid: int) -> Tuple[Dict[int, Tuple[str, int]], int]:
                 smap[sid] = (abbrev, si + 1)
     return smap, active
 
-# WIDs from CGWindowList; onscreen=True → active space only, False → all spaces
 def _wids(onscreen: bool = False) -> Set[int]:
     opt = _CGW_LIST_ONSCREEN if onscreen else _CGW_LIST_ALL
     arr = _CG.CGWindowListCopyWindowInfo(opt, _CGW_NULL_WID)
@@ -45,7 +43,6 @@ def _wids(onscreen: bool = False) -> Set[int]:
             out.add(wid)
     return out
 
-# Space IDs for a single WID via CGSCopySpacesForWindows
 def _spaces_for_wid(cid: int, wid: int) -> List[int]:
     result_arr = _CG.CGSCopySpacesForWindows(cid, _CGS_SPACE_MASK, _make_uint_array([wid]))
     if not result_arr:
@@ -58,7 +55,6 @@ def _spaces_for_wid(cid: int, wid: int) -> List[int]:
             spaces.append(sid)
     return spaces
 
-# First layer-0 window of `owner` whose kCGWindowName contains token
 def _method_a(owner: str, token: str) -> Tuple[Optional[int], Optional[str]]:
     arr = _CG.CGWindowListCopyWindowInfo(_CGW_LIST_ALL, _CGW_NULL_WID)
     for i in range(_cf_count(arr)):
@@ -74,7 +70,6 @@ def _method_a(owner: str, token: str) -> Tuple[Optional[int], Optional[str]]:
                 return wid, name
     return None, None
 
-# Print AX + ScreenCapture + binary identity; return (ax_trusted, sc_trusted)
 def _check_permissions() -> Tuple[bool, bool]:
     ax  = bool(_AS.AXIsProcessTrusted())
     sc  = bool(_CG.CGPreflightScreenCaptureAccess())
@@ -88,7 +83,6 @@ def _check_permissions() -> Tuple[bool, bool]:
     print()
     return ax, sc
 
-# First non-active space in space_map that has at least one off-screen window
 def _find_nonempty_nonactive_space(
     cid: int, active_space_id: int, space_map: Dict[int, Tuple[str, int]]
 ) -> Optional[int]:

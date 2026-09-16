@@ -10,7 +10,6 @@ _OBJ.sel_registerName.argtypes = [ctypes.c_char_p]
 _OBJ.objc_getClass.restype     = ctypes.c_void_p
 _OBJ.objc_getClass.argtypes    = [ctypes.c_char_p]
 
-# Module-level CFUNCTYPE refs — GC of these corrupts the IMP pointer table
 _FT_vv     = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 _FT_vvv    = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
 _FT_vvcp   = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p)
@@ -18,7 +17,6 @@ _FT_vvl    = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
 _FT_lvv    = ctypes.CFUNCTYPE(ctypes.c_long,   ctypes.c_void_p, ctypes.c_void_p)
 _FT_pvv    = ctypes.CFUNCTYPE(ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p)
 _FT_nvv    = ctypes.CFUNCTYPE(None,            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
-# bridged-op:
 _FT_0vv    = ctypes.CFUNCTYPE(None,            ctypes.c_void_p, ctypes.c_void_p)
 _FT_vvvu64 = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
                                ctypes.c_void_p, ctypes.c_uint64)
@@ -38,7 +36,6 @@ _CG.CGWindowListCopyWindowInfo.restype   = ctypes.c_void_p
 
 # FUNCTIONS
 
-# --- objc bridge helpers (verbatim from 01_probe.py) ---
 
 def _sel(s: str):
     return _OBJ.sel_registerName(s.encode())
@@ -82,8 +79,6 @@ def _dict_long(d, key: str) -> Optional[int]:
     v = _dict_val(d, key)
     return _msgl(v, "intValue") if v else None
 
-# Build NSMutableArray of NSNumber(numberWithUnsignedInt:) — correct shape for
-# initWithWindows:spaceID: (CGWindowID = uint32_t; verbatim from 01_probe.py)
 def _make_uint_array(values: List[int]):
     NSMutableArray = _OBJ.objc_getClass(b"NSMutableArray")
     NSNumber       = _OBJ.objc_getClass(b"NSNumber")

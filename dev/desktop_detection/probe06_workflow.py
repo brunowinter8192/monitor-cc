@@ -10,7 +10,7 @@ from probe06_coteditor import _close_coteditor_doc, _detect_coteditor_doc, _ensu
 from probe06_detection import _build_space_map, _check_permissions, _find_nonempty_nonactive_space
 from probe06_primitives import _REPORTS_DIR, _run_primitive_trial, _setup, _try_sym
 
-_COMPAT_ID = 42   # arbitrary int32 for SLSSpaceSetCompatID / SLSSetWindowListWorkspace
+_COMPAT_ID = 42
 
 # FUNCTIONS
 
@@ -46,7 +46,6 @@ def _validate_preconditions(cid: int, space_map: Dict, active_space: int) -> Opt
     return target_space
 
 def _load_primitive_symbols() -> dict:
-    # Load symbols for all 4 primitives
     fn_a,     a_ok     = _try_sym(_CG, "CGSMoveWindowsToManagedSpace")
     fn_b,     b_ok     = _try_sym(_SL, "SLSMoveWindowsToManagedSpace")
     fn_c_add, c_add_ok = _try_sym(_CG, "CGSAddWindowsToSpaces")

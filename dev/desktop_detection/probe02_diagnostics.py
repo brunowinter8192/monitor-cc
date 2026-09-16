@@ -14,7 +14,6 @@ _TCC_DB = Path('~/Library/Application Support/com.apple.TCC/TCC.db').expanduser(
 
 # FUNCTIONS
 
-# Return TCC-identity diagnostics: codesign, NSBundle.mainBundle().bundleIdentifier(), env, responsible_pid
 def _collect_context_diagnostics() -> Dict[str, Any]:
     own_pid    = os.getpid()
     parent_pid = os.getppid()
@@ -47,7 +46,6 @@ def _collect_context_diagnostics() -> Dict[str, Any]:
         'responsible_pid': resp_pid, 'responsible_name': resp_name,
     }
 
-# Best-effort read of TCC.db ScreenCapture grants; returns error info if unreadable
 def _collect_tcc_state() -> Dict[str, Any]:
     db_path = str(_TCC_DB)
     try:

@@ -41,7 +41,6 @@ def _determine_geometry_verdict(bounds_result: Optional[str], position_result: O
     else:
         return 'AS_PARTIAL'
 
-# One-shot AS query: properties of window 1 — discover what Ghostty exposes at window level
 def _collect_ghostty_as_window_properties() -> Dict[str, Any]:
     raw, prop_error, keys = _query_window_properties()
     bounds_result, bounds_error = _query_window_bounds()
@@ -60,7 +59,6 @@ def _collect_ghostty_as_window_properties() -> Dict[str, Any]:
         'geometry_verdict':       _determine_geometry_verdict(bounds_result, position_result),
     }
 
-# Attempt AS bounds for a specific window index; returns (method_str, result_or_None, error_or_None)
 def _as_bounds_for_window_index(idx: int) -> Tuple[str, Optional[Any], Optional[str]]:
     method = f'bounds of window {idx} of application "Ghostty"'
     script = f'tell application "Ghostty" to bounds of window {idx}'
@@ -70,7 +68,6 @@ def _as_bounds_for_window_index(idx: int) -> Tuple[str, Optional[Any], Optional[
         return method, r.stdout.strip(), None
     return method, None, r.stderr.strip()[:200]
 
-# Enumerate Ghostty windows in order (layer=0 only)
 def _enumerate_ghostty_entries(ghostty_pid: int, raw) -> List[Dict[str, Any]]:
     entries = []
     for i in range(_cf_count(raw)):
@@ -93,8 +90,6 @@ def _enumerate_ghostty_entries(ghostty_pid: int, raw) -> List[Dict[str, Any]]:
         })
     return entries
 
-# AS bounds: attempt once for window index 1 (covers all — Ghostty has one CGWindow per window)
-# and once for window index 2 (second window if present), then reuse the single error result
 def _query_as_bounds_pair(entries: List[Dict[str, Any]]):
     as_method_1, as_result_1, as_error_1 = _as_bounds_for_window_index(1)
     as_method_2 = None
@@ -104,7 +99,6 @@ def _query_as_bounds_pair(entries: List[Dict[str, Any]]):
         as_method_2, as_result_2, as_error_2 = _as_bounds_for_window_index(2)
     return as_method_1, as_result_1, as_error_1, as_method_2, as_result_2, as_error_2
 
-# Attach AS bounds info to each entry
 def _attach_as_bounds(entries: List[Dict[str, Any]], as_data: tuple) -> None:
     as_method_1, as_result_1, as_error_1, as_method_2, as_result_2, as_error_2 = as_data
     for idx, entry in enumerate(entries):
@@ -120,13 +114,10 @@ def _attach_as_bounds(entries: List[Dict[str, Any]], as_data: tuple) -> None:
         entry['as_bounds_result'] = as_res
         entry['as_bounds_error']  = as_err
 
-        # Rect comparison (N/A when AS side returns no bounds)
         if as_res and entry['cg_window_bounds']:
-            # Parse AS result like "0, 25, 1512, 1220" → [x1,y1,x2,y2]
             try:
                 parts = [int(p.strip()) for p in as_res.split(',')]
                 cb = entry['cg_window_bounds']
-                # AS: x1,y1,x2,y2 → CG: X,Y,Width,Height
                 as_x1, as_y1 = parts[0], parts[1]
                 as_w = parts[2] - parts[0] if len(parts) == 4 else None
                 as_h = parts[3] - parts[1] if len(parts) == 4 else None
@@ -145,7 +136,6 @@ def _attach_as_bounds(entries: List[Dict[str, Any]], as_data: tuple) -> None:
             entry['rect_match'] = None
             entry['rect_diff']  = None
 
-# Collect per-Ghostty-window detail: CG fields + AS bounds attempt
 def _collect_ghostty_windows_detailed(
     cid: int, ghostty_pid: int, raw
 ) -> List[Dict[str, Any]]:

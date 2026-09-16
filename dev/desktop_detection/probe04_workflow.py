@@ -17,7 +17,6 @@ def _init_probe():
     cid = _CG.CGSMainConnectionID()
     return cid, ts
 
-# --- Preconditions ---
 def _check_preconditions(cid: int) -> Optional[Dict]:
     space_map, active_space = _build_space_map(cid)
     active_desktop = space_map.get(active_space, ('?', '?'))[1]
@@ -65,19 +64,16 @@ def _run_move_trial(cid: int, ts: str, state: Dict) -> Dict:
     active_space     = state['active_space']
     onscreen_before  = state['onscreen_before']
 
-    # --- BEFORE: snapshot + screenshot ---
     in_before   = target_wid in onscreen_before
     path_before = _REPORTS_DIR / f"04_before_move_{ts}.png"
     _take_screenshot(path_before)
     print(f"[BEFORE] wid {target_wid} in on-screen list : {in_before}  (expected: False)")
     print(f"[BEFORE] screenshot : {path_before.name}")
 
-    # --- MOVE: non-active -> active via bridged-op ---
     print(f"\n  calling _bridged_move([{target_wid}], space={active_space}) ...")
     _bridged_move([target_wid], active_space)
     time.sleep(0.5)
 
-    # --- AFTER: snapshot + screenshot ---
     onscreen_after = _on_screen_wids()
     in_after       = target_wid in onscreen_after
     path_after     = _REPORTS_DIR / f"04_after_move_{ts}.png"
@@ -86,7 +82,6 @@ def _run_move_trial(cid: int, ts: str, state: Dict) -> Dict:
     print(f"[AFTER]  screenshot : {path_after.name}")
     print(f"[AFTER]  on-screen delta: added={sorted(onscreen_after - onscreen_before)}")
 
-    # --- PASS/FAIL (grep-friendly) ---
     move_ok = (not in_before) and in_after
     print()
     if move_ok:
@@ -101,7 +96,6 @@ def _run_move_trial(cid: int, ts: str, state: Dict) -> Dict:
         'onscreen_after': onscreen_after, 'move_ok': move_ok,
     }
 
-# --- RESTORE ---
 def _run_restore_phase(cid: int, ts: str, state: Dict) -> Dict:
     target_wid        = state['target_wid']
     original_space_id = state['original_space_id']
@@ -126,7 +120,6 @@ def _run_restore_phase(cid: int, ts: str, state: Dict) -> Dict:
 
     return {'restored': restored, 'path_restore': path_restore}
 
-# --- Summary + on-screen dump ---
 def _write_final_summary(ts: str, state: Dict, trial: Dict, restore: Dict) -> None:
     print()
     print("=== Summary ===")
