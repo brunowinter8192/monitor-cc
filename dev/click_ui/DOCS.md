@@ -50,7 +50,7 @@ synthetic data; `copy_to_clipboard` is monkeypatched to a capturing stub.
 
 ---
 
-### p3_button_click_probe.py (266 LOC)
+### p3_button_click_probe.py (286 LOC)
 
 **Purpose:** Proves, per pane (warnings refresh), that after one real render pass the
 chrome-button region is registered at a plausible coordinate, a synthetic click produces the
@@ -90,35 +90,71 @@ monkeypatched to a capturing stub (no real `rag-cli`/news-pipeline process ever 
 loop's inline mouse-dispatch snippet.
 **Calls out:** `src.gpu_pane.pane`, `src.news_pane.pane` — loaded via `importlib.import_module`.
 
-### p5_proxy_message_copy_click_probe.py (539 LOC)
+### p5_proxy_message_copy_click_probe.py (158 LOC)
 
-**Purpose:** Proves, per proxy pane (main and worker), that after one real render pass a
-message-summary row, a thinking-block row, AND every other block row (text, tool_use,
-tool_result, anything else) inside an expanded REQ each get a copy-row registration
-(`('msg', entry_idx, msg_idx)` / `('think', entry_idx, msg_idx, bidx)` /
-`('block', entry_idx, msg_idx, bidx)`), a click on any row's copy column copies exactly
-`proxy_pane_shared._serialize_proxy_message`/`_serialize_proxy_block`'s real output (each a
-byte-exact substring of its parent's own copy — message inside REQ, thinking/generic block
-inside message AND inside REQ, both nesting levels checked directly rather than assumed via
-transitivity), the copy-flash timer is keyed by each row's own key (never the shared `entry_idx`,
-so it can't flash a different row), and the pre-existing REQ-level copy path is unaffected. The
-thinking-block case proves a non-copy click still toggles that block's `expand_states` entry
-exactly as it did before this row had a copy affordance (the one behavior that milestone must not
-disturb) — including a second click toggling it back, not just a one-way flip. The generic-block
-case proves the OPPOSITE: a non-copy click on a block row is a no-op, matching the message-row
-shape (these rows never toggled anything before they had a key either) — not the thinking-row
-shape. Also a width-guard check at the render-integration level for all three row kinds.
-**Reads:** nothing external — seeds synthetic proxy entries (one multi-block assistant message
-plus a blockless user message; a separate entry with an assistant thinking block followed by a
-text block) directly; `copy_to_clipboard` is monkeypatched per module to a capturing stub.
+**Purpose:** Entry script — orchestrates all three copy-granularity suites (message/thinking/
+block) from their own modules and writes the combined report; carries the full milestone
+docstring.
+**Reads:** nothing external.
 **Writes:** `md/p5_proxy_message_copy_click_probe_<timestamp>.md`.
 **Called by:** none — run manually; re-run after any change to `render_messages.py`'s message-row,
 thinking-block, or generic-block build sites, `proxy_pane_shared._serialize_proxy_message`/
 `_serialize_proxy_block`/`_prepare_copy_text`/`_copy_feedback_key`,
 `format._apply_row_backgrounds`, or either pane's `_handle_*_mouse`/`_handle_*_copy_click`.
+**Calls out:** `proxy_copy_probe_shared.py`, `proxy_copy_message_probe.py`,
+`proxy_copy_thinking_probe.py`, `proxy_copy_block_probe.py`.
+
+---
+
+### proxy_copy_probe_shared.py (60 LOC)
+
+**Purpose:** Shared fixtures for the P5 suite — module handles (`mod_proxy`, `mod_worker_proxy`,
+`mod_format`, `mod_shared`), `check()`/`_RESULTS`, `_patch_clipboard`, `_make_entry`,
+`_render_expanded`.
+**Reads:** nothing external.
+**Writes:** nothing (mutates the shared `_RESULTS` list the entry script reads).
+**Called by:** `p5_proxy_message_copy_click_probe.py`, `proxy_copy_message_probe.py`,
+`proxy_copy_thinking_probe.py`, `proxy_copy_block_probe.py`.
 **Calls out:** `src.proxy_display.pane`, `src.proxy_display.worker_proxy_pane`,
 `src.proxy_display.format`, `src.proxy_display.proxy_pane_shared` — loaded via
 `importlib.import_module`.
+
+---
+
+### proxy_copy_message_probe.py (118 LOC)
+
+**Purpose:** Message-row copy granularity (P5.1-5.5) — `('msg', entry_idx, msg_idx)` key
+registration, click/serializer parity, click/copy dispatch, width guard.
+**Reads:** nothing external — seeds a synthetic multi-block assistant message plus a blockless
+user message via the shared `_make_entry`.
+**Writes:** nothing.
+**Called by:** `p5_proxy_message_copy_click_probe.py`.
+**Calls out:** `proxy_copy_probe_shared.py`.
+
+---
+
+### proxy_copy_thinking_probe.py (131 LOC)
+
+**Purpose:** Thinking-block copy granularity (P5.6-5.10) — `('think', entry_idx, msg_idx, bidx)`
+key registration, click/serializer parity, the non-copy-click-still-toggles-expand regression
+(the one behavior this granularity must NOT disturb), width guard.
+**Reads:** nothing external — seeds a synthetic entry with an assistant thinking block followed by
+a text block.
+**Writes:** nothing.
+**Called by:** `p5_proxy_message_copy_click_probe.py`.
+**Calls out:** `proxy_copy_probe_shared.py`.
+
+---
+
+### proxy_copy_block_probe.py (132 LOC)
+
+**Purpose:** Generic-block copy granularity (P5.11-5.15) — `('block', entry_idx, msg_idx, bidx)`
+key registration, click/serializer parity nested in both message and REQ copies, the
+non-copy-click-is-a-no-op regression (opposite of the thinking-block shape), width guard.
+**Reads:** nothing external — reuses the shared `_make_entry` (multi-block assistant message).
+**Writes:** nothing.
+**Called by:** `p5_proxy_message_copy_click_probe.py`.
+**Calls out:** `proxy_copy_probe_shared.py`.
 
 ---
 
