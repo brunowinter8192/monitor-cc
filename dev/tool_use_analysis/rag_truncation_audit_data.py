@@ -6,19 +6,14 @@ import re
 TRUNC_RE   = re.compile(r'\[\d+ characters? truncated\]')
 TRUNC_N_RE = re.compile(r'\[(\d+) characters? truncated\]')
 
-# Fraction of total content length at which the truncation marker sits.
-# CC's 5k/5k inline split lands between 0.45 and 0.55 — anything outside that range
-# would indicate a different mechanism (e.g. end-of-output strip).
 CC_SPLIT_LO = 0.40
 CC_SPLIT_HI = 0.60
 
-# Bash command substrings that identify a rag-cli search call
 RAG_CLI_MARKERS = ('rag-cli search', 'rag-cli search_hybrid', 'rag-cli search_keyword',
                    'rag-cli search_dense', 'rag_cli search')
 
 # FUNCTIONS
 
-# Load proxy JSONL — entries with raw_payload != null only
 def _load_proxy(path):
     events = []
     label = _source_label(path)
@@ -38,7 +33,6 @@ def _load_proxy(path):
     return events
 
 
-# Short label from JSONL filename
 def _source_label(path):
     base = os.path.basename(path)
     if base.startswith('api_requests_'):
@@ -46,7 +40,6 @@ def _source_label(path):
     return base[:-len('.jsonl')] if base.endswith('.jsonl') else base
 
 
-# Collect all unique tool_use blocks keyed by id (deduped across snapshots)
 def _collect_tool_uses(events):
     out = {}
     for ev in events:
@@ -70,7 +63,6 @@ def _collect_tool_uses(events):
     return out
 
 
-# Collect unique tool_result blocks that contain the truncation pattern (deduped by tool_use_id)
 def _collect_truncated_results(events):
     out = {}
     for ev in events:
@@ -87,7 +79,6 @@ def _collect_truncated_results(events):
                 tid = blk.get('tool_use_id', '')
                 if not tid or tid in out:
                     continue
-                # Reconstruct full text from content field
                 raw_c = blk.get('content', '')
                 if isinstance(raw_c, list):
                     text = ''.join(
@@ -111,11 +102,9 @@ def _collect_truncated_results(events):
     return out
 
 
-# Collect Hypothesis-C occurrences: truncation pattern in tool_use inputs or text blocks
-# (not in tool_result — those are the A/B cases above)
 def _collect_echo_hits(events):
     hits = []
-    seen = set()  # dedupe by (blk_id_or_role_field, source)
+    seen = set()
     for ev in events:
         for msg in ev.get('raw_payload', {}).get('messages', []):
             content = msg.get('content', [])
@@ -136,7 +125,7 @@ def _collect_echo_hits(events):
                     continue
                 btype = blk.get('type', '')
                 if btype == 'tool_result':
-                    continue  # handled in _collect_truncated_results
+                    continue
                 blk_str = json.dumps(blk)
                 if not TRUNC_RE.search(blk_str):
                     continue
@@ -164,12 +153,10 @@ def _collect_echo_hits(events):
     return hits
 
 
-# Return True if the bash command is compound (semicolon or && separated)
 def _is_compound_bash(cmd):
     return ';' in cmd or '&&' in cmd or '||' in cmd
 
 
-# Classify each truncated tool_result into A / B / C
 def _classify(trunc_results, tool_uses):
     classified = {}
     for tid, tr in trunc_results.items():
@@ -178,17 +165,12 @@ def _classify(trunc_results, tool_uses):
         cmd    = tu.get('command', '')
         frac   = tr['split_frac']
 
-        # Hypothesis A: rag-cli is the SOLE command and produces the truncated output
-        # (not a compound bash with other commands)
         is_rag_only = (
             name == 'Bash'
             and any(m in cmd for m in RAG_CLI_MARKERS)
             and not _is_compound_bash(cmd)
         )
 
-        # Hypothesis B: CC's inline 5k/5k bash output truncation
-        # Fingerprint: split at 40-60% of total content AND the tool is Bash
-        # (Also fires when rag-cli is part of a compound bash — not Hyp A)
         is_cc_split = (CC_SPLIT_LO <= frac <= CC_SPLIT_HI) and name == 'Bash'
 
         if is_rag_only:
@@ -196,9 +178,9 @@ def _classify(trunc_results, tool_uses):
         elif is_cc_split:
             hyp = 'B'
         elif not tu:
-            hyp = '?'  # no matching tool_use found
+            hyp = '?'
         else:
-            hyp = 'B'  # default for Bash tool_result without clean rag-only signature
+            hyp = 'B'
 
         classified[tid] = {**tr, 'tool_name': name, 'command_preview': cmd[:140], 'hypothesis': hyp}
     return classified

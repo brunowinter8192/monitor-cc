@@ -1,9 +1,3 @@
-"""Extract and cluster all rag-cli search calls from Opus proxy logs for helpfulness eval.
-
-Input:  src/logs/api_requests_opus_monitor_cc_*.jsonl  (positional or default glob)
-Output: dev/tool_use_analysis/<YYYYMMDD>_rag_query_audit.md  (--output or auto-dated)
-"""
-
 # INFRASTRUCTURE
 import argparse
 import glob
@@ -16,8 +10,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional
 
-# Matches: rag-cli <verb> "<query>" <collection> [--top-k N]
-# Handles compound bash (;/&&) — scanned iteratively via findall
 RAG_RE = re.compile(
     r'rag-cli\s+(search_hybrid|search_keyword|search_dense|search)'
     r'\s+"([^"]+)"\s+([^\s;|&]+?)(?:\s+--top-k\s+(\d+))?(?=\s|;|&&|\||$)'
@@ -30,7 +22,7 @@ STOPWORDS = frozenset({
     'is', 'are', 'was', 'were', 'it', 'its', 'with', 'from', 'by',
 })
 
-PLACEHOLDER = '_'   # fill in manual annotation columns
+PLACEHOLDER = '_'
 
 
 class RagCall(NamedTuple):
@@ -40,7 +32,7 @@ class RagCall(NamedTuple):
     collection:  str
     top_k:       Optional[int]
     timestamp:   str
-    source:      str   # short log label
+    source:      str
 
 
 class ResultInfo(NamedTuple):
@@ -50,7 +42,7 @@ class ResultInfo(NamedTuple):
 
 
 class Topic(NamedTuple):
-    topic_id:  str   # T001, T002, …
+    topic_id:  str
     source:    str
     calls:     List[RagCall]
 
@@ -104,7 +96,6 @@ def _source_label(path):
 
 
 def _collect_rag_calls(events) -> Dict[str, RagCall]:
-    """Return deduped {tool_use_id: RagCall} across all events."""
     out: Dict[str, RagCall] = {}
     for ev in events:
         ts  = ev.get('timestamp', '')
@@ -122,18 +113,14 @@ def _collect_rag_calls(events) -> Dict[str, RagCall]:
                 cmd = blk.get('input', {}).get('command', '')
                 for m in RAG_RE.finditer(cmd):
                     verb, query, coll, topk_s = m.group(1), m.group(2), m.group(3), m.group(4)
-                    # Strip trailing backtick that occasionally appears in collection names
                     coll = coll.rstrip('`\\')
                     top_k = int(topk_s) if topk_s else None
-                    # Use composite id when a single bash block holds multiple rag calls
                     uid = f"{bid}:{m.start()}"
                     out[uid] = RagCall(uid, verb, query, coll, top_k, ts, src)
     return out
 
 
 def _collect_results(events, rag_ids) -> Dict[str, ResultInfo]:
-    """Pair each tool_use_id with its tool_result (deduped by tool_use_id prefix)."""
-    # rag_ids are composite "tool_use_id:offset"; map base id → composite id
     base_to_uid: Dict[str, str] = {}
     for uid in rag_ids:
         base = uid.split(':')[0]
@@ -176,8 +163,6 @@ def _jaccard(q1: str, q2: str) -> float:
 
 
 def _cluster_topics(rag_calls: Dict[str, RagCall], threshold: float) -> List[Topic]:
-    """Greedy chain-link per session: new topic when max jaccard to any existing call < threshold."""
-    # Group by source, sorted by timestamp then by uid for stability
     by_source: Dict[str, List[RagCall]] = defaultdict(list)
     for call in rag_calls.values():
         by_source[call.source].append(call)
@@ -189,10 +174,9 @@ def _cluster_topics(rag_calls: Dict[str, RagCall], threshold: float) -> List[Top
 
     for source in sorted(by_source):
         calls = by_source[source]
-        open_topics: List[List[RagCall]] = []   # list of in-progress topic buckets
+        open_topics: List[List[RagCall]] = []
 
         for call in calls:
-            # Find best-matching open topic
             best_idx, best_j = -1, -1.0
             for i, bucket in enumerate(open_topics):
                 j = max(_jaccard(call.query, c.query) for c in bucket)
@@ -210,7 +194,6 @@ def _cluster_topics(rag_calls: Dict[str, RagCall], threshold: float) -> List[Top
     return topics
 
 
-# Render the Source JSONLs block; returns lines
 def _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, threshold):
     lines = ['## Source JSONLs', '']
     total_events = 0
@@ -231,7 +214,6 @@ def _render_source_block(jsonl_paths, per_source_events, rag_calls, topics, thre
     return lines
 
 
-# Render the Summary section
 def _render_summary(rag_calls, results, topics):
     total_calls = len(rag_calls)
     multi_topics   = [t for t in topics if len(t.calls) > 1]
@@ -258,7 +240,6 @@ def _render_summary(rag_calls, results, topics):
     return lines
 
 
-# Render the Topic Overview table
 def _render_topic_overview(topics, threshold):
     lines = [
         '## Topic Overview', '',
@@ -276,7 +257,6 @@ def _render_topic_overview(topics, threshold):
     return lines
 
 
-# Render the Per-Topic Detail section
 def _render_topic_detail(topics, results):
     lines = [
         '## Per-Topic Detail', '',
@@ -328,7 +308,6 @@ def _write_output(report, path):
         sys.stdout.write(report)
 
 
-# CLI entry point
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

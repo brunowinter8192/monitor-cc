@@ -12,12 +12,10 @@ OTHER_MIN_INPUT  = 500
 
 # FUNCTIONS
 
-# Format char count as Nk or N
 def _fmt_k(n):
     return f'{n // 1000}k' if n >= 1000 else str(n)
 
 
-# Render section 1: per-source summary table (includes Content-Transfer column)
 def _render_source_summary(source_stats, jsonl_paths):
     L = ['## 1. Per-Source Summary', '',
          '| Source | Total Calls | Content-Transfer | Waste Calls (ratio≥3) | Failed Calls | Total Waste Input | Dominant Offender |',
@@ -37,7 +35,6 @@ def _render_source_summary(source_stats, jsonl_paths):
     return L + ['']
 
 
-# Render section 2: tool breakdown aggregated over all sources
 def _render_tool_breakdown(waste_pairs):
     by_tool = defaultdict(lambda: {'count': 0, 'total_input': 0, 'total_ratio': 0.0})
     total_input = sum(p['input_chars'] for p in waste_pairs)
@@ -58,7 +55,6 @@ def _render_tool_breakdown(waste_pairs):
     return L + ['']
 
 
-# Render section 2b: content-transfer tool breakdown (large input by design — not waste)
 def _render_ct_breakdown(ct_pairs):
     L = ['## 2b. Content-Transfer Breakdown (large input by design — excluded from waste analysis)', '',
          '*Write, Edit, Bash(ct): bd, cat>, git-commit-long, worker-cli-send — large input expected, not wrappable.*', '',
@@ -66,7 +62,6 @@ def _render_ct_breakdown(ct_pairs):
          '|---|---|---|']
     by_label = defaultdict(lambda: {'count': 0, 'total_input': 0})
     for p in ct_pairs:
-        # Label bd-Bash separately from general Bash
         if p['name'] == 'Bash':
             label = 'Bash (ct)'
         elif 'worker_send' in p['name']:
@@ -85,7 +80,6 @@ def _render_ct_breakdown(ct_pairs):
     return L + ['']
 
 
-# Render section 3: top Bash patterns grouped by normalized signature
 def _render_bash_patterns(waste_pairs):
     bash_groups = defaultdict(lambda: {'count': 0, 'total_input': 0, 'example': ''})
     for p in waste_pairs:
@@ -109,7 +103,6 @@ def _render_bash_patterns(waste_pairs):
     return L + ['']
 
 
-# Render section 4: Grep / Glob / Read patterns above threshold
 def _render_other_tools(waste_pairs):
     L = ['## 4. Other Tools (Grep / Glob / Read) — top patterns', '']
     for tool in ('Grep', 'Glob', 'Read'):
@@ -139,7 +132,6 @@ def _render_other_tools(waste_pairs):
     return L
 
 
-# Render section 5: failed calls grouped by (tool, sig, error_type)
 def _render_failed_calls(failed_pairs, failed_groups):
     L = ['## 5. Failed Calls (pure waste — zero useful output)', '']
     if not failed_pairs:
@@ -152,7 +144,6 @@ def _render_failed_calls(failed_pairs, failed_groups):
     return L + ['']
 
 
-# Render section 6: wrapper candidates sorted by savings/complexity
 def _render_wrapper_candidates(waste_groups, failed_groups):
     IMPL = {
         'trivial':    'A shell alias or thin argparse wrapper (≤20 LOC) eliminates the pattern.',
@@ -180,7 +171,6 @@ def _render_wrapper_candidates(waste_groups, failed_groups):
     return L
 
 
-# Assemble the full Markdown report
 def _build_report(jsonl_paths, per_source_events, tool_uses,
                   source_stats, waste_pairs, waste_groups,
                   failed_pairs, failed_groups, ct_pairs):

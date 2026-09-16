@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""Replay verification for the RS-pass truncation-notice preserve-guard.
-
-Runs every request's messages from a dual-log JSONL through
-_apply_role_system_strip and asserts:
-  - role=system messages starting with "[Truncated:" pass through UNCHANGED
-  - other role=system messages (deferred-tools, date-changed, ...) are
-    still reduced to "."
-
-Input:  JSONL dual-log path (positional arg, optional — defaults to the
-        main checkout's api_requests_opus_trading_1784579551_original.jsonl)
-Output: console PASS/FAIL summary + detail file under dev/tool_use_analysis/md/
-"""
 
 # INFRASTRUCTURE
 
@@ -50,12 +38,10 @@ def replay_workflow(log_path: str) -> None:
 
 # FUNCTIONS
 
-# Read JSONL lines from the given path.
 def _load_lines(log_path: str) -> list:
     with open(log_path) as f:
         return [line for line in f if line.strip()]
 
-# Run each request's messages through the RS pass and classify results.
 def _replay_lines(lines: list) -> tuple:
     truncation_preserved = 0
     noise_stripped = 0
@@ -83,7 +69,6 @@ def _replay_lines(lines: list) -> tuple:
                     failures.append((line_no, idx, "noise-not-stripped", str(old_content)[:80]))
     return truncation_preserved, noise_stripped, failures
 
-# Write verbose per-failure detail to a markdown file (empty body when no failures).
 def _write_detail(failures: list, truncation_preserved: int, noise_stripped: int) -> None:
     os.makedirs(os.path.dirname(_DETAIL_PATH), exist_ok=True)
     lines = [
@@ -99,7 +84,6 @@ def _write_detail(failures: list, truncation_preserved: int, noise_stripped: int
     with open(_DETAIL_PATH, "w") as f:
         f.writelines(lines)
 
-# Print a tiny PASS/FAIL summary to console.
 def _print_summary(truncation_preserved: int, noise_stripped: int, failures: list) -> None:
     status = "PASS" if not failures else "FAIL"
     print(f"{status}: truncation_preserved={truncation_preserved} noise_stripped={noise_stripped} failures={len(failures)}")

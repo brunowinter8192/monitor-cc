@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""Tag presence audit: per-REQ delta-scoped scan for leftover SR/TN/ND/PO tags in raw_payload.
-
-For each opus REQ with tag occurrences in its delta range, reports:
-  - Full content of each leftover tag block with no truncation
-  - stripped_msg_removed entries for the same delta range
-  - Whether each SR was stripped (captured) or bypassed
-
-Aggregate: per-tag-type counts and per-SR-template bypass_rate table.
-
-Input:  JSONL path (positional, optional) — auto-picks newest api_requests_opus_monitor_cc_*.jsonl
-Output: dev/tool_use_analysis/<YYYYMMDDHHMM>_tag_presence_audit.md
-"""
 
 # INFRASTRUCTURE
 
@@ -22,13 +10,11 @@ from pathlib import Path
 from tag_presence_audit_scan import _stream_and_audit
 from tag_presence_audit_report import _build_report
 
-# Resolve log directory — handles both main repo and worktree execution
-_script_dir = Path(__file__).resolve().parent          # dev/tool_use_analysis/
-_repo_candidate = _script_dir.parent.parent            # worktree or main root
+_script_dir = Path(__file__).resolve().parent
+_repo_candidate = _script_dir.parent.parent
 if (_repo_candidate / 'src' / 'logs').is_dir():
     _LOGS_DIR = _repo_candidate / 'src' / 'logs'
 else:
-    # Worktree case: root/.claude/worktrees/<name>/ → root is 3 levels up
     _main_repo = _repo_candidate.parent.parent.parent
     _LOGS_DIR = _main_repo / 'src' / 'logs'
 
@@ -52,7 +38,6 @@ def tag_presence_audit_workflow(jsonl_path, output_path):
 
 # FUNCTIONS
 
-# Parse CLI args; auto-pick newest opus log when path is omitted
 def _parse_args():
     parser = argparse.ArgumentParser(description='Tag presence audit for proxy logs')
     parser.add_argument('jsonl', nargs='?', help='JSONL log path (auto-picks newest if omitted)')

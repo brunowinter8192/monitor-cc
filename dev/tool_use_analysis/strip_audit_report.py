@@ -4,11 +4,10 @@ from pathlib import Path
 
 from strip_audit_classify import _classify_req, _TEMPLATE_TO_RULE, _SR_TEMPLATES
 
-CHUNK_HEAD = 120   # chars of chunk to display in report
+CHUNK_HEAD = 120
 
 # FUNCTIONS
 
-# Build header section
 def _build_header(jsonl_path, n_opus, n_haiku, n_skipped):
     ts = datetime.now().strftime('%Y-%m-%d %H:%M')
     lines = [
@@ -22,7 +21,6 @@ def _build_header(jsonl_path, n_opus, n_haiku, n_skipped):
     return lines
 
 
-# Build rule catalog section — deeper reference below the Legend
 def _build_rule_catalog():
     lines = [
         '## Rule Catalog',
@@ -58,7 +56,6 @@ def _build_rule_catalog():
     return lines
 
 
-# Check whether message at idx in raw_payload is a tool_result
 def _is_tool_result(messages, idx):
     if idx >= len(messages):
         return False
@@ -71,7 +68,6 @@ def _is_tool_result(messages, idx):
     return False
 
 
-# Find tool name by matching tool_use_id backward through messages
 def _get_tool_name(messages, idx):
     if idx >= len(messages):
         return None
@@ -90,7 +86,6 @@ def _get_tool_name(messages, idx):
     return None
 
 
-# Format UTC timestamp to local HH:MM:SS
 def _format_ts(ts_raw):
     if not ts_raw:
         return '??:??:??'
@@ -101,7 +96,6 @@ def _format_ts(ts_raw):
         return ts_raw[:8]
 
 
-# Render the "REQ #n ..." header line + diff summary
 def _render_req_header(req_num, entry, prev):
     ts = _format_ts(entry.get('timestamp', ''))
     prev_mc = prev.get('message_count', 0) if prev else 0
@@ -123,7 +117,6 @@ def _render_req_header(req_num, entry, prev):
     return f'REQ #{req_num}  [{ts}]  msg_count={prev_mc}→{curr_mc}  diff={diff_str}'
 
 
-# Render the EFF (effective strip) section for one REQ
 def _render_eff_section(cls, raw_messages):
     lines = []
     for code in sorted(cls['effective']):
@@ -145,7 +138,6 @@ def _render_eff_section(cls, raw_messages):
     return lines
 
 
-# Render one REQ block using compact BUCKET:RULE notation
 def _render_req_section(req_num, entry, prev, cls):
     lines = [_render_req_header(req_num, entry, prev)]
 
@@ -177,7 +169,6 @@ def _render_req_section(req_num, entry, prev, cls):
     return lines
 
 
-# Build delta log section — one entry per opus REQ
 def _build_delta_log(entries):
     lines = ['## Delta Log', '']
     prev = None
@@ -188,7 +179,6 @@ def _build_delta_log(entries):
     return lines
 
 
-# Build summary section
 def _build_summary(entries):
     total = len(entries)
     n_effective_reqs = 0

@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""Signature-normalized waste pattern report from multiple Proxy JSONL files.
-
-Input:  src/logs/api_requests_*.jsonl (one or more, positional)
-Output: dev/tool_use_analysis/<date>_session_waste_patterns.md (--output) or stdout
-"""
 
 # INFRASTRUCTURE
 import argparse
@@ -48,7 +43,6 @@ def run(jsonl_paths, output_path):
 
 # FUNCTIONS
 
-# Write report to file or stdout
 def _write_output(content, path):
     if path:
         Path(path).parent.mkdir(parents=True, exist_ok=True)

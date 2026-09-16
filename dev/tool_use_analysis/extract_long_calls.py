@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""Extract long tool_use inputs from Proxy JSONL files and report context cost by tool.
-
-Input:  src/logs/api_requests_*.jsonl (one or more paths, positional args)
-Output: Markdown report to stdout or --output FILE
-"""
 
 # INFRASTRUCTURE
 import argparse
@@ -48,7 +43,6 @@ def extract_long_calls_workflow(proxy_paths, top_n, min_chars, output_path, tool
 # FUNCTIONS
 
 def write_output(content, path):
-    """Write report to file or stdout."""
     if path:
         with open(path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -58,7 +52,6 @@ def write_output(content, path):
 
 
 def parse_args():
-    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description='Extract long tool_use inputs from Proxy JSONL files.'
     )

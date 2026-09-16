@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Extract zero-result Grep/Glob/Read tool calls from Claude Code session JSONL files."""
 
 # INFRASTRUCTURE
 import argparse
@@ -42,7 +41,6 @@ def extract_zeros_workflow(session_paths, output_path):
 # FUNCTIONS
 
 def load_events(path):
-    """Load and parse all JSON events from a session JSONL file."""
     events = []
     with open(path, 'r', encoding='utf-8') as f:
         for line in f:
@@ -57,7 +55,6 @@ def load_events(path):
 
 
 def build_uuid_map(events):
-    """Build uuid -> event index map for parent-chain traversal."""
     uuid_map = {}
     for i, e in enumerate(events):
         uid = e.get('uuid')
@@ -67,7 +64,6 @@ def build_uuid_map(events):
 
 
 def collect_tool_uses(events):
-    """Collect Grep/Glob/Read tool_use blocks indexed by tool_use_id."""
     tool_uses = {}
     for i, e in enumerate(events):
         if e.get('type') != 'assistant':
@@ -84,7 +80,6 @@ def collect_tool_uses(events):
 
 
 def find_zero_results(events, tool_uses, uuid_map, session_path):
-    """Match tool_result events to tool_uses and return zero-result entries."""
     zeros = []
     session_id = extract_session_id(session_path)
     for e in events:
@@ -120,11 +115,6 @@ def find_zero_results(events, tool_uses, uuid_map, session_path):
 
 
 def is_zero_result(tool_name, result_text):
-    """Return True if result_text indicates a zero-result for the given tool.
-
-    Read guard: successful reads always start with a line-number prefix (digit+tab).
-    If result starts with that prefix, it is real file content — not a zero-result.
-    """
     if tool_name not in ZERO_PATTERNS:
         return False
     if tool_name == 'Read' and re.match(r'^\d+\t', result_text):
@@ -136,7 +126,6 @@ def is_zero_result(tool_name, result_text):
 
 
 def extract_result_text(result_block):
-    """Extract plain text from a tool_result block (handles str and list content)."""
     content = result_block.get('content', '')
     if isinstance(content, str):
         return content
@@ -152,7 +141,6 @@ def extract_result_text(result_block):
 
 
 def get_preceding_text(event, uuid_map, events):
-    """Walk up parentUuid chain from event, return first text block found."""
     visited = set()
     cur_uuid = event.get('parentUuid')
     while cur_uuid and cur_uuid not in visited:
@@ -174,12 +162,10 @@ def get_preceding_text(event, uuid_map, events):
 
 
 def extract_session_id(path):
-    """Extract session UUID from file path (stem of the .jsonl filename)."""
     return os.path.splitext(os.path.basename(path))[0]
 
 
 def format_timestamp_local(ts_str):
-    """Convert UTC ISO timestamp string to local HH:MM:SS."""
     if not ts_str:
         return '?'
     try:
@@ -190,7 +176,6 @@ def format_timestamp_local(ts_str):
 
 
 def count_by_tool(zeros):
-    """Return dict of tool_name -> count."""
     counts = {}
     for z in zeros:
         t = z['tool_name']
@@ -199,7 +184,6 @@ def count_by_tool(zeros):
 
 
 def format_input_params(tool_name, input_dict):
-    """Format tool input parameters as markdown lines for the report."""
     lines = []
     if tool_name == 'Grep':
         if 'pattern' in input_dict:
@@ -230,7 +214,6 @@ def format_input_params(tool_name, input_dict):
 
 
 def render_session_table(session_summaries):
-    """Render the multi-session per-session summary table."""
     lines = ['### Per-Session Summary', '', '| Session | Grep | Glob | Read | Total |',
               '|---------|------|------|------|-------|']
     for s in session_summaries:
@@ -244,7 +227,6 @@ def render_session_table(session_summaries):
 
 
 def render_header_and_summary(session_paths, session_summaries, multi):
-    """Render the title, per-session summary (or single-session line), and the fixed note."""
     lines = []
 
     if multi:
@@ -287,7 +269,6 @@ def render_header_and_summary(session_paths, session_summaries, multi):
 
 
 def render_zero_entries(all_zeros, multi):
-    """Render one detail section per zero-result entry."""
     lines = []
     for n, z in enumerate(all_zeros, 1):
         sid = z['session_id']
@@ -324,7 +305,6 @@ def render_zero_entries(all_zeros, multi):
 
 
 def build_report(session_paths, session_summaries, all_zeros):
-    """Build the full markdown report."""
     multi = len(session_paths) > 1
     lines = render_header_and_summary(session_paths, session_summaries, multi)
     lines += render_zero_entries(all_zeros, multi)
@@ -332,7 +312,6 @@ def build_report(session_paths, session_summaries, all_zeros):
 
 
 def write_output(content, path):
-    """Write report to file or stdout."""
     if path:
         with open(path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -342,7 +321,6 @@ def write_output(content, path):
 
 
 def parse_args():
-    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description='Extract zero-result Grep/Glob/Read calls from Claude Code session JSONL files.'
     )

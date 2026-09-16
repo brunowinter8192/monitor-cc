@@ -1,8 +1,6 @@
 # INFRASTRUCTURE
 import re
 
-# Recognizable command prefixes for Section 6 wrapper name generation (skip if absent)
-# echo excluded: second token is always quoted content, never a meaningful subcommand
 KNOWN_PREFIXES = frozenset({
     'worker-cli', 'git', 'bd', 'ls', 'cat', 'python3', 'python',
     'head', 'grep', 'jq', 'find',
@@ -10,10 +8,8 @@ KNOWN_PREFIXES = frozenset({
 
 # FUNCTIONS
 
-# Classify wrapper complexity from signature features
 def _classify_complexity(sig, tool):
     if tool == 'Bash':
-        # Heredoc / inline Python → structural (use Write+script instead)
         if '<<' in sig or "python3 << '" in sig or 'python3 -c' in sig:
             return 'structural'
         if any(op in sig for op in ('|', '&&', '||')):
@@ -23,15 +19,12 @@ def _classify_complexity(sig, tool):
     return 'trivial'
 
 
-# Derive proposed wrapper name from signature tokens and tool
 def _derive_wrapper_name(sig, tool):
-    # Skip past shell variable assignments (VAR=... or VAR=$(...)
     s = re.sub(r'^[A-Z_][A-Z0-9_]*=\S*\s*', '', sig).strip()
     tokens = s.split()
     if not tokens:
         return f'{tool.lower()}-wrapper'
-    first = tokens[0].lower().rstrip('/').split('(')[0]  # strip shell subshell openers
-    # Remove placeholder markers from name
+    first = tokens[0].lower().rstrip('/').split('(')[0]
     first = re.sub(r'[<>\$"\']', '', first).strip('-').strip()
     if not first:
         return f'{tool.lower()}-wrapper'
@@ -41,7 +34,6 @@ def _derive_wrapper_name(sig, tool):
             break
     if first == 'worker-cli' and len(tokens) > 1:
         return f'worker-{tokens[1]}'
-    # Only extract subcmd for tools with actual meaningful subcommands (not content-bearing tokens)
     if first in ('git', 'bd', 'grep', 'find', 'jq') and len(tokens) > 1:
         subcmd = re.sub(r'[<>\$"\']', '', tokens[1]).strip('-').strip()
         if subcmd and not subcmd.startswith('<'):
@@ -49,7 +41,6 @@ def _derive_wrapper_name(sig, tool):
     return f'{first}-wrapper'
 
 
-# Extract first recognizable command token from a normalized signature
 def _first_command_token(sig):
     s = re.sub(r'^[A-Z_][A-Z0-9_]*=\S*\s*', '', sig).strip()
     tokens = s.split()
@@ -63,19 +54,16 @@ def _first_command_token(sig):
     return first
 
 
-# Build the ranked, deduped wrapper-candidate list (score-weighted by complexity)
 def _build_wrapper_candidates(waste_groups, failed_groups):
     WEIGHT = {'trivial': 1, 'medium': 2, 'structural': 4}
     candidates = []
 
-    # ct tools already absent from waste_groups; also skip any residual worker_send entries
     SKIP_TOOLS = {'Write', 'Edit', 'mcp__plugin_iterative-dev_iterative-dev__worker_send'}
     for (tool, sig), g in waste_groups.items():
         if g['total_input'] < 100:
             continue
         if tool in SKIP_TOOLS:
             continue
-        # Skip candidates whose first command token is not in known prefixes (garbage names)
         if _first_command_token(sig) not in KNOWN_PREFIXES:
             continue
         cplx  = _classify_complexity(sig, tool)

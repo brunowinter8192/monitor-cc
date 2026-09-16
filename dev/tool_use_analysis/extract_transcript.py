@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""Chronological tool_use / tool_result transcript from a proxy-log JSONL snapshot.
-
-Renders WHAT calls a session made, in order — to trace the workflow and spot
-redundant call sequences (10 calls where 2 would do). No waste/ratio scoring:
-this is a plain timeline dump.
-
-Input:  one or more proxy-log JSONL paths under src/logs/ (uses the entry with
-        the highest message_count per file = cumulative snapshot)
-Output: markdown report to stdout, or a file via --output
-
-Usage:
-    ./venv/bin/python3 dev/tool_use_analysis/extract_transcript.py \\
-        src/logs/api_requests_worker_capture-gh_reference_<ts>.jsonl \\
-        --output /tmp/worker_transcript.md
-"""
 
 # INFRASTRUCTURE
 import argparse
@@ -57,7 +42,6 @@ def run(paths, max_input, max_result, with_text, out_path):
 
 # FUNCTIONS
 
-# Find entry with highest message_count (cumulative snapshot); also count raw_payload events
 def _find_snapshot(path):
     best, best_count, n_events = None, -1, 0
     with open(path, encoding='utf-8') as f:
@@ -78,7 +62,6 @@ def _find_snapshot(path):
     return best, n_events
 
 
-# Count tool_use blocks across all messages of a snapshot
 def _count_tool_use(msgs):
     n = 0
     for msg in msgs:
@@ -88,7 +71,6 @@ def _count_tool_use(msgs):
     return n
 
 
-# Convert a tool_result content field (str | list[block]) to plain text
 def _result_to_text(content):
     if isinstance(content, str):
         return content
@@ -103,7 +85,6 @@ def _result_to_text(content):
     return str(content)
 
 
-# Yield transcript lines for one snapshot's messages array, in order
 def _render_transcript(msgs, max_input, max_result, with_text):
     lines = []
     for i, msg in enumerate(msgs):
@@ -147,7 +128,6 @@ def _render_transcript(msgs, max_input, max_result, with_text):
     return lines
 
 
-# Build the CONVENTION.md Source block header
 def _build_header(sources, total_tool_use):
     ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
     L = [f'# Tool-Use Transcript — {ts}', '', '## Source JSONLs', '']

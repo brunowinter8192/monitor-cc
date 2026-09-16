@@ -12,7 +12,6 @@ PREFIX_EXAMPLE_CHARS = 200
 # FUNCTIONS
 
 def build_summary_table(uses):
-    """Build per-tool Markdown table: count, total_chars, mean_chars, max_chars."""
     by_tool = {}
     for u in uses:
         if u.name not in by_tool:
@@ -32,7 +31,6 @@ def build_summary_table(uses):
 
 
 def build_ratio_summary_table(pair_list):
-    """Build per-tool ratio aggregation table."""
     stats = aggregate_by_tool(iter(pair_list))
     rows = []
     for ts in sorted(stats.values(), key=lambda x: -x.max_ratio):
@@ -48,7 +46,6 @@ def build_ratio_summary_table(pair_list):
 
 
 def build_prefix_cluster_table(bash_uses):
-    """Aggregate Bash uses by prefix and render Markdown table."""
     buckets = aggregate_by_prefix(iter(bash_uses))
     lines = [
         '| Prefix | Tags | Count | Total chars | Mean | Max | Example |',
@@ -67,7 +64,6 @@ def build_prefix_cluster_table(bash_uses):
 
 
 def format_call_detail(n, tu):
-    """Render a single top-N char-based entry section."""
     ts_local = format_timestamp_local(tu.timestamp)
     lines = []
     lines.append(
@@ -94,7 +90,6 @@ def format_call_detail(n, tu):
 
 
 def format_ratio_call_detail(n, p):
-    """Render a single top-N ratio-based entry section."""
     ts_local = format_timestamp_local(p.tu.timestamp)
     lines = []
     lines.append(
@@ -122,7 +117,6 @@ def format_ratio_call_detail(n, p):
 
 
 def build_report(proxy_paths, total_unique, above, top_n, min_chars, tool_filter):
-    """Assemble the full char-based Markdown report."""
     now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     lines = []
 
@@ -170,7 +164,6 @@ def build_report(proxy_paths, total_unique, above, top_n, min_chars, tool_filter
 
 
 def build_ratio_report(proxy_paths, pair_list, top_n, tool_filter):
-    """Assemble the ratio-based Markdown report."""
     now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     lines = []
 

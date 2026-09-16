@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""Per-REQ delta audit for proxy strip verification.
-
-Computes per-request deltas across five buckets (EFF / INERT / IDX / LEAK / SUS)
-using rule-counter diffs and marker-based chunk attribution from strip_vocab.
-Legend at report top; Delta-Log in compact BUCKET:RULE notation.
-
-Input:  JSONL path (positional arg, optional — auto-picks newest
-        src/logs/api_requests_opus_monitor_cc_*.jsonl when not given)
-Output: dev/tool_use_analysis/<YYYYMMDDHHMM>_strip_audit.md
-"""
 
 # INFRASTRUCTURE
 
@@ -18,7 +8,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Path insertion so "from proxy.strip_vocab import ..." resolves from dev/ script
 _src_dir = os.path.join(
     os.environ.get('MONITOR_CC_ROOT', str(Path(__file__).parent.parent.parent)),
     'src',
@@ -48,7 +37,6 @@ def strip_audit_workflow(jsonl_path, output_path):
 
 # FUNCTIONS
 
-# Parse CLI args; auto-pick newest log when path is omitted
 def _parse_args():
     parser = argparse.ArgumentParser(description='Per-REQ strip delta audit for proxy logs')
     parser.add_argument('jsonl', nargs='?', help='JSONL log path (auto-picks newest if omitted)')

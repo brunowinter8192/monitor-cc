@@ -1,5 +1,3 @@
-"""Inlined from former src/proxy_forensics.py (library removed 2026-04-19)."""
-
 # INFRASTRUCTURE
 import json
 import os
