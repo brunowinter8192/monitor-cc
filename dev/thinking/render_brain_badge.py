@@ -1,22 +1,3 @@
-"""
-render_brain_badge.py — Verifies the proxy-pane REQ header's 🧠 badge (milestone: brain marker
-for thinking in the proxy pane REQ header) against a real forwarded dual-log.
-
-Parses the log through the REAL parser (forwarded_parser._parse_forwarded_log) and renders each
-entry's header through the REAL render function (render_turn._build_req_header_line) — not a
-reimplementation of the badge logic. For every entry it reports model, a request label, and
-whether '🧠' is present in the ANSI-stripped rendered header line.
-
-Also cross-checks against CUMULATIVE semantics (any 'thinking' block anywhere in the entry's full
-accumulated message list, computed independently here for comparison only — NOT the code path
-under test) to confirm the DELTA-driven badge is the narrower, informative variant per the
-milestone's stated rationale.
-
-Run: ./venv/bin/python dev/thinking/render_brain_badge.py [path/to/_forwarded.jsonl]
-Default log: src/logs/dual_log/api_requests_opus_monitor_cc_1787931850_forwarded.jsonl (real
-runtime log, gitignored — must be present on disk; not vendored in the repo).
-"""
-
 # INFRASTRUCTURE
 import importlib
 import sys
@@ -45,15 +26,10 @@ def render_brain_badge_workflow(log_path: Path) -> None:
 
 # FUNCTIONS
 
-# Parse the entire forwarded log via the real parser (keep_last=None keeps every entry's
-# messages populated, so the cumulative cross-check below has full data to look at).
 def parse_all_entries(log_path: Path) -> list:
     entries, _pos = mod_fwd_parser._parse_forwarded_log(log_path, 0, {}, keep_last=None)
     return entries
 
-# Render each entry's real header line and record (model, family, label, delta_brain,
-# cumulative_brain) — delta_brain comes from the actual render path; cumulative_brain is an
-# independent local check, kept separate to prove the delta variant is the narrower one.
 def render_all_headers(entries: list) -> list:
     rows = []
     for idx, entry in enumerate(entries):
@@ -74,8 +50,6 @@ def render_all_headers(entries: list) -> list:
         })
     return rows
 
-# Independent cumulative check (any thinking block anywhere in the FULL accumulated message
-# list) — used only as the cross-check the milestone spec calls out, never as the render path.
 def _has_cumulative_thinking(entry: dict) -> bool:
     msgs = entry.get('messages') or []
     return any(
@@ -83,8 +57,6 @@ def _has_cumulative_thinking(entry: dict) -> bool:
         for m in msgs if isinstance(m, dict)
     )
 
-# Write the per-request table plus the aggregate counts (delta-positive / total, per family)
-# the milestone's verification deliverable is checked against.
 def write_report(log_path: Path, rows: list) -> None:
     opus_rows = [r for r in rows if r['family'] != 'haiku']
     haiku_rows = [r for r in rows if r['family'] == 'haiku']
