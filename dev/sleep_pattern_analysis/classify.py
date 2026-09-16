@@ -1,5 +1,3 @@
-"""Token classification rules for sleep-pattern analysis."""
-
 # INFRASTRUCTURE
 
 _TRIVIAL = {
@@ -7,7 +5,6 @@ _TRIVIAL = {
     "rm", "mkdir", "cp", "mv", "date", "printf", "true", "false", "test", "gc",
 }
 
-# Mixed tokens: safe for some subcommands, load-bearing for others
 _MIXED_NOTES = {
     "rag-cli":    "MIXED — `rag-cli server restart/start` is async (server spawn); "
                   "read-only subcommands (search, list) are sync.",
@@ -48,7 +45,6 @@ _LOAD_REASONS = {
 # FUNCTIONS
 
 
-# Append trivial/load-bearing/mixed/unclassifiable classification tables
 def add_classification(lines: list, before_counts: dict) -> None:
     trivial, loadbear, unclear = [], [], []
     for tok, recs in sorted(before_counts.items(), key=lambda x: -len(x[1])):

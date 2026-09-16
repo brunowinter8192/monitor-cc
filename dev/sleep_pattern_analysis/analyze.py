@@ -1,14 +1,3 @@
-"""Sleep pattern analyzer for block_chained_sleep hook events.
-
-Walks ~/.claude/projects/*/*.jsonl for the last 30 days, correlates each
-block_chained_sleep event to its trigger Bash command via tool_use_id, parses
-every `sleep N` in that command for context (cmd_before, cmd_after, chain_op,
-in_loop, is_canonical), and produces a classification report.
-
-Usage (from project root):
-    ./venv/bin/python dev/sleep_pattern_analysis/analyze.py [--since YYYY-MM-DD] [--out PATH]
-"""
-
 # INFRASTRUCTURE
 import argparse
 from datetime import datetime, timedelta, timezone
