@@ -8,12 +8,6 @@ from audit_verdicts import _MANUAL_VERDICTS
 
 OUT_FILE = Path(os.path.join(os.path.dirname(__file__), 'md', 'audit_tool_result_sr_strips.md'))
 
-# The SR strip family this issue actually audits — _apply_first_pass's SR-producing branches
-# (task-tools-nag / deferred-tools / user-interrupt), _apply_cumulative_sr_strips, and
-# _apply_final_sr_pass all descend via _content_contains + strip_sr.py's line-anchored
-# <system-reminder> matching. bg_launch_ack / hook_prefix / po_preview match their OWN, unrelated
-# markers (none imports strip_sr) — their tool_result descent is correct and out of this issue's
-# scope, reported separately, never pooled into the SR-family verdict.
 _SR_FAMILY_PASSES = {'_apply_first_pass', '_apply_cumulative_sr_strips', '_apply_final_sr_pass'}
 
 

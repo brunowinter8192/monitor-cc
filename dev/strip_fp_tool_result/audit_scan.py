@@ -8,11 +8,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 os.environ.setdefault('MONITOR_CC_ROOT', os.path.join(os.path.dirname(__file__), '..', '..'))
 
-# Import via importlib — avoids block_dev_imports_src hook pattern (from src.)
 import importlib as _il
 _mp = _il.import_module('src.proxy.message_passes')
-# Structural passes (own logic) stayed in message_passes.py; template passes (generic pass
-# runner + declarative spec) moved to message_passes_simple.py (2026-09, helper-extraction milestone).
 _mp2 = _il.import_module('src.proxy.message_passes_simple')
 _apply_role_system_strip = _mp._apply_role_system_strip
 _apply_sn_notice_strip = _mp2._apply_sn_notice_strip
@@ -44,14 +41,10 @@ _GIT_LOCK_MARKER = _gl_mod._GIT_LOCK_MARKER
 _GIT_LOCK_ADVICE = _gl_mod._GIT_LOCK_ADVICE
 del _il, _mp, _mp2, _sr_mod, _cs_mod, _ro_mod, _gl_mod
 
-# Actual runtime dual-log location (main checkout, not this worktree — src/logs/ is gitignored
-# per-worktree; the corpus only exists here).
 LOGS_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
 
-# This worker's own live session log — excluded, see module docstring.
 SELF_SESSION_MARKER = 'sr-fp-audit'
 
-# Real pipeline order — copied from src/proxy/rules.py::apply_modification_rules `_passes` list.
 PASSES = [
     ('_apply_role_system_strip', _apply_role_system_strip),
     ('_apply_sn_notice_strip', _apply_sn_notice_strip),
@@ -67,12 +60,8 @@ PASSES = [
 ]
 
 
-# Passes whose OWN source explicitly documents they do NOT descend into tool_result
-# (role_system only ever touches role=='system' messages, which never carry tool_result blocks).
-# Any tool_result hit attributed to these three is an anomaly against the code's own design intent.
 _ASSERT_NO_DESCEND = {'_apply_role_system_strip', '_apply_sn_notice_strip', '_apply_bg_exit_strip'}
 
-# Passes with exactly one fixed mod name regardless of which idx/branch fired.
 _FIXED_MOD_MAP = {
     '_apply_po_preview_strip': 'stripped_po_preview',
     '_apply_bg_launch_ack_strip': 'stripped_bg_launch_ack',
@@ -120,8 +109,6 @@ def _scan_files(included):
     return per_file_stats, occurrences, assertion_hits
 
 
-# Build tool_use_id -> {name, input_preview} from all assistant tool_use blocks in one payload's
-# full (pre-strip) message list — tool_use blocks are never touched by any strip pass.
 def _build_tool_id_map(messages):
     m = {}
     for msg in messages:
@@ -138,9 +125,6 @@ def _build_tool_id_map(messages):
                 }
     return m
 
-# Classify a removed chunk's template/rule using the REAL registries from strip_sr.py /
-# content_strip.py (imported, not reinvented) — falls back to the pass's fixed mod name for
-# non-SR-shaped removals (git-lock, hook-prefix, bd-noise, po-preview, ...).
 def _classify_removed_text(pass_name, removed_text):
     stripped = removed_text.strip()
     if stripped.startswith('<system-reminder>'):
@@ -157,12 +141,9 @@ def _classify_removed_text(pass_name, removed_text):
         return 'user-interrupt-important-line'
     return _FIXED_MOD_MAP.get(pass_name, f'unclassified:{pass_name}')
 
-# True if an odd number of ``` fences precede the offset — signals "inside an open fence".
 def _odd_fence_count(text_before):
     return text_before.count('```') % 2 == 1
 
-# Slice before/after context around [offset, offset+removed_len) from flat_text — the SAME
-# joined representation _ops_from_content_change computed offset against (see module docstring).
 def _context_window(flat_text, offset, removed_len, before=400, after=200):
     start = max(0, offset - before)
     end = min(len(flat_text), offset + removed_len + after)
@@ -261,13 +242,6 @@ def _scan_file(fp):
     return occurrences, assertion_hits, total_entries, requests_with_tr_hit
 
 
-# Reproducibility check for the task-stated ground truth ("quoted git-lock advice block out of
-# retrieved reference material"): counts, per file, how many requests have the git-lock MARKER
-# substring anywhere in a tool_result vs. how many have the full literal _GIT_LOCK_ADVICE (real
-# newlines) present — only the latter would ever actually get stripped by `_strip_git_lock_advice`
-# (exact-substring match). A marker hit with no literal-advice hit is a source-code / escaped
-# quote (e.g. Read of strip_git_lock.py itself, where `\n` is two literal characters, not a
-# newline byte) that the exact-match guard already protects against, by construction.
 def _scan_ground_truth_git_lock(files):
     per_file = []
     for fp in files:
