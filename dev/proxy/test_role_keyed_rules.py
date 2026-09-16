@@ -1,29 +1,4 @@
 #!/usr/bin/env python3
-"""Unit tests for ROLE-keyed system2 rule selection (rules_config._load_system2_rules).
-
-Selection is keyed off the session role carried in worker_context ("worker:<name>" from a
-worker-cli spawn, "main" otherwise), NOT off the model family — model and role became
-independent when the menubar Models tab started assigning main/worker models separately.
-model_family retains exactly one job: the haiku short-circuit.
-
-Coverage:
-  - role selection: main / worker:<name> / "" / None / non-worker-prefixed junk
-  - the actual regression: opus-family worker gets WORKER files, sonnet-family main gets MAIN files
-  - haiku short-circuit wins over both roles (haiku sidecars live inside main sessions)
-  - degraded configs: missing "main" key, missing "worker" key, missing system2_rules entirely,
-    missing rule file on disk — global-only / empty, never a crash
-  - no legacy "opus" key fallback (one-shot migration by design)
-  - exclude_projects (untouched feature) still suppresses under both roles
-  - end-to-end through rules.apply_modification_rules: the selected text lands in system[2]
-
-Isolation: builds a synthetic shared-rules tree in a temp dir and repoints the module globals
-_SHARED_RULES_DIR / _PROXY_RULES_CONFIG at it (both are read at call time). The real
-~/.claude/shared-rules/ is never read or written by this test.
-
-Imports the live proxy modules via the src/-on-sys.path form used by the other dev/ probes.
-
-Run: ./venv/bin/python dev/proxy/test_role_keyed_rules.py
-"""
 import sys, os, json, shutil, tempfile
 from pathlib import Path
 
@@ -48,9 +23,7 @@ def check(name, condition, msg=''):
         print(f'  FAIL  {name}' + (f': {msg}' if msg else ''))
 
 
-# ── SYNTHETIC SHARED-RULES TREE ──────────────────────────────────────────────
 
-# Rule file contents — distinct per file so a concatenation identifies its exact members
 _FILES = {
     'global/g1.md': 'GLOBAL-ONE',
     'global/g2.md': 'GLOBAL-TWO',
@@ -69,14 +42,13 @@ _FULL_CONFIG = {
         'global': {'files': ['global/g1.md', 'global/g2.md']},
         'main': {'files': ['main/m1.md', 'main/m2.md']},
         'worker': {'files': ['worker/w1.md']},
-        'opus': {'files': ['opus/o1.md']},   # legacy key — must be ignored, no fallback
+        'opus': {'files': ['opus/o1.md']},
         'projects': {},
         'exclude_projects': [],
     }
 }
 
 
-# Materialize the synthetic rules tree and point the module globals at it
 def install_config(config: dict) -> None:
     for rel, body in _FILES.items():
         p = TMP / rel
@@ -85,13 +57,10 @@ def install_config(config: dict) -> None:
     (TMP / 'proxy_rules.json').write_text(json.dumps(config), encoding='utf-8')
     rules_config._SHARED_RULES_DIR = TMP
     rules_config._PROXY_RULES_CONFIG = TMP / 'proxy_rules.json'
-    # mtime resolution is coarser than the test's write cadence — clear both caches so a
-    # rewritten config/file is never served from the previous case's entry.
     rules_config._config_cache[0] = None
     rules_config._file_cache.clear()
 
 
-# Minimal payload with a 4-block system array — system[2] is the rule-injection slot
 def mk_payload() -> dict:
     return {
         'model': 'claude-opus-4-6',
@@ -109,7 +78,6 @@ def mk_payload() -> dict:
 TMP = Path(tempfile.mkdtemp(prefix='role_rules_test_'))
 
 try:
-    # ── ROLE SELECTION ───────────────────────────────────────────────────────
     print('\n[Role selection]')
     install_config(_FULL_CONFIG)
 
@@ -130,7 +98,6 @@ try:
     check('non-worker junk context -> main',
           _load_system2_rules('opus', '', 'workerish') == MAIN_TEXT)
 
-    # ── THE REGRESSION: MODEL FAMILY NO LONGER DECIDES ───────────────────────
     print('\n[Model family is not the key]')
     check('opus-family WORKER gets worker rules (the bug this fixes)',
           _load_system2_rules('opus', '', 'worker:w1') == WORKER_TEXT)
@@ -139,13 +106,11 @@ try:
     check('legacy "opus" config key is never read (no fallback)',
           'LEGACY-OPUS-ONE' not in _load_system2_rules('opus', '', 'main'))
 
-    # ── HAIKU SHORT-CIRCUIT ──────────────────────────────────────────────────
     print('\n[Haiku short-circuit]')
     check('haiku + main context -> empty', _load_system2_rules('haiku', '', 'main') == '')
     check('haiku + worker context -> empty', _load_system2_rules('haiku', '', 'worker:w1') == '')
     check('haiku + absent context -> empty', _load_system2_rules('haiku', '') == '')
 
-    # ── DEGRADED CONFIGS ─────────────────────────────────────────────────────
     print('\n[Degraded configs]')
     no_main = {'system2_rules': {'global': {'files': ['global/g1.md', 'global/g2.md']},
                                  'worker': {'files': ['worker/w1.md']}}}
@@ -172,7 +137,6 @@ try:
     check('missing rule file on disk is skipped, rest still concatenated',
           _load_system2_rules('opus', '', 'main') == 'GLOBAL-ONE\n\nMAIN-ONE')
 
-    # ── UNTOUCHED FEATURE: exclude_projects ──────────────────────────────────
     print('\n[exclude_projects still works under both roles]')
     excl = json.loads(json.dumps(_FULL_CONFIG))
     excl['system2_rules']['exclude_projects'] = ['/tmp/excluded_proj']
@@ -184,7 +148,6 @@ try:
     check('non-excluded project unaffected',
           _load_system2_rules('opus', '/tmp/other_proj', 'main') == MAIN_TEXT)
 
-    # ── END-TO-END THROUGH apply_modification_rules ──────────────────────────
     print('\n[End-to-end via apply_modification_rules -> system[2]]')
     install_config(_FULL_CONFIG)
 

@@ -3,16 +3,6 @@ from test_strip_fix_fixtures import _O, check, real_sr_text, text_block, _strip_
 
 # FUNCTIONS
 
-# ── ENV-CONTEXT SR: CC 2.1.258 TRAILING-SENTENCES FIX (2026-09) ──────────────
-# CC 2.1.258 appends two sentences after the email address before `# currentDate`. The old
-# `_ENV_CONTEXT_RE` required `\n` immediately after `gmail\.com\.`, so `fullmatch` failed and the
-# `_PRESERVE_PREAMBLE` guard (same preamble as CLAUDE.md context blocks) kept the whole block,
-# reaching the API in message 0 of every session. Fix: `[^\n]*` after the email sentence tolerates
-# any trailing text on that one line. Measured over `src/logs/dual_log/*_original.jsonl` (main
-# checkout, 2026-09): 1866 occurrences of the May-2026 form, 699 of the 2.1.258 form, both
-# top-level and both must strip; 242 occurrences of CC bundling `# claudeMd` content AND
-# `# userEmail` into ONE `<system-reminder>` block — must stay preserved (real CLAUDE.md content),
-# T44 pins this exact shape.
 
 def t40_env_context_may_2026_form_stripped():
     body = (
@@ -74,11 +64,6 @@ def t43_env_context_different_email_preserved():
     check('T43_env_context_different_email_preserved', result[0]['text'] == sr, repr(result[0]['text'])[:120])
 
 
-# T44 — real corpus shape (src/logs/dual_log, main checkout, 2026-09, 242 occurrences): CC
-# bundles `# claudeMd` project content AND `# userEmail`/`# currentDate` into ONE SR block rather
-# than two separate blocks. `_ENV_CONTEXT_RE.fullmatch` correctly fails (the inner text is not
-# JUST the env-context block), so the `_PRESERVE_PREAMBLE` guard preserves the whole thing —
-# losing the CLAUDE.md content would be worse than the ~250 bytes of unstripped env-context noise.
 def t44_bundled_claudemd_and_env_context_preserved():
     body = (
         "As you answer the user's questions, you can use the following context:\n"
@@ -99,27 +84,6 @@ def t44_bundled_claudemd_and_env_context_preserved():
     check('T44_bundled_claudemd_env_context_preserved', result[0]['text'] == sr, repr(result[0]['text'])[:120])
 
 
-# ── ENV-CONTEXT SR: gitStatus WIDENING (2026-09) ─────────────────────────────
-# Current CC build replaced `# currentDate` with a `# gitStatus` section in the same bundled
-# env-context block — no `# currentDate` anywhere, still exactly one `IMPORTANT:` footer.
-# `_ENV_CONTEXT_RE`'s alternation now accepts EITHER `# currentDate\n...` OR `# gitStatus\n` +
-# the stable header sentence + a free body (`.*?`, DOTALL) up to the `IMPORTANT:` footer — the
-# body is deliberately NOT anchored field-by-field (no per-line `Current branch:`/`Main branch:`/
-# `Git user:`/`Status:`/`Recent commits:` requirement). An initial version of this fix DID
-# enumerate those 5 fields with a fixed blank-line structure, generalized from only the 3 corpus
-# blocks below — review caught that each enumerated field is a brittle anchor with zero protective
-# value (fullmatch is already pinned by the preamble, the literal email, and the IMPORTANT footer;
-# a block carrying all three IS the env-context block) and a guaranteed re-break on the next CC
-# gitStatus layout change. CC issue reports confirm the layout is not fixed: #86891's snapshot
-# has only Current branch / Main branch / Status, no Git user line and no Recent commits section
-# (T50); #43250 has no blank lines between fields at all and an inline `Status: clean` (T51) —
-# both would have failed the field-enumerated version. T45/T46 are copied verbatim from
-# `src/logs/dual_log/*_original.jsonl` (main checkout, 2026-09 measurement, 3 distinct blocks,
-# 973-1045 chars each, see process-docs/proxy_noise_strip/ for the fresh count). T47/T48 cover
-# dirty `git status --short` lines and a detached `HEAD` branch, neither observed in the current
-# corpus window. T49 confirms the bundled `# claudeMd` + gitStatus shape (unobserved in this
-# corpus, but structurally identical to T44's bundled currentDate case) is still preserved whole
-# by the same `_PRESERVE_PREAMBLE` fallback.
 
 def t45_env_context_gitstatus_corpus_block_main_clean_stripped():
     body = (
@@ -256,8 +220,6 @@ def t49_bundled_claudemd_and_gitstatus_preserved():
 
 
 def t50_env_context_gitstatus_issue86891_shape_stripped():
-    # CC issue #86891 — snapshot has only Current branch / Main branch / Status, no Git user
-    # line and no Recent commits section at all.
     body = (
         "As you answer the user's questions, you can use the following context:\n"
         "# userEmail\n"
@@ -279,7 +241,6 @@ def t50_env_context_gitstatus_issue86891_shape_stripped():
 
 
 def t51_env_context_gitstatus_issue43250_shape_stripped():
-    # CC issue #43250 — fields have no blank lines between them, Status is inline on one line.
     body = (
         "As you answer the user's questions, you can use the following context:\n"
         "# userEmail\n"

@@ -1,27 +1,4 @@
 #!/usr/bin/env python3
-"""Replay-Validator v2: validate template-based SR strip against all historical logs.
-
-Two independent validations:
-
-PART A — False-Positive elimination:
-  For each chunk in stripped_msg_removed (what OLD proxy stripped):
-  Classify using NEW template matching (_match_template).
-  If inner text does NOT match any template → was a FP (old code wrongly stripped it).
-  Verify NEW _apply_sr_strip returns the chunk unchanged (FPs_new should = 0).
-
-PART B — Missed SR coverage:
-  For messages in raw_payload NOT processed by old proxy but containing standalone SRs:
-  Apply _strip_system_reminders to message content.
-  Count how many previously-missed SRs are now stripped.
-
-Expected:
-  FPs_new == 0   (code literals no longer stripped)
-  Coverage_gained > 0  (missed SRs now stripped)
-  Real_drops == 0  (no regression on real SRs)
-
-Usage: python3 dev/proxy/replay_strip_v2.py
-Output: /tmp/replay_strip_v2.md
-"""
 
 # INFRASTRUCTURE
 import importlib
@@ -67,7 +44,6 @@ def main():
 # FUNCTIONS
 
 def _chunk_template(chunk):
-    """Return template_id for chunk, or None if not a known SR."""
     if not isinstance(chunk, str) or not chunk.startswith('<system-reminder>'):
         return None
     inner_m = _INNER_SR_RE.search(chunk)
@@ -79,7 +55,6 @@ def _chunk_template(chunk):
 
 
 def _has_standalone_sr(content):
-    """True if content contains standalone SR blocks at line beginnings."""
     def _check(text):
         return isinstance(text, str) and '<system-reminder>' in text and bool(_STANDALONE_SR_RE.search(text))
 
@@ -102,8 +77,6 @@ def _has_standalone_sr(content):
     return False
 
 
-# Part A for one stripped_msg_removed chunk: classify by NEW template matching, record a
-# regression if the old-FP chunk is STILL stripped or a real-SR chunk is NOW dropped.
 def _process_part_a(chunk, counters, fp_new_examples, real_drop_examples):
     if not isinstance(chunk, str):
         return
@@ -115,14 +88,10 @@ def _process_part_a(chunk, counters, fp_new_examples, real_drop_examples):
     new_result = _apply_sr_strip(chunk, _ALL_TEMPLATES)
     if tid is None:
         counters['fps_old'] += 1
-        # FP check: does the new code strip the outer FP code wrapper?
-        # (It should NOT — template matching prevents this.)
-        # The outer FP content is the first non-whitespace line after <SR>
         outer_m = _INNER_SR_RE.search(chunk)
         if outer_m:
             first_line = outer_m.group(1).strip().split('\n')[0]
             if first_line and first_line not in new_result:
-                # Outer FP code was stripped — true regression
                 counters['fps_new'] += 1
                 if len(fp_new_examples) < 5:
                     fp_new_examples.append(repr(chunk[:120]))
@@ -134,8 +103,6 @@ def _process_part_a(chunk, counters, fp_new_examples, real_drop_examples):
                 real_drop_examples.append({'tid': tid, 'chunk': repr(chunk[:80])})
 
 
-# Part B for one entry: messages NOT covered by old_removed but carrying a standalone SR the NEW
-# code strips (or still misses).
 def _process_part_b(rp, old_removed, counters):
     stripped_idxs = set(int(k) for k in old_removed.keys())
     for msg_idx, msg in enumerate(rp.get('messages', [])):
@@ -168,12 +135,10 @@ def scan_all():
                     total_entries += 1
                     old_removed = entry.get('stripped_msg_removed', {})
 
-                    # ─── Part A ───
                     for _, chunks in old_removed.items():
                         for chunk in chunks:
                             _process_part_a(chunk, counters, fp_new_examples, real_drop_examples)
 
-                    # ─── Part B ───
                     rp = entry.get('raw_payload', {})
                     _process_part_b(rp, old_removed, counters)
 
@@ -240,7 +205,6 @@ def write_report(r):
     return ''.join(lines)
 
 
-# still_missed < 5% tolerance: residual are unknown-template SR-like content
 def _failures(result: dict) -> list:
     failed = []
     if result['fps_new'] > 0:

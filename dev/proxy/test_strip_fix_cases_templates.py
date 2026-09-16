@@ -8,9 +8,7 @@ from test_strip_fix_fixtures import (
 
 # FUNCTIONS
 
-# ── TEMPLATE TESTS ────────────────────────────────────────────────────────────
 
-# T01-T03: task-tools-nag
 def t01_task_tools_nag_real_text_block():
     sr = real_sr_text("The task tools haven't been used recently. Consider using TaskCreate.")
     result = _strip_system_reminders(text_block(sr))
@@ -19,8 +17,6 @@ def t01_task_tools_nag_real_text_block():
 
 def t02_task_tools_nag_fp_code_literal():
     content = fp_inline("The task tools haven't been used recently. Consider using TaskCreate.")
-    # Inside tool_result, the strip no longer descends at all — the mid-line code-literal AND
-    # the real trailing standalone SR are both preserved (whole block untouched).
     result = _strip_system_reminders(tool_result_str(content))
     remaining = result[0]['content']
     check('T02_nag_fp_code_preserved', 'if "' + _O + '" in text:' in remaining, repr(remaining[:80]))
@@ -33,7 +29,6 @@ def t03_task_tools_nag_tool_result_preserved():
     check('T03_nag_in_tool_result_preserved', result[0]['content'] == sr)
 
 
-# T04-T06: pyright-diagnostics
 def t04_pyright_real():
     body = '<new-diagnostics>The following new diagnostic issues were detected:\n\nfoo.py:\n  ✘ [Line 1] error</new-diagnostics>'
     sr = real_sr_text(body)
@@ -42,7 +37,6 @@ def t04_pyright_real():
 
 
 def t05_pyright_fp():
-    # Code containing <new-diagnostics> tag mid-line
     code = f'# strips {_O}\n<new-diagnostics>...\n{_C} blocks'
     result = _strip_pyright_diagnostics(tool_result_str(code))
     check('T05_pyright_fp_preserved', '<new-diagnostics>' in result[0]['content'])
@@ -55,7 +49,6 @@ def t06_pyright_tool_result_nested_preserved():
     check('T06_pyright_nested_preserved', result[0]['content'][0]['text'] == sr)
 
 
-# T07-T09: deferred-tools
 def t07_deferred_tools_real():
     body = 'The following deferred tools are now available via ToolSearch. Their schemas are NOT loaded.\nAskUserQuestion\nCronCreate'
     sr = real_sr_text(body)
@@ -67,7 +60,6 @@ def t08_deferred_tools_fp():
     code = f'"The following deferred tools are now available via ToolSearch"  # marker\n\n{real_sr_text("The following deferred tools are now available via ToolSearch.\nFoo")}'
     result = _strip_system_reminders(tool_result_str(code))
     remaining = result[0]['content']
-    # Inside tool_result nothing descends — quoted string AND the real trailing SR both preserved.
     check('T08_deferred_quoted_preserved', '"The following deferred tools' in remaining)
     check('T08_deferred_real_now_preserved', remaining == code, repr(remaining[-100:]))
 
@@ -79,7 +71,6 @@ def t09_deferred_tools_tool_result_preserved():
     check('T09_deferred_in_tool_result_preserved', result[0]['content'] == sr)
 
 
-# T10-T12: user-interrupt (partial mode)
 def t10_user_interrupt_partial_body_preserved():
     body = 'The user sent a new message while you were working:\nhello from user\n\nIMPORTANT: After completing your task, you MUST address this.'
     sr = real_sr_text(body)
@@ -101,12 +92,10 @@ def t12_user_interrupt_tool_result_preserved():
     sr = real_sr_text(body)
     result = _strip_user_interrupt_sr(tool_result_str(sr), 'user sent a new message while you were working')
     inner = result[0]['content']
-    # Partial mode (IMPORTANT-line strip) no longer applies inside tool_result either — untouched.
     check('T12_interrupt_tr_important_preserved', 'IMPORTANT:' in inner, repr(inner))
     check('T12_interrupt_tr_now_byte_exact', inner == sr, repr(inner))
 
 
-# T13-T15: system-notification
 def t13_system_notification_real():
     body = '[SYSTEM NOTIFICATION - NOT USER INPUT]\nThis is a background task.\n<task-notification><task-id>abc</task-id></task-notification>'
     sr = real_sr_text(body)
@@ -127,7 +116,6 @@ def t15_system_notification_tool_result_preserved():
     check('T15_sysnotif_tool_result_preserved', result[0]['content'] == sr)
 
 
-# T16-T18: file-modified
 def t16_file_modified_real():
     body = 'Note: /Users/foo/project/CLAUDE.md was modified, either by the user or by a linter.'
     sr = real_sr_text(body)
@@ -150,7 +138,6 @@ def t18_file_modified_tool_result_preserved():
     check('T18_filemod_tool_result_preserved', result[0]['content'] == sr)
 
 
-# T19-T21: claudemd-contents
 def t19_claudemd_real():
     body = 'Contents of /path/to/CLAUDE.md:\n# claudeMd\n...content...'
     sr = real_sr_text(body)
@@ -171,7 +158,6 @@ def t21_claudemd_tool_result_preserved():
     check('T21_claudemd_tool_result_preserved', result[0]['content'] == sr)
 
 
-# T22-T24: date-changed (new template)
 def t22_date_changed_real():
     body = "The date has changed. Today's date is now 2026-04-22. DO NOT mention this to the user."
     sr = real_sr_text(body)
@@ -192,7 +178,6 @@ def t24_date_changed_tool_result_preserved():
     check('T24_datechanged_tool_result_preserved', result[0]['content'] == sr)
 
 
-# ── CONTENT SHAPE TESTS ───────────────────────────────────────────────────────
 
 def t25_shape_plain_string():
     sr = real_sr_text("The task tools haven't been used recently. Use TaskCreate.")
@@ -221,7 +206,6 @@ def t28_shape_tool_result_list_now_preserved():
     check('T28_tr_list_now_byte_exact', result[0]['content'][0]['text'] == text)
 
 
-# ── PLAN-MODE ────────────────────────────────────────────────────────────────
 
 def t29_plan_mode_returns_none_when_empty():
     sr = real_sr_text('Plan mode is now active. Enter plan mode.')
@@ -236,10 +220,8 @@ def t30_plan_mode_preserves_other_content():
     check('T30_planmode_preserves_other', result is not None and 'user text here' in result[0]['text'])
 
 
-# ── find_system_reminder_blocks ───────────────────────────────────────────────
 
 def t31_find_sr_blocks_tool_result_finds_none():
-    # Same real+code-literal mix as before the fix — now 0 found either way, tool_result isn't scanned.
     code = f'if "{_O}" in text:\n    pass\n\n{real_sr_text("The task tools haven\'t been used recently. Use TaskCreate.")}'
     found = _find_system_reminder_blocks(tool_result_str(code), "task tools haven")
     check('T31_find_none_in_tool_result', len(found) == 0, f'found {len(found)}: {found}')
@@ -251,11 +233,6 @@ def t32_find_sr_blocks_top_level_real_found():
     check('T32_find_real_at_top_level', len(found) == 1, f'found {len(found)}')
 
 
-# ── _content_contains ────────────────────────────────────────────────────────
-# _content_contains itself still descends into tool_result — it remains the correct gate for the
-# out-of-scope non-SR passes (git-lock, hook-prefix, bd-noise) whose genuine content only lives
-# there; the SR family switched its own call sites to _top_level_content_contains instead (see
-# _apply_first_pass / _apply_cumulative_sr_strips), it did not change this shared helper.
 
 def t33_content_contains_tool_result_str():
     sr = real_sr_text("The task tools haven't been used recently.")
@@ -269,12 +246,6 @@ def t34_content_contains_text_block():
     check('T34_contains_in_text_block', result is True, f'got {result}')
 
 
-# ── SR-FAMILY TOOL_RESULT NON-DESCENT (2026-07-28 FP-nuke fix) ────────────────
-# _apply_final_sr_pass has NO gate at all — it calls _strip_all_system_reminders unconditionally
-# on every user message, so the traversal fix in strip_sr.py is the ONLY thing standing between it
-# and tool_result content. These cases give it extra scrutiny: both tool_result shapes must be
-# untouched, and the block object must come back by IDENTITY (not a rebuilt-but-equal dict), since
-# a rebuild would still register as a change in the diff-based bookkeeping downstream.
 
 def t35_final_sr_pass_tool_result_str_identity_preserved():
     sr = real_sr_text('[SYSTEM NOTIFICATION - NOT USER INPUT]\nBackground task event.')
@@ -296,8 +267,6 @@ def t36_final_sr_pass_tool_result_list_identity_preserved():
     check('T36_final_sr_pass_no_change_recorded', 0 not in changed, f'changed: {changed}')
 
 
-# T37 — real Occurrence-8 shape: a rag-cli/process-docs excerpt fencing a literal env-context
-# system-reminder as a documentation example, inside a tool_result — must survive byte-exact.
 def t37_occurrence8_fenced_env_context_in_tool_result_preserved():
     env_sr = (
         f'{_O}\n'
@@ -323,8 +292,6 @@ def t37_occurrence8_fenced_env_context_in_tool_result_preserved():
     check('T37_occ8_no_change_recorded', 0 not in changed, f'changed: {changed}')
 
 
-# T38/T39 — top-level SR stripping still works: this is a SCOPE REDUCTION, not a disable. One
-# template from an _apply_first_pass gated branch, one only _apply_final_sr_pass's catch-all covers.
 def t38_top_level_task_tools_nag_still_stripped_via_first_pass():
     sr = real_sr_text("The task tools haven't been used recently. Consider using TaskCreate.")
     msgs = [{'role': 'user', 'content': sr}]

@@ -8,7 +8,6 @@ from test_strip_fix_fixtures import (
 # FUNCTIONS
 
 def _has_wakeup(content) -> bool:
-    """Return True if _WAKEUP_TEXT (stripped of trailing newline) appears in content."""
     core = _WAKEUP_TEXT.rstrip('\n')
     if isinstance(content, str):
         return core in content
@@ -20,9 +19,7 @@ def _has_wakeup(content) -> bool:
     return False
 
 
-# ── WAKEUP FALSE-POSITIVE TESTS ───────────────────────────────────────────────
 
-# W01 — <task-notification> in tool_result str → TN branch must NOT fire
 def w01_tn_in_tool_result_str():
     tn_data = 'RAG result: <task-notification><status>completed</status><summary>done</summary></task-notification>'
     msgs = [{'role': 'user', 'content': tool_result_str(tn_data)}]
@@ -33,7 +30,6 @@ def w01_tn_in_tool_result_str():
     check('W01_tool_result_intact', new_msgs[0]['content'][0]['content'] == tn_data)
 
 
-# W02 — <task-notification> in tool_result list-of-text → TN branch must NOT fire
 def w02_tn_in_tool_result_list():
     tn_data = 'source: <task-notification><status>failed</status><summary></summary></task-notification>'
     msgs = [{'role': 'user', 'content': tool_result_list(tn_data)}]
@@ -44,7 +40,6 @@ def w02_tn_in_tool_result_list():
     check('W02_tool_result_intact', new_msgs[0]['content'][0]['content'][0]['text'] == tn_data)
 
 
-# W03 — complete BGK pattern in tool_result str → BGK branch must NOT fire, data intact
 def w03_bgk_in_tool_result_str():
     bgk_data = 'log: Background command "sleep 600" completed (exit code 143)\n'
     msgs = [{'role': 'user', 'content': tool_result_str(bgk_data)}]
@@ -55,9 +50,6 @@ def w03_bgk_in_tool_result_str():
     check('W03_tool_result_intact', new_msgs[0]['content'][0]['content'] == bgk_data)
 
 
-# W04 — genuine plain-string completed TN → wakeup injected, mod=trimmed_task_notification
-# fixture has no <task-id> and no <output-file> — doubles as the "both missing" case: neither
-# 'Output:' nor 'ID:' line, content reduces to exactly _WAKEUP_TEXT.
 def w04_genuine_tn_completed_plain_string():
     tn = '<task-notification>\n<status>completed</status>\n<summary>Background command "sleep 10" completed (exit code 0)</summary>\n</task-notification>\n'
     msgs = [{'role': 'user', 'content': tn}]
@@ -69,7 +61,6 @@ def w04_genuine_tn_completed_plain_string():
     check('W04_reduces_to_bare_wakeup', new_msgs[0]['content'] == _WAKEUP_TEXT, repr(new_msgs[0]['content']))
 
 
-# W05 — genuine plain-string failed TN → wakeup injected, mod=replaced_task_notification
 def w05_genuine_tn_failed_plain_string():
     tn = '<task-notification>\n<status>failed</status>\n<summary></summary>\n</task-notification>\n'
     msgs = [{'role': 'user', 'content': tn}]
@@ -80,7 +71,6 @@ def w05_genuine_tn_failed_plain_string():
     check('W05_no_id_line', 'ID:' not in new_msgs[0]['content'], repr(new_msgs[0]['content']))
 
 
-# W06 — genuine plain-string BGK kill notification → wakeup injected, mod=replaced_bg_completed_text
 def w06_genuine_bgk_plain_string():
     bgk = 'Background command "sleep 600" completed (exit code 143)\n'
     msgs = [{'role': 'user', 'content': bgk}]
@@ -89,12 +79,7 @@ def w06_genuine_bgk_plain_string():
     check('W06_mod_replaced', 'replaced_bg_completed_text' in mods, f'mods: {mods}')
 
 
-# ── SN-NOTICE-PARAGRAPH TESTS ─────────────────────────────────────────────────
-# strip_sn_notice.py — bare 4-line paragraph ahead of <task-notification>, anchored startswith
-# decision (not substring-anywhere) — same FP-nuke class as bg_launch_ack / plan_mode, see
-# process-docs/message_strip_fp_nuke/.
 
-# W07 — genuine plain-string paragraph + <task-notification> tag → stripped, mod fired
 def w07_sn_notice_genuine_plain_string():
     tn = '<task-notification>\n<status>completed</status>\n<summary>done</summary>\n</task-notification>\n'
     content = _SN_NOTICE_PARAGRAPH + '\n\n' + tn
@@ -106,7 +91,6 @@ def w07_sn_notice_genuine_plain_string():
     check('W07_mod_fired', 'stripped_sn_notice_paragraph' in mods, f'mods: {mods}')
 
 
-# W08 — genuine text-block at non-zero block index → stripped (do NOT hardcode index 0)
 def w08_sn_notice_text_block_index_one():
     tn = '<task-notification>\n<status>failed</status>\n<summary></summary>\n</task-notification>\n'
     content = [
@@ -121,7 +105,6 @@ def w08_sn_notice_text_block_index_one():
     check('W08_mod_fired', 'stripped_sn_notice_paragraph' in mods, f'mods: {mods}')
 
 
-# W09 — paragraph quoted as tool_result data → must NOT fire, byte-exact untouched
 def w09_sn_notice_tool_result_untouched():
     data = 'log excerpt:\n' + _SN_NOTICE_PARAGRAPH + '\nend of excerpt'
     msgs = [{'role': 'user', 'content': tool_result_str(data)}]
@@ -130,7 +113,6 @@ def w09_sn_notice_tool_result_untouched():
     check('W09_mod_not_fired', 'stripped_sn_notice_paragraph' not in mods, f'mods: {mods}')
 
 
-# W10 — paragraph mid-content in a text block (not at start) → must NOT fire, untouched
 def w10_sn_notice_mid_content_untouched():
     text = 'user note before it:\n' + _SN_NOTICE_PARAGRAPH + '\n\nmore text after'
     msgs = [{'role': 'user', 'content': text_block(text)}]
@@ -139,7 +121,6 @@ def w10_sn_notice_mid_content_untouched():
     check('W10_mod_not_fired', 'stripped_sn_notice_paragraph' not in mods, f'mods: {mods}')
 
 
-# W11 — role="system" with paragraph at start → NOT touched by the SN-notice pass (out of scope)
 def w11_sn_notice_role_system_untouched():
     content = _SN_NOTICE_PARAGRAPH + '\n\nsome trailing detail'
     msgs = [{'role': 'system', 'content': content}]
@@ -148,16 +129,6 @@ def w11_sn_notice_role_system_untouched():
     check('W11_mod_not_fired', 'stripped_sn_notice_paragraph' not in mods, f'mods: {mods}')
 
 
-# ── ROLE=SYSTEM TASK-NOTIFICATION TESTS (2026-07-29 fix) ─────────────────────
-# _apply_role_system_strip previously nuked EVERY role='system' message to '.' before any TN
-# handling could see it — CC delivers bg-task wake-ups as a plain-str role='system' message
-# (measured: 173/280 real TN occurrences in one session log, role='system'/str; the other 107
-# were role='user'/list-text, already handled). Fix: _apply_role_system_strip leaves TN-carrying
-# role='system' messages untouched; _apply_sn_notice_strip + _apply_first_pass's TN branch (both
-# widened to accept role='system', narrowly gated on the TN tag itself) do the actual wake-up
-# construction — single source of truth, no duplicated TN-building logic. These tests run the
-# real 3-pass sequence (role_system_strip -> sn_notice_strip -> first_pass) matching rules.py's
-# `_passes` order.
 
 def w12_role_system_tn_completed_full_pipeline():
     tn = ('<task-notification>\n<task-id>abc123</task-id>\n<status>completed</status>\n'
@@ -205,12 +176,6 @@ def w14_role_system_noise_still_nuked_through_full_chain():
     check('W14_mod_recorded', 'stripped_role_system_msg' in mods1, f'mods1: {mods1}')
 
 
-# W30 — CC 2.1.223 mid-turn user message (role='system') preserved whole (issue #61). Pre-223 this
-# arrived as a role='user' <system-reminder> ('user-interrupt' template, PARTIAL mode in
-# strip_sr.py — IMPORTANT line stripped, user body kept). The 223 role=system form bypasses that
-# SR-based guard entirely and was falling through to _apply_role_system_strip's unconditional '.'
-# replacement, silently dropping the user's text before it reached the model. Real body (recorded
-# session api_requests_opus_posts_1786051932, msg 274): 'jetzt' + CC's own boilerplate explainer.
 def w30_role_system_mid_turn_user_msg_preserved_whole():
     real_body = (
         'The user sent a new message while you were working:\njetzt\n\n'
@@ -228,7 +193,6 @@ def w30_role_system_mid_turn_user_msg_preserved_whole():
     check('W30_no_removed_recorded', removed == {}, f'removed: {removed}')
     check('W30_no_ops_recorded', ops == {}, f'ops: {ops}')
 
-    # Leading whitespace before the marker — guard checks lstrip()'d text, not exact prefix.
     padded = '  \n' + real_body
     messages2 = [{'role': 'system', 'content': padded}]
     new_messages2, mods2, _, _, _, _ = _apply_role_system_strip(messages2)

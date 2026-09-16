@@ -1,23 +1,3 @@
-"""
-Byte-identity regression harness for the src/proxy/ modification pipeline
-(proxy milestone A — message_passes split + helper extraction).
-
-Replays apply_modification_rules + _strip_all_cache_control + _set_cache_breakpoints +
-_build_forwarded_delta + _build_stripped_injected_deltas + _build_errors_entries over every
-request payload found in a frozen, bounded-prefix copy of the newest *_original.jsonl under
-src/logs/dual_log/ (main checkout, read-only — the live file can keep growing during a work
-session, see the bounded-prefix + env-var-override notes below), for both worker_context="main"
-and worker_context="worker:x", with timestamp-shaped fields normalized out, hashing the full
-output sequence (modified payload, modifications list, forwarded/stripped/injected delta
-entries, error entries) for every payload x every worker_context.
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy/pipeline_byte_identity.py
-
-Prints one HASH line. Run before and after a src/proxy/ refactor; the hash must match. Never
-commits a log snapshot — only reads.
-"""
-
 # INFRASTRUCTURE
 import hashlib
 import json
@@ -29,7 +9,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
 _MAIN_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
-_PREFIX_LINES = 60  # bounded prefix — an append-only source file's own prefix never changes
+_PREFIX_LINES = 60
 _TIMESTAMP_KEYS = ('timestamp', 'ts')
 _WORKER_CONTEXTS = ('main', 'worker:x')
 
@@ -48,12 +28,6 @@ def main():
 
 # FUNCTIONS
 
-# PROXY_PIPELINE_BYTE_IDENTITY_LOG overrides the source *_original.jsonl path — needed to pin a
-# before/after comparison to the exact same bytes when the default (newest file under the live
-# MAIN checkout) can itself be THIS very session's own actively-growing log (same pitfall class
-# documented for dev/proxy_display/render_byte_identity.py and dev/workers/format_byte_identity.py
-# — see their own Gotchas). Snapshot a real *_original.jsonl to a fixed path once, then point both
-# runs at it via the env var for full reproducibility.
 def _newest_original_log() -> Path:
     override = os.environ.get('PROXY_PIPELINE_BYTE_IDENTITY_LOG')
     if override:
@@ -83,9 +57,6 @@ def _load_payloads(orig_path: Path) -> list:
     return payloads
 
 
-# Strip volatile timestamp-shaped fields from a dict/list structure so the hash is stable across
-# runs made at different wall-clock times — everything else (including dict key ORDER, which
-# real json.dumps(entry) writes to the JSONL byte-for-byte) stays part of the hashed signal.
 def _normalize_for_hash(obj):
     if isinstance(obj, dict):
         return {k: ('<TS>' if k in _TIMESTAMP_KEYS else _normalize_for_hash(v)) for k, v in obj.items()}

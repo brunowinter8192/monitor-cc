@@ -1,18 +1,3 @@
-"""Smoke tests for background-completion task-notification single-block fix.
-
-Four cases:
-  B01 — completed TN + output-file + task-id → single block, wakeup + Output + ID lines, summary dropped
-  B02 — completed TN, task-id only (no output-file) → single block, wakeup + ID line, summary dropped
-  B03 — failed TN, neither task-id nor output-file → single block, wakeup only (mirrors bare case)
-  B04 — failed TN + output-file + task-id → single block, wakeup + Output + ID lines (mirrors B01)
-
-2026-07-29: injected text gained a third optional line, 'ID: <task-id>', recovered from the same
-<task-notification> block as the Output line — fixed order: wakeup, then Output: (if any), then
-ID: (if any).
-
-Run from project root:
-    ./venv/bin/python dev/proxy_bgcomplete_tests.py
-"""
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
@@ -33,7 +18,7 @@ def check(label, condition, detail=""):
 def _block_count(content) -> int:
     if isinstance(content, list):
         return len(content)
-    return 1  # string = one logical block
+    return 1
 
 
 def _all_text(content) -> str:
@@ -42,7 +27,6 @@ def _all_text(content) -> str:
     return "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
 
 
-# B01 — completed TN with output-file + task-id → single block, wakeup + Output + ID lines, summary dropped
 def b01_completed_with_output_file():
     print("B01 — completed TN + output-file + task-id → single block, wakeup + Output: + ID:")
     output_path = "/private/tmp/abc123/bi3f93ph9.output"
@@ -76,7 +60,6 @@ def b01_completed_with_output_file():
     print()
 
 
-# B02 — completed TN, task-id only (no output-file) → single block, wakeup + ID line, summary dropped
 def b02_completed_no_output_file():
     print("B02 — completed TN, task-id only (no output-file) → single block, wakeup + ID: line")
     task_id = "bphrsnzu7"
@@ -105,7 +88,6 @@ def b02_completed_no_output_file():
     print()
 
 
-# B03 — failed TN, neither task-id nor output-file → single block, wakeup only, summary dropped
 def b03_failed_tn_single_block():
     print("B03 — failed TN, no task-id / no output-file → single block, wakeup only, summary dropped")
     tn = (
@@ -132,7 +114,6 @@ def b03_failed_tn_single_block():
     print()
 
 
-# B04 — failed TN with output-file + task-id → single block, wakeup + Output + ID lines (mirrors B01)
 def b04_failed_tn_with_output_file():
     print("B04 — failed TN + output-file + task-id → single block, wakeup + Output: + ID:")
     output_path = "/private/tmp/abc123/fail_output.output"

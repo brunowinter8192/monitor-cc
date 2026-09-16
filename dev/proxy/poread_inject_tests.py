@@ -1,26 +1,3 @@
-"""Regression suite for src/proxy/inject_poread.py (the poread marker-expansion pass).
-
-Covers: a marker minted from this test's own pinned literal copy of the marker contract (the CLI
-half that used to mint real markers has moved out of this repo entirely, into the iterative-dev
-plugin — see the Gotcha in src/proxy/DOCS.md) expands to the file's full content when run through
-the real apply_modification_rules pipeline; the injection shows up in the ops path (all_ops) and
-in strip_vocab.attribute_chunk on BOTH the stripped (marker) and injected (wrapped content) sides;
-the expansion is byte-identical across two separate pipeline runs against the same unchanged file
-(determinism); a source file that changed or vanished between two runs leaves the marker completely
-inert (no mods, no ops, original text preserved) rather than injecting stale or wrong content; a
-marker whose declared byte count exceeds the 50,000-byte ceiling is refused regardless of what the
-actual file contains; a marker that is NOT the first thing in its block (mid-content, false-positive
-class) is left untouched; trailing content AFTER the marker in the same block is preserved, not
-silently dropped, because the marker must be the entire block for expansion to fire at all; the
-source is read exactly once per validated marker (no second read between predicate and replacement,
-so no race window can leave a request's whole modification pipeline crashing out on a benign
-mid-request file change); a realistic multi-message payload shape (system + user prompt + assistant
-tool_use + user tool_result carrying the marker) exercises the full apply_modification_rules pass
-order end to end.
-
-Run from project root:
-    ./venv/bin/python dev/proxy/poread_inject_tests.py
-"""
 import hashlib
 import os
 import sys

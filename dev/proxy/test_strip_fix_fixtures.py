@@ -68,7 +68,6 @@ def real_sr_text(body):
 
 
 def fp_inline(body):
-    # Code-literal: <system-reminder> appears mid-line inside a string
     return f'if "{_O}" in text:\n    return "system-reminder"\n    # rest of code\n\n{mk_sr(body)}'
 
 

@@ -1,25 +1,3 @@
-"""
-Byte-identity regression harness for the ProxyAddon HOOK METHODS themselves (request,
-responseheaders, response) — proxy addon-split milestone (collaborator-object split of
-ProxyAddon's 15 self.<attr> + request()/response() helper extraction). pipeline_byte_identity.py
-covers the pure-function pipeline; this harness is the one that actually calls ProxyAddon(),
-addon.request(), addon.responseheaders(), addon.response() — nothing else in dev/ does.
-
-Constructs a real ProxyAddon with MONITOR_CC_ROOT pointed at a fresh temp dir, drives the three
-hooks with a minimal fake mitmproxy flow (request: method/pretty_host/path/headers/content;
-response: status_code/headers/content/stream; flow: metadata dict/id) over a bounded prefix of a
-real *_original.jsonl, with x-request-id pinned per request (so uuid.uuid4() is never invoked —
-no monkeypatch needed there) and timestamp-shaped JSONL fields ('timestamp'/'ts') normalized to a
-fixed sentinel post-write, hashing the concatenated contents of all six dual-log files plus
-captured stderr.
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy/addon_hook_byte_identity.py
-
-Prints one HASH line. Run before and after the src/proxy/addon.py split; the hash must match.
-Never commits a log snapshot — only reads.
-"""
-
 # INFRASTRUCTURE
 import hashlib
 import io
@@ -34,7 +12,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
 _MAIN_LOG_DIR = Path('/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log')
-_PREFIX_LINES = 60  # bounded prefix — an append-only source file's own prefix never changes
+_PREFIX_LINES = 60
 _TIMESTAMP_KEYS = ('timestamp', 'ts')
 _DUAL_LOG_SUFFIXES = ('original', 'forwarded', 'stripped', 'injected', 'errors', 'response')
 
@@ -53,9 +31,6 @@ def main():
         stderr_buf = io.StringIO()
         with redirect_stderr(stderr_buf):
             _drive_addon(payloads, proxy_addon_cls)
-        # tmp_root itself is a fresh random path every run (tempfile.TemporaryDirectory) — the
-        # tool_injection "schema store missing" warning embeds it verbatim, so it must be
-        # normalized out of stderr before hashing or the hash would never be reproducible.
         stderr_text = stderr_buf.getvalue().replace(tmp_root, '<TMP_ROOT>')
         digest = _hash_dual_logs(tmp_root, stderr_text)
     print(f'source: {orig_path.name}')
@@ -65,18 +40,11 @@ def main():
 
 # FUNCTIONS
 
-# Imported at THIS point — BEFORE MONITOR_CC_ROOT is repointed at a tempdir in main() below —
-# because src/proxy/payload_helpers.py resolves its own sys.path insert from MONITOR_CC_ROOT
-# (falling back to the real src/ only when the env var is unset at import time); importing early
-# avoids resolving `constants` against an empty tempdir.
 def _import_proxy_addon():
     from src.proxy.addon import ProxyAddon
     return ProxyAddon
 
 
-# ADDON_HOOK_BYTE_IDENTITY_LOG overrides the source *_original.jsonl path — needed to pin a
-# before/after comparison to the exact same bytes, same pitfall class as
-# dev/proxy/pipeline_byte_identity.py's PROXY_PIPELINE_BYTE_IDENTITY_LOG (see its own docstring).
 def _source_log() -> Path:
     override = os.environ.get('ADDON_HOOK_BYTE_IDENTITY_LOG')
     if override:
@@ -106,9 +74,6 @@ def _load_payloads(orig_path: Path) -> list:
     return payloads
 
 
-# Minimal fake mitmproxy header container — case-insensitive get/pop, same shape as the
-# _FakeHeaders class in dev/native-model-start/p3_cache_breakpoints_probe.py and
-# dev/bg_wakeup_id_line/p2_bg_escape_probe.py (reused here, extended with a response side).
 class _FakeHeaders(dict):
     def get(self, k, default=None):
         return super().get(k.lower(), default) if isinstance(k, str) else default
@@ -146,10 +111,6 @@ class _FakeFlow:
         self.id = flow_id
 
 
-# Drives every payload through request() + a 2xx responseheaders()/response() pair, plus one
-# dedicated 4xx flow (reusing payloads[0]) to exercise the error-logging branch — its stderr line
-# is part of the hashed signal; the api_errors.jsonl side write is out of scope (not one of the
-# six dual-log files this harness hashes).
 def _drive_addon(payloads: list, proxy_addon_cls) -> None:
     addon = proxy_addon_cls()
     for i, payload in enumerate(payloads):
@@ -166,9 +127,6 @@ def _drive_addon(payloads: list, proxy_addon_cls) -> None:
     addon.response(err_flow)
 
 
-# Strip volatile timestamp-shaped fields so the hash is stable across runs made at different
-# wall-clock times — everything else (including dict key ORDER, which real json.dumps(entry)
-# writes to the JSONL byte-for-byte) stays part of the hashed signal.
 def _normalize_for_hash(obj):
     if isinstance(obj, dict):
         return {k: ('<TS>' if k in _TIMESTAMP_KEYS else _normalize_for_hash(v)) for k, v in obj.items()}

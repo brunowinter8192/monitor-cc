@@ -7,19 +7,12 @@ from test_strip_fix_cases_badge import (
 
 # FUNCTIONS
 
-# ── claude-f trailing-nudge widening (2026-09-05) ─────────────────────────────
-# On model claude-f, CC's trailing role='system' message can carry one or two fixed nudge
-# sentences BEFORE the total_tokens tag instead of the bare tag alone (measured against the real
-# _stripped.jsonl corpus, dev/proxy_tool_stripping/probe_trailing_message_shapes.py — see
-# process-docs/proxy_tool_stripping/ for the counts). TT10-TT14 cover the widened class.
 _NUDGE_A = ("First privately list what you need next; then request every item that doesn't "
             "depend on another's result in this one response.")
 _NUDGE_B = ("Only you see that command's output — the user's terminal shows at most a few lines "
             "of it. If the user needs to read any of it, put it in your reply.")
 
 
-# TT10 — positive: single nudge, combined nudges (either order), and a repeated nudge all badge
-# NEITHER word, the same class as the bare tag.
 def tt10_nudge_prefixed_tag_badges_neither_word():
     cases = [
         ('single_a', f'{_NUDGE_A}\n\n{_TT_MSG}'),
@@ -36,9 +29,6 @@ def tt10_nudge_prefixed_tag_badges_neither_word():
         check(f'TT10_{label}_badge_inject_false', show_inject is False, f'{label}: got {show_inject!r}')
 
 
-# TT11 — near-miss: a nudge sentence mixed with REAL content still badges both words — the shape
-# test fails the moment ONE paragraph before the tag is not in the catalog. Covers the actually
-# measured mixed shapes (nudge + the now-removed feedback hook's message, nudge + deferred-tools).
 def tt11_nudge_mixed_with_real_content_still_badges():
     deferred = ('The following deferred tools are now available via ToolSearch. Their schemas '
                 'are NOT loaded.')
@@ -58,9 +48,6 @@ def tt11_nudge_mixed_with_real_content_still_badges():
         check(f'TT11_{label}_badge_inject_true', show_inject is True, f'{label}: got {show_inject!r}')
 
 
-# TT12 — two-message delta: BOTH messages nudge/bare-shaped -> still non-substantial overall (the
-# "previous trailing message re-sent with the first sentence dropped" shape from the milestone).
-# A THIRD message in the same delta that is a real strip keeps the request loud (mirrors TT07).
 def tt12_two_trailing_messages_in_one_delta_stays_quiet():
     orig = {'model': 'claude-opus-4', 'system': [], 'tools': [], 'messages': [
         {'role': 'system', 'content': f'{_NUDGE_B}\n\n{_TT_MSG}'},
@@ -98,9 +85,6 @@ def tt12_two_trailing_messages_in_one_delta_stays_quiet():
     check('TT12_nudge_plus_real_badge_inject_true', show_inject3 is True, f'got {show_inject3!r}')
 
 
-# TT13 — lag correction (`_is_total_tokens_nuke`) widens with the badge filter: a single-text blk
-# whose text is a nudge-prefixed tag now qualifies (previously only the bare tag did); a
-# real-content blk still does not, preserving the marker guard the lag correction depends on.
 def tt13_lag_classifier_widens_for_nudge_shape():
     from src.proxy_display.proxy_badge import _is_total_tokens_nuke
     check('TT13_bare_tag_still_qualifies',
@@ -116,8 +100,6 @@ def tt13_lag_classifier_widens_for_nudge_shape():
           _is_total_tokens_nuke({'0': [_TT_MSG], '1': [_TT_MSG]}) is False)
 
 
-# TT14 — end-to-end through the REAL header renderer, mirroring TT09 for the new class: a nudge-
-# prefixed tag renders neither word; a nudge mixed with real content renders both.
 def tt14_rendered_header_badge_words_for_nudge_class():
     import re as _re
     from src.proxy_display.render_turn import _build_req_header_line
