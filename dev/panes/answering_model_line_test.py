@@ -1,14 +1,3 @@
-"""
-Unit-level regression guard for the M2 answering-model-in-token-pane milestone
-(process-docs/proxy_instrumentation/).
-
-Covers src/format/token_format.py's new _render_answering_model_line and the updated
-_render_rate_limit_lines (both now read a full `_response` dual-log entry per request_id, not a
-flat headers dict — src/proxy_display/side_logs.py's read_response_log changed shape to match).
-
-Run: ./venv/bin/python dev/panes/answering_model_line_test.py
-"""
-
 # INFRASTRUCTURE
 import sys
 from pathlib import Path
@@ -34,8 +23,6 @@ def main():
 
 # FUNCTIONS
 
-# Imported via a function (not a module-level `from src.` line) — dev/ scripts may not use a
-# literal top-level `from src.` import (block_dev_imports_src).
 def _import_target():
     from src.format.token_format import (
         _render_answering_model_line, _render_rate_limit_lines, _render_expanded_call_lines,
