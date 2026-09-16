@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""Stdin byte counter helper for probe_b pipe-pane.
-
-Usage (invoked by tmux pipe-pane, not directly):
-    python3 byte_touch.py <state_file> <bytecount_file>
-
-On every non-empty stdin read: touches state_file mtime, overwrites bytecount_file
-with cumulative byte total. probe_b.py polls both files every 1s.
-"""
-
 # INFRASTRUCTURE
 import sys
 import os

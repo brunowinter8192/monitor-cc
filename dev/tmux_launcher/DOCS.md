@@ -5,6 +5,9 @@ Byte-identity regression harness for `src/tmux_launcher.py`. Add a script here w
 `tmux_launcher.py` refactor needs a before/after correctness proof of the exact `subprocess.run`
 argv sequence it issues — this package never invokes real tmux.
 
+## Public Interface
+No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bin/python dev/tmux_launcher/argv_byte_identity.py`.
+
 ## Flow
 Monkeypatches `subprocess.run` to record every argv list issued and return scenario-appropriate
 canned output via a stateful fake tmux, drives `launch_split_screen`/`restart_panes` through three
@@ -12,7 +15,7 @@ scenarios, and hashes the recorded argv sequences.
 
 ## Modules
 
-### argv_byte_identity.py (177 LOC)
+### argv_byte_identity.py (146 LOC)
 
 **Purpose:** Byte-identity harness for `launch_split_screen`/`restart_panes` — three scenarios,
 hashed together: fresh-session launch (no existing session, so `kill_session` is never called);
@@ -24,3 +27,8 @@ the recreate-from-scratch and single-missing-pane split paths).
 **Called by:** none — manual regression harness, run before and after a `tmux_launcher.py` refactor.
 **Calls out:** `src.tmux_launcher` (`launch_split_screen`, `restart_panes`) — imported via a dedicated
 function, not a module-level `from src.` line, per the `block_dev_imports_src` hook.
+
+---
+
+## State
+No persistent state. `_FakeTmux` instances are created fresh per scenario call and discarded; `subprocess.run` is monkeypatched and restored within each `_capture_*` function's own `try`/`finally`.

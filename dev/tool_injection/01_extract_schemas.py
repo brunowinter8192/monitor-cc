@@ -4,14 +4,11 @@ import os
 import subprocess
 from pathlib import Path
 
-# Verified against src/logs/api_requests_opus_monitor_cc_1776092124.jsonl
 _MCP_PREFIXES = {
     "iterative-dev": "mcp__plugin_iterative-dev_iterative-dev__",
     "github-research": "mcp__plugin_github-research_github__",
 }
 
-# Server definitions: (plugin_name, server_path, server_project_dir, venv_dir)
-# venv_dir: which Python venv to use for extraction subprocess
 _SERVERS = [
     (
         "iterative-dev",
@@ -30,7 +27,6 @@ _SERVERS = [
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _OUTPUT_BASE = _PROJECT_ROOT / "src" / "proxy" / "schemas"
 
-# Inline helper: executed in each server's subprocess — prints JSON array of schemas to stdout
 _HELPER_CODE = '''
 import asyncio, importlib.util, json, sys
 
@@ -59,7 +55,6 @@ print(json.dumps(schemas))
 # ORCHESTRATOR
 
 def extract_schemas_workflow() -> None:
-    """Extract MCP tool schemas from both plugin servers and write JSON files."""
     total_written = 0
     all_samples = []
 
@@ -86,7 +81,6 @@ def extract_schemas_workflow() -> None:
 
 # FUNCTIONS
 
-# Ensure server venv exists with required packages; returns path to venv python3.
 def _ensure_venv(plugin_name: str, venv_dir: str, server_project_dir: str) -> str:
     python_path = os.path.join(venv_dir, "bin", "python3")
     if not os.path.exists(python_path):
@@ -99,7 +93,6 @@ def _ensure_venv(plugin_name: str, venv_dir: str, server_project_dir: str) -> st
     return python_path
 
 
-# Invoke server extraction in a clean subprocess. Returns list of Anthropic-format schema dicts.
 def _extract_plugin_schemas(
     plugin_name: str, server_path: str, server_project_dir: str, venv_python: str
 ) -> list[dict]:
@@ -115,7 +108,6 @@ def _extract_plugin_schemas(
     return json.loads(result.stdout)
 
 
-# Write each schema as a separate JSON file; returns count of files written.
 def _write_schemas(plugin_name: str, schemas: list[dict]) -> int:
     out_dir = _OUTPUT_BASE / plugin_name
     out_dir.mkdir(parents=True, exist_ok=True)

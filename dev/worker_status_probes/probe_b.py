@@ -1,16 +1,3 @@
-"""Probe B: tmux pipe-pane byte-rate sensor.
-
-For each session, activates pipe-pane on window 0's active pane, routing output
-through byte_touch.py which touches an activity file and logs cumulative byte count.
-Samples the activity file mtime and byte count every 1 second.
-
-Usage:
-    python3 probe_b.py --sessions S1 S2 S3 --duration 120 --outfile /path/to/out.csv
-
-CSV columns: elapsed_sec, session, activity_mtime, bytecount_total, bytes_last_sec
-Cleanup: deactivates pipe-pane on exit (atexit + signal handlers).
-"""
-
 # INFRASTRUCTURE
 import argparse
 import atexit
@@ -25,7 +12,6 @@ from pathlib import Path
 BYTE_TOUCH = str(Path(__file__).parent / "byte_touch.py")
 PYTHON3 = "/opt/homebrew/bin/python3"
 
-# session → (activity_file, bytecount_file, pane_target)
 _active_pipes: dict = {}
 
 # ORCHESTRATOR

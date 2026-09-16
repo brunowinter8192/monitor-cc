@@ -1,22 +1,3 @@
-"""
-Byte-identity regression harness for src/gpu_pane/ (gpu-pane-split milestone — pane.py concern
-split into gpu_actions.py / gpu_render.py).
-
-Calls _render_pane with synthetic presets/arbitrary/anomalies/today_errors/error_counts/
-collections (3 preset scenarios: running+healthy, running+unhealthy, stopped; one arbitrary
-server; a fresh 'starting' toggle_state overlay and an old/expired-looking one; 3 errors; 2
-collections; 1 anomaly) at two pane widths, with and without a search query, hashing the rendered
-output AND the resulting _button_regions dict for every call. time.time() is monkeypatched to a
-constant — defensive determinism guard per spec; no code path in _render_pane's own call graph
-currently reads it (toggle_state timestamps are constructed directly here, not via _toggle_server/
-_fire_button), but this keeps the harness robust if that ever changes.
-
-Usage (from project root):
-    ./venv/bin/python dev/gpu_pane/render_byte_identity.py
-
-Prints one HASH line. Run before and after the src/gpu_pane/ split; the hash must match.
-"""
-
 # INFRASTRUCTURE
 import hashlib
 import json
@@ -43,8 +24,8 @@ def main():
         digest = hashlib.sha256()
         presets, arbitrary, anomalies, today_errors, error_counts, collections = _make_fixtures()
         toggle_state.clear()
-        toggle_state['preset_healthy'] = ('starting', _FIXED_TS)          # fresh
-        toggle_state['preset_stopped'] = ('starting', _FIXED_TS - 99999)  # old/expired-looking
+        toggle_state['preset_healthy'] = ('starting', _FIXED_TS)
+        toggle_state['preset_stopped'] = ('starting', _FIXED_TS - 99999)
         for pane_width in _PANE_WIDTHS:
             _hash_one_width(digest, render_pane, button_regions, pane_width,
                              presets, arbitrary, anomalies, today_errors, error_counts, collections)
@@ -56,8 +37,6 @@ def main():
 
 # FUNCTIONS
 
-# Imported via a function (not a module-level `from src....` line) — dev/ scripts may not use a
-# literal top-level `from src.` import (block_dev_imports_src).
 def _import_gpu():
     from src.gpu_pane.pane import _render_pane, _toggle_state, _button_regions
     return _render_pane, _toggle_state, _button_regions
@@ -103,9 +82,6 @@ def _regions_for_hash(regions: dict) -> list:
     return sorted([list(k) + list(v) for k, v in regions.items()])
 
 
-# Renders one pane_width twice (baseline, then with a search query matched against the baseline's
-# own rendered lines — mirrors _gpu_search_on_commit's own matching approach), hashing
-# (output, _button_regions) for each of the 2 calls.
 def _hash_one_width(digest, render_pane, button_regions, pane_width: int, presets: list,
                      arbitrary: list, anomalies: list, today_errors: list, error_counts: dict,
                      collections: list) -> None:

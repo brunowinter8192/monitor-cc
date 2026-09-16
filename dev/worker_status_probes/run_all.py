@@ -1,15 +1,3 @@
-"""Orchestrator: launch probe_a, probe_b, probe_c concurrently against target sessions.
-
-Discovers the Opus main session dynamically (most recently active non-worker window).
-Targets:
-  - worker-Monitor_CC-ccwrap-phase1   (idle — completed Phase B)
-  - worker-searxng-filter-cli          (idle — context limit)
-  - <opus-main-session>                (working — active conversation)
-
-Usage (from project root):
-    ./venv/bin/python dev/worker_status_probes/run_all.py [--duration N]
-"""
-
 # INFRASTRUCTURE
 import argparse
 import atexit
@@ -68,7 +56,6 @@ def _parse_args():
 
 
 def _find_opus_session():
-    """Return session name with the most recently active non-worker window."""
     r = subprocess.run(
         ["tmux", "list-windows", "-a", "-F", "#{session_name} #{window_index} #{window_activity}"],
         capture_output=True,
@@ -82,7 +69,6 @@ def _find_opus_session():
         session, win_idx, wa_ts = parts
         if session.startswith("worker-"):
             continue
-        # Only window 0 (CC conversation window); skip bead-tracker windows 3,4
         if win_idx not in ("0", "1", "2"):
             continue
         wa = int(wa_ts)
