@@ -19,7 +19,7 @@ def load_proxy_entry(proxy_path, req_n):
             except json.JSONDecodeError:
                 continue
             if 'raw_payload' not in entry:
-                continue  # skip sent_meta entries
+                continue
             if 'haiku' in entry.get('model', '').lower():
                 continue
             opus_count += 1
@@ -41,7 +41,6 @@ def load_session_ground_truth(session_path, req_n):
             except json.JSONDecodeError:
                 continue
             if d.get('type') != 'assistant':
-                # Non-assistant events break streaming group (user turn between calls)
                 if pending_key is not None:
                     events.append((*pending_key, pending_out))
                     pending_key = None

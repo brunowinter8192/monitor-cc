@@ -4,7 +4,7 @@ import re
 
 FLOW_ID_PEEK_RE = re.compile(r'"flow_id":\s*"([^"]*)"')
 FLOW_ID_PEEK_CHARS = 300
-REBUILD_CR_RATIO_THRESHOLD = 0.2  # matches 03_cache_rebuild_context.py REBUILD_THRESHOLD
+REBUILD_CR_RATIO_THRESHOLD = 0.2
 
 # FUNCTIONS
 

@@ -57,7 +57,6 @@ def run_level4(session_path, tool_name):
 
 # FUNCTIONS
 
-# Parse CLI arguments
 def parse_args():
     parser = argparse.ArgumentParser(description='Analyze Claude Code session JSONL files')
     parser.add_argument('--project', help='Filter by project path (absolute)')
@@ -65,11 +64,9 @@ def parse_args():
     parser.add_argument('--tool', help='Filter by tool name (requires --session)')
     return parser.parse_args()
 
-# Encode project path to match Claude directory naming
 def encode_project_path(path):
     return path.replace('/', '-').replace('_', '-')
 
-# Find all main session JSONL files across all projects
 def find_all_sessions():
     if not PROJECTS_DIR.exists():
         return []
@@ -79,7 +76,6 @@ def find_all_sessions():
             sessions.extend(project_dir.glob('*.jsonl'))
     return sorted(sessions, key=lambda f: f.stat().st_mtime, reverse=True)
 
-# Find main session JSONL files for a specific project path
 def find_sessions_for_project(project_path):
     encoded = encode_project_path(project_path)
     project_dir = PROJECTS_DIR / encoded
@@ -89,7 +85,6 @@ def find_sessions_for_project(project_path):
     sessions = list(project_dir.glob('*.jsonl'))
     return sorted(sessions, key=lambda f: f.stat().st_mtime, reverse=True)
 
-# Parse all sessions and return aggregated calls plus per-session summaries
 def collect_sessions(sessions):
     all_calls = []
     session_summaries = []
@@ -99,7 +94,6 @@ def collect_sessions(sessions):
         session_summaries.append((session_path, calls))
     return all_calls, session_summaries
 
-# Parse one JSONL session file into list of completed tool call dicts
 def parse_session(filepath):
     tool_use_cache = {}
     completed_calls = []
@@ -118,7 +112,6 @@ def parse_session(filepath):
         print(f'Warning: Could not read {filepath}: {e}', file=sys.stderr)
     return completed_calls
 
-# Extract tool_use and tool_result blocks from one JSONL message
 def process_message(message, tool_use_cache, completed_calls):
     msg_type = message.get('type')
     timestamp = message.get('timestamp', '')
@@ -163,7 +156,6 @@ def process_message(message, tool_use_cache, completed_calls):
                 call['output'] = extract_result_text(block)
                 completed_calls.append(call)
 
-# Extract plain text from a tool_result content block
 def extract_result_text(block):
     content = block.get('content', '')
     if isinstance(content, list) and content:
@@ -173,15 +165,12 @@ def extract_result_text(block):
         return str(first)
     return str(content) if content else ''
 
-# Char count of serialized input dict
 def input_chars(input_dict):
     return len(json.dumps(input_dict))
 
-# Char count of output string
 def output_chars(output_str):
     return len(output_str or '')
 
-# Format aggregate table of tool usage sorted by total chars descending
 def format_aggregate_table(calls):
     stats = defaultdict(lambda: {'calls': 0, 'input': 0, 'output': 0})
     for call in calls:
@@ -226,7 +215,6 @@ def format_aggregate_table(calls):
     lines.append(row('TOTAL', total_calls, total_input, total_output, total_total))
     return '\n'.join(lines)
 
-# Format per-session breakdown table sorted by total chars descending
 def format_session_breakdown(session_summaries):
     rows = []
     for session_path, calls in session_summaries:
@@ -242,7 +230,6 @@ def format_session_breakdown(session_summaries):
         lines.append(f'| `{path}` | {call_count:,} | {total:,} |')
     return '\n'.join(lines)
 
-# Extract the key identifying parameter for a tool call
 def get_key_param(tool_name, input_dict):
     if tool_name in ('Read', 'Write', 'Edit'):
         return f'file_path={input_dict.get("file_path", "")}'
@@ -256,14 +243,12 @@ def get_key_param(tool_name, input_dict):
         return f'{k}={v_str[:60]}{"..." if len(v_str) > 60 else ""}'
     return ''
 
-# Extract HH:MM:SS from ISO timestamp string
 def format_timestamp(ts):
     if not ts:
         return '??:??:??'
     match = re.search(r'T(\d{2}:\d{2}:\d{2})', ts)
     return match.group(1) if match else (ts[:8] if len(ts) >= 8 else '??:??:??')
 
-# Format one tool call as a chronological detail line
 def format_detail_row(call):
     ts = format_timestamp(call['timestamp'])
     tool = call['tool_name']

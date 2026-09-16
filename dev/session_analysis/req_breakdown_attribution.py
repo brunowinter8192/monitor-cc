@@ -59,15 +59,13 @@ def compute_last_bp_end_char(entry, full_prefix):
 
     system_json = json.dumps(system, ensure_ascii=False)
     tools_json = json.dumps(tools, ensure_ascii=False)
-    msgs_offset_char = len(system_json) + 1 + len(tools_json) + 1  # +1 for each \n separator
+    msgs_offset_char = len(system_json) + 1 + len(tools_json) + 1
 
     if last_bp_idx < 0:
-        return len(full_prefix)  # No BP in messages → use full prefix length
+        return len(full_prefix)
 
-    # partial_msgs_json = json.dumps(messages[:M+1]) = "[m0, ..., mM]"
-    # Removing the closing ] gives "[m0, ..., mM" which is a prefix of json.dumps(messages)
     partial_msgs_json = json.dumps(messages[:last_bp_idx + 1], ensure_ascii=False)
-    last_bp_end_in_msgs = len(partial_msgs_json) - 1  # char position after last BP msg content
+    last_bp_end_in_msgs = len(partial_msgs_json) - 1
     return msgs_offset_char + last_bp_end_in_msgs
 
 def identify_segment_by_char(drift_char, entry):
@@ -86,13 +84,13 @@ def identify_segment_by_char(drift_char, entry):
 
     if drift_char <= sys_end:
         offset_in_section = drift_char
-        cumulative = 1  # opening `[`
+        cumulative = 1
         for i, block in enumerate(system):
             block_json = json.dumps(block, ensure_ascii=False)
             block_end = cumulative + len(block_json)
             if offset_in_section <= block_end:
                 return {'block_type': 'system', 'block_idx': i, 'char_offset': offset_in_section - cumulative}
-            cumulative = block_end + 2  # `, ` separator
+            cumulative = block_end + 2
         return {'block_type': 'system', 'block_idx': len(system) - 1, 'char_offset': offset_in_section}
 
     elif drift_char <= tools_end:
@@ -126,7 +124,7 @@ def find_nearest_heading(prefix_text, drift_char):
 
 def _find_byte_drift(old_bytes, new_bytes):
     min_len = min(len(old_bytes), len(new_bytes))
-    drift_byte = min_len  # default: one is prefix of the other
+    drift_byte = min_len
     for i in range(min_len):
         if old_bytes[i] != new_bytes[i]:
             drift_byte = i
@@ -168,26 +166,20 @@ def compute_prefix_attribution(current_entry, prev_proxy_path, actual_cr, actual
     old_prefix = serialize_prefix(prev_entry)
     new_prefix = serialize_prefix(current_entry)
 
-    # Byte-level comparison
     old_bytes = old_prefix.encode('utf-8')
     new_bytes = new_prefix.encode('utf-8')
     drift_byte = _find_byte_drift(old_bytes, new_bytes)
 
-    # Convert byte offset to character offset in new_prefix string
     drift_char = len(new_bytes[:drift_byte].decode('utf-8', errors='replace'))
 
-    # Tokenize before drift and from drift to last BP end (all char-based)
     tokens_before_drift, last_bp_end_char, tokens_after_drift_to_last_bp = _tokens_around_drift(
         current_entry, new_prefix, drift_char,
     )
 
-    # Context ±CONTEXT_CHARS characters around drift
     context = _build_drift_context(old_prefix, new_prefix, old_bytes, new_bytes, drift_byte, drift_char)
 
-    # Identify segment (system/tools/messages) the drift falls in, nearest heading if sys[2]
     segment, nearest_heading = _locate_segment_and_heading(current_entry, new_prefix, drift_char)
 
-    # KPI
     cr_delta = abs(tokens_before_drift - actual_cr) / actual_cr if actual_cr > 0 else None
     cc_delta = abs(tokens_after_drift_to_last_bp - actual_cc) / actual_cc if actual_cc > 0 else None
 
