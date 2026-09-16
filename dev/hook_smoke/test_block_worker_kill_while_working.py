@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""
-Smoke test for block_worker_kill_while_working.py.
-Uses real _strip_non_shell_active (called inside decide()) and a stub status_fn.
-No real workers required — all status responses are injected via the stub.
-
-Usage: python3 dev/hook_smoke/test_block_worker_kill_while_working.py
-"""
 import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'hooks'))
@@ -13,8 +6,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from block_worker_kill_while_working import decide
 
 
-# Stub builder: name_to_status maps name → return value.
-# Raises RuntimeError for the special sentinel name 'raises'.
 def make_stub(name_to_status: dict):
     def stub(name: str) -> str:
         if name == 'raises':
@@ -24,7 +15,6 @@ def make_stub(name_to_status: dict):
 
 
 CASES = [
-    # (label, command, stub_map, expect_block)
     (
         "kill working → block",
         "worker-cli kill foo",

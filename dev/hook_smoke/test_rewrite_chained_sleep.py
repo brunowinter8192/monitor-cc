@@ -5,10 +5,7 @@ import sys
 
 HOOK = "src/hooks/rewrite_chained_sleep.py"
 
-# (description, command, expected_rewrite_or_None)
-# None = no rewrite expected (hook should emit nothing and exit 0)
 CASES = [
-    # --- positive: trivial-sync echo before sleep → strip ---
     (
         "echo marker then sleep then tmux — strip sleep",
         "echo \"marker\"; sleep 8; tmux display-message -t ccwrap-phase1 -p '#{pane_title}'",
@@ -24,7 +21,6 @@ CASES = [
         "worker-cli kill X || true; sleep 2; bd list -s open",
         "worker-cli kill X || true; bd list -s open",
     ),
-    # --- negative: load-bearing cmd_before → no rewrite ---
     (
         "kill before sleep — load-bearing, no strip",
         "kill $PID 2>&1; sleep 3; check_status",
@@ -35,13 +31,11 @@ CASES = [
         "launchctl bootout gui/501/com.example; sleep 1; pgrep -f workflow",
         None,
     ),
-    # --- negative: sleep inside loop body → no rewrite ---
     (
         "sleep inside for...done loop — no strip",
         "for i in $(seq 1 30); do echo check; sleep 20; done",
         None,
     ),
-    # --- negative: sleep-first (canonical or intent) → no rewrite ---
     (
         "canonical sleep N && echo done — no strip",
         "sleep 5 && echo done",
@@ -52,7 +46,6 @@ CASES = [
         "sleep 15 && rag-cli server list",
         None,
     ),
-    # --- positive: new single-token _TRIVIAL entries ---
     (
         "grep before sleep — strip",
         'grep -n "pattern" file.py; sleep 2; wc -l file.py',
@@ -88,7 +81,6 @@ CASES = [
         'find . -name "*.py"; sleep 2; ls -la',
         'find . -name "*.py"; ls -la',
     ),
-    # --- positive: new _TRIVIAL_PAIRS (git) ---
     (
         "git status before sleep — strip",
         "git status; sleep 2; cat DOCS.md",
@@ -109,7 +101,6 @@ CASES = [
         "git show HEAD; sleep 1; echo done",
         "git show HEAD; echo done",
     ),
-    # --- positive: new _TRIVIAL_PAIRS (rag-cli, worker-cli) ---
     (
         "rag-cli search before sleep — strip",
         'rag-cli search "query" collection; sleep 2; echo done',
@@ -130,7 +121,6 @@ CASES = [
         "worker-cli response foo; sleep 1; ls -la",
         "worker-cli response foo; ls -la",
     ),
-    # --- negative: critical no-strip — load-bearing git subcommands ---
     (
         "git push before sleep — load-bearing, no strip",
         "git push; sleep 5; echo done",
@@ -141,7 +131,6 @@ CASES = [
         "git pull; sleep 3; ls",
         None,
     ),
-    # --- negative: critical no-strip — load-bearing rag-cli/worker-cli subcommands ---
     (
         "rag-cli index before sleep — load-bearing, no strip",
         "rag-cli index --collection x; sleep 2; echo done",
@@ -162,13 +151,11 @@ CASES = [
         "worker-cli kill x; sleep 2; echo done",
         None,
     ),
-    # --- negative: critical no-strip — background & is not a chain op ---
     (
         "tail -f log backgrounded & sleep — not a chain op, no strip",
         "tail -f log & sleep 5; echo done",
         None,
     ),
-    # --- negative: critical no-strip — git -C flag between cmd and subcommand ---
     (
         "git -C <path> status — flag between cmd and subcmd, conservatively no strip",
         "git -C /repo status; sleep 2; cat file.txt",
@@ -179,7 +166,6 @@ CASES = [
 
 # ORCHESTRATOR
 
-# Run all cases and print results; exit 1 if any fail
 def test_rewrite_chained_sleep_workflow() -> None:
     failures = []
     for desc, cmd, expected_rewrite in CASES:
@@ -204,7 +190,6 @@ def test_rewrite_chained_sleep_workflow() -> None:
 
 # FUNCTIONS
 
-# Run hook with given command; return (exit_code, rewritten_command_or_None)
 def _run_hook(command: str):
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
     result  = subprocess.run(

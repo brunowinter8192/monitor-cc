@@ -6,15 +6,12 @@ import sys
 HOOK = "src/hooks/block_rag_docs_layer.py"
 
 CASES = [
-    # (description, command, expected_exit_code)
-    # --- must block: *-docs search with no layer filter ---
     ("docs collection no filter BLOCK",
      'rag-cli search "q" monitor-cc-docs', 2),
     ("docs collection after cd BLOCK",
      'cd /x && rag-cli search "q" foo-docs', 2),
     ("docs collection with unrelated code subpath filter BLOCK",
      "rag-cli search \"q\" monitor-cc-docs --document 'src/search/%'", 2),
-    # --- must allow: *-docs search with process-docs filter ---
     ("docs collection --document process-docs ALLOW",
      "rag-cli search \"q\" monitor-cc-docs --document 'process-docs/%'", 0),
     ("docs collection --exclude process-docs ALLOW",
@@ -23,16 +20,12 @@ CASES = [
      "rag-cli search \"q\" monitor-cc-docs --document='process-docs/%'", 0),
     ("docs collection --document specific area ALLOW",
      "rag-cli search \"q\" monitor-cc-docs --document 'process-docs/retrieval/%'", 0),
-    # --- must allow: non-docs collection unaffected ---
     ("reference collection ALLOW",
      'rag-cli search "q" monitor-cc-reference', 0),
-    # --- must allow: non search subcommand unaffected ---
     ("list_documents ALLOW",
      "rag-cli list_documents monitor-cc-docs", 0),
-    # --- must allow: no rag-cli at all ---
     ("no rag-cli ALLOW",
      "echo hello world", 0),
-    # --- shell-strip: rag-cli inside single-quoted string must be blanked ---
     ("rag-cli inside single-quotes ALLOW",
      "echo 'rag-cli search \"q\" monitor-cc-docs'", 0),
 ]
@@ -59,7 +52,6 @@ def test_block_rag_docs_layer_workflow() -> None:
 
 # FUNCTIONS
 
-# Run hook with given command string; return exit code
 def _run_hook(command: str) -> int:
     payload = json.dumps({
         "tool_name": "Bash",

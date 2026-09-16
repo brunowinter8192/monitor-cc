@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""
-Smoke test for the two-condition install gate in hook_setup.py (decide_entries()).
-A script installs only if BOTH: committed on 'main' (git_query_fn) AND present in the current
-working tree at the path that will be registered (tree_query_fn). Uses stub query functions —
-no real git calls, no real filesystem checks, no real settings.json writes.
-
-Usage: python3 dev/hook_smoke/test_hook_setup_main_branch_gate.py
-"""
 import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'hooks'))
@@ -14,8 +6,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from hook_setup import decide_entries
 
 
-# Stub builders: maps map script filename -> verdict. Missing key -> default (present), so cases
-# only need to name the interesting scripts.
 def make_git_stub(name_to_verdict: dict):
     def stub(script: str):
         return name_to_verdict.get(script, True)
@@ -28,7 +18,6 @@ def make_tree_stub(name_to_present: dict):
 
 
 CASES = [
-    # (label, hook_scripts, git_verdict_map, tree_present_map, expect_installed, expect_skipped_scripts)
     (
         "all on main + all in tree -> all installed, none skipped",
         [("a.py", "Bash"), ("b.py", "Bash")],
@@ -101,7 +90,6 @@ for label, hook_scripts, git_map, tree_map, expect_installed, expect_skipped_scr
     else:
         failed += 1
 
-# multi-matcher case: confirm all 3 matcher entries for 'multi.py' produced a skip reason each
 _, skipped_multi = decide_entries(
     [("multi.py", "Bash"), ("multi.py", "Read"), ("multi.py", "Write")],
     make_git_stub({"multi.py": False}), make_tree_stub({}),
@@ -115,7 +103,6 @@ else:
     failed += 1
     print(f"       skipped_multi={skipped_multi}")
 
-# reason text distinguishes the two conditions — a maintainer needs to know which one failed
 _, skipped_main = decide_entries(
     [("not_on_main.py", "Bash")], make_git_stub({"not_on_main.py": False}), make_tree_stub({}))
 _, skipped_tree = decide_entries(

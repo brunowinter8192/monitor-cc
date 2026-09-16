@@ -5,12 +5,7 @@ import sys
 
 HOOK = "src/hooks/block_unauthorized_background.py"
 
-# (description, command, run_in_background, expected_rewritten_bg)
-# expected_rewritten_bg:
-#   None  = hook emits no output (pass-through, command stays background or already foreground)
-#   False = hook emits rewrite flipping run_in_background to false (foreground-forced)
 CASES = [
-    # --- ALLOW: sleep-only forms — must NOT be foreground-forced (order-independence vs rewrite hook) ---
     ("sleep N && echo done — sleep-only form ALLOW",
      "sleep 300 && echo done", True, None),
     ("sleep N bare — sleep-only form ALLOW",
@@ -18,7 +13,6 @@ CASES = [
     ("sleep N with custom echo text (fire-log actual) ALLOW",
      'sleep 45 && echo "bg-ack-probe done"', True, None),
 
-    # --- ALLOW: worker-cli wait forms — canonical pull-based wake-up command ---
     ("worker-cli wait bare ALLOW",
      "worker-cli wait", True, None),
     ("worker-cli wait with project_path ALLOW",
@@ -28,13 +22,11 @@ CASES = [
     ("worker-cli wait with project_path + --timeout ALLOW",
      "worker-cli wait /path/to/project --timeout 600", True, None),
 
-    # --- FORCE: former pipeline whitelists — no whitelist, must be foreground-forced ---
     ("reddit-cli index_subreddits — foreground-forced FORCE",
      "reddit-cli index_subreddits", True, False),
     ("workflow.py index-dir — foreground-forced FORCE",
      "workflow.py index-dir", True, False),
 
-    # --- FORCE: genuine non-canonical background commands — must be foreground-forced ---
     ("./venv/bin/python script.py — non-canonical background FORCE",
      "./venv/bin/python script.py", True, False),
     ("rag-cli update_docs — original triggering incident FORCE",
@@ -44,7 +36,6 @@ CASES = [
     ("worker-cli waitfoo — not a word-boundary match on 'wait' FORCE",
      "worker-cli waitfoo", True, False),
 
-    # --- PASS: already foreground — hook is no-op ---
     ("./venv/bin/python script.py foreground — no output PASS",
      "./venv/bin/python script.py", False, None),
 ]
@@ -72,7 +63,6 @@ def test_block_unauthorized_background_workflow() -> None:
 
 # FUNCTIONS
 
-# Run hook; return run_in_background value from rewrite output, or None if hook emits no output
 def _run_hook(command: str, run_in_background: bool):
     payload = json.dumps({
         "tool_name": "Bash",

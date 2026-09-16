@@ -6,8 +6,6 @@ import sys
 HOOK = "src/hooks/block_broad_grep.py"
 
 CASES = [
-    # (description, command, expected_exit_code)
-    # --- true positives: must block ---
     ("bare recursive no scope BLOCK",
      "grep -r foo /tmp/", 2),
     ("recursive dot no scope BLOCK",
@@ -18,7 +16,6 @@ CASES = [
      "grep -r foo . | tee /tmp/out.log", 2),
     ("piped to wc not head BLOCK",
      "grep -r foo . | wc -l", 2),
-    # --- head-bounded exemption: must pass ---
     ("recursive piped to head PASS",
      "grep -r foo /tmp/ | head -3", 0),
     ("recursive piped to head bare PASS",
@@ -29,7 +26,6 @@ CASES = [
      "grep -r foo /tmp/ 2>&1 | head -10", 0),
     ("head then further pipe PASS",
      "grep -r foo . | head -5 | grep bar", 0),
-    # --- existing exemptions: must pass ---
     ("has --include scope PASS",
      "grep -rn pattern src/ --include='*.py'", 0),
     ("file-targeted extension PASS",
@@ -66,7 +62,6 @@ def test_block_broad_grep_workflow() -> None:
 
 # FUNCTIONS
 
-# Run hook with given command string; return exit code
 def _run_hook(command: str) -> int:
     payload = json.dumps({
         "tool_name": "Bash",

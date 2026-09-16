@@ -6,9 +6,7 @@ import sys
 HOOK = "src/hooks/block_cli_chained.py"
 
 CASES = [
-    # (description, command, expected_exit_code)
 
-    # --- rule 1: pipe after a known-CLI segment (any of the 8 CLIs, any subcommand) ---
     ("rag-cli search piped to head BLOCK",
      'rag-cli search "x" coll | head -40', 2),
     ("gh-cli get_file_content (unprotected subcommand) piped BLOCK — rule 1 is universal",
@@ -26,7 +24,6 @@ CASES = [
     ("for-loop over get_issue, one iteration piped BLOCK",
      "for n in 5 62; do echo \"#$n\"; gh-cli get_issue o r $n | sed -n '/^---/,$p'; done", 2),
 
-    # --- rule 2: redirect on a PROTECTED subcommand ---
     ("rag-cli search redirect to file BLOCK",
      'rag-cli search "x" coll > /tmp/out.txt', 2),
     ("gh-cli get_issue redirect BLOCK",
@@ -58,7 +55,6 @@ CASES = [
     ("unprotected reddit-cli index_subreddits redirect stays allowed PASS",
      "reddit-cli index_subreddits q sub1 sub2 > /tmp/x.log", 0),
 
-    # --- rule 3: same-call readback of a CLI's own redirected file ---
     ("the milestone's canonical incident BLOCK",
      "rag-cli update_docs . > /tmp/ragsync.txt 2>&1; tail -12 /tmp/ragsync.txt", 2),
     ("readback via head BLOCK",
@@ -70,10 +66,6 @@ CASES = [
     ("redirect with no same-call readback stays allowed PASS",
      "rag-cli index --collection x > /tmp/a.log 2>&1; git status --short", 0),
 
-    # --- interpreter-path bypass (2026-09-06): the wrapper name isn't the only way in;
-    # `cd <project-dir> && ./venv/bin/python cli.py <sub>` never matched `_KNOWN_CLI_RE`
-    # (which anchors on the WRAPPER name), so a protected subcommand escaped every rule
-    # by taking this path — the real incident: a main agent ran the first case 3 times ---
     ("interpreter-path websearch scrape_url_chromium redirect BLOCK (the real incident, "
      "verbatim shape)",
      'cd /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch && '
@@ -95,7 +87,6 @@ CASES = [
      "cli.py is not mistaken for one of the 5 policed CLIs)",
      'cd /tmp/some-other-project && ./venv/bin/python cli.py foo > /tmp/out.txt', 0),
 
-    # --- allowed: chaining with ; or && is fine, for any CLI, with any other command ---
     ("mkdir before rag-cli index PASS (no allowlist of chain segments)",
      "mkdir -p x && rag-cli index --collection x", 0),
     ("ls/echo before gh-cli get_issue PASS",
@@ -115,9 +106,6 @@ CASES = [
     ("no known CLI at all PASS",
      "ls -la && git status --short", 0),
 
-    # --- cwd-resolved interpreter form (measured bypass, 14/306 interpreter calls in real
-    # transcripts carry no directory name while cwd IS a known CLI directory; 2 of those 14
-    # were real bypasses of this hook's own rules) ---
     ("cwd-resolved interpreter redirect BLOCK (measured bypass 1: no dir name in the "
      "command, cwd is a websearch worktree)",
      'python3 cli.py scrape_url_chromium "https://example.com" > /tmp/out.txt 2>&1', 2,
@@ -163,7 +151,6 @@ def test_block_cli_chained_workflow() -> None:
 
 # FUNCTIONS
 
-# Run hook with given command string wrapped in a valid PreToolUse payload; return exit code
 def _run_hook(command: str, cwd: str = None) -> int:
     payload_dict = {
         "tool_name": "Bash",
@@ -174,7 +161,6 @@ def _run_hook(command: str, cwd: str = None) -> int:
     return _run_hook_raw(json.dumps(payload_dict).encode())
 
 
-# Run hook with raw bytes on stdin (used for the malformed-payload fail-open case); return exit code
 def _run_hook_raw(stdin_bytes: bytes) -> int:
     result = subprocess.run(
         ["python3", HOOK],

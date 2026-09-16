@@ -12,7 +12,6 @@ REWRITE_HOOK = f"{HOOK_DIR}/rewrite_chained_sleep.py"
 
 # ORCHESTRATOR
 
-# Run all fire-log tests; exit 1 if any fail
 def test_fire_log_workflow() -> None:
     failures = []
 
@@ -32,7 +31,6 @@ def test_fire_log_workflow() -> None:
 
 # FUNCTIONS
 
-# Run a hook via subprocess with a given log path env var; return (exit_code, log_line_or_None)
 def _run_hook(hook: str, payload: dict, log_path: str) -> tuple:
     env = dict(os.environ, MONITOR_CC_HOOK_FIRING_LOG=log_path)
     result = subprocess.run(
@@ -52,7 +50,6 @@ def _run_hook(hook: str, payload: dict, log_path: str) -> tuple:
     return result.returncode, line
 
 
-# Block fire test: block_noop_edit with old_string == new_string → decision=block
 def _test_block_fire() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
@@ -93,7 +90,6 @@ def _test_block_fire() -> list:
     return failures
 
 
-# Rewrite fire test: rewrite_chained_sleep with a trivial-predecessor sleep → decision=rewrite, both fields present
 def _test_rewrite_fire() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
@@ -130,14 +126,12 @@ def _test_rewrite_fire() -> list:
     return failures
 
 
-# Env-var override test: log written to custom path, NOT to canonical path
 def _test_env_var_override() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
         custom_tmp = f.name
     canonical_tmp = tempfile.mktemp(suffix="_canonical.jsonl")
     try:
-        # Use custom path via env var; canonical path is a different temp path (should NOT be written)
         env = dict(os.environ, MONITOR_CC_HOOK_FIRING_LOG=custom_tmp)
         payload = {
             "session_id": "test-sess-003",
@@ -166,14 +160,12 @@ def _test_env_var_override() -> list:
     return failures
 
 
-# Tool-error writer unit test: call append_tool_errors with a synthetic error dict, verify JSONL output
 def _test_tool_error_writer() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
         tmp = f.name
     try:
         os.environ["MONITOR_CC_TOOL_ERROR_LOG"] = tmp
-        # Import the writer from the src package
         sys.path.insert(0, os.path.abspath("."))
         from src.panes.warnings_persist import append_tool_errors
         synthetic_error = {
