@@ -3,21 +3,17 @@ import os
 from pathlib import Path
 
 _PROBE_LOG_PATH = '/tmp/_pane_error_log_probe.log'
-_STOP_AFTER_TICKS = 3  # tick #1 = crash iteration, #2 = one clean survived iteration, #3 = stop
+_STOP_AFTER_TICKS = 3
 
 _PASS = "\033[32mPASS\033[0m"
 _FAIL = "\033[31mFAIL\033[0m"
 _RESULTS = []
 
 
-# Marker exception injected as the loop body's "unknown crash" — distinct per pane so the shared
-# log sink's content can be attributed to the specific run that produced it
 class _ProbeInjectedError(Exception):
     pass
 
 
-# Deliberate-termination stand-in (BaseException, NOT Exception — same MRO relationship as
-# KeyboardInterrupt/SystemExit) used to end the otherwise-infinite `while True:` loop
 class _ProbeStop(BaseException):
     pass
 

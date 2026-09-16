@@ -1,12 +1,14 @@
 # dev/pane_error_log/
 
 ## Role
-Regression coverage for `src/pane_error_log.py` (the shared exception-safe logging sink) and the
-per-loop exception guard wrapping each pane's `run_*_loop()` function. Verifies catch+log+continue
-end to end without a live tmux session, since a pane crash cannot be reproduced by killing a real
-pane process — each loop is invoked directly with its I/O primitives monkeypatched. Touch when
-adding a new pane loop or changing an existing loop's `while True:` shape or `pane_error_log.py`
-itself. `md/` holds every run's report.
+Regression coverage for `src/pane_error_log.py` (the exception-safe logging sink) and the per-loop
+exception guard wrapping each pane's `run_*_loop()`. Verifies catch+log+continue without a live
+tmux session by invoking each loop directly with its I/O primitives monkeypatched. Touch when
+adding a pane loop or changing a loop's `while True:` shape or `pane_error_log.py` itself.
+
+## Public Interface
+No `__init__.py` in this directory. Entry path: `./venv/bin/python
+dev/pane_error_log/p1_pane_loop_survives_exception_probe.py`.
 
 ## Flow
 Each of the 8 pane-loop functions is imported directly, driven through a few ticks with a marker
@@ -15,10 +17,10 @@ exception injected on its first I/O call, and asserted to survive, log the marke
 
 ## Modules
 
-### p1_pane_loop_survives_exception_probe.py (96 LOC)
+### p1_pane_loop_survives_exception_probe.py (66 LOC)
 
-**Purpose:** Entry point — module docstring documents the full probe design (see there). Runs the
-9 test functions in order, tallies `_RESULTS`, writes the timestamped report.
+**Purpose:** Entry point — runs the 9 test functions covering all 8 pane loops plus the
+guard-does-not-swallow-termination case, tallies `_RESULTS`, writes the timestamped report.
 **Reads:** nothing directly; delegates to `p1_pane_tests.py`/`p1_sink_tests.py`.
 **Writes:** `md/p1_pane_loop_survives_exception_probe_<timestamp>.md`.
 **Called by:** none — manual regression guard, re-run after changing a pane loop's `while True:`
@@ -28,7 +30,7 @@ shape or `pane_error_log.py`.
 
 ---
 
-### p1_shared.py (37 LOC)
+### p1_shared.py (33 LOC)
 
 **Purpose:** Shared probe primitives: `check()` (records + prints one PASS/FAIL), `_RESULTS`, the
 `_ProbeInjectedError`/`_ProbeStop` marker exceptions, the scratch log path, and `_read_probe_log()`.
@@ -38,7 +40,7 @@ shape or `pane_error_log.py`.
 
 ---
 
-### p1_pane_modules.py (27 LOC)
+### p1_pane_modules.py (25 LOC)
 
 **Purpose:** Resolves `WORKTREE_ROOT`, loads `src.pane_error_log` and the 8 real pane modules under
 test via `importlib.import_module` (package-qualified, since these modules use double-dot relative
@@ -53,7 +55,7 @@ imports), and redirects `pane_error_log.PANE_ERROR_LOG_PATH` to the scratch file
 
 ---
 
-### p1_loop_harness.py (177 LOC)
+### p1_loop_harness.py (170 LOC)
 
 **Purpose:** Drives one pane loop under monkeypatched I/O and captures the result: build fakes
 (`_make_loop_fakes`), patch the module (`_patch_module_for_loop`), restore it
@@ -66,7 +68,7 @@ imports), and redirects `pane_error_log.PANE_ERROR_LOG_PATH` to the scratch file
 
 ---
 
-### p1_pane_tests.py (101 LOC)
+### p1_pane_tests.py (97 LOC)
 
 **Purpose:** One test function per pane loop (`test_worker_tokens_pane` ... `test_news_pane`,
 `test_news_log_pane`) plus `test_keyboard_interrupt_and_system_exit_not_swallowed` (verifies the
@@ -77,10 +79,18 @@ guard does not swallow deliberate termination).
 
 ---
 
-### p1_sink_tests.py (63 LOC)
+### p1_sink_tests.py (59 LOC)
 
 **Purpose:** `test_failing_log_write_does_not_raise` and `test_log_size_capping` — test
 `src/pane_error_log.py`'s own internals directly (no pane loop involved).
 **Reads:** nothing directly.
 **Writes:** creates/removes its own scratch files under `/tmp/`; appends to `_RESULTS`.
 **Called by:** `p1_pane_loop_survives_exception_probe.py`.
+
+---
+
+## State
+`p1_shared.py` owns `_RESULTS` (mutated by `check()`, read by
+`p1_pane_loop_survives_exception_probe.py` to tally and report) and the scratch log path constant;
+`p1_pane_modules.py` owns the one-time redirect of `pel.PANE_ERROR_LOG_PATH` to that scratch path,
+read by every test module. No other module-level mutable state exists in this directory.

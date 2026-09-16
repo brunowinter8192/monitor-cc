@@ -8,9 +8,6 @@ from p1_pane_modules import pel
 
 # FUNCTIONS
 
-# Test: a failing log write itself must not kill the calling loop (deliverable 4) — exercises
-# both failure points inside src/pane_error_log.py: the open()/write() in log_pane_error, and the
-# seek()/truncate in _cap_log_size (forced via an artificially tiny MAX_BYTES on a tiny real file)
 def test_failing_log_write_does_not_raise():
     print("\n[Test] a failing log write cannot raise out of log_pane_error (deliverable 4)")
 
@@ -28,10 +25,10 @@ def test_failing_log_write_does_not_raise():
 
     orig_path, orig_max, orig_keep = pel.PANE_ERROR_LOG_PATH, pel.PANE_ERROR_LOG_MAX_BYTES, pel.PANE_ERROR_LOG_KEEP_BYTES
     tiny_log = '/tmp/_pane_error_log_probe_tiny.log'
-    Path(tiny_log).write_text('short')  # 5 bytes
+    Path(tiny_log).write_text('short')
     pel.PANE_ERROR_LOG_PATH = tiny_log
-    pel.PANE_ERROR_LOG_MAX_BYTES = 0             # force the truncation branch on every call
-    pel.PANE_ERROR_LOG_KEEP_BYTES = 500_000      # seek(-500000, SEEK_END) on a 5-byte file -> OSError
+    pel.PANE_ERROR_LOG_MAX_BYTES = 0
+    pel.PANE_ERROR_LOG_KEEP_BYTES = 500_000
     try:
         raised = False
         try:
@@ -44,7 +41,6 @@ def test_failing_log_write_does_not_raise():
     check("_cap_log_size seek-underflow (OSError) does not raise out of log_pane_error", not raised)
 
 
-# Test: the sink is size-capped, not left to grow unbounded
 def test_log_size_capping():
     print("\n[Test] sink truncates to its tail once it exceeds the size cap")
     orig_path, orig_max, orig_keep = pel.PANE_ERROR_LOG_PATH, pel.PANE_ERROR_LOG_MAX_BYTES, pel.PANE_ERROR_LOG_KEEP_BYTES
