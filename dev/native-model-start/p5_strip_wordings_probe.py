@@ -1,23 +1,3 @@
-"""
-Issue #63 live-verify, surface 3 — strip wordings on CC 2.1.223, over both recorded sessions
-(api_requests_opus_posts_1786051932, api_requests_opus_websearch_1786052022).
-
-Part A — fn_map census: scans the REAL recorded `_stripped.jsonl`/`_injected.jsonl` dual-logs for
-fn_map function-name occurrences, confirming `_apply_bg_launch_ack_strip` (bg-launch ack) and
-`_apply_first_pass` (covers the TN branch) / `_apply_bg_exit_strip` (bg-completed/kill) actually
-fired in both sessions' 223-era traffic — a historical record of what fired when these sessions
-were captured.
-
-Part B — unstripped-wording sweep: replays every recorded ORIGINAL payload through the REAL,
-CURRENT `apply_modification_rules` (this worktree's code, not the possibly-stale historical fn_map
-from Part A) and checks, for every message whose ORIGINAL content contains one of the known
-bg-related marker strings, whether that marker text still appears in the corresponding FORWARDED
-message content — a survival would mean a wording drift no strip pass currently matches.
-
-Usage (from project root, real venv — imports mitmproxy transitively via src.proxy.rules):
-    ./venv/bin/python dev/native-model-start/p5_strip_wordings_probe.py
-"""
-
 # INFRASTRUCTURE
 import json
 import sys
@@ -37,7 +17,6 @@ SESSIONS = [
     ('websearch', 'api_requests_opus_websearch_1786052022'),
 ]
 
-# Marker strings each bg-related strip pass anchors on (from the real source modules)
 MARKERS = {
     'bg_launch_ack_wording1': 'running in background with ID',
     'bg_launch_ack_wording2': 'backgrounded by user with ID',
@@ -56,7 +35,6 @@ def _load_session_requests(stem: str) -> list:
     return out
 
 
-# Part A — fn_map census over the real recorded stripped/injected dual-logs for one session
 def _fn_map_census(stem: str) -> dict:
     counts: dict = {}
     for suffix in ('stripped', 'injected'):
@@ -71,16 +49,6 @@ def _fn_map_census(stem: str) -> dict:
     return counts
 
 
-# Part B — for one request, find messages whose ORIGINAL TOP-LEVEL content contains a marker, and
-# check if that marker text still appears in the corresponding FORWARDED message's TOP-LEVEL
-# content. TOP-LEVEL only (str content, or list blocks with type=='text') — deliberately excludes
-# tool_result content, matching the real strip passes' own `_top_level_content_contains` gate
-# (2026-07-28 FP-nuke fix, src/proxy/DOCS.md). Without this, rag-cli/gh-cli search results that
-# quote these marker strings as DATA (this repo's own process-docs discuss `<task-notification>`
-# and "Background command" at length, and get indexed/returned by rag-cli) produce massive false
-# "unstripped" counts — confirmed as the sole cause of this probe's first-run 421/2995 count
-# (spot-checked multiple hits: all were tool_result search-result content quoting the marker in
-# prose, never a live top-level notification).
 def _check_markers_stripped(payload: dict) -> list:
     from proxy.rules import apply_modification_rules
     from proxy.payload_helpers import _top_level_content_contains
@@ -119,9 +87,6 @@ def _part_a_census_lines():
 
 
 def _compute_fire_verdicts(all_fn_counts):
-    # Presence of the raw marker text in each session's ORIGINAL log — distinguishes "the strip
-    # never fired because the wording never occurred" (fine) from "the wording occurred but the
-    # strip didn't fire" (a real gap).
     marker_present_in_session = {}
     for tag, stem in SESSIONS:
         with open(LOG_DIR / f'{stem}_original.jsonl', encoding='utf-8') as f:
@@ -134,10 +99,6 @@ def _compute_fire_verdicts(all_fn_counts):
         (not marker_present_in_session[tag]['bg_launch_ack']) or all_fn_counts[tag].get('_apply_bg_launch_ack_strip', 0) > 0
         for tag, _ in SESSIONS
     )
-    # TN/bg-completion routes through _apply_bg_exit_strip for this traffic's dominant wording
-    # (confirmed by direct fn_map inspection: flow 9f75f100/msg38 in websearch attributes to
-    # _apply_bg_exit_strip, not _apply_first_pass) — either satisfies "the TN/bg-completed
-    # replacement fired".
     tn_or_bg_exit_fired = all(
         all_fn_counts[tag].get('_apply_first_pass', 0) > 0 or all_fn_counts[tag].get('_apply_bg_exit_strip', 0) > 0
         for tag, _ in SESSIONS

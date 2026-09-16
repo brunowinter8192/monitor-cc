@@ -1,45 +1,41 @@
 # dev/native-model-start/
 
 ## Role
-Verification scripts for starting the orchestrator's main CC session natively on a chosen model.
-Covers the launcher's `--fable`/`--opus`/`--model` argument precedence (`src/claude_proxy_start.sh`),
-the proxy's per-model `model_params` injection path (`src/proxy/inject_helpers.py`), and a live-verify
-of the CC 2.1.223 pin bump (cache breakpoint stability, dual-log composition integrity, strip-wording
-coverage) against two recorded 223-era sessions. Touch when changing the launcher's flag precedence or
-`inject_helpers.py`'s model-override resolution; the 223 pin-bump probes are historical live-verify
-records and don't need re-running unless the same class of pin bump recurs. `md/` holds every script's
-report.
+Verification scripts for starting the orchestrator's main CC session natively on a chosen model:
+the launcher's flag precedence, the proxy's per-model `model_params` injection, and a historical
+live-verify of the CC 2.1.223 pin bump. Touch it when changing either; the pin-bump probes don't
+need re-running otherwise.
+
+## Public Interface
+No `__init__.py` in this directory. Each script is its own entry point, run directly, e.g.
+`python3 dev/native-model-start/p2_model_params_probe.py` or `bash p1_arg_parse_dry_run.sh`.
 
 ## Flow
-Each script drives real production code (the launcher's parse loop mirrored in bash, or a real
-`ProxyAddon`/`apply_modification_rules` instance) against synthetic argv or recorded dual-log payloads,
-then asserts specific invariants and writes a timestamped report to `md/`.
+Synthetic argv (`p1`), mocked config (`p2` and its test-group modules), or recorded dual-log
+payloads (`p3`/`p4`/`p5`) go in. Each script drives real production code (the launcher's parse
+loop mirrored in bash, or a real `ProxyAddon`/`apply_modification_rules` instance) and asserts
+specific invariants. Output is stdout PASS/FAIL plus a timestamped report under `md/`.
 
 ## Modules
 
 ### p1_arg_parse_dry_run.sh (154 LOC)
 
-**Purpose:** Dry-runs the `--fable`/`--opus`/`--model` precedence logic mirrored verbatim from
-`src/claude_proxy_start.sh`'s parse loop — 8 cases covering explicit-vs-shortcut precedence,
-position-independence, and last-shortcut-wins ordering. Never starts the proxy or claude.
+**Purpose:** Dry-runs the `--fable`/`--opus`/`--model` precedence logic mirrored from
+`src/claude_proxy_start.sh`'s parse loop; never starts the proxy or claude.
 **Reads:** nothing persistent — pure in-process argv simulation.
 **Writes:** `md/p1_arg_parse_dry_run_<timestamp>.md`.
-**Called by:** none — manual regression guard, re-run after editing `claude_proxy_start.sh`'s parse loop.
+**Called by:** none — manual regression guard, re-run after editing the parse loop.
 **Calls out:** stdlib bash only.
 
 ---
 
-### p2_model_params_probe.py (135 LOC)
+### p2_model_params_probe.py (83 LOC)
 
-**Purpose:** Entry point for the model_params probe — runs the 15 test groups (imported from
-`model_override_injection_tests.py`/`thinking_context_management_tests.py`) in order and writes
-the report. 15 test groups, 73 checks.
-**Reads:** nothing persistent — builds all fixtures in-process, config injected via
-`mock.patch.object(inject_helpers, "_load_config", ...)`.
+**Purpose:** Entry point for the model_params probe — runs the 15 test groups imported from the
+two test-group modules in order and writes the report.
+**Reads:** nothing persistent — builds all fixtures in-process.
 **Writes:** `md/p2_model_params_probe_<timestamp>.md`.
-**Called by:** none — manual regression guard, re-run after changing `_inject_model_override`, its
-fixation mechanics, `_strip_clear_thinking_edit`, `_build_forwarded_delta`, or
-`attribution_coverage.py`'s field-attribution maps.
+**Called by:** none — manual regression guard, re-run after touching `_inject_model_override`.
 **Calls out:** `model_params_test_infra`, `model_override_injection_tests`,
 `thinking_context_management_tests`.
 
@@ -47,22 +43,21 @@ fixation mechanics, `_strip_clear_thinking_edit`, `_build_forwarded_delta`, or
 
 ### model_params_test_infra.py (27 LOC)
 
-**Purpose:** Shared `check()`/`_RESULTS` assertion-recording infra and the `_with_config` context
-helper used by every test group in this probe.
+**Purpose:** Shared `check()`/`_RESULTS` assertion-recording infra and the `_with_config` helper
+used by every test group in this probe.
 **Reads:** nothing.
-**Writes:** nothing — mutates the shared in-memory `_RESULTS` list other modules import by reference.
+**Writes:** nothing — mutates the shared in-memory `_RESULTS` list other modules import by
+reference.
 **Called by:** `p2_model_params_probe.py`, `model_override_injection_tests.py`,
 `thinking_context_management_tests.py`.
 **Calls out:** `src.proxy.inject_helpers`.
 
 ---
 
-### model_override_injection_tests.py (259 LOC)
+### model_override_injection_tests.py (237 LOC)
 
-**Purpose:** Tests 1-12 of the model_params probe — `_inject_model_override`'s per-model
-`model_params` config lookup (exact model-id match, never writes `model`) vs. the legacy
-family-bucketed `model_override`/`model_override_worker` fallback, plus the fixation mechanism that
-pins a resolved override to a caller-owned dict across calls.
+**Purpose:** Tests 1-12 — `_inject_model_override`'s per-model `model_params` lookup vs. the
+legacy family-bucketed fallback, plus the cross-call fixation mechanism.
 **Reads:** nothing persistent — builds all fixtures in-process.
 **Writes:** nothing — results recorded via `model_params_test_infra.check`.
 **Called by:** `p2_model_params_probe.py`.
@@ -70,74 +65,56 @@ pins a resolved override to a caller-owned dict across calls.
 
 ---
 
-### thinking_context_management_tests.py (187 LOC)
+### thinking_context_management_tests.py (157 LOC)
 
-**Purpose:** Tests 13-15 of the model_params probe — `_strip_clear_thinking_edit` (a
-`clear_thinking_20251015` context_management edit is removed whenever the payload's thinking ends
-up `{"type": "disabled"}`, whichever path disabled it, siblings like `clear_tool_uses_20250919`
-survive, an emptied edits list drops the whole `context_management` key, a non-disabled thinking
-value leaves it byte-identical), `src/proxy/logging.py::_build_forwarded_delta`'s forwarded
-`thinking` field, and (Test 15) that a `context_management` strip is attributed correctly by
-`dev/proxy_dual_log/attribution_coverage.py`'s own field-attribution map rather than falling
-through to `UNATTR` — while confirming `src/proxy/strip_inject_delta.py`'s own same-shaped maps
-(proven dead code, since the real `fn_map` never carried a field-level entry for any top-level
-field) have been removed from that module entirely.
+**Purpose:** Tests 13-15 — `_strip_clear_thinking_edit`'s thinking/context_management
+self-consistency, the forwarded `thinking` field, and strip-side field attribution.
 **Reads:** nothing persistent — builds all fixtures in-process.
 **Writes:** nothing — results recorded via `model_params_test_infra.check`.
 **Called by:** `p2_model_params_probe.py`.
-**Calls out:** `src.proxy.inject_helpers`, `src.proxy.logging` (`_build_forwarded_delta`),
-`src.proxy.strip_inject_delta` (`_build_stripped_injected_deltas`),
-`dev/proxy_dual_log/attribution_coverage.py` (loaded via
-`importlib.util.spec_from_file_location`).
+**Calls out:** `src.proxy.inject_helpers`, `src.proxy.logging`, `src.proxy.strip_inject_delta`,
+`dev/proxy_dual_log/attribution_coverage.py` (loaded via `importlib.util`).
 
 ---
 
-### p3_cache_breakpoints_probe.py (331 LOC)
+### p3_cache_breakpoints_probe.py (280 LOC)
 
-**Purpose:** Replays every recorded request from two 223-era sessions through a real `ProxyAddon()`
-instance in order (fresh addon per session) and checks breakpoint positional stability (BP1
-`system[2]`, BP2 last non-defer tool) and message-content diffs at shared indices.
-**Reads:** recorded dual-log `_original.jsonl` pairs under src/logs/dual_log (gitignored runtime data,
-session stems `api_requests_opus_posts_1786051932` and `api_requests_opus_websearch_1786052022`).
-**Writes:** `md/p3_cache_breakpoints_probe_report.md`.
+**Purpose:** Replays two 223-era recorded sessions through a real `ProxyAddon()` and checks cache
+breakpoint positional stability plus shared-index content diffs.
+**Reads:** two pinned `_original.jsonl` session stems under `src/logs/dual_log` — currently
+absent (rotated out of the live corpus); the script raises before writing its report.
+**Writes:** `md/p3_cache_breakpoints_probe_report.md` — not regenerated while the source sessions
+are absent; the tracked file is a historical snapshot.
 **Called by:** none — manual, historical 223 pin-bump live-verify.
 **Calls out:** `src.proxy.addon` (`ProxyAddon`, `_derive_worker_context`).
 
 ---
 
-### p4_dual_log_integrity_probe.py (275 LOC)
+### p4_dual_log_integrity_probe.py (240 LOC)
 
-**Purpose:** Verifies the composition invariant (C0/Cfwd reconstruction from recorded ops matches
-`compose_block`) and top-level payload/schema stability, on the same two 223-era sessions as `p3_`.
-**Reads:** the same two `_original.jsonl` files as `p3_cache_breakpoints_probe.py`.
-**Writes:** `md/p4_dual_log_integrity_probe_report.md`.
+**Purpose:** Verifies the composition invariant against `compose_block` and top-level payload/
+schema stability, on the same two 223-era sessions as `p3_`.
+**Reads:** the same two pinned session stems as `p3_cache_breakpoints_probe.py` — currently
+absent; the script raises before writing its report.
+**Writes:** `md/p4_dual_log_integrity_probe_report.md` — a historical snapshot, not regenerated.
 **Called by:** none — manual, historical 223 pin-bump live-verify.
-**Calls out:** `src.proxy.rules` (`apply_modification_rules`), `src.proxy.diff_engine`
-(`compose_block`, `_get_inner_text`).
+**Calls out:** `src.proxy.rules` (`apply_modification_rules`), `src.proxy.diff_engine`.
 
 ---
 
-### p5_strip_wordings_probe.py (241 LOC)
+### p5_strip_wordings_probe.py (202 LOC)
 
-**Purpose:** Checks bg-launch-ack / bg-completed / task-notification strip coverage on 223-era
-wordings — a fn_map census over the recorded `_stripped`/`_injected` dual-logs, plus a replay sweep
-through the current `apply_modification_rules` for any surviving marker string.
-**Reads:** the same two sessions' `_original.jsonl` + `_stripped.jsonl` + `_injected.jsonl` files.
-**Writes:** `md/p5_strip_wordings_probe_report.md`.
+**Purpose:** Checks bg-launch-ack/bg-completed/task-notification strip coverage on 223-era
+wordings via a dual-log fn_map census plus a current-code replay sweep.
+**Reads:** the same two pinned session stems' `_original`/`_stripped`/`_injected.jsonl` files —
+currently absent; the script raises before writing its report.
+**Writes:** `md/p5_strip_wordings_probe_report.md` — a historical snapshot, not regenerated.
 **Called by:** none — manual, historical 223 pin-bump live-verify.
-**Calls out:** `src.proxy.rules` (`apply_modification_rules`), `src.proxy.payload_helpers`
-(`_top_level_content_contains`).
+**Calls out:** `src.proxy.rules` (`apply_modification_rules`), `src.proxy.payload_helpers`.
 
 ---
 
-## Gotchas
-- The two 223-era recorded sessions under src/logs/dual_log are live/growing corpus files — a re-run
-  shifts denominators (composition-block and marker-occurrence counts change run to run) but does not
-  change the CLEAN/FINDING classification itself.
-- `p3_`'s cache-content comparison needs TWO shape normalizations before comparing message content
-  across requests: `cache.py`'s own `_normalize_user_content_shape` (role='user' only), plus a second
-  normalization for `_add_cache_control_to_message`'s string-to-single-block wrapping (applies to ANY
-  role). Skipping the second normalization produces large false-positive "content changed" counts.
-- The ready-to-paste `model_params` JSON values for `~/.claude/shared-rules/proxy_rules.json` are not
-  in this directory — see `process-docs/native-model-start/` (user config outside the repo, never
-  edited by any script here).
+## State
+No persistent state lives in this directory. `model_params_test_infra.py` owns the one piece of
+shared in-process state, `_RESULTS`, mutated by every test-group module's `check()` call and read
+by `p2_model_params_probe.py` to print/write the pass count — discarded at process exit.
