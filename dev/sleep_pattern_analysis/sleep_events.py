@@ -37,7 +37,6 @@ def _parse_jsonl(path: Path, since_dt: datetime) -> list:
         print(f"Warning: {path}: {e}", file=sys.stderr)
         return events
 
-    # Pass 1: build tool_use_id → command map + uuid → entry map
     tu_map: dict = {}
     uuid_map: dict = {}
     for line in lines:
@@ -57,7 +56,6 @@ def _parse_jsonl(path: Path, since_dt: datetime) -> list:
                     inp = mc.get("input", {})
                     tu_map[tid] = inp.get("command") or ""
 
-    # Pass 2: find block events for target hook
     for line in lines:
         if "BLOCKED" not in line or TARGET_HOOK not in line:
             continue
@@ -94,7 +92,6 @@ def _extract_event(obj: dict, since_dt: datetime, uuid_map: dict, tu_map: dict, 
         if not m or TARGET_HOOK not in m.group(1):
             continue
 
-        # Resolve trigger command: exact tool_use_id first, then parent fallback
         tid = c.get("tool_use_id", "")
         cmd = tu_map.get(tid, "")
         if not cmd:

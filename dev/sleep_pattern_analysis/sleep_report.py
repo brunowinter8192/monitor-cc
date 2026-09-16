@@ -2,7 +2,6 @@
 from collections import defaultdict
 from datetime import datetime
 
-# From classify.py: token classification + add_classification()
 from classify import add_classification
 
 
@@ -18,7 +17,6 @@ def _build_report(records: list, events: list, since_dt: datetime) -> str:
     _build_loop_canonical_section(lines, shell_recs)
     _build_duration_section(lines, shell_recs)
 
-    # Classification
     lines += ["## Classification", ""]
     add_classification(lines, before_counts)
 
@@ -53,7 +51,6 @@ def _report_header(records: list, events: list, since_dt: datetime) -> tuple:
 
 
 def _build_cmd_before_section(lines: list, shell_recs: list) -> dict:
-    # cmd_before histogram — shell sleeps only
     before_counts: dict = defaultdict(list)
     for r in shell_recs:
         before_counts[r["cmd_before"]].append(r)
@@ -64,7 +61,6 @@ def _build_cmd_before_section(lines: list, shell_recs: list) -> dict:
               "|---|---|---|---|---|"]
     for rank, (tok, recs) in enumerate(top_before, 1):
         pct = 100 * len(recs) / len(shell_recs)
-        # pick up to 3 unique snippets
         seen: set = set()
         examples = []
         for r in recs:
@@ -81,7 +77,6 @@ def _build_cmd_before_section(lines: list, shell_recs: list) -> dict:
 
 
 def _build_cmd_after_section(lines: list, shell_recs: list) -> None:
-    # cmd_after histogram
     after_counts: dict = defaultdict(int)
     for r in shell_recs:
         after_counts[r["cmd_after"]] += 1
@@ -95,7 +90,6 @@ def _build_cmd_after_section(lines: list, shell_recs: list) -> None:
 
 
 def _build_loop_canonical_section(lines: list, shell_recs: list) -> None:
-    # In-loop vs naked
     in_loop_n   = sum(1 for r in shell_recs if r["in_loop"])
     canonical_n = sum(1 for r in shell_recs if r["is_canonical"])
     n = len(shell_recs)
@@ -110,7 +104,6 @@ def _build_loop_canonical_section(lines: list, shell_recs: list) -> None:
 
 
 def _build_duration_section(lines: list, shell_recs: list) -> None:
-    # Duration distribution
     n = len(shell_recs)
     buckets = {"1s": 0, "2–5s": 0, "6–15s": 0, "16–60s": 0, "60s+": 0}
     bucket_ex: dict = defaultdict(list)
