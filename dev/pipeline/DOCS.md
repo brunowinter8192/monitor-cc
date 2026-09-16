@@ -50,7 +50,7 @@ current on-disk report location).
 
 ---
 
-### format_stability/01_unknown_types.py (198 LOC)
+### format_stability/01_unknown_types.py (240 LOC)
 
 **Purpose:** Scans all session JSONL files for top-level and content-block `type` values not in the
 script's own known-type sets, to catch new message shapes early.

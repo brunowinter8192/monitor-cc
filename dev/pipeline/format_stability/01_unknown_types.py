@@ -132,6 +132,22 @@ def write_report(data):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     report_path = REPORTS_DIR / f'unknown_types_{timestamp}.md'
 
+    top_coverage, content_coverage = compute_coverage(data)
+
+    out = []
+    out += report_header_lines(data)
+    out += top_level_types_table(data)
+    out += content_block_types_table(data)
+    out += unknown_types_table(data)
+    out += versions_table(data)
+    out += summary_lines(data, top_coverage, content_coverage)
+
+    report_path.write_text('\n'.join(out) + '\n')
+    return report_path
+
+
+# Compute known-type coverage percentages for top-level types and content block types
+def compute_coverage(data):
     total_top = sum(data['top_level_types'].values())
     known_top_count = sum(v for k, v in data['top_level_types'].items() if k in KNOWN_TOP_LEVEL_TYPES)
     top_coverage = known_top_count / total_top * 100 if total_top > 0 else 0
@@ -139,7 +155,10 @@ def write_report(data):
     total_content = sum(data['content_block_types'].values())
     known_content_count = sum(v for k, v in data['content_block_types'].items() if k in KNOWN_CONTENT_BLOCK_TYPES)
     content_coverage = known_content_count / total_content * 100 if total_content > 0 else 0
+    return top_coverage, content_coverage
 
+
+def report_header_lines(data):
     out = []
     out.append('# Format Stability Scan')
     out.append(f'Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
@@ -147,6 +166,11 @@ def write_report(data):
     out.append(f'Total lines parsed: {data["total_lines"]}')
     out.append(f'Parse errors: {data["parse_errors"]}')
     out.append('')
+    return out
+
+
+def top_level_types_table(data):
+    out = []
     out.append('## Top-Level Message Types')
     out.append('| Type | Count | Handled by Parser? |')
     out.append('|---|---|---|')
@@ -154,6 +178,11 @@ def write_report(data):
         handled = 'Yes' if msg_type in KNOWN_TOP_LEVEL_TYPES else 'NO'
         out.append(f'| {msg_type} | {count} | {handled} |')
     out.append('')
+    return out
+
+
+def content_block_types_table(data):
+    out = []
     out.append('## Content Block Types')
     out.append('| Type | Count | Handled? |')
     out.append('|---|---|---|')
@@ -161,6 +190,11 @@ def write_report(data):
         handled = 'Yes' if block_type in KNOWN_CONTENT_BLOCK_TYPES else 'NO'
         out.append(f'| {block_type} | {count} | {handled} |')
     out.append('')
+    return out
+
+
+def unknown_types_table(data):
+    out = []
     out.append('## Unknown Types (Detail)')
     out.append('| Type | File | Example (first 200 chars) |')
     out.append('|---|---|---|')
@@ -171,6 +205,11 @@ def write_report(data):
         example = info['example'].replace('|', '\\|')
         out.append(f'| {block_type} (content) | {info["file"]} | {example} |')
     out.append('')
+    return out
+
+
+def versions_table(data):
+    out = []
     out.append('## Claude Code Versions Found')
     out.append('| Version | Count | Files |')
     out.append('|---|---|---|')
@@ -180,6 +219,11 @@ def write_report(data):
     else:
         out.append('| (none found) | | |')
     out.append('')
+    return out
+
+
+def summary_lines(data, top_coverage, content_coverage):
+    out = []
     out.append('## Summary')
     out.append(f'- Known top-level type coverage: {top_coverage:.1f}%')
     out.append(f'- Known content block coverage: {content_coverage:.1f}%')
@@ -189,9 +233,7 @@ def write_report(data):
         out.append('- Recommendation: review unknown types above and add handling to parser if needed')
     else:
         out.append('- Recommendation: parser handles all observed types')
-
-    report_path.write_text('\n'.join(out) + '\n')
-    return report_path
+    return out
 
 
 if __name__ == '__main__':
