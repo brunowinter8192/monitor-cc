@@ -14,9 +14,6 @@ REPORT_PATH = REPO_ROOT / "dev" / "model_selector" / "md" / "verify_hook_writer_
 
 # ORCHESTRATOR
 
-# Feed synthetic UserPromptSubmit + Stop payloads through hook_writer_workflow against a
-# tempdir-isolated _APP_SUPPORT; assert hooks.json state transitions and absence of any
-# queue-file side effect (msg_queue.json / queue.lock never created).
 def verify_hook_writer_split_workflow() -> None:
     lines = [f"# hook_writer.py split verification — {datetime.now().isoformat(timespec='seconds')}", ""]
     with tempfile.TemporaryDirectory() as tmp:
@@ -50,7 +47,6 @@ def verify_hook_writer_split_workflow() -> None:
 
 # FUNCTIONS
 
-# Import hook_writer.py fresh with _APP_SUPPORT + derived file paths redirected to tmp_dir
 def _load_hook_writer_with_tmp_app_support(tmp_dir: Path):
     spec_path = REPO_ROOT / "src" / "menubar" / "hook_writer.py"
     import importlib.util
@@ -62,7 +58,6 @@ def _load_hook_writer_with_tmp_app_support(tmp_dir: Path):
     module._HOOK_LOCK_FILE  = tmp_dir / "hooks.lock"
     return module
 
-# Run one payload through hook_writer_workflow with stdin swapped for the JSON payload
 def _run_payload(hook_writer, payload: dict) -> None:
     real_stdin = sys.stdin
     sys.stdin = io.StringIO(json.dumps(payload))
