@@ -1,36 +1,3 @@
-"""
-Corpus probe backing the design decision behind `duallog msgs`' sys/tool delta-tail feature
-(src/dual_log_cli/overlay.py's `build_sys_tool_overlay`, src/dual_log_cli/render.py's
-`_req_delta_lines`): is the LAST `_original` request's own `system`/`tools` lists a reliable source
-for the ORIGINAL (pre-strip) size of any earlier request's sys/tool line, and is there a write-side
-lag for system/tools the way there is for a trailing-msg total_tokens strip?
-
-Measures, over every session on disk under the resolved dual_log directory:
-  1. Whole-stripped tool coverage: every tool name the `_stripped` stream ever records with
-     {"whole": True} must appear in the LAST `_original` request's own `tools` list, or its original
-     size is unresolvable.
-  2. Tool content stability: any earlier request's own tool-by-name content hash vs. the last
-     request's, for every session with >=2 requests.
-  3. System block stability, scoped to the indices that ever get a recorded strip (1, 2, 3 in every
-     session observed) — the conversation family's FIRST real request vs. its LAST.
-  4. Recording pattern: how many distinct stripped-stream lines ever carry a whole-tool strip or a
-     system_delta entry for the rendered family, and whether the first such line is `is_first`.
-
-Self-contained by convention (dev/ scripts do not import from src/): `_infer_family`, `_delta_hash`
-and "last non-haiku line" below are deliberately simplified re-implementations for THIS probe's own
-internal consistency, not the production helpers (`src/dual_log_cli/reader.infer_family`,
-`src/proxy/logging._delta_hash`) — a stable-enough comparison within one probe run needs no more.
-
-This is a measurement report, not a pass/fail test — see dev/dual_log_cli/tests/ for the regression
-suite. Requires the real dual_log directory (MONITOR_CC_ROOT or the repo's own src/logs/dual_log/);
-writes "no sessions found" and exits 0 if none exists, rather than failing.
-
-Run (from project root):
-    ./venv/bin/python dev/dual_log_cli/probe_sys_tool_original_chars.py
-
-Writes its report to dev/dual_log_cli/md/probe_sys_tool_original_chars_<date>.md
-"""
-
 # INFRASTRUCTURE
 
 import glob
@@ -49,10 +16,6 @@ _HAIKU_RE = re.compile(r"haiku", re.IGNORECASE)
 
 # FUNCTIONS
 
-
-# Resolve the dual_log directory the same way duallog_cli.discovery.resolve_dual_log_dir does,
-# simplified: MONITOR_CC_ROOT, else this tree's own src/logs/dual_log, else — when run from inside
-# a worktree, where the gitignored log directory never exists — the main checkout's copy.
 def _resolve_dual_log_dir() -> Path:
     env_root = os.environ.get("MONITOR_CC_ROOT")
     if env_root:
@@ -60,8 +23,6 @@ def _resolve_dual_log_dir() -> Path:
     direct = _REPO_ROOT / "src" / "logs" / "dual_log"
     if direct.exists():
         return direct
-    # _HERE is already the dev/dual_log_cli DIRECTORY, one level shallower than a __file__ path —
-    # index 4 (not 5) lands on <main> for a worktree at <main>/.claude/worktrees/<name>/...
     parents = _HERE.parents
     if len(parents) > 4:
         from_worktree = parents[4] / "src" / "logs" / "dual_log"
@@ -69,9 +30,6 @@ def _resolve_dual_log_dir() -> Path:
             return from_worktree
     return direct
 
-
-# Family bucket for a model string — haiku vs. sonnet vs. everything else ("opus"), matching the
-# production three-way split closely enough for this probe's own internal comparisons.
 def _infer_family(model: str) -> str:
     if _HAIKU_RE.search(model or ""):
         return "haiku"
@@ -79,22 +37,14 @@ def _infer_family(model: str) -> str:
         return "sonnet"
     return "opus"
 
-
-# Stable content hash for a system block or tool dict — cache_control stripped, since it is a
-# proxy bookkeeping key never present at the source and would otherwise mask identical content.
 def _delta_hash(element) -> str:
     if isinstance(element, dict):
         element = {k: v for k, v in element.items() if k != "cache_control"}
     return hashlib.md5(json.dumps(element, sort_keys=True).encode("utf-8")).hexdigest()[:10]
 
-
-# JSON-serialised size of a tool dict, matching what the wire actually carries
 def _tool_chars(tool) -> int:
     return len(json.dumps(tool))
 
-
-# The last non-haiku line of an _original stream, parsed; None if every line is haiku or the file
-# is empty. Good enough for a probe — no sidecar/model-sniff fast path, just a straight parse.
 def _last_non_haiku_entry(original_path: Path):
     last = None
     for line in open(original_path, encoding="utf-8"):
@@ -110,9 +60,6 @@ def _last_non_haiku_entry(original_path: Path):
         last = entry
     return last
 
-
-# Every tool name the _stripped stream ever records with {"whole": True} for this stem, across all
-# families/requests in the file.
 def _whole_stripped_names(stripped_path: Path) -> set:
     names = set()
     for line in open(stripped_path, encoding="utf-8"):
@@ -128,8 +75,6 @@ def _whole_stripped_names(stripped_path: Path) -> set:
                 names.add(name)
     return names
 
-
-# Measurement 1: whole-stripped tool names vs. the last _original request's own tools list
 def _measure_whole_tool_coverage(stems: list) -> list:
     lines = ["## 1. Whole-stripped tool coverage", ""]
     total_sessions, total_names, total_found = 0, 0, 0
@@ -158,9 +103,6 @@ def _measure_whole_tool_coverage(stems: list) -> list:
     lines.append("")
     return lines
 
-
-# Measurement 2: tool content stability across a whole session (any earlier request's tool-by-name
-# hash vs. the last request's)
 def _measure_tool_content_stability(stems: list) -> list:
     lines = ["## 2. Tool content stability across a session", ""]
     checked, mismatches = 0, 0
@@ -190,9 +132,6 @@ def _measure_tool_content_stability(stems: list) -> list:
     lines.append("")
     return lines
 
-
-# Measurement 3: system block stability, scoped to indices 1-3 (where a strip is ever recorded),
-# family-first vs. family-last request
 def _measure_system_stability(stems: list) -> list:
     lines = ["## 3. System block stability (indices 1-3, family-first vs. family-last)", ""]
     checked, flagged = 0, 0
@@ -226,9 +165,6 @@ def _measure_system_stability(stems: list) -> list:
     lines.append("")
     return lines
 
-
-# Measurement 4: recording pattern — how many distinct stripped-stream lines ever carry a
-# conversation-family whole-tool strip or system_delta entry, and whether the first is is_first
 def _measure_recording_pattern(stems: list) -> list:
     lines = ["## 4. Recording pattern (whole-tool strip / system_delta, rendered family only)", ""]
     multi_line_sessions, non_first_sessions, total = 0, 0, 0
@@ -267,7 +203,6 @@ def _measure_recording_pattern(stems: list) -> list:
     lines.append("")
     return lines
 
-
 def probe_sys_tool_original_chars_workflow() -> None:
     dual_log_dir = _resolve_dual_log_dir()
     stems = sorted(set(p[:-len("_original.jsonl")] for p in glob.glob(str(dual_log_dir / "*_original.jsonl"))))
@@ -290,7 +225,6 @@ def probe_sys_tool_original_chars_workflow() -> None:
     lines += _measure_recording_pattern(stems)
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"report written to {report_path}")
-
 
 if __name__ == "__main__":
     probe_sys_tool_original_chars_workflow()

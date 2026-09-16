@@ -1,25 +1,3 @@
-"""
-Regression suite for `duallog msgs`' NAME-based tool comparison (src/dual_log_cli/timeline.py's
-`_tool_lines`), rendered by src/dual_log_cli/render.py's `_req_delta_lines`.
-
-Covers: a tool that shifts INDEX with byte-identical content prints nothing at all (the exact
-false-positive `skill-help_1788343931` REQ 196 showed under index-based comparison: removing one
-tool renumbers every tool after it, and each renumbered slot used to print `changed`); a tool
-removed from the list (present before, absent now) prints `tool[Name] removed` with no chars
-column; a tool whose OWN content changes at its new position still prints `changed`; a brand new
-tool name prints `new`; and the exact skill-help shape (6 tools -> 5, one removed from the middle)
-end to end via `request_boundaries` reproduces `tool[SendFeedback] removed` and nothing else.
-
-`request_boundaries` is exercised end to end against a real temp `_forwarded.jsonl`-shaped file, so
-this suite depends only on that fixture and the code under test — no dual-log directory or
-MONITOR_CC_ROOT required.
-
-Run (from project root):
-    ./venv/bin/python dev/dual_log_cli/tests/test_tool_name_comparison.py
-
-Exit 0 = all checks pass. Exit 1 = at least one failure (printed by name).
-"""
-
 # INFRASTRUCTURE
 
 import json
@@ -36,7 +14,6 @@ from src.dual_log_cli.timeline_boundaries import request_boundaries
 PASS_LIST = []
 FAIL_LIST = []
 
-
 # FUNCTIONS
 
 def check(name: str, condition: bool, detail: str = "") -> None:
@@ -45,7 +22,6 @@ def check(name: str, condition: bool, detail: str = "") -> None:
     else:
         FAIL_LIST.append(name)
         print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
-
 
 def _delta_entry(flow_id: str, timestamp: str, counts: dict, is_first: bool,
                   tools_delta: dict = None, messages: int = None) -> dict:
@@ -61,10 +37,8 @@ def _delta_entry(flow_id: str, timestamp: str, counts: dict, is_first: bool,
         "messages_delta": {},
     }
 
-
 def _tool(name: str, extra: str = "") -> dict:
     return {"name": name, "description": extra or f"{name} tool", "input_schema": {"type": "object"}}
-
 
 def _boundaries(entries: list) -> list:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
@@ -76,16 +50,11 @@ def _boundaries(entries: list) -> list:
     finally:
         path.unlink()
 
-
-# A tool removed from the middle of the list renumbers everything after it — the proxy's own
-# per-POSITION delta includes every renumbered slot, but NONE of them actually changed content, so
-# none should print a line; only the genuinely absent name gets `removed`, with no chars at all.
 def test_removed_tool_named_not_its_shifted_neighbours() -> None:
     entries = [
         _delta_entry("f0", "2026-09-03T10:00:00Z", {"system": 1, "tools": 4}, True,
                      tools_delta={"0": _tool("Bash"), "1": _tool("Edit"), "2": _tool("Grep"), "3": _tool("Write")},
                      messages=2),
-        # Grep removed: Write shifts from index 3 to index 2, byte-identical content
         _delta_entry("f1", "2026-09-03T10:00:05Z", {"system": 1, "tools": 3}, False,
                      tools_delta={"2": _tool("Write")}, messages=5),
     ]
@@ -99,14 +68,10 @@ def test_removed_tool_named_not_its_shifted_neighbours() -> None:
     check("tool[Grep] removed", removed["label"] == "tool[Grep]" and removed["tag"] == "removed", removed)
     check("a removed line carries no chars", removed["chars"] is None, removed)
 
-
-# A tool whose OWN content changes (not just its position) still prints `changed`, even while other
-# tools are also shifting around it in the same request.
 def test_content_change_at_new_position_still_flagged() -> None:
     entries = [
         _delta_entry("f0", "2026-09-03T10:00:00Z", {"system": 1, "tools": 3}, True,
                      tools_delta={"0": _tool("Bash"), "1": _tool("Grep"), "2": _tool("Write")}, messages=2),
-        # Bash removed; Grep shifts 1->0 unchanged; Write shifts 2->1 WITH a real content edit
         _delta_entry("f1", "2026-09-03T10:00:05Z", {"system": 1, "tools": 2}, False,
                      tools_delta={"0": _tool("Grep"), "1": _tool("Write", "v2")}, messages=5),
     ]
@@ -118,8 +83,6 @@ def test_content_change_at_new_position_still_flagged() -> None:
           labels_tags.get("tool[Write]") == "changed", labels_tags)
     check("tool[Bash] removed", labels_tags.get("tool[Bash]") == "removed", labels_tags)
 
-
-# A brand new tool name (never seen before) is tagged `new`, same as index-based comparison.
 def test_brand_new_tool_name_is_new() -> None:
     entries = [
         _delta_entry("f0", "2026-09-03T10:00:00Z", {"system": 1, "tools": 1}, True,
@@ -131,16 +94,12 @@ def test_brand_new_tool_name_is_new() -> None:
     second = boundaries[1]
     check("tool[Grep] new, one line only", second["tool_lines"] == [{"label": "tool[Grep]", "chars": second["tool_lines"][0]["chars"], "tag": "new"}], second["tool_lines"])
 
-
-# A name removed and later reintroduced (a different request re-adds a tool of the same name) is
-# tagged `new` again — presence is judged against the IMMEDIATELY preceding request's active set,
-# not the tool's own history.
 def test_reintroduced_tool_is_new_again() -> None:
     entries = [
         _delta_entry("f0", "2026-09-03T10:00:00Z", {"system": 1, "tools": 2}, True,
                      tools_delta={"0": _tool("Bash"), "1": _tool("Grep")}, messages=2),
         _delta_entry("f1", "2026-09-03T10:00:05Z", {"system": 1, "tools": 1}, False,
-                     tools_delta={}, messages=5),  # Grep removed (tools 2->1, no delta needed: index 1 just drops out of range)
+                     tools_delta={}, messages=5),
         _delta_entry("f2", "2026-09-03T10:00:10Z", {"system": 1, "tools": 2}, False,
                      tools_delta={"1": _tool("Grep")}, messages=8),
     ]
@@ -150,9 +109,6 @@ def test_reintroduced_tool_is_new_again() -> None:
     check("third request: Grep is new again, not silently dropped as 'still absent'",
           len(third) == 1 and third[0]["label"] == "tool[Grep]" and third[0]["tag"] == "new", third)
 
-
-# End-to-end reproduction of the real corpus case: skill-help_1788343931 REQ 196, 6 tools -> 5,
-# SendFeedback removed from the middle, Skill and Write renumbered into its wake.
 def test_skill_help_shape_end_to_end() -> None:
     entries = [
         _delta_entry("f0", "2026-09-03T10:00:00Z", {"system": 1, "tools": 6}, True,
@@ -169,9 +125,6 @@ def test_skill_help_shape_end_to_end() -> None:
           second["tool_lines"] == [{"label": "tool[SendFeedback]", "chars": None, "tag": "removed"}],
           second["tool_lines"])
 
-
-# render.py's _req_delta_lines: a `chars: None` item ("removed") skips the numeric chars column
-# entirely — never prints a size for content that no longer exists.
 def test_render_removed_line_has_no_chars_column() -> None:
     marker_boundary = {
         "start_index": 0, "message_count": 1, "timestamp": "2026-09-03T10:00:00Z",
@@ -191,7 +144,6 @@ def test_render_removed_line_has_no_chars_column() -> None:
     check("no digit-grouped chars figure or trailing 'c' anywhere on the removed line",
           "," not in lines[1] and not lines[1].rstrip().endswith("c"), lines[1])
 
-
 # ORCHESTRATOR
 
 def test_tool_name_comparison_workflow() -> None:
@@ -208,7 +160,6 @@ def test_tool_name_comparison_workflow() -> None:
         print(f"\nFAILED: {FAIL_LIST}")
         sys.exit(1)
     print("ALL PASS")
-
 
 if __name__ == "__main__":
     test_tool_name_comparison_workflow()

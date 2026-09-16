@@ -1,26 +1,3 @@
-"""
-Regression suite for `duallog msgs`' sys/tool delta lines (src/dual_log_cli/timeline.py's
-`_sys_lines`/`_tool_lines`/`request_boundaries`/`request_markers`, rendered by
-src/dual_log_cli/render.py's `_req_delta_lines`). Name-based tool removal/rename coverage lives in
-test_tool_name_comparison.py — this file's tool fixtures never shift a tool's index.
-
-Covers: the family's first request lists every system block and every tool, no tag; a later
-request lists only what its `system_delta`/`tools_delta` names, tagged `changed` for an index that
-existed before and `new` for one beyond the previous request's count; a request whose only delta
-is the excluded billing header (system index 0) prints no sys/tool lines at all; a re-fire group
-shows the OWNER boundary's lines only; and an untouched separator (no `boundaries`, or a marker
-with no delta) stays byte-identical to the pre-feature separator.
-
-`request_boundaries` is exercised end to end against a real temp `_forwarded.jsonl`-shaped file
-(`forwarded_delta` entries), so this suite depends only on that fixture and the code under test —
-no dual-log directory or MONITOR_CC_ROOT required.
-
-Run (from project root):
-    ./venv/bin/python dev/dual_log_cli/tests/test_msgs_sys_delta.py
-
-Exit 0 = all checks pass. Exit 1 = at least one failure (printed by name).
-"""
-
 # INFRASTRUCTURE
 
 import json
@@ -39,7 +16,6 @@ from src.dual_log_cli.timeline_markers import request_markers
 PASS_LIST = []
 FAIL_LIST = []
 
-
 # FUNCTIONS
 
 def check(name: str, condition: bool, detail: str = "") -> None:
@@ -49,15 +25,9 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         FAIL_LIST.append(name)
         print(f"  FAIL  {name}" + (f": {detail}" if detail else ""))
 
-
-# The LOCAL "HH:MM:SS" a UTC "...Z" timestamp renders as — computed the same way production code
-# does (reader.local_datetime), so an expected string built from this is correct on ANY machine's
-# timezone, not just the one this suite happened to be written on.
 def _local_clock(iso_timestamp: str) -> str:
     return local_datetime(iso_timestamp).strftime("%H:%M:%S")
 
-
-# One forwarded_delta line as addon.py's dual-log writer would shape it
 def _delta_entry(flow_id: str, timestamp: str, counts: dict, is_first: bool,
                   system_delta: dict = None, tools_delta: dict = None, messages: int = None) -> dict:
     return {
@@ -72,16 +42,12 @@ def _delta_entry(flow_id: str, timestamp: str, counts: dict, is_first: bool,
         "messages_delta": {},
     }
 
-
 def _sys_block(text: str) -> dict:
     return {"type": "text", "text": text}
-
 
 def _tool(name: str, extra: str = "") -> dict:
     return {"name": name, "description": extra or f"{name} tool", "input_schema": {"type": "object"}}
 
-
-# Writes entries to a temp _forwarded.jsonl and runs the real request_boundaries over it
 def _boundaries(entries: list) -> list:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
         for entry in entries:
@@ -92,9 +58,6 @@ def _boundaries(entries: list) -> list:
     finally:
         path.unlink()
 
-
-# The family's first request: every system block and every tool listed, no tag at all — including
-# the billing header (system index 0), which is excluded only on LATER requests.
 def test_first_request_lists_everything_no_tag() -> None:
     entries = [_delta_entry(
         "f0", "2026-09-03T10:00:00Z", {"system": 4, "tools": 2}, True,
@@ -114,12 +77,6 @@ def test_first_request_lists_everything_no_tag() -> None:
     check("sys[2] chars is the text length", sys_lines[2]["chars"] == 21829, sys_lines[2])
     check("tool chars is len(json.dumps(tool))", tool_lines[0]["chars"] == len(json.dumps(_tool("Bash"))), tool_lines[0])
 
-
-# A later request: system index 0 is excluded even though it is present in system_delta (it
-# changes on every request by construction and never invalidates the cache); an index seen before
-# whose CONTENT actually differs is tagged "changed", an index never seen before is tagged "new",
-# and an index seen before whose content is IDENTICAL (Edit here — carried in the delta but never
-# actually touched, the write-side artifact this fix targets) is dropped, not tagged, not shown.
 def test_later_request_excludes_billing_header_and_tags_changed_new() -> None:
     entries = [
         _delta_entry("f0", "2026-09-03T10:00:00Z", {"system": 4, "tools": 2}, True,
@@ -143,11 +100,6 @@ def test_later_request_excludes_billing_header_and_tags_changed_new() -> None:
     check("tool[Edit] (index seen before, IDENTICAL content) dropped entirely, not just untagged",
           "tool[Edit]" not in tool_labels, tool_labels)
 
-
-# A request whose delta is ONLY the billing header prints no sys/tool line at all — the common
-# case, since the header changes on every request. tools=1 (not 0) throughout — a zero-tool entry
-# is the UNRELATED sidecar shape `timeline._is_sidecar` excludes entirely (see
-# test_sidecar_exclusion.py), which would swallow both boundaries here and defeat this fixture.
 def test_billing_header_only_delta_yields_no_lines() -> None:
     entries = [
         _delta_entry("f0", "2026-09-03T10:00:00Z", {"system": 2, "tools": 1}, True,
@@ -160,10 +112,6 @@ def test_billing_header_only_delta_yields_no_lines() -> None:
     check("no sys lines when only the billing header changed", second["sys_lines"] == [], second["sys_lines"])
     check("no tool lines when tools_delta is empty", second["tool_lines"] == [], second["tool_lines"])
 
-
-# render_msgs: a marker with no sys/tool lines prints the plain separator untouched (byte-
-# identical to the pre-feature output); a marker WITH lines prints them directly under the
-# separator, before the first msg line, in the block sub-line's indent/column layout.
 def test_render_msgs_prints_delta_lines_under_separator() -> None:
     marker_boundary = {
         "start_index": 0, "message_count": 1, "timestamp": "2026-09-03T10:00:00Z",
@@ -187,23 +135,17 @@ def test_render_msgs_prints_delta_lines_under_separator() -> None:
           len(lines[1]) == len(lines[4]) and len(lines[2]) == len(lines[4]) + 1,
           (lines[1], lines[2], lines[4]))
 
-    # A marker with no delta lines at all reproduces the exact pre-feature separator+msg pair.
     plain_boundary = dict(marker_boundary, sys_lines=[], tool_lines=[])
     data_plain = {"boundaries": [plain_boundary], "turns": data["turns"]}
     got_plain = render_msgs(data_plain, 0, 0)
     check("no delta -> plain separator immediately followed by the msg line",
           got_plain == f"── REQ 1  {_local_clock('2026-09-03T10:00:00Z')} ──\n[  0] user  text                    4c\n", got_plain)
 
-
-# A re-fire group (two boundaries opening the same msg index) shows the OWNER boundary's sys/tool
-# lines only — the same one whose timestamp the separator already carries — never the earlier
-# member's.
 def test_refire_group_shows_owner_lines_only() -> None:
     entries = [
         _delta_entry("f0", "2026-09-03T10:00:00Z", {"system": 3, "tools": 1}, True,
                      system_delta={"0": _sys_block("a"), "1": _sys_block("b"), "2": _sys_block("c")},
                      tools_delta={"0": _tool("Bash")}, messages=2),
-        # re-fire: same start_index (0 messages added), OWNS index 0 because it is last in the group
         _delta_entry("f1", "2026-09-03T10:00:02Z", {"system": 3, "tools": 1}, False,
                      system_delta={"1": _sys_block("b2")}, messages=0),
     ]
@@ -214,7 +156,6 @@ def test_refire_group_shows_owner_lines_only() -> None:
     check("owner marker is the re-fire (later position), 1 re-fire counted", owner_marker["refires"] == 1, owner_marker)
     check("owner marker's sys_lines are the re-fire's own, not the first request's 3 blocks",
           [l["label"] for l in owner_marker["sys_lines"]] == ["sys[1]"], owner_marker["sys_lines"])
-
 
 # ORCHESTRATOR
 
@@ -231,7 +172,6 @@ def test_msgs_sys_delta_workflow() -> None:
         print(f"\nFAILED: {FAIL_LIST}")
         sys.exit(1)
     print("ALL PASS")
-
 
 if __name__ == "__main__":
     test_msgs_sys_delta_workflow()
