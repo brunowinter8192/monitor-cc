@@ -153,15 +153,65 @@ path OR the stem; `render_sessions`/`render_expand_full` print the new PROJECT c
 
 ---
 
-### tests/test_reqs.py (552 LOC)
+### tests/test_reqs.py (212 LOC)
 
-**Purpose:** Proves `reqs`' fixed `REQ n   HH:MM:SS  CR c  CC c` line form and every filter/selector
-built on it: CR padded to the widest value per session, re-fires collapsed, multi-session
-blank-line separation, `--gap` pairing (inclusive threshold, "prints once" for a shared REQ),
-`--merged` cross-session chronological interleave (a within-session gap bridged by another session
-does not qualify), `--rebuild`/`--drop` predicates (strict-inequality boundaries, REQ 1 never
-qualifying for `--drop`, the same-session predecessor rule under `--merged`), `--turn` narrowing
-ahead of the other filters, and `filter_by_family`.
+**Purpose:** Proves `reqs`' fixed `REQ n   HH:MM:SS  CR c  CC c` line form: CR padded to the widest
+value per session, unresolved usage as `CR ?  CC ?`, re-fires collapsed, multi-session blank-line
+separation, a zero-request session's bare header, the trailing skipped-sessions note, and empty
+results. Split 2026-09-16 from a single 552-LOC file that covered every `reqs` filter/selector;
+the other filter/selector areas now live in the sibling `test_reqs_*.py` files below, each
+independently runnable, matching this directory's per-feature-area convention.
+**Reads:** a temp `_forwarded.jsonl`-shaped file per case.
+**Writes:** stdout (pass/fail per check); exits 1 on any failure.
+**Called by:** none — run manually.
+**Calls out:** `src.dual_log_cli.reader`, `.render_reqs`, `.timeline_boundaries`.
+
+---
+
+### tests/test_reqs_gap.py (153 LOC)
+
+**Purpose:** Proves `reqs --gap MINUTES`: the pairing rule, the inclusive (`>=`) threshold floored
+to whole minutes, and the "prints once" rule for a REQ bracketing two adjacent qualifying gaps —
+split out of `test_reqs.py` 2026-09-16.
+**Reads:** a temp `_forwarded.jsonl`-shaped file per case.
+**Writes:** stdout (pass/fail per check); exits 1 on any failure.
+**Called by:** none — run manually.
+**Calls out:** `src.dual_log_cli.reader`, `.render_reqs`, `.timeline_boundaries`.
+
+---
+
+### tests/test_reqs_merged.py (143 LOC)
+
+**Purpose:** Proves `reqs --merged`: two sessions' REQs interleave in strict chronological order
+under one `merged <N> sessions` header, each line tagged with its own session, and a within-session
+gap bridged by another session's request does not qualify for `--gap` — split out of `test_reqs.py`
+2026-09-16.
+**Reads:** a temp `_forwarded.jsonl`-shaped file per case.
+**Writes:** stdout (pass/fail per check); exits 1 on any failure.
+**Called by:** none — run manually.
+**Calls out:** `src.dual_log_cli.reader`, `.render_reqs`, `.timeline_boundaries`.
+
+---
+
+### tests/test_reqs_rebuild_drop.py (211 LOC)
+
+**Purpose:** Proves `reqs --rebuild`/`--drop`: the CC>CR and CR(n)<CR(n-1)+CC(n-1) predicates, the
+strict-inequality boundary, REQ 1 never qualifying for `--drop`, the same-session predecessor rule
+holding under `--merged`, AND combination, unresolved usage failing either flag outright, and the
+plain-listing baseline with neither flag set — split out of `test_reqs.py` 2026-09-16.
+**Reads:** a temp `_forwarded.jsonl`-shaped file per case.
+**Writes:** stdout (pass/fail per check); exits 1 on any failure.
+**Called by:** none — run manually.
+**Calls out:** `src.dual_log_cli.reader`, `.render_reqs`, `.timeline_boundaries`.
+
+---
+
+### tests/test_reqs_turn_and_family.py (153 LOC)
+
+**Purpose:** Proves `reqs --turn` narrows the candidate REQ sequence ahead of `--gap`/`--rebuild`/
+`--drop` (a qualifying gap straddling the turn boundary must not leak a REQ from the other turn),
+`--turn N` missing from a session prints header-only, and `filter_by_family` (`--main`/`--worker`)
+— split out of `test_reqs.py` 2026-09-16.
 **Reads:** a temp `_forwarded.jsonl`-shaped file per case.
 **Writes:** stdout (pass/fail per check); exits 1 on any failure.
 **Called by:** none — run manually.
@@ -228,6 +278,12 @@ separator-survival rule under an active `--gap`/`--rebuild`/`--drop` filter.
 ---
 
 ## Gotchas
+
+**`check()`/`_local_clock`/`_delta_entry`/`_boundaries`/`_session` are duplicated verbatim across
+every `test_reqs_*.py` file** (and across most other files in this directory) — this is the
+established convention here, not an oversight: each test file is independently runnable with zero
+cross-file imports, so a shared fixture helper is copied into every file that needs it rather than
+factored into a shared module.
 
 **A real minus sign (U+2212), not an ASCII hyphen, appears in every delta-tail string** —
 `test_msgs_overlay.py` asserts on it literally; grepping for a hyphen instead silently finds
