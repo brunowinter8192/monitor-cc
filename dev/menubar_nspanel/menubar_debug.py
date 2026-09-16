@@ -14,7 +14,6 @@ _PYTHON      = _PROJECT_ROOT / 'venv' / 'bin' / 'python3'
 
 # ORCHESTRATOR
 
-# Bootout launchd service, run menubar in foreground with diagnostics enabled; re-bootstrap on exit
 def menubar_debug_workflow(rebootstrap: bool) -> None:
     _bootout()
     print(f'Starting {_LABEL} in foreground (MENUBAR_DIAGNOSTICS=1) ...')
@@ -30,7 +29,6 @@ def menubar_debug_workflow(rebootstrap: bool) -> None:
 
 # FUNCTIONS
 
-# launchctl bootout — print result, ignore failure
 def _bootout() -> None:
     r = subprocess.run(['launchctl', 'bootout', _GUI_TARGET],
                        capture_output=True, timeout=10)
@@ -39,7 +37,6 @@ def _bootout() -> None:
     else:
         print(f'bootout {_LABEL}: not loaded (ok)')
 
-# launchctl bootstrap from installed plist
 def _bootstrap() -> None:
     if not _PLIST.exists():
         print(f'WARNING: {_PLIST} not found — run: ./venv/bin/python setup_py2app.py py2app')
