@@ -78,8 +78,6 @@ def _restore_module_io(module, saved, saved_wait_for_input, use_time_sleep, save
         _time_mod.sleep = saved_sleep
 
 
-# Runs module.<run_fn_name>() with read_keypress/tick monkeypatched (see module docstring);
-# returns a dict of everything needed to assert catch+log+continue+cleanup for one pane
 def _run_loop_and_capture(pane_id: str, module, run_fn_name: str, use_time_sleep: bool = False) -> dict:
     read_calls, tick_calls, cleanup_calls, fakes = _make_loop_fakes(pane_id)
     saved, saved_wait_for_input, saved_sleep = _patch_module_for_loop(module, use_time_sleep, fakes)
@@ -91,7 +89,7 @@ def _run_loop_and_capture(pane_id: str, module, run_fn_name: str, use_time_sleep
             getattr(module, run_fn_name)()
     except _ProbeStop:
         stop_caught = True
-    except BaseException as e:  # noqa: BLE001 — captured for assertion, not swallowed
+    except BaseException as e:
         other_exc = e
     finally:
         _restore_module_io(module, saved, saved_wait_for_input, use_time_sleep, saved_sleep)
@@ -108,7 +106,6 @@ def _run_loop_and_capture(pane_id: str, module, run_fn_name: str, use_time_sleep
     }
 
 
-# Runs the catch+log+continue+cleanup assertions shared by all 7 panes
 def _assert_survives(pane_id: str, module, run_fn_name: str, use_time_sleep: bool = False) -> None:
     if os.path.exists(_PROBE_LOG_PATH):
         os.remove(_PROBE_LOG_PATH)
@@ -125,10 +122,6 @@ def _assert_survives(pane_id: str, module, run_fn_name: str, use_time_sleep: boo
           r['cleanup_calls']['disable_mouse'] >= 1 and r['cleanup_calls']['restore_terminal'] >= 1)
 
 
-# Runs a keyboard/mouse-less, finally-less loop (currently: news_pane/log_pane.py) with the
-# marker exception injected via `inject_attr` instead of read_keypress, and time.sleep as the
-# tick counter; returns the same shape of dict as _run_loop_and_capture minus cleanup_calls
-# (there is no finally: block here to prove ran)
 def _run_poll_only_loop_and_capture(pane_id: str, module, run_fn_name: str, inject_attr: str) -> dict:
     inject_calls = {'n': 0}
     tick_calls = {'n': 0}
@@ -160,7 +153,7 @@ def _run_poll_only_loop_and_capture(pane_id: str, module, run_fn_name: str, inje
             getattr(module, run_fn_name)()
     except _ProbeStop:
         stop_caught = True
-    except BaseException as e:  # noqa: BLE001 — captured for assertion, not swallowed
+    except BaseException as e:
         other_exc = e
     finally:
         setattr(module, inject_attr, orig_inject)

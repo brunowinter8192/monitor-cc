@@ -63,10 +63,6 @@ def test_news_log_pane():
           "Traceback (most recent call last):" in r['log_text'])
 
 
-# Test: the guard must not swallow deliberate termination — real KeyboardInterrupt and SystemExit
-# both propagate out of the loop, and `finally:` cleanup still runs (checked on one representative
-# pane; the _ProbeStop-based BaseException path above already proves the same MRO relationship
-# for all 7, since KeyboardInterrupt/SystemExit/_ProbeStop are all BaseException, not Exception)
 def test_keyboard_interrupt_and_system_exit_not_swallowed():
     print("\n[Test] KeyboardInterrupt / SystemExit propagate, finally: cleanup still runs (proxy pane)")
     for exc_cls in (KeyboardInterrupt, SystemExit):
