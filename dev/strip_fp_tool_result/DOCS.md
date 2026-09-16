@@ -14,21 +14,51 @@ classified by template — writes a findings report to `md/`.
 
 ## Modules
 
-### audit_tool_result_sr_strips.py (659 LOC)
+### audit_tool_result_sr_strips.py (54 LOC)
 
-**Purpose:** Streams every request payload in the dual-log corpus, threads it through the 11 real
-`_apply_*` pass functions in `apply_modification_rules`'s exact order, and — using each pass's own
-per-block diff — records every removal whose pre-pass block type is `tool_result`. Classifies via the
-real `strip_sr.py` template registry; non-SR passes get their fixed mod name. Quoted-data vs.
-genuine-CC-injection verdicts for ambiguous cases are hand-written into a manual verdicts table after
-review, then folded into later runs.
+**Purpose:** Entry point — wires corpus discovery, scanning, and report rendering into one run.
+**Reads:** nothing directly; delegates to `audit_scan.py`.
+**Writes:** nothing directly; delegates to `audit_report.py`.
+**Called by:** none — manual CLI (`python3 dev/strip_fp_tool_result/audit_tool_result_sr_strips.py`).
+**Calls out:** none directly — imports `audit_scan.py` and `audit_report.py`.
+
+---
+
+### audit_scan.py (301 LOC)
+
+**Purpose:** Loads the real `_apply_*` pass functions and `strip_sr.py`/`strip_git_lock.py` registries,
+threads every dual-log request through them in production order, and records every removal whose
+pre-pass block type is `tool_result`. Also runs the git-lock ground-truth reproduction check.
 **Reads:** all `*_original.jsonl` files under src/logs/dual_log in the main checkout (gitignored
 runtime data, not per-worktree).
+**Writes:** nothing — returns occurrence/assertion data structures to the caller.
+**Called by:** `audit_tool_result_sr_strips.py`, `audit_report.py` (imports `LOGS_DIR`).
+**Calls out:** `src.proxy.message_passes`, `src.proxy.message_passes_simple`, `src.proxy.strip_sr`,
+`src.proxy.content_strip`, `src.proxy.rule_ops`, `src.proxy.strip_git_lock` — all via `importlib`, per
+the `block_dev_imports_src` hook.
+
+---
+
+### audit_report.py (387 LOC)
+
+**Purpose:** Renders the occurrence/assertion/ground-truth data collected by `audit_scan.py` into the
+markdown findings report, split per report section, and writes it to disk.
+**Reads:** the data structures returned by `audit_scan.py`'s scan functions; `_MANUAL_VERDICTS` from
+`audit_verdicts.py`.
 **Writes:** `dev/strip_fp_tool_result/md/audit_tool_result_sr_strips.md`.
-**Called by:** none — manual CLI.
-**Calls out:** `src.proxy.message_passes`, `src.proxy.strip_sr`, `src.proxy.content_strip`,
-`src.proxy.rule_ops`, `src.proxy.strip_git_lock` — all via `importlib`, per the
-`block_dev_imports_src` hook.
+**Called by:** `audit_tool_result_sr_strips.py`.
+**Calls out:** none beyond `audit_scan.py` (for `LOGS_DIR`) and `audit_verdicts.py`.
+
+---
+
+### audit_verdicts.py (53 LOC)
+
+**Purpose:** Hand-written quoted-data / genuine-CC-injection / ambiguous verdict table, keyed by
+`(file, msg_idx, blk_idx, first_line_idx)`, filled in after reviewing a first run's raw output.
+**Reads:** nothing.
+**Writes:** nothing — pure constant data.
+**Called by:** `audit_report.py`.
+**Calls out:** none.
 
 ---
 
