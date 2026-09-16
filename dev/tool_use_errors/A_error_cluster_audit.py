@@ -8,10 +8,9 @@ from error_cluster_report import format_report, write_report
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 REPORT_DATE  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-MAIN_PROJECT = None  # resolved below
+MAIN_PROJECT = None
 
 
-# Resolve MAIN_PROJECT at import time via .git file traversal (worktree-aware)
 def _resolve_main_project() -> str:
     p = SCRIPT_DIR
     while p != os.path.dirname(p):
@@ -36,7 +35,6 @@ TOOL_ERRORS_LOG = os.path.join(LOGS_DIR, "tool_errors.jsonl")
 
 # ORCHESTRATOR
 
-# Load tool_errors.jsonl → cluster → classify → cross-check via proxy logs → write report
 def audit_workflow() -> None:
     entries        = load_entries(TOOL_ERRORS_LOG)
     buckets        = cluster_entries(entries)

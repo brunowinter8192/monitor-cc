@@ -1,24 +1,3 @@
-"""
-Byte-identity regression harness for the proxy_display render cluster (format.py,
-render_turn.py, render_sections.py, render_messages.py, forwarded_parser.py).
-
-Reconstructs entries from a real forwarded dual-log (newest *_forwarded.jsonl under
-src/logs/dual_log/), attaches the stripped/injected/original overlays exactly like
-pane.py does, grows expand_states until every drill-down key (sys/tools/think/etc.)
-that a render pass can discover has been visited, then hashes:
-  - format_proxy_block's full (ansi_string, total_lines) output at several pane widths
-  - render_system_blocks / render_tools / render_messages called directly per entry,
-    per width (these are NOT fully covered by format_proxy_block's own viewport slice
-    when pane_height is small, so this widens coverage beyond what a scrolled pane
-    shows)
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy_display/render_byte_identity.py
-
-Prints a single HASH line. Run before and after a render-cluster refactor; the hash
-must match. Reads only — never writes or commits any log content.
-"""
-
 # INFRASTRUCTURE
 import hashlib
 import os
@@ -28,9 +7,6 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
-# RENDER_BYTE_IDENTITY_LOG_DIR overrides the source directory — used to pin a before/after
-# comparison to the exact same bytes when the default (newest log under the live MAIN checkout)
-# would otherwise keep growing between two runs of this script (e.g. this very session's own log).
 _MAIN_LOG_DIR = Path(os.environ.get(
     'RENDER_BYTE_IDENTITY_LOG_DIR',
     '/Users/brunowinter2000/Documents/ai/monitor-cc/src/logs/dual_log',
@@ -83,10 +59,6 @@ def _attach_overlays(entries: list, fwd_path: Path) -> None:
     _attach_overlay_references(entries, acc_stripped, acc_injected, _infer_model_family, acc_original)
 
 
-# Repeatedly render (item_positions_out captures every key the render pass produced,
-# regardless of viewport) and flip every newly-seen key to expanded, until no new key
-# appears — at that point every reachable drill-down (sys/tools/think/beta/ctx/fields/
-# stripped_tool) has been visited at least once.
 def _grow_expand_states(entries: list) -> dict:
     from src.proxy_display.format import format_proxy_block
     expand_states = {}

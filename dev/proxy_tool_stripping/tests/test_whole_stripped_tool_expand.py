@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""Unit tests for the whole-stripped tool row expand feature (Milestone 2, 2026-09).
-
-Coverage:
-  - render_sections._render_whole_stripped_tool: collapsed-row bytes/key shape, expanded body with
-    a resolved tool_def (description + params), expanded fallback when tool_def is None.
-  - render_sections.render_tools: use_dual whole-stripped loop wires _original_tools_by_name
-    through to the new function; forwarded-tool rows and every other section are untouched.
-  - parser._find_original_log_path / accumulate_original_tools: path derivation, per-family latest-
-    snapshot overwrite behavior, missing-file no-op.
-
-Run: python3 dev/proxy_tool_stripping/tests/test_whole_stripped_tool_expand.py
-"""
 import json
 import os
 import sys
@@ -35,8 +23,6 @@ def check(name, condition, msg=''):
         FAIL.append(name)
         print(f'  FAIL  {name}' + (f': {msg}' if msg else ''))
 
-
-# ── _render_whole_stripped_tool ────────────────────────────────────────────────
 
 def t01_collapsed_row_key_and_symbol():
     lines, keys = _render_whole_stripped_tool(3, 'Agent', {'description': 'x'}, {})
@@ -85,8 +71,6 @@ def t04_expanded_no_tool_def_shows_fallback():
     check('T04_fallback_key_is_none', keys == [key, None], f'keys={keys}')
 
 
-# ── render_tools integration ────────────────────────────────────────────────────
-
 def _mk_dual_entry(tools_names, tools_defs, stripped_tools, original_tools_by_name=None):
     return {
         'tools_count': len(tools_defs),
@@ -121,7 +105,7 @@ def t06_whole_stripped_row_collapsed_falls_back_when_no_original_available():
         tools_names=['Bash'],
         tools_defs=[{'name': 'Bash', 'description': 'Run bash', 'input_schema': {}}],
         stripped_tools={'ListAgents': {'whole': True}},
-        original_tools_by_name={},  # simulates worker-pane path: never attached / not yet resolved
+        original_tools_by_name={},
     )
     expand_states = {('tools', 0): True}
     lines, keys = render_tools(0, entry, None, expand_states, 120)
@@ -132,7 +116,6 @@ def t06_whole_stripped_row_collapsed_falls_back_when_no_original_available():
 
 
 def t07_forwarded_tool_row_unaffected():
-    # Same forwarded-tool rendering path as before this milestone — no whole-stripped tools at all.
     tool_def = {'name': 'Bash', 'description': 'Run bash commands', 'input_schema': {
         'properties': {'command': {'type': 'string', 'description': 'the command'}}, 'required': ['command'],
     }}
@@ -145,8 +128,6 @@ def t07_forwarded_tool_row_unaffected():
     check('T07_bash_param_shown', 'command*: string — the command' in body, body)
     check('T07_no_stripped_tool_keys', not any(isinstance(k, tuple) and k[0] == 'stripped_tool' for k in keys), keys)
 
-
-# ── parser: _find_original_log_path / accumulate_original_tools ────────────────
 
 def t08_find_original_log_path():
     p = _find_original_log_path(Path('/x/y/src/logs/api_requests_abc123.jsonl'))
@@ -165,7 +146,7 @@ def t10_accumulate_original_tools_latest_snapshot_per_family():
     with tempfile.TemporaryDirectory() as td:
         path = Path(td) / 'x_original.jsonl'
         lines = [
-            {'model': 'claude-haiku-4-5', 'payload': {'messages': []}},  # no tools key at all
+            {'model': 'claude-haiku-4-5', 'payload': {'messages': []}},
             {'model': 'claude-fable-5-1', 'payload': {'tools': [
                 {'name': 'Bash', 'description': 'run bash v1'},
                 {'name': 'Agent', 'description': 'agent v1'},
@@ -182,7 +163,6 @@ def t10_accumulate_original_tools_latest_snapshot_per_family():
         check('T10_latest_snapshot_only', acc['opus'] == {'Bash': {'name': 'Bash', 'description': 'run bash v2'}}, acc.get('opus'))
         check('T10_position_advanced', pos == len(path.read_text().encode('utf-8')), pos)
 
-        # Incremental: a new line appended, read from pos, should merge onto the SAME dict object
         opus_dict_ref = acc['opus']
         with open(path, 'a', encoding='utf-8') as f:
             f.write(json.dumps({'model': 'claude-fable-5-1', 'payload': {'tools': [

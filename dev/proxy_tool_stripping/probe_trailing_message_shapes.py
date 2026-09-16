@@ -1,18 +1,3 @@
-"""
-Measures every distinct SHAPE of a stripped message text that ends with the total_tokens tag,
-across the three current `_stripped.jsonl` dual-logs. Pure text-shape measurement — reads raw
-JSONL and applies regex only, no src/ imports needed.
-
-For each line's `messages_delta` ({msg_idx: {blk_idx: [stripped_text, ...]}}), every individual
-stripped text string ending with `<total_tokens>\\d+ tokens left</total_tokens>` (allowing
-trailing whitespace only) is collected, then normalized by replacing the digit run inside the tag
-with `N` — so two occurrences differing only in the token count collapse to the same shape. Counts
-are reported per distinct normalized shape, per session.
-
-Usage (from project root):
-    python3 dev/proxy_tool_stripping/probe_trailing_message_shapes.py
-"""
-
 # INFRASTRUCTURE
 import json
 import re
@@ -28,9 +13,6 @@ STEMS = [
     'api_requests_opus_monitor_cc_1788611156',
 ]
 
-# Ends-with-tag detector: the tag itself, optionally followed only by trailing whitespace, anchored
-# to the END of the string — a marker embedded mid-text (quoted in a tool_result, etc.) does NOT
-# qualify, matching the same anchoring philosophy _TOTAL_TOKENS_NUKE_RE already uses for the bare case.
 _ENDS_WITH_TAG_RE = re.compile(r'<total_tokens>(\d+) tokens left</total_tokens>\s*\Z')
 
 REPORT_DIR = Path(__file__).parent / 'md'
@@ -38,7 +20,6 @@ REPORT_PATH = REPORT_DIR / 'trailing_message_shapes_report.md'
 
 # FUNCTIONS
 
-# All individual stripped-text strings across every message/block of one _stripped.jsonl file
 def _all_stripped_texts(path: Path) -> list:
     texts = []
     with open(path, encoding='utf-8') as f:
@@ -60,9 +41,6 @@ def _all_stripped_texts(path: Path) -> list:
     return texts
 
 
-# Normalize one qualifying text: replace the tag's digit run with 'N'. Whitespace outside the tag
-# (leading/trailing on the whole string) is preserved as part of the shape — a nudge-only variant
-# and a whitespace-padded bare-tag variant are meaningfully different shapes.
 def _normalize(text: str) -> str:
     return _ENDS_WITH_TAG_RE.sub('<total_tokens>N tokens left</total_tokens>', text)
 

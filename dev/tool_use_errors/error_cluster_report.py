@@ -5,7 +5,6 @@ from collections import Counter, defaultdict
 
 from error_cluster_extraction import _EXIT_CODE_RE
 
-# Hook type inference for bare_guidance bucket
 _BARE_HOOK_PATTERNS = [
     (re.compile(r"--include|Grep tool|grep -n <pattern>"),            "block_broad_grep"),
     (re.compile(r"except.*pass.*raise|except.*raise", re.DOTALL),     "block_except_pass"),
@@ -24,7 +23,6 @@ _BARE_HOOK_PATTERNS = [
 
 # FUNCTIONS
 
-# Infer originating hook for a bare_guidance entry text
 def infer_bare_hook(text: str) -> str:
     for pat, hook_name in _BARE_HOOK_PATTERNS:
         if pat.search(text):
@@ -32,7 +30,6 @@ def infer_bare_hook(text: str) -> str:
     return "OTHER"
 
 
-# Format the full markdown audit report
 def format_report(entries: list, buckets: dict, cc: dict, report_date: str) -> str:
     total = len(entries)
     lines = [f"# Tool Error Cluster Audit — {report_date}", ""]
@@ -236,7 +233,6 @@ def _build_conclusion_section(cc: dict) -> list:
     ]
 
 
-# Write report to REPORTS_DIR/<date>_error_cluster_audit.md; return absolute path
 def write_report(report: str, reports_dir: str, date: str) -> str:
     os.makedirs(reports_dir, exist_ok=True)
     path = os.path.join(reports_dir, f"{date}_error_cluster_audit.md")
