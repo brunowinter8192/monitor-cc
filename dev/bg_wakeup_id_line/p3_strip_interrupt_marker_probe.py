@@ -1,24 +1,3 @@
-"""
-P3 — verifies src/proxy/strip_interrupt_marker.py and its full wiring (message_passes.py,
-rules.py, strip_vocab.py, strip_inject_delta.py).
-
-The proxy sends a tmux Escape into a worker's pane when one of its calls is backgrounded
-(src/proxy/bg_escape.py). Claude Code records that interruption in the conversation as a block
-whose (whitespace-stripped) text is EXACTLY one of two real wordings — "[Request interrupted by
-user]" or "[Request interrupted by user for tool use]", both always trailing-newline-terminated
-in the corpus — no user interrupted anything, but a worker reading the marker halts and waits for
-an instruction nobody intended to give. This probe proves the marker never reaches the model.
-
-Covers: the measured real payload shape (3 blocks: tool_result / marker(+'\\n') / injected
-wake-up, neighbors byte-identical after strip), all 4 content shapes for both wordings, the
-false-positive class (marker embedded inside longer text must survive untouched, incl. a real
-corpus-derived 180-char quote), and attribution resolving to a named function through the real
-apply_modification_rules -> _build_stripped_injected_deltas path.
-
-Run from project root or worktree root:
-    ./venv/bin/python dev/bg_wakeup_id_line/p3_strip_interrupt_marker_probe.py
-"""
-
 # INFRASTRUCTURE
 import sys
 from datetime import datetime, timezone
@@ -33,8 +12,6 @@ from proxy.rules import apply_modification_rules
 from proxy.strip_vocab import attribute_chunk, RULES
 from proxy.strip_inject_delta import _MSG_CODE_TO_FN, _build_stripped_injected_deltas
 
-# Real corpus wordings (src/logs/dual_log/*_original.jsonl, 2026-07-31 re-measurement) — both
-# always trailing-newline-terminated; 10x base wording, 1x "for tool use" wording, 11/11 total.
 _INTERRUPT_MARKER = '[Request interrupted by user]\n'
 _INTERRUPT_MARKER_TOOL_USE = '[Request interrupted by user for tool use]\n'
 
@@ -52,8 +29,6 @@ def check(label, condition):
 
 # FUNCTIONS
 
-# Test 1 — real measured shape: tool_result / marker / injected wake-up, 3 blocks. Marker block
-# emptied to '.'; the two neighbor blocks are byte-identical afterwards (dict equality).
 def test_real_shape_neighbors_untouched():
     print("\n[Test 1] Real 3-block shape (tool_result / marker / wake-up) — neighbors intact")
     tool_result_block = {"type": "tool_result", "tool_use_id": "toolu_01", "content": "some prior tool output"}
@@ -68,7 +43,6 @@ def test_real_shape_neighbors_untouched():
     check("following wake-up block byte-identical", new_content[2] == wakeup_block)
 
 
-# Test 2 — all 4 content shapes strip the exact-match marker.
 def test_four_content_shapes():
     print("\n[Test 2] All 4 content shapes")
     new_str, r1 = _strip_interrupt_marker(_INTERRUPT_MARKER)
@@ -89,8 +63,6 @@ def test_four_content_shapes():
           new_tr_list[0]["content"][0]["text"] == "." and r4 == [_INTERRUPT_MARKER])
 
 
-# Test 2b — the 2nd real wording ("for tool use", 1/11 measured occurrences) strips too — this
-# wording was never covered before the 2026-07-31 fix and is why the false negative shipped.
 def test_tool_use_wording():
     print("\n[Test 2b] 'for tool use' wording strips (newline-terminated and bare)")
     new_nl, r1 = _strip_interrupt_marker(_INTERRUPT_MARKER_TOOL_USE)
@@ -100,10 +72,6 @@ def test_tool_use_wording():
     check("tool-use wording (bare, no '\\n') -> '.'", new_bare == "." and r2 == [bare])
 
 
-# Test 3 — false-positive class: marker embedded inside longer text (top-level text block and
-# tool_result data) must be left byte-identical, no removal recorded. Includes a real
-# corpus-derived 180-char user message that quotes the bracketed marker mid-sentence
-# (src/logs/dual_log/api_requests_opus_monitor_cc_1785431184_original.jsonl, msg 11).
 def test_marker_embedded_in_longer_text_untouched():
     print("\n[Test 3] Marker embedded in longer text is NOT destroyed")
     longer_text = f"Earlier in the transcript: {_INTERRUPT_MARKER} — but that was quoted, not live."
@@ -126,7 +94,6 @@ def test_marker_embedded_in_longer_text_untouched():
     check("real corpus 180-char quote untouched", new_cq[0]["text"] == corpus_quote and r4 == [])
 
 
-# Test 4a — message-pass level: gate fires only for role='user', mod name is stripped_interrupt_marker.
 def test_message_pass_wiring():
     print("\n[Test 4a] _apply_interrupt_marker_strip pass wiring")
     msgs = [
@@ -146,8 +113,6 @@ def test_message_pass_wiring():
     check("ops recorded for block 1", 1 in ops.get(1, {}))
 
 
-# Test 4b — vocabulary + attribution: attribute_chunk resolves to 'IM', and IM maps to a named
-# function (not 'unknown') in strip_inject_delta's _MSG_CODE_TO_FN.
 def test_attribution_vocab():
     print("\n[Test 4b] strip_vocab / strip_inject_delta attribution")
     check("'IM' registered in RULES", 'IM' in RULES)
@@ -157,8 +122,6 @@ def test_attribution_vocab():
     check("'IM' -> named function in _MSG_CODE_TO_FN (not missing)", _MSG_CODE_TO_FN.get('IM') == '_apply_interrupt_marker_strip')
 
 
-# Test 5 — full pipeline: real apply_modification_rules -> real _build_stripped_injected_deltas,
-# fn_map for the stripped block resolves to '_apply_interrupt_marker_strip', never 'unknown'.
 def test_full_pipeline_attribution():
     print("\n[Test 5] Full pipeline: apply_modification_rules -> _build_stripped_injected_deltas fn_map")
     orig_payload = {

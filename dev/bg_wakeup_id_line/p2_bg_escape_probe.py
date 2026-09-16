@@ -1,15 +1,3 @@
-"""
-P2 — verifies the launch-ack-triggered tmux-Escape mechanism (src/proxy/bg_escape.py).
-
-Covers: dedup-by-task-id across repeated acks (real 142/169 shape), two-distinct-ids → two
-sends, both CC ack wordings, main-context never fires, tmux session name derivation (incl.
-hyphenated worker names), a real tmux round trip, and failure isolation (dead session, missing
-tmux binary — both at the unit level and through the real ProxyAddon.request() path).
-
-Run from project root or worktree root:
-    ./venv/bin/python dev/bg_wakeup_id_line/p2_bg_escape_probe.py
-"""
-
 # INFRASTRUCTURE
 import json
 import os
@@ -56,8 +44,6 @@ _WORDING_2 = (
 
 # FUNCTIONS
 
-# Test 1 — dedup across repeated acks: the SAME ack (same task id) fed across 169 simulated
-# requests (142 carrying the ack, real 142/169 shape) fires the Escape exactly once.
 def test_dedup_repeated_acks():
     print("\n[Test 1] Dedup across repeated acks (142/169 real shape)")
     bg_escape._escaped_task_ids.clear()
@@ -71,7 +57,6 @@ def test_dedup_repeated_acks():
     check("task id recorded in dedup store after firing", "bg_task_alpha" in bg_escape._escaped_task_ids)
 
 
-# Test 2 — two distinct task ids → two Escapes.
 def test_two_distinct_ids():
     print("\n[Test 2] Two distinct task ids")
     bg_escape._escaped_task_ids.clear()
@@ -84,7 +69,6 @@ def test_two_distinct_ids():
     check("2 distinct task ids across 5 repeated calls → exactly 2 Escapes", len(sent_calls) == 2)
 
 
-# Test 3 — both CC wordings trigger.
 def test_both_wordings_trigger():
     print("\n[Test 3] Both CC wordings trigger")
     bg_escape._escaped_task_ids.clear()
@@ -97,7 +81,6 @@ def test_both_wordings_trigger():
     check("both wordings together fired 2 sends", len(sent_calls) == 2)
 
 
-# Test 4 — main context never triggers.
 def test_main_context_never_triggers():
     print("\n[Test 4] main context never triggers")
     bg_escape._escaped_task_ids.clear()
@@ -109,8 +92,6 @@ def test_main_context_never_triggers():
     check("_derive_tmux_session_name('main', ...) returns empty", _derive_tmux_session_name("main", str(WORKTREE_ROOT)) == "")
 
 
-# Test 5 — tmux session name derivation from PROXY_LOG_ID + PROXY_PROJECT_PATH, including a
-# hyphenated worker name.
 def test_tmux_session_name_derivation():
     print("\n[Test 5] tmux session name derivation")
     cases = [
@@ -131,9 +112,6 @@ def test_tmux_session_name_derivation():
     check("'main' context -> no tmux session derivable", _derive_tmux_session_name(main_ctx, "/x/monitor-cc") == "")
 
 
-# Test 5b — a fire writes one JSONL trace line to bg_escape_events.jsonl (MONITOR_CC_ROOT-scoped),
-# carrying task id, derived tmux session, and the send result — the trace the rolled-back menubar
-# mechanism had and this one lacked until now.
 def test_fire_writes_log_line():
     print("\n[Test 5b] Fire writes a log line (task id, tmux session, send result)")
     bg_escape._escaped_task_ids.clear()
@@ -152,8 +130,6 @@ def test_fire_writes_log_line():
         check("logged tmux_session == expected worker session", entry.get("tmux_session") == f"worker-{WORKTREE_ROOT.name}-esc-live")
         check("logged send_result == True", entry.get("send_result") is True)
 
-    # Same request-shape, main context this time — this IS a matter-of skip case, so it must ALSO
-    # log (not silently no-op), reason == 'main_context'.
     with tempfile.TemporaryDirectory() as tmp_root:
         log_path = Path(tmp_root) / "src" / "logs" / "bg_escape_events.jsonl"
         ack = _WORDING_1.replace("bg_task_alpha", "bg_task_zeta")
@@ -163,7 +139,6 @@ def test_fire_writes_log_line():
         check("main-context skip logs event='skipped' reason='main_context'",
               entry.get("event") == "skipped" and entry.get("reason") == "main_context")
 
-    # A request with no bg-launch-ack chunk at all must never touch the log sink.
     with tempfile.TemporaryDirectory() as tmp_root:
         log_path = Path(tmp_root) / "src" / "logs" / "bg_escape_events.jsonl"
         with mock.patch.dict(os.environ, {"MONITOR_CC_ROOT": tmp_root}, clear=False):
@@ -171,9 +146,6 @@ def test_fire_writes_log_line():
         check("no ack present -> log sink never touched (no file created)", not log_path.exists())
 
 
-# Test 6 — real tmux round trip: spawn a throwaway session running a raw-mode 1-byte reader,
-# call the PRODUCTION _send_escape_key against it, confirm the Escape byte (0x1b) arrived via
-# capture-pane.
 def test_real_tmux_roundtrip():
     print("\n[Test 6] Real tmux round trip")
     session = f"__bg_escape_probe_{int(time.time())}"
@@ -200,7 +172,7 @@ def test_real_tmux_roundtrip():
         exists_before = subprocess.run(["tmux", "has-session", "-t", session], capture_output=True).returncode == 0
         check("session exists before the send", exists_before)
 
-        sent = _send_escape_key(session)  # the PRODUCTION function, not a re-implementation
+        sent = _send_escape_key(session)
         check("_send_escape_key() reports success", sent is True)
         time.sleep(0.5)
 
@@ -212,9 +184,6 @@ def test_real_tmux_roundtrip():
         os.unlink(reader_script.name)
 
 
-# Test 7 — failure isolation: dead/missing tmux session and a missing tmux binary must not raise,
-# and the real ProxyAddon.request() path must still complete (forward the request) when the
-# tmux binary itself is absent.
 def test_failure_isolation():
     print("\n[Test 7] Failure isolation")
     dead_session = "__bg_escape_probe_definitely_does_not_exist__"
@@ -232,8 +201,6 @@ def test_failure_isolation():
         except Exception as e:
             check(f"missing tmux binary -> _send_escape_key returns False, no raise (raised {e!r})", False)
 
-    # Entry-point level: real ProxyAddon.request() with a payload carrying a genuine ack, tmux
-    # binary simulated absent — the request must still forward (flow.request.content gets set).
     flow = _build_fake_flow_with_ack()
     addon = ProxyAddon()
     with mock.patch.dict(os.environ, {"PROXY_LOG_ID": "worker_deadbeef_isolation-check_1785000000",
@@ -269,8 +236,6 @@ class _FakeFlow:
         self.id = "fake-flow-id"
 
 
-# Minimal real-shaped payload whose user turn carries a genuine bg-launch ack tool_result block —
-# exercises the real apply_modification_rules -> _trigger_bg_escape wiring end to end.
 def _build_fake_flow_with_ack():
     payload = {
         "model": "claude-opus-4-6",
