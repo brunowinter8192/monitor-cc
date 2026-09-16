@@ -7,12 +7,10 @@ from pathlib import Path
 
 _SESSION_PREFIX = "monitor_cc_"
 _REPORT_DIR     = Path(__file__).resolve().parent / "reports"
-# Same extraction as src/tmux_launcher.py::_parse_pane_modes — --mode <value> out of pane_start_command
 _MODE_RE = re.compile(r'--mode\s+(\S+)')
 
 # ORCHESTRATOR
 
-# Snapshot every monitor_cc_* pane's mode/PID/age/CPU, print a table sorted by CPU time, save a report
 def probe_monitor_load_workflow() -> None:
     rows = collect_pane_rows()
     rows.sort(key=lambda r: r['cpu_seconds'], reverse=True)
@@ -21,7 +19,6 @@ def probe_monitor_load_workflow() -> None:
 
 # FUNCTIONS
 
-# One row per pane across every monitor_cc_* tmux session, with mode/PID/ages/CPU already resolved
 def collect_pane_rows() -> list:
     now = time.time()
     panes = list_monitor_panes()
@@ -40,7 +37,6 @@ def collect_pane_rows() -> list:
         })
     return rows
 
-# List {session, session_created, pane_idx, pid, mode} for every pane of every monitor_cc_* session
 def list_monitor_panes() -> list:
     result = subprocess.run(
         ["tmux", "list-panes", "-a", "-F",
@@ -67,7 +63,6 @@ def list_monitor_panes() -> list:
         })
     return panes
 
-# ps snapshot for one pid: elapsed time, cpu time, %cpu — all as ps's raw strings + cpu_seconds for sorting
 def ps_stats(pid: int) -> dict:
     result = subprocess.run(
         ["ps", "-o", "etime=,cputime=,%cpu=", "-p", str(pid)],
@@ -84,7 +79,6 @@ def ps_stats(pid: int) -> dict:
         'pct_cpu': pct_cpu,
     }
 
-# Parse a ps clock field ("MM:SS", "HH:MM:SS", or "DD-HH:MM:SS", cputime allows ".hh" fraction) to seconds
 def parse_clock(value: str) -> float:
     days = 0
     if '-' in value:
@@ -96,7 +90,6 @@ def parse_clock(value: str) -> float:
     hours, minutes, seconds = parts
     return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
-# Print the pane table to stdout, one row per pane, already sorted by caller
 def print_table(rows: list) -> None:
     header = f"{'SESSION':<20} {'SESSION_AGE':>11} {'MODE':<13} {'PID':>8} {'PANE_AGE':>10} {'CPU_TIME':>10} {'%CPU':>6}"
     print(header)
@@ -108,7 +101,6 @@ def print_table(rows: list) -> None:
         )
     print(f"\n{len(rows)} pane(s) across monitor_cc_* sessions.")
 
-# Write the same table as a dated markdown report under reports/
 def write_report(rows: list) -> Path:
     _REPORT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc)
