@@ -323,7 +323,7 @@ whole script rather than report a clean pass/fail count.
 
 ---
 
-### verify_block_non_canonical_edit_corpus.py (115 LOC)
+### verify_block_non_canonical_edit_corpus.py (64 LOC)
 
 **Purpose:** Ran `block_non_canonical_edit.py`'s `_decide()` directly against every record in
 `dev/cache/jsonl/bash_file_mods_*.jsonl` while the hook was live, measuring its real-world verdict
@@ -337,10 +337,23 @@ already-committed findings and corpus-replay methodology (see
 `md/block_non_canonical_edit_corpus_report.md` and `process-docs/tool_use_safety/`), not for
 re-execution.
 **Reads:** `dev/cache/jsonl/bash_file_mods_*.jsonl` (read-only, never written to).
-**Writes:** `md/block_non_canonical_edit_corpus_report.md` — a historical snapshot from while the
-hook was live, not regenerated.
+**Writes:** nothing directly; delegates to `verify_block_non_canonical_edit_report.py`.
 **Called by:** none — cannot currently run; see Purpose.
-**Calls out:** `src.hooks.block_non_canonical_edit` (`_decide`) — target retired.
+**Calls out:** `src.hooks.block_non_canonical_edit` (`_decide`) — target retired;
+`verify_block_non_canonical_edit_report.py` (`_write_report`).
+
+---
+
+### verify_block_non_canonical_edit_report.py (87 LOC)
+
+**Purpose:** Pure markdown rendering for the corpus-verification report — verdict counts, the
+BLOCK/ERROR full lists, and the ALLOW spot-check (first 40) — from an already-evaluated
+`results` list.
+**Reads:** nothing — takes `results` as an argument.
+**Writes:** `md/block_non_canonical_edit_corpus_report.md` — a historical snapshot from while the
+hook was live, not regenerated (see `verify_block_non_canonical_edit_corpus.py`'s Purpose — the
+caller can no longer run).
+**Called by:** `verify_block_non_canonical_edit_corpus.py`.
 
 ---
 
