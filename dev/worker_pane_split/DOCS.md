@@ -18,7 +18,7 @@ running it before and after a change to the read path gives a same-machine compa
 
 ## Modules
 
-### attach_worker_stats_cost_probe.py (206 LOC)
+### attach_worker_stats_cost_probe.py (250 LOC)
 
 **Purpose:** Measures `attach_worker_stats` COLD (fresh cache, full read — what every tick cost
 before the 2026-09 incremental fix, and what the first tick after a pane starts or a worker's
