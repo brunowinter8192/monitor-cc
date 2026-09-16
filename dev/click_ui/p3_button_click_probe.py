@@ -134,6 +134,15 @@ def test_warnings_refresh_button():
 # touches -- expand/collapse clicks, copy symbols, scroll, auto-scroll-to-just-expanded, and the
 # 'u' key itself -- still works at the SHIFTED rows.
 def test_proxy_pane_permanent_search_bar_header():
+    output = _reset_and_render_proxy_pane()
+    key_row2 = _check_proxy_header_shift_contract(output)
+    _check_proxy_focus_and_expand_clicks(key_row2)
+    _check_proxy_copy_click()
+    _check_proxy_undo_and_scroll(key_row2)
+    _check_proxy_auto_scroll_after_expand()
+
+
+def _reset_and_render_proxy_pane():
     mod_proxy.proxy_entries.clear()
     mod_proxy.proxy_expand_states.clear()
     mod_proxy.proxy_line_map.clear()
@@ -146,8 +155,10 @@ def test_proxy_pane_permanent_search_bar_header():
     mod_proxy._proxy_search.matches = []
     mod_proxy._proxy_search.match_set = set()
     mod_proxy.proxy_entries.extend(_make_proxy_entry(i) for i in range(3))
+    return mod_proxy._build_proxy_output()
 
-    output = mod_proxy._build_proxy_output()
+
+def _check_proxy_header_shift_contract(output):
     check("proxy: _build_proxy_output returns a plain string (header+'\\n'+body baked in)",
           isinstance(output, str))
     check("proxy: search bar text visible on the first line", output.splitlines()[0].find('search:') != -1)
@@ -162,7 +173,10 @@ def test_proxy_pane_permanent_search_bar_header():
     key_row2 = mod_proxy.proxy_line_map.get(2)
     check("proxy: row 2 resolves to a body row (REQ key)",
           key_row2 is not None and ((isinstance(key_row2, tuple) and key_row2[0] == 'req') or isinstance(key_row2, int)))
+    return key_row2
 
+
+def _check_proxy_focus_and_expand_clicks(key_row2):
     # Click on row 1 focuses the search bar, does NOT toggle any expand state
     mod_proxy._proxy_search.focused = False
     focus_click_changed = mod_proxy._handle_proxy_mouse(0, 5, 1)
@@ -177,6 +191,8 @@ def test_proxy_pane_permanent_search_bar_header():
           row_click_changed and mod_proxy.proxy_expand_states.get(key_row2) != pre_expand)
     mod_proxy._build_proxy_output()  # re-render to pick up the new copy-row set post-expand
 
+
+def _check_proxy_copy_click():
     # Copy-symbol click still fires, at its own (shifted) row
     orig_copy = mod_proxy.copy_to_clipboard
     captured = []
@@ -192,6 +208,8 @@ def test_proxy_pane_permanent_search_bar_header():
     finally:
         mod_proxy.copy_to_clipboard = orig_copy
 
+
+def _check_proxy_undo_and_scroll(key_row2):
     # 'u' key (_undo_proxy_expand) keeps working, unchanged
     mod_proxy.proxy_expand_states.clear()
     mod_proxy._proxy_undo_stack.clear()
@@ -207,6 +225,8 @@ def test_proxy_pane_permanent_search_bar_header():
     check("proxy: scroll wheel (button 64) still works",
           scroll_changed and mod_proxy.proxy_scroll_offset == 3)
 
+
+def _check_proxy_auto_scroll_after_expand():
     # Auto-scroll-to-just-expanded: the entry that was just expanded stays visible in the very
     # next render (item_positions_out/_proxy_just_expanded machinery, now operating on the
     # header-shifted line_map -- same mechanism the search-jump feature reuses)

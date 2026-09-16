@@ -1,0 +1,60 @@
+# INFRASTRUCTURE
+import importlib
+
+_ROOT_PKG = 'src'
+mod_proxy = importlib.import_module(f'{_ROOT_PKG}.proxy_display.pane')
+mod_worker_proxy = importlib.import_module(f'{_ROOT_PKG}.proxy_display.worker_proxy_pane')
+mod_format = importlib.import_module(f'{_ROOT_PKG}.proxy_display.format')
+mod_shared = importlib.import_module(f'{_ROOT_PKG}.proxy_display.proxy_pane_shared')
+
+_PASS = "\033[32mPASS\033[0m"
+_FAIL = "\033[31mFAIL\033[0m"
+_RESULTS = []
+
+
+def check(label, condition):
+    _RESULTS.append((label, bool(condition)))
+    print(f"  {_PASS if condition else _FAIL}  {label}")
+    return condition
+
+
+# FUNCTIONS
+
+def _patch_clipboard(mod):
+    captured = []
+    mod.copy_to_clipboard = lambda text: captured.append(text)
+    return captured
+
+
+def _make_entry():
+    return {
+        'model': 'claude-sonnet', 'message_count': 2,
+        'system_total_chars': 0, 'tools_total_chars': 0, 'messages_total_chars': 100,
+        'messages': [
+            {'role': 'assistant', 'type': 'text', 'chars': 10, 'blocks': [
+                {'type': 'text', 'chars': 10, 'full_text': 'hello world'},
+                {'type': 'tool_use', 'chars': 5, 'full_text': 'Bash\n{"command":"ls"}'},
+            ]},
+            {'role': 'user', 'type': 'tool_result', 'chars': 20, 'blocks': [], 'content_preview': 'file contents here'},
+        ],
+        'schema_warnings': [], 'stripped_msg_indices': [], 'modifications': [],
+        'timestamp': '2026-04-21T10:00:00Z',
+    }
+
+
+# Direct format_proxy_block call -- no os.get_terminal_size dependency, mirrors
+# dev/display/test_hover_map.py's existing pattern. Row numbers are then shifted by 1, the same
+# shift _render_and_scroll_body applies in the real event loop (row 1 is reserved for the
+# permanent search-bar header in both panes) -- without this shift a synthetic REQ landing on raw
+# row 1 would collide with _handle_*_mouse's "row==1 -> focus search bar" branch and never reach
+# the real copy/expand dispatch at all. Returns (line_map, copy_rows) already shifted.
+def _render_expanded(entries, expand_states, pane_width=120):
+    line_map = {}
+    copy_rows = set()
+    copy_feedback = {}
+    mod_format.format_proxy_block(
+        entries, expand_states, line_map, None, 50, pane_width, 0,
+        copy_feedback=copy_feedback, copy_rows_out=copy_rows,
+    )
+    mod_shared._shift_line_map_and_copy_rows(line_map, copy_rows, 1)
+    return line_map, copy_rows, copy_feedback
