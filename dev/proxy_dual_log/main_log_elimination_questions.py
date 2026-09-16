@@ -8,7 +8,6 @@ from main_log_elimination_reconstruct import (
 
 # FUNCTIONS
 
-# Compare one main-log request entry against its reconstructed forwarded counterpart
 def _compare_request(idx: int, main_e: dict, fwd_r: dict) -> dict:
     raw_payload = main_e.get("raw_payload", {})
 
@@ -58,7 +57,6 @@ def _compare_request(idx: int, main_e: dict, fwd_r: dict) -> dict:
     }
 
 
-# Run Question A: compare reconstructed forwarded payloads against main log raw_payloads
 def _run_question_a(main_entries: list, fwd_entries: list) -> dict:
     reconstructed = _reconstruct_forwarded(fwd_entries)
 
@@ -91,7 +89,6 @@ def _run_question_a(main_entries: list, fwd_entries: list) -> dict:
     }
 
 
-# Scan _original payloads for is_error tool_result blocks, dedup by tool_use_id
 def _extract_tool_errors(orig_entries: list) -> list:
     seen_ids: set = set()
     unique_errors = []
@@ -130,7 +127,6 @@ def _extract_tool_errors(orig_entries: list) -> list:
     return unique_errors
 
 
-# Run Question B: extract is_error tool_result blocks from _original, dedup by tool_use_id
 def _run_question_b(orig_entries: list, tool_errors: list) -> dict:
     unique_errors = _extract_tool_errors(orig_entries)
 

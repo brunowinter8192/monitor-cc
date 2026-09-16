@@ -9,7 +9,6 @@ from attribution_coverage_classify import (
 
 # FUNCTIONS
 
-# Discover all paired (stripped, injected) paths
 def _find_pairs(log_dir: Path) -> list:
     pairs = []
     for sf in sorted(log_dir.glob("*_stripped.jsonl")):
@@ -19,7 +18,6 @@ def _find_pairs(log_dir: Path) -> list:
     return pairs
 
 
-# Load a JSONL file — returns list of dicts
 def _load_jsonl(path: Path) -> list:
     entries = []
     with open(path, encoding="utf-8") as f:
@@ -117,21 +115,16 @@ def _analyse_fields_delta(pair_name: str, s_entry: dict, i_entry: dict, strip_st
             residuals.append((pair_name, "inject_fields", key, str(fwd_val)[:80], "UNATTR"))
 
 
-# Analyse all pairs and return aggregated stats
 def _analyse_all_pairs(pairs: list, attribute_chunk) -> tuple:
-    # strip_stats[section][fn_or_cat] = count
     strip_stats: dict = defaultdict(lambda: defaultdict(int))
     inject_stats: dict = defaultdict(lambda: defaultdict(int))
-    # residuals: list of (pair_name, section, location_key, content_preview)
     residuals: list = []
-    # false_positives: list of (pair_name, section, location_key, s_text, i_text) for evidence
     false_positives: list = []
 
     for sf, ijf in pairs:
         pair_name = sf.name.replace("_stripped.jsonl", "")
         s_entries = _load_jsonl(sf)
         i_entries = _load_jsonl(ijf)
-        # Index injected by request_id
         i_by_rid = {e["request_id"]: e for e in i_entries}
 
         for s_entry in s_entries:

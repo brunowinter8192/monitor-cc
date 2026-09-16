@@ -5,7 +5,6 @@ from pathlib import Path
 
 from attribution_coverage_classify import _coverage
 
-# Load strip_vocab from src via path — block_dev_imports_src hook forbids literal `from src.`
 _sv_path = Path(__file__).parents[2] / "src" / "proxy" / "strip_vocab.py"
 _sv_spec = importlib.util.spec_from_file_location("strip_vocab_local_report", _sv_path)
 _sv_mod = importlib.util.module_from_spec(_sv_spec)
@@ -233,7 +232,6 @@ def _gap_status_section() -> list:
     ]
 
 
-# Build the Markdown report
 def _build_report(strip_stats: dict, inject_stats: dict,
                   residuals: list, false_positives: list, n_pairs: int) -> str:
     lines = _report_header(n_pairs)

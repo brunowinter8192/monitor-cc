@@ -1,28 +1,3 @@
-"""
-Probe: ground-truth message span construction — validates the GT algorithm as a replacement
-for the blind _diff_text span builder.
-
-Builds spans from GROUND TRUTH (exact stripped chunks from apply_modification_rules) instead
-of diffing, and verifies fidelity + zero phantom on real log data.
-
-Algorithm under test (build_message_spans):
-  1. Split orig_text at exact positions of each stripped_chunk → alternating EQUAL + STRIPPED.
-  2. Walk fwd_text matching each EQUAL segment in sequence.
-  3. Text in fwd_text between matched EQUAL segments = INJECTED (real placeholder).
-  4. Emit spans: equal / stripped / injected.
-
-Data source: option (b) — re-run apply_modification_rules on _original dual-log payload.
-  Rationale: stripped_msg_removed not yet written to main logs (Stage-3 write-side pending).
-  Re-running on the same original payload regenerates the exact chunks. Validation:
-  mod_payload content == forwarded_delta content (checked per case).
-  Caveat: later-pass chunks extracted from intermediate (not original) content — may be nested
-  inside earlier-pass chunks (detected and flagged as NESTED_CHUNK).
-  Env-context SR stripped as side effect of SK pass is NOT recorded (RECORDING_GAP).
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy_dual_log/groundtruth_message_spans_probe.py
-"""
-
 # INFRASTRUCTURE
 import sys
 from datetime import datetime

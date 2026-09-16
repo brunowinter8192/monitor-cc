@@ -13,7 +13,6 @@ def _preview(text: str, n: int = PREVIEW_CHARS) -> str:
     return repr(s) + f" ({len(text)}c)"
 
 
-# Text mock: [=] gray  [-] yellow  [+] green. Each content unit once.
 def _inline_mock(spans: list) -> str:
     parts = []
     for tag, text in spans:
@@ -23,20 +22,12 @@ def _inline_mock(spans: list) -> str:
     return "  ".join(parts)
 
 
-# Split full span sequence into per-log Form B views.
-#
-# _stripped_log: equal + stripped spans in order (equal spans duplicated as anchors)
-# _injected_log: equal + injected spans in order (equal spans duplicated as anchors)
 def _form_b_per_log(spans: list) -> tuple:
     stripped_log = [(t, txt) for t, txt in spans if t in ("equal", "stripped")]
     injected_log = [(t, txt) for t, txt in spans if t in ("equal", "injected")]
     return stripped_log, injected_log
 
 
-# Merge per-log Form B into 3-color sequence by equal-anchor alignment.
-#
-# Lock-step: consume stripped spans from stripped_log and injected from injected_log;
-# advance through equal anchors together.
 def _merge_form_b(stripped_log: list, injected_log: list) -> list:
     merged = []
     s_ptr, i_ptr = 0, 0
@@ -68,11 +59,6 @@ def _merge_form_b(stripped_log: list, injected_log: list) -> list:
     return merged
 
 
-# Compute Form A positions and test whether they survive cache_control normalization.
-#
-# For each span: locate text as substring in the relevant reference text (normalized
-# and raw). 'equal' span key test: exact span text NOT found in fwd_raw = Form A breaks.
-# Texts >500c are probed via prefix only (marked probe_len<text_len).
 def _form_a_analysis(spans: list, orig_norm_text: str, fwd_norm_text: str, fwd_raw_text: str) -> list:
     results = []
     FIND_LIMIT = 500

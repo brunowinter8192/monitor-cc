@@ -22,7 +22,6 @@ def _build_cases():
     ]
 
 
-# Branch 1: new messages, no dual, two blocks including thinking
 def _case_branch1_basic():
     msgs = [
         _mk_msg('user', 50, [_mk_blk('text', 50, 'Hello world')]),
@@ -35,12 +34,11 @@ def _case_branch1_basic():
     }
 
 
-# Branch 1: stripped messages — EFF path (removed_chunks present) + IDX path (originals only)
 def _case_branch1_stripped():
     msgs = [
         _mk_msg('user', 50, [_mk_blk()]),
-        _mk_msg('asst', 60, [_mk_blk()]),   # stripped idx=1: EFF path
-        _mk_msg('user', 70, [_mk_blk()]),   # stripped idx=2: IDX path
+        _mk_msg('asst', 60, [_mk_blk()]),
+        _mk_msg('user', 70, [_mk_blk()]),
         _mk_msg('asst', 80, [_mk_blk()]),
     ]
     entry = _mk_entry(
@@ -53,7 +51,6 @@ def _case_branch1_stripped():
     return {'name': 'branch1_stripped', 'entries': [entry], 'expand_states': {('req', 0): True}}
 
 
-# Branch 2: content_tail fallback (no blocks, modified message with tail)
 def _case_branch2_basic():
     msgs0 = [_mk_msg('user', 50, [_mk_blk()]), _mk_msg('asst', 80, [], content_tail='old tail')]
     msgs1 = [_mk_msg('user', 50, [_mk_blk()]), _mk_msg('asst', 90, [], content_tail='updated tail\nmore content')]
@@ -63,7 +60,6 @@ def _case_branch2_basic():
     return {'name': 'branch2_basic', 'entries': [e0, e1], 'expand_states': {('req', 1): True}}
 
 
-# Branch 2: removed_from_prev tail (prev has more messages)
 def _case_branch2_removed():
     msgs0 = [_mk_msg('user', 50, [_mk_blk()]), _mk_msg('asst', 80, [_mk_blk()]), _mk_msg('user', 60, [_mk_blk()])]
     msgs1 = [_mk_msg('user', 50, [_mk_blk()]), _mk_msg('asst', 85, [_mk_blk()])]
@@ -73,7 +69,6 @@ def _case_branch2_removed():
     return {'name': 'branch2_removed', 'entries': [e0, e1], 'expand_states': {('req', 1): True}}
 
 
-# Dual spans new-format: i_blk as list of (tag, text) tuples; s_blk as plain strings
 def _case_dual_new_format():
     msgs0 = [_mk_msg('user', 100, [_mk_blk('text', 100, 'user text')])]
     msgs1 = [_mk_msg('user', 120, [_mk_blk('text', 120, 'user text modified')])]
@@ -87,7 +82,6 @@ def _case_dual_new_format():
     return {'name': 'dual_new_format', 'entries': [e0, e1], 'expand_states': {('req', 1): True}}
 
 
-# Dual spans legacy: i_blk as plain strings; s_blk as plain strings
 def _case_dual_legacy():
     msgs0 = [_mk_msg('user', 100, [_mk_blk('text', 100, 'original text')])]
     msgs1 = [_mk_msg('user', 130, [_mk_blk('text', 130, 'original text injected')])]
@@ -101,7 +95,6 @@ def _case_dual_legacy():
     return {'name': 'dual_legacy', 'entries': [e0, e1], 'expand_states': {('req', 1): True}}
 
 
-# Tools section: first request (prev has no tools_hash) — tool header + desc + schema
 def _case_tools_first_request():
     tool = {
         'name': 'bash', 'description': 'Run bash commands\nIn a subprocess',
@@ -120,7 +113,6 @@ def _case_tools_first_request():
     }
 
 
-# Tools section: tools changed (added 'python', removed 'bash')
 def _case_tools_changed():
     tool_old = {'name': 'bash', 'description': 'Run bash', 'input_schema': {}}
     tool_new = {'name': 'python', 'description': 'Run python\nScripts',
@@ -139,7 +131,6 @@ def _case_tools_changed():
     }
 
 
-# System blocks section: two blocks, both expanded
 def _case_system_blocks():
     sys_blocks = [
         {'idx': 0, 'chars': 300, 'preview': 'System prompt line 1\nLine 2'},
@@ -153,14 +144,12 @@ def _case_system_blocks():
     }
 
 
-# Standalone haiku entry (is_standalone_entry = True, num_label = 'H')
 def _case_standalone_haiku():
     entry = _mk_entry(model='claude-3-haiku-20240307', msg_count=1, msgs=[_mk_msg()],
                       system_total_chars=50, tools_total_chars=30)
     return {'name': 'standalone_haiku', 'entries': [entry], 'expand_states': {}}
 
 
-# copy_feedback ON: frozen future timestamp → always shows '✓' flash
 def _case_copy_feedback_on():
     entry = _mk_entry(msg_count=1, msgs=[_mk_msg('user', 50, [_mk_blk()])])
     return {
@@ -171,7 +160,6 @@ def _case_copy_feedback_on():
     }
 
 
-# hover_row + scroll_offset: smaller pane forces scrolling, row 2 is hovered
 def _case_hover_and_scroll():
     entries = [_mk_entry(msg_count=1, msgs=[_mk_msg()]) for _ in range(4)]
     return {
@@ -182,7 +170,6 @@ def _case_hover_and_scroll():
     }
 
 
-# Collision: two turn groups both produce label '#0.1' → COLLISION_BG path
 def _case_collision():
     turns = [{'timestamp': '2024-01-01T00:00:00'}, {'timestamp': '2024-01-01T01:00:00'}]
     e0 = _mk_entry(msg_count=1, msgs=[_mk_msg()],
@@ -194,7 +181,6 @@ def _case_collision():
     return {'name': 'collision', 'entries': [e0, e1], 'expand_states': {}, 'kwargs': {'turns': turns}}
 
 
-# Expand-ALL fixpoint: kitchen-sink two entries, iterated until stable
 def _case_expand_fixpoint():
     tool0 = {'name': 'read_file', 'description': 'Read a file\nFrom disk',
              'input_schema': {'properties': {'path': {'type': 'string', 'description': 'File path'}}, 'required': ['path']}}

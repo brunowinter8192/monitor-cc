@@ -1,4 +1,14 @@
-"""
+# INFRASTRUCTURE
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parents[2]))
+
+PREVIEW_CHARS = 120
+
+_MODULE_DOC = """
 diff_strip_inject.py — Span-level strip/inject diff of Original vs Forwarded proxy logs.
 
 Shows what the proxy stripped (STRIPPED spans) and injected (INJECTED spans) per request.
@@ -20,16 +30,6 @@ Or with named flags:
         --original src/logs/dual_log/api_requests_<id>_original.jsonl \\
         --forwarded src/logs/dual_log/api_requests_<id>_forwarded.jsonl
 """
-
-# INFRASTRUCTURE
-import argparse
-import json
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parents[2]))
-
-PREVIEW_CHARS = 120
 
 
 # ORCHESTRATOR
@@ -63,7 +63,6 @@ def _infer_family(model: str) -> str:
     return "opus"
 
 
-# Inline of verify_delta.py reconstruction logic — same algorithm, self-contained
 def _reconstruct_chains(fwd_entries: list) -> list:
     chain_states = {}
     result = []
@@ -237,7 +236,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Span-level strip/inject diff of proxy Original vs Forwarded logs.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
+        epilog=_MODULE_DOC,
     )
     parser.add_argument("original", nargs="?", help="Path to _original.jsonl")
     parser.add_argument("forwarded", nargs="?", help="Path to _forwarded.jsonl")

@@ -1,11 +1,3 @@
-"""Unit tests for CC 2.1.176 agent-types SR strip (Item 3).
-
-Fixture: standalone <system-reminder>-wrapped text block in a role='user' message,
-~2353 chars, starts '<system-reminder>\nAvailable agent types for the Agent tool:'.
-
-Run from project root:
-    ./venv/bin/python dev/proxy_176_agent_types_tests.py
-"""
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
@@ -23,7 +15,6 @@ def check(label, condition):
     print(f"  {'  '+_PASS if condition else '  '+_FAIL}  {label}")
     return condition
 
-# Realistic fixture: agent-types SR as a text block in a list-content user message
 _AGENT_TYPES_SR = (
     "<system-reminder>\n"
     "Available agent types for the Agent tool:\n"
@@ -33,11 +24,10 @@ _AGENT_TYPES_SR = (
     "- general-purpose: General-purpose agent for researching complex questions.\n"
     "- Plan: Software architect agent for designing implementation plans.\n"
     "- statusline-setup: Use this agent to configure the user's Claude Code status line.\n"
-    + "x" * 2200  # pad to ~2353c
+    + "x" * 2200
     + "\n</system-reminder>\n"
 )
 
-# messages[0].content is a list (block-array), block[0] is a tool_result, block[1] is the agent-types SR
 _USER_MSG_WITH_SR = {
     "role": "user",
     "content": [
@@ -46,7 +36,6 @@ _USER_MSG_WITH_SR = {
     ],
 }
 
-# Pure-string content variant
 _USER_MSG_STRING = {
     "role": "user",
     "content": "preamble text\n" + _AGENT_TYPES_SR + "trailing text",
@@ -58,7 +47,6 @@ def test_agent_types_stripped_list_content():
     messages = [_USER_MSG_WITH_SR]
     result, mods, removed, changed, _, _ = _apply_cumulative_sr_strips(messages)
     content = result[0]["content"]
-    # SR block removed from the text block
     text_block = next(b for b in content if b.get("type") == "text")
     check("SR block removed from text content", "Available agent types for the Agent tool" not in text_block.get("text", ""))
     check("<system-reminder> tag gone", "<system-reminder>" not in text_block.get("text", ""))
@@ -126,7 +114,6 @@ def test_skills_and_agent_types_coexist():
 
 def test_attribution_at_code():
     print("Item 3f — attribution: agent-types chunk → code='AT', fn='_apply_cumulative_sr_strips'")
-    # Simulate: original user message has SR; modified has it stripped
     orig_content = "intro\n" + _AGENT_TYPES_SR + "outro"
     from proxy.strip_sr import _strip_system_reminder
     fwd_content = _strip_system_reminder(orig_content, "Available agent types for the Agent tool")

@@ -3,7 +3,6 @@ import json
 
 # FUNCTIONS
 
-# Inline: mirrors src/proxy/logging.py:_strip_cache_control — strip "cache_control" keys recursively
 def _strip_cache_control(obj):
     if isinstance(obj, dict):
         return {k: _strip_cache_control(v) for k, v in obj.items() if k != "cache_control"}
@@ -25,7 +24,6 @@ def _block_text(block) -> str:
     return json.dumps(block, ensure_ascii=False)
 
 
-# sys[2] full-replace: CC prompt → proxy rules. ratio<0.1, 2 spans.
 def _find_sys2_block(matched: list, diff_text) -> dict:
     for req_num, (oe, _, fs) in enumerate(matched, 1):
         o_sys = [b for b in (oe.get("payload", {}).get("system", []) or []) if isinstance(b, dict)]
@@ -49,7 +47,6 @@ def _find_sys2_block(matched: list, diff_text) -> dict:
     return None
 
 
-# sys[3] strip-to-dot: whole text → '.'. ratio<0.1, 2 spans.
 def _find_sys3_block(matched: list, diff_text) -> dict:
     for req_num, (oe, _, fs) in enumerate(matched, 1):
         o_sys = [b for b in (oe.get("payload", {}).get("system", []) or []) if isinstance(b, dict)]
@@ -73,10 +70,6 @@ def _find_sys3_block(matched: list, diff_text) -> dict:
     return None
 
 
-# First message block with equal+stripped+injected spans AND cache_control diff present.
-#
-# The cc_diff requirement ensures the block shows the cache_control normalization
-# mismatch that makes Form A's equal-span text invalid as a raw-text anchor.
 def _find_msg_wordlevel_block(matched: list, diff_text) -> dict:
     for req_num, (oe, _, fs) in enumerate(matched, 1):
         o_msgs = oe.get("payload", {}).get("messages", []) or []
@@ -96,7 +89,7 @@ def _find_msg_wordlevel_block(matched: list, diff_text) -> dict:
                 f_text = _block_text(_strip_cache_control(fb_raw))
                 fb_raw_text = _block_text(fb_raw)
                 if fb_raw_text == f_text:
-                    continue  # no cache_control diff — skip
+                    continue
                 o_text = _block_text(_strip_cache_control(ob_raw))
                 spans = diff_text(o_text, f_text)
                 n_eq = sum(1 for t, _ in spans if t == "equal")

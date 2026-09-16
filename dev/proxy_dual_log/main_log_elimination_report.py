@@ -14,8 +14,6 @@ def _report_header(session: str, paths: dict, a: dict, now, date_str: str) -> li
     return lines
 
 
-# Question A: Method + Content Match Summary + Cache_control (BP) divergence table.
-# Returns (lines, all_content_lossless).
 def _report_question_a_summary(a: dict) -> tuple:
     lines = ["\n---"]
     lines.append("\n## Question A — Forwarded Reconstruction vs Main Log raw_payload")
@@ -78,8 +76,6 @@ def _report_question_a_divergences(a: dict) -> list:
     return lines
 
 
-# Field classification table + must-add + metadata-only lists.
-# Returns (lines, must_add, meta_only).
 def _report_question_a_fields(a: dict) -> tuple:
     lines = ["\n### Top-level Field Classification"]
     lines.append("\nFields in `raw_payload` not in `{system, tools, messages, model}`:")
@@ -197,7 +193,6 @@ def _report_migration_verdict(b: dict, all_content_lossless: bool, must_add: lis
     return lines
 
 
-# Write the markdown report and return its path
 def _write_report(session: str, paths: dict, a: dict, b: dict) -> Path:
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y%m%d")

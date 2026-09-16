@@ -1,12 +1,3 @@
-"""
-Probe: green-overlay false-injection bug in _diff_text (word-level path).
-Reproduces the bug on real log data and validates the char-level candidate fix.
-Self-contained — all helpers copied from src/; no src/ imports at module level.
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy_dual_log/green_overlay_probe.py
-"""
-
 # INFRASTRUCTURE
 from pathlib import Path
 
@@ -192,7 +183,6 @@ def _emit_summary(emit) -> None:
     emit("- Word-level `' '.join(...)` collapses multi-space/tab; char-level/gated preserve exactly.")
 
 
-# Build and write the probe report (Level 2: gating soundness + three-variant comparison)
 def green_overlay_probe_workflow():
     REPORT_DIR.mkdir(exist_ok=True)
     lines = []
