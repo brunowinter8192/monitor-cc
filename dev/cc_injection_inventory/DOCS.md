@@ -13,28 +13,58 @@ set changes and the inventory needs re-running, or when adding a new classificat
 
 ## Modules
 
-### cc_injection_inventory.py (758 LOC)
+### cc_injection_inventory.py (117 LOC)
 
-**Purpose:** Streams `src/logs/dual_log/*_original.jsonl`, extracts every text segment
-(`system[0..3]`, message content — plain string / `text` blocks / `tool_result` content), dedups
-by exact segment text, and classifies each distinct segment into one of 5 origin labels:
-`COVERED` (an existing `src/proxy/strip_*.py` rule removes it, verified by actually running
-`apply_modification_rules` against a synthetic message), `INJECTED` (the proxy itself adds it,
-via the same pipeline call's `injected_msg_added` return value), `KEEP` (audited + deliberately
-preserved wrapper), `OURS` (own content — tool output, user prompts, assistant text), or
-`UNCLASSIFIED` (CC-authored framing no rule touches and no prior audit judged).
-**Reads:** `src/logs/dual_log/api_requests_*_original.jsonl`, streamed line-by-line (the corpus
-includes multi-GB files, never loaded whole).
-**Writes:** `md/<name>_cc_injection_inventory.md` (report; override with `--out-name`); a 3-line
-summary to stdout.
+**Purpose:** Entry script — parses CLI args, resolves the dual-log file glob (with self-scan
+exclusion), and drives extraction -> aggregation -> report across all matched files.
+**Reads:** CLI args; lists `src/logs/dual_log/api_requests_*_original.jsonl` (or `--logs-glob`).
+**Writes:** nothing directly — delegates to `cc_injection_report._write_report`.
 **Called by:** none — run manually.
-**Calls out:** none beyond `src/proxy` (stdlib only) — imports `proxy.rules`, `proxy.strip_vocab`,
-`proxy.strip_sr`, `proxy.message_passes` via `sys.path.insert` + `import proxy.*` (avoids the
-`block_dev_imports_src` hook's `from src.`/`import src.` literal-line block).
+**Calls out:** `cc_injection_extraction`, `cc_injection_aggregation`, `cc_injection_report`.
 
 **CLI flags:** `--logs-glob` (override input glob; dual_log dir auto-resolves to local
 `src/logs/dual_log` if present, else 3 parents up from the worktree root), `--out-name` (report
 filename), `--max-entries` (debug cap per file).
+
+### cc_injection_extraction.py (125 LOC)
+
+**Purpose:** Streams one dual-log JSONL file and extracts every text segment (`system[0..3]`,
+message content — plain string / `text` blocks / `tool_result` content).
+**Reads:** one `api_requests_*_original.jsonl` file, streamed line-by-line (the corpus includes
+multi-GB files, never loaded whole).
+**Writes:** mutates the `registry`/`pending`/`dedup_seen`/`counters` dicts passed in by the caller.
+**Called by:** `cc_injection_inventory.py`.
+**Calls out:** `cc_injection_aggregation`.
+
+### cc_injection_aggregation.py (92 LOC)
+
+**Purpose:** Dedups segment occurrences by exact text, dispatches first-sight segments to
+classification, and resolves recurring user-text templates in a second pass.
+**Reads:** nothing beyond function args.
+**Writes:** mutates the `registry`/`pending` dicts.
+**Called by:** `cc_injection_extraction.py`, `cc_injection_inventory.py`.
+**Calls out:** `cc_injection_classification`.
+
+### cc_injection_classification.py (250 LOC)
+
+**Purpose:** Classifies one segment into one of 5 origin labels (`COVERED`, `INJECTED`, `KEEP`,
+`OURS`, `UNCLASSIFIED`) by running the real `src/proxy` strip pipeline against a synthetic message.
+**Reads:** nothing beyond function args — pure classification.
+**Writes:** nothing — returns `ResolvedHit` lists.
+**Called by:** `cc_injection_aggregation.py`.
+**Calls out:** `proxy.rules`, `proxy.strip_vocab`, `proxy.strip_sr`, `proxy.message_passes` via
+`sys.path.insert` + `import proxy.*` (avoids the `block_dev_imports_src` hook's `from src.`/
+`import src.` literal-line block).
+
+### cc_injection_report.py (271 LOC)
+
+**Purpose:** Builds the markdown inventory report from the finished registry, writes it under
+`md/`, and prints the console summary.
+**Reads:** the finished `registry`/`file_stats`/`counters` from the orchestrator.
+**Writes:** `md/<name>_cc_injection_inventory.md` (report; override with `--out-name`); a 3-line
+summary to stdout.
+**Called by:** `cc_injection_inventory.py`.
+**Calls out:** none.
 
 ---
 
