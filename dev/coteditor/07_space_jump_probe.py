@@ -25,17 +25,13 @@ _BUFFER_LEN     = _POLL_HZ * _BUFFER_SECONDS
 
 # FUNCTIONS
 
-# True when bit 0 (left button) of NSEvent.pressedMouseButtons() is set
 def _left_button_down() -> bool:
     return bool(NSEvent.pressedMouseButtons() & 0x1)
 
-# Global mouse position, bottom-left origin (NSEvent.mouseLocation semantics)
 def _mouse_position() -> Tuple[float, float]:
     loc = NSEvent.mouseLocation()
     return loc.x, loc.y
 
-# True when (x, y) is within _EDGE_PX of any edge of its containing NSScreen;
-# also True when no screen contains the point (cursor pushed past all bounds)
 def _at_edge(x: float, y: float) -> bool:
     for screen in NSScreen.screens():
         f = screen.frame()
@@ -46,22 +42,18 @@ def _at_edge(x: float, y: float) -> bool:
                     y - y0 <= _EDGE_PX or y1 - y <= _EDGE_PX)
     return True
 
-# Frontmost application's localized name, "" if unavailable
 def _frontmost_app() -> str:
     app = NSWorkspace.sharedWorkspace().frontmostApplication()
     return app.localizedName() if app else ""
 
-# Active Space ID via CGS bridge (connection ID + active space, no full space map needed)
 def _active_space(cid: int) -> int:
     return _CG.CGSGetActiveSpace(cid)
 
-# Wall-clock timestamp, millisecond precision
 def _timestamp() -> str:
     t = time.time()
     ms = int((t - int(t)) * 1000)
     return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(t)) + f'.{ms:03d}'
 
-# One poll: all required fields for a single sample
 def _take_sample(cid: int) -> Dict:
     x, y = _mouse_position()
     return {
@@ -74,12 +66,10 @@ def _take_sample(cid: int) -> Dict:
         'app':        _frontmost_app(),
     }
 
-# Dense one-line rendering of a sample
 def _format_sample(s: Dict) -> str:
     return (f"{s['ts']}  x={s['x']:.0f} y={s['y']:.0f} at_edge={s['at_edge']}"
             f" left_down={s['left_down']} space={s['space_id']} app={s['app']}")
 
-# Write JUMP header + full rolling buffer to the log, flush immediately
 def _dump_jump(logf, buffer: Deque[Dict], old_space: int, new_space: int) -> None:
     logf.write(f"\n### JUMP {_timestamp()}  space {old_space} -> {new_space}"
                f"  (buffer: {len(buffer)} samples)\n")

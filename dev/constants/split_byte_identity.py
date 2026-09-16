@@ -1,23 +1,3 @@
-"""
-Byte-identity harness for src/constants.py's split by constant cluster into src/colors.py (ANSI
-colors + backgrounds, PASTEL_* cluster), src/core/modes.py (MODE_* cluster), src/pane_error_log.py
-(PANE_ERROR_LOG_* cluster absorbed into the module that already owns that concern), and the
-residual src/constants.py (timing/size limits + TOOL_BLOCKLIST — zero clusters left). The HOOK_*
-cluster + HOOK_EVENT_CATEGORIES (26 names) had zero importers anywhere in src/ or dev/ and were
-deleted outright (control-flow integrity fixes, refactor phase 4) rather than migrated to a new
-module — removed from _NAMES below, not tracked in _NEW_LOCATIONS.
-
-BEFORE the split: every name below resolves through _NEW_LOCATIONS' default (src.constants,
-where they all still live); dumps {name: repr(value)} and hashes it.
-AFTER the split: _NEW_LOCATIONS is updated (same commit as the split) to point each moved name at
-its new module; the same 44 names resolve from their new homes and hash identically.
-
-Usage (from project root):
-    ./venv/bin/python dev/constants/split_byte_identity.py
-
-Prints one HASH line. Run before and after the split; the hash must match.
-"""
-
 # INFRASTRUCTURE
 import hashlib
 import importlib
@@ -28,9 +8,6 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
-# The 44 top-level UPPER_CASE names in src/constants.py that are still live post-HOOK_*-deletion —
-# frozen here rather than discovered dynamically via vars(), since after the split most of them
-# are no longer present in src.constants at all.
 _NAMES = [
     'BLUE', 'COLLISION_BG', 'CYAN', 'DIM', 'DIM_GREEN_BG', 'DIM_YELLOW_BG',
     'EXPANDED_MAX_LINES', 'GREEN', 'HOVER_BG',
@@ -44,9 +21,6 @@ _NAMES = [
     'YELLOW', 'ZEBRA_BG_A', 'ZEBRA_BG_B',
 ]
 
-# Post-split home for every name that moves out of src/constants.py. A name absent here is
-# assumed to still live in src.constants — true for the 9 residual timing/size-limit names and
-# TOOL_BLOCKLIST.
 _COLOR_NAMES = [
     'BLUE', 'COLLISION_BG', 'CYAN', 'DIM', 'DIM_GREEN_BG', 'DIM_YELLOW_BG', 'GREEN', 'HOVER_BG',
     'LIGHT_RED_BG', 'MAGENTA', 'ORANGE', 'PASTEL_BLUE', 'PASTEL_GREEN', 'PASTEL_ORANGE',
@@ -79,9 +53,6 @@ def _resolve(name: str):
     return getattr(module, name)
 
 
-# repr(frozenset(...)) / repr(set(...)) order depends on PYTHONHASHSEED's per-process string-hash
-# randomization — TOOL_BLOCKLIST would otherwise make this harness's own hash non-reproducible
-# across separate runs regardless of any src/constants.py change. Sort (frozen)sets before repr.
 def _stable_repr(value) -> str:
     if isinstance(value, (set, frozenset)):
         return repr(sorted(value))
