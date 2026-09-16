@@ -1,18 +1,10 @@
 # INFRASTRUCTURE
 
-# Manual quoted-data / genuine-injection / ambiguous classification, filled in by hand after
-# reviewing a first run's raw occurrence context (see report body). Keyed by
-# (file_name, msg_idx, blk_idx, first_line_idx) — practical to hand-write, unlike the full
-# removed_text used for dedup. verdict in {'quoted data', 'genuine CC injection', 'ambiguous'}.
-# Evidence for each verdict is in the Occurrences section render — see _render_report.
 _MC = 'api_requests_opus_monitor_cc_1785259250_original.jsonl'
 _PO = 'api_requests_opus_posts_1785266871_original.jsonl'
 _W2 = 'api_requests_opus_wise2627_1785240377_original.jsonl'
 _CR = 'api_requests_worker_85d6f25b_capture-monitor-cc-ref_1785272207_original.jsonl'
 _MANUAL_VERDICTS = {
-    # monitor_cc — hook-prefix / bg-launch-ack: all real Bash commands genuinely hitting the
-    # hook or genuinely launched in background; context_before is empty (hook prefix) or the
-    # literal 'Command ' stub (bg-ack), i.e. the removed text is the ENTIRE real tool_result.
     (_MC, 22, 0, 12):   ('genuine CC injection', "Bash ran `ls .../websearch; grep ... download_pdf ...` — real command tripped block_broad_grep.py; prefix is the whole tool_result (context_before empty), advisory text follows immediately."),
     (_MC, 53, 0, 27):   ('genuine CC injection', "Bash `sleep 600 && echo done` with run_in_background=true — genuine CC bg-launch ack; context_before='Command ', context_after='.' (the entire tool_result)."),
     (_MC, 66, 0, 33):   ('genuine CC injection', "Same pattern as msg[53]: real backgrounded `sleep 600` — genuine ack."),
@@ -29,7 +21,6 @@ _MANUAL_VERDICTS = {
     (_MC, 329, 0, 157): ('genuine CC injection', "Real backgrounded `sleep 600` — genuine ack (same LIVE-log growth, milestone-2 fix-verification re-run)."),
     (_MC, 351, 0, 167): ('genuine CC injection', "Real backgrounded `sleep 600` — genuine ack (same LIVE-log growth, milestone-2 fix-verification re-run)."),
     (_MC, 370, 0, 176): ('genuine CC injection', "Real backgrounded `sleep 600` — genuine ack (same LIVE-log growth, milestone-2 fix-verification re-run)."),
-    # posts
     (_PO, 30, 0, 16):   ('genuine CC injection', "Bash ran real `rag-cli search ... monitor-cc-reference | head -60` — tripped block_rag_cli_chained.py; genuine hook prefix."),
     (_PO, 70, 0, 35):   ('genuine CC injection', "Real backgrounded `sleep 600` timer — genuine ack."),
     (_PO, 80, 0, 40):   ('genuine CC injection', "Real backgrounded `sleep 600` timer — genuine ack."),
@@ -42,12 +33,10 @@ _MANUAL_VERDICTS = {
     (_PO, 147, 0, 72):  ('genuine CC injection', "Real backgrounded `sleep 480` timer — genuine ack."),
     (_PO, 269, 0, 129): ('genuine CC injection', "Bash ran real `gh-cli index_issues ... | tail -20` — tripped block_gh_cli_chained.py; genuine hook prefix."),
     (_PO, 273, 0, 131): ('genuine CC injection', "Real backgrounded `gh-cli index_issues` — genuine ack."),
-    # wise2627
     (_W2, 11, 0, 7):    ('genuine CC injection', "Bash `cat vor-unterschrift.md; ...` real output exceeded persist threshold (52KB) — Preview section is the genuine persisted-output wrapper around real command output."),
     (_W2, 158, 0, 77):  ('genuine CC injection', "Bash ran real `grep -rn ruhig wohnungssuche/Meta/` — tripped block_broad_grep.py; genuine hook prefix."),
     (_W2, 604, 0, 291): ('genuine CC injection', "Bash `curl`-style page fetch loop, real output exceeded persist threshold (39.4KB) — genuine Preview section."),
     (_W2, 697, 0, 335): ('genuine CC injection', "Bash ran real `rag-cli list_collections --filter wise ...` chain — tripped block_rag_cli_chained.py; genuine hook prefix."),
-    # capture-monitor-cc-ref
     (_CR, 10, 0, 5):    ('genuine CC injection', "Bash `cat /tmp/tc_seed.html` real output (246323 bytes) exceeded persist threshold (240.6KB) — genuine Preview section of a real persisted-output wrapper."),
     (_CR, 58, 0, 27):   ('genuine CC injection', "Real backgrounded `rag-cli index --collection monitor-cc-reference` — genuine ack."),
 }
