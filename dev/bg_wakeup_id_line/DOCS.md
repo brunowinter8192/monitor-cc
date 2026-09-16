@@ -11,7 +11,7 @@ every script's report.
 
 ## Modules
 
-### p1_scan_launch_ack_wordings.py (291 LOC)
+### p1_scan_launch_ack_wordings.py (327 LOC)
 
 **Purpose:** Inventories distinct CC background-launch-ack wordings in
 `src/logs/dual_log/*_original.jsonl`, dedups cumulative dual-log duplication, and evaluates the 3
