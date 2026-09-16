@@ -1,23 +1,3 @@
-"""
-Probe: multi-pass composition — position-anchored ops rebased over C0.
-
-Validates that per-pass ops (offset_in_Ck, removed, injected) derived from
-(before_pass, after_pass) block-text pairs compose into a single span list
-over C0 satisfying byte-exact reconstruction:
-
-  Inv1: "".join(t for tag,t in spans if tag in ("equal","stripped")) == C0_block_text
-  Inv2: "".join(t for tag,t in spans if tag in ("equal","injected")) == Cfwd_block_text
-
-Op extraction: common-prefix/suffix on each pass's (before_pass, after_pass) block-text pair.
-Stand-in for what production passes would record directly; validated by the invariants.
-
-Also models _dedup_wakeup_blocks as a final composition pass (Layer-1 payload modification)
-and proves the money-shot: msg[100] TN+BG double-inject produces exactly ONE injected wakeup.
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy_dual_log/composition_probe.py
-"""
-
 # INFRASTRUCTURE
 import sys
 from datetime import datetime
@@ -34,7 +14,6 @@ REPORT_DIR  = _SCRIPT_DIR / "01_reports"
 
 # FUNCTIONS
 
-# Format span list for report output
 def fmt_spans(spans: list, max_text: int = 80) -> list:
     lines = []
     for tag, text in spans:
@@ -106,7 +85,6 @@ def _emit_money_shot(emit, wakeup_core: str) -> None:
         emit("```"); emit(tb.format_exc()); emit("```")
 
 
-# Runs the full corpus, emits the summary table + failing cases; returns R (or None on error)
 def _emit_corpus_summary_table(emit, R: dict) -> None:
     emit(f"| Metric | Value |")
     emit(f"|---|---|")

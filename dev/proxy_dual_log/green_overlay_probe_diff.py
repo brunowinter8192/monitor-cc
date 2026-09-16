@@ -2,9 +2,8 @@
 import json
 from difflib import SequenceMatcher
 
-RATIO_THRESHOLD = 0.1  # from src/proxy/diff_engine.py
+RATIO_THRESHOLD = 0.1
 
-# Copied from src/proxy/strip_vocab.py RULES — marker substrings only (attribution needs them)
 _STRIP_RULES_MARKERS: dict[str, list[str]] = {
     'REJ': ['(rejection marker stripped by proxy)'],
     'TN':  ['<task-notification>'],
@@ -15,7 +14,7 @@ _STRIP_RULES_MARKERS: dict[str, list[str]] = {
     'CMD': ['# claudeMd', 'Contents of ', 'The date has changed.'],
     'PYR': ['<new-diagnostics>'],
     'PM':  ['Plan mode is active', 'Plan mode '],
-    'ALL': [],  # skip — no markers
+    'ALL': [],
     'PP':  ['Preview (first '],
     'BGK': ['Background command "'],
     'GL':  ['Another git process seems to be running'],
@@ -26,7 +25,6 @@ _STRIP_RULES_MARKERS: dict[str, list[str]] = {
     'FM':  [' was modified'],
 }
 
-# Copied from src/proxy/logging.py
 _MSG_CODE_TO_FN: dict[str, str] = {
     'REJ': '_apply_first_pass',    'TN':  '_apply_first_pass',
     'NAG': '_apply_first_pass',    'DEF': '_apply_first_pass',
@@ -42,7 +40,6 @@ _MSG_CODE_TO_FN: dict[str, str] = {
 
 # FUNCTIONS
 
-# Copied from src/proxy/diff_engine.py — exact production implementation
 def _get_text(element) -> str:
     if element is None:
         return ""
@@ -56,7 +53,6 @@ def _get_text(element) -> str:
     return json.dumps(element, ensure_ascii=False)
 
 
-# Copied from src/proxy/logging.py — strips cache_control recursively
 def _strip_cache_control(obj):
     if isinstance(obj, dict):
         return {k: _strip_cache_control(v) for k, v in obj.items() if k != "cache_control"}
@@ -65,7 +61,6 @@ def _strip_cache_control(obj):
     return obj
 
 
-# Copied from src/proxy/logging.py — normalizes single-text-block user messages
 def _normalize_msg_shape(msg: dict) -> dict:
     if msg.get("role") != "user":
         return msg
@@ -80,7 +75,6 @@ def _normalize_msg_shape(msg: dict) -> dict:
     return msg
 
 
-# Current (buggy) word-level _diff_text — exact copy of src/proxy/diff_engine.py
 def diff_text_word(orig_text: str, fwd_text: str) -> list:
     if orig_text == fwd_text:
         return [("equal", orig_text)]
@@ -106,7 +100,6 @@ def diff_text_word(orig_text: str, fwd_text: str) -> list:
     return spans
 
 
-# Candidate fix: char-level _diff_text — keeps early-exit branches, replaces word-level path
 def diff_text_char(orig_text: str, fwd_text: str) -> list:
     if orig_text == fwd_text:
         return [("equal", orig_text)]
@@ -131,7 +124,6 @@ def diff_text_char(orig_text: str, fwd_text: str) -> list:
     return spans
 
 
-# Copied from src/proxy/strip_vocab.py:attribute_chunk — marker-based rule attribution
 def _attribute_chunk_probe(chunk: str):
     if chunk.startswith('<task-notification>'):
         return 'TN'
@@ -144,7 +136,6 @@ def _attribute_chunk_probe(chunk: str):
     return None
 
 
-# Mirrored from src/proxy/logging.py inject-attribution block (~line 421)
 def _fn_for_inject(i_text: str) -> str:
     if not i_text:
         return "unknown"
@@ -154,28 +145,23 @@ def _fn_for_inject(i_text: str) -> str:
     return _MSG_CODE_TO_FN.get(code, "unknown") if code else "unknown"
 
 
-# Level-2 fix: char-level diff + gate phantom injected spans via attribution
-# Injected span with fn="unknown" → reclassify to equal (grey).
-# Injected span with known fn → keep green. Maintains fidelity (gated equal still in fwd recon).
 def diff_text_char_gated(orig_text: str, fwd_text: str) -> list:
     raw = diff_text_char(orig_text, fwd_text)
     result = []
     for tag, text in raw:
         if tag == "injected" and _fn_for_inject(text) == "unknown":
-            result.append(("equal", text))  # phantom → grey
+            result.append(("equal", text))
         else:
             result.append((tag, text))
     return result
 
 
-# Verify char-level reconstruction fidelity — equal+stripped must rebuild o_text, equal+injected must rebuild f_text
 def check_fidelity(o_text: str, f_text: str, char_spans: list) -> tuple:
     orig_recon = "".join(t for tag, t in char_spans if tag in ("equal", "stripped"))
     fwd_recon  = "".join(t for tag, t in char_spans if tag in ("equal", "injected"))
     return (orig_recon == o_text), (fwd_recon == f_text)
 
 
-# Format span list for report (truncate long values)
 def fmt_spans(spans: list, max_text: int = 120) -> str:
     lines = []
     for tag, text in spans:
@@ -184,13 +170,11 @@ def fmt_spans(spans: list, max_text: int = 120) -> str:
     return "\n".join(lines)
 
 
-# Run all three variants on a pair and return comparison record
 def compare_pair(label: str, o_text: str, f_text: str) -> dict:
     word_spans  = diff_text_word(o_text, f_text)
     char_spans  = diff_text_char(o_text, f_text)
     gated_spans = diff_text_char_gated(o_text, f_text)
     fid_o, fid_f = check_fidelity(o_text, f_text, char_spans)
-    # gated fidelity: gated equal (was injected) counts toward fwd; stripped+equal count toward orig
     gated_orig_recon = "".join(t for tag, t in gated_spans if tag in ("equal", "stripped"))
     gated_fwd_recon  = "".join(t for tag, t in gated_spans if tag in ("equal", "injected"))
     gated_fid_ok = (gated_orig_recon == o_text) and (gated_fwd_recon == f_text)

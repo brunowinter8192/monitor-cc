@@ -6,7 +6,6 @@ from pathlib import Path
 
 # FUNCTIONS
 
-# Resolve project root from env or __file__
 def _resolve_root() -> Path:
     env = os.environ.get("MONITOR_CC_ROOT")
     if env:
@@ -14,7 +13,6 @@ def _resolve_root() -> Path:
     return Path(__file__).parent.parent.parent
 
 
-# Build all log file paths for the session
 def _resolve_paths(root: Path, session: str) -> dict:
     logs = root / "src" / "logs"
     dual = logs / "dual_log"
@@ -28,7 +26,6 @@ def _resolve_paths(root: Path, session: str) -> dict:
     }
 
 
-# Fail-fast if any required log file is missing
 def _check_paths(paths: dict) -> None:
     for key in ("main", "orig", "fwd"):
         p = paths[key]
@@ -37,7 +34,6 @@ def _check_paths(paths: dict) -> None:
             sys.exit(1)
 
 
-# Load JSONL, skip blank lines and bad JSON
 def _load_jsonl(path: Path) -> list:
     entries = []
     with open(path, encoding="utf-8") as f:
@@ -52,13 +48,11 @@ def _load_jsonl(path: Path) -> list:
     return entries
 
 
-# Load main log — return only request entries (no type field), preserving order
 def _load_main_log(path: Path) -> list:
     all_entries = _load_jsonl(path)
     return [e for e in all_entries if "type" not in e]
 
 
-# Load tool_errors.jsonl — filter by proxy_file containing session suffix
 def _load_tool_errors(path: Path, session: str) -> list:
     if not path.exists():
         return []

@@ -20,7 +20,6 @@ LOG_STEMS = [
 
 # FUNCTIONS
 
-# Check one block's invariants; update pass_stats/failed_cases; return (ok, is_multi, is_double_inject)
 def _check_block(stem: str, entry: dict, msg_idx, c0_content, cfwd_content, blk_idx,
                  block_op_list: list, pass_stats: dict, failed_cases: list) -> tuple:
     c0_text   = _block_text(c0_content,   blk_idx)
@@ -52,7 +51,6 @@ def _check_block(stem: str, entry: dict, msg_idx, c0_content, cfwd_content, blk_
     return ok, is_multi, is_double_inject
 
 
-# Scan one corpus entry, updating stats in place
 def _scan_entry(stem: str, entry: dict, stats: dict) -> None:
     payload  = _strip_cache_control(entry.get("payload", {}))
     messages = payload.get("messages", [])
@@ -82,7 +80,6 @@ def _scan_entry(stem: str, entry: dict, stats: dict) -> None:
                 stats["double_inject_blocks"] += 1
 
 
-# Run all entries across all stems; return stats + failing cases
 def run_corpus() -> dict:
     stats = {
         "total_entries":        0,
@@ -119,7 +116,6 @@ def run_corpus() -> dict:
     }
 
 
-# Detailed trace for msg[100] TN+BG double-inject money-shot case
 def get_money_shot_case():
     stem       = "api_requests_opus_monitor_cc_1780933074"
     target_fid = "58620c90-9e81-497d-98d6-1cf8a63e3491"

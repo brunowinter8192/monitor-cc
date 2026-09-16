@@ -1,21 +1,3 @@
-"""
-span_inline_probe.py — Form A vs Form B inline-render data model probe.
-
-Validates that Form B (full ordered span list per log) is the minimal enrichment
-that lets the read-side render strip/inject inline without content duplication.
-Shows Form A's empirical failure via concrete offset/substring mismatches on real data.
-
-Probes 3 representative blocks from log api_requests_opus_monitor_cc_1780517466:
-  B1 — sys[2] full-replace (CC prompt → proxy rules, ratio<0.1, no equal spans)
-  B2 — sys[3] strip-to-dot (whole original stripped, '.' injected, no equal spans)
-  B3 — msg[N][0] word-level mixed (equal + stripped + injected, with cache_control diff)
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy_dual_log/span_inline_probe.py
-
-Output: dev/proxy_dual_log/span_inline_probe_reports/<YYYYMMDD>.md
-"""
-
 # INFRASTRUCTURE
 import importlib.util
 import sys
@@ -24,7 +6,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-# Load diff_engine directly from path — keeps probe independent of src/ package structure
 _engine_path = Path(__file__).parents[2] / "src" / "proxy" / "diff_engine.py"
 _spec = importlib.util.spec_from_file_location("diff_engine_probe", _engine_path)
 diff_engine = importlib.util.module_from_spec(_spec)

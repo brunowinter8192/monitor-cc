@@ -1,11 +1,3 @@
-"""Unit tests for CC 2.1.176 proxy drift fixes.
-
-Fix 1: 'Workflow' added to TOOL_BLOCKLIST → _strip_unused_tools removes it.
-Fix 2: _apply_role_system_strip strips role='system' messages unconditionally.
-
-Run from project root:
-    ./venv/bin/python dev/proxy_176_strip_tests.py
-"""
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
@@ -31,7 +23,6 @@ def check(label, condition):
     return condition
 
 
-# Fix 1 — Workflow removed by _strip_unused_tools
 
 def test_workflow_blocklist():
     print("Fix 1 — Workflow blocklist removal")
@@ -50,7 +41,6 @@ def test_workflow_blocklist():
     print()
 
 
-# Fix 2 — _apply_role_system_strip
 
 def test_role_system_strip_fires():
     print("Fix 2a — role=system content replaced with '.'")
@@ -127,7 +117,6 @@ def test_multiple_system_messages():
     print()
 
 
-# Attribution — role-based code='RS' in _process_messages_section
 
 def test_attribution_rs_code():
     print("Fix 2g — attribution: role=system → code='RS', fn='_apply_role_system_strip'")
@@ -136,7 +125,6 @@ def test_attribution_rs_code():
     orig_norm = [_normalize_msg_shape_for_hash(m) for m in orig_msgs]
     fwd_norm  = [_normalize_msg_shape_for_hash(m) for m in fwd_msgs]
     msg_diffs = _diff_messages(orig_norm, fwd_norm)
-    # Build ops the same way the pass does
     from proxy.rule_ops import _ops_from_content_change
     all_ops = {0: _ops_from_content_change(_SYSTEM_CONTENT, ".")}
     s_msgs, _, _, _, s_fn, _ = _process_messages_section(

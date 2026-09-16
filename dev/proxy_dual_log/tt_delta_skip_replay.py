@@ -1,4 +1,18 @@
-"""
+# INFRASTRUCTURE
+import argparse
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+_SCRIPT_DIR = Path(__file__).parent.resolve()
+WORKTREE_ROOT = _SCRIPT_DIR.parents[1]
+sys.path.insert(0, str(WORKTREE_ROOT))
+
+MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
+LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
+
+_MODULE_DOC = """
 tt_delta_skip_replay.py — before/after replay proving the total_tokens delta-skip.
 
 Replays a recorded _original.jsonl through the REAL production pass pipeline
@@ -29,24 +43,6 @@ Usage (from project root):
 `--compare` runs both modes in one process and diffs every entry byte-wise (json, sort_keys).
 """
 
-# INFRASTRUCTURE
-import argparse
-import json
-import sys
-import tempfile
-from pathlib import Path
-
-_SCRIPT_DIR = Path(__file__).parent.resolve()
-WORKTREE_ROOT = _SCRIPT_DIR.parents[1]
-sys.path.insert(0, str(WORKTREE_ROOT))
-
-# Recorded dual-logs are untracked data living in the main checkout, not duplicated into worktrees.
-MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
-LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
-
-# Lazy import — this module is imported both at top-level (WORKTREE_ROOT already on sys.path from
-# the block above) and reused this way inside `_is_tt_msg`, mirroring `replay()`'s own late-import
-# convention below (src imports deferred so this file can be inspected without src/ importable).
 def _shape_classifier():
     from src.proxy_display.proxy_badge import _is_total_tokens_nuke_text
     return _is_total_tokens_nuke_text
@@ -67,11 +63,6 @@ def _load_jsonl(path: Path) -> list:
     return entries
 
 
-# True when the message is a genuine role='system' total_tokens marker OR the same marker preceded
-# only by known CC nudge prose (2026-09-05, claude-f trailing-nudge widening) — delegates to the
-# real `parser._is_total_tokens_nuke_text` rather than keeping a second, narrower copy of the shape
-# test here, so this replay's own classification stays in agreement with the production code it is
-# verifying against.
 def _is_tt_msg(msg: dict) -> bool:
     if msg.get('role') != 'system':
         return False
@@ -86,7 +77,6 @@ def _is_tt_msg(msg: dict) -> bool:
     return False
 
 
-# Replay every request of one session; returns list of (request_id, stripped_entry, injected_entry)
 def replay(stem: str) -> list:
     from src.proxy import strip_inject_delta as sid
     from src.proxy.rules import apply_modification_rules
@@ -116,9 +106,7 @@ def replay(stem: str) -> list:
         return out
 
 
-# Run the REAL read-side accumulator over the replayed entries -> {flow_id: has_content}.
-# baseline=True restores the pre-fix rule (any non-empty messages_delta badges).
-def has_content_map(entries: list, which: int, baseline: bool = False) -> dict:  # noqa: C901
+def has_content_map(entries: list, which: int, baseline: bool = False) -> dict:
     from src.proxy_display import dual_log_accumulator as _accumulator
     from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     saved = _accumulator._msgs_delta_is_substantial
@@ -140,7 +128,6 @@ def has_content_map(entries: list, which: int, baseline: bool = False) -> dict: 
     return merged
 
 
-# {flow_id: set(msg_idx)} for one side, via the same real accumulator
 def msg_idx_map(entries: list, which: int) -> dict:
     from src.proxy_display.dual_log_accumulator import accumulate_dual_log
     with tempfile.NamedTemporaryFile('w', suffix='.jsonl', delete=False) as f:
@@ -158,7 +145,6 @@ def msg_idx_map(entries: list, which: int) -> dict:
     return merged
 
 
-# The badge pair the REQ header actually renders, via the real parser.badge_flags
 def badge_maps(entries: list) -> tuple:
     from src.proxy_display.proxy_badge import badge_flags
     hc_s = has_content_map(entries, 1)
@@ -177,7 +163,6 @@ def badge_maps(entries: list) -> tuple:
     return strip_by_fid, inject_by_fid
 
 
-# Classify a request by what its ORIGINAL payload + baseline delta contained
 def classify(base_s: dict, orig_payload: dict) -> str:
     md = base_s.get('messages_delta', {})
     if not md:
@@ -227,20 +212,14 @@ def _print_write_side(rows: list, base_hc_s: dict, base_hc_i: dict, show_strip: 
     print(f'    `inject` shown: {sum(base_hc_i.values())} -> {sum(show_inject.values())}')
 
 
-# Compute + print the per-class verdict; returns True iff every class matches expectations
 def _compute_and_print_verdict(rows: list, buckets: dict, show_strip: dict, show_inject: dict) -> bool:
     tt_ids = set(buckets.get('pure_total_tokens', []))
     real_ids = set(buckets.get('real_strip', []))
     mixed_ids = set(buckets.get('mixed', []))
 
-    # pure total_tokens: BOTH words off
     tt_quiet = sum(1 for r in tt_ids if not show_strip.get(r) and not show_inject.get(r))
     print(f'\n  pure_total_tokens requests with BOTH badge words off: {tt_quiet}/{len(tt_ids)}')
-    # every other nuke / real strip: `strip` on, and `inject` on whenever a span was injected
     real_loud = sum(1 for r in real_ids if show_strip.get(r))
-    # Implication, not equality: a green span in the messages MUST light `inject`. The converse
-    # does not hold — a system-section injection (proxy rules into system[2]) legitimately lights
-    # `inject` with no injected messages_delta at all, so equality would false-alarm on those.
     _inj_msg_flows = _flows_with_injected_msgs(rows)
     real_with_green = real_ids & _inj_msg_flows
     real_inj = sum(1 for r in real_with_green if show_inject.get(r))
@@ -274,7 +253,6 @@ def compare_workflow(stem: str) -> int:
     return 0 if ok else 1
 
 
-# flow_ids whose INJECTED side touched at least one message block (i.e. a span renders green there)
 def _flows_with_injected_msgs(rows: list) -> set:
     return {rid for rid, _s, i_e, _o in rows if i_e.get('messages_delta')}
 
@@ -289,7 +267,7 @@ def single_workflow(stem: str) -> int:
 
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=_MODULE_DOC, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('stem', help='log stem, e.g. api_requests_opus_monitor_cc_1788011077')
     ap.add_argument('--compare', action='store_true',
                     help='report the badge signal under the old rule vs the new one')

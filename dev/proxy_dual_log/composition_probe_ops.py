@@ -3,7 +3,6 @@ import json
 
 # FUNCTIONS
 
-# Recursively strip cache_control keys
 def _strip_cache_control(obj):
     if isinstance(obj, dict):
         return {k: _strip_cache_control(v) for k, v in obj.items() if k != "cache_control"}
@@ -12,7 +11,6 @@ def _strip_cache_control(obj):
     return obj
 
 
-# Inner content text the proxy actually operates on (mirrors diff_engine._get_inner_text)
 def _get_inner_text(block) -> str:
     if isinstance(block, str):
         return block
@@ -32,7 +30,6 @@ def _get_inner_text(block) -> str:
     return json.dumps(block, ensure_ascii=False)
 
 
-# Extract inner text for a specific block index from a message content value
 def _block_text(content, blk_idx: int) -> str:
     if isinstance(content, list):
         return _get_inner_text(content[blk_idx]) if blk_idx < len(content) else ""
@@ -43,9 +40,6 @@ def _block_text(content, blk_idx: int) -> str:
     return json.dumps(content) if blk_idx == 0 else ""
 
 
-# Extract minimal (offset, removed, injected) op from a single-pass (before, after) pair.
-# Uses common-prefix/suffix — handles all pass types including TN transform.
-# In production each pass records its op directly; this is the probe stand-in.
 def extract_ops_from_pair(before: str, after: str) -> list:
     if before == after:
         return []
@@ -61,15 +55,6 @@ def extract_ops_from_pair(before: str, after: str) -> list:
     return [(p, removed, injected)]
 
 
-# Apply one edit op (offset_in_Ck, removed, injected) to a span list.
-#
-# Ck = "".join(t for tag,t in spans if tag in ("equal","injected"))
-#
-# Rules for Ck bytes in [offset, offset+len(removed)):
-#   "equal"    → "stripped"  (C0 bytes being removed from forwarded content)
-#   "injected" → disappears  (prior injection being re-removed by a later pass)
-# "stripped" spans are invisible to Ck — copied unchanged.
-# Both invariants maintained after every call.
 def apply_edit_to_spans(spans: list, offset: int, removed: str, injected: str) -> list:
     if not removed and not injected:
         return spans
@@ -103,7 +88,6 @@ def apply_edit_to_spans(spans: list, offset: int, removed: str, injected: str) -
                 new_spans.append((tag, prefix_t))
             if mid_t and tag == "equal":
                 new_spans.append(("stripped", mid_t))
-            # mid_t with tag="injected" disappears (prior injection re-removed)
             if not inject_emitted:
                 new_spans.append(("injected", injected))
                 inject_emitted = True
@@ -115,7 +99,6 @@ def apply_edit_to_spans(spans: list, offset: int, removed: str, injected: str) -
     return new_spans
 
 
-# Return [(blk_idx, before_text, after_text)] for changed blocks
 def get_block_pairs(before_content, after_content) -> list:
     if isinstance(before_content, list) and isinstance(after_content, list):
         pairs = []
@@ -136,7 +119,6 @@ def get_block_pairs(before_content, after_content) -> list:
     return []
 
 
-# Compose all ops for one block into a single span list over C0
 def compose_block(c0_text: str, block_ops: list) -> list:
     spans = [("equal", c0_text)] if c0_text else []
     for _, off, rem, inj in block_ops:
@@ -144,7 +126,6 @@ def compose_block(c0_text: str, block_ops: list) -> list:
     return spans
 
 
-# Check both reconstruction invariants; return (ok, details_str)
 def check_invariants(spans: list, c0_text: str, cfwd_text: str) -> tuple:
     recon_c0  = "".join(t for tag, t in spans if tag in ("equal", "stripped"))
     recon_fwd = "".join(t for tag, t in spans if tag in ("equal", "injected"))

@@ -1,6 +1,5 @@
 # INFRASTRUCTURE
 
-# Realistic fixture text (~130c, stable prefix)
 _LAUNCH_ACK = (
     "Command running in background with ID: bg_01ABC. "
     "Output is being written to: /tmp/output_01ABC.txt. "
@@ -8,8 +7,6 @@ _LAUNCH_ACK = (
     "To check interim output, use Read on that file path."
 )
 
-# 2026-07-29: replacement is now 3 lines (msg + Output: <path> + ID: <id>, both recovered from
-# _LAUNCH_ACK above), not a single-sentence "." placeholder.
 _EXPECTED_REPLACEMENT = (
     "Command is running in the background. Do NOT check, poll, or read its output — "
     "just wait until it finishes (you will get a completion notice).\n"
@@ -17,11 +14,8 @@ _EXPECTED_REPLACEMENT = (
     "ID: bg_01ABC\n"
 )
 
-# Completion notification — must NOT be falsely triggered
 _COMPLETION_NOTIF = 'Background command "sleep 30" failed with exit code 143'
 
-# FP fixtures — each CONTAINS the marker phrase but does NOT start with the ack prefix.
-# Simulates large tool_result / pasted user content that quotes the phrase as data.
 _FP_LARGE = (
     "RAG search results (hybrid, 5 hits):\n\n"
     "[1] decisions/strip_bg_launch_ack.md (score 0.92)\n"
@@ -57,9 +51,6 @@ _FP_LIST_SUB_TEXT = (
     "Line 33-35: fixture for completion notification.\n"
 )
 
-# Wording 2 (2026-07-29 milestone-2) — user manually backgrounds an already-running Bash call.
-# No trailing ". You will be notified..." sentence; ack IS the complete block in the only
-# measured corpus occurrence (dev/bg_wakeup_id_line/md/launch_ack_wordings_20260729.md).
 _LAUNCH_ACK_W2 = (
     "Command was manually backgrounded by user with ID: bsxpatpam. "
     "Output is being written to: /tmp/output_w2.txt"
@@ -72,7 +63,6 @@ _EXPECTED_REPLACEMENT_W2 = (
     "ID: bsxpatpam\n"
 )
 
-# FP fixture — CONTAINS the wording-2 marker phrase but does NOT start with the ack prefix.
 _FP_W2_MID_CONTENT = (
     "RAG search results (hybrid, 3 hits):\n\n"
     "[1] decisions/strip_bg_launch_ack.md (score 0.90)\n"
@@ -85,12 +75,6 @@ _FP_W2_MID_CONTENT = (
 )
 
 
-# Wording 3 (2026-09-14 milestone) — CC auto-backgrounds a Bash call that exceeded its own
-# timeout (not a deliberate/manual launch). Exact text taken verbatim from
-# src/logs/dual_log/api_requests_opus_monitor_cc_1789383190_original.jsonl. Unlike wording 1/2, this
-# one carries a trailing "Session cwd remains ..." sentence in the SAME block — the strip discards it
-# along with the rest of the matched ack, same as it already discards any trailing content for
-# wording 2 (see W24 in dev/proxy/test_strip_fix.py).
 _LAUNCH_ACK_W3 = (
     "Command did not complete within its 120s timeout and was moved to the background (ID: "
     "b1mahby4a). Output is being written to: /private/tmp/claude-501/"
@@ -109,7 +93,6 @@ _EXPECTED_REPLACEMENT_W3 = (
     "ID: b1mahby4a\n"
 )
 
-# FP fixture — CONTAINS the wording-3 marker phrase but does NOT start with the ack prefix.
 _FP_W3_MID_CONTENT = (
     "RAG search results (hybrid, 3 hits):\n\n"
     "[1] decisions/strip_bg_launch_ack.md (score 0.91)\n"

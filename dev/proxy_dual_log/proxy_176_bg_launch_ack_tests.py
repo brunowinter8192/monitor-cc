@@ -1,11 +1,3 @@
-"""Unit tests for CC 2.1.176 background-launch-ack strip (Item 4).
-
-Fixtures: launch-ack as tool_result string AND as standalone text block.
-Marker: 'running in background with ID'.
-
-Run from project root:
-    ./venv/bin/python dev/proxy_176_bg_launch_ack_tests.py
-"""
 # INFRASTRUCTURE
 import sys
 import os

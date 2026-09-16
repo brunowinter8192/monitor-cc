@@ -19,13 +19,6 @@ from proxy_176_bg_launch_ack_fixtures import (
 
 # FUNCTIONS
 
-# ── LAUNCH-ACK WORDING 3: AUTO-BACKGROUNDED ON TIMEOUT (2026-09-14 milestone) ─────────────────
-# Third CC wording — Bash exceeded its own timeout and CC moved it to the background on its own,
-# distinct from wording 1 (deliberate run_in_background) and wording 2 (user manually backgrounds
-# an already-running call). The replacement message must still say "timeout" so the reader can
-# tell this apart from a deliberate background launch (see process-docs/proxy_dual_log/ area note
-# for the 2026-09-14 entry) — this is why wording 3 gets its OWN message constant
-# (_BG_AUTO_TIMEOUT_MSG/_MAIN) rather than reusing _BG_LAUNCH_ACK_MSG.
 
 def test_wording3_tool_result_str_content():
     print("Item 4s — wording 3: tool_result string content replaced with timeout-aware hold message")
@@ -128,14 +121,6 @@ def test_wording3_ops_path_present():
     print()
 
 
-# ── FULL-REPLACEMENT SPAN SHAPE (2026-07-29 milestone-3) ──────────────────────
-# _apply_bg_launch_ack_strip is one of the 3 full_replace=True call sites in message_passes.py
-# (src/proxy/rule_ops.py::_extract_block_op). Before this milestone, the recorded op trimmed the
-# shared "Command " prefix between the ack and its replacement, so the pane rendered "Command "
-# unhighlighted on its own line, then the rest green below (live-observed 2026-07-29). This test
-# pins BOTH the op shape (one contiguous op, no trim) and the composed span shape (one contiguous
-# stripped span + one contiguous injected span — no interleaved "equal" fragment) against the real
-# launch-ack fixture, through the real production functions.
 def test_full_replace_span_is_one_contiguous_block():
     print("Item 4q — full-replacement op is ONE contiguous op, composes to ONE contiguous green span")
     messages = [{
@@ -166,12 +151,6 @@ def test_full_replace_span_is_one_contiguous_block():
     print()
 
 
-# ── MAIN-CONTEXT WORDING SHARPENING (2026-08-06 milestone-2) ──────────────────
-# Folded in from dev/timer-loop/p2_pending_bg_state_probe.py (Test 12) when that probe was
-# deleted (Milestone 3, 2026-08 — its subject module src/proxy/pending_bg_state.py was removed
-# and this was the one still-relevant, otherwise-uncovered case in it: is_main is unrelated to
-# pending_bg_state, it selects strip_bg_launch_ack.py's replacement wording via
-# _apply_bg_launch_ack_strip's own is_main param). See process-docs/timer-loop/ for the removal.
 def test_wording_main_vs_worker():
     print("Item 4r — replacement wording: is_main=True sharpens vs the default/worker wording")
     messages = [{

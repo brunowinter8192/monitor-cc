@@ -1,6 +1,5 @@
 # INFRASTRUCTURE
 
-# Inject function map for sys delta and fields delta
 _SYS_INJECT_FN = {
     "2": "_apply_system_passes (proxy rules injected)",
     "3": "_strip_sys3: '.' stub (sys[3] blanked to '.')",
@@ -22,7 +21,6 @@ _FIELD_STRIP_FN = {
 
 # FUNCTIONS
 
-# Detect new injected span format: first item in a list is a [tag, text] pair
 def _is_new_format(v: list) -> bool:
     if not v:
         return False
@@ -30,7 +28,6 @@ def _is_new_format(v: list) -> bool:
     return isinstance(first, list) and len(first) == 2 and first[0] in ("equal", "injected", "stripped")
 
 
-# Extract plain text from an injected list (handles both old flat-string and new span-tuple formats)
 def _inject_text(v: list) -> str:
     if not v:
         return ""
@@ -39,9 +36,6 @@ def _inject_text(v: list) -> str:
     return " ".join(str(x) for x in v if x)
 
 
-# Check if an inject block value is a json_reserialization artifact
-# Old format: first item is a JSON string starting with '[{"type":'
-# New format: the injected span text starts with '[{"type":'
 def _is_json_reser(i_bv: list) -> bool:
     if not i_bv:
         return False
@@ -54,32 +48,21 @@ def _is_json_reser(i_bv: list) -> bool:
     return isinstance(first, str) and first.startswith('[{"type":')
 
 
-# Classify a stripped message block → (tier, category)
-# tier: 'vocab' | 'residual' | 'false_pos' | 'unattr'
-# Vocab/residual checks run FIRST: a TN block whose message was also json_reserialized
-# should be classified TN (the proxy strip), not json_reser (the format-change side-effect).
 def _classify_strip_msg(s_texts: list, i_bv: list, attribute_chunk) -> tuple:
-    # Known strip_vocab markers: check each stripped text chunk independently
     for text in s_texts:
         code = attribute_chunk(text)
         if code and code != "ALL":
             return ("vocab", code)
 
-    # False positive: json_reserialization (string content → block-list, cache.py side effect)
-    # Only checked AFTER all proxy-strip patterns fail — json_reser is the fallback for
-    # blocks whose injected counterpart is a block-list JSON string but carry no strip marker.
     if _is_json_reser(i_bv):
         return ("false_pos", "json_reser")
 
     return ("unattr", "UNATTR")
 
 
-# Classify an inject message block → (tier, category)
 def _classify_inject_msg(i_bv: list, s_bv_exists: bool) -> tuple:
-    # json_reserialization artifact (appears at same midx/bidx as a stripped entry)
     if s_bv_exists and _is_json_reser(i_bv):
         return ("false_pos", "json_reser")
-    # BGK replacement injection: background done text
     i_text = _inject_text(i_bv)
     if "background done" in i_text:
         return ("vocab", "BGK_replacement")
@@ -88,7 +71,6 @@ def _classify_inject_msg(i_bv: list, s_bv_exists: bool) -> tuple:
     return ("unattr", "UNATTR")
 
 
-# Compute coverage percentage numerics
 def _coverage(stats: dict, false_pos_key: str | None = None) -> tuple:
     total = sum(n for section in stats.values() for n in section.values())
     fp = sum(stats.get("msg", {}).get(k, 0)

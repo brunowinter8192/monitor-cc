@@ -1,19 +1,3 @@
-"""
-Render refactor proof harness: byte-identical differential test for proxy_display render cluster.
-
-Usage (from project root):
-    ./venv/bin/python dev/proxy_dual_log/A_render_refactor_proof.py --mode capture
-    ./venv/bin/python dev/proxy_dual_log/A_render_refactor_proof.py --mode verify [--baseline PATH]
-
-Modes:
-    capture  -- run all 14 cases, write (ansi_string, total_lines) to baseline JSON
-    verify   -- run all 14 cases, assert byte-identical against baseline, exit 0 (pass) / 1 (fail)
-
-Entry point under test: format_proxy_block(entries, expand_states, ...) — exercises all 5 targets
-transitively: render_messages, _render_entry_lines, render_tools, render_turn_expanded,
-format_proxy_block itself.
-"""
-
 # INFRASTRUCTURE
 import argparse
 import json
@@ -105,7 +89,6 @@ def _render_case(case, format_proxy_block):
 
 
 def _render_fixpoint(entries, kw, format_proxy_block):
-    # Iterates: render → expand all visible keys → repeat until line_map stable (fixpoint)
     expand_states = {}
     known_keys = set()
     result = ('', 0)

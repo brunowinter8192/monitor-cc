@@ -3,7 +3,6 @@ from groundtruth_spans_algorithm import build_message_spans, diff_text_word, che
 
 # FUNCTIONS
 
-# ── formatting helpers ────────────────────────────────────────────────────────
 
 def fmt_spans(spans: list, max_text: int = 100) -> str:
     lines = []
@@ -14,26 +13,20 @@ def fmt_spans(spans: list, max_text: int = 100) -> str:
 
 
 def phantom_green_check(spans: list) -> list:
-    """Return injected spans that look like phantom JSON structure artefacts."""
     phantoms = []
     for tag, text in spans:
         if tag != "injected":
             continue
-        # Phantom pattern: JSON structural chars (comma, brace, bracket, quote)
         stripped = text.strip()
         if stripped and all(c in '",}] \t\n\\' for c in stripped):
             phantoms.append(text)
     return phantoms
 
 
-# ── run a single case ─────────────────────────────────────────────────────────
 
 def _derive_diff_spans(case: dict, o_text: str, f_text: str) -> tuple:
-    # diff_text_word on inner-content level (same input as GT, fair comparison)
     diff_spans = diff_text_word(o_text, f_text)
 
-    # For tool_result blocks: also run diff_text_word on json.dumps level
-    # (the actual production path) to show the phantom green
     diff_spans_json = None
     if "o_text_json" in case:
         diff_spans_json = diff_text_word(case["o_text_json"], case["f_text_json"])
@@ -86,7 +79,6 @@ def run_case(case: dict) -> dict:
     }
 
 
-# ── report sections ───────────────────────────────────────────────────────────
 
 def emit_summary_table(emit, results: list) -> None:
     emit()
@@ -190,7 +182,6 @@ def emit_fidelity_summary(emit, results: list) -> None:
     emit("## Fidelity Summary (lossless check)")
     emit()
     all_gt_fid = all(all(r["gt_fid"]) for r in results)
-    # Separate precision-gap cases from true failures
     true_failures = [r for r in results if not all(r["gt_fid"]) and "EQUAL_NOT_IN_FWD" not in " ".join(r["gt_flags"])]
     precision_gap_cases = [r for r in results if not all(r["gt_fid"]) and "EQUAL_NOT_IN_FWD" in " ".join(r["gt_flags"])]
     emit(f"**GT spans lossless:** "

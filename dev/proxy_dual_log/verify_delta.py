@@ -1,4 +1,10 @@
-"""
+# INFRASTRUCTURE
+import argparse
+import json
+import sys
+from pathlib import Path
+
+_MODULE_DOC = """
 verify_delta.py — Verify forwarded delta log for losslessness and self-consistency.
 
 Reads an _original + _forwarded JSONL pair, reconstructs each request's full forwarded
@@ -22,12 +28,6 @@ Or with named flags:
         --forwarded src/logs/dual_log/api_requests_<id>_forwarded.jsonl
 """
 
-# INFRASTRUCTURE
-import argparse
-import json
-import sys
-from pathlib import Path
-
 # ORCHESTRATOR
 
 def verify_delta_workflow(original_path: Path, forwarded_path: Path) -> int:
@@ -43,7 +43,6 @@ def verify_delta_workflow(original_path: Path, forwarded_path: Path) -> int:
 
 # FUNCTIONS
 
-# Load JSONL file — skip blank lines and non-JSON lines with a warning
 def _load_jsonl(path: Path) -> list:
     entries = []
     with open(path, encoding="utf-8") as f:
@@ -58,11 +57,9 @@ def _load_jsonl(path: Path) -> list:
     return entries
 
 
-# Build index: request_id → message count from original payload
-# Falls back to per-family line-order list for empty request_ids
 def _build_original_index(entries: list) -> dict:
     by_reqid = {}
-    by_family_order = {}  # model_family → [message_count, ...]
+    by_family_order = {}
     for entry in entries:
         payload = entry.get("payload", {})
         msg_count = len(payload.get("messages", []))
@@ -75,7 +72,6 @@ def _build_original_index(entries: list) -> dict:
     return {"by_reqid": by_reqid, "by_family_order": by_family_order, "_family_cursors": {}}
 
 
-# Advance one model-family chain by one forwarded entry — returns (family, curr_state, model, is_first, counts)
 def _advance_chain(entry: dict, chain_states: dict) -> tuple:
     model = entry.get("model", "")
     family = _infer_family(model)
@@ -104,7 +100,6 @@ def _advance_chain(entry: dict, chain_states: dict) -> tuple:
     return family, curr_state, model, is_first, counts
 
 
-# Check 1 (hard): reconstructed counts == declared counts in the delta entry
 def _hard_fail_check(curr_state: dict, counts: dict) -> tuple:
     hard_fail = False
     hard_fail_details = []
@@ -117,7 +112,6 @@ def _hard_fail_check(curr_state: dict, counts: dict) -> tuple:
     return hard_fail, hard_fail_details
 
 
-# Check 2 (soft diagnostic): forwarded counts.messages vs original message count
 def _soft_mismatch_check(request_id: str, family: str, counts: dict, original_index: dict, family_cursors: dict):
     orig_msg_count = _lookup_original_msg_count(request_id, family, original_index, family_cursors)
     if orig_msg_count is None:
@@ -128,10 +122,9 @@ def _soft_mismatch_check(request_id: str, family: str, counts: dict, original_in
     return f"forwarded={fwd_msg_count} original={orig_msg_count} diff={fwd_msg_count - orig_msg_count:+d}"
 
 
-# Reconstruct per-model-family chains and run both checks for every forwarded entry
 def _reconstruct_and_check(forwarded_entries: list, original_index: dict) -> list:
-    chain_states = {}   # model_family → {"system": [...], "tools": [...], "messages": [...]}
-    family_cursors = {} # model_family → next index into original_index by_family_order
+    chain_states = {}
+    family_cursors = {}
     results = []
 
     for lineno, entry in enumerate(forwarded_entries, 1):
@@ -167,11 +160,9 @@ def _reconstruct_and_check(forwarded_entries: list, original_index: dict) -> lis
     return results
 
 
-# Lookup original message count by request_id, falling back to family-order index
 def _lookup_original_msg_count(request_id: str, family: str, index: dict, cursors: dict):
     if request_id and request_id in index["by_reqid"]:
         return index["by_reqid"][request_id]
-    # Fallback: consume next entry in family order
     order_list = index["by_family_order"].get(family, [])
     cursor = cursors.get(family, 0)
     if cursor < len(order_list):
@@ -180,7 +171,6 @@ def _lookup_original_msg_count(request_id: str, family: str, index: dict, cursor
     return None
 
 
-# Convert {"0": elem, "2": elem} delta dict to a list of declared_count length
 def _dict_to_list(delta_dict: dict, declared_count: int) -> list:
     result = [None] * declared_count
     for idx_str, elem in delta_dict.items():
@@ -190,7 +180,6 @@ def _dict_to_list(delta_dict: dict, declared_count: int) -> list:
     return result
 
 
-# Rough byte size of delta payload (system+tools+messages deltas only)
 def _delta_bytes(entry: dict) -> int:
     return sum(
         len(json.dumps(entry.get(f"{cat}_delta", {})).encode("utf-8"))
@@ -198,7 +187,6 @@ def _delta_bytes(entry: dict) -> int:
     )
 
 
-# Infer model family from model string (mirrors addon.py logic)
 def _infer_family(model: str) -> str:
     m = model.lower()
     if "haiku" in m:
@@ -208,7 +196,6 @@ def _infer_family(model: str) -> str:
     return "opus"
 
 
-# Format one result row for the per-request table
 def _format_row(r: dict, col: str) -> str:
     is_first_str = "FIRST" if r["is_first"] else ""
     dkb = f"{r['delta_bytes'] / 1024:.1f}"
@@ -240,7 +227,6 @@ def _format_row(r: dict, col: str) -> str:
     )
 
 
-# Print the PASS/FAIL summary line after the per-request table
 def _print_summary(results: list) -> None:
     print()
     hard_fails = [r for r in results if r["hard_fail"]]
@@ -256,7 +242,6 @@ def _print_summary(results: list) -> None:
     print()
 
 
-# Print per-request table and PASS/FAIL summary
 def _print_report(results: list, original_path: Path, forwarded_path: Path) -> None:
     print(f"\nverify_delta — {forwarded_path.name}")
     print(f"  original:  {original_path}")
@@ -277,7 +262,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Verify forwarded delta log self-consistency against original log.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
+        epilog=_MODULE_DOC,
     )
     parser.add_argument("original", nargs="?", help="Path to _original.jsonl")
     parser.add_argument("forwarded", nargs="?", help="Path to _forwarded.jsonl")
