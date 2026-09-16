@@ -1,74 +1,55 @@
 # dev/pipeline/
 
 ## Role
-Measurement suite for core monitor pipeline characteristics (memory growth, filesystem call cost,
-parsing overhead, message-type coverage) that fed early data-source and core-loop design decisions.
-One subdirectory per measured aspect; each holds a single standalone script. Touch when re-measuring
-one of these aspects against a changed pipeline; not a regression-guard suite.
+Standalone measurement scripts that profiled memory growth, filesystem call cost, parsing overhead, and message-type coverage of the core monitor pipeline, feeding early data-source and core-loop design decisions. Touch only when re-measuring one of these aspects against a changed pipeline; this is not a regression-guard suite.
+
+## Public Interface
+No `__init__.py` in this directory. Each script is its own entry point, run directly, e.g. `python3 dev/pipeline/<subdir>/<script>.py`.
 
 ## Flow
-Each script scans real session JSONL files under the user's Claude Code projects directory (or a
-proxy log under src/logs for `format_stability/`), measures its one aspect, and writes a timestamped
-Markdown report.
+Each script scans real session JSONL files under the user's Claude Code projects directory (format_stability instead scans all such files, others scan the newest one). Each script measures its own single aspect: cache growth, filesystem call counts, extract-function timing, or type coverage. Each script writes one timestamped Markdown report to a `01_reports/` directory it creates next to itself.
 
 ## Modules
 
-### memory_profile/01_cache_growth.py (114 LOC)
+### memory_profile/01_cache_growth.py (109 LOC)
 
-**Purpose:** Measures `tool_use_cache`/`buffered_subagent_calls` growth over a session by replaying
-its JSONL lines and checkpointing container sizes at a fixed interval.
+**Purpose:** Measures tool-call cache growth across a session's JSONL by replaying it in batches and snapshotting cache size at each checkpoint.
 **Reads:** the newest session JSONL under the user's Claude Code projects directory.
-**Writes:** a report to a subdirectory it creates next to itself at run time (see Gotchas for the
-current on-disk report location).
-**Called by:** none — manual, run via `python3 dev/pipeline/memory_profile/01_cache_growth.py`.
-**Calls out:** none — currently broken (see Gotchas).
+**Writes:** a timestamped Markdown report to a `01_reports/` directory it creates next to itself.
+**Called by:** none. DEAD CODE by import graph — invoked manually as a script.
+**Calls out:** `src.jsonl_parser` — broken import, the module now lives at `src/jsonl/jsonl_parser.py`.
 
 ---
 
-### io_profile/01_poll_cycle_cost.py (164 LOC)
+### io_profile/01_poll_cycle_cost.py (156 LOC)
 
-**Purpose:** Counts filesystem calls (`stat`, `iterdir`, `glob`) per poll cycle by monkeypatching
-`Path`'s methods around a call to `find_active_sessions`, averaged over 10 cycles.
-**Reads:** live filesystem state under the user's Claude Code projects directory, via
-`find_active_sessions`.
-**Writes:** a report to a subdirectory it creates next to itself at run time (see Gotchas for the
-current on-disk report location).
-**Called by:** none — manual, run via `python3 dev/pipeline/io_profile/01_poll_cycle_cost.py`.
+**Purpose:** Counts filesystem `stat`/`iterdir`/`glob` calls per poll cycle by monkeypatching `Path` methods around `find_active_sessions`, averaged over 10 cycles.
+**Reads:** live filesystem state under the user's Claude Code projects directory, via `find_active_sessions`.
+**Writes:** a timestamped Markdown report to a `01_reports/` directory it creates next to itself.
+**Called by:** none. DEAD CODE by import graph — invoked manually as a script.
 **Calls out:** `src.session_finder` (`find_active_sessions`).
 
 ---
 
-### parsing_profile/01_multipass_cost.py (139 LOC)
+### parsing_profile/01_multipass_cost.py (133 LOC)
 
-**Purpose:** Measures per-extract-function time and multi-pass overhead by timing each session-JSONL
-extraction function over 10 runs against the newest session JSONL.
+**Purpose:** Times each session-JSONL extract function over 10 runs against the newest session JSONL to measure multi-pass parsing overhead.
 **Reads:** the newest session JSONL under the user's Claude Code projects directory.
-**Writes:** a report to a subdirectory it creates next to itself at run time (see Gotchas for the
-current on-disk report location).
-**Called by:** none — manual, run via `python3 dev/pipeline/parsing_profile/01_multipass_cost.py`.
-**Calls out:** none — currently broken (see Gotchas).
+**Writes:** a timestamped Markdown report to a `01_reports/` directory it creates next to itself.
+**Called by:** none. DEAD CODE by import graph — invoked manually as a script.
+**Calls out:** `src.jsonl_parser` — broken import, the module now lives at `src/jsonl/jsonl_parser.py`.
 
 ---
 
-### format_stability/01_unknown_types.py (240 LOC)
+### format_stability/01_unknown_types.py (232 LOC)
 
-**Purpose:** Scans all session JSONL files for top-level and content-block `type` values not in the
-script's own known-type sets, to catch new message shapes early.
+**Purpose:** Scans all session JSONL files for top-level and content-block type values not in the script's own known-type sets.
 **Reads:** all session JSONL files under the user's Claude Code projects directory.
-**Writes:** a report to a subdirectory it creates next to itself at run time (see Gotchas for the
-current on-disk report location).
-**Called by:** none — manual, run via `python3 dev/pipeline/format_stability/01_unknown_types.py`.
+**Writes:** a timestamped Markdown report to a `01_reports/` directory it creates next to itself.
+**Called by:** none. DEAD CODE by import graph — invoked manually as a script.
 **Calls out:** none — pure stdlib, no `src/` imports.
 
 ---
 
-## Gotchas
-- `memory_profile/01_cache_growth.py` and `parsing_profile/01_multipass_cost.py` both import from a
-  flat `jsonl_parser` module path under `src`, which no longer exists — the module now lives inside
-  `src/jsonl/`. Both scripts raise `ModuleNotFoundError` on the current tree.
-- All four scripts define their own `REPORTS_DIR` as a `01_reports` subdirectory of their own folder
-  (created on first run), but the reports actually present on disk today live under each folder's
-  `md/` subdirectory instead — the report path in the code has drifted from where past reports were
-  kept. A fresh run creates and writes to `01_reports`, not `md`.
-- Each script's usage/CLI is documented in `process-docs/pipeline/`, referenced from the original
-  design decisions these measurements fed.
+## State
+None of these scripts own persistent or shared state. `REPORTS_DIR` and the run-count constants (`N_CYCLES`, `N_RUNS`, `CHECKPOINT_INTERVAL`) are module-level constants read only within their own file. `io_profile/01_poll_cycle_cost.py` monkeypatches `Path.stat`/`iterdir`/`glob` for the duration of `run_cycles()` and restores the originals before returning; nothing outside that function observes the patch.

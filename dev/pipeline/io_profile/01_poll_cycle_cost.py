@@ -13,7 +13,6 @@ from src.session_finder import find_active_sessions
 REPORTS_DIR = Path(__file__).parent / '01_reports'
 N_CYCLES = 10
 
-# Capture originals before any patching
 _orig_stat = Path.stat
 _orig_iterdir = Path.iterdir
 _orig_glob = Path.glob
@@ -51,8 +50,6 @@ def main():
 
 
 # FUNCTIONS
-
-# Count project directories in ~/.claude/projects
 def count_projects():
     claude_dir = Path.home() / '.claude' / 'projects'
     if not claude_dir.exists():
@@ -60,7 +57,6 @@ def count_projects():
     return sum(1 for d in claude_dir.iterdir() if d.is_dir())
 
 
-# Count all JSONL files in ~/.claude/projects
 def count_jsonl_files():
     claude_dir = Path.home() / '.claude' / 'projects'
     if not claude_dir.exists():
@@ -68,7 +64,6 @@ def count_jsonl_files():
     return sum(1 for _ in claude_dir.glob('**/*.jsonl'))
 
 
-# Run N poll cycles with call counting and timing, return stats dict
 def run_cycles(project_filter, n_cycles):
     durations = []
     stat_counts = []
@@ -105,7 +100,6 @@ def run_cycles(project_filter, n_cycles):
     }
 
 
-# Compute mean/stdev/min/max for a list of numbers
 def summarize(values):
     return {
         'mean': statistics.mean(values),
@@ -115,7 +109,6 @@ def summarize(values):
     }
 
 
-# Format a stats dict row for the report table
 def fmt_row(label, stats, unit=''):
     mean = f'{stats["mean"]:.2f}{unit}'
     stdev = f'{stats["stdev"]:.2f}{unit}'
@@ -124,7 +117,6 @@ def fmt_row(label, stats, unit=''):
     return f'| {label} | {mean} | {stdev} | {mn} | {mx} |'
 
 
-# Write MD report and return path
 def write_report(total_projects, total_jsonl, unfiltered, filtered):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     report_path = REPORTS_DIR / f'poll_cycle_{timestamp}.md'

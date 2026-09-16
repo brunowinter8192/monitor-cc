@@ -28,8 +28,6 @@ def main():
 
 
 # FUNCTIONS
-
-# Find all JSONL files in ~/.claude/projects/
 def find_all_jsonl_files():
     claude_dir = Path.home() / '.claude' / 'projects'
     if not claude_dir.exists():
@@ -37,7 +35,6 @@ def find_all_jsonl_files():
     return list(claude_dir.glob('**/*.jsonl'))
 
 
-# Scan all files, collect message type counts, content block types, unknowns, versions
 def scan_all_files(jsonl_files):
     top_level_types = Counter()
     content_block_types = Counter()
@@ -87,7 +84,6 @@ def scan_all_files(jsonl_files):
     }
 
 
-# Extract content block types from a single message into the counter
 def extract_content_block_types(msg, msg_type, counter, unknown_dict, filepath):
     content_blocks = get_content_blocks(msg, msg_type)
     for block in content_blocks:
@@ -102,7 +98,6 @@ def extract_content_block_types(msg, msg_type, counter, unknown_dict, filepath):
             }
 
 
-# Get content blocks list from a message (handles assistant/user and progress nesting)
 def get_content_blocks(msg, msg_type):
     if msg_type == 'progress':
         data = msg.get('data', {})
@@ -120,14 +115,12 @@ def get_content_blocks(msg, msg_type):
     return []
 
 
-# Collect version info from result-type messages or other known fields
 def collect_version(msg, version_counter):
     version = msg.get('version') or msg.get('clientVersion') or msg.get('claude_code_version')
     if version:
         version_counter[str(version)] += 1
 
 
-# Write MD report and return path
 def write_report(data):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     report_path = REPORTS_DIR / f'unknown_types_{timestamp}.md'
@@ -146,7 +139,6 @@ def write_report(data):
     return report_path
 
 
-# Compute known-type coverage percentages for top-level types and content block types
 def compute_coverage(data):
     total_top = sum(data['top_level_types'].values())
     known_top_count = sum(v for k, v in data['top_level_types'].items() if k in KNOWN_TOP_LEVEL_TYPES)
