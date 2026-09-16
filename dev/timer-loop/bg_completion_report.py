@@ -258,7 +258,6 @@ def _report_dedup(raw_dup_counter, findings):
     return lines
 
 
-# Build the markdown report
 def _build_report(findings, cmd_variant_counts, total_requests, total_parse_errors,
                    raw_dup_counter, bare_hits, corpus_files, session_is_worker):
     ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')

@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""Integration tests for the abort-stamp scoping fix in src/menubar/bg_timer.py.
-
-Regression guard for the 2026-08-17 live incident (process-docs/timer-loop/): the OLD
-_abort_bg_sleep_timers swept 'aborted\\n' into every 0-byte *.output file under _TASKS_BASE
-globally on any manual abort click — confirmed live via bwbf0nmow.output carrying both 'aborted'
-and a genuine later 'workers idle' line, meaning the sweep hit a DIFFERENT, still-running
-worker-cli wait's own file. The fix resolves each killed PID's own output file (via a real lsof
--p <pid> -d 1,2 call, BEFORE the kill) and stamps only that file.
-
-Uses REAL subprocesses holding REAL open file handles (mirrors CC's own background-launch fd
-shape: stdout+stderr redirected straight to the task .output file) and calls the REAL
-_abort_bg_sleep_timers / _resolve_pid_output_file — not a mock. importlib.import_module used for
-the src.menubar imports (block_dev_imports_src.py forbids a literal 'from src.' line in dev/).
-
-Run: python3 dev/timer-loop/test_abort_stamp_scope.py
-"""
-
 # INFRASTRUCTURE
 import importlib
 import os
@@ -33,7 +16,7 @@ _abort_bg_sleep_timers = _bg_timer_mod._abort_bg_sleep_timers
 _paths_mod = importlib.import_module('src.menubar.paths')
 _MENUBAR_LOG = _paths_mod._APP_SUPPORT / 'menubar.log'
 
-_HOLD_DURATION = 20  # seconds — long enough that only the test's own kill/teardown ends it
+_HOLD_DURATION = 20
 
 
 # ORCHESTRATOR
@@ -54,21 +37,16 @@ def test_abort_stamp_scope_workflow() -> None:
 
 # FUNCTIONS
 
-# Print one PASS/FAIL line; append desc to failures on mismatch
 def _check(failures: list, desc: str, ok: bool, detail: str) -> None:
     status = "OK  " if ok else "FAIL"
     print(f"  [{status}] {desc}: {detail}")
     if not ok:
         failures.append(desc)
 
-# Spawn a real subprocess with stdout+stderr redirected straight to output_path — the same fd
-# shape CC's own background-launch produces for a task .output file, so the real lsof -p <pid>
-# -d 1,2 lookup in _resolve_pid_output_file finds it exactly like it would for a genuine
-# worker-cli wait/sleep process. Caller owns the returned Popen (kill/wait in a finally block).
 def _spawn_holding_output(output_path: Path):
     fh = open(output_path, 'wb')
     proc = subprocess.Popen(['sleep', str(_HOLD_DURATION)], stdout=fh, stderr=fh)
-    fh.close()  # child already dup'd its own fd 1/2 onto this file; parent's handle is no longer needed
+    fh.close()
     return proc
 
 
@@ -80,7 +58,7 @@ def _spawn_test_fixtures(tmp: Path):
 
     proc_killed = _spawn_holding_output(killed_file)
     proc_live = _spawn_holding_output(live_file)
-    time.sleep(0.3)  # let lsof see the just-opened handles
+    time.sleep(0.3)
 
     paths = {'killed_file': killed_file, 'foreign_file': foreign_file, 'live_file': live_file}
     return paths, proc_killed, proc_live

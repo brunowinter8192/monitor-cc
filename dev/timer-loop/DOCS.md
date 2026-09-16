@@ -2,11 +2,15 @@
 
 ## Role
 Measurement and verification scripts around the background-task wake-up chain. `p1_` inventories
-real background-task completion/kill notice wordings in the recorded corpus, independent of any one
-mechanism. `p3_` is a dead probe for a now-removed proxy-side pending-background-task tracking design
-(kept only as historical record — see Gotchas). `test_abort_stamp_scope.py` is a live regression guard
-for the menubar-side abort-scoping fix (`src/menubar/bg_timer.py`), a separate mechanism in the same
-wake-up chain.
+real background-task completion/kill notice wordings in the recorded corpus. `p3_` is a dead probe
+for a removed proxy-side design (kept as historical record). `test_abort_stamp_scope.py` guards the
+menubar-side abort-scoping fix, a separate mechanism in the same chain.
+
+## Public Interface
+No `__init__.py` in this directory. Entry paths: `./venv/bin/python
+dev/timer-loop/p1_scan_bg_completion_wordings.py [log_dir]`, `./venv/bin/python
+dev/timer-loop/p3_project_scope_incident_probe.py` (DEAD, see below), `python3
+dev/timer-loop/test_abort_stamp_scope.py`.
 
 ## Flow
 `p1_scan_bg_completion_wordings.py` scans the dual-log corpus for wording variety and writes a
@@ -15,19 +19,19 @@ spawned subprocesses and asserts on file/process state.
 
 ## Modules
 
-### p1_scan_bg_completion_wordings.py (67 LOC)
+### p1_scan_bg_completion_wordings.py (47 LOC)
 
 **Purpose:** Entry script — resolves the corpus dir, drives the per-file scan loop, writes the
 report.
-**Reads:** all `*_original.jsonl` files under src/logs/dual_log (corpus dir overridable via the first
-CLI argument).
+**Reads:** all `*_original.jsonl` files under src/logs/dual_log (corpus dir overridable via the
+first CLI argument).
 **Writes:** `md/bg_completion_wordings_<date>.md`.
 **Called by:** none — manual, measurement only.
 **Calls out:** `bg_completion_scan.py`, `bg_completion_report.py`.
 
 ---
 
-### bg_completion_scan.py (175 LOC)
+### bg_completion_scan.py (154 LOC)
 
 **Purpose:** Corpus-scanning concern for p1 — candidate-block extraction, TN/bare structural
 filters, dedup, and mechanism-verdict evaluation against the real extraction code.
@@ -39,7 +43,7 @@ filters, dedup, and mechanism-verdict evaluation against the real extraction cod
 
 ---
 
-### bg_completion_report.py (275 LOC)
+### bg_completion_report.py (274 LOC)
 
 **Purpose:** Report-building concern for p1 — one function per markdown section, assembled by
 `_build_report`.
@@ -51,40 +55,38 @@ filters, dedup, and mechanism-verdict evaluation against the real extraction cod
 
 ---
 
-### p3_project_scope_incident_probe.py (248 LOC)
+### p3_project_scope_incident_probe.py (213 LOC)
 
 **Purpose:** Replays a cross-project false-block incident where one project's main session was
-blocked by another project's pending background-task entry in a shared state file — was meant to
-drive the real project-scoping hook end-to-end via subprocess with a seeded state file and a named
-cwd.
+blocked by another project's pending background-task entry in a shared state file.
 **Reads:** nothing persistent — seeded its own state file per case under a temp directory.
-**Writes:** `md/p3_project_scope_incident_probe_report.md`.
-**Called by:** none — DEAD CODE. Both the hook module and the state-writer module it imports do not
-exist under `src/`; the script cannot run.
+**Writes:** `md/p3_project_scope_incident_probe_report.md` — never reached; see Called by.
+**Called by:** none — DEAD CODE. Both the hook module and the state-writer module it imports do
+not exist under `src/`; the script raises `ModuleNotFoundError` partway through and never
+completes.
 **Calls out:** none reachable — its imports (a hook module and a pending-state module, both under
 `src/`) do not exist; `src/proxy/addon.py` (`ProxyAddon`, `_derive_worker_context`) is still live
-but unreachable since the script fails at import time.
+but unreachable since the script crashes before that import executes.
 
 ---
 
-### test_abort_stamp_scope.py (142 LOC)
+### test_abort_stamp_scope.py (120 LOC)
 
 **Purpose:** Integration regression guard for the menubar abort-stamp scoping fix
-(`_abort_bg_sleep_timers`/`_resolve_pid_output_file`). Spawns two real `sleep` subprocesses with
-stdout/stderr redirected to fake output files (mirrors CC's own background-launch fd shape) plus one
-unrelated zero-byte file, calls the real abort function with only one PID, and asserts only that
-file/process pair is touched.
+(`_abort_bg_sleep_timers`/`_resolve_pid_output_file`) — spawns two real subprocesses, calls the
+real abort function with only one PID, and asserts only that file/process pair is touched.
 **Reads:** nothing persistent — spawns its own subprocesses and temp directory.
-**Writes:** a temp directory (removed in `finally`); appends to the real menubar app-support log file.
+**Writes:** a temp directory (removed in `finally`); appends to the real menubar app-support log
+file.
 **Called by:** none — manual CLI, run via `python3 dev/timer-loop/test_abort_stamp_scope.py`.
 **Calls out:** `src.menubar.bg_timer` (`_abort_bg_sleep_timers`, dynamic import), `src.menubar.paths`
 (dynamic import); spawns `sleep` as fixture subprocesses.
 
 ---
 
-## Gotchas
-- `p1_`'s corpus (src/logs/dual_log) is a moving target — counts are a lower bound, not final; a
-  rescan can only add deduplicated occurrences, never remove them.
-- `p3_project_scope_incident_probe.py` is non-functional on the current tree — the hook and
-  state-writer modules it targets do not exist under `src/`. Kept in place as a record of the
-  incident it replays, not as a runnable check.
+## State
+`bg_completion_scan.py`'s `_scan_file` owns and mutates the `findings`/`cmd_variant_counts`/
+`raw_dup_counter`/`bare_hits`/`session_is_worker` dicts that `p1_scan_bg_completion_wordings.py`
+creates and passes by reference through the whole scan -> report pipeline; `bg_completion_report.py`
+only reads them. `p3_project_scope_incident_probe.py` and `test_abort_stamp_scope.py` each own and
+mutate only their own per-run temp files / spawned subprocesses; neither persists state across runs.

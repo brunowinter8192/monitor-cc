@@ -1,31 +1,3 @@
-"""
-SUPERSEDED (Milestone 2, hook family rework — updated Milestone 3): src/hooks/
-block_timer_pending_bg.py was removed in Milestone 2 (hook-subprocess sections stopped running);
-src/proxy/pending_bg_state.py itself was then removed in Milestone 3, so the writer-side checks
-this docstring used to say "still run" no longer do either — the whole script is non-runnable now
-(the `from proxy.pending_bg_state import ...` below is a dead import). Left as-is, historical
-record of the resolved incident.
-
-P3 — replays the 2026-08-07 ~01:10 cross-project false-block incident: the websearch project's
-MAIN session armed its canonical worker timer and was blocked by block_timer_pending_bg.py because
-src/logs/pending_bg_tasks.json is one global file and a pending entry (task b4z5fzzao) belonged to
-the POSTS project's main session. Drives the REAL hook (src/hooks/block_timer_pending_bg.py) via
-subprocess with a seeded state file and a real cwd basename, proving:
-
-  - a foreign-project (posts) pending entry no longer blocks a websearch-cwd timer arm (the
-    incident itself, now fixed)
-  - a same-project (websearch) pending entry still blocks correctly
-  - a legacy entry with no "project" field still blocks every project (backward compat — such
-    entries age out via the existing 60min expiry regardless)
-  - an expired same-project entry still allows (expiry checked independently of project)
-
-Also verifies the writer side directly: src/proxy/pending_bg_state.py arms a fresh entry with the
-project slug derived from PROXY_PROJECT_PATH, through the real ProxyAddon.request() path.
-
-Usage (from project root, real venv — imports mitmproxy via proxy.addon):
-    ./venv/bin/python dev/timer-loop/p3_project_scope_incident_probe.py
-"""
-
 # INFRASTRUCTURE
 import json
 import os
@@ -60,8 +32,6 @@ def _iso(dt):
 
 # FUNCTIONS
 
-# Run the real hook via stdin; cwd is caller-controlled (real project-name basename, never inside
-# a worktree so the worktree exemption never fires and masks the case under test).
 def _run_hook(command, run_in_background, tmp_root, cwd):
     payload = json.dumps({
         "tool_name": "Bash", "session_id": "incident-probe",
@@ -81,7 +51,6 @@ def _seed_state(tmp_root, state):
     state_path.write_text(json.dumps(state), encoding="utf-8")
 
 
-# Test 1 — the incident itself: a POSTS-project pending entry no longer blocks websearch's timer.
 def test_incident_foreign_project_now_allows():
     print("\n[Test 1] Incident replay — posts-project pending, websearch cwd -> now ALLOWS")
     now = datetime.now(timezone.utc)
@@ -95,7 +64,6 @@ def test_incident_foreign_project_now_allows():
         check("no stderr on allow", stderr == "")
 
 
-# Test 2 — same-project pending still blocks correctly (the guard still works for its real target).
 def test_same_project_still_blocks():
     print("\n[Test 2] Same-project pending still blocks")
     now = datetime.now(timezone.utc)
@@ -109,7 +77,6 @@ def test_same_project_still_blocks():
         check("block message names the id", "ws_pending" in stderr)
 
 
-# Test 3 — legacy entry with no "project" field blocks every project (backward compat).
 def test_legacy_entry_blocks_everyone():
     print("\n[Test 3] Legacy no-project entry blocks every project")
     now = datetime.now(timezone.utc)
@@ -128,7 +95,6 @@ def test_legacy_entry_blocks_everyone():
         check("same legacy entry, different cwd (Posts) -> also exit 2 (blocks every project)", code == 2)
 
 
-# Test 4 — an expired entry allows regardless of project (expiry is independent of scoping).
 def test_expired_entry_allows_regardless_of_project():
     print("\n[Test 4] Expired entry allows regardless of project match")
     now = datetime.now(timezone.utc)
@@ -184,7 +150,6 @@ def _payload_with_user_text(text):
     }
 
 
-# Test 5 — writer side: real ProxyAddon.request() stamps the project slug from PROXY_PROJECT_PATH.
 def test_writer_stamps_project_e2e():
     print("\n[Test 5] Writer side — real ProxyAddon.request() stamps project")
     from proxy.pending_bg_state import _read_state_file, _resolve_pending_bg_state_file
