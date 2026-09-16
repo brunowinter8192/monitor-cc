@@ -141,49 +141,54 @@ def test_expired_entry_allows_regardless_of_project():
         check("expired same-project entry -> exit 0 (allow)", code == 0 and stderr == "")
 
 
+class _FakeHeaders(dict):
+    def get(self, k, default=None):
+        return super().get(k.lower(), default) if isinstance(k, str) else default
+
+    def pop(self, k, default=None):
+        return dict.pop(self, k.lower(), default)
+
+
+class _FakeRequest:
+    def __init__(self, payload):
+        self.method = "POST"
+        self.pretty_host = "api.anthropic.com"
+        self.path = "/v1/messages"
+        self.headers = _FakeHeaders()
+        self.content = json.dumps(payload).encode("utf-8")
+
+
+class _FakeFlow:
+    def __init__(self, payload):
+        self.request = _FakeRequest(payload)
+        self.metadata = {}
+        self.id = "fake-flow-id"
+
+
+def _ack_text(task_id):
+    return (
+        f"Command running in background with ID: {task_id}. "
+        f"Output is being written to: /tmp/output_{task_id}.txt. "
+        "You will be notified when it completes. "
+        "To check interim output, use Read on that file path."
+    )
+
+
+def _payload_with_user_text(text):
+    return {
+        "model": "claude-opus-4-6", "max_tokens": 8000,
+        "system": [{"type": "text", "text": "sys0"},
+                   {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
+                   {"type": "text", "text": "sys2"}],
+        "messages": [{"role": "user", "content": text}], "tools": [],
+    }
+
+
 # Test 5 — writer side: real ProxyAddon.request() stamps the project slug from PROXY_PROJECT_PATH.
 def test_writer_stamps_project_e2e():
     print("\n[Test 5] Writer side — real ProxyAddon.request() stamps project")
     from proxy.pending_bg_state import _read_state_file, _resolve_pending_bg_state_file
     from proxy.addon import ProxyAddon, _derive_worker_context
-
-    class _FakeHeaders(dict):
-        def get(self, k, default=None):
-            return super().get(k.lower(), default) if isinstance(k, str) else default
-
-        def pop(self, k, default=None):
-            return dict.pop(self, k.lower(), default)
-
-    class _FakeRequest:
-        def __init__(self, payload):
-            self.method = "POST"
-            self.pretty_host = "api.anthropic.com"
-            self.path = "/v1/messages"
-            self.headers = _FakeHeaders()
-            self.content = json.dumps(payload).encode("utf-8")
-
-    class _FakeFlow:
-        def __init__(self, payload):
-            self.request = _FakeRequest(payload)
-            self.metadata = {}
-            self.id = "fake-flow-id"
-
-    def _ack_text(task_id):
-        return (
-            f"Command running in background with ID: {task_id}. "
-            f"Output is being written to: /tmp/output_{task_id}.txt. "
-            "You will be notified when it completes. "
-            "To check interim output, use Read on that file path."
-        )
-
-    def _payload_with_user_text(text):
-        return {
-            "model": "claude-opus-4-6", "max_tokens": 8000,
-            "system": [{"type": "text", "text": "sys0"},
-                       {"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."},
-                       {"type": "text", "text": "sys2"}],
-            "messages": [{"role": "user", "content": text}], "tools": [],
-        }
 
     with tempfile.TemporaryDirectory() as tmp_root:
         with mock.patch.dict(os.environ, {"PROXY_LOG_ID": "opus_websearch_1786100000",
