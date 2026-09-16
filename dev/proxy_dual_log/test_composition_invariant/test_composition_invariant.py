@@ -6,11 +6,16 @@ from pathlib import Path
 
 _HERE = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_HERE))
-sys.path.insert(0, str(_HERE.parents[1]))
+
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+_PROJECT_ROOT = _AREA_ROOT.parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT))
 
 import composition_probe as _probe
 
-FIXTURE_PATH = _HERE / "fixtures" / "invariant_corpus.jsonl"
+FIXTURE_PATH = _AREA_ROOT / "fixtures" / "invariant_corpus.jsonl"
 
 PASS_LIST = []
 FAIL_LIST = []

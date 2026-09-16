@@ -1,7 +1,12 @@
 # INFRASTRUCTURE
 import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+from pathlib import Path
+
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+_PROJECT_ROOT = _AREA_ROOT.parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT / 'src'))
 
 from proxy_176_bg_launch_ack_cases import (
     test_tool_result_str_content,

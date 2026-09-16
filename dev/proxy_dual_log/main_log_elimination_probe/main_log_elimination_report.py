@@ -4,6 +4,10 @@ from pathlib import Path
 
 from main_log_elimination_reconstruct import _DELTA_COVERED
 
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+
 # FUNCTIONS
 
 def _report_header(session: str, paths: dict, a: dict, now, date_str: str) -> list:
@@ -196,7 +200,7 @@ def _report_migration_verdict(b: dict, all_content_lossless: bool, must_add: lis
 def _write_report(session: str, paths: dict, a: dict, b: dict) -> Path:
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y%m%d")
-    report_dir = Path(__file__).parent / "main_log_elimination_probe_reports"
+    report_dir = _AREA_ROOT / "main_log_elimination_probe_reports"
     report_dir.mkdir(exist_ok=True)
     report_path = report_dir / f"{date_str}.md"
 

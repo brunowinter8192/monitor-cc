@@ -7,8 +7,10 @@ from green_overlay_probe_diff import (
 )
 from green_overlay_probe_cases import scan_gating_soundness, get_bug_case, get_regression_cases
 
-_SCRIPT_DIR = Path(__file__).parent.resolve()
-REPORT_DIR = _SCRIPT_DIR / "green_overlay_probe_reports"
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+REPORT_DIR = _AREA_ROOT / "green_overlay_probe_reports"
 
 # FUNCTIONS
 

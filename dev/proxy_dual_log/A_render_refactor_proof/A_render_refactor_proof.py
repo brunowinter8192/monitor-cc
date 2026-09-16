@@ -5,12 +5,15 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[2]))
+_AREA_ROOT = Path(__file__).resolve().parent
+while _AREA_ROOT.name != 'proxy_dual_log':
+    _AREA_ROOT = _AREA_ROOT.parent
+_PROJECT_ROOT = _AREA_ROOT.parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT))
 
 from A_render_refactor_proof_cases import _build_cases
 
-_HERE = Path(__file__).parent
-_REPORTS = _HERE / 'A_render_refactor_proof_reports'
+_REPORTS = _AREA_ROOT / 'A_render_refactor_proof_reports'
 
 # ORCHESTRATOR
 
