@@ -6,8 +6,6 @@ import sys
 HOOK = "src/hooks/block_dangerous_kill.py"
 
 CASES = [
-    # (description, command, expected_exit_code)
-    # --- true positives: must block ---
     ("pkill -f pattern BLOCK",
      'pkill -f "workflow.py --mode menubar"', 2),
     ("pkill -f at start BLOCK",
@@ -18,7 +16,6 @@ CASES = [
      "kill $(pgrep -f myapp)", 2),
     ("ps grep kill chain BLOCK",
      "ps aux | grep myapp | xargs kill", 2),
-    # --- false positive fixes: must pass ---
     ("pkill -f in single-quoted string PASS",
      "echo 'pkill -f pattern is blocked'", 0),
     ("pkill -f in double-quoted string PASS",
@@ -27,7 +24,6 @@ CASES = [
      "python3 <<'EOF'\ntest = 'pkill -f myapp'\nEOF", 0),
     ("pkill -f in heredoc unquoted PASS",
      "cat <<EOF\npkill -f example\nEOF", 0),
-    # --- safe patterns: must pass ---
     ("pkill -x exact name PASS",
      "pkill -x myapp", 0),
     ("pkill no -f PASS",
@@ -40,12 +36,10 @@ CASES = [
      "worker-cli kill my-worker", 0),
     ("no kill at all PASS",
      "ls -la && git status", 0),
-    # --- allowlist: must pass ---
     ("pkill -9 -f dolt sql-server double-quoted PASS",
      'pkill -9 -f "dolt sql-server"', 0),
     ("pkill -f dolt sql-server single-quoted PASS",
      "pkill -f 'dolt sql-server'", 0),
-    # --- allowlist conservative: non-allowlisted still blocks ---
     ("mixed allowlisted + generic pkill -f BLOCK",
      'pkill -9 -f "dolt sql-server"; pkill -f "workflow.py"', 2),
 ]
@@ -72,7 +66,6 @@ def test_block_dangerous_kill_workflow() -> None:
 
 # FUNCTIONS
 
-# Run hook with given command string; return exit code
 def _run_hook(command: str) -> int:
     payload = json.dumps({
         "tool_name": "Bash",

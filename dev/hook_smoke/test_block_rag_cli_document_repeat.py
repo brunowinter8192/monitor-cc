@@ -10,7 +10,6 @@ HOOK = "src/hooks/block_rag_cli_document_repeat.py"
 
 # ORCHESTRATOR
 
-# Run all rag-cli document-repeat tests; exit 1 if any fail
 def test_block_rag_cli_document_repeat_workflow() -> None:
     failures = []
 
@@ -32,7 +31,6 @@ def test_block_rag_cli_document_repeat_workflow() -> None:
 
 # FUNCTIONS
 
-# Run the hook via subprocess against a fresh state file; return exit code
 def _run_hook(command: str, session_id: str, state_path: str) -> int:
     env = dict(os.environ, MONITOR_CC_RAG_DOC_REPEAT_STATE=state_path)
     payload = json.dumps({
@@ -49,7 +47,6 @@ def _run_hook(command: str, session_id: str, state_path: str) -> int:
     return result.returncode
 
 
-# A single --document call to a collection must pass — the genuine one-off case
 def _test_single_document_call_allowed() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
@@ -69,7 +66,6 @@ def _test_single_document_call_allowed() -> list:
     return failures
 
 
-# A 2nd --document call to the SAME collection+subcommand within the window must block
 def _test_second_call_blocks() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
@@ -97,8 +93,6 @@ def _test_second_call_blocks() -> list:
     return failures
 
 
-# Collection-wide calls (no --document) must always pass, any number of times,
-# and must never contribute to the repeat counter
 def _test_collection_wide_always_allowed() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
@@ -118,7 +112,6 @@ def _test_collection_wide_always_allowed() -> list:
     return failures
 
 
-# A different session's --document calls must not count toward another session's counter
 def _test_different_session_independent() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
@@ -148,7 +141,6 @@ def _test_different_session_independent() -> list:
     return failures
 
 
-# rag-cli delete --document is covered by the same threshold as index
 def _test_delete_subcommand_also_counts() -> list:
     failures = []
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
@@ -173,7 +165,6 @@ def _test_delete_subcommand_also_counts() -> list:
     return failures
 
 
-# Malformed stdin must fail open (exit 0), never block
 def _test_malformed_stdin_fail_open() -> list:
     failures = []
     result = subprocess.run(

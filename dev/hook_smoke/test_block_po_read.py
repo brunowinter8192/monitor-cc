@@ -29,8 +29,6 @@ _AT_BOUNDARY_PATH = _write_fixture("at_boundary.txt", _PINNED_MAX_BYTES)
 _OVER_BOUNDARY_PATH = _write_fixture("over_boundary.txt", _PINNED_MAX_BYTES + 1)
 
 CASES = [
-    # (description, command, expected_exit_code)
-    # --- true positives: must block ---
     ("head on PO export BLOCK",
      f"head -50 {PO_PATH}", 2),
     ("tail on PO export BLOCK",
@@ -49,7 +47,6 @@ CASES = [
      f"split -l 400 {PO_PATH} /tmp/x", 2),
     ("dd on PO export BLOCK",
      f"dd if={PO_PATH} of=/tmp/x", 2),
-    # --- no-ops: must pass ---
     ("head on normal file PASS",
      "head -50 /tmp/normal_file.py", 0),
     ("grep on .log file PASS",
@@ -62,7 +59,6 @@ CASES = [
      f"echo x > {PO_PATH}", 0),
     ("PO path only in quoted string PASS",
      f"echo 'cat {PO_PATH}'", 0),
-    # --- real files, size boundary (M2: size-dependent block) ---
     ("real PO export AT boundary (50,000B) BLOCK",
      f"cat {_AT_BOUNDARY_PATH}", 2),
     ("real PO export ONE BYTE OVER boundary (50,001B) PASS",
@@ -101,7 +97,6 @@ def test_block_po_read_workflow() -> None:
 
 # FUNCTIONS
 
-# Run hook with given command string; return exit code
 def _run_hook(command: str) -> int:
     payload = json.dumps({
         "tool_name": "Bash",
@@ -109,7 +104,6 @@ def _run_hook(command: str) -> int:
     })
     return _run_hook_raw(payload.encode())
 
-# Run hook with raw stdin bytes; return exit code
 def _run_hook_raw(stdin_bytes: bytes) -> int:
     result = subprocess.run(
         ["python3", HOOK],

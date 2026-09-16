@@ -6,23 +6,17 @@ import sys
 HOOK = "src/hooks/block_chained_sleep.py.disabled"
 
 CASES = [
-    # (description, command, expected_exit_code)
-    # --- canonical / allow cases ---
     ("canonical pass",               "sleep 5 && echo done",                                    0),
     ("canonical float pass",         "sleep 1.5 && echo done",                                  0),
     ("no sleep pass",                "ls -la",                                                  0),
-    # --- real block cases ---
     ("chained before sleep BLOCK",   "cmd; sleep 5 && echo done",                               2),
     ("non-echo-done cont BLOCK",     "sleep 5 && ls",                                           2),
     ("real sleep after quoted BLOCK", 'echo "no sleep here"; sleep 3',                          2),
-    # --- heredoc body stripped (PASS) ---
     ("heredoc quoted body PASS",     "cat > /tmp/x.sh <<'EOF'\n#!/bin/bash\nsleep 5\nEOF\n",    0),
     ("heredoc unquoted body PASS",   "cat <<EOF\nsleep 5\nEOF\n",                               0),
-    # --- quoted strings stripped (PASS) ---
     ("single-quoted sleep PASS",     "echo 'sleep 5 seconds'",                                  0),
     ("double-quoted sleep PASS",     'echo "sleep 5 seconds"',                                  0),
     ("ANSI-C quote sleep PASS",      "echo $'sleep 5'",                                         0),
-    # --- command substitutions kept shell-active (BLOCK) ---
     ("cmd-subst sleep BLOCK",        "echo $(sleep 5)",                                         2),
     ("backtick sleep BLOCK",         "echo `sleep 5`",                                          2),
 ]
@@ -49,7 +43,6 @@ def test_block_chained_sleep_workflow() -> None:
 
 # FUNCTIONS
 
-# Run hook with given command string; return exit code
 def _run_hook(command: str) -> int:
     payload = json.dumps({
         "tool_name": "Bash",

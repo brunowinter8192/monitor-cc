@@ -10,20 +10,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-# add src/ to path so menubar.proc_cache is importable without 'from src.' prefix
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
-from menubar import proc_cache  # noqa: E402
+from menubar import proc_cache
 
 _REPORT_DIR = Path(__file__).parent / 'md'
-_N_SESSIONS_FOR_COST_BENCH = 20   # synthetic session count to measure per-tick cost at scale
+_N_SESSIONS_FOR_COST_BENCH = 20
 
 
 # ORCHESTRATOR
 
-# Print ONE measurement of a real task and exit — safe to call repeatedly from an external
-# shell until-loop (`until <check>; do sleep N; done`) when the target task lives in the SAME
-# CC session issuing the checks. See module docstring gotcha: never run this script itself as a
-# long-lived backgrounded/auto-backgrounded process against its own session.
 def snapshot_workflow(encoded_dir: str, session_id: str, task_id: str) -> None:
     tasks_dir = proc_cache._TASKS_BASE / encoded_dir / session_id / 'tasks'
     out_file = tasks_dir / f'{task_id}.output'
@@ -33,10 +28,6 @@ def snapshot_workflow(encoded_dir: str, session_id: str, task_id: str) -> None:
     print(json.dumps({'size_bytes': size, 'old': old, 'new': new}))
 
 
-# Full workflow: poll a real task's output file, run a synthetic writer round-trip, bench
-# per-tick cost, write report. ONLY safe when the target session is NOT the session this script
-# itself runs in (e.g. driven from a separate terminal/process) — otherwise use snapshot_workflow
-# from an external polling loop instead (see module docstring gotcha).
 def probe_bg_task_detection_workflow(encoded_dir: str, session_id: str, task_id: str, poll_secs: float, max_polls: int) -> None:
     real_run_rows = _poll_real_task(encoded_dir, session_id, task_id, poll_secs, max_polls)
     no_bg_row = _probe_no_bg_session(encoded_dir, session_id)
@@ -47,7 +38,6 @@ def probe_bg_task_detection_workflow(encoded_dir: str, session_id: str, task_id:
 
 # FUNCTIONS
 
-# Old predicate: any *.output file in tasks_dir is exactly 0 bytes
 def _old_predicate(tasks_dir: Path) -> bool:
     if not tasks_dir.exists():
         return False
@@ -57,14 +47,12 @@ def _old_predicate(tasks_dir: Path) -> bool:
         return False
 
 
-# New predicate: force a fresh lsof scan (bypass TTL) then read the real _has_active_bg
 def _new_predicate(encoded_dir: str, session_id: str) -> bool:
     proc_cache._bg_task_last_refresh = 0.0
     proc_cache._refresh_bg_task_cache(time.time())
     return proc_cache._has_active_bg(encoded_dir, session_id)
 
 
-# Poll the real rag-cli index task's output file every poll_secs, up to max_polls or completion
 def _poll_real_task(encoded_dir: str, session_id: str, task_id: str, poll_secs: float, max_polls: int) -> list:
     tasks_dir = proc_cache._TASKS_BASE / encoded_dir / session_id / 'tasks'
     out_file = tasks_dir / f'{task_id}.output'
@@ -79,7 +67,6 @@ def _poll_real_task(encoded_dir: str, session_id: str, task_id: str, poll_secs: 
         if size > 0:
             break
         time.sleep(poll_secs)
-    # One more sample after the file is non-empty, then keep polling until the handle closes
     for i in range(max_polls):
         size = out_file.stat().st_size if out_file.exists() else -1
         old = _old_predicate(tasks_dir)
@@ -92,7 +79,6 @@ def _poll_real_task(encoded_dir: str, session_id: str, task_id: str, poll_secs: 
     return rows
 
 
-# Control case: a session dir with no tasks/ activity at all -> both predicates must be False
 def _probe_no_bg_session(encoded_dir: str, session_id: str) -> dict:
     fake_session = 'no-such-session-id-control'
     tasks_dir = proc_cache._TASKS_BASE / encoded_dir / fake_session / 'tasks'
@@ -101,7 +87,6 @@ def _probe_no_bg_session(encoded_dir: str, session_id: str) -> dict:
     return {'old': old, 'new': new}
 
 
-# Synthetic writer loop: real subprocess, real open fd, >0 bytes, still running -> new=True, old=False
 def _probe_synthetic_writer() -> list:
     scratch = proc_cache._TASKS_BASE / '__probe_synthetic__'
     tasks_dir = scratch / 'synthetic_sess' / 'tasks'
@@ -112,7 +97,7 @@ def _probe_synthetic_writer() -> list:
         start_new_session=True)
     rows = []
     try:
-        time.sleep(3)   # matches the issue's synthetic-loop measurement point (>0 bytes, still running)
+        time.sleep(3)
         size = out_file.stat().st_size
         old = _old_predicate(tasks_dir)
         new = _new_predicate('__probe_synthetic__', 'synthetic_sess')
@@ -131,18 +116,15 @@ def _probe_synthetic_writer() -> list:
     return rows
 
 
-# Measure per-tick cost: cache-hit tick (N sessions, no lsof call) vs cache-refresh tick (1 lsof call)
 def _bench_per_tick_cost() -> dict:
     session_ids = [f'bench-session-{i}' for i in range(_N_SESSIONS_FOR_COST_BENCH)]
     encoded_dir = 'bench-encoded-dir'
 
-    # Refresh tick: force the TTL to expire, time the real lsof call
     proc_cache._bg_task_last_refresh = 0.0
     t0 = time.time()
     proc_cache._refresh_bg_task_cache(time.time())
     refresh_ms = (time.time() - t0) * 1000
 
-    # Cache-hit tick: TTL fresh, time N _has_active_bg lookups against the warm snapshot
     t0 = time.time()
     for sid in session_ids:
         proc_cache._has_active_bg(encoded_dir, sid)
@@ -156,7 +138,6 @@ def _bench_per_tick_cost() -> dict:
     }
 
 
-# Render the collected measurements as a markdown report under md/
 def _write_report(real_run_rows: list, no_bg_row: dict, synthetic_rows: list, cost: dict) -> None:
     _REPORT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime('%Y-%m-%d')

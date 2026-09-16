@@ -4,11 +4,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-from proxy.addon import _filter_response_headers  # noqa: E402
+from proxy.addon import _filter_response_headers
 
 # FUNCTIONS
 
-# Build a minimal mock of mitmproxy headers (case-insensitive dict-like via SimpleNamespace with items())
 def _mock_headers(pairs: list) -> object:
     data = dict(pairs)
 
@@ -21,16 +20,13 @@ def _mock_headers(pairs: list) -> object:
     return _Headers()
 
 
-# Build a minimal mock flow for beta-flags extraction (request side)
 def _mock_request_flow(beta_header: str) -> object:
     req = SimpleNamespace(headers=_mock_headers([("anthropic-beta", beta_header)]))
     return SimpleNamespace(request=req)
 
 
-# ── beta-flags extraction tests ──────────────────────────────────────────────
 
 def _extract_beta(beta_header: str) -> list:
-    """Mirror the extraction logic in request() verbatim."""
     raw_beta = beta_header
     return [f.strip() for f in raw_beta.split(",") if f.strip()]
 
@@ -60,12 +56,10 @@ def test_beta_strips_whitespace():
 
 
 def test_beta_drops_empty_segments():
-    # comma with no content between (malformed header edge case)
     result = _extract_beta(",flag-a,,flag-b,")
     assert result == ["flag-a", "flag-b"], f"unexpected: {result}"
 
 
-# ── _filter_response_headers tests ───────────────────────────────────────────
 
 def test_filter_keeps_exact_request_id():
     h = _mock_headers([("request-id", "req_abc123"), ("content-type", "application/json")])
@@ -114,7 +108,6 @@ def test_filter_keeps_organization_id():
 
 
 def test_filter_normalizes_to_lowercase():
-    # mitmproxy may surface headers in original wire case
     h = _mock_headers([
         ("Request-Id", "req_mixed"),
         ("Retry-After", "60"),
@@ -124,7 +117,6 @@ def test_filter_normalizes_to_lowercase():
     assert "request-id" in result
     assert "retry-after" in result
     assert "anthropic-ratelimit-requests-limit" in result
-    # original mixed-case keys must NOT appear
     assert "Request-Id" not in result
     assert "Retry-After" not in result
 
@@ -147,7 +139,6 @@ def test_filter_empty_headers():
     assert result == {}, f"expected empty dict, got: {result}"
 
 
-# ── runner ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     tests = [

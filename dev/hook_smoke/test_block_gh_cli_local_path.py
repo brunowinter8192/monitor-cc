@@ -6,8 +6,6 @@ import sys
 HOOK = "src/hooks/block_gh_cli_local_path.py"
 
 CASES = [
-    # (description, command, expected_exit_code)
-    # --- true positives: must block ---
     ("get_file_content with /Users/... path BLOCK",
      "gh-cli get_file_content owner repo /Users/x/.claude/projects/foo/tool-results/bar.txt", 2),
     ("get_file_content with ~/... path BLOCK",
@@ -18,7 +16,6 @@ CASES = [
      "gh-cli download_files owner repo src/a.py ~/b.py --dest /tmp/x", 2),
     ("get_file_content local path with --limit flag before it BLOCK",
      "gh-cli get_file_content owner repo --limit 5 /Users/x/foo.py", 2),
-    # --- allowed: must pass ---
     ("get_file_content with repo-relative path PASS",
      "gh-cli get_file_content owner repo src/main.py", 0),
     ("download_files with repo paths + --dest /tmp/x PASS (the trap case)",
@@ -27,7 +24,6 @@ CASES = [
      "gh-cli download_files owner repo --dest /tmp/x src/a.py", 0),
     ("get_file_content with --metadata-only flag, repo-relative path PASS",
      "gh-cli get_file_content owner repo src/main.py --metadata-only", 0),
-    # --- other gh-cli commands and non-gh-cli commands: untouched ---
     ("get_repo_tree untouched PASS",
      "gh-cli get_repo_tree owner repo --path /Users/x/foo", 0),
     ("index_issues untouched PASS",
@@ -36,7 +32,6 @@ CASES = [
      "gh-cli repo_freshness owner repo", 0),
     ("non-gh-cli command untouched PASS",
      "echo hello", 0),
-    # --- shell-strip: patterns inside quoted/heredoc regions must pass ---
     ("pattern inside single-quotes PASS shell-stripped",
      "echo 'gh-cli get_file_content owner repo /Users/x/foo.py'", 0),
     ("pattern inside heredoc body PASS shell-stripped",
@@ -65,7 +60,6 @@ def test_block_gh_cli_local_path_workflow() -> None:
 
 # FUNCTIONS
 
-# Run hook with given command string; return exit code
 def _run_hook(command: str) -> int:
     payload = json.dumps({
         "tool_name": "Bash",

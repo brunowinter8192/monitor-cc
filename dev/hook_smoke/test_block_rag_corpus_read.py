@@ -6,8 +6,6 @@ import sys
 HOOK = "src/hooks/block_rag_corpus_read.py"
 
 CASES = [
-    # (description, command, expected_exit_code)
-    # --- must block: raw-read commands over the corpus tree ---
     ("cat over a corpus document BLOCK",
      "cat /Users/x/cli/rag-cli/data/documents/github_issues/123.md", 2),
     ("grep -r over the corpus tree BLOCK",
@@ -33,12 +31,10 @@ CASES = [
     ("real rag-cli invocation chained with a corpus-read segment BLOCK "
      "(the corpus-read segment blocks regardless of what else is chained)",
      "rag-cli index --collection x && cat /Users/x/cli/rag-cli/data/documents/z.md", 2),
-    # --- glob dodge: renamed checkout/worktree still matches rag-* ---
     ("renamed checkout (rag-cli-eval) still blocks BLOCK (glob dodge)",
      "cat /Users/x/cli/rag-cli-eval/data/documents/z.md", 2),
     ("renamed worktree (rag-cli-convert) still blocks BLOCK (glob dodge)",
      "cat /Users/x/cli/rag-cli-convert/data/documents/z.md", 2),
-    # --- must allow: mutations and file management stay sanctioned ---
     ("ls over the corpus tree ALLOW (management, not a content read)",
      "ls /Users/x/cli/rag-cli/data/documents/", 0),
     ("rm over a corpus document ALLOW (deletion is sanctioned)",
@@ -47,24 +43,18 @@ CASES = [
      "mv /Users/x/cli/rag-cli/data/documents/a /Users/x/cli/rag-cli/data/documents/b", 0),
     ("mkdir under the corpus tree ALLOW",
      "mkdir -p /Users/x/cli/rag-cli/data/documents/new", 0),
-    # --- must allow: no corpus path involved ---
     ("cat on an unrelated file ALLOW",
      "cat /etc/hosts", 0),
     ("grep on an unrelated file ALLOW",
      "grep foo /tmp/log.txt", 0),
-    # --- must allow: the sanctioned forms themselves ---
     ("rag-cli search standalone ALLOW",
      'rag-cli search "q" coll', 0),
     ("rag-cli read_document standalone ALLOW",
      "rag-cli read_document coll doc1", 0),
-    # --- false-positive avoidance ---
     ("quoted mention inside echo ALLOW (not an actual read)",
      'echo "you could cat data/documents/x"', 0),
     ("corpus-path text inside a heredoc body ALLOW (shell-strip blanks it before matching)",
      "cat <<'EOF'\ncat /path/rag-cli/data/documents/foo.md\nEOF", 0),
-    # --- known text-only-matching limitation: a relative path with no rag-* prefix visible in
-    # the command text is out of scope (same limitation the sibling rag-cli isolation hooks have —
-    # none of them resolve paths against cwd) ---
     ("relative corpus path with no rag-* prefix in the text ALLOW (text-only limitation)",
      "cat data/documents/foo.md", 0),
 ]
@@ -106,9 +96,6 @@ def test_block_rag_corpus_read_workflow() -> None:
 
 # FUNCTIONS
 
-# The allowed-form wording the block message must carry — see task requirement: a rejection
-# that only forbids invites workarounds (process-docs/tool_use_safety/
-# 2026-08-28_rag_cli_path_indirection_bypass.md)
 def _message_checks(stderr: str) -> list:
     return [
         ("names rag-cli search as the allowed form", "rag-cli search" in stderr),
@@ -117,12 +104,10 @@ def _message_checks(stderr: str) -> list:
     ]
 
 
-# Run hook with given command string; return exit code
 def _run_hook(command: str) -> int:
     return _run_hook_raw(_payload(command))
 
 
-# Run hook with given command string; return (exit_code, stderr_text)
 def _run_hook_with_stderr(command: str) -> tuple:
     result = subprocess.run(
         ["python3", HOOK], input=_payload(command), capture_output=True,
@@ -130,7 +115,6 @@ def _run_hook_with_stderr(command: str) -> tuple:
     return result.returncode, result.stderr.decode()
 
 
-# Build the PreToolUse JSON payload for a Bash command
 def _payload(command: str) -> bytes:
     return json.dumps({
         "tool_name": "Bash",
@@ -138,7 +122,6 @@ def _payload(command: str) -> bytes:
     }).encode()
 
 
-# Run hook with raw bytes on stdin (used for the malformed-payload fail-open case); return exit code
 def _run_hook_raw(stdin_bytes: bytes) -> int:
     result = subprocess.run(
         ["python3", HOOK],
