@@ -1,16 +1,3 @@
-"""
-D1 — inventory distinct CC background-launch-ack wordings in the real recorded corpus.
-
-Measurement only: scans src/logs/dual_log/*_original.jsonl for messages that look like a
-CC background-launch acknowledgement, dedups cumulative dual-log duplication, buckets by
-normalized wording, and evaluates the 3 real recognition mechanisms from
-src/proxy/strip_bg_launch_ack.py against each wording. Writes report to
-dev/bg_wakeup_id_line/md/.
-
-Usage (from project root or worktree root):
-    ./venv/bin/python dev/bg_wakeup_id_line/p1_scan_launch_ack_wordings.py
-"""
-
 # INFRASTRUCTURE
 import json
 import re
@@ -29,14 +16,10 @@ from proxy.strip_bg_launch_ack import (
     _ACK_PATH_RE,
 )
 
-# Recorded dual-log corpus lives in the main checkout (untracked data, not duplicated into
-# worktrees) — code under test is imported from WORKTREE_ROOT above.
 MAIN_REPO_ROOT = Path('/Users/brunowinter2000/Documents/ai/monitor-cc')
 LOG_DIR = MAIN_REPO_ROOT / 'src' / 'logs' / 'dual_log'
 REPORT_DIR = Path(__file__).resolve().parent / 'md'
 
-# Corpus: completed proxy sessions from today (2026-07-29), excluding the currently-live
-# session and this worker's own worktree activity (see report EXCLUDED_FILES section).
 CORPUS_FILES = [
     'api_requests_opus_monitor_cc_1785336796_original.jsonl',
     'api_requests_opus_posts_1785338463_original.jsonl',
@@ -51,7 +34,6 @@ EXCLUDED_FILES = {
         "this worker's own worktree activity — proxy log starts exactly at dispatch time",
 }
 
-# Live-observed text from the milestone prompt (2026-07-29), verbatim, for cross-check
 LIVE_OBSERVED_TEXT = (
     'Command was manually backgrounded by user with ID: bsxpatpam. Output is being written '
     'to: /private/tmp/claude-501/-Users-brunowinter2000-Documents-ai-monitor-cc/'
@@ -80,9 +62,6 @@ def main():
 
 # FUNCTIONS
 
-# Extract (shape, text) candidate blocks from one message's content — mirrors the 4-shape
-# walk in _strip_bg_launch_ack._strip_bg_launch_ack (str / text block / tool_result str /
-# tool_result list[text]), so shape labels match the production replacement walker exactly.
 def _iter_candidate_blocks(content):
     if isinstance(content, str):
         yield ('top_level_str', content)
@@ -104,13 +83,6 @@ def _iter_candidate_blocks(content):
                             yield ('tool_result_list_text', sub.get('text', ''))
 
 
-# Structural candidate filter: block-INITIAL "Command" + both family markers. Positional
-# (lstripped text must START with "Command", not contain it anywhere) — this is what filters
-# out source-code / dev-report / Read-tool-dump mentions of the ack text (those never start
-# the block at position 0 with "Command": Read dumps start with line numbers, docstrings/
-# reports start with other prose). "with ID:" + "Output is being written to:" are shared by
-# both known wordings and any structurally-similar unknown one, without hardcoding either
-# exact wording.
 def _looks_like_launch_ack_candidate(text):
     if not isinstance(text, str):
         return False
@@ -122,17 +94,12 @@ def _looks_like_launch_ack_candidate(text):
     )
 
 
-# Mask volatile id/path tokens so occurrences of the same wording bucket together regardless
-# of the concrete task id / output path
 def _normalize_wording(text):
     t = _ID_NORM_RE.sub('with ID: <ID>', text)
     t = _PATH_NORM_RE.sub('Output is being written to: <PATH>', t)
     return t
 
 
-# Scan one corpus file: dedup via prev-message-count delta (each request's dual-log line is a
-# cumulative snapshot; a message once introduced reappears verbatim in every later request of
-# the same session — only the delta [prev_count:] is genuinely new per request).
 def _scan_file(path, findings, raw_dup_counter):
     session = path.name
     prev_count = 0
@@ -159,7 +126,6 @@ def _scan_file(path, findings, raw_dup_counter):
                     rec['shapes'].add(shape)
                     rec['roles'].add(role)
             prev_count = len(messages)
-    # Raw (non-deduped) occurrence count across the whole file, for the dedup-importance callout
     with open(path, 'rb') as fh:
         for raw in fh:
             entry = json.loads(raw)
@@ -171,7 +137,6 @@ def _scan_file(path, findings, raw_dup_counter):
     return requests
 
 
-# Evaluate the 3 real recognition mechanisms against one example text
 def _mechanism_verdict(text):
     marker_fires = _BG_LAUNCH_ACK_MARKER in text
     prefix_fires = text.lstrip().startswith(_BG_LAUNCH_ACK_PREFIX)
@@ -191,7 +156,6 @@ def _mark_volatile(text):
     return t
 
 
-# Build the markdown report
 def _build_report(findings, total_requests, raw_dup_counter):
     ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     lines = []
