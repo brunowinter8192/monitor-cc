@@ -9,7 +9,7 @@ pattern narrowed since). Touch this directory when auditing hook false-positive 
 
 ## Modules
 
-### analyze.py (349 LOC)
+### analyze.py (190 LOC)
 
 **Purpose:** For each `tool_errors.jsonl` entry, resolves the exact triggering command via
 `proxy_file + tool_use_id → raw_payload.messages` (direct lookup, no fire-log join needed —
@@ -20,8 +20,23 @@ as `disabled` (`.py.disabled` exists), `removed` (no `.py` or `.disabled`), `pat
 **Reads:** `src/logs/tool_errors.jsonl`, `src/logs/hook_firing.jsonl`,
 `src/logs/<proxy_file>.jsonl` (`raw_payload.messages[assistant][type=tool_use][id=tuid]["input"]`).
 **Writes:** `md/<date>.md` (hook-error counts, `error_full` examples per hook, exact triggering
-command + error per current-config-relevant entry).
+command + error per current-config-relevant entry). Also runs hook scripts under `src/hooks/` as
+subprocesses to replay past commands — a hook that blocks calls its own `log_fire()`, which
+appends to the real `src/logs/hook_firing.jsonl`.
 **Called by:** none — run manually.
+**Calls out:** `analyze_report.py` (`format_report`).
+
+---
+
+### analyze_report.py (205 LOC)
+
+**Purpose:** Pure markdown rendering for the Hook Error Correlation report — builds the Q1
+summary table, join-analysis prose, Q2 error examples, Stufe-1 event list, and Stufe-2
+reachability filter (stale/unverified/Q3-current-config-relevant) sections from the data
+`analyze.py` already collected.
+**Reads:** nothing — takes `stufe1`/`stufe2`/`fires`/`raw_counts`/`report_date` as arguments.
+**Writes:** nothing — returns a markdown string.
+**Called by:** `analyze.py` (`format_report`).
 
 ---
 
