@@ -274,3 +274,180 @@ This entry adds 2 more PreToolUse hooks, so that count is stale as of 2026-09-17
 there — per this repo's process-docs rule, only the author of a process-docs file may edit it;
 this note exists so the next reader isn't misled by the stale number without having to
 rediscover it.
+
+## Reversal (later, same date): blocking replaced by forcing
+
+Everything above this section documents the block-based design as it was built and shipped
+earlier the same day. This section documents why it was reversed and what replaced it. Read the
+above as history, not as the current mechanism — the two hooks it names
+(`block_worker_wait_isolated.py`, `block_worker_wait_foreground.py`) no longer exist; both counts
+and cross-references above are left as originally written rather than edited, per this repo's
+process-docs convention.
+
+### Why blocking was wrong
+
+The block design's premise was that a visible message teaches the orchestrator to write the
+command correctly next time. The counter-argument that won: an orchestrator that has to notice a
+message and react correctly is a weak link, and this exact session had already demonstrated the
+weak link failing — four separate corrections were needed over the course of this one milestone
+(the block-vs-rewrite precedence assumption being one of them). A mechanism that cannot fail on
+the orchestrator's behavior beats one that depends on the orchestrator noticing anything. Where a
+correction is mechanically unambiguous, force it silently; block only what genuinely cannot be
+corrected without discarding something the orchestrator asked for.
+
+### What is forced vs. what still blocks
+
+**Forced, silently, no message:**
+
+- `run_in_background` missing or `false` on any `worker-cli wait` mention → forced to `true`.
+  Unconditional; there is no legitimate reason for this command to run in the foreground (it
+  polls in-process and only returns on a transition or its timeout ceiling — see
+  `2026-08-17_pull_architecture_decision.md`).
+- A leading `cd <path>` immediately followed by `worker-cli wait` (`;`, `&&`, or a newline
+  separator, and nothing else in the command) → collapsed into `worker-cli wait <path>`. This is
+  unambiguous specifically because `worker-cli wait` already accepts the target directory as a
+  positional argument — `cd /path; worker-cli wait` and `worker-cli wait /path` express the same
+  intent, so rewriting one into the other discards nothing. If the wait already carries its own
+  positional path argument, the `cd` is redundant by construction and is simply dropped, keeping
+  the wait's own argument as given.
+
+**Still blocked, with the message already written for the old isolation hook:**
+
+Anything chained beyond that one leading `cd` — a trailing `&& echo done`, a second command after
+the wait (`;`), a pipe, or a `cd` combined with trailing chaining as well
+(`cd /tmp && worker-cli wait && echo done`). None of these have an unambiguous single-command
+equivalent: discarding the `&& echo done` or the piped-to command would silently drop a command
+the orchestrator explicitly asked for, and silently discarding work is worse than refusing it.
+This is the same "silent rewrite must never discard intent" boundary
+`2026-05-22_hook_api_auto_rewrite_works.md` implicitly draws around the structural-typo class of
+safe rewrites (`.claire/`→`.claude/`, stripping a bad `--repo` flag) — those are computable
+corrections with one right answer; a trailing chained command is not.
+
+### Consolidation into one hook, and why
+
+The two forced corrections (flag, command shape) and the one block condition were built as three
+separate concerns in the block design, split across two hook files plus the general hook's
+exclusion. Forcing changes the shape of the problem: a rewrite hook emits its correction as
+`updatedInput`, and if the flag fix and the command fix came from two different hook processes,
+the outcome would depend on whether Claude Code merges two `updatedInput` payloads from two hooks
+on the same event, and if it doesn't merge, on which one wins — exactly the undocumented
+precedence question the Correction section above already established has no answer in this
+repo's documentation. Splitting the forcing across two hooks would silently reopen that same gap,
+this time with no isolation-hook block to fall back on if the wrong side won: the losing rewrite
+would just not happen, with no message either, which is a harder failure to notice than the one
+this milestone started by fixing.
+
+So the two forced corrections and the block were consolidated into one hook,
+`rewrite_worker_wait.py`, which computes the corrected command and the forced flag together and
+emits exactly one `updatedInput` carrying both, or blocks — never both, never a partial payload
+from one process while another process is still deciding. This sits in real tension with
+`A1_use_case_specificity.md`'s one-condition-per-hook principle, which is why the original design
+avoided it and used two files. The user asked for the reasoning on how that tension was resolved
+rather than deciding it themselves; the resolution taken here is that A1 protects against a hook
+whose MATCH criterion is too broad — a hook that fires on more than the exact anti-pattern
+signature it was built for, and later blocks or rewrites something it was never meant to touch
+(the referenced 2026-05-28 incident: a general Bash-backgrounding hook caught unrelated Python
+subprocess calls it had no business seeing). `rewrite_worker_wait.py`'s match criterion is not
+widened at all — it is exactly as narrow as the two hooks it replaces combined
+(`\bworker-cli\s+wait\b`, shell-strip-guarded, nothing else). What changed is not what the hook
+matches, it's how many independent DECISIONS it computes once it has matched, and those decisions
+are now forced to cohere into one payload specifically because letting them be independent is
+what creates the merge-or-precedence risk A1 was never written to address. Read narrowly, A1 is
+satisfied: the hook still does exactly one thing — canonicalize this one command — expressed as a
+single coherent correction instead of a single boolean block. Read as "one hook, one branch of
+logic," it is not, and that tradeoff was made deliberately rather than by default.
+
+### False-positive risk is now worse in kind, not just degree — verified accordingly
+
+A false positive under the block design cost a wrongly refused command: visible, loud, immediately
+obvious as a hook problem rather than a real one. Under forcing, the same false positive would
+silently rewrite a command that was never about `worker-cli wait` at all — the failure mode this
+milestone spent its first pass making sure would never happen again, reintroduced one layer
+lower. The shell-strip guard (`_strip_non_shell_active`, unchanged from the block design) is the
+only thing standing between a quoted mention and a mangled command, so it was re-verified live
+against exactly the shapes named as the real risk — a `worker-cli send` message body, a heredoc,
+and (newly, this pass) a `grep` searching for the literal string:
+
+```
+worker-cli send orchestrator "Arm worker-cli wait after every dispatch. Do not run worker-cli
+wait in the foreground, and never chain it with cd; worker-cli wait — always issue it alone with
+run_in_background: true."
+  → hook stdout: '' (exit 0) — no rewrite emitted, command passes through byte for byte
+
+cat <<'EOF' > /tmp/prompt.md
+## Wake-up Loop
+
+After every dispatch, arm the wait: `worker-cli wait`.
+Never run `cd /path; worker-cli wait` — pass the project path as an argument instead.
+EOF
+  → hook stdout: '' (exit 0) — no rewrite emitted, heredoc body passes through byte for byte,
+    including the literal incident shape (`cd /path; worker-cli wait`) appearing as body text
+
+grep -rn "worker-cli wait" process-docs/tool_use_safety/ | head -5
+  → hook stdout: '' (exit 0) — no rewrite emitted, the grep invocation (including its own `|
+    head` pipe) passes through byte for byte unchanged
+```
+
+In all three, the hook produces no stdout at all rather than an unmodified-but-present
+`updatedInput` — Claude Code applies nothing when a hook is silent, so "byte for byte unchanged"
+here means there is no rewritten copy to diff against; the original tool call proceeds exactly as
+typed. The grep case is the one most likely to have gone wrong if the isolation logic had been
+built on the raw command instead of the shell-stripped one: a grep's own `|` could plausibly have
+been mistaken for the kind of trailing chain the hook blocks, but the mention regex never even
+reaches that check, because the quoted search pattern is blanked by the shell-strip before the
+mention gate runs.
+
+### Precedence-independence, re-verified for the new design
+
+The same live-verification style from the Correction section above, re-run against the
+consolidated hook:
+
+```
+cd /tmp; worker-cli wait
+  (run_in_background: true)
+
+  block_unauthorized_background.py  → exit 0, no output (still no opinion — unchanged)
+  rewrite_worker_wait.py            → exit 0, updatedInput: command="worker-cli wait /tmp",
+                                       run_in_background=true
+```
+
+`block_unauthorized_background.py` was not touched again in this pass — its `worker-cli wait`
+exclusion from the Correction section already covers every mention shape, cd-prefixed or not, so
+it remains silent on every input `rewrite_worker_wait.py` acts on. There is exactly one hook
+producing a verdict on any `worker-cli wait`-mentioning command now, so there is nothing left for
+a harness's evaluation order, or a payload-merge behavior, to arbitrate either way.
+
+### Test changes
+
+`test_block_worker_wait_isolated.py` and `test_block_worker_wait_foreground.py` were deleted and
+replaced by one consolidated `test_rewrite_worker_wait.py` (22 cases), mirroring the hook
+consolidation. Cases that used to assert a block now assert a rewrite: the `cd`-prefix cases
+(both `;` and `&&`, plus a newline-separator case matching the real spawn-cd-prefix shape from
+`2026-07-01_worker_cli_detection_cd_prefix_fix.md`) now assert the collapsed command and
+`run_in_background=true`; the foreground-flag cases now assert the flag forced to `true` with the
+command left untouched. The block cases that remain genuinely unfixable — trailing `&&`, trailing
+`;`, a pipe, and `cd` combined with trailing chaining — keep their block expectations unchanged.
+`test_block_unauthorized_background.py`'s one cross-reference to the old isolation hook's name in
+a case description was updated to name `rewrite_worker_wait.py` instead; no expectation in that
+suite changed. All 22 new cases and all 16 existing `block_unauthorized_background.py` cases
+pass; `test_rewrite_background_sleep.py` (14/14), `test_block_worker_send_while_working.py`
+(12/12), and `test_block_worker_kill_while_working.py` (13/13) re-ran unmodified with no
+regression.
+
+## Files changed (this pass)
+
+- `src/hooks/rewrite_worker_wait.py` — new, replaces `block_worker_wait_isolated.py` and
+  `block_worker_wait_foreground.py` (both deleted).
+- `src/hooks/hook_setup.py` — the two old entries removed from `_HOOK_SCRIPTS`, one new entry
+  added in the same position.
+- `src/hooks/DOCS.md` — the two old module entries replaced by one; `block_unauthorized_background
+  .py`'s cross-reference updated to name the new hook; `_shell_strip.py`'s caller list and
+  `_fire_log.py`'s active-caller count updated (32 → 31, net one fewer hook).
+- `dev/hook_smoke/test_rewrite_worker_wait.py` — new, 22 cases, all pass; replaces
+  `test_block_worker_wait_isolated.py` and `test_block_worker_wait_foreground.py` (both deleted).
+- `dev/hook_smoke/test_block_unauthorized_background.py` — one case description's cross-reference
+  updated; no expectation changed; 16/16 still pass.
+- `dev/hook_smoke/DOCS.md` — the two old test entries replaced by one, placed alphabetically next
+  to `test_rewrite_chained_sleep.py`.
+- `block_unauthorized_background.py` itself untouched this pass — its exclusion from the
+  Correction section above already covers this design without modification.
