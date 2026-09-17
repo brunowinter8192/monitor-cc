@@ -35,7 +35,7 @@ CASES = [
      "worker-cli waitfoo", True, False),
 
     ("worker-cli wait && rag-cli index — mentions wait, this hook has no "
-     "opinion (block_worker_wait_isolated.py decides instead) NO-OP",
+     "opinion (rewrite_worker_wait.py decides instead) NO-OP",
      "worker-cli wait && rag-cli index docs", True, None),
     ("cd /tmp; worker-cli wait — mentions wait, this hook has no opinion NO-OP",
      "cd /tmp; worker-cli wait", True, None),

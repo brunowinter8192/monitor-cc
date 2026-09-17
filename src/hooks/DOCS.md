@@ -23,7 +23,7 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 **Purpose:** Position-preserving shell-region stripper — blanks heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes to same-length spaces before pattern matching, keeping `$(...)` and backtick command substitutions active; fails open (returns the input unchanged) on any parse error.
 **Reads:** n/a — pure function library, not a standalone script.
 **Writes:** n/a.
-**Called by:** `block_broad_find.py`, `block_broad_grep.py`, `block_busywait_loop.py`, `block_cli_chained.py`, `block_dangerous_kill.py`, `block_gh_cli_local_path.py`, `block_manual_worker_cleanup.py`, `block_pipe_scraper_isolated.py`, `block_po_read.py`, `block_rag_cli_document_repeat.py`, `block_rag_cli_index_isolated.py`, `block_rag_corpus_read.py`, `block_rag_docs_layer.py`, `block_search_subreddits_limit.py`, `block_unauthorized_background.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_send_while_working.py`, `block_worker_spawn_placement.py`, `block_worker_wait_foreground.py`, `block_worker_wait_isolated.py`, `rewrite_chained_sleep.py` — same-directory `sys.path` insert + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `block_broad_find.py`, `block_broad_grep.py`, `block_busywait_loop.py`, `block_cli_chained.py`, `block_dangerous_kill.py`, `block_gh_cli_local_path.py`, `block_manual_worker_cleanup.py`, `block_pipe_scraper_isolated.py`, `block_po_read.py`, `block_rag_cli_document_repeat.py`, `block_rag_cli_index_isolated.py`, `block_rag_corpus_read.py`, `block_rag_docs_layer.py`, `block_search_subreddits_limit.py`, `block_unauthorized_background.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_send_while_working.py`, `block_worker_spawn_placement.py`, `rewrite_chained_sleep.py`, `rewrite_worker_wait.py` — same-directory `sys.path` insert + `from _shell_strip import _strip_non_shell_active`.
 
 ---
 
@@ -41,7 +41,7 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 **Purpose:** `log_fire(hook_name, decision, tool_name, command, ...)` appends one JSON line per hook decision; fails silently on write errors so logging never breaks a hook.
 **Reads:** `MONITOR_CC_HOOK_FIRING_LOG` env var (log path override, used for test isolation).
 **Writes:** `src/logs/hook_firing.jsonl` (append), path resolved relative to `__file__` unless overridden.
-**Called by:** every active hook script in `src/hooks/` except `hook_setup.py` (32 scripts) — same-directory `sys.path` insert + `from _fire_log import log_fire`, called only at the decision point (never on passthrough).
+**Called by:** every active hook script in `src/hooks/` except `hook_setup.py` (31 scripts) — same-directory `sys.path` insert + `from _fire_log import log_fire`, called only at the decision point (never on passthrough).
 
 ---
 
@@ -74,7 +74,7 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 
 ### block_unauthorized_background.py (64 LOC)
 
-**Purpose:** PreToolUse Bash hook that force-flips `run_in_background` to `false` for any command dispatched in the background that is neither a sleep-only timer (`_SLEEP_ONLY_BG`) nor the canonical `worker-cli wait` form (`_WAIT_FORM`); any command that merely mentions `worker-cli wait` (`_WAIT_MENTION_RE`, shell-strip-guarded) is excluded from this hook's opinion entirely, leaving `block_worker_wait_isolated.py`/`block_worker_wait_foreground.py` as the sole deciders for that command — see `process-docs/tool_use_safety/` for why.
+**Purpose:** PreToolUse Bash hook that force-flips `run_in_background` to `false` for any command dispatched in the background that is neither a sleep-only timer (`_SLEEP_ONLY_BG`) nor the canonical `worker-cli wait` form (`_WAIT_FORM`); any command that merely mentions `worker-cli wait` (`_WAIT_MENTION_RE`, shell-strip-guarded) is excluded from this hook's opinion entirely, leaving `rewrite_worker_wait.py` as the sole decider for that command — see `process-docs/tool_use_safety/` for why.
 **Reads:** stdin (PreToolUse JSON: `tool_input.command`, `tool_input.run_in_background`).
 **Writes:** stdout (`hookSpecificOutput.updatedInput.run_in_background: false`) on non-canonical background dispatch; nothing on passthrough or on any `worker-cli wait` mention.
 **Called by:** Claude Code hook system, registered by `hook_setup.py`.
@@ -252,20 +252,11 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 
 ---
 
-### block_worker_wait_isolated.py (50 LOC)
+### rewrite_worker_wait.py (89 LOC)
 
-**Purpose:** PreToolUse Bash hook blocking any `worker-cli wait` mention that is not the entire command (a `cd` prefix, `;`/`&&`/`|` chaining before or after it) — replaces `block_unauthorized_background.py`'s silent foreground-demotion for this one command with a visible block, since a `cd`-prefixed wait always has a project-path-argument alternative.
-**Reads:** stdin (PreToolUse JSON: `tool_input.command`).
-**Writes:** stderr (block message pointing at the project-path-argument form) on match; exit 2.
-**Called by:** Claude Code hook system, registered by `hook_setup.py`.
-
----
-
-### block_worker_wait_foreground.py (52 LOC)
-
-**Purpose:** PreToolUse Bash hook blocking `worker-cli wait` dispatched WITHOUT `run_in_background=true` — the flag-mirror of `block_worker_send_background.py`, closing the gap where a foreground wait was previously unpoliced by any hook.
+**Purpose:** PreToolUse Bash hook forcing every `worker-cli wait` mention into its correct shape in one `updatedInput` payload rather than blocking it — forces `run_in_background` to `true` unconditionally, and collapses an unambiguous leading `cd <path>; worker-cli wait` into `worker-cli wait <path>` (dropping the `cd` as redundant if the wait already carries its own path argument); blocks (exit 2) only when the command carries chaining beyond that leading `cd` (trailing `&&`/`;`/`|`), since rewriting would silently discard a command the orchestrator asked for. Consolidated into one hook (superseding the former `block_worker_wait_isolated.py`/`block_worker_wait_foreground.py` pair) specifically so a single `updatedInput` always carries the corrected command and the forced flag together — see `process-docs/tool_use_safety/` for why a merge or precedence dependency across two hooks was rejected.
 **Reads:** stdin (PreToolUse JSON: `tool_input.command`, `tool_input.run_in_background`).
-**Writes:** stderr (block message with the fix) on match; exit 2.
+**Writes:** stdout (`hookSpecificOutput.updatedInput` with both `command` and `run_in_background: true`) on a forced case; stderr (block message) + exit 2 on an unfixable chain; nothing when the command is already exactly correct.
 **Called by:** Claude Code hook system, registered by `hook_setup.py`.
 
 ---

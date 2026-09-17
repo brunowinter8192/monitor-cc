@@ -217,28 +217,6 @@ mention does not exempt an unrelated command), other backgrounded commands force
 
 ---
 
-### test_block_worker_wait_isolated.py (77 LOC)
-
-**Purpose:** 14-case smoke for `block_worker_wait_isolated.py` — cd-prefixed/chained/piped
-`worker-cli wait` forms blocked, bare/flag/project-path canonical forms allowed, quoted-mention
-and heredoc-body false-positive guards.
-**Reads:** nothing. **Writes:** PASS/FAIL to stdout.
-**Called by:** none — manual CLI; must run from project root.
-**Calls out:** none — drives the hook via `subprocess`.
-
----
-
-### test_block_worker_wait_foreground.py (68 LOC)
-
-**Purpose:** 9-case smoke for `block_worker_wait_foreground.py` — `worker-cli wait` without
-`run_in_background=true` (explicit `false` or omitted) blocked, backgrounded canonical forms and
-a quoted-mention false-positive case allowed.
-**Reads:** nothing. **Writes:** PASS/FAIL to stdout.
-**Called by:** none — manual CLI; must run from project root.
-**Calls out:** none — drives the hook via `subprocess`.
-
----
-
 ### test_block_worker_kill_while_working.py (111 LOC)
 
 **Purpose:** Smoke for `decide()` in `block_worker_kill_while_working.py`, using the real
@@ -317,6 +295,19 @@ records kept (fail-safe).
 
 **Purpose:** 8-case (28-tuple) smoke for `rewrite_chained_sleep.py` — trivial `cmd_before` strips
 the sleep, load-bearing `cmd_before`/loop-body/sleep-first shapes are no-ops.
+**Reads:** nothing. **Writes:** PASS/FAIL to stdout.
+**Called by:** none — manual CLI; must run from project root.
+**Calls out:** none — drives the hook via `subprocess`.
+
+---
+
+### test_rewrite_worker_wait.py (124 LOC)
+
+**Purpose:** 22-case smoke for `rewrite_worker_wait.py` — already-correct forms are a no-op,
+missing/false `run_in_background` is forced true, an unambiguous leading `cd` is collapsed into
+the positional-path form (dropped entirely when the wait already carries its own path), anything
+chained beyond that leading `cd` still blocks, plus word-boundary and quoted-mention/heredoc-body
+false-positive guards.
 **Reads:** nothing. **Writes:** PASS/FAIL to stdout.
 **Called by:** none — manual CLI; must run from project root.
 **Calls out:** none — drives the hook via `subprocess`.
