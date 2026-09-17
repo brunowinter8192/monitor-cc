@@ -31,10 +31,17 @@ CASES = [
      "./venv/bin/python script.py", True, False),
     ("rag-cli update_docs — original triggering incident FORCE",
      "rag-cli update_docs .", True, False),
-    ("worker-cli wait && rag-cli index — chained, tail-guard rejects it FORCE",
-     "worker-cli wait && rag-cli index docs", True, False),
     ("worker-cli waitfoo — not a word-boundary match on 'wait' FORCE",
      "worker-cli waitfoo", True, False),
+
+    ("worker-cli wait && rag-cli index — mentions wait, this hook has no "
+     "opinion (block_worker_wait_isolated.py decides instead) NO-OP",
+     "worker-cli wait && rag-cli index docs", True, None),
+    ("cd /tmp; worker-cli wait — mentions wait, this hook has no opinion NO-OP",
+     "cd /tmp; worker-cli wait", True, None),
+    ("worker-cli wait mentioned only inside a quoted echo argument does NOT "
+     "exempt an unrelated non-canonical command FORCE",
+     'echo "worker-cli wait" && ./venv/bin/python script.py', True, False),
 
     ("./venv/bin/python script.py foreground — no output PASS",
      "./venv/bin/python script.py", False, None),

@@ -5,9 +5,11 @@ import re
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _fire_log import log_fire
+from _shell_strip import _strip_non_shell_active
 
 _SLEEP_ONLY_BG = re.compile(r'^\s*sleep\s+\d+(?:\.\d+)?\s*(?:&&\s*echo\b[^;&|\n]*)?\s*$')
 _WAIT_FORM = re.compile(r'^\s*worker-cli\s+wait\b[^;&|\n]*$')
+_WAIT_MENTION_RE = re.compile(r'\bworker-cli\s+wait\b')
 
 # ORCHESTRATOR
 
@@ -17,7 +19,7 @@ def block_unauthorized_background_workflow() -> None:
         sys.exit(0)
     if command is None:
         sys.exit(0)
-    if _is_canonical(command):
+    if _is_canonical(command) or _mentions_worker_wait(command):
         sys.exit(0)
     output = _emit_rewrite(command)
     log_fire("block_unauthorized_background", "rewrite", "Bash", command,
@@ -41,6 +43,9 @@ def _parse_input():
 
 def _is_canonical(command: str) -> bool:
     return bool(_SLEEP_ONLY_BG.match(command) or _WAIT_FORM.match(command))
+
+def _mentions_worker_wait(command: str) -> bool:
+    return bool(_WAIT_MENTION_RE.search(_strip_non_shell_active(command)))
 
 def _emit_rewrite(command: str) -> dict:
     return {

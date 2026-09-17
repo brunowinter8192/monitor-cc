@@ -206,10 +206,33 @@ plain-path reads allowed.
 
 ---
 
-### test_block_unauthorized_background.py (86 LOC)
+### test_block_unauthorized_background.py (93 LOC)
 
-**Purpose:** 14-case smoke for `block_unauthorized_background.py` — `sleep`/`worker-cli wait` kept
-exempt, other backgrounded commands forced to foreground.
+**Purpose:** 16-case smoke for `block_unauthorized_background.py` — `sleep` kept exempt, any
+`worker-cli wait` mention (canonical or not) excluded from this hook's opinion entirely (a quoted
+mention does not exempt an unrelated command), other backgrounded commands forced to foreground.
+**Reads:** nothing. **Writes:** PASS/FAIL to stdout.
+**Called by:** none — manual CLI; must run from project root.
+**Calls out:** none — drives the hook via `subprocess`.
+
+---
+
+### test_block_worker_wait_isolated.py (77 LOC)
+
+**Purpose:** 14-case smoke for `block_worker_wait_isolated.py` — cd-prefixed/chained/piped
+`worker-cli wait` forms blocked, bare/flag/project-path canonical forms allowed, quoted-mention
+and heredoc-body false-positive guards.
+**Reads:** nothing. **Writes:** PASS/FAIL to stdout.
+**Called by:** none — manual CLI; must run from project root.
+**Calls out:** none — drives the hook via `subprocess`.
+
+---
+
+### test_block_worker_wait_foreground.py (68 LOC)
+
+**Purpose:** 9-case smoke for `block_worker_wait_foreground.py` — `worker-cli wait` without
+`run_in_background=true` (explicit `false` or omitted) blocked, backgrounded canonical forms and
+a quoted-mention false-positive case allowed.
 **Reads:** nothing. **Writes:** PASS/FAIL to stdout.
 **Called by:** none — manual CLI; must run from project root.
 **Calls out:** none — drives the hook via `subprocess`.
