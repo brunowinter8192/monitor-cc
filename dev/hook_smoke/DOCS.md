@@ -206,10 +206,11 @@ plain-path reads allowed.
 
 ---
 
-### test_block_unauthorized_background.py (86 LOC)
+### test_block_unauthorized_background.py (93 LOC)
 
-**Purpose:** 14-case smoke for `block_unauthorized_background.py` — `sleep`/`worker-cli wait` kept
-exempt, other backgrounded commands forced to foreground.
+**Purpose:** 16-case smoke for `block_unauthorized_background.py` — `sleep` kept exempt, any
+`worker-cli wait` mention (canonical or not) excluded from this hook's opinion entirely (a quoted
+mention does not exempt an unrelated command), other backgrounded commands forced to foreground.
 **Reads:** nothing. **Writes:** PASS/FAIL to stdout.
 **Called by:** none — manual CLI; must run from project root.
 **Calls out:** none — drives the hook via `subprocess`.

@@ -23,7 +23,7 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 **Purpose:** Position-preserving shell-region stripper — blanks heredoc bodies, single/double-quoted strings, and ANSI-C `$'...'` quotes to same-length spaces before pattern matching, keeping `$(...)` and backtick command substitutions active; fails open (returns the input unchanged) on any parse error.
 **Reads:** n/a — pure function library, not a standalone script.
 **Writes:** n/a.
-**Called by:** `block_broad_find.py`, `block_broad_grep.py`, `block_busywait_loop.py`, `block_cli_chained.py`, `block_dangerous_kill.py`, `block_gh_cli_local_path.py`, `block_manual_worker_cleanup.py`, `block_pipe_scraper_isolated.py`, `block_po_read.py`, `block_rag_cli_document_repeat.py`, `block_rag_cli_index_isolated.py`, `block_rag_corpus_read.py`, `block_rag_docs_layer.py`, `block_search_subreddits_limit.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_send_while_working.py`, `block_worker_spawn_placement.py`, `block_worker_wait_foreground.py`, `block_worker_wait_isolated.py`, `rewrite_chained_sleep.py` — same-directory `sys.path` insert + `from _shell_strip import _strip_non_shell_active`.
+**Called by:** `block_broad_find.py`, `block_broad_grep.py`, `block_busywait_loop.py`, `block_cli_chained.py`, `block_dangerous_kill.py`, `block_gh_cli_local_path.py`, `block_manual_worker_cleanup.py`, `block_pipe_scraper_isolated.py`, `block_po_read.py`, `block_rag_cli_document_repeat.py`, `block_rag_cli_index_isolated.py`, `block_rag_corpus_read.py`, `block_rag_docs_layer.py`, `block_search_subreddits_limit.py`, `block_unauthorized_background.py`, `block_venv_no_redirect.py`, `block_worker_kill_while_working.py`, `block_worker_send_background.py`, `block_worker_send_while_working.py`, `block_worker_spawn_placement.py`, `block_worker_wait_foreground.py`, `block_worker_wait_isolated.py`, `rewrite_chained_sleep.py` — same-directory `sys.path` insert + `from _shell_strip import _strip_non_shell_active`.
 
 ---
 
@@ -72,11 +72,11 @@ No `__init__.py` — this directory is not a Python package. Each script is a st
 
 ---
 
-### block_unauthorized_background.py (59 LOC)
+### block_unauthorized_background.py (64 LOC)
 
-**Purpose:** PreToolUse Bash hook that force-flips `run_in_background` to `false` for any command dispatched in the background that is neither a sleep-only timer (`_SLEEP_ONLY_BG`) nor the canonical `worker-cli wait` form (`_WAIT_FORM`).
+**Purpose:** PreToolUse Bash hook that force-flips `run_in_background` to `false` for any command dispatched in the background that is neither a sleep-only timer (`_SLEEP_ONLY_BG`) nor the canonical `worker-cli wait` form (`_WAIT_FORM`); any command that merely mentions `worker-cli wait` (`_WAIT_MENTION_RE`, shell-strip-guarded) is excluded from this hook's opinion entirely, leaving `block_worker_wait_isolated.py`/`block_worker_wait_foreground.py` as the sole deciders for that command — see `process-docs/tool_use_safety/` for why.
 **Reads:** stdin (PreToolUse JSON: `tool_input.command`, `tool_input.run_in_background`).
-**Writes:** stdout (`hookSpecificOutput.updatedInput.run_in_background: false`) on non-canonical background dispatch; nothing on passthrough.
+**Writes:** stdout (`hookSpecificOutput.updatedInput.run_in_background: false`) on non-canonical background dispatch; nothing on passthrough or on any `worker-cli wait` mention.
 **Called by:** Claude Code hook system, registered by `hook_setup.py`.
 
 ---

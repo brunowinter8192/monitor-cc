@@ -44,12 +44,12 @@ governing the same `worker-cli send` subcommand, split exactly because their det
 differ. `A1_use_case_specificity.md` backs this directly — pattern-match the exact anti-pattern
 signature, one condition per hook, never widen an existing general mechanism to cover a new case.
 
-`block_unauthorized_background.py` was left untouched. Its silent-demotion path for every other
-command is still correct; for `worker-cli wait` specifically it is now superseded in practice
-(not removed) because PreToolUse hooks are AND-of-permission across the whole registered set —
-any hook that exits 2 denies the call regardless of what any other hook returns on the same
-event. The new isolation hook below now blocks the exact shape `_WAIT_FORM` used to silently
-demote, before the demotion is ever reached. No hook ordering dependency, no conflict.
+`block_unauthorized_background.py`'s initial version was left untouched, on the assumption that
+PreToolUse hooks are AND-of-permission across the whole registered set — any hook that exits 2
+denies the call regardless of what any other hook returns on the same event — so the new
+isolation hook's block would win over the general hook's demotion with no conflict. That
+assumption was corrected the same session (see "Correction" below) — the general hook was
+changed after all, and the final design does not depend on precedence at all.
 
 ### `block_worker_wait_isolated.py`
 
@@ -145,20 +145,127 @@ observable via the Bash tool's own stdout. This is not a fallback either hook im
 a pre-existing property of how PreToolUse hooks see only the outermost command text, the same
 property that already lets `test_worker_wait.sh` run unaffected.
 
+## Correction: precedence between a block and a rewrite is undocumented — design changed to not need it
+
+The first version of this entry shipped with `block_unauthorized_background.py` untouched, on
+the claim that PreToolUse hooks are AND-of-permission — any hook exiting 2 denies the call no
+matter what another hook returns — so the new isolation hook's block would always win over the
+general hook's silent demotion for the same input, with no real conflict.
+
+That claim was checked, not just repeated, before this correction: `hook_taxonomy.md`,
+`2026-05-22_hook_principle_block_vs_allow.md`, `2026-05-22_hook_api_auto_rewrite_works.md`, and a
+full-tree grep of `process-docs/` for precedence/conflict language turned up nothing. This repo
+documents that both mechanisms exist (block via exit 2 + stderr, rewrite via exit 0 +
+`updatedInput`) but nowhere documents what happens when two hooks on the same `PreToolUse` event
+disagree on the same call. **The precedence question is unresolved in this repo's own
+documentation as of 2026-09-17.**
+
+That matters here specifically, not generically: the two hooks are not disjoint on this command.
+`block_unauthorized_background.py` rewrites (demotes to foreground) precisely when a
+`run_in_background=true` command is not canonical, and for `worker-cli wait`, non-canonical means
+chained or `cd`-prefixed — exactly the shapes `block_worker_wait_isolated.py` blocks. Every
+chained/`cd`-prefixed wait therefore triggered both hooks at once, one wanting to block, one
+wanting to silently demote. If block wins, the fix works. If the rewrite wins (or merges, or
+whichever result a harness applies last wins), the call gets silently demoted exactly as it did
+before this milestone, the orchestrator learns nothing, and the fix would look shipped while
+changing nothing.
+
+### Fix — make the general hook stop having an opinion on this command
+
+Rather than resolve or rely on precedence, `block_unauthorized_background.py` was changed to
+exclude `worker-cli wait` from its rewrite path entirely, so it is no longer a second, possibly-
+conflicting source of truth for this command:
+
+```python
+_WAIT_MENTION_RE = re.compile(r'\bworker-cli\s+wait\b')
+
+def _mentions_worker_wait(command: str) -> bool:
+    return bool(_WAIT_MENTION_RE.search(_strip_non_shell_active(command)))
+```
+
+`if _is_canonical(command) or _mentions_worker_wait(command): sys.exit(0)` — added as an OR onto
+the existing canonical check, one new import (`_shell_strip`, already used by both new hooks, for
+the same quoted-mention-safety reason), one new constant, one new function, one new clause. The
+shell-strip guard is required here, not decorative: without it, an unrelated dangerous command
+that merely quotes the phrase "worker-cli wait" in an argument (e.g. an `echo` or a `worker-cli
+send` message body chained with something else) would wrongly skip the general hook's demotion
+for that unrelated command. Verified as its own case (see below).
+
+Now the two hooks are no longer in conflict on any input: `block_unauthorized_background.py`
+never rewrites a `worker-cli wait`-mentioning command (canonical or not), so there is nothing
+left for a precedence question to resolve. The outcome for a chained/`cd`-prefixed wait is the
+same regardless of which order a harness evaluates the three hooks in, because only one of them
+(`block_worker_wait_isolated.py`) ever produces a verdict on it.
+
+Verified live, both conflict shapes, all three hooks run independently against the identical
+payload:
+
+```
+cd /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch; worker-cli wait
+  (run_in_background: true)
+
+  block_unauthorized_background.py  → exit 0, no output (no opinion)
+  block_worker_wait_isolated.py     → exit 2, isolation message
+  block_worker_wait_foreground.py   → exit 0, no output (bg flag is true)
+
+worker-cli wait && rag-cli index docs
+  (run_in_background: true)
+
+  block_unauthorized_background.py  → exit 0, no output (no opinion)
+  block_worker_wait_isolated.py     → exit 2, isolation message
+```
+
+### Cost of the fix — one test case changed on purpose, two added
+
+`test_block_unauthorized_background.py`'s case `"worker-cli wait && rag-cli index — chained,
+tail-guard rejects it FORCE"` asserted `rewritten_bg=False` (the hook used to demote this). That
+assertion is now the literal bug being removed, so its expectation was updated to `None` (no
+output) rather than left to fail — 13 of the 14 original cases needed no change at all, since
+`\bworker-cli\s+wait\b` only matches when the word `wait` is genuinely present with a boundary on
+both sides (`worker-cli waitfoo` still doesn't match, so that FORCE case is untouched). Two cases
+were added: a `cd`-prefixed wait confirming the same no-opinion outcome, and
+`echo "worker-cli wait" && ./venv/bin/python script.py` confirming the shell-strip guard — a
+quoted mention does not exempt the unrelated `./venv/bin/python` command riding along with it,
+which still gets demoted (`FORCE`, `rewritten_bg=False`) exactly as before. 16/16 pass.
+
+### Precedence itself: still unresolved, deliberately not needed, not established empirically
+
+This design does not depend on the answer, so it was not chased down further. An attempt to
+establish it empirically (arm both a blocking and a rewriting hook against a real Claude Code
+tool call and observe which one wins) was considered but not carried out in this session:
+`hook_setup.py` refuses to run from inside a worktree by design (its own guard), and hooks are
+registered machine-wide in `~/.claude/settings.json` — actually registering a test hook pair
+against the live global settings file from a worker session is out of scope for a worker
+(touches machine state outside this worktree, and the worktree-only scope exists precisely so a
+worker's own background-sleep habits don't get promoted the way an orchestrator's do — see
+`rewrite_background_sleep.py`'s worktree exemption). Left for whoever next needs the real answer,
+from a main session with a real terminal, not from here. If the answer ever turns out to matter
+for a future hook pair with a similarly overlapping signature, this entry is the place that
+established it should be checked, not assumed.
+
 ## Files changed
 
 - `src/hooks/block_worker_wait_isolated.py` — new.
 - `src/hooks/block_worker_wait_foreground.py` — new.
-- `src/hooks/hook_setup.py` — both registered in `_HOOK_SCRIPTS`, next to
+- `src/hooks/block_unauthorized_background.py` — `worker-cli wait` excluded from the rewrite path
+  entirely (see Correction above); one new import, one new constant, one new function, one new
+  clause; every other command's behavior unchanged (verified: 13 of 14 pre-existing test cases
+  pass with unmodified expectations).
+- `src/hooks/hook_setup.py` — the two new hooks registered in `_HOOK_SCRIPTS`, next to
   `block_worker_send_background.py`.
-- `src/hooks/DOCS.md` — two new module entries; `_shell_strip.py` and `_fire_log.py` "Called by"
-  lists and counts updated (30 → 32 active `_fire_log` callers).
+- `src/hooks/DOCS.md` — two new module entries; `block_unauthorized_background.py`'s purpose/
+  writes lines updated for the exclusion; `_shell_strip.py`'s "Called by" list gained
+  `block_unauthorized_background.py` plus the two new hooks; `_fire_log.py`'s active-caller count
+  updated (30 → 32).
 - `dev/hook_smoke/test_block_worker_wait_isolated.py` — new, 14 cases, all pass.
 - `dev/hook_smoke/test_block_worker_wait_foreground.py` — new, 9 cases, all pass.
-- `dev/hook_smoke/DOCS.md` — two new test entries.
-- Re-ran `test_block_unauthorized_background.py` (14/14) and `test_rewrite_background_sleep.py`
-  (14/14) unmodified after adding the new hooks — no regression, both existing suites still pass
-  exactly as before.
+- `dev/hook_smoke/test_block_unauthorized_background.py` — 1 case's expectation updated on
+  purpose (see Correction above), 2 cases added; 16/16 pass.
+- `dev/hook_smoke/DOCS.md` — two new test entries; `test_block_unauthorized_background.py`'s
+  entry updated for the new case count and behavior.
+- Re-ran `test_rewrite_background_sleep.py` (14/14), `test_block_worker_send_while_working.py`
+  (12/12), and `test_block_worker_kill_while_working.py` (13/13) unmodified after the change — no
+  regression in any sibling worker-cli-guard hook's own suite.
 
 ## Note for a future reader of `hook_taxonomy.md`
 
