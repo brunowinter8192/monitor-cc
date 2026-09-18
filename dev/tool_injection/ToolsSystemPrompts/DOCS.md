@@ -1,4 +1,4 @@
-# dev/ToolsSystemPrompts/
+# dev/tool_injection/ToolsSystemPrompts/
 
 ## Role
 Captured reference corpus of Claude Code's built-in tool definitions plus a system-prompt segment,
