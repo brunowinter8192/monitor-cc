@@ -157,3 +157,16 @@ are citing this same real `src/menubar` module/metric, not the moved `dev/` fold
 - `comm -23 <(ls -d dev/*/ | sed 's|dev/||; s|/$||' | sort) <(ls -d process-docs/*/ | sed 's|process-docs/||; s|/$||' | sort)`
   returns empty after the change — every top-level `dev/<area>/` now has a matching
   `process-docs/<area>/`.
+
+## Recap
+
+`git diff integration --name-only --` lists exactly the 98 files touched by the single commit
+above (`50d9dbde`, "chore: rename 4 dev/ dirs onto their process-docs area names") — no follow-up
+task ran in this session, so the inventory step surfaced nothing beyond what the main pass already
+covered. The six `DOCS.md` files that describe the touched paths
+(`dev/DOCS.md`, `dev/desktop_allocation/DOCS.md`, `dev/message_strip_fp_nuke/DOCS.md`,
+`dev/nsgridview_migration/DOCS.md`, `dev/tool_injection/DOCS.md`,
+`dev/tool_injection/ToolsSystemPrompts/DOCS.md`) were already brought current as part of that
+commit; the recap step re-checked all six anyway — heading lines match their real path, and every
+`### <module>.py (<N> LOC)` line's `<N>` was re-verified against a fresh `wc -l` on the actual file
+(all match, since `git mv` never touches file bytes). Nothing further needed changing.
