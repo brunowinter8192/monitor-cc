@@ -9,14 +9,14 @@ from typing import Optional
 from .constants import TMUX_HISTORY_LIMIT
 
 _WINDOW_LAYOUT = [
-    (0, 'tokens',  [('tokens',       None,      None)]),
-    (1, 'proxy',   [('proxy',        None,      None)]),
-    (2, 'workers', [('worker-tokens', None,           None),
-                    ('worker-proxy',  'worker-tokens', '66%')]),
-    (3, 'debug',   [('warnings',     None,      None)]),
-    (4, 'gpu',     [('gpu',          None,      None)]),
-    (5, 'news',    [('news',         None,      None),
-                    ('news-log',     'news',    '50%')]),
+    (0, 'tokens',   [('tokens',        None,   None)]),
+    (1, 'proxy',    [('proxy',         None,   None)]),
+    (2, 'w-tokens', [('worker-tokens', None,   None)]),
+    (3, 'w-proxy',  [('worker-proxy',  None,   None)]),
+    (4, 'debug',    [('warnings',      None,   None)]),
+    (5, 'gpu',      [('gpu',           None,   None)]),
+    (6, 'news',     [('news',          None,   None),
+                     ('news-log',      'news', '50%')]),
 ]
 
 # ORCHESTRATOR
@@ -57,14 +57,14 @@ def _create_windows(session_name: str, cmds: dict) -> None:
 
     subprocess.run(["tmux", "new-window", "-t", f"{session_name}:1", "-n", "proxy", cmds['proxy']])
 
-    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:2", "-n", "workers", cmds['worker-tokens']])
-    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:2.0", "-l", "66%", cmds['worker-proxy']])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:2", "-n", "w-tokens", cmds['worker-tokens']])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:3", "-n", "w-proxy", cmds['worker-proxy']])
 
-    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:3", "-n", "debug", cmds['warnings']])
-    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:4", "-n", "gpu", cmds['gpu']])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:4", "-n", "debug", cmds['warnings']])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:5", "-n", "gpu", cmds['gpu']])
 
-    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:5", "-n", "news", cmds['news']])
-    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:5.0", "-l", "50%", cmds['news-log']])
+    subprocess.run(["tmux", "new-window", "-t", f"{session_name}:6", "-n", "news", cmds['news']])
+    subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:6.0", "-l", "50%", cmds['news-log']])
 
     subprocess.run(["tmux", "select-window", "-t", f"{session_name}:0"])
 
@@ -118,14 +118,15 @@ def configure_tmux_session(session_name: str, script_path: str = '', project_arg
     pane_titles = {
         '0.0': 'TOKENS',
         '1.0': 'PROXY',
-        '2.0': 'WORKER-TOKENS', '2.1': 'WORKER-PROXY',
-        '3.0': 'WARNINGS',
-        '4.0': 'GPU',
-        '5.0': 'NEWS', '5.1': 'NEWS-LOG',
+        '2.0': 'WORKER-TOKENS',
+        '3.0': 'WORKER-PROXY',
+        '4.0': 'WARNINGS',
+        '5.0': 'GPU',
+        '6.0': 'NEWS', '6.1': 'NEWS-LOG',
     }
     for pane_ref, title in pane_titles.items():
         subprocess.run(["tmux", "select-pane", "-t", f"{session_name}:{pane_ref}", "-T", title])
-    for win in range(6):
+    for win in range(7):
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-border-style", "fg=colour240"])
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "pane-active-border-style", "fg=colour245"])
         subprocess.run(["tmux", "set-window-option", "-t", f"{session_name}:{win}", "wrap-search", "on"])
@@ -134,8 +135,8 @@ def configure_tmux_session(session_name: str, script_path: str = '', project_arg
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-t", "run-shell", f"tmux capture-pane -t {session_name}:0.0 -pS - | pbcopy && tmux display 'Tokens pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-p", "run-shell", f"tmux capture-pane -t {session_name}:1.0 -pS - | pbcopy && tmux display 'Proxy pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "M-k", "run-shell", f"tmux capture-pane -t {session_name}:2.0 -pS - | pbcopy && tmux display 'Worker-tokens pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-w", "run-shell", f"tmux capture-pane -t {session_name}:3.0 -pS - | pbcopy && tmux display 'Warnings pane copied'"])
-    subprocess.run(["tmux", "bind-key", "-T", "root", "M-n", "run-shell", f"tmux capture-pane -t {session_name}:5.1 -pS - | pbcopy && tmux display 'News-log pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-w", "run-shell", f"tmux capture-pane -t {session_name}:4.0 -pS - | pbcopy && tmux display 'Warnings pane copied'"])
+    subprocess.run(["tmux", "bind-key", "-T", "root", "M-n", "run-shell", f"tmux capture-pane -t {session_name}:6.1 -pS - | pbcopy && tmux display 'News-log pane copied'"])
     subprocess.run(["tmux", "bind-key", "-T", "root", "C-f", "copy-mode", "\\;", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode", "C-f", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])
     subprocess.run(["tmux", "bind-key", "-T", "copy-mode-vi", "C-f", "command-prompt", "-p", "(search):", "send-keys -X search-forward '%%'"])

@@ -108,9 +108,9 @@ to change a single pane's own rendering or input handling — that lives in the 
 
 ---
 
-### tmux_launcher.py (245 LOC)
+### tmux_launcher.py (246 LOC)
 
-**Purpose:** launches the 6-window, 8-pane tmux split-screen layout (`launch_split_screen`) and self-heals missing windows/panes on Ctrl+R (`restart_panes`); owns the window layout table (`_WINDOW_LAYOUT`) and every tmux key-binding/status-bar setup call.
+**Purpose:** launches the 7-window, 8-pane tmux split-screen layout (`launch_split_screen`) and self-heals missing windows/panes on Ctrl+R (`restart_panes`); owns the window layout table (`_WINDOW_LAYOUT`) and every tmux key-binding/status-bar setup call.
 **Reads:** `tmux list-sessions`/`list-panes`/`list-windows`/`show-options` output.
 **Writes:** creates/kills tmux sessions, windows, panes; sets tmux options and key bindings.
 **Called by:** `workflow.py` (`--mode all` / `--mode restart-panes`), `monitor_janitor.py` (`kill_session`), `menubar/system.py` (`generate_session_name`, `check_session_exists`, `kill_session`).
