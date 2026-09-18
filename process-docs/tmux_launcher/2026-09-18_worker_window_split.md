@@ -19,7 +19,7 @@ the user, not derived): 7 windows, 8 panes —
 ```
 
 `--mode` strings (`worker-tokens`, `worker-proxy`, ...) are unchanged — only tmux window/pane
-geometry moved. Full task text lives in the issue that spawned this session, not repeated here.
+geometry moved. The layout table above is the complete spec; nothing beyond it was given.
 
 ## What actually changed
 
@@ -59,11 +59,11 @@ table by hand before trusting the harness's green result.
 panes named "rules"/"hooks" that don't exist anywhere in `_WINDOW_LAYOUT`, current or past). It was
 already stale before this task, is not part of the read-list, and touching it would be scope creep
 per the worker rules ("bleib im Geltungsbereich des Prompts") — left untouched on purpose. Flagged to
-main so it can become its own issue; do not assume this task's diff explains that file's drift.
+main as a separate follow-up; do not assume this task's diff explains that file's drift.
 
 ## Real bug found in the dev harness, not a hypothetical
 
-Ran `dev/tmux_launcher/argv_byte_identity.py` BEFORE touching anything, to understand its mechanics
+Ran `dev/tmux_launcher/layout_regression_checks.py` BEFORE touching anything, to understand its mechanics
 before rewriting it. `_all_present_state()`'s window-2 fixture said
 `--mode workers` on the first pane, while `_WINDOW_LAYOUT`'s actual mode-name for that pane is
 `worker-tokens`. `restart_panes`'s `_fill_missing_panes` decides "is this pane already present" by
@@ -94,7 +94,13 @@ calls" check actually catches it — it does (produces an explicit `FAIL:` line)
 
 ## Harness rewrite: hash dropped in favor of named PASS/FAIL checks
 
-`dev/tmux_launcher/argv_byte_identity.py` no longer prints a single `HASH:` line. It now runs three
+The script was renamed from `argv_byte_identity.py` to `layout_regression_checks.py` in a later
+pass over this same session (a reviewer caught that the old name still advertised the byte-identity/
+hash approach this task deliberately abandoned). `git mv` was used, `dev/tmux_launcher/DOCS.md`'s
+module heading and Public Interface line were updated to match; no other file in the repo references
+the script by path, so nothing else needed touching.
+
+It no longer prints a single `HASH:` line. It now runs three
 scenarios and asserts 7 named, independent properties, printing one `PASS:`/`FAIL:` line each plus a
 summary, exiting 1 if anything failed:
 
@@ -170,7 +176,46 @@ change just makes the failure mode of ignoring that concrete for the first time.
 
 ## Verification status
 
-Harness (`dev/tmux_launcher/argv_byte_identity.py`) is green, 7/7 checks. Live tmux verification
-against a real session (`--mode all`, `list-windows`/`list-panes`, `restart-panes` self-heal,
-`kill-session`) is the next step after this doc — see the chat/issue history for that session's
-outcome if this doc predates it landing.
+Harness (`dev/tmux_launcher/layout_regression_checks.py`) is green, 7/7 checks — reconfirmed after the
+file rename described above.
+
+Live tmux verification ran to completion, against real tmux (3.6a), not a fake. Steps and observed
+results:
+
+1. **Launch.** Inside this worktree, with `TMUX` unset (the launcher refuses `--mode all` from
+   inside an existing tmux client, and this session's own shell was itself inside tmux, so every
+   launcher invocation below used `env -u TMUX`), ran
+   `python3 workflow.py --mode all --project /tmp/tmux_verify_project` in the background (it blocks
+   on the trailing `tmux attach-session`, which never returns until the session dies, so `run_in_background` was required to keep driving the verification from a second shell). Session
+   `monitor_cc_a53673ae` came up.
+2. **Layout observed via `tmux list-windows -F '#{window_index} #{window_name} #{window_panes}'`:**
+   `0 tokens 1`, `1 proxy 1`, `2 w-tokens 1`, `3 w-proxy 1`, `4 debug 1`, `5 gpu 1`, `6 news 2` — exact
+   match to the target table above.
+3. **Panes observed via `tmux list-panes -a -F '#{window_index}.#{pane_index} title=#{pane_title} dead=#{pane_dead} cmd=#{pane_start_command}'`,** filtered to this session: `0.0` TOKENS,
+   `1.0` PROXY, `2.0` WORKER-TOKENS, `3.0` WORKER-PROXY, `4.0` WARNINGS, `5.0` GPU, `6.0` NEWS,
+   `6.1` NEWS-LOG — 8 panes, every title matched the `pane_titles` map, every `dead` flag was `0`,
+   and every pane's start command carried the `--mode` its title implies (e.g. `3.0`'s command ended
+   in `--mode worker-proxy --project /tmp/tmux_verify_project`).
+4. **Self-heal.** Ran `tmux kill-window -t monitor_cc_a53673ae:3` (whole-window-missing case) and
+   `tmux kill-pane -t monitor_cc_a53673ae:6.1` (single-pane-missing case) by hand, confirmed via
+   `list-windows` that window 3 was gone and window 6 was down to 1 pane, then ran
+   `python3 workflow.py --mode restart-panes --session monitor_cc_a53673ae --project /tmp/tmux_verify_project` (again with `TMUX` unset). Re-ran `list-windows`/`list-panes` afterward: layout was
+   back to the exact 7-window/8-pane shape from step 2/3, all 8 panes `dead=0`, and both recreated
+   panes (`3.0`, `6.1`) carried the correct `--mode worker-proxy`/`--mode news-log` start commands.
+   **One observed difference from a fresh launch, not a regression:** the two recreated panes' titles
+   came back as the terminal's default (`#{pane_title}` showed the machine hostname,
+   `MacBook-Pro-von-Bruno.local`) instead of `WORKER-PROXY`/`NEWS-LOG`. This is pre-existing,
+   unrelated-to-this-task behavior — `configure_tmux_session` (the function that sets pane titles) is
+   only ever called from `launch_split_screen`, never from `restart_panes`, so self-heal has never
+   restored pane titles, before or after this change. Confirmed against `git log` that this call
+   graph predates this task. Not fixed, since it's outside the requested scope (geometry only).
+5. **`pgrep -fl 'workflow.py --mode.*tmux_verify_project'`** before teardown listed exactly 8
+   processes, one per pane, matching the 8 `--mode` commands from step 3/4.
+6. **Kill.** `tmux kill-session -t monitor_cc_a53673ae`. Immediately after: `tmux list-sessions | grep monitor_cc_a53673ae` matched nothing (exit 1), and the same `pgrep -fl` matched nothing (exit 1)
+   — no leftover child processes. `/tmp/tmux_verify_project` was removed afterward.
+
+A separate, unrelated leftover session (`monitor_cc_25c51a2e`, 6 windows, the OLD pre-task shape) was
+present on the machine throughout this verification, evidently from earlier work in this worktree
+before this task started. It was left untouched — not created by this task, not needed for the
+verification above, and its OLD layout is exactly the subject of the "known migration case" section,
+so touching it would have contaminated that investigation rather than supported it.

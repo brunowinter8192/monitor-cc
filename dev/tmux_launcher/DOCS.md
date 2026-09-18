@@ -9,7 +9,7 @@ mismatch behind an unrelated-looking hash change (see Gotchas). Prefer explicit,
 readable checks over a single opaque digest.
 
 ## Public Interface
-No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bin/python dev/tmux_launcher/argv_byte_identity.py`.
+No `__init__.py` in this directory. Entry point is direct invocation: `./venv/bin/python dev/tmux_launcher/layout_regression_checks.py`.
 
 ## Flow
 Monkeypatches `subprocess.run` to record every argv list issued and return scenario-appropriate
@@ -19,7 +19,7 @@ order and targets, pane titles, `M-*` binding targets, zero-create invariants, s
 
 ## Modules
 
-### argv_byte_identity.py (276 LOC)
+### layout_regression_checks.py (276 LOC)
 
 **Purpose:** Regression checks for `launch_split_screen`/`restart_panes` across three scenarios:
 fresh-session launch (asserts the exact 7-window/8-pane creation sequence, pane-title map, and
