@@ -1,4 +1,4 @@
-# dev/desktop_detection/
+# dev/desktop_allocation/
 
 ## Role
 Detection and window-move research mapping a Claude Code session's Ghostty tab to a Mission
@@ -8,7 +8,7 @@ this file before running any.
 
 ## Public Interface
 No `__init__.py` in this directory. Each numbered `NN_*.py` script is its own entry point, run
-directly, e.g. `python3 dev/desktop_detection/01_probe.py`. `02_bundle_stub.app/` and
+directly, e.g. `python3 dev/desktop_allocation/01_probe.py`. `02_bundle_stub.app/` and
 `03_bundle_stub.app/` are ad-hoc-signed `.app` bundle stubs used as one of probe02/03's execution
 contexts, not Python entry points.
 

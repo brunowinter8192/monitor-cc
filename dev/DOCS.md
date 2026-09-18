@@ -26,7 +26,7 @@ import), and either asserts pass/fail to stdout or writes a report under `dev/<a
 - `click_ui/` — pane-control mouse-click regression coverage (worker selection, copy-by-click, chrome buttons, gpu/news refresh).
 - `constants/` — byte-identity harness for `src/constants.py`'s split into `src/colors.py`/`src/core/modes.py`/`src/pane_error_log.py`.
 - `cursor_edges/` — standalone NSPanel cursor-rect probe (edge hover `↔`/`↕` behavior), no `src/` import.
-- `desktop_detection/` — Mission Control desktop-number detection pipeline probes (Ghostty AppleScript + CGS/SkyLight APIs), no `src/` changes.
+- `desktop_allocation/` — Mission Control desktop-number detection pipeline probes (Ghostty AppleScript + CGS/SkyLight APIs), no `src/` changes.
 - `display/` — display-layer tests (tmux layout, JSONL rule scanning, pane screenshots, cache-tracker/hover-map/strip-marker regressions); `display/jsonl_exploration/` maps session-JSONL structure.
 - `gpu_pane/` — byte-identity harness for `src/gpu_pane/`.
 - `hook_error_correlation/` — overlays `src/logs/tool_errors.jsonl` against hook-fire logs to classify current-config-relevant vs. stale hook errors.

@@ -8,6 +8,7 @@ changes; the produced schema files are what `src/proxy/tool_injection.py` reads 
 
 ## Public Interface
 No `__init__.py` in this directory. Entry point is direct invocation: `python3 dev/tool_injection/01_extract_schemas.py`.
+`ToolsSystemPrompts/` is a captured reference corpus, not a script — see its own `DOCS.md`.
 
 ## Flow
 Loads each configured MCP plugin server in an isolated subprocess (its own venv, bootstrapped from
@@ -28,6 +29,10 @@ conceptually as generated runtime data).
 **Called by:** none — manual CLI, re-run whenever plugin tools change.
 **Calls out:** the target plugin servers' own Python venvs (subprocess-isolated, not an import
 dependency of this repo).
+
+---
+
+### ToolsSystemPrompts/ (reference corpus, no `.py` modules — see its own `DOCS.md`)
 
 ---
 

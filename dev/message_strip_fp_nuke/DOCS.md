@@ -1,4 +1,4 @@
-# dev/strip_fp_tool_result/
+# dev/message_strip_fp_nuke/
 
 ## Role
 Measurement-only audit for the false-positive-nuke bug class inside `tool_result` content: which
@@ -8,7 +8,7 @@ unrelated non-SR passes. Touch when extending this measurement; strip behavior i
 
 ## Public Interface
 No `__init__.py` in this directory. `audit_tool_result_sr_strips.py` is the entry point, run
-directly: `python3 dev/strip_fp_tool_result/audit_tool_result_sr_strips.py`.
+directly: `python3 dev/message_strip_fp_nuke/audit_tool_result_sr_strips.py`.
 
 ## Flow
 Streams every recorded request payload from `src/logs/dual_log/`, threads it through the real

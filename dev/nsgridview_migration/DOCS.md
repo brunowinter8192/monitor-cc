@@ -1,4 +1,4 @@
-# dev/grid_probe/
+# dev/nsgridview_migration/
 
 ## Role
 Standalone PyObjC probe verifying `NSGridView` column alignment and click routing before that
@@ -7,7 +7,7 @@ regression guard. Touch only to re-verify a new `NSGridView` API surface before 
 elsewhere.
 
 ## Public Interface
-No `__init__.py` in this directory. Entry path: `./venv/bin/python3 dev/grid_probe/probe.py`
+No `__init__.py` in this directory. Entry path: `./venv/bin/python3 dev/nsgridview_migration/probe.py`
 (interactive GUI script — opens a real floating panel, quit with Cmd-Q or close window).
 
 ## Flow
@@ -23,7 +23,7 @@ event loop printing one line per cell click until the window is closed.
 to a handler that prints the clicked row's tag — a manual visual + click-routing check.
 **Reads:** nothing external — all layout values are module constants.
 **Writes:** stdout (startup report, column x-positions, click log lines); the floating panel itself.
-**Called by:** none — run manually (`./venv/bin/python3 dev/grid_probe/probe.py`); quit with Cmd-Q.
+**Called by:** none — run manually (`./venv/bin/python3 dev/nsgridview_migration/probe.py`); quit with Cmd-Q.
 **Calls out:** `objc`, `AppKit`, `Foundation` (PyObjC).
 
 ---
