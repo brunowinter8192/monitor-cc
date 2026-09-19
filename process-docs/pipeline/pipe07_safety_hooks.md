@@ -792,7 +792,7 @@ Remaining hooks — keep + audit logging. Pending:
 - **shell-`&` work-hiding (accepted residual, 2026-06-24):** Hook 3 forces only the CC `run_in_background` flag → foreground; a shell-level `cmd &` (incl. `nohup … &`) bypasses it, produces NO CC ack, NO proxy injection, runs detached/invisible. A `work-cmd &` could thus be polled unguarded (block_polling_loop / block_log_read removed). NOT closed: forcing shell-`&` foreground would break legit `nohup`/launchd daemon launches (daemon never completes → no wake). No frequency evidence → block-on-evidence principle → revisit with a targeted hook only if the fire-log shows real `work-cmd &` polling.
 - **Next antipattern:** Rule-9 (Read before Edit/Write) — 1 violation in the 2026-05-20 run; requires session state to detect (which files were read this session), not hookable from a single tool_input payload alone.
 - **Migration threshold:** when is a negative rule in `tool-use.md` mature enough to be retired in favour of a hook? Proposed criterion: pattern fires ≥3× in a 7-day window AND can be reliably regex-captured without false positives.
-- **Worker-local suppression:** should workers running in worktrees be able to suppress specific hooks? Currently no mechanism — global registration means all hooks fire everywhere.
+- **Worker-local suppression:** should workers running in worktrees be able to suppress specific hooks? No such mechanism exists as of this audit — global registration means all hooks fire everywhere.
 
 ## Sources
 
