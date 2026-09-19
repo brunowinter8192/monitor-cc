@@ -3,9 +3,9 @@
 ## Scope of this entry
 
 Worker task on branch `identity`, worktree `.claude/worktrees/identity/`. Continues the
-`_response`-model-capture line of work started by the `modelcheck` worker
-(`process-docs/proxy_instrumentation/2026-09-13_answering_model_capture_m1.md`, M1/M2/M3 — probe,
-token-pane display, warnings-pane mismatch alert, all already merged). This task fixes the actual
+`_response`-model-capture line of work started by the `modelcheck` worker, recorded earlier in
+this same area (M1/M2/M3 — probe, token-pane display, warnings-pane mismatch alert, all already
+merged). This task fixes the actual
 reason `answering_model` was empty on every real (non-synthetic) request despite M1-M3 being
 correct: the response body arriving compressed. Display-side code (`src/panes/`, `src/format/`,
 `src/proxy_display/`) was explicitly out of scope and untouched.

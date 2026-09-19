@@ -40,9 +40,8 @@ structurally foreign trailing segment.
 and `rewrite_worker_cli_capture_noise.py` both explicitly preserved `> /tmp/file` as
 "legitimate — save output to disk", and `worker-cli capture X | tail -40` was documented
 as a "guaranteed no-op... documented legitimate fallback". Both predate their targets'
-2026-06 clean-output redesigns (capture in particular — see
-`process-docs/worker_orchestration/worker_cli_capture_clean.md`, a different area, not
-`Area:`-referenced here per the cross-reference rule) that made the raw output
+2026-06 clean-output redesigns (capture in particular — see the `process-docs/worker_orchestration/`
+area's `worker-cli capture` clean+scope redesign entry, a different area) that made the raw output
 context-ready; the workaround's original rationale (messy/truncated raw output needing a
 tail filter) no longer applies. Retiring them was a deliberate scope decision, not an
 oversight — matches the family's now-uniform "standalone, no redirect, no pipe" rule.
