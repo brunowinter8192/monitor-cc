@@ -37,7 +37,7 @@ Sources read: `plugins/plugin-dev/skills/hook-development/SKILL.md` and `plugins
 - For pre-rewritable patterns (like git-ambiguous), the best we can do is block-with-hint: exit 2 with a one-line stderr that tells the model how to fix the input. The model retries with the fix applied — one extra tool call per occurrence, no user confirmation.
 - `src/hooks/rewrite_git_ambiguous.py` was converted to this block-with-hint form 2026-05-22. The `updatedInput` JSON shape is preserved as a comment in the script for the future if the API expands.
 
-**Current state:** all 18 hooks use exit-0 (allow) or exit-2 (block). NONE use `updatedInput`. This is structurally final until Anthropic extends the API.
+**State as of 2026-05-22:** all 18 hooks use exit-0 (allow) or exit-2 (block). NONE use `updatedInput`. This is structurally final until Anthropic extends the API.
 
 **Implementation note for future updates:** if `allow + updatedInput` ever gains general PreToolUse Bash support, the `_emit_block_hint` function in `rewrite_git_ambiguous.py` can be swapped to `_emit_rewrite` (the documented JSON dict at the bottom of the function). Test with a fresh CC version when CHANGELOG indicates the extension.
 
@@ -74,7 +74,7 @@ An alternative hook type where the hook definition is a SHORT PROMPT rather than
 
 **Use case:** Rule 11 violations (`diag-chain-and`) — the regex in `rule_compliance.py` has confirmed false-positive risk on legitimate prereq chains (mkdir && build). A prompt hook could decide with much lower FP rate by understanding the INTENT of each segment.
 
-**Current state:** not used. All 17 hooks are `type: command` (python3 script invocation).
+**State as of 2026-05-22:** not used. All 17 hooks are `type: command` (python3 script invocation).
 
 **Tradeoff:** 30s timeout adds latency on every matching tool call. Practical only for high-value decisions where regex is unreliable AND the pattern is rare enough that the latency doesn't block flow. `edit-string-not-found` prevention is another candidate: "Does old_string plausibly appear in this file?" — but the file content isn't in the hook payload, making this harder.
 
