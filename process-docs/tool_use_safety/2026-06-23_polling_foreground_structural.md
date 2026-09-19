@@ -2,7 +2,7 @@
 
 Design discussion. Status: OPEN (design not converged). No code this session beyond `block_broad_find` (separate, merged — see `hook_design_principles/`).
 
-## Existing polling/wait hook stack (IST recap)
+## Existing polling/wait hook stack (as-is recap)
 - `block_polling_loop` (Hook 8): stateful frequency — same target ≥3×/30s/session → block. Timing-axis; known weak (spaced polls escape; firing doesn't stop a determined loop).
 - `block_busywait_loop` (Hook 21): single-call `while`/`until` loop whose body is exactly `sleep N` and whose condition is a passive status-check → block.
 - `block_log_read` (Hook 33) + `logread`: structural — `logread` is the only sanctioned `.log` reader, all other `.log` reads blocked, `logread` capped at 3×/(session,file). Replaced frequency for the `.log` case.
@@ -31,7 +31,7 @@ Idea: force every process to foreground with an auto-timeout (30/60min); only sl
 
 ## Sleep-only foreground-forcing was too aggressive — fixed (2026-06-23, later same session)
 
-The IST in "Existing polling/wait hook stack" above (`block_unauthorized_background`: "only `sleep N && echo done` passes as background") was a bug, not the design. Both `block_unauthorized_background._CANONICAL` and `rewrite_background_sleep._CANONICAL_BG` matched ONLY the exact literal `sleep N && echo done`; any deviation fell through.
+The as-is state in "Existing polling/wait hook stack" above (`block_unauthorized_background`: "only `sleep N && echo done` passes as background") was a bug, not the design. Both `block_unauthorized_background._CANONICAL` and `rewrite_background_sleep._CANONICAL_BG` matched ONLY the exact literal `sleep N && echo done`; any deviation fell through.
 
 ### Symptom
 A background timer in any non-exact form was silently foreground-forced — it ran in the foreground and returned its output immediately, defeating the "launch timer → go idle" mechanism. Concretely: `sleep 45 && echo "bg-ack-probe done"` (custom echo text) and bare `sleep 300` (no echo) both failed the exact regex.
