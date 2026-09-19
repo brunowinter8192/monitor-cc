@@ -152,22 +152,7 @@ to `nsgridview_migration` inside the quoted blocks falsifies a captured record; 
 it inside the "Area-name mismatch" paragraph would make that paragraph self-contradictory
 (it would claim a mismatch between two now-identical names). Left exactly as is.
 
-## Real dead-path fix identified (not yet applied)
-
-`nsgridview_migration/A1_migration.md`, Sources section: `Probe artifact:
-dev/grid_probe/probe.py` — this is a LIVE pointer (not quoted/captured data), same
-architecture-pivot document, different file from the salvage doc above. This one gets
-fixed to `dev/nsgridview_migration/probe.py`.
-
-`waste_analysis/waste_analysis_phase_f.md`, Sources section: `dev/ToolsSystemPrompts/
-_review.md` — live pointer, gets fixed to `dev/tool_injection/ToolsSystemPrompts/
-_review.md`.
-
-Remaining dead-path findings from the mechanical grep (`refactoring/
-2026-09-16_iterative_dev_refactor_full_pass.md`, 3 hits) not yet individually judged —
-open item, see below.
-
-## Present-tense 'current state' findings — judged so far
+## Present-tense 'current state' findings — judgment summary
 
 - `watchdog_idle_detection` both hits — already carry `(as of 2026-05-10)` inline.
   FALSE POSITIVE, no change needed.
@@ -178,24 +163,11 @@ open item, see below.
   refactor decision at the time, not an evergreen claim. Judged FALSE POSITIVE, no
   change needed.
 - `tool_use_safety/2026-05-22_hook_api_capabilities.md` two "Current state:" hits — REAL
-  finding, needs the file's own date (2026-05-22) attached inline since the bare phrase
-  carries no date of its own. Not yet edited.
+  finding, fixed (see Rewrite pass below).
 - `naming_unification/tooling.md` "situational/plugins.md — STALE" paragraph — REAL
-  finding ("current state" undated). Not yet edited.
+  finding, fixed.
 - `worker_orchestration/worker_revive.md` "currently the User/Opus must explicitly
-  call..." — REAL finding, undated. Not yet edited.
-
-## Still open at time of this save
-
-- Cross-reference fixes (file → area) not yet applied to any of the listed findings.
-- Dead dev/ path fixes not yet applied (except the judgment above).
-- Present-tense fixes not yet applied (3 real ones identified above).
-- English-only sweep across the block not yet run.
-- Verification re-run (before/after grep counts) not yet done.
-- `tool_use_safety` full-file read was in progress when this file was first written
-  (confirmed valid via representative sampling + the area's own umbrella doc
-  `tool_use_safety/tool_use_safety.md`); no further file-by-file reading needed for the
-  verdict, verdict stands.
+  call..." — REAL finding, fixed.
 
 ## Rewrite pass — completed
 
