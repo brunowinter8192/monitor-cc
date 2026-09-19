@@ -79,7 +79,7 @@ Format: `<ISO-timestamp> worker=<name> session=<tmux-session> status=<code> sign
 ## Not Implemented
 
 - **zsh-args parsing of the `/tmp/claude-XXX-cwd` file** for deterministic cwd resolution (would also fix the PID-recycling edge case in bg_timer.py — "more invasive", deferred until actually observed)
-- **Automatic revive on detection** — currently the User/Opus must explicitly call `worker-cli revive`. Auto-detect + auto-revive would be conceivable (menubar detects pane-dead, prompts user).
+- **Automatic revive on detection** — as of this entry (2026-05-20), the User/Opus must explicitly call `worker-cli revive`. Auto-detect + auto-revive would be conceivable (menubar detects pane-dead, prompts user).
 
 ## Sources
 

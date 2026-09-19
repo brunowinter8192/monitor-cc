@@ -36,4 +36,4 @@ Status: PROPOSED, not implemented. Implementation is a cross-project edit in ite
 
 ## situational/plugins.md — STALE, rewrite-or-delete target
 
-`~/.claude/shared-rules/situational/plugins.md`: the Plugin Catalog + Agent-vs-Skill sections describe agents, commands, MCP servers, and skills that no longer exist on disk (e.g. iterative-dev listed with "eval-agent Skill, git-committer Agent, eval-spawn Command"; github-research with "github-search Agent, MCP Server"). Old plugin names + old paths throughout. Either delete or rewrite to current state (5 skill-only plugins, no MCP, new `-cli` names) in the migration batch.
+`~/.claude/shared-rules/situational/plugins.md`: the Plugin Catalog + Agent-vs-Skill sections describe agents, commands, MCP servers, and skills that no longer exist on disk (e.g. iterative-dev listed with "eval-agent Skill, git-committer Agent, eval-spawn Command"; github-research with "github-search Agent, MCP Server"). Old plugin names + old paths throughout. Either delete or rewrite to the 2026-06-02 target state (5 skill-only plugins, no MCP, new `-cli` names — established in this area's `mapping.md`) in the migration batch.

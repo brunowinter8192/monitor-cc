@@ -106,4 +106,4 @@ Applied to all three rebuild functions.
 
 - `/Applications/Ghostty.app/Contents/Resources/Ghostty.sdef` — Ghostty AppleScript dictionary
 - AppKit docs: NSGridView, NSGridCell.emptyContentView, mergeCellsInHorizontalRange_verticalRange_
-- Probe artifact: `dev/grid_probe/probe.py` — Phase A verification of PyObjC bindings + visual alignment
+- Probe artifact: `dev/nsgridview_migration/probe.py` — Phase A verification of PyObjC bindings + visual alignment

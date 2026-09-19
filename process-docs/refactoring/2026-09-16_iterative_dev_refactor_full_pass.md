@@ -54,8 +54,8 @@ Grep for `__doc__` before deleting anything in a directory. A grep for `argparse
 
 The session ran on the user's working machine. These are the scripts found that drive real state, with what they actually do:
 
-- `dev/cursor_edges/probe.py` and `dev/grid_probe/probe.py` call `main()` at module scope with no `if __name__ == '__main__':` guard. Importing them is enough to open a real window and enter a blocking AppKit run loop. The usual "load the backup via importlib to compare" method is itself the hazard here.
-- `dev/desktop_detection/04`, `05` and `06` move real windows between Spaces and open and close real Ghostty and CotEditor windows. `01_probe.py` writes an OSC-2 escape sequence into a live session's tty, changing a visible terminal's title.
+- `dev/cursor_edges/probe.py` and `dev/nsgridview_migration/probe.py` call `main()` at module scope with no `if __name__ == '__main__':` guard. Importing them is enough to open a real window and enter a blocking AppKit run loop. The usual "load the backup via importlib to compare" method is itself the hazard here.
+- `dev/desktop_allocation/04`, `05` and `06` move real windows between Spaces and open and close real Ghostty and CotEditor windows. `01_probe.py` writes an OSC-2 escape sequence into a live session's tty, changing a visible terminal's title.
 - `dev/menubar_nspanel/p1_nspanel_probe.py` registers a real system-wide Cmd+L hotkey via Carbon. `dev/hotkey_latency/probe_get_event_time.py` registers Cmd+Shift+9 the same way and then blocks.
 - `dev/menubar_nspanel/menubar_debug.py` runs `launchctl bootout` against the live menubar service.
 - `dev/model_selector/verify_three_tab_ring.py` constructs real `PanelManager` and `ModelController` instances and calls the real `_open_*_panel` functions, which call `orderFrontRegardless()`.
@@ -123,6 +123,6 @@ The scan states facts only. No entry was classified as a fallback or a tripwire,
 
 **Bundle the tail.** The last 15 areas held 129 comments between them. Four areas per milestone worked fine, with each area keeping its own salvage file and its own `DOCS.md` rewrite.
 
-**Workers corrected the orchestrator repeatedly, and were right every time.** The count of mutating probes in `dev/desktop_detection`, the existence of `dev/display/jsonl_exploration/DOCS.md`, the distinction between a comment and a `#` inside a string literal, and the file counts in several areas. State a measured number as a floor and say so, rather than as a target.
+**Workers corrected the orchestrator repeatedly, and were right every time.** The count of mutating probes in `dev/desktop_allocation`, the existence of `dev/display/jsonl_exploration/DOCS.md`, the distinction between a comment and a `#` inside a string literal, and the file counts in several areas. State a measured number as a floor and say so, rather than as a target.
 
 **One review caught real damage.** A worker's verification runs regenerated two tracked report artifacts under `dev/proxy/md/` against today's rotated corpus, overwriting the record of the window they were originally measured in. Those reports are evidence, not regenerable output. Every later prompt carried an instruction to back up and restore any tracked artifact a run could touch, and to delete only by explicit filename, never with a wildcard under a report directory. One worker had already destroyed 14 tracked report files with a wildcard `rm` and recovered them himself.

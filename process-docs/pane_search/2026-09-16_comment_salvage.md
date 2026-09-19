@@ -459,7 +459,7 @@ new pieces this milestone had to build:
     Search highlights are embedded with search_bar._BG_RESTORE_SENTINEL at construction time
     (token_format.py) and resolved via search_bar.resolve_bg_restore(line, chosen_bg) in
     token_pane.py's own hand-rolled row loop, right after chosen_bg is chosen — exact same
-    fix shape as process-docs/pane_search/2026-08-18_highlight_flood_empty_bg_fix.md.
+    fix shape as this area's 2026-08-18 highlight-flood empty-background-fix entry.
   - 2-ROW HEADER: format_cache_tracker's optional sticky_header (row 1 when scrolled, before
     this milestone) now shifts to row 2 — the search bar (_TOKENS_SEARCH_BAR_LINES=1, fixed)
     always wins row 1. format_cache_tracker's own internal viewport reservation (-1, for the

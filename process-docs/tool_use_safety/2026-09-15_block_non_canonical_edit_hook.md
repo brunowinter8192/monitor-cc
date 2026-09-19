@@ -2,9 +2,9 @@
 
 ## Task and prior thread
 
-This closes the loop opened by `process-docs/cache/2026-09-13_tool_cost_measurement.md` (Edit
+This closes the loop opened by the `process-docs/cache/` area's tool-cost measurement work (Edit
 tool removed, cost gap between Edit and `sed -i` measured at 157 tokens/call, mostly structural —
-Edit resends `old_string` verbatim) and `process-docs/cache/2026-09-14_main_session_edit_addressing.md`
+Edit resends `old_string` verbatim) and its follow-up on main-session edit addressing
 (a literal-anchor Bash heredoc still resends the old text, so the saving was smaller than it
 looked; the open question left for a successor was "collect data across sessions before choosing
 an edit form"). The classification (`BASH_FILE_MODIFICATION_FORMS` in `src/constants.py`) and the
@@ -198,7 +198,7 @@ Added to `_HOOK_SCRIPTS` in `src/hooks/hook_setup.py` (`("block_non_canonical_ed
 **NOT activated** — `hook_setup.py` refuses to run from a worktree by design (`_guard_not_worktree`)
 and this entire milestone was built in a worktree. Activation is a separate, deliberate step run
 from the main repo root after merge, same as every other hook addition in this directory's own
-history (`process-docs/tool_use_safety/2026-07-22_block_po_read_hook.md` is the direct precedent
+history (this area's own 2026-07-22 `block_po_read` hook entry is the direct precedent
 for this exact deferral).
 
 ## Recap — 2026-09-15, later same session: python path resolution had the same anchoring bug the shell side already fixed, plus two smaller review items
@@ -275,9 +275,9 @@ check against real `wc -l` on every touched `src/`/`dev/` module: all four headi
 `verify_block_non_canonical_edit_corpus.py` 115) — no correction needed this round.
 
 This is the closing entry for this worker's `tool_use_safety` work this session. The
-`cache`-area classification/extraction work earlier this same session has its own file,
-`process-docs/cache/2026-09-15_bash_file_modification_classification.md`, already closed out with
-its own recap sections — not touched from here, per the one-file-per-area rule.
+`process-docs/cache/` area's classification/extraction work earlier this same session has its own
+entry, already closed out with its own recap sections — not touched from here, per the
+one-file-per-area rule.
 
 **State for whoever picks this up next:** the hook is written, tested (19/19 synthetic smoke,
 210/210 corpus records get a verdict with 0 internal errors), registered in `_HOOK_SCRIPTS`, and
@@ -289,5 +289,5 @@ tool call, per the stale-hook-recovery Gotcha in `src/hooks/DOCS.md` — though 
 registration, not a recovery, the same "real terminal" constraint applies since the script itself
 guards against worktree execution). After activation, a real live-fire check (a genuine `sed -i`
 against an existing scratch file, confirming BLOCK; a genuine canonical-form edit, confirming
-ALLOW) would be the natural next verification — not attempted here, same deferral pattern
-`process-docs/tool_use_safety/2026-07-22_block_po_read_hook.md` used for its own hook.
+ALLOW) would be the natural next verification — not attempted here, same deferral pattern this
+area's own 2026-07-22 `block_po_read` hook entry used for its own hook.

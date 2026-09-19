@@ -97,8 +97,8 @@ or shared source enforcing sync — the only fix location now is `attribution_co
 
 Claude Code sends a second kind of request alongside the real conversation — a zero-tool
 CC-internal call (this session's investigation found session-titling and a bare `"quota"` call;
-an earlier process-doc, `process-docs/dual_log_cli/2026-09-03_sidecar_exclusion_and_delta_hash_fix.md`,
-found a "security monitor" system-prompted one). It shares the real conversation's
+an earlier entry in the `process-docs/dual_log_cli/` area found a "security monitor"
+system-prompted one). It shares the real conversation's
 `model_family` bucket in `src/proxy/addon_dual_log.py`'s per-family delta-hash chain
 (`DeltaState.forwarded_hashes_by_model`), which the 2026-09-03 entry explicitly left unfixed on the
 write side ("Follow-up for the proxy area (not fixed here, `src/proxy` untouched)... no existing
@@ -135,8 +135,8 @@ was excluded as synthetic test output, not real corpus.
 (`counts.tools == 0`) applied directly to the payload since `addon_dual_log.py` has no `counts`
 dict built yet at this point. `_write_request_dual_logs` now skips assigning `curr_delta` into
 `delta_state.forwarded_hashes_by_model[model_family]` when the modified payload is a sidecar — the
-sidecar's own `forwarded_delta` line is still written (full evidence, matches
-`process-docs/proxy_tool_stripping/sidecar_idle_recap_removal.md`'s "observation over mutation"
+sidecar's own `forwarded_delta` line is still written (full evidence, matches the
+`process-docs/proxy_tool_stripping/` area's "observation over mutation"
 stance; the existing `counts.tools == 0` field is the reader-facing discriminator, no new field
 added), only the chain STATE is left un-advanced.
 

@@ -6,8 +6,8 @@ Earlier this same session: `BASH_FILE_MODIFICATION_FORMS` was built in `src/cons
 (process-docs/cache), then `src/hooks/block_non_canonical_edit.py` was built on top of it — a
 canonical, fingerprinted, line-numbered edit form for Bash, plus a hook enforcing it and blocking
 every other form of modifying an existing file's content. `Edit`/`Write` had already been removed
-from the model's toolset the day before (`process-docs/cache/2026-09-13_tool_cost_measurement.md`),
-so this was meant to be the replacement path for editing.
+from the model's toolset the day before (the `process-docs/cache/` area's tool-cost measurement
+work), so this was meant to be the replacement path for editing.
 
 **The hook went live in the real environment before its premise was checked against how other
 agent harnesses actually approach this problem.** That check happened only afterward, took a
@@ -32,7 +32,7 @@ single pass, and reversed the decision outright:
   the above: the canonical form's fixed boilerplate came out to 460 characters per call against a
   median literal-anchor of 285 characters in the same corpus this whole thread started from — the
   typical edit got MORE expensive under the new form, not cheaper. The original premise
-  (`process-docs/cache/2026-09-13_tool_cost_measurement.md`'s Edit-vs-sed gap) was about a
+  (the `process-docs/cache/` area's Edit-vs-sed gap measurement) was about a
   20-file, one-line-replacement-per-file synthetic corpus; the real corpus's edits were smaller
   and more varied than that synthetic benchmark assumed, and the fixed cost of the canonical
   form's own boilerplate ate the saving.
@@ -155,9 +155,8 @@ unchanged) — all correct. Smoke suite re-run clean: 18/18.
 This closes out the `tool_use_safety` area for this worker's session. Three process-docs files
 now exist for this one area from this session, each a closed, dated snapshot per the write-once
 rule: `2026-09-15_block_non_canonical_edit_hook.md` (the build), and this file (the reversal). The
-`cache`-area file from earlier the same session
-(`process-docs/cache/2026-09-15_bash_file_modification_classification.md`) is a separate area,
-untouched from here.
+`process-docs/cache/` area's entry from earlier the same session is a separate area, untouched
+from here.
 
 ## Recap — 2026-09-15, closing the test_block_chained_sleep.py defect
 

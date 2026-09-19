@@ -48,8 +48,8 @@ redundant file I/O for ids already resolved this process — correctness lives e
    guarantees that task id can never later be mistaken for a fresh arm target regardless of
    processing-order gaps — the same tombstone-not-deletion logic extended to the orphan case.
 3. **24h tombstone pruning on write.** Mirrors the removed `block_concurrent_timer.py` hook's
-   `timer_state.jsonl` convention (one entry per session, 24h prune by write-ts — see
-   `process-docs/tool_use_safety/2026-07-20_timer_guard_concurrent_redesign.md`). Only `cleared`
+   `timer_state.jsonl` convention (one entry per session, 24h prune by write-ts — see the
+   `process-docs/tool_use_safety/` area's timer-guard concurrent-redesign entry). Only `cleared`
    entries are pruned; `pending` entries are NEVER pruned by the proxy — a pending entry's
    staleness/expiry is milestone-3's hook's job (it reads `armed_at` and applies its own threshold),
    pruning one here would defeat the tombstone dedup guarantee for a task whose completion notice

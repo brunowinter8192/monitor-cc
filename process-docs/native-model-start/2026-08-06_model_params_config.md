@@ -1,7 +1,7 @@
 # Per-model parameter config replacing the model-rewrite override, 2026-08-06
 
-Follow-up to the same session's `--fable`/`--opus` native model-start flags
-(`process-docs/native-model-start/2026-08-06_model_start_flags.md`). With the model now chosen at
+Follow-up to the same session's `--fable`/`--opus` native model-start flags, recorded earlier
+this same day in this area. With the model now chosen at
 session start, the proxy's existing `model_override`/`model_override_worker` config sections
 became actively wrong — they rewrote `payload["model"]` back to a config value every request,
 overriding whatever the session actually started as. The parameter injection they also carried

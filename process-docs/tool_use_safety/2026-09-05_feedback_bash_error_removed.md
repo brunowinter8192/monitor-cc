@@ -60,7 +60,7 @@ command hidden at the end of a long `&&` chain.
   but the milestone's scope explicitly excluded touching any other file in `src/hooks/` beyond the
   hook itself and `hook_setup.py`'s specific references — removing it would have been an
   unrequested code change to a shared module every other hook also depends on.
-- `process-docs/tool_use_safety/2026-08-29_posttooluse_failure_feedback_hook.md` — write-once, not
+- This area's own 2026-08-29 PostToolUse failure-feedback hook entry — write-once, not
   edited; its historical build/verification record stands regardless of the hook's later removal.
 
 ## Verification
