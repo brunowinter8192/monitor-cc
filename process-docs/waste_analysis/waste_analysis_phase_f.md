@@ -38,4 +38,4 @@ Waste report `dev/tool_use_analysis/20260422_session_waste_patterns.md` (6 proxy
 
 - `dev/tool_use_analysis/20260422_session_waste_patterns.md` — aggregated waste analysis
 - `dev/tool_use_analysis/extract_patterns.py` — pattern-extraction script
-- `dev/ToolsSystemPrompts/_review.md` — tool-description strip analysis (Phase B)
+- `dev/tool_injection/ToolsSystemPrompts/_review.md` — tool-description strip analysis (Phase B)
