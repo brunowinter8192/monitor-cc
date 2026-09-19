@@ -197,6 +197,78 @@ open item, see below.
   `tool_use_safety/tool_use_safety.md`); no further file-by-file reading needed for the
   verdict, verdict stands.
 
+## Rewrite pass — completed
+
+All four rewrite categories worked to completion for this block, committed in small batches
+(see git log on this branch for the individual commits, one per file or tight group).
+
+### Cross-references to a concrete process-docs FILE
+
+Before: 28 hits across 16 files (per the mechanical findings list). After: 11 hits remain across
+6 files, all confirmed false positives on individual read — either a file's own self-referential
+title line (`# process-docs/<area>/<file>.md` as heading), a file listing itself among files it
+touched in a recap-style checklist, or a reference sitting inside a verbatim-quoted code
+comment/docstring block in a `comment_salvage.md` file (captured data, not prose). The remaining
+6 files: `native-model-start/2026-09-16_comment_salvage.md` (1), `proxy/2026-09-16_comment_salvage.md`
+(4, all inside quoted salvage blocks), `poread/2026-09-14_poread_cli_moves_to_iterative_dev.md` (1,
+self-reference in a touched-files list), `proxy_instrumentation/2026-09-13_answering_model_capture_m1.md`
+(3, self-reference in touched-files lists), `session_analysis/2026-09-16_comment_salvage.md` (1,
+title), `thinking/2026-09-16_comment_salvage.md` (1, title). 17 real hits rewritten into area
+references across `tool_use_safety`, `proxy_instrumentation`, `timer-loop`, `refactoring`,
+`pane_search`, `native-model-start`.
+
+### Dead dev/ paths (renamed directories)
+
+Before: 12 hits across 4 files. After: 7 hits remain, all in
+`nsgridview_migration/2026-09-16_comment_salvage.md` — confirmed with Main as an intentional
+non-fix (see "Explicit non-fix" above): verbatim salvage of source comments plus a paragraph
+whose entire point is documenting the old/new name mismatch; rewriting the old name would make
+that paragraph self-contradictory. The other 5 real hits fixed: `nsgridview_migration/
+A1_migration.md` (1, `dev/grid_probe/` → `dev/nsgridview_migration/`), `waste_analysis/
+waste_analysis_phase_f.md` (1, `dev/ToolsSystemPrompts/` → `dev/tool_injection/ToolsSystemPrompts/`),
+`refactoring/2026-09-16_iterative_dev_refactor_full_pass.md` (3, `dev/grid_probe/` →
+`dev/nsgridview_migration/`, `dev/desktop_detection` → `dev/desktop_allocation` ×2).
+
+### Undated present-tense 'current state' claims
+
+Checked all findings-list hits plus a fresh block-wide grep for `current state` and `currently`.
+Confirmed false positives (already dated, or genuine prose/adjectival use, or scoped by the
+entry's own dateline): `watchdog_idle_detection` both hits (carry `(as of 2026-05-10)` inline),
+`rag_helpfulness` (explicit prose exemption from the task brief), `pane_search/
+2026-09-15_cohesion_refactor_size_split.md` (dated entry, scoped refactor-decision statement).
+Real fixes applied (5): `tool_use_safety/2026-05-22_hook_api_capabilities.md` (2, "Current
+state:" → "State as of 2026-05-22:"), `naming_unification/tooling.md` (1, dated to 2026-06-02
+and pointed at the area's own `mapping.md`), `worker_orchestration/worker_revive.md` (1,
+"currently" → "as of this entry (2026-05-20)"), `pipeline/pipe07_safety_hooks.md` (1, reworded
+away from "Currently no mechanism" to "No such mechanism exists as of this audit"). The
+block-wide sweep for bare "currently" surfaced several hundred additional hits; all checked by
+sampling — overwhelmingly either inside captured `comment_salvage.md` quote blocks or ordinary
+adjectival/technical use tied to a specific dated measurement in the same paragraph, not
+free-floating evergreen claims. Not mass-edited — judged out of scope per "correct form, never
+conclusions, don't rewrite what isn't broken".
+
+### English only
+
+Grepped the block for German function words in two passes (common short words, then a second
+wider list: `sondern/oder/kann/zwischen/müssen/wurde/damit/...`). Real violation found and fixed:
+`tool_use_safety/2026-06-23_polling_foreground_structural.md` — heading "IST recap" and body
+"The IST in ..." (German shorthand for as-is state, not captured data) → "as-is recap" / "The
+as-is state in ...". Everything else matching the grep was captured data (quoted user turns:
+"jetzt", "Ich merge jetzt.", "ich weiß nicht warum..." in `rules_staging.md` and
+`turn_discipline/2026-07-30_...md`; a literal timer-label string "55min-Timer für
+Los-2-Implementierung" quoted from a real log in `timer-loop/2026-08-06_bg_completion_wording_
+inventory.md`; a German CODE-STANDARDS.md quote with its English translation already given
+inline in `worker_pane_split/2026-09-16_cohesion_refactor.md`) — left untouched per the
+captured-data exception.
+
+## Verification
+
+Folder count: `ls -d */ | awk '/^[n-z]/' | wc -l` → 56, matches the 56 verdicts listed above and
+the task's stated block size. No area folder in this block is without a verdict.
+
+Emoji check: none found needing action — confirmed with Main the emoji rule does not apply to
+process-docs, so this was a non-issue for this block regardless.
+
 ## Emoji note
 
 Per Main's clarification: the emoji rule does not apply to process-docs. Any emoji
