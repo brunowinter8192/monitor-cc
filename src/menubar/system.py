@@ -128,6 +128,12 @@ def _focus_worker(tmux_session_name: str) -> None:
         log_menubar('latency', f'focus_worker session={tmux_session_name} tty={tty} lookup_ms={lookup_ms:.1f} '
                                 f'NO-OP reason=tty_unmapped')
         return
+    outcome, osascript_ms = _focus_terminal_by_id(term_id)
+    log_menubar('latency', f'focus_worker session={tmux_session_name} lookup_ms={lookup_ms:.1f} '
+                            f'osascript_ms={osascript_ms:.1f} id={term_id} {outcome}')
+
+def _focus_terminal_by_id(term_id: str):
+    import time
     safe_id = term_id.replace('"', '\\"')
     script = (
         'tell application "Ghostty"\n'
@@ -136,13 +142,14 @@ def _focus_worker(tmux_session_name: str) -> None:
     )
     _t1 = time.monotonic()
     try:
-        subprocess.run(['osascript', '-e', script], capture_output=True, text=True,
-                        encoding='utf-8', errors='replace', timeout=3)
+        r = subprocess.run(['osascript', '-e', script], capture_output=True, text=True,
+                            encoding='utf-8', errors='replace', timeout=3)
     except subprocess.TimeoutExpired:
-        pass
+        return 'status=TIMEOUT', (time.monotonic() - _t1) * 1000
     osascript_ms = (time.monotonic() - _t1) * 1000
-    log_menubar('latency', f'focus_worker session={tmux_session_name} lookup_ms={lookup_ms:.1f} '
-                            f'osascript_ms={osascript_ms:.1f} id={term_id}')
+    if r.returncode != 0:
+        return f'status=ERR rc={r.returncode} stderr={r.stderr.strip()}', osascript_ms
+    return 'status=OK', osascript_ms
 
 _PLIST_PATH_KEY_RE = re.compile(
     r'<key>\s*PATH\s*</key>\s*<string>([^<]*)</string>', re.DOTALL)

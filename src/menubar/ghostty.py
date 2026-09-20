@@ -86,6 +86,36 @@ def _clear_markers(tty_marker: List[tuple]) -> None:
                 fh.write(b'\033]2;\007')
         except OSError: pass
 
+def _query_single_terminal_id(marker: str):
+    osa = (
+        'tell application "Ghostty"\n'
+        '  try\n'
+        f'    return id of (first terminal whose name is "{marker}")\n'
+        '  on error\n'
+        '    return ""\n'
+        '  end try\n'
+        'end tell'
+    )
+    try:
+        return subprocess.run(['osascript', '-e', osa],
+                              capture_output=True, text=True,
+                              encoding='utf-8', errors='replace', timeout=3)
+    except Exception:
+        return None
+
+def _reprobe_single_tty(tty: str) -> Optional[str]:
+    tty_marker = _write_markers([tty])
+    time.sleep(0.12)
+    r = _query_single_terminal_id(tty_marker[0][1])
+    _clear_markers(tty_marker)
+    if r is None or r.returncode != 0:
+        return None
+    term_id = r.stdout.strip()
+    if not term_id:
+        return None
+    _ghostty_tty_to_id[tty] = term_id
+    return term_id
+
 def _ghostty_pid() -> Optional[str]:
     try:
         r = subprocess.run(['ps', '-A', '-o', 'pid=,command='],

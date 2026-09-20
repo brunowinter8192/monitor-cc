@@ -243,11 +243,11 @@ root) — this package only consumes those.
 
 ---
 
-### system.py (198 LOC)
+### system.py (205 LOC)
 
 **Purpose:** Process entry point (`run()`), singleton lock, and Ghostty click-to-focus/monitor-launch routing for main sessions, worker viewers, and per-project monitors.
 **Reads:** `PID_FILE` (lock); `get_ghostty_terminal_id(cwd)`/`get_ghostty_terminal_id_for_tty(tty)` from `ghostty.py` on click; `ps -A` output (worker-viewer tty lookup); the plist template (PATH source for `_resolve_launch_python3`); `MONITOR_CC_ROOT`; `tmux has-session` (via `tmux_launcher.py`).
-**Writes:** `PID_FILE`; `/tmp/monitor-cc-menubar_focus.log`; `menubar.log` (`[latency]`/`[monitor]` categories); a new Ghostty window + tmux session on monitor launch.
+**Writes:** `PID_FILE`; `/tmp/monitor-cc-menubar_focus.log` (main-session path only); `menubar.log` (`[latency]`/`[monitor]` categories — `_focus_worker`'s `[latency]` line now carries an explicit `status=OK`/`status=ERR rc=... stderr=...`/`status=TIMEOUT` outcome token, not just `id=...`); a new Ghostty window + tmux session on monitor launch.
 **Called by:** `__init__.py` (re-export), `workflow.py` (via `__init__.py:run`), `app.py` (`_focus_session`, `_focus_worker`, `_open_or_focus_monitor`), `hotkey_controller.py` (`_focus_session`), `focus_controller.py` (`_focus_session`).
 **Calls out:** `fcntl`, `os`, `re`, `shlex`, `shutil`, `subprocess`, `sys`; `.ghostty` (`get_ghostty_terminal_id`, `get_ghostty_terminal_id_for_tty`); `..tmux_launcher` (`generate_session_name`, `check_session_exists`, `kill_session`); lazy `.app` (`CCMenuBarApp`) inside `run()` only.
 
@@ -283,13 +283,13 @@ root) — this package only consumes those.
 
 ---
 
-### ghostty.py (148 LOC)
+### ghostty.py (178 LOC)
 
-**Purpose:** Ghostty terminal UUID mapping via an OSC 2 title-marker probe — maps every Ghostty child tty (main sessions and worker viewers alike) to its terminal UUID for click-to-focus.
-**Reads:** `ps -A` (Ghostty PID + child ttys); `/dev/ttys<NNN>` (OSC 2 marker writes); `osascript` (terminal `id|||name` pairs); `proc_cache.py:cc_proc_cache_snapshot()` (cross-thread-safe) and `_cc_proc_cache` directly (same-thread writer path).
+**Purpose:** Ghostty terminal UUID mapping via an OSC 2 title-marker probe — maps every Ghostty child tty (main sessions and worker viewers alike) to its terminal UUID for click-to-focus; also exposes a scoped single-tty reprobe for repairing one stale entry without a full re-scan.
+**Reads:** `ps -A` (Ghostty PID + child ttys); `/dev/ttys<NNN>` (OSC 2 marker writes); `osascript` (terminal `id|||name` pairs for the batch refresh; `id of (first terminal whose name is ...)` for the scoped single-tty reprobe); `proc_cache.py:cc_proc_cache_snapshot()` (cross-thread-safe) and `_cc_proc_cache` directly (same-thread writer path).
 **Writes:** `/dev/ttys<NNN>` (probe + cleanup); `_ghostty_tty_to_id`, `_ghostty_tty_last_refresh`, `_ghostty_cwd_uuid_last` (module state); `APP_SUPPORT/ghostty_cwd_uuid.json` (atomic, change-detected — via its own inline path, not `paths.py:GHOSTTY_CWD_UUID_FILE`).
-**Called by:** `discover.py:list_alive_sessions` (discovery-worker thread); `system.py:_focus_session`/`_focus_worker` (main thread).
-**Calls out:** `json`, `subprocess`, `time`; `.paths` (`_APP_SUPPORT`); `.proc_cache` (`_cc_proc_cache`, `cc_proc_cache_snapshot`).
+**Called by:** `discover.py:list_alive_sessions` (discovery-worker thread); `system.py:_focus_session`/`_focus_worker` (main thread). `_reprobe_single_tty` is not yet called by anything (built + live-measured for `process-docs/menubar_worker_focus/`'s stale-id fix, wiring into the failure-triggered retry is a separate, later milestone).
+**Calls out:** `json`, `os`, `subprocess`, `time`; `.paths` (`_APP_SUPPORT`); `.proc_cache` (`_cc_proc_cache`, `cc_proc_cache_snapshot`).
 
 ---
 
