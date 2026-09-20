@@ -6,6 +6,7 @@ from typing import Dict, List, NamedTuple
 
 from .discover import list_alive_sessions, get_last_session_timings, SessionInfo
 from .bg_timer import _scan_bg_sleep_timers, BgSleepInfo
+from .bg_task_orphans import scan_bg_task_orphans
 from .menubar_log import log_menubar
 
 REFRESH_INTERVAL = 1.5
@@ -44,6 +45,7 @@ def _worker_loop() -> None:
             sessions = list_alive_sessions()
             cwd_to_project = {s.cwd: s.project_name for s in sessions if not s.is_worker and s.cwd}
             bg_by_project = _scan_bg_sleep_timers(cwd_to_project)
+            scan_bg_task_orphans(time.time())
             with _lock:
                 _snapshot = DiscoverySnapshot(sessions=sessions, bg_by_project=bg_by_project,
                                                ts=time.time())

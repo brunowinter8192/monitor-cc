@@ -163,13 +163,13 @@ root) — this package only consumes those.
 
 ---
 
-### discovery_worker.py (61 LOC)
+### discovery_worker.py (63 LOC)
 
 **Purpose:** Background daemon thread producing session-discovery snapshots off the main thread, self-paced at ~1.5s.
-**Reads:** nothing directly — delegates to `discover.py:list_alive_sessions()` + `bg_timer.py:_scan_bg_sleep_timers()`.
-**Writes:** module-level `_snapshot` (lock-protected); `menubar.log` (`[latency] bg_refresh`, over-threshold cycles only).
+**Reads:** nothing directly — delegates to `discover.py:list_alive_sessions()` + `bg_timer.py:_scan_bg_sleep_timers()` + `bg_task_orphans.py:scan_bg_task_orphans()`.
+**Writes:** module-level `_snapshot` (lock-protected); `menubar.log` (`[latency] bg_refresh`, over-threshold cycles only — `bg_task_orphans.py`'s own `[bg_orphan]` lines are written from inside that call, not here).
 **Called by:** `app.py` (`start_discovery_worker`), `sessions_controller.py` (`get_latest_snapshot`).
-**Calls out:** `threading`, `sys`, `time`; `.discover` (`list_alive_sessions`, `get_last_session_timings`); `.bg_timer` (`_scan_bg_sleep_timers`); `.menubar_log` (`log_menubar`).
+**Calls out:** `threading`, `sys`, `time`; `.discover` (`list_alive_sessions`, `get_last_session_timings`); `.bg_timer` (`_scan_bg_sleep_timers`); `.bg_task_orphans` (`scan_bg_task_orphans`); `.menubar_log` (`log_menubar`).
 
 ---
 
@@ -273,12 +273,12 @@ root) — this package only consumes those.
 
 ---
 
-### proc_cache.py (165 LOC)
+### proc_cache.py (184 LOC)
 
-**Purpose:** Process and state caches shared by discovery — CC process pid→(tty,cwd) map, tmux session-name set, background-task open-handle snapshot, proxy-log mtime lookup, hook-state reader.
-**Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `lsof +D _TASKS_BASE -Fn` (bg-task open-handle cache); `tmux list-sessions`; `tmux display-message #{window_activity}` (per-session, on demand); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE`.
-**Writes:** module-level caches (`_cc_proc_cache` — lock-protected; `_tmux_state_cache`, `_bg_task_open_paths`, `_proxy_log_mtime_cache`, `_hook_state_cache`).
-**Called by:** `discovery_worker.py:_worker_loop` (via `discover.py`, all refresh calls) — sole refresh caller; `discover.py:_process_project_dir` (query calls, same thread); `ghostty.py:_tty_for_cwd` (`cc_proc_cache_snapshot()`, cross-thread); `bg_timer.py:_scan_bg_sleep_timers` (`_cc_proc_cache` import).
+**Purpose:** Process and state caches shared by discovery — CC process pid→(tty,cwd) map, tmux session-name set, background-task open-handle snapshot (plus per-file holder pids), proxy-log mtime lookup, hook-state reader.
+**Reads:** `ps -A` + `lsof -d cwd` (CC process cache); `lsof +D _TASKS_BASE -Fpn` (bg-task open-handle + holder-pid cache); `tmux list-sessions`; `tmux display-message #{window_activity}` (per-session, on demand); `_PROXY_LOG_DIR/api_requests_*.jsonl` mtimes; `HOOKS_FILE`.
+**Writes:** module-level caches (`_cc_proc_cache` — lock-protected; `_tmux_state_cache`, `_bg_task_open_paths`, `_bg_task_holder_pids`, `_proxy_log_mtime_cache`, `_hook_state_cache`).
+**Called by:** `discovery_worker.py:_worker_loop` (via `discover.py`, all refresh calls) — sole refresh caller; `discover.py:_process_project_dir` (query calls, same thread); `ghostty.py:_tty_for_cwd` (`cc_proc_cache_snapshot()`, cross-thread); `bg_timer.py:_scan_bg_sleep_timers` (`_cc_proc_cache` import); `bg_task_orphans.py` (`_cc_proc_cache` import, `bg_task_holder_pids_snapshot()`).
 **Calls out:** `subprocess` (ps, lsof, tmux); `threading` (`_cc_proc_cache_lock`).
 
 ---
@@ -300,6 +300,16 @@ root) — this package only consumes those.
 **Writes:** `SIGTERM` to wake-up-process PIDs; `'aborted\n'` to the one resolved 0-byte `*.output` file per killed PID; `menubar.log` (`[abort]` category).
 **Called by:** `discovery_worker.py:_worker_loop` (`_scan_bg_sleep_timers`, off the main thread); `app.py:_PanelController.abortBgTimer_` (`_abort_bg_sleep_timers`, main thread, manual abort); `dev/timer-loop/test_abort_stamp_scope.py`; `dev/menubar_nspanel/p1_nspanel_probe.py`.
 **Calls out:** `subprocess` (ps, lsof); `datetime`; `pathlib`; `.proc_cache` (`_cc_proc_cache`); `.menubar_log` (`log_menubar`).
+
+---
+
+### bg_task_orphans.py (115 LOC)
+
+**Purpose:** Detects `*.output` task-file handle holders whose ancestry chain contains no live Claude process, freshly reconfirms each one immediately before acting, and SIGTERMs the confirmed orphans — the subprocesses that poison `worker-cli wait` forever.
+**Reads:** `proc_cache.py:bg_task_holder_pids_snapshot()` (file path -> holder pids); `_cc_proc_cache` (live-Claude membership test); `ps -A -o pid=,ppid=` (ancestry walk, own probe, up to 5 hops per holder); `lsof -p <pid> -Fn` per orphan candidate, immediately before any kill (fresh pid-still-holds-this-exact-file reconfirmation — the 10s-old cache alone is not trusted for a kill decision).
+**Writes:** `SIGTERM` to confirmed-orphan pids; `menubar.log` (`[bg_orphan]` category — `orphan_detected` once per newly-seen orphan pid, deduped via module-level `_logged_orphan_pids`; `kill_action`/`kill_failed`/`kill_skipped` on every kill attempt, always naming pid + file).
+**Called by:** `discovery_worker.py:_worker_loop` (`scan_bg_task_orphans`, off the main thread, self-throttled to once per 10s independent of the 1.5s discovery cadence).
+**Calls out:** `os`, `signal`, `subprocess` (ps, lsof); `.proc_cache` (`_cc_proc_cache`, `bg_task_holder_pids_snapshot`); `.menubar_log` (`log_menubar`).
 
 ---
 
@@ -394,3 +404,4 @@ root) — this package only consumes those.
 - `ghostty.py` writes `ghostty_cwd_uuid.json` via its own inline path, not via `paths.py:GHOSTTY_CWD_UUID_FILE` — the constant exists for external/future consumers only, and has no reader inside this package. `paths.py:ORCHESTRATOR_SIGNALS_FILE` is in the same position: written by the iterative-dev plugin's `worker-cli send`, no reader in this package.
 - `system.py:_open_or_focus_monitor` always kills an existing `monitor_cc_*` tmux session before relaunching — there is no focus-only branch, because that session commonly outlives its Ghostty window and a focus-only click would silently no-op on a closed window.
 - `hook_setup.py` refuses to run from a worktree path (`_guard_not_worktree`) — hooks must be installed from the main repo checkout, or the registered command path goes dead the moment the worktree is removed.
+- `proc_cache.py:_bg_task_open_paths`/`_bg_task_holder_pids` are REASSIGNED (not mutated in place) on every `_refresh_bg_task_cache` call, unlike `_cc_proc_cache` (mutated via `.update()`/`del`, same object forever). A `from .proc_cache import _bg_task_holder_pids` in another module would bind to the dict object that existed at import time and go stale after the first refresh — `bg_task_orphans.py` reads it exclusively through `bg_task_holder_pids_snapshot()` for this reason; any future module needing that cache must do the same, not a direct import.

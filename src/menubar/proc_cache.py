@@ -5,7 +5,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from .paths import HOOKS_FILE as _HOOK_STATE_FILE
 
 _PROC_REFRESH_INTERVAL = 10.0
@@ -20,6 +20,7 @@ _cc_proc_cache_lock = threading.Lock()
 _cc_proc_last_refresh: float = 0.0
 
 _bg_task_open_paths: set = set()
+_bg_task_holder_pids: Dict[str, List[str]] = {}
 _bg_task_last_refresh: float = 0.0
 
 _tmux_state_cache: set = set()
@@ -42,21 +43,39 @@ def _has_active_bg(encoded_dir: str, session_id: str) -> bool:
         return False
 
 def _refresh_bg_task_cache(now: float) -> None:
-    global _bg_task_open_paths, _bg_task_last_refresh
+    global _bg_task_open_paths, _bg_task_holder_pids, _bg_task_last_refresh
     if now - _bg_task_last_refresh < _PROC_REFRESH_INTERVAL:
         return
     _bg_task_last_refresh = now
     if not _TASKS_BASE.exists():
         _bg_task_open_paths = set()
+        _bg_task_holder_pids = {}
         return
     try:
-        r = subprocess.run(['lsof', '+D', str(_TASKS_BASE), '-Fn'],
+        r = subprocess.run(['lsof', '+D', str(_TASKS_BASE), '-Fpn'],
                             capture_output=True, text=True,
                             encoding='utf-8', errors='replace', timeout=3)
     except Exception:
         return
-    _bg_task_open_paths = {line[1:] for line in r.stdout.split('\n')
-                            if line.startswith('n') and line.endswith('.output')}
+    open_paths, holder_pids = _parse_bg_task_lsof(r.stdout)
+    _bg_task_open_paths = open_paths
+    _bg_task_holder_pids = holder_pids
+
+def _parse_bg_task_lsof(lsof_output: str) -> Tuple[set, Dict[str, List[str]]]:
+    open_paths: set = set()
+    holder_pids: Dict[str, set] = {}
+    current_pid = ''
+    for line in lsof_output.split('\n'):
+        if line.startswith('p'):
+            current_pid = line[1:]
+        elif line.startswith('n') and line.endswith('.output'):
+            path = line[1:]
+            open_paths.add(path)
+            holder_pids.setdefault(path, set()).add(current_pid)
+    return open_paths, {path: sorted(pids) for path, pids in holder_pids.items()}
+
+def bg_task_holder_pids_snapshot() -> Dict[str, List[str]]:
+    return dict(_bg_task_holder_pids)
 
 def _refresh_cc_proc_cache(now: float) -> None:
     global _cc_proc_last_refresh
