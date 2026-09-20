@@ -55,6 +55,7 @@ def _focus_session(cwd: str) -> None:
         script = (
             'tell application "Ghostty"\n'
             f'  focus terminal id "{safe_id}"\n'
+            '  activate\n'
             'end tell'
         )
         label = f'id={term_id}'
@@ -64,6 +65,7 @@ def _focus_session(cwd: str) -> None:
             'tell application "Ghostty"\n'
             '  try\n'
             f'    focus (first terminal whose working directory is "{safe_cwd}")\n'
+            '    activate\n'
             '    return "MATCH"\n'
             '  on error errMsg number errNum\n'
             '    return "MISS:" & errNum & ":" & errMsg\n'
@@ -156,6 +158,7 @@ def _focus_terminal_by_id(term_id: str):
     script = (
         'tell application "Ghostty"\n'
         f'  focus terminal id "{safe_id}"\n'
+        '  activate\n'
         'end tell'
     )
     _t1 = time.monotonic()

@@ -243,9 +243,9 @@ root) — this package only consumes those.
 
 ---
 
-### system.py (223 LOC)
+### system.py (226 LOC)
 
-**Purpose:** Process entry point (`run()`), singleton lock, and Ghostty click-to-focus/monitor-launch routing for main sessions, worker viewers, and per-project monitors — worker-viewer focus self-heals one stale-id failure via a single reprobe-and-retry, main-session focus unchanged.
+**Purpose:** Process entry point (`run()`), singleton lock, and Ghostty click-to-focus/monitor-launch routing for main sessions, worker viewers, and per-project monitors — every successful focus AppleScript now also activates Ghostty app-wide (one combined osascript call, `focus` before `activate`, never on a failed/MISS attempt); worker-viewer focus self-heals one stale-id failure via a single reprobe-and-retry, main-session focus unchanged otherwise.
 **Reads:** `PID_FILE` (lock); `get_ghostty_terminal_id(cwd)`/`get_ghostty_terminal_id_for_tty(tty)` from `ghostty.py` on click; `ps -A` output (worker-viewer tty lookup); the plist template (PATH source for `_resolve_launch_python3`); `MONITOR_CC_ROOT`; `tmux has-session` (via `tmux_launcher.py`).
 **Writes:** `PID_FILE`; `/tmp/monitor-cc-menubar_focus.log` (main-session path only); `menubar.log` (`[latency]`/`[monitor]` categories — `_focus_worker`'s line now carries `status=OK`/`status=ERR rc=... stderr=...`/`status=TIMEOUT` plus `attempt=1`; on a non-OK first attempt, a `focus_worker_reprobe` line (tty, cost, fresh id or `miss`) and, if the reprobe found a fresh id, a second `focus_worker ... attempt=2` line — the reprobe path is the ONLY thing that adds cost, never runs on a first-attempt success); `.ghostty.py`'s `_ghostty_tty_to_id[tty]` (in place, via the imported `_reprobe_single_tty`, on a successful reprobe); a new Ghostty window + tmux session on monitor launch.
 **Called by:** `__init__.py` (re-export), `workflow.py` (via `__init__.py:run`), `app.py` (`_focus_session`, `_focus_worker`, `_open_or_focus_monitor`), `hotkey_controller.py` (`_focus_session`), `focus_controller.py` (`_focus_session`).
@@ -405,4 +405,17 @@ root) — this package only consumes those.
 - `system.py:_open_or_focus_monitor` always kills an existing `monitor_cc_*` tmux session before relaunching — there is no focus-only branch, because that session commonly outlives its Ghostty window and a focus-only click would silently no-op on a closed window.
 - `hook_setup.py` refuses to run from a worktree path (`_guard_not_worktree`) — hooks must be installed from the main repo checkout, or the registered command path goes dead the moment the worktree is removed.
 - `proc_cache.py:_bg_task_open_paths`/`_bg_task_holder_pids` are REASSIGNED (not mutated in place) on every `_refresh_bg_task_cache` call, unlike `_cc_proc_cache` (mutated via `.update()`/`del`, same object forever). A `from .proc_cache import _bg_task_holder_pids` in another module would bind to the dict object that existed at import time and go stale after the first refresh — `bg_task_orphans.py` reads it exclusively through `bg_task_holder_pids_snapshot()` for this reason; any future module needing that cache must do the same, not a direct import.
+- `system.py`'s three focus AppleScripts (`_focus_session`'s two routes, `_focus_terminal_by_id`
+  shared by both `_focus_worker` attempts) all call app-level `activate` again as of 2026-09-20,
+  AFTER the terminal-level `focus`/`focus (first terminal whose ...)` command, in the SAME
+  osascript invocation — this reverses part of `process-docs/ghostty_foreground/
+  cmd_n_ghostty_foreground.md` (2026-06), which removed `activate` because it brought Ghostty
+  forward on every desktop. That constraint was explicitly retracted by the user
+  (`process-docs/menubar_worker_focus/`, 2026-09-20) in favor of one narrower one: a Ghostty
+  window must never change its own desktop. `activate` is only ever reached after a successful
+  focus (inside the cwd route's `try` block, before `return "MATCH"`; naturally unreached on the
+  id route if `focus terminal id` itself throws, since an unhandled AppleScript error halts the
+  `tell` block before the next line). Do not reintroduce `activate` as a standalone/first
+  command, and do not split it into a second `osascript` call — both were deliberately rejected
+  (order matters, one round trip only).
 - `ghostty.py:_reprobe_single_tty` deliberately has NO fixed sleep after writing the OSC2 marker, unlike `_refresh_ghostty_tty_to_id`'s batch path (120ms). Measured live (60 trials, `process-docs/menubar_worker_focus/`): an immediate query finds the marker ~88% of the time; on a miss, one immediate retry query found it 100% of the time (0 double-misses observed) — average total cost ~92ms vs ~210ms with the fixed sleep. This finding applies ONLY to the single-tty reprobe path, verified and changed there; `_refresh_ghostty_tty_to_id`'s own 120ms sleep was not re-measured or touched — do not assume the same conclusion carries over there without separately measuring it (different call shape: N markers written before one shared query, not one marker before an immediately-following query).

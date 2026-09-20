@@ -267,6 +267,132 @@ mode. Confirmed the service actually restarted, not just that the build command 
   diff reached the bundle: the single-tty path lost its sleep, the batch path kept its own,
   deliberately un-remeasured, sleep.
 
+## Update 2026-09-20 (same session) — app-level activate restored, combined with focus
+
+### Problem this addresses
+
+Two user-reported symptoms turned out to be one cause. Cmd+1..9 appeared not to react when
+another app (e.g. Firefox) was in front. After switching to a Ghostty window the user had to
+click into it before he could type. Root cause, measured by the reviewer against the live
+Ghostty before this update (three osascript trials, frontmost checked before/after each): the
+existing `focus terminal id "..."` command (used by both `_focus_session` and
+`_focus_terminal_by_id`) never makes Ghostty the active app — `frontmost` stayed `false` before
+AND after. Same for the window-level `activate window` command. Only app-level `activate` flips
+`frontmost` to `true`, but alone it raises the LAST USED window, not the one just selected — so
+it was never safe to use by itself.
+
+### Why this was previously removed, and why that no longer applies
+
+`process-docs/ghostty_foreground/cmd_n_ghostty_foreground.md` (2026-06) removed app-level
+`activate` from `_focus_session` because it brought Ghostty forward on every desktop
+unconditionally — a real, previously-confirmed regression. The user has now explicitly retracted
+that constraint (his desktop layout is fixed; Ghostty coming forward on every desktop is fine)
+and replaced it with a narrower one: a Ghostty window must never change ITS OWN desktop —
+switching to a session on another desktop must move the user there, never drag the window over.
+This task does not, and structurally cannot, verify that narrower constraint — see the
+Verification section below for exactly what was and wasn't checked, and why.
+
+### Approach
+
+**Order:** `focus terminal id "..."` (or the cwd route's `focus (first terminal whose working
+directory is "...")`) FIRST, `activate` SECOND, inside the same `tell application "Ghostty" ...
+end tell` block. Matches the reviewer's own reasoning: select the target before asking the app
+to come forward, so activation shows the just-selected window rather than whatever was last
+used.
+
+**One osascript invocation, not two:** both commands live in the same script string passed to
+the same single `subprocess.run(['osascript', '-e', script], ...)` call that already existed —
+no new subprocess, no added round trip. A second `osascript` call would have cost roughly 70ms
+per focus (consistent with this session's own measured single-osascript-round-trip costs,
+~75-105ms observed throughout this work) and the user was explicit that a noticeable slowdown is
+unacceptable.
+
+**Three call sites, one shared change pattern:**
+- `_focus_session`'s id route: `activate` added as a second line inside the `tell` block, after
+  `focus terminal id`.
+- `_focus_session`'s working-directory fallback route (the `try`/`on error` block with the
+  `MATCH`/`MISS:` sentinel): `activate` added INSIDE the `try`, between the `focus (first
+  terminal whose ...)` call and `return "MATCH"` — reached only on a real match, never on the
+  `on error` branch. The `MATCH`/`MISS:` return-value parsing in the Python side
+  (`out.startswith('MISS:')`) was not touched at all; it still parses the exact same two
+  sentinel shapes.
+- `_focus_terminal_by_id` (the function `_focus_worker`'s first attempt AND the self-healing
+  retry's second attempt both call — one code change covers both automatically): `activate`
+  added after `focus terminal id`. No try/on-error wrapper exists here; if `focus terminal id`
+  itself throws (the stale-id case this session's earlier work targeted), the unhandled
+  AppleScript error halts the `tell` block before `activate` is ever reached — the same
+  reach-activate-only-on-success guarantee as the cwd route, achieved for free by AppleScript's
+  own error-propagation behavior, not by an explicit added check.
+
+### A live-testing detour that did not become part of the implementation, recorded so it isn't repeated
+
+Before settling on the above, tried to verify not just `frontmost` but WHICH specific window
+came forward, using Ghostty's `front window` property and `focused terminal of (selected tab of
+front window)`. Results were inconsistent between successive queries against the real, live,
+actively-used machine (the same terminal kept appearing as "front" regardless of which target
+was focused moments earlier, and calling `activate` mid-session visibly changed the REAL current
+user's frontmost app during testing). Concluded this line of testing was entangled with the
+live desktop/Space state of an actively-used machine in ways an automated script cannot isolate
+or interpret — not a defect in the implementation, but a real limit of remote/scripted
+verification on a shared live desktop. Deliberately stopped pursuing it rather than keep
+disturbing the real screen. This is exactly the class of check the task itself named as the
+user's job (whether windows stay on their own desktop), so no code decision was based on these
+inconclusive readings — the implementation follows the reviewer's own specified order (focus,
+then activate) and the change was verified the way the task actually asked for: `frontmost`
+before/after.
+
+### Verification — real osascript, real live Ghostty, all three paths and both `_focus_session` routes
+
+Baseline before each check: `osascript -e 'tell application "Finder" to activate'` (deterministic
+way to guarantee Ghostty starts backgrounded, confirmed via `frontmost` reading `false`).
+
+1. **`_focus_session`, id route** (real cwd, real populated tty map):
+   `frontmost` false -> true. `/tmp/monitor-cc-menubar_focus.log`:
+   `OK id=A5F576B2-... lookup_ms=0.0 osascript_ms=102.9`.
+2. **`_focus_session`, working-directory MATCH route** (deliberately ran in a fresh process with
+   an EMPTY tty map, so `get_ghostty_terminal_id` returns `None` and the fallback is forced):
+   `frontmost` false -> true. Log: `OK cwd=/Users/.../monitor-cc lookup_ms=0.0
+   osascript_ms=101.0` — `MATCH` parsed correctly as `OK`, same as before this change.
+3. **`_focus_session`, working-directory MISS route** (a cwd with no matching live terminal):
+   log: `MISS cwd=/tmp/definitely-not-a-real-ghostty-cwd-xyz123 reason=-1719:...Ungültiger
+   Index....` — `MISS:` sentinel parsing still intact, unchanged shape, no crash, no false
+   activation (nothing to check for frontmost here since nothing should have changed — and nothing
+   did, by construction, since `activate` sits after the line that threw).
+4. **`_focus_worker`, first-attempt success** (real worker session, real populated tty map):
+   `frontmost` false -> true. `menubar.log`:
+   `focus_worker session=worker-rag-cli-builder ... status=OK attempt=1`.
+5. **`_focus_worker`, self-healing second attempt** (reproduced the stale-id bug shape from this
+   session's earlier work, forcing attempt 1 to fail and the reprobe-then-retry path to run):
+   `frontmost` false -> true. `menubar.log`, one call, three lines in order:
+   `status=ERR rc=1 ...(-1728) attempt=1` -> `focus_worker_reprobe ... result=E052F8AB-...` ->
+   `status=OK attempt=2` — confirms the activation reaches the retry path too, since it's the
+   same shared `_focus_terminal_by_id` function, not a separate implementation.
+
+### What was not, and could not be, verified by me
+
+Whether a Ghostty window ever changes its own macOS desktop/Space as a side effect of `activate`.
+This requires watching the actual screen across an actual desktop switch, which is not available
+to an automated agent — explicitly named as the user's own verification job in the task. **What
+the user should watch for:** click a worker or session row whose window currently sits on a
+DIFFERENT virtual desktop than the one he's viewing, and confirm two things — his own view
+switches TO that desktop (expected, and new: this used to not happen since `activate` was
+absent), and the WINDOW ITSELF stays exactly where it was (not moved to his current desktop).
+The second one is the one hard requirement and the one this session's automated checks cannot
+touch at all.
+
+### Production rebuild
+
+Same procedure as the earlier update in this file: merged `bgorphan` into `integration` in the
+main checkout, ran `./venv/bin/python setup_py2app.py py2app`. See the commit log for the exact
+before/after pid and bundle-content confirmation captured alongside this entry.
+
+### Files changed this update
+
+`src/menubar/system.py` (223 -> 226 LOC): `activate` added to all three focus AppleScripts,
+`_focus_terminal_by_id`'s and `_focus_session`'s working-directory route's parsing untouched.
+`src/menubar/DOCS.md` updated (LOC, Purpose, one new Gotcha explaining the historical reversal
+and the narrower constraint that replaced it).
+
 ### Files changed this update
 
 `src/menubar/ghostty.py` (178 -> 182 LOC): `_reprobe_single_tty` rewritten to drop the fixed
