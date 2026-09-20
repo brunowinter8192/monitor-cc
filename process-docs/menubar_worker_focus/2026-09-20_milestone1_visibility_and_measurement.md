@@ -248,8 +248,24 @@ succeeds today.
 Per `process-docs/bg_task_orphans/2026-09-20_production_verification_py2app.md`: merged
 `bgorphan` into `integration` in the main checkout (`/Users/brunowinter2000/Documents/ai/
 monitor-cc`, not the worktree — the build reads from there), then ran `./venv/bin/python
-setup_py2app.py py2app` from that root using the project venv. See the git/process log for the
-exact build output and post-restart PID/status confirmation captured alongside this entry.
+setup_py2app.py py2app` from that root using the project venv.
+
+Build output ended with the same expected pattern the referenced entry documented (`bootstrap
+retry in 1s (rc=5)... bootstrap com.brunowinter.monitor-cc-menubar: ok`), not a new failure
+mode. Confirmed the service actually restarted, not just that the build command exited clean:
+
+- pid before the build: `51048`; pid after: `94029` — different process, real restart, not a
+  no-op bootstrap.
+- `menubar.log` kept writing fresh `[latency]`/`[detection]` lines immediately after (real
+  `bg_refresh`/`osc2_match`/`transition` activity, seconds-old at check time) — alive and doing
+  real work, not just present in the process table.
+- Grepped the INSTALLED bundle's own copy of the source (not the worktree, not the main
+  checkout) directly: `Contents/Resources/lib/python3.14/src/menubar/system.py` contains
+  `focus_worker_reprobe`/`_reprobe_single_tty` (4 matches); `ghostty.py` contains
+  `_extract_term_id` (3 matches, the sleep-removal shape) while still carrying the batch
+  refresh's own untouched `time.sleep(0.12)` at its original line — confirms the exact intended
+  diff reached the bundle: the single-tty path lost its sleep, the batch path kept its own,
+  deliberately un-remeasured, sleep.
 
 ### Files changed this update
 
