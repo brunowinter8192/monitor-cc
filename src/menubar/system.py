@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from .ghostty import get_ghostty_terminal_id, get_ghostty_terminal_id_for_tty
+from .ghostty import get_ghostty_terminal_id, get_ghostty_terminal_id_for_tty, _reprobe_single_tty
 from .paths import PID_FILE as _LOCK_PATH, MONITOR_CC_ROOT
 from ..tmux_launcher import generate_session_name, check_session_exists, kill_session
 
@@ -130,7 +130,25 @@ def _focus_worker(tmux_session_name: str) -> None:
         return
     outcome, osascript_ms = _focus_terminal_by_id(term_id)
     log_menubar('latency', f'focus_worker session={tmux_session_name} lookup_ms={lookup_ms:.1f} '
-                            f'osascript_ms={osascript_ms:.1f} id={term_id} {outcome}')
+                            f'osascript_ms={osascript_ms:.1f} id={term_id} {outcome} attempt=1')
+    if outcome != 'status=OK':
+        _retry_focus_worker_after_reprobe(tmux_session_name, tty)
+
+def _retry_focus_worker_after_reprobe(tmux_session_name: str, tty: str) -> None:
+    import time
+    from .menubar_log import log_menubar
+    _t0 = time.monotonic()
+    fresh_id = _reprobe_single_tty(tty)
+    reprobe_ms = (time.monotonic() - _t0) * 1000
+    if fresh_id is None:
+        log_menubar('latency', f'focus_worker_reprobe session={tmux_session_name} tty={tty} '
+                                f'reprobe_ms={reprobe_ms:.1f} result=miss')
+        return
+    log_menubar('latency', f'focus_worker_reprobe session={tmux_session_name} tty={tty} '
+                            f'reprobe_ms={reprobe_ms:.1f} result={fresh_id}')
+    outcome2, osascript_ms2 = _focus_terminal_by_id(fresh_id)
+    log_menubar('latency', f'focus_worker session={tmux_session_name} '
+                            f'osascript_ms={osascript_ms2:.1f} id={fresh_id} {outcome2} attempt=2')
 
 def _focus_terminal_by_id(term_id: str):
     import time

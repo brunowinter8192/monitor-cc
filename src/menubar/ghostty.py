@@ -103,15 +103,19 @@ def _query_single_terminal_id(marker: str):
     except Exception:
         return None
 
-def _reprobe_single_tty(tty: str) -> Optional[str]:
-    tty_marker = _write_markers([tty])
-    time.sleep(0.12)
-    r = _query_single_terminal_id(tty_marker[0][1])
-    _clear_markers(tty_marker)
+def _extract_term_id(r) -> Optional[str]:
     if r is None or r.returncode != 0:
         return None
-    term_id = r.stdout.strip()
-    if not term_id:
+    return r.stdout.strip() or None
+
+def _reprobe_single_tty(tty: str) -> Optional[str]:
+    tty_marker = _write_markers([tty])
+    marker = tty_marker[0][1]
+    term_id = _extract_term_id(_query_single_terminal_id(marker))
+    if term_id is None:
+        term_id = _extract_term_id(_query_single_terminal_id(marker))
+    _clear_markers(tty_marker)
+    if term_id is None:
         return None
     _ghostty_tty_to_id[tty] = term_id
     return term_id

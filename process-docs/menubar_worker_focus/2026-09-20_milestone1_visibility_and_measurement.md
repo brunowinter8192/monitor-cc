@@ -147,3 +147,116 @@ Milestone 2 and needs to be confirmed live in the actual running panel.
 - Do not reintroduce app-level `activate` in any new AppleScript — see
   `process-docs/ghostty_foreground/cmd_n_ghostty_foreground.md`, read again before writing the
   retry's focus script if it's not a literal reuse of `_focus_terminal_by_id`.
+
+## Update 2026-09-20 (same session) — sleep-removal measurement + Milestone 2 (self-heal)
+
+### Measurement: is the fixed 120ms sleep in the single-tty reprobe actually needed?
+
+Reviewer's hypothesis: the scoped query itself (measured at 80-90ms in Milestone 1) might already
+give Ghostty enough time to have processed the OSC2 write, making the fixed 120ms sleep pure
+waste for this specific call shape (one marker, one immediately-following query — NOT the batch
+refresh's shape of writing several markers before one shared query, which was not re-measured or
+touched).
+
+**Test shape, exactly as specified:** write the marker, query immediately with no sleep; if the
+marker isn't found yet, query once more (also immediately, no added sleep between the two
+queries — the first query's own ~80ms round trip is the only gap between them).
+
+**60 live trials total, two independent batches of 30, rotated across 7 real ttys** (both main
+and worker viewers, so the result isn't an artifact of one specific window):
+
+| batch | first-query success | final success (after ≤1 retry) | double-miss | avg total cost |
+|---|---|---|---|---|
+| 1 | 26/30 (87%) | 30/30 | 0 | 93.1ms |
+| 2 | 27/30 (90%) | 30/30 | 0 | 90.9ms |
+
+Every miss across all 60 trials was recovered by exactly one immediate retry — zero double-misses
+observed. Average total cost ~91-93ms, against ~205-215ms for the sleep-based shape measured in
+Milestone 1 — roughly the "cut it roughly in half" the reviewer predicted, confirmed by
+measurement rather than assumed.
+
+**Decision: the fixed sleep is not needed for this call shape, removed.**
+`_reprobe_single_tty` now queries immediately after the marker write, retries once immediately on
+a miss, and gives up (returns `None`) only if both queries miss — a double-miss was never
+observed in 60 trials, so no third attempt was built for a case with zero measured evidence of
+occurring; if `menubar.log` ever shows a `focus_worker_reprobe ... result=miss` line, that is the
+double-miss case and the place to revisit this decision with fresh data.
+
+### Milestone 2 — self-healing retry
+
+**Trigger condition, exactly as specified — only a real Ghostty-reported failure, never a
+pre-check:** `_focus_worker` runs its first `_focus_terminal_by_id` attempt exactly as before
+(now logged with a trailing `attempt=1` token). Only if that outcome is not the literal string
+`'status=OK'` (i.e. `status=ERR ...` or `status=TIMEOUT` — both cases where Ghostty, or the
+`osascript` call to it, actually reported a failure) does `_retry_focus_worker_after_reprobe` run.
+No validation pass, no pre-flight check, nothing added to the success path — a click that
+resolves on the first attempt executes the identical sequence of calls it did before this
+change, confirmed by direct measurement below.
+
+**What happens on the retry (`_retry_focus_worker_after_reprobe`):** calls the now-sleep-free
+`_reprobe_single_tty(tty)` (imported from `ghostty.py`), timed and logged as its own
+`focus_worker_reprobe session=... tty=... reprobe_ms=... result=<id>|miss` line regardless of
+outcome. If a fresh id came back, one more `_focus_terminal_by_id(fresh_id)` call runs — the
+exact same function the first attempt used, no new AppleScript written — logged as a second
+`focus_worker ... attempt=2` line.
+
+**What happens if the second attempt also fails, and why (the reviewer's "your call"):** nothing
+further — no third attempt, no fallback route. Logged exactly like any other failed attempt
+(`status=ERR .../status=TIMEOUT ... attempt=2`), then `_focus_worker` returns. Reasoning: the
+reprobe already queried Ghostty for the CURRENT truth about that tty; if focusing that
+current-truth id still fails, the failure is not a stale-map problem anymore (the map is now
+correct) — it's something else (window genuinely gone, Ghostty in a bad state, a real AppleScript
+error unrelated to id staleness), and no additional retry has new information to act on. A bounded
+single retry also keeps the added cost predictable and matches the one failure mode actually
+observed and diagnosed (one stale entry, fixed by one fresh reprobe). The task is explicit that a
+second route via working directory is not wanted once the map itself is correct, and this design
+doesn't need one — the map IS corrected by the reprobe regardless of whether the immediately
+following retry happens to succeed.
+
+### Live verification — real stale entry, real focus path, real self-heal
+
+Reproduced the exact bug shape again: poisoned `_ghostty_tty_to_id['ttys013']` with a dead uuid
+(the tty stays live in Ghostty's child list throughout, matching the real incident), then called
+the real `system._focus_worker('worker-rag-cli-builder')` — the same function a panel click
+invokes. Three new `menubar.log` lines, in order, one call:
+
+```
+focus_worker session=worker-rag-cli-builder lookup_ms=61.0 osascript_ms=81.7
+  id=00000000-0000-0000-0000-000000000000 status=ERR rc=1 stderr=...(-1728) attempt=1
+focus_worker_reprobe session=worker-rag-cli-builder tty=ttys013 reprobe_ms=147.7
+  result=E052F8AB-5F84-40E1-8B60-BB70E7932F81
+focus_worker session=worker-rag-cli-builder osascript_ms=77.1
+  id=E052F8AB-5F84-40E1-8B60-BB70E7932F81 status=OK attempt=2
+```
+
+First attempt fails with the real `-1728` error against the poisoned id, the reprobe runs and
+finds the real current id, the second attempt succeeds against the real window. Confirmed
+`_ghostty_tty_to_id['ttys013']` held the corrected id afterward — a SUBSEQUENT click would now
+succeed on the first attempt with no reprobe at all, i.e. the map is durably repaired, not just
+patched for one call.
+
+**Healthy-path cost check (the hard requirement):** with the map left in its now-correct state,
+called `_focus_worker('worker-rag-cli-builder')` three more times. All three logged a single
+`focus_worker ... status=OK attempt=1` line each, no `focus_worker_reprobe` line at all, total
+wall time 136-156ms per call — the same lookup_ms (~60-73ms) + osascript_ms (~74-83ms) ranges
+measured for a successful call in Milestone 1, before any of this session's changes existed.
+Confirms the reprobe path adds literally zero calls, not just "low cost," on a click that
+succeeds today.
+
+### Production rebuild
+
+Per `process-docs/bg_task_orphans/2026-09-20_production_verification_py2app.md`: merged
+`bgorphan` into `integration` in the main checkout (`/Users/brunowinter2000/Documents/ai/
+monitor-cc`, not the worktree — the build reads from there), then ran `./venv/bin/python
+setup_py2app.py py2app` from that root using the project venv. See the git/process log for the
+exact build output and post-restart PID/status confirmation captured alongside this entry.
+
+### Files changed this update
+
+`src/menubar/ghostty.py` (178 -> 182 LOC): `_reprobe_single_tty` rewritten to drop the fixed
+sleep in favor of immediate-query-then-one-retry; new `_extract_term_id` helper.
+`src/menubar/system.py` (205 -> 223 LOC): `_focus_worker` now tags its log line `attempt=1` and
+triggers `_retry_focus_worker_after_reprobe` on any non-OK outcome; new
+`_retry_focus_worker_after_reprobe`. `src/menubar/DOCS.md` updated to match (LOC, Purpose, Reads,
+Writes, Called-by, plus two new Gotchas — the sleep-removal measurement scope and the
+reprobe-only-on-real-failure trigger).
