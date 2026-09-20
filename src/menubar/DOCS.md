@@ -303,13 +303,13 @@ root) — this package only consumes those.
 
 ---
 
-### bg_task_orphans.py (74 LOC)
+### bg_task_orphans.py (115 LOC)
 
-**Purpose:** Detects `*.output` task-file handle holders whose ancestry chain contains no live Claude process — orphaned background-task subprocesses that poison `worker-cli wait` forever (detection only, no kill).
-**Reads:** `proc_cache.py:bg_task_holder_pids_snapshot()` (file path -> holder pids); `_cc_proc_cache` (live-Claude membership test); `ps -A -o pid=,ppid=` (ancestry walk, own probe, up to 5 hops per holder).
-**Writes:** `menubar.log` (`[bg_orphan]` category, once per newly-detected orphan pid — deduped against the previous scan via module-level `_logged_orphan_pids`, re-logged only if the pid drops out and reappears).
+**Purpose:** Detects `*.output` task-file handle holders whose ancestry chain contains no live Claude process, freshly reconfirms each one immediately before acting, and SIGTERMs the confirmed orphans — the subprocesses that poison `worker-cli wait` forever.
+**Reads:** `proc_cache.py:bg_task_holder_pids_snapshot()` (file path -> holder pids); `_cc_proc_cache` (live-Claude membership test); `ps -A -o pid=,ppid=` (ancestry walk, own probe, up to 5 hops per holder); `lsof -p <pid> -Fn` per orphan candidate, immediately before any kill (fresh pid-still-holds-this-exact-file reconfirmation — the 10s-old cache alone is not trusted for a kill decision).
+**Writes:** `SIGTERM` to confirmed-orphan pids; `menubar.log` (`[bg_orphan]` category — `orphan_detected` once per newly-seen orphan pid, deduped via module-level `_logged_orphan_pids`; `kill_action`/`kill_failed`/`kill_skipped` on every kill attempt, always naming pid + file).
 **Called by:** `discovery_worker.py:_worker_loop` (`scan_bg_task_orphans`, off the main thread, self-throttled to once per 10s independent of the 1.5s discovery cadence).
-**Calls out:** `subprocess` (ps); `.proc_cache` (`_cc_proc_cache`, `bg_task_holder_pids_snapshot`); `.menubar_log` (`log_menubar`).
+**Calls out:** `os`, `signal`, `subprocess` (ps, lsof); `.proc_cache` (`_cc_proc_cache`, `bg_task_holder_pids_snapshot`); `.menubar_log` (`log_menubar`).
 
 ---
 

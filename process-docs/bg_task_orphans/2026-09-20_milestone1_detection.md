@@ -185,3 +185,113 @@ scoped in the task prompt as a separate, explicitly gated follow-up — not star
 - The dedup set (`_logged_orphan_pids`) is detection-log dedup only, not a "don't kill twice"
   guard — Milestone 2 will need its own bookkeeping (or none, if the kill target simply vanishes
   from `_bg_task_holder_pids` the moment it's dead and there's nothing left to re-kill).
+
+## Update 2026-09-20 (same session) — module-standards fix + Milestone 2 (kill)
+
+### Orchestrator-standards fix (reviewer-flagged)
+
+`scan_bg_task_orphans` sat under `# FUNCTIONS` and carried two pieces of actual logic: the
+throttle comparison (`now - _last_scan_ts < _ORPHAN_SCAN_INTERVAL`) and the
+`_logged_orphan_pids.clear()` branch for the no-holders case. Restructured: added a real
+`# ORCHESTRATOR` section holding exactly `scan_bg_task_orphans`, which now only calls
+`_scan_due(now)` / `_mark_scanned(now)` / `_collect_holder_pairs()` /
+`_forget_all_logged_orphans()` / `_build_ppid_map()` / `_find_orphans(...)` /
+`_log_new_orphans(...)` / `_kill_confirmed_orphans(...)` and branches on their return values —
+no inline computation, no direct global mutation left in the orchestrator body. The throttle
+comparison moved into `_scan_due`, the timestamp write into `_mark_scanned`, the empty-holders
+cache-reset into `_forget_all_logged_orphans`. `# FUNCTIONS` below it lists every helper in call
+order (stepdown rule).
+
+### Milestone 2 — the kill, with the fresh-reconfirmation requirement
+
+**The risk being closed:** `_bg_task_holder_pids` (the pid<-file map the orphan list is built
+from) is refreshed at most every 10s (`proc_cache.py`'s own throttle). macOS pid numbers get
+reused. A pid that held a task file 9 seconds ago and has since exited could, in principle, have
+its number reassigned to an unrelated process before the kill fires — sending SIGTERM to a
+completely different, innocent process.
+
+**The fix — one function, called immediately before every kill, never before:**
+`_pid_still_holds_file(pid, expected_path)` runs a scoped `lsof -p <pid> -Fn` (not the batch
+`+D <tasks_dir>` scan the detection side uses) and checks whether that pid's CURRENT open-file
+list still contains that exact path. Modeled on `bg_timer.py:_resolve_pid_output_file`'s
+ordering lesson (resolve/confirm before the kill, not after — the open handle and lsof's ability
+to see it vanish the instant the process exits) but deliberately NOT the same call shape:
+`_resolve_pid_output_file` scopes to fd 1/2 only (`-d 1,2`) because it's resolving a wait/sleep
+process's OWN stdout/stderr redirect target; this reconfirmation instead checks ANY fd the pid
+holds the expected path on (no `-d` restriction), because the original detection scan
+(`lsof +D <tasks_dir> -Fpn`) that produced the candidate never restricted by fd either — the
+reconfirmation has to be checking the identical thing the detection already found, not a
+narrower one. `_kill_confirmed_orphans` calls this once per candidate; `True` -> `_kill_orphan`
+(`os.kill(pid, SIGTERM)`, logs `kill_action`, or `kill_failed` on an `OSError`/lookup failure);
+`False` -> no kill, logs `kill_skipped ... reason=reconfirm_failed`, moves to the next candidate.
+No retry inside the same cycle — a genuinely-still-orphaned pid that failed reconfirmation for a
+transient reason (`lsof` hiccup) gets picked up again on the next 10s scan, same as any other
+`unknown`-classified holder.
+
+**Why SIGTERM, not SIGKILL:** matches the only existing precedent in this codebase for killing a
+process by pid from the menubar (`bg_timer.py:_abort_bg_sleep_timers`), and the live target
+(pid 79018, state `S`, interruptible sleep, not `D`) had no structural reason to need SIGKILL —
+confirmed live, SIGTERM alone terminated it.
+
+**`worker-cli wait` cannot ever be a kill target through this path, structurally, not just by
+convention:** `_wait_has_live_bg_task`'s own `lsof +D <tasks_dir> -Fn` call is a short-lived probe
+subprocess that reads the directory and exits; the `wait` bash loop itself never opens a
+persistent handle on any `.output` file. A `worker-cli wait` process can therefore never appear
+in `_bg_task_holder_pids` in the first place — there is nothing to special-case in the kill path,
+the constraint is satisfied by the shape of the data, not by an added guard. No redundant
+defensive check was added for this; it would test something structurally unreachable.
+
+### Live verification — real kill, real target, real before/after
+
+**Baseline (before any code executed):** extracted `_wait_has_live_bg_task` verbatim from
+`bin/worker-cli` via `sed`, sourced it in an isolated `bash -c` subshell alongside its real
+`tmux_spawn.sh` dependency, called it against the real `pusher`/`rag-cli` session — returned
+`yes`, confirming the poisoned state described in the task was still live at the start of this
+update.
+
+**Fresh-reconfirmation function tested in isolation first, no kill yet:** `_pid_still_holds_file`
+against (real pid 79018, real path) -> `True`; against (real pid 79018, a deliberately wrong
+path) -> `False`; against (a nonexistent pid `1234567`, the real path) -> `False`. `ps -p 79018`
+re-checked alive after all three calls — nothing killed by the reconfirmation probe itself, as
+expected (it only reads).
+
+**The kill, via the real orchestrator entry point** (`scan_bg_task_orphans(time.time())`, not a
+lower-level function call — the actual code path `discovery_worker.py` runs):
+- `ps -p 79018` immediately after: no such process (exit code 1).
+- `lsof` on the exact file path immediately after: no output, exit code 1 — handle confirmed
+  gone, not just the process.
+- `menubar.log`: `orphan_detected pid=79018 file=...bu4jcwahu.output` followed immediately by
+  `kill_action pid=79018 file=...bu4jcwahu.output` — both lines present, pid and file traceable
+  in both.
+
+**Post-kill re-check of the exact mechanism `worker-cli wait` relies on:** same extracted
+`_wait_has_live_bg_task` call, same session, now returns `no`. The handle-based signal
+`worker-cli wait` polls every 5s for this project has flipped from permanently-stuck-busy to
+correctly-idle.
+
+**What was NOT captured live, and why, stated plainly:** the task asked to confirm via
+`wait_trace.log` that a real `worker-cli wait` for `rag-cli` reaches a `bg=no` line for `pusher`.
+Armed a real `worker-cli wait /path/to/rag-cli --timeout 15` (and separately observed a second,
+already-running `wait` for the same project, pid 41166 — a pre-existing concurrent arm, not one
+I started) and watched `wait_trace.log` live. Both arms polled continuously for over 3 minutes
+(20:10:30 through 20:13:27) and `builder` (the OTHER worker in this project) was `status=working`
+on every single poll in that entire window — genuine live work, not something I controlled or
+should have interfered with. `worker-cli`'s own per-worker loop (`bin/worker-cli`, the `wait`
+case) breaks out on the FIRST worker found `working` and never reaches the next name in the list
+— by design (`SAW_WORKING=1; ... break`), not a bug and not something this change touches. Since
+`builder` sorts before `pusher` in `worker_list`'s output and stayed busy throughout, `pusher`'s
+own bg-check line never got emitted to the trace during the observation window — the loop
+legitimately never got that far. This is pre-existing `worker-cli` behavior, confirmed by reading
+the case statement, not a gap introduced or left by this change. The direct
+`_wait_has_live_bg_task` before/after (`yes` -> `no`, same verbatim function, same live session,
+same file) is the faithful substitute proof available within the observation window — it is the
+exact function `wait`'s `idle` branch calls, not a reimplementation, and it is what will produce
+a `bg=no` trace line for `pusher` the moment a future poll reaches that name in the list (i.e.
+the moment `builder` itself goes idle or dead). Flagging this honestly rather than claiming a
+trace line that was not actually observed.
+
+### Files changed this update
+
+`src/menubar/bg_task_orphans.py` restructured (74 -> 115 LOC): real `# ORCHESTRATOR` section
+added, kill path added (`_pid_still_holds_file`, `_kill_orphan`, `_kill_confirmed_orphans`).
+`src/menubar/DOCS.md` updated to match (LOC, Purpose, Reads, Writes, Calls out).
