@@ -87,7 +87,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### rules.py (146 LOC)
+### rules.py (148 LOC)
 
 **Purpose:** Orchestrates the message-pass pipeline (`apply_modification_rules`) and the system-block replacement pass (sys1 boilerplate strip, sys2 rule injection, sys3 session-guidance/gitStatus/worktree-path cleanup).
 **Reads:** Raw payload dict; system2 rule text via `rules_config._load_system2_rules`.
@@ -117,12 +117,12 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### message_passes_simple.py (171 LOC)
+### message_passes_simple.py (184 LOC)
 
-**Purpose:** Spec-driven pass runner (`_run_simple_pass`) plus 9 declarative specs (PO-preview, BG-exit, hook-prefix, git-lock, bg-launch-ack, bd-noise, interrupt-marker, SN-notice, poread-expand); role-filter, marker-guard, `strip_fn`.
+**Purpose:** Spec-driven pass runner (`_run_simple_pass`) plus 10 declarative specs (PO-preview, BG-exit, hook-prefix, git-lock, bg-launch-ack, bd-noise, interrupt-marker, SN-notice, pasted-content-wrapper, poread-expand); role-filter, marker-guard, `strip_fn`.
 **Reads:** Message list.
 **Writes:** — (returns new lists/dicts; no mutation of input messages)
-**Called by:** `src/proxy/rules.py` (all 9 `_apply_*_strip` functions imported).
+**Called by:** `src/proxy/rules.py` (all 10 `_apply_*_strip` functions imported).
 **Calls out:** `constants` (`POREAD_MARKER_PREFIX`, via `.inject_poread`'s re-export — see that module's own entry for the live-copy sys.path bootstrap this indirectly depends on).
 
 ---
@@ -237,6 +237,16 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
+### strip_pasted_content.py (47 LOC)
+
+**Purpose:** Removes the opening/closing `<pasted_content id="...">`/`</pasted_content id="...">` tag pair CC 2.1.280+ wraps around a bracketed-paste user message, keeping the enclosed text byte-for-byte.
+**Reads:** Message content (string or list of blocks).
+**Writes:** — (returns `(modified_content, list[str])`)
+**Called by:** `src/proxy/message_passes_simple.py` (`_apply_pasted_content_strip`).
+**Calls out:** —
+
+---
+
 ### strip_sn_notice.py (53 LOC)
 
 **Purpose:** Strips the bare `[SYSTEM NOTIFICATION - NOT USER INPUT]` paragraph CC injects ahead of `<task-notification>` tags in background-task wake-up messages.
@@ -277,7 +287,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### strip_inject_delta.py (286 LOC)
+### strip_inject_delta.py (287 LOC)
 
 **Purpose:** Builds `stripped_delta`/`injected_delta` JSONL entries from an original↔forwarded payload pair, with per-location hash chains for delta suppression and a function-attribution map (`fn_map`) for each recorded change.
 **Reads:** Original and forwarded payload dicts; previous hash state dicts (`loc_key → MD5[:10]`) from the prior request; `all_ops` bridged from `flow.metadata`.
@@ -337,7 +347,7 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 
 ---
 
-### strip_vocab.py (223 LOC)
+### strip_vocab.py (224 LOC)
 
 **Purpose:** Shared vocabulary and classification logic for proxy strip attribution — rule-code/marker tables, chunk-to-rule attribution, and the 5-bucket (EFF/INERT/IDX/LEAK/SUS) per-request classifier used by audit tooling and the monitor display. Must stay in lockstep with `rules.py`'s rule set and markers.
 **Reads:** —
@@ -396,6 +406,8 @@ additionally writes stripped/injected dual-logs via metadata bridge on a complet
 **A client-side mid-stream abort is the common case, not the exception, in this project — see `process-docs/abort_cascade/`.** Claude Code cancels the SSE connection and refires on any incoming event while a stream is open (user keystroke, background-task completion, subagent task-notification); depth-3+ cascades are routine. mitmproxy fires exactly one of `response`/`error` per flow, never both (`HttpErrorHook`'s own docstring: "Every flow will receive either an error or an response event, but not both."). Any per-request write that must survive an abort — the `_response` dual-log write is the current example — has to be called from both `response()` and `error()`, not just `response()`; a write that only lives in `response()` silently disappears for every aborted REQ, which given the cascade frequency here means most REQs, not a rare edge case.
 
 **`response_model_probe.py` needs uncompressed bytes to ever match — `_request_identity_encoding` is what makes that true in real traffic, not a body-decompression path.** The probe regexes raw wire bytes; a `gzip`/`br`-compressed SSE body never contains the literal `"message_start"` text, so `answering_model` stayed empty on every real (non-test) request until `ProxyAddon.request()` started forcing `accept-encoding: identity` on the outbound Messages request. This is a request-side fix, not a response-side decompression path — deliberately, per this project's stance against building/maintaining a decompression layer. Applies uniformly to every Messages request regardless of whether the response turns out to stream or not (not knowable at request time), including the non-streaming JSON side calls (`claude-haiku-4-5`, `content-type: application/json`) — harmless there since their body never contains `message_start` either way, compressed or not.
+
+**`strip_pasted_content.py` only ever touches top-level `text` blocks on `role='user'` messages, by design, not a placeholder.** CC's bracketed-paste wrapper is CC's own formatting of the user's own message text, so it structurally cannot appear inside a `tool_result` (a tool's return value) or on a non-`user` role — and real corpus confirms this both ways: a well-formed, matching-id `<pasted_content id="...">...</pasted_content id="...">` pair shows up quoted verbatim inside a `role='assistant'` text block in a real session (only the role gate saves it), and inside `tool_result` blocks from `Read`/`Bash` tool output quoting this same feature's own task/process docs (only the no-`tool_result`-descent saves those). Same precedent as the SR-family `tool_result`-descent removal (`process-docs/message_strip_fp_nuke/2026-07-28_tool_result_sr_fix.md`) — do not widen either gate without fresh corpus evidence.
 
 **`strip_bg_launch_ack.py`'s three wordings deliberately do NOT share one detection predicate.** `_is_bg_launch_ack` (the two deliberate/manual-launch wordings) stays untouched and is still what `bg_escape.py` imports to decide whether to fire a real tmux `Escape` keystroke into a worker's pane; the third wording (auto-backgrounded on timeout) is detected by a separate `_is_bg_auto_timeout_ack`, combined only inside `_strip_bg_launch_ack`'s own predicate via `_is_bg_launch_ack_any`. Widening `_is_bg_launch_ack` itself instead would have made `bg_escape.py` also fire on timeout auto-backgrounding — a real production side effect (see the `bg_escape.py`'s per-task-id dedup Gotcha above) this project never asked for. A future fourth wording should follow the same pattern: extend the strip's own combined predicate, never `_is_bg_launch_ack` directly, unless `bg_escape.py` is meant to fire for it too.
 
