@@ -72,6 +72,14 @@ from test_strip_fix_cases_badge_nudge import (
     tt12_two_trailing_messages_in_one_delta_stays_quiet, tt13_lag_classifier_widens_for_nudge_shape,
     tt14_rendered_header_badge_words_for_nudge_class,
 )
+from test_strip_fix_cases_pasted_content import (
+    pc01_real_whole_message_wrap_stripped, pc02_real_wrap_then_trailing_text_same_message,
+    pc03_real_leading_text_then_wrap, pc04_real_short_leading_text_then_wrap,
+    pc05_real_fenced_quote_in_assistant_role_preserved_whole,
+    pc06_real_tool_result_wellformed_pair_preserved, pc07_real_tool_result_malformed_tag_mention_preserved,
+    pc08_real_tool_result_bare_mention_preserved, pc09_real_tool_result_word_mention_preserved,
+    pc10_pass_role_gate_and_mod_and_ops, pc11_full_pipeline_attribution_via_strip_vocab,
+)
 
 # ORCHESTRATOR
 
@@ -169,10 +177,21 @@ def _seq_badge() -> list:
     ]
 
 
+def _seq_pasted_content() -> list:
+    return [
+        pc01_real_whole_message_wrap_stripped, pc02_real_wrap_then_trailing_text_same_message,
+        pc03_real_leading_text_then_wrap, pc04_real_short_leading_text_then_wrap,
+        pc05_real_fenced_quote_in_assistant_role_preserved_whole,
+        pc06_real_tool_result_wellformed_pair_preserved, pc07_real_tool_result_malformed_tag_mention_preserved,
+        pc08_real_tool_result_bare_mention_preserved, pc09_real_tool_result_word_mention_preserved,
+        pc10_pass_role_gate_and_mod_and_ops, pc11_full_pipeline_attribution_via_strip_vocab,
+    ]
+
+
 def _test_sequence() -> list:
     return (
         _seq_templates() + _seq_env_context() + _seq_wakeup() + _seq_launch_ack_interrupt()
-        + _seq_wrapped_tn() + _seq_badge()
+        + _seq_wrapped_tn() + _seq_badge() + _seq_pasted_content()
     )
 
 

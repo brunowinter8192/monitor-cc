@@ -27,6 +27,7 @@ _apply_sn_notice_strip = _simple_mod._apply_sn_notice_strip
 _apply_final_sr_pass = _rules_mod._apply_final_sr_pass
 _apply_role_system_strip = _rules_mod._apply_role_system_strip
 _apply_interrupt_marker_strip = _simple_mod._apply_interrupt_marker_strip
+_apply_pasted_content_strip = _simple_mod._apply_pasted_content_strip
 
 _bgk_mod = importlib.import_module('src.proxy.strip_bg_completed')
 _WAKEUP_TEXT = _bgk_mod._WAKEUP_TEXT
@@ -36,6 +37,14 @@ _bg_ack_mod = importlib.import_module('src.proxy.strip_bg_launch_ack')
 _strip_bg_launch_ack = _bg_ack_mod._strip_bg_launch_ack
 _im_mod = importlib.import_module('src.proxy.strip_interrupt_marker')
 _strip_interrupt_marker = _im_mod._strip_interrupt_marker
+_pc_mod = importlib.import_module('src.proxy.strip_pasted_content')
+_strip_pasted_content_wrapper = _pc_mod._strip_pasted_content_wrapper
+
+_vocab_mod = importlib.import_module('src.proxy.strip_vocab')
+attribute_chunk = _vocab_mod.attribute_chunk
+
+_delta_mod = importlib.import_module('src.proxy.strip_inject_delta')
+_MSG_CODE_TO_FN = _delta_mod._MSG_CODE_TO_FN
 
 apply_modification_rules = importlib.import_module('src.proxy.rules').apply_modification_rules
 

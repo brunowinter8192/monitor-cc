@@ -35,6 +35,7 @@ RULES: dict[str, tuple[str, list[str]]] = {
     'FM':  ('stripped_file_modified_sr',       [' was modified']),
     'RS':  ('stripped_role_system_msg',        []),
     'IM':  ('stripped_interrupt_marker',       ['[Request interrupted by user]', '[Request interrupted by user for tool use]']),
+    'PC':  ('stripped_pasted_content_wrapper', ['<pasted_content id="', '</pasted_content id="']),
 }
 
 TAG_LITERALS: dict[str, str] = {
